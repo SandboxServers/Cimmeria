@@ -20,6 +20,7 @@
 
 - [build-environment.md](build-environment.md) — rust-lld override is OBSOLETE (fixed upstream); a fresh worktree needs `external/` junction-linked; cargo's stderr is block-buffered through the Bash tool so a hung *test* looks like a hung build (diagnose via `UserModeTime`).
 - [stale-branch-clippy-toolchain-drift.md](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable (no toolchain pin), so idle branches fail on brand-new lints unrelated to their diff; update-branch before investigating.
+- [lane-sh-masks-cargo-exit-code.md](lane-sh-masks-cargo-exit-code.md) — `lane.sh` / `live-db-test.sh` exit 0 even when cargo failed; redirect to a file and grep for `^error` + `[lane] released (exit 0)`.
 
 ## Working Environment
 
@@ -53,6 +54,7 @@
 - [content-chain-dispatch-traps.md](content-chain-dispatch-traps.md) — **read before authoring any chain.** `display_dialog` needs an interact in the player's history (follow-up chains have only `last_interaction_target`); `dialog_choice` carries NO archetype so splits key on dialog id; `enabled=false` does nothing to a victory chain; deferred actions survive death but not disconnect (+ the rewind-`fire_at` test pattern); button-less dialogs still raise `dialog_choice`.
 - [player-loaded-edge-trigger-race.md](player-loaded-edge-trigger-race.md) — a `player_loaded`/`enter_region` chain gated on a state NEVER fires for the player who was already inside when the gate opened; fix with a second trigger row on the state-change event.
 - [chain-replay-trigger-param-vacuity.md](chain-replay-trigger-param-vacuity.md) — a hand-built `TriggerEvent` missing `dialog_id`/`item_id`/`entity_tag` matches NOTHING, so every negative assertion passes on a trigger miss.
+- [content-chain-dispatch-traps.md](content-chain-dispatch-traps.md) — **read before authoring any chain.** `display_dialog` needs an interact in the player's history; `dialog_choice` carries NO archetype; `enabled=false` does nothing to a victory chain; deferred actions survive death but not disconnect; button-less dialogs still raise `dialog_choice`; template-slot binds are `find_map` (one dialog-carrying bind per slot, cross-mission collisions are the real risk); a step going active in-place gets NO second `player_loaded`, so hand back via `mission_completed`; `entity_interactions` has no Rust consumer.
 
 ## Stats / entity systems
 

@@ -247,13 +247,13 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 
 ### H30
 
-**Status:** BlockedDependency (H12 for the Marsh spawn); U7 landed 2026-09-18 (Cellblock C04, PR #649: 1360 accepted on loot, with a `mission_1360.rs` replay). Chain authoring can start in wave 2; UAT waits on M0. **Scope title:** Castle carry-in deliveries: 1360 step 4038, 567 step 4039. **Decision:** D-H02.
+**Status:** Written 2026-09-19 on branch `harset/opcore` ([worknote](worknotes/H30-H31.md)) — awaiting coordinator integration. Chains 6501-6505; 567's 6503/6504 ship `enabled = false` pending a Castle grant for item 2698 (U17). Still BlockedDependency on H12/M0 for the `CmdCenter_*` spawn rows: `spawnlist.sql` has zero of them, so every `interact_tag` chain is inert and UAT waits on M0. U7 landed 2026-09-18 (Cellblock C04, PR #649: 1360 accepted on loot, with a `mission_1360.rs` replay). **Scope title:** Castle carry-in deliveries: 1360 step 4038, 567 step 4039. **Decision:** D-H02.
 **Entries:** steps 4038 (letter to Marsh, 4651), 4039 (files to Copplemann, 4652); items 3730 (granted by Cellblock chain 1003), 2698 (granted nowhere); Cellblock C04.
 **Scope:** on Marsh interact with 1360 active and 4038 the current step: `remove_item 3730`, `complete_mission 1360`, display the `DUIST` blurb if one exists; 567's 4039 is authored identically but stays disabled (`enabled = false` on the chain row) until the Castle side grants 2698, with the handoff note in the seed. **Acceptance:** `mission_1360.rs` proves the letter survives the hop (live-DB, the C04 fixture) and is removed exactly once. Spec H-01.
 
 ### H31
 
-**Status:** BlockedDependency (H12, H14). **Scope title:** 1361 Meet The Praxis. **Decision:** D-H12.
+**Status:** Written 2026-09-19 on branch `harset/opcore` (same [worknote](worknotes/H30-H31.md) as H30) — awaiting coordinator integration. Chains 6511-6527; the acceptance trio 6511-6513 ships `enabled = false` in a biconditional with chain 6007 (the 68->57 Command Center door), so M0 flips all four together. Still BlockedDependency (H12, H14). **Scope title:** 1361 Meet The Praxis. **Decision:** D-H12.
 **Entries:** steps 4040 (Moh'katan), 4041 (convince Hansen, dialog choice), 4042 (deliver samples to Moh'katan), 4043 (Ba'al), 4693 (Anat), 4694 (Marsh); council dialog 4363.
 **Scope:** six talk steps; the Hansen choice grants a "weapon samples" mission item (no id recovered; author against an existing unused mission item or record the absence and skip the grant, decision in the worknote) which 4042 removes. **Acceptance:** `mission_1361.rs`, strictly ordered steps. Spec M-08.
 

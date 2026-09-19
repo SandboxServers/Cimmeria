@@ -154,10 +154,11 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // NOTE (#97): five entries added at once is right at the threshold this
         // allowlist's own doc comment calls out — the entity-template walker is
         // the real fix for the whole "bit comes from the template default"
-        // family, which is 16 of the 30 entries here. Of the remaining
-        // fourteen, ten are per-player dialog binds (castle_701 and
-        // harset_jaffa), three are sibling-chain cases and one needs
-        // verification.
+        // family, the largest single group here. The second largest, and the
+        // one that grows with every Harset mission packet, is per-player
+        // dialog binds (castle_701, harset_jaffa, harset_opcore). Counts are
+        // deliberately not written down: two lanes merged with stale tallies
+        // on the same day. `grep -c '| ("' ` this file for the total.
         | ("harset_space_chains.sql", 6001) // HarsetRingLeftBottom
         | ("harset_space_chains.sql", 6002) // HarsetRingRightBottom
         | ("harset_space_chains.sql", 6003) // HarsetRingLeft
@@ -215,6 +216,37 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("harset_jaffa_chains.sql", 6335) // Harset_FormerRaJaffa: dsm 120002 bound by chain 6334
         | ("harset_jaffa_chains.sql", 6336) // Harset_FormerRaJaffa2: same bind, same template (204)
         | ("harset_jaffa_chains.sql", 6340) // CmdCenter_Mohkatan: dsm 5161 bound by chain 6339
+        // harset_opcore_chains.sql — Harset OP-CORE hub NPCs (packets H30, H31).
+        // reason: the INT bit for every one of these comes from a PER-PLAYER
+        // `add_dialog_set` bind, not from a template default and not from a
+        // `set_interaction_type` action. Worlds 57 and 68 are SHARED spaces
+        // (entities/spaces.xml `Instanced="false"`, decision D-H04), and
+        // `set_interaction_type` mutates the NPC's own
+        // `interaction_type_flags` and broadcasts to every witness — using it
+        // for a mission indicator would light Col. Marsh up for every player
+        // in the Command Center the moment one player qualified.
+        // `add_dialog_set` instead writes the acting player's
+        // `available_interactions` and pushes InteractionType to that witness
+        // alone (executor/dialog.rs::send_interaction_update_if_visible,
+        // plus the AoI-create path in space_manager/aoi.rs for NPCs not yet
+        // witnessed), which is the only per-player mechanism the engine has.
+        // The bit is real; it just arrives per-player. Each chain's binding
+        // sibling is named below.
+        //
+        // NOTE (#97): this is the third multi-entry batch in this allowlist,
+        // and the "bit comes from elsewhere" family is now well over half of
+        // it. Every remaining Harset mission packet (H32, H33, H36,
+        // H37, H41...) will add more of exactly this shape. The right fix is
+        // a per-file exemption rule for dialog-set-driven files, or the #97
+        // entity-template walker — NOT another nine entries per packet.
+        // Filed as a follow-up in docs/analysis/harset-rebuild/worknotes/H30-H31.md.
+        | ("harset_opcore_chains.sql", 6501) // CmdCenter_Marsh: dsm 5356 bound by chain 6502
+        | ("harset_opcore_chains.sql", 6503) // CmdCenter_Copplemann: dsm 2817 bound by chain 6504
+        | ("harset_opcore_chains.sql", 6512) // CmdCenter_Marsh: dsm 5254 bound by chain 6511
+        | ("harset_opcore_chains.sql", 6515) // CmdCenter_Mohkatan: dsm 6397 bound by chains 6513/6514
+        | ("harset_opcore_chains.sql", 6520) // CmdCenter_Mohkatan: dsm 6398 bound by chain 6519
+        | ("harset_opcore_chains.sql", 6522) // CmdCenter_Baal: dsm 6395 bound by chains 6520/6521
+        | ("harset_opcore_chains.sql", 6527) // CmdCenter_Marsh: dsm 5253 bound by chains 6525/6526
         // sgc_w1_chains.sql — baseline (dialog NPCs / quest items / lootable bodies)
         | ("sgc_w1_chains.sql", 3002) // SGCW1_GenHammond: dialog NPC template default
         | ("sgc_w1_chains.sql", 3004) // SGC_W1_Tealc: dialog NPC template default
