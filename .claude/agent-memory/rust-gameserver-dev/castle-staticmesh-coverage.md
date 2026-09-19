@@ -16,10 +16,13 @@ StaticMesh-only navmesh was worth building now or whether the BSP decoder
 **How to apply:** don't plan a Castle navmesh on the StaticMesh path
 alone, and don't re-derive these numbers — re-run the CLI instead.
 
-- 6,430 `StaticMeshActor` exports, **85.1% resolved**, 1,292,291
-  triangles, 2.9 s wall clock. Every one of the 961 skips is a prefab
-  archetype stub; zero index misses, decode failures or collision-free
-  meshes.
+- 6,430 `StaticMeshActor` exports. **All 6,430 now resolve** (was
+  85.1%; the 961 prefab-archetype stubs were closed the same day — see
+  [[ue3-staticmesh-extraction]]). 4,860 of them are *emitted*: the
+  other 1,570 are suppressed by `bCollideActors = false`, which is a
+  separate and larger correction. 1,254,597 StaticMesh triangles,
+  ~3 s wall clock. Zero index misses, decode failures or
+  collision-free meshes.
 - **Interior floors are absent.** Grid-probing the floor plane of the
   Interrogation Block (`Castle-000a0002`, y = 66.79) finds a StaticMesh
   floor under 2 of 1,365 points. The Level-5 comms room is 19.8%. Every
@@ -30,11 +33,17 @@ alone, and don't re-derive these numbers — re-run the CLI instead.
 - **PrefabInstance does not own actors via `Outer`** — map-wide
   `prefab_outer_actors` is 0; every actor is outered to
   `PersistentLevel`. The prefab's actors *are* separately exported, but
-  their cooked `StaticMeshComponent` is a ~76-byte archetype stub. In
+  their cooked `StaticMeshComponent` is an archetype stub. In
   `Castle-000a0002` it is exactly 147 PrefabInstance / 147 archetype
-  actors / 147 skips / 0 resolved. Closing it means resolving
-  `ExportEntry::archetype` through the `PackageIndex` — worth ~15% more
-  actors.
+  actors — now 125 emitted + 22 collision-vetoed, 0 unresolved.
+- **The 15% gap was decorative clutter, not traversal geometry.** 46
+  meshes: wall lights, computer towers, view screens, lockers, cover
+  blocks, tents, a bunker shell. No `*Stair*`/`*Ramp*`/`*Floor*`/
+  `*Bridge*`. Castle's stairs were in the DIRECT set all along
+  (`CA-Props:CA-Stair00` at x 348-361, z 846/884). Resolving the
+  archetypes did **not** merge any of the three probe components — it
+  was the `bCollideActors` gate that took the mesh from 997 components
+  to 553 and tightened three probes.
 - The `NAVMESH-WORKER-RULES.md` claim that `Castle-000a0002` holds
   "~2.5k StaticMeshActor, ~220 Brush, ~300 PrefabInstance, 3 Terrain" is
   wrong on all four. Measured (and confirmed independently with

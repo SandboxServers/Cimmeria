@@ -54,15 +54,39 @@ transform with `PrePivot` subtracted *first*
 `TriggerVolume`/`DynamicTriggerVolume` → exclude; their hulls span
 doorways and would seal the navmesh.
 
-## In `Maps/Castle`, brush-owned Models are ALL empty
+## In `Maps/Castle`, brush-owned Models all DECODE to empty — cause unproven
 
 Across all 144 chunks: every one of the 225 `Brush`-owned and 144
-root-owned (builder brush) `Model`s is a 108-byte stub. Only 16
-`Level`-owned Models carry geometry, and those 16 tiles are exactly the
-ones with `ModelComponent` exports (the interiors). Brush shapes were
-CSG'd into the level Model — the finding's claim that the 47 Brush
-actors are "live collidable geometry" is wrong, and its "108..777B"
-size range for them does not match the data.
+root-owned (builder brush) `Model`s comes out of the decoder as a
+108-byte stub. Only 16 `Level`-owned Models carry geometry, and those
+16 tiles are exactly the ones with `ModelComponent` exports (the
+interiors). The finding's claim that the 47 Brush actors are "live
+collidable geometry" is wrong, and its "108..777B" size range for them
+does not match the data.
+
+**Qualify this before relying on it.** "Decodes to 108 bytes" is
+measured; "brush shapes were CSG'd into the level Model" is the
+*inference*, and nobody has tested the alternative — that the 108
+bytes are a header we mis-parse and there is per-brush geometry we
+drop. Two reasons that now matters:
+
+- It is the **leading candidate for Castle's missing interior storey
+  connector** (2026-09-19). `nav-connectivity` showed the halls at BW
+  y 48.4 and 55.2 do not join at any Recast parameter set down to
+  `cs=0.1 ch=0.05 minRegionSize=1`, and the `CA-Stair00` flights only
+  span ~5 m each so they are within-storey. `Castle-00080003` — the
+  tile that step sits in — has 38 `Brush` against 878 already-emitted
+  BSP triangles. 540 `Brush` exports map-wide.
+- Everything else is ruled out: `Model` IS decoded (6,810 triangles
+  over 16 chunks), and `StaticMeshCollectionActor`, `KActor`,
+  `FracturedStaticMeshActor` and `BlockingVolume` have **zero Castle
+  exports**.
+
+One `Brush`-owned `Model` export hexdump settles it. If it holds real
+geometry, note the build is already at 83% of Recast's unchecked
+24-bit `rcCompactCell::index` span cap at `cs=0.3`, so 540 brush hulls
+may force `bounds=`-cropped region meshes — see
+`docs/engine/navbuilder-recast-limits.md`.
 
 ## The persistent `<MapName>.umap` has no BSP
 

@@ -29,7 +29,7 @@
 ## Navmesh / UE3 geometry export
 
 - [navbuilder-obj-interop.md](navbuilder-obj-interop.md) — **read before touching the OBJ writer or any walkability test.** NavBuilder exits 0 on all four silent-failure traps: axis order (`v ue.X ue.Z ue.Y`), CRLF-only, reversed winding (`N_recast.y = -n_ue3.z`), and a stray `*.obj` in the chunk dir.
-- [castle-staticmesh-coverage.md](castle-staticmesh-coverage.md) — Castle interior floors are BSP; StaticMesh recovers 85% of actors but ~0% of the Interrogation Block floor plane. PrefabInstance doesn't own actors via `Outer`.
+- [castle-staticmesh-coverage.md](castle-staticmesh-coverage.md) — Castle interior floors are BSP; ~0% of the Interrogation Block floor plane is StaticMesh. All 6,430 actors now resolve, 4,860 emitted (1,570 vetoed by `bCollideActors`); the 15% archetype gap was decorative clutter, NOT the missing floor.
 
 ## Wire-format gotchas
 
@@ -38,9 +38,9 @@
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
 - [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — an `add_dialog_set` bind pushes only `InteractionType(UINT64 TypeId)`; NULL-dialog rows are bindable indicators, `onInitialInteraction` (104) is never emitted, `topic_text` is dead data.
 - [ue3-absent-property-defaults.md](ue3-absent-property-defaults.md) — **read before decoding any UE3 export whose props are optional.** An absent tagged property means the *class* default, which SGW licensee-modified (`Terrain.DrawScale3D` is `(100,100,100)`, not `(1,1,1)`); recover it from world-grid arithmetic + one known world coordinate, never from "what the majority writes".
-- [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
+- [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — **read before extracting any cooked UE3 geometry.** `bCollideActors=false` actors STILL carry real kDOP data, so nothing below the mesh layer can tell a weather card in a doorway from a wall (1,570 in Castle); prefab actors have TWO archetype chains and the actor's is a dead end for the mesh; template object names are not unique (218 `StaticMeshComponent0` in one .upk) so match the dotted Outer path; never inherit `Location`; tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8).
 - [navbuilder-obj-traps.md](navbuilder-obj-traps.md) — **read before touching the navmesh build chain.** UE3→BW is a Y/Z column swap (`v x z y`), CRLF is mandatory or faces vanish, NavBuilder exits 0 on every failure, and a stray non-`<hex8>o.obj` in a chunked input dir reads uninitialised bounds. Detail in `docs/engine/navmesh-build-pipeline.md`.
-- [ue3-bsp-model-decode.md](ue3-bsp-model-decode.md) — **read before any UModel/BSP work.** Empty Model == exactly 108 bytes (layout self-check); BSP node winding is the OPPOSITE of StaticMesh so fans must be reversed for NavBuilder; classify by owner export class; Castle brush-owned Models are all stubs; the persistent .umap has no BSP; ModelComponent is render-only.
+- [ue3-bsp-model-decode.md](ue3-bsp-model-decode.md) — **read before any UModel/BSP work.** Empty Model == exactly 108 bytes (layout self-check); BSP node winding is the OPPOSITE of StaticMesh so fans must be reversed for NavBuilder; classify by owner export class; Castle brush-owned Models all DECODE to stubs but the cause is UNPROVEN and it is now the leading candidate for the missing interior storey connector; the persistent .umap has no BSP; ModelComponent is render-only.
 
 ## Content engine / chain authoring
 
@@ -57,7 +57,7 @@
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
-- [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
+- [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path; a scripted CRLF doc edit must never put a carriage return in its replacement text (one bare CR makes git rewrite the whole file) and must `assert old in s` or it silently no-ops.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
 
 ## Navmesh extraction (UE3 → NavBuilder)
