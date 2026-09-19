@@ -18,7 +18,8 @@
 | `Harset_Jacobs` | 213 | with Hansen |
 | `Harset_Lorak` | 201 | bazaar |
 | `Harset_Blackstock` | 214 | if placed in 57; otherwise `CmdCenter_Blackstock` |
-| `Harset_FormerRaJaffa` | 204 | Jaffa Zone (1326 Lan'toc target) |
+| `Harset_FormerRaJaffa` | 204 | Jaffa Zone; the 1326 Lan'toc Jaffa who **accepts** (dialog 4375) |
+| `Harset_FormerRaJaffa2` | 204 | Jaffa Zone; the 1326 Lan'toc Jaffa who **refuses** (dialog 4376). Added by H22: the accept/reject outcome is the NPC's, not the player's, and the engine has no randomness primitive and no condition that could pick between two dialogs on one tag, so the two outcomes are two individuals of the same template. One `add_dialog_set` on slot 204 lights both. |
 | `Harset_SuspiciousJaffa` | 205 | Jaffa Zone (1371 / 1322 arrest target) |
 | `Harset_HaughtyGoauld` | 210 | Market side, 1374 |
 | `Harset_AngryJaffa` | 206 | Storage side, 1374 |
