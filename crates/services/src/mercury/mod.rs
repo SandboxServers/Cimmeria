@@ -122,26 +122,29 @@ pub(crate) const BASEMSG_RESOURCE_FRAGMENT: u8 = 0x36;
 /// Wire format: `[reason:u8]` (0 = normal logoff).
 pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 
-/// Account entity class ID (typeID 0x08).
+/// Account entity class ID — the client's **clientIndex** for `Account` (0x07).
 ///
-/// TypeIDs are assigned 0-based in `entities/entities.xml` document order by
-/// `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520`
-/// (counter starts at 0, written as `(short)uVar18`, incremented per slot
-/// regardless of parse success — ServerOnly entries still consume a slot).
-/// `Account` is the 9th entry (position 8):
+/// The wire typeID is NOT the raw `entities/entities.xml` document index.
+/// `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520` keeps two
+/// counters: the raw index (`desc+0x1c`, incremented for every entry) and the
+/// clientIndex (`desc+0x1e`, incremented only when `name_ == clientName_`).
+/// `EntityDescription_parse @ ghidra://SGW.exe@0x01593cd0` blanks `clientName_`
+/// for `<ServerOnly/>` defs, so those entries never take a clientIndex. The
+/// client resolves wire typeIDs through the clientIndex -> raw-index map
+/// (`FUN_0158e710`, "No client->server entity description mapping found for
+/// entity type %d").
 ///
 /// ```text
-/// 0 SGWSpawnableEntity  1 SGWBeing  2 SGWPlayer  3 SGWGmPlayer
-/// 4 SGWMob  5 SGWPet  6 SGWDuelMarker  7 SGWBlackMarket (ServerOnly)
-/// 8 Account  9 SGWEntity (ServerOnly)
+/// raw:    0 SGWSpawnableEntity 1 SGWBeing 2 SGWPlayer 3 SGWGmPlayer 4 SGWMob
+///         5 SGWPet 6 SGWDuelMarker 7 SGWBlackMarket (ServerOnly) 8 Account
+/// client: 0..=6 unchanged, SGWBlackMarket skipped, 7 Account
 /// ```
 ///
-/// Emitting `0x07` earlier made the client resolve the create as
-/// SGWBlackMarket (`<ServerOnly/>`, no client `.def`) and silently fail to
-/// instantiate (§1.16 F4 "no in-handler validation"); visible everywhere only
-/// when gameplay needs a live Account entity on the client. See
-/// `docs/audits/entity-property-sync-section2-audit-2026-05-16.md` Appendix C.3.
-pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x08;
+/// `0x08` (Account's raw index, proposed in #313) is unmapped on the client
+/// and breaks character select, which runs on Account's exposed base methods
+/// (`createCharacter`/`playCharacter`). See
+/// `docs/protocol/client-verified-wire-formats.md` "Entity Class IDs".
+pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// SGWGmPlayer entity class ID (EntityTypeID 3 in entity definitions).
