@@ -82,6 +82,57 @@ impl PathFailReason {
             PathFailReason::NoMesh
         }
     }
+
+    /// Classify any `find_path` result that did not yield actionable
+    /// movement — i.e. `None`, or a `Some` of at most one waypoint.
+    ///
+    /// `patrol`, `wander`, `investigate` and `follow` used to
+    /// `unwrap_or_default()` the result *before* classifying, which
+    /// collapsed `None` and `Some(one_waypoint)` into the same shape and
+    /// reported both as `no_mesh` / `no_path`. Those are different
+    /// findings: `None` is the pathfinder declining, a one-waypoint path
+    /// is the pathfinder answering with something that cannot be walked.
+    /// Only the second is `degenerate_path`.
+    pub(super) fn classify(
+        space_mgr: &SpaceManager,
+        npc_id: u32,
+        path: Option<&[Vector3]>,
+    ) -> Self {
+        match path {
+            None => Self::for_missing_path(space_mgr, npc_id),
+            Some(_) => PathFailReason::DegeneratePath,
+        }
+    }
+}
+
+/// What the caller did *after* the routing failure.
+///
+/// The emitter cannot infer this from [`PathFailReason`], and guessing
+/// was wrong: the shared message told operators every state was
+/// "falling back to a straight line through geometry", but `fight`
+/// enqueues nothing on either of its failure branches. An NPC cutting
+/// through a wall and an NPC standing still are two different
+/// player-visible symptoms with two different first questions, so the
+/// caller — the only code that knows — passes it in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PathFallback {
+    /// `nav_path` was cleared and the raw destination pushed as a single
+    /// waypoint. The NPC walks straight at it, through whatever geometry
+    /// is in the way.
+    DirectWaypoint,
+    /// Nothing was enqueued. Whatever path the NPC already had is still
+    /// in place, so it keeps walking a stale route — or stands still, if
+    /// it had none.
+    PathUnchanged,
+}
+
+impl PathFallback {
+    fn label(self) -> &'static str {
+        match self {
+            PathFallback::DirectWaypoint => "direct_waypoint",
+            PathFallback::PathUnchanged => "path_unchanged",
+        }
+    }
 }
 
 /// One NPC's failed routing attempt.
@@ -100,6 +151,9 @@ pub(super) struct PathFailure {
     pub from: Vector3,
     pub to: Vector3,
     pub reason: PathFailReason,
+    /// What the handler did about it — see [`PathFallback`]. The
+    /// message is chosen from this, not from `reason`.
+    pub fallback: PathFallback,
     /// The NPC's current target, when the state has one (`fight`,
     /// `follow`). Omitted from the row entirely when `None`.
     pub target_id: Option<u32>,
@@ -121,6 +175,7 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         from,
         to,
         reason,
+        fallback,
         target_id,
     } = f;
 
@@ -151,18 +206,20 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         return;
     };
 
-    // Two message shapes, one call site: a degenerate path leaves the
-    // previous route in place (the NPC keeps walking somewhere stale),
-    // which is a different player-visible symptom from falling back to
-    // a straight line, and the message has to say which.
-    let message = match reason {
-        PathFailReason::DegeneratePath => format!(
-            "npc_ai.path_fail: {state} repath returned a degenerate path (<=1 waypoint) \
-             -- previous path left in place, NPC may walk toward where the target used to be"
+    // Two message shapes, one call site — keyed on what the handler
+    // actually did, not on why the pathfinder failed. The two are
+    // independent: `fight` leaves the path alone on a degenerate repath
+    // *and* on an outright no-path, while `patrol` / `wander` /
+    // `investigate` / `follow` push the raw destination in both cases.
+    let message = match fallback {
+        PathFallback::PathUnchanged => format!(
+            "npc_ai.path_fail: {state} got no usable navmesh route and enqueued nothing \
+             -- the NPC keeps whatever path it already had (walking toward where the \
+             target used to be), or stands still if it had none"
         ),
-        _ => format!(
-            "npc_ai.path_fail: {state} found no navmesh path \
-             -- falling back to a straight line through geometry"
+        PathFallback::DirectWaypoint => format!(
+            "npc_ai.path_fail: {state} got no usable navmesh route \
+             -- falling back to a straight line through geometry toward the destination"
         ),
     };
 
@@ -172,6 +229,7 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         decision_outcome,
         state,
         reason = reason_label,
+        fallback = fallback.label(),
         npc_id,
         target_id,
         world = %world,
