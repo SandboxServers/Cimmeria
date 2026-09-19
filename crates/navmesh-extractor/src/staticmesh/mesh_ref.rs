@@ -12,7 +12,24 @@ use crate::coverage::SkipReason;
 use crate::transform::ActorTransform;
 
 /// Outcome of resolving one actor's mesh reference.
+///
+/// The `Ok` payload is `(package_name, object_name)`. An **empty**
+/// package name is the sentinel for "a `StaticMesh` export in the
+/// package the reference was read from" — see [`is_local`].
 pub type MeshRefResult = std::result::Result<(String, String), SkipReason>;
+
+/// Is this a mesh reference local to the chunk it was read from?
+///
+/// A cross-package reference resolves through a
+/// [`cimmeria_upk_objects::PackageIndex`]; a local one must be decoded
+/// straight out of the already-open chunk, because the index is keyed
+/// on `(package, object)` and there is no package name to key on.
+/// Feeding a local reference to the index yields
+/// [`SkipReason::MeshNotInIndex`] and drops the geometry, which is what
+/// this predicate exists to stop.
+pub fn is_local(mesh_ref: &(String, String)) -> bool {
+    mesh_ref.0.is_empty()
+}
 
 /// Build an [`ActorTransform`] from a slice of tagged properties. Missing
 /// properties take their UE3-cooked defaults (origin, no rotation,
@@ -106,12 +123,20 @@ pub fn resolve_mesh_ref_from_component(pkg: &Package, component_ref: i32) -> Mes
         let Some(exp) = pkg.exports.get((mesh_obj - 1) as usize) else {
             return Err(SkipReason::UnresolvableMeshRef);
         };
-        // For local exports, the "package name" is the chunk's stem —
-        // but since the chunk owns the mesh, we record an empty package
-        // name and a key the PackageIndex won't have. Callers that want
-        // to handle local StaticMesh exports must short-circuit this
-        // path; for SGW Castle chunks the meshes are always imports
-        // so we keep this branch dormant.
+        if pkg.export_class_name(exp) != "StaticMesh" {
+            // A `StaticMesh` property pointing at something that is not
+            // one. Decoding its bytes would yield a plausible-looking
+            // mesh built out of an unrelated export.
+            return Err(SkipReason::UnresolvableMeshRef);
+        }
+        // The mesh is an export of the package we are already holding.
+        // Recorded with an **empty package name**, which is the
+        // loader's sentinel for "decode this locally" — see
+        // [`is_local`]. Handing it to the `PackageIndex` instead
+        // returns `MeshNotInIndex` and silently drops the collision
+        // geometry. SGW's Castle chunks reference imports throughout,
+        // so this branch is dormant there, but a map that does not is
+        // not a reason to lose its floors.
         Ok((String::new(), exp.object_name.clone()))
     }
 }

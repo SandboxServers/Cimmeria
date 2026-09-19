@@ -360,6 +360,65 @@ fn an_equivalent_spelling_of_the_output_dir_is_also_refused() {
 }
 
 #[test]
+fn a_nonexistent_intermediate_segment_does_not_bypass_the_containment_guard() {
+    // The second bug shape, and the one a purely lexical fallback let
+    // through: `out/not-yet-created/../whole.obj` names `out/whole.obj`,
+    // but its parent (`out/not-yet-created/..`) cannot be canonicalized
+    // because the middle segment does not exist. The old fallback then
+    // compared a *relative* cleaned path against the *absolute*
+    // canonicalized `output_dir`, never matched, and let the write land
+    // in the chunk directory -- restoring NavBuilder's silent
+    // exit-0-with-no-output failure.
+    let (maps, _content) = three_chunk_map("extract-refuse-ghost");
+    let out = scratch_dir("extract-refuse-ghost-out");
+    let sneaky = out.join("not-yet-created").join("..").join("whole.obj");
+
+    let err = extract_map_with_report(
+        &maps,
+        &out,
+        ExtractOptions {
+            combined_obj: Some(&sneaky),
+            ..Default::default()
+        },
+    )
+    .expect_err("a path resolving back into the output dir must be refused");
+    assert!(
+        format!("{err}").contains("per-chunk output directory"),
+        "unexpected error: {err}"
+    );
+    // The thing the guard actually protects: no stray `*.obj` in the
+    // directory NavBuilder globs.
+    assert!(obj_stems(&out).is_empty(), "{:?}", obj_stems(&out));
+    assert!(!out.join("whole.obj").exists());
+}
+
+#[test]
+fn a_nonexistent_directory_outside_the_output_dir_is_still_allowed() {
+    // The near-miss for the fix above: a combined path whose parent does
+    // not exist yet is fine as long as it resolves somewhere else. The
+    // anchoring must not turn "cannot canonicalize" into "refuse".
+    let (maps, content) = three_chunk_map("extract-ghost-ok");
+    let index = index_over(&content);
+    let out = scratch_dir("extract-ghost-ok-out");
+    let elsewhere = scratch_dir("extract-ghost-ok-whole");
+    let combined = elsewhere.join("made").join("up").join("whole.obj");
+
+    let report = extract_map_with_report(
+        &maps,
+        &out,
+        ExtractOptions {
+            index: Some(&index),
+            combined_obj: Some(&combined),
+            ..Default::default()
+        },
+    )
+    .expect("a nonexistent directory outside the output dir is fine");
+    assert!(report.combined_obj_bytes > 0);
+    assert!(combined.exists());
+    let _ = std::fs::remove_dir_all(&elsewhere);
+}
+
+#[test]
 fn a_combined_obj_in_a_sibling_directory_is_allowed() {
     // The near-miss: a directory whose name merely *starts* with the
     // output directory's name is a different directory.
@@ -452,14 +511,24 @@ fn the_buried_hull_skin_is_dropped_and_the_interior_floor_is_kept() {
     assert_eq!(c.bsp_triangles, 2, "only the interior floor survives");
     assert!(c.sources_balance());
     // Every surviving BSP vertex sits on the interior floor plane.
+    //
+    // Read the height column directly. A `v` line is
+    // `v <ue.X> <ue.Z> <ue.Y>` (see `obj`'s module docs), so the height
+    // is token 2 -- *not* the end of the line. Matching on the line
+    // suffix tests `ue.Y` instead, and a regression that kept the bottom
+    // skin while dropping the interior floor satisfies it.
     let obj = std::fs::read_to_string(out.join("00000009o.obj")).unwrap();
+    let heights: Vec<&str> = obj
+        .lines()
+        .filter(|line| line.starts_with("v "))
+        .filter_map(|line| line.split_whitespace().nth(2))
+        .collect();
     assert!(
-        !obj.contains(" -500\r\n")
-            && !obj.lines().any(|l| l.starts_with("v ")
-                && l.ends_with(" 0 0")
-                && l.split_whitespace().nth(2) == Some("0")),
-        "no cap vertex may remain: {obj}"
+        heights.contains(&"-300"),
+        "interior floor is missing: {obj}"
     );
+    assert!(!heights.contains(&"0"), "top cap remains: {obj}");
+    assert!(!heights.contains(&"-500"), "bottom cap remains: {obj}");
 }
 
 #[test]

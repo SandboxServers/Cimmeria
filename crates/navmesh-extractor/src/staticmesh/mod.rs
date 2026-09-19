@@ -181,18 +181,6 @@ pub fn extract_chunk_from_package(
         ..Default::default()
     };
 
-    let Some(index) = index else {
-        tracing::warn!(
-            actors_total = walk.actors_total,
-            "no PackageIndex available; emitting empty soup"
-        );
-        result
-            .skips
-            .add_n(SkipReason::NoPackageIndex, walk.instances.len() as u64);
-        result.actors_unresolved = result.skips.total() as usize;
-        return result;
-    };
-
     // Group instances by mesh reference so we only decode each unique
     // mesh once per chunk — a chunk often has dozens of instances of the
     // same archway / floor tile / wall section.
@@ -201,7 +189,44 @@ pub fn extract_chunk_from_package(
         by_mesh.entry(inst.mesh_ref.clone()).or_default().push(inst);
     }
 
+    // A mesh that is an export of *this* package needs no index: it is
+    // in the bytes we already have open. Resolving those first is not
+    // an optimisation — routing them through `PackageIndex::find` with
+    // an empty package name returns `MeshNotInIndex` and drops the
+    // collision geometry on the floor.
+    let mut cross_package: Vec<((String, String), Vec<StaticMeshInstance>)> = Vec::new();
     for (mesh_ref, group) in by_mesh {
+        if !mesh_ref::is_local(&mesh_ref) {
+            cross_package.push((mesh_ref, group));
+            continue;
+        }
+        match load_local_static_mesh(pkg, &mesh_ref.1) {
+            Ok(mesh) => emit_group(&mut result, &mesh_ref, &mesh, group),
+            Err((e, reason)) => {
+                tracing::debug!(
+                    object = %mesh_ref.1,
+                    error = %e,
+                    "could not load package-local StaticMesh"
+                );
+                result.skips.add_n(reason, group.len() as u64);
+            }
+        }
+    }
+
+    let Some(index) = index else {
+        let unresolvable: u64 = cross_package.iter().map(|(_, g)| g.len() as u64).sum();
+        tracing::warn!(
+            actors_total = walk.actors_total,
+            cross_package_instances = unresolvable,
+            local_instances = result.actors_resolved,
+            "no PackageIndex available; only package-local meshes emitted"
+        );
+        result.skips.add_n(SkipReason::NoPackageIndex, unresolvable);
+        result.actors_unresolved = result.skips.total() as usize;
+        return result;
+    };
+
+    for (mesh_ref, group) in cross_package {
         let mesh = match load_static_mesh(index, &mesh_ref) {
             Ok(m) => m,
             Err((e, reason)) => {
@@ -215,46 +240,87 @@ pub fn extract_chunk_from_package(
                 continue;
             }
         };
-        let local_tris = mesh.collision_triangles();
-        if local_tris.is_empty() {
-            tracing::debug!(
-                package = %mesh_ref.0,
-                object = %mesh_ref.1,
-                "StaticMesh has no collision triangles"
-            );
-            result
-                .skips
-                .add_n(SkipReason::MeshNoCollision, group.len() as u64);
-            continue;
-        }
-
-        for inst in group {
-            // Transform mesh-local triangles into world space and push
-            // each one directly into the soup. The previous shape allocated
-            // an intermediate `Vec` per instance via
-            // `transform_triangles(...).collect()` — at ~375 actors per
-            // dense chunk that's 375 redundant heap allocations on the
-            // hot path.
-            for t in &local_tris {
-                // `apply_triangle`, not three `apply` calls: a mirrored
-                // instance must keep its facing or its floor reads as a
-                // ceiling.
-                result.soup.push(inst.transform.apply_triangle(*t));
-            }
-            result.actors_resolved += 1;
-            if inst.from_archetype {
-                result.archetype_actors_resolved += 1;
-            }
-            if inst.via_archetype {
-                result.actors_resolved_via_archetype += 1;
-                result.triangles_via_archetype += local_tris.len();
-            }
-            result.triangles_emitted += local_tris.len();
-        }
+        emit_group(&mut result, &mesh_ref, &mesh, group);
     }
 
     result.actors_unresolved = result.skips.total() as usize;
     result
+}
+
+/// Transform one decoded mesh into world space once per instance and
+/// tally the result.
+fn emit_group(
+    result: &mut ChunkExtraction,
+    mesh_ref: &(String, String),
+    mesh: &StaticMesh,
+    group: Vec<StaticMeshInstance>,
+) {
+    let local_tris = mesh.collision_triangles();
+    if local_tris.is_empty() {
+        tracing::debug!(
+            package = %mesh_ref.0,
+            object = %mesh_ref.1,
+            "StaticMesh has no collision triangles"
+        );
+        result
+            .skips
+            .add_n(SkipReason::MeshNoCollision, group.len() as u64);
+        return;
+    }
+
+    for inst in group {
+        // Transform mesh-local triangles into world space and push
+        // each one directly into the soup. The previous shape allocated
+        // an intermediate `Vec` per instance via
+        // `transform_triangles(...).collect()` — at ~375 actors per
+        // dense chunk that's 375 redundant heap allocations on the
+        // hot path.
+        for t in &local_tris {
+            // `apply_triangle`, not three `apply` calls: a mirrored
+            // instance must keep its facing or its floor reads as a
+            // ceiling.
+            result.soup.push(inst.transform.apply_triangle(*t));
+        }
+        result.actors_resolved += 1;
+        if inst.from_archetype {
+            result.archetype_actors_resolved += 1;
+        }
+        if inst.via_archetype {
+            result.actors_resolved_via_archetype += 1;
+            result.triangles_via_archetype += local_tris.len();
+        }
+        result.triangles_emitted += local_tris.len();
+    }
+}
+
+/// Decode a `StaticMesh` export of the package the reference came from.
+///
+/// Looked up by object name among the exports whose class is
+/// `StaticMesh`: the reference shape
+/// ([`mesh_ref::MeshRefResult`]) carries a name, not an export index,
+/// and a chunk holds a handful of them at most.
+fn load_local_static_mesh(
+    pkg: &Package,
+    object_name: &str,
+) -> std::result::Result<StaticMesh, (ExtractError, SkipReason)> {
+    let Some(export) = pkg
+        .exports
+        .iter()
+        .find(|e| e.object_name == object_name && pkg.export_class_name(e) == "StaticMesh")
+    else {
+        return Err((
+            ExtractError::Other(format!(
+                "no package-local StaticMesh export named {object_name}"
+            )),
+            SkipReason::UnresolvableMeshRef,
+        ));
+    };
+    let decode_failed = |e: ExtractError| (e, SkipReason::MeshDecodeFailed);
+    let data = pkg
+        .read_export_data(export)
+        .map_err(|e| decode_failed(e.into()))?;
+    deserialize_static_mesh(&data, &pkg.names)
+        .map_err(|e| decode_failed(ExtractError::Other(format!("StaticMesh deserialize: {e}"))))
 }
 
 /// Open the StaticMesh's home package and run the decoder.
@@ -358,11 +424,28 @@ pub fn collect_static_mesh_instances(
         // `Group = PrecipPlanes` weather cards sitting in doorways with
         // real kDOP collision. Emitting those splits the exterior
         // navmesh, so this gate runs before anything else.
-        let arch = match index {
+        let resolution = match index {
             Some(index) if export.archetype != 0 => {
                 archetype::resolve_actor_archetype(pkg, export.archetype, index, cache, &mut open)
             }
-            _ => archetype::ActorArchetypeProps::default(),
+            // Degraded mode has no index to follow *any* chain with, and
+            // emits nothing cross-package anyway; the actor's own
+            // properties are all there is to go on.
+            _ => archetype::ActorArchetypeResolution::NotInstanced,
+        };
+        let Some(arch) = resolution.props() else {
+            // The chain that says whether this actor collides could not
+            // be read. Emitting it would assume UE3's `true` default for
+            // a template that may have said `false` — the component
+            // chain can still resolve a mesh, so the actor would sail
+            // through and put a solid obstacle in the navmesh.
+            tracing::debug!(
+                actor = %export.object_name,
+                reason = ?resolution.skip_reason(),
+                "actor archetype unreadable; skipping rather than assuming it collides"
+            );
+            walk.skips.add(SkipReason::ActorArchetypeUnreadable);
+            continue;
         };
         if !arch.collides(&props) {
             walk.skips.add(SkipReason::CollisionDisabled);

@@ -99,7 +99,7 @@ pub mod chain;
 #[cfg(test)]
 mod tests;
 
-pub use chain::{walk_actor_chain, walk_mesh_chain, ActorProbe, TemplateProbe};
+pub use chain::{walk_actor_chain, walk_mesh_chain, ActorChainOutcome, ActorProbe, TemplateProbe};
 
 /// How many `Archetype` hops to follow before declaring the chain
 /// pathological. Real SGW prefabs resolve in exactly one hop; the
@@ -131,7 +131,7 @@ const ACTOR_PROP_OFFSET: usize = 32;
 #[derive(Debug, Default)]
 pub struct ArchetypeCache {
     mesh_refs: HashMap<String, MeshRefResult>,
-    actor_props: HashMap<String, ActorArchetypeProps>,
+    actor_props: HashMap<String, ActorArchetypeResolution>,
     hits: u64,
     misses: u64,
 }
@@ -344,25 +344,73 @@ pub fn find_bool(props: &[TaggedProperty], name: &str) -> Option<bool> {
     })
 }
 
+/// What [`resolve_actor_archetype`] concluded.
+///
+/// The three cases are deliberately distinct. `NotInstanced` and
+/// `Resolved(default)` both mean "inherit nothing", but
+/// `Unresolved` does **not**: it means the chain that would have told
+/// us whether the actor collides could not be read, and treating that
+/// as "inherit nothing" silently applies UE3's `bCollideActors = true`
+/// default to a template that may have said `false`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ActorArchetypeResolution {
+    /// `Archetype == 0`: the instance's own properties are the whole
+    /// story, which is not an assumption but a fact about the export.
+    NotInstanced,
+    /// The chain was followed to a definite end.
+    Resolved(ActorArchetypeProps),
+    /// The actor is archetype-instanced and the chain could not be
+    /// followed. The caller must skip the actor.
+    Unresolved(SkipReason),
+}
+
+impl ActorArchetypeResolution {
+    /// The inherited properties, or `None` when the chain could not be
+    /// followed.
+    pub fn props(self) -> Option<ActorArchetypeProps> {
+        match self {
+            ActorArchetypeResolution::NotInstanced => Some(ActorArchetypeProps::default()),
+            ActorArchetypeResolution::Resolved(p) => Some(p),
+            ActorArchetypeResolution::Unresolved(_) => None,
+        }
+    }
+
+    /// The reason the chain could not be followed, if it could not.
+    pub fn skip_reason(self) -> Option<SkipReason> {
+        match self {
+            ActorArchetypeResolution::Unresolved(r) => Some(r),
+            _ => None,
+        }
+    }
+}
+
 /// Resolve the properties a `StaticMeshActor` inherits from its actor
 /// archetype chain.
 ///
-/// `actor_archetype` is the actor export's `Archetype` field. Returns
-/// all-`None` when it is 0, unrooted, or unreadable — which the caller
-/// treats as "the instance's own properties are the whole story", the
-/// same as before this module existed.
+/// `actor_archetype` is the actor export's `Archetype` field. A
+/// non-zero archetype that cannot be followed is reported as
+/// [`ActorArchetypeResolution::Unresolved`] rather than folded into an
+/// all-`None` success — see that type's doc for why the distinction is
+/// load-bearing.
 pub fn resolve_actor_archetype(
     pkg: &Package,
     actor_archetype: i32,
     index: &PackageIndex,
     cache: &mut ArchetypeCache,
     open: &mut OpenPrefabs,
-) -> ActorArchetypeProps {
+) -> ActorArchetypeResolution {
+    if actor_archetype == 0 {
+        return ActorArchetypeResolution::NotInstanced;
+    }
+    // A positive index is a template in this same package and a
+    // negative one that never reaches a root import has no package to
+    // look up; neither is followed here, and neither may be assumed
+    // harmless.
     let Some(chain) = import_chain(pkg, actor_archetype) else {
-        return ActorArchetypeProps::default();
+        return ActorArchetypeResolution::Unresolved(SkipReason::ArchetypeUnrooted);
     };
     if chain.len() < 2 {
-        return ActorArchetypeProps::default();
+        return ActorArchetypeResolution::Unresolved(SkipReason::ArchetypeUnrooted);
     }
     let key = chain.join(".");
     if let Some(hit) = cache.actor_props.get(&key) {
@@ -370,9 +418,13 @@ pub fn resolve_actor_archetype(
         return *hit;
     }
     cache.misses += 1;
-    let props = chain::walk_actor_chain(&chain, &mut |c| read_actor_template(c, index, open));
-    cache.actor_props.insert(key, props);
-    props
+    let outcome = chain::walk_actor_chain(&chain, &mut |c| read_actor_template(c, index, open));
+    let resolution = match outcome.unreadable {
+        Some(reason) => ActorArchetypeResolution::Unresolved(reason),
+        None => ActorArchetypeResolution::Resolved(outcome.props),
+    };
+    cache.actor_props.insert(key, resolution);
+    resolution
 }
 
 /// Read one template actor out of its package, for
@@ -381,14 +433,22 @@ fn read_actor_template(
     chain: &[String],
     index: &PackageIndex,
     open: &mut OpenPrefabs,
-) -> Option<ActorProbe> {
+) -> Result<ActorProbe, SkipReason> {
     let path = chain[1..].join(".");
-    let loaded = open.get(chain, index)?;
-    let idx = *loaded.by_path.get(&path)?;
+    let loaded = open
+        .get(chain, index)
+        .ok_or(SkipReason::ArchetypePackageNotFound)?;
+    let idx = *loaded
+        .by_path
+        .get(&path)
+        .ok_or(SkipReason::ArchetypeExportNotFound)?;
     let tmpl = &loaded.pkg.exports[idx];
-    let data = loaded.pkg.read_export_data(tmpl).ok()?;
+    let data = loaded
+        .pkg
+        .read_export_data(tmpl)
+        .map_err(|_| SkipReason::ArchetypeExportNotFound)?;
     let props = cimmeria_upk::parse_tagged_properties(&data, ACTOR_PROP_OFFSET, &loaded.pkg.names);
-    Some(ActorProbe {
+    Ok(ActorProbe {
         props: ActorArchetypeProps::from_props(&props),
         next: import_chain(&loaded.pkg, tmpl.archetype),
     })
@@ -423,19 +483,10 @@ pub fn resolve_via_archetype(
         // rare in cooked chunks, since the cooker imports prefab
         // templates, but the editor writes it for a prefab instanced
         // from a template in the same map.
-        None if component.archetype > 0 => {
-            let probe = local_template_probe(pkg, component.archetype)?;
-            if probe.collide_actors == Some(false) {
-                return Err(SkipReason::CollisionDisabled);
-            }
-            if let Some(mesh) = probe.mesh {
-                return mesh;
-            }
-            match probe.next {
-                Some(next) => next,
-                None => return Err(SkipReason::ArchetypeNoMesh),
-            }
-        }
+        None if component.archetype > 0 => match walk_local_chain(pkg, component.archetype)? {
+            LocalWalk::Mesh(mesh) => return mesh,
+            LocalWalk::Import(next) => next,
+        },
         None => return Err(SkipReason::ArchetypeUnrooted),
     };
     if chain.len() < 2 {
@@ -454,6 +505,57 @@ pub fn resolve_via_archetype(
     outcome
 }
 
+/// Where a walk through same-package templates ended up.
+enum LocalWalk {
+    /// A template carried a `StaticMesh`.
+    Mesh(MeshRefResult),
+    /// A template had no mesh but pointed at an import chain — hand off
+    /// to [`chain::walk_mesh_chain`] from there.
+    Import(Vec<String>),
+}
+
+/// Follow a chain of same-package template components to a mesh or to
+/// the point where it leaves this package.
+///
+/// [`import_chain`] returns `None` for *every* positive index, so
+/// reading only `TemplateProbe::next` stops dead at a local stub whose
+/// own `Archetype` is another local export — the walk returns
+/// `ArchetypeNoMesh` one hop short of the parent template that actually
+/// holds the mesh. Bounded by [`MAX_ARCHETYPE_DEPTH`] and a visited set
+/// for the same reason the import walk is.
+fn walk_local_chain(pkg: &Package, mut archetype: i32) -> Result<LocalWalk, SkipReason> {
+    let mut visited: Vec<i32> = Vec::new();
+    for _ in 0..MAX_ARCHETYPE_DEPTH {
+        if visited.contains(&archetype) {
+            return Err(SkipReason::ArchetypeChainLoop);
+        }
+        visited.push(archetype);
+
+        let probe = local_template_probe(pkg, archetype)?;
+        if probe.collide_actors == Some(false) {
+            return Err(SkipReason::CollisionDisabled);
+        }
+        if let Some(mesh) = probe.mesh {
+            return Ok(LocalWalk::Mesh(mesh));
+        }
+        if let Some(next) = probe.next {
+            return Ok(LocalWalk::Import(next));
+        }
+        // No mesh and no import chain: climb this template's own
+        // `Archetype` if it too is a local export.
+        let parent = pkg
+            .exports
+            .get((archetype - 1) as usize)
+            .ok_or(SkipReason::ArchetypeExportNotFound)?
+            .archetype;
+        if parent <= 0 {
+            return Err(SkipReason::ArchetypeNoMesh);
+        }
+        archetype = parent;
+    }
+    Err(SkipReason::ArchetypeChainLoop)
+}
+
 /// Probe a template component that lives in this same package.
 fn local_template_probe(pkg: &Package, archetype: i32) -> Result<TemplateProbe, SkipReason> {
     let tmpl = pkg
@@ -465,9 +567,10 @@ fn local_template_probe(pkg: &Package, archetype: i32) -> Result<TemplateProbe, 
         .map_err(|_| SkipReason::ArchetypeExportNotFound)?;
     let props = cimmeria_upk::parse_tagged_properties(&data, COMPONENT_PROP_OFFSET, &pkg.names);
     Ok(TemplateProbe {
-        // `own_package` is empty: a chunk-local `StaticMesh` export has
-        // no `(package, object)` key the index would know, which is the
-        // same conclusion the direct path reaches.
+        // `own_package` is empty, which `mesh_key_in` turns into the
+        // "local to the package we are already holding" key shape —
+        // the same conclusion the direct path reaches, and the one
+        // `staticmesh::load_local_static_mesh` knows how to decode.
         mesh: find_object(&props, "StaticMesh").map(|m| match m {
             0 => Err(SkipReason::NullMeshRef),
             m => mesh_key_in(pkg, "", m),
@@ -512,9 +615,10 @@ fn read_mesh_template(
 /// Turn a `StaticMesh` object index, as seen from inside `pkg`, into
 /// the `(package_name, object_name)` key the mesh loader wants.
 ///
-/// `own_package` is `pkg`'s own name — used when the reference is a
-/// local export. It is empty for chunk-local exports, which the direct
-/// path already treats as unresolvable.
+/// `own_package` is `pkg`'s own name, used when the reference is a
+/// local export. It is **empty** when `pkg` is the chunk itself, which
+/// is the loader's sentinel for "decode this from the package already
+/// open" — see [`crate::staticmesh::mesh_ref::is_local`].
 fn mesh_key_in(pkg: &Package, own_package: &str, mesh_obj: i32) -> MeshRefResult {
     if mesh_obj < 0 {
         let chain = import_chain(pkg, mesh_obj).ok_or(SkipReason::UnresolvableMeshRef)?;
@@ -528,7 +632,10 @@ fn mesh_key_in(pkg: &Package, own_package: &str, mesh_obj: i32) -> MeshRefResult
             .exports
             .get((mesh_obj - 1) as usize)
             .ok_or(SkipReason::UnresolvableMeshRef)?;
-        if own_package.is_empty() {
+        if pkg.export_class_name(exp) != "StaticMesh" {
+            // A `StaticMesh` property pointing at something that is not
+            // one: decoding its bytes would produce a plausible-looking
+            // mesh out of an unrelated export.
             return Err(SkipReason::UnresolvableMeshRef);
         }
         Ok((own_package.to_string(), exp.object_name.clone()))

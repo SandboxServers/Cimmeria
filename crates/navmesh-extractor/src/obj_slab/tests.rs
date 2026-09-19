@@ -1,6 +1,8 @@
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::geometry::TriangleSoup;
 
 /// Write a chunk OBJ in the extractor's exact format (CRLF, UE3 cm with Y/Z
 /// swapped) so the parser is tested against the real shape, not a
@@ -58,22 +60,102 @@ fn tmpdir(tag: &str) -> PathBuf {
 fn vertices_come_back_in_bigworld_metres() {
     // BW (250.0, 66.0, 1040.0) ⇒ ue = (104000, 25000, 6600) cm, written as
     // `v ue.x ue.z ue.y` = `v 104000 6600 25000`.
-    let v = parse_vertex("104000 6600 25000").expect("three columns");
+    let v = obj_to_bw([104000.0, 6600.0, 25000.0]);
     assert!((v[0] - 250.0).abs() < 1e-3, "bw.x = {}", v[0]);
     assert!((v[1] - 66.0).abs() < 1e-3, "bw.y = {}", v[1]);
     assert!((v[2] - 1040.0).abs() < 1e-3, "bw.z = {}", v[2]);
 }
 
-/// A face line whose indices run past the vertex list is dropped, not
-/// panicked on. NavBuilder's own parser silently drops short lines
-/// (`mesh.cpp:115`), so truncated files are a real input.
+/// A malformed `v` line must abort the read, not be skipped.
+///
+/// OBJ face indices are declaration positions, so dropping vertex 2 of
+/// 4 renumbers 3 and 4 and every later face silently resolves to the
+/// wrong triangle. That is the worst possible failure for a tool whose
+/// entire output is evidence about where geometry is.
 #[test]
-fn out_of_range_and_short_faces_are_dropped() {
-    assert_eq!(parse_face("1 2 3", 3), Some([0, 1, 2]));
-    assert_eq!(parse_face("1 2 3", 2), None);
-    assert_eq!(parse_face("1 2", 3), None);
-    assert_eq!(parse_face("0 1 2", 3), None, "OBJ indices are 1-based");
-    assert_eq!(parse_face("1/1 2/2 3/3", 3), Some([0, 1, 2]));
+fn a_malformed_vertex_line_is_an_error_not_a_silent_renumber() {
+    let dir = tmpdir("badvert");
+    let path = dir.join("00000000o.obj");
+    // Four vertices, the second one junk, then a face naming 1/3/4 —
+    // which, if the junk line were dropped, would resolve to the
+    // (1, 4, ...) that no longer exists, or worse, to a valid-looking
+    // triangle built from the wrong corners.
+    std::fs::write(
+        &path,
+        "v 0 0 0\r\nv 100 NaNsense 0\r\nv 100 0 0\r\nv 100 0 100\r\nf 1 3 4\r\n",
+    )
+    .unwrap();
+
+    let mut set = SlabSet::new(vec![Slab::new(
+        "any",
+        [-1000.0; 3],
+        [1000.0, 1000.0, 1000.0],
+    )]);
+    let err = set
+        .load(&dir)
+        .expect_err("a junk vertex must fail the read");
+    let msg = format!("{err}");
+    assert!(msg.contains("malformed vertex"), "unexpected error: {msg}");
+    assert!(msg.contains("line 2"), "must name the line: {msg}");
+    assert!(
+        set.slabs[0].tris.is_empty(),
+        "nothing may be measured from a file that failed to parse"
+    );
+}
+
+/// A face index past the end of the vertex list is an error too — a
+/// truncated OBJ must not read as "no floor here".
+#[test]
+fn an_out_of_range_face_index_is_an_error() {
+    let dir = tmpdir("badface");
+    std::fs::write(
+        dir.join("00000000o.obj"),
+        "v 0 0 0\r\nv 100 0 0\r\nv 100 0 100\r\nf 1 2 9\r\n",
+    )
+    .unwrap();
+    let mut set = SlabSet::new(vec![Slab::new("any", [-1000.0; 3], [1000.0; 3])]);
+    let err = set.load(&dir).expect_err("a dangling face index must fail");
+    assert!(
+        format!("{err}").contains("exceeds"),
+        "unexpected error: {err}"
+    );
+}
+
+/// `faces_up` must agree with what Recast will conclude, and Recast
+/// reverses the winding on load. Built from a triangle put through the
+/// **real OBJ writer** rather than a hand-typed `v` line, so the whole
+/// emit → read → classify chain is under test: get the sign wrong and a
+/// ceiling reads as a floor, which for a multi-storey interior looks
+/// entirely plausible.
+#[test]
+fn faces_up_is_true_for_the_winding_recast_treats_as_a_floor() {
+    // UE3 cm, Z up. This winding has `recast_up = +1` (see
+    // `floor_probe::recast_up`), i.e. it is a floor.
+    let floor_ue3 = [[0.0, 0.0, 0.0], [0.0, 100.0, 0.0], [100.0, 0.0, 0.0]];
+    let ceiling_ue3 = [floor_ue3[0], floor_ue3[2], floor_ue3[1]];
+
+    for (label, tri_ue3, want_up) in [("floor", floor_ue3, true), ("ceiling", ceiling_ue3, false)] {
+        let dir = tmpdir(&format!("facesup-{label}"));
+        let mut soup = TriangleSoup::new(Some(format!("Chunk_{label}")));
+        soup.push(tri_ue3);
+        crate::obj::write_obj(&dir.join("00000000o.obj"), &soup).unwrap();
+
+        // Independent oracle: what the probe says about the same
+        // triangle, in BigWorld units, in the emitted order.
+        let bw = tri_ue3.map(|v| crate::floor_probe::AxisMapping::CA05.apply(v));
+        assert_eq!(
+            crate::floor_probe::recast_up(&bw) > 0.0,
+            want_up,
+            "{label}: fixture winding is wrong, not the code under test"
+        );
+
+        let mut set = SlabSet::new(vec![Slab::new("box", [-10.0; 3], [10.0; 3])]);
+        set.load(&dir).unwrap();
+        let col = set.slabs[0].column(0.25, 0.25, 60.0);
+        assert_eq!(col.len(), 1, "{label}: one surface expected, got {col:?}");
+        assert_eq!(col[0].faces_up, want_up, "{label}: {:?}", col[0]);
+        assert!(col[0].tilt_degrees < 1e-3, "{label}: flat either way");
+    }
 }
 
 /// Two floors stacked 12 m apart with nothing between them — the shape the
