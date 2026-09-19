@@ -145,7 +145,7 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 
 ### AoI entity-introduction drop (open)
 
-A witness can miss an entity introduction entirely â the reproducible case is a Castle Cellblock GuardBody corpse that stays invisible until the player relogs. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the expected warnings never fired), which puts the fault downstream in create + appearance delivery. PR #582 added `aoi.create_emit` / `aoi.create_send_failed` seams to localise it on the next repro. This is why Entity Lifecycle (AoI) is no longer CW.
+A witness can miss an entity introduction entirely — the reproducible case is a Castle Cellblock GuardBody corpse that stays invisible until the player relogs. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the expected warnings never fired), which puts the fault downstream in create + appearance delivery. PR #582 added `aoi.create_emit` / `aoi.create_send_failed` seams to localise it on the next repro. This is why Entity Lifecycle (AoI) is no longer CW.
 
 ### Player-to-player visibility (implemented, unvalidated)
 
