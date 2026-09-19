@@ -9,6 +9,7 @@ For human-readable project overview, see [README.md](README.md).
 - `external/` is **not in git** — populated by `setup.ps1`. A fresh checkout looks broken until setup runs.
 - Active schemas: `db/database.sql`, `db/sgw/`, `db/resources/`.
 - Frontend convention: every meaningful frontend change requires a REPL-style logic UAT in addition to tests/builds — see [AGENTS.md](AGENTS.md).
+- **Agent coordination**: multiple sessions share one host. Never commit on the main checkout; claim issues via `tools/claim.sh` before starting and release with `tools/unclaim.sh`; run `tools/agent-status.sh` before picking work or building. Full runbook: [docs/guides/multi-agent-coordination.md](docs/guides/multi-agent-coordination.md).
 
 ## Build rules
 

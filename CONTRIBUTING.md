@@ -97,6 +97,16 @@ See [`CLAUDE.md`](CLAUDE.md) for the full pre-PR checklist, the WSL memory rules
 - **File organisation** — files should "do what it says on the tin" — predictable names, split along natural seams. Soft cap 500 lines, hard cap 700 lines, but seams matter more than counts. See [`CLAUDE.md`](CLAUDE.md) → "File organization."
 - **Markdown** — `tools/lint-md.sh` (or `tools/lint-md.ps1` on Windows) checks the docs. Currently warn-only in CI but reviewers will nudge.
 
+## Working in parallel (agent coordination)
+
+This repo is worked by multiple agent sessions on one host. Before you pick
+up an issue, claim it and check it is not already being worked —
+see [multi-agent-coordination.md](docs/guides/multi-agent-coordination.md)
+and run `tools/agent-status.sh` + `tools/check-issue.sh`. The short rules:
+never commit on the main checkout (work in a `.claude/worktrees/<slug>`
+worktree off `origin/main`), never run cargo concurrently with another
+session, and release your claim when your PR merges.
+
 ## Commit and PR conventions
 
 We use Conventional Commits-style prefixes (`feat`, `fix`, `docs`, `chore`, `refactor`, `test`) followed by an optional `(area)` scope. Examples from recent history:
