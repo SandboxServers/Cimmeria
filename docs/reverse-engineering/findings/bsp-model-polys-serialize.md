@@ -219,10 +219,38 @@ geometry).
 | `Model` owned by an individual `TriggerVolume` actor | 21 | 108..12884B | Trigger bounds — **excluded per worker rules ("triggers do not [matter for nav]")** |
 | `Model` owned by `ROOT` (builder brush) | 1 (export 405) | 108B | Editor-only, no CSG'd content |
 
+> **Measured correction (2026-09-19, worker `nav-bsp-decoder`)**: the
+> per-`Brush` row above overstates what is on disk. Across **all 144**
+> `Maps/Castle/Castle-*.umap` chunks, *every* `Brush`-owned `Model`
+> (225 of them) and *every* root-owned builder-brush `Model` (144) is
+> exactly **108 bytes — an empty stub with zero Nodes**. The only
+> non-stub `Model`s in the whole map are 16 `Level`-owned ones (i.e.
+> only 16 of 144 tiles carry BSP world geometry at all), 50
+> `TriggerVolume`-owned and 15 `DynamicTriggerVolume`-owned. For
+> `Castle-000a0002.umap` specifically the ownership split is root 1 /
+> `Level` 10 (one real, nine stubs) / `Brush` 37 (all stubs) /
+> `TriggerVolume` 21 (all real) = 69, which also corrects the "46"
+> brush figure above. The practical consequence is the opposite of the
+> section's conclusion: the 47 `Brush` actors contribute **no**
+> geometry of their own — their shapes were CSG'd into the
+> persistent-level `Model`, which is the more ordinary reading of
+> `CsgOper = CSG_Active` and removes the need for hypothesis (a). The
+> extractor still walks brush-owned `Model`s (via the actor transform,
+> with `PrePivot` subtracted first) so non-Castle maps are covered, but
+> that path emits nothing on Castle and is therefore untested against
+> real non-empty brush data. Note also that this document numbers
+> exports 0-based (`443`) while `inspect-export` and the Rust tests
+> number them 1-based (`444`).
+
 **No `BlockingVolume` actors exist in this tile** (`Castle-000a0002.umap`) —
 searched the full class histogram, zero hits. Every `Volume`-derived class
 present is `TriggerVolume` (21), which the worker rules explicitly say does
-not matter for nav.
+not matter for nav. Widening the scan to all 144 chunks adds exactly one
+more volume class — `DynamicTriggerVolume` (15 across the map) — and
+still no `BlockingVolume`. `crates/navmesh-extractor/src/bsp.rs`
+excludes both trigger classes, includes `Brush` and `BlockingVolume` by
+name, and excludes any *other* class ending in `Volume` conservatively
+while reporting it by name so a new one cannot slip in silently.
 
 The 47 `Brush`-class actors all carry `CollisionComponent` pointing at their
 own `BrushComponent` (confirmed via tagged-property read on all 47) and
@@ -264,7 +292,19 @@ tile's primary collision source.
 
 ---
 
-## Rust decoder recipe (`crates/upk-objects` — new `model.rs`)
+## Rust decoder — shipped in `crates/upk-objects/src/model/`
+
+> **Status (2026-09-19, worker `nav-bsp-decoder`)**: implemented. The
+> recipe below is now a description of live code, not a plan.
+> [`crates/upk-objects/src/model/`](../../../crates/upk-objects/src/model/)
+> holds `deserialize_model` / `deserialize_polys` (`parse/mod.rs`), the
+> decoded types plus `Model::triangulate` and `Model::surf_normal`
+> (`types.rs`), and byte-exact fixtures (`parse/tests.rs`). The consumer
+> is
+> [`crates/navmesh-extractor/src/bsp.rs`](../../../crates/navmesh-extractor/src/bsp.rs)
+> (`collect_bsp_triangles`). Real-data validation lives in
+> `crates/navmesh-extractor/tests/bsp_castle_model_decode.rs`, which
+> self-skips without the cooked client tree.
 
 1. **Parse `Model` export**: header(4) → tagged-property skip (reuse
    `cimmeria_upk::parse_tagged_properties` machinery) → `Bounds`(28 raw) →
@@ -303,7 +343,7 @@ tile's primary collision source.
    than `BlockingVolume`, none observed in this tile but the worker rules
    call them out as relevant if seen elsewhere).
 
-**Effort estimate**: the format is now fully specified for the
+**Effort estimate (historical)**: the format is now fully specified for the
 collision-relevant fields (Task A's stated blocker is resolved). Writing
 `model.rs` mirroring `staticmesh.rs`'s structure (a `Model` reader + a
 `Node`→triangle walker) is a half-day to one-day task including tests,
@@ -317,6 +357,19 @@ project's canonical fixture — see `docs/analysis/castle-rebuild/` for
 current tile naming). A `Polys`-reader (`polys.rs`) is optional — the
 `Nodes` path alone is sufficient and was the one triangulated in this
 session's validation.
+
+**Outcome**: the implementation took the `Nodes` path as recommended and
+landed a `UPolys` reader anyway as a cross-check (both live in the same
+module rather than a separate `polys.rs`). The fixture tile is
+`Castle-000a0002.umap`. Every number in this document's
+"Persistent-level `Model` triangle/area estimate" reproduced exactly
+from Rust: 399 nodes, 622 Points, 6135 Verts, 239 Surfs, **1,098
+triangles**, `PolyFlags` split 294 x `0xE00` / 105 x `0x200`, zero
+out-of-range node indices, and all 69 `Model` plus all 69 `Polys`
+exports consumed byte-exact. One field-order detail is worth recording:
+an **empty `Model` is exactly 108 bytes** (4 NetIndex + 8 `None` +
+28 Bounds + seventeen 4-byte scalar/count fields), which makes the
+108-byte stubs an arithmetic self-check on the whole layout table.
 
 ---
 
@@ -391,9 +444,10 @@ tile + matching seed data.
 |---|---|---|
 | Semantic identity of the `+0x8c`-relative single objref field (ArVer>0x140 gate) | Currently just skipped; if it's e.g. `LightingLevel` it's irrelevant to collision, but unconfirmed | Decompile the object-ref-consuming archive vtable slot 0x18's callee, or find a reference to this field elsewhere in the binary (e.g. lighting-build code) |
 | Semantic identity of the two unidentified trailing `TArray`s (16B-elem, 40B-elem) | Currently skip-by-count only; harmless for collision but leaves the format description incomplete | Search `UnModelLight.cpp`/`UnModelRender.cpp`-anchored functions for consumers of these offsets (the string anchors exist — `0x0190f91c`/`0x0190ef48` — but their sole xrefs are `FUN_00486000` assert calls, not useful) |
-| Exact `PolyFlags` bit semantics in this SGW build | Assumed from public UE3 SDK knowledge, not independently re-derived here | Find a function that branches on specific `PolyFlags` bits (e.g. render-time visibility culling) and decompile it |
+| Exact `PolyFlags` bit semantics in this SGW build | Assumed from public UE3 SDK knowledge, not independently re-derived here. **Still open.** The decoder keeps the assumption in one named table (`NON_COLLIDING_POLY_FLAGS` in `crates/upk-objects/src/model/types.rs`) and reports a per-flag triangle exclusion count for every entry whether or not the filter uses it, so a wrong bit shows up as an implausible drop count. On the Castle map the filter currently excludes **zero** triangles. | Find a function that branches on specific `PolyFlags` bits (e.g. render-time visibility culling) and decompile it |
 | Why 46/47 `Brush` actors read `CsgOper = CSG_Active` (0) | Determines whether these are "real" placed geometry (as this session concludes) or a cooking/versioning artifact | Cross-check against a non-cooked/editor-build package if one becomes available, or find the runtime code path that reads `Brush.CsgOper` post-cook (if any exists, it's dead code — the geometry pattern strongly suggests these ARE used, whatever the property says) |
-| Does `crates/navmesh-extractor`'s canonical fixture tile use `Castle_CellBlock` or `Castle-000a0002`? | Affects where the `model.rs` test fixture should point | Check `docs/analysis/castle-rebuild/` for current campaign state before landing the implementation |
+| ~~Does `crates/navmesh-extractor`'s canonical fixture tile use `Castle_CellBlock` or `Castle-000a0002`?~~ | **Resolved**: `Castle-000a0002.umap`, per `crates/navmesh-extractor/tests/bsp_castle_model_decode.rs`. | — |
+| BSP node winding runs *opposite* to UE3's render/collision winding | A fan emitted in node vertex-pool order has its right-hand-rule normal **agreeing** with the authored surface normal (400 agree / 11 disagree over `Castle-000a0002`'s near-horizontal faces), whereas `StaticMesh` kDOP triangles are wound clockwise in UE3's left-handed basis so their right-hand-rule normal is the negation. Emitting BSP fans unreversed puts every floor at the known-walkable height at `n_ue3.z > 0`, which NavBuilder reads as a ceiling, so `bsp.rs` reverses BSP fans (`EMIT_REVERSED`). | Confirmed empirically; a decompile of `FPoly::CalcNormal` / the BSP build path would explain *why* the two conventions differ |
 
 ---
 
