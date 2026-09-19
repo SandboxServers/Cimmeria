@@ -110,9 +110,10 @@ async fn flush_deferred_aoi_drains_buffer_and_dispatches_to_aoi_handlers() {
         (200u32, witness_addr),
     ])));
 
-    super::aoi::flush_deferred_aoi(
+    super::deferred_flush::flush_deferred_aoi(
         witness_id,
         witness_addr,
+        "on_client_ready",
         &transport,
         &connected,
         &entity_to_addr,
@@ -155,9 +156,10 @@ async fn flush_deferred_aoi_is_noop_on_empty_buffer() {
     let connected = Arc::new(Mutex::new(HashMap::from([(witness_addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, witness_addr)])));
 
-    super::aoi::flush_deferred_aoi(
+    super::deferred_flush::flush_deferred_aoi(
         witness_id,
         witness_addr,
+        "on_client_ready",
         &transport,
         &connected,
         &entity_to_addr,
@@ -255,9 +257,10 @@ async fn flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget() {
     let connected = Arc::new(Mutex::new(HashMap::from([(witness_addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, witness_addr)])));
 
-    super::aoi::flush_deferred_aoi(
+    super::deferred_flush::flush_deferred_aoi(
         witness_id,
         witness_addr,
+        "on_client_ready",
         &transport,
         &connected,
         &entity_to_addr,
@@ -391,9 +394,10 @@ async fn flush_deferred_aoi_keeps_reliable_seq_contiguous_across_bundle_and_tail
         (3000u32, witness_addr),
     ])));
 
-    super::aoi::flush_deferred_aoi(
+    super::deferred_flush::flush_deferred_aoi(
         witness_id,
         witness_addr,
+        "on_client_ready",
         &transport,
         &connected,
         &entity_to_addr,

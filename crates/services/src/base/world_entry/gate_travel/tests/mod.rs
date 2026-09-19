@@ -78,6 +78,7 @@ pub(super) fn make_state() -> ConnectedClientState {
         weapon_holstered: true,
         cancelled: Arc::new(AtomicBool::new(false)),
         cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
+        cinematic_aoi_hold: None,
         player_name: Some("Tester".to_string()),
         player_level: Some(5),
         player_archetype: Some(1),

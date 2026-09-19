@@ -183,6 +183,7 @@ pub(crate) async fn handle_login(
                 weapon_holstered: true,
                 cancelled,
                 cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
+                cinematic_aoi_hold: None,
                 player_name: None,
                 player_level: None,
                 player_archetype: None,

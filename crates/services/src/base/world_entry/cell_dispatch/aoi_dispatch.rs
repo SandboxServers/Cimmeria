@@ -4,8 +4,8 @@
 //! Each function is the body of one `CellToBaseMsg` arm carved out of the
 //! [`super::handle_cell_message`] match so the gate-then-emit logic can grow
 //! without bloating the dispatch shell. The deferred-AoI buffering decision
-//! (while a witness is pre-`onClientReady`) lives here next to the emit call
-//! it gates.
+//! (while a witness is pre-`onClientReady`, or inside the first-login
+//! cinematic hold) lives here next to the emit call it gates.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -205,14 +205,15 @@ pub(super) async fn entered_aoi(
 ) {
     // Gate: while the witness is pre-`onClientReady`, the client
     // hasn't loaded terrain yet — buffer the CREATE_ENTITY +
-    // cascade so it fires AFTER the client is ready to ACK.
-    // See `crate::base::deferred_aoi`.
+    // cascade so it fires AFTER the client is ready to ACK. The
+    // first-login cinematic hold extends the same buffering until the
+    // movie ends. See `crate::base::deferred_aoi`.
     let witness_addr = entity_to_addr
         .lock()
         .ok()
         .and_then(|m| m.get(&witness_id).copied());
     if let Some(addr) = witness_addr {
-        if deferred_aoi::should_defer(connected, addr) {
+        if deferred_aoi::should_hold_entity_traffic(connected, addr) {
             deferred_aoi::push_deferred(
                 connected,
                 addr,
@@ -290,7 +291,7 @@ pub(super) async fn left_aoi(
         .ok()
         .and_then(|m| m.get(&witness_id).copied());
     if let Some(addr) = witness_addr {
-        if deferred_aoi::should_defer(connected, addr) {
+        if deferred_aoi::should_hold_entity_traffic(connected, addr) {
             deferred_aoi::push_deferred(
                 connected,
                 addr,
@@ -327,7 +328,7 @@ pub(super) async fn entity_moved(
         .ok()
         .and_then(|m| m.get(&witness_id).copied());
     if let Some(addr) = witness_addr {
-        if deferred_aoi::should_defer(connected, addr) {
+        if deferred_aoi::should_hold_entity_traffic(connected, addr) {
             tracing::trace!(
                 %addr,
                 witness_id,
@@ -455,6 +456,23 @@ pub(super) async fn witness_entity_method(
     // on the AoI fanout — both are recorded so SigNoz can
     // answer "what did entity X broadcast to its witnesses?"
     crate::wire_log::log_outbound_entity_method(witness_id, entity_id, method_index, &args);
+    // Cinematic hold: the observee's CREATE_ENTITY is still buffered, so
+    // this method would reach a client with no such entity and be dropped
+    // for good. Buffer it behind the create. Logged above so a held call
+    // appears once on the wire log; the replay does not re-log.
+    if let Some(addr) = held_witness_addr(witness_id, connected, entity_to_addr) {
+        deferred_aoi::push_deferred(
+            connected,
+            addr,
+            deferred_aoi::DeferredAoiMsg::WitnessEntityMethod {
+                entity_id,
+                method_index,
+                args,
+                entity_is_player,
+            },
+        );
+        return;
+    }
     aoi::witness_entity_method(
         witness_id,
         entity_id,
@@ -477,5 +495,29 @@ pub(super) async fn entity_invisible(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    // Cinematic hold: keep the invisibility behind the buffered create it
+    // applies to, or the entity pops in visible when the hold releases.
+    if let Some(addr) = held_witness_addr(witness_id, connected, entity_to_addr) {
+        deferred_aoi::push_deferred(
+            connected,
+            addr,
+            deferred_aoi::DeferredAoiMsg::EntityInvisible { entity_id },
+        );
+        return;
+    }
     aoi::entity_invisible(witness_id, entity_id, transport, connected, entity_to_addr).await;
+}
+
+/// The witness's address iff its session is inside the first-login cinematic
+/// hold. Gates the two arms the pre-`onClientReady` window leaves ungated.
+fn held_witness_addr(
+    witness_id: u32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> Option<SocketAddr> {
+    let addr = entity_to_addr
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&witness_id).copied())?;
+    deferred_aoi::cinematic_hold_active(connected, addr).then_some(addr)
 }

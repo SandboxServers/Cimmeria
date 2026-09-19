@@ -106,6 +106,7 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         weapon_holstered: true,
         cancelled: Arc::new(AtomicBool::new(false)),
         cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
+        cinematic_aoi_hold: None,
         player_name: None,
         player_level: None,
         player_archetype: None,
