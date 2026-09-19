@@ -76,10 +76,20 @@ mod tests {
     #[test]
     fn serialize_timer_update_format() {
         let data = serialize_timer_update(597, TIMER_ABILITY_COOLDOWN, 100, 5.0, 12345.0);
-        assert_eq!(data.len(), 21);
+        // 21 bytes per `interfaces/SGWBeing.def` onTimerUpdate (6 args).
+        assert_eq!(data.len(), 21, "onTimerUpdate wire layout is 21 bytes");
         let id = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
         assert_eq!(id, 597);
         assert_eq!(data[4], TIMER_ABILITY_COOLDOWN as u8);
+        let source_id = i32::from_le_bytes([data[5], data[6], data[7], data[8]]);
+        assert_eq!(source_id, 100);
+        let secondary_id = i32::from_le_bytes([data[9], data[10], data[11], data[12]]);
+        assert_eq!(
+            secondary_id, 0,
+            "SecondaryId slot must be present (default 0)"
+        );
+        let total_time = f32::from_le_bytes([data[13], data[14], data[15], data[16]]);
+        assert!((total_time - 5.0).abs() < f32::EPSILON);
     }
 
     #[test]

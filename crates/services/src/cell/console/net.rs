@@ -171,10 +171,15 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
             .unwrap_or(1.0),
         None => 1.0,
     };
-    let mut buf = Vec::with_capacity(17);
+    let secondary_id = match args.get(3) {
+        Some(s) => s.parse::<i32>().unwrap_or(0),
+        None => 0,
+    };
+    let mut buf = Vec::with_capacity(21);
     buf.extend_from_slice(&id.to_le_bytes());
     buf.push(ty);
     buf.extend_from_slice(&(caller_id as i32).to_le_bytes()); // SourceID
+    buf.extend_from_slice(&secondary_id.to_le_bytes());
     buf.extend_from_slice(&total_time.to_le_bytes());
     buf.extend_from_slice(&total_time.to_le_bytes()); // BigWorldTimeComplete (relative)
     let _ = tx
