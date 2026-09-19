@@ -9,10 +9,11 @@
 //!
 //! # v1 — legacy, byte-identical to the C++ client (frozen — do not change)
 //!
-//! The original C++ implementation uses CryptoPP's AES-256-CBC with PKCS7
-//! padding for confidentiality, and HMAC-MD5 for integrity. (The runtime here
-//! is RustCrypto; the library the binary emulates is CryptoPP — `HMAC_Base@
-//! CryptoPP` RTTI strings, spec §1.4.) Wire format:
+//! AES-256-CBC with PKCS7 padding for confidentiality, and HMAC-MD5 for
+//! integrity. Three implementations produce these bytes: the SGW client
+//! binary uses CryptoPP (`HMAC_Base@CryptoPP` RTTI strings, spec §1.4), the
+//! original C++ server emulator under `deprecated/cpp/` uses OpenSSL, and
+//! this crate uses RustCrypto. Wire format:
 //!
 //! ```text
 //! [ ciphertext ][ 16-byte HMAC-MD5 tag ]
@@ -21,10 +22,11 @@
 //! - Zero IV for every packet (a fresh session key is exchanged per session,
 //!   so the first-block IV collision is bounded to one session).
 //! - HMAC key == AES key (the full 32-byte session key is fed to both
-//!   `EVP_aes_256_cbc` and `EVP_md5`/`HMAC_Init` in the C++ flow).
+//!   `EVP_aes_256_cbc` and `EVP_md5`/`HMAC_Init` in the C++ server's OpenSSL
+//!   flow).
 //! - No version byte, no IV on the wire, no length/sequence inside the unit.
 //!
-//! The v1 output MUST stay byte-identical to the C++ CryptoPP output for the
+//! The v1 output MUST stay byte-identical to the client's CryptoPP output for the
 //! same key material and plaintext — it is wire-compatible with unpatched
 //! clients during the v1→v2 transition. **Do not change v1 output bytes.**
 //!

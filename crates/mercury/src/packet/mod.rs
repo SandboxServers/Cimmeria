@@ -69,12 +69,17 @@ pub const FLAG_RELIABLE: u8 = 0x10;
 
 /// Packet is a fragment of a larger message bundle.
 ///
+/// This IS the wire fragment flag. When it is set the packet carries
+/// `frag_begin` / `frag_end` footers, the bundle builder sets it on every
+/// fragment, and the channel reassembles on it. It matches what the SGW
+/// client uses on the wire (audit finding #12) and the original C++ server's
+/// `FLAG_FRAGMENTED = 0x20`.
+///
 /// Naming-divergence note (spec §1.2 vs wire): the spec's flag-mask table
-/// places `IS_FRAGMENT` at bit 7; the SGW binary's
-/// `processFilteredPacket_inner` peels no fragment flag at all — bit 5 is
-/// not checked there and fragment handling lives downstream in
-/// `Mercury_Nub_ProcessPacket`. Bit 5 has no wire-visible role in SGW
-/// regardless of what it is called. See
+/// places `IS_FRAGMENT` at bit 7, which is wrong. The binary's
+/// `processFilteredPacket_inner` does not test bit 5; the audit infers (it
+/// does not show) that the bit is handled after that function hands the
+/// packet on to `Mercury_Nub_ProcessPacket`. See
 /// `docs/audits/mercury-rust-conformance-2026-05-15.md` §11.1.
 pub const FLAG_FRAGMENTED: u8 = 0x20;
 
