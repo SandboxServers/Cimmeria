@@ -54,6 +54,11 @@
 - [player-loaded-edge-trigger-race.md](player-loaded-edge-trigger-race.md) — a `player_loaded`/`enter_region` chain gated on a state NEVER fires for the player who was already inside when the gate opened; fix with a second trigger row on the state-change event.
 - [chain-replay-trigger-param-vacuity.md](chain-replay-trigger-param-vacuity.md) — a hand-built `TriggerEvent` missing `dialog_id`/`item_id`/`entity_tag` matches NOTHING, so every negative assertion passes on a trigger miss.
 
+## NPC combat / ability selection
+
+- [npc-range-gate-and-weapon-range-columns.md](npc-range-gate-and-weapon-range-columns.md) — **read before inventing any NPC range number.** `resources.items` has four range columns and both `NPC_ATTACK_RANGE`/`NPC_MELEE_RANGE` derive from them; range is gated in TWO places and `handle_use_ability`'s is still melee-blind (player path); 148 melee abilities carry bogus `max_range` 100-2500; layered-selector pattern for adding a filter without touching existing tests.
+- [npc-ai-fight-test-fixtures.md](npc-ai-fight-test-fixtures.md) — `make_ai_fixture` has NO navmesh, so `find_path` returns `None` and a chase cannot be asserted via `nav_path`; assert the arm's INFO log instead. `SpawnRecord` has no `Default`.
+
 ## Stats / entity systems
 
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
