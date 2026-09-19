@@ -181,8 +181,12 @@ fn persistent_map_packages_carry_no_bsp_world_geometry() {
         ("Castle", "Castle.umap"),
     ] {
         let dir = map_dir(map);
+        // `continue`, not `return`: Castle_CellBlock is audited first,
+        // and returning on its absence would silently skip the Castle
+        // audit too — a pass that asserted nothing about the map that
+        // was actually present.
         if skip_if_missing(&dir, "persistent_map_packages_carry_no_bsp_world_geometry") {
-            return;
+            continue;
         }
         let path = dir.join(file);
         assert!(path.exists(), "{file} missing");

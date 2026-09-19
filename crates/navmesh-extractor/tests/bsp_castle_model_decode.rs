@@ -353,7 +353,7 @@ fn castle_all_chunks_bsp_scan() {
         per_tile.push((name, stats.triangles_emitted, stats.nodes_total));
     }
 
-    per_tile.sort_by(|a, b| b.1.cmp(&a.1));
+    per_tile.sort_by_key(|a| std::cmp::Reverse(a.1));
     eprintln!("Castle BSP sweep: {} chunks", chunks.len());
     eprintln!(
         "  Model exports={total_models} decode failures={total_failed} \

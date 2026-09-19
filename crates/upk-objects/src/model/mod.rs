@@ -67,4 +67,5 @@ pub use types::{
     BspNode, BspSurf, BspTriangulation, BspVert, CollisionFilter, Model, ModelBounds, Poly, Polys,
     NF_NOT_CSG, NF_NOT_VIS_BLOCKING, NF_SHOOT_THROUGH, NON_COLLIDING_NODE_FLAGS,
     NON_COLLIDING_POLY_FLAGS, PF_INVISIBLE, PF_NOT_SOLID, PF_PORTAL, PF_SEMISOLID, PF_TWO_SIDED,
+    REPORTED_POLY_FLAGS,
 };
