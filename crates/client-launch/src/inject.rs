@@ -482,10 +482,7 @@ pub fn create_process_suspended(
 
 /// Non-Windows stub.
 #[cfg(not(windows))]
-pub fn create_process_suspended<'a>(
-    exe_path: &Path,
-    _cwd: Option<&Path>,
-) -> Result<(), InjectError> {
+pub fn create_process_suspended(exe_path: &Path, _cwd: Option<&Path>) -> Result<(), InjectError> {
     Err(InjectError::DllMissing(exe_path.to_path_buf()))
 }
 
