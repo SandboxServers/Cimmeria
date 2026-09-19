@@ -111,7 +111,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 
 ## Known Cross-Cutting Risks
 
-- **Relog defects.** #657 (objective state lost on relog) affects every mission; H50 is the fix. Until it merges, "resumes correctly after relog" can fail for reasons unrelated to the content under test.
+- **Relog defects.** #657 (objective state lost on relog) is **fixed** by H50 (2026-09-19): per-objective status now round-trips through `sgw_mission`, and rows written before the fix repair themselves on first login, so no DB cleanup is needed. "Resumes correctly after relog" is a meaningful UAT check again. Two caveats: per-objective **counters** are still session-only, and a same-world **respawn** does not re-send the mission log (playtest finding H8) — only a full relog does.
 - **Invisible corpse after spawn** (#582). Seen at Castle Cellblock; watch for it on any NPC spawned mid-session.
 - **Every coordinate is provisional** in Castle (CA00, comms room, Armory, Op-Core) and unpinned in Harset.
 - **Ring timeout values** are judgement, since the 2009 server had none.
