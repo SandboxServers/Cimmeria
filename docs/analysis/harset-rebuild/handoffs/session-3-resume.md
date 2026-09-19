@@ -80,3 +80,9 @@ Then: merge both, validate, push `content/harset-wave2`, open PR "wave 2" agains
 - **PR #662 merged to `main` as `f661a97d`** (merge commit, on the owner's go-ahead). Wave 1 is on `main`; the operator guide's "do not dial to Harset on `main`" warning about the missing arrival validation no longer applies.
 - **Wave 2 is PR #682** (`content/harset-wave2` -> `main`), pushed at `90769082` with H55 merged. H52 + H54 (agent `harset-H52`, branch `harset/H52`) are still to be merged into it: merge, full validation on `sgw_harset_integration`, push.
 - Do NOT merge #682 without the owner's explicit go-ahead; the go-ahead given on 2026-09-19 was for #662 only.
+
+## Update 2026-09-19 (13:25 UTC): wave 2 is complete on PR #682
+
+H52 + H54 merged (`7076d6cb`) plus the contract-test commit `c64d60f5`. Coordinator-run on a fresh `sgw_harset_integration`: fmt clean, clippy `-D warnings` clean, content-engine + entity 473 passed, services live-DB 2731 passed, 0 failed, 0 skipped. Pushed to PR #682. **Nothing on this branch has been seen in a game client, and #682 must not be merged without the owner's explicit go-ahead.**
+
+What is left of the campaign: everything M0-gated (H12, H14, H15, respawner rows 20/22/23, gate-3 arrival pin, enabling 6007 with 6511-6513 and 1361's abandon twin, checking 6331), the blocked mission packets behind it (H21 now REQUIRES the `entity_dead_tag` fallback and a `mission_completed '1324'` bind-only partner), H05 (never started, unblocked), and the ownerless follow-ups listed in the previous update plus `cell_to_base.rs` over the line cap and the cover half of finding H9.
