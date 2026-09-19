@@ -273,4 +273,133 @@ Not caused by the pack; worth their own issues.
 
 ## 9. What happens next
 
-Per the pack's `IMPLEMENTATION_CHECKLIST.md`, Phase 1 follows this report once the six decisions in section 5 are ruled on or the defaults accepted. Phases 2–8 are summarised in section 1. Nothing in this PR changes runtime behaviour.
+Per the pack's `IMPLEMENTATION_CHECKLIST.md`, Phase 1 follows this report once the six decisions in section 5 are ruled on or the defaults accepted. Section 10 breaks every phase into its steps with status and location. Nothing in this PR changes runtime behaviour.
+
+---
+
+## 10. Per-phase step checklist
+
+Steps are the pack's `IMPLEMENTATION_CHECKLIST.md` items, split where one item is really several. Status key: **DONE** exists and is live at the cited location; **PARTIAL** code or data exists but does not fully satisfy the step; **MISSING** nothing exists; **BLOCKED** cannot proceed without a decision (D1–D6) or an upstream fix. "Where" is the file that does it today, or the file the Phase plan puts it in. Paths are repo-relative; `crates/services/src/` is abbreviated `svc/`.
+
+### Phase 1: learned abilities + trainer
+
+| Step | Status | Where / what remains |
+|---|---|---|
+| Import `trainer_server_export.json` | MISSING | Seed `db/resources/Archetypes/Seed/archetype_ability_tree.sql` has 169 rows (Soldier, Commando), all level 1, no prereqs. Needs the six new columns (§6.1) first. BLOCKED on D3, D4 for Free Jaffa. |
+| Implement / preserve skill points | DONE | `sgw_player.training_points`; granted 2/level at `svc/base/world_entry/methods/progression/mod.rs:98`; pushed as propId 1 at `:333`. |
+| Refresh the client's point counter after a purchase | MISSING | `svc/cell/service/base_messages/ability_granted.rs:34` receives the remaining count and never emits `onEntityProperty`. |
+| Level validation | PARTIAL | Gate exists at `svc/cell/cell_methods/player/vendor/train.rs:123-136`; never fires because every seed level is 1. Data fix only. |
+| Branch-point validation | MISSING | No column on the tree, no per-branch spend counter. Plan: `sgw_player_branch_points` + gate 7 in `train.rs`. |
+| Prerequisite validation | PARTIAL | Gate exists at `train.rs:139-162`; never fires because every seed prereq is `{}`. Data fix only. |
+| Per-node skill-point cost | PARTIAL | Debit hard-coded to 1 at `progression/mod.rs:537`; `abilities.training_cost` never read. Plan: parameterise, BLOCKED on D5. |
+| Trainer proximity / access check | MISSING | `train.rs` never consults `last_interaction_target`. Server-authority hole. Plan: gate 8 mirroring `ability_granted.rs:70-73`. |
+| Persist learned abilities | DONE | `sgw_player.abilities integer[]`, atomic `UPDATE` at `progression/mod.rs:534-546`. |
+| Persist provenance (source, learned-at level, timestamp) | MISSING | Not representable in an `integer[]`. Plan: `sgw_player_ability` table modelled on `sgw_player_discipline_expertise`. |
+| Expose unavailable abilities as unavailable | DONE | `onTrainerOpen` trainable byte, `svc/cell/interactions/trainer.rs`; re-sent after every grant. |
+| Tell the client why a purchase was rejected | MISSING | Nine silent return paths in `train.rs` and `progression/mod.rs`. Plan: `onErrorCode` (client 121) on each. |
+| Serve the ability tree to the client from the DB | PARTIAL | `onAbilityTreeInfo` works but is a hard-coded Rust copy of the seed at `svc/mercury/world_data/stats.rs:45-88`. Must be rebuilt from `space_mgr.archetype_ability_trees` before any import. |
+| Respec | MISSING | `resetMyAbilities` (cell 72) is a stub at `svc/cell/cell_methods/player/combat/mod.rs:124`; `CostToRespec` is already advertised. |
+| Cost-0 WARN (pack QA 9) | MISSING | Needs `training_cost` in the ability SELECT at `svc/cell/spawner/abilities.rs:89`. |
+| Start with Soldier only, then load six more | BLOCKED | D1 (243 nodes above cap 20), D3, D4. |
+| Run the trainer QA suite in-game | BLOCKED | `docs/client/ui-layout-inventory.md:129` records `Trainer.layout` disabled in the `.toc`. Verify against a client install. |
+
+### Phase 2: ability runtime
+
+| Step | Status | Where / what remains |
+|---|---|---|
+| Bind learned ability IDs to recovered ability data | DONE | `svc/cell/spawner/abilities.rs:89` loads `resources.abilities` into `ability_defs`. |
+| Bind abilities to linked effects | PARTIAL | Effects loaded at `spawner/abilities.rs:360`; dispatch at `svc/cell/abilities/damage_apply/mod.rs:113-134` and `:499-523`; registry `svc/cell/effects/registry.rs` has 9 scripts. 3,200 of 3,216 effect rows have `script_name = NULL`, so almost everything resolves via the NVP damage path. |
+| Weapon-granted abilities (auto-attack, melee) | DONE | Resolved at fire time from `items_event_sets` at `svc/cell/abilities/use_ability/handle.rs:144`. |
+| Enforce "ability requires weapon family X" | MISSING | Zero code; zero data (pack `Weapon Family` field empty on sampled rows). Nearest carrier: `abilities.item_monikers`. |
+| Cooldown | DONE | `use_ability/handle.rs:399-406` from `abilities.cooldown`. |
+| Cooldown moniker grouping | PARTIAL | Logic exists in `crates/entity/src/abilities/manager.rs:276`; dead because `spawner/abilities.rs:112` hard-codes `moniker_ids: vec![]`. |
+| Warmup as a cast-time gate | PARTIAL | `handle.rs:528-556` fires the `Ability_Begin` animation only; damage resolves in the same call. No pending-cast state, no interrupt. |
+| Ammo / resource consumption | DONE | `handle.rs:369-397` from `abilities.required_ammo`; reload at `svc/cell/cell_methods/player/world/reload.rs:77`. |
+| Range validation | DONE | `handle.rs:239-256`; the only ability path that sends `onErrorCode`. |
+| Preserve tooltip↔effect conflicts in logs / config | MISSING | Nothing records the 127 conflicts the pack lists. |
+
+### Phase 3: combat resolver
+
+| Step | Status | Where / what remains |
+|---|---|---|
+| Raise zero stat ceilings (prerequisite) | MISSING | `crates/entity/src/stats/stat_list.rs:68,96-99`: `DEFENSE`, `QR_MOD`, `MITIGATION`, `COVER_*`, `CROUCHING_*` have `max = 0`. Every seam below is inert until this lands. |
+| Gate damage on miss (prerequisite) | MISSING | `svc/cell/abilities/damage_apply/mod.rs:100,157,250`: `result_code` is forwarded but `calculate_damage` runs unconditionally. |
+| Hit resolution | PARTIAL | QR score at `svc/cell/combat/damage/qr.rs:50-73`, beta sample `:21-30`, five CONFIRMED bands `:105-110`. Hard-coded. Pack's binary model conflicts; adopt its accumulation as a QR delta only. |
+| Unresolved formulas as configuration | MISSING | All constants hard-coded. Plan: `config/combat.toml` with `[qr] [cover] [armor] [resistance] [focus] [status_resist] [aoe] [items] [ammo]`, each defaulting to today's behaviour. |
+| Directional cover resolution | DONE | `svc/cell/cover/scoring.rs:19,90-97` (arc `orient ± π/2`, 5° hysteresis), `detection.rs:32`; 9,353 nodes seeded. |
+| Cover feeds the hit roll | MISSING | `qr.rs:47` reads no cover term. Plan: attacker-direction lookup → config table → QR delta, in QR units (100 pts = 1 QR). |
+| Crouch as a defensive state | PARTIAL | `BSF_CROUCHING` broadcast at `svc/cell/cell_methods/combatant.rs:41-43`; no combat effect. Pack's separate crouch channel is itself unsupported by shipped data. |
+| Cover penetration | MISSING | Is `coverAccuracy` (stat 66), not a new stat. Plan: `max(0, coverDefense − coverAccuracy)`. |
+| Armor slot weights + cap | MISSING | Current: per-type Armor Factor, flat subtraction, no cap, `combat/damage/pipeline.rs:57-59,181-189`. Plan: weights upstream in equipment → `MITIGATION`. |
+| Resistance clamp | MISSING | `pipeline.rs:62,167-179` uncapped, can exceed 1.0; `KINETIC_RES` (29) never read. Adopt −50% / +60% now. |
+| Focus → accuracy | MISSING | No term anywhere; shipped data has none either. Seam, default off. |
+| Focus → Health exposure | PARTIAL | Overflow spillover at `svc/cell/effects/scripts.rs:251-300`, not a probability. Shipped data holds gates at 25% / 50% (effects 1410, 1608, 2577). |
+| Status resist rolls | MISSING | Original is co-sequenced QR rolls (79/79). Build sequencing before any chance curve. |
+| AoE blast exposure / LoS | MISSING | Cone + radius collection only at `svc/cell/abilities/cone_aoe/geometry.rs`. |
+| Hit-decision logging | NOT VERIFIED | `result_code` reaches the client; whether a reproducible server-side hit log exists was not audited. |
+| Fix `EF_DONT_USE_QR` | MISSING | `crates/entity/src/abilities/defs.rs:58` = 32; original bit is 16; constant never read. |
+
+### Phase 4: weapons / items
+
+| Step | Status | Where / what remains |
+|---|---|---|
+| Weapon-family / auto-attack mappings | DONE | `resources.items_event_sets` (event 6 melee, 7 ranged) loaded at `svc/cell/spawner/abilities.rs:317`, consulted in `svc/cell/abilities/use_ability/weapon_redirect.rs` and `abilities/resolve.rs`. Nothing to import; the pack's table is ours. |
+| 4-slot bandolier / active weapon | DONE | `crates/entity/src/cell_entity/bandolier.rs`. |
+| Reload | DONE | `svc/cell/cell_methods/player/world/reload.rs`, `use_ability/auto_reload.rs`. |
+| Clip sizes from DB | DONE | `BandolierItem.clip_size` from `items.clip_size` at grant, `svc/base/world_entry/methods/inventory/grant/grant_item.rs`. |
+| Ammo-type selection | DONE | `requestAmmoChange`, `svc/cell/cell_methods/inventory/bandolier/ammo_change.rs`, persisted item-id-keyed. |
+| Ammo-mode toggle abilities (Hollow Point 715, AP 719, Incendiary 723, darts) | MISSING | Rows exist in `abilities.sql`; no effect script in `svc/cell/effects/registry.rs`; effect 747 has `script_name = NULL` in the raw seed. `cur_ammo_type` never affects damage (`abilities/dispatch.rs:438-440`). |
+| TechComp / quality scaling | MISSING | `tech_comp` read only in `svc/base/world_entry/methods/vendor/recharge.rs:238`, visuals, Livewire. Pure config once Phase 3's `[items]` block exists. |
+| Clean the 58 generic-fallback bindings | PARTIAL | Pre-existing seed noise in `items_event_sets` (Dart Gun 0/25). Per-row review. |
+
+### Phase 5: character starts
+
+| Step | Status | Where / what remains |
+|---|---|---|
+| Start SGU Human at Earth SGC | PARTIAL | `svc/base/chardef.rs:9-253` + `db/resources/Archetypes/Seed/char_creation.sql`: SGU → `SGC_W1` (58), the tutorial instance, not hub `SGC` (86). |
+| Start Free Jaffa at Dakara | BLOCKED | Currently `SGC_W1`. `svc/base/world_entry/space_registry.rs:27-37` knows three worlds and falls back to `Castle_CellBlock` for anything else; `svc/cell/cell_methods/player/combat/respawn.rs:335-336` hard-codes the same coordinate. Dakara has no point sets or spawns. D6. |
+| Start Asgard at Pertho | BLOCKED | Same registry blocker; Pertho has no point sets, no spawns, no production UMAP in the pack's own list. D6. |
+| Make the registry fallback fail loudly | MISSING | Prerequisite for any start-row change. |
+| Do not infer starter inventory | DONE (conflict of authority) | We already grant starter items via `char_creation_choices` / `char_creation_visgroups` and abilities via `char_creation_abilities`, `svc/base/character_create.rs:196-489`. The pack leaves these NULL and calls the ability rows non-authoritative. Preserve both positions. |
+| Fix char-creation primary-colour persistence | NOT AUDITED | Open user-reported bug in pack `MASTER_SOURCE` §11; outside this audit's scope. |
+
+### Phase 6: world / mission content
+
+| Step | Status | Where / what remains |
+|---|---|---|
+| Use the world workbooks | DONE | Rendered under `pack/references/world_content/` (17 workbooks). |
+| Mission / step / objective / task tables | DONE | `resources.missions` 1,041, `mission_steps` 3,480, `mission_objectives` 4,037, `mission_tasks` 4,358. The pack's "missing server data" claim does not apply here. |
+| CellBlock strict scope ends at 688 | DONE | `db/resources/Content/Seed/castle_cellblock_chains.sql` chain 1109 is the only `cross_world_teleport`, gated on 688. Castle-main chains (`castle_701_chains.sql` etc.) gate on `player_loaded 'Castle'` or Castle regions. |
+| Post-688 transition to Castle main | DONE | Chain 1109 → world 8 at (466.365, 70.397, 991.466); arrival caught by chain 1201 in `castle_701_chains.sql:139`. |
+| Server-side regions (`point_sets` / `point_set_points`) | PARTIAL | 66 sets / 135 points covering Castle, Castle_CellBlock, SGC_W1 only. Long pole for every other world. |
+| Persistent spawns | PARTIAL | `spawnlist` 176 rows, three worlds; `spawn_points` 0 rows; `paths` 0 rows. |
+| Faction progression routes (Tollana → …) | MISSING | No column, no code, no gate. Nearest primitive: `ring_transport_regions.required_mission_id` (all NULL). |
+| Harset mission 742 (pack's worked example) | MISSING | Row exists in `missions.sql`; no chain seed on any branch. Owned by the Harset campaign (`docs/analysis/harset-rebuild/`). |
+| Fix chain 1008 `scope_id` | MISSING | Declares 8 (Castle) for a CellBlock trigger; harmless until tooling trusts `scope_id`. |
+| Multi-objective step engine defects (#656, #657) | MISSING | Force hand-split chains in 639 and 688; will recur in every new multi-objective step. |
+
+### Phase 7: NPC / enemy / loot
+
+| Step | Status | Where / what remains |
+|---|---|---|
+| Spawn / archetype master mapping | PARTIAL | `entity_templates` 159, `spawnlist` 176, concentrated in three worlds. |
+| Enemy combat kits from recovered ability IDs | PARTIAL | `ability_sets` / `ability_set_abilities` exist (3 sets). PK `(ability_set_id)` only at `db/resources/_primary_keys.sql:44` allows one ability per set. |
+| Loot / rewards | MISSING | `mission_rewards` 8 rows against 1,041 missions. No pack QA reward test can pass. |
+| No guessed retail stat scaling | PARTIAL | Nothing scales by level, which is correct. A temporary 2× player-damage multiplier lives at `svc/cell/abilities/damage_apply/mod.rs:137` and damage type is hard-coded `DT_PHYSICAL` at `:160,172`. |
+
+### Phase 8: QA / regression
+
+| Pack QA group | Status | Where / what remains |
+|---|---|---|
+| Trainer / progression 1–7, 10 | PARTIAL | Pass silently today (log-only). Observable once `onErrorCode` lands. Existing guard tests: `train.rs:202-411`. |
+| Trainer / progression 8 (capstone at 50) | BLOCKED | D1. |
+| Trainer / progression 9 (cost-0 WARN) | MISSING | Needs `training_cost` selected. |
+| Weapon / ability 1–2 (weapon family) | MISSING | No enforcement. |
+| Weapon / ability 3–6 | DONE | Auto-attack, ammo, reload, ammo-type toggle exist; mode-buff variant of 6 missing. |
+| Cover 1–6 | PARTIAL | 1, 2, 5 satisfiable from `cell/cover/`; 3, 4, 6 need the Phase 3 coupling and config. |
+| Focus / Health 1–2 | DONE | Distinct pools; effects damage each independently. |
+| Focus / Health 3–4 | MISSING | No configured low-Focus behaviour; no conflict diagnostics. |
+| Scientist Robotics, Goa'uld Servant Lord | NOT AUDITED | Pet / turret systems outside this audit. |
+| World starts 1–4 | BLOCKED | Phase 5. |
+| Castle CellBlock regression 1–5 | DONE | All five pass on `origin/main`; item 2's stated ordering is wrong but the content is present. |
+| v1.2 combat formula tests (29) | BLOCKED | Meaningless until Phase 3 config seams exist; several would test invented constants. |
