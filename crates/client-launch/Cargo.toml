@@ -1,0 +1,31 @@
+[package]
+name = "cimmeria-client-launch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared client launch primitives: suspended-process launch, DLL injection, and SGW.exe .rdata hostname patching. Extracted from sgw-launcher so both the launcher and the Live Research Lab supervisor (cimmeria-lab) drive the same code path."
+
+[lib]
+name = "cimmeria_client_launch"
+path = "src/lib.rs"
+
+[dependencies]
+thiserror = { workspace = true }
+
+# Direct Win32 calls for the suspended-launch + inject pipeline
+# (CreateProcessW(SUSPENDED) -> VirtualAllocEx -> WriteProcessMemory ->
+# CreateRemoteThread(LoadLibraryW) -> ResumeThread) and the .rdata
+# patch. Feature set mirrors what the launcher declared when these
+# modules lived there. Non-Windows targets compile the cfg'd stubs.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+] }
+
+[dev-dependencies]
+tempfile = "3"

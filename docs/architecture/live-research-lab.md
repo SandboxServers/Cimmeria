@@ -166,10 +166,10 @@ Memory writes and native calls will crash the client regularly. The design goal 
 |---|---|---|
 | Detect exit | Supervisor owns the process handle. | High. Exists today in `process_watch.rs`. |
 | Detect hang or crash dialog | Bridge heartbeat is the Tick-drain counter. No advance for N seconds means hung or sitting in a crash dialog; supervisor terminates the process. WER UI is suppressed for SGW.exe. | High. |
-| Capture evidence | Unhandled-exception filter in the DLL writes a minidump and flushes the command journal, then terminates fast. | Medium. Needs care not to fight UE3's own handler. |
+| Capture evidence | Unhandled-exception filter in the DLL writes a minidump (`MiniDumpWriteDump`) + a crash marker, then terminates fast. A vectored handler + `SetThreadStackGuarantee` cover stack overflow (unrecoverable). WER is suppressed via `SetErrorMode` in the DLL. | Built (#685); **replaces** UE3's filter rather than chaining — see open question 2. Needs live validation. |
 | Relaunch and inject | Existing suspended-launch path. | High. Runs on every launch today. |
 | Server accepts the relogin | Duplicate login evicts the stale session (`crates/services/src/base/login/mod.rs`, KI-7). | High. Verified in code. |
-| Autologin | Lua-driven login and character select. Both are CEGUI layouts with Lua behind them. Fallback is synthesized input from the supervisor. | **Unverified. Spike in §8.** |
+| Autologin | Lua-driven login and character select via the screens' own module handlers (spike-confirmed recipe). State machine built + unit-tested (#685). | **Live path blocked on lua_eval return-value capture** (a Phase-3 bridge TODO): the screen *reads* (`isVisible`, `getCharacterInfo`) need it; the actions work today. |
 | Restore probes | The journal re-applies hooks marked persistent. It never replays writes or native calls. The command in flight at crash time is quarantined and reported, and recovery stops after three crashes in ten minutes. | High once built. |
 | Restore world state | The agent's job, through `server_console_exec` (`goto`, mission state). | n/a |
 
@@ -207,6 +207,6 @@ Phases 1 to 3 and Phases 4 to 5 touch disjoint crates and can run as parallel tr
 ## 10. Open questions
 
 1. **Is the Lua VM alive at the login screen?** If not, autologin falls back to synthesized input until the VM appears. Phase 2 spike.
-2. **Unhandled-exception filter ordering.** UE3 installs its own. Whether ours should chain or replace is a Phase 2 finding.
+2. **Unhandled-exception filter ordering.** *Resolved (#685): replace, don't chain.* Our top-level filter installs last (runs first), writes a minidump + crash marker, and calls `TerminateProcess` — it never returns to UE3's filter or the CRT default. Rationale: UE3's handler pops a crash dialog / runs its own reporter, which would block the supervisor's fast relaunch (the point of §6). The previous filter pointer is captured for diagnostics but not invoked.
 3. **Hook capture at arbitrary addresses.** Mid-function hooks need instruction-length decoding for the trampoline. Function-entry-only in Phase 3 is acceptable if that proves fragile.
 4. **Share framing code with the Atrea bridge?** That ADR is still unbuilt. If the lab lands first, the Atrea bridge should adopt its transport module rather than define a second one.

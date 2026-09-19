@@ -291,6 +291,16 @@ fn bootstrap_phase2() {
     {
         if let Some(handle) = crate::bridge::maybe_start(&session) {
             let _ = crate::bridge::install_handle(handle);
+            // Outer-tier crash capture (ADR §6 / #685 scope 4). Only in
+            // a lab session — a normal telemetry launch must not replace
+            // UE3's unhandled-exception filter. Evidence lands in the
+            // session dir (parent of current-session.json) next to the
+            // marker the supervisor reads for `lab_crash_report`.
+            if let Ok(session_file) = crate::session::session_path_for_host(&host_exe) {
+                if let Some(dir) = session_file.parent() {
+                    crate::bridge::crash::install(dir.to_path_buf());
+                }
+            }
         }
     }
 

@@ -129,7 +129,15 @@ fn encode_wide(path: &Path) -> Vec<u16> {
 /// target process, its `DllMain` has run, and its bootstrap thread
 /// is spawned. The caller may now `ResumeThread` the target's
 /// suspended main thread.
+// `process` is an opaque kernel HANDLE (a raw pointer type in
+// windows-sys), never dereferenced by us — it is only handed to Win32
+// APIs. The function has always been safe to call with a handle from
+// `create_process_suspended`; keeping it non-`unsafe` preserves the
+// launcher's existing call sites through the #685 extraction. This lint
+// only started applying now that these modules moved into a
+// clippy-covered crate (sgw-launcher is clippy-excluded).
 #[cfg(windows)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn inject_dll(
     process: windows_sys::Win32::Foundation::HANDLE,
     dll_path: &Path,
@@ -474,10 +482,7 @@ pub fn create_process_suspended(
 
 /// Non-Windows stub.
 #[cfg(not(windows))]
-pub fn create_process_suspended<'a>(
-    exe_path: &Path,
-    _cwd: Option<&Path>,
-) -> Result<(), InjectError> {
+pub fn create_process_suspended(exe_path: &Path, _cwd: Option<&Path>) -> Result<(), InjectError> {
     Err(InjectError::DllMissing(exe_path.to_path_buf()))
 }
 
