@@ -9,6 +9,12 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 /// Advance a mission to a new step: complete old objectives, set new step, load new objectives.
+///
+/// Returns `true` only when the step was actually activated — i.e. the entity
+/// and the mission instance both existed. Callers use that to gate work that
+/// must only happen on a real activation: H52's step-activation region replay
+/// would otherwise re-fire `enter_region` for a step that never became
+/// current.
 #[tracing::instrument(
     name = "mission.advance_step",
     level = "info",
@@ -21,12 +27,18 @@ pub async fn advance_step(
     new_step_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> bool {
     // Ordering seam. Region / cover triggers are EDGE events: if the player is
     // already inside when this step activates, the edge has already been spent
     // and the step's chain never sees it (2026-09-18: take-cover fired 1 s
     // before step 2144). Record what is already true at activation so that
     // shape is visible instead of inferred from timestamps.
+    //
+    // H52 closes the `enter_region` half of that: the callers that own the
+    // ChainEngine replay those volumes through
+    // `content::event_dispatch::step_activation` once this call returns
+    // `true`. `cover_sets` below is still only diagnostic — the cover edge
+    // belongs to the Cellblock lane (objective 2484).
     if let Some(e) = space_mgr.get_entity(entity_id) {
         let world = space_mgr
             .get_entity_world_name(entity_id)
@@ -76,7 +88,7 @@ pub async fn advance_step(
 
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
-        None => return,
+        None => return false,
     };
 
     let mission = match entity.missions.get_mission_mut(mission_id) {
@@ -88,7 +100,7 @@ pub async fn advance_step(
                 new_step_id,
                 "advance_step: mission not found"
             );
-            return;
+            return false;
         }
     };
 
@@ -169,6 +181,8 @@ pub async fn advance_step(
             })
             .await;
     }
+
+    true
 }
 
 /// Complete a mission objective and check if the mission advances.

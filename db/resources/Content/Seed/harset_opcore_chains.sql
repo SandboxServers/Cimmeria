@@ -543,6 +543,20 @@ VALUES (6504, 'add_dialog_set', 2817, NULL, '{"slot": 48, "mission_id": 567}', 0
 -- that cannot be accepted, so they are unreachable today and correct the
 -- moment acceptance opens. Keeping them live means M0 flips three
 -- booleans, not seventeen.
+--
+-- NO `mission_abandoned` CHAIN FOR 1361, DELIBERATELY (packet H54). H54
+-- added the trigger, and 1361's offer has exactly the shape that wants
+-- it — but 1361 cannot be accepted today, so there is nothing to abandon
+-- and an abandon chain would be unreachable code whose `enabled` flag the
+-- biconditional above does not pin. Whoever flips 6511-6513 at M0 should
+-- author the abandon twin in the same change, modelled on chain 6308 in
+-- `harset_jaffa_chains.sql`: clear whatever bind is live on Marsh
+-- (template 10), then re-add dsm 5352.
+--
+-- 1360 NEEDS NONE EITHER. Its offer is not a chain in this file — the
+-- letter is granted upstream — so an abandon leaves no gate reopened and
+-- no offer to repaint. The only bind it installs (dsm 5356 on Marsh) is
+-- `step_status`-gated and dies with the mission on the next world entry.
 
 -- Chain 6511: put the "?" on Marsh for a Human who has not met the Praxis.
 -- Doubles as the relog restore — `player_loaded` fires on every world

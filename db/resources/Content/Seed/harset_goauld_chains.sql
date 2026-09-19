@@ -49,7 +49,7 @@ SET search_path = resources, pg_catalog;
 -- FIRST binding on a template wins and per-player bindings outrank the
 -- entity's static interaction type. Two live bindings on one template is
 -- therefore a content bug, not a merge: see the 742/1200 Anat note at
--- chain 6118.
+-- chain 6118. Chain 6120 is its abandon twin (packet H54).
 --
 -- WORLD CONDITIONS. Per the campaign rule every chain that fires in a
 -- shared space carries a `world` condition. Applied here to exactly the
@@ -860,6 +860,58 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (6119, 'accept_mission', 742, NULL, '{}', 0, 0),
   (6119, 'remove_dialog_set', 3127, NULL, '{"slot": 43}', 0, 1);
+
+-- Chain 6120: the player abandons 742 while standing in the Command
+-- Center - clear the in-progress topic and put Anat's offer back.
+--
+-- The abandon form of the edge race (playtest finding H9, closed in the
+-- engine by packet H54). Chain 6118 already carries the two-trigger
+-- idiom for the OTHER two edges it can miss -- `player_loaded` for the
+-- arrival and `mission_completed '1200'` for the prerequisite flipping
+-- while the player stands in world 68. Abandon was the third, and until
+-- H54 no seed row could reach it: `abandonMission` fired nothing into the
+-- content engine.
+--
+-- It is a third CHAIN rather than a third trigger row on 6118 because the
+-- action lists differ: an abandon has a bind to clear first. Anat
+-- (template 43) carries exactly one 742 bind at any time -- dsm 3130, the
+-- in-progress topic that chains 6107/6108/6109/6116 paint and 6110
+-- retires -- so clearing 3130 and re-binding 3127 restores the offer
+-- state exactly. `remove_dialog_set` on an unbound slot is a no-op, and
+-- 3130 must go before 3127 arrives because `interact.rs` takes the first
+-- bound entry that has a dialog.
+--
+-- Conditions are chain 6118's verbatim. World 68 is where the stale state
+-- is observable; an abandon anywhere else needs nothing, because
+-- `available_interactions` is rebuilt empty on every world entry and
+-- 6118's `player_loaded` row repaints the offer on the way back in.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (6120, '742 - Abandoned in the Command Center: clear the in-progress topic and repaint Anat''s offer', 'mission', 742, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6120, 'mission_abandoned', '742', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (6120, 'world', 68, NULL, 'eq', NULL, 0),
+  (6120, 'archetype', NULL, NULL, 'eq', '6', 1),
+  (6120, 'mission_status', 742, NULL, 'eq', 'not_active', 2),
+  (6120, 'mission_status', 1200, NULL, 'eq', 'completed', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (6120, 'remove_dialog_set', 3130, NULL, '{"slot": 43}', 0, 0),
+  (6120, 'add_dialog_set', 3127, NULL, '{"slot": 43}', 0, 1);
+
+-- MISSION 1200 HAS NO ABANDON CHAIN, DELIBERATELY. Its accept is chain
+-- 6121 on `player_loaded Harset` (world 57), so an abandon chain that
+-- re-accepted would make 1200 unabandonable the moment the player drops
+-- it in world 57 - a behaviour change H54 was not asked to make, and one
+-- the coordinator should rule on rather than a seed lane. Its in-progress
+-- binds (dsm 4751 on Anat, 4817 on the Royal Guard, 6360 on Ba'al) do
+-- strand on an abandon in world 68, but they self-heal on the next world
+-- transition and there is no offer state to repaint them into. Recorded
+-- in worknotes/H54.md as an open coordinator decision.
 
 -- ============================================================
 -- H40 -- MISSION 1200 "Meet Your Queen"  (chains 6121-6127)
