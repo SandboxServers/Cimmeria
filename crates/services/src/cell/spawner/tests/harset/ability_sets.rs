@@ -368,6 +368,145 @@ async fn multi_ability_set_reaches_the_chooser_and_every_member_is_selectable() 
     );
 }
 
+/// **H09 melee-reach acceptance, end to end against the seed.** Both Harset
+/// sets, loaded out of Postgres with the real `resources.abilities` rows,
+/// spawned onto a real NPC, and driven through the *production* selector — the
+/// reach-filtered `choose_npc_ability_within_reach` that `npc_ai_fight` calls.
+///
+/// The unit guards in `cell/service/tests/npc_ai/melee_reach.rs` hand-seed the
+/// four `AbilityDef`s, so they prove the gate's logic but not that the seed
+/// actually carries the values the gate reads. This one closes that gap: if
+/// someone flips `abilities.is_ranged` on 710 or 711, or gives one of them a
+/// non-zero `max_range`, the unit guards keep passing and this one fails.
+///
+/// The two sets are deliberately asserted together because they sort
+/// oppositely. Set 4 is `584` (ranged) then `710` (melee), so the lowest-id
+/// walk would have picked correctly at range *by accident*; set 5 is `711`
+/// (melee) then `712` (ranged), so only the reach filter gets it right.
+/// Asserting set 5 alone would leave the accident untested, and set 4 alone
+/// would pass with no filter at all.
+///
+/// `BEYOND_MELEE` (20 m) sits between `NPC_MELEE_RANGE` (3) and
+/// `NPC_ATTACK_RANGE` (30) so the two gates disagree and the assertion can
+/// tell which one ran.
+#[tokio::test]
+async fn seeded_harset_sets_never_select_their_melee_half_at_range() {
+    use crate::cell::combat::{NPC_ATTACK_RANGE, NPC_MELEE_RANGE};
+    use crate::cell::service::npc_ai::choose_npc_ability_within_reach;
+    use crate::cell::spawner::load_ability_defs;
+
+    const BEYOND_MELEE: f32 = 20.0;
+    const WITHIN_MELEE: f32 = 2.0;
+
+    let pool = require_db_or_skip!();
+
+    let defs = load_ability_defs(&pool)
+        .await
+        .expect("ability defs must load");
+
+    // Sanity-check the columns the gate reads before relying on them, so a
+    // seed change surfaces here rather than as a confusing selector result.
+    for (ability_id, expect_ranged) in [
+        (STAFF_AUTO_ATTACK, true),
+        (STAFF_MELEE_AA, false),
+        (RIBBON_MELEE_AA, false),
+        (RIBBON_AUTO_ATTACK, true),
+    ] {
+        let def = defs
+            .get(&ability_id)
+            .unwrap_or_else(|| panic!("ability {ability_id} must exist in resources.abilities"));
+        assert_eq!(
+            def.is_ranged, expect_ranged,
+            "ability {ability_id} ({}) must have is_ranged = {expect_ranged}; the melee \
+             reach gate keys off this column alone",
+            def.name
+        );
+        assert_eq!(
+            def.max_range, 0,
+            "ability {ability_id} ({}) must keep the `0` max_range sentinel — a non-zero \
+             value here overrides the server default and, on a melee ability, would put \
+             the swing back out at whatever number the seed carries",
+            def.name
+        );
+    }
+
+    let templates = load_spawn_templates(&pool)
+        .await
+        .expect("spawn templates must load");
+
+    for (set_id, members, template_id) in HARSET_SET_PROBE_TEMPLATES {
+        // A real seeded template, not a hand-built record: this also pins that
+        // the template still points at the set it is supposed to.
+        let prototype = templates
+            .get(&template_id)
+            .unwrap_or_else(|| panic!("template {template_id} must surface from the loader"));
+        assert_eq!(
+            prototype.ability_ids,
+            members.to_vec(),
+            "template {template_id} must still carry ability set {set_id} in full"
+        );
+
+        let mut mgr = crate::test_support::make_space_manager();
+        mgr.ability_defs = defs.clone();
+
+        let mut record = prototype.clone();
+        // `load_spawn_templates` returns prototypes with the spawn-instance
+        // fields blank; the caller supplies placement. Agnos is the startup
+        // space `make_space_manager` creates.
+        record.world_name = "Agnos".to_string();
+
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc_from_record(npc_id, &record)
+            .expect("probe NPC must spawn");
+
+        let ranged_half = members
+            .iter()
+            .copied()
+            .find(|id| defs[id].is_ranged)
+            .expect("each Harset set holds one ranged auto-attack");
+        let melee_half = members
+            .iter()
+            .copied()
+            .find(|id| !defs[id].is_ranged)
+            .expect("each Harset set holds one melee auto-attack");
+
+        assert_eq!(
+            choose_npc_ability_within_reach(npc_id, &mgr, BEYOND_MELEE, NPC_ATTACK_RANGE),
+            Some(ranged_half),
+            "set {set_id}: at {BEYOND_MELEE} m the selector must take the ranged half \
+             ({ranged_half}); {melee_half} here means the melee reach gate is gone and the \
+             NPC plays a weapon swing at a target {BEYOND_MELEE} m away"
+        );
+
+        // The melee half is not blacklisted, just range-gated: inside
+        // NPC_MELEE_RANGE the lowest-id member wins again, which for set 5 is
+        // the melee one.
+        let expected_up_close = members.iter().copied().min().expect("set is non-empty");
+        assert_eq!(
+            choose_npc_ability_within_reach(npc_id, &mgr, WITHIN_MELEE, NPC_ATTACK_RANGE),
+            Some(expected_up_close),
+            "set {set_id}: inside {NPC_MELEE_RANGE} m both members are usable, so the \
+             lowest id ({expected_up_close}) wins — a gate that rejected melee \
+             unconditionally would return {ranged_half} here"
+        );
+
+        // With the ranged half cooling and the target out of reach, nothing is
+        // usable — the selector must still hand back the melee ability so the
+        // fight tick walks the NPC in. `None` would read as "all cooling".
+        mgr.get_entity_mut(npc_id)
+            .expect("probe NPC must exist")
+            .abilities
+            .start_ability_cooldown(ranged_half, std::time::Duration::from_secs(60));
+        assert_eq!(
+            choose_npc_ability_within_reach(npc_id, &mgr, BEYOND_MELEE, NPC_ATTACK_RANGE),
+            Some(melee_half),
+            "set {set_id}: with {ranged_half} cooling and nothing in reach, the selector \
+             must fall back to {melee_half} so the NPC closes the distance rather than \
+             freezing"
+        );
+    }
+}
+
 /// Delete the H09 sentinel rows by exact id, child-before-parent.
 ///
 /// Order is load-bearing: `entity_templates_ability_set_id_fkey` and

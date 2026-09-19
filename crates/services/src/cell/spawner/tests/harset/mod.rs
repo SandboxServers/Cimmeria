@@ -68,6 +68,17 @@ const HARSET_ABILITY_SETS: [(i32, [i32; 2]); 2] = [
     (5, [RIBBON_MELEE_AA, RIBBON_AUTO_ATTACK]),
 ];
 
+/// One seeded template per Harset ability set, as
+/// `(ability_set_id, members, template_id)`, for the H09 melee-reach guard.
+///
+/// 200 "Mala'c" is one of the thirteen templates on set 4; 210 "Haughty
+/// Goa'uld" is one of the two on set 5. Both are used rather than a synthetic
+/// record so the guard also pins the template → set wiring.
+const HARSET_SET_PROBE_TEMPLATES: [(i32, [i32; 2], i32); 2] = [
+    (4, [STAFF_AUTO_ATTACK, STAFF_MELEE_AA], 200),
+    (5, [RIBBON_MELEE_AA, RIBBON_AUTO_ATTACK], 210),
+];
+
 /// Every `class = 'mob'` template H11 seeds, as `(template_id, name)`.
 const MOB_TEMPLATES: [(i32, &str); 24] = [
     (200, "Mala'c"),
