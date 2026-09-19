@@ -6,6 +6,7 @@
 //! return `true` (no obstruction) and pathfinding / height return `None`.
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::navigation::PointVerdict;
 
 use cimmeria_entity::navigation::LineOfSight;
 
@@ -100,6 +101,32 @@ impl SpaceManager {
             Some(nm) => nm.is_point_valid(pos),
             None => true,
         }
+    }
+
+    /// Why [`Self::is_position_valid`] answered the way it did, for the
+    /// space containing `entity_id`.
+    ///
+    /// `None` means there is **no navmesh in this space** — which is not
+    /// the same as "the point is off the mesh". `is_position_valid` fails
+    /// open there and returns `true`, so a caller logging a diagnosis has
+    /// to be able to say "there was nothing to check against" rather than
+    /// reporting a gate it never evaluated.
+    pub fn diagnose_point(&self, entity_id: u32, pos: &Vector3) -> Option<PointVerdict> {
+        let space_id = *self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        Some(space.navmesh.as_ref()?.diagnose_point(pos))
+    }
+
+    /// Short content hash of the navmesh loaded for the space containing
+    /// `entity_id`, or `None` in a meshless space.
+    ///
+    /// Every navmesh-decision log line carries this so a session can be
+    /// tied to the mesh build it ran on — see
+    /// [`cimmeria_entity::navigation::NavMeshFingerprint`].
+    pub fn navmesh_short_hash(&self, entity_id: u32) -> Option<&str> {
+        let space_id = *self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        Some(space.navmesh.as_ref()?.short_hash())
     }
 
     /// Sample the navmesh surface height at (x, z) in the space containing `entity_id`.

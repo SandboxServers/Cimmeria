@@ -72,7 +72,108 @@ tick naturally rebroadcasts the last-valid position to witnesses — no
 explicit AoI fan-out is needed. The structured negative log is
 `target: "movement.validation"`, message `movement.validation_reject:`,
 with a low-cardinality `reason` field (`bounds | navmesh | teleport`) and
-the `movement_validation_rejects_total{reason}` counter.
+the `movement_validation_rejects_total{reason, world, gate}` counter.
+
+## What a reject reports
+
+The decision above is unchanged by anything in this section; only the
+reporting is. Emission lives in one place,
+`SpaceManager::report_movement_reject`
+([movement_telemetry](../../crates/services/src/cell/space_manager/movement_telemetry/mod.rs)),
+because the row needs three things only the `SpaceManager` can answer:
+the world name behind a space id, the navmesh diagnosis for the
+rejected point, and the per-entity throttle state.
+
+### `world`, not just `space_id`
+
+Every `movement.validation` row carries the world **name**. A space id
+is a runtime allocation (`(cell_id << 16) | local_index`) that means
+nothing outside the process that minted it, so the pre-existing rows
+could not be grouped by zone after the fact. This is also the `world`
+label on the counter — see
+[instrumentation-discipline.md](instrumentation-discipline.md#ruling-world-is-an-approved-label)
+for the cardinality ruling.
+
+### The navmesh diagnosis
+
+`reason = "navmesh"` covers four different bugs with four different
+owners. A reject with that reason and nothing else cannot tell a mesh
+hole from a player clipped into the floor. `NavMesh::diagnose_point`
+([navigation](../../crates/entity/src/navigation/mod.rs)) returns the
+same boolean `is_point_valid` does — the latter is a thin wrapper over
+the former, so they cannot disagree — plus the gate and the distances:
+
+| `gate` | Meaning | Usual owner |
+|---|---|---|
+| `no_poly_in_extents` | Neither search phase found any polygon. The point is nowhere near the mesh | **Mesh build** — a hole, or a room the builder never covered |
+| `horizontal` | A polygon was found, but the point is > `agent_radius * 2` from it in X/Z | Mesh edge / walkable-surface coverage |
+| `below_surface` | Within the horizontal gate, > `agent_radius * 2` **below** the surface | Floor-clip / under-terrain; client physics or a bad authoritative write |
+| `above_jump_tolerance` | Within the horizontal gate, > `JUMP_HEIGHT_TOLERANCE` (4.0) **above** the surface | Tolerance calibration, or a genuine fly-hack |
+
+`nav_horiz_dist` and `nav_dy` say by *how much* — the difference
+between "widen the tolerance" and "rebuild the mesh". They are absent
+exactly when `gate = no_poly_in_extents`, because there was no polygon
+to measure against; a `0.0` there would read in a query as "right on
+the surface".
+
+`navmesh_hash` names the mesh build the point was judged against (the
+8-digit short form of an FNV-1a 64 over the `.nav` file). It joins to
+the `movement.navmesh` `navmesh_loaded` line, which carries the full
+hash, the file size, the header counts and the agent parameters. Without
+it, a reject from before a mesh rebuild is indistinguishable from one
+after it — which is exactly the reconstruction the September 2026
+Castle_CellBlock rebuild had to do by hand.
+
+**Two-phase reporting.** `diagnose_point` mirrors `is_point_valid`'s
+two-phase search and reports phase 2's polygon when it found one, else
+phase 1's. The fallback matters: a point clipped below the surface
+pushes phase 2's downward-biased search box past the floor entirely, so
+phase 2 finds nothing — and reporting `no_poly_in_extents` there would
+mislabel a floor-clip as a mesh hole, which are the two failures an
+operator most needs to tell apart.
+
+### Throttling
+
+Per entity: the first reject emits immediately, then at most one row
+per second, carrying `suppressed = N` for the rows elided since the
+last emission. The counter still increments on every reject. This is
+Pattern D in
+[negative-logging-convention.md](negative-logging-convention.md#pattern-d--high-frequency-repeat-throttled-with-a-suppressed-count);
+the measured need was 146,760 reject rows in three days, 103,818 of
+them from one stuck entity. State is keyed by entity and released in
+`destroy_entity` alongside `movement_validator.forget`.
+
+### Accepted positions
+
+`movement.position_sample` (DEBUG) samples **accepted** player
+positions at ≤ 1 per player per 5 s, and only after ≥ 1 u of movement.
+Rejects say where players are stopped; this says where they
+successfully walk, which is what turns "somebody fell into a hole" into
+a walked-surface map per world. Hooked in `SpaceManager::accept`, so a
+rejected position is never sampled. Budget and level rationale:
+[instrumentation-discipline.md](instrumentation-discipline.md#sampled-positive-telemetry-movementposition_sample).
+
+### Known gap: advisory worlds carry no navmesh diagnosis
+
+The reporting above hangs off the **reject** path. A world whose
+`resources.worlds.navmesh_mode` is `advisory` accepts off-mesh positions
+instead of snapping them back, so it produces no
+`movement.validation_reject` rows with `reason = "navmesh"`. What it
+emits instead is `movement.navmesh` with
+`reason = "advisory_off_mesh_accepted"` (`cell::space_manager::client_move`)
+— at **TRACE**, level-gated, unthrottled, and carrying only the entity,
+space and client position: no `gate`, no `nav_horiz_dist` / `nav_dy`, no
+mesh hash. The advisory worlds are the ones with the worst meshes, which
+is where the diagnosis is most needed, so finding mesh holes there means
+enabling TRACE for that target and joining positions to the mesh by hand.
+
+`report_movement_reject` is deliberately a standalone function rather
+than inline in the message handler so a non-rejecting caller can reuse
+the diagnosis and the throttle; routing the advisory branch through it
+is the obvious follow-up and was left out of this change on purpose. The
+pre-existing GM off-navmesh allowance below has the same shape at a
+smaller scale: it emits its own unthrottled `movement.navmesh_gm_bypass`
+warn and does **not** carry the gate, distances or mesh hash.
 
 ### Why the teleport gate is a dual gate (distance AND speed)
 

@@ -1,0 +1,52 @@
+[package]
+name = "cimmeria-lab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Live Research Lab supervisor + stdio MCP server. Phase 1: a thin proxy exposing client_lua_eval / client_module_info / client_mem_read over the injected client bridge's framed JSON-RPC TCP channel."
+
+# Windows-only: it drives a running SGW.exe on the owner's dev box.
+# Excluded from the workspace default build and CI's workspace jobs
+# (mirrors how sgw-launcher is excluded) so Linux dev hosts don't try
+# to build it. It is a normal x86_64-pc-windows-msvc host binary.
+[[bin]]
+name = "cimmeria-lab"
+path = "src/main.rs"
+
+[dependencies]
+# Official Rust MCP SDK. `server` + `transport-io` for a stdio MCP
+# server; `macros` for #[tool]/#[tool_router]/#[tool_handler].
+rmcp = { version = "3.4", features = ["server", "transport-io", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Shared suspended-launch + inject pipeline (issue #685) — the same code
+# path sgw-launcher uses.
+cimmeria-client-launch = { path = "../client-launch" }
+
+# Per-launch lab token = two v4 UUIDs (32 random bytes → 64 hex). Reuses
+# the workspace's existing uuid dep rather than adding an RNG crate.
+uuid = { version = "1", features = ["v4"] }
+
+# Screenshot: PNG encode + base64 for the MCP image content block.
+png = "0.17"
+base64 = "0.22"
+
+# Process lifecycle, window enumeration, and GDI capture on the host
+# (x86_64-pc-windows-msvc). The supervisor is a 64-bit host binary
+# driving the 32-bit SGW.exe child.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_Xps",
+] }
+
+[dev-dependencies]
+tempfile = "3"

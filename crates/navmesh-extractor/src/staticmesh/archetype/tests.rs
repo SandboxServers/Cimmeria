@@ -164,7 +164,7 @@ fn actor(props: ActorArchetypeProps, next: Option<&str>) -> ActorProbe {
 #[test]
 fn actor_chain_takes_the_nearest_definition_of_each_field() {
     let got = walk_actor_chain(&path("Pkg.Pf.Arc"), &mut |c| {
-        Some(if c[0] == "Pkg" {
+        Ok(if c[0] == "Pkg" {
             actor(
                 ActorArchetypeProps {
                     rotation: Some([0, 16384, 0]),
@@ -185,10 +185,11 @@ fn actor_chain_takes_the_nearest_definition_of_each_field() {
             )
         })
     });
-    assert_eq!(got.rotation, Some([0, 16384, 0]));
-    assert_eq!(got.collide_actors, Some(false));
-    assert_eq!(got.draw_scale, Some(2.0));
-    assert_eq!(got.draw_scale_3d, None);
+    assert_eq!(got.unreadable, None, "the whole chain was readable");
+    assert_eq!(got.props.rotation, Some([0, 16384, 0]));
+    assert_eq!(got.props.collide_actors, Some(false));
+    assert_eq!(got.props.draw_scale, Some(2.0));
+    assert_eq!(got.props.draw_scale_3d, None);
 }
 
 #[test]
@@ -196,7 +197,7 @@ fn actor_chain_stops_once_every_field_is_pinned() {
     let mut reads = 0;
     let got = walk_actor_chain(&path("Pkg.Pf.Arc"), &mut |_| {
         reads += 1;
-        Some(actor(
+        Ok(actor(
             ActorArchetypeProps {
                 collide_actors: Some(true),
                 rotation: Some([1, 2, 3]),
@@ -207,16 +208,47 @@ fn actor_chain_stops_once_every_field_is_pinned() {
         ))
     });
     assert_eq!(reads, 1, "a complete template makes the rest irrelevant");
-    assert_eq!(got.draw_scale_3d, Some([1.0, 1.0, 1.2]));
+    assert_eq!(got.unreadable, None, "stopping early is not a failure");
+    assert_eq!(got.props.draw_scale_3d, Some([1.0, 1.0, 1.2]));
 }
 
 #[test]
-fn an_unreadable_actor_archetype_inherits_nothing_rather_than_failing() {
-    // There is no `SkipReason` for this on purpose: an actor whose
-    // archetype cannot be read must behave exactly as it did before
-    // this module existed, which is "use your own properties".
-    let got = walk_actor_chain(&path("Gone.Pf.Arc"), &mut |_| None);
-    assert_eq!(got, ActorArchetypeProps::default());
+fn an_unreadable_actor_archetype_is_reported_not_silently_defaulted() {
+    // The whole point of the outcome type. Handing the caller
+    // all-`None` props would make `collides()` fall through to UE3's
+    // `true` default for a template that may well have said `false` —
+    // and the *component* chain resolves the mesh independently, so
+    // the actor would sail through and put a solid obstacle in the
+    // navmesh.
+    let got = walk_actor_chain(&path("Gone.Pf.Arc"), &mut |_| {
+        Err(SkipReason::ArchetypePackageNotFound)
+    });
+    assert_eq!(got.props, ActorArchetypeProps::default());
+    assert_eq!(got.unreadable, Some(SkipReason::ArchetypePackageNotFound));
+}
+
+#[test]
+fn a_partially_read_actor_chain_reports_the_failure_it_hit() {
+    // The nastiest shape: the first template answers, the second is
+    // unreadable. What was gathered is real but incomplete, and
+    // `bCollideActors` is exactly the field that might have been on
+    // the template we could not read.
+    let got = walk_actor_chain(&path("Pkg.Pf.Arc"), &mut |c| {
+        if c[0] == "Pkg" {
+            Ok(actor(
+                ActorArchetypeProps {
+                    rotation: Some([0, 16384, 0]),
+                    ..Default::default()
+                },
+                Some("Base.Pf.Arc"),
+            ))
+        } else {
+            Err(SkipReason::ArchetypeExportNotFound)
+        }
+    });
+    assert_eq!(got.props.rotation, Some([0, 16384, 0]));
+    assert_eq!(got.props.collide_actors, None);
+    assert_eq!(got.unreadable, Some(SkipReason::ArchetypeExportNotFound));
 }
 
 #[test]
@@ -224,7 +256,7 @@ fn a_cyclic_actor_chain_terminates_with_what_it_found() {
     let mut reads = 0;
     let got = walk_actor_chain(&path("A.Pf.Arc"), &mut |c| {
         reads += 1;
-        Some(actor(
+        Ok(actor(
             ActorArchetypeProps {
                 collide_actors: if c[0] == "B" { Some(false) } else { None },
                 ..Default::default()
@@ -233,7 +265,12 @@ fn a_cyclic_actor_chain_terminates_with_what_it_found() {
         ))
     });
     assert_eq!(reads, 2);
-    assert_eq!(got.collide_actors, Some(false));
+    assert_eq!(got.props.collide_actors, Some(false));
+    assert_eq!(
+        got.unreadable,
+        Some(SkipReason::ArchetypeChainLoop),
+        "a cycle means the chain was never followed to an end"
+    );
 }
 
 // ---------- property merge semantics ----------

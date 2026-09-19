@@ -22,6 +22,7 @@ env:
     --exclude cimmeria-scene-editor
     --exclude sgw-launcher
     --exclude cimmeria-client-telemetry
+    --exclude cimmeria-lab
   # Pinned to keep CI byte-identical with what setup.ps1 hydrates locally
   # (bootstrap/CimmeriaBootstrap/Data/Dependencies.psd1). Bumping requires
   # a coordinated change there.

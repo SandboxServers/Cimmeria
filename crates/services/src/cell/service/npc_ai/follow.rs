@@ -137,30 +137,21 @@ pub(super) async fn npc_ai_follow(
         // The unrouted `dest` is a raw 3-axis lerp toward the target,
         // including the target's Y -- an airborne or upstairs target drags
         // the follower through the air and through geometry.
-        let reason = if space_mgr.space_has_navmesh(npc_id) {
-            "no_path"
-        } else {
-            "no_mesh"
-        };
-        tracing::warn!(
-            target: "npc_ai",
-            event = "decision",
-            decision_outcome = "follow_no_path",
-            reason,
-            npc_id,
-            target_id,
-            npc_x = npc_pos.x,
-            npc_y = npc_pos.y,
-            npc_z = npc_pos.z,
-            target_x = target_pos.x,
-            target_y = target_pos.y,
-            target_z = target_pos.z,
-            dest_x = dest.x,
-            dest_y = dest.y,
-            dest_z = dest.z,
-            dy = dest.y - npc_pos.y,
-            dist,
-            "NPC AI: follow found no navmesh path -- falling back to a straight line through geometry"
+        // Resolved before the call: `report_path_failure` takes `&mut`
+        // and this classifier takes `&`.
+        let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+        super::path_failure::report_path_failure(
+            space_mgr,
+            super::path_failure::PathFailure {
+                npc_id,
+                state: "follow",
+                decision_outcome: "follow_no_path",
+                from: npc_pos,
+                to: dest,
+                reason,
+                target_id: Some(target_id),
+            },
+            std::time::Instant::now(),
         );
     }
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {

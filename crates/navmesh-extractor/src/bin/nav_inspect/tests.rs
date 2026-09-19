@@ -128,6 +128,35 @@ fn bad_arguments_are_rejected_rather_than_defaulted() {
     );
 }
 
+/// `f32::from_str` accepts `inf` and `NaN`, and both are catastrophic
+/// here rather than merely wrong: `--gap-h inf` puts every boundary
+/// edge in the mesh into one grid cell, so every pair passes the
+/// horizontal threshold and the gap graph goes quadratic in the edge
+/// count. A `NaN` probe compares unordered against every polygon and
+/// reports "NO POLYGON" about a perfectly good mesh.
+#[test]
+fn non_finite_and_negative_flag_values_are_refused() {
+    let bad = |args: &[&str]| {
+        let mut v = vec!["m.nav"];
+        v.extend_from_slice(args);
+        parse_args_from(&argv(&v)).map(|_| ())
+    };
+    for flag in ["--h-tol", "--v-tol", "--gap-h", "--gap-v"] {
+        assert!(bad(&[flag, "inf"]).is_err(), "{flag} inf");
+        assert!(bad(&[flag, "-inf"]).is_err(), "{flag} -inf");
+        assert!(bad(&[flag, "NaN"]).is_err(), "{flag} NaN");
+        assert!(bad(&[flag, "-1"]).is_err(), "{flag} -1");
+        assert!(bad(&[flag, "0"]).is_ok(), "{flag} 0 is legitimate");
+    }
+    // Zero approaches per pair was silently normalised to one.
+    assert!(bad(&["--gap-count", "0"]).is_err());
+    assert!(bad(&["--gap-count", "-1"]).is_err());
+    assert!(bad(&["--gap-count", "1"]).is_ok());
+    // Probe coordinates go through the same gate, from both sources.
+    assert!(bad(&["--probe", "p=1,inf,3"]).is_err());
+    assert!(bad(&["--probe", "p=NaN,2,3"]).is_err());
+}
+
 #[test]
 fn probe_file_accepts_named_bare_and_commented_lines() {
     let dir = std::env::temp_dir().join(format!("cimmeria-navinspect-{}", std::process::id()));
@@ -150,6 +179,9 @@ fn probe_file_accepts_named_bare_and_commented_lines() {
     assert!(parse_probe_file(&f).is_err(), "3 or 4 fields only");
     std::fs::write(&f, "cell 1 2 three\n").unwrap();
     assert!(parse_probe_file(&f).is_err());
+    std::fs::write(&f, "cell 1 inf 3\n").unwrap();
+    let e = parse_probe_file(&f).expect_err("inf is not a coordinate");
+    assert!(e.contains(":1:"), "the error must name the line: {e}");
     assert!(parse_probe_file(&dir.join("missing.txt")).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }

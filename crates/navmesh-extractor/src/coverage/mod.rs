@@ -74,6 +74,18 @@ pub enum SkipReason {
     /// The chain terminated at a template that has neither a
     /// `StaticMesh` property nor a further archetype to climb to.
     ArchetypeNoMesh,
+    /// The actor's **own** `Archetype` (the chain that supplies
+    /// `bCollideActors`, distinct from the component chain above) is
+    /// non-zero but could not be followed.
+    ///
+    /// The actor is skipped rather than emitted, because the
+    /// alternative is assuming UE3's `bCollideActors = true` default
+    /// for a template that may well have said `false` — and the
+    /// component chain can resolve a mesh perfectly well on its own, so
+    /// the extractor would happily emit geometry nothing collides with.
+    /// On Castle that shape is 26 prefabs' worth of weather cards
+    /// sitting in doorways; emitting them split the exterior navmesh.
+    ActorArchetypeUnreadable,
     /// `CollideActors` is explicitly `false` on the component or,
     /// through UE3 property inheritance, on its archetype. The mesh is
     /// rendered but nothing collides with it, so rasterising it would
@@ -103,7 +115,7 @@ pub enum SkipReason {
 impl SkipReason {
     /// Every variant, in declaration order. Used for deterministic TSV
     /// column ordering and for the `merge` / `total` loops.
-    pub const ALL: [SkipReason; 15] = [
+    pub const ALL: [SkipReason; 16] = [
         SkipReason::NoComponentRef,
         SkipReason::ComponentUnreadable,
         SkipReason::ArchetypeStubComponent,
@@ -112,6 +124,7 @@ impl SkipReason {
         SkipReason::ArchetypeExportNotFound,
         SkipReason::ArchetypeChainLoop,
         SkipReason::ArchetypeNoMesh,
+        SkipReason::ActorArchetypeUnreadable,
         SkipReason::CollisionDisabled,
         SkipReason::NullMeshRef,
         SkipReason::UnresolvableMeshRef,
@@ -132,6 +145,7 @@ impl SkipReason {
             SkipReason::ArchetypeExportNotFound => "skip_archetype_export_not_found",
             SkipReason::ArchetypeChainLoop => "skip_archetype_chain_loop",
             SkipReason::ArchetypeNoMesh => "skip_archetype_no_mesh",
+            SkipReason::ActorArchetypeUnreadable => "skip_actor_archetype_unreadable",
             SkipReason::CollisionDisabled => "skip_collision_disabled",
             SkipReason::NullMeshRef => "skip_null_mesh_ref",
             SkipReason::UnresolvableMeshRef => "skip_unresolvable_mesh_ref",
@@ -152,13 +166,14 @@ impl SkipReason {
             SkipReason::ArchetypeExportNotFound => 5,
             SkipReason::ArchetypeChainLoop => 6,
             SkipReason::ArchetypeNoMesh => 7,
-            SkipReason::CollisionDisabled => 8,
-            SkipReason::NullMeshRef => 9,
-            SkipReason::UnresolvableMeshRef => 10,
-            SkipReason::MeshNotInIndex => 11,
-            SkipReason::MeshDecodeFailed => 12,
-            SkipReason::MeshNoCollision => 13,
-            SkipReason::NoPackageIndex => 14,
+            SkipReason::ActorArchetypeUnreadable => 8,
+            SkipReason::CollisionDisabled => 9,
+            SkipReason::NullMeshRef => 10,
+            SkipReason::UnresolvableMeshRef => 11,
+            SkipReason::MeshNotInIndex => 12,
+            SkipReason::MeshDecodeFailed => 13,
+            SkipReason::MeshNoCollision => 14,
+            SkipReason::NoPackageIndex => 15,
         }
     }
 }

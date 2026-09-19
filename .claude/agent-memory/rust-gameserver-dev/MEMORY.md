@@ -102,6 +102,7 @@
 - [sqlx-chain-id-is-i32-vacuous-guards.md](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is `integer` (i32), not i64; a wrong decode type PASSES forever inside a "must return no rows" guard and then panics with `ColumnDecode` instead of the assertion message on the day it catches something.
 - [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
+- [worktree-shell-and-external-binary-tests.md](worktree-shell-and-external-binary-tests.md) — worktree-isolated Bash refuses `env VAR=x cmd`, heredoc-plus-shell-var and appends; and a test asserting a from-tree C++ binary's behaviour needs an explicit opt-in env var (bin64/ holds whatever branch built it last).
 
 ## Navmesh extraction (UE3 → NavBuilder)
 
@@ -137,6 +138,8 @@
 - [dialog-set-bind-routing-and-edges.md](dialog-set-bind-routing-and-edges.md) — **read before authoring any quest-icon bind.** `add_dialog_set target_id` is a dialog_set_MAP id; NULL-`dialog_id` rows are KEPT since CA02 (any "dropped at load" comment is stale) and are the right choice when an `interact_tag` chain supplies the dialog; a bind fans to EVERY entity of the template; `player_loaded` is an EDGE and needs a `mission_completed` partner when the gate opens in the same world; mission ABANDON fires no chain event at all (campaign-wide gap, Rust fix); Route A kills the `last_interaction_target` pin a later `display_dialog` needs.
 
 ## Observability / logging
+
+- [observability-test-and-throttle-traps.md](observability-test-and-throttle-traps.md) — **read before adding any counter/log test in cell code.** Counter emission is unobservable in tests (no Meter); `create_space_instance`'s nav path is CWD-relative so its log branch needs extraction to be testable; `create_entity` leaves `is_player=false`; the LogThrottle/`suppressed` pattern + its two mandatory guards; the immutable-then-mutable borrow order these helpers force.
 
 - [tracing-span-fields-not-on-log-records.md](tracing-span-fields-not-on-log-records.md) — **read before any "stamp X onto every log" task.** `opentelemetry-appender-tracing` does NOT flatten ancestor span fields onto log records, so span-only enrichment is invisible in SigNoz Logs; spans don't cross the base↔cell mpsc boundary; `Option<T>` tracing fields are omitted when `None` (never `unwrap_or(0)`); `LogCapture` sees only event-own fields.
 

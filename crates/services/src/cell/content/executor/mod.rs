@@ -560,7 +560,7 @@ async fn execute_one(
             destination,
             speed: _,
         } => {
-            world::move_waypoint(entity_tag, destination, entity_id, chain_id, space_mgr);
+            world::move_waypoint(entity_tag, destination, entity_id, chain_id, tx, space_mgr).await;
         }
         Action::SetActiveSlot { bag_id, slot } => {
             tracing::info!(

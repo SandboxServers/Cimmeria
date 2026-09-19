@@ -57,6 +57,10 @@ struct ExportRecord {
     name: i32,
     archetype: i32,
     payload: Vec<u8>,
+    /// Write a serial offset past the end of the file, so
+    /// `read_export_data` fails instead of returning bytes. See
+    /// [`PackageBuilder::set_unreadable`].
+    unreadable: bool,
 }
 
 impl ExportRecord {
@@ -176,9 +180,29 @@ impl PackageBuilder {
             name: self.names.intern(name),
             archetype: 0,
             payload: Vec::new(),
+            unreadable: false,
         };
         self.exports.push(rec);
         self.exports.len() as i32
+    }
+
+    /// Make an export's body unreadable: its `serial_size` stays
+    /// positive but its `serial_offset` points past the end of the
+    /// file, so `Package::read_export_data` returns an error.
+    ///
+    /// This is the truncated-cook shape. It matters because the
+    /// tempting handling — `read_export_data(..).unwrap_or_default()` —
+    /// turns "we could not read this" into "this object has no
+    /// properties", which for a cooked `StaticMeshComponent` is
+    /// indistinguishable from a legitimate prefab-archetype stub.
+    pub fn set_unreadable(&mut self, export: i32) {
+        let rec = self.export_mut(export);
+        if rec.payload.is_empty() {
+            // A zero-length body reads as `Ok(vec![])` regardless of
+            // the offset, so the fixture would not be unreadable at all.
+            rec.payload = vec![0u8; 16];
+        }
+        rec.unreadable = true;
     }
 
     /// Set an export's serial body.
@@ -227,7 +251,13 @@ impl PackageBuilder {
 
         let mut cursor = payload_base;
         for e in &self.exports {
-            let offset = if e.payload.is_empty() { 0 } else { cursor };
+            let offset = match (e.unreadable, e.payload.is_empty()) {
+                // Far past the end of anything this builder writes, so
+                // the reader's `read_exact` hits EOF.
+                (true, _) => i32::MAX / 2,
+                (false, true) => 0,
+                (false, false) => cursor,
+            };
             e.encode(&mut out, offset);
             cursor += e.payload.len() as i32;
         }

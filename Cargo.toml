@@ -31,6 +31,8 @@ members = [
     "crates/discord",
     "crates/client-telemetry",
     "crates/observability",
+    "crates/lab",
+    "crates/client-launch",
 ]
 default-members = [
     "crates/common",

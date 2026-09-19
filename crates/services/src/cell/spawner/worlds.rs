@@ -85,7 +85,7 @@ mod live_db_tests {
     use super::*;
     use crate::test_support::require_db_or_skip;
 
-    /// Harset (57) is the one world seeded advisory, and SGC_W1 (58) — a
+    /// Harset (57) is seeded advisory, and SGC_W1 (58) — a
     /// world with a mesh nobody has reported holes in — is not.
     ///
     /// Asserted as a pair on purpose. "Harset is advisory" alone passes
@@ -122,21 +122,30 @@ mod live_db_tests {
     }
 
     /// The column's default does the work for the ~180 rows the seed never
-    /// mentions it on: exactly one row in the whole table is advisory.
-    /// A seed edit that widened the demotion would show up here as a count.
+    /// mentions it on: exactly two rows in the whole table are advisory,
+    /// each with its evidence in the seed comment. A seed edit that widened
+    /// the demotion would show up here as a changed list.
+    ///
+    /// - `Harset` (57): `harset.nav` has a 30-unit hole across the only walk
+    ///   to the Command Center door.
+    /// - `Castle` (8): `castle.nav` is new (rebuilt from the client maps
+    ///   2026-09-19) and its exterior and interior are still separate
+    ///   regions, so it ships as pathing / line-of-sight / height
+    ///   information until an in-client walk proves its coverage.
     #[tokio::test]
-    async fn exactly_one_world_is_seeded_advisory() {
+    async fn only_the_documented_worlds_are_seeded_advisory() {
         let pool = require_db_or_skip!();
         let rows = load_world_rows(&pool).await.expect("load_world_rows");
 
-        let advisory: Vec<&str> = rows
+        let mut advisory: Vec<&str> = rows
             .iter()
             .filter(|(_, r)| r.navmesh_mode == NavmeshMode::Advisory)
             .map(|(name, _)| name.as_str())
             .collect();
+        advisory.sort_unstable();
         assert_eq!(
             advisory,
-            ["Harset"],
+            ["Castle", "Harset"],
             "advisory is a per-world escape hatch for a known-bad mesh, not a \
              default; every other world's containment gate must stay on",
         );

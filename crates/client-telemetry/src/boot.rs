@@ -282,6 +282,28 @@ fn bootstrap_phase2() {
     // create logs a warn event and the hook becomes a no-op.
     crate::hooks::install_all(producer);
 
+    // Step 6.6: start the Live Research Lab bridge if this launch is
+    // a lab session. Double-gated: this code only exists under the
+    // `lab-bridge` feature, and `maybe_start` returns `None` (binds
+    // nothing) unless `current-session.json` carried a `lab` block.
+    // The Tick hook's drain is a no-op until the handle is installed.
+    #[cfg(feature = "lab-bridge")]
+    {
+        if let Some(handle) = crate::bridge::maybe_start(&session) {
+            let _ = crate::bridge::install_handle(handle);
+            // Outer-tier crash capture (ADR §6 / #685 scope 4). Only in
+            // a lab session — a normal telemetry launch must not replace
+            // UE3's unhandled-exception filter. Evidence lands in the
+            // session dir (parent of current-session.json) next to the
+            // marker the supervisor reads for `lab_crash_report`.
+            if let Ok(session_file) = crate::session::session_path_for_host(&host_exe) {
+                if let Some(dir) = session_file.parent() {
+                    crate::bridge::crash::install(dir.to_path_buf());
+                }
+            }
+        }
+    }
+
     // Step 7: park the bootstrap thread. Future Phase 7 hooks can
     // wake us via an `Event` to drive shutdown drain. For now,
     // `thread::park()` blocks until the OS reclaims the thread at

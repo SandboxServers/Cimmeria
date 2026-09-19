@@ -3,8 +3,8 @@
 //! entity-method encoding boundaries.
 
 use super::super::{
-    write_wstring, BASEMSG_LOGGED_OFF, BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT,
-    FRAG_FIRST_AND_LAST,
+    write_wstring, ACCOUNT_CLASS_ID, BASEMSG_CREATE_BASE_PLAYER, BASEMSG_LOGGED_OFF,
+    BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT, FRAG_FIRST_AND_LAST,
 };
 use super::*;
 use cimmeria_mercury::encryption::MercuryEncryption;
@@ -111,6 +111,104 @@ fn char_list_empty() {
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert!(!out.is_empty());
+}
+
+/// Client-side entity typeIDs (clientIndex), derived the way the client does
+/// it: walk `entities/entities.xml` in document order and hand out the next
+/// index only to entries whose `.def` is NOT `<ServerOnly/>`
+/// (`EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520`, second
+/// counter at `desc+0x1e`).
+fn client_index_of(entity: &str) -> Option<u8> {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../entities");
+    let xml = std::fs::read_to_string(format!("{root}/entities.xml")).unwrap();
+
+    // Drop `<!-- ... -->` spans so commentary can never be read as an entry.
+    let mut body = String::with_capacity(xml.len());
+    let mut rest = xml.as_str();
+    while let Some(start) = rest.find("<!--") {
+        body.push_str(&rest[..start]);
+        rest = match rest[start..].find("-->") {
+            Some(end) => &rest[start + end + 3..],
+            None => "",
+        };
+    }
+    body.push_str(rest);
+
+    let mut next = 0u8;
+    for tag in body.split('<').skip(1) {
+        // Only self-closing `<Name/>` entries; skips `<root>` / `</root>`.
+        let Some((name, _)) = tag.split_once("/>") else {
+            continue;
+        };
+        let name = name.trim();
+        let def = std::fs::read_to_string(format!("{root}/defs/{name}.def")).unwrap();
+        if def.contains("<ServerOnly") {
+            continue;
+        }
+        if name == entity {
+            return Some(next);
+        }
+        next += 1;
+    }
+    None
+}
+
+/// Regression guard: the wire typeID is the client's
+/// clientIndex, which skips `<ServerOnly/>` entries — NOT the raw
+/// `entities.xml` document index. `SGWBlackMarket` (raw index 7) is
+/// ServerOnly, so `Account` (raw index 8) is clientIndex 7. Deriving the
+/// expected value from the entity files keeps this from being a
+/// constant-equals-itself assertion.
+#[test]
+fn entity_class_ids_are_client_indices_not_raw_document_indices() {
+    use super::super::{SGWGMPLAYER_CLASS_ID, SGWPLAYER_CLASS_ID};
+
+    assert_eq!(client_index_of("SGWPlayer"), Some(SGWPLAYER_CLASS_ID));
+    assert_eq!(client_index_of("SGWGmPlayer"), Some(SGWGMPLAYER_CLASS_ID));
+    assert_eq!(
+        client_index_of("Account"),
+        Some(ACCOUNT_CLASS_ID),
+        "Account's clientIndex skips ServerOnly SGWBlackMarket; 0x08 is its \
+         raw document index, which the client cannot resolve"
+    );
+    assert_eq!(ACCOUNT_CLASS_ID, 0x07);
+    assert_eq!(
+        client_index_of("SGWBlackMarket"),
+        None,
+        "ServerOnly entities never take a clientIndex"
+    );
+}
+
+/// Byte-exact wire guard: the `createBasePlayer` (msg 0x05) payload inside
+/// `build_char_list` carries the Account clientIndex `0x07` as a `u16` LE
+/// typeId (`ServerConnection_createBasePlayer @ ghidra://SGW.exe@0x00dddca0`
+/// reads 4 bytes of entityId, then 2 bytes of typeId).
+#[test]
+fn char_list_create_base_player_carries_account_type_0x07() {
+    let out = build_char_list(
+        &TEST_KEY,
+        3,
+        &[],
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let pt = enc.decrypt(&out).unwrap();
+
+    // Plaintext layout: [flags u8][body...]. Body starts with
+    // BASEMSG_CREATE_BASE_PLAYER (0x05), WORD_LENGTH 6, entityId u32,
+    // then typeId u16 LE (the builders push it as classId u8 + a 0x00 byte
+    // they label `propertyCount`).
+    assert_eq!(pt[1], BASEMSG_CREATE_BASE_PLAYER, "msg id");
+    assert_eq!(&pt[2..4], &6u16.to_le_bytes(), "WORD_LENGTH = 6");
+    assert_eq!(&pt[4..8], &1u32.to_le_bytes(), "account entityId");
+    assert_eq!(
+        &pt[8..10],
+        &0x0007u16.to_le_bytes(),
+        "createBasePlayer must emit typeId 0x0007 (Account clientIndex); \
+         0x0008 is unmapped on the client and breaks character select"
+    );
 }
 
 #[test]

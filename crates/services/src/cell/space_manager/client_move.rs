@@ -397,6 +397,12 @@ impl SpaceManager {
     ) -> ClientMoveOutcome {
         self.update_entity_position(entity_id, position, direction, velocity);
         self.movement_validator.clear_rejects(entity_id);
+        // Observability only, and self-throttled to ~1 row per player per
+        // 5 s of actual movement (NPCs never sample). The positive-space
+        // counterpart to the reject log: without it we know where players
+        // are stopped and nothing about where they successfully walk,
+        // which is what finds a navmesh hole before somebody falls in.
+        self.sample_accepted_position_at(entity_id, position, Instant::now());
         ClientMoveOutcome::Accepted { position }
     }
 
