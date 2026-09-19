@@ -67,15 +67,22 @@ async fn outbox_round_trip_against_real_db() {
 }
 ```
 
-`test_support::test_pool()` returns
-`Result<PgPool, SkipReason>`, where `SkipReason` distinguishes
-`NotConfigured` (DATABASE_URL unset or empty — silent skip) from
-`ConnectFailed(String)` (variable set but `connect()` failed —
-surfaces sqlx's underlying error so the developer can fix it). The
-macro logs the reason via `eprintln!("{module_path}: skipping
-live-DB test ({reason})")` and returns from the test on either
-shape. The unit-test suite stays green on a fresh checkout — only
-`DATABASE_URL=postgres://… cargo test` exercises the integration
+The gate lives in `crates/services/src/live_db_gate.rs` and is
+re-exported from `test_support`. `test_pool()` returns
+`Result<PgPool, SkipReason>`, and the macro treats the two failure
+shapes differently:
+
+- `NotConfigured` (`DATABASE_URL` unset or empty): the test logs
+  `{module_path}: skipping live-DB test (DATABASE_URL not set)` and
+  returns. This is how a fresh checkout and CI's no-DB pass stay green.
+- `ConnectFailed(String)` (`DATABASE_URL` set but `connect()` failed):
+  the test **panics** with sqlx's error. Setting `DATABASE_URL` asks for
+  the live-DB tier to run, so a wrong port, wrong credentials or a
+  stopped server is a failure, not a skip. Before #615 this case also
+  skipped, so a run against an unreachable database reported every
+  live-DB guard as passed without executing any of them.
+
+Only `DATABASE_URL=postgres://… cargo test` exercises the integration
 path.
 
 Each test is responsible for its own data isolation: either work

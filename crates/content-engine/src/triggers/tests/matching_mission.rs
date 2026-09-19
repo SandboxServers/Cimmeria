@@ -89,3 +89,39 @@ fn mission_completed_rejects_wrong_id() {
     );
     assert!(!trigger.matches(&event));
 }
+
+// ─── OnMissionAbandoned (Harset H54) ──────────────────────────
+
+#[test]
+fn mission_abandoned_matches_correct_mission_id() {
+    let trigger = Trigger::OnMissionAbandoned { mission_id: 1324 };
+    let event = make_event(
+        TriggerType::MissionAbandoned,
+        vec![("mission_id", serde_json::json!(1324))],
+    );
+    assert!(trigger.matches(&event));
+}
+
+#[test]
+fn mission_abandoned_rejects_wrong_mission_id() {
+    let trigger = Trigger::OnMissionAbandoned { mission_id: 1324 };
+    let event = make_event(
+        TriggerType::MissionAbandoned,
+        vec![("mission_id", serde_json::json!(1326))],
+    );
+    assert!(!trigger.matches(&event));
+}
+
+/// Abandon and complete share a match body but not a discriminant. A
+/// repaint-the-offer chain keyed on the abandon must not also fire when the
+/// player *finishes* the mission — that would reopen an offer the player has
+/// legitimately consumed.
+#[test]
+fn abandoned_and_completed_do_not_answer_each_others_events() {
+    let abandoned = Trigger::OnMissionAbandoned { mission_id: 1324 };
+    let completed = Trigger::OnMissionCompleted { mission_id: 1324 };
+    let params = vec![("mission_id", serde_json::json!(1324))];
+
+    assert!(!abandoned.matches(&make_event(TriggerType::MissionCompleted, params.clone())));
+    assert!(!completed.matches(&make_event(TriggerType::MissionAbandoned, params)));
+}

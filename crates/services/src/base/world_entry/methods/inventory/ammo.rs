@@ -11,15 +11,16 @@ use sqlx::PgPool;
 /// `expected_instance_id` is added to the WHERE clause as a TOCTOU guard.
 /// Between the cell sending `BandolierAmmoUpdate` and this UPDATE running, the
 /// player could have swapped the slot's weapon. The predicate keys on the
-/// `sgw_inventory.item_id` per-row instance id (a server-allocated surrogate,
-/// unique per slot via `sgw_inventory_unique_slot`), so it fires even
-/// when the swapped-in weapon shares the same *design* (`type_id`) as the one
-/// the ammo writeback was computed for. Keying on `type_id` instead — as an
-/// earlier version did — left a same-type-swap window: two physical instances
-/// of the same weapon design passed the predicate and could scribble each
-/// other's ammo (a dupe vector). A zero-row result here means the slot is
-/// unequipped *or* the instance changed — in both cases dropping the write is
-/// correct.
+/// `sgw_inventory.item_id` per-row instance id — a server-allocated surrogate
+/// and the declared primary key of `sgw_inventory` (`sgw_inventory_pkey`; the
+/// child table carries its own PK because a parent PK does not span inherited
+/// children) — so it fires even when the swapped-in weapon shares the same
+/// *design* (`type_id`) as the one the ammo writeback was computed for. Keying
+/// on `type_id` instead — as an earlier version did — left a same-type-swap
+/// window: two physical instances of the same weapon design passed the
+/// predicate and could scribble each other's ammo (a dupe vector). A zero-row
+/// result here means the slot is unequipped *or* the instance changed — in
+/// both cases dropping the write is correct.
 pub async fn update_bandolier_ammo(
     pool: &PgPool,
     character_id: i32,

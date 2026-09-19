@@ -849,11 +849,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-client-launch"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.20",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "cimmeria-client-telemetry"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "flate2",
+ "microseh",
  "minhook-sys",
  "serde",
  "serde_json",
@@ -979,6 +989,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-lab"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "cimmeria-client-launch",
+ "png 0.17.16",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "cimmeria-lab-mcp"
 version = "0.1.0"
 dependencies = [
@@ -1024,6 +1053,7 @@ name = "cimmeria-navmesh-extractor"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "cimmeria-navmesh-extractor",
  "cimmeria-upk",
  "cimmeria-upk-objects",
  "thiserror 2.0.20",
@@ -3814,6 +3844,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "microseh"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c21a3b5df1f93ad17fea4bdf3c99fbd841cda0d4102cd42a6003ff3fdf89b59"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6080,6 +6119,7 @@ name = "sgw-launcher"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "cimmeria-client-launch",
  "ed25519-dalek",
  "eframe",
  "egui",

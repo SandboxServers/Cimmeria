@@ -32,6 +32,13 @@ pub use event_dispatch::{
 // per tick from `cell::service::message_loop`, same flat depth as the
 // `fire_*` dispatchers above.
 pub(crate) use executor::deferred_content_action_tick;
+// Re-entrancy bound for the H52 step-activation region replay. Re-exported
+// because the guard's state lives on `SpaceManager` (the `&mut` borrow the
+// whole recursion already threads) while its logic belongs with the
+// dispatcher that owns it.
+pub(crate) use event_dispatch::{
+    fire_mission_abandoned, fire_step_activation_regions, StepRegionReplayGuard,
+};
 
 #[cfg(test)]
 mod tests {
@@ -86,9 +93,15 @@ mod tests {
         let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Harset" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
         mgr.create_startup_spaces(cxml).unwrap();
-        mgr.stamp_world_ids(&std::collections::HashMap::from([
-            ("Harset".to_string(), 57),
-            ("Harset_CmdCenter".to_string(), 68),
+        mgr.stamp_world_rows(&std::collections::HashMap::from([
+            (
+                "Harset".to_string(),
+                crate::cell::spawner::WorldRow::enforcing(57),
+            ),
+            (
+                "Harset_CmdCenter".to_string(),
+                crate::cell::spawner::WorldRow::enforcing(68),
+            ),
         ]));
         mgr
     }

@@ -98,15 +98,17 @@ are workspace members that live outside `crates/`.
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |
 | `server` | `cimmeria-server` | **Binary entry point.** `cargo run -p cimmeria-server` |
-| `launcher` | `sgw-launcher` | Player-facing game launcher. egui native window, installs from a seed + patch manifest on Azure Blob, launches `SGW.exe` or the Atera debug bat, uploads debug logs back to storage. Owns the DLL-injection path (`src/inject.rs`) that side-loads `cimmeria-client-telemetry` into `SGW.exe`. See [docs/client/sgw-launcher.md](../docs/client/sgw-launcher.md). |
+| `launcher` | `sgw-launcher` | Player-facing game launcher. egui native window, installs from a seed + patch manifest on Azure Blob, launches `SGW.exe` or the Atera debug bat, uploads debug logs back to storage. Owns the DLL-injection path — extracted into the shared `cimmeria-client-launch` crate (#685) so `cimmeria-lab` drives the same code — that side-loads `cimmeria-client-telemetry` into `SGW.exe`. See [docs/client/sgw-launcher.md](../docs/client/sgw-launcher.md). |
+| `client-launch` | `cimmeria-client-launch` | Shared client launch primitives — suspended-process launch, DLL injection, and SGW.exe `.rdata` hostname patch — extracted from `sgw-launcher` (#685) so both it and `cimmeria-lab` drive the same code path. Compiles everywhere (cfg'd stubs off Windows); the launcher re-exports it as `launch` / `inject` / `patch_rdata`. |
 | `client-telemetry` | `cimmeria-client-telemetry` | **Windows-only cdylib** (`i686-pc-windows-msvc`) injected into `SGW.exe` for client-side observability. Subscribes to CME EventSignals, installs function hooks, and tees client logs to cimmeria-server's `/api/telemetry/upload-chunk`. Built and tested by its own [client-telemetry-build CI workflow](../.github/workflows/client-telemetry-build.yml). See [docs/reverse-engineering/findings/client-instrumentation-hookpoints.md](../docs/reverse-engineering/findings/client-instrumentation-hookpoints.md) for the hook anchor table. |
 | `upk` | `cimmeria-upk` | UPK (Unreal Package) file parser |
-| `upk-objects` | `cimmeria-upk-objects` | UPK object type definitions |
-| `navmesh-extractor` | `cimmeria-navmesh-extractor` | Extracts UE3 `.umap` chunk geometry to `.obj` for the C++ NavBuilder Recast pipeline. Owns the XRC `.nav` round-trip parser/emitter — the canonical Rust-side ground truth for the wire format `crates/entity/src/navigation/` consumes at runtime. See [README](navmesh-extractor/README.md). |
+| `upk-objects` | `cimmeria-upk-objects` | UE3 object deserializers: `StaticMesh` (LODs + kDOP collision), `Terrain` (heightmap + hole flags), `Model` / `Polys` (BSP world geometry), `Texture2D`, bulk data, and the cross-package export index |
+| `navmesh-extractor` | `cimmeria-navmesh-extractor` | Extracts UE3 `.umap` chunk collision (StaticMesh, Terrain, BSP) to `.obj` for the C++ NavBuilder Recast pipeline, with the `extract_map` CLI (coverage report, floor probe), the `nav_inspect` connectivity gate (probe reachability plus `--gaps`, the boundary-edge gap finder and bottleneck chain search) and `obj_slab`, which measures the source chunk OBJs at a gap's coordinates to classify it. Also ships `archetype_census`, which reports what the prefab-archetype set actually contains per mesh. Owns the XRC `.nav` round-trip parser/emitter — the canonical Rust-side ground truth for the wire format `crates/entity/src/navigation/` consumes at runtime. See [README](navmesh-extractor/README.md); the measured results live in [docs/engine/castle-extraction-measurements.md](../docs/engine/castle-extraction-measurements.md) and [docs/engine/castle-navmesh-connectivity.md](../docs/engine/castle-navmesh-connectivity.md). |
 | `wireclient` | `cimmeria-wireclient` | **Tier 3 headless test client.** Drives the SOAP auth, Mercury phase-3 handshake, and replays captured `.pcap` + AES-key sessions for end-to-end behavioral validation. Pairs with `tools/pcap_to_session.py` (JSONL exporter built atop `tools/pcap_dissect.py`). See [docs/architecture/wireclient.md](../docs/architecture/wireclient.md). |
 | `discord` | `cimmeria-discord` | Discord notification sink. Owns the `EventKind` catalogue and per-event `EventToggles`, hot-reloadable TOML config (`config::ConfigWatcher` over [config/discord.toml.example](../config/discord.toml.example)), channel routing (`router::channel_for`), embed formatting + budget trimming (`embed::format_event`), and a rate-limited async sender (`sender::` — HTTP, mock, and token-bucket). Also exposes `DiscordLayer`, a `tracing` layer that lifts warn/error records into notifications. Typed `emit_*` helpers are the intended call surface. See [docs/architecture/discord-notifications.md](../docs/architecture/discord-notifications.md). |
 | `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry SDK's metrics API. Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
 | `lab-mcp` | `cimmeria-lab-mcp` | In-server MCP endpoint (streamable HTTP via `rmcp`) for the live research lab (#687). Fixed tool set (`server_console_list`, `server_console_exec`, `server_sessions`, `server_log_tail`, `server_content_reload`, `server_db_query`) so an agent can drive/inspect a running server from Claude Code. Runs on its **own** `TcpListener` — never the admin router (#439) — fail-closed on `CIMMERIA_LAB_MCP_BIND` + `CIMMERIA_LAB_MCP_TOKEN` (>=32-byte token), gated by a single shared bearer token (constant-time compare), one `lab.tool_call` audit event per call. See [docs/architecture/live-research-lab.md](../docs/architecture/live-research-lab.md). |
+| `lab` | `cimmeria-lab` | **Windows-only supervisor + stdio MCP server** for the Live Research Lab (phases 1–2). Proxies the `client_*` probe tools to the injected client bridge (`cimmeria-client-telemetry` built `--features lab-bridge`) over a token-gated framed-JSON-RPC loopback channel, and owns the SGW.exe process lifecycle: `lab_client_start`/`_stop`/`_restart`/`_status`, `lab_login` (Lua autologin), `lab_screenshot`, `lab_crash_report`, a heartbeat watchdog, and a crash-recovery journal + quarantine. Excluded from the workspace CI jobs (like `sgw-launcher`); not in `default-members`. See [docs/architecture/live-research-lab.md](../docs/architecture/live-research-lab.md). |
 
 ## Building
 
@@ -126,19 +128,19 @@ cargo test -p cimmeria-services
 # Full workspace check (high memory on WSL — skip the GUI apps and the
 # Windows-only client-telemetry cdylib):
 cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 ```
 
 See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the five excluded crates below contribute the rest). 224 are live-DB regression guards — all in `cimmeria-services` — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the six excluded crates below contribute the rest). 224 are live-DB regression guards — all in `cimmeria-services` — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
 # Unit + non-DB integration:
 cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \

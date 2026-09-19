@@ -118,12 +118,43 @@ fn rotate_yaw_pitch_roll(v: [f32; 3], yaw: f32, pitch: f32, roll: f32) -> [f32; 
     [x3, y3, z3]
 }
 
-/// Apply a transform to every vertex of every triangle in a list.
+impl ActorTransform {
+    /// Whether this transform mirrors the mesh: a negative scale
+    /// determinant (`DrawScale^3 * DrawScale3D.x * .y * .z < 0`).
+    ///
+    /// Level designers mirror a prop by negating one `DrawScale3D`
+    /// axis — 198 of Castle's 6,436 `StaticMeshActor`s, including the
+    /// hallway ramps on the stairwell centreline. Rotation never changes
+    /// handedness, so the scale alone decides it.
+    pub fn is_mirrored(&self) -> bool {
+        let s = self.draw_scale;
+        let d = self.draw_scale_3d;
+        s * s * s * d[0] * d[1] * d[2] < 0.0
+    }
+
+    /// Place a mesh-local triangle in world space, preserving which way
+    /// it faces.
+    ///
+    /// A mirroring transform reverses a triangle's winding, and
+    /// NavBuilder decides walkability from winding alone: emitted
+    /// verbatim, a mirrored ramp's tread reads as a ceiling and the ramp
+    /// drops out of the navmesh. Swapping two vertices undoes the
+    /// reversal, which is what the engine's renderer does for the same
+    /// reason (it flips cull mode on a negative determinant).
+    pub fn apply_triangle(&self, t: [[f32; 3]; 3]) -> [[f32; 3]; 3] {
+        let (a, b, c) = (self.apply(t[0]), self.apply(t[1]), self.apply(t[2]));
+        if self.is_mirrored() {
+            [a, c, b]
+        } else {
+            [a, b, c]
+        }
+    }
+}
+
+/// Apply a transform to every triangle in a list, keeping each one's
+/// facing (see [`ActorTransform::apply_triangle`]).
 pub fn transform_triangles(triangles: &[[[f32; 3]; 3]], xf: &ActorTransform) -> Vec<[[f32; 3]; 3]> {
-    triangles
-        .iter()
-        .map(|t| [xf.apply(t[0]), xf.apply(t[1]), xf.apply(t[2])])
-        .collect()
+    triangles.iter().map(|t| xf.apply_triangle(*t)).collect()
 }
 
 #[cfg(test)]
@@ -254,5 +285,83 @@ mod tests {
         let xf = ActorTransform::default();
         let out = transform_triangles(&[], &xf);
         assert!(out.is_empty());
+    }
+
+    /// Right-hand-rule normal of a triangle's emitted winding.
+    fn rh_normal(t: [[f32; 3]; 3]) -> [f32; 3] {
+        let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+        let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+        [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ]
+    }
+
+    /// A floor tread as StaticMesh collision stores it: UE3's clockwise
+    /// order, so the right-hand normal points down — the facing
+    /// NavBuilder reads as walkable.
+    const TREAD: [[f32; 3]; 3] = [[0.0, 0.0, 0.0], [0.0, 100.0, 0.0], [100.0, 0.0, 0.0]];
+
+    fn scaled(draw_scale: f32, draw_scale_3d: [f32; 3]) -> ActorTransform {
+        ActorTransform {
+            draw_scale,
+            draw_scale_3d,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn only_an_odd_number_of_negative_axes_mirrors() {
+        assert!(!scaled(1.0, [1.0, 1.0, 1.0]).is_mirrored());
+        assert!(scaled(1.0, [-1.0, 1.0, 1.0]).is_mirrored());
+        assert!(scaled(1.0, [1.0, -1.0, 1.0]).is_mirrored());
+        // Two negations are a 180° rotation, not a mirror.
+        assert!(!scaled(1.0, [-1.0, -1.0, 1.0]).is_mirrored());
+        assert!(scaled(1.0, [-1.0, -1.0, -1.0]).is_mirrored());
+        // A negative uniform scale negates all three axes.
+        assert!(scaled(-1.0, [1.0, 1.0, 1.0]).is_mirrored());
+        assert!(!scaled(-1.0, [-1.0, 1.0, 1.0]).is_mirrored());
+    }
+
+    /// Castle's stairwell ramp (`CA-large_hallway_ramp_a_00`, authored
+    /// with `DrawScale3D = (-1, 1, 1)`) came out of the extractor facing
+    /// the wrong way and dropped out of the navmesh, splitting the
+    /// interior storeys. The tread must face the same way mirrored as
+    /// unmirrored.
+    #[test]
+    fn a_mirrored_instance_keeps_its_treads_facing_the_same_way() {
+        assert!(rh_normal(TREAD)[2] < 0.0, "fixture must face walkable");
+
+        let plain = scaled(1.0, [1.0, 1.0, 1.0]).apply_triangle(TREAD);
+        assert!(rh_normal(plain)[2] < 0.0);
+
+        for ds3 in [[-1.0, 1.0, 1.0], [1.0, -1.0, 1.0]] {
+            let xf = scaled(1.0, ds3);
+            let placed = xf.apply_triangle(TREAD);
+            assert!(
+                rh_normal(placed)[2] < 0.0,
+                "mirrored by {ds3:?}: tread flipped to face the ceiling"
+            );
+            // Same three world positions, only the order differs.
+            let naive = [xf.apply(TREAD[0]), xf.apply(TREAD[1]), xf.apply(TREAD[2])];
+            assert!(rh_normal(naive)[2] > 0.0, "guard fixture no longer mirrors");
+            assert!(approx_vec(placed[0], naive[0]));
+            assert!(approx_vec(placed[1], naive[2]));
+            assert!(approx_vec(placed[2], naive[1]));
+        }
+    }
+
+    #[test]
+    fn a_mirrored_instance_survives_rotation() {
+        // Yaw 90° plus a mirror: rotation must not change the verdict.
+        let xf = ActorTransform {
+            rotation: [0, 16384, 0],
+            draw_scale_3d: [-1.0, 1.0, 1.0],
+            ..Default::default()
+        };
+        assert!(rh_normal(xf.apply_triangle(TREAD))[2] < 0.0);
+        let out = transform_triangles(&[TREAD], &xf);
+        assert!(rh_normal(out[0])[2] < 0.0);
     }
 }

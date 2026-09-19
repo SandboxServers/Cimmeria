@@ -32,6 +32,8 @@ members = [
     "crates/client-telemetry",
     "crates/observability",
     "crates/lab-mcp",
+    "crates/lab",
+    "crates/client-launch",
 ]
 default-members = [
     "crates/common",

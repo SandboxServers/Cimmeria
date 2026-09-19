@@ -10,3 +10,8 @@
 - [cross-world-teleport-arrival-path.md](cross-world-teleport-arrival-path.md) — CrossWorldTeleport is destroy+GateTravel+world-entry, not forced position; zero arrival validation; the cell_spaces.xml startup-space trap
 - [region-trigger-world-scoping.md](region-trigger-world-scoping.md) — Block on sight: enter_region chains are world-unscoped and keyed on a client-supplied region id; no world condition is authorable
 - [region-trigger-containment-gap.md](region-trigger-containment-gap.md) — Block on sight: TRIGGER_REGION never re-checks server-known containment (2009 did); routing a region to travel makes it a free teleport
+- [npc-broadcast-facing-and-grounding.md](npc-broadcast-facing-and-grounding.md) — We only send the FullPos avatar variant so the client never grounds NPCs (still true 2026-09-19); animation is a separate channel. The pack_angle north-snap it also records was FIXED in #677
+- [castle-has-no-navmesh.md](castle-has-no-navmesh.md) — Meshless worlds path on an unvalidated 3D straight line and fail open. Castle itself got castle.nav in #709 (2026-09-19); the mechanism still applies to every world without a .nav
+- [npc-leg-boundary-y-sawtooth.md](npc-leg-boundary-y-sawtooth.md) — Measured ~0.15-0.18u Y bob at every path-leg boundary on flat floors; poly-mesh corners vs detail-mesh endpoint
+- [npcs-cannot-turn-in-place.md](npcs-cannot-turn-in-place.md) — 2026-09-18 diagnosis of frozen attacker yaw. RESOLVED by `face_target` in #682 — read for the mechanism and the missing arc-gate question, not as a current defect
+- [leash-is-a-bare-field-write.md](leash-is-a-bare-field-write.md) — npc_ai_leash writes npc.position directly: AoI grid desync, stale velocity the client extrapolates, no re-face

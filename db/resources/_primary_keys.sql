@@ -40,8 +40,22 @@ ALTER TABLE ONLY ability_moniker_groups
 -- Name: ability_set_abilities_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace: 
 --
 
+-- Harset rebuild packet H09. Widened from `PRIMARY KEY (ability_set_id)` to the
+-- composite key. The single-column form is an import artefact, not a design
+-- choice: it capped every NPC at exactly one ability, because db/database.sql
+-- applies this file (line 264) BEFORE the seed (line 273), so a second row for
+-- the same set was a duplicate key that aborted the whole load. The python
+-- reference expected N (`deprecated/python/common/defs/AbilitySet.py:17-20`
+-- builds `defs[set_id].abilities[ability.id]`, a dict keyed on ability id, and
+-- `EntityTemplate.py:51-58` loops every ability in a set to validate it against
+-- the template's weapon monikers -- both pointless over a one-element set).
+--
+-- Nothing references this key: both FKs on the table are outbound (to
+-- `abilities` and `ability_sets`, _foreign_keys.sql:29,37) and
+-- `entity_templates_ability_set_id_fkey` targets `ability_sets`, the parent.
+-- See docs/analysis/harset-rebuild/worknotes/H09.md.
 ALTER TABLE ONLY ability_set_abilities
-    ADD CONSTRAINT ability_set_abilities_pkey PRIMARY KEY (ability_set_id);
+    ADD CONSTRAINT ability_set_abilities_pkey PRIMARY KEY (ability_set_id, ability_id);
 
 --
 -- TOC entry 2920 (class 2606 OID 63195)

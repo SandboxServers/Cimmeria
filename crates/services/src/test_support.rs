@@ -3,11 +3,13 @@
 //! Two unrelated test seams live here:
 //!
 //! - **Live-DB**: tests that need a real PostgreSQL connection call
-//!   [`test_pool`] and self-skip when `DATABASE_URL` is unset. The unit-test
-//!   suite stays green on a fresh checkout; only `DATABASE_URL=postgres://…
-//!   cargo test` exercises the integration path. See
-//!   `docs/architecture/integration-test-infra.md` for the rationale,
-//!   local-setup steps, and per-test data-isolation patterns.
+//!   [`require_db_or_skip!`] (defined in `crate::live_db_gate`). They
+//!   self-skip when `DATABASE_URL` is unset and **fail** when it is set but
+//!   unreachable (#615). The unit-test suite stays green on a fresh
+//!   checkout; only `DATABASE_URL=postgres://… cargo test` exercises the
+//!   integration path. See `docs/architecture/integration-test-infra.md`
+//!   for the rationale, local-setup steps, and per-test data-isolation
+//!   patterns.
 //!
 //! - **Transport fake**: [`TestTransport`] is the canonical UDP fake — a
 //!   recording [`cimmeria_mercury::transport::Transport`] impl that handler
@@ -16,81 +18,15 @@
 //!   **fan-out byte test** type in `TESTING.md`. See
 //!   `docs/architecture/transport-trait.md`.
 
-use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+/// The live-DB gate lives in `crate::live_db_gate`; re-exported so call
+/// sites keep importing it from here.
+pub(crate) use crate::live_db_gate::{pool_or_skip, require_db_or_skip, test_pool};
 
 /// The canonical recording UDP fake — see the module doc-comment and
 /// `docs/architecture/transport-trait.md`. Re-exported here so handler unit
 /// tests can `use crate::test_support::TestTransport;` without reaching into
 /// the mercury crate path.
 pub(crate) use cimmeria_mercury::test_transport::TestTransport;
-
-/// Why a live-DB test couldn't run.
-///
-/// Distinguishes "no DATABASE_URL configured" (expected on a fresh
-/// checkout — silent skip) from "DATABASE_URL set but unreachable"
-/// (likely misconfiguration — surface the connection error so the
-/// developer can fix it).
-pub(crate) enum SkipReason {
-    /// `DATABASE_URL` env var was unset or empty.
-    NotConfigured,
-    /// `DATABASE_URL` was set but `connect()` failed. The string
-    /// captures sqlx's underlying error for operator triage.
-    ConnectFailed(String),
-}
-
-impl std::fmt::Display for SkipReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SkipReason::NotConfigured => write!(f, "DATABASE_URL not set"),
-            SkipReason::ConnectFailed(e) => write!(f, "DATABASE_URL set but connect failed: {e}"),
-        }
-    }
-}
-
-/// Open a `PgPool` against the developer-supplied `DATABASE_URL`, or
-/// return a [`SkipReason`] explaining why no pool was produced.
-///
-/// Bounded to 4 connections — high enough for tests that exercise
-/// concurrent paths (drainer + caller in parallel), low enough that
-/// a careless test loop can't exhaust a hand-tuned local Postgres.
-pub(crate) async fn test_pool() -> Result<PgPool, SkipReason> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) if !u.is_empty() => u,
-        _ => return Err(SkipReason::NotConfigured),
-    };
-    PgPoolOptions::new()
-        .max_connections(4)
-        .acquire_timeout(std::time::Duration::from_secs(5))
-        .connect(&url)
-        .await
-        .map_err(|e| SkipReason::ConnectFailed(e.to_string()))
-}
-
-/// Convenience macro: skip a test with a reason-specific message if
-/// no DB pool is available. Pairs with [`test_pool`] — same gate,
-/// less ceremony at each call site.
-///
-/// ```ignore
-/// #[tokio::test]
-/// async fn my_db_test() {
-///     let pool = require_db_or_skip!();
-///     // ... test body uses pool ...
-/// }
-/// ```
-macro_rules! require_db_or_skip {
-    () => {{
-        match $crate::test_support::test_pool().await {
-            Ok(p) => p,
-            Err(reason) => {
-                eprintln!("{}: skipping live-DB test ({reason})", module_path!(),);
-                return;
-            }
-        }
-    }};
-}
-
-pub(crate) use require_db_or_skip;
 
 // ── SpaceManager test fixtures ────────────────────────────────────────
 

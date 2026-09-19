@@ -443,11 +443,11 @@ def report_v2(r: Results):
         type_id   = struct.unpack('<H', payload[4:6])[0]
         prop_stream = payload[6:]
         print(f"    Offset 0-3 : entityId  = {entity_id} (0x{entity_id:08X})  [expect u32 LE]")
-        print(f"    Offset 4-5 : typeId    = {type_id} (0x{type_id:04X})  [expect 0x0002 = SGWPlayer; 0-based entities.xml index per EntityDescription_ReadFromStream @ SGW.exe@0x01590520]")
+        print(f"    Offset 4-5 : typeId    = {type_id} (0x{type_id:04X})  [expect 0x0002 = SGWPlayer; clientIndex = 0-based over non-ServerOnly entities.xml entries, per EntityDescriptionMap_parse @ SGW.exe@0x01590520 (desc+0x1e)]")
         print(f"    Offset 6+  : property stream = {len(prop_stream)} bytes")
         print(f"    Prop stream head: {_hex(prop_stream[:32])}")
         if type_id != 0x0002:
-            print(f"    NOTE: typeId != 0x0002 (SGWPlayer). Could be a non-player entity. Common 0-based typeIDs: 0x00=SGWSpawnableEntity, 0x01=SGWBeing, 0x02=SGWPlayer, 0x07=SGWBlackMarket (ServerOnly — silent-fail on client), 0x08=Account.")
+            print(f"    NOTE: typeId != 0x0002 (SGWPlayer). Could be a non-player entity. Wire typeIDs (clientIndex, ServerOnly entries skipped): 0x00=SGWSpawnableEntity, 0x01=SGWBeing, 0x02=SGWPlayer, 0x03=SGWGmPlayer, 0x04=SGWMob, 0x05=SGWPet, 0x06=SGWDuelMarker, 0x07=Account.")
     print()
     if all_match:
         print("  CONFIRMS: entityId u32 at offset 0, typeId u16 at offset 4, prop stream at 6+.")

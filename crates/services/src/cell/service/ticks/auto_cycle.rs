@@ -23,11 +23,15 @@ use crate::cell::space_manager::SpaceManager;
 ///   `self.entity().targetId` live read. Switching targets via the
 ///   cursor mid-loop redirects the re-fires automatically;
 ///   deselecting (target = 0) clears the loop.
-/// - **No target / dead target / despawned target** → clear the loop
-///   (the death-transition sweep usually catches this first; the tick
-///   is the safety net for despawn / instance cleanup paths that
-///   bypass the death-transition broadcast). Runs BEFORE the cooldown
-///   gate — correctness, not rate limiting.
+/// - **No target / invalid target** → clear the loop. Invalid means
+///   despawned, dead, or surrendered — see
+///   [`crate::cell::combat::is_auto_cycle_target_valid`]. The death
+///   sweep and the AI-side submit handler usually get there first; the
+///   tick is the safety net for despawn / instance cleanup paths that
+///   bypass the death-transition broadcast, and the *primary* stop for
+///   surrender, because the AI handler only runs on the ~2 s NPC
+///   cadence while this tick runs every 100 ms. Runs BEFORE the
+///   cooldown gate — correctness, not rate limiting.
 /// - **Out of range** → skip silently WITHOUT clearing. Leaves the
 ///   loop armed so a player who strafes in and out of range resumes
 ///   firing automatically the moment they're back in range. Critical:
@@ -84,7 +88,7 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             };
             let target_alive_or_existed = target
                 .as_ref()
-                .is_some_and(|t| !crate::cell::combat::is_dead_state(t.state_field));
+                .is_some_and(|t| crate::cell::combat::is_auto_cycle_target_valid(t));
 
             // Invalid target → push for clearing regardless of cooldown.
             // The clear path is correctness (BSF must un-light on
@@ -151,14 +155,14 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
 
     for (entity_id, ability_id, target_id, target_alive) in ready {
         if !target_alive {
-            // Target despawned or died without the death sweep
-            // catching it. Clear the loop and broadcast so the client
-            // un-highlights the button.
+            // Target despawned, died without the death sweep catching
+            // it, or surrendered. Clear the loop and broadcast so the
+            // client un-highlights the button.
             if let Some(new_state) = crate::cell::combat::clear_auto_cycle(space_mgr, entity_id) {
                 tracing::info!(
                     entity_id,
                     target_id,
-                    "auto_cycle_tick: target gone — clearing loop"
+                    "auto_cycle_tick: target gone or disengaged — clearing loop"
                 );
                 crate::cell::abilities::send_entity_method(
                     entity_id,

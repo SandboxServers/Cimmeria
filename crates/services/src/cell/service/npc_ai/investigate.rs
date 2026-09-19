@@ -121,6 +121,23 @@ pub(super) async fn npc_ai_investigate(
         let path = space_mgr
             .find_path(npc_id, &npc_pos, &poi_pos)
             .unwrap_or_default();
+        if path.len() <= 1 {
+            // Previously silent — see `patrol.rs` for the same shape.
+            let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+            super::path_failure::report_path_failure(
+                space_mgr,
+                super::path_failure::PathFailure {
+                    npc_id,
+                    state: "investigate",
+                    decision_outcome: "investigate_no_path",
+                    from: npc_pos,
+                    to: poi_pos,
+                    reason,
+                    target_id: None,
+                },
+                std::time::Instant::now(),
+            );
+        }
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.investigate_until = None;
             npc.nav_path.clear();

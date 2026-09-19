@@ -55,23 +55,34 @@ impl CellService {
         let npc_count = spawner::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
         tracing::info!(npc_count, "NPC population initialized");
 
-        // Stamp numeric world ids onto the spaces.xml world table. The
-        // content engine's `world` condition resolves the acting player's
-        // space through these; without them every `world`-gated chain
-        // fails closed, so this logs at WARN rather than staying silent.
+        // Stamp the per-world `resources.worlds` settings onto the
+        // spaces.xml world table. The content engine's `world` condition
+        // resolves the acting player's space through the numeric id;
+        // without them every `world`-gated chain fails closed, so this logs
+        // at WARN rather than staying silent. The same stamp carries
+        // `navmesh_mode`; a world that misses it keeps containment
+        // enforced, which is the pre-H53 behaviour.
         if let Some(ref pool) = self.db_pool {
-            match spawner::load_world_ids(pool).await {
-                Ok(ids) => {
-                    space_mgr.stamp_world_ids(&ids);
+            match spawner::load_world_rows(pool).await {
+                Ok(rows) => {
+                    space_mgr.stamp_world_rows(&rows);
                 }
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to load world ids: {e} — content-engine `world` \
-                         conditions will fail closed everywhere"
+                        "Failed to load world rows: {e} — content-engine `world` \
+                         conditions will fail closed everywhere and every world's \
+                         navmesh stays a containment gate"
                     );
                 }
             }
         }
+
+        // One line per meshed world, after the modes are stamped: which
+        // mesh is a gate, how big it is, and how much of that world's own
+        // authored population it does not cover. A mesh that loads cleanly
+        // and still describes a different map is otherwise silent until a
+        // player walks into it.
+        space_mgr.log_navmesh_summary(&spawn_records);
 
         // Load dialog_set_maps cache for per-player interaction system
         if let Some(ref pool) = self.db_pool {

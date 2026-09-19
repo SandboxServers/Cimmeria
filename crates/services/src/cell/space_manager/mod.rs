@@ -15,6 +15,8 @@ pub use client_move::ClientMoveOutcome;
 pub(crate) use deferred_content_actions::PendingContentAction;
 pub use entities::DespawnOutcome;
 pub(crate) use gate_dial_state::PendingGateDial;
+pub(crate) use navmesh_mode::mode_from_db_value;
+pub use navmesh_mode::NavmeshMode;
 pub use queries::PlayerNameLookup;
 
 mod aoi;
@@ -23,10 +25,14 @@ mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
 mod lifecycle;
+mod movement_telemetry;
+mod navmesh_mode;
 mod queries;
 mod spatial;
 mod spawn;
 mod xml;
+
+pub(crate) use movement_telemetry::{MovementTelemetry, RejectReport};
 
 #[cfg(test)]
 mod tests;
@@ -88,6 +94,15 @@ pub struct WorldDef {
     /// no `resources.worlds` row. `spaces.xml` itself carries names only,
     /// which is why this cannot be filled at parse time.
     pub world_id: Option<i32>,
+    /// Whether this world's navmesh may gate player movement, from
+    /// `resources.worlds.navmesh_mode`.
+    ///
+    /// [`NavmeshMode::Enforce`] until [`SpaceManager::stamp_world_rows`]
+    /// runs, and permanently so for a world with no `resources.worlds` row
+    /// — a DB-down startup must not silently drop a containment gate. Read
+    /// through [`SpaceManager::enforces_navmesh_containment`], never
+    /// directly, so every gate agrees about what the mode means.
+    pub navmesh_mode: NavmeshMode,
     pub instanced: bool,
     pub min_x: i32,
     pub max_x: i32,
@@ -246,6 +261,14 @@ pub struct SpaceManager {
     /// per-entity server-clock sample for the speed/teleport layer; that
     /// state is released in `destroy_entity` via `forget`.
     pub movement_validator: MovementValidator,
+    /// Per-entity observability state for the movement path: the
+    /// reject-log and NPC-path-failure throttles, and the last accepted
+    /// position sample. Purely a reporting aid — nothing here changes
+    /// what is accepted. Released in `destroy_entity` alongside
+    /// `movement_validator.forget`, so it cannot outlive the entity
+    /// population. See
+    /// [`movement_telemetry`] for why each piece exists.
+    pub(crate) movement_telemetry: MovementTelemetry,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -295,6 +318,16 @@ pub struct SpaceManager {
     /// space never gets a late `Stargate_MakeGate`. See
     /// `gate_dial_state` for the state machine.
     pub(crate) pending_gate_dials: HashMap<u32, PendingGateDial>,
+    /// Re-entrancy bound for the H52 step-activation region replay. A
+    /// replayed `enter_region` chain can advance another step, which replays
+    /// again; this caps the depth and remembers which `(entity, mission,
+    /// step)` triples the current outermost activation has already served.
+    /// Owned here because the recursion runs through
+    /// `content::executor::execute_actions`, which cannot thread a depth
+    /// parameter back to the dispatcher — the `&mut SpaceManager` every frame
+    /// already holds is the exclusive token. See
+    /// `content::event_dispatch::step_activation`.
+    pub(crate) step_region_replay: super::content::StepRegionReplayGuard,
 }
 
 impl SpaceManager {
@@ -332,6 +365,7 @@ impl SpaceManager {
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
             pending_ai_retries: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),
+            movement_telemetry: MovementTelemetry::default(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),
@@ -339,6 +373,7 @@ impl SpaceManager {
             patrol_authoring: HashMap::new(),
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
+            step_region_replay: super::content::StepRegionReplayGuard::default(),
             pending_gate_dials: HashMap::new(),
         }
     }

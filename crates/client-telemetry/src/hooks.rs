@@ -47,7 +47,10 @@ use crate::queue::Producer;
 mod cme_hooks;
 mod iat_hooks;
 mod inline_hooks;
-mod primitives;
+// `pub(crate)` so the lab bridge's dynamic-hook installer
+// (`bridge::dynamic_hooks::native`, #686) can reuse the inline-hook
+// trampoline primitive without duplicating the protect/patch/flush dance.
+pub(crate) mod primitives;
 mod sampling;
 mod vtable_hooks;
 

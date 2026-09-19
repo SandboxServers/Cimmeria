@@ -17,7 +17,9 @@ use tokio::sync::mpsc;
 
 use super::super::sequences::{EVENT_STARGATE_CROSS_GATE, EVENT_STARGATE_MAKE_GATE};
 use super::super::{gate_dial_tick, handle_dial_gate, handle_stargate_region_entered};
-use super::{engine, make_manager_with_stargates, SEQ_CROSS_GATE, SEQ_MAKE_GATE};
+use super::{
+    engine, grant_all_addresses, make_manager_with_stargates, SEQ_CROSS_GATE, SEQ_MAKE_GATE,
+};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -31,6 +33,7 @@ async fn armed_dialer() -> (
     let mut mgr = make_manager_with_stargates();
     mgr.create_entity(DIALER, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, DIALER);
     if let Some(e) = mgr.get_entity_mut(DIALER) {
         e.is_player = true;
         e.player_id = Some(42);
@@ -170,6 +173,7 @@ async fn crossing_without_a_dial_does_nothing() {
     let mut mgr = make_manager_with_stargates();
     mgr.create_entity(DIALER, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, DIALER);
     mgr.connect_entity(DIALER);
     let (tx, mut rx) = mpsc::channel(16);
 

@@ -451,3 +451,58 @@ fn a_misspelled_stargate_event_type_loads_nothing() {
         );
     }
 }
+
+// ─── mission_abandoned (Harset H54) ───────────────────────────
+
+/// `event_type = "mission_abandoned"` with the mission id in `event_key`
+/// round-trips into `Trigger::OnMissionAbandoned`. This is the only way a
+/// seed row can react to an abandon, so a missing arm here would leave every
+/// authored repaint chain silently unregistered.
+#[test]
+fn mission_abandoned_event_type_loads_as_on_mission_abandoned_trigger() {
+    use crate::triggers::Trigger;
+
+    let row = DbTriggerRow {
+        chain_id: 6308,
+        event_type: "mission_abandoned".to_string(),
+        event_key: Some("1324".to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    };
+
+    match convert_trigger(&row) {
+        Some(Trigger::OnMissionAbandoned { mission_id }) => assert_eq!(mission_id, 1324),
+        other => panic!("expected OnMissionAbandoned(1324), got {:?}", other),
+    }
+}
+
+/// No `event_key` means no target mission. Dropping the row is the only safe
+/// disposal: a wildcard abandon trigger would repaint an offer on every
+/// abandon the player ever performs.
+#[test]
+fn mission_abandoned_without_key_returns_none() {
+    let row = DbTriggerRow {
+        chain_id: 6308,
+        event_type: "mission_abandoned".to_string(),
+        event_key: None,
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    };
+    assert!(convert_trigger(&row).is_none());
+}
+
+/// A non-numeric key is a typo, not a wildcard.
+#[test]
+fn mission_abandoned_with_non_numeric_key_returns_none() {
+    let row = DbTriggerRow {
+        chain_id: 6308,
+        event_type: "mission_abandoned".to_string(),
+        event_key: Some("1324a".to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    };
+    assert!(convert_trigger(&row).is_none());
+}

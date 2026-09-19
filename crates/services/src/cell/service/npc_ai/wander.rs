@@ -169,6 +169,23 @@ pub(super) async fn npc_ai_wander(
     let path = space_mgr
         .find_path(npc_id, &npc_pos, &target)
         .unwrap_or_default();
+    if path.len() <= 1 {
+        // Previously silent — see `patrol.rs` for the same shape.
+        let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+        super::path_failure::report_path_failure(
+            space_mgr,
+            super::path_failure::PathFailure {
+                npc_id,
+                state: "wander",
+                decision_outcome: "wander_no_path",
+                from: npc_pos,
+                to: target,
+                reason,
+                target_id: None,
+            },
+            std::time::Instant::now(),
+        );
+    }
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         // Clear the dwell deadline now that we're starting the next
         // hop. The next arrival (`nav_empty` again) will see

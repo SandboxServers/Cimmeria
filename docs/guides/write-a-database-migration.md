@@ -11,6 +11,12 @@ companion_docs:
 
 # How to write a database migration
 
+> [!IMPORTANT]
+> Ask a maintainer before adding any file under `db/scripts/`. Seeded-data changes (abilities, effects, NVPs,
+> missions, spawns) never need one: edit `db/resources/<area>/Seed/` directly, because every environment is
+> rebuilt from seeds. The maintainers' current preference is to avoid new migrations for schema changes too.
+> See [Project rules and gotchas](../agents/rules-and-gotchas.md#database-and-content).
+
 Cimmeria has 368 SQL files under [`db/`](../../db/) organised into per-system directories. Most of them are the canonical schema (loaded on fresh database init). Twelve are migrations under [`db/scripts/`](../../db/scripts/) (run against existing databases without destroying data). This guide explains the difference and walks through writing each kind.
 
 If you're adding **seed content** rather than changing the schema (a new mission row, a new ability), skip to the "Adding seed content" section near the bottom.
