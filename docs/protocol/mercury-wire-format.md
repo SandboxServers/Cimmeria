@@ -208,6 +208,71 @@ enumerates:
 So an implementation that only handles 0/2/4 is sufficient for SGW traffic, but
 it is not the full contract the client will accept.
 
+#### The over-length escape
+
+`lengthParam` fixes the width of the *inline* field: it is a property of the
+message type, so a `WORD_LENGTH` message always writes two bytes. What is
+value-dependent is what those bytes mean once the payload stops fitting.
+
+`compressLength @ ghidra://SGW.exe@0x0158b120` writes the inline field and then
+compares the length against that width's maximum -- `0xFF`, `0xFFFF`, `0xFFFFFF`
+for `lengthParam` 1, 2, 3. On overflow it hands off to the escape writer at
+`ghidra://SGW.exe@0x0158acc0`, whose opening loop fills **every byte of the
+inline field with `0xFF`** and then streams the real length into the message
+body as a 32-bit little-endian value:
+
+```text
+[msg_id][0xFF x lengthParam][u32 LE real length][payload]
+```
+
+`lengthParam == 4` is exempt. That arm writes the `u32` and returns with no
+bounds test, so `DWORD_LENGTH` never escalates.
+
+The read side mirrors it: `expandLength @ ghidra://SGW.exe@0x0158b770` reads the
+inline field, and on the over-length path falls through to a second reader
+(debug string `"expandLength( %s ): Received a message longer than normal
+length"`) that seeks past `lengthParam + 1` bytes and assembles a 32-bit
+little-endian length one byte at a time.
+
+A saturated length field is therefore a **sentinel, not a value**. A reader that
+takes `0xFFFF` on a `WORD_LENGTH` message literally starts the next message four
+bytes early and mis-frames the rest of the bundle; a writer that clamps an
+over-long payload to `0xFFFF` emits the sentinel without the field that is
+supposed to follow it, which is the same corruption from the other side.
+
+#### What Cimmeria implements
+
+`CONSTANT_LENGTH` and `WORD_LENGTH`, plus one hand-written `DWORD_LENGTH`
+emitter. Widths 1 and 3 and the escape above are not implemented.
+
+| Direction | Site | Widths handled |
+|---|---|---|
+| Inbound, per-`msg_id` table | `read_client_message_payload` in `crates/services/src/base/connect_loop/encrypted/mod.rs` | `CONSTANT` per message; `WORD` for `0x07` and for the wildcard, which covers every entity method |
+| Inbound, the readers themselves | `read_constant_payload` / `read_word_length_payload` in `crates/services/src/base/connect_loop/mod.rs` | 0 and 2 |
+| Outbound, generic bundle encoder | `Bundle::encode` in `crates/mercury/src/bundle.rs` | 2 only |
+| Outbound, `BASEMSG_REPLY_MESSAGE` | `build_connect_reply` in `crates/services/src/mercury/protocol/session.rs` | 4, written by hand |
+
+No entry in `ClientMessageList` declares `DWORD_LENGTH`, so the inbound
+wildcard's `WORD_LENGTH` assumption holds for every message a client can send,
+and no SGW message declares width 1 or 3. Width alone therefore cannot mis-frame
+anything on this wire today. The escape is the remaining exposure, and it is
+reachable only by a payload at or above 65535 bytes.
+
+#### Message id `0x00` means different things per direction
+
+The two tables are indexed independently, and `0x00` is not the same message in
+each. Reading a length type off the wrong table is an easy mistake to make here.
+
+| Direction | Table | `0x00` | `0x01` |
+|---|---|---|---|
+| Client to server | `ClientMessageList` | `BASEAPP_LOGIN`, `WORD_LENGTH` | `AUTHENTICATE`, `WORD_LENGTH` |
+| Server to client | `ServerMessageList` | `AUTHENTICATE`, `DWORD_LENGTH` | `bandwidthNotification`, `CONSTANT` |
+
+So "`AUTHENTICATE` is `DWORD_LENGTH`" is true only server-to-client. The
+per-frame `AUTHENTICATE` a client sends is `0x01` and is `WORD_LENGTH`. Both
+tables are in
+[deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp](../../deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp).
+
 ### Entity Messages
 
 Entity messages represent RPC calls to entity methods. In Cimmeria they are

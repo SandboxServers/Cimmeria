@@ -136,6 +136,28 @@ Adds raw data to bundle. `(this, void* data, size_t length)`. Copies data into c
 | `0x0158b770` | `InterfaceElement__expandLength` | Read variable-length header |
 | `0x0158b120` | `InterfaceElement__compressLength_write` | Write length (1/2/3/4 byte) |
 
+**Verified against the Rust implementation, 2026-09-19.**
+
+The width of the inline length field comes from `lengthParam` at `this+4`, which
+is a property of the `InterfaceElement` -- not of the payload. `expandLength`
+(`0x0158b770`) switches on it for widths 1, 2, 3 and 4 and rejects anything else
+(`"Unhandled variable message length"`). There is, separately, a value-dependent
+escape: `compressLength_write` (`0x0158b120`) tests the length against that
+width's maximum for widths 1/2/3 and, on overflow, calls `compressLength`
+(`0x0158acc0`), which fills the inline field with `0xFF` bytes and streams a
+32-bit little-endian length into the message body; the matching reader is the
+second `expandLength` (`"Received a message longer than normal length"`). Width 4
+has no such test and never escalates.
+
+Cimmeria implements `CONSTANT_LENGTH` and `WORD_LENGTH`, plus one hand-written
+`DWORD_LENGTH` emitter for `BASEMSG_REPLY_MESSAGE`; widths 1 and 3 and the escape
+are absent. Because no SGW message declares width 1 or 3 and no client-to-server
+message declares `DWORD_LENGTH`, no mis-frame is reachable from the width switch
+alone. The escape is reachable only above 65535 bytes. Full comparison, with the
+per-direction table of which Rust site handles which width, is in
+[../../protocol/mercury-wire-format.md](../../protocol/mercury-wire-format.md)
+under "Message Length Types".
+
 ### UnAckedHandler (Reliability)
 
 | Address | Function | Description |
