@@ -2,7 +2,7 @@
 //!
 //! Game logic for the Cimmeria server emulator. This crate replaces the Python
 //! scripting layer with native Rust implementations of player, NPC, mob, combat,
-//! inventory, mission, social, world, and command systems.
+//! inventory, mission, world, and command systems.
 //!
 //! Interaction handlers (vendor, lootable, stargate, trainer) live in
 //! `cimmeria-services` — see `crates/services/src/base/world_entry/methods/`
@@ -15,6 +15,12 @@
 //! instead, and the empty placeholders just produced two parallel surfaces
 //! that confused triage. The trainer stub was retired earlier on the same
 //! grounds.
+//!
+//! The `social::*` sketches (`Group`, `Guild`, `Mail`, chat channels) were
+//! deleted on the same grounds (#614): nothing imported them, and they read
+//! as partial progress on systems whose real code lives elsewhere. Mail and
+//! chat are implemented in `cimmeria-services`; groups are not implemented
+//! yet.
 
 pub mod being;
 pub mod combat;
@@ -23,5 +29,4 @@ pub mod inventory;
 pub mod missions;
 pub mod npc;
 pub mod player;
-pub mod social;
 pub mod world;

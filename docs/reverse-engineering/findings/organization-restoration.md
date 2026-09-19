@@ -7,7 +7,7 @@
 >   `entities/defs/SGWPlayerGroupAuthority.def`, `python/Atrea/enums.py`,
 >   `deprecated/python/{base,cell}/SGWPlayer.py`, `deprecated/python/{base,cell}/SGWPlayerGroupAuthority.py`,
 >   `db/resources/Social/Types/*.sql`, `SGW.exe` Ghidra, `crates/services/src/cell/{cell_methods,client_methods}/organization.rs`,
->   `crates/game/src/social/guilds.rs`, `docs/reverse-engineering/findings/organization-wire-formats.md`
+>   `crates/game/src/social/guilds.rs` (deleted in #614), `docs/reverse-engineering/findings/organization-wire-formats.md`
 > **Tracking issue**: replaces #68
 
 ## Completeness assessment
@@ -48,8 +48,9 @@ properties.**
 ### Rank system (9 levels — DIVERGENCE ALERT)
 
 `EORG_RANK_*`: `0 None, 1 Initiate, 2 Member, 3 SeniorMember, 4 Veteran, 5 SeniorVeteran, 6 Officer,
-7 SeniorOfficer, 8 Leader`. **`crates/game/src/social/guilds.rs` defines only 3 ranks** (Member/Officer/
-Leader) — the wire sends `UINT8` 0–8; the 3-rank model corrupts the field. Must be replaced with a 9-value enum.
+7 SeniorOfficer, 8 Leader`. The old `crates/game/src/social/guilds.rs` sketch defined only 3 ranks (Member/Officer/
+Leader), which would corrupt the `UINT8` 0–8 wire field. It had no callers and was deleted in #614; any Rust
+rank model must use the full 9-value enum.
 
 ### Permission system (26-bit bitmask)
 
