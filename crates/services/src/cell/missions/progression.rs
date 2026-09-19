@@ -249,6 +249,20 @@ pub async fn complete_mission_direct(
         }
     };
 
+    // Objectives still open here were never completed through play -- the
+    // chain is about to force them. Report before the force-complete hides it.
+    let never_completed: Vec<(i32, bool)> = mission
+        .active_objectives
+        .iter()
+        .filter(|o| o.status == cimmeria_entity::missions::STATUS_ACTIVE)
+        .map(|o| (o.objective_id, o.optional))
+        .collect();
+    crate::cell::playtest_friction::objectives_never_completed(
+        entity_id,
+        mission_id,
+        &never_completed,
+    );
+
     // Complete all objectives
     let objective_ids: Vec<i32> = mission
         .active_objectives

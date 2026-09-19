@@ -24,6 +24,8 @@ mod death;
 mod dispatch;
 mod loot_drop;
 mod messaging;
+#[cfg(test)]
+mod movement_type_log_tests;
 mod resolve;
 mod rng;
 mod use_ability;

@@ -220,6 +220,8 @@ pub(crate) async fn handle_reanchor_player(
     if has_replay {
         tracing::info!(
             entity_id, %addr, space_id, ?position,
+            resent = "create_base_player,being_appearance,entity_tint",
+            not_resent = "generic_regions,mission_log,abilities,stats",
             "Reanchor: sent CREATE_BASE_PLAYER burst + BeingAppearance + onEntityTint (no RESET_ENTITIES)"
         );
     } else {

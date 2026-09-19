@@ -108,6 +108,8 @@ pub(super) async fn display(
     };
 
     tracing::Span::current().record("npc_entity_id", npc_entity_id);
+    // Stuck-player detector: a dialog replaced within seconds cannot be read.
+    crate::cell::playtest_friction::dialog_shown(entity_id, dialog_id);
     tracing::info!(
         entity_id,
         dialog_id,

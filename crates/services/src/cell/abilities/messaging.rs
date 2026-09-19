@@ -227,6 +227,14 @@ pub(crate) async fn broadcast_movement_type(
         .get_entity(entity_id)
         .and_then(|e| e.last_movement_type);
     if last == kind {
+        // Hot path: every AI tick re-asserts the current kind.
+        tracing::trace!(
+            target: "movement.movement_type",
+            entity_id,
+            ?kind,
+            outcome = "deduped",
+            "setMovementType unchanged -- nothing sent"
+        );
         return;
     }
     if let Some(e) = space_mgr.get_entity_mut(entity_id) {
@@ -235,8 +243,31 @@ pub(crate) async fn broadcast_movement_type(
     let Some(k) = kind else {
         // Clear the cached value (done above) — but don't send a wire
         // message. See doc comment for the rationale.
+        //
+        // The client keeps playing whatever animation `prior_kind` selected,
+        // so an NPC that translates after this renders in a stale pose.
+        tracing::debug!(
+            target: "movement.movement_type",
+            entity_id,
+            prior_kind = ?last,
+            outcome = "cleared",
+            "setMovementType cache cleared -- NO wire message; client keeps the prior animation state"
+        );
         return;
     };
+    let witness_count = space_mgr
+        .get_entity(entity_id)
+        .map_or(0, |e| e.witnesses.len());
+    tracing::debug!(
+        target: "movement.movement_type",
+        entity_id,
+        kind = ?k,
+        kind_byte = k as u8,
+        prior_kind = ?last,
+        outcome = "sent",
+        witness_count,
+        "setMovementType sent -- selects the mob animation state on every witness"
+    );
     let args = vec![k as u8];
     send_entity_method_to_self_and_witnesses(
         entity_id,

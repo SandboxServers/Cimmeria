@@ -143,24 +143,6 @@ pub(crate) fn unpack_yaw_byte(b: u8) -> f32 {
     f32::from(b) * (std::f32::consts::TAU / 256.0)
 }
 
-/// Axis-aligned XZ containment against a region's polygon points. Regions are
-/// stored as 4-point boxes (see `RegionData::points`), so the AABB is exact for
-/// axis-aligned boxes and a conservative superset otherwise.
-fn region_contains_xz(points: &[[f32; 3]], p: &Vector3) -> bool {
-    if points.len() < 3 {
-        return false;
-    }
-    let (mut min_x, mut max_x) = (f32::MAX, f32::MIN);
-    let (mut min_z, mut max_z) = (f32::MAX, f32::MIN);
-    for pt in points {
-        min_x = min_x.min(pt[0]);
-        max_x = max_x.max(pt[0]);
-        min_z = min_z.min(pt[2]);
-        max_z = max_z.max(pt[2]);
-    }
-    p.x >= min_x && p.x <= max_x && p.z >= min_z && p.z <= max_z
-}
-
 fn snapshot_entity(
     e: &CellEntity,
     caller: &CellEntity,
@@ -287,7 +269,13 @@ pub(crate) fn capture(
     let regions_inside = space_mgr
         .regions_for_world(&world_name)
         .into_iter()
-        .filter(|r| region_contains_xz(&r.points, &caller.position))
+        .filter(|r| {
+            crate::cell::playtest_friction::region_contains_xz(
+                &r.points,
+                caller.position.x,
+                caller.position.z,
+            )
+        })
         .map(|r| r.tag.clone())
         .collect();
 
