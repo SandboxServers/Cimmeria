@@ -63,6 +63,7 @@ fn make_connected_state(active_player_id: Option<i32>) -> ConnectedClientState {
         player_name: None,
         player_level: Some(1),
         player_archetype: None,
+        player_alignment: None,
         world_name: None,
         player_xp: Some(0),
         player_training_points: Some(0),

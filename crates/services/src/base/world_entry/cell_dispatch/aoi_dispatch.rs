@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 
-use crate::cell::messages::{CellToBaseMsg, NpcAoIData};
+use crate::cell::messages::{CellToBaseMsg, NpcAoIData, PlayerAoIData};
 
 use super::super::super::deferred_aoi;
 use super::super::super::session_identity;
@@ -50,6 +50,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             direction,
             level,
             npc_data,
+            player_data,
         } => {
             entered_aoi(
                 witness_id,
@@ -59,6 +60,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 direction,
                 level,
                 npc_data,
+                player_data,
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
@@ -196,6 +198,7 @@ pub(super) async fn entered_aoi(
     direction: [f32; 3],
     level: u32,
     npc_data: Option<NpcAoIData>,
+    player_data: Option<PlayerAoIData>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -220,6 +223,7 @@ pub(super) async fn entered_aoi(
                     direction,
                     level,
                     npc_data,
+                    player_data,
                 },
             );
             return;
@@ -259,6 +263,7 @@ pub(super) async fn entered_aoi(
         direction,
         level,
         npc_data,
+        player_data,
         transport,
         connected,
         entity_to_addr,

@@ -40,11 +40,11 @@ pub use protocol::{
 pub use aoi::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
     build_entity_invisible, build_entity_leave, build_entity_method_packet, build_forced_position,
-    build_player_entity_method_packet,
+    build_player_entity_method_packet, build_player_ghost_cascade, PlayerGhostCascade,
 };
 pub(crate) use aoi::{
     compose_create_entity_base_body, compose_create_entity_cascade_body,
-    compose_forced_position_body,
+    compose_forced_position_body, compose_player_ghost_cascade_body,
 };
 
 pub use world_data::{

@@ -60,7 +60,7 @@ The gap between "code exists" (70.2%) and "confirmed working" (35.9%) is the sto
 | Character creation | NT | 11 (8 NT, 1 IM, 2 KM) | 1,640 lines incl. delete + visuals live-DB tests. SGWGmPlayer now ported (#473/#518). Full client smoke would move to CW |
 | World entry & spaces | CW | 9 (7 CW, 2 IM) | 22,682 lines across 64 files. Castle Cellblock end-to-end. 23 other zones unchecked |
 | Movement & navigation | IM | 9 (1 CW, 8 IM) | **Detour is wired.** Pathfinding, LOS raycast, and navmesh containment all live; four-layer server-side movement validation shipped (#437/#478) |
-| Entity lifecycle (AoI) | IM | 9 (6 CW, 2 IM, 1 KM) | **Downgraded from CW.** Grid-based AoI and witness lifecycle work, but there is a known-open entity-introduction drop (invisible corpse until relog); #582 added instrumentation, awaiting repro |
+| Entity lifecycle (AoI) | IM | 9 (6 CW, 2 IM, 1 KM) | **Downgraded from CW.** Grid-based AoI and witness lifecycle work, but there is a known-open entity-introduction drop (invisible corpse until relog); #582 added instrumentation, awaiting repro; Player-to-player introduction (appearance, nameplate, live state, load-window gate) is implemented but **awaiting two-client validation** — see [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md) |
 | Combat & abilities | IM | 23 (5 CW, 16 IM, 2 KM) | 5,918 lines + 142 tests. PR #420 closed ability+effect gaps. LOS primitive now exists and is enforced NPC-side, not yet on player `useAbility` |
 | Effects & buffs | IM | 13 (4 CW, 7 IM, 2 KM) | Framework CW. Long tail of 3,217 effect rows needs script coverage |
 | Stats | IM | 8 (5 CW, 2 KM, 1 NU) | Stat list + dirty sync + per-level scaling shipped. Equipment bonuses + derived formulas pending |
@@ -145,7 +145,11 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 
 ### AoI entity-introduction drop (open)
 
-A witness can miss an entity introduction entirely — the reproducible case is a Castle Cellblock GuardBody corpse that stays invisible until the player relogs. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the expected warnings never fired), which puts the fault downstream in create + appearance delivery. PR #582 added `aoi.create_emit` / `aoi.create_send_failed` seams to localise it on the next repro. This is why Entity Lifecycle (AoI) is no longer CW.
+A witness can miss an entity introduction entirely â the reproducible case is a Castle Cellblock GuardBody corpse that stays invisible until the player relogs. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the expected warnings never fired), which puts the fault downstream in create + appearance delivery. PR #582 added `aoi.create_emit` / `aoi.create_send_failed` seams to localise it on the next repro. This is why Entity Lifecycle (AoI) is no longer CW.
+
+### Player-to-player visibility (implemented, unvalidated)
+
+Two players in a shared world (Castle, Harset) used to introduce each other with the NPC-shaped `createOnClient` cascade — no `BeingAppearance`, no nameplate, placeholder stats, `stateField = 0` — and a player could be introduced during its own map load, when its cell entity exists but is still blank. Both are fixed: a dedicated `SGWPlayer` ghost cascade joins the cell's live state with the base session's identity at emit time, and an `is_introducible` gate keeps a loading player out of everyone's AoI until it can be introduced properly. Test coverage is wire-format, fan-out byte and negative-log only — **nobody has stood two clients next to each other yet**, so this is `NT`. Design, known gaps and the two-client UAT checklist: [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md). Separate from the introduction drop above.
 
 ### Combat formula calibration
 

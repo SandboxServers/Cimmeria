@@ -37,7 +37,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use crate::cell::messages::NpcAoIData;
+use crate::cell::messages::{NpcAoIData, PlayerAoIData};
 
 use super::ConnectedClientState;
 
@@ -71,6 +71,9 @@ pub(crate) enum DeferredAoiMsg {
         direction: [f32; 3],
         level: u32,
         npc_data: Option<NpcAoIData>,
+        /// Cell-side live state of a player observee; joined with the
+        /// observee's session identity at flush time, not at buffer time.
+        player_data: Option<PlayerAoIData>,
     },
     /// Buffered [`crate::cell::messages::CellToBaseMsg::LeftAoI`].
     LeftAoI { entity_id: u32 },

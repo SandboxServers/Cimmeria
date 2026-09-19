@@ -9,11 +9,11 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_NPC_DEFAULT, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 
-use crate::cell::messages::NpcAoIData;
+use crate::cell::messages::{NpcAoIData, PlayerAoIData};
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
     build_entity_invisible, build_entity_leave, build_entity_method_packet,
-    compose_create_entity_base_body, compose_create_entity_cascade_body,
+    build_player_ghost_cascade, compose_create_entity_base_body,
 };
 
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
@@ -22,6 +22,7 @@ use super::super::super::helpers::{
     WitnessSendOutcome,
 };
 use super::super::super::ConnectedClientState;
+use super::player_ghost;
 
 /// Emit the success-side (`aoi.create_emit`, DEBUG) or failure-side
 /// (`aoi.create_send_failed`, WARN) observability seam for one packet of
@@ -224,15 +225,23 @@ pub(crate) async fn flush_deferred_aoi(
                 direction,
                 level,
                 npc_data,
+                player_data,
             } => {
                 phase1.append_raw_message(&compose_create_entity_base_body(
                     entity_id, class_id, position, direction,
                 ));
-                phase2.append_raw_message(&compose_create_entity_cascade_body(
+                // Joined with the observee's session NOW, not when the cell
+                // fired the event: this buffer can be seconds old and the
+                // observee's cached appearance may have changed since.
+                phase2.append_raw_message(&player_ghost::compose_cascade_body(
+                    witness_id,
                     entity_id,
                     class_id,
                     level,
                     npc_data.as_ref(),
+                    player_data.as_ref(),
+                    connected,
+                    entity_to_addr,
                 ));
                 entered_count += 1;
             }
@@ -313,6 +322,7 @@ pub(super) async fn entered_aoi(
     direction: [f32; 3],
     level: u32,
     npc_data: Option<NpcAoIData>,
+    player_data: Option<PlayerAoIData>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -322,8 +332,15 @@ pub(super) async fn entered_aoi(
         entity_id,
         class_id,
         level,
+        is_player = player_data.is_some(),
         "AoI: entity entered witness range"
     );
+    // A player observee's cascade needs the identity half that lives on its
+    // base session (name, appearance, ...). Resolved before the sends so no
+    // `connected` lock is held across them.
+    let ghost_identity = player_data.as_ref().and_then(|_| {
+        player_ghost::resolve_identity(connected, entity_to_addr, witness_id, entity_id)
+    });
     // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE.
     // NPC spawn into player AoI; loss = NPC permanently invisible.
     let base_outcome = send_to_witness_reliable(
@@ -345,8 +362,16 @@ pub(super) async fn entered_aoi(
         connected,
         entity_to_addr,
         witness_id,
-        |key, version, seq, acks| {
-            build_create_entity_cascade(
+        |key, version, seq, acks| match (&player_data, &ghost_identity) {
+            (Some(live), Some(identity)) => build_player_ghost_cascade(
+                key,
+                seq,
+                acks,
+                entity_id,
+                &identity.cascade(live),
+                version,
+            ),
+            _ => build_create_entity_cascade(
                 key,
                 seq,
                 acks,
@@ -355,7 +380,7 @@ pub(super) async fn entered_aoi(
                 level,
                 npc_data.as_ref(),
                 version,
-            )
+            ),
         },
     )
     .await;
@@ -725,6 +750,7 @@ mod tests {
             [0.0, 0.0, 0.0],
             1, // level
             None,
+            None,
             &dyn_transport,
             &connected,
             &entity_to_addr,
@@ -796,6 +822,7 @@ mod tests {
             [0.0, 0.0, 0.0],
             [0.0, 0.0, 0.0],
             1,
+            None,
             None,
             &dyn_transport,
             &connected,

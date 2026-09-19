@@ -42,6 +42,7 @@ mod contact_list_dispatch;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod minigame;
+mod player_ghost;
 mod progression_dispatch;
 mod state_field;
 mod system_options;

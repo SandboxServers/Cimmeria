@@ -1,6 +1,6 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
-use super::data::{MailOp, NpcAoIData};
+use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 
 /// Messages sent from CellApp to BaseApp.
 #[derive(Debug)]
@@ -37,6 +37,11 @@ pub enum CellToBaseMsg {
         level: u32,
         /// NPC-specific data (faction, alignment, flags, name). None for players.
         npc_data: Option<NpcAoIData>,
+        /// Live cell-side state of a player observee (state field, target,
+        /// public stats, ammo type). `Some` exactly when the entering
+        /// entity is a player; the base joins it with the observee's
+        /// session identity to build the player-ghost cascade.
+        player_data: Option<PlayerAoIData>,
     },
 
     /// An entity left a witness's Area of Interest.

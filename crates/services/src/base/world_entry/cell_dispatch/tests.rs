@@ -87,6 +87,7 @@ async fn flush_deferred_aoi_drains_buffer_and_dispatches_to_aoi_handlers() {
         direction: [0.0; 3],
         level: 1,
         npc_data: None,
+        player_data: None,
     });
     state
         .deferred_aoi_msgs
@@ -246,6 +247,7 @@ async fn flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget() {
             direction: [0.0; 3],
             level: 1,
             npc_data: None,
+            player_data: None,
         });
     }
     assert_eq!(state.deferred_aoi_msgs.len(), 28);
@@ -372,6 +374,7 @@ async fn flush_deferred_aoi_keeps_reliable_seq_contiguous_across_bundle_and_tail
             direction: [0.0; 3],
             level: 1,
             npc_data: None,
+            player_data: None,
         });
     }
     state
