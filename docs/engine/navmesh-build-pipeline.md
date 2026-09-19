@@ -1,7 +1,7 @@
 # Navmesh Build Pipeline (UE3 → OBJ → NavBuilder → `.nav`)
 
 > **Last updated**: 2026-09-19
-> **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`.
+> **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5 and §6 (tunable NavBuilder, Recast 16-bit limits, Castle parameter set) measured on the 144-chunk Castle extraction the same day.
 
 How a cooked UE3 map becomes a `data/spaces/<space>.nav` that
 `crates/entity/src/navigation/` can load, and the exact conventions each
@@ -14,7 +14,7 @@ CookedPC/Maps/<Map>/<Map>-XXXXXXXX.umap
         │  crates/navmesh-extractor  (StaticMesh → triangles → OBJ)
         ▼
 <outdir>/chunks/<hex8>o.obj              CRLF, Y-up, centimetres
-        │  bin64/NavBuilder_d.exe chunked <chunks> <out.nav> nav
+        │  NavBuilder chunked <chunks> <out.nav> nav [key=value ...]
         ▼
 <out>.nav                                XRC poly mesh, BigWorld metres
         │  nav_inspect (connectivity + probe gate)
@@ -152,8 +152,15 @@ polys, same geometry.
 ## 2. NavBuilder input layout
 
 ```text
-NavBuilder_d.exe <chunked|whole> <input> <output> <nav|obj>
+NavBuilder <chunked|whole> <input> <output> <nav|obj> [key=value ...]
 ```
+
+Two binaries exist. `bin64/NavBuilder_d.exe` is the 2026-03 reference build:
+exactly four arguments, hard-coded Recast parameters, exit code 0 on every
+failure. The rebuilt `NavBuilder.exe` (§6) takes the trailing parameters
+documented in [§2.5](#25-recast-parameters-and-exit-codes), forwards Recast's
+own log, and exits non-zero when it fails. With no trailing arguments the two
+produce byte-identical output (§6.2).
 
 ### 2.1 Filenames
 
@@ -211,8 +218,9 @@ the committed source relative to whatever produced the shipped meshes.
 Consequences are cosmetic-but-annoying rather than corrupting: the bounds
 are unioned with the real vertex bounds, so geometry is never clipped. What
 you lose is (a) bit-comparability of `bmin`/`bmax` with the shipped files,
-and (b) a little wasted heightfield. Fixing `chunk.cpp` would need a C++
-rebuild, which this spike did not attempt.
+and (b) a little wasted heightfield. The rebuilt NavBuilder (§6) deliberately
+leaves `chunk.cpp` alone so that its default output stays byte-identical to
+the reference binary; use `bounds=` (§2.5) when you need exact extents.
 
 ### 2.4 `o Terrain_*` groups are skipped
 
@@ -222,11 +230,62 @@ extractor currently tags chunks `Chunk_<hex8>`, so nothing is skipped
 today — but **Phase 1.3 must not name its terrain groups `Terrain_…`**, or
 the geometry that matters most (see §4) will be silently discarded.
 
+### 2.5 Recast parameters and exit codes
+
+Rebuilt `NavBuilder.exe` only. Parameters follow the four positional
+arguments as `key=value`, `--key=value` or `--key value`. Every default is
+the constant that used to be hard-coded in `builder.cpp`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `cs`, `ch` | `0.3`, `0.2` | voxel size, metres. Do not raise `cs`: doorways close (§4) |
+| `agentHeight` | `0.6` | clearance, metres → `walkableHeight = ceil(h / ch)`. Written to the `.nav` header |
+| `agentClimb` | `0.9` | max step, metres → `walkableClimb = floor(c / ch)`. Written to the header |
+| `agentRadius` | `0.6` | erosion, metres → `walkableRadius = ceil(r / cs)`. Written to the header **and used by the server** (§6.4) |
+| `slope` | `45` | max walkable slope, degrees |
+| `maxEdgeLen` | `12` | max contour edge, metres; `0` disables splitting |
+| `maxSimplificationError` | `1.3` | contour deviation, **voxels** (× `cs` for metres) |
+| `minRegionSize` | `8` | cell *side*; squared internally (RecastDemo convention). `8` → 64 cells → 5.76 m² |
+| `mergeRegionSize` | `20` | same convention |
+| `maxVertsPerPoly` | `6` | 3–6; Detour's `DT_VERTS_PER_POLYGON` is 6 |
+| `detailSampleDist`, `detailSampleMaxError` | `6`, `1` | multiples of `cs` / `ch` |
+| `partition` | `monotone` | `monotone` or `watershed` |
+| `bounds` | — | `minX,minZ,maxX,maxZ` crop, BigWorld metres. Overrides the vertex/chunk bounds union on X and Z; Recast clips triangles to it. Quote it in PowerShell |
+
+| Exit | Meaning |
+|---|---|
+| 0 | `.nav` (or `.obj`) written. An **empty** mesh is still exit 0, with a `WARNING` line |
+| 1 | usage: wrong argument count, unknown key, malformed or out-of-range value, bad mode/format |
+| 2 | internal error (exception — e.g. the input directory cannot be enumerated, a face index out of range) |
+| 3 | Recast build failed, including both 16-bit caps in §6.3, or no chunk OBJs found |
+| 4 | output file could not be opened or written |
+
+A crash inside Recast (§6.3, monotone region overflow) surfaces as the usual
+Windows `0xC0000005`, which is also non-zero.
+
+On success the last log line is the one to read:
+
+```text
+[07:28:17 INFO    ] Navmesh: nverts=15463 npolys=7746 edges=21000 (caps: 65534 verts, 65535 edges) detailVerts=37495 detailTris=23325
+```
+
+Recast's own diagnostics are forwarded with a `Recast:` prefix.
+`delaunayHull: Removing dangling face` is benign and rate-limited to three
+lines plus a total. `rcBuildContours: Bad outline for region N` and
+`rcBuildRegions: N overlapping regions` are **not** benign — Recast logs
+them as errors but carries on, and the named region is dropped or
+mis-stitched.
+
 ## 3. Failure modes NavBuilder will not tell you about
+
+The first row applies to the reference `NavBuilder_d.exe` only; the rebuilt
+binary reports it through its exit code (§2.5). The rest apply to both.
 
 | Symptom | Cause | Guard |
 |---|---|---|
-| Process exits **0**, no output file | every failure path in `exportNavmesh` logs `FAULT` and returns `void` (`builder.cpp:119`, `139`, `153`, …) | the wrapper scripts test for a non-empty output file; never trust `$?` |
+| Process exits **0**, no output file (reference binary) | every failure path in the old `exportNavmesh` logs `FAULT` and returns `void` | the wrapper scripts check the exit code **and** test for a non-empty output file |
+| `Could not triangulate contours`, nothing else (reference binary) | Recast's 16-bit vertex cap; the old binary discards Recast's `Too many vertices N` line | rebuilt binary prints it; see §6.3 |
+| `.nav` builds and loads, but has thousands of components and named points that were connected in a smaller build no longer are | Recast's **unchecked** 16-bit adjacency-edge cap (§6.3). The reference binary writes the corrupt mesh | rebuilt binary counts edges and exits 3 |
 | `Failed to create heightfield`, no output | an OBJ in the input directory whose stem is not `<hex8>o`. The `else` branch of `MapChunk::load` sets only `chunkId_`; `positionX_`, `positionZ_`, `sizeX_`, `sizeZ_` stay **uninitialised**, and `builder.cpp:98-109` folds the garbage into `bmin`/`bmax` | the wrapper scripts reject any non-conforming `*.obj` in the chunk directory before invoking NavBuilder |
 | Same as above, in `chunked` mode | the combined `<map>.obj` that `extract_map` writes next to the per-chunk files. It is also loaded, *and* it duplicates every triangle | keep chunk OBJs in their own subdirectory (the wrappers use `<out>/chunks/`) |
 | `.nav` with `npolys = 0` | wrong OBJ column order (§1.2), or an all-inverted mesh | `nav_inspect` reports `components 0` |
@@ -306,8 +365,9 @@ Current values (`builder.cpp:74-88`): `cs 0.3`, `ch 0.2`, `agentHeight 0.6`,
 - `minRegionArea = 5.76 m²` leaves a long tail of one-polygon islands (the
   shipped `harset.nav` has 1,939 components, so this is not new).
 
-None of these were changed. Re-tune **after** Terrain lands: with 3 % of the
-walkable surface present, any parameter sweep is measuring noise.
+None of these were changed for Castle Cellblock. They *were* measured on
+Castle (World 8) once Terrain and BSP landed — see §6.4 for what each one
+actually does to the mesh and the recommended set.
 
 ## 5. `nav_inspect`
 
@@ -354,6 +414,211 @@ already heavily fragmented — `castle_cellblock.nav` has 50 components and
 become their own island. CA14's criterion has to be *"these named points
 are mutually reachable"*, which is what `--probe` tests, not *"the mesh is
 one region"*.
+
+### A caveat when a probe reads `OUT OF TOLERANCE`
+
+`NavComponents::locate` (`nav_components.rs:273-301`) prefers **any** polygon
+whose XZ footprint contains the probe over a nearer polygon on the right
+storey, and only then applies `--v-tol`. On a map with terrain under the
+interiors, a probe that sits 1–2 m outside its floor polygon (inside the
+0.6 m erosion margin, or on top of a prop) resolves to the terrain tens of
+metres below and is reported `OUT OF TOLERANCE`, even though a floor polygon
+is well within `--h-tol`. On the whole-map Castle mesh this affects `armory`
+(h = 1.49 m to the interior component, reported `dy = -69.38 m`),
+`throne_room` and `opcore`. Treat `OUT OF TOLERANCE` with a large `dy` as
+"check by hand", not as "floor missing".
+
+## 6. Rebuilding NavBuilder, Recast's 16-bit limits, and the Castle parameter set
+
+### 6.1 Building `NavBuilder.exe`
+
+```powershell
+tools\build-navbuilder.ps1                      # -> bin64\NavBuilder.exe
+tools\build-navbuilder.ps1 -Out C:\tmp\NavBuilder.exe -RecastRoot <recast checkout>
+```
+
+`deprecated/cpp-build/projects/NavBuilder.vcxproj` cannot be built any more:
+its precompiled header (`deprecated/cpp/src/stdafx.hpp`) pulls in Boost
+(python, asio, thread), SOCI and TinyXML, and it links `unified_kernel.lib`
+— none of which `setup.ps1` provisions since the Rust rewrite. NavBuilder
+itself needs only a logger and three Boost.uBLAS names, so the script
+compiles the five `nav_builder/*.cpp` files plus `Recast/Source/*.cpp`
+straight into one exe with `cl` (located through `vswhere`), defining
+`NAVBUILDER_STANDALONE` and putting
+`deprecated/cpp/src/nav_builder/standalone/` first on the include path. That
+directory holds a `stdafx.hpp` shim (std headers + a synchronous logger with
+the original line format) and `ublas_min.hpp`. The legacy vcxproj build is
+untouched by either.
+
+The script refuses to write to a file named `NavBuilder_d.exe`. The wrapper
+scripts prefer `bin64/NavBuilder.exe` when it exists.
+
+### 6.2 Parity with the reference binary
+
+Same input (`castle_int`, 17 interior tiles, 1,177,804 triangles), no
+trailing arguments:
+
+| Build | Recast source | Result |
+|---|---|---|
+| `bin64/NavBuilder_d.exe` (Debug, 2026-03-02) | `recastnavigation-main` snapshot of 2026-02-27 | 15,463 verts / 7,746 polys, 37 s |
+| rebuilt, Release | same snapshot (`external/_downloads/recastnavigation-main.zip`) | **byte-identical** (SHA-256 `37C188E8…11EDF5`), 3.2 s |
+| rebuilt, Release or Debug | `external/recast` = v1.6.0, what `setup.ps1` provisions today | 15,463 verts / 7,752 polys; same five interior probes in one component |
+
+The reference binary predates the v1.6.0 pin: the bootstrap downloaded
+`recastnavigation-main` until 2026-03-24 (commit `a7b7d66e9` switched to the
+1.6.0 release for the Detour FFI). Debug and Release builds of the new source
+are byte-identical with each other, so the 6-polygon difference is the Recast
+version, not floating-point behaviour. Either Recast is fine for production;
+use the snapshot only when you need to diff against the reference binary.
+
+`tests/navbuilder_axis_roundtrip.rs` passes 3/3 against the rebuilt binary
+(`CIMMERIA_NAVBUILDER=<path>`).
+
+### 6.3 Recast has three 16-bit limits, and only one is checked
+
+A single `rcPolyMesh` — which is all the XRC `.nav` format can hold — is
+bounded by three separate `unsigned short` index spaces.
+
+**1. Contour vertices < 65,534 — checked.** `rcBuildPolyMesh` sums the
+vertex counts of every contour *before* de-duplication and fails with
+`rcBuildPolyMesh: Too many vertices N` (`RecastMesh.cpp:1014-1016` in v1.6.0).
+The final `nverts` is 10–20 % lower than `N`; the rebuilt NavBuilder prints
+`N` on its `Contours:` line. Whole-map Castle at the
+default parameters: `N = 118,250`.
+
+**2. Adjacency edges ≤ 65,535 — NOT checked.** `buildMeshAdjacency` stores
+edge indices as `unsigned short` (`RecastMesh.cpp:75`,
+`firstEdge[v0] = (unsigned short)edgeCount`) with no overflow test. One edge
+is recorded per polygon side with `v0 < v1`, which comes to about
+`0.9 × (nverts + npolys)`. Past the cap the mesh still builds, saves and
+loads, but polygon neighbour links are garbage. Measured:
+
+| Build | nverts | npolys | edges | components | interior probes |
+|---|---|---|---|---|---|
+| 62 chunks, StaticMesh + terrain, defaults | 55,704 | 26,825 | **75,103** | 5,551 | — |
+| 144 chunks, `maxSimplificationError=2.0` `minRegionSize=24` | 54,413 | 26,688 | **74,942** | 4,320 | split; Zuritska's cell is a 23 m² island |
+| 144 chunks, `maxSimplificationError=2.5` `minRegionSize=24` | 45,115 | 21,799 | 60,850 | 987 | one component |
+
+The first row is the build that was believed to have "squeaked under" the
+vertex cap. It did — and was silently corrupt. With `minRegionSize=24` no
+component can be smaller than ~50 m², yet the second row has 3,055 of them:
+those are fragments of real regions whose links were truncated. The rebuilt
+NavBuilder counts edges exactly as Recast does and exits 3 above the cap.
+**In practice the binding limit is `nverts + npolys ≲ 72,000`, not
+`nverts < 65,534`.**
+
+**3. Region ids are 15-bit — checked only for watershed.** `RC_BORDER_REG`
+takes the top bit. `rcBuildRegions` tests for overflow
+(`RecastRegion.cpp:1621` in v1.6.0); `rcBuildRegionsMonotone` increments an
+`unsigned short id` with no test (`:1361`, `:1469`). Whole-map Castle with
+`agentClimb=0.5` and the default monotone partitioning dies with an access
+violation (`0xC0000005`) in the partitioning step under the 2026-02 snapshot,
+and under v1.6.0 runs to completion with implausible output (10,450 contours
+/ 72,567 contour vertices, against 5,592 / 104,022 for watershed on the same
+input). **Use `partition=watershed` for anything map-sized.** It costs
+nothing measurable here (15 s either way).
+
+### 6.4 Castle (World 8): what each parameter does
+
+Input: all 144 chunks (`StaticMesh` + `Terrain` + BSP), 4,179,133 triangles,
+grid 4,458 × 4,000. "Interior-5" = `zuritska_cell`, `romney_corridor`,
+`comms_room`, `nid_guard_116`, `armory` resolve (h-tol 2 m, v-tol 3 m) to one
+common component. Build time is wall-clock for NavBuilder alone, Release.
+
+| Parameters (others default) | contour verts | nverts / npolys / edges | components | Interior-5 | s |
+|---|---|---|---|---|---|
+| *(defaults, monotone)* | 118,250 | fails: vertex cap | — | — | 17 |
+| `minRegionSize=16` / `24` / `32` / `50` | 107,499 / 100,216 / 93,475 / 82,556 | fails | — | — | 15 |
+| `maxEdgeLen=0` | 115,211 | fails | — | — | 16 |
+| `mergeRegionSize=40` | 111,827 | fails | — | — | 18 |
+| `maxSimplificationError=2.0` | 84,268 | fails | — | — | 16 |
+| `partition=watershed` | 116,814 | fails | — | — | 16 |
+| `agentHeight=1.8 agentClimb=0.5` (monotone) | — | **crash**, limit 3 | — | — | 9 |
+| W = `partition=watershed agentHeight=1.8 agentClimb=0.6` | 110,845 | fails | — | — | 16 |
+| W + `minRegionSize=24 maxSimplificationError=2.0` | 63,655 | 54,413 / 26,688 / 74,942 — **corrupt**, limit 2 | 4,320 | **no** | 15 |
+| **W + `minRegionSize=24 maxSimplificationError=2.5`** | 54,355 | **45,115 / 21,799 / 60,850** | **987** | **yes** (17,006 m²) | **15** |
+| W + `minRegionSize=32 maxSimplificationError=2.2` | — | 46,379 / 22,931 / 63,816 | 682 | yes | 14 |
+| W + `minRegionSize=32 maxSimplificationError=2.5` | — | 41,739 / 20,460 / 56,766 | 682 | yes | 16 |
+| W + `minRegionSize=16 maxSimplificationError=2.8` | — | 45,343 / 21,430 / 59,662 | 1,532 | yes | 17 |
+| W + `maxSimplificationError=3.0` | — | 48,124 / 21,952 / 60,626 | 2,718 | yes | 18 |
+| default agent + `partition=watershed minRegionSize=24 maxSimplificationError=2.5` | — | 48,290 / 23,365 / 65,239 | 1,073 | yes | 15 |
+
+Reading it:
+
+- **`maxSimplificationError` is the only strong lever** (−29 % contour
+  vertices from 1.3 → 2.0). `minRegionSize` needs to reach 50 (a 225 m²
+  threshold) for the same effect, `maxEdgeLen` and `mergeRegionSize` are
+  worth 3–5 %, and monotone-vs-watershed is a wash. The vertices are in the
+  *boundaries* of large regions — 1.08 km² of bumpy terrain with 45° cut-outs
+  — not in the thousands of small islands.
+- **Cost of `maxSimplificationError=2.5`** (0.75 m of contour deviation, of
+  which the 0.6 m erosion margin absorbs most): rasterising the interior
+  component over `x[200,520] z[800,1100] y[40,80]` against an otherwise
+  identical 1.3 build gives 16,474 m² baseline, 152 m² lost (0.9 %), 321 m²
+  gained (1.9 %). At 3.0 it is 211 / 467 m².
+- **Cost of `minRegionSize=24`**: in the interior crop it removes 433 islands
+  totalling 7,900 m² (2 % of the area), every one under 52 m². Most are prop
+  tops. Any *sealed* room smaller than 52 m² goes with them; none of the
+  current probes is in one.
+- **Component histogram**, whole map, before → after the recommended set
+  (before = the corrupt 2.0 build, the only whole-map mesh with small
+  regions that exists): `<10 m²` 2,161 → 0; `10–50 m²` 894 → 1;
+  `50–500 m²` 1,069 → 800; `>500 m²` 196 → 186.
+
+Agent values:
+
+- `agentHeight=1.8` removes crawl-spaces and under-furniture floor: interior
+  tiles go 577 → 474 components and 329,798 → 312,909 m², all five interior
+  probes unaffected. With the default `agentClimb=0.9 > agentHeight=0.6`,
+  watershed logs `rcBuildRegions: 2 overlapping regions` and
+  `rcBuildContours: Multiple outlines for region N` on the whole map — the
+  storey-welding the mismatch was suspected of. Both errors disappear at
+  1.8 / 0.6.
+- `agentClimb=0.5` is **too low at `ch = 0.2`**: it floors to 2 voxels
+  (0.4 m). With all 144 chunks loaded, `comms_room` / `nid_guard_116` split
+  from `zuritska_cell` / `romney_corridor` (4,372 m² vs 12,330 m²
+  components) and total walkable area drops 10 %. `0.6` (3 voxels) restores
+  the single 16,8xx m² component; `0.7` is identical to `0.6`.
+- `agentRadius` stays `0.6`. `crates/entity/src/navigation/mod.rs` passes
+  height and climb straight to `dtCreateNavMeshData` and nothing else reads
+  them, but `is_point_valid` gates on `agent_radius * 2.0` horizontally and
+  `agent_radius * BELOW_SURFACE_TOLERANCE_FACTOR` below the surface
+  (`mod.rs:456-461`). Halving the radius would halve the player
+  movement-validation tolerance as a side effect.
+
+**Recommended Castle set** (`--preset castle` / `-Preset castle`):
+
+```text
+partition=watershed agentHeight=1.8 agentClimb=0.6 minRegionSize=24 maxSimplificationError=2.5
+```
+
+7 % headroom under the edge cap. Against v1.6.0 Recast the same set gives
+45,124 / 21,803 / 60,862 and the same probe result. The 62 geometry-bearing
+chunks alone come to 25,278 / 11,889 / 33,319.
+
+What the recommended mesh does **not** do: connect all eleven probes. The
+gate room, stargate, `bunker_muelbach` and `checkpoint_bravo` share one
+exterior component (23,051 m²); the interior five plus `opcore` share
+another; `throne_room` is in a third. That is geometry (doors, ring
+transports), not tuning — it is identical at every parameter set above.
+
+### 6.5 When it stops fitting
+
+More geometry (or a finer `cs`) will push the edge count back over. In order
+of cost:
+
+1. `minRegionSize=32` — 56,766 edges, 13 % headroom, same probe result.
+2. `bounds=minX,minZ,maxX,maxZ` — crop to the region NPCs can reach.
+   `bounds=150,550,650,1150` (the interior complex) is 20,743 / 10,152 /
+   28,490 at **un-degraded** `maxSimplificationError=1.3 minRegionSize=8`.
+   The extractor need not change; Recast clips to the box.
+3. One `.nav` per region of interest, or a tiled Detour mesh — both need
+   server-side loader work and are out of scope here.
+
+Decimating terrain in the extractor does **not** help with the caps: they
+count output contour vertices, which depend on the shape of the walkable
+boundary at `cs`, not on input tessellation. It would only trim the 2–3 s of
+rasterisation out of a 15 s build.
 
 ## Cross-references
 

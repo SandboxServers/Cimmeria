@@ -272,7 +272,15 @@ public:
 			return EXIT_BUILD_FAILED;
 		}
 		
-		INFO("Contours: %d", contours->nconts);
+		// rcBuildPolyMesh caps the *sum* of contour vertices (before it
+		// de-duplicates them) at 0xfffe, so print the number it will test.
+		int contourVerts = 0;
+		for (int i = 0; i < contours->nconts; i++)
+		{
+			if (contours->conts[i].nverts >= 3)
+				contourVerts += contours->conts[i].nverts;
+		}
+		INFO("Contours: %d with %d vertices (cap 65534)", contours->nconts, contourVerts);
 
 		DEBUG1("Building polygon mesh ...");
 		rcPolyMesh * polyMesh = rcAllocPolyMesh();
