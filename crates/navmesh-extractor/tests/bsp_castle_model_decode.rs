@@ -1,163 +1,27 @@
 //! Phase 1.4 acceptance tests: decode the BSP `Model` exports of the
-//! cooked `Maps/Castle` chunks and confirm the geometry lands where the
-//! live playtest says the floors are.
+//! cooked `Maps/Castle` chunks byte-exactly, and pin the emitted
+//! triangle winding against NavBuilder's walkable convention.
 //!
 //! Every test self-skips when the cooked client tree is absent, and
 //! says so loudly. A skipped test is not a pass.
 //!
 //! Run with `--nocapture` to see the measurement tables (per-tile
-//! triangle counts, PolyFlags histogram, winding buckets, floor probe).
+//! triangle counts, PolyFlags histogram, winding buckets).
+//!
+//! Companion file: `bsp_castle_floor_evidence.rs` answers "is the
+//! floor here".
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+mod bsp_support;
 
-use cimmeria_navmesh_extractor::bsp::{collect_bsp_models, collect_bsp_triangles, EMIT_REVERSED};
+use bsp_support::*;
+
+use cimmeria_navmesh_extractor::bsp::collect_bsp_triangles;
+use cimmeria_navmesh_extractor::bsp::{collect_bsp_models, EMIT_REVERSED};
 use cimmeria_navmesh_extractor::geometry::TriangleSoup;
 use cimmeria_navmesh_extractor::umap::enumerate_chunks;
 use cimmeria_upk::Package;
 use cimmeria_upk_objects::model::{deserialize_model, deserialize_polys, CollisionFilter};
-
-/// The tile the playtest's two HIGH-confidence walkable points sit in.
-const INTERIOR_TILE: &str = "Castle-000a0002.umap";
-/// The tile holding the Level-5 comms room point.
-const COMMS_TILE: &str = "Castle-00080002.umap";
-
-// --- Measured baselines (Castle-000a0002.umap, persistent-level Model).
-//
-// These are the numbers this branch measured, not numbers copied from
-// the RE finding. A change to the deserializer that moves any of them
-// is a behaviour change that needs re-measuring, not a test to relax.
-
-/// `Nodes.Num()` of the persistent-level `Model`.
-const TILE_A2_LEVEL_NODES: usize = 399;
-/// Fan triangles from those nodes, before any PolyFlags filtering.
-const TILE_A2_LEVEL_TRIS_UNFILTERED: usize = 1098;
-
-/// Locate `CookedPC/Maps/Castle` by walking up from the crate manifest
-/// until a `sgw/Stargate Worlds-QA/...` sibling appears. Matches the
-/// probe `staticmesh_castle_cellblock.rs` uses so both tests behave the
-/// same from a worktree.
-fn castle_dir() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let suffix = PathBuf::from("sgw/Stargate Worlds-QA/Working/SGWGame/CookedPC/Maps/Castle");
-    for ancestor in manifest.ancestors().take(10) {
-        let candidate = ancestor.join(&suffix);
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    manifest.join(&suffix)
-}
-
-fn skip_if_missing(dir: &Path, what: &str) -> bool {
-    if !dir.exists() {
-        eprintln!(
-            "SKIPPED {what} — cooked client tree not present at {}",
-            dir.display()
-        );
-        return true;
-    }
-    false
-}
-
-/// BigWorld → UE3 cm. `BW = (ue.y/100, ue.z/100, ue.x/100)`, so the
-/// inverse is `ue = (bw.z*100, bw.x*100, bw.y*100)`.
-fn bw_to_ue(bw: [f32; 3]) -> [f32; 3] {
-    [bw[2] * 100.0, bw[0] * 100.0, bw[1] * 100.0]
-}
-
-/// UE3 right-hand-rule normal of a triangle in its emitted order.
-fn winding_normal(t: [[f32; 3]; 3]) -> [f32; 3] {
-    let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-    let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-    [
-        u[1] * v[2] - u[2] * v[1],
-        u[2] * v[0] - u[0] * v[2],
-        u[0] * v[1] - u[1] * v[0],
-    ]
-}
-
-fn norm3(v: [f32; 3]) -> f32 {
-    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
-}
-
-/// 2D point-in-triangle over the UE3 XY plane (the BW ground plane).
-fn contains_xy(t: [[f32; 3]; 3], x: f32, y: f32) -> bool {
-    let sign = |ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32| {
-        (ax - cx) * (by - cy) - (bx - cx) * (ay - cy)
-    };
-    let d1 = sign(x, y, t[0][0], t[0][1], t[1][0], t[1][1]);
-    let d2 = sign(x, y, t[1][0], t[1][1], t[2][0], t[2][1]);
-    let d3 = sign(x, y, t[2][0], t[2][1], t[0][0], t[0][1]);
-    let has_neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
-    let has_pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
-    !(has_neg && has_pos)
-}
-
-/// Barycentric interpolation of a triangle's Z at (x, y).
-fn interp_z(t: [[f32; 3]; 3], x: f32, y: f32) -> Option<f32> {
-    let d = (t[1][1] - t[2][1]) * (t[0][0] - t[2][0]) + (t[2][0] - t[1][0]) * (t[0][1] - t[2][1]);
-    if d.abs() < 1e-6 {
-        return None;
-    }
-    let a = ((t[1][1] - t[2][1]) * (x - t[2][0]) + (t[2][0] - t[1][0]) * (y - t[2][1])) / d;
-    let b = ((t[2][1] - t[0][1]) * (x - t[2][0]) + (t[0][0] - t[2][0]) * (y - t[2][1])) / d;
-    let c = 1.0 - a - b;
-    Some(a * t[0][2] + b * t[1][2] + c * t[2][2])
-}
-
-/// One world-space triangle plus the authored normal of the surface it
-/// came from. The floor probe must not use the winding-derived normal
-/// (that's the question the winding test answers), so both travel
-/// together.
-struct WorldTri {
-    tri: [[f32; 3]; 3],
-    /// Authored surface normal (`Vectors[vNormal]`), world space.
-    surf_normal: [f32; 3],
-    poly_flags: u32,
-}
-
-/// Decode a chunk and return every emitted BSP triangle with its
-/// authored surface normal, using the production filter.
-fn world_triangles(chunk: &Path) -> Vec<WorldTri> {
-    let pkg = Package::open(chunk).expect("open chunk");
-    let (instances, _stats) = collect_bsp_models(&pkg);
-    let mut out = Vec::new();
-    for inst in &instances {
-        let t = inst.model.triangulate(CollisionFilter::default());
-        for (i, tri) in t.triangles.iter().enumerate() {
-            let surf_index = t.triangle_surf[i] as usize;
-            let n_local = inst
-                .model
-                .surf_normal(surf_index)
-                .unwrap_or([0.0, 0.0, 0.0]);
-            // A level model is world space already; a brush model's
-            // normal would need the rotation applied. Castle has zero
-            // non-empty brush models, so rotate only when it matters.
-            let n_world = if inst.is_level_model {
-                n_local
-            } else {
-                let o = inst.transform.apply([0.0; 3]);
-                let p = inst.transform.apply(n_local);
-                [p[0] - o[0], p[1] - o[1], p[2] - o[2]]
-            };
-            let mut world = [
-                inst.to_world(tri[0]),
-                inst.to_world(tri[1]),
-                inst.to_world(tri[2]),
-            ];
-            if EMIT_REVERSED {
-                world.swap(1, 2);
-            }
-            out.push(WorldTri {
-                tri: world,
-                surf_normal: n_world,
-                poly_flags: inst.model.surfs[surf_index].poly_flags,
-            });
-        }
-    }
-    out
-}
+use std::collections::BTreeMap;
 
 #[test]
 fn castle_interior_tile_models_parse_with_zero_remainder() {
@@ -429,123 +293,6 @@ fn bsp_floor_winding_matches_navbuilder_walkable_convention() {
 }
 
 #[test]
-fn bsp_floor_probe_at_known_walkable_points() {
-    // Task 5 — the question the spike turns on: does the decoded BSP
-    // put an upward-facing surface under each known-walkable point?
-    //
-    // "Upward-facing" is judged by the AUTHORED surface normal
-    // (`Vectors[vNormal]`), not by emitted winding, so the answer is
-    // independent of the winding question above. BW up is +ue.z.
-    let dir = castle_dir();
-    if skip_if_missing(&dir, "bsp_floor_probe_at_known_walkable_points") {
-        return;
-    }
-
-    let probes: [(&str, &str, [f32; 3]); 3] = [
-        ("Zuritska cell", INTERIOR_TILE, [268.0, 66.79, 1042.59]),
-        ("Romney corridor end", INTERIOR_TILE, [244.0, 66.79, 1036.0]),
-        ("Level-5 comms room", COMMS_TILE, [271.7, 55.2, 858.0]),
-    ];
-
-    // ~1.5 BW units either side of the recorded Y, in cm.
-    //
-    // The brief asks for a face "under the point within ~1.5 units
-    // below its Y", but the window is symmetric on purpose: the
-    // recorded telemetry Y sits slightly *below* the floor plane at
-    // two of the three points (-9 cm and -25 cm; the third is exact),
-    // so a strictly-below window reports a false absence for a floor
-    // that is plainly there. The signed offset is printed for every
-    // hit so the sidedness stays visible instead of being hidden by
-    // the tolerance.
-    const BELOW_CM: f32 = 150.0;
-    const ABOVE_CM: f32 = 150.0;
-
-    let mut cache: BTreeMap<String, Vec<WorldTri>> = BTreeMap::new();
-    let mut results = Vec::new();
-    for (label, tile, bw) in probes {
-        let chunk = dir.join(tile);
-        if !chunk.exists() {
-            eprintln!("SKIPPED probe {label} — {tile} missing");
-            continue;
-        }
-        let tris = cache
-            .entry(tile.to_string())
-            .or_insert_with(|| world_triangles(&chunk));
-        let ue = bw_to_ue(bw);
-
-        let mut best: Option<(f32, f32, u32)> = None; // (drop cm, nz, flags)
-        let mut in_window = 0usize;
-        let mut over_xy = 0usize;
-        // Nearest upward-facing face at this XY at ANY height, so an
-        // "absent" answer can distinguish "no geometry here at all"
-        // from "floor is at a different height".
-        let mut nearest_up: Option<(f32, f32)> = None; // (drop cm, bw y)
-        for wt in tris.iter() {
-            if !contains_xy(wt.tri, ue[0], ue[1]) {
-                continue;
-            }
-            over_xy += 1;
-            let Some(z) = interp_z(wt.tri, ue[0], ue[1]) else {
-                continue;
-            };
-            let drop = ue[2] - z;
-            let n = wt.surf_normal;
-            let len = norm3(n);
-            if len < 1e-6 {
-                continue;
-            }
-            let nz = n[2] / len;
-            if nz > 0.0 && nearest_up.map(|b| drop.abs() < b.0.abs()).unwrap_or(true) {
-                nearest_up = Some((drop, z / 100.0));
-            }
-            if !(-ABOVE_CM..=BELOW_CM).contains(&drop) {
-                continue;
-            }
-            in_window += 1;
-            if nz <= 0.0 {
-                continue; // not upward-facing in BW
-            }
-            if best.map(|b| drop.abs() < b.0.abs()).unwrap_or(true) {
-                best = Some((drop, nz, wt.poly_flags));
-            }
-        }
-
-        match best {
-            Some((drop, nz, flags)) => {
-                eprintln!(
-                    "FLOOR PRESENT  {label} ({tile}) bw={bw:?} ue=({:.0},{:.0},{:.0}) \
-                     -> upward BSP face {:.1} cm below, surf n.z={nz:.3}, PolyFlags={flags:#x}",
-                    ue[0], ue[1], ue[2], drop
-                );
-                results.push((label, true));
-            }
-            None => {
-                let nearest = match nearest_up {
-                    Some((drop, bw_y)) => format!(
-                        "nearest upward BSP face at this XY is {drop:.0} cm away (BW y {bw_y:.2})"
-                    ),
-                    None => "no upward-facing BSP face at this XY at ANY height".to_string(),
-                };
-                eprintln!(
-                    "FLOOR ABSENT   {label} ({tile}) bw={bw:?} ue=({:.0},{:.0},{:.0}) \
-                     -> no upward-facing BSP face within {BELOW_CM} cm below \
-                     ({in_window} candidate(s) in the height window, {over_xy} BSP \
-                     triangle(s) span this XY); {nearest}",
-                    ue[0], ue[1], ue[2]
-                );
-                results.push((label, false));
-            }
-        }
-    }
-
-    assert_eq!(results.len(), 3, "all three probe tiles must be present");
-    // This test reports rather than gates: an absent BSP floor is a
-    // real finding (the floor may be a StaticMesh or Terrain), not a
-    // decoder failure. What WOULD be a decoder failure is producing no
-    // geometry at all, which the other tests cover.
-}
-
-#[test]
 fn castle_all_chunks_bsp_scan() {
     // Full-map sweep: every chunk must decode with zero failures, and
     // the per-tile triangle table is the deliverable.
@@ -622,10 +369,42 @@ fn castle_all_chunks_bsp_scan() {
     for (v, n) in &flag_hist {
         eprintln!("    {v:#010x}  {n}");
     }
-    eprintln!("  top 10 tiles by BSP triangle count:");
-    for (name, tris, nodes) in per_tile.iter().take(10) {
-        eprintln!("    {name:<26} tris={tris:<7} nodes={nodes}");
+    eprintln!(
+        "  every tile with BSP geometry, descending (`*` = on the known interior-tile list):"
+    );
+    for (name, tris, nodes) in per_tile.iter().filter(|t| t.1 > 0) {
+        let id = name
+            .trim_start_matches("Castle-")
+            .trim_end_matches(".umap")
+            .to_string();
+        let mark = if INTERIOR_TILES.contains(&id.as_str()) {
+            "*"
+        } else {
+            " "
+        };
+        eprintln!("    {mark} {name:<26} tris={tris:<7} nodes={nodes}");
     }
+
+    // The set of tiles with BSP geometry must be exactly the set that
+    // carries `ModelComponent` exports — the interior tiles. If a tile
+    // drops out of one list but not the other, either the decode broke
+    // or the map content changed.
+    let with_geometry: std::collections::BTreeSet<String> = per_tile
+        .iter()
+        .filter(|t| t.1 > 0)
+        .map(|t| {
+            t.0.trim_start_matches("Castle-")
+                .trim_end_matches(".umap")
+                .to_string()
+        })
+        .collect();
+    let expected: std::collections::BTreeSet<String> =
+        INTERIOR_TILES.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        with_geometry, expected,
+        "the tiles with BSP geometry must be exactly the 16 interior \
+         tiles that carry ModelComponent exports"
+    );
 
     assert!(
         all_errors.is_empty(),
