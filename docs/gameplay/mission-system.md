@@ -2,12 +2,12 @@
 title: "Mission System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-19
 ---
 
 # Mission System
 
-> **Last updated**: 2026-05-07
+> **Last updated**: 2026-09-19
 > **Status**: ~40% implemented; mission lifecycle in production runs through the [content engine](../content/content-engine.md).
 
 ## Overview
@@ -100,6 +100,14 @@ MissionManager.advance(missionId, stepId)
        |-> completeStepObjectives(currentStep)
        |-> addStepObjectives(nextStep)
        |-> fire step completed/started events
+
+`advance_step`
+([crates/services/src/cell/missions/progression.rs](../../crates/services/src/cell/missions/progression.rs))
+reports each old-step objective it completes as a completed-status
+`onObjectiveUpdate` (method 82) before the `onStepUpdate` transition frames.
+Without that report, whichever objective on a multi-objective AND-gate step
+finishes second (via `advance_step` rather than `complete_objective`) never
+reaches the client as completed before the step disappears.
 
 MissionManager.complete(missionId)
   |-> instance.complete()
