@@ -694,7 +694,7 @@ last_updated: 2026-07-25
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Minigame session start | IM | -- | cell/cell_methods/minigame.rs | Ticket issue + session registry (minigame/session.rs) |
+| Minigame session start | IM | -- | cell/cell_methods/minigame.rs | Ticket issue + session registry (minigame/session/) |
 | Seed generation | IM | -- | cell/cell_methods/minigame.rs | 0..0x7FFFFFFF |
 | Result callback | IM | -- | minigame/server.rs:22-35 | `send_minigame_result` — four call sites (game-driven / tick-driven × victory / failure) share one error path; the prior silent `let _ = send` stalled quest chains |
 | Mission integration | IM | Missions | content-engine OnMinigameComplete | `on_victory_chains` carried through the result hop |

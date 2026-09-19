@@ -616,7 +616,7 @@ beyond the 3 verified handlers above.
 | 170 | `gmDebugCombat()` | — | stub `cell_methods/ability_manager.rs:22` (also gated as in-range idx 2) | ADAPT |
 | 171 | `gmDebugCombatVerbose()` | — | log-only stub (in-range idx 3) | ADAPT |
 | 172 | `gmDebugHeal()` | — | stub `cell_methods/combatant.rs:59` (in-range idx 6) | ADAPT |
-| 173 | `gmDebugStartMinigame(INT32 gameId)` | — | `minigame/session.rs:60 register` + cell dispatch stub | ADAPT |
+| 173 | `gmDebugStartMinigame(INT32 gameId)` | — | `minigame/session/mod.rs` `register` + cell dispatch stub | ADAPT |
 | 174 | `gmDebugSpectateMinigame()` | — | cell stub `cell_methods/minigame.rs` | ADAPT |
 | 175 | `gmDebugJoinMinigame()` | — | cell stub | ADAPT |
 | 176 | `gmDebugAbilityOnMob(INT32 abilityID)` | — | — | NEW |
