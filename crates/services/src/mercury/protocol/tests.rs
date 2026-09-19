@@ -153,7 +153,7 @@ fn client_index_of(entity: &str) -> Option<u8> {
     None
 }
 
-/// Regression guard for #313 / PR #704: the wire typeID is the client's
+/// Regression guard: the wire typeID is the client's
 /// clientIndex, which skips `<ServerOnly/>` entries — NOT the raw
 /// `entities.xml` document index. `SGWBlackMarket` (raw index 7) is
 /// ServerOnly, so `Account` (raw index 8) is clientIndex 7. Deriving the

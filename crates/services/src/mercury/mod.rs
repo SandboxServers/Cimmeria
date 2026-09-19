@@ -140,7 +140,7 @@ pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 /// client: 0..=6 unchanged, SGWBlackMarket skipped, 7 Account
 /// ```
 ///
-/// `0x08` (Account's raw index, proposed in #313) is unmapped on the client
+/// `0x08` (Account's raw document index) is unmapped on the client
 /// and breaks character select, which runs on Account's exposed base methods
 /// (`createCharacter`/`playCharacter`). See
 /// `docs/protocol/client-verified-wire-formats.md` "Entity Class IDs".
