@@ -2,7 +2,7 @@
 title: "SGW UE3 Package Binary Format"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-19
 ---
 
 # SGW UE3 Package Binary Format
@@ -275,17 +275,55 @@ understanding above, not merely a tooling limitation.
 `UModel::Serialize`'s full field order and sizes, `FBspNode`/`FBspSurf`
 layouts, and whether cooked packages strip `Polys` (they don't) — is now
 documented in
-[`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md).
+[`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md)
+**and implemented** in
+[`crates/upk-objects/src/model/`](../../crates/upk-objects/src/model/).
 That was previously an open question for this document's scope too (a
 `Model` export's serial data is exactly the kind of "variable-length
 trailer" this document otherwise catalogs) but is substantial enough to
 warrant its own finding doc rather than a section here.
 
+### `Model` / `Polys` deserializers
+
+[`crates/upk-objects/src/model/`](../../crates/upk-objects/src/model/) is
+the live decoder, structured like its `static_mesh` sibling:
+
+| File | Holds |
+|---|---|
+| [`model/mod.rs`](../../crates/upk-objects/src/model/mod.rs) | The full `UModel` / `UPolys` wire-layout table in module docs, plus re-exports |
+| [`model/types/mod.rs`](../../crates/upk-objects/src/model/types/mod.rs) | `Model`, `BspNode`, `BspSurf`, `BspVert`, `Poly`, `Polys`; the `EPolyFlags` / `EBspNodeFlags` filter table; `Model::triangulate` (node → convex fan) and `Model::surf_normal` |
+| [`model/parse/mod.rs`](../../crates/upk-objects/src/model/parse/mod.rs) | `deserialize_model` / `deserialize_polys` and the field-offset constants |
+| [`model/types/tests.rs`](../../crates/upk-objects/src/model/types/tests.rs) | Triangulation, winding, flag-filter and out-of-range unit tests |
+| [`model/parse/tests.rs`](../../crates/upk-objects/src/model/parse/tests.rs) | Byte-exact wire-format fixtures, including the "an empty `Model` is exactly 108 bytes" arithmetic self-check |
+
+Two properties of this decoder are worth knowing before you use it:
+
+- **Exact consumption is enforced.** Both entry points error if the
+  declared fields stop short of, or overrun, the export's serial data.
+  Everything after `Verts` is skipped by declared size, so an upstream
+  off-by-one surfaces *only* as a non-zero remainder; accepting it
+  silently would let a mis-parsed `Nodes` array reach downstream code
+  looking plausible.
+- **The `EPolyFlags` bit meanings are assumed, not re-derived.** The
+  filter is a named table in `model/types/mod.rs`, and
+  `Model::triangulate` reports a per-flag triangle exclusion count for
+  *every* entry regardless of whether the active filter uses that bit —
+  so a wrong assumption shows up as an implausible drop count rather
+  than as a silent hole. On `Castle-000a0002.umap` the only observed
+  `PolyFlags` values are `0xE00` and `0x200`, and the filter excludes
+  nothing.
+
+The consumer is
+[`crates/navmesh-extractor/src/bsp.rs`](../../crates/navmesh-extractor/src/bsp.rs),
+which classifies each `Model` by its owning export's class (`Level` →
+world space; `Brush`/`BlockingVolume` → actor transform;
+`TriggerVolume`/`DynamicTriggerVolume` → excluded).
+
 ## Related documents
 
 - [`crates/upk-objects/`](../../crates/upk-objects/) — the live Rust
   deserializers for UE3 objects in these packages (`StaticMesh`, `Terrain`,
-  `Texture2D`, bulk data, cross-package export index).
+  `Model`/`Polys`, `Texture2D`, bulk data, cross-package export index).
 - [`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md) —
   `UModel`/`UPolys`/`FBspNode`/`FBspSurf`/`FPoly` binary layout, byte-exact
   validated against real package data.

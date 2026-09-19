@@ -40,6 +40,7 @@
 - [ue3-absent-property-defaults.md](ue3-absent-property-defaults.md) — **read before decoding any UE3 export whose props are optional.** An absent tagged property means the *class* default, which SGW licensee-modified (`Terrain.DrawScale3D` is `(100,100,100)`, not `(1,1,1)`); recover it from world-grid arithmetic + one known world coordinate, never from "what the majority writes".
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
 - [navbuilder-obj-traps.md](navbuilder-obj-traps.md) — **read before touching the navmesh build chain.** UE3→BW is a Y/Z column swap (`v x z y`), CRLF is mandatory or faces vanish, NavBuilder exits 0 on every failure, and a stray non-`<hex8>o.obj` in a chunked input dir reads uninitialised bounds. Detail in `docs/engine/navmesh-build-pipeline.md`.
+- [ue3-bsp-model-decode.md](ue3-bsp-model-decode.md) — **read before any UModel/BSP work.** Empty Model == exactly 108 bytes (layout self-check); BSP node winding is the OPPOSITE of StaticMesh so fans must be reversed for NavBuilder; classify by owner export class; Castle brush-owned Models are all stubs; the persistent .umap has no BSP; ModelComponent is render-only.
 
 ## Content engine / chain authoring
 

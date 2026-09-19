@@ -10,15 +10,21 @@
 //! - [`texture2d`] — Texture2D mip data extraction (DXT format detection, mip chain parsing)
 //! - [`static_mesh`] — StaticMesh vertex/index buffer extraction (40-byte vertex format, kDOP, LODs)
 //! - [`terrain`] — Terrain actor heightmap + visibility-flag extraction
+//! - [`model`] — UModel/UPolys BSP geometry (FBspNode/FBspSurf/FVert/FPoly)
 
 pub mod bulk_data;
 pub mod error;
+pub mod model;
 pub mod package_index;
 pub mod static_mesh;
 pub mod terrain;
 pub mod texture2d;
 
 pub use error::{ObjectError, Result};
+pub use model::{
+    deserialize_model, deserialize_polys, BspNode, BspSurf, BspTriangulation, BspVert,
+    CollisionFilter, Model, ModelBounds, Poly, Polys,
+};
 pub use package_index::PackageIndex;
 pub use static_mesh::{
     deserialize_static_mesh, BoundingBox, KdopTriangle, LodModel, MeshSection, StaticMesh, Vertex,

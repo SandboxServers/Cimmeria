@@ -30,6 +30,7 @@
 //! **Phase 1.3 (Terrain decode, holes honoured)**. Phase 1.4 (BSP
 //! `Model`) lands in a follow-up change.
 
+pub mod bsp;
 pub mod chunk_id;
 pub mod coverage;
 pub mod floor_probe;
