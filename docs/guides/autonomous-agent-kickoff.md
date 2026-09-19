@@ -53,6 +53,7 @@ export AGENT_ID="$(hostname)-$(date -u +%Y%m%dT%H%M%SZ)-$RANDOM"    # goes in ev
 export CARGO_BUILD_JOBS=4
 export CARGO_TARGET_DIR=/home/derek/code_stuff/Cimmeria/target        # shared dep cache, see Build discipline
 export REVIEW_QUEUE_CAP=6
+# export ALLOW_UNTRIAGED=1   # optional operator override; default off — see Picking an issue
 source ~/.cargo/env
 git -C /home/derek/code_stuff/Cimmeria fetch -q origin
 ```
@@ -76,9 +77,10 @@ Repeat until a stop condition:
 3. **Pick and claim** one issue (next section). Work it to a draft PR, get CI green, mark it
    ready, request Cadacious. Loop.
 
-Stop when: no eligible issue remains; the throttle holds on two consecutive passes; you have
-opened 3 PRs this session; or a budget trips (Budgets). On stop, leave your worktrees in place
-and end with one summary message (Reporting).
+Stop when: no eligible `ready-for-agent` issue remains (and `ALLOW_UNTRIAGED` is off; see
+Picking an issue); the throttle holds on two consecutive passes; you have opened 3 PRs this
+session; or a budget trips (Budgets). On stop, leave your worktrees in place and end with one
+summary message (Reporting).
 
 ## Picking an issue
 
@@ -91,7 +93,12 @@ git -C /home/derek/code_stuff/Cimmeria worktree list
 git -C /home/derek/code_stuff/Cimmeria branch -a
 ```
 
-**Exclude** an issue if any of these hold:
+**Primary gate:** Only consider open issues that already have the `ready-for-agent` label.
+Issues with only `bug`, `enhancement`, `documentation`, or other type labels but without
+`ready-for-agent` are not eligible. Humans triage via the `/triage` skill (see
+`docs/agents/triage-labels.md`); do not pick work the maintainer has not marked agent-ready.
+
+**Exclude** a candidate issue if any of these hold:
 
 - it has an assignee, or a label in `needs-info`, `question`, `wontfix`, `ready-for-human`;
 - an open PR's title, body, or branch mentions `#N` or `/N-`, or a branch or worktree named
@@ -104,8 +111,8 @@ git -C /home/derek/code_stuff/Cimmeria branch -a
   `cimmeria-scene-editor`, `sgw-launcher`, `cimmeria-client-telemetry`;
 - the title asks for a decision: design, RFC, proposal, "should we".
 
-**Rank** the rest, best tier first, then pick at random among the top five of the best non-empty
-tier so parallel agents do not converge on one issue:
+**Rank** the remaining `ready-for-agent` issues, best tier first, then pick at random among the
+top five of the best non-empty tier so parallel agents do not converge on one issue:
 
 1. `bug` with a repro, a named function, or a `crates/` path.
 2. One finding from a `security` issue. Name the finding ID in the claim.
@@ -115,6 +122,14 @@ tier so parallel agents do not converge on one issue:
 Issues that mention in-game or visual verification are allowed but rank last in their tier. You
 cannot run the client, and the PR must say so.
 
+**Fallback when zero `ready-for-agent` issues remain:** Do not silently raid untriaged issues.
+Stop the pick loop — return to step 1 (own PR maintenance) or stop the session. If nothing
+remains to maintain and override is off, you are done.
+
+Optionally, when the operator explicitly sets `ALLOW_UNTRIAGED=1` before the session (default:
+unset / off), fall back to the same ranking among open issues that pass the exclusions above but
+**lack** `ready-for-agent`. Use this only when a human has opted in; never assume it.
+
 **Claim** before writing code:
 
 ```bash
@@ -122,6 +137,9 @@ gh issue edit N --add-assignee @me
 gh issue comment N --body "agent-claim ${AGENT_ID}. Branch <type>/N-<slug>. Scope: <one line; for umbrellas, the exact sub-item>. Done when: <2 to 5 testable bullets>."
 sleep 60 && gh issue view N --comments      # if an earlier live claim from another AGENT_ID exists: comment "agent-claim withdrawn ${AGENT_ID}", unassign, pick again
 ```
+
+When claiming under the `ALLOW_UNTRIAGED=1` override, the comment **must** include a line such as
+`Note: issue lacked ready-for-agent (ALLOW_UNTRIAGED=1 override).`
 
 The "Done when" bullets are your acceptance criteria. Most issues here carry file pointers but no
 acceptance section, so you write one and the reviewer gets to veto it in the PR. If you cannot

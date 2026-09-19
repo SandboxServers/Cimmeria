@@ -208,7 +208,7 @@ Issues live in GitHub Issues for `SandboxServers/Cimmeria`, driven via the `gh` 
 
 ### Triage labels
 
-Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`. Unattended agents pick work only from issues labeled `ready-for-agent` (see [docs/guides/autonomous-agent-kickoff.md](docs/guides/autonomous-agent-kickoff.md)); `/triage` is how issues enter that queue.
 
 ### Domain docs
 

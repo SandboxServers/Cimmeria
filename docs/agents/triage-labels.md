@@ -12,4 +12,9 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
+**Autonomous kickoff:** Unattended agents following
+[autonomous-agent-kickoff.md](../guides/autonomous-agent-kickoff.md) may pick work **only** from
+issues that already carry `ready-for-agent`. The `/triage` skill is how maintainers promote an
+issue from `needs-triage` (or unlabeled) into that queue.
+
 Edit the right-hand column to match whatever vocabulary you actually use.
