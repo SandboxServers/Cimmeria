@@ -337,6 +337,20 @@ fn raw_ue3_column_order_yields_no_usable_navmesh() {
 /// contract is exit 1 (usage) with the parameter named on stderr —
 /// never exit 2 (internal error), and never a navmesh built from a
 /// mangled value.
+///
+/// **Opt-in.** Unlike the axis tests, this one asserts the behaviour of
+/// C++ *in this working tree*, so a binary that merely exists proves
+/// nothing: the shipped 2026-03 reference predates `BuildParams`
+/// entirely, and any NavBuilder built before these checks landed
+/// silently truncates `maxVertsPerPoly=3.9` to 3 and exits 0. There is
+/// no capability probe that distinguishes them without being one of
+/// the assertions, so the operator states it:
+///
+/// ```bash
+/// tools/build-navbuilder.ps1 -Out $env:TEMP/NavBuilder.exe
+/// CIMMERIA_NAVBUILDER=$env:TEMP/NavBuilder.exe \
+/// CIMMERIA_NAVBUILDER_FROM_TREE=1 cargo test -p cimmeria-navmesh-extractor
+/// ```
 #[test]
 fn out_of_range_parameters_are_refused_with_a_usage_error() {
     let exe = navbuilder_path();
@@ -344,6 +358,15 @@ fn out_of_range_parameters_are_refused_with_a_usage_error() {
         eprintln!(
             "SKIPPED out_of_range_parameters_are_refused_with_a_usage_error — \
              NavBuilder not found at {}",
+            exe.display()
+        );
+        return;
+    }
+    if std::env::var_os("CIMMERIA_NAVBUILDER_FROM_TREE").is_none() {
+        eprintln!(
+            "SKIPPED out_of_range_parameters_are_refused_with_a_usage_error — {} was not \
+             declared to be built from this tree. Rebuild with tools/build-navbuilder.ps1 \
+             and set CIMMERIA_NAVBUILDER_FROM_TREE=1 to run it.",
             exe.display()
         );
         return;
@@ -371,6 +394,17 @@ fn out_of_range_parameters_are_refused_with_a_usage_error() {
             .code()
             .expect("no signal on Windows")
     };
+
+    // Sanity check on the claim the env var makes: the default value
+    // of a tunable parameter must be accepted and build as if it were
+    // not passed at all.
+    assert_eq!(
+        run("maxVertsPerPoly=6"),
+        0,
+        "{} does not accept tunable build parameters, so it cannot have been built \
+         from this tree",
+        exe.display()
+    );
 
     for param in [
         // Finite as a double, outside the float range: the old

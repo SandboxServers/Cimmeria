@@ -308,6 +308,19 @@ CIMMERIA_PACKAGE_INDEX=/path/to/package_index.bin \
   cargo test -p cimmeria-navmesh-extractor
 ```
 
+`tests/navbuilder_axis_roundtrip.rs` additionally takes
+`CIMMERIA_NAVBUILDER` (default: the `bin64/NavBuilder_d.exe` reference
+binary found by walking up from the crate). One case in it asserts the
+parameter validation in `deprecated/cpp/src/nav_builder/build_params.hpp`
+and therefore only means anything against a binary built from *this*
+tree, which no probe can detect — say so explicitly:
+
+```bash
+tools/build-navbuilder.ps1 -Out $TMP/NavBuilder.exe
+CIMMERIA_NAVBUILDER=$TMP/NavBuilder.exe CIMMERIA_NAVBUILDER_FROM_TREE=1 \
+  cargo test -p cimmeria-navmesh-extractor --test navbuilder_axis_roundtrip
+```
+
 A skipped test is not a pass, so the walkers are also covered without
 any of that, through the synthetic packages in [`test_support`](src/test_support/):
 
