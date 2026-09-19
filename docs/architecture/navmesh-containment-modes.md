@@ -80,8 +80,20 @@ Table definition in
 [`db/resources/Worlds/Tables/worlds.sql`](../../db/resources/Worlds/Tables/worlds.sql),
 seeded in
 [`db/resources/Worlds/Seed/worlds.sql`](../../db/resources/Worlds/Seed/worlds.sql).
-Harset (`world_id` 57) is the only row that names the column; every other
-world relies on the default.
+Two rows name the column; every other world relies on the default:
+
+- **Harset** (`world_id` 57) — the worked example below: measured holes on a
+  route players must take.
+- **Castle** (`world_id` 8) — a different reason. Castle had no navmesh at
+  all until `data/spaces/castle.nav` was rebuilt from the cooked client maps
+  (2026-09-19), so there is no history of players walking it under
+  containment. The mesh resolves every known-walked point and routes the
+  mission-704 escort, but its exterior (gate room, Checkpoint Bravo) and
+  interior (cells, Communications room, throne room) are still separate
+  regions joined only by a chain of terrain shelves. It ships advisory so
+  NPCs get pathing, line of sight and ground height immediately, and is
+  promoted to `enforce` only after an in-client walk shows no coverage
+  gaps.
 
 There is deliberately **no migration script** — this repo edits the table
 definition and the seed directly.
