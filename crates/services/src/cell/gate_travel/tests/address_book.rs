@@ -145,10 +145,15 @@ async fn a_dial_refused_for_the_address_book_cancels_the_dial_in_flight() {
     handle_dial_gate(1, 2, 0, &tx, &mut mgr, &engine()).await;
     assert!(mgr.gate_dial(1).is_some(), "precondition: a dial is armed");
 
-    // Re-dial an address the player does not hold. Gate 15 is a real row,
-    // so this can only be the address-book refusal.
+    // Re-dial the SAME gate with the address revoked. Same gate on purpose:
+    // an unknown id or a same-world id would reach one of the other two
+    // reject branches, which cancel for their own reasons, and this would
+    // pass with the address gate deleted entirely. Gate 2 is a real row on
+    // another world, so the address book is the only thing that can refuse
+    // it — and a dial that is *not* refused re-arms, failing the assertion
+    // just as hard as one refused without cancelling.
     mgr.get_entity_mut(1).unwrap().known_stargates = vec![];
-    handle_dial_gate(1, 15, 0, &tx, &mut mgr, &engine()).await;
+    handle_dial_gate(1, 2, 0, &tx, &mut mgr, &engine()).await;
     assert!(
         mgr.gate_dial(1).is_none(),
         "an address-book refusal must cancel the dial in flight, not leave \

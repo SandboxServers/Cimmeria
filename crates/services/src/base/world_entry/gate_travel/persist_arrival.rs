@@ -197,13 +197,7 @@ mod tests {
         seed_in(pool, account_id, player_id, known, A_REAL_WORLD).await
     }
 
-    async fn seed_in(
-        pool: &PgPool,
-        account_id: i32,
-        player_id: i32,
-        known: &[i32],
-        world: &str,
-    ) {
+    async fn seed_in(pool: &PgPool, account_id: i32, player_id: i32, known: &[i32], world: &str) {
         cleanup(pool, account_id, player_id).await;
         sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
             .bind(account_id)
