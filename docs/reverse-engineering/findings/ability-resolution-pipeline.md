@@ -375,7 +375,7 @@ discard the update.
 > | Emit path | `Type` | `SourceID` passed | Routing | Client outcome |
 > |---|---|---|---|---|
 > | `cell/abilities/use_ability/handle.rs` `handle_use_ability` | `TIMER_ABILITY_COOLDOWN` (2) | the ability user's `entity_id` | `send_entity_method` — player to own client, NPC to AoI witnesses | player-self: passes; NPC: discarded on the witness client by design (the cooldown bar is local-player-only) |
-> | `cell/cell_methods/player/world/reload.rs` `start_reload` | `TIMER_ABILITY_COOLDOWN` (2) | the reloading player's `entity_id` | direct `EntityMethodCall` to the player's own base | passes |
+> | `cell/cell_methods/player/world/reload.rs` `handle_reload` | `TIMER_ABILITY_COOLDOWN` (2) | the reloading player's `entity_id` | direct `EntityMethodCall` to the player's own base | passes |
 > | `cell/console/net.rs` `.net_timer` (GM command) | caller-supplied | the caller's entity ID | direct to caller | `SourceID` passes; packet is malformed for an unrelated reason (below) |
 >
 > - No sender exists for `TIMER_ABILITY_WARMUP` (1) or `TIMER_CATEGORY_COOLDOWN` (8) today, so no
