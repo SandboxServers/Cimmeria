@@ -31,8 +31,8 @@ Four pieces make that work:
    everybody's AoI until it is actually a player, because introduction is
    one-shot.
 4. A **base-to-cell witness broadcast** so a rebuilt `BeingAppearance`
-   (weapon draw, holster, gear change) reaches the players already watching,
-   not just the player it belongs to.
+   (weapon draw, holster, gear change) or a level-up reaches the players
+   already watching, not just the player it belongs to.
 
 Not yet validated with two real game clients — see
 [Known gaps](#known-gaps) and the [UAT checklist](#two-client-uat-checklist).
@@ -157,6 +157,16 @@ same path every cell-originated state change already uses — producing one
 `CellToBaseMsg::WitnessEntityMethod` per observer. The bytes broadcast are
 the bytes cached in `cached_appearance_args`, so a player already watching
 and a player who arrives a second later converge on one appearance.
+
+Level-ups take the same route. `handle_grant_xp` bundles XP, level and
+training points to the levelling player's **own** client —
+`send_bundle_to_witness_reliable` is single-recipient despite its name — so
+when a grant crosses a level boundary it also broadcasts one `onLevelUpdate`
+carrying the **final** level, as the legacy `SGWBeing.setLevel` did
+(`SGWBeing.py:684-685`). One message even on a multi-level catch-up grant:
+a witness renders a level, not the per-level training-point ceremony. The
+session's `player_level` is updated in the same handler, so players who
+arrive later get the same number from the introduction cascade.
 
 ## The cascade
 
@@ -286,6 +296,7 @@ ends of a failed introduction. The row is catalogued in
 | `base::world_entry::cell_dispatch::player_ghost::tests::*` | The join. A fan-out byte test drives `aoi::entered_aoi` end to end and asserts the packet the **witness** receives carries the **observee's** identity, and that both packets go to the witness and never to the observee. A second test mutates `cached_appearance_args` between two composes to prove the read is at emit time. Two negative-log guards cover both `reason` values via `LogCapture`; one guard asserts the NPC path is byte-unchanged and silent |
 | `cell::space_manager::tests::aoi_player_intro::*` | The gate. `loading_player_is_introduced_once_and_only_after_init` is the regression guard — a player created but not yet initialised produces no `EnteredAoI`, and exactly one is produced after init. `player_observee_carries_its_live_state` and `npc_observee_is_introduced_immediately_with_npc_data` pin the two branches of `player_data` |
 | `cell::service::base_messages::tests::broadcast_to_witnesses::fans_out_to_witnessing_players_only`, `inventory::appearance::tests::refresh_player_appearance_asks_the_cell_to_fan_out_to_witnesses`, `base::helpers::witness_broadcast::tests::*` | The post-introduction fan-out. Three players in one shared space: the rebuilt `BeingAppearance` reaches the player standing next to the observee, not the observee's own client and not the player across the map, and is flagged `entity_is_player` so it encodes on the SGWPlayer idbase. The base side asserts the broadcast carries exactly the bytes it cached. The closed-channel WARN and the silent no-cell-service case are both pinned |
+| `progression::level_up_fanout_tests::*` (live-DB) | The level-up fan-out. A grant that crosses several boundaries hands the cell exactly one `onLevelUpdate` carrying the level that was persisted; a grant that crosses none sends nothing, so ordinary kill XP does not spam every witness. Live-DB because the level is only computed on the persisted-grant path |
 | `cell_entity::tests::is_introducible_gates_players_until_connected_and_initialised` | The predicate itself, across all four states: NPC, created-only, connected-not-initialised, fully initialised |
 
 ## Known gaps
@@ -303,22 +314,12 @@ ends of a failed introduction. The row is catalogued in
   encoding assumes `IDBASE_SGW_PLAYER` for every player ghost, and
   `SGWGmPlayer`'s idbase has not been verified. Changing the class id
   without that verification would break the ghost's method dispatch.
-- **Level-ups do not reach existing witnesses.** `onLevelUpdate` after a
-  level-up is sent through `send_bundle_to_witness_reliable` with the
-  levelling player's **own** entity id
-  ([`methods/progression/mod.rs:251`](../../crates/services/src/base/world_entry/methods/progression/mod.rs)),
-  which resolves to that one player's address — despite the helper's name it
-  is a single-recipient send, not a fan-out. The session's `player_level` is
-  updated, so a *later* introduction is correct, but a witness who is
-  already watching keeps the level they were introduced with until the
-  entity leaves and re-enters their AoI. The legacy server did fan this out:
-  `SGWBeing`'s level setter writes to `self.witnesses` as well as
-  `self.client` (`SGWBeing.py:684-685`), and the same pattern covers
-  alignment (`647-648`), faction (`658-659`), archetype (`669-670`) and name
-  (`636-637`). Those four change rarely enough that the introduction-time
-  value is usually right; the level does not. The plumbing now exists —
-  `broadcast_to_witnesses` — but `handle_grant_xp` has no cell channel and
-  four callers, so wiring it is follow-up work, not part of this change.
+- **Alignment, faction, archetype and name changes do not reach existing
+  witnesses.** The legacy setters fan these out alongside the level
+  (`SGWBeing.py:636-637`, `647-648`, `658-659`, `669-670`). Cimmeria has no
+  runtime path that changes any of the four on a live player today, so the
+  introduction-time value stays right; whoever adds one (a rename, a faction
+  swap) must send it through `broadcast_to_witnesses` as the level-up does.
 - **`onMeleeRangeUpdate` is not sent.** `SGWBeing.createOnClient` emits it
   when `meleeRange != 0` (`SGWBeing.py:509-510`). The Rust ghost cascade
   omits it. Whether a player ever carries a non-zero `meleeRange` is
