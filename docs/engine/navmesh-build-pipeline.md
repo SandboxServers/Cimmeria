@@ -623,9 +623,22 @@ rather than more builds:
 1. **The flights serve within-storey level changes**, and the real route
    between 48.4 and 55.2 is somewhere else entirely — or does not exist on
    foot, which is what the seed data's silence would then mean.
-2. **The connecting geometry is BSP.** `Polys` / `Model` / `ModelComponent`
-   inside the interior chunks and `StaticMeshCollectionActor` are still not
-   decoded; Castle carries ~220 `Brush` per interior chunk.
+2. **Per-`Brush` BSP that we decode to nothing.** Note that "BSP is
+   undecoded" is *false* and not the candidate: the level `Model`'s node
+   tree is read, and `Castle-00080003` — the stair spine's own tile —
+   contributes **878 BSP triangles** to the OBJ already, the second-largest
+   of the 16 chunks that carry any (6,810 map-wide). What is empty is the
+   other half: every `Brush`-owned `Model` in Castle decodes to a
+   **108-byte stub**, 38 of them in `00080003` and 540 map-wide. Either the
+   cooker genuinely empties a brush's `Model` once CSG is baked into the
+   level `Model` — in which case those 878 triangles are all there is and
+   BSP is not the connector — or the 108 bytes are a header we mis-parse
+   and there is per-brush geometry being dropped in exactly this tile. One
+   `Brush` export hexdump separates the two; twenty more builds will not.
+
+Three classes that are **not** candidates, because Castle has zero exports
+of any of them: `StaticMeshCollectionActor`, `KActor`,
+`FracturedStaticMeshActor`, `BlockingVolume`.
 
 Two candidates already ruled out:
 
@@ -696,10 +709,11 @@ In order of likelihood, and none of it is Recast tuning:
    that refuses to connect them at `cs = 0.1`. Either the route exists and
    something about the collision hull is wrong, or it does not and §7.3's
    silence in the seed is the answer.
-2. **Decode the remaining interior geometry**: `Polys` / `Model` /
-   `ModelComponent` BSP in the interior chunks and
-   `StaticMeshCollectionActor`. Castle carries ~220 `Brush` per interior
-   chunk and none of it is in the mesh.
+2. **Settle the 108-byte `Brush`-owned `Model` stub** (crate README, Known
+   unknowns). 38 of them sit in the stair tile. Hexdump one export: either
+   the cooker empties it after CSG bake, which closes BSP as a candidate,
+   or we are dropping real geometry here. This is a one-afternoon question
+   and it gates candidate 1's interpretation.
 3. **Accept that they are separate**, and give the cell a per-region
    navmesh or an off-mesh link table. Both need server-side loader work.
    The two `EM-Elevator00` + `EM-Elevator_Pad00` pairs at
