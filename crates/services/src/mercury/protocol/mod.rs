@@ -8,6 +8,8 @@ mod resources;
 mod session;
 
 #[cfg(test)]
+mod length_framing_tests;
+#[cfg(test)]
 mod tests;
 
 // ── Re-exports ───────────────────────────────────────────────────────────────
