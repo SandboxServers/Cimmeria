@@ -27,6 +27,7 @@ mod ability_granted;
 mod bandolier;
 mod gm_spawn;
 mod inventory_events;
+mod lab_console;
 mod lifecycle;
 mod minigame;
 mod movement;
@@ -226,6 +227,15 @@ pub(super) async fn handle_base_message(
         }
 
         BaseToCellMsg::ReloadContentEngine => {}
+
+        BaseToCellMsg::LabConsoleExec {
+            entity_id,
+            line,
+            reply_tx,
+        } => {
+            lab_console::handle_lab_console_exec(entity_id, line, reply_tx, tx, space_mgr, engine)
+                .await;
+        }
 
         BaseToCellMsg::MinigameResult {
             entity_id,
