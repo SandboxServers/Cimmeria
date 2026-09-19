@@ -88,6 +88,7 @@ pub(in crate::cell::service) async fn cover_detection_tick(
     // to mutate.
     for entered in tick.entered {
         let player_id = entered.player_id.0 as u32;
+        log_cover_edge(space_mgr, "entered", player_id, entered.cover_set_id);
         // Look up the player's DB player_id (i32) from the entity — the
         // fire_* helpers thread that through to the content engine's
         // mission-context populator.
@@ -110,6 +111,7 @@ pub(in crate::cell::service) async fn cover_detection_tick(
 
     for left in tick.left {
         let player_id = left.player_id.0 as u32;
+        log_cover_edge(space_mgr, "left", player_id, left.cover_set_id);
         let db_player_id = space_mgr
             .get_entity(player_id)
             .and_then(|e| e.player_id)
@@ -142,6 +144,58 @@ pub(in crate::cell::service) async fn cover_detection_tick(
         )
         .await;
     }
+}
+
+/// One row per cover edge with the geometry behind it. The content-dispatch
+/// lines only carry `cover_set_id`; this says which nodes put the player in the
+/// set, how close the nearest one is, and whether the player is crouched --
+/// cover detection is pure proximity and never consults crouch.
+fn log_cover_edge(space_mgr: &SpaceManager, edge: &'static str, player_id: u32, cover_set_id: i32) {
+    let Some(e) = space_mgr.get_entity(player_id) else {
+        return;
+    };
+    let pos = e.position;
+    let crouched = e.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0;
+    let mut nodes_in_set = 0usize;
+    let mut nearest: Option<(i32, f32, cimmeria_common::Vector3)> = None;
+    // Wider than the detection radius so a `left` edge still finds the node
+    // the player just walked away from.
+    for idx in space_mgr
+        .cover
+        .index
+        .nearby(&pos, COVER_PROXIMITY_RADIUS * 3.0, None)
+    {
+        let Some(n) = space_mgr.cover.index.node(idx) else {
+            continue;
+        };
+        if n.chunk_id != cover_set_id {
+            continue;
+        }
+        nodes_in_set += 1;
+        let d = n.pos.distance_to(&pos);
+        if nearest.is_none_or(|(_, best, _)| d < best) {
+            nearest = Some((n.node_id, d, n.pos));
+        }
+    }
+    let (node_id, dist, npos) = nearest.unwrap_or((0, -1.0, pos));
+    tracing::debug!(
+        target: "cover.detection",
+        edge,
+        entity_id = player_id,
+        cover_set_id,
+        crouched,
+        x = pos.x,
+        y = pos.y,
+        z = pos.z,
+        nodes_in_set_nearby = nodes_in_set,
+        nearest_node_id = node_id,
+        nearest_node_dist = dist,
+        node_x = npos.x,
+        node_y = npos.y,
+        node_z = npos.z,
+        proximity_radius = COVER_PROXIMITY_RADIUS,
+        "cover detection: player crossed a cover-set proximity edge"
+    );
 }
 
 fn sql_height_name(h: crate::cell::cover::CoverHeight) -> &'static str {
@@ -289,6 +343,82 @@ mod tests {
         );
         // Tracked baseline must reflect the entry.
         assert_eq!(mgr.cover_detection.tracked_player_count(), 1);
+    }
+
+    /// The take-cover race shape: the cover edge fires while the consuming
+    /// chain's condition is not yet true. Three things must be on record --
+    /// the edge with its geometry and crouch state, the miss at dispatch, and
+    /// WHICH condition failed (without it, "no chains matched" is
+    /// indistinguishable from "nothing listens for this").
+    #[tokio::test]
+    async fn cover_edge_miss_is_explained_in_logs() {
+        let cover = Cover::from_loaded(Vec::new(), vec![node(123, 0.0, 0.0)]);
+        let mut mgr = make_castle_with_player(cover);
+        mgr.get_entity_mut(1).unwrap().state_field |=
+            crate::cell::cell_methods::combatant::BSF_CROUCHING;
+
+        let mut engine = cimmeria_content_engine::chain::ChainEngine::new();
+        engine.register_chain(Chain {
+            action_delays: Vec::new(),
+            id: 0x7000_2701,
+            name: "tick: cover entered, gated on an item the player lacks".to_string(),
+            enabled: true,
+            trigger: Trigger::OnPlayerEnteredCover { cover_set_id: None },
+            conditions: vec![cimmeria_content_engine::conditions::Condition::HasItem {
+                item_id: 987_654,
+                min_count: None,
+            }],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "never".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let logs = crate::test_support::LogCapture::install();
+        let (tx, _rx) = mpsc::channel(16);
+        cover_detection_tick(&tx, &mut mgr, &engine).await;
+
+        let edge = logs
+            .find_message(tracing::Level::DEBUG, "crossed a cover-set proximity edge")
+            .expect("cover edge row");
+        assert_eq!(edge.target, "cover.detection");
+        assert!(edge.has_field("edge", "entered"));
+        assert!(edge.has_field("cover_set_id", "123"));
+        assert!(edge.has_field("crouched", "true"));
+        assert!(edge.has_field("nodes_in_set_nearby", "1"));
+
+        let why = logs
+            .find_event(
+                tracing::Level::DEBUG,
+                "trigger matched but a condition failed",
+                "condition_failed",
+            )
+            .expect("the failing condition must be named");
+        assert_eq!(why.target, "content.resolve");
+        assert!(why.has_field("failed_condition_index", "0"));
+        assert!(
+            why.fields
+                .get("failed_condition")
+                .is_some_and(|c| c.contains("HasItem") && c.contains("987654")),
+            "got {:?}",
+            why.fields.get("failed_condition")
+        );
+
+        assert!(logs
+            .find_message(
+                tracing::Level::DEBUG,
+                "fire_cover_entered: no chains matched"
+            )
+            .is_some());
+        assert_eq!(mgr.get_entity(1).unwrap().counters.get("never"), None);
+
+        // `.bug` would now report the player as in cover and crouched.
+        let sets = mgr
+            .cover_detection
+            .current_sets(EntityId(1), Instant::now());
+        assert_eq!(sets.len(), 1);
+        assert_eq!(sets[0].0, 123);
     }
 
     /// `sql_height_name` and `sql_quality_name` are pure mapping

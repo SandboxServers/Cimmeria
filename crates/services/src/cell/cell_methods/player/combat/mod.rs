@@ -36,6 +36,7 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, respawner_id, "callForAid");
+                crate::cell::playtest_friction::respawned(entity_id);
                 respawn::handle_respawn(entity_id, respawner_id, tx, space_mgr).await;
             }
             true

@@ -120,6 +120,12 @@ pub async fn fire_cover_left(
             actions = resolved.actions.len(),
             "fire_cover_left: matched"
         );
+    } else {
+        tracing::debug!(
+            entity_id,
+            cover_set_id,
+            "fire_cover_left: no chains matched"
+        );
     }
     cimmeria_observability::counter!(
         "cover_detection_events_total",
@@ -168,6 +174,13 @@ pub async fn fire_cover_duration(
             actions = resolved.actions.len(),
             "fire_cover_duration: matched"
         );
+    } else {
+        tracing::debug!(
+            entity_id,
+            cover_set_id,
+            seconds,
+            "fire_cover_duration: no chains matched"
+        );
     }
     cimmeria_observability::counter!(
         "cover_detection_events_total",
@@ -207,6 +220,12 @@ pub async fn fire_npc_flanked(
             npc_template,
             actions = resolved.actions.len(),
             "fire_npc_flanked: matched"
+        );
+    } else {
+        tracing::debug!(
+            npc_entity_id,
+            threat_entity_id,
+            "fire_npc_flanked: no chains matched"
         );
     }
     cimmeria_observability::counter!(
@@ -281,6 +300,12 @@ pub async fn fire_player_flanked_npc(
             npc_template,
             actions = resolved.actions.len(),
             "fire_player_flanked_npc: matched"
+        );
+    } else {
+        tracing::debug!(
+            player_entity_id,
+            npc_entity_id,
+            "fire_player_flanked_npc: no chains matched"
         );
     }
     cimmeria_observability::counter!(
