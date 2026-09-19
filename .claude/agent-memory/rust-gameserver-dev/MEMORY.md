@@ -33,6 +33,7 @@
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
 - [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — an `add_dialog_set` bind pushes only `InteractionType(UINT64 TypeId)`; NULL-dialog rows are bindable indicators, `onInitialInteraction` (104) is never emitted, `topic_text` is dead data.
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
+- [ue3-bsp-model-decode.md](ue3-bsp-model-decode.md) — **read before any UModel/BSP work.** Empty Model == exactly 108 bytes (layout self-check); BSP node winding is the OPPOSITE of StaticMesh so fans must be reversed for NavBuilder; classify by owner export class; Castle brush-owned Models are all stubs; the persistent .umap has no BSP; ModelComponent is render-only.
 
 ## Content engine / chain authoring
 
