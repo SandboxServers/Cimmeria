@@ -14,6 +14,8 @@
 //!   [`SpaceManager::apply_client_position_update_at`] so the deltas are
 //!   deterministic.
 //! - [`navmesh`] — layer 4 (navmesh containment) plus the jump-height case.
+//! - [`advisory`] — the per-world `navmesh_mode` switch that decides whether
+//!   layer 4 gates at all, against the real `harset.nav`.
 //! - [`gm_navmesh`] — the GM off-navmesh allowance layered on top of layer 4.
 //! - [`onphysics`] — the `movement_unrestricted` (fly/ghost) bypass.
 //! - [`recovery`] — snap-back termination: relocation, correction budget,
@@ -75,6 +77,7 @@ fn seed_clock(mgr: &mut super::super::SpaceManager, entity_id: u32, now: Instant
     );
 }
 
+mod advisory;
 mod bounds;
 mod gm_navmesh;
 mod kinematics;
