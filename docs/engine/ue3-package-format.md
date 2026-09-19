@@ -243,9 +243,10 @@ the live decoder, structured like its `static_mesh` sibling:
 | File | Holds |
 |---|---|
 | [`model/mod.rs`](../../crates/upk-objects/src/model/mod.rs) | The full `UModel` / `UPolys` wire-layout table in module docs, plus re-exports |
-| [`model/types.rs`](../../crates/upk-objects/src/model/types.rs) | `Model`, `BspNode`, `BspSurf`, `BspVert`, `Poly`, `Polys`; the `EPolyFlags` / `EBspNodeFlags` filter table; `Model::triangulate` (node → convex fan) and `Model::surf_normal` |
+| [`model/types/mod.rs`](../../crates/upk-objects/src/model/types/mod.rs) | `Model`, `BspNode`, `BspSurf`, `BspVert`, `Poly`, `Polys`; the `EPolyFlags` / `EBspNodeFlags` filter table; `Model::triangulate` (node → convex fan) and `Model::surf_normal` |
 | [`model/parse/mod.rs`](../../crates/upk-objects/src/model/parse/mod.rs) | `deserialize_model` / `deserialize_polys` and the field-offset constants |
-| [`model/parse/tests.rs`](../../crates/upk-objects/src/model/parse/tests.rs) | Byte-exact fixtures, including the "an empty `Model` is exactly 108 bytes" arithmetic self-check |
+| [`model/types/tests.rs`](../../crates/upk-objects/src/model/types/tests.rs) | Triangulation, winding, flag-filter and out-of-range unit tests |
+| [`model/parse/tests.rs`](../../crates/upk-objects/src/model/parse/tests.rs) | Byte-exact wire-format fixtures, including the "an empty `Model` is exactly 108 bytes" arithmetic self-check |
 
 Two properties of this decoder are worth knowing before you use it:
 
@@ -256,7 +257,7 @@ Two properties of this decoder are worth knowing before you use it:
   silently would let a mis-parsed `Nodes` array reach downstream code
   looking plausible.
 - **The `EPolyFlags` bit meanings are assumed, not re-derived.** The
-  filter is a named table in `model/types.rs`, and
+  filter is a named table in `model/types/mod.rs`, and
   `Model::triangulate` reports a per-flag triangle exclusion count for
   *every* entry regardless of whether the active filter uses that bit —
   so a wrong assumption shows up as an implausible drop count rather
