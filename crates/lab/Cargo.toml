@@ -36,6 +36,12 @@ uuid = { version = "1", features = ["v4"] }
 png = "0.17"
 base64 = "0.22"
 
+# HTTP client for `lab_timeline`: the supervisor is an MCP *client* of
+# the in-server `cimmeria-lab-mcp` endpoint (server_packet_tap_read),
+# reached over the network (WireGuard on the colo). It does not link
+# lab-mcp — it POSTs a JSON-RPC tools/call. Workspace reqwest.
+reqwest = { workspace = true }
+
 # Process lifecycle, window enumeration, and GDI capture on the host
 # (x86_64-pc-windows-msvc). The supervisor is a 64-bit host binary
 # driving the 32-bit SGW.exe child.
