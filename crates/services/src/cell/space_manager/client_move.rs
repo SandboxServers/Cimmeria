@@ -261,12 +261,20 @@ impl SpaceManager {
             return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
         }
 
-        // Layer 4 — navmesh containment. `is_position_valid` fails open
-        // for spaces with no loaded navmesh, so this is a no-op there and
-        // the bounds AABB remains the only spatial gate. Checked before
-        // kinematics so an off-mesh point is reported as `OffNavmesh`
-        // regardless of how far it is from the last position.
-        if !self.is_position_valid(entity_id, &proposed) {
+        // Layer 4 — navmesh containment. Gated on
+        // `enforces_navmesh_containment`, which is false both for a space
+        // with no loaded navmesh and for an `advisory` world, so this is a
+        // no-op in either and the bounds AABB remains the only spatial
+        // gate. Checked before kinematics so an off-mesh point is reported
+        // as `OffNavmesh` regardless of how far it is from the last
+        // position.
+        //
+        // The predicate is consulted *first* so an advisory world does not
+        // pay for a Detour query per inbound packet for an answer nothing
+        // would act on.
+        if self.enforces_navmesh_containment(space_id)
+            && !self.is_position_valid(entity_id, &proposed)
+        {
             // A GM is allowed off the walkable mesh: standing inside
             // geometry, on a rooftop, or hovering over a gap is how you
             // inspect a broken spawn or an unreachable region. Downgraded
@@ -308,6 +316,29 @@ impl SpaceManager {
                     is_gm,
                 );
             }
+        } else if !self.enforces_navmesh_containment(space_id)
+            // TRACE, and level-gated before the query: in an advisory world
+            // this would otherwise run a Detour lookup on every inbound
+            // position packet for every player to produce a line nobody is
+            // collecting. With the level on, it is the only record of *which*
+            // parts of a world's mesh real players walk through — the input a
+            // mesh rebake (GH1) actually needs, as opposed to a static probe.
+            && tracing::enabled!(target: "movement.navmesh", tracing::Level::TRACE)
+            && self.spaces.get(&space_id).is_some_and(|s| s.navmesh.is_some())
+            && !self.is_position_valid(entity_id, &proposed)
+        {
+            tracing::trace!(
+                target: "movement.navmesh",
+                entity_id,
+                space_id,
+                client_x = position[0],
+                client_y = position[1],
+                client_z = position[2],
+                reason = "advisory_off_mesh_accepted",
+                "movement.navmesh: position is off this world's navmesh and was \
+                 accepted anyway -- the world is 'advisory', so the mesh is not a \
+                 containment gate here"
+            );
         }
 
         // Layers 2+3 — speed (warn-only) + teleport (hard reject). Measured
@@ -366,6 +397,12 @@ impl SpaceManager {
     ) -> ClientMoveOutcome {
         self.update_entity_position(entity_id, position, direction, velocity);
         self.movement_validator.clear_rejects(entity_id);
+        // Observability only, and self-throttled to ~1 row per player per
+        // 5 s of actual movement (NPCs never sample). The positive-space
+        // counterpart to the reject log: without it we know where players
+        // are stopped and nothing about where they successfully walk,
+        // which is what finds a navmesh hole before somebody falls in.
+        self.sample_accepted_position_at(entity_id, position, Instant::now());
         ClientMoveOutcome::Accepted { position }
     }
 
@@ -402,8 +439,18 @@ impl SpaceManager {
     ) -> ClientMoveOutcome {
         let last_pos = Vector3::new(last_valid[0], last_valid[1], last_valid[2]);
         let strikes = self.movement_validator.note_reject(entity_id);
+        // Same three-way allowance as the accept path: a GM may stand off the
+        // mesh, and in an advisory (or meshless) world *everyone* may, so the
+        // AABB is the whole soundness test there. Without the
+        // `enforces_navmesh_containment` term an advisory world would still
+        // judge its own players' positions unusable the moment an unrelated
+        // layer (bounds, teleport) rejected a packet, and force-relocate them
+        // onto the nearest mesh polygon — reintroducing the snap this packet
+        // removes, by the back door and from a different code path.
         let target_is_sound = position_within_bounds(last_pos, &bounds)
-            && (is_gm || self.is_position_valid(entity_id, &last_pos));
+            && (is_gm
+                || !self.enforces_navmesh_containment(space_id)
+                || self.is_position_valid(entity_id, &last_pos));
 
         if target_is_sound {
             // Nothing to recover *from*: the entity is already somewhere the
@@ -495,8 +542,21 @@ impl SpaceManager {
         bounds: &SpaceBounds,
     ) -> Option<[f32; 3]> {
         let space = self.spaces.get(&space_id)?;
+        // The mesh in its *containment* role — `None` for a meshless space and
+        // for an advisory world alike. Bound once and used by all three
+        // candidate branches below so they cannot disagree about the mode.
+        let containment_nav = self.containment_navmesh(space_id);
 
-        if let Some(nav) = &space.navmesh {
+        // Reprojection onto the mesh. Deliberately gated on the mode rather
+        // than on `space.navmesh`: `get_nearest_point` is only as good as the
+        // mesh's coverage, and in an advisory world the coverage is exactly
+        // what is not trusted. On `harset.nav` the nearest polygon to a point
+        // in the Command-Center corridor is on a different floor entirely, so
+        // "recovering" a player there would teleport them through the map to
+        // fix a position that was never a problem. An advisory world falls
+        // through to the world's authored respawner instead — a coordinate a
+        // human chose.
+        if let Some(nav) = containment_nav {
             let projected = nav.get_nearest_point(&from);
             if nav.is_point_valid(&projected) && position_within_bounds(projected, bounds) {
                 return Some([projected.x, projected.y, projected.z]);
@@ -517,7 +577,11 @@ impl SpaceManager {
             &self.respawners,
             world,
             from,
-            space.navmesh.as_ref(),
+            // Containment flavour again: in an advisory world an authored
+            // respawner that happens to sit in a hole in the mesh is still a
+            // place a human said a player may stand, and discarding it here
+            // would leave the AABB clamp as the only candidate.
+            containment_nav,
             bounds,
         );
         if let Some(p) = nearest_respawner {
@@ -538,10 +602,15 @@ impl SpaceManager {
         // above failed (a point too far outside the mesh for Detour's
         // nearest-poly search), and pulling the entity to the AABB face lands
         // it inside whatever geometry happens to be there.
+        //
+        // Advisory worlds take the navmesh-less branch, which is the whole
+        // point of the mode and matters most here: this is the last
+        // candidate, and answering `None` returns `CorrectionSuppressed` — a
+        // player left exactly where the validator refuses to move them from.
+        // Holding an out-of-AABB player hostage to a mesh the server has
+        // already declared untrustworthy is the worst of both policies.
         let clamped_pos = Vector3::new(clamped[0], clamped[1], clamped[2]);
-        space
-            .navmesh
-            .as_ref()
+        containment_nav
             .is_none_or(|nav| nav.is_point_valid(&clamped_pos))
             .then_some(clamped)
     }

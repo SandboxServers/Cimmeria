@@ -66,6 +66,27 @@ pub struct Chain {
     pub priority: i32,
 }
 
+impl Chain {
+    /// Is at least one of this chain's conditions a read of per-player
+    /// mission state (see [`Condition::gates_on_mission_state`])?
+    ///
+    /// The property this answers is "would running this chain a second time
+    /// for the same event be harmless?". A mission-gated chain says yes: its
+    /// actions advance the step or complete the objective its own gate reads,
+    /// so the second evaluation fails the gate and nothing runs. A chain with
+    /// no mission gate says no — a bare `enter_region` → `display_dialog`
+    /// would show the dialog twice.
+    ///
+    /// Only the server-side *replay* of an already-spent edge event consults
+    /// this (Harset H52). Ordinary event dispatch runs every matching chain
+    /// regardless.
+    pub fn is_mission_gated(&self) -> bool {
+        self.conditions
+            .iter()
+            .any(Condition::gates_on_mission_state)
+    }
+}
+
 /// The chain engine: indexes chains by trigger type and dispatches events.
 ///
 /// The engine is the central runtime component of the content system. Game
@@ -286,6 +307,30 @@ impl ChainEngine {
     /// has access to game state (SpaceManager, channels, etc.) that the engine
     /// itself doesn't know about.
     pub fn resolve_event(&self, event: &TriggerEvent, ctx: &ExecutionContext) -> ResolvedActions {
+        self.resolve_event_filtered(event, ctx, |_| true)
+    }
+
+    /// [`resolve_event`](Self::resolve_event), but a chain whose trigger
+    /// matched is only admitted when `admit` returns `true` for it.
+    ///
+    /// The one caller that passes a real filter is the H52 step-activation
+    /// replay, which re-fires `enter_region` for volumes the player is
+    /// already standing in when a mission step activates. That event has
+    /// *already* been delivered once (or is about to be, when the client's
+    /// own hint arrives a moment later), so the replay admits only
+    /// [`Chain::is_mission_gated`] chains — the ones for which a double
+    /// delivery is a no-op. See the Harset H52 worknote.
+    ///
+    /// A rejected chain is logged at `debug` on the same
+    /// `target: "content.resolve"` stream as a failed condition, with
+    /// `reason = "filtered_out"`, so an author whose chain did not replay can
+    /// see that it matched and was refused rather than never matching.
+    pub fn resolve_event_filtered(
+        &self,
+        event: &TriggerEvent,
+        ctx: &ExecutionContext,
+        admit: impl Fn(&Chain) -> bool,
+    ) -> ResolvedActions {
         let mut resolved = ResolvedActions::default();
 
         let chains = match self.chains_by_trigger.get(&event.trigger_type) {
@@ -295,6 +340,19 @@ impl ChainEngine {
 
         for chain in chains {
             if !chain.enabled || !chain.trigger.matches(event) {
+                continue;
+            }
+
+            if !admit(chain) {
+                debug!(
+                    target: "content.resolve",
+                    chain_id = chain.id,
+                    chain_name = %chain.name,
+                    trigger_type = ?event.trigger_type,
+                    source_entity = ?ctx.source_entity_id,
+                    reason = "filtered_out",
+                    "content resolve: trigger matched but the caller's filter refused the chain"
+                );
                 continue;
             }
 

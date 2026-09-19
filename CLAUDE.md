@@ -9,6 +9,19 @@ For human-readable project overview, see [README.md](README.md).
 - `external/` is **not in git** — populated by `setup.ps1`. A fresh checkout looks broken until setup runs.
 - Active schemas: `db/database.sql`, `db/sgw/`, `db/resources/`.
 - Frontend convention: every meaningful frontend change requires a REPL-style logic UAT in addition to tests/builds — see [AGENTS.md](AGENTS.md).
+- The game client is **not in git** either — `game/sgw/` is a placeholder. Map, prefab, and navmesh work needs your own client copy.
+
+## Project rules (read before designing)
+
+The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md). The ones that cost the most when missed:
+
+- **Check `docs/` first.** Search the docs and the `docs/protocol/*-dispatch-table.md` files before Ghidra, before counting `.def` entries, before guessing.
+- **A ticket or draft chapter is a claim, not evidence.** Reconcile it against `docs/protocol/` and the RE findings before changing a wire constant, index, or layout. If sources disagree, verify against the binary and fix the losing doc in the same PR — see [docs/agents/domain.md](docs/agents/domain.md).
+- **Wire entity typeIDs are the client's clientIndex** (`<ServerOnly/>` entries skipped): `Account = 0x07`, not its `entities.xml` row.
+- **Seeds are the source of truth.** Change seeded data in `db/resources/`; do not add `db/scripts/*.sql` migrations without asking.
+- **Prefer server-authoritative changes that need no client patch.** New opcodes, wire-crypto changes, and new client UI need a maintainer decision first.
+- **Every button press gets visible feedback on the first press**, whatever the original server did.
+- **Parallel agents: one worktree each, one test database each**, on top of the one-`cargo`-at-a-time rule below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 
 ## Build rules
 
@@ -121,7 +134,7 @@ tools/lint-figure-style.ps1         # Windows PowerShell
 The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/markdownlint-cli2) against [`.markdownlint-cli2.yaml`](.markdownlint-cli2.yaml) at the repo root. CI mirrors local invocation via [`DavidAnson/markdownlint-cli2-action`](.github/workflows/markdownlint.yml). First local run downloads the binary on-demand via `npx`; running `npm install` once pins the version from `package.json` for offline reuse. Phase 2 hardens the lint from warn-only to blocking — until then, fix what's easy and let reviewers nudge the rest.
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
-- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site.
+- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** CI floats on current stable Rust (no `rust-toolchain` pin), so its clippy is often newer than yours. Install that version side by side (`rustup toolchain install <version> --profile minimal`) and run `cargo +<version> clippy …` before pushing — see [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md) "Build and CI".
 - **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
 - **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
 - **test-live-db fails** → CI runs `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
@@ -130,7 +143,7 @@ The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/m
 
 ## Required testing for every PR
 
-A PR that changes runtime behavior without adding or updating a test will be sent back. **Before writing a test, read [TESTING.md](TESTING.md)** — it covers the eleven test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session / network chaos / wire-level replay), the picker for which type fits which bug shape, and the gotchas mined from PR reviews #131 onwards.
+A PR that changes runtime behavior without adding or updating a test will be sent back. **Before writing a test, read [TESTING.md](TESTING.md)** — it covers the twelve test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session / network chaos / wire-level replay / negative-log), the picker for which type fits which bug shape, and the gotchas mined from PR reviews #131 onwards.
 
 The non-negotiables:
 
@@ -182,6 +195,7 @@ The map of "what changed → what to update":
 | Admin-API / Admin-panel / Tauri-app surface (REST routes, WebSocket streams, IPC commands) | [docs/tools/admin-api.md](docs/tools/admin-api.md), [docs/tools/admin-panel.md](docs/tools/admin-panel.md), and the `cimmeria-admin-api` row in [crates/README.md](crates/README.md) if the public surface shifts |
 | Developer how-to guides (adding a handler, extending the content engine, writing a migration) | [docs/guides/add-a-message-handler.md](docs/guides/add-a-message-handler.md), [docs/guides/extend-the-content-engine.md](docs/guides/extend-the-content-engine.md), [docs/guides/write-a-database-migration.md](docs/guides/write-a-database-migration.md). When adding a new how-to, also link from [docs/readme.md](docs/readme.md) → `guides/` and from [CONTRIBUTING.md](CONTRIBUTING.md). |
 | Operations / deployment runbooks (container image, colo deploy, telemetry, SigNoz) | [docs/operations/<file>.md](docs/operations/) and the `Top-Level Documents` table in [docs/readme.md](docs/readme.md) if a new operator-facing entry is added |
+| AI-harness configuration: issue-tracker, triage-label, or domain-doc settings read by agent skills; the agent workflow or roster; a new project rule, maintainer decision, or gotcha a contributor off this machine would need | [docs/agents/](docs/agents/) (`issue-tracker.md`, `triage-labels.md`, `domain.md`, `development-workflow.md`, `rules-and-gotchas.md`) and its table in [docs/readme.md](docs/readme.md). If the rule is one of the few that must load every session, also the "Project rules" list in this file, [AGENTS.md](AGENTS.md), and [.github/copilot-instructions.md](.github/copilot-instructions.md). A new subagent goes in `.claude/agents/` with a roster row in `development-workflow.md`. |
 
 Index entries in [docs/readme.md](docs/readme.md) and the per-section `README.md` files (`docs/content/README.md`, `docs/protocol/README.md`, etc.) must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
 
@@ -200,3 +214,10 @@ Files should "do what it says on the tin" — a reader (human or LLM) should pre
 - **Naming.** Avoid `helpers.rs`, `utils.rs`, `misc.rs`, `extra.rs` — they hide content. Use `cooldowns.rs`, `damage_resolution.rs`, `witness_list.rs`.
 - **Module style.** The repo uses `foo/mod.rs` (not the modern `foo.rs` + `foo/` style). Stay consistent.
 
+## Agent skills
+
+Per-repo configuration for agent skills that triage, write tickets, or model the domain lives in [docs/agents/](docs/agents/):
+
+- **Issue tracker:** GitHub Issues for `SandboxServers/Cimmeria` via the `gh` CLI — [issue-tracker.md](docs/agents/issue-tracker.md), including the ticket body contract.
+- **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — [triage-labels.md](docs/agents/triage-labels.md), including what `ready-for-agent` requires here. Unattended agents pick work only from issues a maintainer has labeled `ready-for-agent` — see [docs/guides/autonomous-agent-kickoff.md](docs/guides/autonomous-agent-kickoff.md).
+- **Domain docs:** glossary is `docs/spec/glossary.md`, ADRs are `docs/architecture/`. Do **not** create `CONTEXT.md` or `docs/adr/` — [domain.md](docs/agents/domain.md).

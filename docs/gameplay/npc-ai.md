@@ -198,6 +198,54 @@ def selectHostileAbility(self, target):
 
 There is no priority weighting — the first usable ability in iteration order is selected. No distance checks, no cooldown preference, no situational logic (e.g., prefer ranged when target is far).
 
+### Rust: reach-filtered selection
+
+The Rust selector lives in `crates/services/src/cell/service/npc_ai/ability_select.rs`
+and diverges from the loop above in two ways.
+
+**Deterministic order.** `choose_npc_ability` sorts the known ability ids
+ascending and takes the first one off cooldown. The original returned
+`usable[0]` out of a CPython 2 dict, so its order was a hash artefact; the
+original developers left `# TODO: Which ability should we use? Use some
+weighting/rand here.` directly above that line, so lowest-id is a Cimmeria
+convention rather than a divergence from a contract. The practical
+consequence for a content author is that **the lowest-id member of an
+ability set is the NPC's primary attack** and the rest are cooldown
+fallbacks.
+
+**A distance gate the original never had.** `classifyHostileAbility` carries
+the literal comment `# TODO: Check distance, LOS` above its
+`return ABILITY_Usable`. `choose_npc_ability_within_reach` is that TODO:
+
+- An `is_ranged = false` ability is only selectable when the target is
+  inside `NPC_MELEE_RANGE` (3 m). Without the gate a melee auto-attack
+  resolves to the 30 m ranged default, because `abilities.max_range` is the
+  `0` "use the server default" sentinel on every auto-attack in the seed and
+  `is_ranged` is otherwise read only by `calculate_qr` to pick the
+  accuracy/defence branch. The visible defect is an NPC playing a staff or
+  ribbon *swing* at a target thirty metres away.
+- When nothing is in reach it falls back to the unfiltered pick rather than
+  returning `None`. `None` is the caller's "all cooling, hold fire" signal,
+  so returning it would freeze a melee-only NPC at distance. Handing back
+  the out-of-reach ability lets `ability_ranges` report its real 3 m
+  `max_range`, and the fight tick's existing out-of-range arm then does the
+  right thing: a mobile NPC chases and swings once it arrives, a stationary
+  one lands in `stationary_holds` and turns to face its target.
+
+`NPC_MELEE_RANGE` is derived from the weapon table rather than invented.
+`resources.items` carries `min_melee_range` / `max_melee_range` alongside
+the ranged pair; across every item binding an `EVENT_ITEM_MELEE` ability the
+melee maximum is 0, 2 or 3, so 3 is the largest reach any shipped weapon
+expresses. `NPC_ATTACK_RANGE` (30) is the same table's dominant
+`max_ranged_range`. Both constants live in
+`crates/services/src/cell/combat/threat/aggro.rs`.
+
+Not ported: the `ABILITY_Filtered` pre-pass. Cimmeria's selector does not
+reject heals, buffs or non-`TCM_Single` abilities before partitioning. That
+is inert while every NPC ability set holds only single-target hostile
+auto-attacks, but it is a live hazard for the first content author who puts
+a self-buff or an AoE into a mob set.
+
 ### Combat Tick
 
 `doAiFightingAction()` runs each combat tick:
@@ -399,6 +447,8 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |
 | Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |
 | Three-bucket ability selection | DONE | `choose_npc_ability` partitions known abilities into usable / cooling / needs-ammo and picks the first off-cooldown ID. See [#342](https://github.com/SandboxServers/Cimmeria/issues/342). |
+| Multi-ability sets | DONE | `ability_set_abilities` is keyed on `(ability_set_id, ability_id)`, so one set holds N abilities and the selector walks them all in ascending id order. Harset packet H09 widened the key and gave set 4 the staff pair (`584` ranged + `710` melee) and set 5 the ribbon pair (`711` melee + `712` ranged). |
+| Melee reach gate | DONE | `choose_npc_ability_within_reach` will not select an `is_ranged = false` ability for a target beyond `NPC_MELEE_RANGE` (3 m), so an NPC never plays a weapon swing at a target it cannot touch. When nothing is in reach it falls back to the unfiltered pick, whose short `max_range` sends a mobile NPC down the chase arm and a stationary one into `stationary_holds`. See the section below. |
 | `setMovementType` AoI broadcast | DONE | `broadcast_movement_type` fans the EMobMovementType byte to AoI witnesses on every state transition (CombatAdvance on Fighting entry, Leash on Leashing entry, clear on Idle). Dedup'd against `last_movement_type` so re-entry of same state is a wire no-op. Closes [#270](https://github.com/SandboxServers/Cimmeria/issues/270). |
 | NPC respawn | DONE | `npc_respawn_tick` (1 Hz) reads `respawn_secs` (COALESCE `spawnlist`, `entity_templates`, minimum 3s enforced via CHECK). On NPC death the `combat::mark_npc_dead` helper stamps `respawn_at = now + respawn_secs`. Tick promotes Dead → Idle, restores HP / FOCUS / state / interaction-type / facing direction, snaps position to spawn, closes any open loot UIs on still-looting players, and broadcasts in wire order: EntityMoved → INTERACTION_TYPE → ON_STATE_FIELD_UPDATE → ON_STAT_UPDATE. `NULL` columns → one-shot mob (corpse persists). Effect-script-driven HP-to-0 paths that bypass `damage_apply` (e.g., `scripts::MeleeDamage`) also bypass respawn — future content using those paths must call `combat::mark_npc_dead` explicitly. |
 | Investigating state | DONE | `npc_ai_investigate` handler routes the NPC to a content-set `poi`, dwells 5s (`INVESTIGATE_DWELL_SECS`), returns to Idle. Reached via the `SetNpcPoi` content action; the `onNoise` cell-method hook for in-game audio is deferred. |

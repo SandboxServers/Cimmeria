@@ -2,7 +2,7 @@
 
 > **Last updated**: 2026-07-25
 
-BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, and engine subsystems. 13 documents.
+BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, and engine subsystems. 14 documents.
 
 ## Documents
 
@@ -14,6 +14,10 @@ BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, 
 | [cooked-data-pipeline.md](cooked-data-pipeline.md) | .pak format, XSD schemas, CookedElementBase, gSOAP deserialization, Mercury resource delivery | Complete |
 | [cooked-data-pak-format.md](cooked-data-pak-format.md) | Cooked-data PAK file format: on-disk layout, entry table, compression, client read path | Complete |
 | [ue3-package-format.md](ue3-package-format.md) | SGW UE3 package binary format (ver 486 licensee fork): section ordering + the `total_header_size` trap, LZO chunking, variable-length export trailers, actor/component serial prefixes, ULevel `Actors` layout, property tag stream, HUD↔world coordinate swizzle | Complete |
+| [navmesh-build-pipeline.md](navmesh-build-pipeline.md) | UE3 -> OBJ -> NavBuilder -> `.nav`: the UE3/BigWorld axis mapping, chunk-OBJ filename + CRLF rules, NavBuilder's silent failure modes, `nav_inspect` connectivity gate, Castle Cellblock calibration | Complete |
+| [navbuilder-recast-limits.md](navbuilder-recast-limits.md) | Rebuilding `NavBuilder.exe`, parity with the reference binary, Recast's four fixed-width index limits (contour verts, adjacency edges, 15-bit region ids, 24-bit compact-heightfield span index) and the measured Castle (World 8) parameter table | Complete |
+| [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md) | Where Castle's eleven named probes land, the mirrored-instance (`DrawScale3D = (-1,1,1)`) bug that emitted a hallway ramp as a ceiling, why the 108-byte `Brush`-owned `Model`s are correct cooked data, and the terrain shelves that still split exterior from interior | Complete |
+| [castle-extraction-measurements.md](castle-extraction-measurements.md) | What the extractor recovers from Castle / Castle_CellBlock: per-source triangle counts, the prefab-archetype census, the 1,570 `bCollideActors = false` actors, the export-class census, and the Terrain / BSP findings | Complete |
 | [entity-def-guide.md](entity-def-guide.md) | Entity definition (`.def`) file format: property/method declarations, interfaces, type aliases | Complete |
 | [character-visual-components.md](character-visual-components.md) | Character visual components: how avatar appearance (model, skin, equipment) is composited | Complete |
 | [client-visual-system.md](client-visual-system.md) | Client visual system: rendering, scene graph, how entities are drawn | Complete |

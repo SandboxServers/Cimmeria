@@ -38,7 +38,7 @@ use crate::timeline::clock::ClockOffset;
 
 use autologin::LoginOutcome;
 use heartbeat::{HeartbeatState, HeartbeatWatchdog};
-use recovery::{CommandJournal, RecoveryTracker};
+use recovery::{CommandJournal, PersistentHooks, RecoveryTracker};
 use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
 
 /// Heartbeat poll cadence for the background watchdog.
@@ -155,6 +155,8 @@ struct SupervisorState {
     /// Cached client↔server clock offset (ADR §5). Re-pinned whenever a
     /// packet-tap ping is available; used by `lab_timeline` between pins.
     clock_offset: Option<ClockOffset>,
+    /// Hooks marked `persistent`, re-applied after a crash (ADR §6).
+    persistent_hooks: PersistentHooks,
 }
 
 impl SupervisorState {
@@ -169,6 +171,7 @@ impl SupervisorState {
             journal: CommandJournal::new(JOURNAL_CAP),
             heartbeats: VecDeque::with_capacity(HEARTBEAT_RING_CAP),
             clock_offset: None,
+            persistent_hooks: PersistentHooks::new(),
         }
     }
 
@@ -210,6 +213,9 @@ impl Supervisor {
             let mut st = self.state.lock().await;
             st.journal.record(method, now_ms())
         };
+        // Keep a copy of the params for persistent-hook bookkeeping; the
+        // call consumes `params`.
+        let hook_params = matches!(method, "hook_install" | "hook_remove").then(|| params.clone());
         let result = self
             .bridge
             .call(method, params)
@@ -218,8 +224,63 @@ impl Supervisor {
         {
             let mut st = self.state.lock().await;
             st.journal.complete(seq, result.is_ok());
+            // Track persistent hooks so the recovery path can replay them
+            // (ADR §6). Only a *successful* install/remove updates the set.
+            if let (Ok(res), Some(p)) = (&result, &hook_params) {
+                match method {
+                    "hook_install" => {
+                        if let Some(hid) = res.get("id").and_then(Value::as_u64) {
+                            st.persistent_hooks.note_install(hid as u32, p);
+                        }
+                    }
+                    "hook_remove" => {
+                        if let Some(hid) = p.get("id").and_then(Value::as_u64) {
+                            st.persistent_hooks.note_remove(hid as u32);
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
         result
+    }
+
+    /// Re-apply persistent hooks after a crash relaunch (ADR §6): replay
+    /// each recorded `hook_install`, then re-key the set with the fresh ids
+    /// the relaunched client assigns (the old ids died with the crash).
+    /// Best-effort — a hook that fails to re-apply is dropped from tracking
+    /// rather than retried forever. Writes and native calls are **never**
+    /// replayed; only persistent hooks reach here.
+    async fn reapply_persistent_hooks(&self) {
+        let to_reapply = {
+            let st = self.state.lock().await;
+            st.persistent_hooks.to_reapply()
+        };
+        if to_reapply.is_empty() {
+            return;
+        }
+        tracing::info!(
+            count = to_reapply.len(),
+            "re-applying persistent hooks after crash"
+        );
+
+        let mut refreshed: Vec<(u32, Value)> = Vec::new();
+        for params in to_reapply {
+            match self.bridge.call("hook_install", params.clone()).await {
+                Ok(res) => {
+                    if let Some(hid) = res.get("id").and_then(Value::as_u64) {
+                        refreshed.push((hid as u32, params));
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "persistent hook re-apply failed"),
+            }
+        }
+
+        let mut st = self.state.lock().await;
+        st.persistent_hooks.clear();
+        for (hid, params) in refreshed {
+            st.persistent_hooks.note_install(hid, &params);
+        }
     }
 
     /// Launch (or relaunch) the client: mint a token, write the session
@@ -313,7 +374,7 @@ impl Supervisor {
     /// crash count. Polls the bridge for the heartbeat and folds it into
     /// the watchdog (also the on-demand staleness check).
     pub async fn status(&self) -> Result<Value, String> {
-        let (pid, uptime_ms, login, crash_count) = {
+        let (pid, uptime_ms, login, crash_count, persistent_hooks) = {
             let mut st = self.state.lock().await;
             let uptime = st
                 .started_at
@@ -324,6 +385,7 @@ impl Supervisor {
                 uptime,
                 st.login,
                 st.recovery.recent_crash_count(now_ms()),
+                st.persistent_hooks.count(),
             )
         };
 
@@ -355,6 +417,7 @@ impl Supervisor {
             "uptime_ms": uptime_ms,
             "login_state": login.as_str(),
             "crash_count_10min": crash_count,
+            "persistent_hooks": persistent_hooks,
             "heartbeat": { "tick_count": hb_count, "state": hb_state, "age_ms": hb_age },
         }))
     }
@@ -522,6 +585,10 @@ impl Supervisor {
                 if let Err(e) = self.login(None).await {
                     tracing::warn!(error = %e, "post-crash autologin failed");
                 }
+                // Restore probes: re-apply persistent hooks (never writes
+                // or native calls — the quarantined in-flight command stays
+                // quarantined). ADR §6 "Restore probes".
+                self.reapply_persistent_hooks().await;
             }
             Err(e) => tracing::error!(error = %e, "relaunch after crash failed"),
         }

@@ -863,6 +863,7 @@ version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "flate2",
+ "microseh",
  "minhook-sys",
  "serde",
  "serde_json",
@@ -1038,6 +1039,7 @@ name = "cimmeria-navmesh-extractor"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "cimmeria-navmesh-extractor",
  "cimmeria-upk",
  "cimmeria-upk-objects",
  "thiserror 2.0.20",
@@ -3824,6 +3826,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "microseh"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c21a3b5df1f93ad17fea4bdf3c99fbd841cda0d4102cd42a6003ff3fdf89b59"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

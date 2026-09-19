@@ -6,34 +6,59 @@
 //! return `true` (no obstruction) and pathfinding / height return `None`.
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::navigation::PointVerdict;
+
+use cimmeria_entity::navigation::LineOfSight;
 
 use super::SpaceManager;
 
 impl SpaceManager {
-    /// Line-of-sight check between two entities using the navmesh.
-    /// Returns `true` if there is clear LoS (or if no navmesh is loaded).
+    /// Check line-of-sight between two entities in the same space.
+    ///
+    /// `true` unless the navmesh positively reports a boundary between them.
+    /// No navmesh, an entity that is not in the space, and an endpoint the
+    /// mesh does not cover all count as clear: see [`Self::line_of_sight`].
     pub fn has_line_of_sight(&self, entity_a: u32, entity_b: u32) -> bool {
-        let space_id = match self.entity_space.get(&entity_a) {
-            Some(&sid) => sid,
-            None => return true, // No space info — assume LoS
+        self.line_of_sight(entity_a, entity_b).is_clear_or_unknown()
+    }
+
+    /// Three-state line of sight between two entities in the same space.
+    ///
+    /// [`LineOfSight::Unknown`] covers every case where the navmesh cannot
+    /// answer: no space, no navmesh loaded, an entity missing from the space,
+    /// or an endpoint further from the mesh than the projection box reaches.
+    /// The last case is logged at debug, because on a meshed world it means a
+    /// spawn or a player is standing somewhere the mesh does not cover (9 of
+    /// the 13 stationary Harset mobs against `harset.nav`), and that used to
+    /// read as "blocked" and silence the NPC for good.
+    pub fn line_of_sight(&self, entity_a: u32, entity_b: u32) -> LineOfSight {
+        let Some(space) = self
+            .entity_space
+            .get(&entity_a)
+            .and_then(|sid| self.spaces.get(sid))
+        else {
+            return LineOfSight::Unknown;
         };
-        let space = match self.spaces.get(&space_id) {
-            Some(s) => s,
-            None => return true,
+        let Some(navmesh) = &space.navmesh else {
+            return LineOfSight::Unknown;
         };
-        let navmesh = match &space.navmesh {
-            Some(nm) => nm,
-            None => return true, // No navmesh — can't check, assume LoS
+        let (Some(a), Some(b)) = (space.entities.get(&entity_a), space.entities.get(&entity_b))
+        else {
+            return LineOfSight::Unknown;
         };
-        let pos_a = match space.entities.get(&entity_a) {
-            Some(e) => e.position,
-            None => return true,
-        };
-        let pos_b = match space.entities.get(&entity_b) {
-            Some(e) => e.position,
-            None => return true,
-        };
-        navmesh.raycast(&pos_a, &pos_b)
+        let los = navmesh.line_of_sight(&a.position, &b.position);
+        if los == LineOfSight::Unknown {
+            tracing::debug!(
+                target: "movement.navmesh",
+                reason = "los_unknown_off_mesh",
+                entity_a,
+                entity_b,
+                a_on_mesh = navmesh.is_point_valid(&a.position),
+                b_on_mesh = navmesh.is_point_valid(&b.position),
+                "line of sight: an endpoint is outside navmesh coverage -- treated as clear"
+            );
+        }
+        los
     }
 
     /// Whether the space containing `entity_id` has a navmesh loaded.
@@ -76,6 +101,32 @@ impl SpaceManager {
             Some(nm) => nm.is_point_valid(pos),
             None => true,
         }
+    }
+
+    /// Why [`Self::is_position_valid`] answered the way it did, for the
+    /// space containing `entity_id`.
+    ///
+    /// `None` means there is **no navmesh in this space** — which is not
+    /// the same as "the point is off the mesh". `is_position_valid` fails
+    /// open there and returns `true`, so a caller logging a diagnosis has
+    /// to be able to say "there was nothing to check against" rather than
+    /// reporting a gate it never evaluated.
+    pub fn diagnose_point(&self, entity_id: u32, pos: &Vector3) -> Option<PointVerdict> {
+        let space_id = *self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        Some(space.navmesh.as_ref()?.diagnose_point(pos))
+    }
+
+    /// Short content hash of the navmesh loaded for the space containing
+    /// `entity_id`, or `None` in a meshless space.
+    ///
+    /// Every navmesh-decision log line carries this so a session can be
+    /// tied to the mesh build it ran on — see
+    /// [`cimmeria_entity::navigation::NavMeshFingerprint`].
+    pub fn navmesh_short_hash(&self, entity_id: u32) -> Option<&str> {
+        let space_id = *self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        Some(space.navmesh.as_ref()?.short_hash())
     }
 
     /// Sample the navmesh surface height at (x, z) in the space containing `entity_id`.

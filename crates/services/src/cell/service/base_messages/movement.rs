@@ -4,6 +4,7 @@
 //! Extracted from `base_messages/mod.rs` as a pure code move.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 use tokio::sync::mpsc;
 
@@ -11,7 +12,7 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::movement_validation::MovementReject;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::{ClientMoveOutcome, SpaceManager};
+use crate::cell::space_manager::{ClientMoveOutcome, RejectReport, SpaceManager};
 
 /// Stable metric/log label for a movement reject reason. Kept low-
 /// cardinality (one token per layer) so the `movement_validation_rejects_total`
@@ -129,44 +130,34 @@ pub(super) async fn handle_entity_move(
             space_id,
             bounds,
         } => {
-            // Negative-log per docs/architecture/negative-logging-convention.md.
-            // `reason` carries the validation layer that fired
+            // Negative-log + counter, both behind one helper: the row
+            // needs the world name, the navmesh gate diagnosis and the
+            // per-entity throttle, all of which live on the
+            // `SpaceManager`. See
+            // `cell::space_manager::movement_telemetry` for why the
+            // throttle exists (one stuck entity produced 71% of three
+            // days' reject volume) and why the counter is incremented
+            // even for suppressed rows.
+            //
+            // `reason` still carries the validation layer that fired
             // (`bounds` | `navmesh` | `teleport`); `bounds_min`/
-            // `bounds_max` let an operator confirm which AABB the
+            // `bounds_max` still let an operator confirm which AABB the
             // proposed position was tested against without grepping.
-            let reason_label = movement_reject_label(reason);
-            // Stable identity correlator. Resolved inside the reject branch,
-            // not at fn entry: this handler runs ~10 Hz per active player and
-            // the accepted path must not pay for a lookup it never logs.
-            let id = space_mgr.player_identity(entity_id);
-            tracing::warn!(
-                target: "movement.validation",
-                entity_id,
-                account_id = id.account_id,
-                player_id = id.player_id,
-                space_id,
-                client_x = position[0],
-                client_y = position[1],
-                client_z = position[2],
-                last_valid_x = last_valid[0],
-                last_valid_y = last_valid[1],
-                last_valid_z = last_valid[2],
-                bounds_min_x = bounds.min[0],
-                bounds_min_y = bounds.min[1],
-                bounds_min_z = bounds.min[2],
-                bounds_max_x = bounds.max[0],
-                bounds_max_y = bounds.max[1],
-                bounds_max_z = bounds.max[2],
-                reason = reason_label,
-                reject = ?reason,
-                "movement.validation_reject: client position rejected by the \
-                 {reason_label} layer — snapping back to last valid via FORCED_POSITION"
-            );
-            // One low-cardinality `reason` label per layer so the
-            // reject rate stays aggregatable without per-entity tags.
-            cimmeria_observability::counter!(
-                "movement_validation_rejects_total",
-                "reason" => reason_label,
+            //
+            // Identity comes back out rather than being resolved twice:
+            // this handler runs ~10 Hz per active player, and the
+            // accepted path never pays for the lookup at all.
+            let id = space_mgr.report_movement_reject(
+                RejectReport {
+                    entity_id,
+                    space_id,
+                    reason,
+                    reason_label: movement_reject_label(reason),
+                    position,
+                    last_valid,
+                    bounds: &bounds,
+                },
+                Instant::now(),
             );
             // Snap the offending client back. The cell entity's
             // position was NOT advanced — the next AoI tick
@@ -192,12 +183,19 @@ pub(super) async fn handle_entity_move(
             // left is to tell the owning client where it now is.
             let reason_label = movement_reject_label(reason);
             let id = space_mgr.player_identity(entity_id);
+            // `world` on every `movement.validation` row, not just the
+            // reject: an operator filtering the target by world should
+            // not silently lose the recovery and suppression rows.
+            let world = space_mgr
+                .world_name_for_space(space_id)
+                .unwrap_or("unknown");
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
                 space_id,
+                world = %world,
                 from_x = from[0],
                 from_y = from[1],
                 from_z = from[2],
@@ -228,12 +226,16 @@ pub(super) async fn handle_entity_move(
             // offending client stays desynced until it sends a position
             // the validator accepts, which clears the budget.
             let id = space_mgr.player_identity(entity_id);
+            let world = space_mgr
+                .world_name_for_space(space_id)
+                .unwrap_or("unknown");
             tracing::error!(
                 target: "movement.validation",
                 entity_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
                 space_id,
+                world = %world,
                 from_x = from[0],
                 from_y = from[1],
                 from_z = from[2],

@@ -110,6 +110,7 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::EntityInvisible { .. } => aoi_dispatch::route(msg, &ctx).await,
 
         CellToBaseMsg::GateTravel { .. }
+        | CellToBaseMsg::GrantStargateAddress { .. }
         | CellToBaseMsg::ReanchorPlayer { .. }
         | CellToBaseMsg::TeleportPlayer { .. } => gate_teleport_dispatch::route(msg, &ctx).await,
 

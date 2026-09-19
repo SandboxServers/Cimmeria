@@ -174,9 +174,31 @@ INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_i
 
 INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map) VALUES (58, 1, 1440, 1, 'SGC_W1', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'SGC_W1');
 
-INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map) VALUES (8, 0, 1440, 1, 'Castle', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'Castle');
+-- Castle is seeded 'advisory' for a different reason than Harset (below):
+-- it had no navmesh at all until data/spaces/castle.nav was rebuilt from the
+-- cooked client maps on 2026-09-19 (StaticMesh + Terrain + BSP extraction,
+-- NavBuilder partition=watershed agentHeight=1.8 agentClimb=0.6
+-- minRegionSize=24 maxSimplificationError=2.5; 40,068 verts / 19,815 polys).
+-- Every known-walked point resolves and the mission-704 escort route
+-- (Zuritska's cell -> Level-5 Communications room) is routable, but the
+-- exterior (gate room, Checkpoint Bravo) and the interior are still separate
+-- regions, bridged only by terrain shelves near (725.6, 30.4, 462.9) ->
+-- (622.4, 24.0, 508.2). Nobody has walked it under containment, so the mesh
+-- is information only (pathing, line of sight, ground height) until an
+-- in-client walk shows no coverage gaps. Evidence class: RECONSTRUCTION.
+-- See docs/architecture/navmesh-containment-modes.md.
+INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map, navmesh_mode) VALUES (8, 0, 1440, 1, 'Castle', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'Castle', 'advisory');
 
-INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map) VALUES (57, 0, 1440, 1, 'Harset', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'Harset');
+-- Harset is the one world seeded 'advisory'. `data/spaces/harset.nav` is
+-- badly incomplete: measured 2026-09-19 on a 2-unit grid, the plaza floor
+-- (Y ~ -68) is on-mesh to Z -198 and has no coverage at all from Z -200 to
+-- Z -228 across X -24..0 -- the only walk from the gate plaza to the Command
+-- Center door. Enforcing containment there snaps every non-GM player back at
+-- the hole boundary, so the mesh is demoted to information only until GH1
+-- rebakes it. Castle (world 8, above) is the only other advisory row; every
+-- other world keeps the 'enforce' default.
+-- See docs/architecture/navmesh-containment-modes.md.
+INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map, navmesh_mode) VALUES (57, 0, 1440, 1, 'Harset', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'Harset', 'advisory');
 
 INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map) VALUES (80, 1, 1440, 1, 'Omega_Site_CmdCenter', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'Omega_Site_CmdCenter');
 

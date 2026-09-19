@@ -139,11 +139,20 @@ async fn praxis_jaffa_guard_templates_use_the_staff_ability_set() {
     let pool = require_db_or_skip!();
 
     for template_id in [159_i32, 160] {
-        let (ability_id, respawn_secs): (Option<i32>, Option<i32>) = sqlx::query_as(
-            "SELECT asa.ability_id, t.respawn_secs \
+        // Aggregated rather than a bare LEFT JOIN + `fetch_one`: since packet
+        // H09 widened `ability_set_abilities` to `PRIMARY KEY (ability_set_id,
+        // ability_id)`, set 4 has two rows and the join fans out. `fetch_one`
+        // would silently take whichever row came back first, making the
+        // assertion depend on physical row order.
+        let (ability_ids, respawn_secs): (Vec<i32>, Option<i32>) = sqlx::query_as(
+            "SELECT COALESCE( \
+                      (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
+                       FROM resources.ability_set_abilities asa \
+                       WHERE asa.ability_set_id = t.ability_set_id), \
+                      ARRAY[]::int[] \
+                    ) AS ability_ids, \
+                    t.respawn_secs \
              FROM resources.entity_templates t \
-             LEFT JOIN resources.ability_set_abilities asa \
-                    ON asa.ability_set_id = t.ability_set_id \
              WHERE t.template_id = $1",
         )
         .bind(template_id)
@@ -151,12 +160,12 @@ async fn praxis_jaffa_guard_templates_use_the_staff_ability_set() {
         .await
         .expect("Praxis Jaffa guard template must exist");
 
-        assert_eq!(
-            ability_id,
-            Some(STAFF_AUTO_ATTACK),
+        assert!(
+            ability_ids.contains(&STAFF_AUTO_ATTACK),
             "template {template_id} must resolve to ability {STAFF_AUTO_ATTACK} (Staff Auto \
-             Attack); a NULL means it is back on NPC_DEFAULT_ABILITY \
-             ({NPC_DEFAULT_ABILITY}, Pistol Shot) and the Jaffa fire a Tau'ri pistol again"
+             Attack); an empty bucket means it is back on NPC_DEFAULT_ABILITY \
+             ({NPC_DEFAULT_ABILITY}, Pistol Shot) and the Jaffa fire a Tau'ri pistol again. \
+             Bucket: {ability_ids:?}"
         );
         assert_eq!(
             respawn_secs, None,

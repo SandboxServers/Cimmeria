@@ -197,6 +197,10 @@ How the underlying BigWorld engine and CME game framework operate inside sgw.exe
 | [client-visual-system.md](engine/client-visual-system.md) | Client visual system: rendering, scene graph, and how entities are drawn in the BigWorld/UE3 client | Complete |
 | [cooked-data-pak-format.md](engine/cooked-data-pak-format.md) | Cooked-data PAK file format: on-disk layout, entry table, compression, and how the client reads resource packs | Complete |
 | [ue3-package-format.md](engine/ue3-package-format.md) | SGW UE3 package binary format (ver 486 licensee fork): section ordering and the `total_header_size` trap, LZO chunking, variable-length export trailers, actor/component serial prefixes, ULevel `Actors` layout, ver-486 property tag stream, HUD↔world coordinate swizzle | Complete |
+| [navmesh-build-pipeline.md](engine/navmesh-build-pipeline.md) | UE3 -> OBJ -> NavBuilder -> `.nav` build pipeline: axis/handedness mapping, chunk-OBJ conventions, NavBuilder failure modes, the `nav_inspect` connectivity gate, and StaticMesh-only calibration against the shipped Castle Cellblock mesh | Complete |
+| [navbuilder-recast-limits.md](engine/navbuilder-recast-limits.md) | Rebuilding `NavBuilder.exe`, parity with the 2026-03 reference binary, Recast's four fixed-width index limits and how each one fails, and the measured Castle (World 8) Recast parameter table | Complete |
+| [castle-navmesh-connectivity.md](engine/castle-navmesh-connectivity.md) | Castle (World 8) navmesh connectivity: where the eleven probes land, the mirrored-instance bug that split the interior into two storeys, and the terrain shelves still separating exterior from interior | Complete |
+| [castle-extraction-measurements.md](engine/castle-extraction-measurements.md) | What `cimmeria-navmesh-extractor` recovers from Castle: coverage by source, the prefab-archetype census, the `bCollideActors` suppression set, and the Terrain / BSP findings | Complete |
 
 See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-analysis.md), [technical/sgw-binary-overview.md](technical/sgw-binary-overview.md)
 
@@ -204,7 +208,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 32 documents.
+How the Cimmeria emulator itself is structured. 33 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -223,6 +227,7 @@ How the Cimmeria emulator itself is structured. 32 documents.
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors, relog persistence of `BSF_AutoCycling` | Complete |
 | [gm-cell-method-gating.md](architecture/gm-cell-method-gating.md) | ADR for the server-authoritative GM gate (#475 / CAT-N-03): `access_level` plumbing into `CellEntity`, the dispatch-layer `gm_gate`, how to add the next `gm*` method | Complete |
 | [movement-validation.md](architecture/movement-validation.md) | ADR for server-authoritative position validation (#478 / CAT-B-01,-06,-09): the 4-layer seam (bounds / speed warn-only / teleport / navmesh), dual teleport gate, server-clock dt, authorized-teleport reseed, warn-only spaceId cross-check, tolerances + calibration path | Complete |
+| [navmesh-containment-modes.md](architecture/navmesh-containment-modes.md) | ADR for the per-world `navmesh_mode` column (H53): why a partial `.nav` fails closed and becomes an invisible wall only non-GM players hit, the `enforce` / `advisory` values and their `enforce` default, the single `enforces_navmesh_containment` predicate, every routed containment gate, the informational consumers that keep the mesh, why the flag is seeded data rather than auto-detected, and the path back to `enforce` | Complete |
 | [gm-cell-method-adapt-plan.md](architecture/gm-cell-method-adapt-plan.md) | Roadmap for the developer-useful ADAPT `gm*` cell methods (#473/#518): the feedback-channel blocker that unlocks the query surface, name→id resolution, the `loadX` hot-reload family, recommended sequencing | Complete |
 | [dev-console-channel.md](architecture/dev-console-channel.md) | ADR for the GM `.`-console (#523): chat-intercept channel for the ~66 dev/authoring commands with no native slash binding, registry dispatch, record→confirm seed-SQL authoring (live write + per-session log + Discord hook), FanMMORPG patrol authoring + schema, per-command status | Complete |
 | [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
@@ -272,6 +277,20 @@ Design documents for development and administration tools.
 |----------|-------------|--------|
 | [admin-panel.md](tools/admin-panel.md) | Web admin dashboard: architecture, Flask+React stack, py_client protocol bridge, DB queries, API routes | Complete |
 | [admin-api.md](tools/admin-api.md) | REST + WebSocket admin API: `crates/admin-api/` Axum implementation, routes, auth, Tauri IPC bridge | Complete |
+
+---
+
+### `agents/` -- AI Harness Workflow, Rules, and Skill Configuration
+
+What an AI-assisted contributor (or their agents) needs that the code does not say: the ticket-to-PR workflow, decisions already made, known traps, and the per-repo settings that agent skills read. Entry points are [../AGENTS.md](../AGENTS.md) and the "Project rules" section of [../CLAUDE.md](../CLAUDE.md). The skill settings were scaffolded with `/mattpocock-skills:setup-matt-pocock-skills` (`/triage`, `/to-tickets`, `/to-spec`, `/domain-modeling`, `/wayfinder`) and then adapted to this repo; re-running the setup skill overwrites those adaptations, so diff before committing.
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, one `cargo`, one test DB), definition of done | Complete |
+| [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, CI clippy drift, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
+| [domain.md](agents/domain.md) | Where domain docs live (glossary = `spec/glossary.md`, ADRs = `architecture/`; no `CONTEXT.md` or `docs/adr/`), what to read before exploring, and what to do when sources disagree | Complete |
+| [issue-tracker.md](agents/issue-tracker.md) | GitHub Issues via the `gh` CLI; repo-specific `gh` traps; the ticket body contract; PRs-as-request-surface flag (off); wayfinder map / child / blocking conventions | Complete |
+| [triage-labels.md](agents/triage-labels.md) | Maps the five canonical triage roles to this repo's label strings, and defines what `ready-for-agent` and `ready-for-human` mean here | Complete |
 
 ---
 
@@ -329,6 +348,7 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [live-research-lab.md](guides/live-research-lab.md) | **How-to + rulebook.** The "ask the running game" path: the experiment loop, the seven research rules, the merged `lab_timeline` window, and the free SigNoz Lua-VM check. Operating manual for the ADR at [architecture/live-research-lab.md](architecture/live-research-lab.md) | Complete |
 | [reading-decompiled-code.md](guides/reading-decompiled-code.md) | Tips for reading Ghidra decompiler output, common patterns, pitfalls | Complete |
 | [sgw-live-debugging.md](guides/sgw-live-debugging.md) | Live debugging SGW.exe with x32dbg + log breakpoints — manual fallback when MCP-driven flows fail; pybag incompatibility documented | Complete |
+| [autonomous-agent-kickoff.md](guides/autonomous-agent-kickoff.md) | **Kickoff prompt for unattended AI agents.** Issue selection and claim protocol, per-worktree build and DB discipline, draft-until-green PR flow with Cadacious as reviewer, budgets and escalation. Two marked deviations from the `CLAUDE.md` pre-PR checklist | Complete |
 
 Two former-guides files moved to their correct homes in #344: [evidence-standards.md](reverse-engineering/evidence-standards.md) is now under `reverse-engineering/` (it's the standards reference for the RE process), and [entity-def-guide.md](engine/entity-def-guide.md) is now under `engine/` (it's reference doc on entity definition files).
 

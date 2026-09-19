@@ -182,6 +182,27 @@ pub(super) async fn npc_ai_patrol(
         let path = space_mgr
             .find_path(npc_id, &npc_pos, &waypoint)
             .unwrap_or_default();
+        if path.len() <= 1 {
+            // Previously silent. `unwrap_or_default` turns "no route"
+            // into an empty Vec, the `else` arm below pushes the raw
+            // waypoint, and the NPC walks to it through whatever
+            // geometry is in the way with no log at any level — the
+            // 2026-09-18 Castle "NPCs cut through walls" shape.
+            let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+            super::path_failure::report_path_failure(
+                space_mgr,
+                super::path_failure::PathFailure {
+                    npc_id,
+                    state: "patrol",
+                    decision_outcome: "patrol_no_path",
+                    from: npc_pos,
+                    to: waypoint,
+                    reason,
+                    target_id: None,
+                },
+                std::time::Instant::now(),
+            );
+        }
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.patrol_dwell_until = None;
             npc.nav_path.clear();

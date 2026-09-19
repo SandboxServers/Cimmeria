@@ -17,6 +17,7 @@
 use std::collections::VecDeque;
 
 use serde::Serialize;
+use serde_json::Value;
 
 /// Lifecycle of one journaled command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -168,9 +169,94 @@ impl RecoveryTracker {
     }
 }
 
+/// The **persistent-hook re-application hook-point** (ADR §6): the
+/// supervisor records every `hook_install` marked `persistent` and, after
+/// a crash relaunch, replays exactly those installs — never writes, never
+/// native calls, never non-persistent hooks. The bridge is the single
+/// client, so the supervisor is the authority on what to re-apply; the
+/// DLL-side registry dies with the client.
+///
+/// Keyed by the hook id the DLL returned, so a `hook_remove` drops the
+/// right entry. Pure and unit-tested; the supervisor calls
+/// [`note_install`](Self::note_install) / [`note_remove`](Self::note_remove)
+/// from `bridge_call` and [`to_reapply`](Self::to_reapply) from the
+/// recovery path.
+#[derive(Debug, Clone, Default)]
+pub struct PersistentHooks {
+    entries: Vec<PersistentHook>,
+}
+
+/// One persistent hook: the id the DLL assigned and the original
+/// `hook_install` params to replay verbatim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistentHook {
+    pub id: u32,
+    pub install_params: Value,
+}
+
+impl PersistentHooks {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Note a completed `hook_install`. Records it **only when the install
+    /// params carry `persistent: true`** — this is the "re-apply only
+    /// persistent hooks" decision, kept here so it is unit-tested in one
+    /// place. Returns whether it was recorded.
+    pub fn note_install(&mut self, id: u32, install_params: &Value) -> bool {
+        let persistent = install_params
+            .get("persistent")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !persistent {
+            return false;
+        }
+        // A repeat id (shouldn't happen — ids are monotonic per launch)
+        // replaces rather than duplicates.
+        self.entries.retain(|e| e.id != id);
+        self.entries.push(PersistentHook {
+            id,
+            install_params: install_params.clone(),
+        });
+        true
+    }
+
+    /// Drop a persistent hook after a `hook_remove`. Returns whether one
+    /// was removed.
+    pub fn note_remove(&mut self, id: u32) -> bool {
+        let before = self.entries.len();
+        self.entries.retain(|e| e.id != id);
+        self.entries.len() != before
+    }
+
+    /// The `hook_install` param sets to replay after a crash, in install
+    /// order. Every one is persistent by construction.
+    pub fn to_reapply(&self) -> Vec<Value> {
+        self.entries
+            .iter()
+            .map(|e| e.install_params.clone())
+            .collect()
+    }
+
+    /// Number of persistent hooks currently tracked (surfaced by
+    /// `lab_client_status`). Named `count` rather than `len` deliberately —
+    /// this is a status figure, not a container length.
+    pub fn count(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Drop all tracked hooks. Used by the recovery path to re-key the set
+    /// with the fresh ids the relaunched client assigns (the old ids die
+    /// with the crashed client).
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     /// Record three, complete two, crash: the in-flight one becomes
     /// quarantined; the completed ones are untouched.
@@ -236,6 +322,66 @@ mod tests {
             "3 crashes in the window ⇒ stop relaunching"
         );
         assert_eq!(r.recent_crash_count(base + 5000), 3);
+    }
+
+    /// The re-application hook-point records **only** persistent installs,
+    /// drops them on remove, and replays exactly those params — never a
+    /// non-persistent hook. This is the "recovery re-applies only
+    /// persistent hooks" guarantee.
+    #[test]
+    fn persistent_hooks_reapply_only_persistent() {
+        let mut h = PersistentHooks::new();
+
+        let persistent = json!({ "addr": "0x401000", "conv": "cdecl", "persistent": true });
+        let ephemeral = json!({ "addr": "0x402000", "conv": "cdecl", "persistent": false });
+        let no_flag = json!({ "addr": "0x403000", "conv": "cdecl" });
+
+        assert!(
+            h.note_install(1, &persistent),
+            "persistent install recorded"
+        );
+        assert!(
+            !h.note_install(2, &ephemeral),
+            "non-persistent install not recorded"
+        );
+        assert!(
+            !h.note_install(3, &no_flag),
+            "missing persistent flag defaults to not-recorded"
+        );
+
+        let reapply = h.to_reapply();
+        assert_eq!(reapply.len(), 1, "only the persistent hook is replayed");
+        assert_eq!(reapply[0], persistent);
+    }
+
+    /// A `hook_remove` drops the persistent entry so a later crash does not
+    /// resurrect a hook the agent explicitly removed.
+    #[test]
+    fn remove_drops_persistent_entry() {
+        let mut h = PersistentHooks::new();
+        h.note_install(1, &json!({ "addr": "0x401000", "persistent": true }));
+        h.note_install(2, &json!({ "addr": "0x402000", "persistent": true }));
+        assert_eq!(h.count(), 2);
+
+        assert!(h.note_remove(1));
+        assert!(!h.note_remove(1), "removing twice is a no-op");
+        assert_eq!(h.count(), 1);
+        assert_eq!(
+            h.to_reapply()[0]["addr"],
+            "0x402000",
+            "the surviving hook is the one not removed"
+        );
+    }
+
+    /// A re-installed id replaces rather than duplicates (ids are
+    /// monotonic per launch, but be defensive).
+    #[test]
+    fn reinstall_same_id_replaces() {
+        let mut h = PersistentHooks::new();
+        h.note_install(1, &json!({ "addr": "0x401000", "persistent": true }));
+        h.note_install(1, &json!({ "addr": "0x409999", "persistent": true }));
+        assert_eq!(h.count(), 1);
+        assert_eq!(h.to_reapply()[0]["addr"], "0x409999");
     }
 
     /// Crashes older than the window fall off, re-permitting relaunch.

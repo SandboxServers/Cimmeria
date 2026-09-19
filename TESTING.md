@@ -333,6 +333,8 @@ This section is mined from review comments since the test push began. Each item 
 - **The bug shape must reproduce if the fix is reverted.** A `update_bandolier_ammo` TOCTOU guard needs a **same-`type_id`** racing replacement row — different `type_id` doesn't exercise the predicate (PR #158).
 - **Negative-path tests must assert what's actually missing.** "No wire packet was sent" is unprovable when the test set up an empty `connected` map; either set up a real receiver or narrow the doc-comment to the DB invariant you actually checked (PR #143).
 - **A loop that filters on `method == 16`** doesn't prove "no combat-side messages emitted." Either tighten the doc-comment to "no `onTargetUpdate`" or extend the loop to fail on `onTimerUpdate`/`onSequence`/`onStateFieldUpdate` (PR #138).
+- **A constant compared with the same literal guards nothing.** `assert_eq!(ACCOUNT_CLASS_ID, 0x08)` passes the moment the constant is edited to match, whether or not `0x08` is right — CI was green on a change that would have broken login for every player. Derive the expected value from an independent source: for wire constants, the entity files the client itself parses (`entities/entities.xml` + `entities/defs/`), a captured byte string, or a dispatch table (PR #704).
+- **Commit before you revert-verify.** `git checkout <file>` to prove a guard fails also wipes every other uncommitted edit in that file. Make a WIP commit first.
 
 ### Failure messages
 
@@ -342,7 +344,7 @@ This section is mined from review comments since the test push began. Each item 
 ### Test-DB hygiene
 
 - **Live-DB tests run against `sgw` loaded from `db/database.sql` in CI**, and against a developer-supplied `DATABASE_URL` locally. The bundled local Postgres binds to **port 5433** (not 5432) — see [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) for setup.
-- **The skip message must distinguish unset vs unreachable.** `test_pool()` returns a `SkipReason` enum so the developer sees "DATABASE_URL not set" vs "DATABASE_URL set but connect failed: …" (PR #134, see [crates/services/src/test_support.rs](crates/services/src/test_support.rs)).
+- **Unset skips; unreachable fails.** `require_db_or_skip!` skips only when `DATABASE_URL` is unset or empty. When it is set but the connection fails, the test panics with "DATABASE_URL set but connect failed: …", because a skip reports as a pass and would hide a whole live-DB run that executed nothing (#615, see [crates/services/src/live_db_gate.rs](crates/services/src/live_db_gate.rs)).
 
 ### File and module hygiene
 
@@ -389,7 +391,7 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
 ```
 
-The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready.
+The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready. With `DATABASE_URL` set to a database that can't be reached, the guards fail rather than skip, so a wrong port shows up as red instead of a false green.
 
 ### CI (every PR)
 

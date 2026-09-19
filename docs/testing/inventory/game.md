@@ -2,14 +2,14 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-07-25 *(links repaired; catalogue rows still the 2026-05-04 snapshot)*  
-> **Total tests**: 70  
+> **Last updated**: 2026-09-19 *(#614 removed the 9 `social/` tests; other rows still the 2026-05-04 snapshot)*  
+> **Total tests**: 60  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
-Game mechanics — combat, abilities, stats, effects, inventory, missions, social systems, world simulation, and interactions.
+Game mechanics — combat, abilities, stats, effects, inventory, missions, world simulation, and interactions.
 
-## All tests (70)
+## All tests (60)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -69,15 +69,6 @@ Game mechanics — combat, abilities, stats, effects, inventory, missions, socia
 | [multi_level_up_grants_cumulative_training_points](../../../crates/game/src/player.rs#L179) | unit | Player | 2026-03-09 | Asserts equality on `p.training_points` |  |
 | [full_level_progression_1_to_20](../../../crates/game/src/player.rs#L186) | unit | Player | 2026-03-09 | Asserts equality on `p.level` |  |
 | [xp_table_is_monotonically_nondecreasing](../../../crates/game/src/player.rs#L200) | unit | Player | 2026-03-09 | Asserts on `LEVEL_XP[i] <= LEVEL_XP[i + 1]` |  |
-| [new_group_has_leader](../../../crates/game/src/social/groups.rs#L75) | unit | Social / Groups | 2026-03-03 | Asserts equality on `g.member_count()` |  |
-| [add_member_up_to_max](../../../crates/game/src/social/groups.rs#L82) | unit | Social / Groups | 2026-03-03 | Asserts on `g.add_member(101)` |  |
-| [leader_promotion_on_leave](../../../crates/game/src/social/groups.rs#L91) | unit | Social / Groups | 2026-03-03 | Asserts equality on `g.leader_entity_id` |  |
-| [new_guild_has_leader](../../../crates/game/src/social/guilds.rs#L99) | unit | Social / Guilds | 2026-03-03 | Asserts equality on `g.members.len()` |  |
-| [cannot_remove_leader](../../../crates/game/src/social/guilds.rs#L106) | unit | Social / Guilds | 2026-03-03 | Asserts on `!g.remove_member(10)` |  |
-| [add_and_promote_member](../../../crates/game/src/social/guilds.rs#L112) | unit | Social / Guilds | 2026-03-03 | Asserts on `g.set_rank(11, GuildRank::Officer)` |  |
-| [plain_mail_no_attachments](../../../crates/game/src/social/mail.rs#L74) | unit | Social / Mail | 2026-03-03 | Asserts on `!m.has_attachments()` |  |
-| [mail_with_money](../../../crates/game/src/social/mail.rs#L87) | unit | Social / Mail | 2026-03-03 | Asserts on `m.has_attachments()` |  |
-| [mail_with_item](../../../crates/game/src/social/mail.rs#L101) | unit | Social / Mail | 2026-03-03 | Asserts on `m.has_attachments()` |  |
 | [sphere_containment](../../../crates/game/src/world/regions.rs#L95) | unit | World / Regions | 2026-03-03 | Asserts on `r.contains(&Vector3::new(5.0, 0.0, 0.0))` |  |
 | [box_containment](../../../crates/game/src/world/regions.rs#L102) | unit | World / Regions | 2026-03-03 | Asserts on `r.contains(&Vector3::zero())` |  |
 | [crossing_detection](../../../crates/game/src/world/regions.rs#L115) | unit | World / Regions | 2026-03-03 | Asserts equality on `r.check_crossing(&outside, &inside)` |  |

@@ -15,6 +15,7 @@
 use super::*;
 
 mod respawn_fork;
+mod respawn_regions;
 mod respawn_target;
 
 /// Build a SpaceManager with one player at id=1 in the

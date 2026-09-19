@@ -158,6 +158,48 @@ A label sitting between the target and the hard ceiling (e.g. 50
 worlds when we ship more content) is a yellow flag, not a fail —
 revisit it during the next instrumentation review.
 
+#### Ruling: `world` is an approved label
+
+`movement_validation_rejects_total`, `npc_path_fail_total` and
+`spawner.npc_respawn`'s counters all carry `world`. **~24 shipped
+worlds**, comfortably inside the ≤ ~30 design target, and the
+cross-product with the other labels on those counters stays in the low
+hundreds of series.
+
+It earns the slot rather than merely fitting it. Before September 2026
+the movement-reject counter was labelled by `reason` alone, and the
+reject log carried `space_id` with no world — so answering "which
+zone's navmesh is rejecting players?" meant exporting rows and joining
+space ids to world names by hand against a table that only exists
+inside the running process. That join is what made the Castle_CellBlock
+navmesh investigation a manual exercise. A world label is the
+difference between a dashboard panel and an archaeology session.
+
+If the world count ever crosses ~50 (a content expansion, or
+per-instance labelling — **never** label by instance id, that is
+unbounded), revisit. The `gate` label on the same counter is 5 values
+and fixed by the [`NavGate`](../../crates/entity/src/navigation/verdict.rs)
+enum; adding a gate is a deliberate change to that enum, not
+open-ended growth.
+
+#### Sampled positive telemetry: `movement.position_sample`
+
+The accepted-position sampler is the one place this codebase emits a
+**success-side** row on a per-packet path, so it is worth stating the
+budget explicitly.
+
+| Question | Answer |
+|---|---|
+| Level | **DEBUG.** It is a sampled hot-path row, matching the sibling `movement.player`. Not INFO: per Rule 1, info is for dispatch entrypoints, and per the anti-patterns below, anything that can fire more than ~10/sec/process under normal load is debug. DEBUG *is* exported to SigNoz (the `movement.player` / `npc_ai.tick` saved views query it), so this is not a decision to hide the data |
+| Rate | 1 row per player per **5 s**, and only after **≥ 1 u** of movement. A standing player emits nothing |
+| Volume | 720 rows/hour per actively-moving player. At 20 concurrent: **14,400 rows/hour**. For scale, the reject stream this landed alongside was running at ~2,000 rows/hour from a *single* stuck entity before it was throttled |
+| Why sample at all | Rejects say where players are *stopped*. Nothing said where they successfully walk, so a navmesh hole was only visible once somebody fell into it. Accepted positions grouped by world are the walked-surface map that makes the hole visible first |
+| Why not NPCs | They outnumber players by an order of magnitude in a populated zone, and `movement.npc` / `npc_ai.tick` already cover them |
+
+The interval and distance constants are pinned by a test
+(`position_sample_budget_matches_the_documented_rate`) so loosening
+either one trips CI against the figures quoted here.
+
 ### Rule 5 — Every log describing player activity carries `account_id` + `player_id`
 
 An `entity_id` is **not an identity**. It is a recycled per-space slot

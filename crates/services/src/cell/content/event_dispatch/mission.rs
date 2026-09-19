@@ -144,6 +144,73 @@ pub(in crate::cell::content) fn fire_mission_completed<'a>(
     })
 }
 
+/// Fire `OnMissionAbandoned` after `cell::missions::abandon_mission` has
+/// removed the instance from the player's tracker (Harset H54).
+///
+/// Ordering is the whole point, and it is the H07 contract: the context is
+/// populated **after** the mutation, so `mission_<id>_status` reads
+/// `not_active` and a repaint chain can carry the same
+/// `mission_status <id> eq not_active` gate the original offer chain carries.
+/// Populating before would make every such chain fail closed.
+///
+/// Abandoning returns a mission to not-active with the player already past
+/// every edge that set the scene up: the offer gate reopens and nothing
+/// repaints it, and whatever dialog-set binding the mission installed is
+/// stranded on its NPC (abandoning 1324 in the Command Center leaves Ba'al
+/// with a stale marker replaying the council dialog on click). Both self-heal
+/// on the next world transition, which is why the gap went unreported.
+///
+/// Boxed for the same reason as [`fire_mission_accepted`]: an abandon chain
+/// may `accept_mission`, which re-enters the executor and back into this
+/// module, and an `async fn` would compute an infinitely sized future.
+pub(crate) fn fire_mission_abandoned<'a>(
+    entity_id: u32,
+    player_id: i32,
+    mission_id: i32,
+    engine: &'a ChainEngine,
+    tx: &'a mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &'a mut SpaceManager,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        let mut ctx =
+            ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
+        ctx.set_param("mission_id".to_string(), serde_json::json!(mission_id));
+
+        populate_world_context(entity_id, space_mgr, &mut ctx);
+        if let Some(entity) = space_mgr.get_entity(entity_id) {
+            populate_mission_context(entity, &mut ctx);
+            if let Some(archetype_id) = entity.archetype_id {
+                ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+            }
+        }
+
+        let event = TriggerEvent {
+            trigger_type: TriggerType::MissionAbandoned,
+            source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+
+        let resolved = engine.resolve_event(&event, &ctx);
+        if !resolved.actions.is_empty() {
+            tracing::info!(
+                entity_id,
+                player_id,
+                mission_id,
+                actions = resolved.actions.len(),
+                "fire_mission_abandoned: matched"
+            );
+            executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
+        } else {
+            tracing::debug!(
+                entity_id,
+                mission_id,
+                "fire_mission_abandoned: no chains matched"
+            );
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

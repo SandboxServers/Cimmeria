@@ -7,11 +7,13 @@
 //! and queues it; it never calls `dispatch`.
 //!
 //! Phase-1 methods: `lua_eval`, `module_info`, `mem_read`.
+//! Phase-3 methods (#686): `mem_write`, `call_native`, `hook_install`,
+//! `hook_remove`, `hook_list`, `events_read`, `console`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{lua_eval, memory};
+use super::{console, dynamic_hooks, events, lua_eval, mem_write, memory, native_call};
 
 /// JSON-RPC parse error (malformed request body).
 pub const PARSE_ERROR: i32 = -32700;
@@ -24,6 +26,10 @@ pub const INTERNAL_ERROR: i32 = -32603;
 /// Bridge dispatch queue full — retry. Mirrors the Atrea bridge's
 /// `-32010`.
 pub const QUEUE_FULL: i32 = -32010;
+/// A native dispatch body faulted and was absorbed by the inner-tier
+/// SEH guard (#686 scope 1). The `data` field carries the `Exception`
+/// (STATUS_* code + faulting address); the process survives.
+pub const NATIVE_FAULT: i32 = -32020;
 
 /// An inbound JSON-RPC 2.0 request. `id` is echoed verbatim; a
 /// missing `id` (notification) round-trips as JSON `null`.
@@ -51,6 +57,11 @@ pub struct RpcResponse {
 pub struct RpcError {
     pub code: i32,
     pub message: String,
+    /// Optional structured payload. Carries the `Exception` object for a
+    /// [`NATIVE_FAULT`] (STATUS_* code + faulting address) so the agent
+    /// can correlate a crash-absorbed probe with a Ghidra address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
 }
 
 impl RpcResponse {
@@ -71,6 +82,22 @@ impl RpcResponse {
             error: Some(RpcError {
                 code,
                 message: message.into(),
+                data: None,
+            }),
+        }
+    }
+
+    /// Error response carrying a structured `data` payload — used for a
+    /// [`NATIVE_FAULT`] to attach the `Exception` object.
+    pub fn error_with_data(id: Value, code: i32, message: impl Into<String>, data: Value) -> Self {
+        Self {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(RpcError {
+                code,
+                message: message.into(),
+                data: Some(data),
             }),
         }
     }
@@ -158,13 +185,21 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
             },
             Err(e) => RpcResponse::error(id, INVALID_PARAMS, format!("mem_read params: {e}")),
         },
+        // ── Phase 3 (#686): native probes ───────────────────────────
+        "mem_write" => mem_write::dispatch(id, &req.params),
+        "call_native" => native_call::dispatch(id, &req.params),
+        "hook_install" => dynamic_hooks::dispatch_install(id, &req.params),
+        "hook_remove" => dynamic_hooks::dispatch_remove(id, &req.params),
+        "hook_list" => dynamic_hooks::dispatch_list(id),
+        "events_read" => events::dispatch_read(id, &req.params),
+        "console" => console::dispatch(id, &req.params),
         other => RpcResponse::error(id, METHOD_NOT_FOUND, format!("unknown method: {other}")),
     }
 }
 
 /// Accept an address as a JSON integer or a hex string (`"0x1234"`
 /// or `"1234"`).
-fn parse_addr(v: &Value) -> Option<usize> {
+pub(crate) fn parse_addr(v: &Value) -> Option<usize> {
     match v {
         Value::Number(n) => n.as_u64().map(|x| x as usize),
         Value::String(s) => {

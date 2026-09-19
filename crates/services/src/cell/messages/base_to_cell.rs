@@ -135,6 +135,13 @@ pub enum BaseToCellMsg {
         /// `gm*`/debug methods from non-privileged callers. Authoritative
         /// server-side value — never client-supplied. (#475 / CAT-N-03)
         access_level: u32,
+        /// Stargate addresses this character has unlocked, from
+        /// `sgw_player.known_stargates`. Stored on
+        /// `CellEntity::known_stargates` so `handle_dial_gate` can refuse a
+        /// dial to an address the player was never given (CAT-O-01, the 2009
+        /// check at `deprecated/python/cell/SGWPlayer.py:2060-2064`).
+        /// Authoritative server-side value — never client-supplied.
+        known_stargates: Vec<i32>,
         /// The selected character's display name, sourced from the base
         /// `ConnectedClientState.player_name`. Cached on
         /// `CellEntity::character_name` so cell-side seams (the `.`-console
