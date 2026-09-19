@@ -29,6 +29,7 @@ use tracing_subscriber::EnvFilter;
 mod client;
 mod server;
 mod supervisor;
+mod timeline;
 
 use client::BridgeClient;
 use server::LabServer;

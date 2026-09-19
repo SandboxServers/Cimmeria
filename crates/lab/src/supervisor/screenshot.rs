@@ -20,7 +20,11 @@ pub struct CapturedImage {
 /// `BI_RGB` DIB) to RGBA and force alpha opaque (GDI leaves alpha 0).
 pub fn bgra_to_rgba(bgra: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bgra.len());
-    for px in bgra.chunks_exact(4) {
+    // `as_chunks::<4>().0` over `chunks_exact(4)`: newer clippy
+    // (chunks_exact_to_as_chunks) prefers the fixed-size form; `.0` is
+    // the exact-multiple prefix, dropping any ragged tail (there is none
+    // for a 32bpp buffer).
+    for px in bgra.as_chunks::<4>().0 {
         out.push(px[2]); // R
         out.push(px[1]); // G
         out.push(px[0]); // B
