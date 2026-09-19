@@ -5,6 +5,7 @@ mod matching_entity;
 mod matching_health;
 mod matching_misc;
 mod matching_mission;
+mod matching_stargate;
 mod trigger_type;
 
 fn make_event(trigger_type: TriggerType, params: Vec<(&str, serde_json::Value)>) -> TriggerEvent {

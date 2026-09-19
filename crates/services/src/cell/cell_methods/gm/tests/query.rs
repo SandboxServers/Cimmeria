@@ -12,7 +12,17 @@ async fn show_target_location_reports_subject_position() {
     mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_SHOW_TARGET_LOCATION, &[], &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_TARGET_LOCATION,
+            &[],
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(
         fb.contains("[2]") && fb.contains("12.00") && fb.contains("-4.00"),
@@ -30,7 +40,17 @@ async fn show_target_location_falls_back_to_self() {
     };
     let (tx, mut rx) = mpsc::channel(8);
     // No current target → reports the caller's own location.
-    assert!(dispatch(1, GM_SHOW_TARGET_LOCATION, &[], &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_TARGET_LOCATION,
+            &[],
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("[1]"), "no-target must report self, got: {fb}");
 }
@@ -39,7 +59,7 @@ async fn show_target_location_falls_back_to_self() {
 async fn show_rotation_reports_heading() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_SHOW_ROTATION, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SHOW_ROTATION, &[], &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("heading") && fb.contains("[1]"), "got: {fb}");
 }
@@ -53,7 +73,17 @@ async fn show_player_dumps_entity_info() {
         e.level = 30;
     }
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_SHOW_PLAYER, &2i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_PLAYER,
+            &2i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(
         fb.contains("[2]")
@@ -80,7 +110,17 @@ async fn show_player_cross_space_and_missing_report_errors() {
     let (tx, mut rx) = mpsc::channel(8);
 
     // Cross-space target → "different space".
-    assert!(dispatch(1, GM_SHOW_PLAYER, &2i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_PLAYER,
+            &2i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(
         fb.contains("different space"),
@@ -88,7 +128,17 @@ async fn show_player_cross_space_and_missing_report_errors() {
     );
 
     // Nonexistent id → "no such entity".
-    assert!(dispatch(1, GM_SHOW_PLAYER, &4242i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_PLAYER,
+            &4242i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("no such entity"), "got: {fb}");
 }
@@ -99,7 +149,7 @@ async fn gm_users_lists_players_in_space() {
     mgr.connect_entity(1); // all_player_entity_ids reads the connected set
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_USERS, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_USERS, &[], &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("gmUsers must feed back to the caller");
     assert!(
         fb.contains("gmUsers"),
@@ -119,14 +169,15 @@ async fn test_los_reports_via_feedback() {
     let (tx, mut rx) = mpsc::channel(8);
 
     // Both entities are in the caller's space; no navmesh is loaded in the
-    // fixture, so has_line_of_sight conservatively reports CLEAR.
+    // fixture, so the honest verdict is UNKNOWN, not CLEAR: a GM hunting for
+    // off-mesh spawns must be able to tell "no wall" from "no data".
     let mut args = 1i32.to_le_bytes().to_vec();
     args.extend_from_slice(&2i32.to_le_bytes());
-    assert!(dispatch(1, TEST_LOS, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, TEST_LOS, &args, &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("testLOS must feed back to the caller");
     assert!(
-        fb.contains("testLOS") && fb.contains("CLEAR"),
-        "expected a CLEAR verdict line, got: {fb}"
+        fb.contains("testLOS") && fb.contains("UNKNOWN") && !fb.contains("BLOCKED"),
+        "expected an UNKNOWN verdict line with no navmesh loaded, got: {fb}"
     );
 }
 
@@ -136,7 +187,17 @@ async fn test_los_truncated_and_missing_target_feed_back() {
     let (tx, mut rx) = mpsc::channel(8);
 
     // Truncated (one id) → "need two" feedback, no panic.
-    assert!(dispatch(1, TEST_LOS, &1i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            TEST_LOS,
+            &1i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     assert!(
         feedback_text(&drain(&mut rx), 1).is_some(),
         "truncated testLOS still feeds back"
@@ -145,7 +206,7 @@ async fn test_los_truncated_and_missing_target_feed_back() {
     // Well-formed but target not in space → "not found" feedback.
     let mut args = 1i32.to_le_bytes().to_vec();
     args.extend_from_slice(&4242i32.to_le_bytes());
-    assert!(dispatch(1, TEST_LOS, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, TEST_LOS, &args, &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("missing-target testLOS feeds back");
     assert!(
         fb.contains("not found"),
@@ -157,7 +218,7 @@ async fn test_los_truncated_and_missing_target_feed_back() {
 async fn list_abilities_reports_via_feedback() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, LIST_ABILITIES, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, LIST_ABILITIES, &[], &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("abilities"), "got: {fb}");
 }
@@ -167,11 +228,31 @@ async fn show_flag_reports_bit_state() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
     // Bit index 0 (BSF_DEAD); fresh player → clear.
-    assert!(dispatch(1, GM_SHOW_FLAG, &0i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_FLAG,
+            &0i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("bit 0") && fb.contains("clear"), "got: {fb}");
     // Out-of-range bit → error feedback.
-    assert!(dispatch(1, GM_SHOW_FLAG, &99i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_FLAG,
+            &99i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("bit index"), "got: {fb}");
 }
@@ -184,14 +265,34 @@ async fn get_mob_attribute_maps_known_attrs() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = 2i32.to_le_bytes().to_vec();
     write_wstring_arg(&mut args, "level");
-    assert!(dispatch(1, GM_GET_MOB_ATTRIBUTE, &args, &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GET_MOB_ATTRIBUTE,
+            &args,
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("level: 25"), "got: {fb}");
 
     // Unknown attribute → guidance feedback.
     let mut args = 2i32.to_le_bytes().to_vec();
     write_wstring_arg(&mut args, "bogus");
-    assert!(dispatch(1, GM_GET_MOB_ATTRIBUTE, &args, &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GET_MOB_ATTRIBUTE,
+            &args,
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("unknown attribute"), "got: {fb}");
 }
@@ -240,7 +341,17 @@ async fn get_mob_attribute_covers_all_supported_arms() {
         ("template", "template: Some(987)"),
         ("pos", "pos: (11.0, 22.0, 33.0)"),
     ] {
-        assert!(dispatch(1, GM_GET_MOB_ATTRIBUTE, &ask(attr), &tx, &mut mgr).await);
+        assert!(
+            dispatch(
+                1,
+                GM_GET_MOB_ATTRIBUTE,
+                &ask(attr),
+                &tx,
+                &mut mgr,
+                &test_engine()
+            )
+            .await
+        );
         let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
         assert!(
             fb.contains(expected),
@@ -266,7 +377,7 @@ async fn debug_mob_data_dumps_target_mob() {
     // Args: INT32 spaceId (hint, ignored) + INT32 target.
     let mut args = 0i32.to_le_bytes().to_vec();
     args.extend_from_slice(&2i32.to_le_bytes());
-    assert!(dispatch(1, GM_DEBUG_MOB_DATA, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DEBUG_MOB_DATA, &args, &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(
         fb.contains("mob [2]")
@@ -287,7 +398,17 @@ async fn show_flag_reports_set_bit() {
     // target inspects the caller (subject_or_self).
     mgr.get_entity_mut(1).unwrap().state_field = 1u32 << 5;
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_SHOW_FLAG, &5i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_FLAG,
+            &5i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(
         fb.contains("bit 5") && fb.contains("SET") && fb.contains("0x00000020"),
@@ -303,7 +424,17 @@ async fn show_mob_count_counts_npcs_in_space() {
     mgr.spawn_npc(51, "Castle", [0.0; 3], [0.0; 3]).unwrap();
     let (tx, mut rx) = mpsc::channel(8);
     // SpaceID 0 → caller's space.
-    assert!(dispatch(1, GM_SHOW_MOB_COUNT, &0i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SHOW_MOB_COUNT,
+            &0i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("2 NPC"), "expected 2 NPCs, got: {fb}");
 }

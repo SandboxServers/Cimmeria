@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    crafting, entity, give, mission, net, patrol, placement, query, seed, server, spawn, stats,
-    travel,
+    bookmark, crafting, entity, give, mission, net, patrol, placement, query, seed, server, spawn,
+    stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -44,6 +44,7 @@ pub(crate) async fn handle_console_command(
             tx,
         )
         .await;
+        crate::cell::playtest_friction::console_rejected(caller_id, name, "unknown_command");
         return;
     };
 
@@ -58,6 +59,7 @@ pub(crate) async fn handle_console_command(
             tx,
         )
         .await;
+        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_few_args");
         return;
     }
     if args.len() > spec.max {
@@ -71,6 +73,7 @@ pub(crate) async fn handle_console_command(
             tx,
         )
         .await;
+        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_many_args");
         return;
     }
 
@@ -79,6 +82,7 @@ pub(crate) async fn handle_console_command(
         Ok(t) => t,
         Err(msg) => {
             send_gm_feedback(caller_id, &format!(".{name}: {msg}"), tx).await;
+            crate::cell::playtest_friction::console_rejected(caller_id, name, "bad_target");
             return;
         }
     };
@@ -272,6 +276,8 @@ pub(crate) async fn exec(
             )
             .await
         }
+        // Playtest bookmark
+        "bug" => bookmark::bug(caller_id, target_id, args, tx, space_mgr).await,
         // Travel
         "gotoxyz" => travel::goto_xyz(caller_id, target_id, args, tx, space_mgr).await,
         "goto" | "summon" | "gotolocation" | "gotospace" => {

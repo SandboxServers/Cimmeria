@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "status": "PROJECT FINAL v1",
+  "source_backed_behavior": [
+    "cover tiers are None/Low/Medium/High",
+    "Low=orange, Medium=yellow, High=green in the HUD",
+    "cover is directional",
+    "crouch grants a defensive benefit",
+    "Accuracy, Defense, Cover Defense and Cover Penetration exist as combat stat hooks"
+  ],
+  "formula": {
+    "effective_accuracy": "base_accuracy + ability_accuracy_mod + signed_accuracy_mods",
+    "raw_cover_defense": "cover_tier_defense + signed_cover_defense_mods",
+    "cover_after_penetration": "max(0, raw_cover_defense - cover_penetration)",
+    "effective_defense": "base_defense + signed_defense_mods + crouch_defense_if_active + cover_after_penetration",
+    "rating_delta": "effective_accuracy - effective_defense",
+    "raw_hit_chance": "base_hit_chance + rating_delta / rating_scale",
+    "final_hit_chance": "clamp(min_hit_chance, max_hit_chance, raw_hit_chance)"
+  },
+  "values": {
+    "base_hit_chance": 0.75,
+    "min_hit_chance": 0.1,
+    "max_hit_chance": 0.95,
+    "rating_scale": 1000,
+    "cover_defense": {
+      "None": 0,
+      "Low": 100,
+      "Medium": 200,
+      "High": 300
+    },
+    "crouch_defense": 100,
+    "cover_damage_mitigation": 0,
+    "fallback_cover_arc_degrees": 120
+  },
+  "rules": [
+    "Cover Penetration reduces only the cover component; it never reduces ordinary Defense or crouch Defense.",
+    "Cover contribution floors at zero.",
+    "If directional cover resolution returns None, no cover-tier defense applies.",
+    "Cover does not directly mitigate damage in v1; a successful hit proceeds to normal effect/armor/resistance resolution.",
+    "AoE/ground-cover behavior remains unresolved and outside this block.",
+    "All numeric values in the values object are project reconstruction unless explicitly listed under source_backed_behavior."
+  ],
+  "ability_hooks": [
+    {
+      "ability_id": 1450,
+      "name": "Cover Penetration",
+      "project_hook": "+100 Cover Penetration",
+      "status": "mostly aligned"
+    },
+    {
+      "ability_id": 1451,
+      "name": "Cover Stance",
+      "tooltip": "+200 Cover Defense",
+      "linked_effect": "+100 Cover Defense",
+      "status": "tooltip/effect conflict"
+    },
+    {
+      "ability_id": 1452,
+      "name": "Duck and Cover",
+      "tooltip": "+100 Crouching Defense",
+      "linked_effect": "+200 Cover Defense for 15 sec",
+      "status": "tooltip/effect conflict"
+    },
+    {
+      "ability_id": 1454,
+      "name": "Hunker Down",
+      "project_hook": "+100 Cover Defense",
+      "status": "aligned"
+    },
+    {
+      "ability_id": 1458,
+      "name": "Stance: Ranged Specialist",
+      "project_hook": "+100 Accuracy",
+      "status": "aligned"
+    },
+    {
+      "ability_id": 1857,
+      "name": "Impose Weakness",
+      "project_hook": "-200 Accuracy, -200 Defense",
+      "status": "aligned"
+    },
+    {
+      "ability_id": 1858,
+      "name": "Marksman's Stance",
+      "project_hook": "+150 Accuracy, -40 Defense",
+      "status": "aligned"
+    }
+  ]
+}

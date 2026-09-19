@@ -72,22 +72,67 @@ conditions exist). Multi-button dialogs cannot branch — every button runs
 every matching chain. Check button text before authoring: an
 accept/decline pair would fire the accept chain on decline.
 
-Zero-button dialogs: chains 1014/1018/1020 in `castle_cellblock_chains.sql`
-trigger `dialog_choice` on 5020/5021, which have **zero** buttons on every
-screen. Shipped, but that proves authorship, not that the client emits
-`dialogButtonChoice` for a button-less dialog. Treat as **unverified**.
+### Zero-button dialogs DO emit `dialogButtonChoice` — with ButtonId = -1 (RESOLVED 2026-09-18)
 
-## 4. `dialog_set_maps` with `dialog_id IS NULL` are dropped at load
+Previously marked "unverified". Ghidra + client Lua now prove it. Evidence chain:
 
-`spawner/dialogs.rs:45`. `add_dialog_set <that id>` = `warn!` + total no-op
-(`executor/dialog.rs:172-177`): no `available_interactions` entry, no
-InteractionType push. Since most mission NPCs have `interaction_type = 0` at
-rest, **the NPC is then never clickable and no `interact_tag` chain can ever
-fire.** A NULL bind is not cosmetic; it kills the mission.
+1. `Content/UI/Core/Dialog/Dialog.lua:48-51` — `selectActiveDialogChoice(dialogId, this:getID())`
+   is subscribed **only** to the buttons in `DialogMod.dialogButtonMap`
+   (Accept / Generic1-3). A screen with no buttons has every one of them
+   hidden (`DialogSetup.lua:67-82`, `getActiveDialogButtonCount == 0`), so
+   the click path is unreachable.
+2. Done / Decline / window-X all route to `onDialogDoneClicked` →
+   `discardAvailableDialog(dialogId)` (`Dialog.lua:64-67, 83-85`).
+3. `discardAvailableDialog` native = `FUN_00ad86c0` → `FUN_00d249c0`. That
+   function sums the button count across **all** the dialog's screens and,
+   **iff the total is 0**, constructs `Event_NetOut_DialogButtonChoice`
+   with `DialogId = <dialog>` and `ButtonId = 0xFFFFFFFF` (-1) and sends it.
+   When the total is non-zero it checks a per-dialog flag and returns
+   without sending (so *declining* a button-bearing dialog sends nothing).
+
+Practical rules:
+- A **zero-button** dialog fires `dialog_choice` **on close**, `button_id = -1`.
+  This is how `Castle.py`'s `dialog.choice::2574` / `::2575` worked in 2009.
+- A **button-bearing** dialog fires `dialog_choice` only on an actual
+  Accept/Generic click; closing it fires nothing.
+- **Never mix**: adding a button to a dialog whose chain relies on the
+  close-path choice silently kills that chain.
+- Cimmeria handles `button_id = -1` fine (`interaction/dialog.rs:21-22` reads
+  a plain i32; the #479 gate is on `open_dialog_id` only).
+- The `button_id` on the click path is the **1-based index within the current
+  screen's button list** (`DialogSetup.lua:77` `setID(i)`), not the DB
+  `dialog_screen_buttons.button_id`.
+
+Castle 702-708 audit (2026-09-18): dialogs 2584, 2586, 5003, 5004, 5008,
+5009, 5010, 5011, 2574, 2575, 2577, 2580, 2581, 4866 all have **zero**
+buttons on every screen → all are close-path (`button_id = -1`) choices.
+Only 2573 (Accept) and 2576 (Take Missions, screens 96821-96823 only) carry
+buttons.
+
+## 4. `dialog_set_maps` with `dialog_id IS NULL` are interaction-only binds (was: dropped at load — FIXED by #661)
+
+**Superseded 2026-09-18.** This section used to read "dropped at load": the
+loader kept only rows carrying a dialog, so `add_dialog_set <a NULL row>` was a
+`warn!` plus total no-op, the NPC stayed unclickable, and a NULL bind killed
+the mission.
+
+PR #661 (CA02, defect B3) widened `DialogSetMapEntry.dialog_id` to
+`Option<i32>` and keeps all 626 NULL rows in the seed
+(`cell/spawner/dialogs.rs`). Such a row is now an **interaction-only** bind: it
+contributes its `interaction_flags` bit to the per-player indicator over the
+NPC's head and nothing else. Clicking the NPC displays no dialog — pair a NULL
+bind with an `interact_tag` chain if the click should say something.
+
+Two details that follow from the fix: `handle_interact` scans with `find_map`,
+so a NULL row can never shadow a sibling row that does carry a dialog (either
+bind order); and `initialResponse` bails on a NULL row rather than substituting
+dialog 0, which would open an empty window.
 
 In the original data a NULL `dialog_id` means "bind the whole set, let the
 set's own filters pick the dialog" — that is why `Castle.py` passes the NULL
-row (3062) everywhere and never the specific sibling rows.
+row (3062) everywhere and never the specific sibling rows. We do not implement
+set filters, so for us the NULL row is purely a flag carrier and the dialog
+comes from a chain.
 
 ### The Castle flag ladder (dialog_set_id 649, all "Reinforce Copplemann")
 
@@ -96,7 +141,7 @@ row (3062) everywhere and never the specific sibling rows.
 | 3059 | 2572 | 0x800000 | `INT_A_STORY_MISSION_AVAILABLE` (`?` offer) |
 | 3060 | 2573 | 0 | not clickable |
 | 3061 | 2574 | 0x1000000 | `INT_A_STORY_MISSION_ACTIVE` (`!` in progress) |
-| 3062 | NULL | 0x1000000 | **dropped at load** |
+| 3062 | NULL | 0x1000000 | `INT_A_STORY_MISSION_ACTIVE`, **interaction-only** (flag carrier) |
 | 3063 | 2576 | 0x2000000 | `INT_A_STORY_MISSION_TURN_IN` (`?` turn-in) |
 | 4961 | 2575 | 0 | not clickable |
 
@@ -106,6 +151,22 @@ makes the entity clickable; the bit chosen picks the indicator glyph.
 Binding a sibling row purely for its flag is safe when the chain fires on
 `interact_tag`, because the tag match short-circuits `handle_interact` and the
 bound dialog never auto-opens — the chain's own `display_dialog` wins.
+
+### Castle 702/704 dialogs — speaker + button audit (verified 2026-09-18)
+
+| dialog | screens | speakers | monologue? | buttons |
+|---|---|---|---|---|
+| 2577 (free Zuritska) | 96826-96830 | 1114 + 0 | **no** | **zero** |
+| 4866 (workstation: "use terminal") | 96892-96894 | 1113 + 0 | **no** | **zero** |
+| 2580 (terminal read-out) | 96896 only | 0 | **yes** | **zero** |
+| 2581 (delivery briefing) | 96900-96906 | 1113 + 0 | **no** | **zero** |
+
+So: 2577 and 2581 are displayable only from an `interact_tag` chain (fine).
+**4866 cannot be displayed from an `enter_region` chain** — rule 1 kills it.
+2580 is the only one a victory chain / `fire_chain_by_id` can show.
+
+All four have zero `dialog_screen_buttons` rows, so every `dialog_choice`
+chain hung off them inherits the unverified assumption from rule 3.
 
 ## 5. Deferred (`delay_ms`) actions ARE scrubbed on logout
 

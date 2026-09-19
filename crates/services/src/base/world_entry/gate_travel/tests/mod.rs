@@ -141,6 +141,7 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
             // Unpinned: this fixture asserts the traveller lands on the gate
             // row, which is what an unpinned gate must keep doing.
             arrival: None,
+            event_set_id: None,
         },
     );
     mgr.create_entity(ENTITY_ID, "Agnos", [10.0; 3], [0.0; 3])
@@ -148,7 +149,12 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
     mgr.connect_entity(ENTITY_ID);
 
     let (tx, mut rx) = mpsc::channel::<CellToBaseMsg>(16);
-    handle_dial_gate(ENTITY_ID, TARGET_GATE, 0, &tx, &mut mgr).await;
+    // No `REGION_FLAG_Stargate` region is registered for Agnos, so the
+    // dial takes the CA10 fallback and travels in one call — which is
+    // what this round-trip wants to exercise. The arm-then-cross path is
+    // covered in `cell::gate_travel::tests`.
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    handle_dial_gate(ENTITY_ID, TARGET_GATE, 0, &tx, &mut mgr, &engine).await;
 
     // Cell entity destroyed (post-handoff cleanup).
     assert!(

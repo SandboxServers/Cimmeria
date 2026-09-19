@@ -83,6 +83,8 @@ pub(super) async fn handle_entity_move(
     // active player) and rarely the bug source, so sampling
     // gives operators "this player is alive and moving"
     // confirmation without flooding the log stream.
+    // Stuck-player detectors that need state over time (self-throttled).
+    crate::cell::playtest_friction::player_tick(space_mgr, entity_id, position);
     let sample = PLAYER_MOVE_COUNTER.fetch_add(1, Ordering::Relaxed);
     if sample.is_multiple_of(PLAYER_MOVE_LOG_SAMPLE) {
         tracing::debug!(

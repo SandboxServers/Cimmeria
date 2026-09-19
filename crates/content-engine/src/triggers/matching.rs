@@ -25,6 +25,8 @@ impl Trigger {
             Trigger::OnItemUse { .. } => TriggerType::ItemUse,
             Trigger::OnItemEquipped { .. } => TriggerType::ItemEquipped,
             Trigger::OnTeleportIn { .. } => TriggerType::TeleportIn,
+            Trigger::OnStargateDialed { .. } => TriggerType::StargateDialed,
+            Trigger::OnStargateCrossed { .. } => TriggerType::StargateCrossed,
             Trigger::OnEffectInit => TriggerType::EffectInit,
             Trigger::OnEffectPulseBegin => TriggerType::EffectPulseBegin,
             Trigger::OnEffectPulseEnd => TriggerType::EffectPulseEnd,
@@ -37,6 +39,7 @@ impl Trigger {
             Trigger::OnPlayerInCoverDuration { .. } => TriggerType::PlayerInCoverDuration,
             Trigger::OnEntityHealthBelow { .. } => TriggerType::EntityHealthBelow,
             Trigger::OnNpcFlanked { .. } => TriggerType::NpcFlanked,
+            Trigger::OnPlayerFlankedNpc { .. } => TriggerType::PlayerFlankedNpc,
         }
     }
 
@@ -159,6 +162,18 @@ impl Trigger {
             Trigger::OnTeleportIn { region_id } => {
                 event.params.get("region_id").and_then(|v| v.as_i64()) == Some(*region_id as i64)
             }
+            // Wildcard (`destination_world: None`) fires for any gate
+            // destination; a named world must match exactly. Same shape
+            // as `OnPlayerLoaded`.
+            Trigger::OnStargateDialed { destination_world }
+            | Trigger::OnStargateCrossed { destination_world } => match destination_world {
+                Some(expected) => event
+                    .params
+                    .get("destination_world")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|actual| actual == expected),
+                None => true,
+            },
             // Unit triggers match any event of the right type
             Trigger::OnEffectInit
             | Trigger::OnEffectPulseBegin
@@ -211,6 +226,12 @@ impl Trigger {
             // Params absent (a caller that forgot to set them) must not
             // match — `unwrap_or` to a value that satisfies the
             // predicate would fire every seeded threshold on every hit.
+            //
+            // The `before > threshold` half is strict, which is why the
+            // loader refuses a threshold of 100: full health is 100, and
+            // 100 > 100 is false, so `:100` could never fire on the hit
+            // that takes an entity off full health. See
+            // `loader::trigger::HEALTH_PCT_RANGE`.
             Trigger::OnEntityHealthBelow { entity_tag, pct } => {
                 let tag_match = event
                     .params
@@ -229,7 +250,8 @@ impl Trigger {
                 let threshold = f64::from(*pct);
                 before > threshold && after <= threshold
             }
-            Trigger::OnNpcFlanked { npc_template } => match npc_template {
+            Trigger::OnNpcFlanked { npc_template }
+            | Trigger::OnPlayerFlankedNpc { npc_template } => match npc_template {
                 Some(expected) => event
                     .params
                     .get("npc_template")

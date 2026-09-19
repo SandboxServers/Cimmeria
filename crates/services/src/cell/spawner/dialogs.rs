@@ -17,7 +17,11 @@ use std::collections::HashSet;
 /// Cached row from `resources.dialog_set_maps`, used by `add_dialog_set` content actions.
 #[derive(Debug, Clone)]
 pub struct DialogSetMapEntry {
-    pub dialog_id: i32,
+    /// `None` for an interaction-only row (`dialog_id IS NULL` in the seed).
+    /// Such a row carries an indicator bit in `interaction_flags` and nothing
+    /// else: binding it raises the `!` / `?` / quest glow over an NPC without
+    /// putting a dialog behind the click. See [`load_dialog_set_maps`].
+    pub dialog_id: Option<i32>,
     pub interaction_flags: i64,
 }
 
@@ -25,6 +29,18 @@ pub struct DialogSetMapEntry {
 ///
 /// Maps `dialog_set_map_id → (dialog_id, interaction_flags)` so that
 /// `add_dialog_set` actions can resolve at runtime without per-action DB queries.
+///
+/// Rows with a NULL `dialog_id` are **kept**, with `dialog_id: None`. They are
+/// the interaction-only rows the original content binds for an indicator with
+/// no dialog — `Castle.py` binds seven of them (3062, 3071, 3073, 5828, 5829,
+/// 5846, 5863). Dropping them (the pre-CA02 behaviour) made every such bind a
+/// cache miss, so the indicator never reached the client.
+///
+/// This is safe on the wire because a bind's only client-visible effect is
+/// `SGWSpawnableEntity.InteractionType(UINT64 TypeId)`
+/// (`entities/defs/SGWSpawnableEntity.def:114-116`), a single flags bitfield
+/// with no dialog field. The dialog id is consulted server-side only when the
+/// player clicks, and the click paths skip entries that have none.
 pub async fn load_dialog_set_maps(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<i32, DialogSetMapEntry>, sqlx::Error> {
@@ -38,22 +54,28 @@ pub async fn load_dialog_set_maps(
     .await?;
 
     let mut map = std::collections::HashMap::with_capacity(rows.len());
+    let mut interaction_only = 0usize;
     for r in &rows {
         let id: i32 = r.get("dialog_set_map_id");
         let dialog_id: Option<i32> = r.get("dialog_id");
         let interaction_flags: i64 = r.get("interaction_flags");
-        if let Some(dialog_id) = dialog_id {
-            map.insert(
-                id,
-                DialogSetMapEntry {
-                    dialog_id,
-                    interaction_flags,
-                },
-            );
+        if dialog_id.is_none() {
+            interaction_only += 1;
         }
+        map.insert(
+            id,
+            DialogSetMapEntry {
+                dialog_id,
+                interaction_flags,
+            },
+        );
     }
 
-    tracing::info!(count = map.len(), "Loaded dialog_set_maps cache");
+    tracing::info!(
+        count = map.len(),
+        interaction_only,
+        "Loaded dialog_set_maps cache"
+    );
     Ok(map)
 }
 
