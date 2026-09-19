@@ -10,7 +10,7 @@ async fn gm_give_item_emits_grant_with_clamped_qty() {
 
     // Request 5000 — must clamp to the cap (1000).
     let args = give_item_args("1234", 5000);
-    assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr, &test_engine()).await);
 
     match rx.try_recv().expect("gmGiveItem must emit GrantItem") {
         CellToBaseMsg::GrantItem {
@@ -41,7 +41,7 @@ async fn gm_give_item_rejects_non_numeric_and_nonpositive_qty() {
     let (tx, mut rx) = mpsc::channel(8);
 
     let args = give_item_args("AmberVial", 1);
-    assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -55,7 +55,7 @@ async fn gm_give_item_rejects_non_numeric_and_nonpositive_qty() {
     );
 
     let args = give_item_args("1234", 0);
-    assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -74,7 +74,17 @@ async fn gm_give_xp_emits_grant_and_rejects_nonpositive() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_GIVE_XP, &500i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_XP,
+            &500i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     match rx.try_recv().expect("gmGiveXp must emit GrantXP") {
         CellToBaseMsg::GrantXP {
             entity_id,
@@ -93,7 +103,17 @@ async fn gm_give_xp_emits_grant_and_rejects_nonpositive() {
     }
 
     // Non-positive must not grant (a negative i32 → u64 would be absurd).
-    assert!(dispatch(1, GM_GIVE_XP, &(-5i32).to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_XP,
+            &(-5i32).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -112,7 +132,17 @@ async fn gm_give_cash_emits_grant_and_rejects_nonpositive() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_GIVE_CASH, &250i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_CASH,
+            &250i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     match rx.try_recv().expect("gmGiveCash must emit GrantCash") {
         CellToBaseMsg::GrantCash {
             entity_id,
@@ -132,7 +162,17 @@ async fn gm_give_cash_emits_grant_and_rejects_nonpositive() {
         other => panic!("expected GrantCash, got {other:?}"),
     }
 
-    assert!(dispatch(1, GM_GIVE_CASH, &0i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_CASH,
+            &0i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -154,7 +194,7 @@ async fn gm_remove_item_emits_remove_and_rejects_nonpositive() {
     // ItemID (INT32) + quantity (INT16).
     let mut args = 42i32.to_le_bytes().to_vec();
     args.extend_from_slice(&3i16.to_le_bytes());
-    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr, &test_engine()).await);
     match rx
         .try_recv()
         .expect("gmRemoveItem must emit RemoveInventoryItem")
@@ -181,7 +221,7 @@ async fn gm_remove_item_emits_remove_and_rejects_nonpositive() {
     // Non-positive quantity must not remove.
     let mut args = 42i32.to_le_bytes().to_vec();
     args.extend_from_slice(&0i16.to_le_bytes());
-    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -201,10 +241,20 @@ async fn give_handlers_reject_truncated_args() {
     let (tx, mut rx) = mpsc::channel(8);
     // Each needs an INT32 (or WSTRING+…); empty args must no-op.
     for idx in [GM_GIVE_XP, GM_GIVE_CASH, GM_GIVE_ITEM, GM_REMOVE_ITEM] {
-        assert!(dispatch(1, idx, &[], &tx, &mut mgr).await);
+        assert!(dispatch(1, idx, &[], &tx, &mut mgr, &test_engine()).await);
     }
     // gmRemoveItem with only the INT32 (missing the INT16 quantity) is also short.
-    assert!(dispatch(1, GM_REMOVE_ITEM, &7i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_REMOVE_ITEM,
+            &7i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(|m| matches!(
@@ -228,12 +278,42 @@ async fn give_handlers_require_player_id() {
     mgr.get_entity_mut(1).unwrap().player_id = None;
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_GIVE_XP, &100i32.to_le_bytes(), &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_GIVE_CASH, &100i32.to_le_bytes(), &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_GIVE_ITEM, &give_item_args("5", 1), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_XP,
+            &100i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_CASH,
+            &100i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_ITEM,
+            &give_item_args("5", 1),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let mut rm = 5i32.to_le_bytes().to_vec();
     rm.extend_from_slice(&1i16.to_le_bytes());
-    assert!(dispatch(1, GM_REMOVE_ITEM, &rm, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_REMOVE_ITEM, &rm, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(|m| matches!(
@@ -257,7 +337,7 @@ async fn remove_item_rejects_nonpositive_item_id() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = 0i32.to_le_bytes().to_vec();
     args.extend_from_slice(&5i16.to_le_bytes());
-    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -284,7 +364,7 @@ async fn gm_give_expertise_emits_grant() {
     let (tx, mut rx) = mpsc::channel(8);
 
     let args = give_expertise_args(7, 25);
-    assert!(dispatch(1, GM_GIVE_EXPERTISE, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GIVE_EXPERTISE, &args, &tx, &mut mgr, &test_engine()).await);
     match rx
         .try_recv()
         .expect("gmGiveExpertise must emit GrantExpertise")
@@ -316,7 +396,8 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
             GM_GIVE_EXPERTISE,
             &give_expertise_args(7, 0),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -339,7 +420,8 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
             GM_GIVE_EXPERTISE,
             &give_expertise_args(0, 10),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -356,7 +438,17 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
     );
 
     // Truncated (missing the second INT32).
-    assert!(dispatch(1, GM_GIVE_EXPERTISE, &7i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_EXPERTISE,
+            &7i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -381,7 +473,8 @@ async fn gm_give_applied_science_emits_grant_and_rejects_nonpositive() {
             GM_GIVE_APPLIED_SCIENCE_POINTS,
             &15i32.to_le_bytes(),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -407,7 +500,8 @@ async fn gm_give_applied_science_emits_grant_and_rejects_nonpositive() {
             GM_GIVE_APPLIED_SCIENCE_POINTS,
             &0i32.to_le_bytes(),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -433,7 +527,8 @@ async fn crafting_grants_require_player_id() {
             GM_GIVE_EXPERTISE,
             &give_expertise_args(7, 25),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -443,7 +538,8 @@ async fn crafting_grants_require_player_id() {
             GM_GIVE_APPLIED_SCIENCE_POINTS,
             &15i32.to_le_bytes(),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -470,7 +566,17 @@ async fn gm_give_item_success_emits_action_without_cell_feedback() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_GIVE_ITEM, &give_item_args("1124", 5), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_ITEM,
+            &give_item_args("1124", 5),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let msgs = drain(&mut rx);
     // The grant action is emitted, and it is the ONLY message.
     let grants = msgs

@@ -80,6 +80,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
             decision_outcome = tracing::field::Empty,
         );
         async {
+            super::take_last_outcome();
             match ai_state {
                 AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr, engine).await,
                 AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
@@ -123,6 +124,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
                     // here rather than a silent admit / no-op.
                 }
             }
+            log_ai_tick(space_mgr, npc_id, ai_state, super::take_last_outcome());
         }
         .instrument(ai_span)
         .await;
@@ -218,4 +220,58 @@ pub(in crate::cell::service) async fn npc_ai_retry_sweep(
         space_mgr.pending_ai_retries.remove(&npc_id);
         npc_ai_fight(npc_id, tx, space_mgr, engine).await;
     }
+}
+
+/// One row per ticked NPC per AI tick, emitted AFTER its handler ran, with no
+/// silent paths: where the NPC is, where it is going, which way it faces (and
+/// the byte clients are sent), and what it is fighting or following. An empty
+/// `decision_outcome` means the handler returned without declaring one --
+/// itself worth seeing.
+fn log_ai_tick(
+    space_mgr: &crate::cell::space_manager::SpaceManager,
+    npc_id: u32,
+    state_before: cimmeria_entity::cell_entity::AiState,
+    outcome: &'static str,
+) {
+    let Some(e) = space_mgr.get_entity(npc_id) else {
+        return;
+    };
+    let (target_id, threat) = e
+        .threat_list
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .map_or((e.follow_target_id.unwrap_or(0), 0.0), |(id, v)| (*id, *v));
+    let target = space_mgr.get_entity(target_id).map(|t| t.position);
+    let dest = e.nav_path.back().copied();
+    let next = e.nav_path.front().copied();
+    tracing::debug!(
+        target: "npc_ai.tick",
+        npc_id,
+        npc_name = e.npc_name.as_deref().unwrap_or(""),
+        tag = e.tag.as_deref().unwrap_or(""),
+        state_before = ?state_before,
+        ai_state = ?e.ai_state,
+        decision_outcome = outcome,
+        x = e.position.x,
+        y = e.position.y,
+        z = e.position.z,
+        yaw_rad = e.direction.y,
+        yaw_byte = crate::mercury::aoi::pack_angle(e.direction.y),
+        last_movement_type = ?e.last_movement_type,
+        nav_path_len = e.nav_path.len(),
+        next_wp = ?next.map(|p| [p.x, p.y, p.z]),
+        dest = ?dest.map(|p| [p.x, p.y, p.z]),
+        dist_to_dest = ?dest.map(|p| p.distance_to(&e.position)),
+        target_id,
+        threat,
+        threat_count = e.threat_list.len(),
+        target_pos = ?target.map(|p| [p.x, p.y, p.z]),
+        dist_to_target = ?target.map(|p| p.distance_to(&e.position)),
+        has_los = target.is_some().then(|| space_mgr.has_line_of_sight(npc_id, target_id)),
+        follow_target_id = e.follow_target_id.unwrap_or(0),
+        dist_to_spawn = ?e.spawn_position.map(|p| p.distance_to(&e.position)),
+        move_speed = e.move_speed,
+        navmesh_loaded = space_mgr.space_has_navmesh(npc_id),
+        "NPC AI tick"
+    );
 }

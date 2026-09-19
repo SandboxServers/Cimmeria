@@ -67,7 +67,11 @@ When a PR regenerates these, diff against the previous version. Disable buggy ch
 
 `sort_order` within a chain's `content_actions` determines execution order and is also used as a deduplication key. When adding actions, increment past the highest existing value — don't reuse.
 
-## Chain-ID ranges (`castle_cellblock_chains.sql`)
+## Chain-ID ranges
+
+Stay inside the allocated range to keep each file searchable by mission.
+
+### Castle_CellBlock — `castle_cellblock_chains.sql` (1001-1199)
 
 ```text
 Mission 622:  1001-1010   Mission 638:  1011-1030
@@ -76,7 +80,26 @@ Mission 641:  1051-1070   Mission 680:  1071-1080
 Missions 681-687: 1081-1130
 ```
 
-Stay inside the allocated range to keep the file searchable by mission.
+### Castle (World 8) — 1201-1400, split one file per mission family
+
+The Castle rebuild campaign reserves `1201-1400` and splits it across
+three seed files so concurrent packets never edit the same file. Each is
+included from `db/database.sql` after `castle_cellblock_chains.sql`.
+
+```text
+castle_701_chains.sql        Mission 701:  1201-1260
+                               CA01 arrival + Gerschon:  1201-1230 (1201-1205 used)
+                               CA03 body + relog restore: 1231-1260 (1231-1243 used)
+castle_702_704_chains.sql    Missions 702/703: 1261-1290
+                             Mission 704:      1291-1320
+castle_706_708_chains.sql    Mission 706:  1321-1340
+                             Mission 708:  1341-1380
+                             Optional Level-5 branches: 1381-1400
+```
+
+Allocation source: [docs/analysis/castle-rebuild/work-packets.md](../../docs/analysis/castle-rebuild/work-packets.md)
+"Worker Input And Ownership". `1200` is left unused as a gap between the
+two zones' blocks; effect chains start at 2001.
 
 ## Linked references
 

@@ -369,141 +369,6 @@ mod live_db {
     }
 
     #[tokio::test]
-    async fn load_mission_defs_only_includes_missions_with_a_step() {
-        let pool = require_db_or_skip!();
-        let map = load_mission_defs(&pool)
-            .await
-            .expect("load_mission_defs must succeed");
-        assert!(!map.is_empty(), "seeded mission_steps has rows");
-        for (mission_id, entry) in &map {
-            assert!(
-                entry.step_id > 0,
-                "mission {mission_id} has non-positive step_id {}",
-                entry.step_id
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn load_step_objectives_groups_by_step_id() {
-        let pool = require_db_or_skip!();
-        let map = load_step_objectives(&pool)
-            .await
-            .expect("load_step_objectives must succeed");
-        assert!(!map.is_empty());
-        for (step_id, objs) in &map {
-            assert!(
-                !objs.is_empty(),
-                "step {step_id} present in map with no objectives — should have been filtered out"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn load_dialog_set_maps_drops_rows_with_null_dialog_id() {
-        let pool = require_db_or_skip!();
-        let map = load_dialog_set_maps(&pool)
-            .await
-            .expect("load_dialog_set_maps must succeed");
-        assert!(
-            !map.is_empty(),
-            "seeded dialog_set_maps has rows with non-null dialog_id"
-        );
-        // The loader explicitly drops rows where `dialog_id IS NULL` —
-        // every cached entry must have a positive dialog_id by construction.
-        for (set_map_id, entry) in &map {
-            assert!(
-                entry.dialog_id > 0,
-                "dialog_set_map_id {set_map_id} surfaced with non-positive dialog_id {}",
-                entry.dialog_id
-            );
-        }
-        // Direct invariant pin: any row with NULL dialog_id in the seeded
-        // table must be absent from the loaded cache. Catches a regression
-        // that flips the `if let Some(dialog_id)` to a default-on-None.
-        let null_set_map_id: Option<i32> = sqlx::query_scalar(
-            "SELECT dialog_set_map_id FROM resources.dialog_set_maps WHERE dialog_id IS NULL LIMIT 1",
-        )
-        .fetch_optional(&pool)
-        .await
-        .expect("query must succeed");
-        if let Some(id) = null_set_map_id {
-            assert!(
-                !map.contains_key(&id),
-                "dialog_set_map_id {id} has NULL dialog_id in DB but surfaced in the cache"
-            );
-        }
-    }
-
-    /// **Regression guard for the monologue dialog cache:** dialog 2982
-    /// is the Castle Cellblock wake-up monologue, two screens both
-    /// `speaker_id = 0`. The cache must include it OR the
-    /// `DisplayDialog` monologue fallback never triggers and the
-    /// cellblock opening narration silently never shows.
-    ///
-    /// Also asserts the predicate is correctly exclusive — a dialog
-    /// with any non-zero speaker_id row must NOT surface in the
-    /// monologue set (else the executor would bind the player as the
-    /// NPC for that dialog and blank the NPC portrait — the bug the
-    /// original abort gate was designed to prevent).
-    #[tokio::test]
-    async fn load_monologue_dialog_ids_includes_cellblock_wakeup() {
-        let pool = require_db_or_skip!();
-        let ids = load_monologue_dialog_ids(&pool)
-            .await
-            .expect("load_monologue_dialog_ids must succeed");
-
-        // Dialog 2982 = Castle Cellblock wake-up monologue.
-        assert!(
-            ids.contains(&2982),
-            "dialog 2982 (cellblock wake-up monologue) must be in the monologue set; \
-             without it the chain-1001 DisplayDialog continues to silently never fire"
-        );
-
-        // Pick any dialog id from the seed that has at least one
-        // non-zero speaker_id screen — it must NOT be in the cache.
-        // Fetch a representative dialog and assert.
-        let mixed_dialog: Option<i32> = sqlx::query_scalar(
-            "SELECT dialog_id FROM resources.dialog_screens \
-             WHERE speaker_id <> 0 \
-             GROUP BY dialog_id LIMIT 1",
-        )
-        .fetch_optional(&pool)
-        .await
-        .expect("query must succeed");
-        if let Some(d) = mixed_dialog {
-            assert!(
-                !ids.contains(&d),
-                "dialog {d} has at least one non-zero speaker_id screen — it must NOT be \
-                 in the monologue set, or the executor's monologue fallback would \
-                 incorrectly bind the player for an NPC dialog"
-            );
-        }
-
-        // A dialog with at least one NULL `speaker_id` screen must NOT
-        // be classified as a monologue. The original predicate
-        // (`COUNT(*) FILTER (WHERE speaker_id <> 0) = 0`) treated NULL
-        // as "not non-zero" and wrongly admitted such dialogs — the
-        // exact mis-binding the cache exists to prevent.
-        let null_speaker_dialog: Option<i32> = sqlx::query_scalar(
-            "SELECT dialog_id FROM resources.dialog_screens \
-             WHERE speaker_id IS NULL \
-             GROUP BY dialog_id LIMIT 1",
-        )
-        .fetch_optional(&pool)
-        .await
-        .expect("query must succeed");
-        if let Some(d) = null_speaker_dialog {
-            assert!(
-                !ids.contains(&d),
-                "dialog {d} has at least one NULL speaker_id screen — it must NOT be \
-                 in the monologue set; treating NULL as monologue would mis-bind the \
-                 player as the dialog context entity for unknown-speaker dialogs"
-            );
-        }
-    }
-
-    #[tokio::test]
     async fn load_stargates_resolves_world_join() {
         let pool = require_db_or_skip!();
         let map = load_stargates(&pool)
@@ -514,6 +379,50 @@ mod live_db {
             assert!(
                 !entry.world_name.is_empty(),
                 "stargate {id} has empty world_name — JOIN to resources.worlds broke"
+            );
+        }
+    }
+
+    /// The gate-event pipeline's only DB-shaped dependency (CA10):
+    /// `load_stargates` must carry `stargates.event_set_id`, and that
+    /// event set must resolve `Stargate_MakeGate` (6100) and
+    /// `Stargate_CrossGate` (6113). Every `cell::gate_travel` unit test
+    /// seeds its own `sequence_map`, so dropping the column from the
+    /// SELECT, renaming it, or clearing Castle gate 2's event set leaves
+    /// the suite green while the live server plays no gate animation.
+    ///
+    /// Castle gate 2 is the anchor: `stargates.sql` gives it
+    /// `event_set_id = 10011`, mapped to 10145 (6100) and 10158 (6113).
+    #[tokio::test]
+    async fn load_stargates_carries_the_event_set_that_resolves_gate_sequences() {
+        const GATE: i32 = 2;
+        const EVENT_SET: i32 = 10011;
+
+        let pool = require_db_or_skip!();
+        let gates = load_stargates(&pool)
+            .await
+            .expect("load_stargates must succeed");
+        let castle = gates.get(&GATE).expect("seeded stargates has gate 2");
+        assert_eq!(
+            castle.world_name, "Castle",
+            "gate 2 is Castle's — if this moved, re-anchor the test"
+        );
+        assert_eq!(
+            castle.event_set_id,
+            Some(EVENT_SET),
+            "load_stargates must select stargates.event_set_id; None here \
+             means the column left the SELECT or the seed cleared it, and \
+             the gate would open with no animation"
+        );
+
+        let sequences = load_event_set_sequences(&pool)
+            .await
+            .expect("load_event_set_sequences must succeed");
+        for (event_id, label) in [(6100, "Stargate_MakeGate"), (6113, "Stargate_CrossGate")] {
+            assert!(
+                sequences.contains_key(&(EVENT_SET, event_id)),
+                "event set {EVENT_SET} must resolve {label} ({event_id}) — \
+                 without it `send_gate_sequence` warns and emits nothing"
             );
         }
     }

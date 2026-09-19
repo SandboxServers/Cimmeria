@@ -253,12 +253,48 @@ fn convert_npc_flanked_wildcard() {
     }
 }
 
+#[test]
+fn convert_player_flanked_npc_with_template() {
+    let trigger =
+        convert_trigger(&cover_trigger_row("player_flanked_npc", Some("NID Guard"))).unwrap();
+    match trigger {
+        Trigger::OnPlayerFlankedNpc { npc_template } => {
+            assert_eq!(npc_template, Some("NID Guard".to_string()));
+        }
+        other => panic!("Expected OnPlayerFlankedNpc, got {:?}", other),
+    }
+}
+
+#[test]
+fn convert_player_flanked_npc_wildcard() {
+    let trigger = convert_trigger(&cover_trigger_row("player_flanked_npc", None)).unwrap();
+    match trigger {
+        Trigger::OnPlayerFlankedNpc { npc_template } => {
+            assert_eq!(npc_template, None);
+        }
+        other => panic!("Expected wildcard OnPlayerFlankedNpc, got {:?}", other),
+    }
+}
+
 // ─── entity_health_below (Harset H04) ───────────────────────────────
 
 fn health_row(event_key: Option<&str>) -> DbTriggerRow {
     DbTriggerRow {
         chain_id: 6311,
         event_type: "entity_health_below".to_string(),
+        event_key: event_key.map(|s| s.to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    }
+}
+
+// ─── Stargate trigger conversions (CA10) ───────────────────────────
+
+fn stargate_trigger_row(event_type: &str, event_key: Option<&str>) -> DbTriggerRow {
+    DbTriggerRow {
+        chain_id: 0x7000_6200,
+        event_type: event_type.to_string(),
         event_key: event_key.map(|s| s.to_string()),
         scope: "player".to_string(),
         once: false,
@@ -309,6 +345,7 @@ fn convert_entity_health_below_rejects_malformed_keys() {
         Some(":30"),              // empty tag
         Some("Rinla_Malac:0"),    // 0% is death; routes to entity_dead_tag
         Some("Rinla_Malac:-10"),  // negative
+        Some("Rinla_Malac:100"),  // unmatchable: the crossing test is strict
         Some("Rinla_Malac:101"),  // above full health
         Some("Rinla_Malac:30.5"), // fractional
     ] {
@@ -320,14 +357,97 @@ fn convert_entity_health_below_rejects_malformed_keys() {
     }
 }
 
-/// The inclusive bounds are legal. `:100` is noisy but well-defined (the
-/// first scratch fires it), `:1` is the last threshold above death.
+/// The inclusive bounds are legal: `:99` is the first threshold a hit off
+/// full health can cross (100 → 99), `:1` is the last threshold above
+/// death.
 #[test]
 fn convert_entity_health_below_accepts_the_boundary_percentages() {
-    for (key, expected) in [("Boss:1", 1), ("Boss:100", 100)] {
+    for (key, expected) in [("Boss:1", 1), ("Boss:99", 99)] {
         match convert_trigger(&health_row(Some(key))) {
             Some(Trigger::OnEntityHealthBelow { pct, .. }) => assert_eq!(pct, expected),
             other => panic!("expected {key} to load, got {other:?}"),
         }
+    }
+}
+
+/// PR #662 review, finding 2. The matcher is a **strict** downward
+/// crossing (`pct_before > threshold && pct_after <= threshold`), so a
+/// threshold of 100 is unmatchable: full health is 100, `100 > 100` is
+/// false, and any later hit starts from below. The loader used to accept
+/// `1..=100`, which let an author seed a chain that reads as wired and
+/// never runs — the worst failure mode for content, because there is no
+/// error to grep for.
+///
+/// Reverting `HEALTH_PCT_RANGE` to `1..=100` fails the `100` row.
+#[test]
+fn convert_entity_health_below_rejects_the_unmatchable_hundred_percent_band() {
+    for bad in [0, 100, 101] {
+        assert!(
+            convert_trigger(&health_row(Some(&format!("Boss:{bad}")))).is_none(),
+            "threshold {bad} is outside the matchable band and must drop the \
+             trigger row rather than load a chain that can never fire",
+        );
+    }
+    for good in [1, 99] {
+        assert!(
+            convert_trigger(&health_row(Some(&format!("Boss:{good}")))).is_some(),
+            "threshold {good} is inside the matchable band and must load",
+        );
+    }
+}
+
+/// `event_key` carries the destination world name straight through.
+/// The chain-replay guards in `cimmeria-services` cover the same arm,
+/// but self-skip without a database — this is the no-DB signal.
+#[test]
+fn stargate_dialed_row_loads_with_its_destination_world() {
+    match convert_trigger(&stargate_trigger_row("stargate_dialed", Some("Harset"))) {
+        Some(Trigger::OnStargateDialed { destination_world }) => {
+            assert_eq!(destination_world.as_deref(), Some("Harset"));
+        }
+        other => panic!("expected OnStargateDialed(Harset), got {other:?}"),
+    }
+}
+
+#[test]
+fn stargate_crossed_row_loads_with_its_destination_world() {
+    match convert_trigger(&stargate_trigger_row("stargate_crossed", Some("Harset"))) {
+        Some(Trigger::OnStargateCrossed { destination_world }) => {
+            assert_eq!(destination_world.as_deref(), Some("Harset"));
+        }
+        other => panic!("expected OnStargateCrossed(Harset), got {other:?}"),
+    }
+}
+
+/// A NULL `event_key` is the documented wildcard for these two, unlike
+/// the integer-keyed triggers where NULL rejects the row. Pinned so a
+/// future "reject NULL everywhere" sweep can't silently disable every
+/// wildcard gate chain.
+#[test]
+fn stargate_rows_with_no_event_key_load_as_wildcards() {
+    match convert_trigger(&stargate_trigger_row("stargate_dialed", None)) {
+        Some(Trigger::OnStargateDialed { destination_world }) => {
+            assert_eq!(destination_world, None);
+        }
+        other => panic!("expected wildcard OnStargateDialed, got {other:?}"),
+    }
+    match convert_trigger(&stargate_trigger_row("stargate_crossed", None)) {
+        Some(Trigger::OnStargateCrossed { destination_world }) => {
+            assert_eq!(destination_world, None);
+        }
+        other => panic!("expected wildcard OnStargateCrossed, got {other:?}"),
+    }
+}
+
+/// A near-miss `event_type` drops the row rather than binding one of the
+/// two arms. Catches a `starts_with`-style match if anyone rewrites the
+/// dispatch, and pins the exact strings content authors must write.
+#[test]
+fn a_misspelled_stargate_event_type_loads_nothing() {
+    for bad in ["stargate_dial", "stargate_dialled", "stargate", "dialed"] {
+        assert!(
+            convert_trigger(&stargate_trigger_row(bad, Some("Harset"))).is_none(),
+            "event_type {bad:?} must not bind a stargate trigger"
+        );
     }
 }

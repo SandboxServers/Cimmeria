@@ -77,8 +77,25 @@ async fn minigame_result_victory_fires_on_victory_chains() {
     }
 }
 
+/// Non-victory results must not fire `on_victory_chains`.
+///
+/// Parameterised over the two real non-victory codes. The fixture used to
+/// pass 0 while calling it "defeat", which left the CA04 distinction
+/// unpinned: 0 is `MinigameCanceled` (the session ended with no outcome) and
+/// 2 is `MinigameDefeat` (the player lost). The handler treats both as inert
+/// today, but they are different events upstream, and a test that conflates
+/// them would not notice if one started firing chains.
+#[tokio::test]
+async fn minigame_result_canceled_does_not_fire_chains() {
+    assert_non_victory_result_fires_no_chains(0).await;
+}
+
 #[tokio::test]
 async fn minigame_result_defeat_does_not_fire_chains() {
+    assert_non_victory_result_fires_no_chains(2).await;
+}
+
+async fn assert_non_victory_result_fires_no_chains(result_code: u8) {
     use cimmeria_content_engine::actions::Action;
     use cimmeria_content_engine::chain::Chain;
     use cimmeria_content_engine::triggers::Trigger;
@@ -122,7 +139,7 @@ async fn minigame_result_defeat_does_not_fire_chains() {
     handle_base_message(
         BaseToCellMsg::MinigameResult {
             entity_id: 1,
-            result_code: 0, // defeat
+            result_code,
             on_victory_chains: vec![9999],
         },
         &tx,
@@ -134,6 +151,6 @@ async fn minigame_result_defeat_does_not_fire_chains() {
 
     assert!(
         rx.try_recv().is_err(),
-        "defeat (result_code != 1) must not fire victory chains"
+        "result_code {result_code} is not victory (1), so it must not fire victory chains"
     );
 }

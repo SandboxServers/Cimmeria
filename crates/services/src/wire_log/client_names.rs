@@ -204,12 +204,30 @@ pub fn inbound_msg_name(msg_id: u8) -> &'static str {
         0x0B => "restoreClientAck",
         0x0C => "disconnect",
         0x0D => "channelSetup",
-        // Entity-method calls (0xC0+) delegate to the cell-method
-        // table — that's the canonical naming the dispatch code
-        // already uses for these.
-        0xC0..=0xFF => crate::cell::dispatch::cell_method_name(msg_id as u16),
+        // CELL entity methods are 0x80..=0xBF and the table is keyed by
+        // METHOD INDEX (`msg_id - 0x80`), not by message id. The old arm
+        // matched 0xC0..=0xFF -- the BASE method range -- and passed the raw
+        // id, so every entity method was logged as "unknown".
+        0x80..=0xBC => crate::cell::dispatch::cell_method_name(u16::from(msg_id - 0x80)),
+        // Sub-slot: the real index is `61 + payload[4]`; see
+        // [`inbound_msg_name_with_payload`].
+        0xBD => "cellMethodExtended",
+        0xC0 => "versionInfoRequest",
+        0xC1 => "elementDataRequest",
+        0xC2..=0xFF => "baseMethod",
         _ => "unknown",
     }
+}
+
+/// [`inbound_msg_name`], resolving the 0xBD sub-slot form from its payload
+/// (`[entity_id: u32][sub_index: u8][args..]`, index = `61 + sub_index`).
+pub fn inbound_msg_name_with_payload(msg_id: u8, payload: &[u8]) -> &'static str {
+    if msg_id == 0xBD {
+        if let Some(sub) = payload.get(4) {
+            return crate::cell::dispatch::cell_method_name(61 + u16::from(*sub));
+        }
+    }
+    inbound_msg_name(msg_id)
 }
 
 #[cfg(test)]
@@ -247,5 +265,28 @@ mod tests {
         assert_eq!(inbound_msg_name(0x03), "avatarUpdateExplicit");
         assert_eq!(inbound_msg_name(0x08), "enableEntities");
         assert_eq!(inbound_msg_name(0x0C), "disconnect");
+    }
+
+    /// Regression guard: cell entity methods live at 0x80..=0xBF and the name
+    /// table is keyed by METHOD INDEX. The old arm matched the base range
+    /// (0xC0+) with the raw message id, so every `wire.in` entity method was
+    /// named "unknown".
+    #[test]
+    fn inbound_cell_methods_resolve_by_index_not_message_id() {
+        use crate::cell::dispatch::cell_method_name;
+        assert_eq!(inbound_msg_name(0x80), cell_method_name(0));
+        assert_eq!(inbound_msg_name(0x80), "setTargetID");
+        assert_ne!(inbound_msg_name(0x81), "unknown");
+        assert_eq!(inbound_msg_name(0xC5), "baseMethod");
+        // Sub-slot form: [entity_id: u32][sub_index][args..] -> index 61 + sub.
+        let payload = [0x02, 0, 0, 0, 7, 0xAA];
+        assert_eq!(
+            inbound_msg_name_with_payload(0xBD, &payload),
+            cell_method_name(61 + 7)
+        );
+        assert_eq!(
+            inbound_msg_name_with_payload(0xBD, &[1, 2]),
+            "cellMethodExtended"
+        );
     }
 }

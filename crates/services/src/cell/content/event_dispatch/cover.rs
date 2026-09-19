@@ -122,6 +122,12 @@ pub async fn fire_cover_left(
             actions = resolved.actions.len(),
             "fire_cover_left: matched"
         );
+    } else {
+        tracing::debug!(
+            entity_id,
+            cover_set_id,
+            "fire_cover_left: no chains matched"
+        );
     }
     cimmeria_observability::counter!(
         "cover_detection_events_total",
@@ -171,6 +177,13 @@ pub async fn fire_cover_duration(
             actions = resolved.actions.len(),
             "fire_cover_duration: matched"
         );
+    } else {
+        tracing::debug!(
+            entity_id,
+            cover_set_id,
+            seconds,
+            "fire_cover_duration: no chains matched"
+        );
     }
     cimmeria_observability::counter!(
         "cover_detection_events_total",
@@ -215,6 +228,12 @@ pub async fn fire_npc_flanked(
             actions = resolved.actions.len(),
             "fire_npc_flanked: matched"
         );
+    } else {
+        tracing::debug!(
+            npc_entity_id,
+            threat_entity_id,
+            "fire_npc_flanked: no chains matched"
+        );
     }
     cimmeria_observability::counter!(
         "cover_detection_events_total",
@@ -225,4 +244,91 @@ pub async fn fire_npc_flanked(
     // anyway since `npc_entity_id` isn't a player. Pass 0 explicitly so
     // the signature stays consistent with the other fire_* helpers.
     executor::execute_actions(resolved, npc_entity_id, 0, tx, space_mgr, engine).await;
+}
+
+/// Fire `OnPlayerFlankedNpc` — the player-perspective twin of
+/// [`fire_npc_flanked`], called from the same AI decision when the
+/// flanked NPC's top-threat is a **player**. Argument order matches
+/// `fire_npc_flanked` (`npc_entity_id`, then the threat) so the two
+/// adjacent call sites can't be swapped silently.
+///
+/// Returns immediately when no `PlayerFlankedNpc` chain is registered,
+/// so the per-mission context population below doesn't run on every
+/// cover release in rooms with no flank content.
+///
+/// Unlike `fire_npc_flanked` (actions run on the NPC with player id 0),
+/// this executes against the flanking player with that player's mission
+/// context populated, so mission-scoped chains (`objective_status`
+/// conditions, `complete_objective`) work — Castle Cellblock C06's flank
+/// objectives 2725/2731. No-ops when `player_entity_id` is not a player
+/// entity (NPC-vs-NPC threat, or the player left the space mid-tick).
+pub async fn fire_player_flanked_npc(
+    npc_entity_id: u32,
+    player_entity_id: u32,
+    npc_template: &str,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if engine.chains_for_trigger(&TriggerType::PlayerFlankedNpc) == 0 {
+        return;
+    }
+    let mut ctx =
+        ExecutionContext::new().with_source(cimmeria_common::EntityId(player_entity_id as i32));
+    ctx.set_param("npc_template".to_string(), serde_json::json!(npc_template));
+    ctx.set_param("npc_id".to_string(), serde_json::json!(npc_entity_id));
+    // The flanking PLAYER is the acting entity, so it is the player's world
+    // that gates a `world` condition (Harset H07 contract).
+    populate_world_context(player_entity_id, space_mgr, &mut ctx);
+
+    let db_player_id = match space_mgr.get_entity(player_entity_id) {
+        Some(entity) => {
+            let Some(db_player_id) = entity.player_id else {
+                return;
+            };
+            populate_mission_context(entity, &mut ctx);
+            if let Some(archetype_id) = entity.archetype_id {
+                ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+            }
+            db_player_id
+        }
+        None => return,
+    };
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::PlayerFlankedNpc,
+        source_entity: Some(cimmeria_common::EntityId(player_entity_id as i32)),
+        target_entity: Some(cimmeria_common::EntityId(npc_entity_id as i32)),
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    if !resolved.actions.is_empty() {
+        tracing::info!(
+            player_entity_id,
+            npc_entity_id,
+            npc_template,
+            actions = resolved.actions.len(),
+            "fire_player_flanked_npc: matched"
+        );
+    } else {
+        tracing::debug!(
+            player_entity_id,
+            npc_entity_id,
+            "fire_player_flanked_npc: no chains matched"
+        );
+    }
+    cimmeria_observability::counter!(
+        "cover_detection_events_total",
+        "kind" => "player_flanked_npc",
+    );
+    executor::execute_actions(
+        resolved,
+        player_entity_id,
+        db_player_id,
+        tx,
+        space_mgr,
+        engine,
+    )
+    .await;
 }

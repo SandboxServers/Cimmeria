@@ -484,3 +484,201 @@ async fn a_killing_hit_fires_death_and_the_dispatcher_suppresses_health_below() 
          the two are mutually exclusive per hit",
     );
 }
+
+// ─── The non-single-target damage paths (PR #662 review, finding 1) ──
+//
+// H04 sampled `pct_before` inside the single-target kill-credit wrapper,
+// so every other damage path was invisible to the trigger — and because
+// the predicate is a stateless downward band, a crossing made on one of
+// those paths is lost forever rather than merely late (every later hit
+// arrives with `pct_before <= threshold`). The sample now lives at the
+// health-application seams; these are the guards for the paths that had
+// none.
+
+/// Register a pulsing DoT on the NPC, invoked by the player, already due
+/// to fire. `dmg` is the per-pulse HealthDamage.
+async fn arm_dot_on_npc(mgr: &mut SpaceManager, tx: &mpsc::Sender<CellToBaseMsg>, dmg: i32) {
+    use cimmeria_entity::abilities::EffectDef;
+    use std::time::{Duration, Instant};
+
+    let mut params = std::collections::HashMap::new();
+    params.insert("HealthDamage".to_string(), dmg.to_string());
+    let effect = EffectDef {
+        effect_id: 7777,
+        ability_id: 1234,
+        pulse_count: 5,
+        pulse_duration: 1.0,
+        params,
+        ..Default::default()
+    };
+    mgr.effect_defs.insert(effect.effect_id, effect.clone());
+
+    let past = Instant::now() - Duration::from_secs(2);
+    crate::cell::effects::register_active_effect(mgr, NPC_EID, PLAYER_EID, &effect, past, tx).await;
+    if let Some(inst) = mgr
+        .get_entity_mut(NPC_EID)
+        .and_then(|t| t.active_effects.first_mut())
+    {
+        inst.next_pulse_at = past;
+    }
+}
+
+/// **The headline gap.** A DoT tick that drags the NPC from 35% to 25%
+/// crosses `:30` and must fire exactly once. Before the fix `fire_pulse`
+/// sampled nothing, so this counter stayed at zero — and, worse, every
+/// subsequent direct hit arrived with `pct_before <= 30`, permanently
+/// disarming the chain.
+#[tokio::test]
+async fn a_dot_pulse_crossing_fires_health_below_once() {
+    let mut mgr = make_duel_mgr();
+    let engine = duel_engine(30);
+    let (tx, _rx) = mpsc::channel(128);
+
+    damage_npc_to(&mut mgr, 35);
+    arm_dot_on_npc(&mut mgr, &tx, 10).await;
+
+    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+
+    let hp = mgr
+        .get_entity(NPC_EID)
+        .and_then(|e| e.stats.get(HEALTH))
+        .map(|s| s.cur)
+        .expect("NPC must still exist with a HEALTH stat");
+    assert_eq!(hp, 25, "test fixture: the pulse must land 35 -> 25");
+    assert_eq!(
+        counter(&mgr, WOUND_COUNTER),
+        1,
+        "a DoT tick crossing the threshold must fire entity_health_below \
+         exactly once — zero means the pulse path never samples pct_before",
+    );
+    assert_eq!(counter(&mgr, DEATH_COUNTER), 0, "nothing died");
+}
+
+/// A second pulse landing below the threshold must not re-fire, the same
+/// way a second shot below it does not. Pins that the per-pulse drain
+/// hands over one sample per pulse rather than re-using a stale one.
+#[tokio::test]
+async fn a_second_dot_pulse_below_the_threshold_fires_nothing_more() {
+    let mut mgr = make_duel_mgr();
+    let engine = duel_engine(30);
+    let (tx, _rx) = mpsc::channel(128);
+
+    damage_npc_to(&mut mgr, 35);
+    arm_dot_on_npc(&mut mgr, &tx, 10).await;
+    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+
+    // Make the next pulse due and tick again: 25% -> 15%, already below.
+    if let Some(inst) = mgr
+        .get_entity_mut(NPC_EID)
+        .and_then(|t| t.active_effects.first_mut())
+    {
+        inst.next_pulse_at = std::time::Instant::now() - std::time::Duration::from_secs(2);
+    }
+    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+
+    assert_eq!(
+        counter(&mgr, WOUND_COUNTER),
+        1,
+        "the second pulse starts below the threshold, so there is no \
+         downward crossing left to fire",
+    );
+}
+
+/// The exclusivity contract on the pulse path: a lethal tick fires
+/// `entity_dead_tag` and **not** the threshold chain, even though the
+/// kill crosses the threshold on its way to zero.
+///
+/// This also guards the death transition itself. Before the fix a DoT
+/// kill produced no corpse at all — the mob sat at zero health, never
+/// flipped `BSF_DEAD`, and a kill-count mission stalled whenever the
+/// killing blow happened to be a tick rather than a shot.
+#[tokio::test]
+async fn a_killing_dot_pulse_fires_death_and_not_the_threshold() {
+    let mut mgr = make_duel_mgr();
+    let engine = duel_engine(30);
+    let (tx, _rx) = mpsc::channel(128);
+
+    damage_npc_to(&mut mgr, 35);
+    arm_dot_on_npc(&mut mgr, &tx, 40).await;
+
+    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+
+    let dead = mgr
+        .get_entity(NPC_EID)
+        .map(|e| combat::is_dead_state(e.state_field))
+        .expect("NPC entity must survive as a corpse");
+    assert!(
+        dead,
+        "a lethal pulse must run the canonical death transition"
+    );
+    assert_eq!(
+        counter(&mgr, DEATH_COUNTER),
+        1,
+        "a DoT kill must credit entity_dead_tag to the effect's invoker",
+    );
+    assert_eq!(
+        counter(&mgr, WOUND_COUNTER),
+        0,
+        "a lethal pulse must not also fire the threshold chain",
+    );
+}
+
+/// The AoE/cone gap: a secondary target dragged through its threshold by
+/// a ground cast must fire, not just the primary. The sample lives in
+/// `apply_damage_to_target`, which every secondary goes through; before
+/// the fix only the single-target wrapper sampled at all.
+#[tokio::test]
+async fn an_aoe_secondary_crossing_fires_health_below() {
+    let mut mgr = make_duel_mgr();
+    let engine = duel_engine(30);
+    let (tx, _rx) = mpsc::channel(256);
+
+    // The tagged duel NPC is the *secondary*: a second, untagged hostile
+    // sits closer to the impact point and takes the primary slot.
+    mgr.spawn_npc(NPC_EID + 1, "Castle", [4.5, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(other) = mgr.get_entity_mut(NPC_EID + 1) {
+        other.faction = combat::HOSTILE_FACTION;
+        if let Some(stat) = other.stats.get_mut(HEALTH) {
+            stat.update(0, 10_000, 10_000);
+            stat.clear_dirty();
+        }
+    }
+    arm_player_with_ability(&mut mgr, 10);
+    damage_npc_to(&mut mgr, 35);
+
+    // Drive the real cell-method dispatch rather than
+    // `handle_use_ability_on_ground` directly: the drain lives in the
+    // handler, so calling the ability helper would guard nothing.
+    let mut args = Vec::with_capacity(16);
+    args.extend_from_slice(&7i32.to_le_bytes()); // ability_id
+    args.extend_from_slice(&5.0f32.to_le_bytes()); // x
+    args.extend_from_slice(&0.0f32.to_le_bytes()); // y
+    args.extend_from_slice(&0.0f32.to_le_bytes()); // z
+    crate::cell::cell_methods::player::combat::dispatch(
+        PLAYER_EID,
+        crate::cell::cell_methods::player::USE_ABILITY_ON_GROUND,
+        &args,
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    let hp = mgr
+        .get_entity(NPC_EID)
+        .and_then(|e| e.stats.get(HEALTH))
+        .map(|s| s.cur)
+        .expect("the tagged NPC must survive the blast");
+    assert!(
+        hp < 35 && hp > 0,
+        "test fixture: the secondary must be wounded without dying \
+         (health = {hp})",
+    );
+    assert_eq!(
+        counter(&mgr, WOUND_COUNTER),
+        1,
+        "an AoE secondary crossing the threshold must fire \
+         entity_health_below — zero means the ground path never drains",
+    );
+}

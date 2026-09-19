@@ -36,6 +36,18 @@ impl SpaceManager {
         navmesh.raycast(&pos_a, &pos_b)
     }
 
+    /// Whether the space containing `entity_id` has a navmesh loaded.
+    ///
+    /// `has_line_of_sight`, `find_path` and `is_position_valid` all fail open
+    /// without one, so callers that report those results need this to tell
+    /// "clear" from "unknown".
+    pub fn space_has_navmesh(&self, entity_id: u32) -> bool {
+        self.entity_space
+            .get(&entity_id)
+            .and_then(|sid| self.spaces.get(sid))
+            .is_some_and(|s| s.navmesh.is_some())
+    }
+
     /// Find a path between two positions within the space containing `entity_id`.
     /// Returns waypoints or `None` if no path exists or no navmesh is loaded.
     pub fn find_path(

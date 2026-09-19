@@ -62,7 +62,7 @@ async fn chain_1041_starts_livewire_while_step_2120_active() {
             *id == 1041
                 && matches!(
                     action,
-                    Action::StartMinigame { minigame_type, on_victory_chains }
+                    Action::StartMinigame { minigame_type, on_victory_chains, .. }
                     if minigame_type == "Livewire" && on_victory_chains == &vec![1042]
                 )
         })
