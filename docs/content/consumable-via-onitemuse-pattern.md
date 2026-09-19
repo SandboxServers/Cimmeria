@@ -105,7 +105,7 @@ Every `item_use`-triggered chain in seed data as of issue #332. The content-engi
 1. Decide **consumable vs reusable** before writing SQL.
 2. If consumable, end the action list with `remove_item` for the same design id (after any heal/ability/advance).
 3. If reusable, omit `remove_item` and gate with `step_status` (or equivalent) so repeat uses are harmless.
-4. Add the item id to `KNOWN_CONSUMABLES` or `KNOWN_REUSABLES` in `crates/content-engine/tests/onitemuse_remove_item_pairing.rs`. The test fails on unknown ids with *"add to one of the two lists"* — that forces an explicit author decision.
+4. Add the item id to `KNOWN_CONSUMABLES` or `KNOWN_REUSABLES` in `crates/content-engine/tests/onitemuse_remove_item_pairing.rs`. The test fails on unknown ids with *"add to one of the two lists"* — that forces an explicit author decision. The lint matches on the **item id**, not just on the presence of a `remove_item` row: a consumable's chain must remove the item that was used (a row copied from another chain and never retargeted is reported), and a reusable's chain may remove a *different* item, such as a turn-in token.
 
 ## Cross-links
 
