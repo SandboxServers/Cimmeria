@@ -238,7 +238,7 @@ fn persistent_map_packages_carry_no_bsp_world_geometry() {
         );
 
         let mut soup = TriangleSoup::new(None);
-        let stats = collect_bsp_triangles(&pkg, &mut soup);
+        let stats = collect_bsp_triangles(&pkg, &mut soup, bsp_options(&pkg));
         eprintln!(
             "{file}: models total={} parsed={} failed={} empty={} level={} \
              actor_included={} actor_excluded={} -> {} BSP triangles",

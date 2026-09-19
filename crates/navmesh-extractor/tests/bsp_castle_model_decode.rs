@@ -326,7 +326,7 @@ fn castle_all_chunks_bsp_scan() {
             }
         };
         let mut soup = TriangleSoup::new(None);
-        let stats = collect_bsp_triangles(&pkg, &mut soup);
+        let stats = collect_bsp_triangles(&pkg, &mut soup, bsp_options(&pkg));
         total_models += stats.models_total;
         total_failed += stats.models_failed;
         total_excluded_volumes += stats.actor_models_excluded;

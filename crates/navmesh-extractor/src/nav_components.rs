@@ -264,12 +264,51 @@ impl NavGraph {
         (acc * 0.5).abs()
     }
 
-    /// Locate `p` on the mesh.
+    /// Locate `p` on the mesh, **preferring polygons that are actually
+    /// within tolerance**.
+    ///
+    /// This is the one callers that have tolerances should use.
+    /// [`Self::locate`] answers "which polygon is nearest in XZ", which
+    /// is a different question and gives the wrong answer on a stacked
+    /// mesh: a buried sheet whose footprint covers the probe wins over a
+    /// real floor half a metre to the side, and the probe is then
+    /// reported out of tolerance although it is standing on the mesh.
+    /// Measured on the 17-tile Castle interior build, the BSP hull skin
+    /// at BW y ~79.5 did exactly that to `throne_room` (dy -41.35),
+    /// `opcore` (dy -9.37) and `armory`.
+    ///
+    /// Among polygons within both tolerances the winner is the one
+    /// closest in 3-D (`hypot(horizontal, vertical)`) — not
+    /// horizontal-first, because a probe sitting in a 0.3 m gap between
+    /// two floor polygons should resolve to the floor beside it rather
+    /// than to whatever happens to be directly below.
+    ///
+    /// Falls back to [`Self::locate`] when nothing qualifies, so an
+    /// off-mesh probe still reports how far off it is.
+    pub fn locate_within(&self, p: [f32; 3], h_tol: f32, v_tol: f32) -> Option<ProbeHit> {
+        let mut best: Option<(f32, ProbeHit)> = None;
+        for (idx, poly) in self.polys.iter().enumerate() {
+            let hit = self.closest_on_poly(idx as u32, poly, p);
+            if hit.horizontal_distance > h_tol || hit.vertical_distance.abs() > v_tol {
+                continue;
+            }
+            let d = hit.horizontal_distance.hypot(hit.vertical_distance).abs();
+            if best.as_ref().map(|(bd, _)| d < *bd).unwrap_or(true) {
+                best = Some((d, hit));
+            }
+        }
+        best.map(|(_, h)| h).or_else(|| self.locate(p))
+    }
+
+    /// Locate `p` on the mesh, ignoring tolerances.
     ///
     /// Prefers a polygon whose XZ footprint contains `p` (picking the one
     /// with the smallest vertical distance, so stacked floors resolve to
     /// the right storey). Falls back to the polygon with the smallest
     /// horizontal distance when the probe is off-mesh.
+    ///
+    /// Callers that have tolerances want [`Self::locate_within`] — see
+    /// there for why.
     pub fn locate(&self, p: [f32; 3]) -> Option<ProbeHit> {
         let mut inside: Option<ProbeHit> = None;
         let mut outside: Option<ProbeHit> = None;
@@ -419,6 +458,19 @@ mod tests {
             (self.polys.len() - 1) as u16
         }
 
+        /// Axis-aligned quad `w` x `d` grid units, lower corner at
+        /// `(x, z)`, at grid height `y`. Used for the buried sheets that
+        /// span whole chunks.
+        fn wide_quad(&mut self, x: u16, y: u16, z: u16, w: u16, d: u16) -> u16 {
+            let a = self.vert(x, y, z);
+            let b = self.vert(x + w, y, z);
+            let c = self.vert(x + w, y, z + d);
+            let e = self.vert(x, y, z + d);
+            self.polys
+                .push([a, b, c, e, 0xffff, 0xffff, 0xffff, 0xffff]);
+            (self.polys.len() - 1) as u16
+        }
+
         /// Link poly `a` edge `ea` to poly `b` edge `eb`, both directions.
         fn link(&mut self, a: u16, ea: usize, b: u16, eb: usize) {
             self.polys[a as usize][4 + ea] = b;
@@ -550,6 +602,77 @@ mod tests {
             "expected +2.0, got {}",
             hit.vertical_distance
         );
+    }
+
+    /// The stacked-mesh false negative: a buried sheet whose footprint
+    /// covers the probe must not out-rank a real floor beside it.
+    ///
+    /// Shape taken from the 17-tile Castle interior build — the BSP hull
+    /// skin at BW y ~79.5 spans whole chunks, so `throne_room` (floor at
+    /// y 38.5) resolved onto it at dy -41.35 and was reported OUT OF
+    /// TOLERANCE while standing on the mesh.
+    #[test]
+    fn a_roof_sheet_over_the_probe_does_not_hide_the_floor_beside_it() {
+        let mut b = NavBuilder::new();
+        // Roof: a 3x3 sheet 41 m up, covering everything below it.
+        let roof = b.wide_quad(0, 41, 0, 3, 3);
+        // Floor: one unit quad at ground level, one unit to the +x side
+        // of the probe, so its XZ footprint does NOT contain the probe.
+        let floor = b.quad(2, 0, 1);
+        let g = NavGraph::from_nav(&b.build());
+        assert_ne!(g.component[roof as usize], g.component[floor as usize]);
+
+        // Probe at (1.5, 0.0, 1.5): inside the roof's footprint, 0.5 m
+        // horizontally from the floor quad's x=2 edge.
+        let p = [1.5, 0.0, 1.5];
+
+        let naive = g.locate(p).expect("some poly");
+        assert_eq!(
+            naive.poly,
+            u32::from(roof),
+            "the pre-fix behaviour: the containing roof wins outright"
+        );
+        assert!(
+            (naive.vertical_distance + 41.0).abs() < 1e-3,
+            "and reports a 41 m drop: {}",
+            naive.vertical_distance
+        );
+
+        let fixed = g.locate_within(p, 2.0, 3.0).expect("some poly");
+        assert_eq!(
+            fixed.poly,
+            u32::from(floor),
+            "tolerance-first must pick the floor 0.5 m to the side, not \
+             the roof 41 m overhead"
+        );
+        assert!(fixed.vertical_distance.abs() <= 3.0);
+        assert!((fixed.horizontal_distance - 0.5).abs() < 1e-3);
+    }
+
+    /// When the probe really is inside a polygon at the right height,
+    /// tolerance-first must still pick that polygon and not something
+    /// beside it.
+    #[test]
+    fn tolerance_first_still_prefers_the_polygon_under_the_probe() {
+        let mut b = NavBuilder::new();
+        let under = b.quad(1, 5, 1);
+        b.quad(2, 5, 1);
+        let g = NavGraph::from_nav(&b.build());
+        let hit = g.locate_within([1.5, 5.0, 1.5], 2.0, 3.0).unwrap();
+        assert_eq!(hit.poly, u32::from(under));
+        assert_eq!(hit.horizontal_distance, 0.0);
+    }
+
+    /// Nothing within tolerance: fall back to the nearest polygon so the
+    /// caller can still report how far off the probe is.
+    #[test]
+    fn tolerance_first_falls_back_when_nothing_qualifies() {
+        let mut b = NavBuilder::new();
+        b.quad(0, 5, 0);
+        let g = NavGraph::from_nav(&b.build());
+        let hit = g.locate_within([100.0, 5.0, 0.5], 2.0, 3.0).unwrap();
+        assert_eq!(hit.poly, 0);
+        assert!(hit.horizontal_distance > 2.0);
     }
 
     /// Off-mesh probe: reports the real horizontal gap, not a silent hit.

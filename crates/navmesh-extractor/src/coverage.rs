@@ -224,7 +224,32 @@ pub struct ChunkCoverage {
     /// Actors that resolved to a mesh AND contributed triangles.
     pub actors_resolved: u64,
     pub skips: SkipTally,
+    /// Every triangle that reached this chunk's OBJ, all sources.
+    ///
+    /// Invariant, asserted by `extract_map_castle_cellblock.rs`:
+    /// `triangles_emitted == staticmesh_triangles + terrain_triangles +
+    /// bsp_triangles`, and it equals the `f` line count of the OBJ.
     pub triangles_emitted: u64,
+    /// Phase 1.2 — triangles from `StaticMeshActor` kDOP collision.
+    pub staticmesh_triangles: u64,
+    /// Phase 1.3 — triangles from `Terrain` heightfield patches.
+    pub terrain_triangles: u64,
+    /// Terrain quads skipped because `TID_Visibility_Off` marked them a
+    /// hole. Not an error: holes are where the interior floors show
+    /// through.
+    pub terrain_quads_holed: u64,
+    /// `Terrain` exports that failed to decode. Non-zero means this
+    /// chunk is missing ground.
+    pub terrain_parse_failures: u64,
+    /// Phase 1.4 — triangles from BSP `Model` geometry, after both the
+    /// `PolyFlags` filter and the hull-cap filter.
+    pub bsp_triangles: u64,
+    /// BSP triangles dropped as outer-hull skin
+    /// (`bsp::hull_cap`). Excluded from `bsp_triangles`, so it does
+    /// **not** enter the sum invariant.
+    pub bsp_hull_cap_triangles: u64,
+    /// `Model` exports that failed to decode. Non-zero is a decoder bug.
+    pub bsp_models_failed: u64,
     /// Size of the per-chunk OBJ on disk, 0 if none was written.
     pub obj_bytes: u64,
     /// Actors whose export-table `Archetype` field is non-zero — i.e.
@@ -253,12 +278,29 @@ impl ChunkCoverage {
         self.class_census.get(class).copied().unwrap_or(0)
     }
 
+    /// `triangles_emitted == staticmesh + terrain + bsp`.
+    ///
+    /// The OBJ carries exactly one soup per chunk, so any drift here
+    /// means a geometry source pushed into the soup without tallying —
+    /// and every "source X contributes N%" number would be wrong.
+    pub fn sources_balance(&self) -> bool {
+        self.triangles_emitted
+            == self.staticmesh_triangles + self.terrain_triangles + self.bsp_triangles
+    }
+
     fn merge(&mut self, other: &ChunkCoverage) {
         self.exports_total += other.exports_total;
         self.actors_total += other.actors_total;
         self.actors_resolved += other.actors_resolved;
         self.skips.merge(&other.skips);
         self.triangles_emitted += other.triangles_emitted;
+        self.staticmesh_triangles += other.staticmesh_triangles;
+        self.terrain_triangles += other.terrain_triangles;
+        self.terrain_quads_holed += other.terrain_quads_holed;
+        self.terrain_parse_failures += other.terrain_parse_failures;
+        self.bsp_triangles += other.bsp_triangles;
+        self.bsp_hull_cap_triangles += other.bsp_hull_cap_triangles;
+        self.bsp_models_failed += other.bsp_models_failed;
         self.obj_bytes += other.obj_bytes;
         self.archetype_actors += other.archetype_actors;
         self.archetype_actors_resolved += other.archetype_actors_resolved;
@@ -343,6 +385,13 @@ impl MapCoverage {
         ];
         header.extend(SkipReason::ALL.iter().map(|r| r.column().to_string()));
         header.push("triangles".into());
+        header.push("staticmesh_triangles".into());
+        header.push("terrain_triangles".into());
+        header.push("terrain_quads_holed".into());
+        header.push("terrain_parse_failures".into());
+        header.push("bsp_triangles".into());
+        header.push("bsp_hull_cap_triangles".into());
+        header.push("bsp_models_failed".into());
         header.push("obj_bytes".into());
         header.push("archetype_actors".into());
         header.push("archetype_actors_resolved".into());
@@ -353,6 +402,7 @@ impl MapCoverage {
                 .map(|c| format!("undecoded_{c}")),
         );
         header.push("balanced".into());
+        header.push("sources_balanced".into());
         writeln!(w, "{}", header.join("\t"))?;
 
         for chunk in &self.chunks {
@@ -420,6 +470,13 @@ fn write_chunk_row<W: Write>(w: &mut W, chunk: &ChunkCoverage) -> crate::Result<
             .map(|r| chunk.skips.get(*r).to_string()),
     );
     row.push(chunk.triangles_emitted.to_string());
+    row.push(chunk.staticmesh_triangles.to_string());
+    row.push(chunk.terrain_triangles.to_string());
+    row.push(chunk.terrain_quads_holed.to_string());
+    row.push(chunk.terrain_parse_failures.to_string());
+    row.push(chunk.bsp_triangles.to_string());
+    row.push(chunk.bsp_hull_cap_triangles.to_string());
+    row.push(chunk.bsp_models_failed.to_string());
     row.push(chunk.obj_bytes.to_string());
     row.push(chunk.archetype_actors.to_string());
     row.push(chunk.archetype_actors_resolved.to_string());
@@ -430,6 +487,7 @@ fn write_chunk_row<W: Write>(w: &mut W, chunk: &ChunkCoverage) -> crate::Result<
             .map(|c| chunk.class_count(c).to_string()),
     );
     row.push(if chunk.is_balanced() { "yes" } else { "NO" }.to_string());
+    row.push(if chunk.sources_balance() { "yes" } else { "NO" }.to_string());
     writeln!(w, "{}", row.join("\t"))?;
     Ok(())
 }
@@ -451,6 +509,9 @@ mod tests {
             actors_resolved: resolved,
             skips,
             triangles_emitted: tris,
+            // The fixture is a StaticMesh-only chunk, so the whole soup
+            // came from that source and `sources_balance()` holds.
+            staticmesh_triangles: tris,
             obj_bytes: tris * 30,
             archetype_actors: actors - resolved,
             archetype_actors_resolved: 0,
@@ -459,6 +520,7 @@ mod tests {
                 ("StaticMeshActor".to_string(), actors),
                 ("Terrain".to_string(), 3),
             ]),
+            ..Default::default()
         }
     }
 
@@ -606,10 +668,88 @@ mod tests {
         let mut buf = Vec::new();
         cov.write_tsv_into(&mut buf).unwrap();
         let text = String::from_utf8(buf).unwrap();
-        assert!(
-            text.lines().nth(1).unwrap().ends_with("\tNO"),
-            "unbalanced chunk row must end in NO: {text}"
+        assert_eq!(
+            column(&text, "balanced", 1),
+            "NO",
+            "unbalanced chunk row must say NO: {text}"
         );
+        assert_eq!(
+            column(&text, "sources_balanced", 1),
+            "yes",
+            "the actor invariant and the per-source invariant are different \
+             claims and must be reported in different columns: {text}"
+        );
+    }
+
+    #[test]
+    fn tsv_flags_a_row_whose_sources_do_not_sum() {
+        // A chunk whose OBJ holds more triangles than the three source
+        // tallies account for — the shape a new geometry source that
+        // forgot its tally would produce.
+        let mut bad = chunk("bad", 10, 10, 100);
+        bad.terrain_triangles = 50;
+        bad.triangles_emitted = 200;
+        assert!(!bad.sources_balance());
+        let cov = MapCoverage {
+            chunks: vec![bad],
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        cov.write_tsv_into(&mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert_eq!(column(&text, "sources_balanced", 1), "NO", "{text}");
+        assert_eq!(column(&text, "balanced", 1), "yes", "{text}");
+    }
+
+    #[test]
+    fn tsv_carries_one_column_per_geometry_source() {
+        let mut c = chunk("c", 4, 4, 30);
+        c.staticmesh_triangles = 10;
+        c.terrain_triangles = 12;
+        c.terrain_quads_holed = 7;
+        c.terrain_parse_failures = 1;
+        c.bsp_triangles = 8;
+        c.bsp_hull_cap_triangles = 3;
+        c.bsp_models_failed = 2;
+        let cov = MapCoverage {
+            chunks: vec![c],
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        cov.write_tsv_into(&mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        for (name, want) in [
+            ("triangles", "30"),
+            ("staticmesh_triangles", "10"),
+            ("terrain_triangles", "12"),
+            ("terrain_quads_holed", "7"),
+            ("terrain_parse_failures", "1"),
+            ("bsp_triangles", "8"),
+            ("bsp_hull_cap_triangles", "3"),
+            ("bsp_models_failed", "2"),
+        ] {
+            assert_eq!(column(&text, name, 1), want, "column {name} in {text}");
+        }
+        // 10 + 12 + 8 == 30; the dropped hull-cap triangles are not part
+        // of the sum because they never reached the OBJ.
+        assert_eq!(column(&text, "sources_balanced", 1), "yes");
+    }
+
+    /// Value of the named column on data row `row` (1-based, so row 1 is
+    /// the first chunk).
+    fn column<'a>(tsv: &'a str, name: &str, row: usize) -> &'a str {
+        let mut lines = tsv.lines();
+        let header: Vec<&str> = lines.next().expect("header").split('\t').collect();
+        let idx = header
+            .iter()
+            .position(|h| *h == name)
+            .unwrap_or_else(|| panic!("no column {name} in {header:?}"));
+        tsv.lines()
+            .nth(row)
+            .expect("data row")
+            .split('\t')
+            .nth(idx)
+            .expect("cell")
     }
 
     #[test]

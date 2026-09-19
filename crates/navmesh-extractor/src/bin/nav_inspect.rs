@@ -251,7 +251,10 @@ fn main() -> ExitCode {
             args.h_tol, args.v_tol
         );
         for p in &args.probes {
-            match graph.locate(p.pos) {
+            // Tolerance-first: a buried sheet whose footprint covers the
+            // probe must not out-rank the floor the probe is standing
+            // on. See `NavGraph::locate_within`.
+            match graph.locate_within(p.pos, args.h_tol, args.v_tol) {
                 None => {
                     println!("  {:<20} NO POLYGON (mesh is empty)", p.name);
                     failed = true;

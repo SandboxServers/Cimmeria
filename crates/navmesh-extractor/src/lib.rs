@@ -164,6 +164,14 @@ pub struct ExtractOptions<'a> {
     /// purpose as `skip_terrain`; Castle's interior floors are BSP, so a
     /// build without it has rooms with walls and no floor.
     pub skip_bsp: bool,
+    /// Keep the buried outer skin of an enclosing CSG hull. Default
+    /// `false` — it is dropped, see [`bsp::hull_cap`]. Set it to measure
+    /// what the filter is worth; on Castle it puts a 121,041 m²
+    /// unreachable walkable sheet back into the mesh.
+    ///
+    /// Implied by `skip_terrain`: without terrain there is no evidence
+    /// that anything is buried, so nothing is dropped either way.
+    pub keep_hull_caps: bool,
 }
 
 /// [`extract_map`] plus a machine-readable per-chunk coverage report.
@@ -183,9 +191,11 @@ pub fn extract_map_with_report(
         combined_obj,
         skip_terrain,
         skip_bsp,
+        keep_hull_caps,
     } = opts;
     let mut terrain_totals = terrain::TerrainStats::default();
     let (mut bsp_models_failed, mut bsp_triangles) = (0usize, 0usize);
+    let (mut bsp_hull_cap_triangles, mut bsp_hull_cap_area_m2) = (0usize, 0.0f64);
     let started = std::time::Instant::now();
     tracing::info!(map_dir = %map_dir.display(), output_dir = %output_dir.display(), "extract_map: starting");
 
@@ -270,11 +280,24 @@ pub fn extract_map_with_report(
         // Phase 1.3: Terrain extraction. Holes (`TID_Visibility_Off`
         // quads) are honoured, so building footprints stay open for the
         // interior floors to fill.
+        let terrain_first_face = extraction.soup.triangle_count();
         let terrain_stats = if skip_terrain {
             terrain::TerrainStats::default()
         } else {
             terrain::collect_terrain_triangles(&pkg, &mut extraction.soup)
         };
+        // The BSP hull-cap filter needs to know where the ground is, and
+        // the ground is the triangles we have just pushed. Built from the
+        // soup range rather than a second decode pass.
+        let terrain_ceiling = (!keep_hull_caps)
+            .then(|| {
+                bsp::TerrainCeiling::from_triangles(
+                    extraction
+                        .soup
+                        .triangles_in(terrain_first_face..extraction.soup.triangle_count()),
+                )
+            })
+            .flatten();
         if terrain_stats.parse_failures > 0 {
             // Missing ground is never silently acceptable: a chunk whose
             // terrain failed to decode produces a navmesh with a hole the
@@ -297,7 +320,13 @@ pub fn extract_map_with_report(
         let bsp_stats = if skip_bsp {
             bsp::BspStats::default()
         } else {
-            bsp::collect_bsp_triangles(&pkg, &mut extraction.soup)
+            bsp::collect_bsp_triangles(
+                &pkg,
+                &mut extraction.soup,
+                bsp::BspOptions {
+                    terrain_ceiling: terrain_ceiling.as_ref(),
+                },
+            )
         };
         if bsp_stats.models_failed > 0 {
             // The deserializer enforces exact consumption, so a failure
@@ -311,6 +340,8 @@ pub fn extract_map_with_report(
         }
         bsp_models_failed += bsp_stats.models_failed;
         bsp_triangles += bsp_stats.triangles_emitted;
+        bsp_hull_cap_triangles += bsp_stats.hull_cap_triangles_excluded;
+        bsp_hull_cap_area_m2 += bsp_stats.hull_cap_area_m2;
 
         let mut row = ChunkCoverage {
             chunk: chunk_path
@@ -327,12 +358,34 @@ pub fn extract_map_with_report(
             skips: extraction.skips,
             // Everything that lands in the chunk's OBJ, all sources.
             triangles_emitted: extraction.soup.triangle_count() as u64,
+            staticmesh_triangles: extraction.triangles_emitted as u64,
+            terrain_triangles: terrain_stats.triangles_emitted as u64,
+            terrain_quads_holed: terrain_stats.quads_holed as u64,
+            terrain_parse_failures: terrain_stats.parse_failures as u64,
+            bsp_triangles: bsp_stats.triangles_emitted as u64,
+            bsp_hull_cap_triangles: bsp_stats.hull_cap_triangles_excluded as u64,
+            bsp_models_failed: bsp_stats.models_failed as u64,
             obj_bytes: 0,
             archetype_actors: extraction.archetype_actors,
             archetype_actors_resolved: extraction.archetype_actors_resolved,
             prefab_outer_actors: extraction.prefab_outer_actors,
             class_census,
         };
+
+        if !row.sources_balance() {
+            // A source pushed into the soup without tallying. Every
+            // "source X contributes N%" number below is then wrong, and
+            // so is the OBJ-vs-report cross-check the integration test
+            // relies on.
+            tracing::warn!(
+                chunk = %row.chunk,
+                triangles_emitted = row.triangles_emitted,
+                staticmesh_triangles = row.staticmesh_triangles,
+                terrain_triangles = row.terrain_triangles,
+                bsp_triangles = row.bsp_triangles,
+                "extract_map: per-source triangle tallies do not sum to the soup total"
+            );
+        }
 
         if !row.is_balanced() {
             // Loud on purpose: an unbalanced row means an actor left the
@@ -417,6 +470,8 @@ pub fn extract_map_with_report(
         terrain_triangles = terrain_totals.triangles_emitted,
         bsp_models_failed,
         bsp_triangles,
+        bsp_hull_cap_triangles,
+        bsp_hull_cap_area_m2,
         "extract_map: done"
     );
 

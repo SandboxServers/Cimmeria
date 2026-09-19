@@ -61,6 +61,29 @@ impl TriangleSoup {
     pub fn triangle_count(&self) -> usize {
         self.faces.len()
     }
+
+    /// Resolve a face range back into world-space triangles.
+    ///
+    /// Exists so a later extraction phase can read what an earlier one
+    /// pushed — the BSP hull-cap filter needs the terrain triangles that
+    /// went in just before it — without either decoding twice or
+    /// carrying a second soup. Out-of-range faces are skipped, as are
+    /// dangling vertex indices; a soup built by [`Self::push`] has
+    /// neither.
+    pub fn triangles_in(&self, faces: std::ops::Range<usize>) -> Vec<Triangle> {
+        let end = faces.end.min(self.faces.len());
+        let start = faces.start.min(end);
+        self.faces[start..end]
+            .iter()
+            .filter_map(|f| {
+                Some([
+                    *self.vertices.get(f[0] as usize - 1)?,
+                    *self.vertices.get(f[1] as usize - 1)?,
+                    *self.vertices.get(f[2] as usize - 1)?,
+                ])
+            })
+            .collect()
+    }
 }
 
 /// Apply a translation to every triangle (vertex-by-vertex).

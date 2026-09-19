@@ -9,7 +9,9 @@
 
 use std::path::{Path, PathBuf};
 
-use cimmeria_navmesh_extractor::bsp::{collect_bsp_models, EMIT_REVERSED};
+use cimmeria_navmesh_extractor::bsp::{
+    collect_bsp_models, BspOptions, HullCap, TerrainCeiling, EMIT_REVERSED,
+};
 use cimmeria_upk::Package;
 use cimmeria_upk_objects::model::CollisionFilter;
 
@@ -118,34 +120,54 @@ pub struct WorldTri {
 }
 
 /// Decode a chunk and return every emitted BSP triangle with its
-/// authored surface normal, using the production filter.
+/// authored surface normal, applying the **`PolyFlags` filter only**.
+///
+/// This is the raw decode: it deliberately skips the hull-cap filter so
+/// the cap tests can measure "before". Production geometry goes through
+/// [`world_triangles_shipped`].
 pub fn world_triangles(chunk: &Path) -> Vec<WorldTri> {
+    collect(chunk, false)
+}
+
+/// As [`world_triangles`], but with the hull-cap filter applied — i.e.
+/// exactly the set `bsp::collect_bsp_triangles` pushes into the soup.
+pub fn world_triangles_shipped(chunk: &Path) -> Vec<WorldTri> {
+    collect(chunk, true)
+}
+
+fn collect(chunk: &Path, exclude_hull_caps: bool) -> Vec<WorldTri> {
     let pkg = Package::open(chunk).expect("open chunk");
+    // Same ceiling `extract_map` builds: this chunk's own terrain.
+    let ceiling = exclude_hull_caps.then(|| terrain_ceiling(&pkg)).flatten();
     let (instances, _stats) = collect_bsp_models(&pkg);
     let mut out = Vec::new();
     for inst in &instances {
         let t = inst.model.triangulate(CollisionFilter::default());
-        for (i, tri) in t.triangles.iter().enumerate() {
+        let world_tris: Vec<[[f32; 3]; 3]> = t
+            .triangles
+            .iter()
+            .map(|tri| {
+                [
+                    inst.to_world(tri[0]),
+                    inst.to_world(tri[1]),
+                    inst.to_world(tri[2]),
+                ]
+            })
+            .collect();
+        let cap = ceiling.as_ref().and(HullCap::detect(&world_tris));
+        for (i, world_tri) in world_tris.iter().enumerate() {
             let surf_index = t.triangle_surf[i] as usize;
-            let n_local = inst
-                .model
-                .surf_normal(surf_index)
-                .unwrap_or([0.0, 0.0, 0.0]);
-            // A level model is world space already; a brush model's
-            // normal would need the rotation applied. Castle has zero
-            // non-empty brush models, so rotate only when it matters.
-            let n_world = if inst.is_level_model {
-                n_local
-            } else {
-                let o = inst.transform.apply([0.0; 3]);
-                let p = inst.transform.apply(n_local);
-                [p[0] - o[0], p[1] - o[1], p[2] - o[2]]
-            };
-            let mut world = [
-                inst.to_world(tri[0]),
-                inst.to_world(tri[1]),
-                inst.to_world(tri[2]),
-            ];
+            let n_world = inst.normal_to_world(
+                inst.model
+                    .surf_normal(surf_index)
+                    .unwrap_or([0.0, 0.0, 0.0]),
+            );
+            if let (Some(cap), Some(ceiling)) = (cap, ceiling.as_ref()) {
+                if cap.is_buried_cap(world_tri, n_world, ceiling) {
+                    continue;
+                }
+            }
+            let mut world = *world_tri;
             if EMIT_REVERSED {
                 world.swap(1, 2);
             }
@@ -157,6 +179,22 @@ pub fn world_triangles(chunk: &Path) -> Vec<WorldTri> {
         }
     }
     out
+}
+
+/// The options `extract_map` would pass for this chunk. Leaks the
+/// ceiling so the returned value can borrow it for the caller's
+/// lifetime — this is test code walking at most 144 chunks.
+pub fn bsp_options(pkg: &Package) -> BspOptions<'static> {
+    BspOptions {
+        terrain_ceiling: terrain_ceiling(pkg).map(|c| &*Box::leak(Box::new(c))),
+    }
+}
+
+/// Build the chunk's terrain ceiling exactly as `extract_map` does.
+pub fn terrain_ceiling(pkg: &Package) -> Option<TerrainCeiling> {
+    let mut soup = cimmeria_navmesh_extractor::geometry::TriangleSoup::new(None);
+    cimmeria_navmesh_extractor::terrain::collect_terrain_triangles(pkg, &mut soup);
+    TerrainCeiling::from_triangles(soup.triangles_in(0..soup.triangle_count()))
 }
 
 /// The 16 `Maps/Castle` chunks that carry a non-stub level `Model` —
