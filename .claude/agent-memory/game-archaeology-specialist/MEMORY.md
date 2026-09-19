@@ -48,6 +48,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [UTerrain::Serialize binary layout](ue3-terrain-serialize.md) — **[PROMOTE → issue #46 appendix DONE; unblocks Phase 1.3]** — ATerrain__vfunc_12 @ 0x007517C0, full trailer layout, None-scan gotcha, 92% confidence.
 
+## UE3 BSP (UModel/UPolys) serializer RE (2026-09-19)
+
+- [UModel/UPolys/FBspNode/FBspSurf/FPoly binary layout](umodel-bsp-serialize.md) — **[PROMOTE → issue #46 appendix DONE; unblocks Phase 1.4]** — UModel::Serialize @ 0x008eeff0, UPolys::Serialize @ 0x00807de0, byte-exact validated against real Castle-000a0002.umap exports (7 Model + 6 Polys, zero-remainder). **Resolves the central open question: cooked packages do NOT strip Polys.** FBspNode.iVertPool/iSurf offsets confirmed via 399/399 bounds-check sweep. Full finding: `docs/reverse-engineering/findings/bsp-model-polys-serialize.md`.
+
 ## x64dbg session discipline
 
 - [x64dbg session liveness check protocol](feedback-x64dbg-session-liveness-check.md) — **[KEEP — process-health check BEFORE any cave writes; 2026-06-22 crash postmortem]** — get_debugger_status + get_latest_event must both be clean before proceeding. Second-chance AV = dead process, no recovery. **2026-07-25: x64dbg upgraded (plugin v0.8.0-ghost_fungus, client 0.9.0), old client process terminated — next session is a fresh launch, adds programmatic log capture for BP hits.**

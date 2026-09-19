@@ -70,7 +70,7 @@ Each Terrain export = **32-byte Actor header** + **UE3 tagged-property stream** 
 
 ### Phase gate
 
-Issue #46 Phase 1.3 (Terrain decoder in Rust) is UNBLOCKED at 92% confidence. Regression fixture: 25 Castle_CellBlock exports × 20×20 patches × 2 triangles = 20,000 triangles for flat terrain.
+Issue #46 Phase 1.3 (Terrain decoder in Rust) is UNBLOCKED at 92% confidence (raised to **96%** after the 2026-09-19 real-data run below closed the property-tag-skip bug and confirmed the trailer layout on a much larger, structurally different sample). Regression fixture: 25 Castle_CellBlock exports × 20×20 patches × 2 triangles = 20,000 triangles for flat terrain.
 
 ### Test asset
 
@@ -78,6 +78,75 @@ Issue #46 Phase 1.3 (Terrain decoder in Rust) is UNBLOCKED at 92% confidence. Re
 - 25 Terrain exports (A–Y), 24 at 9372 bytes, 1 (T) at 9328 bytes
 - Terrain_T difference: NumPatchesX/Y differs OR one fewer Layer entry (same trailer structure confirmed)
 
+### Real-data validation, Castle-000a0002.umap (2026-09-19, `castle.nav` spike, worker `nav-bsp-re`)
+
+Second validation pass, on the *other* Castle map/pipeline (`Maps/Castle/`, not
+`Maps/Castle_CellBlock/`) — reveals these are two **different terrain-authoring
+conventions**, not one:
+
+- `Castle-000a0002.umap` has **exactly one** `Terrain`-class export (3630,
+  522123 bytes) — not "3 Terrain" as an earlier session's fact sheet claimed
+  for this tile (see `docs/reverse-engineering/findings/bsp-model-polys-serialize.md`
+  for the contradiction note). It has `NumSectionsX=NumSectionsY=5` and
+  `NumPatchesX=NumPatchesY=100` (a full 100×100-patch terrain, not 20×20).
+  **`NumSectionsX * NumSectionsY = 25` exactly matches this tile's
+  `TerrainComponent` export count (25)** — this resolves the "why multiple
+  TerrainComponents" question directly: they are spatial/LOD-culling
+  partitions of **one** `Terrain` actor's data, driven by `NumSectionsX/Y`,
+  not multiple separate terrain actors. `Castle_CellBlock` apparently uses
+  the *other* convention instead — 25 separate small (20×20-patch) `Terrain`
+  actors, one per grid cell, no `TerrainComponents` subdivision needed. A
+  decoder must walk **every** `Terrain`-class export in a chunk regardless
+  of count and treat each independently; do not assume a fixed count per
+  chunk.
+- **Bug found and fixed in the property-tag skip step**: a naive property
+  walker that special-cases `BoolProperty` (4-byte inline value, `size==0`)
+  correctly, but does NOT special-case `ArrayProperty`'s declared `size` as
+  covering its *entire* nested content (ignore the `ue3-package-format.md`
+  note about an `ArrayProperty` extra 8-byte inner-type FName tag — that
+  extra tag does not apply when reading an array as a raw `size`-byte blob;
+  it only matters for a parser that recurses element-by-element. A raw
+  byte-skip using the tag's declared `size` field does NOT need it and
+  adding it *breaks* alignment). With that fixed, the whole 1620-byte
+  property stream (`bIsOverridingLightResolution`, `Layers`(1127B blob),
+  `TerrainComponents`(104B blob), `NumSectionsX/Y`, `NumVerticesX/Y`,
+  `NumPatchesX/Y`, `AlphaXSize/YSize`, `AlphaMapStyle`, `Tag`, `Location`)
+  parsed cleanly to a single outer `None` at byte 1664 — the earlier
+  "first None is inside Layers, use the last one" GOTCHA turned out to be
+  specific to a *recursive* parser that walks into `Layers`' nested tag
+  sub-streams; a flat byte-skip parser (jump by the tag's declared `size`)
+  never sees the inner `None`s at all and needs no special-casing.
+- Trailer walk was byte-exact: `Heights.Num=10201` (=101×101=`NumVerticesX*Y`
+  exactly), `InfoData.Num=10201`, `AlphaXSize/YSize` binary copies both
+  matched the property values (404/404), `WeightedTextureMaps.Num=3` (not
+  always 1 — this tile has 3 texture layers), each `WTM[i].Num=163216`
+  (=404×404=`AlphaXSize*AlphaYSize` exactly, all 3), `WeightMapTextures.Num=0`.
+  Consumed 521959 of 522123 bytes; the remaining 164 bytes are the
+  lighting-GUID/foliage trailer (not decoded, not needed — same as the
+  152-byte trailer on the smaller Castle_CellBlock sample; the size
+  difference is expected version/content variance, not a layout error).
+- Heights are genuinely non-flat: 10201 samples, 5149 distinct `u16` values,
+  range 44226–54199 (not the `0x8000`-centered flat data the
+  Castle_CellBlock worked example showed) — real terrain shape, plausible.
+- **Could not close the coordinate cross-check** (decoded height vs. a known
+  world-8 outdoor point) — no world-8 respawner or spawn-point row in
+  `db/resources/` falls inside this chunk's footprint (the 4 world-8
+  respawners in `db/resources/Worlds/Seed/respawners.sql` all sit at
+  X∈[345,800], Z∈[513,991], outside this chunk's ~X∈[200,300)/Z∈[1000,1100)
+  range). `Castle-000a0002.umap` is one of the two *interior* tiles named in
+  the campaign's established facts, and its terrain height data may
+  represent a basement/ground-cap plane beneath the BSP interior rather
+  than a walkable outdoor surface — genuinely unresolved, not just
+  unattempted. Needs an outdoor Castle tile + a matching seed coordinate to
+  close.
+
 **Why:** Unblocks issue #46 navmesh extraction pipeline — UTerrain binary layout was the blocking unknown at 55% confidence.
+
+**How to apply:** When implementing `terrain.rs`, use a flat byte-skip
+property parser (jump by each tag's declared `size`, no `ArrayProperty`
+special-casing needed) rather than a recursive one, and walk every
+`Terrain`-class export found in a chunk independently — do not assume a
+fixed per-chunk count or a fixed patch-grid size (20×20 and 100×100 are
+both attested).
 
 **How to apply:** When implementing `terrain.rs` in the navmesh extractor, use this exact sequence; particularly the LAST-None-scan for the outer terminator and the AlphaXSize/AlphaYSize binary-copy consume step.

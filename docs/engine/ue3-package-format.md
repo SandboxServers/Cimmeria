@@ -17,7 +17,15 @@ deviates from stock in several places, and every deviation below cost real time
 to find by staring at bytes. Read this before pointing a stock-UE3 parser at an
 SGW package.
 
-**Build identifier**: `file_ver = 486`, `licensee_ver = 6`.
+**Build identifier**: `file_ver = 486`, `licensee_ver = 6` (this document's
+source sample). **Note**: a separate QA `.umap` sample (`Castle-000a0002.umap`,
+used by the `castle.nav` spike, issue #46) reads `licensee_ver = 8` — both
+values are apparently in circulation across SGW's cooked content. The wire
+*format* itself is identical either way; only a handful of `Ar.Ver()`
+(Epic-version, not licensee-version) gate constants in native `Serialize`
+overrides depend on version, and both samples share `file_ver = 486`. See
+[`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md)
+for the `Model`/`Polys` cross-check that surfaced this.
 
 > **Provenance.** These findings come from a 2026 effort to splice actor +
 > component clusters from the shipped 8293 beta build into the QA build the
@@ -215,11 +223,24 @@ understanding above, not merely a tooling limitation.
 | What is in the component's 594-byte suffix? | Likely cover-slot geometry — slot positions and fire-link references. If it references other exports by index, any relocation that copies it verbatim silently corrupts those references. |
 | Does `Level` hold post-`Actors` references needing patching? | After `Actors[]` come URL, Model, ModelComponents, GameSequences, `NavListStart`, `CoverListStart`, `CoverListEnd`. SGW's cover-linkage data specifically is undecoded. |
 
+**Resolved** (2026-09-19, issue #46): the `Model` (BSP) export format —
+`UModel::Serialize`'s full field order and sizes, `FBspNode`/`FBspSurf`
+layouts, and whether cooked packages strip `Polys` (they don't) — is now
+documented in
+[`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md).
+That was previously an open question for this document's scope too (a
+`Model` export's serial data is exactly the kind of "variable-length
+trailer" this document otherwise catalogs) but is substantial enough to
+warrant its own finding doc rather than a section here.
+
 ## Related documents
 
 - [`crates/upk-objects/`](../../crates/upk-objects/) — the live Rust
   deserializers for UE3 objects in these packages (`StaticMesh`, `Texture2D`,
   bulk data, cross-package export index).
+- [`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md) —
+  `UModel`/`UPolys`/`FBspNode`/`FBspSurf`/`FPoly` binary layout, byte-exact
+  validated against real package data.
 - [cooked-data-pak-format.md](cooked-data-pak-format.md) — BigWorld's `.pak`
   resource format. Different format, different pipeline; do not confuse them.
 - [cover-system.md](../reverse-engineering/findings/cover-system.md) — what the

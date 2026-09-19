@@ -40,7 +40,7 @@ Recast wrapper later if it buys anything.
 | 1.1 — crate scaffold | **shipped** — modules `chunk_id`, `geometry`, `obj`, `umap`, `nav_roundtrip` |
 | 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output); archetype-based actors deferred |
 | 1.3 — Terrain decoder | follow-up (recipe in `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`) |
-| 1.4 — BSP `Model` / `Polys` decoder | follow-up (needs Ghidra trace) |
+| 1.4 — BSP `Model` / `Polys` decoder | follow-up — Ghidra trace **done**, layout byte-exact validated against real `Castle-000a0002.umap` data; recipe in `docs/reverse-engineering/findings/bsp-model-polys-serialize.md`. `Polys` confirmed NOT stripped in cooked packages. Implementation (`model.rs` in `crates/upk-objects`) not yet written |
 | 2 — NavBuilder rebuild + Castle_CellBlock acceptance | follow-up |
 | 3 — Recast tuning (`cs=0.15`, `ch=0.1`, `agentClimb=0.5`) | follow-up |
 | 4 — Roll out to remaining 23 maps | follow-up |
@@ -93,10 +93,24 @@ bundle is missing.
   as raw UE3 cm and trusts NavBuilder to swizzle, but **the cube
   round-trip described in Phase 0.3 of the deep dive has not been run
   yet** — flagged here for the next implementer.
-- **`Terrain` binary trailer** — recipe is documented at 92% confidence
-  in agent memory but has not been exercised against a real export.
-- **`Model` / `Polys` BSP decoder** — confidence ~50%, needs Ghidra
-  trace of `UModel::Serialize`. Deferred.
+- **`Terrain` binary trailer** — recipe now validated (~96% confidence) on
+  two real exports across two different maps (`Castle_CellBlock` and
+  `Castle`); see the "Appendix: Terrain recipe real-data validation"
+  section of `docs/reverse-engineering/findings/bsp-model-polys-serialize.md`.
+  One property-tag-skip bug found and fixed. A decoder must walk every
+  `Terrain`-class export per chunk independently — count and patch-grid
+  size both vary by map (20×20/25-actors vs. 100×100/1-actor-with-25-
+  components observed). The height-vs-known-outdoor-point coordinate
+  cross-check remains open (no matching seed point found in the interior
+  tile sampled).
+- **`Model` / `Polys` BSP decoder** — layout confidence now HIGH (byte-exact
+  validated against real `Castle-000a0002.umap` data); see
+  `docs/reverse-engineering/findings/bsp-model-polys-serialize.md` for the
+  full field tables and decoder recipe. Implementation still deferred — this
+  is now a coding task, not a research task. Note: the persistent level's
+  own `Model` (compiled CSG world geometry) and each `Brush`/`TriggerVolume`
+  actor's individual `Model` are separate; only `Brush` (not `TriggerVolume`)
+  actors' geometry should be added on top of the persistent-level `Model`.
 
 ## Testing
 
