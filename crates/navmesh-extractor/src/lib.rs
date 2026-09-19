@@ -31,6 +31,8 @@
 //! is wired into [`extract_map`] as a `// TODO:` marker.
 
 pub mod chunk_id;
+pub mod coverage;
+pub mod floor_probe;
 pub mod geometry;
 pub mod nav_components;
 pub mod nav_roundtrip;
@@ -40,6 +42,8 @@ pub mod transform;
 pub mod umap;
 
 use std::path::Path;
+
+use crate::coverage::{ChunkCoverage, MapCoverage};
 
 /// Errors produced by the extractor.
 #[derive(Debug, thiserror::Error)]
@@ -110,14 +114,113 @@ pub fn extract_map(
     output_dir: &Path,
     index: Option<&cimmeria_upk_objects::PackageIndex>,
 ) -> Result<()> {
+    extract_map_with_report(
+        map_dir,
+        output_dir,
+        ExtractOptions {
+            index,
+            ..Default::default()
+        },
+    )
+    .map(|_| ())
+}
+
+/// Knobs for [`extract_map_with_report`].
+///
+/// A struct rather than four positional arguments because three of the
+/// four are optional and one of them (`combined_obj`) is easy to get
+/// dangerously wrong — see its doc.
+// No `Debug`: `PackageIndex` doesn't implement it, and a 2.8M-entry
+// index is not something you want in a log line anyway.
+#[derive(Default, Clone, Copy)]
+pub struct ExtractOptions<'a> {
+    /// Cross-package export index used to resolve `StaticMeshActor` →
+    /// `StaticMesh` references. `None` runs in degraded mode: actors
+    /// are walked and counted, but no triangles are emitted.
+    pub index: Option<&'a cimmeria_upk_objects::PackageIndex>,
+    /// Keep only chunks whose filename contains this substring
+    /// (case-insensitive) — useful for iterating on one interior tile
+    /// without re-walking 144 chunks.
+    pub chunk_filter: Option<&'a str>,
+    /// Where to write the single whole-map OBJ, if anywhere. Default
+    /// `None`: no combined file.
+    ///
+    /// **It must not land in `output_dir`.** NavBuilder's `chunked`
+    /// mode globs `*.obj` and derives each file's chunk bounds from a
+    /// `<hex8>o` stem; a file that doesn't match leaves the bounds
+    /// uninitialised, the build dies with "Failed to create
+    /// heightfield", nothing is written — and NavBuilder still exits 0.
+    /// [`extract_map_with_report`] rejects a path inside `output_dir`
+    /// rather than let that happen silently.
+    pub combined_obj: Option<&'a Path>,
+}
+
+/// [`extract_map`] plus a machine-readable per-chunk coverage report.
+///
+/// The returned [`MapCoverage`] answers the question the phase table
+/// can't: how many `StaticMeshActor`s resolved, why the rest didn't, and
+/// how many exports of classes we *don't* decode (Terrain, BSP,
+/// BlockingVolume, …) are sitting in each chunk.
+pub fn extract_map_with_report(
+    map_dir: &Path,
+    output_dir: &Path,
+    opts: ExtractOptions<'_>,
+) -> Result<MapCoverage> {
+    let ExtractOptions {
+        index,
+        chunk_filter,
+        combined_obj,
+    } = opts;
+    let started = std::time::Instant::now();
     tracing::info!(map_dir = %map_dir.display(), output_dir = %output_dir.display(), "extract_map: starting");
+
+    if let Some(combined) = combined_obj {
+        if combined.parent() == Some(output_dir) {
+            return Err(ExtractError::Other(format!(
+                "combined OBJ {} would sit in the per-chunk output directory; \
+                 NavBuilder's chunked mode then fails to create a heightfield \
+                 and exits 0 with no output. Pick a directory outside {}.",
+                combined.display(),
+                output_dir.display()
+            )));
+        }
+    }
 
     if !output_dir.exists() {
         std::fs::create_dir_all(output_dir)?;
     }
 
-    let chunks = umap::enumerate_chunks(map_dir)?;
-    tracing::info!(count = chunks.len(), "extract_map: enumerated chunks");
+    let all_chunks = umap::enumerate_chunks(map_dir)?;
+    let enumerated = all_chunks.len();
+    let filter_lower = chunk_filter.map(|f| f.to_lowercase());
+    let chunks: Vec<_> = all_chunks
+        .into_iter()
+        .filter(|p| match &filter_lower {
+            None => true,
+            Some(f) => p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.to_lowercase().contains(f.as_str()))
+                .unwrap_or(false),
+        })
+        .collect();
+    tracing::info!(
+        enumerated,
+        selected = chunks.len(),
+        "extract_map: enumerated chunks"
+    );
+
+    let map_name = map_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("map")
+        .to_string();
+
+    let mut report = MapCoverage {
+        map_name,
+        chunks_filtered_out: enumerated - chunks.len(),
+        ..Default::default()
+    };
 
     // Combined OBJ accumulator — emitted alongside the per-chunk files
     // so the NavBuilder operator can pick `whole` mode if they want to
@@ -125,11 +228,6 @@ pub fn extract_map(
     // boundaries. The filename `<mapname>.obj` mirrors what the legacy
     // C++ extractor produced.
     let mut combined_soups: Vec<geometry::TriangleSoup> = Vec::new();
-
-    let mut chunks_with_geometry = 0usize;
-    let mut total_triangles = 0usize;
-    let mut total_actors_resolved = 0usize;
-    let mut total_actors_unresolved = 0usize;
 
     for chunk_path in chunks {
         let id = chunk_id::ChunkId::from_umap_path(&chunk_path)?;
@@ -141,16 +239,18 @@ pub fn extract_map(
             "extract_map: processing chunk"
         );
 
+        // One open per chunk: the LZO decompression is the expensive
+        // part, and both the class census and the geometry walk need it.
+        let pkg = cimmeria_upk::Package::open(&chunk_path)?;
+        let class_census = coverage::census_export_classes(&pkg);
+        let exports_total = pkg.exports.len() as u64;
+
         // Phase 1.2: StaticMesh extraction.
-        let mut extraction = staticmesh::extract_chunk(&chunk_path, index)?;
+        let mut extraction = staticmesh::extract_chunk_from_package(&pkg, index);
         // Tag the soup with a group so NavBuilder can debug-print which
         // chunk a triangle came from. `Chunk_*` keeps it distinct from
         // the reserved `Terrain_*` prefix NavBuilder skips.
         extraction.soup.group = Some(format!("Chunk_{:08x}", id.raw()));
-
-        total_actors_resolved += extraction.actors_resolved;
-        total_actors_unresolved += extraction.actors_unresolved;
-        total_triangles += extraction.triangles_emitted;
 
         // Phase 1.3: Terrain extraction. For each `Terrain` export,
         // parse the tagged-property block, then decode the binary
@@ -161,6 +261,40 @@ pub fn extract_map(
         // TODO: wire `Terrain` exports into `extraction.soup` (Phase 1.3).
 
         // Phase 1.4: BSP Model/Polys — deferred; needs Ghidra trace.
+
+        let mut row = ChunkCoverage {
+            chunk: chunk_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("?")
+                .to_string(),
+            chunk_id: id.raw(),
+            position_x: id.position_x(),
+            position_z: id.position_z(),
+            exports_total,
+            actors_total: extraction.actors_total as u64,
+            actors_resolved: extraction.actors_resolved as u64,
+            skips: extraction.skips,
+            triangles_emitted: extraction.triangles_emitted as u64,
+            obj_bytes: 0,
+            archetype_actors: extraction.archetype_actors,
+            archetype_actors_resolved: extraction.archetype_actors_resolved,
+            prefab_outer_actors: extraction.prefab_outer_actors,
+            class_census,
+        };
+
+        if !row.is_balanced() {
+            // Loud on purpose: an unbalanced row means an actor left the
+            // walker without a tally, so every "coverage = N%" number
+            // downstream is understated by an unknown amount.
+            tracing::warn!(
+                chunk = %row.chunk,
+                actors_total = row.actors_total,
+                actors_resolved = row.actors_resolved,
+                skips_total = row.skips.total(),
+                "extract_map: coverage accounting does not balance"
+            );
+        }
 
         if extraction.soup.triangle_count() == 0 {
             // Empty chunks are skipped entirely — no OBJ written. The
@@ -175,12 +309,13 @@ pub fn extract_map(
                 actors_unresolved = extraction.actors_unresolved,
                 "extract_map: chunk produced no geometry; skipping OBJ write"
             );
+            report.chunks.push(row);
             continue;
         }
 
         let obj_path = output_dir.join(id.obj_filename());
         obj::write_obj(&obj_path, &extraction.soup)?;
-        chunks_with_geometry += 1;
+        row.obj_bytes = std::fs::metadata(&obj_path).map(|m| m.len()).unwrap_or(0);
 
         tracing::info!(
             chunk_id = format!("{:08x}", id.raw()),
@@ -191,36 +326,42 @@ pub fn extract_map(
             "extract_map: wrote chunk OBJ"
         );
 
+        report.chunks.push(row);
         combined_soups.push(extraction.soup);
     }
 
-    if !combined_soups.is_empty() {
-        // Combined OBJ is named after the map directory (lowercase) so a
-        // CI run on `Castle_CellBlock/` produces `castle_cellblock.obj`,
-        // matching the historical naming convention from
-        // `data/spaces/*.nav`.
-        let map_name = map_dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("map")
-            .to_lowercase();
-        let combined_path = output_dir.join(format!("{map_name}.obj"));
-        obj::write_combined_obj(&combined_path, &combined_soups)?;
+    if let (Some(combined_path), false) = (combined_obj, combined_soups.is_empty()) {
+        // Opt-in only, and never into `output_dir` — the guard at the
+        // top of this function enforces that, because a stray `*.obj`
+        // there silently kills NavBuilder's chunked build.
+        if let Some(parent) = combined_path.parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+        obj::write_combined_obj(combined_path, &combined_soups)?;
+        report.combined_obj_bytes = std::fs::metadata(combined_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
         tracing::info!(
             path = %combined_path.display(),
-            chunks = chunks_with_geometry,
-            triangles = total_triangles,
+            chunks = report.chunks_with_geometry(),
+            bytes = report.combined_obj_bytes,
             "extract_map: wrote combined OBJ"
         );
     }
 
+    report.elapsed_secs = started.elapsed().as_secs_f64();
+
+    let totals = report.totals();
     tracing::info!(
-        chunks_with_geometry,
-        total_triangles,
-        total_actors_resolved,
-        total_actors_unresolved,
+        chunks_with_geometry = report.chunks_with_geometry(),
+        total_triangles = totals.triangles_emitted,
+        total_actors_resolved = totals.actors_resolved,
+        total_actors_unresolved = totals.skips.total(),
+        elapsed_secs = report.elapsed_secs,
         "extract_map: done"
     );
 
-    Ok(())
+    Ok(report)
 }

@@ -15,46 +15,85 @@
 //!   tokenises on `0123456789-./`), but the simplest emitter writes
 //!   bare indices.
 //!
-//! # Axis convention — known unknown
+//! # Axis convention — confirmed
 //!
-//! NavBuilder's `loadOBJ` does the swizzle on read:
+//! NavBuilder's `loadOBJ` swizzles on read (`mesh.cpp:104-107`):
 //!
 //! ```text
 //! v.x = obj_z / 100.0;
-//! v.y = obj_y / 100.0;
+//! v.y = obj_y / 100.0;   // BigWorld up
 //! v.z = obj_x / 100.0;
 //! ```
 //!
-//! Two pieces of intent are buried in that pattern:
+//! The target is `bw = (ue.Y, ue.Z, ue.X) / 100` — calibrated against
+//! two ground-truth actors in
+//! `docs/analysis/castle-rebuild/worknotes/ca05.md` §"Axis/scale
+//! calibration", and independently confirmed by this crate's floor
+//! probe against Castle geometry. Solving `loadOBJ` for that target,
+//! the OBJ must be written as:
 //!
-//! 1. The `/ 100.0` converts UE3 centimetres to BW post-divide units
-//!    (`100 cm == 1 BW unit`).
-//! 2. The `(x, y, z) → (z, y, x)` rearrangement flips between UE3's
-//!    Z-up coordinate system and BW's Y-up.
+//! ```text
+//! v <ue.X> <ue.Z> <ue.Y>
+//! ```
 //!
-//! The right behaviour for the extractor is therefore to write OBJ
-//! lines as `v <ue3_x_cm> <ue3_y_cm> <ue3_z_cm>` — i.e., emit raw UE3
-//! cm coords and let NavBuilder do the swizzle. That keeps the OBJ
-//! file readable by any UE3-aware tool and avoids double-swizzling.
+//! i.e. UE3 cm with **Y and Z swapped** — see [`ue3_to_obj`]. Emitting
+//! raw `(ue.X, ue.Y, ue.Z)` feeds BigWorld's up axis from UE3's
+//! horizontal Y: measured end to end through the real NavBuilder, that
+//! rasterises every floor as a wall and produces an empty 72-byte
+//! `.nav` with `npolys = 0`.
 //!
-//! **However**, the original C++ map exporter that produced the now-
-//! defunct OBJs is no longer in the tree, so the cube-round-trip
-//! smoke described in Phase 0.3 of the deep dive (emit a known cube,
-//! run NavBuilder, compare bmin/bmax) is the only way to confirm
-//! "no double swizzle" empirically. **Phase 0.3 is deferred** to a
-//! follow-up PR — flagged here so a future implementer doesn't miss
-//! it.
+//! # Line endings — CRLF, deliberately
+//!
+//! NavBuilder's face parser loops `while (pos < line.length() - 1)`
+//! (`mesh.cpp:115`). With LF-only endings `std::getline` hands it a
+//! line with no trailing character, so the loop exits one character
+//! early and **drops the last index of any `f` line whose final token
+//! is a single digit**. Measured on one fixture: 14 polys with CRLF, 6
+//! with LF. The writers below therefore emit `\r\n` explicitly rather
+//! than using `writeln!`, on every platform.
+//!
+//! # Winding — verbatim, never reversed
+//!
+//! `loadOBJ` pushes each face as `(faces[i], faces[i-1], faces[0])`
+//! (`mesh.cpp:123-128`) — i.e. it **reverses** the OBJ's index order
+//! before Recast sees it. Combined with the even-permutation axis
+//! swizzle above, Recast's triangle normal is the negation of the
+//! UE3-order normal: `N_recast.y = -n_ue3.z`. Keeping the kDOP
+//! collision list's native index order is therefore what makes floors
+//! walkable; reversing it here would make the roof walkable instead.
+//! [`crate::floor_probe`] models the same reversal so its notion of
+//! "walkable" matches Recast's.
 
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 use crate::geometry::TriangleSoup;
+use crate::ExtractError;
+
+/// Convert a UE3-cm vertex into the OBJ coordinate order NavBuilder
+/// expects: swap Y and Z, leave the magnitudes in centimetres (the
+/// `/ 100` happens inside `loadOBJ`).
+///
+/// Self-inverse — [`obj_to_ue3`] is the same swap under a name that
+/// says which direction the caller means.
+pub fn ue3_to_obj(v: [f32; 3]) -> [f32; 3] {
+    [v[0], v[2], v[1]]
+}
+
+/// Convert an OBJ vertex written by [`write_obj`] back into UE3 cm.
+pub fn obj_to_ue3(v: [f32; 3]) -> [f32; 3] {
+    [v[0], v[2], v[1]]
+}
+
+/// OBJ line terminator. See the module-level "Line endings" note — LF
+/// silently loses faces in NavBuilder's parser.
+const EOL: &str = "\r\n";
 
 /// Write a single triangle soup to `path` as a Wavefront OBJ.
 ///
-/// Vertex coordinates are written as-is — see the module-level
-/// "Axis convention" note. The chunk's group line (if any) is emitted
-/// before any geometry.
+/// The soup's vertices are UE3 cm; they are swizzled through
+/// [`ue3_to_obj`] on the way out. The chunk's group line (if any) is
+/// emitted before any geometry.
 pub fn write_obj(path: &Path, soup: &TriangleSoup) -> crate::Result<()> {
     let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
@@ -77,10 +116,14 @@ pub fn write_combined_obj(path: &Path, soups: &[TriangleSoup]) -> crate::Result<
 /// Lower-level emitter — writes into any `Write`. Exposed so tests
 /// can serialise into a `Vec<u8>` without touching the filesystem.
 pub fn write_obj_into<W: Write>(w: &mut W, soups: &[TriangleSoup]) -> crate::Result<()> {
-    writeln!(w, "# Generated by cimmeria-navmesh-extractor")?;
-    writeln!(
+    write!(w, "# Generated by cimmeria-navmesh-extractor{EOL}")?;
+    write!(
         w,
-        "# Vertex coordinates are UE3 cm; NavBuilder swizzles on read."
+        "# Vertices are UE3 cm with Y/Z swapped: v <ue.X> <ue.Z> <ue.Y>.{EOL}"
+    )?;
+    write!(
+        w,
+        "# NavBuilder's loadOBJ then yields bw = (ue.Y, ue.Z, ue.X) / 100.{EOL}"
     )?;
 
     // Vertex indices in OBJ are 1-based AND continuous across groups,
@@ -89,17 +132,27 @@ pub fn write_obj_into<W: Write>(w: &mut W, soups: &[TriangleSoup]) -> crate::Res
     let mut vert_offset: u32 = 0;
     for soup in soups {
         if let Some(group) = &soup.group {
-            writeln!(w, "o {group}")?;
+            // NavBuilder drops every group whose name starts with
+            // `Terrain_` (mesh.cpp:88-96), so a chunk group must never
+            // be named that way or its geometry vanishes silently.
+            debug_assert!(
+                !group.starts_with("Terrain_"),
+                "group {group:?} would be skipped wholesale by NavBuilder"
+            );
+            write!(w, "o {group}{EOL}")?;
         }
         for v in &soup.vertices {
             // OBJ uses standard ASCII floats with `.` as the radix
             // point — same as Rust's `Display for f32`.
-            writeln!(w, "v {} {} {}", v[0], v[1], v[2])?;
+            let o = ue3_to_obj(*v);
+            write!(w, "v {} {} {}{EOL}", o[0], o[1], o[2])?;
         }
         for f in &soup.faces {
-            writeln!(
+            // Index order is emitted verbatim — see the module-level
+            // "Winding" note.
+            write!(
                 w,
-                "f {} {} {}",
+                "f {} {} {}{EOL}",
                 f[0] + vert_offset,
                 f[1] + vert_offset,
                 f[2] + vert_offset
@@ -110,13 +163,136 @@ pub fn write_obj_into<W: Write>(w: &mut W, soups: &[TriangleSoup]) -> crate::Res
     Ok(())
 }
 
+/// Read an OBJ file into a [`TriangleSoup`] **in OBJ coordinates** —
+/// exactly the numbers on the `v` lines, no swizzle applied.
+///
+/// Use [`read_obj_as_ue3`] unless you specifically want the file's own
+/// coordinate order.
+pub fn read_obj(path: &Path) -> crate::Result<TriangleSoup> {
+    let file = std::fs::File::open(path)?;
+    read_obj_from(BufReader::new(file))
+}
+
+/// Read an OBJ written by [`write_obj`] and undo the [`ue3_to_obj`]
+/// swizzle, so the soup comes back in UE3 cm.
+///
+/// This is what the floor probe wants: it lets the probe run against
+/// the *artifact NavBuilder will actually consume* while keeping its
+/// own input contract ("triangles in UE3 cm, emitted index order")
+/// unchanged.
+pub fn read_obj_as_ue3(path: &Path) -> crate::Result<TriangleSoup> {
+    let mut soup = read_obj(path)?;
+    for v in &mut soup.vertices {
+        *v = obj_to_ue3(*v);
+    }
+    Ok(soup)
+}
+
+/// Reader over any `BufRead`, so tests can feed a `&[u8]`.
+///
+/// Tolerances, in the order a real OBJ will hit them:
+///
+/// - `#` comments and unrecognised keywords (`vt`, `vn`, `usemtl`, `s`,
+///   `g`) are skipped. `o` lines are kept only as the soup's group name;
+///   a multi-group file collapses into one soup, which is what the probe
+///   wants.
+/// - Face vertex tokens may carry `/<vt>/<vn>` suffixes — only the part
+///   before the first `/` is read.
+/// - Polygons with more than three vertices are fan-triangulated.
+/// - Negative (relative) vertex indices are resolved against the count
+///   read so far, per the OBJ spec.
+///
+/// A face referencing a vertex that does not exist is a hard error
+/// rather than a silent drop: a truncated OBJ would otherwise probe as
+/// "no floor here" and get misread as evidence about the map.
+pub fn read_obj_from<R: BufRead>(reader: R) -> crate::Result<TriangleSoup> {
+    let mut vertices: Vec<[f32; 3]> = Vec::new();
+    let mut soup = TriangleSoup::new(None);
+
+    for (lineno, line) in reader.lines().enumerate() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut tokens = line.split_whitespace();
+        let Some(keyword) = tokens.next() else {
+            continue;
+        };
+        match keyword {
+            "v" => {
+                let coords: Vec<f32> = tokens.filter_map(|t| t.parse::<f32>().ok()).collect();
+                if coords.len() < 3 {
+                    return Err(ExtractError::Other(format!(
+                        "OBJ line {}: malformed vertex {line:?}",
+                        lineno + 1
+                    )));
+                }
+                vertices.push([coords[0], coords[1], coords[2]]);
+            }
+            "o" if soup.group.is_none() => {
+                soup.group = tokens.next().map(|s| s.to_string());
+            }
+            "f" => {
+                let idx: Vec<usize> = tokens
+                    .map(|t| resolve_face_index(t, vertices.len(), lineno + 1))
+                    .collect::<crate::Result<_>>()?;
+                if idx.len() < 3 {
+                    return Err(ExtractError::Other(format!(
+                        "OBJ line {}: face with {} vertices",
+                        lineno + 1,
+                        idx.len()
+                    )));
+                }
+                // Fan-triangulate: (0,1,2), (0,2,3), ...
+                for w in 1..idx.len() - 1 {
+                    soup.push([vertices[idx[0]], vertices[idx[w]], vertices[idx[w + 1]]]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(soup)
+}
+
+/// Turn one `f` token into a 0-based index into the vertex list.
+fn resolve_face_index(token: &str, vertex_count: usize, lineno: usize) -> crate::Result<usize> {
+    let head = token.split('/').next().unwrap_or(token);
+    let raw: i64 = head
+        .parse()
+        .map_err(|_| ExtractError::Other(format!("OBJ line {lineno}: bad face index {token:?}")))?;
+    let zero_based = if raw > 0 {
+        raw as usize - 1
+    } else if raw < 0 {
+        // Relative index: -1 is the most recently declared vertex.
+        let back = (-raw) as usize;
+        vertex_count.checked_sub(back).ok_or_else(|| {
+            ExtractError::Other(format!("OBJ line {lineno}: index {raw} underflows"))
+        })?
+    } else {
+        return Err(ExtractError::Other(format!(
+            "OBJ line {lineno}: face index 0 is not valid (OBJ is 1-based)"
+        )));
+    };
+    if zero_based >= vertex_count {
+        return Err(ExtractError::Other(format!(
+            "OBJ line {lineno}: face index {raw} exceeds the {vertex_count} vertices declared so far"
+        )));
+    }
+    Ok(zero_based)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::geometry::TriangleSoup;
 
+    /// Vertices go out as `v <ue.X> <ue.Z> <ue.Y>`. Emitting raw
+    /// `(X, Y, Z)` instead makes NavBuilder rasterise every floor as a
+    /// wall and emit an empty 72-byte `.nav`.
     #[test]
-    fn emits_one_triangle_with_three_vertices() {
+    fn emits_vertices_with_ue3_y_and_z_swapped() {
         let mut soup = TriangleSoup::new(None);
         soup.push([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]);
 
@@ -124,22 +300,65 @@ mod tests {
         write_obj_into(&mut buf, &[soup]).unwrap();
         let s = String::from_utf8(buf).unwrap();
 
-        assert!(s.contains("v 1 2 3\n"));
-        assert!(s.contains("v 4 5 6\n"));
-        assert!(s.contains("v 7 8 9\n"));
-        assert!(s.contains("f 1 2 3\n"));
+        assert!(s.contains("v 1 3 2\r\n"), "{s}");
+        assert!(s.contains("v 4 6 5\r\n"), "{s}");
+        assert!(s.contains("v 7 9 8\r\n"), "{s}");
+        assert!(s.contains("f 1 2 3\r\n"), "{s}");
+    }
+
+    /// Every line must end CRLF. NavBuilder's `f` parser loops
+    /// `while (pos < length - 1)` and silently drops the final index of
+    /// an LF-terminated face line whose last token is one digit.
+    #[test]
+    fn every_emitted_line_ends_crlf() {
+        let mut soup = TriangleSoup::new(Some("Chunk_000a0002".to_string()));
+        soup.push([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]);
+
+        let mut buf = Vec::new();
+        write_obj_into(&mut buf, &[soup]).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+
+        assert!(s.ends_with("\r\n"));
+        for (i, line) in s.split("\r\n").enumerate() {
+            assert!(
+                !line.contains('\n') && !line.contains('\r'),
+                "line {i} has a bare newline: {line:?}"
+            );
+        }
+        // A lone-LF file would have fewer CRLF splits than lines.
+        assert_eq!(
+            s.matches("\r\n").count(),
+            // 3 comments + 1 group + 3 vertices + 1 face
+            8,
+            "{s}"
+        );
+    }
+
+    /// `f 1 2 3` is the exact shape the LF bug eats — the trailing
+    /// index is one character. Pin that the writer never emits it
+    /// without a two-character terminator.
+    #[test]
+    fn single_digit_face_index_still_has_two_trailing_chars() {
+        let mut soup = TriangleSoup::new(None);
+        soup.push([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        let mut buf = Vec::new();
+        write_obj_into(&mut buf, &[soup]).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        let face = s.lines().find(|l| l.starts_with("f ")).unwrap();
+        assert_eq!(face.trim_end_matches('\r'), "f 1 2 3");
+        assert!(s.contains("f 1 2 3\r\n"));
     }
 
     #[test]
     fn emits_group_label_before_geometry() {
-        let mut soup = TriangleSoup::new(Some("Terrain_00000000A".to_string()));
+        let mut soup = TriangleSoup::new(Some("Chunk_00000000A".to_string()));
         soup.push([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 
         let mut buf = Vec::new();
         write_obj_into(&mut buf, &[soup]).unwrap();
         let s = String::from_utf8(buf).unwrap();
 
-        let group_pos = s.find("o Terrain_00000000A").expect("group line present");
+        let group_pos = s.find("o Chunk_00000000A").expect("group line present");
         let first_v = s.find("\nv ").expect("vertex line present");
         assert!(
             group_pos < first_v,
@@ -161,7 +380,120 @@ mod tests {
         write_obj_into(&mut buf, &[a, b]).unwrap();
         let s = String::from_utf8(buf).unwrap();
 
-        assert!(s.contains("f 1 2 3\n"));
-        assert!(s.contains("f 4 5 6\n"));
+        assert!(s.contains("f 1 2 3\r\n"));
+        assert!(s.contains("f 4 5 6\r\n"));
+    }
+
+    #[test]
+    fn ue3_obj_swizzle_is_self_inverse() {
+        let v = [1.0f32, 2.0, 3.0];
+        assert_eq!(ue3_to_obj(v), [1.0, 3.0, 2.0]);
+        assert_eq!(obj_to_ue3(ue3_to_obj(v)), v);
+    }
+
+    // ----- reader -----
+
+    /// `read_obj_from` returns OBJ coordinates verbatim, so a raw
+    /// round-trip comes back Y/Z-swapped. `read_obj_as_ue3` is the one
+    /// that undoes it — see the next test.
+    #[test]
+    fn write_then_read_round_trips_faces_in_obj_coordinates() {
+        let mut soup = TriangleSoup::new(Some("Chunk_000a0002".to_string()));
+        soup.push([[1.5, -2.25, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.5]]);
+        soup.push([[10.0, 11.0, 12.0], [13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]);
+
+        let mut buf = Vec::new();
+        write_obj_into(&mut buf, std::slice::from_ref(&soup)).unwrap();
+        let back = read_obj_from(buf.as_slice()).unwrap();
+
+        assert_eq!(back.triangle_count(), 2);
+        assert_eq!(back.faces, soup.faces);
+        assert_eq!(back.group.as_deref(), Some("Chunk_000a0002"));
+        let expected: Vec<[f32; 3]> = soup.vertices.iter().map(|v| ue3_to_obj(*v)).collect();
+        assert_eq!(back.vertices, expected);
+    }
+
+    #[test]
+    fn read_obj_as_ue3_undoes_the_writer_swizzle() {
+        let mut soup = TriangleSoup::new(None);
+        soup.push([[1.5, -2.25, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.5]]);
+
+        let dir = std::env::temp_dir().join(format!(
+            "cimmeria-obj-roundtrip-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("00000000o.obj");
+        write_obj(&path, &soup).unwrap();
+
+        let back = read_obj_as_ue3(&path).unwrap();
+        assert_eq!(back.vertices, soup.vertices);
+        assert_eq!(back.faces, soup.faces);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reader_skips_comments_normals_and_unknown_keywords() {
+        let src = b"# header\nvt 0 0\nvn 0 1 0\nusemtl foo\ns off\n\
+                    v 0 0 0\nv 1 0 0\nv 0 0 1\nf 1 2 3\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 1);
+        assert_eq!(soup.vertices.len(), 3);
+    }
+
+    #[test]
+    fn reader_strips_slash_suffixes_from_face_tokens() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 0 0 1\nf 1/1/1 2/2/1 3//1\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 1);
+        assert_eq!(soup.vertices[1], [1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn reader_fan_triangulates_a_quad() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nf 1 2 3 4\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 2);
+        // Fan from vertex 0: (0,1,2) then (0,2,3).
+        assert_eq!(soup.vertices[3], [0.0, 0.0, 0.0]);
+        assert_eq!(soup.vertices[4], [1.0, 0.0, 1.0]);
+        assert_eq!(soup.vertices[5], [0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn reader_resolves_negative_relative_indices() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 0 0 1\nf -3 -2 -1\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 1);
+        assert_eq!(soup.vertices[0], [0.0, 0.0, 0.0]);
+        assert_eq!(soup.vertices[2], [0.0, 0.0, 1.0]);
+    }
+
+    /// A truncated OBJ must fail loudly. Silently dropping the face
+    /// would make the floor probe report "no geometry here" for what is
+    /// really a broken file — the exact kind of false negative this
+    /// spike must not produce.
+    #[test]
+    fn reader_errors_on_a_face_index_past_the_vertex_list() {
+        let src = b"v 0 0 0\nv 1 0 0\nf 1 2 3\n";
+        let err = read_obj_from(&src[..]).unwrap_err();
+        assert!(
+            format!("{err}").contains("exceeds"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn reader_errors_on_a_zero_face_index() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 0 0 1\nf 0 1 2\n";
+        assert!(read_obj_from(&src[..]).is_err());
+    }
+
+    #[test]
+    fn reader_errors_on_a_short_vertex_line() {
+        let src = b"v 0 0\n";
+        assert!(read_obj_from(&src[..]).is_err());
     }
 }

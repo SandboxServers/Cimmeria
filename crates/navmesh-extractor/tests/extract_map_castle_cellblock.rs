@@ -27,6 +27,11 @@ fn castle_cellblock_dir() -> PathBuf {
 }
 
 fn try_load_package_index() -> Option<PackageIndex> {
+    // An explicit cache path wins: the index is ~190 MB, so developers
+    // keep it out of the repo tree.
+    if let Ok(p) = std::env::var("CIMMERIA_PACKAGE_INDEX") {
+        return PackageIndex::load(PathBuf::from(p).as_path()).ok();
+    }
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for ancestor in manifest.ancestors().take(10) {
         for name in [
@@ -87,6 +92,18 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
 
     let out_dir = unique_tempdir("cimmeria-navmesh-extract-map");
     extract_map(&map_dir, &out_dir, Some(&index)).expect("extract_map");
+    let combined_dir = unique_tempdir("cimmeria-navmesh-extract-map-combined");
+    let combined_path = combined_dir.join("castle_cellblock.obj");
+    cimmeria_navmesh_extractor::extract_map_with_report(
+        &map_dir,
+        &out_dir,
+        cimmeria_navmesh_extractor::ExtractOptions {
+            index: Some(&index),
+            chunk_filter: None,
+            combined_obj: Some(&combined_path),
+        },
+    )
+    .expect("extract_map_with_report");
 
     // Inventory the output.
     let mut obj_files: Vec<_> = std::fs::read_dir(&out_dir)
@@ -106,41 +123,41 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
                 .unwrap_or(false)
         })
         .count();
-    let combined_objs = obj_files
-        .iter()
-        .filter(|p| {
-            p.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s == "castle_cellblock")
-                .unwrap_or(false)
-        })
-        .count();
-
     eprintln!(
-        "extract_map output: {} total OBJ ({} per-chunk, {} combined)",
+        "extract_map output: {} total OBJ ({} per-chunk)",
         obj_files.len(),
-        chunk_objs,
-        combined_objs
+        chunk_objs
     );
 
-    // We expect SOME per-chunk OBJs (the resolvable subset) and exactly
-    // one combined map-level OBJ.
     assert!(
         chunk_objs >= 5,
         "Expected ≥5 per-chunk OBJ files; got {chunk_objs}"
     );
+
+    // NOTHING but `<hex8>o.obj` may sit in the per-chunk directory.
+    // NavBuilder's chunked mode globs `*.obj` and derives chunk bounds
+    // from the stem; a whole-map `castle_cellblock.obj` next to them
+    // leaves those bounds uninitialised, the build fails with "Failed
+    // to create heightfield", and NavBuilder still exits 0. The
+    // combined OBJ is opt-in and goes to its own directory.
     assert_eq!(
-        combined_objs, 1,
-        "Expected exactly one combined map-level OBJ"
+        obj_files.len(),
+        chunk_objs,
+        "non-chunk OBJ in the per-chunk output dir: {:?}",
+        obj_files
+            .iter()
+            .filter(|p| p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| !(s.len() == 9 && s.ends_with('o')))
+                .unwrap_or(true))
+            .collect::<Vec<_>>()
     );
 
-    // Combined OBJ should be hefty — the dense chunk alone produces
-    // ~85k triangles, and 65 chunks combined will land in the hundreds
-    // of thousands. Cross-check against the file size as a rough proxy:
-    // each triangle line in the OBJ is ~30 bytes (`f a b c\n`), so the
-    // combined OBJ should be at least a few MB.
-    let combined_path = out_dir.join("castle_cellblock.obj");
-    let combined_meta = std::fs::metadata(&combined_path).expect("combined.obj exists");
+    // The opt-in combined OBJ landed in its own directory and is hefty
+    // — the dense chunk alone produces ~85k triangles, and 65 chunks
+    // combined land in the hundreds of thousands.
+    let combined_meta = std::fs::metadata(&combined_path).expect("combined OBJ exists");
     assert!(
         combined_meta.len() >= 1_000_000,
         "Combined OBJ at {} is only {} bytes — extraction may be incomplete",

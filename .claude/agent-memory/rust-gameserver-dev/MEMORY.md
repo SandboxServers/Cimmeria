@@ -26,6 +26,11 @@
 - [concurrent-claude-sessions.md](concurrent-claude-sessions.md) — when other Claude sessions are running on the same repo, use a git worktree under `.claude/worktrees/<slug>/` for branch isolation. Junction-link `external/` into the worktree (`external/` is gitignored).
 - [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha is often NOT an ancestor (the parent rewrote it); find the fork point by message. Cargo.lock re-dirties every build. Use `..` in `Action::` test match arms.
 
+## Navmesh / UE3 geometry export
+
+- [navbuilder-obj-interop.md](navbuilder-obj-interop.md) — **read before touching the OBJ writer or any walkability test.** NavBuilder exits 0 on all four silent-failure traps: axis order (`v ue.X ue.Z ue.Y`), CRLF-only, reversed winding (`N_recast.y = -n_ue3.z`), and a stray `*.obj` in the chunk dir.
+- [castle-staticmesh-coverage.md](castle-staticmesh-coverage.md) — Castle interior floors are BSP; StaticMesh recovers 85% of actors but ~0% of the Interrogation Block floor plane. PrefabInstance doesn't own actors via `Outer`.
+
 ## Wire-format gotchas
 
 - [gm-tail-dispatch-doc-filename-trap.md](gm-tail-dispatch-doc-filename-trap.md) — `client-method-dispatch-table.md` (interface, 0-66ish) vs `cell-method-dispatch-table.md` (full + 109+ GM tail) are DIFFERENT files, easy to cite the wrong one; GM-tail offset counting convention (`index = 109 + K`, count every `<Exposed/>` in def document order); movement-validator per-entity bypass pattern (touch_clock + update_entity_position must both still run on the bypass path).

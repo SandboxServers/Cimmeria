@@ -97,8 +97,17 @@ fn castle_cellblock_walks_static_mesh_actors() {
                 continue;
             }
         };
-        let instances = collect_static_mesh_instances(&pkg);
-        let count = instances.len();
+        let walk = collect_static_mesh_instances(&pkg);
+        // `collect_static_mesh_instances` now returns an `ActorWalk` so
+        // the coverage report can see *why* the rest were skipped; the
+        // resolvable-instance count this test asserts on is unchanged.
+        assert_eq!(
+            walk.actors_total,
+            walk.instances.len() as u64 + walk.skips.total(),
+            "actor walk does not balance for {}",
+            chunk_path.display()
+        );
+        let count = walk.instances.len();
         total_actors += count;
         if count > 0 {
             chunks_with_actors += 1;
@@ -141,6 +150,11 @@ fn castle_cellblock_walks_static_mesh_actors() {
 /// into the project root. Returns `None` if absent — tests that need
 /// the index then self-skip.
 fn try_load_package_index() -> Option<cimmeria_upk_objects::PackageIndex> {
+    // An explicit cache path wins: the index is ~190 MB, so developers
+    // keep it out of the repo tree.
+    if let Ok(p) = std::env::var("CIMMERIA_PACKAGE_INDEX") {
+        return cimmeria_upk_objects::PackageIndex::load(PathBuf::from(p).as_path()).ok();
+    }
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for ancestor in manifest.ancestors().take(10) {
         for name in [
