@@ -43,7 +43,6 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Live-DB regression guards | 224 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
-
 ## Document Map
 
 ### Top-Level Documents
@@ -442,7 +441,7 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 | [respawn-lifecycle.md](reverse-engineering/findings/respawn-lifecycle.md) | — | Respawn lifecycle: death → respawn-point selection → placement | HIGH |
 | [animation-system.md](reverse-engineering/findings/animation-system.md) | — | Animation system: sequence lookup, combat/weapon animation triggers | HIGH |
 | [minigame-architecture.md](reverse-engineering/findings/minigame-architecture.md) | — | Minigame architecture from the client binary: SmartFoxServer session, per-game flow | HIGH |
-| [stargate-dhd-state-machine.md](reverse-engineering/findings/stargate-dhd-state-machine.md) | — | Stargate DHD state machine; finding that `onDHDReply` is a comms channel, not a travel event | HIGH |
+| [stargate-dhd-state-machine.md](reverse-engineering/findings/stargate-dhd-state-machine.md) | — | Stargate DHD state machine; `onDHDReply` subscriber, declaration, and Rust emission audit | HIGH / MEDIUM |
 | [dialog-portrait-lookup.md](reverse-engineering/findings/dialog-portrait-lookup.md) | — | Dialog portrait and speaker-name lookup path | HIGH |
 | [client-instrumentation-hookpoints.md](reverse-engineering/findings/client-instrumentation-hookpoints.md) | — | Client instrumentation hookpoints for from-scratch telemetry | HIGH |
 | [client-wire-emit-suppression.md](reverse-engineering/findings/client-wire-emit-suppression.md) | — | Client-side wire-emit suppression cases (heal-focus, P90 swap) | HIGH |
@@ -496,7 +495,6 @@ Early-project RE analysis from before the reorganised `docs/` tree and the Rust 
 | [atrealoader-config.md](technical/atrealoader-config.md) | AtreaLoader configuration format |
 | [atrearl-loader.md](technical/atrearl-loader.md) | AtreaRL.dll — the runtime patcher injected into SGW.exe (hooks, sniffer, two-gate activation) |
 
-
 ## Key Data Sources
 
 The most important files and directories for RE work, located relative to the project root.
@@ -516,7 +514,6 @@ The most important files and directories for RE work, located relative to the pr
 | BigWorld reference | *(external)* | BigWorld 1.9.1 + 2.0.1 source for protocol/architecture reference |
 | sgw.exe Ghidra project | *(external)* | The primary RE target, loaded in Ghidra |
 
-
 ## Phase Roadmap
 
 | Phase | Focus | Status |
@@ -529,7 +526,6 @@ The most important files and directories for RE work, located relative to the pr
 
 See [Project Status](project-status.md) for detailed breakdown of each phase.
 
-
 ## Evidence Standards
 
 All RE documentation uses a three-tier confidence system to distinguish verified facts from educated guesses.
@@ -541,7 +537,6 @@ All RE documentation uses a three-tier confidence system to distinguish verified
 | **LOW** | Speculative | Inferred from naming patterns, partial decompilation, or analogy with similar systems; needs further verification |
 
 When documenting findings, always state the confidence level and cite the evidence basis (address, function name, reference source file, or test observation). See [Evidence Standards](reverse-engineering/evidence-standards.md) for full details.
-
 
 ## Contributing
 
