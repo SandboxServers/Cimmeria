@@ -70,6 +70,10 @@ services:
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
       OTEL_SERVICE_NAME: "cimmeria-server"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=colo,service.namespace=cimmeria"
+      # otel.rs sets deployment.environment explicitly from this var, and an
+      # explicit builder attribute beats OTEL_RESOURCE_ATTRIBUTES: without it
+      # every colo row is tagged "dev".
+      CIMMERIA_DEPLOY_ENV: "colo"
       OTEL_TRACES_SAMPLER: "always_on"
     # Intentionally NO `volumes:` for postgres data. The entrypoint
     # (`docker/entrypoint.sh`) reseeds /var/lib/postgresql/data from

@@ -1,0 +1,2134 @@
+GIVES SPECIFIC ABILITIES
+
+/gmgiveability (AbilityId)
+
+GIVES ALL ABILITIES
+
+/gmgiveallabilities
+
+ID      ABILITY TYPE
+
+1064	Claymore Mine Explode	Cone Mine damage
+         Physical
+        -500 F
+        -50 H	ABILITY_TYPE_DD
+471	TestMineExplode	Explosion damage from TestMine	ABILITY_TYPE_DD
+1000	Dart Rifle: Multi-Shot	No ability description available to populate object_text_values table	ABILITY_TYPE_DD
+1075	Uzi Spray	Strafe:
+        Single target w/Cone
+Cone: Medium
+         Damage: 50 Health / 500 Focus	ABILITY_TYPE_DD
+1012	Deployable: Microwave Emitter	
+	ABILITY_TYPE_DD
+1013	Personal Shield	
+	ABILITY_TYPE_DD
+1014	Deployable: Detection	
+	ABILITY_TYPE_DD
+1015	Deployable: Gravity Well	
+	ABILITY_TYPE_Debuff
+1016	Shield: Physical	User Target Shield 
+Toggle: +15% Physical Density	ABILITY_TYPE_Buff
+1017	Shield: Energy	User Shield 
+Toggle: +15% Energy Density
+	ABILITY_TYPE_Buff
+1018	Shield: Contamination	User Shield 
+Toggle: +15% Contamination Density
+	ABILITY_TYPE_Buff
+1063	Flash Mine Explode	Flash Mine Explosion
+5 Second Stun
+15 Second Blind (-200 A/D)	ABILITY_TYPE_Debuff
+1141	Claymore Mine Explode	Claymore Mine Explosion
+DOT
+15 Second Blind (-200 A/D)	ABILITY_TYPE_Debuff
+1142	Overload Mine Explode	Overload Mine Explosion
+5 Second Stun
+15 Second Blind (-200 A/D)	ABILITY_TYPE_Debuff
+1181	Induce Daze: Alien	Single Target Debuff: Disorient 
+Disorient: 20 seconds	ABILITY_TYPE_Debuff
+1205	Turret Attack: Cone	Damage
+Turret fires in a cone.	ABILITY_TYPE_DD
+1211	Turret Attack: AOE	Damage
+Turret fires in a targetted AOE.	ABILITY_TYPE_DD
+1208	Mine: EMP	Spawns an EMP Mine
+	ABILITY_TYPE_DD
+1213	Summon Turret: Dual Turrets	Spawns two balanced Offensive/Defensive turrets.
+	ABILITY_TYPE_Undefined
+1223	Deployable: Focus Regen	
+	ABILITY_TYPE_DD
+1224	Deployable: Med Station	
+	ABILITY_TYPE_DD
+1225	Deployable: Health Regen	
+	ABILITY_TYPE_DD
+1229	Strike: Incendiary	Calls in a ground-targetted incendiary strike.	ABILITY_TYPE_DD
+1230	Strike: Gamma	Calls in a ground-targetted gamma strike.	ABILITY_TYPE_DD
+1235	Shield: Universal	User Shield 
+Toggle: +10% Mitigation
+	ABILITY_TYPE_Buff
+1236	Deployable: Aggression Inducer	Generates Threat.
+QR Debuff in AOE radius.
+	ABILITY_TYPE_DD
+1252	Dragon Fist	Melee Single Target Attack
+-100F / -10H
+Stun: 7 seconds	ABILITY_TYPE_DD
+1243	Multi Pump	Ranged Cone Attack
+Medium Cone Attack
+-300F / -30H
+Channeled
+2 Ammo	ABILITY_TYPE_DD
+1317	Single Pump	Ranged Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+1233	Draw Area	Ranged Single Target Attack with Area Effect
+-200F / -20H
+3 Ammo
+High Threat	ABILITY_TYPE_DD
+1240	Straegis Explode	Mine damage
+Physical
+-500 F
+-50 H	ABILITY_TYPE_DD
+1259	Sticky Bomb	Spawns Sticky Bomb: Time: 10 seconds
+Small Radius AE
+-500F / -50H	ABILITY_TYPE_DD
+1314	Smoke Grenade	+200 Defense
+5 Second Pulse x6	ABILITY_TYPE_Buff
+1328	Incendiary Mine	No ability description available to populate object_text_values table	ABILITY_TYPE_DOT
+1329	Incendiary Grenade	Short Radius AE
+300F / 30H 
+100F / 10H DoT: 15x2Sec	ABILITY_TYPE_DOT
+1352	Summon Turret: Prototype	Spawns a balanced Offensive/Defensive turret.
+	ABILITY_TYPE_Undefined
+1362	C-4: Link Charge 6	Spawns 4 C-6: Time: 600 seconds
+AOE: Short
+-500F
+-50H	ABILITY_TYPE_Buff
+1363	Incendiary Mine	Spawns an Incendiary Mine
+	ABILITY_TYPE_DD
+1331	Multi Pump	Ranged Cone Attack
+-100F / -10H
+1 Ammo / pulse
+5 pulses	ABILITY_TYPE_DD
+1332	Point Blank Fire	Non-Targeted Narrow Cone Attack
+-100F / -10H
+-300F / -30H for Melee Range
+
+-20H
+1 Ammo	ABILITY_TYPE_DD
+1364	Shockwave Grenade	-100F / -10H
+Knockdown: 6 seconds
+-300F / -30H vs Mechanical
+Confusion: 15 Seconds vs Mechanical
+
+	ABILITY_TYPE_Debuff
+1365	Cluster Mine Explode	Mine damage
+Physical
+-500F / -50H	ABILITY_TYPE_DD
+1366	Cluster Mine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+1480	Set Up Mastery	Reduces Setup Time for Heavy Weapons	ABILITY_TYPE_Buff
+1483	Steady Launch	Increases Interruption Resistance + 10% for 30 seconds for missiles	ABILITY_TYPE_Buff
+1496	MS018_062008_Headshot	-250F 
+-60H 
++ Knockdown
+
+	ABILITY_TYPE_DD
+1508	MS018_062008_Surprise Attack	Melee Attack
+-130F
+-30H
+-25H
+-25H	ABILITY_TYPE_DD
+1510	MS018_062008_Launch Grenade	Throws a Defensive Grenade	ABILITY_TYPE_DD
+1511	MS018_062008_Weapon Malfunction	Ranged Single Target Attack w/ Snare
+-100F / -10H 
+Snare: 15 Seconds
+1 Ammo
+	ABILITY_TYPE_DD
+1516	MS018_062008_Disarm Device I	Toggled Disarm Device Ability
+Disarm Rating: +100	ABILITY_TYPE_Buff
+1518	Stealth II	Stealth Rating: +200
+Stealth Rating: +15% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+1521	Test_Sam_Combat Sprint	This makes you re-load 50 % faster. 	ABILITY_TYPE_Buff
+1522	Test_Sam_Combat Sprint	Increases Run Speed by 50% for 10 seconds	ABILITY_TYPE_Buff
+1523	Testing_Sam_Call Target	Decreases Defense of Target by 100 for 15 seconds	ABILITY_TYPE_Debuff
+1524	Weapon Malfunction	Melee Attack
+-200F
+-20H
+Disarm:
+15 seconds	ABILITY_TYPE_DD
+590	-Leading the Target	-1F
+-1H	ABILITY_TYPE_DD
+1481	Rapid Blasts	Ranged Channelled Attack
+-250 F
+-25H
+10 Ticks 1 second intervals	ABILITY_TYPE_DD
+1533	Attack Protocol: Apply Damage	Energy Direct Damage
+Cost: 3 Gigajoules	ABILITY_TYPE_DD
+1534	Attack Protocol: Suppress Target	Energy Direct Damag
+Suppression Effect
+Cost: 5 Gigajoules	ABILITY_TYPE_DD
+1535	Attack Protocol: Proximity Blast	Energy Melee Attack
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1536	Attack Protocol: Kinetic Conversion	Energy Delayed Direct Damage
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1537	Attack Protocol: Increase Inertia	Temporary Increased Movement Speed
+Cost: X Gigajoules	ABILITY_TYPE_Buff
+1637	Demand Concentration	Single Target
++10% Focus Regeneration for 15 Seconds	ABILITY_TYPE_Buff
+1475	Flushing Fire	Channeled Medium Cone Attack
+-100F / -10H
+Short Radius Uninhabitable Area
+5 Ammo	ABILITY_TYPE_DD
+1437	MS018_061308_Blast	Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1453	Heroism	+50 Response	ABILITY_TYPE_Buff
+1454	Hunker Down	+100 Cover Defense	ABILITY_TYPE_Buff
+1485	Cluster Mortars	Mortar: Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+1488	Locked Target	Missile Launcher: Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+1492	Columbus Grenade	This grenade was dispatched along with fine silks, spices and other valuables with Christopher Columbus as he sailed around the world looking for enemies to WTF Pwn.	ABILITY_TYPE_DD
+1501	MS018_062008_Anti-Personnel Mine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+1506	MS018_062008_Sticky Object	Throws a Defensive Grenade	ABILITY_TYPE_DD
+1486	Rain of Steel	Non-Targeted Wide Cone Attack
+-500F/ -50H	ABILITY_TYPE_DD
+1482	Ground Blast	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+1540	Attack Protocol: Energy Cascade: Narrow	Energy Cone, Chain Lightning Effect
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1546	Attack Protocol: Energy Cascade: Medium	Energy Cone, Chain Lightning Effect
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1478	Launch Grenade: Fragmentation	Launches a Fragmentation Grenade	ABILITY_TYPE_DD
+1538	Attack Protocol: Proximity: Multi-Blast	Energy Melee Damage
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1547	Attack Protocol: Proximity Envelope	Energy Melee Channeled Attack
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1549	Science Protocol: Hologram: Humanoid	Hologram: Humanoid Threat Generator
+Cost: X Gigajoules	ABILITY_TYPE_Undefined
+1553	Science Protocol: Hologram: Mechanical	Hologram: Mechanical Threat Generator
+Cost: X Gigajoules	ABILITY_TYPE_Undefined
+1562	Knockdown Test	Knockdown effect	ABILITY_TYPE_DD
+591	-Brace	-1F
+-1H	ABILITY_TYPE_DD
+594	Strike	Melee Attack
+-125F
+-15H	ABILITY_TYPE_DD
+596	Reload	Reload currently equipped weapon	ABILITY_TYPE_Undefined
+597	Heal Focus	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+635	Burst FF	Ranged Single Target Attack
+-200F
+-20H
+3 Ammo	ABILITY_TYPE_DD
+636	Suppression Shot FF	Ranged Single Target Attack W/Suppression
+-100F
+-10H
+15 Ammo
+Suppression: 20 seconds	ABILITY_TYPE_DD
+637	Aim	+200 Accuracy for 15 Seconds	ABILITY_TYPE_Buff
+638	Targeted Test Buff	Tests Buffs on Targets	ABILITY_TYPE_Buff
+643	Induce Caution: Humanoid	Ranged Single Target Debuff 
+Suppression: 20 seconds	ABILITY_TYPE_Debuff
+645	Conversation: Humanoid: Basic	Ranged Single Target Conversation: Humanoid 
+
+Engagement State: 20 seconds	ABILITY_TYPE_Debuff
+646	Stealth I	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+648	Slappack Heal TC1	Item based Heal
++500 Health	ABILITY_TYPE_Heal
+793	Conversation: Ambassador	+25% for Trump in Converse	ABILITY_TYPE_Undefined
+649	Reveal I	Toggled Reveal Ability
+Reveal Rating: + 100	ABILITY_TYPE_Buff
+650	Barrage	Barrage Ability
+130 F
+25H	ABILITY_TYPE_DD
+652	RingTransport	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+640	Aimed Shot: Torso	Ranged Single Target Attack w/ +200 ACC
+-400F / -40H
+1 Ammo	ABILITY_TYPE_DD
+581	Rifle Auto Attack	Ranged Single Target Attack
+-300F
+-30H
+1 Ammo	ABILITY_TYPE_DD
+660	Bash	Melee Attack
+-200F / -20H	ABILITY_TYPE_DD
+661	Generic Add or Remove Time	This ability adds or removes time from a mini-game as a cheat.	ABILITY_TYPE_Undefined
+1576	Molotov Cocktail	No ability description available to populate object_text_values table	ABILITY_TYPE_DOT
+1622	Blinding Vision	Single Target Disorient	ABILITY_TYPE_Debuff
+1640	Terror Stone	Grenade:Thrown: Terror Stone
+Energy Damage
+Small Radius	ABILITY_TYPE_DD
+1623	Ribbon Device: Knockdown	Ranged Single Target Attack with Knockdown
+-200F
+-20H
+	ABILITY_TYPE_DD
+1624	Ribbon Device: Fear	Ranged Single Target Attack with Fear
+-200F
+-20H
+	ABILITY_TYPE_DD
+1627	Ribbon Device:Disruption Beam	Ranged Single Target Attack
+-200F
+-20H
+	ABILITY_TYPE_DD
+1652	Jaffa: Double Blast	Orders Jaffa Pet to use Double Blast
+Staff: Ranged Single Target Attack
+-300F / -30H	ABILITY_TYPE_DD
+1653	Lo'taur: Heal Health	Orders Lo'taur Pet to Heal
+	ABILITY_TYPE_Heal
+1854	MS019_Destruction Beam	Test ability for content.	ABILITY_TYPE_DD
+1654	Prime: Focus Degeneration	Orders Prime Pet to use Focus Degeneration
+	ABILITY_TYPE_Undefined
+1641	Terror Pod	Grenade:Thrown: Terror Stone
+Energy Damage
+Medium Radius	ABILITY_TYPE_DD
+1650	Lord's Concentration	Increases Interrupt Resist of all Pets	ABILITY_TYPE_Buff
+1657	World Container Explode	Mine damage
+Physical
+-800 F
+-80 H	ABILITY_TYPE_DD
+1658	MS018_063008_Defensive Grenade	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+1676	MS018_063008_Leadership	Focus Regeneration Increase: 50%
+20 Seconds	ABILITY_TYPE_Heal
+1671	MS018_063008_Spray and Pray	SMG: Medium Cone Attack /w DoT
+-100F / -10H
+DOT: Focus -50F / -5H 10 Ticks
+25 Ammo	ABILITY_TYPE_DD
+1679	MS018_063008_Double Blast	Staff: Ranged Single Target Attack
+-150F / -15H Per Pulse
+2 Pulses	ABILITY_TYPE_DD
+1691	MS018_062008_Radiated Blasts	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1677	MS018_062008_Offensive Grenade	Grenade:Thrown: Offensive Grenade
+5% chance to knockdown targets	ABILITY_TYPE_DD
+1680	MS018_063008_Flashbang Grenade	Grenade: Thrown: Flashbang Grenade:
+5 second detonation delay	ABILITY_TYPE_DD
+1682	MS018_063008_Rally	Short Radius 35% Focus Heal	ABILITY_TYPE_Heal
+1684	MS018_063008_Molotov Cocktail	Throws a Molotov Cocktail	ABILITY_TYPE_DD
+1685	MS020_080818_StickyBomb	Spawns Sticky Bomb: Time: 10 seconds
+Small Radius AE
+-500F / -50H	ABILITY_TYPE_DD
+1688	MS018_063008_Call Drone	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+1692	MS018_063008_DAMP Grenade	Throws a DAMP Grenade	ABILITY_TYPE_DD
+1695	MS018_062008_Reign Of Chaos	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1733	Arc of Battle	Targeted Melee Cone Attack: Narrow
+F-100 F-10
+
+	ABILITY_TYPE_DD
+1785	MS019_071408_Ground Blast	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+1762	MS018_063008_Launch Grenade Tracer	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+1763	MS018_063008_Reign Of Chaos	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+1787	MS019_071408_Smoke Grenade	Grenade: Thrown: Medium AE
++200 Defense to targets	ABILITY_TYPE_DD
+1825	Experimental Spray X351b	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+	ABILITY_TYPE_DD
+1826	Experimental Spray X351a	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+	ABILITY_TYPE_DD
+1828	Experimental Fire	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+	ABILITY_TYPE_DD
+1829	Force: Fusion Beam	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+	ABILITY_TYPE_DD
+1846	Seek and Destroy	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+	ABILITY_TYPE_DD
+1833	MS019_DoublePump	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1859	MS019_Rapid Blasts	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1860	MS019_Ribbon Device Shot	Ranged Single Target Attack
+-200F
+-20H
+	ABILITY_TYPE_DD
+1845	MS019_SmokeGrenade	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+1864	MS019_Terror Pod	Grenade:Thrown: Terror Stone
+Energy Damage
+Medium Radius	ABILITY_TYPE_DD
+1906	MS019_PinningFire	Single Target Narrow Cone Attack w/ Snare
+-200F / -20H
+-30% Movement Speed
+Duration: 15 Sec
+15 Ammo
+	ABILITY_TYPE_DD
+1908	MS019_FlushingFire*	Channeled Medium Cone Attack
+-100F / -10H
+Short Radius Uninhabitable Area
+5 Ammo	ABILITY_TYPE_DD
+1868	Tactical Nuke	Deploys a nuke marker	ABILITY_TYPE_DD
+1869	MS019_Summon Jaffa	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+1887	Dumbfire Missile	Missile Launcher: Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+1882	Launch Grenade: Tear Gas	Launches a Tear Gas Grenade
+10 Seconds:
+-100 Accuracy
+-50% Range
+Focus DOT: -50 10 ticks	ABILITY_TYPE_Debuff
+1885	Launch Grenade: Shockwave	Launches an Incendiary Grenade
+10 Second Knockdown
+AOE: Large	ABILITY_TYPE_Debuff
+1892	Stance: Aim	Group Target: +50 Accuracy	ABILITY_TYPE_Buff
+1894	Phase Grenade	Short Radius AE
+300F / 30H 
+100F / 10H DoT: 15x2Sec	ABILITY_TYPE_Debuff
+1870	Siphon Plasma	120F
+20H	ABILITY_TYPE_DD
+1914	MS020_080818_HeavySuppression	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+1916	MS019_ReignOfChaos	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1919	MS019_ReignOfChaos	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1923	MS019_ReignOfChaos	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1924	MS019_ReignOfChaos	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1918	MS019_ReignOfChaos	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1925	MS018_063008_Double Blast	Staff: Ranged Single Target Attack
+-150F / -15H Per Pulse
+2 Pulses	ABILITY_TYPE_DD
+1928	MS019_ReignOfChaos	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1930	MS019_Ribbon Device: Knockdown	Ranged Single Target Attack
+-200F
+-20H
+	ABILITY_TYPE_DD
+1932	MS019_Ribbon Device Shot	Ranged Single Target Attack
+-200F
+-20H
+	ABILITY_TYPE_DD
+1933	MS019_Ribbon Device: Fear	Ranged Single Target Attack
+-200F
+-20H
+	ABILITY_TYPE_DD
+1890	Launch Grenade: Fragmentation	Launches a Fragmentation Grenade	ABILITY_TYPE_DOT
+1949	Ribbon Device: Shot	Ranged Single Target Attack with Fear
+-200F
+-20H
+	ABILITY_TYPE_DD
+1955	MS019_Summon Jaffa	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+1956	MS019_C-4:TimeDelay	Spawns C-4: 
+Delay: 10 seconds
+Small Radius AE
+-500F / -50H
+Knockdown: 5 Seconds	ABILITY_TYPE_DD
+1957	MS020_Anti-PersonnelMine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+1961	MS020_Anti-PersonnelMine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+1973	MS000_TEMPLATE_Deployable	Deployable abilities template.	ABILITY_TYPE_DD
+1998	Threaten All	Threat Increased +400
+Focus Damage -100	ABILITY_TYPE_DD
+1990	MS020_InduceMassCaution:Humanoid	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1992	MS020_InduceMassPanic:Humanoid
+	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2009	MS020_Disguise:Humanoid:MarkI	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2010	MS020_Disguise:Humanoid:MarkII	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2011	MS020_Disguise:Humanoid:MarkIII	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2012	MS020_Disguise:Alien:MarkI	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2013	MS020_Disguise:Alien:MarkII	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2014	MS020_Disguise:Alien:MarkIII	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2019	MS020_EnhanceGroup:Humanoid:Focus	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2061	Area Blast	StaffCannon: Ground Target Medium Radius Attack 
+-1500F / -150H	ABILITY_TYPE_DD
+2062	Area Cleanse	StaffCannon: Ground Target Medium Radius Attack 
+-1500F / -150H
+DOT: -1500F -150H
+10 Ticks	ABILITY_TYPE_DD
+2065	Area of Destruction	StaffCannon: Ground Target Medium Radius Attack 
+-1500F / -150H
+Pulsing Damage: 15 Ticks
+-250 F -25H	ABILITY_TYPE_DD
+2070	Distraction	Debuff: -100 Accuracy: 30 seconds	ABILITY_TYPE_DD
+2028	Terror Urn	Grenade:Thrown: Terror Urn
+Energy Damage
+Medium Radius
+-100 F -100 H	ABILITY_TYPE_DD
+2053	MS020_Non-ThreateningVisage	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2064	Guardian's Stance	Group Buff: Toggle
+
++ 20% Interruption Resistance	ABILITY_TYPE_Buff
+2066	Molotov Cocktail	No ability description available to populate object_text_values table	ABILITY_TYPE_DOT
+2075	Fire Sky	StaffCannon: Ground Target Large Radius Attack 
+-1500F / -150H
+Channeled: Pulsing Damage: 30 Ticks
+-400 F -40H	ABILITY_TYPE_DD
+2081	Fire Sky	StaffCannon: Ground Target Large Radius Attack 
+-1500F / -150H
+Channeled: Pulsing Damage: 30 Ticks
+-400 F -40H	ABILITY_TYPE_DD
+2072	Defender's Stance	Group Buff: Toggle
+
+Defense +100	ABILITY_TYPE_Buff
+2074	Motivation	Group Stance:
+Focus Regeneration Increased +10%	ABILITY_TYPE_Buff
+2077	Molotov Cocktail	No ability description available to populate object_text_values table	ABILITY_TYPE_DOT
+2079	MS020_080818_Anti-Personnelle	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2111	MS020_080817_IncinerateTarget	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+2112	MS020_080817_IncineratingStream	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+2113	MS020_080817_IncinerationSweep	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+2114	MS020_080817_IncinerateArea	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+2095	MS020_080817_CoverDenial	LMG: AOE Medium Radius Attack w/ DOA
+-300F / -30H
+Unihabitable Area: 20 seconds
+25 Ammo	ABILITY_TYPE_DD
+2096	MS020_080817_FireZone	Non-Targeted Medium Cone Attack
+-500F/ -50H	ABILITY_TYPE_DD
+2097	MS020_080817_RainofSteel	Non-Targeted Wide Cone Attack
+-500F/ -50H	ABILITY_TYPE_DD
+2109	MS020_080817_Blast	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+2122	MS020_080817_DrawArea	Ranged Single Target Attack with Area Effect
+-200F / -20H
+3 Ammo
+High Threat	ABILITY_TYPE_DD
+2127	MS020_080817_AllOut	Ranged Single Target Attack
+-200F / -20H
+3 Ammo	ABILITY_TYPE_DD
+2115	MS020_080817_LaunchGrenade:Fragmentation	Launches a Fragmentation Grenade	ABILITY_TYPE_DD
+2116	MS020_080817_LaunchGrenade:TearGas	Launches a Fragmentation Grenade	ABILITY_TYPE_DD
+2117	MS020_080817_LaunchGrenade:Incendiary	Launches a Fragmentation Grenade	ABILITY_TYPE_DD
+2118	MS020_080817_LaunchGrenade:Shockwave	Launches a Fragmentation Grenade	ABILITY_TYPE_DD
+2151	MS020_080817_Sap	Melee Single Target Attack
+-100F / -10H
+Disorient: 15 seconds	ABILITY_TYPE_DD
+2135	MS020_080817_LinkCharge2	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2152	MS020_080817_SweepDetector	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2170	MS020_080818_IntimidationFire	LMG: Medium Cone Attack
+-200F / -20H
+Fear: 15 seconds	ABILITY_TYPE_DD
+2182	MS020_080818_SinglePump	Ranged Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2166	MS020_080817_Missile:HighExplosive	Missile Launcher: Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+2167	MS020_080817_Missile:EMP
+	Missile Launcher: Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+2168	MS020_080817_Missile:Guided	Missile Launcher: Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+2177	MS020_080818_ForwardObserver	Decreases Defense of Target by 200 for 15 seconds	ABILITY_TYPE_Debuff
+2181	MS020_Anti-PersonnelMine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2186	MS020_080818_TimeDelayC-4	Spawns C-4: 
+Delay: 10 seconds
+Small Radius AE
+-500F / -50H
+Knockdown: 5 Seconds	ABILITY_TYPE_DD
+2187	NO ABILITY DISPLAY NAME!	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2188	MS020_080818_RemoteDetonationC-4	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2189	MS020_080818_FlashMine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2190	MS020_080818_Claymore	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2191	MS020_080818_Mine:Overload	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2192	MS020_080818_IncediaryMine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2193	MS020_080818_ClusterMine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2224	MS020_080818_Blast	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+2183	MS020_080818_Scattershot	Non-Targeted Narrow Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2184	MS020_080818_MultiPump	Ranged Cone Attack
+-100F / -10H
+1 Ammo / pulse
+5 pulses	ABILITY_TYPE_DD
+2227	MS020_080818_Heroism	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2228	MS020_080818_CallTarget	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2234	MS020_080818_Incendiary	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2250	Fire Sky	StaffCannon: Ground Target Large Radius Attack 
+-1500F / -150H
+Channeled: Pulsing Damage: 30 Ticks
+-400 F -40H	ABILITY_TYPE_DD
+2251	MS020_080818_Scattershot	Ranged Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2252	MS020_080818_PointBlankFire	Ranged Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2254	Fire Sky	StaffCannon: Ground Target Large Radius Attack 
+-1500F / -150H
+Channeled: Pulsing Damage: 30 Ticks
+-400 F -40H	ABILITY_TYPE_DD
+2270	MS020_080817_NoSleepForTheWeary	Ranged Single Target Attack
+-200F / -20H
+3 Ammo	ABILITY_TYPE_DD
+2247	MS020_080818_LinkCharge4	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2248	MS020_080818_LinkCharge6	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2266	MS020_080818_HunkerDown	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2267	MS020_080818_Incendiary	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2310	MS020_080829_WeaponofWar	AW: Medium Cone Channelled Attack: 20 pulses
+-30F / -3H per pulse
+Ammo Per Pulse: 3	ABILITY_TYPE_DD
+2322	MS020_080829_Distraction	Debuff: -100 Accuracy: 30 seconds	ABILITY_TYPE_Debuff
+2327	MS020_080829_ChargedBlast	Staff: Targeted Beam Cone Attack
+-200F / -20H
+Warm Up: 2 seconds	ABILITY_TYPE_DD
+2329	MS020_080829_Starburst	Staff: Ground Target Medium Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2330	MS020_080829_Stormburst	Staff: Ground Target Medium Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2332	MS020_080829_MaximumBlast	Staff: Ground Target Medium Radius Attack 
+-1000F / -100H	ABILITY_TYPE_DD
+2333	MS020_080829_WeaponofTerror	Staff: Targeted Medium Cone Attack
+-400F / -40H
+Fear: 10 seconds
+Warm Up: 2 seconds	ABILITY_TYPE_DD
+2316	MS020_080829_Defender'sStance	Group Buff: Toggle
+
+Defense +100	ABILITY_TYPE_Buff
+2324	MS020_080829_Motivation	Group Stance:
+Focus Regeneration Increased +10%	ABILITY_TYPE_Buff
+2325	MS020_080829_TerrorStone	Grenade:Thrown: Terror Stone
+Energy Damage
+Small Radius	ABILITY_TYPE_DD
+2326	MS020_080829_TerrorUrn	Grenade:Thrown: Terror Urn
+Energy Damage
+Medium Radius
+-100 F -100 H	ABILITY_TYPE_DD
+2328	MS020_080829_Whirlwind	PBAOE Melee Range
+-200 f -20 H
+Knockdown 5 seconds	ABILITY_TYPE_DD
+2336	MS020_080829_Bewilderment	PBAOE Melee Range
+-200 f -20 H
+Confusion: 20 seconds	ABILITY_TYPE_DD
+2342	Medical Attention: Military Heal	Heals 25% of the target's Health pool	ABILITY_TYPE_Buff
+2343	Medical Attention: Military Heal	Heals 25% of the target's Health pool	ABILITY_TYPE_Buff
+2344	Medical Attention: Military Heal	Heals 25% of the target's Health pool	ABILITY_TYPE_Buff
+2364	MS020_080905_Lord'sCommand	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2365	MS020_080905_TerrorPlague	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2366	MS020_080905_TerrorStone	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2367	MS020_080905_TerrorUrn	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2385	MS020_080905_SummonLotar	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2386	MS020_080905_SummonAshrakWarrior	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2388	MS020_080905_SummonStraegis/SystemLord	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+2407	MS020_080829_SuppressionZone	AW: Medium Cone Channelled Attack: 20 pulses
+-30F / -3H per pulse
+Ammo Per Pulse: 3	ABILITY_TYPE_DD
+2406	Smoke Grenade	+200 Defense
+5 Second Pulse x6	ABILITY_TYPE_Debuff
+2417	Incendiary Mine	No ability description available to populate object_text_values table	ABILITY_TYPE_DOT
+2445	MS020_080818_MultiPump	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+2449	MS020_080818_IncinerateArea	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2486	MS020_080818_LaunchGrenade	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2487	MS020_080818_LaunchGrenade:Incendiary	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2490	MS020_080818_LaunchGrenade:Shockwave	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2491	MS020_080818_LaunchGrenade:TearGas	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2492	MS020_080818_LaunchGrenade:Fragmentation	Staff: Ground Target Small Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2493	MS020_080818_AreaBurst	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2494	MS020_080818_CoverDenial	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2495	MS020_080818_DenialofArea	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2496	MS020_080818_FireZone	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2427	MS020_080818_EMPGrenade	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2428	MS020_080818_IncendiaryGrenade	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2431	MS020_080818_DefensiveGrenade	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2432	MS020_080818_SmokeGrenade	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+2497	MS020_080818_LongBurst	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2498	MS020_080818_PenetratingBarrage	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2499	MS020_080818_RainofSteel	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2500	MS020_080818_SustainedSweep	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2501	MS020_080818_ZeroIn	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2504	MS020_080818_ZeroIn	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2517	MS000_TEMPLATE_GroundSingleShot	Ground Single Shot ability template	ABILITY_TYPE_DD
+2527	MS020_080818_DrawArea	Ground Single Shot ability template	ABILITY_TYPE_DD
+2531	MS020_080818_SprayandPray	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+2529	Planting Stasis Bomb	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2533	Planting Stasis Bomb	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2719	Lord's Command	Grenade:Thrown: Lord's Command
+Energy Damage
+Medium Radius
+-100 F -100 H	ABILITY_TYPE_DD
+2694	Annihilation Beam	Ranged Cone Attack
+-200F
+-20H
+5 energy	ABILITY_TYPE_DD
+2830	MS000_TEMPLATE_Summon	Summon Template	ABILITY_TYPE_DD
+2832	MS020_080905_SummonLotar	Summon Template	ABILITY_TYPE_DD
+2833	MS020_080905_SummonAshrakWarrior	Summon Template	ABILITY_TYPE_DD
+2834	MS020_080905_SummonStraegis/SystemLord	Summon Template	ABILITY_TYPE_DD
+2847	Straegis: Dissonance	Pulsing AOE Damage
+Range Short
+20 seconds Duration
+	ABILITY_TYPE_Undefined
+2841	Destruction Pulse	Zat: Ground Target Small Radius Attack 
+-500F / -50H
+Stun: 5 seconds	ABILITY_TYPE_DD
+2846	Ribbon Device: Lord's Presence	Ranged Single Target Attack
+-500F
+-50H
+	ABILITY_TYPE_DD
+2864	EMP Grenade	Throws an EMP Grenade
+Mechanical: -500F / -50H, Disorient: 20 Sec
+Other: -100F / -0H
+	ABILITY_TYPE_DD
+2954	Flash Mine Explode	Flash Mine Explosion
+5 Second Stun
+15 Second Blind (-200 A/D)	ABILITY_TYPE_DD
+2955	Deployable: Shield Generator	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+2956	Flash Mine Explode	Flash Mine Explosion
+5 Second Stun
+15 Second Blind (-200 A/D)	ABILITY_TYPE_DD
+2979	Incendiary Mine	No ability description available to populate object_text_values table	ABILITY_TYPE_DOT
+3087	Sun Chariot	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+3097	Summon Turret: Prototype	Spawns a balanced Offensive/Defensive turret.
+	ABILITY_TYPE_Undefined
+3098	Deploying - Transmitter	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3120	Flash Mine Explode	Flash Mine Explosion
+5 Second Stun
+15 Second Blind (-200 A/D)	ABILITY_TYPE_DD
+3149	MS020_080818_TacticalNuke	Deployable abilities template.	ABILITY_TYPE_DD
+3150	MS021_081010_ScienceProtocol:Hologram:Humanoid	Toggle ability template	ABILITY_TYPE_Buff
+3161	Attack Protocol: SuppressMultipletargets	AOE: Medium Radius
+F-100 H-10
+Suppression: 20 seconds	ABILITY_TYPE_DD
+3166	Attack Protocol: PhaseMatter	Ground Target: Long
+Cover Defense debuff
+AoE Pulse: 30 pulses	ABILITY_TYPE_DD
+3170	Attack Protocol: Contaminate Area	Attack Protocol: Contaminate Area	ABILITY_TYPE_DD
+3172	Attack Protocol: ConvertNLMattertoDamage:Multiple	AOE damage from all corpses within radius
+Radius: Medium
+Damage: F-300 H-30
+25 Energy	ABILITY_TYPE_DD
+3173	AttackProtocol:TeleportationStrike	Channeled AOE: Radius: Long
+F-500 H-50 Per Pulse
+25 Energy per pulse	ABILITY_TYPE_DD
+3176	ScienceProtocol:RevealDistortion	Stealth Rating Reduction
+5 Energy
+Stealth Rating -500	ABILITY_TYPE_DD
+3175	ScienceProtocol:Hologram:Alien	Temporary Threat generator	ABILITY_TYPE_Undefined
+3177	ScienceProtocol:InduceStasis	AOE Disorient	ABILITY_TYPE_Debuff
+3178	ScienceProtocol: SynapticScrambleField	Focus Degeneration Area: Medium
+-200 Focus each pulse
+10 pulses
+15 energy	ABILITY_TYPE_DD
+3183	DefensiveProtocol: Anti-WeaponField	AOE: Medium
+Target range reduced: 75%	ABILITY_TYPE_Debuff
+3190	DefensiveProtocol: TimeDisruption	AOE: Medium
+Channeled Snare and Slow	ABILITY_TYPE_DD
+3210	NO ABILITY DISPLAY NAME!	Flash Mine Explosion
+5 Second Stun
+15 Second Blind (-200 A/D)	ABILITY_TYPE_Heal
+3259	DefensiveProtocol: Induce Self Preservation	AOE Debuff: Fear
+Fear: 20 meters for 20 seconds
+AoE: Medium	ABILITY_TYPE_Debuff
+3245	ScienceProtocol: Hologram:Self	Temporary Threat generator	ABILITY_TYPE_Undefined
+3252	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+3265	DefensiveProtocol: AreaShield	Absorbs Damage from Enemy Attacks
+AOE: Short
+30 Seconds	ABILITY_TYPE_Buff
+3275	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+3284	Planting charge	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3285	Planting charge	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3308	Turret Attack: Draw Fire	Damage
+Turret gains increased aggro for 30 seconds.	ABILITY_TYPE_DD
+3309	Turret Self Destruct	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+3326	Lo'taur: Heal Health	Orders Lo'taur Pet to Heal
+	ABILITY_TYPE_Heal
+3327	Lo'taur: Heal Health	Orders Lo'taur Pet to Heal
+	ABILITY_TYPE_Buff
+3328	Lo'taur: Heal Health	Orders Lo'taur Pet to Heal
+	ABILITY_TYPE_Heal
+3329	Lo'taur: Heal Health	Orders Lo'taur Pet to Heal
+	ABILITY_TYPE_Buff
+3304	Planting charge	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3305	Planting charge	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3306	Planting charge	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3318	Overload Mine Explode	Overload Mine Explosion
+5 Second Stun
+15 Second Blind (-200 A/D)	ABILITY_TYPE_Debuff
+3319	Summon Turret: Prototype	Spawns a balanced Offensive/Defensive turret.
+	ABILITY_TYPE_Undefined
+3323	Planting explosive	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3324	Planting explosive	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3325	Planting explosive	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+3350	Anti personel Mine Explode	Mine damage
+Physical
+-800 F
+-80 H	ABILITY_TYPE_DD
+3351	MS021_081024_Deployable:HealthRegen	Deployable abilities template.	ABILITY_TYPE_DD
+3352	MS021_081024_Deployable:MedStation	Deployable abilities template.	ABILITY_TYPE_DD
+3353	MS021_081024_Deployable:StimPack	Deployable abilities template.	ABILITY_TYPE_DD
+3354	MS021_081024_Deployable:FocusRegen	Deployable abilities template.	ABILITY_TYPE_DD
+3372	MS021_081024_SummonTurret:Prototype	Summon Template	ABILITY_TYPE_DD
+3374	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Heal
+3379	MS021_081024_SummonTurret:Advanced	Summon Template	ABILITY_TYPE_DD
+3380	MS021_081024_SummonTurret:Offensive	Summon Template	ABILITY_TYPE_DD
+3381	MS021_081024_SummonTurret:Defense	Summon Template	ABILITY_TYPE_DD
+3387	MS021_081024_Shield:Group:Physical	Summon Template	ABILITY_TYPE_DD
+3388	MS021_081024_Shield:Group:Energy	Summon Template	ABILITY_TYPE_DD
+3389	MS021_081024_Shield:Group:Contamination	Summon Template	ABILITY_TYPE_DD
+3390	MS021_081024_Shield:Group:CombinedMitigation	Summon Template	ABILITY_TYPE_DD
+3391	MS021_081024_Shield:Group:Kinetic	Summon Template	ABILITY_TYPE_DD
+3392	MS021_081024_Shield:Group:Kinetic	Summon Template	ABILITY_TYPE_DD
+3395	MS000_000000_PlaceMine	Deployable abilities template.	ABILITY_TYPE_DD
+3399	MS021_081024_Deployable:GravityWell	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+3400	MS021_081024_Deployable:MicrowaveEmitter	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+3401	MS021_081024_Deployable:Detection	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+3402	MS021_081024_Deployable:AggressionInducer	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+3404	MS020_080818_TimeDelayC-4	Deployable abilities template.	ABILITY_TYPE_DD
+3405	MS020_080818_PulseSensor	Deployable abilities template.	ABILITY_TYPE_DD
+3406	MS020_080818_FlashMine	Deployable abilities template.	ABILITY_TYPE_DD
+3407	MS020_080818_IncediaryMine	Deployable abilities template.	ABILITY_TYPE_DD
+3408	MS021_081024_Mine:EMP	Deployable abilities template.	ABILITY_TYPE_DD
+3409	MS020_080818_TacticalNuke	Deployable abilities template.	ABILITY_TYPE_DD
+3410	MS021_081024_PersonalShield	Summon Template	ABILITY_TYPE_DD
+3411	MS021_081024_Mine:Overload	Deployable abilities template.	ABILITY_TYPE_DD
+3412	MS021_081024_Transporter	Summon Template	ABILITY_TYPE_DD
+3445	MS021_081024_SummonTurret:Prototype	Summon Template	ABILITY_TYPE_DD
+3446	MS021_081024_SummonTurret:Offensive	Summon Template	ABILITY_TYPE_DD
+3447	MS021_081024_SummonTurret:Defense	Summon Template	ABILITY_TYPE_DD
+3448	MS021_081024_SummonTurret:Advanced	Summon Template	ABILITY_TYPE_DD
+3449	MS021_081024_MedicalAttention:BattlefieldHeal	Summon Template	ABILITY_TYPE_DD
+3450	MS021_081024_MedicalAttention:MilitaryHeal	Summon Template	ABILITY_TYPE_DD
+3451	MS021_081024_MedicalAttention:OfficersHeal	Summon Template	ABILITY_TYPE_DD
+3456	MS021_081024_EnhanceTurret:ContaminationShots	Summon Template	ABILITY_TYPE_DD
+3457	MS021_081024_EnhanceTurret:EnergyShots	Summon Template	ABILITY_TYPE_DD
+3458	MS021_081024_EnhanceTurret:IncreasedROF	Summon Template	ABILITY_TYPE_DD
+3459	MS021_081024_EnhanceTurret:Shield	Summon Template	ABILITY_TYPE_DD
+3432	NO ABILITY DISPLAY NAME!	Single Shot Ability template.	ABILITY_TYPE_DD
+3473	MS020_080818_PhaseGrenade	Deployable abilities template.	ABILITY_TYPE_DD
+3482	MS022_081121_Str-GroundCrystal	Deployable abilities template.	ABILITY_TYPE_DD
+3483	MS022_081121_Str-GroundFrost	Deployable abilities template.	ABILITY_TYPE_DD
+3484	MS022_081121_Str-GroundVoid	Deployable abilities template.	ABILITY_TYPE_DD
+523	Concussive Grenade	Throws a Defensive Grenade
+Knocks down targets for 5 seconds	ABILITY_TYPE_DD
+599	Anti personel Mine Explode	Mine damage
+Physical
+-800 F
+-80 H	ABILITY_TYPE_DD
+642	Anti-Personnel Mine	Spawns an Anti-Personnel Mine
+	ABILITY_TYPE_DD
+647	C-4: Time Delay	Spawns C-4: 
+Delay: 10 seconds
+Small Radius AE
+-500F / -50H
+Knockdown: 5 Seconds	ABILITY_TYPE_DD
+612	Area Burst	HMG: Targeted Narrow Cone Attack
+-300F / -30H
+15 Ammo	ABILITY_TYPE_DD
+632	Long Burst	LMG: Single Target Attack: Channeled
+2 Pulses: -300F / -30H
+5 Ammo per pulse	ABILITY_TYPE_DD
+654	Single Pump	Ranged Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+653	Blast	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1175	Binding Goo	-50% Movement: 20 Seconds	ABILITY_TYPE_Debuff
+745	Double Pump	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+
+2 Ammo	ABILITY_TYPE_DD
+724	Anti-Personnel Mortar	Mortar: Fires a Mortar Round
+Short Radius AOE
+-800F / -80H
+	ABILITY_TYPE_DD
+754	Induce Mass Caution: Humanoid	Ranged AOE Debuff: Suppression 
+AOE Suppression: 20 meters for 20 seconds	ABILITY_TYPE_Debuff
+777	Induce Mass Panic: Humanoid	Ranged AOE Debuff: Fear
+AOE Fear: 20 meters for 20 seconds	ABILITY_TYPE_Debuff
+804	Strafe	LMG: Medium Cone Attack
+-200F / -20H	ABILITY_TYPE_DD
+775	Double Blast	Staff: Ranged Single Target Attack
+-150F / -15H Per Pulse
+2 Pulses	ABILITY_TYPE_DD
+791	Enhance Group: Humanoid: Focus	Increases group's Focus maximum by 10% for 600 seconds	ABILITY_TYPE_Buff
+806	Override Sensors:Mechanical	Ranged AOE Faction Increase
+Mechanicals Only	ABILITY_TYPE_Debuff
+850	Scattershot	Non-Targeted Narrow Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+820	Dumbfire Missile	Missile Launcher: Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+852	High Explosive Mortar	Mortar: Medium Radius AE
+-800F / -80H
+1 Ammo	ABILITY_TYPE_DD
+854	Smoke Grenade	Grenade: Thrown: Medium AE
++200 Defense to targets	ABILITY_TYPE_DD
+858	Leadership	Focus Regeneration Increase: 50%
+20 Seconds	ABILITY_TYPE_Heal
+861	High-Explosive Grenade	Grenade:Thrown: Offensive Grenade
+5% chance to knockdown targets	ABILITY_TYPE_DD
+1176	Energy Pulse	Adds 	ABILITY_TYPE_Undefined
+873	Sap	Melee Single Target Attack
+-100F / -10H
+Disorient: 15 seconds	ABILITY_TYPE_DD
+868	Flashbang Grenade	Grenade: Thrown: Flashbang Grenade:
+5 second detonation delay	ABILITY_TYPE_DD
+869	Morale Boost	Short Radius 35% Focus Heal	ABILITY_TYPE_Heal
+877	Forward Observer	Decreases Defense of Target by 200 for 15 seconds	ABILITY_TYPE_Debuff
+883	Disarm Device I	Toggled Disarm Device Ability
+Disarm Rating: +100	ABILITY_TYPE_Buff
+885	C-4: Link Charge 2	Spawns C-4: Time: 10 seconds
+Spawns C-4: Time: 10 seconds
+AOE: Short
+-500F
+-50H	ABILITY_TYPE_DD
+886	Flash Mine	Spawns a Flash Mine
+	ABILITY_TYPE_DD
+887	Place C-4 Charge	Places C-4 Charge
+AOE: Short
+-500F
+-50H	ABILITY_TYPE_DD
+888	Claymore Mine	Spawns a Claymore Mine
+	ABILITY_TYPE_DD
+889	C-4: Link Charge 4	Spawns 4 C-4: Time: 600 seconds
+AOE: Short
+-500F
+-50H	ABILITY_TYPE_DD
+890	Overload Mine	Spawns an Overload Mine
+	ABILITY_TYPE_DD
+1183	Blend In	+200 Disguise Rating	ABILITY_TYPE_Heal
+962	Summon Turret: Prototype	Spawns a balanced Offensive/Defensive turret.
+	ABILITY_TYPE_Undefined
+963	Summon Turret: Offensive	Spawns an Offensive turret.
+	ABILITY_TYPE_DD
+964	Summon Turret: Defensive	Spawns a Defensive turret.
+	ABILITY_TYPE_DD
+965	Summon Turret: Detection	Spawns a Detection turret.
+	ABILITY_TYPE_DD
+966	Summon Turret: Advanced	Spawns a Jammer turret.
+	ABILITY_TYPE_Undefined
+1178	Induce Caution: Alien	Ranged Single Target Debuff 
+Suppression: 20 seconds	ABILITY_TYPE_Debuff
+988	Dart Pistol: Precision Shot	Ranged Single Target High Accuracy Shot
+-300F -30D
++Acc
+-20H
+15 Ammo	ABILITY_TYPE_DD
+583	Shotgun Auto Attack	Ranged Cone Attack
+-200F
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2635	Staff Auto Attack	Ranged Single Target Attack
+-250F
+-25H
+	ABILITY_TYPE_DD
+584	Staff Auto Attack	Ranged Single Target Attack
+-250F
+-25H
+	ABILITY_TYPE_DD
+1414	Zat Auto Attack	Ranged Single Target Attack
+-150F / -15H
+	ABILITY_TYPE_DD
+1156	Straegis: Disengage	Knocks the target down	ABILITY_TYPE_DD
+1474	Pinning Fire	Single Target Narrow Cone Attack w/ Snare
+-200F / -20H
+-30% Movement Speed
+Duration: 15 Sec
+15 Ammo
+	ABILITY_TYPE_DD
+712	Ribbon Device Auto Attack	Ranged Single Target Attack
+-200F
+-20H
+	ABILITY_TYPE_DD
+1476	No Rest for the Weary	Auto Weapons: Ranged Single Target Medium Cone Attack w/ High Interrupt Chance
+-200F
+-20H
+15 Ammo	ABILITY_TYPE_DD
+718	Selective Fire	AutoWeapons: Single Target Channeled Attack
+F-200
+H-20
+3 ammo per pulse
+This attack can be interrupted by damage or movement
+	ABILITY_TYPE_DD
+1668	MS018_063008_Selective Fire	AutoWeapons: Ranged Single Target Narrow Cone Attack
+-200F
+-20H
+15 Ammo	ABILITY_TYPE_DD
+1477	All Out Assault	AutoWeapons: Ranged Single Target Medium Cone Channelled Attack
+Exponential Damage
+-200F -20H
+-300F -30H
+-400F -40H
+3 Ammo per pulse
+50 pulses	ABILITY_TYPE_DD
+1980	Weapon of War	AW: Medium Cone Channelled Attack: 20 pulses
+-30F / -3H per pulse
+Ammo Per Pulse: 3	ABILITY_TYPE_DD
+1416	MS018_061308_Dumbfire Missile	Medium Radius AOE
+-800F / -80H	ABILITY_TYPE_DD
+1438	MS018_062008_Denial of Area	LMG: AOE Small Radius
+-300F / -30H
+Fear Area: 15 seconds
+25 Ammo	ABILITY_TYPE_DD
+2858	Ashrak Dagger: Dervish	Targeted Melee Cone Attack
+-200F -20H
+
+	ABILITY_TYPE_DD
+1184	Indistinguishable	+400 Disguise Rating	ABILITY_TYPE_Heal
+1217	Dart Rifle: Dart Cone	Fires darts in a cone pattern for maximum coverage.	ABILITY_TYPE_DD
+989	Dart Pistol: Aimed Shot	Ranged Single Target High Accuracy Shot
+-300F -30D
++Acc
+-20H
+15 Ammo	ABILITY_TYPE_DD
+1880	Incinerate Target	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+1883	Incinerating Stream	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+1886	Incinerate Target	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+1889	Incinerate Area	Flamethrower: Medium Cone Channelled Attack: 10 pulses
+-150F / -30H per pulse
+Damage Over Time:
+-100F -10H (8ticks)	ABILITY_TYPE_DD
+2102	Incinerate Ground	Flamethrower: Ground Target AOE: Short
+25 Ammo	ABILITY_TYPE_DD
+1487	Penetrating Barrage	HMG: Medium Channelled Cone Attack
+-300F / -30H
+Ignores 2 QR of Cover
+25 Ammo	ABILITY_TYPE_DD
+1673	MS018_063008_Sustained Sweep	LMG: Medium Cone Channelled Attack: 20 pulses
+-50F / -5H per pulse
+Ammo Per Pulse: 5	ABILITY_TYPE_DD
+1783	MS019_071408_Denial of Area	LMG: AOE Small Radius
+-300F / -30H
+Fear Area: 15 seconds
+25 Ammo	ABILITY_TYPE_DD
+1788	MS019_071408_Strafe	LMG: Medium Cone Attack
+-200F / -20H	ABILITY_TYPE_DD
+1827	Denial of Area	LMG: AOE Small Radius
+-300F / -30H
+Fear Area: 15 seconds
+25 Ammo	ABILITY_TYPE_DD
+1968	NO ABILITY DISPLAY NAME!	LMG: Medium Cone Attack
+-200F / -20H
+Fear: 15 seconds	ABILITY_TYPE_DD
+2103	Launch Grenade: Concussion	Launches a Concussion Grenade
+-500 F -50 H
+Knockdown: 6 seconds	ABILITY_TYPE_DD
+2105	Launch Grenade: Barrage	Launches multiple Grenades: Standard Ammo
+AOE: Medium
+-500 F
+-50 H	ABILITY_TYPE_Debuff
+2419	Launch Grenade: Single	Launches a Standard Grenade
+AOE: Short
+-500 F -50 H
+	ABILITY_TYPE_DD
+2446	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+2094	MS020_080817_AreaBurst	HMG: Targeted Narrow Cone Attack
+-300F / -30H
+15 Ammo	ABILITY_TYPE_DD
+2098	MS020_080817_PenetratingBarrage	HMG: Medium Channelled Cone Attack
+-300F / -30H
+Ignores 2 QR of Cover
+25 Ammo	ABILITY_TYPE_DD
+2143	Intimidation Fire	LMG: Medium Cone Attack
+-200F / -20H
+Fear: 15 seconds	ABILITY_TYPE_DD
+2304	MS020_080829_SuppressionZone	Targeted Medium Cone Attack w/ Suppression
+-100F
+-10H
+15s Suppression
+50 Ammo
+	ABILITY_TYPE_DD
+656	Sustained Bursts	LMG: Ranged Channelled Attack: Narrow Cone
+-1500F / -150H
+5 ammo per pulse
+50 pulses	ABILITY_TYPE_DD
+658	Heavy Suppression	HMG: Targeted Wide Cone Attack w/ Suppression
+-100F / -10H
+Suppression: 15 Seconds
+50 Ammo	ABILITY_TYPE_DD
+659	Suppression Zone	Targeted Medium Cone Attack w/ Suppression
+-100F
+-10H
+15s Suppression
+50 Ammo
+	ABILITY_TYPE_DD
+808	Cover Denial	LMG: AOE Medium Radius Attack w/ DOA
+-300F / -30H
+Unihabitable Area: 20 seconds
+25 Ammo	ABILITY_TYPE_DD
+812	Denial of Area	LMG: AOE Small Radius
+-300F / -30H
+Fear Area: 15 seconds
+25 Ammo	ABILITY_TYPE_DD
+818	Sustained Sweep	LMG: Medium Cone Channelled Attack: 20 pulses
+-50F / -5H per pulse
+Ammo Per Pulse: 5	ABILITY_TYPE_DD
+853	Fire Zone	Non-Targeted Medium Cone Attack
+-500F/ -50H	ABILITY_TYPE_DD
+1318	Double Pump	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+
+2 Ammo	ABILITY_TYPE_DD
+1180	Induce Panic: Alien	Ranged Single Target Debuff: Fear
+Fear: 20 seconds	ABILITY_TYPE_Debuff
+1784	MS019_071408_Double Pump	Ranged Narrow Cone Attack
+Medium Cone Attack
+-300F / -30H
+
+2 Ammo	ABILITY_TYPE_DD
+2253	MS020_080818_MultiPump	Ranged Cone Attack
+-200F / -20H
+-20H
+1 Ammo	ABILITY_TYPE_DD
+722	Spray and Pray	SMG: Medium Cone Attack /w DoT
+-100F / -10H
+DOT: Focus -50F / -5H 10 Ticks
+25 Ammo	ABILITY_TYPE_DD
+1847	MS019_DenialOfArea	Assault Rifle: Ranged Medium Cone Attack
+-100F
+-10H
+25 Ammo
+Debuff: Suppression: 20 seconds	ABILITY_TYPE_DD
+1500	MS018_062008_Radiated Blasts	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1505	MS018_062008_Double Blast	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+1768	Double Blast	Staff: Ranged Single Target Attack
+-150F / -15H Per Pulse
+2 Pulses	ABILITY_TYPE_DD
+1922	MS019_Rapid Blasts	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+2001	Arc of Fury	Staff: Targeted Narrow Cone Attack
+-200F / -20H
+Knockdown: 3 Seconds	ABILITY_TYPE_DD
+2006	Distracting Blast	Staff: Ranged Single Target Attack
+-200F / -20H
+Accuracy -100: 25 Seconds	ABILITY_TYPE_DD
+2024	Charged Blast	Staff: Targeted Beam Cone Attack
+-200F / -20H
+Warm Up: 2 seconds	ABILITY_TYPE_DD
+2026	Starburst	Staff: Ground Target Medium Radius Attack 
+-500F / -50H	ABILITY_TYPE_DD
+2042	Maximum Blast	Staff: Ground Target Medium Radius Attack 
+-1000F / -100H	ABILITY_TYPE_DD
+2043	Weapon of Terror	Staff: Targeted Medium Cone Attack
+-400F / -40H
+Fear: 10 seconds
+Warm Up: 2 seconds	ABILITY_TYPE_DD
+2025	Whirlwind	PBAOE Melee Range
+-200 f -20 H
+Knockdown 5 seconds	ABILITY_TYPE_DD
+2029	Bewilderment	PBAOE Melee Range
+-200 f -20 H
+Confusion: 20 seconds	ABILITY_TYPE_DD
+1182	Induce Calm: Humanoid	Single Target Threat Wipe	ABILITY_TYPE_Debuff
+2058	Devastating Blast	Staff: Ground Target Medium Radius Attack 
+-500F / -50H
+DOT: -150F -15H
+10 Ticks	ABILITY_TYPE_DD
+2715	Dominance Blast	Staff: Ground Target Small Radius Attack 
+-500F / -50H
+Fear: 15 seconds	ABILITY_TYPE_DD
+3277	Blast	Staff: Ranged Single Target Attack
+-200F / -20H	ABILITY_TYPE_DD
+3322	Charged Blast	Staff: Targeted Beam Cone Attack
+-200F / -20H
+Warm Up: 2 seconds	ABILITY_TYPE_DD
+1628	Ribbon Device:Disruption Stream	Channelled Single Target Attack (7 ticks)
+-100F
+-10H
+	ABILITY_TYPE_DD
+1639	Ribbon Device:Destruction Beam	Ranged Single Target Attack
+-200F
+-20H
+	ABILITY_TYPE_DD
+2717	Fist of an Angry God	Ribbon Device: Ground Target Mediuml Radius Attack 
+-500F / -50H
+Knockdown: 8 seconds	ABILITY_TYPE_DD
+2718	Wrath of God	Strike: Ground Target Large Radius Attack 
+-1500F / -150H
+Channeled: Pulsing Damage: 30 Ticks
+-400 F -40H	ABILITY_TYPE_DD
+2795	Lord's Visage	Ranged Cone Attack: -10 Energy
+-200F
+-20H
+Disorient: 15 seconds
+	ABILITY_TYPE_DD
+1669	MS018_063008_Cover Fire	Assault Rifle: Ranged Medium Cone Attack
+-100F
+-10H
+25 Ammo
+Debuff: Suppression: 20 seconds	ABILITY_TYPE_DD
+720	Cover Fire	Assault Rifle: Ranged Medium Cone Attack
+-100F
+-10H
+25 Ammo
+Debuff: Suppression: 20 seconds	ABILITY_TYPE_DD
+2827	Lord's Will	Ranged Cone Attack: -10 Energy
+-200F
+-20H
+Snare: 15 seconds
+	ABILITY_TYPE_DD
+1179	Induce Doubt: Alien	Ranged Single Target Debuff: Confusion
+Confusion: 20 seconds	ABILITY_TYPE_Debuff
+1019	Shield: Interruption	Shield vs. Interruption State	ABILITY_TYPE_Buff
+1020	Shield: Ablative	Absorbs Health Damage	ABILITY_TYPE_Buff
+778	Conversation: Mediator	+5% for Trump in Converse	ABILITY_TYPE_Undefined
+1226	Dart Type: Hazardous: Confusion	Buff:
+Toggle	ABILITY_TYPE_Buff
+1076	Lok'nel	Melee Attack w/ Knockdown
+-100F / 10H
+5 Second Knockdown
+	ABILITY_TYPE_DD
+1077	Lok'nel Kei	High Damage Melee Attack w/ Knockdown and Accuracy Debuff
+-100F / 10H
+5 Second Knockdown
+	ABILITY_TYPE_DD
+1079	Heavy Weapon Exit Setup: Mortar	Removes Heavy Weapon State
+	ABILITY_TYPE_Buff
+1081	Disguise: Humanoid: Mark I	Toggled Disguise Ability
+Disguise Rating: 100	ABILITY_TYPE_Buff
+1082	Disguise: Mark II	Toggled Disguise Ability
+Disguise Rating: 200	ABILITY_TYPE_Buff
+1083	Disguise: Mark III	Toggled Disguise Ability
+Stealth Rating: 300	ABILITY_TYPE_Buff
+1084	Heavy Weapon Setup: HMG	HMG Setup
+Roots player
+Restricts Rotation to 180Â°	ABILITY_TYPE_Buff
+1085	Heavy Weapon Setup: Missile	Missile Setup
+Roots player
+Restricts Rotation to 180Â°	ABILITY_TYPE_Buff
+1092	DAMP Grenade	Throws a DAMP Grenade	ABILITY_TYPE_DD
+1093	Holdout Strike	Melee Attack
+-125F
+-15H	ABILITY_TYPE_DD
+1094	Dirty Strike	Melee Attack
+-125F
+-15H	ABILITY_TYPE_DD
+1134	Summon Turret	No ability description available to populate object_text_values table	ABILITY_TYPE_Buff
+1089	Dart Rifle Melee AA	Melee Attack: Auto Attack
+-100F
+-10H	ABILITY_TYPE_DD
+1091	Headshot	-250F 
+-60H 
++ Knockdown
+
+	ABILITY_TYPE_DD
+1137	Nerve Strike	High Damage Melee Attack w/ Stun
+5 Second Stun
+Stealthed Only	ABILITY_TYPE_DD
+1138	Cloak	NPC disappears, and gains a run speed bonus 	ABILITY_TYPE_Buff
+1139	Unload	Burst Ability
+120F
+20H	ABILITY_TYPE_DD
+1140	Asgard Beam	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1143	Gate Travel	This is an ability used by the system to keep track of an open wormhole the player it is on knows about.	ABILITY_TYPE_Undefined
+1152	Turret Burst	Turret Burst Ability
+-120F
+-20H
+20H	ABILITY_TYPE_DD
+1154	Life: Vitae Siphon	120F
+20H	ABILITY_TYPE_DD
+1155	Matter: Quicksilver	120F
+20H	ABILITY_TYPE_DD
+1172	Caustic Mist	Short Range PBAOE Contamination DOT.
+	ABILITY_TYPE_DOT
+1173	Silken Mist	-50% Movement: 15 Seconds	ABILITY_TYPE_Debuff
+1174	Drone Shot	General Drone Shot
+-20H
+-175F	ABILITY_TYPE_DD
+1185	Disguise: Alien: Mark I	Toggled Disguise Ability
+Disguise Rating: 100	ABILITY_TYPE_Buff
+1186	Drone Strike	Melee Attack
+-125F
+-15H	ABILITY_TYPE_DD
+1187	Disguise: Alien: Mark II	Toggled Disguise Ability
+Disguise Rating: 200	ABILITY_TYPE_Buff
+1188	Disguise: Alien: Mark III	Toggled Disguise Ability
+Stealth Rating: 300	ABILITY_TYPE_Buff
+1190	Goldam's Gift	Defeated player revives self.
+Revived player is at 25% Focus and 10% Health	ABILITY_TYPE_Heal
+1191	Rethink Aggression	Single Target Threat Wipe	ABILITY_TYPE_Debuff
+1192	Clear: Disruptions	Purges target Focus Degeneration	ABILITY_TYPE_Heal
+1193	Concentration: Intense	+20 to Interruption Resistance	ABILITY_TYPE_Buff
+1194	Concentration: Unbreakable	+50 to Interruption Resistance	ABILITY_TYPE_Buff
+1195	Flawless Victory	Disables all Mini-game abilities and cheats.
+Victory grants +100% experience.	ABILITY_TYPE_Undefined
+1196	Unacceptable Defeat	Clears the defeat state of a failed mini-game.	ABILITY_TYPE_Undefined
+1197	Ancient Understanding	Artifact Reuse Timer: -25%	ABILITY_TYPE_Buff
+1203	Override Protocols: Mechanical	Ranged Single Target Debuff: Fear
+Mechanicals
+Fear: 20 seconds	ABILITY_TYPE_Debuff
+1206	Enhance Turret: Contamination Damage	Buff
+Turret does contamination damage for 120 seconds.	ABILITY_TYPE_Buff
+1207	Repair Turret: Full	Heals 100% of the turret's Health pool after 7 seconds.	ABILITY_TYPE_Heal
+1212	Enhance Turret: Shield	Buff
+Turret now possesses a shield for 30 seconds.	ABILITY_TYPE_Buff
+1214	Repair Turret: Restoration	Revives destroyed turret or fully heals damaged one.	ABILITY_TYPE_Heal
+1215	Dart Type: Hazardous: Interruption	Buff:
+Toggle
+Damage Type: Physical
+Interruption: Increased	ABILITY_TYPE_Buff
+1218	Medical Attention: Recuperation	Heals 75% of the target's Health pool over 25 seconds.	ABILITY_TYPE_Heal
+1220	Dart Type: Beneficial: Adrenaline	Buff:
+Toggle	ABILITY_TYPE_Buff
+1221	Apply Damage	Ranged Single Target Attack
+-200F / -20H
+3 Ammo	ABILITY_TYPE_DD
+1222	Suppress Target	Ranged Single Target Attack w/Suppression
+-100F / -10H
+15 Ammo
+Suppression: 20 seconds	ABILITY_TYPE_DD
+1227	Dart Type: Hazardous: Contagion	Buff:
+Toggle	ABILITY_TYPE_Buff
+1216	Drone Ranged AA	Ranged Attack: Auto Attack
+-100F
+-10H	ABILITY_TYPE_DD
+1231	Shield: Adaptive	Absorbs Health Damage	ABILITY_TYPE_Buff
+1232	Shield: Reflective	Redirects a portion of damage back on attacker.	ABILITY_TYPE_Buff
+1237	Proximity Blast	Melee Attack
+-200F / -20H	ABILITY_TYPE_DD
+1674	MS018_063008_Brace	+200 ACC w/ Heavy MG's: 15 seconds	ABILITY_TYPE_Buff
+1239	Final Report	No ability description available to populate object_text_values table	ABILITY_TYPE_Buff
+1244	Reveal IV	Toggled Reveal Ability
+Reveal Rating: + 400	ABILITY_TYPE_Buff
+1248	EntityDeath	This means the mob is dead	ABILITY_TYPE_Undefined
+1249	Alertness	Decreased QR penalty from being attacked from the flank.	ABILITY_TYPE_Buff
+1251	Evisceration	Melee Attack w/DOT
+-100F /-10H
+DOT: -100F / -10H (Ticks: 8)	ABILITY_TYPE_DD
+1253	Pulse Sensor	Deployable: Pulse Sensor
+Pulses -25SR per 5 seconds
+10m radius
+Duration 60sec	ABILITY_TYPE_Undefined
+1254	Blind Sense	Self Targetted Buff 
+Reveal Ability
+Reveal Rating: + 100 for 30 seconds.	ABILITY_TYPE_Buff
+1312	TestMineExplode	Explosion damage from TestMine	ABILITY_TYPE_DD
+1320	Engagement State On Mob	This ability puts a detected mine in an engagement state.	ABILITY_TYPE_Undefined
+1247	Execution	Ranged Single Target Attack
+-150F / -15H
+1 Ammo
+Bonus Damage when opponent Focus is low.	ABILITY_TYPE_DD
+1242	Aimed Shot: Arm	Ranged Single Target Attack
+-300F / -30H
+Disarm: 10 Sec
+1 Ammo	ABILITY_TYPE_DD
+1250	Escape	Player goes into Stealth mode.
+Full stealth rating restored.	ABILITY_TYPE_Buff
+1327	Converse Minigame	This ability puts a humanoid into the engagement state.	ABILITY_TYPE_Undefined
+1361	Demolitions Mastery	Reduces Setup Time for Mines/Grenades
+Allows Throwing Grenades on the Move	ABILITY_TYPE_Buff
+1372	Stasis Sickness - Stage 1	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1373	Stasis Sickness - Stage 2	No ability description available to populate object_text_values table	ABILITY_TYPE_DOT
+1374	Cure Stasis Sickness	Used to cure stasis sickness.	ABILITY_TYPE_Undefined
+1385	30s Timer Fail Objective	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1386	30s Timer Fail Step	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1387	30s Timer Fail Mission	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1388	30s Timer Complete Objective	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1389	30s Timer Complete Step	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1390	30s Timer Complete Mission	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1355	Lethal Strike	Melee Attack w/ Stun
+-500F / -50H
+5 Second Knockdown
+	ABILITY_TYPE_DD
+1354	Disabling Shot	Single Target Attack w/ Blind, Slow, Disorient
+Damage: -250F / -25H
+Blind: -200 ACC / -200 DEF
+Disorient: 15 sec
+1 Ammo	ABILITY_TYPE_DD
+2433	Hacking - Safe	opening the safe	ABILITY_TYPE_Undefined
+1391	5m Timer Fail Objective	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1392	5m Timer Fail Step	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1393	5m Timer Fail Mission	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1394	5m Timer Complete Objective	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1395	5m Timer Complete Step	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1396	5m Timer Complete Mission	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1397	TestMineExplode	Explosion damage from TestMine	ABILITY_TYPE_DD
+1433	Mob Strike	Melee Attack
+-125F
+-15H	ABILITY_TYPE_DD
+1439	1m Timer Complete Mission	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1440	1m Timer Complete Objective	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1441	1m Timer Complete Step	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1442	1m Timer Fail Mission	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1443	1m Timer Fail Objective	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1444	1m Timer Fail Step	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1445	EMP Ammunition	Buff:
+Toggle
+Damage Type: Physical
+Penetration: Decreased
+Damage: Increased	ABILITY_TYPE_Buff
+1446	Explosive Ammunition	Buff:
+Toggle
+Damage Type: Physical
+Penetration: Decreased
+Damage: Increased	ABILITY_TYPE_Buff
+1450	Cover Penetration	+100 Cover Penetration	ABILITY_TYPE_Buff
+1451	Cover Stance	+200 Cover Defense	ABILITY_TYPE_Buff
+1452	Duck and Cover	+100 Crouching Defense	ABILITY_TYPE_Buff
+1455	Quick Launch	Reduces Warmup for next Missile Attack	ABILITY_TYPE_Buff
+1456	Shock and Awe	Reduces Warmup for all Missile Attack	ABILITY_TYPE_Buff
+1457	Steadfast	+10% Mental Resistance	ABILITY_TYPE_Buff
+1458	Stance: Ranged Specialist	+100 Ranged Accuracy	ABILITY_TYPE_Buff
+1434	Snap Shot	Ranged Single Target Attack
+-300F / -30H
+1 Ammo	ABILITY_TYPE_DD
+1871	Siphon Energy	120F
+20H	ABILITY_TYPE_DD
+1479	Throw Mastery	Reduces Setup Time for Mines/Grenades
+Allows Throwing Grenades on the Move	ABILITY_TYPE_Buff
+1539	Attack Protocol: Charged Particles	Debuff: Focus Degeneration
+Cost: X Gigajoules	ABILITY_TYPE_Debuff
+1541	Attack Protocol: Increase Energy Output	Toggled Point Blank Area of Effect Attack
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1542	Attack Protocol: Convert Non-Living Matter to Energy	Energy Direct Damage Burst: Converts Enemy Corpse to Energy
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1543	Attack Protocol: Energy Stream	Energy Channeled Direct Damage 
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1544	Attack Protocol: Proximity: Contaminate Matter	Contamination Melee Damage 
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1545	Attack Protocol: Matter Disruption	Energy Damage Over Time
+Cost: X Gigajoules	ABILITY_TYPE_DOT
+1865	MS019_Warrior Determination	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1548	Science Protocol: Energy Wave	Energy Point Blank Area of Effect Damage
+Cost: X Gigajoules	ABILITY_TYPE_DD
+1550	Science Protocol: Reduce Hostilities: Mechanical	Reduces Threat to Mechanicals
+Cost: X Gigajoules	ABILITY_TYPE_Buff
+1551	Rally Cry	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1552	Reveal Research Targets	Reveals Mini-Games on Mini-Map	ABILITY_TYPE_Buff
+1554	Science Protocol: Synaptic Clarity	Focus Regeneration
+Costs: X Gigajoules	ABILITY_TYPE_Heal
+1555	Science Protocol: Synaptic Connnection	Targetted Focus Regeneration
+Costs: X Gigajoules	ABILITY_TYPE_Heal
+1556	Science Protocol: Reduce Processes	Ranged Single Target Debuff: Disorient
+Mechanicals
+Disorient: 20 seconds	ABILITY_TYPE_Debuff
+3196	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Debuff
+1557	Science Protocol: Reprogram	Ranged Single Target Debuff: Confusion
+Mechanicals
+Disorient: 20 seconds	ABILITY_TYPE_Debuff
+1558	Molotov Cocktail	Throws a Molotov Cocktail	ABILITY_TYPE_DD
+1561	Defensive Protocol: Reroute Energy: Basic	Percentage of Asgard Health converted to Energy.
+	ABILITY_TYPE_Buff
+1563	Defensive Protocol: Reroute Energy: Intermediate	Percentage of Asgard Health converted to Energy.
+	ABILITY_TYPE_DD
+1564	Defensive Protocol: Energy to Shields: Basic	Percentage of Energy converted to Energy Damage Mitigation	ABILITY_TYPE_Buff
+2442	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Debuff
+1565	Defensive Protocol: Energy to Shields: Intermediate	Percentage of Energy converted to Energy Damage Mitigation	ABILITY_TYPE_Debuff
+1566	Defensive Protocol: Consume Energy: Basic	Percentage of Target Enemy Health converted to Energy	ABILITY_TYPE_DD
+1567	Defensive Protocol: Consume Energy: Intermediate	Percentage of Target Enemy Health converted to Energy	ABILITY_TYPE_DD
+1569	Defensive Protocol: Shields to Energy: Basic	Percentage of Energy Damage Mitigation converted to Energy	ABILITY_TYPE_Debuff
+1571	Defensive Protocol: Shields to Energy: Intermediate	Percentage of Energy Damage Mitigation converted to Energy	ABILITY_TYPE_Debuff
+1572	Defensive Protocol: Convert Energy: Basic	Percentage of Energy converted to Health	ABILITY_TYPE_Heal
+1573	Defensive Protocol: Convert Energy: Intermediate	Percentage of Energy converted to Health	ABILITY_TYPE_Heal
+1574	Defensive Upgrade: Create Density: Basic	Passive
+Bonus to Defensive QR	ABILITY_TYPE_Buff
+1575	Defensive Upgrade: Create Density: Intermediate	Passive
+Bonus to Defensive QR	ABILITY_TYPE_Buff
+1577	Molotov Cocktail	Throws a Molotov Cocktail	ABILITY_TYPE_DD
+1578	Defensive Protocol: Stasis Field	Ground Targetted Teleportation	ABILITY_TYPE_Debuff
+1579	Defensive Shield: Absorption	Absorbs Damage from Enemy Attacks	ABILITY_TYPE_Buff
+1580	Defensive Shield: Energy Distribution	Absorbs Damage from Enemy Attacks and releases it slowly.	ABILITY_TYPE_Buff
+1581	Defensive Protocol: Time Dilation	Snare and Slow	ABILITY_TYPE_Debuff
+1592	Stop Player Movement & Teleport	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1593	Stop Player Movement	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1594	Preparation - Minigame Success Dialog	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1597	Prison Boot	Prevents the player from moving until they complete a minigame.	ABILITY_TYPE_Undefined
+1598	Disable Your Prison Boot	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1599	Disable the Prisoner Boot	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1614	Additional Stealth Rating I	+50 Disguise Rating	ABILITY_TYPE_Heal
+1615	Future Self Visuals	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1616	Additional Stealth Rating II	+100 Disguise Rating	ABILITY_TYPE_Heal
+1617	Additional Stealth Rating III	+150 Disguise Rating	ABILITY_TYPE_Heal
+1618	Additional Stealth Rating IV	+200 Disguise Rating	ABILITY_TYPE_Heal
+1873	MS019_Focused Fire	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1619	Combat Sprint	10 Second Duration
+Increases Run Speed by 50%
+Decreases Accuracy by 100
+	ABILITY_TYPE_Buff
+1625	Phase Position	Teleports to a random location nearby.	ABILITY_TYPE_Undefined
+1629	Demand Accuracy	+200 Accuracy for 15 Seconds
+	ABILITY_TYPE_Buff
+1630	Impose Weakness	-200 Accuracy for 15 Seconds
+-200 Defense for 15 Seconds
+	ABILITY_TYPE_Debuff
+1631	Stasis Trap	No ability description available to populate object_text_values table	ABILITY_TYPE_DD
+1632	Resolve	+200 Defense for 15 Seconds
+	ABILITY_TYPE_Buff
+1633	Aura of God: Physical	Shield vs. Physical Damage	ABILITY_TYPE_Buff
+1635	Aura of God: Energy	Shield vs. Energy Damage	ABILITY_TYPE_Buff
+1626	Suppression Blast	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+1638	Destruction Shot	Ranged Single Target Attack w/ Stun
+-150F / -15H
+Stun: 5 Seconds	ABILITY_TYPE_DD
+1642	Stance: Soldier	Toggled Ability:
+Cover Defense 
+Mental Resist
+Threat Rating Increase
+	ABILITY_TYPE_Buff
+1643	Summon Jaffa	Summons Jaffa Pet	ABILITY_TYPE_Undefined
+1644	Summon Lo'taur	Summons Lo'taur Pet	ABILITY_TYPE_Undefined
+1645	Summon Prime	Summons Prime Pet	ABILITY_TYPE_Undefined
+1646	Health Heal	Heals 10% of the player's Health pool	ABILITY_TYPE_Heal
+1647	Focus Regeneration	No ability description available to populate object_text_values table	ABILITY_TYPE_Buff
+1648	Defend Your God	Increases Threat of all Pet Attacks.	ABILITY_TYPE_Buff
+1651	Focus Heal: Target	Heals 35% of the target's Focus pool	ABILITY_TYPE_Heal
+1661	Minigame Win Container	Does 100% damage to container	ABILITY_TYPE_Undefined
+1663	MS018_063008_Heal Focus	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1664	MS018_063008_Strike	Melee Attack
+-125F
+-15H	ABILITY_TYPE_DD
+1666	MS020_080818_SuppressionShot	Automatic Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+15 Ammo
+Suppression: 20 seconds	ABILITY_TYPE_DD
+1670	MS018_063008_Leading the Target	+200 Tracking: 15 Seconds	ABILITY_TYPE_Buff
+1675	MS018_063008_Aim	+200 Accuracy for 15 Seconds	ABILITY_TYPE_Buff
+1672	MS018_063008_Long Burst	LMG: Single Target Attack: Channeled
+2 Pulses: -300F / -30H
+5 Ammo per pulse	ABILITY_TYPE_DD
+1681	MS018_063008_Disruption Shot	Energy Pistol: Ranged Single Target Attack w/ Snare
+-150F / -15H
+Snare: 15 Seconds	ABILITY_TYPE_DD
+1686	MS018_063008_Intimidation	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1687	MS018_063008_Weapon Malfunction	Melee Attack
+-200F
+-20H
+Disarm:
+15 seconds	ABILITY_TYPE_DD
+1689	MS018_063008_Stasis Trap	No ability description available to populate object_text_values table	ABILITY_TYPE_DD
+1690	MS018_063008_Headshot	-250F 
+-60H 
++ Knockdown
+
+	ABILITY_TYPE_DD
+1693	MS018_063008_Rally Cry	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1722	Trained Mind	Focus Regeneration Buff	ABILITY_TYPE_Buff
+1723	Stance: Courage	Self Targetted Buff
+Maximum Focus: +15%	ABILITY_TYPE_Buff
+1724	Intimidation	Single Target Debuff: Fear	ABILITY_TYPE_Debuff
+1725	Oppression	Targeted Single Target Debuff: -1 Offensive QR
+	ABILITY_TYPE_Debuff
+1726	Kree!	Targeted Single Target Debuff: Confusion
+	ABILITY_TYPE_Debuff
+1727	Presence	Self Targeted Single Target Buff: Increases Threat Generation
+
+	ABILITY_TYPE_Buff
+1728	Focused Fire	Targeted Single Target Debuff: +1 Defensive QR
+
+	ABILITY_TYPE_Debuff
+1729	Marksman's Stance	Self Targeted Single Target Buff: Increases Ranged QR by +1, Decreaes Defense by +1 QR
+	ABILITY_TYPE_Buff
+1730	Kel'norim	Self Targeted Single Target Channelled Buff: Increases Health Regeneration
+	ABILITY_TYPE_Buff
+1731	Warrior's Resilience	Passive Buff: Kinetic resists increase 15%
+
+	ABILITY_TYPE_Buff
+1683	MS018_063008_Shiv	Melee Attack
+-130F
+-30H
+-25H
+-25H	ABILITY_TYPE_DD
+1734	Head Crack	Targeted Single Target Melee Attack w/ Disorient
+
+
+	ABILITY_TYPE_DD
+1735	Warrior's Determination	Self Targeted Single Target Buff: Purge Kinetic debuffs
+
+
+	ABILITY_TYPE_Buff
+1742	MS018_063008_Disarm Device I	Toggled Disarm Device Ability
+Disarm Rating: +100	ABILITY_TYPE_Buff
+1745	MS018_063008_Suppression Shottetst	Automatic Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+15 Ammo
+Suppression: 20 seconds	ABILITY_TYPE_DD
+1751	MS018_063008_Stealth I	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+2444	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Debuff
+1752	Stop Player Movement	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1753	Reinforce Copplemann - Minigame Success Dialog	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1765	DEBUG_AUDIO_Turn Off Ambient Sounds	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+1766	DEBUG_AUDIO_Turn Off Weapon Sounds	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+1767	DEBUG_AUDIO_Turn Off All Sounds	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+1769	MS019_071108_Arcing Swing	Targeted Melee Cone Attack: Narrow
+F-100 F-10
+
+	ABILITY_TYPE_DD
+1770	MS020_080829_BlindingShot	Targeted Single Target Attack w/ +1 QR Defensive Debuff and -1 QR Offensive Debuff
+	ABILITY_TYPE_DD
+1771	MS019_071108_Courage	Self Targetted Buff
+Maximum Focus: +15%	ABILITY_TYPE_Buff
+1782	MS019_071708_Delay	The Jaffa Warrior's will causes the mini-game's timer to increase or decrease as needed.	ABILITY_TYPE_Undefined
+1786	MS019_071708_Savage Blows	Staff: Targeted Single Target Channelled Melee Attack
+F-100 H-10 Per Pulse: 10 Pulses
+Pulse Duration: 1 second
+	ABILITY_TYPE_DD
+1736	Blinding Shot	Targeted Single Target Attack w/ +1 QR Defensive Debuff and -1 QR Offensive Debuff
+	ABILITY_TYPE_DD
+1732	Savage Blows	Staff: Targeted Single Target Channelled Melee Attack
+F-100 H-10 Per Pulse: 10 Pulses
+Pulse Duration: 1 second
+	ABILITY_TYPE_DD
+1822	Food Buffet Induction Bar	No ability description available to populate object_text_values table	ABILITY_TYPE_Undefined
+1823	Leech	200F
+20H	ABILITY_TYPE_DD
+1824	Plasma Lance	200F
+20H	ABILITY_TYPE_DD
+1830	Bash	Melee Attack
+-200F / -20H	ABILITY_TYPE_DD
+1831	Weld	Melee Attack
+-200F / -20H	ABILITY_TYPE_DD
+1832	MS019_JaffaDelay	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1843	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Debuff
+1844	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1848	MS019_Focused Fire	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1849	MS018_063008_Intimidation	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1850	MS018_063008_Intimidation	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1851	Aura of God: Energy	Test ability for content.	ABILITY_TYPE_Buff
+1852	MS019_Aura of God: Physical	Test ability for content.	ABILITY_TYPE_Buff
+1853	MS019_Demand Resolve	Test ability for content.	ABILITY_TYPE_Buff
+1855	MS019_Destruction Shot	Test ability for content.	ABILITY_TYPE_DD
+1856	MS019_Head Crack	Targeted Single Target Melee Attack w/ Disorient
+
+
+	ABILITY_TYPE_DD
+1857	MS019_Impose Weakness	-200 Accuracy for 15 Seconds
+-200 Defense for 15 Seconds
+	ABILITY_TYPE_Debuff
+1834	Destruction Shot	Ranged Single Target Attack w/ Stun
+-150F / -15H
+Stun: 5 Seconds	ABILITY_TYPE_DD
+1858	MS019_MarksmansStance	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1861	MS019_Staff Swing	Targeted Melee Cone Attack: Narrow
+F-100 F-10
+
+	ABILITY_TYPE_DD
+1862	MS019_Summon Jaffa	Summons Jaffa Pet	ABILITY_TYPE_Undefined
+1866	MS019_Warriors Resilience	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+1867	MS019_Lotar: Heal Health	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1872	MS019_Demand Resolve	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1874	MS019_Impose Weakness	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1875	MS019_Lotar: Heal Health	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1876	MS019_MarksmansStance	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1877	MS019_Warrior Determination	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1878	MS019_Warriors Resilience	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1881	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1884	Steady Fire	Increases Interruption Resistance + 10% for 30 seconds	ABILITY_TYPE_Buff
+1879	Point Blank Shot	Pistol: Ranged Single Target Attack
+-200F / -20H
+DOT: -150F / -30H (8 Ticks)
+1 Ammo	ABILITY_TYPE_DOT
+1863	MS019_Suppression Blast	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+1888	Steady Fire	Increases Interruption Resistance + 10% for 30 seconds	ABILITY_TYPE_Buff
+1891	Stance: Rally	Group Focus regen Buff
++15%	ABILITY_TYPE_Buff
+1893	Stance: Commander	Group target: 50% increase to Attack apeed	ABILITY_TYPE_Buff
+1904	MS019_InterruptingShot	Assault Rifle: Ranged Attack: Interrupts 
+-100F / -10H	ABILITY_TYPE_DD
+1907	Knockdown Test	Knockdown effect	ABILITY_TYPE_DD
+1945	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+1909	MS019_DrawFire	SMG: Ranged Single Target Attack
+-200F / -20H
+3 Ammo
+High Threat	ABILITY_TYPE_DD
+1910	MS019_AimedShotTorso	Ranged Single Target Attack w/ +200 ACC
+-400F / -40H
+1 Ammo	ABILITY_TYPE_DD
+1915	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1917	MS019_LaunchGrenade	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+1911	MS019_AimedShotLeg	Ranged Single Target Attack
+-200F / -20H
+Snare: 15 Second 
+1 Ammo	ABILITY_TYPE_DD
+1912	MS019_AimedShotArm*	Ranged Single Target Attack
+-300F / -30H
+Disarm: 10 Sec
+1 Ammo	ABILITY_TYPE_DD
+1905	Radiated Blasts	Ranged Channelled Attack
+-250 F
+-25H
+10 Ticks 1 second intervals	ABILITY_TYPE_DD
+1926	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1927	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1929	MS019_ReignOfChaos	Ranged Channelled Attack
+-250 F
+-25H
+10 Ticks 1 second intervals	ABILITY_TYPE_DD
+1934	MS019_StealthII	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+1935	MS019_FocusRegeneration*	No ability description available to populate object_text_values table	ABILITY_TYPE_Buff
+1936	MS019_LordsConcentration	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1937	MS019_FocusDegen	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1938	MS019_PhasePosition	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+1942	MS019_Revealed	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1946	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+1947	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+1948	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+1950	Close In	10 Second Duration
+Increases Run Speed by 50%
+Decreases Accuracy by 100
+	ABILITY_TYPE_Buff
+1951	NO ABILITY DISPLAY NAME!	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1953	MS019_RevealI*	Toggled Reveal Ability
+Reveal Rating: + 100	ABILITY_TYPE_Buff
+1954	NO ABILITY DISPLAY NAME!	Toggled Reveal Ability
+Reveal Rating: + 100	ABILITY_TYPE_Buff
+1958	MS019_Focused Fire	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1959	Reveal Alarm	Toggled Reveal Ability
+Reveal Rating: + 100	ABILITY_TYPE_Buff
+1960	MS019_Focused Fire	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1965	Bash	Melee Attack
+-200F / -20H	ABILITY_TYPE_DD
+1969	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1970	MS000_TEMPLATE_SingleShot	Single Shot Ability template.	ABILITY_TYPE_DD
+1971	MS000_TEMPLATE_Burst	Burst ability template.	ABILITY_TYPE_DD
+1972	MS000_TEMPLATE_Melee	Melee ability template.	ABILITY_TYPE_DD
+1974	MS020_080829_Warrior'sStance	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1975	Willpower	+15% to all Mental Resists	ABILITY_TYPE_Buff
+1977	Indomitable Spirit	Removes all mental-Based Debuffs/States	ABILITY_TYPE_Buff
+2054	MS020_Remove:Confidence	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1979	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1981	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1982	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1983	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1985	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1986	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+1987	MS020_InduceCaution:Humanoid	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1988	MS020_InduceDaze:Humanoid	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1989	MS020_InducePanic:Humanoid	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1991	MS020_InduceCaution:Alien	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1993	MS020_InducePanic:Alien
+	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1994	MS020_InduceCalm:Humanoid
+	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1995	MS020_InduceRebellion:Humanoid
+	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1996	MS020_InduceRebellion:Alien	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+1997	Threatening Shout	Threat Increased +200
+Focus Damage -100	ABILITY_TYPE_DD
+1984	Staff Swing	Melee Attack: Staff
+-100F
+-10H	ABILITY_TYPE_DD
+1999	MS020_Conversation:Mediator	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2002	MS020_Conversation:Humanoid:Experienced	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2003	MS020_Conversation:Humanoid:Advanced	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2004	MS020_Converstation:Alien:Experienced	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2005	MS020_Conversation:Alien:Advanced	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2008	Warrior's Fortitude	Passive Buff:
+Health regeneration Increased +10%
+
+	ABILITY_TYPE_Buff
+2015	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2016	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2018	MS020_Enhance:Humanoid:Focus	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2020	MS020_OverrideAI:Mechanical	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2021	MS020_OverrideSensors:Mechanical	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2022	MS020_OverrideTarget:Mechanical	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2023	MS020_OverrideProtocals:Mechanical	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2027	Warrior's Will	Self Targeted Buff: Purge Mental Effects	ABILITY_TYPE_Buff
+2044	Kel'norim	Channeled Ability:
+Heals 10% of the player's Health pool
+10 Ticks	ABILITY_TYPE_Heal
+2046	MS020_Restore:Concentration	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2047	MS020_080811_Restore:Will	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2048	MS020_Concentration:Focused	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2049	MS020_FieldMedicI	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2050	MS020_FieldMedicII	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2051	MS020_FieldMedicIII	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2052	MS020_Diminish:Concentration	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2055	MS020_Clear:Disruptions	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2056	Tritonin	Passive Buff: Focus Pool +1000	ABILITY_TYPE_Buff
+2057	MS020_RethinkAggression	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2059	MS020_Indistinguishable	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2060	MS020_MarkofAscension	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2063	Impose Will: Humanoid	Ranged Single Target Debuff: Confusion
+Confusion: 20 seconds	ABILITY_TYPE_Debuff
+2067	Warrior's Stance	Self Targetted Stance:
+Engagement + 10
+Fortitude +10	ABILITY_TYPE_Buff
+2068	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Buff
+2071	Blind Sense	Passive Buff:
+Reveal Rating: + 100	ABILITY_TYPE_Buff
+2073	Battlefield Warrior	Passive Buff: -0.5 Defensive QR, +0.5 Offensive QR	ABILITY_TYPE_Buff
+2076	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2078	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2080	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2082	Conversation: Humanoid: Basic	Ranged Single Target Conversation: Humanoid 
+
+Engagement State: 20 seconds	ABILITY_TYPE_Debuff
+2443	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Debuff
+2083	Conversation: Humanoid: Basic	Ranged Single Target Conversation: Humanoid 
+
+Engagement State: 20 seconds	ABILITY_TYPE_Debuff
+2084	Disguise: Alien: Mark I	Toggled Disguise Ability
+Disguise Rating: 100	ABILITY_TYPE_Buff
+2085	Disguise: Alien: Mark I	Toggled Disguise Ability
+Disguise Rating: 100	ABILITY_TYPE_Buff
+2086	Disguise: Alien: Mark I	Toggled Disguise Ability
+Disguise Rating: 100	ABILITY_TYPE_Buff
+2087	Conversation: Humanoid: Basic	Ranged Single Target Conversation: Humanoid 
+
+Engagement State: 20 seconds	ABILITY_TYPE_Debuff
+2088	Conversation: Humanoid: Basic	Ranged Single Target Conversation: Humanoid 
+
+Engagement State: 20 seconds	ABILITY_TYPE_Debuff
+2089	Conversation: Humanoid: Basic	Ranged Single Target Conversation: Humanoid 
+
+Engagement State: 20 seconds	ABILITY_TYPE_Debuff
+2090	MS020_080811_TurnAndDie	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2091	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_DD
+2092	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2093	MS020_ZeroIn	Automatic Weapons: Ranged Channelled Attack: Exponential Damage
+-1200F
+-120H
+50 pulses 3 Ammo per pulse	ABILITY_TYPE_DD
+2099	Clear: Mind	Purges target Mental States	ABILITY_TYPE_Heal
+2101	The Straegis Connection	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Buff
+2104	Lock and Load	Passive Buff:
+Reduces reload time for Grenade launchers and Heavy Weapons by 10%	ABILITY_TYPE_Buff
+2108	MS020_080817_ShootandScootActive	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2110	MS020_080817_DamageShot	Ranged Single Target Attack:
+-200F / -20H	ABILITY_TYPE_DD
+2141	MS020_080817_RepeatedFire	Ranged Channelled Attack
+-300F / -30H 
+1 Ammo	ABILITY_TYPE_DD
+2146	MS020_080817_Takedown	Melee Attack w/ Knockdown
+-100F / 10H
+5 Second Knockdown
+	ABILITY_TYPE_DD
+2119	MS020_080817_Missile:HighExplosive	Ranged Single Target Attack:
+Warmup: 1 second
+-175F
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2106	MS020_080817_WoundingShot	SMG: Ranged Single Target Attack
+-100F
+-10H
+1 Ammo
+DOT: 8 Ticks: -50F -5H per tick	ABILITY_TYPE_DD
+2100	MS020_080817_FlamethrowerTest	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+2120	MS020_080817_Missile:EMP
+	Ranged Single Target Attack:
+Warmup: 1 second
+-175F
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2121	MS020_080817_Missile:Guided	Ranged Single Target Attack:
+Warmup: 1 second
+-175F
+-20H
+1 Ammo	ABILITY_TYPE_DD
+2123	MS020_080817_DuckandCover	+100 Crouching Defense	ABILITY_TYPE_Buff
+2124	MS020_080817_CombatSprint	10 Second Duration
+Increases Run Speed by 50%
+Decreases Accuracy by 100
+	ABILITY_TYPE_Buff
+2125	MS020_080817_NoSleepForTheWeary	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2126	MS020_080817_WeaponSpecialization:Ranged	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2128	MS020_080817_Steadfast	+10% Mental Resistance	ABILITY_TYPE_Buff
+2129	MS020_080817_ShockAndAwe	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2130	MS020_080817_CoverPenetration	+100 Cover Penetration	ABILITY_TYPE_Buff
+2131	MS020_080817_DisarmDeviceII	Toggled Disarm Device Ability
+Disarm Rating: +100	ABILITY_TYPE_Buff
+2134	MS020_080817_DisarmDeviceIII	Toggled Disarm Device Ability
+Disarm Rating: +100	ABILITY_TYPE_Buff
+2136	MS020_080817_StealthIII	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+2137	MS020_080817_RevealIII	Toggled Reveal Ability
+Reveal Rating: + 100	ABILITY_TYPE_Buff
+2138	MS020_080817_RevealIII	Toggled Reveal Ability
+Reveal Rating: + 100	ABILITY_TYPE_Buff
+2142	MS020_080817_AimedShot:Head	Ranged Single Target Attack w/ Blind
+-500F / -50H
+-200 ACC / -200 DEF
+1 Ammo	ABILITY_TYPE_DD
+2145	MS020_080817_Wound	Melee Attack w/DOT
+-100F /-10H
+DOT: -50F / -5H (Ticks: 8)	ABILITY_TYPE_DD
+2147	MS020_080817_Bypass	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2148	MS020_080817_MarkedPrey	-200 DEF on Target	ABILITY_TYPE_Debuff
+2149	MS020_080817_Blind	Melee Attack
+-100F / -10H
+15 Seconds: -2 to target ACC / DEF	ABILITY_TYPE_DD
+2150	MS020_080817_Fade	Self Buff: +100 Stealth Rating	ABILITY_TYPE_Buff
+2139	MS020_080817_Snapshot	Ranged Single Target Attack
+-300F / -30H
+1 Ammo	ABILITY_TYPE_DD
+2153	MS020_080817_Disarm	Melee Attack
+-200F
+-20H
+Disarm:
+15 seconds	ABILITY_TYPE_DD
+2154	MS020_080817_ShutDown	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2155	MS020_080817_StealthyAssault	Melee Attack
+-200F
+-20H
+Low Stealth Rating Reduction	ABILITY_TYPE_DD
+2156	MS020_080817_Alertness	Decreased QR penalty from being attacked from the flank.	ABILITY_TYPE_Buff
+2157	MS020_080817_PulseSensor	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2158	MS020_080817_DragonFist	Melee Attack w/ Stun
+-500F / -50H
+5 Second Knockdown
+	ABILITY_TYPE_DD
+2159	MS020_080817_Evisceration	Melee Attack w/DOT
+-300F /-30H
+DOT: -100F / -10H (Ticks: 8)	ABILITY_TYPE_DD
+2160	MS020_080817_Execution	Ranged Single Target Attack
+-150F / -15H
+1 Ammo
+Bonus Damage when opponent Focus is low.	ABILITY_TYPE_DD
+2162	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2163	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2165	MS020_080817_WoundingShot	Single Target Attack
+-500F / -50H
+-1500F / -150H vs Low Focus
+1 Ammo	ABILITY_TYPE_DD
+2199	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2169	MS020_080818_IntimidationFire	AE Increases Accuracy by 150 for 15 seconds	ABILITY_TYPE_Buff
+2171	Stance: Under Fire	Stance: + 25% to all Mental resists	ABILITY_TYPE_Buff
+2172	Disarm Mastery	Passive Buff:
+Disarm Rating +200	ABILITY_TYPE_Buff
+2173	Stance: Demolitions	Self target: Stance: +50 Speed increase to all Deployables	ABILITY_TYPE_Buff
+2175	MS020_080818_SightIn	Increases Cover ACC by +200 for 15 seconds	ABILITY_TYPE_Buff
+2176	MS020_080818_HalfMag	Ranged Channelled Attack
+-100F / -10H (7 Ticks)
+ Ammo: 7	ABILITY_TYPE_DD
+2178	MS020_080818_Sniper	Reduces Aggro Generation by 10%	ABILITY_TYPE_Buff
+2179	MS020_080818_Concentration	Heals 10% of the target's Focus pool	ABILITY_TYPE_Heal
+2180	MS020_080818_DemolitionsMastery	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2164	MS020_080817_WoundingShot	SMG: Ranged Single Target Attack
+-100F
+-10H
+1 Ammo
+DOT: 8 Ticks: -50F -5H per tick	ABILITY_TYPE_DD
+2194	Stance: Martial	Self target: Stance: +100 Accuracy for Melee Attacks	ABILITY_TYPE_Buff
+2195	Stance: Covert	Self target: Stance: +200 Reveal Rating	ABILITY_TYPE_Buff
+2196	Stance: Combat Awareness	Self target: Stance: Removes Flank from user	ABILITY_TYPE_Buff
+2197	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2200	Stance: Sniper	Reduces Threat per Attack	ABILITY_TYPE_Buff
+2201	Stance: Sharp Shooter	Self target: Stance: Sharp Shooter
+Cover Accuracy +100	ABILITY_TYPE_Buff
+2202	Medical Attention: Military Heal	Heals 25% of the target's Health pool	ABILITY_TYPE_Heal
+2204	Medical Attention: Military Heal	Heals 25% of the target's Health pool	ABILITY_TYPE_Heal
+2205	Stance: Under Fire	Stance: + 25% to all Mental resists	ABILITY_TYPE_Buff
+2206	Focus Heal: Consumable	Focus Heal: +384	ABILITY_TYPE_Heal
+2222	Security Computer - bypassed	You now have access to the Ring Network Controls at the Hall of Secrets	ABILITY_TYPE_Undefined
+2223	Ring Network Controls - hacked	You now have access to the Hall of Secrets	ABILITY_TYPE_Undefined
+2225	MS020_080818_LeathalShot	Ranged Single Target Attack w/ DoT
+-200F / -20H
+-100F / -10H x10
+1 Ammo	ABILITY_TYPE_DD
+2226	MS020_080818_HunkerDown	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2229	MS020_080818_ThrowMastery	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2230	MS020_080818_CoverStance	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2231	MS020_080818_RapidAim	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2232	MS020_080818_ImpeccableAim	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2233	MS020_080818_Bash	Melee Attack
+-125F
+-15H	ABILITY_TYPE_DD
+2235	MS020_080818_Stance:SteadyFire	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2236	MS020_080818_Stance:PenetrationFire	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2237	MS020_080818_Stance:Incineration	Ranged Single Target Attack
+-200F / -20H
+3 Ammo	ABILITY_TYPE_DD
+2238	MS020_080818_Stance:Mobility	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2239	MS020_080818_Stance:Soldier	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2240	MS020_080818_Stance:Rally	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2241	MS020_080818_Stance:Aim	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2242	MS020_080818_Stance:Cover	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2243	MS020_080818_Stance:Commander	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2244	MS018_063008_Burst	Ranged Single Target Attack
+-200F / -20H
+3 Ammo	ABILITY_TYPE_DD
+2245	Stasis Computer - bypassed	You now have full access to the Stasis Computer in the Crypt of Wadjet	ABILITY_TYPE_Undefined
+2246	Health Healing: Consumable	Health Heal: +162	ABILITY_TYPE_Heal
+2249	MS020_080818_Stance:Incineration	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2313	MS020_080829_Tritonin	Passive Buff: Focus Pool +1000	ABILITY_TYPE_Buff
+2255	MS020_080817_Snapshot	Ranged Single Target Attack w/ DoT
+-200F / -20H
+-100F / -10H x10
+1 Ammo	ABILITY_TYPE_DD
+2256	MS020_080817_RedMist	Ranged Single Target Attack w/ DoT
+-200F / -20H
+-100F / -10H x10
+1 Ammo	ABILITY_TYPE_DD
+2257	MS020_080817_Escape	Stealth Rating: +100
+Stealth Rating: +10% every 2 seconds (Outside of Combat)	ABILITY_TYPE_Buff
+2258	Disguise Boost: Consumable	Disguise Boost: +35	ABILITY_TYPE_Heal
+2259	MS020_080818_Stance:CoverPenetration	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2260	MS020_080818_Stance:ShockAndAwe	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2261	MS020_080818_Stance:Steadfast	Heals 35% of the player's Focus pool	ABILITY_TYPE_Heal
+2262	MS020_080817_LaunchGrenade:Fragmentation	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+2263	MS020_080817_LaunchGrenade:Incendiary	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+2264	MS020_080817_LaunchGrenade:Shockwave	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+2265	MS020_080817_LaunchGrenade:TearGas	Staff Weapon: Ranged Single Target Attack w/Suppression
+-100F / -10H
+Suppression: 15 seconds	ABILITY_TYPE_DD
+2268	MS020_080818_ThrowMastery	Melee Attack w/ Knockdown
+-100F / 10H
+5 Second Knockdown
+	ABILITY_TYPE_DD
+2269	Stealth Boost: Consumable	Stealth Boost: +35	ABILITY_TYPE_Heal
+2271	Energy Boost: Consumable	Stealth Boost: +35	ABILITY_TYPE_Heal
+2272	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Undefined
+2273	Tablet - Activated	You can now take the rings to the surface of Men'fa	ABILITY_TYPE_Undefined
+2274	Broadcast Terminal	Broadcasting modified orders to security drones	ABILITY_TYPE_Undefined
+2276	Focus Heal: Consumable	Focus Heal: +454	ABILITY_TYPE_Heal
+2277	Focus Heal: Consumable	Focus Heal: +524	ABILITY_TYPE_Heal
+2278	Focus Heal: Consumable	Focus Heal: +683	ABILITY_TYPE_Heal
+2279	Focus Heal: Consumable	Focus Heal: +764	ABILITY_TYPE_Heal
+2441	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Debuff
+2280	Focus Heal: Consumable	Focus Heal: +844	ABILITY_TYPE_Heal
+2281	Focus Heal: Consumable	Focus Heal: +1005	ABILITY_TYPE_Heal
+2282	Focus Heal: Consumable	Focus Heal: +1093	ABILITY_TYPE_Heal
+2283	Focus Heal: Consumable	Focus Heal: +1322	ABILITY_TYPE_Heal
+2284	Focus Heal: Consumable	Focus Heal: +1420	ABILITY_TYPE_Heal
+2285	Health Healing: Consumable	Health Heal: +172	ABILITY_TYPE_Heal
+2286	Health Healing: Consumable	Health Heal: +182	ABILITY_TYPE_Heal
+2287	Health Healing: Consumable	Health Heal: +221	ABILITY_TYPE_Heal
+2288	Health Healing: Consumable	Health Heal: +232	ABILITY_TYPE_Heal
+2289	Health Healing: Consumable	Health Heal: +244	ABILITY_TYPE_Heal
+2290	Health Healing: Consumable	Health Heal: +278	ABILITY_TYPE_Heal
+2291	Health Healing: Consumable	Health Heal: +290	ABILITY_TYPE_Heal
+2292	Health Healing: Consumable	Health Heal: +339	ABILITY_TYPE_Heal
+2293	Health Healing: Consumable	Health Heal: +353	ABILITY_TYPE_Heal
+2294	Safkhet's Artifact	Activating - Mouth of Ptah	ABILITY_TYPE_Undefined
+2295	Explosives	You rig the Stasis Mechanism with explosives	ABILITY_TYPE_Undefined
+2296	Stasis Control Panel - Hacked	You hack the Stasis Control Panel, halting the revival of Jaffa	ABILITY_TYPE_Undefined
+2297	Weapon Locker	You rig the weapon locker with explosives	ABILITY_TYPE_Undefined
+2298	Weapon Locker	You rig the weapon locker with explosives	ABILITY_TYPE_Undefined
+2299	Weapon Locker	You rig the weapon locker with explosives	ABILITY_TYPE_Undefined
+2300	Stasis Computer	Downloading virus	ABILITY_TYPE_Undefined
+2301	Turret Burst	Turret Burst Ability
+-120F
+-20H
+20H	ABILITY_TYPE_DD
+2302	Turret Burst	Turret Burst Ability
+-120F
+-20H
+20H	ABILITY_TYPE_DD
+2303	NO ABILITY DISPLAY NAME!	NO ABILITY DESCRIPTION!	ABILITY_TYPE_Heal
+2305	MS020_080829_Target:Leg	Ranged Single Target Attack
+-200F / -20H
+DOT: -150 -50 8 Ticks	ABILITY_TYPE_DD
+2306	MS020_080829_Target:Chest	Ranged Single Target Attack
+-200F / -20H
+DOT: -150 -50 8 Ticks	ABILITY_TYPE_DD

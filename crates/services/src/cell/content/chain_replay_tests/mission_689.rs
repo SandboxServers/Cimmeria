@@ -165,7 +165,7 @@ async fn assert_item_use_3438_resolves(mission_689_status: &str, should_fire: bo
         let starts_livewire = fired.iter().any(|a| {
             matches!(
                 a,
-                Action::StartMinigame { minigame_type, on_victory_chains }
+                Action::StartMinigame { minigame_type, on_victory_chains, .. }
                     if minigame_type == "Livewire" && on_victory_chains == &vec![1025]
             )
         });

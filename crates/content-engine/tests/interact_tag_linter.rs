@@ -154,12 +154,31 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // NOTE (#97): five entries added at once is right at the threshold this
         // allowlist's own doc comment calls out — the entity-template walker is
         // the real fix for the whole "bit comes from the template default"
-        // family, which is now 16 of the 20 entries here.
+        // family, which is 16 of the 25 entries here (the other nine are
+        // sibling-chain and per-player-dialog-bind cases).
         | ("harset_space_chains.sql", 6001) // HarsetRingLeftBottom
         | ("harset_space_chains.sql", 6002) // HarsetRingRightBottom
         | ("harset_space_chains.sql", 6003) // HarsetRingLeft
         | ("harset_space_chains.sql", 6004) // HarsetRingLeftTop
         | ("harset_space_chains.sql", 6005) // HarsetRingRight
+        // castle_701_chains.sql — mission 701 (Gerschon / Copplemann).
+        // reason: both NPCs' interaction bit comes from the PER-PLAYER
+        // dialog bind, not from a zone-wide flag. `add_dialog_set` pushes
+        // the dialog_set_map row's `interaction_flags` to the binding
+        // player only (executor/dialog.rs::send_interaction_update_if_visible),
+        // which is what decision D-CA15 requires: a `set_interaction_type`
+        // here would light the "!" over Gerschon and Copplemann for every
+        // player in the shared world at once, including players who have
+        // already finished 701. Templates 149 and 48 both carry
+        // `interaction_type = 0` and `static_interaction_sets = '{}'`, so
+        // the bind is the only source of the bit — see the GAP 1 block in
+        // castle_701_chains.sql for why that bind is a no-op until packet
+        // CA02 widens `DialogSetMapEntry.dialog_id` to `Option<i32>`.
+        | ("castle_701_chains.sql", 1202) // Castle_SgtGerschon: per-player bind, dsm 3062 (chain 1201)
+        | ("castle_701_chains.sql", 1203) // Castle_SgtGerschon: per-player bind, dsm 3062 (chain 1201)
+        | ("castle_701_chains.sql", 1231) // Castle_Coppleman: per-player bind, dsm 3062 (chains 1204/1205/1240)
+        | ("castle_701_chains.sql", 1233) // Castle_Coppleman: per-player bind, dsm 3062 (chains 1204/1205/1241)
+        | ("castle_701_chains.sql", 1236) // Castle_Coppleman: per-player bind, dsm 3063 (chains 1235/1243)
         // sgc_w1_chains.sql — baseline (dialog NPCs / quest items / lootable bodies)
         | ("sgc_w1_chains.sql", 3002) // SGCW1_GenHammond: dialog NPC template default
         | ("sgc_w1_chains.sql", 3004) // SGC_W1_Tealc: dialog NPC template default

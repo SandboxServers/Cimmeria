@@ -451,7 +451,7 @@ counted against `SGWGmPlayer.def` document order and asserted in
 |-------|--------|----------|------|-----------|
 | 133 | `gmGiveItem` | 185 | `WSTRING DesignId, INT32 Quantity` | Grants the item to the GM's own inventory via `GrantItem`. DesignId resolved as a positive numeric design id (internal-name resolution not wired in the cell — rejected with a warn). Quantity clamped to `[1, 1000]`. |
 | 163 | `gmGotoXYZ` | 348 | `FLOAT aX, FLOAT aY, FLOAT aZ` | Teleports the GM to the coordinate in their current space via `TeleportPlayer` (same-space FORCED_POSITION snap). Non-finite coordinates rejected. |
-| 190 | `gmKillTarget` | 482 | `INT64 TargetId` | Kills an NPC via the canonical death sequence (`abilities::gm_kill_npc`). Refuses player targets and targets in a different space; INT64 ids out of `u32` range rejected. |
+| 190 | `gmKillTarget` | 482 | `INT64 TargetId` | Kills an NPC via the canonical death sequence (`abilities::kill_npc_out_of_band`). Refuses player targets and targets in a different space; INT64 ids out of `u32` range rejected. |
 
 > The `class_id` flip and the per-method index counts are byte-verified server
 > side (see the wire-format test
@@ -638,7 +638,7 @@ beyond the 3 verified handlers above.
 | 187 | `gmRechargeItem(INT32 itemId)` | — | vendor `recharge.rs` (base-scoped; need GM cell→base route) | ADAPT |
 | 188 | `gmSetMobAttribute(INT32 target, WSTRING attr, WSTRING type, INT32 val)` | — | `queries.rs:35 get_entity_mut` (no reflection; hand-map attrs) | ADAPT |
 | 189 | `gmRespawn()` | `/Respawn` | `cell/cell_methods/gm/world.rs` → `handle_respawn` | **DONE** |
-| 190 | `gmKillTarget(INT64 target)` | `/Kill` | **`gm/world.rs` → `abilities::gm_kill_npc`** | **DONE** |
+| 190 | `gmKillTarget(INT64 target)` | `/Kill` | **`gm/world.rs` → `abilities::kill_npc_out_of_band`** | **DONE** |
 
 #### Minigame (191–193)
 

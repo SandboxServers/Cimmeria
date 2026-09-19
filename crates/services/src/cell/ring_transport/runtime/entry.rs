@@ -6,8 +6,10 @@ use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
 
-use super::super::dispatch::{dispatch_effect, dispatch_effects, mark_player_loaded};
-use super::super::transporter::{Effect, State};
+use super::super::dispatch::{
+    dispatch_effect, dispatch_effects, dispatch_release_effects, mark_player_loaded,
+};
+use super::super::transporter::{AbortReason, Effect, State};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -218,6 +220,14 @@ pub async fn handle_select_destination(
 /// `try_advance_after_load`'s readiness gate would silently drop this
 /// arrival, and with it the `FireTeleportIn` chain event that carries
 /// arrival mission credit. Release the late traveller directly instead.
+///
+/// The same release covers a ring that is back in `RemoteLoadWait` for a
+/// *different* trip (PR #662 review, finding 5). State alone is not enough:
+/// the readiness gate is a length comparison, so counting a stranger towards
+/// it fires `all_players_loaded` for a passenger list this arrival is not on,
+/// and the trip's real passengers are left hidden and movement-locked past
+/// the transition that would have released them. Both halves — the right
+/// state *and* the right passenger — have to hold before this is a load.
 pub async fn handle_remote_player_loaded(
     region_id: i32,
     entity_id: u32,
@@ -225,8 +235,11 @@ pub async fn handle_remote_player_loaded(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    let ring_state = space_mgr.ring_transporters.get(region_id).map(|t| t.state);
-    if ring_state == Some(State::RemoteLoadWait) {
+    let ring = space_mgr
+        .ring_transporters
+        .get(region_id)
+        .map(|t| (t.state, t.expects_player(entity_id)));
+    if let Some((State::RemoteLoadWait, true)) = ring {
         mark_player_loaded(region_id, entity_id, tx, space_mgr, engine).await;
         return;
     }
@@ -234,10 +247,12 @@ pub async fn handle_remote_player_loaded(
     tracing::warn!(
         region_id,
         entity_id,
-        state = ?ring_state,
+        state = ?ring.map(|(s, _)| s),
+        expected = ring.is_some_and(|(_, e)| e),
         reason = "late_ring_arrival",
-        "ring: player finished loading after the destination ring left RemoteLoadWait \
-         (stall timeout, or the ring was never armed) — releasing them directly so they \
+        "ring: player finished loading after the destination ring left RemoteLoadWait, \
+         or while it was mid-trip for a passenger list this player is not on (stall \
+         timeout, or the ring was never armed) — releasing them directly so they \
          are not left hidden and movement-locked, and firing teleport_in so arrival \
          mission credit is not lost"
     );
@@ -320,24 +335,49 @@ async fn kick_off_warmup(
         .ring_transporters
         .get(destination_region_id)
         .map(|d| (d.state, d.remote_region_id));
-    match dst_link {
-        Some((State::RecvWait, Some(back))) if back == source_region_id => {
+    if let Some((State::RecvWait, Some(back))) = dst_link {
+        if back == source_region_id {
             if let Some(dst) = space_mgr.ring_transporters.get_mut(destination_region_id) {
                 dst.remote_send(now);
             }
+            dispatch_effects(effects, tx, space_mgr, engine).await;
+            return;
         }
-        Some((State::RecvWait, back)) => {
-            tracing::warn!(
-                source_region_id,
-                destination_region_id,
-                destination_back_pointer = back,
-                reason = "peer_backpointer_mismatch",
-                "ring warmup: destination is reserved for a different source — not advancing it; \
-                 this trip will release its passengers when SendWarmup's warmup deadline finds \
-                 the destination unprepared"
-            );
-        }
-        _ => {}
     }
-    dispatch_effects(effects, tx, space_mgr, engine).await;
+
+    // The destination did not advance, so it is not prepared to receive
+    // anyone: either it is reserved for a different source, or it is not in
+    // `RecvWait` at all (its own reservation timed out between selection and
+    // the player stepping onto the pad).
+    //
+    // Abort the source trip here rather than letting it run (PR #662 review,
+    // finding 6). There is no later rescue: `run_one_deadline`'s warmup arm
+    // only aborts when `ring_regions` has no row for the destination, and
+    // that is a *static* seed table which resolves fine — so the warmup would
+    // fire, teleport the passengers onto a pad another trip is holding, and
+    // then find the destination FSM unable to take them
+    // (`advance_destination_after_warmup` only drives `RecvWarmup →
+    // RemoteLoadWait`). The passengers would sit hidden and movement-locked
+    // on an `Idle` ring with no deadline armed to release them — the
+    // unbounded-state shape H02 exists to prevent.
+    //
+    // `effects` is deliberately dropped rather than dispatched: it is
+    // `start_sending`'s LockMovement / PlaySequence / onTeleportOut, and
+    // there is no trip to run. The abort's own release effects are what go
+    // out instead.
+    tracing::warn!(
+        source_region_id,
+        destination_region_id,
+        destination_state = ?dst_link.map(|(s, _)| s),
+        destination_back_pointer = ?dst_link.and_then(|(_, b)| b),
+        reason = AbortReason::PeerNotPrepared.as_str(),
+        "ring warmup: destination is not reserved for this source — aborting the trip and \
+         releasing its passengers rather than teleporting them onto a pad held by another trip"
+    );
+    let release = space_mgr.ring_transporters.abort_pair(
+        source_region_id,
+        AbortReason::PeerNotPrepared,
+        None,
+    );
+    dispatch_release_effects(release, tx, space_mgr).await;
 }

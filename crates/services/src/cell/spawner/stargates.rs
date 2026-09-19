@@ -31,6 +31,11 @@ pub struct StargateEntry {
     /// point; see the column comment in
     /// `db/resources/Worlds/Tables/stargates.sql`.
     pub arrival: Option<([f32; 3], f32)>,
+    /// `stargates.event_set_id` — the Kismet event set for THIS gate's
+    /// prefab. Resolves `Stargate_MakeGate` (6100) / `Stargate_CrossGate`
+    /// (6113) through `SpaceManager::sequence_map`. Nullable in the seed:
+    /// most unbuilt worlds' gates have no prefab and carry NULL.
+    pub event_set_id: Option<i32>,
 }
 
 impl StargateEntry {
@@ -58,7 +63,8 @@ pub async fn load_stargates(
     let rows = sqlx::query(
         "SELECT s.stargate_id, w.world AS world_name, \
                 s.x_pos, s.y_pos, s.z_pos, s.yaw, s.address_origin, \
-                s.arrival_x, s.arrival_y, s.arrival_z, s.arrival_yaw \
+                s.arrival_x, s.arrival_y, s.arrival_z, s.arrival_yaw, \
+                s.event_set_id \
          FROM resources.stargates s \
          JOIN resources.worlds w ON s.world_id = w.world_id \
          ORDER BY s.stargate_id",
@@ -108,6 +114,7 @@ pub async fn load_stargates(
                 yaw: r.get::<f64, _>("yaw") as f32,
                 address_origin: r.get("address_origin"),
                 arrival,
+                event_set_id: r.get::<Option<i32>, _>("event_set_id"),
             },
         );
     }
@@ -129,6 +136,7 @@ mod tests {
             yaw: 2.75,
             address_origin: 6,
             arrival,
+            event_set_id: None,
         }
     }
 

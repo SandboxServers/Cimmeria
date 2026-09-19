@@ -1,13 +1,13 @@
 ---
 name: item-use-trigger-mechanism
-description: How UseInventoryItem actually becomes a content-engine chain today — items_event_sets is legacy/unused for this, the live path is content_triggers(item_use, <item_id>); corrects the double-consume framing in this agent's own system prompt
+description: How UseInventoryItem actually becomes a content-engine chain today — items_event_sets event_id=5 (USE) is legacy/unused for that path, the live path is content_triggers(item_use, <item_id>); BUT event_id=6/7 (melee/ranged) on the SAME table IS live for weapon auto-attack binding — see [[items_event_sets_dual_purpose]]
 metadata:
   type: project
 ---
 
-Confirmed 2026-09-17 during a Harset zone evidence pass (READ-ONLY, no code changed).
+Confirmed 2026-09-17 during a Harset zone evidence pass (READ-ONLY, no code changed). **CORRECTED 2026-09-18** — the blanket claim below ("nothing reads this table") was WRONG for event_id 6/7. See [[items_event_sets_dual_purpose]] for the full picture: this table has two independent consumers keyed on different `event_id` values, and only the USE_ABILITY (5) path is dead. Melee (6) and ranged (7) are live and load-bearing for every weapon's auto-attack.
 
-**`items_event_sets` (item_id, ability_id, event_id) is legacy Atrea-era reference data, not the live wiring.** Nothing in `crates/services` or `crates/content-engine` reads this table. It's useful only as a *hint of original developer intent* — see below.
+**`items_event_sets` (item_id, ability_id, event_id) event_id=5 (EVENT_ITEM_USE_ABILITY) is not consulted by the UseInventoryItem→content-chain path** — that path uses `content_triggers(item_use, <item_id>)` instead, described below. This narrower claim is still correct; the table-wide claim in the original version of this note was not.
 
 **The live mechanism:**
 1. Seed a `content_triggers` row: `(chain_id, event_type='item_use', event_key='<item_id>', scope='player', once, sort_order)`. Real examples: `db/resources/Content/Seed/castle_cellblock_chains.sql:501` (chain 1034, key '19'), `db/resources/Content/Seed/consumables_chains.sql:39` (chain 4001, key '2893', the Health Slappack).

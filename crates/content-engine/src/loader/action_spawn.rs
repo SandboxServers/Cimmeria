@@ -74,22 +74,38 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
                 .filter(|f| f.is_finite())
                 .unwrap_or(0.0);
 
-            // Per-spawn descriptor fields. Parsed as `Option` so the
-            // executor can tell "the author said no" from "the author said
-            // nothing" — the three are not symmetric:
-            //
-            // - `respawn_secs` DOES have an `entity_templates` column, and
-            //   the executor overrides it to `None` either way (see
-            //   `SpaceManager::spawn_npc_from_template`); `Some` here only
-            //   changes whether it warns.
-            // - `is_stationary` has NO template column (it lives on
-            //   `spawnlist`), so `None` means false, not "inherit".
-            // - `aggression` has no template column either — it is a pure
-            //   runtime `CellEntity` field, so `None` likewise means 0.
-            let respawn_secs = params
+            // `respawn_secs` is accepted on the row and deliberately
+            // dropped here. A content-scoped spawn is always one-shot (the
+            // respawn tick has no instance-lifetime awareness, and a
+            // revived mission NPC would re-fire its `entity_dead_tag`
+            // chain), so the value never reached the entity: it was parsed,
+            // carried on the action, threaded through the executor and then
+            // unconditionally overwritten with `None`. The PR #662 review
+            // cut that dead thread. The row still loads — a mission NPC
+            // that appears without respawn beats one that never appears —
+            // but the author hears about it once, at load, rather than on
+            // every fire.
+            if params
                 .get("respawn_secs")
                 .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
+                .is_some()
+            {
+                warn!(
+                    chain_id = row.chain_id,
+                    template_id,
+                    %tag,
+                    reason = "respawn_secs_not_honoured",
+                    "spawn_entity: respawn_secs is not supported for content \
+                     spawns and is ignored; the NPC will spawn one-shot"
+                );
+            }
+
+            // Per-spawn descriptor fields. Parsed as `Option` so the
+            // executor can tell "the author said no" from "the author said
+            // nothing". Neither has an `entity_templates` column —
+            // `is_stationary` lives on `spawnlist` and aggression is a pure
+            // runtime `CellEntity` field — so `None` means "off", never
+            // "inherit".
             let is_stationary = params.get("is_stationary").and_then(|v| v.as_bool());
             let aggression = params
                 .get("aggression")
@@ -102,7 +118,6 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
                 position: [x, y, z],
                 heading,
                 tag,
-                respawn_secs,
                 is_stationary,
                 aggression,
                 allow_shared,

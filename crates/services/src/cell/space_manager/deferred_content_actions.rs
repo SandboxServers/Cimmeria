@@ -69,6 +69,13 @@ impl SpaceManager {
         params: HashMap<String, serde_json::Value>,
     ) {
         let fire_at = Instant::now() + std::time::Duration::from_millis(delay_ms.max(0) as u64);
+        crate::cell::player_journal::deferred_scheduled(
+            entity_id,
+            chain_id,
+            delay_ms,
+            fire_at,
+            &crate::cell::player_journal::action_kind(&action),
+        );
         self.pending_content_actions
             .entry(entity_id)
             .or_default()
