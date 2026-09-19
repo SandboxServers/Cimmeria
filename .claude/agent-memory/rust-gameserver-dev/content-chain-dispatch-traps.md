@@ -1,6 +1,6 @@
 # Content-chain dispatch traps
 
-Eight facts about the content engine that are not visible from the seed
+Ten facts about the content engine that are not visible from the seed
 SQL and have each cost a real bug. Verified 2026-09-18 against the Castle
 mission 701 port (packets CA01/CA03); 6-8 added 2026-09-19 from the
 Harset H30/H31 packet.
@@ -137,12 +137,52 @@ Rules that follow:
 - **Same world:** bind in-chain *and* in the restore chain.
 - **Across a world boundary:** do NOT bind in-chain (the bind dies with
   the cell entity); leave it to the destination world's restore chain.
-- **Cross-mission hand-back:** use a `mission_completed '<id>'` chain.
-  `fire_mission_completed` (executor/mission.rs, gated on a real
-  active→completed transition) populates world + mission + archetype
-  context and runs *after* the completing chain's own
-  `remove_dialog_set`, so the slot ends the event holding exactly one
-  bind.
+- **Cross-mission:** this is where the shape actually bites, because
+  "one mission has one current step" stops being an argument. Either add
+  a `mission_completed '<id>'` **second trigger row** to the chain whose
+  gate opens (`build_chains_from_rows` emits one Chain per trigger row,
+  sharing conditions and actions), or add a separate
+  `mission_completed`-triggered hand-back chain. `fire_mission_completed`
+  (executor/mission.rs, gated on a real active→completed transition)
+  populates world + mission + archetype context *after* the mutation and
+  runs *after* the completing chain's own `remove_dialog_set`, so the
+  slot ends the event holding exactly one bind.
+
+**The sweep to run**, for every `player_loaded` chain in a packet: name
+the chain that opens its gate, and ask whether it runs in the same world.
+Same world → the handing chain must bind in-chain or carry a second
+trigger row. Different world → the crossing covers it, and binding
+in-chain would be a silent no-op. Harset H30/H31 had two misses out of
+ten, both cross-mission, and one of them was on the guaranteed
+first-visit path.
+
+## 9. Negatives that omit the trigger key pass vacuously
+
+`resolve_event` checks `chain.trigger.matches(event)` **before** it
+evaluates a single condition, and the keyed triggers read their key out
+of the event params: `OnInteractTag` → `entity_tag`, `OnDialogChoice` →
+`dialog_id`, `OnMissionCompleted` / `OnMissionAccepted` → `mission_id`,
+`OnItemUse` → `item_id`. A negative test whose context omits the key
+resolves nothing for a reason unrelated to the gate it claims to test,
+passes, and **keeps passing when the gate is deleted**.
+
+Guard shape: assert each chain's trigger `matches()` the context its
+negatives are perturbations of, and that the satisfying context really
+resolves actions. `Trigger::matches` and `Chain.trigger` are both public.
+A revert run also catches it: a vacuous negative stays green there.
+
+## 10. Testing a chain that ships `enabled = false`
+
+`resolve_event` filters on `chain.enabled` before anything else, so a
+parked chain resolves nothing and its *logic* is untestable through the
+normal path. `Chain`'s fields are all `pub`: load it, set
+`chain.enabled = true`, register it. Pair that with a separate test
+asserting the shipped row really is disabled, so both facts are pinned —
+inert today, correct when flipped.
+
+Multi-trigger chains need `load_chain_expansions_for_test`;
+`load_single_chain_for_test` returns only the FIRST expansion, so the
+second trigger row silently goes unasserted.
 
 This matters more than it sounds: `entity_templates.interaction_type = 0`
 with `static_interaction_sets = '{}'` is the norm for dialog NPCs, so
