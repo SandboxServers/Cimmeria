@@ -21,7 +21,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 |---|---|---|---|
 | Castle Cellblock | C00-C05, C06, C07, C08a, C08b, GC1b-0, GC1 (#655), C06 flank objectives (#671) | none | **Yes: M1-M3 and GC1 on `main`.** The flank check may be unreachable in play (see A12) |
 | Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659), CA10 gate open/cross events (#663), CA04 minigame hardening (#652), CA02 "!" dialog bind (#661), CA05 story actors and point sets (#667), missions 706 and 708 (#668), missions 702-704 (#660) | none (docs closeout PR #669 only) | **Yes, M1-M5 on `main` after a rebuild** (the gate leg into Harset excepted, see M4) |
-| Harset | nothing yet | #662 (branch `content/harset-rebuild`, all review findings answered, CI running on the final head, waiting on your merge go-ahead) | Travel and population checks, from the branch now, or from `main` once #662 merges |
+| Harset | Waves 1 and 2 (#662, #682) | placement PR `harset/placement` (guessed placements; see the ledger) | Travel, combat and population checks (C1, C4, C6) on `main`; placement checks (C5) once the PR merges |
 
 ## Suggested Order If Budget Is Tight
 
@@ -79,35 +79,20 @@ Test with a Jaffa character and a Human character, relogging at each step:
 
 ## Harset (worlds 57, 68, 69, 70)
 
-**Situation.** Harset was an empty shell (23 static spawns, no content chains, a navmesh of 1,939 disconnected islands). Wave 1 is PR #662 (146 files, CI green, review fixes being applied). It delivers travel safety and population, not missions.
+**Situation.** Harset was an empty shell. Wave 1 (#662) and wave 2 (#682) are on `main`; the placement PR (`harset/placement`) adds best-guess coordinates for everything that used to wait for an in-client placement walk. **Nothing has been seen in a client.** The single ledger of every guessed coordinate, with evidence class and confidence, and the list of things there is no evidence for, is [harset-rebuild/placements/README.md](harset-rebuild/placements/README.md).
 
-**Implemented in #662 (not yet on `main`).**
-
-| Packet | What you would see |
+| Layer | What you would see |
 |---|---|
-| H01 | Gate arrival is validated against the navmesh with a respawner fallback; DHD interaction shows the point-of-origin glyph |
-| H02 | Ring transporters cannot hang forever: every wait state has a timeout (90 s for remote load, a judgement value to tune from a real client) |
-| H10 | Ring switches (chains 6001-6005, regions 4-8) and the Harset-to-Command-Center door (6006). The return door 6007 is **disabled** until its coordinate is pinned |
-| H11 | 33 new mob and prop templates (200-223, 240-248) and two NPC ability sets (Jaffa staff, Goa'uld ribbon device). Templates only: nothing spawns from them yet |
-| H13 | The 14 Harset mob rows respawn after 30 s; guards, lieutenants, Petbe and Anat stand still |
-| H03, H04, H07 | Engine primitives for later missions (spawn/despawn actions, health-threshold trigger, world condition). Not player-visible; covered by tests |
+| Travel (wave 1 and 2) | Gate arrival validated (advisory in world 57); ring switches with timeouts; Command Center door 6006; DHD glyph; dialing refused for an address you do not know; the Castle DHD Livewire grants Harset's address |
+| Combat and NPCs (wave 2) | Stationary guards turn to face you; sentries that could never fire now can; surrendered NPCs stop the attack loop; NPCs use a ranged and a melee ability |
+| Missions (wave 2 seeds) | Chains for missions 1324, 1326, 1360/567, 1361, 1200 and 742; objective state survives relog |
+| Placements (this PR) | Gate-3 arrival pin at (-5.0, -68.99, 33.0); respawners for worlds 57, 69 and 70; return door 6007 open; 15 world-57 spawns and 8 named regions; 10 Command Center spawns and 3 interior regions; 15 encounter-anchor candidates (ledger only, no chains) |
 
-**Checks you can do from the #662 branch, no placement needed:**
+**Not placed (no evidence):** the Market and Storage door pairs, the Bar, the Holding Pens, vendor and trainer props, Lethander's stall, the 1243 and 1362 anchors, the sarcophagus and lab consoles, and ambient props in worlds 69 and 70. The reasons, and what would unblock each, are in the ledger.
 
-1. Log in on Harset. No Cellblock dialogs, icons or objectives should fire (they used to leak in).
-2. Right-click a ring switch. Expected: a destination list of four (it does not teleport by itself, by design); pick one and arrive on that pad. Watch the server log for `arrival_unrecoverable` or an off-mesh warning; a pad that is off the navmesh is exactly what this is meant to reveal.
-3. Walk into the Harset to Command Center door. Expected: you arrive in Harset_CmdCenter. You cannot walk back through the door yet (6007 is disabled); use GM travel.
-4. Click the DHD. Expected: the DHD window opens with the local world's glyph.
-5. Kill one of the seeded guard or mob spawns (not a `.spawn` copy). Expected: it respawns in about 30 s. Tell us if 30 s feels wrong; it is one number.
-6. **Gate dial from Castle to Harset is not yet safe to test.** The gate has no seeded arrival coordinate and world 57 has no respawner row, so after the review fix the transfer is meant to abort cleanly instead of placing you in a navmesh hole. If it teleports you anywhere, note where.
+**One systemic problem to know about:** `harset.nav` is wrong for the upper quarters of world 57 (no on-mesh point at the real floor height; four of the five authored ring pads are off-mesh even though their rows are correct). World 57 runs in advisory mode, which is what keeps it playable. A rebuilt mesh exists but loses 12 positions real players stood on, so it is not a drop-in yet.
 
-**M0: the placement session (only you can do this).** About 25 story NPCs have no coordinate anywhere, and eight arrival points need pinning. Every Harset mission is blocked until this is done. Procedure, from [the Harset README](harset-rebuild/README.md):
-
-1. Pin the gate arrival, the five ring pads and both Command Center transitions using the map debug HUD. The return door (6007) needs a point roughly 8 units clear of point set 2078 to avoid ping-pong.
-2. Place each story NPC and vendor prop with `.spawn <template>`, then `.savespawn`.
-3. Run `.seedconfirm`. It emits the seed SQL; it never writes live rows. Hand that SQL to a session to commit.
-
-**In progress, not finished, not testable:** wave-2 work exists as uncommitted changes in worktrees (H06 client-forged region guard, H08 Submit cleanup, H09 multi-ability sets, H50 objective persistence, and seed chains for missions 1324, 1326, 1360/567, 1361, 1200 and 742). None of it has been reviewed or merged, and it is all gated on M0 for positions. Do not spend client time on it.
+**Untested mission packets:** the mission packets H23-H28, H32-H37 and H42-H46 and H05 are not written yet. Mission chains that exist can only be exercised where their NPCs now stand (see C5).
 
 ## Known Cross-Cutting Risks
 
@@ -181,7 +166,7 @@ Provisional (reconstructed, MEDIUM confidence) coordinates: the four CA00 respaw
 
 ### C. Harset (worlds 57, 68, 69, 70)
 
-**C0. Which build.** These need PR #662 on `main` (or its branch `content/harset-rebuild`). Reload the play DB from `db/database.sql` after switching. Until then, do not dial to Harset from Castle.
+**C0. Which build.** C1, C4 and C6 work on current `main` (waves 1 and 2 are merged). C5 needs the placement PR (`harset/placement`) merged, or that branch built. Reload the play DB from `db/database.sql` after switching, since every placement is seed data.
 
 **C1. Checks that need no placement (from #662):**
 
@@ -204,20 +189,22 @@ Provisional (reconstructed, MEDIUM confidence) coordinates: the four CA00 respaw
 | C4.2a | Castle gate, **after** H53 and **before** Harset M0 | Dial Harset and walk into the gate | The transfer now **goes through**. World 57 is `navmesh_mode = 'advisory'`, so the destination is `Unvalidated` rather than off-mesh, and you arrive on gate 3's authored coordinate. The server log has one `reason = "no_navmesh"` arrival line, not `arrival_unrecoverable`. **You should be able to walk away from wherever you land** — that is the whole check | If you cannot move, are inside geometry, or are falling. Give the coordinate you landed on. This is the residual risk of arriving on an unpinned prop transform, and it is what M0 closes |
 | C4.3 | After the placement PR (`harset/placement`) merges | Dial and cross again | You land on the plaza in front of the gate at the pinned arrival point (PL-A-01), facing into the plaza, and can move | Where you landed and which way you faced |
 
-**C5. Harset M0: the placement session (only you can do it; the critical path for every Harset mission).** Work in the game with GM rights and the debug HUD. The commands are the `.` console commands in [commands.md](../commands.md).
+**C5. Placement playtest: check the guesses and send corrections (replaces the old M0 walk).** Every row below is an estimate from map data, so a mismatch is expected and useful. Row ids (`PL-A-nn`, `PL-B-nn`, `PL-C-nn`) point into the [placement ledger](harset-rebuild/placements/README.md), which names the seed row to change. Correct the LOW rows first (the ledger lists them).
 
 | # | Where / command | Do | Expect | If it fails, report |
 |---|---|---|---|---|
-| C5.1 | Harset gate (gate 3) | Stand on the spot where a player should arrive; read the HUD coordinates | A point on the navmesh, on the plaza | If you cannot find one, say so |
-| C5.2 | The five ring pads (regions 4-8) | Read the HUD coordinate at the centre of each | A point on the navmesh for each | Which pad is off-mesh |
-| C5.3 | Both Command Center transitions | Read a coordinate on the far side of each. For the return door (6007) pick a point about 8 units clear of point set 2078 | Two on-mesh points | Overlap or ping-pong when you walk through |
-| C5.4 | Each story NPC and vendor prop | `.spawn <template>` (templates 200-223 are mobs, 240-248 props), place it, then `.savespawn` | The NPC appears where placed | Which template failed or misplaced |
-| C5.4a | Every NPC you place | Turn it to face the way a player will approach before `.savespawn` (`.lookat`, or place it while you face that way) | The saved row has a real `heading`, not 0 | Castle shipped every reconstructed NPC facing +Z into a wall; a heading of exactly 0 on a placed NPC is almost always that mistake |
-| C5.4b | Every pin and every placed NPC | Type `.bug pin <what it is>` while standing on the spot (for an NPC, while standing next to it) | The server records your position, `on_navmesh`, `regions_inside`, and for each nearby entity its position, `yaw_byte` and `on_navmesh` | This replaces reading numbers off the HUD: a session pulls the pins from telemetry (`playtest.bookmark`, note starts with `pin`). `on_navmesh=false` on a spot you can plainly stand on is worth reporting; `harset.nav` has holes |
-| C5.4c | Every spot | Walk to it. Do not fly, `ghost` or `.gotoxyz` onto it | You got there on foot through open doors | A spot you cannot walk to is not a valid pin. Castle's Romney was placed from map data into a sealed, unfinished wing that only noclip could reach |
-| C5.5 | When done | Run `.seedconfirm` | It emits the seed SQL and never writes live rows | Hand the output to a session to commit. It is the only deliverable of M0 |
+| C5.1 | Castle gate, to Harset (PL-A-01) | Dial and cross (C4) | You land on the plaza at about (-5.0, -68.99, 33.0) facing down the plaza (away from the gate), standing on the floor | Where you actually landed, which way you faced, whether you could move |
+| C5.2 | Harset plaza (PL-A-02) | Die once | You respawn at about (-8.0, -68.99, 34.0), on the plaza floor | Where you respawned |
+| C5.3 | Market and Storage Room (PL-A-03, PL-A-04) | Die once in each | Market: about (48.0, 3.61, 78.0) on the interior floor (MEDIUM, no navmesh in world 69). Storage: about (50.0, 0.0, 44.0) | Where you respawned, especially if you fell or landed inside a wall |
+| C5.4 | Command Center north door, going back to Harset (chain 6007, PL-A-06) | Walk back through the door | You arrive in Harset at the north door (about (0, -67.6, -231)) and are **not** bounced straight back into the Command Center | A bounce or ping-pong, or an arrival that is not standable |
+| C5.5 | The five ring pads (PL-A-05) | Use each ring switch and arrive | All five arrive on a real platform. The rows are believed correct; the navmesh is what is wrong | Any pad that dumps you off the platform |
+| C5.6 | Command Center, world 68 (PL-C-01 to PL-C-10) | Find Ba'al (north hall head), the Royal Guard and symbiote tank (near Anat), Moh'katan, Marsh, Copplemann, Blackstock, Nerus (lab), Opheltes, Athena | Each stands on the floor facing a sensible way, not inside a wall or pillar. **Blackstock, Opheltes and Athena are LOW**; Ba'al's spot is MEDIUM and the alternative is beside Anat | Each NPC's real vs. expected position and facing |
+| C5.7 | World 57 (PL-B-01 to PL-B-15) | Find Hansen, Jacobs, Lo'rak, the two Former-Ra Jaffa, the Suspicious Jaffa, the SecondBug and ThirdBug baskets, the three shield towers and Shield Controls, the Bank anchor, the Storage Lo'taur, and the Petbe quarters search object | Each is where its landmark is (Jaffa Zone west, OP-CORE east, bazaar lower level, Bank northwest) and is clickable. **Shield Controls is the weakest row**; Petbe's quarters is LOW-MEDIUM | Which ones are missing, misplaced, unreachable on foot, or floating |
+| C5.8 | Named regions (PL-B-16 to PL-B-23 and the PL-C regions) | Walk into each: Jaffa Zone, OP-CORE Zone, Bank, Petbe quarters, three shield towers, Shield Controls, and the Lab, Marketplace and Storage interiors | Entering fires the region (for example mission 1241's Lab scan) | A region that does not fire, or fires from the wrong place |
+| C5.9 | Any spot you want corrected | Stand on the right spot on foot and type `.bug pin <what it is>` (for an NPC, next to it) | The server records your position, `on_navmesh`, `regions_inside`, and nearby entities' position and `yaw_byte` | Send the recorded pins keyed by row id. A spot you cannot walk to is not a valid pin (Castle's Romney was placed into a sealed wing) |
+| C5.10 | **The two door pairs (not placed: no evidence)** | Stand in the Harset doorway that loads the Market and type `.bug pin market door`; repeat from inside the Market and for the Storage Room both ways | Two doorway coordinates close both packets | If you cannot tell which doorway is which, that is itself the answer |
 
-After M0 is committed, the follow-up work (still gated on this) is: respawner rows 20/22/23, gate 3's `arrival_*` values, enabling chain 6007, and the H12/H14/H15 population and region packets. None of the Harset mission chains (M2-M4) can be tested before that.
+For a heading, face the way a visitor arrives before pinning (`.lookat`), because a heading of exactly 0 on a placed NPC is almost always the Castle "faces a wall" mistake.
 
 **C6. Castle playtest findings applied to Harset, and the non-GM walk (packets H51 and H53, on `content/harset-wave2`; needs no placement).** C6.1-C6.3 are the 2026-09-18 Castle defects that would have repeated here. C6.4-C6.5 are H53, and they are the ones that must be run from an **ordinary account**: every containment gate in the server is warn-only for a GM, so a GM cannot observe the defect H53 fixes.
 
