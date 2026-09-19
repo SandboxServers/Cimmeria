@@ -17,6 +17,8 @@ use crate::mercury::read_wstring;
 use super::super::ConnectedClientState;
 use super::speaker_flags;
 
+const MAX_DND_MESSAGE_CHARS: usize = 128;
+
 /// `sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)`.
 ///
 /// Routes spatial channels (say/emote/yell) to the CellService with the
@@ -148,7 +150,8 @@ pub(super) fn handle_chat_set_afk(addr: SocketAddr) {
 /// `chatSetDNDMessage(WSTRING message)`.
 ///
 /// Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an empty or 1-char
-/// message clears DND; anything longer sets it.
+/// message clears DND; 2–128 Unicode scalar values set it. Longer messages
+/// are refused without changing the existing state.
 pub(super) fn handle_chat_set_dnd(
     payload: &[u8],
     addr: SocketAddr,
@@ -157,7 +160,7 @@ pub(super) fn handle_chat_set_dnd(
     // chatSetDNDMessage(WSTRING message)
     //
     // Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an
-    // empty or 1-char message clears DND; anything longer sets
+    // empty or 1-char message clears DND; a valid longer message sets
     // it. The stored message itself is currently only used as
     // an "is DND active?" signal for the speaker_flags bit —
     // the auto-reply-tell path is future work.
@@ -182,9 +185,20 @@ pub(super) fn handle_chat_set_dnd(
             return;
         }
     };
+    let message_chars = message.chars().count();
+    if message_chars > MAX_DND_MESSAGE_CHARS {
+        tracing::debug!(
+            %addr,
+            message_chars,
+            limit = MAX_DND_MESSAGE_CHARS,
+            reason = "dnd_message_too_long",
+            "chatSetDNDMessage: message exceeds limit -- existing DND state preserved",
+        );
+        return;
+    }
     let mut clients = connected.lock().unwrap();
     if let Some(c) = clients.get_mut(&addr) {
-        c.dnd_message = if message.chars().count() > 1 {
+        c.dnd_message = if message_chars > 1 {
             Some(message)
         } else {
             None
