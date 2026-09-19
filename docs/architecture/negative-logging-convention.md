@@ -59,6 +59,18 @@ remain queryable). Both carry a stable `reason` field for triage.
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
 | `reason` | optional | Short string naming why the expectation was unmet (e.g. `"entity_to_addr_miss"`, `"oneshot_dropped"`, `"rows_affected_zero"`). |
 
+### Credential fields
+
+Never log a credential value in full, at any level: this covers SIDs, tickets, session keys, passwords and password hashes, and raw request bodies that carry them. Disk logs, the admin `/ws/logs` stream and SigNoz all keep what they receive, and a harvested SID or ticket is enough to hijack a pending login ([#440](https://github.com/SandboxServers/Cimmeria/issues/440)).
+
+Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/services/src/credential_redaction.rs`:
+
+```rust
+tracing::debug!(ticket_prefix = %CredentialPrefix(&ticket), "Phase 2 generated session credentials");
+```
+
+The prefix is six characters, which is enough to correlate one login's events and far too short to replay. `CredentialPrefix` slices on character boundaries, so it is safe on client-supplied input of any length. Don't use `&value[..6]`: it panics on short or non-ASCII input. For a request body, log `body_len` rather than the body. `auth/credential_log_guard.rs` is the regression guard: it runs a full login under `LogCapture` and fails if any captured event contains a credential.
+
 ## Level discipline
 
 | Level | When |
