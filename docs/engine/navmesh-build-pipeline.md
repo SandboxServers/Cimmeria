@@ -536,15 +536,16 @@ Implementation and unit tests: `crates/navmesh-extractor/src/obj_slab/`.
 
 ## 7. Castle (World 8): why the probes sit in three components
 
-Measured 2026-09-19 on the 144-chunk extraction, recommended parameter set
-(45,209 verts / 21,805 polys / 60,926 edges / 997 components). The eleven
-probes resolve into:
+Measured 2026-09-19 on the 144-chunk extraction, recommended parameter set,
+and re-measured against the same extraction with `bCollideActors = false`
+props suppressed (40,093 / 19,824 / 55,132, 553 components). **The grouping
+is identical in both**, and so is every number this section turns on:
 
-| Component | Area | Probes |
+| Component (props on / suppressed) | Area | Probes |
 |---|---|---|
-| 218 | 23,186 m² | `gate_room_dhd`, `stargate`, `bunker_muelbach`, `checkpoint_bravo` |
-| 754 | 17,022 m² | `zuritska_cell`, `romney_corridor`, `comms_room`, `nid_guard_116`, `opcore`, (`armory`, at h = 1.49 m) |
-| 405 | 37,214 m² | `throne_room` |
+| 218 / 116 | 23,186 → 22,844 m² | `gate_room_dhd`, `stargate`, `bunker_muelbach`, `checkpoint_bravo` |
+| 754 / 435 | 17,022 → 16,415 m² | `zuritska_cell`, `romney_corridor`, `comms_room`, `nid_guard_116`, `opcore`, `armory` |
+| 405 / 250 | 37,214 → 36,451 m² | `throne_room` |
 
 ### 7.1 405 ↔ 754 — a storey boundary, not a tuning problem
 
@@ -570,13 +571,28 @@ Nothing links them at any parameter set. Tested, all on the interior crop
 `obj_slab --levels 1.0` over the overlap does find near-horizontal surface
 at every metre between 43 and 56 (517 m² at 44–45, 1,217 m² at 47–48,
 3,042 m² at 51–52, 4,284 m² at 54–55), so the building has intermediate
-levels — but none of it is connected to either storey in the extracted
-geometry. **The vertical connection is missing geometry (d), not tuning.**
-The two chunks concerned, `00080002` and `00080003`, between them account
-for 111 of the 1,922 `skip_archetype_stub_component` counts in
-`coverage.tsv` and `00080003` holds an undecoded `InterpActor`; resolving
-prefab-archetype StaticMeshActors and InterpActor movers is the next step,
-and until then this gap cannot be closed from the build side.
+levels — but none of it is connected to either storey. **The vertical
+connection is missing geometry (d), not tuning.**
+
+The two obvious candidates for the missing mesh are both ruled out:
+
+- **Prefab-archetype StaticMeshActors.** The 33 actors resolved inside
+  `x[250,320] y[40,60] z[850,900]` are all set dressing — computer towers,
+  view screens, torches, a locker, a wall light, waist-high concrete cover.
+  Four of the cover blocks sit at `y = 43.20` and `y = 55.40`, which
+  independently confirms that both storeys are real and populated and that
+  the 12 m spacing is not an extraction artefact. Nothing spans it.
+- **`InterpActor` movers.** All 14 in Castle resolve to 11
+  `EM-SecurityCam01_Top` heads, one `EM-Antenna00`, one `EM-ShelfBox10` and
+  one `GLB-RingTransporter00`. **There is no lift, elevator or door among
+  them**, so extracting them (they are excluded today — the class filter is
+  `== "StaticMeshActor"`) would not close this gap or any other. The three
+  `EM-Elevator00` instances in Castle *are* StaticMeshActors, already
+  extracted, and none is near this building.
+
+What is left is the geometry the extractor still does not decode at all:
+`Polys` / `ModelComponent` BSP inside the interior chunks, and
+`StaticMeshCollectionActor`. That is where a stairwell would have to be.
 
 ### 7.2 218 ↔ 405 — terrain cliffs
 
@@ -587,6 +603,14 @@ The exterior and the mid plateau are separated by terrain, not by a door.
 covering the corridor shortens the chain from 13 hops to 9 and drops the
 worst horizontal gap from 2.72 m to 1.62 m, but never joins them, because
 the remaining hops are 7.87 m and 6.81 m vertical.
+
+There are **zero** prefab-archetype actors in
+`x[600,740] y[15,35] z[450,500]`, so the archetype gap contributes nothing
+here either. On the props-suppressed mesh the chain shortens to three hops
+(widest 3.12 m) around the same three places — `(715.0, 26.7, 467.9)` with
+a 4.25 m ledge, `(675.6, 18.6, 488.3)` with a 3.12 m horizontal gap, and
+`(622.4, 24.0, 508.2)` — which is where to look if this one is ever worth
+bridging by hand.
 
 ### 7.3 The armory is a ring drop zone, not a walk-in room
 
@@ -602,10 +626,29 @@ That is evidence about one probe, not about the whole interior: the other
 five interior probes are in the same component as each other and are reached
 on foot from each other. It does **not** show how a player gets from the gate
 room to the interior, and nothing in the seed data does — there is no second
-ring region, and `generic_regions` has no world-8 level transition at either
-gap site. The owner's expectation that all three groups are walkable is
-therefore neither confirmed nor refuted by the seed; the build side has gone
-as far as it can until the un-extracted actors land.
+ring region for world 8. The expectation that all three groups are walkable
+is therefore neither confirmed nor refuted by the seed.
+
+The one `InterpActor` with collision flags set explicitly
+(`bCollideActors` / `bBlockActors` / `bPathColliding`, all true) is
+`GLB-RingTransporter00` at `(466.45, 70.06, 991.55)` — the same pad. It is
+not extracted, but the floor under it is, so adding it would change nothing
+about connectivity; it would only raise the pad by the transporter's own
+thickness.
+
+### 7.4 What would actually close these gaps
+
+In order of likelihood, and none of it is Recast tuning:
+
+1. **Decode the remaining interior geometry**: `Polys` / `Model` /
+   `ModelComponent` BSP in the interior chunks and
+   `StaticMeshCollectionActor`. A stairwell between `y = 43` and `y = 55`
+   would be there if it is anywhere.
+2. **Accept that they are separate**, and give the cell a per-region
+   navmesh or an off-mesh link table. Both need server-side loader work.
+
+Extracting `InterpActor`s is **not** on this list: the 14 in Castle are 11
+cameras, an antenna, a shelf box and a ring transporter.
 
 ## 8. Rebuilding NavBuilder, and Recast's index limits
 
