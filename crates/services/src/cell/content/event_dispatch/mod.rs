@@ -16,7 +16,11 @@
 //! - [`stargate`]    — `fire_stargate_dialed`, `fire_stargate_crossed`
 //! - [`inventory`]   — `fire_item_use`, `fire_item_equipped`
 //! - [`dialog`]      — `fire_dialog_open`, `fire_dialog_choice`
-//! - [`mission`]     — `fire_mission_accepted`, `fire_mission_completed`
+//! - [`mission`]     — `fire_mission_accepted`, `fire_mission_completed`,
+//!   `fire_mission_abandoned`
+//! - [`step_activation`] — `fire_step_activation_regions`, the H52 replay of
+//!   `enter_region` for volumes the player already stands in when a step
+//!   activates
 //!
 //! `fire_chain_by_id` (chain-id-driven dispatch, used by the minigame
 //! victory callback path) doesn't fit the trigger-keyed pattern and stays
@@ -39,8 +43,11 @@ mod interaction;
 mod inventory;
 mod lifecycle;
 mod mission;
+#[cfg(test)]
+mod mission_abandoned_tests;
 mod region;
 mod stargate;
+mod step_activation;
 #[cfg(test)]
 mod world_context_contract_tests;
 
@@ -58,7 +65,10 @@ pub use lifecycle::{
 pub use region::{fire_enter_region, fire_exit_region, fire_teleport_in};
 pub use stargate::{fire_stargate_crossed, fire_stargate_dialed};
 
+pub(crate) use mission::fire_mission_abandoned;
 pub(super) use mission::{fire_mission_accepted, fire_mission_completed};
+pub(crate) use step_activation::fire_step_activation_regions;
+pub(crate) use step_activation::StepRegionReplayGuard;
 
 /// Fire a content chain directly by ID, bypassing trigger matching.
 ///

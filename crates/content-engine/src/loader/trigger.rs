@@ -77,6 +77,12 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "mission_completed" => Some(Trigger::OnMissionCompleted {
             mission_id: key?.parse().ok()?,
         }),
+        // `event_key` is the mission id, same shape as `mission_completed`
+        // and `mission_accepted`. No wildcard: a chain that reacted to *any*
+        // abandon would have nothing to repaint.
+        "mission_abandoned" => Some(Trigger::OnMissionAbandoned {
+            mission_id: key?.parse().ok()?,
+        }),
         "dialog_set_open" => Some(Trigger::OnDialogSetOpen {
             dialog_set_name: key?.to_string(),
         }),

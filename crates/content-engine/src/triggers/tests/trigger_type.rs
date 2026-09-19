@@ -144,6 +144,10 @@ fn trigger_type_covers_every_variant() {
             Trigger::OnPlayerFlankedNpc { npc_template: None },
             PlayerFlankedNpc,
         ),
+        (
+            Trigger::OnMissionAbandoned { mission_id: 1324 },
+            MissionAbandoned,
+        ),
     ];
     for (trigger, expected) in cases {
         assert_eq!(trigger.trigger_type(), expected, "for {trigger:?}");

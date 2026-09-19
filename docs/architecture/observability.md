@@ -213,6 +213,10 @@ to crate-rename churn) and **named for the question they answer**.
 | `cover.detection` | DEBUG | `cell::service::ticks::cover::log_cover_edge` | One row per player cover-set proximity edge (`edge = entered \| left`): position, `crouched`, `nodes_in_set_nearby`, `nearest_node_id` / `nearest_node_dist` / node position, `proximity_radius`. Cover detection is pure proximity and never consults crouch |
 | `mission.step_context` | DEBUG | `cell::missions::progression::advance_step` | State that is **already true** when a mission step activates: `regions_inside`, `cover_sets`, `crouched`, `in_combat`, position. Region and cover triggers are edge events, so anything listed here will not re-fire for the new step |
 | `movement.navmesh` | WARN | `cell::space_manager::lifecycle` | Space created with no `.nav` file (`reason = "navmesh_missing"`) — every navmesh consumer fails open, so NPCs there path in straight lines through geometry |
+| `movement.navmesh` | DEBUG | `cell::space_manager::spatial::line_of_sight` | `reason = "los_unknown_off_mesh"`: a line-of-sight query had an endpoint outside navmesh coverage (`a_on_mesh` / `b_on_mesh`), so the verdict is `Unknown` and is treated as clear. Frequent rows for one NPC id mean its spawn sits in a navmesh hole (9 of the 13 stationary Harset mobs against `harset.nav`) |
+| `movement.navmesh` | INFO | `cell::space_manager::navmesh_mode::log_navmesh_summary` | `reason = "navmesh_mode_summary"`: one line at startup per resident space that **has** a mesh — `space_id`, `world_name`, `navmesh_mode` (`enforce` \| `advisory`), `poly_count`, `spawn_rows`, `spawn_rows_off_mesh`. A high `spawn_rows_off_mesh` on an `enforce` world is an invisible-wall report waiting to happen: the mesh loaded, but it does not describe the map players walk, and the holes are hard gates for everyone except GMs. INFO rather than WARN because an advisory world is expected to have a high count — the actionable signal is the number moving. See [navmesh-containment-modes.md](navmesh-containment-modes.md) |
+| `movement.navmesh` | TRACE (level-gated) | `cell::space_manager::client_move` | `reason = "advisory_off_mesh_accepted"`: an off-mesh position an `advisory` world accepted — `entity_id`, `space_id`, `client_x` / `client_y` / `client_z`. Guarded by `tracing::enabled!` **before** the Detour query, so it costs nothing until the level is on. This is the real player traffic a mesh rebake needs (which parts of the world people actually walk through), as opposed to a static grid probe |
+| `movement.navmesh` | WARN | `cell::space_manager::navmesh_mode::mode_from_db_value` | `reason = "navmesh_mode_unrecognised"`: `resources.worlds.navmesh_mode` held a value this build does not know (`world_name`, `raw_value`). Falls back to `enforce` — containment stays on |
 | `navmesh.load` | ERROR | `entity::navigation::check_count` | Hostile `.nav` header rejected — space loads navmesh-less |
 
 #### Saved views for reading a playtest
@@ -250,7 +254,8 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `investigate_routed` | Investigate tick pathfinding toward the POI |
 | `follow_band` | Follow target is inside the band — no work |
 | `despawn` | Despawn tick — entity is being removed from the space |
-| `submit_init` | Submit tick — first-entry combat-clear |
+| `submit_init` | Submit tick — the pass that actually disengages both sides: player-side threat scrub, auto-cycle sweep, channel cancel, cover release, re-face. Re-fires if somebody re-engages a surrendered NPC |
+| `submit_hold` | Submit tick — nothing left to clean, the NPC is parked. The steady state for a surrendered NPC, one row per ~2 s AI tick for the space's life. A `submit_init` where you expect `submit_hold` means something keeps re-aggroing it |
 | `error_hold` | Error state — diagnostic quiescent fallback |
 
 Successor PRs may add `patrol_arrived` / `wander_waypoint_set` / etc.

@@ -24,7 +24,15 @@ fn default_minigame_difficulty() -> u32 {
 }
 
 /// An action to execute when a chain's trigger fires and conditions pass.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// `PartialEq` (but not `Eq` — several variants carry `f32`) so chain-replay
+// tests can assert the **exact resolved action list** as a single
+// `assert_eq!` against a `vec![..]` literal. That is the campaign's stated
+// acceptance shape ("asserts the exact resolved action list", Harset
+// work-packets.md "Common Acceptance"), and the alternative — a chain of
+// per-index `matches!` arms — cannot bind runtime values (a dsm id or a
+// template slot coming from a table-driven test case), so those tests were
+// silently weaker than the ones written against literals.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     // ── Original generic actions ──────────────────────────────────────────
     /// Award experience points to the source entity.
@@ -386,10 +394,27 @@ pub enum Action {
         entity_tag: Option<String>,
         threat_level: i32,
     },
+
+    /// Teach the acting player a stargate address
+    /// (`resources.stargates.stargate_id`), so their DHD will offer it and
+    /// the server's dial gate will accept it.
+    ///
+    /// This is the port of the 2009 Atrea authoring node
+    /// `Act_StargateAddress`
+    /// (`deprecated/entities-editor/editor/Nodes.xml:2428`), which called
+    /// `SGWPlayer.addStargateAddress`. Addresses were authored content:
+    /// that node and the GM `giveaddress` console command
+    /// (`deprecated/python/cell/commands/Player.py:74`) were its only two
+    /// callers, so without this action no chain can unlock a destination.
+    ///
+    /// Grant-only. 2009's node also had a `Remove` port
+    /// (`removeStargateAddress`), and no shipped content used it; a
+    /// `revoke_stargate_address` verb can be added when a chain needs one.
+    GrantStargateAddress { stargate_id: i32 },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PropertyOp {
     Set,
     Add,
@@ -402,7 +427,7 @@ pub enum PropertyOp {
 /// Investigating/Follow/Dead/Spawning) are owned by the runtime and
 /// must be reached via their behavior-specific paths so the per-state
 /// scratch fields are populated correctly.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NpcAiStateAction {
     Idle,
     Despawning,

@@ -172,6 +172,11 @@ pub async fn accept_mission(
 }
 
 /// Abandon a mission: remove it and send removal to client.
+///
+/// Returns `true` only when a mission instance was actually removed. Callers
+/// use that to gate the `mission_abandoned` content event (H54): abandoning a
+/// mission the player does not hold is a no-op, and firing the event for it
+/// would repaint an offer on every stray `abandonMission` the client sends.
 #[tracing::instrument(
     name = "mission.abandon",
     level = "info",
@@ -183,10 +188,10 @@ pub async fn abandon_mission(
     mission_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> bool {
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
-        None => return,
+        None => return false,
     };
     if let Some(pid) = entity.player_id {
         tracing::Span::current().record("player_id", pid);
@@ -207,7 +212,15 @@ pub async fn abandon_mission(
                 args,
             })
             .await;
+        return true;
     }
+
+    tracing::debug!(
+        entity_id,
+        mission_id,
+        "abandon_mission: mission not tracked — no removal, no mission_abandoned event"
+    );
+    false
 }
 
 #[cfg(test)]

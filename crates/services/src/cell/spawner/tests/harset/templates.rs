@@ -18,11 +18,23 @@ use super::*;
 async fn every_harset_mob_template_carries_a_non_default_ability_set() {
     let pool = require_db_or_skip!();
 
-    let rows: Vec<(i32, String, Option<i32>, Option<i32>)> = sqlx::query_as(
-        "SELECT t.template_id, t.template_name, t.ability_set_id, asa.ability_id \
+    // Aggregated, not a bare LEFT JOIN. H11 wrote this as a plain join and
+    // relied on `PRIMARY KEY (ability_set_id)` to guarantee one row per
+    // template — and said so, predicting that widening the key would break
+    // the count for a reason having nothing to do with the seed rows. Packet
+    // H09 widened it, so the join now fans out to one row per *ability*.
+    // `array_agg` restores one row per template and, as a bonus, mirrors
+    // exactly what `load_spawns_from_db` does, so this guard now checks the
+    // shape the runtime actually consumes.
+    let rows: Vec<(i32, String, Option<i32>, Vec<i32>)> = sqlx::query_as(
+        "SELECT t.template_id, t.template_name, t.ability_set_id, \
+                COALESCE( \
+                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
+                   FROM resources.ability_set_abilities asa \
+                   WHERE asa.ability_set_id = t.ability_set_id), \
+                  ARRAY[]::int[] \
+                ) AS ability_ids \
          FROM resources.entity_templates t \
-         LEFT JOIN resources.ability_set_abilities asa \
-                ON asa.ability_set_id = t.ability_set_id \
          WHERE t.template_id BETWEEN $1 AND $2 AND t.class = 'mob' \
          ORDER BY t.template_id",
     )
@@ -32,11 +44,6 @@ async fn every_harset_mob_template_carries_a_non_default_ability_set() {
     .await
     .expect("query must succeed");
 
-    // One row per template: the LEFT JOIN cannot fan out, because
-    // `ability_set_abilities` has `PRIMARY KEY (ability_set_id)` — see
-    // `harset_ability_sets_resolve_to_an_ability_that_can_animate`. If that
-    // key is ever widened, this count starts failing for a reason that has
-    // nothing to do with the seed rows.
     assert_eq!(
         rows.len(),
         MOB_TEMPLATES.len(),
@@ -46,27 +53,25 @@ async fn every_harset_mob_template_carries_a_non_default_ability_set() {
         rows.len()
     );
 
-    for (template_id, template_name, ability_set_id, ability_id) in &rows {
+    for (template_id, template_name, ability_set_id, ability_ids) in &rows {
         assert!(
             ability_set_id.is_some(),
             "template {template_id} ({template_name}) has a NULL ability_set_id — it will \
              fall back to NPC_DEFAULT_ABILITY ({NPC_DEFAULT_ABILITY}, Pistol Shot). That is \
              defect H-B8, the whole point of this packet."
         );
-        let ability_id = ability_id.unwrap_or_else(|| {
-            panic!(
-                "template {template_id} ({template_name}) points at ability set {:?}, but \
-                 that set has no row in ability_set_abilities — the join yields an empty \
-                 ability bucket and the spawn path silently falls back to \
-                 NPC_DEFAULT_ABILITY",
-                ability_set_id
-            )
-        });
-        assert_ne!(
-            ability_id, NPC_DEFAULT_ABILITY,
+        assert!(
+            !ability_ids.is_empty(),
+            "template {template_id} ({template_name}) points at ability set \
+             {ability_set_id:?}, but that set has no row in ability_set_abilities — the \
+             aggregate yields an empty ability bucket and the spawn path silently falls \
+             back to NPC_DEFAULT_ABILITY"
+        );
+        assert!(
+            !ability_ids.contains(&NPC_DEFAULT_ABILITY),
             "template {template_id} ({template_name}) resolves to the pistol fallback \
              ability {NPC_DEFAULT_ABILITY} through an explicit ability set — that defeats \
-             the H-B8 fix"
+             the H-B8 fix. Bucket: {ability_ids:?}"
         );
     }
 }

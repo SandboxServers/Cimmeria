@@ -480,6 +480,100 @@ async fn pulse_tick_removes_instance_when_remaining_hits_zero() {
     );
 }
 
+/// **Harset H08 surrender guard.** A damage-over-time effect the player
+/// applied *before* the NPC surrendered must not finish it once it has.
+///
+/// The bug shape: PR #662's review fix R1 routed a lethal pulse through
+/// `kill_npc_out_of_band`, so from that point on a DoT could produce a
+/// corpse. A player who lands a DoT and then triggers the duel's
+/// surrender watches the NPC die a few seconds later — the exact outcome
+/// H08 exists to prevent, delivered on the pulse clock instead of the
+/// auto-cycle clock.
+///
+/// Reverting the `AiState::Submit` floor in `fire_pulse` fails this on
+/// the health assertion (0, not 1) and on the alive assertion, because
+/// `dot_kill_credit`'s `cur > 0` probe then falls through to the kill.
+#[tokio::test]
+async fn a_dot_cannot_finish_a_surrendered_npc() {
+    use cimmeria_entity::cell_entity::AiState;
+
+    let mut mgr = make_mgr();
+    let effect = make_dot_effect(5, 1.0, 10);
+    mgr.effect_defs.insert(effect.effect_id, effect.clone());
+    let (tx, _rx) = mpsc::channel(64);
+    register_active_effect(&mut mgr, 2, 1, &effect, Instant::now(), &tx).await;
+    if let Some(t) = mgr.get_entity_mut(2) {
+        t.ai_state = AiState::Submit;
+        // 5 HP against a 10-damage pulse: lethal without the floor.
+        if let Some(s) = t.stats.get_mut(HEALTH) {
+            s.update(0, 5, 100);
+        }
+        if let Some(inst) = t.active_effects.first_mut() {
+            inst.next_pulse_at = Instant::now() - Duration::from_secs(2);
+        }
+    }
+
+    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(2).expect("the NPC must still exist");
+    assert_eq!(
+        npc.stats.get(HEALTH).unwrap().cur,
+        1,
+        "the pulse still lands its damage, but floors at 1 instead of \
+         killing a surrendered NPC",
+    );
+    assert!(
+        !crate::cell::combat::is_dead_state(npc.state_field),
+        "a surrendered NPC must not be flipped to dead by an automatic \
+         damage source — the deliberate act was applying the DoT, every \
+         tick after it is the server re-delivering damage on its own \
+         cadence",
+    );
+    assert_eq!(
+        npc.ai_state,
+        AiState::Submit,
+        "and it is still surrendered, not pushed to Dead",
+    );
+}
+
+/// The other half of the partition: the floor is keyed on
+/// `AiState::Submit` and nothing else. An ordinary mob a DoT finishes
+/// must still die, drop loot and flip `BSF_DEAD` — broadening the guard
+/// to every NPC would silently make damage-over-time non-lethal across
+/// the whole game.
+#[tokio::test]
+async fn a_dot_still_finishes_a_fighting_npc() {
+    use cimmeria_entity::cell_entity::AiState;
+
+    let mut mgr = make_mgr();
+    let effect = make_dot_effect(5, 1.0, 10);
+    mgr.effect_defs.insert(effect.effect_id, effect.clone());
+    let (tx, _rx) = mpsc::channel(64);
+    register_active_effect(&mut mgr, 2, 1, &effect, Instant::now(), &tx).await;
+    if let Some(t) = mgr.get_entity_mut(2) {
+        t.ai_state = AiState::Fighting;
+        if let Some(s) = t.stats.get_mut(HEALTH) {
+            s.update(0, 5, 100);
+        }
+        if let Some(inst) = t.active_effects.first_mut() {
+            inst.next_pulse_at = Instant::now() - Duration::from_secs(2);
+        }
+    }
+
+    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(2).expect("the corpse must still exist");
+    assert_eq!(
+        npc.stats.get(HEALTH).unwrap().cur,
+        0,
+        "an un-surrendered mob takes the pulse to zero — no floor",
+    );
+    assert!(
+        crate::cell::combat::is_dead_state(npc.state_field),
+        "and `dot_kill_credit` still produces a real corpse (PR #662 R1)",
+    );
+}
+
 #[tokio::test]
 async fn pulse_tick_skips_pulse_on_dead_target() {
     let mut mgr = make_mgr();

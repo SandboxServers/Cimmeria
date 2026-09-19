@@ -803,7 +803,23 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1357, 'advance_step',        708, '4462', '{}', 0, 0),
   (1357, 'set_interaction_type', NULL, 'Castle_DHD', '{"op": "~", "mask": "INT_MinigameLivewire"}', 0, 1),
-  (1357, 'add_dialog_set',      3073, NULL,   '{"slot": 162}', 0, 2);
+  (1357, 'add_dialog_set',      3073, NULL,   '{"slot": 162}', 0, 2),
+  (1357, 'grant_stargate_address', 3, NULL,   '{}', 0, 3);
+
+-- `grant_stargate_address 3` is Harset's address (`resources.stargates`
+-- row with `world_id = 57`; `stargate_id = 3`), and it is what makes step
+-- 4462 reachable at all. Harset packet H55.
+--
+-- A created character's `known_stargates` is `'{}'` and nothing else in
+-- the repo writes it except a completed gate trip or a GM, so before this
+-- row the client's DHD never offered Harset and -- after Harset H06 --
+-- the server refused a forged dial with `onErrorCode` feedback 180. The
+-- grant is idempotent at both the cell and the database, so a re-fired
+-- victory chain cannot duplicate the player's DHD entry.
+--
+-- Sort order 3 rather than 0 is cosmetic: every action in one resolved
+-- list runs in the same synchronous batch, and the grant does not gate,
+-- and is not gated by, the step advance above it.
 
 -- ── Steps 4462 / 4469 — dial, then walk through ──
 --
