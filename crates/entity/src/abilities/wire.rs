@@ -28,6 +28,7 @@ pub fn serialize_timer_update(
     id: i32,
     timer_type: i8,
     source_id: i32,
+    secondary_id: i32,
     total_time: f32,
     expire_time: f32,
 ) -> Vec<u8> {
@@ -35,7 +36,7 @@ pub fn serialize_timer_update(
     buf.extend_from_slice(&id.to_le_bytes());
     buf.push(timer_type as u8);
     buf.extend_from_slice(&source_id.to_le_bytes());
-    buf.extend_from_slice(&0i32.to_le_bytes()); // secondaryId always 0
+    buf.extend_from_slice(&secondary_id.to_le_bytes());
     buf.extend_from_slice(&total_time.to_le_bytes());
     buf.extend_from_slice(&expire_time.to_le_bytes());
     buf
@@ -75,11 +76,13 @@ mod tests {
 
     #[test]
     fn serialize_timer_update_format() {
-        let data = serialize_timer_update(597, TIMER_ABILITY_COOLDOWN, 100, 5.0, 12345.0);
+        let data = serialize_timer_update(597, TIMER_ABILITY_COOLDOWN, 100, 42, 5.0, 12345.0);
         assert_eq!(data.len(), 21);
         let id = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
         assert_eq!(id, 597);
         assert_eq!(data[4], TIMER_ABILITY_COOLDOWN as u8);
+        let secondary_id = i32::from_le_bytes([data[9], data[10], data[11], data[12]]);
+        assert_eq!(secondary_id, 42);
     }
 
     #[test]

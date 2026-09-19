@@ -72,14 +72,15 @@ fn decode_on_sequence(args: &[u8]) -> Option<Value> {
 }
 
 /// Method 12: `onTimerUpdate` — cooldown / channel timer broadcasts.
-/// Wire: `INT32 ID, INT8 Type, INT32 SourceID, FLOAT TotalTime,
-/// FLOAT BigWorldTimeComplete`
+/// Wire: `INT32 ID, INT8 Type, INT32 SourceID, INT32 SecondaryId,
+/// FLOAT TotalTime, FLOAT BigWorldTimeComplete`
 fn decode_on_timer_update(args: &[u8]) -> Option<Value> {
     let mut c = Cursor::new(args);
     Some(json!({
         "id": c.i32_le()?,
         "timer_type": c.i8()?,
         "source_id": c.i32_le()?,
+        "secondary_id": c.i32_le()?,
         "total_time": c.f32_le()?,
         "completion_time": c.f32_le()?,
     }))
@@ -201,6 +202,25 @@ mod tests {
         assert_eq!(decoded["state_field"], 8);
         assert_eq!(decoded["in_combat"], true);
         assert_eq!(decoded["dead"], false);
+    }
+
+    #[test]
+    fn on_timer_update_decodes_secondary_id() {
+        let mut args = Vec::new();
+        args.extend_from_slice(&597i32.to_le_bytes());
+        args.push(5);
+        args.extend_from_slice(&100i32.to_le_bytes());
+        args.extend_from_slice(&42i32.to_le_bytes());
+        args.extend_from_slice(&5.0f32.to_le_bytes());
+        args.extend_from_slice(&12345.0f32.to_le_bytes());
+
+        let decoded = decode_on_timer_update(&args).unwrap();
+        assert_eq!(decoded["id"], 597);
+        assert_eq!(decoded["timer_type"], 5);
+        assert_eq!(decoded["source_id"], 100);
+        assert_eq!(decoded["secondary_id"], 42);
+        assert_eq!(decoded["total_time"], 5.0);
+        assert_eq!(decoded["completion_time"], 12345.0);
     }
 
     #[test]

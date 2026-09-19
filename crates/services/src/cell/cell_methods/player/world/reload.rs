@@ -217,6 +217,7 @@ pub(crate) async fn handle_reload(
         ABILITY_RELOAD_WEAPON,
         cimmeria_entity::abilities::TIMER_ABILITY_COOLDOWN,
         entity_id as i32,
+        0,
         total_time,
         0.0,
     );
