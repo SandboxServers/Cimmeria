@@ -55,6 +55,24 @@ pub struct Approach {
 }
 
 impl Approach {
+    /// How big a bridge this hop needs: the larger of the horizontal gap and
+    /// the vertical step.
+    ///
+    /// Ranking on `horizontal` alone is wrong, and wrong in a way that hides
+    /// the answer. Two floors of the same building stacked 12 m apart report
+    /// `horizontal = 0.00` because their rims overlap in XZ, so a
+    /// horizontal-only cost scores that storey jump as **free** and the chain
+    /// search takes it in preference to any real route. On Castle that made
+    /// `nav_inspect --gaps` answer "one hop, widest 0.00 m" for a pair whose
+    /// actual connection is a stairwell 30 m to the east.
+    ///
+    /// `max` rather than `hypot` because the two are alternatives, not
+    /// components: a 3 m drop and a 3 m gap are each about as hard to cross,
+    /// and one of them being small does not help.
+    pub fn bridge_size(&self) -> f32 {
+        self.horizontal.max(self.vertical.abs())
+    }
+
     fn flipped(&self) -> Self {
         Self {
             from: self.to,
@@ -108,10 +126,13 @@ impl GapGraph {
 
     /// Cheapest chain of bridges from `from` to `to`, as the ordered hops.
     ///
-    /// "Cheapest" is lexicographic on `(widest gap on the route, total gap)`
-    /// — the widest gap is what decides whether the route is bridgeable at
-    /// all, and the total only breaks ties between routes with the same worst
-    /// hop. Returns `None` when no chain exists under the thresholds, and an
+    /// "Cheapest" is lexicographic on
+    /// `(widest bridge on the route, total bridge)`, where a hop's bridge is
+    /// [`Approach::bridge_size`] — `max(horizontal, |vertical|)`, not the
+    /// horizontal gap alone. The widest one decides whether the route is
+    /// bridgeable at all; the total only breaks ties.
+    ///
+    /// Returns `None` when no chain exists under the thresholds, and an
     /// empty `Vec` when `from == to`.
     pub fn bottleneck_path(&self, from: u32, to: u32) -> Option<Vec<Approach>> {
         if from == to {
@@ -153,7 +174,8 @@ impl GapGraph {
             }
             done.insert(node, true);
             for hop in adj.get(&node).into_iter().flatten() {
-                let next = (cur_cost.0.max(hop.horizontal), cur_cost.1 + hop.horizontal);
+                let bridge = hop.bridge_size();
+                let next = (cur_cost.0.max(bridge), cur_cost.1 + bridge);
                 let known = cost.get(&hop.to).copied().unwrap_or(INF);
                 if better(next, known) {
                     cost.insert(hop.to, next);
@@ -340,27 +362,28 @@ fn insert_approach(
     min_sep: f32,
 ) {
     let slot = pairs.entry((app.from, app.to)).or_default();
-    // Same place as one we already kept? Keep whichever is tighter.
+    // Same place as one we already kept? Keep whichever needs the smaller
+    // bridge.
     for kept in slot.iter_mut() {
         if xz_dist(kept.point_from, app.point_from) < min_sep {
-            if app.horizontal < kept.horizontal {
+            if app.bridge_size() < kept.bridge_size() {
                 *kept = app;
-                slot.sort_by(|a, b| {
-                    a.horizontal
-                        .total_cmp(&b.horizontal)
-                        .then(a.vertical.abs().total_cmp(&b.vertical.abs()))
-                });
+                sort_by_bridge(slot);
             }
             return;
         }
     }
     slot.push(app);
-    slot.sort_by(|a, b| {
-        a.horizontal
-            .total_cmp(&b.horizontal)
-            .then(a.vertical.abs().total_cmp(&b.vertical.abs()))
-    });
+    sort_by_bridge(slot);
     slot.truncate(per_pair.max(1));
+}
+
+fn sort_by_bridge(slot: &mut [Approach]) {
+    slot.sort_by(|a, b| {
+        a.bridge_size()
+            .total_cmp(&b.bridge_size())
+            .then(a.horizontal.total_cmp(&b.horizontal))
+    });
 }
 
 fn xz_dist(a: [f32; 3], b: [f32; 3]) -> f32 {

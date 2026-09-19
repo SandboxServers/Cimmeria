@@ -571,28 +571,79 @@ Nothing links them at any parameter set. Tested, all on the interior crop
 `obj_slab --levels 1.0` over the overlap does find near-horizontal surface
 at every metre between 43 and 56 (517 m² at 44–45, 1,217 m² at 47–48,
 3,042 m² at 51–52, 4,284 m² at 54–55), so the building has intermediate
-levels — but none of it is connected to either storey. **The vertical
-connection is missing geometry (d), not tuning.**
+levels — but none of it is connected to either storey.
 
-The two obvious candidates for the missing mesh are both ruled out:
+> **The direct 12 m approach is not where the connection is.** A
+> traversal-keyword scan of all 6,430 Castle `StaticMeshActor`s found two
+> flights of three `CA-Props:CA-Stair00` segments at
+> `x = 348.64 / 355.04 / 361.44`, `z = 846.34` (`y 46.24`) and `z = 884.32`
+> (`y 54.40`) — **30 m east of the box above**, with
+> `CA-Interior:CA-large_doorway_open_a_00` at the foot and head of each and
+> a `CA-large_hallway_ramp_a_00` between. All are direct actors with
+> collision on, so all are already in the OBJ and in the mesh.
+>
+> The gap finder pointed at the wrong place because its hop cost weighted
+> only the horizontal gap, and two floors of one building overlap in XZ:
+> the storey jump reported `h = 0.00` and therefore scored as **free**.
+> `Approach::bridge_size` is now `max(horizontal, |vertical|)` and the
+> 12 m jump costs 12. Regression test:
+> `gaps::tests::a_stacked_storey_jump_does_not_beat_a_real_route`.
+
+With the cost fixed, the cheapest bridge between the two on the whole-map
+mesh runs through the stair spine, not through the slab: `250 → 430`
+(`h = 3.61 m`, `dy = +6.80 m`, at `(362.3, 48.4, 842.7)`) then `430 → 435`
+(`h = 8.10 m`, `dy = +7.20 m`, at `(362.0, 63.0, 872.7)`).
+
+**And the stairs still do not join the halls.** Cropping to
+`bounds=320,770,410,920` and probing the lower hall (`355.04, 48.4, 830`)
+against the upper (`355.04, 55.2, 885`):
+
+| Build | Components | Probes joined? |
+|---|---|---|
+| `minRegionSize=24 mse=2.5` | 15 | no, and no chain under 3 m |
+| `minRegionSize=8 mse=1.3` | 69 | no |
+| `minRegionSize=2 mse=1.3` | 138 | no |
+| `minRegionSize=2 mse=1.3 cs=0.15 ch=0.1 agentRadius=0.3` | 275 | no |
+| `minRegionSize=1 mse=0.8 cs=0.1 ch=0.05 agentRadius=0.3` | 328 | no |
+
+So it is not `minRegionSize` eating the treads either, even though they are
+small (20–40 m² per 0.5 m of height). Nor is it slope: the same box measures
+1,077 m² of `walkable ≤ 45°` against 1.2 m² of 45–60° and 8.9 m² over 60°.
+
+What `obj_slab --levels 0.5` shows is that **each flight only spans about
+five metres** — the lower one climbs 46.0 → 51.5, the upper 54.5 → 59.5 —
+while the halls sit at 48.4 and 55.2. Neither flight bridges 48.4 → 55.2 by
+itself, and there is a ~3 m dead band at 51.5–54.5 with nothing in it but
+single-triangle slabs (393 m² from 1 triangle at 52.0–52.5 is a ceiling, not
+a tread).
+
+Two candidates remain, and distinguishing them needs eyes on the level
+rather than more builds:
+
+1. **The flights serve within-storey level changes**, and the real route
+   between 48.4 and 55.2 is somewhere else entirely — or does not exist on
+   foot, which is what the seed data's silence would then mean.
+2. **The connecting geometry is BSP.** `Polys` / `Model` / `ModelComponent`
+   inside the interior chunks and `StaticMeshCollectionActor` are still not
+   decoded; Castle carries ~220 `Brush` per interior chunk.
+
+Two candidates already ruled out:
 
 - **Prefab-archetype StaticMeshActors.** The 33 actors resolved inside
   `x[250,320] y[40,60] z[850,900]` are all set dressing — computer towers,
   view screens, torches, a locker, a wall light, waist-high concrete cover.
   Four of the cover blocks sit at `y = 43.20` and `y = 55.40`, which
   independently confirms that both storeys are real and populated and that
-  the 12 m spacing is not an extraction artefact. Nothing spans it.
+  the 12 m spacing is not an extraction artefact.
 - **`InterpActor` movers.** All 14 in Castle resolve to 11
   `EM-SecurityCam01_Top` heads, one `EM-Antenna00`, one `EM-ShelfBox10` and
   one `GLB-RingTransporter00`. **There is no lift, elevator or door among
   them**, so extracting them (they are excluded today — the class filter is
-  `== "StaticMeshActor"`) would not close this gap or any other. The three
-  `EM-Elevator00` instances in Castle *are* StaticMeshActors, already
-  extracted, and none is near this building.
-
-What is left is the geometry the extractor still does not decode at all:
-`Polys` / `ModelComponent` BSP inside the interior chunks, and
-`StaticMeshCollectionActor`. That is where a stairwell would have to be.
+  `== "StaticMeshActor"`) would not close this gap or any other. The nine
+  `EM-Elevator00` / `EM-Elevator_Pad00` instances in Castle *are*
+  StaticMeshActors, already extracted, and all sit at `y 20–30` on the
+  exterior level — two of them on the `116 ↔ 250` side of the map, which is
+  where an off-mesh link would go if one is ever added.
 
 ### 7.2 218 ↔ 405 — terrain cliffs
 
@@ -640,12 +691,20 @@ thickness.
 
 In order of likelihood, and none of it is Recast tuning:
 
-1. **Decode the remaining interior geometry**: `Polys` / `Model` /
+1. **Walk it in the client.** The stair spine at `x 348–361`, `z 840–890`
+   is the place to look: three flights, doorways at each end, and a mesh
+   that refuses to connect them at `cs = 0.1`. Either the route exists and
+   something about the collision hull is wrong, or it does not and §7.3's
+   silence in the seed is the answer.
+2. **Decode the remaining interior geometry**: `Polys` / `Model` /
    `ModelComponent` BSP in the interior chunks and
-   `StaticMeshCollectionActor`. A stairwell between `y = 43` and `y = 55`
-   would be there if it is anywhere.
-2. **Accept that they are separate**, and give the cell a per-region
+   `StaticMeshCollectionActor`. Castle carries ~220 `Brush` per interior
+   chunk and none of it is in the mesh.
+3. **Accept that they are separate**, and give the cell a per-region
    navmesh or an off-mesh link table. Both need server-side loader work.
+   The two `EM-Elevator00` + `EM-Elevator_Pad00` pairs at
+   `(588.0, 21.1, 564.3)` and `(768.8, 29.8, 415.7)` are the natural
+   anchors on the exterior side.
 
 Extracting `InterpActor`s is **not** on this list: the 14 in Castle are 11
 cameras, an antenna, a shelf box and a ring transporter.
