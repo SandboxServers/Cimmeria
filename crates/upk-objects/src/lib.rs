@@ -9,16 +9,21 @@
 //! - [`bulk_data`] — FUntypedBulkData / TLazyArray parsers for mesh and texture data
 //! - [`texture2d`] — Texture2D mip data extraction (DXT format detection, mip chain parsing)
 //! - [`static_mesh`] — StaticMesh vertex/index buffer extraction (40-byte vertex format, kDOP, LODs)
+//! - [`terrain`] — Terrain actor heightmap + visibility-flag extraction
 
 pub mod bulk_data;
 pub mod error;
 pub mod package_index;
 pub mod static_mesh;
+pub mod terrain;
 pub mod texture2d;
 
 pub use error::{ObjectError, Result};
 pub use package_index::PackageIndex;
 pub use static_mesh::{
     deserialize_static_mesh, BoundingBox, KdopTriangle, LodModel, MeshSection, StaticMesh, Vertex,
+};
+pub use terrain::{
+    deserialize_terrain, Terrain, SGW_TERRAIN_DEFAULT_DRAW_SCALE_3D, TERRAIN_ZSCALE,
 };
 pub use texture2d::{deserialize_texture2d, MipLevel, PixelFormat, Texture2D};
