@@ -164,9 +164,18 @@ mod tests {
     /// (`0x7006_xxxx`). Cleanup deletes by exact id, never by range.
     const TEST_BASE: i32 = 0x7006_0600;
 
-    /// World 12 (`Castle_CellBlock`) has no gate; `Castle` (world 8) does.
+    /// `Castle` (world 8) has a seeded gate (`stargate_id = 2`).
     /// Only used for the world_location FK, which must name a real world.
     const A_REAL_WORLD: &str = "Castle";
+
+    /// World 12 (`Castle_CellBlock`) is a real world with **no** stargate.
+    ///
+    /// A fixture that wants to pin the *destination* half of the unlock rule
+    /// has to depart from here, because the statement also learns the gates
+    /// of the world named by the row's pre-update `world_location`. Seed a
+    /// gated origin and the origin's own gate turns up in the assertion,
+    /// which is correct behaviour and a useless test.
+    const A_GATELESS_WORLD: &str = "Castle_CellBlock";
 
     #[tokio::test]
     async fn no_db_pool_is_a_silent_noop() {
@@ -185,6 +194,16 @@ mod tests {
     }
 
     async fn seed(pool: &PgPool, account_id: i32, player_id: i32, known: &[i32]) {
+        seed_in(pool, account_id, player_id, known, A_REAL_WORLD).await
+    }
+
+    async fn seed_in(
+        pool: &PgPool,
+        account_id: i32,
+        player_id: i32,
+        known: &[i32],
+        world: &str,
+    ) {
         cleanup(pool, account_id, player_id).await;
         sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
             .bind(account_id)
@@ -206,7 +225,7 @@ mod tests {
         .bind(account_id)
         .bind(player_id)
         .bind(format!("H06Pin{player_id}"))
-        .bind(A_REAL_WORLD)
+        .bind(world)
         .bind(known)
         .execute(pool)
         .await
@@ -232,7 +251,9 @@ mod tests {
     async fn an_arrival_learns_each_address_exactly_once() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE, TEST_BASE + 10);
-        seed(&pool, account_id, player_id, &[3]).await;
+        // Gateless on both ends, so the statement's origin half contributes
+        // nothing and this test sees only what `destination_gates` carried.
+        seed_in(&pool, account_id, player_id, &[3], A_GATELESS_WORLD).await;
 
         let db = Some(Arc::new(pool.clone()));
         // 3 is already held; 41 appears twice in the input; 42 is new.
@@ -240,7 +261,7 @@ mod tests {
             &db,
             player_id,
             account_id as u32,
-            A_REAL_WORLD,
+            A_GATELESS_WORLD,
             [11.0, 12.0, 13.0],
             &[3, 41, 42, 41],
         )
@@ -257,7 +278,7 @@ mod tests {
             &db,
             player_id,
             account_id as u32,
-            A_REAL_WORLD,
+            A_GATELESS_WORLD,
             [11.0, 12.0, 13.0],
             &[3, 41, 42],
         )
@@ -282,7 +303,8 @@ mod tests {
     async fn an_arrival_with_nothing_new_to_learn_still_persists_the_destination() {
         let pool = require_db_or_skip!();
         let (account_id, player_id) = (TEST_BASE + 1, TEST_BASE + 11);
-        seed(&pool, account_id, player_id, &[3, 41]).await;
+        // Gateless on both ends: see `an_arrival_learns_each_address_exactly_once`.
+        seed_in(&pool, account_id, player_id, &[3, 41], A_GATELESS_WORLD).await;
 
         let db = Some(Arc::new(pool.clone()));
         persist_arrival(
