@@ -51,3 +51,18 @@ Read this first. [session-1-resume.md](session-1-resume.md) still has the branch
 - **Off-mesh line of sight counts as clear** (H51). It affects every meshed world. The alternative makes any NPC or player standing in a mesh hole unable to attack or be attacked.
 - **Harset runs with an advisory navmesh** (H53) until GH1 regenerates the mesh. Player containment in world 57 falls back to bounds, speed and teleport checks.
 - **#662 was not merged.** It is ready.
+
+## Update 2026-09-19 (later): all shelved work picked back up, on the owner's instruction
+
+The owner lifted the three-agent cap for this purpose. `harset/goauld` and `harset/jaffa` are finished and merged into `content/harset-wave2` (`58659038`). Still running, each told to merge the wave-2 base first and to reassess its dead worker's draft rather than trust it:
+
+| Agent / branch | What the reassessment added to the packet |
+|---|---|
+| `harset-opcore` | The edge-race class (a chain keyed on `player_loaded` and gated on a state that opens in the same world never fires; fix is a second `mission_completed` trigger) and vacuous `dialog_choice` / `item_use` guards, both found live by the other two lanes |
+| `harset-H06` | `cell/gate_travel.rs` became a directory (#663), so the dial check is a hand port; one containment function, not two (`main` now has `playtest_friction::region_contains_xz`); a rejected hint must log and reach the player journal; tolerance for a player running through a thin door volume |
+| `harset-H08` | Review fix R1 made DoT pulses lethal, so a DoT applied before the surrender now kills the surrendered NPC, which the draft did not cover; crossings are sampled at the health-application seam; the exit must clear path and velocity, face the player and log a `decision_outcome` |
+| `harset-H09` | The draft accepted melee swings at 30 m. With thirteen stationary sentries that is the primary attack of a pinned Goa'uld, so the chooser now range-gates melee |
+| `harset-H50` | Restore `hidden` / `optional`, not only ids (else mission 1200 completes early after a relog); invert the pinned 742 defect test; correct Castle 701-708 tests that encoded the old `MissionUpdate` shape; keep #680's step-activation seam; leave a callable mission-log resend seam for respawn |
+| `harset-H53` | New this session, P0 (advisory navmesh) |
+
+H52 is not dispatched: it edits the same step-activation seam in `progression.rs` as H50, so it goes after H50 merges. H05 (minigame competency) is unblocked since Castle #652 merged and has never been started.
