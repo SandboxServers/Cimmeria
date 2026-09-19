@@ -140,6 +140,10 @@ fn trigger_type_covers_every_variant() {
             EntityHealthBelow,
         ),
         (Trigger::OnNpcFlanked { npc_template: None }, NpcFlanked),
+        (
+            Trigger::OnPlayerFlankedNpc { npc_template: None },
+            PlayerFlankedNpc,
+        ),
     ];
     for (trigger, expected) in cases {
         assert_eq!(trigger.trigger_type(), expected, "for {trigger:?}");

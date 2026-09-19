@@ -122,7 +122,6 @@ async fn spawn_default(mgr: &mut SpaceManager, actor: u32) {
         None,
         None,
         None,
-        None,
         actor,
         6301,
         mgr,
@@ -247,10 +246,18 @@ async fn spawn_never_inherits_template_respawn() {
     );
 }
 
-/// An explicit `respawn_secs` on the action row is accepted (the row is not
-/// dropped) but still not honoured.
+/// A content spawn is one-shot even when the *template* opts into respawn
+/// — `template()` above carries `respawn_secs: Some(30)` precisely so this
+/// has something to override. Inheriting it would hand a `spawn_id = -1`
+/// instance to the respawner, and a revived mission NPC would re-fire its
+/// `entity_dead_tag` chain.
+///
+/// The action-row half of this moved to the loader in the PR #662 review
+/// (`loader::tests::spawn_entity_with_respawn_secs_still_converts_and_drops_it`):
+/// `Action::SpawnEntity` no longer carries the field at all, so the
+/// executor has nothing left to ignore and only the template path can leak.
 #[tokio::test]
-async fn spawn_with_explicit_respawn_still_spawns_one_shot() {
+async fn spawn_never_inherits_the_templates_respawn_secs() {
     let mut mgr = make_space_mgr();
     let actor = 7003;
     stage_player(&mut mgr, actor, INSTANCED_WORLD);
@@ -260,7 +267,6 @@ async fn spawn_with_explicit_respawn_still_spawns_one_shot() {
         [0.0; 3],
         0.0,
         TAG.to_string(),
-        Some(45),
         None,
         None,
         None,
@@ -270,9 +276,13 @@ async fn spawn_with_explicit_respawn_still_spawns_one_shot() {
     )
     .await;
 
-    let npc_id = npc_with_tag(&mgr, actor)
-        .expect("an unsupported respawn param must not drop the whole spawn");
-    assert_eq!(mgr.get_entity(npc_id).unwrap().respawn_secs, None);
+    let npc_id = npc_with_tag(&mgr, actor).expect("the spawn itself must still land");
+    assert_eq!(
+        mgr.get_entity(npc_id).unwrap().respawn_secs,
+        None,
+        "a content-scoped spawn must be one-shot even when the template \
+         asks for respawn",
+    );
 }
 
 /// `aggression` and `is_stationary` are per-spawn values with no template
@@ -288,7 +298,6 @@ async fn spawn_applies_aggression_and_stationary_overrides() {
         [0.0; 3],
         0.0,
         TAG.to_string(),
-        None,
         Some(true),
         Some(1),
         None,
@@ -345,7 +354,6 @@ async fn spawn_into_shared_world_with_allow_shared_succeeds() {
         [0.0; 3],
         0.0,
         TAG.to_string(),
-        None,
         None,
         None,
         Some(true),
@@ -462,7 +470,6 @@ async fn spawn_with_an_unknown_template_is_refused() {
         None,
         None,
         None,
-        None,
         actor,
         6301,
         &mut mgr,
@@ -565,8 +572,23 @@ async fn destroy_entity_routes_through_the_same_despawn() {
     let (npc_id, witnesses) = stage_npc_with_witnesses(&mut mgr, 2);
     let (tx, mut rx) = mpsc::channel(32);
 
-    super::super::world::destroy_tagged_entity(TAG.to_string(), witnesses[0], 6303, &tx, &mut mgr)
-        .await;
+    // Through the dispatch arm, not a handler: the `destroy_entity` verb
+    // has no handler of its own any more (the pass-through wrapper was
+    // deleted in the PR #662 review), so the arm *is* the routing decision
+    // this test guards.
+    super::super::execute_one(
+        6303,
+        cimmeria_content_engine::actions::Action::DestroyTaggedEntity {
+            entity_tag: TAG.to_string(),
+        },
+        witnesses[0],
+        0,
+        &std::collections::HashMap::new(),
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     // Exact pairs, not a count: a routing bug that fanned `LeftAoI` naming
     // the *source* entity instead of the target would still emit two

@@ -92,7 +92,7 @@ async fn a_same_world_region_the_player_is_standing_in_is_accepted() {
         "a legitimate region entry must reach the dispatch path"
     );
     assert!(
-        capture.find_message(Level::WARN, "refusing").is_none(),
+        capture.find_message(Level::WARN, "refused").is_none(),
         "a legitimate region entry must not be refused"
     );
 }
@@ -127,7 +127,7 @@ async fn a_region_belonging_to_another_world_is_refused() {
         capture
             .find_event(
                 Level::WARN,
-                "region belongs to another world",
+                "region belongs to world Agnos",
                 "region_world_mismatch"
             )
             .is_some(),
@@ -178,7 +178,7 @@ async fn an_enter_from_outside_the_volume_is_refused() {
         capture
             .find_event(
                 Level::WARN,
-                "outside the region volume",
+                "outside the 4-corner volume",
                 "region_containment_failed"
             )
             .is_some(),
@@ -218,7 +218,7 @@ async fn an_enter_just_past_the_boundary_is_still_accepted() {
         capture
             .find_event(
                 Level::WARN,
-                "outside the region volume",
+                "outside the 4-corner volume",
                 "region_containment_failed"
             )
             .is_none(),
@@ -256,5 +256,184 @@ async fn an_exit_from_outside_the_volume_is_still_dispatched() {
             .find_message(Level::INFO, "triggerClientHintedGenericRegion")
             .is_some(),
         "an exit must dispatch regardless of where the player now stands"
+    );
+}
+
+/// A thin door volume, crossed at a run. This is the case the tolerance
+/// exists for, and the one a zero-slop containment test would break.
+///
+/// The client fires the hint the instant *its* pawn crosses the near face.
+/// The server is testing the last position it accepted, one ~100 ms update
+/// behind (`MovementValidator::MAX_SNAP_BACK_CORRECTIONS` documents the
+/// rate), which at the 8.125 u/s `run_speed` puts the server-known position
+/// 0.81 units short of the doorway. Refuse that and the door silently does
+/// nothing — the 2026-09-18 Castle playtest's most expensive failure shape.
+#[tokio::test]
+async fn a_player_running_through_a_thin_volume_is_not_false_rejected() {
+    // 4 units wide in X, 1 unit thick in Z: a doorway, not a room.
+    fn doorway(runtime_id: u32) -> RegionData {
+        RegionData {
+            runtime_id,
+            db_set_id: 0x7006_0002,
+            tag: "Castle_CellBlock.H06Door".to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 3.0,
+            radius: 0.0,
+            flags: 0,
+            points: vec![
+                [-2.0, 0.0, -0.5],
+                [-2.0, 0.0, 0.5],
+                [2.0, 0.0, 0.5],
+                [2.0, 3.0, -0.5],
+            ],
+        }
+    }
+
+    let mut mgr = make_mgr_with_player();
+    mgr.regions.insert(11, doorway(11));
+    // One position-update interval of running short of the near face:
+    // -0.5 - (8.125 / 10) = -1.3125.
+    place(&mut mgr, 1, [0.0, 0.0, -1.3125]);
+
+    let capture = LogCapture::install();
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(8);
+    dispatch(
+        1,
+        TRIGGER_REGION,
+        &trigger_args(11, true, [0.0, 0.0, -0.5]),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert!(
+        capture
+            .find_event(
+                Level::WARN,
+                "outside the 4-corner volume",
+                "region_containment_failed"
+            )
+            .is_none(),
+        "a player one position update short of a doorway is entering it, not          cheating. Captured: {:#?}",
+        capture.all()
+    );
+    assert!(
+        capture
+            .find_message(Level::INFO, "triggerClientHintedGenericRegion")
+            .is_some(),
+        "the hint must reach the dispatch path"
+    );
+}
+
+/// Where the 1.5-unit tolerance runs out, stated so it is a decision rather
+/// than a surprise: two *consecutive* missed position updates (1.62 units of
+/// staleness at run speed) fall outside the band and are refused.
+///
+/// The refusal is loud — `reason = region_containment_failed` with the
+/// server-known position — so if a real client ever trips it, raising
+/// `GENERIC_REGION_CHECK_THRESHOLD` is a one-constant change with this test
+/// naming the trade-off.
+#[tokio::test]
+async fn two_missed_position_updates_fall_outside_the_tolerance() {
+    let mut mgr = make_mgr_with_player();
+    mgr.regions.insert(12, box_region(12, "Castle_CellBlock"));
+    // The +X face is at 5.0; 1.63 units past the 1.5-unit band.
+    place(&mut mgr, 1, [6.63, 0.0, 0.0]);
+
+    let capture = LogCapture::install();
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(8);
+    dispatch(
+        1,
+        TRIGGER_REGION,
+        &trigger_args(12, true, [0.0; 3]),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert!(
+        capture
+            .find_event(
+                Level::WARN,
+                "outside the 4-corner volume",
+                "region_containment_failed"
+            )
+            .is_some(),
+        "1.63 units out is past the documented band and must refuse -- if this          starts firing on real clients, raise GENERIC_REGION_CHECK_THRESHOLD"
+    );
+}
+
+/// Region ids are wire-encoded `i32` and stored `u32`. A negative id must be
+/// refused up front rather than sign-extended into a high `u32`.
+#[tokio::test]
+async fn a_negative_region_id_is_refused() {
+    let mut mgr = make_mgr_with_player();
+    let capture = LogCapture::install();
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(8);
+    let handled = dispatch(
+        1,
+        TRIGGER_REGION,
+        &trigger_args(-3, true, [0.0; 3]),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert!(handled, "the arm still claims the method");
+    assert!(
+        capture
+            .find_event(Level::WARN, "negative region id", "region_id_negative")
+            .is_some(),
+        "a negative region id must be refused with the documented reason"
+    );
+    assert!(rx.try_recv().is_err());
+}
+
+/// A refused hint must be visible in the player's own journal, not only in
+/// the server log.
+///
+/// This is the 2026-09-18 Castle playtest lesson in test form: a false
+/// reject and a client that never sent the hint look identical in-game (the
+/// door does nothing), and the `.bug` bookmark is where the report is
+/// actually written. Deleting the `player_journal::note` call in
+/// `refuse_hinted_region` fails this.
+#[tokio::test]
+async fn a_refused_hint_is_noted_in_the_player_journal() {
+    // A region id unique to this test: the journal is a process-global ring
+    // keyed on entity id, so the assertion matches on the id rather than on
+    // position in the ring.
+    const PROBE_REGION: u32 = 0x0060_0613;
+
+    let mut mgr = make_mgr_with_player();
+    mgr.regions
+        .insert(PROBE_REGION, box_region(PROBE_REGION, "Agnos"));
+    place(&mut mgr, 1, [1.0, 0.5, -2.0]);
+
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(8);
+    dispatch(
+        1,
+        TRIGGER_REGION,
+        &trigger_args(PROBE_REGION as i32, true, [0.0; 3]),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    let entries = crate::cell::player_journal::tail(1, crate::cell::player_journal::RING);
+    assert!(
+        entries.iter().any(|(_, _, kind, detail)| {
+            *kind == crate::cell::player_journal::kinds::REGION_HINT_REFUSED
+                && detail.contains(&PROBE_REGION.to_string())
+                && detail.contains("region_world_mismatch")
+        }),
+        "the refusal must appear in the .bug journal. Journal tail: {entries:#?}"
     );
 }

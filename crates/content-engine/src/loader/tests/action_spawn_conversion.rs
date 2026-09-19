@@ -12,9 +12,14 @@ use super::super::*;
 
 /// The full spawn descriptor must survive the row → `Action` conversion
 /// with every optional override preserved as `Some`. A regression that
-/// defaults `respawn_secs` / `is_stationary` / `aggression` / `allow_shared`
-/// instead of carrying `Option` would make a seeded hostile spawn passive
-/// and a seeded shared-world spawn silently refused.
+/// defaults `is_stationary` / `aggression` / `allow_shared` instead of
+/// carrying `Option` would make a seeded hostile spawn passive and a
+/// seeded shared-world spawn silently refused.
+///
+/// The row below still carries `respawn_secs`, which the loader now drops
+/// (see `spawn_entity_with_respawn_secs_still_converts_and_drops_it`) —
+/// keeping it here pins that an unsupported param does not derail the
+/// fields around it.
 #[test]
 fn convert_spawn_entity_full_descriptor() {
     let row = DbActionRow {
@@ -39,7 +44,6 @@ fn convert_spawn_entity_full_descriptor() {
             position,
             heading,
             tag,
-            respawn_secs,
             is_stationary,
             aggression,
             allow_shared,
@@ -55,7 +59,6 @@ fn convert_spawn_entity_full_descriptor() {
                 (heading - 2.71875).abs() < 1e-5,
                 "heading must survive the f64 → f32 narrowing, got {heading}"
             );
-            assert_eq!(respawn_secs, Some(45));
             assert_eq!(is_stationary, Some(true));
             assert_eq!(aggression, Some(1));
             assert_eq!(allow_shared, Some(true));
@@ -88,14 +91,12 @@ fn convert_spawn_entity_minimal_leaves_overrides_none() {
     match convert_action(&row).expect("spawn_entity must convert") {
         Action::SpawnEntity {
             heading,
-            respawn_secs,
             is_stationary,
             aggression,
             allow_shared,
             ..
         } => {
             assert_eq!(heading, 0.0, "absent heading defaults to 0, not NaN");
-            assert_eq!(respawn_secs, None);
             assert_eq!(is_stationary, None);
             assert_eq!(aggression, None);
             assert_eq!(
@@ -263,4 +264,44 @@ fn unknown_action_type_still_returns_none() {
         sort_order: 0,
     };
     assert!(convert_action(&row).is_none());
+}
+
+/// A `respawn_secs` param is **not** a reason to drop the row: a mission
+/// NPC that appears without respawn beats one that never appears. The
+/// loader warns (`reason = "respawn_secs_not_honoured"`) and converts.
+///
+/// This is the load-bearing half of PR #662 review finding 5. Before it,
+/// the value was parsed, carried on `Action::SpawnEntity`, threaded
+/// through the executor's signature and then unconditionally overwritten
+/// with `None` — four layers of plumbing for a field nothing read. The
+/// action no longer has the variant field at all, so a regression that
+/// re-added the thread would not compile against this test's pattern.
+#[test]
+fn spawn_entity_with_respawn_secs_still_converts_and_drops_it() {
+    let row = DbActionRow {
+        chain_id: 6304,
+        action_type: "spawn_entity".to_string(),
+        target_id: Some(207),
+        target_key: Some("Rinla_Malac".to_string()),
+        params: serde_json::json!({"x": 1.0, "y": 2.0, "z": 3.0, "respawn_secs": 45}),
+        delay_ms: 0,
+        sort_order: 0,
+    };
+    match convert_action(&row).expect("an unsupported respawn_secs must not drop the row") {
+        Action::SpawnEntity {
+            template_id,
+            tag,
+            position,
+            ..
+        } => {
+            assert_eq!(template_id, 207);
+            assert_eq!(tag, "Rinla_Malac");
+            assert_eq!(
+                position,
+                [1.0, 2.0, 3.0],
+                "the ignored param must not disturb the fields around it",
+            );
+        }
+        other => panic!("Expected SpawnEntity, got {other:?}"),
+    }
 }

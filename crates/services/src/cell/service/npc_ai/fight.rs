@@ -181,6 +181,7 @@ pub(super) async fn npc_ai_fight(
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.ai_state = AiState::Leashing;
                 npc.threat_list.clear();
+                super::note_outcome("leashed");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -267,6 +268,7 @@ pub(super) async fn npc_ai_fight(
         match decision {
             CoverDecision::StayInCover { pos, slot } => {
                 nav_target_pos = pos;
+                super::note_outcome("stay_in_cover");
                 tracing::debug!(
                     target: "npc_ai",
                     event = "decision",
@@ -280,6 +282,7 @@ pub(super) async fn npc_ai_fight(
             }
             CoverDecision::MoveToCover { pos, slot } => {
                 nav_target_pos = pos;
+                super::note_outcome("move_to_cover");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -292,6 +295,7 @@ pub(super) async fn npc_ai_fight(
                 );
             }
             CoverDecision::Released { prior_slot } => {
+                super::note_outcome("cover_released_flanked");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -325,6 +329,18 @@ pub(super) async fn npc_ai_fight(
                     space_mgr,
                 )
                 .await;
+                // Player-perspective twin: mission-scoped chains (flank
+                // objectives, C06) need the flanking player as the action
+                // target. No-ops when the threat isn't a player.
+                crate::cell::content::fire_player_flanked_npc(
+                    npc_id,
+                    target_id,
+                    &npc_template,
+                    engine,
+                    tx,
+                    space_mgr,
+                )
+                .await;
             }
             CoverDecision::NoCover => {}
         }
@@ -350,6 +366,15 @@ pub(super) async fn npc_ai_fight(
             // off-mesh flyer positions — and no log line surfaced
             // it. Same pattern that the existing `no_path` log
             // catches for non-stationary NPCs.
+            //
+            // Turn toward the target even while holding fire. A pinned
+            // NPC never gets a nav path, so the movement tick never
+            // writes its yaw; without this a sentry being shot from out
+            // of range (or across a navmesh gap that reads as no LoS)
+            // keeps its authored heading and stands with its back to the
+            // attacker. Harset seeds thirteen stationary sentries.
+            face_target(space_mgr, npc_id, npc_pos, target_pos);
+            super::note_outcome("stationary_holds");
             tracing::info!(
                 target: "npc_ai",
                 event = "decision",
@@ -390,6 +415,7 @@ pub(super) async fn npc_ai_fight(
                     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                         npc.nav_path = waypoints;
                     }
+                    super::note_outcome("chase");
                     tracing::debug!(
                         target: "npc_ai",
                         event = "decision",
@@ -401,6 +427,22 @@ pub(super) async fn npc_ai_fight(
                         dist_to_target,
                         "NPC AI: pathfinding toward target"
                     );
+                } else {
+                    let stale_path_len =
+                        space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len());
+                    super::note_outcome("repath_degenerate");
+                    tracing::warn!(
+                        target: "npc_ai",
+                        event = "decision",
+                        decision_outcome = "repath_degenerate",
+                        npc_id,
+                        target_id,
+                        stale_path_len,
+                        in_range,
+                        has_los,
+                        dist_to_target,
+                        "NPC AI: repath returned <=1 waypoint -- previous path left in place, NPC may walk toward where the target used to be"
+                    );
                 }
             } else {
                 // No-path is the diagnostic signal for "navmesh missing in
@@ -408,6 +450,7 @@ pub(super) async fn npc_ai_fight(
                 // span already carries `space_id`, so SigNoz can group
                 // `groupBy=decision_outcome` across the npc_ai target and
                 // pivot per zone via the span's space_id attribute.
+                super::note_outcome("no_path");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -420,6 +463,19 @@ pub(super) async fn npc_ai_fight(
                     "NPC AI: no path to target (zone may need navmesh)"
                 );
             }
+        } else {
+            super::note_outcome("hold_no_repath");
+            tracing::debug!(
+                target: "npc_ai",
+                event = "decision",
+                decision_outcome = "hold_no_repath",
+                npc_id,
+                target_id,
+                in_range,
+                has_los,
+                dist_to_target,
+                "NPC AI: out of range/LoS but existing path still ends near the target -- no new order this tick"
+            );
         }
         return;
     }
@@ -439,6 +495,7 @@ pub(super) async fn npc_ai_fight(
                 npc.nav_path.clear();
                 npc.nav_path.push_back(backup);
             }
+            super::note_outcome("min_range_backup");
             tracing::debug!(
                 target: "npc_ai",
                 event = "decision",
@@ -457,15 +514,24 @@ pub(super) async fn npc_ai_fight(
     }
 
     // In range, LOS confirmed, and not too close — stop moving and attack.
+    //
+    // Face the target too. `direction` was only ever written by the movement
+    // tick, which skips path-less NPCs -- and this branch clears the path --
+    // so an attacker's yaw froze the moment it stopped while the player
+    // strafed around it. Done before the ability check so a mob waiting on a
+    // cooldown still tracks its target. No extra wire traffic: the AoI tick
+    // already sends direction with every position update.
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
     }
+    face_target(space_mgr, npc_id, npc_pos, target_pos);
 
     // `chosen_ability` may still be `None` here when every known ability
     // is on cooldown — hold fire and let the next tick re-evaluate.
     let chosen_ability = match chosen_ability {
         Some(id) => id,
         None => {
+            super::note_outcome("no_ability");
             tracing::debug!(
                 target: "npc_ai",
                 event = "decision",
@@ -479,6 +545,7 @@ pub(super) async fn npc_ai_fight(
         }
     };
 
+    super::note_outcome("attack_in_place");
     tracing::debug!(
         target: "npc_ai",
         event = "decision",
@@ -543,3 +610,24 @@ pub(super) async fn npc_ai_fight(
 /// the C++ AI tick says otherwise. The retry sweep tick is
 /// 100ms granular, so the actual latency lands in `[500, 600)` ms.
 const AI_LAUNCH_FAILURE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Point `npc_id`'s yaw at `target_pos`. `direction` is `[pitch, yaw, roll]`
+/// in radians and yaw is `atan2(dx, dz)` (0 = +Z), the same convention the
+/// movement tick writes. A target directly above or below (coincident in
+/// XZ) has no bearing, so the current yaw is kept rather than snapped to 0.
+/// No wire traffic of its own: the AoI tick sends direction with every
+/// position update.
+fn face_target(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    npc_pos: cimmeria_common::Vector3,
+    target_pos: cimmeria_common::Vector3,
+) {
+    let (dx, dz) = (target_pos.x - npc_pos.x, target_pos.z - npc_pos.z);
+    if dx * dx + dz * dz < f32::EPSILON {
+        return;
+    }
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.direction = cimmeria_common::Vector3::new(0.0, dx.atan2(dz), 0.0);
+    }
+}

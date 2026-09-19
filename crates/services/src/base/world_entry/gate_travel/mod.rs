@@ -297,15 +297,6 @@ pub(crate) async fn handle_gate_travel(
     // Query stargates for the destination world (Bug #3: load stargate cache for new world)
     let world_stargates = query_world_stargates(db_pool, target_world_name).await;
 
-    // ...and for the world being left, which is the half of the unlock rule
-    // that does any work (see `persist_arrival::addresses_learned_by_travelling`).
-    // `exit_from_world` was snapshotted above, before the new world overwrites
-    // the session state, so it is genuinely the pre-hop world.
-    let origin_stargates = match exit_from_world.as_deref() {
-        Some(w) if w != target_world_name => query_world_stargates(db_pool, w).await,
-        _ => vec![],
-    };
-
     // Persist the destination world, position and the newly learned stargate
     // addresses in one statement, so a future relog or RespawnReload reloads
     // the player at the new world rather than snapping them back to the saved
@@ -318,13 +309,18 @@ pub(crate) async fn handle_gate_travel(
     // `setupStargateInfo` address list the client is about to be handed. Get
     // that second one wrong and the client renders an address book one hop
     // out of date while the cell enforces the current one.
+    //
+    // Only the *destination* list is passed. The origin half — the half of
+    // the unlock rule that actually does any work — is resolved inside the
+    // statement from the row's own pre-update `world_location`, which is the
+    // only source that stays correct across consecutive hops.
     persist_arrival(
         db_pool,
         active_player_id,
         account_id,
         target_world_name,
         position,
-        &persist_arrival::addresses_learned_by_travelling(&world_stargates, &origin_stargates),
+        &world_stargates,
     )
     .await;
 

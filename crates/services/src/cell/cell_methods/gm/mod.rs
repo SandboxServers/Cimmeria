@@ -200,6 +200,7 @@ pub async fn dispatch(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
 ) -> bool {
     match method_index {
         // -- give / remove --
@@ -234,7 +235,7 @@ pub async fn dispatch(
         GM_GOTO => travel::handle_goto(entity_id, args, tx, space_mgr).await,
         GM_SUMMON => travel::handle_summon(entity_id, args, tx, space_mgr).await,
         GM_GOTO_LOCATION => travel::handle_goto_location(entity_id, args, tx, space_mgr).await,
-        GM_DHD => travel::handle_dhd(entity_id, args, tx, space_mgr).await,
+        GM_DHD => travel::handle_dhd(entity_id, args, tx, space_mgr, engine).await,
         // -- world / entity ops --
         GM_SET_TARGET => world::handle_set_target(entity_id, args, tx, space_mgr).await,
         GM_KILL_TARGET => world::handle_kill_target(entity_id, args, tx, space_mgr).await,

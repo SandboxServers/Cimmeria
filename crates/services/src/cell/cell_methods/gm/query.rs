@@ -87,10 +87,10 @@ pub(super) async fn handle_users(
 /// `testLOS(INT32 aSourceEntityID, INT32 aTargetEntityID)` — report whether the
 /// navmesh has line-of-sight between two entities in the caller's space.
 ///
-/// Reuses the canonical [`SpaceManager::has_line_of_sight`] primitive (the same
-/// one the NPC AI uses), which resolves the space, projects to the navmesh, and
-/// raycasts — returning `true` for clear LoS (and conservatively `true` when no
-/// navmesh is loaded). Both ids are validated to be in the caller's space first
+/// Reuses the canonical [`SpaceManager::line_of_sight`] primitive (the one
+/// behind the NPC AI's `has_line_of_sight`), which resolves the space, projects
+/// to the navmesh, and raycasts — and reports all three outcomes, including
+/// "the navmesh cannot tell". Both ids are validated to be in the caller's space first
 /// so a typo'd id reports "not found" rather than a misleading CLEAR.
 pub(super) async fn handle_test_los(
     entity_id: u32,
@@ -120,10 +120,18 @@ pub(super) async fn handle_test_los(
         return true;
     }
 
-    let clear = space_mgr.has_line_of_sight(source_eid, target_eid);
-    let verdict = if clear { "CLEAR" } else { "BLOCKED" };
+    // Three states, not two: "UNKNOWN" means an endpoint is off the navmesh
+    // (or the space has none), which the NPC AI treats as clear. Reporting
+    // it as CLEAR would hide exactly the spawns a GM is trying to find.
+    use cimmeria_entity::navigation::LineOfSight;
+    let los = space_mgr.line_of_sight(source_eid, target_eid);
+    let verdict = match los {
+        LineOfSight::Clear => "CLEAR",
+        LineOfSight::Blocked => "BLOCKED",
+        LineOfSight::Unknown => "UNKNOWN (no navmesh coverage; NPCs treat this as clear)",
+    };
     let text = format!("testLOS {source_eid} → {target_eid}: {verdict}");
-    tracing::info!(entity_id, source_eid, target_eid, clear, "testLOS");
+    tracing::info!(entity_id, source_eid, target_eid, ?los, "testLOS");
     send_gm_feedback(entity_id, &text, tx).await;
     true
 }

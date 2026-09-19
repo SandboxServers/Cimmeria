@@ -9,7 +9,17 @@ async fn gm_set_health_self_mutates_stat_and_emits_update() {
     let (tx, mut rx) = mpsc::channel(8);
 
     // Target 0 → self. Default HEALTH max is 100; set to 75.
-    assert!(dispatch(1, GM_SET_HEALTH, &set_stat_args(75, 0), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SET_HEALTH,
+            &set_stat_args(75, 0),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
 
     assert_eq!(
         mgr.get_entity(1).unwrap().stats.get(HEALTH).unwrap().cur,
@@ -41,7 +51,17 @@ async fn gm_set_health_rejects_negative() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_SET_HEALTH, &set_stat_args(-10, 0), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SET_HEALTH,
+            &set_stat_args(-10, 0),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     assert_eq!(
         mgr.get_entity(1).unwrap().stats.get(HEALTH).unwrap().cur,
         100,
@@ -79,7 +99,17 @@ async fn gm_set_health_cross_space_target_refused() {
     mgr.create_entity(2, "Other", [0.0; 3], [0.0; 3]).unwrap();
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_SET_HEALTH, &set_stat_args(50, 2), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SET_HEALTH,
+            &set_stat_args(50, 2),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(|m| matches!(
@@ -102,11 +132,31 @@ async fn set_stat_rejects_truncated_args_and_missing_stat() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
     // No amount.
-    assert!(dispatch(1, GM_SET_HEALTH, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SET_HEALTH, &[], &tx, &mut mgr, &test_engine()).await);
     // Amount but no INT64 target.
-    assert!(dispatch(1, GM_SET_FOCUS, &10i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SET_FOCUS,
+            &10i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     // Target id that doesn't resolve to any entity.
-    assert!(dispatch(1, GM_SET_HEALTH, &set_stat_args(10, 9999), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SET_HEALTH,
+            &set_stat_args(10, 9999),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(|m| matches!(
@@ -129,8 +179,28 @@ async fn set_focus_max_then_current_applies() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
     // FOCUS default max is 0, so raise the ceiling first, then set current.
-    assert!(dispatch(1, GM_SET_FOCUS_MAX, &set_stat_args(50, 0), &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_SET_FOCUS, &set_stat_args(30, 0), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_SET_FOCUS_MAX,
+            &set_stat_args(50, 0),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(
+        dispatch(
+            1,
+            GM_SET_FOCUS,
+            &set_stat_args(30, 0),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let f = mgr
         .get_entity(1)
         .unwrap()

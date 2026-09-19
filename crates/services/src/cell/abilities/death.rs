@@ -259,7 +259,8 @@ pub(super) async fn apply_death_transition(
     .await;
 }
 
-/// Kill an NPC outside the damage pipeline (GM command, scripted death).
+/// Kill an NPC outside the single-hit damage pipeline (GM command, DoT
+/// pulse, scripted death).
 ///
 /// Mirrors the NPC-kill arm of `damage_apply` at the kill site: route the
 /// state mutations through `combat::mark_npc_dead` (BSF_DEAD /
@@ -270,16 +271,20 @@ pub(super) async fn apply_death_transition(
 /// drained *after* the transition consumes it — same deferred-clear contract
 /// as the combat path.
 ///
-/// `attacker_id` is the GM entity (used only for the death span's credit
-/// field; no reticle drop fires because the GM isn't targeting via the
-/// combat HUD). Refuses non-NPC and missing targets — the caller is
+/// `attacker_id` is whoever gets credit — the GM entity, or a DoT's
+/// invoker. `attacker_is_player` drives the `onTargetUpdate(0)` reticle
+/// drop on the attacker: a GM `.kill` passes `false` because the GM was
+/// never targeting through the combat HUD, while a player whose DoT
+/// finished the mob passes `true` so their reticle clears like it would on
+/// any other kill. Refuses non-NPC and missing targets — the caller is
 /// responsible for the player-target rejection, but this fails closed too.
 ///
 /// Returns `true` if a kill was applied, `false` if the target was absent,
 /// a player, or already dead.
-pub(crate) async fn gm_kill_npc(
+pub(crate) async fn kill_npc_out_of_band(
     target_eid: u32,
     attacker_id: u32,
+    attacker_is_player: bool,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
@@ -305,9 +310,7 @@ pub(crate) async fn gm_kill_npc(
         target_eid,
         attacker_id,
         target_state,
-        // attacker_is_player: GM kills don't drop a combat reticle on the
-        // GM, so pass false to skip the onTargetUpdate(0) attacker step.
-        false,
+        attacker_is_player,
         // target_is_player: always false (NPC-only, enforced above).
         false,
         tx,

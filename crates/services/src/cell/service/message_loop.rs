@@ -95,6 +95,13 @@ pub(super) async fn run_cell_loop(
                 // above; short-circuits when the queue is empty.
                 content::deferred_content_action_tick(tx, &mut space_mgr, &engine).await;
 
+                // Open any stargate whose 4-second dial timer has
+                // elapsed (CA10): fires `Stargate_MakeGate` to the
+                // dialer and their witnesses and makes the gate
+                // crossable. Same tick-drain shape; short-circuits
+                // when nobody is dialling.
+                super::super::gate_travel::gate_dial_tick(tx, &mut space_mgr).await;
+
                 // Drive the server-side auto-cycle loop: re-fire any
                 // armed player's stashed ability against the LIVE
                 // current_target_id whenever its cooldown has cleared.
@@ -175,7 +182,26 @@ pub(super) async fn run_cell_loop(
                 // entity filter inside the tick short-circuits when
                 // nobody has any active effects — cheap on idle
                 // worlds.
-                super::super::effects::effect_pulse_tick(tx, &mut space_mgr).await;
+                super::super::effects::effect_pulse_tick(
+                    &engine,
+                    tx,
+                    &mut space_mgr,
+                )
+                .await;
+
+                // Safety drain for the `entity_health_below` queue. Every
+                // damage path drains its own samples at the seam (see
+                // `content::fire_pending_health_below`); this bounds how
+                // long a sample from a path that forgot to — or from a
+                // content action that dealt damage from inside a chain —
+                // can sit unfired. Cheap: an empty queue returns before
+                // touching the engine.
+                super::super::content::fire_pending_health_below(
+                    &engine,
+                    tx,
+                    &mut space_mgr,
+                )
+                .await;
                 }
                 .instrument(tick_span)
                 .await;

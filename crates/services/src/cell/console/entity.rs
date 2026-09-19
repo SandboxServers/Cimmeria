@@ -419,12 +419,18 @@ async fn dialog(
             list.retain(|t| t.0 != set_map_id);
         }
     }
+    // An interaction-only row (NULL dialog) binds fine — it raises the
+    // indicator bit and nothing else — so say so rather than printing a
+    // made-up dialog id.
+    let dialog_desc = match dialog_id {
+        Some(id) => id.to_string(),
+        None => "none, interaction-only".to_string(),
+    };
     send_gm_feedback(
         caller_id,
         &format!(
-            "{} [{target}] template {template_id} setMap {set_map_id} (dialog {})",
+            "{} [{target}] template {template_id} setMap {set_map_id} (dialog {dialog_desc})",
             if add { "adddialog" } else { "removedialog" },
-            dialog_id
         ),
         tx,
     )

@@ -210,6 +210,7 @@ pub(super) async fn handle_dhd(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
 ) -> bool {
     let gate_addr = match args.first() {
         Some(&b) => b as i8, // INT8 (signed)
@@ -261,13 +262,21 @@ pub(super) async fn handle_dhd(
     }
 
     // source address is unused by the primitive.
-    handle_dial_gate(entity_id, i32::from(gate_addr), 0, tx, space_mgr).await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmDHD: dialing gate address {gate_addr}"),
-        tx,
-    )
-    .await;
+    let dialed = handle_dial_gate(entity_id, i32::from(gate_addr), 0, tx, space_mgr, engine).await;
+    // Report the actual outcome. This used to say "dialing" unconditionally,
+    // so a refused dial (unknown address, same world, or — since the PR #662
+    // review — a destination with no standable arrival) looked identical to a
+    // successful one and the GM was left waiting for a load screen that was
+    // never coming.
+    let feedback = if dialed {
+        format!("gmDHD: dialing gate address {gate_addr}")
+    } else {
+        format!(
+            "gmDHD: gate address {gate_addr} refused — unknown address, same \
+             world, or no standable arrival on the destination (see server log)"
+        )
+    };
+    send_gm_feedback(entity_id, &feedback, tx).await;
     true
 }
 

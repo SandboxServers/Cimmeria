@@ -13,21 +13,83 @@ use sqlx::PgPool;
 ///
 /// Verbatim from `deprecated/python/common/Config.py:15`
 /// (`GENERIC_REGION_CHECK_THRESHOLD = 1.5`). It exists because the trigger
-/// arrives from the client at the moment *its* capsule crossed the volume,
-/// while the test runs against the last position the server accepted — one
-/// movement packet behind at worst. Widening it weakens the gate; narrowing
-/// it starts false-rejecting real entries on a laggy link.
+/// arrives from the client at the moment *its* pawn crossed the volume,
+/// while the test runs against the last position the server accepted.
+///
+/// **Why 1.5 is enough.** The client sends position at roughly 10 Hz
+/// (`MovementValidator::MAX_SNAP_BACK_CORRECTIONS` documents the same rate)
+/// and the fastest populated world's `run_speed` is `8.125` units/second
+/// (`MovementValidator::DEFAULT_TOP_SPEED`, from
+/// `db/resources/Worlds/Seed/worlds.sql`). One update interval is therefore
+/// 0.81 units of travel, and 1.5 units buys 185 ms — one interval plus 84 ms
+/// of slack. A player sprinting through a door-width volume is covered; two
+/// *consecutive* dropped position packets (203 ms of staleness) would not
+/// be, and would surface as a `region_containment_failed` warn rather than
+/// as silence. Widening this weakens the gate; narrowing it starts
+/// false-rejecting real entries.
 pub const GENERIC_REGION_CHECK_THRESHOLD: f32 = 1.5;
 
-/// Is `point` inside the region described by `points`?
+/// XZ point-in-polygon (ray casting) against a region's `points`.
+///
+/// **The single source of truth for exact region containment.** Lives here,
+/// beside the loader that produces `points`, so a change to the shape and a
+/// change to the test that reads it land in one file. The playtest-friction
+/// watcher and the `.bug` bookmark reach it through
+/// `playtest_friction::region_contains_xz`, which is a re-export of this.
+///
+/// Exact, untoleranced and vertical-axis-blind on purpose: its callers ask
+/// "which region is this player standing in?", where a tight answer means
+/// fewer false *diagnostics*. The security gate asks a different question
+/// and wants a tolerance band — see [`is_point_in_region`], which is built
+/// on top of this so the two can never disagree about a point that is
+/// genuinely inside.
+pub(crate) fn region_contains_xz(points: &[[f32; 3]], x: f32, z: f32) -> bool {
+    if points.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = points.len() - 1;
+    for i in 0..points.len() {
+        let (xi, zi) = (points[i][0], points[i][2]);
+        let (xj, zj) = (points[j][0], points[j][2]);
+        if (zi > z) != (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+/// `(min, max)` of `points` on `axis` (0 = X, 1 = Y, 2 = Z).
+fn axis_extent(points: &[[f32; 3]], axis: usize) -> (f32, f32) {
+    points.iter().map(|p| p[axis]).fold(
+        (f32::INFINITY, f32::NEG_INFINITY),
+        |(min, max), v| (min.min(v), max.max(v)),
+    )
+}
+
+/// Is `point` inside the region described by `points`, allowing for a
+/// client whose position the server has not caught up with?
 ///
 /// Port of `deprecated/python/cell/GenericRegion.py:isPointInRegion` — an
 /// axis-aligned bounding box over the region's four corners, widened by
-/// [`GENERIC_REGION_CHECK_THRESHOLD`] on every axis. The Python carries a
+/// [`GENERIC_REGION_CHECK_THRESHOLD`] on every axis, **including the
+/// vertical one**: the Python tests `minPos.y - thresh <= point.y <=
+/// maxPos.y + thresh` alongside X and Z, so a flying or under-floor client
+/// does not trigger a ground-level volume. The Python carries a
 /// `# TODO: Do precise check, AABB isn't enough!`; this is the same
 /// approximation, deliberately, because the AABB is also the shape the
 /// client was handed by `addClientHintedGenericRegion` and a tighter server
 /// test would reject entries the client legitimately reported.
+///
+/// **Relationship to [`region_contains_xz`].** This is the tolerance band
+/// around it, not a second implementation: anything the exact test accepts,
+/// this accepts, because the AABB-plus-slop strictly contains the polygon.
+/// The `||` below makes that structural rather than a comment, so the
+/// friction watcher can never report "player is dwelling in region X" while
+/// this gate is silently refusing X's hints. The Y band applies to both
+/// arms — that is the one axis where this is *stricter*, and deliberately:
+/// `region_contains_xz` ignores height entirely.
 ///
 /// **Exactly four points or nothing.** A region with any other count cannot
 /// be hit-tested (the Python warns at load and returns `False` from every
@@ -45,14 +107,22 @@ pub fn is_point_in_region(points: &[[f32; 3]], point: [f32; 3]) -> bool {
         return false;
     }
     let t = GENERIC_REGION_CHECK_THRESHOLD;
-    (0..3).all(|axis| {
-        let min = points.iter().map(|p| p[axis]).fold(f32::INFINITY, f32::min);
-        let max = points
-            .iter()
-            .map(|p| p[axis])
-            .fold(f32::NEG_INFINITY, f32::max);
-        point[axis] >= min - t && point[axis] <= max + t
-    })
+
+    let (min_y, max_y) = axis_extent(points, 1);
+    if point[1] < min_y - t || point[1] > max_y + t {
+        return false;
+    }
+
+    if region_contains_xz(points, point[0], point[2]) {
+        return true;
+    }
+
+    let (min_x, max_x) = axis_extent(points, 0);
+    let (min_z, max_z) = axis_extent(points, 2);
+    point[0] >= min_x - t
+        && point[0] <= max_x + t
+        && point[2] >= min_z - t
+        && point[2] <= max_z + t
 }
 
 /// Intermediate structure for loading region data before runtime ID assignment.

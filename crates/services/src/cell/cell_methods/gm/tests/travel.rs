@@ -12,7 +12,7 @@ async fn gm_goto_xyz_updates_position_and_emits_teleport() {
     for c in [10.0f32, 20.0, 30.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr, &test_engine()).await);
 
     match rx.try_recv().expect("gmGotoXYZ must emit TeleportPlayer") {
         CellToBaseMsg::TeleportPlayer {
@@ -49,7 +49,7 @@ async fn gm_goto_xyz_rejects_non_finite() {
     args.extend_from_slice(&f32::NAN.to_le_bytes());
     args.extend_from_slice(&0.0f32.to_le_bytes());
     args.extend_from_slice(&0.0f32.to_le_bytes());
-    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -73,7 +73,7 @@ async fn gm_goto_location_emits_gate_travel_and_destroys_entity() {
     for c in [1.0f32, 2.0, 3.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr, &test_engine()).await);
 
     match rx.try_recv().expect("gmGotoLocation must emit GateTravel") {
         CellToBaseMsg::GateTravel {
@@ -103,7 +103,7 @@ async fn gm_goto_location_rejects_empty_world() {
     for c in [1.0f32, 2.0, 3.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -126,7 +126,7 @@ async fn gm_dhd_list_request_is_noop() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
     // Address 0 = "request list" — unsupported without a feedback channel.
-    assert!(dispatch(1, GM_DHD, &[0u8], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DHD, &[0u8], &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -144,13 +144,13 @@ async fn gm_dhd_list_request_is_noop() {
 async fn travel_handlers_reject_truncated_args() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_GOTO_XYZ, &[], &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_GOTO_LOCATION, &[], &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_DHD, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &[], &tx, &mut mgr, &test_engine()).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &[], &tx, &mut mgr, &test_engine()).await);
+    assert!(dispatch(1, GM_DHD, &[], &tx, &mut mgr, &test_engine()).await);
     // goto_location with a world name but no coords.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "Abydos");
-    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(|m| matches!(
@@ -177,7 +177,7 @@ async fn goto_teleports_caller_to_target() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     // Caller's grid position moved to the target.
     let p = mgr.get_entity(1).unwrap().position;
     assert_eq!([p.x, p.y, p.z], [50.0, 0.0, 60.0]);
@@ -202,7 +202,7 @@ async fn summon_moves_npc_to_caller() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "50");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let p = mgr.get_entity(50).unwrap().position;
     assert_eq!(
         [p.x, p.y, p.z],
@@ -226,7 +226,7 @@ async fn summon_player_snaps_target_via_teleport() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
 
     // Grid position moved to the caller…
     let p = mgr.get_entity(2).unwrap().position;
@@ -275,7 +275,7 @@ async fn summon_missing_and_cross_space_refused() {
     // Cross-space summon: refused — no teleport, target unmoved.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -297,7 +297,7 @@ async fn summon_missing_and_cross_space_refused() {
     // Missing target id: refused — no teleport.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "4242");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -331,7 +331,7 @@ async fn goto_missing_and_cross_space_refused() {
     // Cross-space goto: refused — caller not moved, no teleport.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -347,7 +347,7 @@ async fn goto_missing_and_cross_space_refused() {
     // Missing target id: refused.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "4242");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -395,7 +395,7 @@ async fn summoned_npc_is_broadcast_to_caller_witness() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "50");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
 
     // Tick 2: NPC is still in AoI → EntityMoved to the caller with the caller's pos.
     let moved = mgr.compute_aoi_changes().into_iter().find_map(|m| match m {
@@ -446,7 +446,7 @@ async fn native_gm_travel_preserves_facing() {
     for c in [10.0f32, 20.0, 30.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr, &test_engine()).await);
     let e = mgr.get_entity(1).unwrap();
     assert_eq!(
         [e.position.x, e.position.y, e.position.z],
@@ -466,7 +466,7 @@ async fn native_gm_travel_preserves_facing() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let e = mgr.get_entity(1).unwrap();
     assert_eq!(
         [e.position.x, e.position.y, e.position.z],
@@ -492,7 +492,7 @@ async fn native_gm_travel_preserves_facing() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "50");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let e = mgr.get_entity(50).unwrap();
     assert_eq!(
         [e.position.x, e.position.y, e.position.z],
@@ -511,7 +511,7 @@ async fn goto_summon_reject_non_numeric() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "SomeName");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -525,7 +525,7 @@ async fn goto_summon_reject_non_numeric() {
     );
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "SomeName");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -539,44 +539,113 @@ async fn goto_summon_reject_non_numeric() {
     );
 }
 
+/// CA10 changed what `gmDHD` does. It routes through `handle_dial_gate`,
+/// so on a world with a `REGION_FLAG_Stargate` volume it now ARMS a dial
+/// — the GM has to walk into the gate — while on a world without one it
+/// still travels on the dial. A GM who expects the old instant warp needs
+/// this difference to be deliberate and pinned, not discovered in-game.
+///
+/// Reverting the arm branch makes the first half emit `GateTravel`
+/// immediately and leaves `gate_dial(1)` empty.
+#[tokio::test]
+async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_does() {
+    use crate::cell::space_manager::{RegionData, REGION_FLAG_CLIENT_HINTED, REGION_FLAG_STARGATE};
+    use crate::cell::spawner::StargateEntry;
+
+    const DEST_ADDR: i32 = 3;
+
+    // Castle is the GM's world; the gate they dial leads elsewhere.
+    fn mgr_with_destination() -> SpaceManager {
+        let mut mgr = mgr_with_player(1, "Castle");
+        mgr.stargates.insert(
+            DEST_ADDR,
+            StargateEntry {
+                world_name: "Harset".to_string(),
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+                yaw: 0.0,
+                address_origin: 18,
+                arrival: None,
+                event_set_id: None,
+            },
+        );
+        mgr
+    }
+
+    // ── with a gate volume: arms, does not travel ──
+    let mut mgr = mgr_with_destination();
+    let runtime_id = mgr.next_region_id;
+    mgr.next_region_id += 1;
+    mgr.regions.insert(
+        runtime_id,
+        RegionData {
+            runtime_id,
+            db_set_id: 1002,
+            tag: "Castle.Stargate".to_string(),
+            world_name: "Castle".to_string(),
+            height: 10.0,
+            radius: 2.5,
+            flags: REGION_FLAG_CLIENT_HINTED | REGION_FLAG_STARGATE,
+            points: vec![[0.0; 3]; 4],
+        },
+    );
+
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[DEST_ADDR as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "with a gate volume, gmDHD must arm the dial rather than warp"
+    );
+    assert!(
+        mgr.get_entity(1).is_some(),
+        "arming must not tear the GM out of their space"
+    );
+    let dial = mgr.gate_dial(1).expect("gmDHD must arm a dial");
+    assert_eq!(dial.target_address_id, DEST_ADDR);
+    assert_eq!(dial.target_world_name, "Harset");
+
+    // ── without a gate volume: travels on the dial, as before ──
+    let mut mgr = mgr_with_destination();
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[DEST_ADDR as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    let travelled = msgs.iter().any(|m| {
+        matches!(m, CellToBaseMsg::GateTravel { target_world_name, .. }
+            if target_world_name == "Harset")
+    });
+    assert!(
+        travelled,
+        "with no gate volume to walk into, gmDHD must still travel on the \
+         dial — otherwise a GM on those worlds can never leave. Got {msgs:?}"
+    );
+    assert!(mgr.gate_dial(1).is_none(), "the fallback arms nothing");
+}
+
 /// `gmDHD` reaches `handle_dial_gate`, which enforces the caller's address
 /// book (CAT-O-01). A GM debugging a world they have never visited does not
 /// hold its address, so the arm grants it for the session first — without
 /// that, H06's dial gate silently broke a GM command.
 ///
-/// Deleting the grant block in `handle_dhd` fails this: no `GateTravel` is
-/// emitted and the caller stays in Castle.
+/// Deleting the grant block in `handle_dhd` fails this: the dial is refused,
+/// no `GateTravel` is emitted and the feedback reports a refusal.
 #[tokio::test]
 async fn gm_dhd_grants_the_address_it_needs_and_dials() {
-    use crate::cell::space_manager::SpaceManager;
     use crate::cell::spawner::StargateEntry;
 
-    // Built inline rather than via `mgr_with_player`: a GM dial needs a
-    // *second* world to travel to (a same-world dial is a documented no-op),
-    // and the shared fixture only ever declares one.
-    let mut mgr = SpaceManager::new(1);
-    mgr.parse_spaces_xml(
-        r#"<?xml version="1.0"?><Spaces>
-            <Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
-            <Space WorldName="Agnos" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
-        </Spaces>"#,
-    )
-    .unwrap();
-    mgr.create_startup_spaces(
-        r#"<?xml version="1.0"?><Spaces>
-            <Space WorldName="Castle" /><Space WorldName="Agnos" />
-        </Spaces>"#,
-    )
-    .unwrap();
-    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
-    if let Some(e) = mgr.get_entity_mut(1) {
-        e.is_player = true;
-        e.player_id = Some(100);
-        e.access_level = 2; // GameMaster
-    }
-    mgr.connect_entity(1);
+    const DEST_ADDR: i32 = 7;
+
+    // Castle has no `REGION_FLAG_Stargate` volume in this fixture, so the
+    // dial takes the CA10 immediate-travel fallback and the `GateTravel`
+    // below is observable in one call.
+    let mut mgr = mgr_with_player(1, "Castle");
     mgr.stargates.insert(
-        7,
+        DEST_ADDR,
         StargateEntry {
             world_name: "Agnos".to_string(),
             x: 1.0,
@@ -585,6 +654,7 @@ async fn gm_dhd_grants_the_address_it_needs_and_dials() {
             yaw: 0.0,
             address_origin: 4,
             arrival: None,
+            event_set_id: None,
         },
     );
     assert!(
@@ -592,13 +662,15 @@ async fn gm_dhd_grants_the_address_it_needs_and_dials() {
         "the GM starts without the address — that is the point of the test"
     );
 
-    let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_DHD, &[7u8], &tx, &mut mgr).await);
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[DEST_ADDR as u8], &tx, &mut mgr, &test_engine()).await);
 
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx)
-            .iter()
-            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
-        "a GM dial must not be blocked by the player-facing address book"
+        msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::GateTravel { target_world_name, .. } if target_world_name == "Agnos"
+        )),
+        "a GM dial must not be blocked by the player-facing address book. Got {msgs:?}"
     );
 }

@@ -1,0 +1,1128 @@
+use the command       .giveitem (id) (amount)     eg:    .giveitem 5865 1    to spawn an item into your inventory
+
+
+
+
+
+
+5865		Prison Boots	NO ITEM NAME	ITEM_QUALITY_Normal
+1124		dec. reload time	Mechanical Auto-Loader	ITEM_QUALITY_Normal
+2966		30% Mitigation	Aramid Fiber Ballistic Gloves	ITEM_QUALITY_Normal
+2984		30% Mitigation	Aramid Fiber Ballistic Legs	ITEM_QUALITY_Normal
+2985		30% Mitigation	Aramid Fiber Ballistic Legs	ITEM_QUALITY_Normal
+2998		30% Mitigation	Aramid Fiber Ablative Helmet	ITEM_QUALITY_Normal
+2999		30% Mitigation	Aramid Fiber Ablative Helmet	ITEM_QUALITY_Normal
+3018		30% Mitigation	Aramid Fiber Ablative Legs	ITEM_QUALITY_Normal
+5074		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5075		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5089		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+2610		SG-18's Mission Files	Bio-ordinance Research	ITEM_QUALITY_Normal
+2611		SG-18's Mission Files	Alternative Fuel Research	ITEM_QUALITY_Normal
+2612		SG-18's Mission Files	Botanic Toxin Research	ITEM_QUALITY_Normal
+2614		SG-18's Mission Files	Fused Timer	ITEM_QUALITY_Normal
+2615		SG-18's Mission Files	Firing Mechanism	ITEM_QUALITY_Normal
+2616		SG-18's Mission Files	Serial Stamped Fragment	ITEM_QUALITY_Normal
+2617		SG-18's Mission Files	Encrypted Radio	ITEM_QUALITY_Normal
+2618		SG-18's Mission Files	Reactive Coil	ITEM_QUALITY_Normal
+2619		SG-18's Mission Files	Dynamic Phase Generator	ITEM_QUALITY_Normal
+2620		SG-18's Mission Files	Dense-Ion Distribution Sphere	ITEM_QUALITY_Normal
+2907		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC10 Mini-game Instrument	ITEM_QUALITY_Normal
+2908		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC15 Mini-game Instrument	ITEM_QUALITY_Normal
+2621		SG-18's Mission Files	Makeshift Beacon	ITEM_QUALITY_Normal
+2622		Beads worn by veteran Ba'taur warriors	Sgt. Nichols's Dog Tag	ITEM_QUALITY_Normal
+2623		Beads worn by veteran Ba'taur warriors	Wertz's Journals	ITEM_QUALITY_Normal
+2627		Imagry of flowing clouds of light	Active Symbol	ITEM_QUALITY_Normal
+2628		Imagry of flowing clouds of light	Engraved Symbol	ITEM_QUALITY_Normal
+4837		A Goa'uld Data Crystal containing information about Ra's technology.	Goa'uld Data Crystal	ITEM_QUALITY_Normal
+4838		Fragments of a Goa'uld Data Crystal.	Crystal Fragments	ITEM_QUALITY_Normal
+4839		A Crystal Artifact composed of a strange technology.	Crystal Artifact	ITEM_QUALITY_Normal
+1168		inc. acc	AN/PVS-4	ITEM_QUALITY_Normal
+4850		Parts received from dismantling a strange Jaffa device.	Jaffa Apparatus Parts	ITEM_QUALITY_Normal
+4856		A censor to detect Ra's crystal technology.	Carter's Sensor Device	ITEM_QUALITY_Normal
+2909		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC20 Mini-game Instrument	ITEM_QUALITY_Normal
+2910		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC25 Mini-game Instrument	ITEM_QUALITY_Normal
+5676	3	Weapon Program	Warrior Attack Program	ITEM_QUALITY_Normal
+5670	3	Research Kicker
+Only usable for different Discipline
++5% chance of breakthrough
++1 Expertise	Power Systems Engineering Research Kicker	ITEM_QUALITY_Normal
+5671	2	Research Kicker
+Only usable for different Discipline
++5% chance of breakthrough
++1 Expertise	Materials Engineering Research Kicker	ITEM_QUALITY_Normal
+3368	4	NO ITEM DESCRIPTION	Veiled Stealth Vest	ITEM_QUALITY_Normal
+4287	1	NO ITEM DESCRIPTION	Trinium Contamination Boots	ITEM_QUALITY_Normal
+3028	3	NO ITEM DESCRIPTION	Boron-Carbide Ablative Pants	ITEM_QUALITY_Normal
+3401	4	NO ITEM DESCRIPTION	Covert Stealth Boots	ITEM_QUALITY_Normal
+4093	4	NO ITEM DESCRIPTION	Tri-Naq Alloy Ballistic Helmet	ITEM_QUALITY_Normal
+3404	4	NO ITEM DESCRIPTION	Covert Stealth Boots	ITEM_QUALITY_Normal
+3370	4	NO ITEM DESCRIPTION	Veiled Stealth Vest	ITEM_QUALITY_Normal
+4255	1	NO ITEM DESCRIPTION	Tri-Naq Alloy Contamination Vest	ITEM_QUALITY_Normal
+2932	4	NO ITEM DESCRIPTION	Titanium Ballistic Helmet	ITEM_QUALITY_Normal
+3356	4	NO ITEM DESCRIPTION	Veiled Stealth Helmet	ITEM_QUALITY_Normal
+4294		Eyeglasses	Eyeglasses	ITEM_QUALITY_Normal
+4898		Information regarding the Ruk'yal's involvement in control technology	Ruk'yal Logs	ITEM_QUALITY_Normal
+4899		Loth'ta is to be executed	Execution Notice	ITEM_QUALITY_Normal
+4306		Eyeglasses	Eyeglasses	ITEM_QUALITY_Normal
+1206		dec. target fear/suppress resistance	Visible Laser Sight	ITEM_QUALITY_Normal
+2911		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC30 Mini-game Instrument	ITEM_QUALITY_Normal
+5114		Garage Door Opener	GDO	ITEM_QUALITY_Normal
+3497		Eyeglasses	Eyeglasses	ITEM_QUALITY_Normal
+3498		Eyeglasses	Eyeglasses	ITEM_QUALITY_Normal
+17		Would you prefer "Cetacean P-90?"	P-90 of the Whale 2	ITEM_QUALITY_Good
+4348		Accesory	Accessory	ITEM_QUALITY_Normal
+4349		Accesory	Accessory	ITEM_QUALITY_Normal
+4351		Accesory	Accessory	ITEM_QUALITY_Normal
+4352		Accesory	Accessory	ITEM_QUALITY_Normal
+19		Ambernol counteracts stasis sickness.	Ambernol Vial	ITEM_QUALITY_Normal
+1901		Straegis Life draining device	Reins of the Sun Chariot	ITEM_QUALITY_Good
+1914		Deployable shield, negates 1 attack	Burtonol Cargo	ITEM_QUALITY_Great
+1927		Blocks Straegis abilities	Dimensional Counter-Harmonic Field	ITEM_QUALITY_Normal
+1942		Blocks Straegis abilities	Harmonic Interference Generator	ITEM_QUALITY_Normal
+20		Key to the Castle Gate.	Castle Gate Key	ITEM_QUALITY_Normal
+2002		Alien Native Disguise Kit	Alien Native Disguise TC 10	ITEM_QUALITY_Normal
+2003		Alien Native Disguise Kit	Alien Native Disguise TC 15	ITEM_QUALITY_Normal
+2004		Alien Native Disguise Kit	Alien Native Disguise TC 20	ITEM_QUALITY_Normal
+2005		Alien Native Disguise Kit	Alien Native Disguise TC 25	ITEM_QUALITY_Normal
+2006		Alien Native Disguise Kit	Alien Native Disguise Kit TC 30	ITEM_QUALITY_Normal
+2009		Alien Native Disguise Kit	Alien Native Disguise Kit TC 10	ITEM_QUALITY_Normal
+2010		Alien Native Disguise Kit	Alien Native Disguise Kit TC 15	ITEM_QUALITY_Normal
+2011		Alien Native Disguise Kit	Alien Native Disguise Kit TC 20	ITEM_QUALITY_Normal
+2012		Alien Native Disguise Kit	Alien Native Disguise Kit TC 25	ITEM_QUALITY_Normal
+4347		Accesory	Accessory	ITEM_QUALITY_Normal
+2013		Alien Native Disguise Kit	Alien Native Disguise Kit TC 35	ITEM_QUALITY_Normal
+2014		Alien Native Disguise Kit	Alien Native Disguise Kit TC 40	ITEM_QUALITY_Normal
+2015		Alien Native Disguise Kit	Alien Native Disguise Kit TC 45	ITEM_QUALITY_Normal
+2016		Alien Native Disguise Kit	Alien Native Disguise Kit TC 50	ITEM_QUALITY_Normal
+2035		Strange energy surrounds the crystal	Strangely Pulsating Crystal	ITEM_QUALITY_Normal
+2054		Kit: Turret	Kit: Turret TC50	ITEM_QUALITY_Normal
+7220	1	NO ITEM DESCRIPTION	Aramid Fiber Contamination Boots	ITEM_QUALITY_Normal
+2055		Kit: Force Field	Kit: Force Field TC10	ITEM_QUALITY_Normal
+2056		Kit: Force Field	Kit: Force Field TC15	ITEM_QUALITY_Normal
+2057		Kit: Force Field	Kit: Force Field TC20	ITEM_QUALITY_Normal
+2071		Kit: Medical Station	Kit: Medical Station TC50	ITEM_QUALITY_Normal
+2076		Kit: Mobile Turret	Kit: Mobile Turret TC35	ITEM_QUALITY_Normal
+2077		Kit: Mobile Turret	Kit: Mobile Turret TC40	ITEM_QUALITY_Normal
+2078		Kit: Mobile Turret	Kit: Mobile Turret TC45	ITEM_QUALITY_Normal
+2079		Kit: Mobile Turret	Kit: Mobile Turret TC50	ITEM_QUALITY_Normal
+2082		Kit: Overload Emitter	Kit: Overload Emitter TC50	ITEM_QUALITY_Normal
+2083		Sonic Rounds	Kit: Deactivation Emitter TC35	ITEM_QUALITY_Normal
+2085		Kit: Deactivation Emitter	Kit: Deactivation Emitter TC40	ITEM_QUALITY_Normal
+2087		Kit: Deactivation Emitter	Kit: Deactivation Emitter TC45	ITEM_QUALITY_Normal
+2090		Kit: Deactivation Emitter	Kit: Deactivation Emitter TC50	ITEM_QUALITY_Normal
+2096		Kit: Radar Jammer	Kit: Radar Jammer TC15	ITEM_QUALITY_Normal
+2098		Kit: Radar Jammer	Kit: Radar Jammer TC20	ITEM_QUALITY_Normal
+2100		Kit: Radar Jammer	Kit: Radar Jammer TC25	ITEM_QUALITY_Normal
+2102		Kit: Radar Jammer	Kit: Radar Jammer TC35	ITEM_QUALITY_Normal
+2104		Sonic Rounds	Kit: Radar Jammer TC40	ITEM_QUALITY_Normal
+2106		Kit: Radar Jammer	Kit: Radar Jammer TC45	ITEM_QUALITY_Normal
+2107		Kit: Radar Jammer	Kit: Radar Jammer TC50	ITEM_QUALITY_Normal
+2108		Kit: Scrambler	Kit: Scrambler TC45	ITEM_QUALITY_Normal
+2912		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC35 Mini-game Instrument	ITEM_QUALITY_Normal
+2913		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC40 Mini-game Instrument	ITEM_QUALITY_Normal
+2115		Kit: Scrambler	Kit: Scrambler TC50	ITEM_QUALITY_Normal
+2116		Accelerated Slugthrower	Kit: Target Inhibitor TC45	ITEM_QUALITY_Normal
+2118		Kit: Target Inhibitor	Kit: Target Inhibitor TC50	ITEM_QUALITY_Normal
+2122		Kit: Thermobaric Mine	Kit: Thermobaric Mine TC40	ITEM_QUALITY_Normal
+2124		Accelerated Slugthrower	Kit: Thermobaric Mine TC45	ITEM_QUALITY_Normal
+2125		Kit: Thermobaric Mine	Kit: Thermobaric Mine TC 50	ITEM_QUALITY_Normal
+2126		Kit: Mine Field Detonator	Kit: Mine Field Detonator TC 50	ITEM_QUALITY_Normal
+2164		Decreases chance to be interrupted setti	Physicist's Survival Kit	ITEM_QUALITY_Normal
+2166		Increases damage of Scientist pets.
+	Portible Naquadah Generator	ITEM_QUALITY_Normal
+2169		Decreases slightly setup time to disarm 	Custom Swiss Army Knife	ITEM_QUALITY_Normal
+2171		reduces setup time for scientist placeme	Customized Multi-tool Kit	ITEM_QUALITY_Normal
+2174		decreases activation time of healing abi	Customized Surgical Tools	ITEM_QUALITY_Normal
+2181		Decreases chance for enemy to disarm tra	Trick Mechanisms	ITEM_QUALITY_Normal
+2182		increases speed at which mines are plant	Custom Demolition Gear	ITEM_QUALITY_Normal
+2183		Scientist increase duration of robotic p	Miniature Solar Generator	ITEM_QUALITY_Normal
+2184		Increases Disguise rating
+	Artificial Skin Kit	ITEM_QUALITY_Normal
+2187		Increases chance to disarm mines/traps
+	Baffling Particle Emitter	ITEM_QUALITY_Normal
+2188		Increases rate of fire and damage of sci	Advanced Sub-Gun	ITEM_QUALITY_Normal
+2189		stealth detection ability increase
+	Motion Detector	ITEM_QUALITY_Normal
+2190		scientist pet cooldown reduction
+	Timing Synchronization Circuit	ITEM_QUALITY_Normal
+2191		automatically adds small amount of time 	Customized Palmtop Computer	ITEM_QUALITY_Normal
+2192		Decreases setup times on scientific abil	Neurally-Controlled Manipulator	ITEM_QUALITY_Normal
+2193		Increases the defensive bonus granted by	Asgard Micro-Projector	ITEM_QUALITY_Normal
+2194		Increases the maximum health of summoned	Tactical Shield Generator	ITEM_QUALITY_Normal
+2195		Increases health and armor of scientist 	Trinium Machine Parts	ITEM_QUALITY_Normal
+2196		Increases chance to detect/disarm mines/	RONS (Remote Ordnance Neutralizatio	ITEM_QUALITY_Normal
+2197		Science pets gain a health regeneration 	Self-Repair Nanobots	ITEM_QUALITY_Normal
+2198		Replaces Scientist turret weapons with t	Particle Sub-Gun	ITEM_QUALITY_Normal
+2199		reduces chance for technological pets to	Self-Preservation-Encoding	ITEM_QUALITY_Normal
+2200		scientist totems have increased accuracy	Network Warfare Sensors	ITEM_QUALITY_Normal
+2201		Mine defuser, 1 charge
+	Antipersonnel Obstacle Breaching Sy	ITEM_QUALITY_Normal
+2202		Reveals mines within 5 m when equipped
+	AN/PSS-14 Minesweeper	ITEM_QUALITY_Normal
+2203		70% chance to reveal mines within 5 m
+	AN/PSS-12 Minesweeper	ITEM_QUALITY_Normal
+2224		The severed head of Colonel Wertz	Wertz's Dog Tag	ITEM_QUALITY_Normal
+2266		Kassa stolen from poor Jax	Stolen Kassa	ITEM_QUALITY_Normal
+2275		Crated Verris Crystals	Verris Crystal Shipment	ITEM_QUALITY_Normal
+2277		A secret recipe for a drug cocktail.	Mysterious Injection Recipe	ITEM_QUALITY_Normal
+2278		Listen in on conversations	Directional Microphone	ITEM_QUALITY_Normal
+3736		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC13 Mini-game Instrument	ITEM_QUALITY_Normal
+2280		A note from Hasek	Hasek's Note	ITEM_QUALITY_Normal
+2282		A Goa'uld Pain stick	Goa'uld pain stick	ITEM_QUALITY_Normal
+2283		A Ticking Bomb	A Ticking Bomb	ITEM_QUALITY_Normal
+2285		Part One of Narim's Manifesto	Part One of Narim's Manifesto	ITEM_QUALITY_Normal
+2286		Part Two of Narim's Manifesto	Part Two of Narim's Manifesto	ITEM_QUALITY_Normal
+2287		Part Three of Narim's Manifesto	Part Three of Narim's Manifesto	ITEM_QUALITY_Normal
+2288		Part Four of Narim's Manifesto	Part 4 of Narim's Manifesto	ITEM_QUALITY_Normal
+2289		Part Five of Narim's Manifesto	Part Five of Narim's Manifesto	ITEM_QUALITY_Normal
+2332		A Bar of Naquadah	Naquadah Bar	ITEM_QUALITY_Normal
+2333		Activator	Activator	ITEM_QUALITY_Normal
+2352		Ambernol counteracts stasis sickness.	Image Processing Circuit	ITEM_QUALITY_Normal
+2353		Ambernol counteracts stasis sickness.	AI Crystal Array	ITEM_QUALITY_Normal
+2354		Ambernol counteracts stasis sickness.	Pristine Armor Plating	ITEM_QUALITY_Normal
+2355		Ambernol counteracts stasis sickness.	Damaged Ion Energizer	ITEM_QUALITY_Normal
+2356		Ambernol counteracts stasis sickness.	Deactivated Power Core	ITEM_QUALITY_Normal
+2357		Ambernol counteracts stasis sickness.	Prototype Ion Weapon	ITEM_QUALITY_Normal
+2375		Designed by Goldam	Agnos Scouring Nanobots	ITEM_QUALITY_Normal
+2416		Used, but still usable	Venio Activation Crystal	ITEM_QUALITY_Normal
+2449		Part Five of Narim's Manifesto	Damaged Ambient Temperature Control	ITEM_QUALITY_Normal
+2450		Part Five of Narim's Manifesto	Damaged Holographic Projector	ITEM_QUALITY_Normal
+2451		Part Five of Narim's Manifesto	Repaired Holographic Projector	ITEM_QUALITY_Normal
+2452		Part Five of Narim's Manifesto	Repaired Ambient Temperature Contro	ITEM_QUALITY_Normal
+2483		Ambernol counteracts stasis sickness.	Spy Camera	ITEM_QUALITY_Normal
+2484		Ambernol counteracts stasis sickness.	Comm. Relay	ITEM_QUALITY_Normal
+2485		Ambernol counteracts stasis sickness.	Praxis Seal	ITEM_QUALITY_Normal
+2486		Ambernol counteracts stasis sickness.	Rinak's Pass	ITEM_QUALITY_Normal
+2487		Ambernol counteracts stasis sickness.	Tollan Clothing	ITEM_QUALITY_Normal
+2488		Salvadar's PDA is encrypted.	Watkin's Research	ITEM_QUALITY_Normal
+2489		Crated Verris Crystals	Verris Crystal	ITEM_QUALITY_Normal
+2490		Crated Verris Crystals	Strangely Written Journals	ITEM_QUALITY_Normal
+2492		Transfer Orders	Transfer orders	ITEM_QUALITY_Poor
+2499		Property of Burtonol	Burtonol ID Card	ITEM_QUALITY_Normal
+2920		Test Legs	Test Legs	ITEM_QUALITY_Normal
+2525		Transfer Orders	NID security clearance badge	ITEM_QUALITY_Poor
+2526		Transfer Orders	Letter from family	ITEM_QUALITY_Poor
+2527		Transfer Orders	Handcuffs	ITEM_QUALITY_Poor
+2528		Transfer Orders	Pepper Spray	ITEM_QUALITY_Poor
+2530		Transfer Orders	Girlfriend's picture	ITEM_QUALITY_Poor
+2531		Transfer Orders	400 mg of modafinil	ITEM_QUALITY_Poor
+2532		Transfer Orders	KUBARK counterintelligence manual	ITEM_QUALITY_Poor
+2533		Transfer Orders	SOA interrogation manual	ITEM_QUALITY_Poor
+2534		Transfer Orders	Handheld Computer	ITEM_QUALITY_Poor
+2535		Transfer Orders	Half-chewed emergency rations	ITEM_QUALITY_Poor
+2536		Transfer Orders	Broken flashlight	ITEM_QUALITY_Poor
+2537		Transfer Orders	Dog collar	ITEM_QUALITY_Poor
+2538		Transfer Orders	Control collar	ITEM_QUALITY_Poor
+2539		Control Collar
+	Fused telemetry circuit	ITEM_QUALITY_Normal
+2540		Control Collar
+	Fried motherboard	ITEM_QUALITY_Normal
+2541		Control Collar
+	Smashed CPU	ITEM_QUALITY_Normal
+2542		Control Collar
+	Toasted hard drive	ITEM_QUALITY_Normal
+2543		Control Collar
+	Cracked optical recognition system	ITEM_QUALITY_Normal
+2544		Control Collar
+	Ruined emergency supplies	ITEM_QUALITY_Normal
+2545		Control Collar
+	Medical implant	ITEM_QUALITY_Normal
+2546		Control Collar
+	Half-eaten ration	ITEM_QUALITY_Normal
+2547		Medical Implant	Medical Implant	ITEM_QUALITY_Normal
+2548		Control Collar
+	Rundown Holographic imaging system	ITEM_QUALITY_Normal
+2549		Control Collar
+	Crude piece of sharpened metal	ITEM_QUALITY_Normal
+2550		Control Collar
+	Inoperative handheld computer	ITEM_QUALITY_Normal
+2551		Control Collar
+	Rat Jerky	ITEM_QUALITY_Normal
+2552		Control Collar
+	Dirty water bottle	ITEM_QUALITY_Normal
+2553		Control Collar
+	Torn synth-fabric	ITEM_QUALITY_Normal
+2554		Control Collar
+	Thermal Blanket	ITEM_QUALITY_Normal
+2555		Control Collar
+	2.6% charged ion battery	ITEM_QUALITY_Normal
+2921		Test Gloves	Test Gloves	ITEM_QUALITY_Normal
+2718		A wiggly Goa'uld symbiote without a host	Goa'uld Symbiote	ITEM_QUALITY_Normal
+2719		Delicious Berries and Cream	Strawberries and Cream	ITEM_QUALITY_Normal
+2721		A tender love note from Copplemann to her husband, Rick	Coppleman's Note	ITEM_QUALITY_Normal
+2722		A disguise for Rick Whelan so he can get onto Harset safely	A disguise for Whelan	ITEM_QUALITY_Normal
+2723		Copplemann's second note to Rick	Copplemann's Second Note	ITEM_QUALITY_Normal
+2725		Pieces of the disabled explosive device.	Pieces of an Explosive	ITEM_QUALITY_Normal
+2726		Pieces of strange beacon technology	Parts of a Beacon	ITEM_QUALITY_Normal
+2727		Evidence of a disarmed explosive	Explosives	ITEM_QUALITY_Normal
+2728		A prototype weapon for fighting Straegis	Straegis Weapon Prototype	ITEM_QUALITY_Normal
+2729		Technology designed to reduce the power of the Straegis	Straegis Shielding Technology	ITEM_QUALITY_Normal
+2730		A standard SGC Data Storage card	Data Card	ITEM_QUALITY_Normal
+2731		A Second, Identical Data Card	Duplicate Data Card	ITEM_QUALITY_Normal
+2732		Forensic evidence gathered from an ambush	Forensic Evidence	ITEM_QUALITY_Normal
+2733		A small tablet - poison no doubt	Little White Tablet	ITEM_QUALITY_Normal
+2801		Recovered Data File
+
+
+
+	Recovered Data File	ITEM_QUALITY_Normal
+2798		Goa'uld Data Crystal
+
+	Goa'uld Data Crystal	ITEM_QUALITY_Normal
+2799		Health consumable placeholder
+
+
+	Health consumable placeholder	ITEM_QUALITY_Normal
+2802		Certus' Personal Logs
+
+
+
+
+	Certus' Personal Logs	ITEM_QUALITY_Normal
+2803		Armory Data File
+
+
+
+
+
+	Armory Data File	ITEM_QUALITY_Normal
+2804		Thoth's Datafile
+
+
+
+
+
+	Thoth's Datafile	ITEM_QUALITY_Normal
+2805		Kull Production Data File
+
+
+
+
+
+
+	Kull Production Data File	ITEM_QUALITY_Normal
+2806		Armor plant schematics
+
+
+
+
+
+
+	Armor plant schematics	ITEM_QUALITY_Normal
+2807		Kull Armor Data
+
+
+
+
+
+
+
+	Kull Armor Data	ITEM_QUALITY_Normal
+2808		Armor Production log file
+
+
+
+
+
+
+
+
+	Armor Production log file	ITEM_QUALITY_Normal
+2809		Ancient Reanimation Device
+
+
+
+
+
+
+
+
+	Ancient Reanimation Device	ITEM_QUALITY_Normal
+2810		Certus' Personal Records
+
+
+
+
+
+
+
+
+
+	Certus' Personal Records	ITEM_QUALITY_Normal
+2811		Certus' Key
+
+
+
+
+
+
+
+
+
+
+	Certus' Key	ITEM_QUALITY_Normal
+2819		Jaffa Disguise	Jaffa Disguise	ITEM_QUALITY_Normal
+2821		Blade coated in poison	Symbiote-Poison Coated Blade	ITEM_QUALITY_Normal
+2823		Petbe's Robes	Petbe's Robes	ITEM_QUALITY_Normal
+2824		Symbiote-poisoned knife	Morrigan's Knife	ITEM_QUALITY_Normal
+2825		Petbe's Bloody Robes	Petbe's Bloody Robes	ITEM_QUALITY_Normal
+2826		Strange Genetic Potion	Strange Genetic Potion	ITEM_QUALITY_Normal
+2828		A scanner developed by Nerus to find Straegis.	Straegis Scanner	ITEM_QUALITY_Normal
+2830		Symbiote Poison	Symbiote Poison	ITEM_QUALITY_Normal
+2831		Petbe's Bloody Robes	Petbe's Bloody Robes	ITEM_QUALITY_Normal
+2832		Ta'Katan's Head	Ta'katan's Head	ITEM_QUALITY_Normal
+2833		Infused Crystal	Infused Crystal	ITEM_QUALITY_Normal
+2834		Crystal Dimension Device	Crystal Dimension Device	ITEM_QUALITY_Normal
+2835		Fractured Crystal Translator	Fractured Crystal Translator	ITEM_QUALITY_Normal
+2836		Athena's Corpse	Athena's Corpse	ITEM_QUALITY_Normal
+2837		Flax's Ear	Flax's Ear	ITEM_QUALITY_Normal
+2838		Zipacna's Corpse	Zipacna's Corpse	ITEM_QUALITY_Normal
+2839		Vials of Symbiote Poison	Vials of Symbiote Poison	ITEM_QUALITY_Normal
+2840		Video Recording Device	Video Recording Device	ITEM_QUALITY_Normal
+2842		Necklace laced with furling tech	Necklace Laced with Furling Tech	ITEM_QUALITY_Normal
+2843		Chipped Furling Crystal	Chipped Furling Crystal	ITEM_QUALITY_Normal
+2844		Indecipherable Furling Crystal	Indecipherable Furling Crystal	ITEM_QUALITY_Normal
+2845		Glowing Furling Orb	Glowing Furling Orb	ITEM_QUALITY_Normal
+2846		Radiating Furling Crystal	Radiating Furling Crystal	ITEM_QUALITY_Normal
+2851		Ashrak Symbiote	Ashrak Symbiote	ITEM_QUALITY_Normal
+2852		Anat's Gold Bullion	Gold Bullion	ITEM_QUALITY_Normal
+2853		Scanner Readout	Scanner Readout	ITEM_QUALITY_Normal
+2854		Zipacna's Ribbon Device	Zipacna Ribbon Device	ITEM_QUALITY_Normal
+2855		Amaterasu's Ribbon Device	Amaterasu's Ribbon Device	ITEM_QUALITY_Normal
+2856		Morrigan's Ribbon Device	Morrigan's Ribbon Device	ITEM_QUALITY_Normal
+2857		Milk	Milk	ITEM_QUALITY_Normal
+2860		Incomplete file
+
+
+	Incomplete file	ITEM_QUALITY_Normal
+2864		Scarab Listening Device Map	Scarab Listening Device Map	ITEM_QUALITY_Normal
+2871		A note warning that this will be the fate of any traitors caught within the walls of Harset	Warning Note	ITEM_QUALITY_Normal
+4647		Zipacna's Corpse	Zipacna's Corpse	ITEM_QUALITY_Normal
+2906		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC5 Mini-game Instrument	ITEM_QUALITY_Normal
+2891		Testing Armor	Testing Ballistic Vest	ITEM_QUALITY_Fantastic
+3019		30% Mitigation	Aramid Fiber Ablative Legs	ITEM_QUALITY_Normal
+3031		30% Mitigation	Aramid Fiber Ablative Gloves	ITEM_QUALITY_Normal
+3032		30% Mitigation	Aramid Fiber Ablative Gloves	ITEM_QUALITY_Normal
+34		30% Mitigation	Aramid Fiber Ballistic Vest	ITEM_QUALITY_Normal
+2895		This is a generic mini-game consumable usable by all Archetypes.	Generic TC5 Mini-game Consumable	ITEM_QUALITY_Normal
+5090		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+2896		This is a generic mini-game consumable usable by all Archetypes.	Generic TC10 Mini-game Consumable	ITEM_QUALITY_Normal
+2897		This is a generic mini-game consumable usable by all Archetypes.	Generic TC15 Mini-game Consumable	ITEM_QUALITY_Normal
+2898		This is a generic mini-game consumable usable by all Archetypes.	Generic TC20 Mini-game Consumable	ITEM_QUALITY_Normal
+2899		This is a generic mini-game consumable usable by all Archetypes.	Generic TC25 Mini-game Consumable	ITEM_QUALITY_Normal
+2900		This is a generic mini-game consumable usable by all Archetypes.	Generic TC30 Mini-game Consumable	ITEM_QUALITY_Normal
+2901		This is a generic mini-game consumable usable by all Archetypes.	Generic TC35 Mini-game Consumable	ITEM_QUALITY_Normal
+2902		This is a generic mini-game consumable usable by all Archetypes.	Generic TC40 Mini-game Consumable	ITEM_QUALITY_Normal
+3400		10% Mitigation	Aramid Fiber Stealth Boots	ITEM_QUALITY_Normal
+3483		30% Mitigation	Aramid Fiber Ballistic Vest	ITEM_QUALITY_Normal
+3485		30% Mitigation	Prison Jumpsuit Ballistic Legs	ITEM_QUALITY_Normal
+3487		30% Mitigation	Prison Jumpsuit Ablative Legs	ITEM_QUALITY_Normal
+3489		30% Mitigation	Prison Jumpsuit Ablative Vest	ITEM_QUALITY_Normal
+3514		Base P90 SMG +100 ACC	Base P90 +ACC	ITEM_QUALITY_Normal
+3518		30% Mitigation
++100 ACC	Aramid Fiber Ballistic Helmet +100A	ITEM_QUALITY_Normal
+3561		Base Armored M2HB HMG	Base Armored M2HB HMG	ITEM_QUALITY_Normal
+3562		Base Armored M2HB HMG	Base Armored M2HB HMG	ITEM_QUALITY_Normal
+3563		Base Armored M2HB HMG	Base Armored M2HB HMG	ITEM_QUALITY_Normal
+3632		+4 Deployment Bar Slots	Grenade Belt	ITEM_QUALITY_Normal
+3692		Grenade Launcher	Grenade Launcher	ITEM_QUALITY_Normal
+4318		Eyewear	Eyewear	ITEM_QUALITY_Normal
+4319		Eyewear	Eyewear	ITEM_QUALITY_Normal
+3894		This is a generic mini-game consumable usable by all Archetypes.	Generic TC8 Mini-game Consumable	ITEM_QUALITY_Normal
+3895		This is a generic mini-game consumable usable by all Archetypes.	Generic TC13 Mini-game Consumable	ITEM_QUALITY_Normal
+3896		This is a generic mini-game consumable usable by all Archetypes.	Generic TC18 Mini-game Consumable	ITEM_QUALITY_Normal
+3897		This is a generic mini-game consumable usable by all Archetypes.	Generic TC23 Mini-game Consumable	ITEM_QUALITY_Normal
+4354		Decreases slightly setup time to disarm 	MS018_062008_Army Knife	ITEM_QUALITY_Normal
+4388		Grenade Launcher	MS018_062008_Grenade Launcher	ITEM_QUALITY_Normal
+4396		A scanner developed by Nerus to find Straegis.	Straegis Scanner	ITEM_QUALITY_Normal
+5073		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5062		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5091		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5092		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5100	2	Rak'tel	Rak'tel	ITEM_QUALITY_Normal
+5201		Genome Fraction (Bio-Medical)	Genome Fraction (Bio-Medical)	ITEM_QUALITY_Normal
+3737		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC18 Mini-game Instrument	ITEM_QUALITY_Normal
+702		Increases Radiation Mit	Radiation Suit Lining	ITEM_QUALITY_Normal
+5188		Protein Complex (Bio-Medical)	Protein Complex (Bio-Medical)	ITEM_QUALITY_Normal
+5189		T1 Cell (Bio-Medical)	T1 Cell (Bio-Medical)	ITEM_QUALITY_Good
+5190		Protein (Bio-Medical)	Protein (Bio-Medical)	ITEM_QUALITY_Normal
+5191		Blend (Bio-Medical Alloy)	Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5193		Drug (Bio-Medical)	Drug (Bio-Medical)	ITEM_QUALITY_Good
+5194		Infusion (Bio-Medical)	Infusion (Bio-Medical)	ITEM_QUALITY_Great
+5195		Mitochrondrial Assay (Bio-Medical)	Mitochrondrial Assay (Bio-Medical)	ITEM_QUALITY_Normal
+5223		Living Colloid (Bio-Medical)	Living Colloid (Bio-Medical)	ITEM_QUALITY_Great
+5203		Genomic Blend (Bio-Medical Alloy)	Genomic Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5204		Lyotropic Cell Blend (Bio-Medical Alloy)	Lyotropic Cell Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5205		D-DNA Fraction (Bio-Medical)	D-DNA Fraction (Bio-Medical)	ITEM_QUALITY_Good
+5206		Naquadah Tincture (Bio-Medical)	Naquadah Tincture (Bio-Medical)	ITEM_QUALITY_Good
+5207		Aggressive Myofiber (Bio-Medical)	Aggressive Myofiber (Bio-Medical)	ITEM_QUALITY_Great
+5208		Nucleosynth Graft (Bio-Medical)	Nucleosynth Graft (Bio-Medical)	ITEM_QUALITY_Normal
+5210		Mother Gene (Bio-Medical)	Mother Gene (Bio-Medical)	ITEM_QUALITY_Normal
+5211		Nucleosynth Blend (Bio-Medical Alloy)	Nucleosynth Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5212		Viral Blend (Bio-Medical Alloy)	Viral Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5213		Nucleic Sheath (Bio-Medical)	Nucleic Sheath (Bio-Medical)	ITEM_QUALITY_Good
+5214		Asgard Astrocyte (Bio-Medical)	Asgard Astrocyte (Bio-Medical)	ITEM_QUALITY_Good
+5215		Xenoimmunoglobulin (Bio-Medical)	Xenoimmunoglobulin (Bio-Medical)	ITEM_QUALITY_Good
+5216		Viral Inducer (Bio-Medical)	Viral Inducer (Bio-Medical)	ITEM_QUALITY_Great
+5217		Prion Slash (Bio-Medical)	Prion Slash (Bio-Medical)	ITEM_QUALITY_Normal
+5218		Prion Linkage (Bio-Medical)	Prion Linkage (Bio-Medical)	ITEM_QUALITY_Normal
+5219		Prion Blend (Bio-Medical Alloy)	Prion Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5220		Xenoprion Blend (Bio-Medical Alloy)	Xenoprion Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5221		Blue Mimotope Blend (Bio-Medical Alloy)	Blue Mimotope Blend (Bio-Medical Alloy)	ITEM_QUALITY_Great
+5222		Protoprions (Bio-Medical)	Protoprions (Bio-Medical)	ITEM_QUALITY_Good
+5224		Integrated Circuit (Electronics)	Integrated Circuit (Electronics)	ITEM_QUALITY_Normal
+5225		Integrated Psuedocore (Electronics)	Integrated Psuedocore (Electronics)	ITEM_QUALITY_Good
+5226		Circuit (Electronics)	Circuit (Electronics)	ITEM_QUALITY_Normal
+5227		Assemblage (Electronics Alloy)	Assemblage (Electronics Alloy)	ITEM_QUALITY_Great
+5228		Processor (Electronics)	Processor (Electronics)	ITEM_QUALITY_Good
+5229		Core (Electronics)	Core (Electronics)	ITEM_QUALITY_Good
+5230		Hypermachine (Electronics)	Hypermachine (Electronics)	ITEM_QUALITY_Great
+5231		Multiplex Circuit (Electronics)	Multiplex Circuit (Electronics)	ITEM_QUALITY_Normal
+5232		Flicker Arc Tunnel (Electronics)	Flicker Arc Tunnel (Electronics)	ITEM_QUALITY_Normal
+5233		Flicker Arc Amalgam (Electronics Alloy)	Flicker Arc Amalgam (Electronics Alloy)	ITEM_QUALITY_Great
+5234		3AbE Amalgam (Electronics Alloy)	3AbE Amalgam (Electronics Alloy)	ITEM_QUALITY_Great
+5235		Multiplex Psuedocore (Electronics)	Multiplex Psuedocore (Electronics)	ITEM_QUALITY_Good
+5236		Naquadah Psuedocore (Electronics)	Naquadah Psuedocore (Electronics)	ITEM_QUALITY_Good
+5237		Megagate Transistor (Electronics)	Megagate Transistor (Electronics)	ITEM_QUALITY_Great
+5238		Leaf Circuit (Electronics)	Leaf Circuit (Electronics)	ITEM_QUALITY_Normal
+5239		4CbE (Electronics)	4CbE (Electronics)	ITEM_QUALITY_Normal
+5241		Leaf Amalgam (Electronics Alloy)	Leaf Amalgam (Electronics Alloy)	ITEM_QUALITY_Great
+5242		Root Amalgam (Electronics Alloy)	Root Amalgam (Electronics Alloy)	ITEM_QUALITY_Great
+5243		Leaf Pseudocore (Electronics)	Leaf Pseudocore (Electronics)	ITEM_QUALITY_Good
+5244		4UbE (Electronics)	4UbE (Electronics)	ITEM_QUALITY_Good
+5245		Doped Actinoids (Electronics)	Doped Actinoids (Electronics)	ITEM_QUALITY_Good
+5247		Picoprocessor (Electronics)	Picoprocessor (Electronics)	ITEM_QUALITY_Great
+5248		Fluid Circuit (Electronics)	Fluid Circuit (Electronics)	ITEM_QUALITY_Normal
+5249		Fluid Transistor (Electronics)	Fluid Transistor (Electronics)	ITEM_QUALITY_Normal
+5250		Fluid Amalgam (Electronics Alloy)	Fluid Amalgam (Electronics Alloy)	ITEM_QUALITY_Great
+5251		Susperstate Amalgam (Electronics Alloy)	Susperstate Amalgam (Electronics Alloy)	ITEM_QUALITY_Great
+5252		5AcE Amalgam (Electronics Alloy)	5AcE Amalgam (Electronics Alloy)	ITEM_QUALITY_Great
+5253		Smart Resin (Electronics)	Smart Resin (Electronics)	ITEM_QUALITY_Good
+5254		Steel Core (Materials)	Steel Core (Materials)	ITEM_QUALITY_Normal
+5255		Waveform Amber (Electronics)	Waveform Amber (Electronics)	ITEM_QUALITY_Great
+5256		Titanium Core (Materials)	Titanium Core (Materials)	ITEM_QUALITY_Good
+5257		Wave Guide (Power Systems)	Wave Guide (Power Systems)	ITEM_QUALITY_Normal
+6572		NO ITEM DESCRIPTION	Skin Color Test - Dark	ITEM_QUALITY_Normal
+5258		Base (Materials)	Base (Materials)	ITEM_QUALITY_Normal
+5259		Particle Guide (Power Systems)	Particle Guide (Power Systems)	ITEM_QUALITY_Good
+5261		Alloy (Materials Alloy)	Alloy (Materials Alloy)	ITEM_QUALITY_Great
+5262		Fuel (Power Systems)	Fuel (Power Systems)	ITEM_QUALITY_Normal
+5263		Frame (Materials)	Frame (Materials)	ITEM_QUALITY_Good
+5264		Fusion (Power Systems Alloy)	Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+8497		NO ITEM DESCRIPTION	Primary Dye: Rust	ITEM_QUALITY_Normal
+5265		Module (Power Systems)	Module (Power Systems)	ITEM_QUALITY_Good
+5266		Grid (Power Systems)	Grid (Power Systems)	ITEM_QUALITY_Good
+5267		Weave (Materials)	Weave (Materials)	ITEM_QUALITY_Good
+5268		Crystal (Power Systems)	Crystal (Power Systems)	ITEM_QUALITY_Great
+5269		Matrix (Materials)	Matrix (Materials)	ITEM_QUALITY_Great
+1096		inc. impact dmg	Electromagnetic Rail Accelerator	ITEM_QUALITY_Normal
+5340		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5270		Plasmoid Guide (Power Systems)	Plasmoid Guide (Power Systems)	ITEM_QUALITY_Normal
+5271		Two-State Ceramic (Materials)	Two-State Ceramic (Materials)	ITEM_QUALITY_Normal
+5272		Dense Plasma Focus (Power Systems)	Dense Plasma Focus (Power Systems)	ITEM_QUALITY_Normal
+5273		Vitreous Weave (Materials)	Vitreous Weave (Materials)	ITEM_QUALITY_Normal
+5274		Plasma Surface Fusion (Power Systems Alloy)	Plasma Surface Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+5275		Ceramic-Staballoy (Materials Alloy)	Ceramic-Staballoy (Materials Alloy)	ITEM_QUALITY_Great
+5276		Reformulated Naquadriah Fusion (Power Systems Alloy)	Reformulated Naquadriah Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+5277		3AbM Alloy (Materials Alloy)	3AbM Alloy (Materials Alloy)	ITEM_QUALITY_Great
+5280		Pinched Plasma Guide (Power Systems)	Pinched Plasma Guide (Power Systems)	ITEM_QUALITY_Good
+5281		3UbM (Materials)	3UbM (Materials)	ITEM_QUALITY_Good
+5282		Naquadah Source (Power Systems)	Naquadah Source (Power Systems)	ITEM_QUALITY_Good
+5283		K-Composite Ceramic (Materials)	K-Composite Ceramic (Materials)	ITEM_QUALITY_Good
+5284		Plasma Toroid (Power Systems)	Plasma Toroid (Power Systems)	ITEM_QUALITY_Great
+5285		BeNq Inclusion (Materials)	BeNq Inclusion (Materials)	ITEM_QUALITY_Great
+5286		Neutron Guide (Power Systems)	Neutron Guide (Power Systems)	ITEM_QUALITY_Normal
+5287		4CbPS (Power Systems)	4CbPS (Power Systems)	ITEM_QUALITY_Normal
+5288		Foamed Metal Rail (Materials)	Foamed Metal Rail (Materials)	ITEM_QUALITY_Normal
+5289		Wave-Neutron Fusion (Power Systems Alloy)	Wave-Neutron Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+5290		Viscid Rail (Materials)	Viscid Rail (Materials)	ITEM_QUALITY_Normal
+5291		T4 Fusion (Power Systems Alloy)	T4 Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+5292		Proton Guide (Power Systems)	Proton Guide (Power Systems)	ITEM_QUALITY_Good
+5293		Artificial Naquadriah (Power Systems)	Artificial Naquadriah (Power Systems)	ITEM_QUALITY_Good
+5294		4UcPS (Power Systems)	4UcPS (Power Systems)	ITEM_QUALITY_Good
+5295		Ylem Generator (Power Systems)	Ylem Generator (Power Systems)	ITEM_QUALITY_Great
+5296		String Guide (Power Systems)	String Guide (Power Systems)	ITEM_QUALITY_Normal
+5297		Condensate Brane (Power Systems)	Condensate Brane (Power Systems)	ITEM_QUALITY_Normal
+5298		String Fusion (Power Systems Alloy)	String Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+5299		Quant Fusion (Power Systems Alloy)	Quant Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+5300		5AcPS Fusion (Power Systems Alloy)	5AcPS Fusion (Power Systems Alloy)	ITEM_QUALITY_Great
+5301		Foamed Alloy Rail (Materials Alloy)	Foamed Alloy Rail (Materials Alloy)	ITEM_QUALITY_Great
+5302		Probability Guide (Power Systems)	Probability Guide (Power Systems)	ITEM_QUALITY_Good
+5303		CaNq Alloy Rail (Materials Alloy)	CaNq Alloy Rail (Materials Alloy)	ITEM_QUALITY_Great
+5304		Conifold Singularity (Power Systems)	Conifold Singularity (Power Systems)	ITEM_QUALITY_Great
+5305		CaNq Inclusion (Materials)	CaNq Inclusion (Materials)	ITEM_QUALITY_Good
+5306		Allotropic Metalloid (Materials)	Allotropic Metalloid (Materials)	ITEM_QUALITY_Good
+5307		Salted Lanthanoids (Materials)	Salted Lanthanoids (Materials)	ITEM_QUALITY_Good
+713		Reduces Mit, Reduces Penetration	Extreme Tempering	ITEM_QUALITY_Normal
+5308		DyNq Inclusion (Materials)	DyNq Inclusion (Materials)	ITEM_QUALITY_Great
+5309		Degenerate Neutronium (Materials)	Degenerate Neutronium (Materials)	ITEM_QUALITY_Normal
+5310		Strangelet Core (Materials)	Strangelet Core (Materials)	ITEM_QUALITY_Normal
+6574		NO ITEM DESCRIPTION	Green Dye	ITEM_QUALITY_Normal
+5311		Strangelet Alloy (Materials Alloy)	Strangelet Alloy (Materials Alloy)	ITEM_QUALITY_Great
+5312		Tetraneutron Alloy (Materials Alloy)	Tetraneutron Alloy (Materials Alloy)	ITEM_QUALITY_Great
+5313		5AcM Alloy (Materials Alloy)	5AcM Alloy (Materials Alloy)	ITEM_QUALITY_Great
+5314		WiNq Inclusion (Materials)	WiNq Inclusion (Materials)	ITEM_QUALITY_Good
+5315		Solid Neutronium (Materials)	Solid Neutronium (Materials)	ITEM_QUALITY_Great
+5335		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5336		NO ITEM DESCRIPTION	Concord Plasm (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5337		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5338		NO ITEM DESCRIPTION	Keystone Extensor (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5339		NO ITEM DESCRIPTION	Metabolic Cycler (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5341		NO ITEM DESCRIPTION	Isohormone (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5343		NO ITEM DESCRIPTION	Modified Nocebo (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5344		NO ITEM DESCRIPTION	Xeno-Reservatrol (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5345		NO ITEM DESCRIPTION	Hemoglobin Extender (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5346		NO ITEM DESCRIPTION	Cephalic Commensal (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5347		NO ITEM DESCRIPTION	Low-Uracil Taxis (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5348		NO ITEM DESCRIPTION	Atypical Fluoroquinolones (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5349		NO ITEM DESCRIPTION	Shock Shunt (Electronic Subcombine A)	ITEM_QUALITY_Normal
+5350		NO ITEM DESCRIPTION	Flash Transfer (Electronic Subcombine A)	ITEM_QUALITY_Normal
+5351		NO ITEM DESCRIPTION	Input Processor (Electronic Subcombine A)	ITEM_QUALITY_Normal
+5352		NO ITEM DESCRIPTION	Function Glyph (Electronic Subcombine B)	ITEM_QUALITY_Normal
+5353		NO ITEM DESCRIPTION	Specular Grid (Electronic Subcombine B)	ITEM_QUALITY_Normal
+5354		NO ITEM DESCRIPTION	n-Receiver (Electronic Subcombine B)	ITEM_QUALITY_Normal
+5355		NO ITEM DESCRIPTION	Emitter (Electronics Subcombine C)	ITEM_QUALITY_Normal
+5356		NO ITEM DESCRIPTION	Decoupled Emitter (Electronic Subcombine C)	ITEM_QUALITY_Normal
+5357		NO ITEM DESCRIPTION	Fractal RAM (Electronic Subcombine C)	ITEM_QUALITY_Normal
+5358		NO ITEM DESCRIPTION	nTree Assembly (Electronic Subcombine D)	ITEM_QUALITY_Normal
+5359		NO ITEM DESCRIPTION	Ribbon Circuit (Electronic Subcombine D)	ITEM_QUALITY_Normal
+5360		NO ITEM DESCRIPTION	Rich Substrate (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5361		NO ITEM DESCRIPTION	Nonagonal Capacitor (Electronic Subcombine D)	ITEM_QUALITY_Normal
+5362		NO ITEM DESCRIPTION	Strombine (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5363		NO ITEM DESCRIPTION	Xeno-bacterium (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5364		NO ITEM DESCRIPTION	Chiral Lysine (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5365		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5366		NO ITEM DESCRIPTION	X-Cosmid (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5367		NO ITEM DESCRIPTION	Mimic Rhinovirus (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5368		NO ITEM DESCRIPTION	Hypnotic Fungus (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5369		Bio-Medical Engineering Field Crafting Tool	BMAS-5 Field Crafting Tool	ITEM_QUALITY_Normal
+5370		NO ITEM DESCRIPTION	Immunosuppressant (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5371		NO ITEM DESCRIPTION	Protein Simplex (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5372		NO ITEM DESCRIPTION	3,4-COLA (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5373		NO ITEM DESCRIPTION	IC-K-layer (Electronics Subcombine A)	ITEM_QUALITY_Normal
+5374		NO ITEM DESCRIPTION	Output Processor (Electronics Subcombine A)	ITEM_QUALITY_Normal
+5375		NO ITEM DESCRIPTION	Minimatrix (Electronics Subcombine A)	ITEM_QUALITY_Normal
+5376		NO ITEM DESCRIPTION	Signal Damp (Electronics Subcombine B)	ITEM_QUALITY_Normal
+5377		NO ITEM DESCRIPTION	Optical Rectifier (Electronics Subcombine B)	ITEM_QUALITY_Normal
+5378		NO ITEM DESCRIPTION	Cell Blade (Electronics Subcombine B)	ITEM_QUALITY_Normal
+5379		NO ITEM DESCRIPTION	Spoke Pseudocore (Electronics Subcombine C)	ITEM_QUALITY_Normal
+5380		NO ITEM DESCRIPTION	Server Protocore (Electronics Subcombine C)	ITEM_QUALITY_Normal
+5381		NO ITEM DESCRIPTION	Terfenol-D Amplifier (Electronics Subcombine C)	ITEM_QUALITY_Normal
+5410		NO ITEM DESCRIPTION	Lamellar Steel (Materials Subcombine D)	ITEM_QUALITY_Normal
+5382		NO ITEM DESCRIPTION	Wavelet Transformer (Electronics Subcombine D)	ITEM_QUALITY_Normal
+5383		NO ITEM DESCRIPTION	Discrete Sampler (Electronics Subcombine D)	ITEM_QUALITY_Normal
+5384		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5385		NO ITEM DESCRIPTION	Optical Fiber (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5386		NO ITEM DESCRIPTION	Fehu Particle Accelerator (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5387		NO ITEM DESCRIPTION	Ring Turbine (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5388		NO ITEM DESCRIPTION	Particle Dynamo (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5389		NO ITEM DESCRIPTION	Counterspin Net (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5390		NO ITEM DESCRIPTION	Epicycle Multiplier (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+4316		Eyewear	Eyewear	ITEM_QUALITY_Normal
+5391		NO ITEM DESCRIPTION	Vector Guide (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5392		NO ITEM DESCRIPTION	Pulse Synchronizer (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5393		NO ITEM DESCRIPTION	Clock Template (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5394		NO ITEM DESCRIPTION	Surge Pressor (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5395		NO ITEM DESCRIPTION	Blueprint: BioMedical SubComponent A	ITEM_QUALITY_Great
+5396		NO ITEM DESCRIPTION	Step-down Inverter (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5397		NO ITEM DESCRIPTION	Active TCR (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5398		NO ITEM DESCRIPTION	Steel Plating (Materials Subcombine A)	ITEM_QUALITY_Normal
+5399		NO ITEM DESCRIPTION	Steel Brushing (Materials Subcombine A)	ITEM_QUALITY_Normal
+5400		NO ITEM DESCRIPTION	Steel Shunt (Materials Subcombine A)	ITEM_QUALITY_Normal
+5401		NO ITEM DESCRIPTION	Titanium Plating (Materials Subcombine B)	ITEM_QUALITY_Normal
+5482		Tier 2 Alloy Component Test Item	Tier 2 Alloy	ITEM_QUALITY_Great
+5483		Tier 2 Uncommon Component Test Item	Tier 2 Uncommon	ITEM_QUALITY_Good
+5484		NO ITEM DESCRIPTION	Vibration Selector (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5485		NO ITEM DESCRIPTION	Uruss Particle Accelerator (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5486		NO ITEM DESCRIPTION	Birefringent Analyzer (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5487		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5488		NO ITEM DESCRIPTION	Crystal Monode (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5505		NO ITEM DESCRIPTION	Fan Sieve (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5506		NO ITEM DESCRIPTION	Kinetic Trap (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5507		NO ITEM DESCRIPTION	Photonic Pulser (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5508		NO ITEM DESCRIPTION	UV Crystal (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5509		NO ITEM DESCRIPTION	Raser Facet (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5511		NO ITEM DESCRIPTION	Radio Decollimator (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5512		NO ITEM DESCRIPTION	Trinium Plastron (Materials Subcombine A)	ITEM_QUALITY_Normal
+5513		NO ITEM DESCRIPTION	Trinium Flashing (Materials Subcombine A)	ITEM_QUALITY_Normal
+5514		NO ITEM DESCRIPTION	Trinium Holder (Materials Subcombine A)	ITEM_QUALITY_Normal
+5515		NO ITEM DESCRIPTION	Alloyed Star (Materials Subcombine B)	ITEM_QUALITY_Normal
+5516		NO ITEM DESCRIPTION	Composite Slide (Materials Subcombine B)	ITEM_QUALITY_Normal
+5517		NO ITEM DESCRIPTION	Lightweight Support (Materials Subcombine B)	ITEM_QUALITY_Normal
+5518		NO ITEM DESCRIPTION	Load Distributor (Materials Subcombine C)	ITEM_QUALITY_Normal
+5519		NO ITEM DESCRIPTION	Self-contained Sparkgap (Materials Subcombine C)	ITEM_QUALITY_Normal
+5520		NO ITEM DESCRIPTION	Maxi-Jack (Materials Subcombine C)	ITEM_QUALITY_Normal
+5521		NO ITEM DESCRIPTION	Translucent Grate (Materials Subcombine D)	ITEM_QUALITY_Normal
+5522		NO ITEM DESCRIPTION	Lamellar Trinium (Materials Subcombine D)	ITEM_QUALITY_Normal
+5523		NO ITEM DESCRIPTION	Sintered Trinium Rod (Materials Subcombine D)	ITEM_QUALITY_Normal
+5524		Cellular Biopump (Bio-Medical Subcombine A)	Cellular Biopump (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5525		Speciated Organelles (Bio-Medical Subcombine A)	Speciated Organelles (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5526		Multi-ATP Source (Bio-Medical Subcombine A)	Multi-ATP Source (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5527		Fractionated Nucleic Acid (Bio-Medical Subcombine B)	Fractionated Nucleic Acid (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5528		Exotic Nucleotides (Bio-Medical Subcombine B)	Exotic Nucleotides (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5529		Firebreak DNA (Bio-Medical Subcombine B)	Firebreak DNA (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5530		T-Cell Hyposource (Bio-Medical Subcombine C)	T-Cell Hyposource (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5531		Williams' Fourblend (Bio-Medical Subcombine C)	Williams' Fourblend (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5532		Temporal Cell Activator (Bio-Medical Subcombine C)	Temporal Cell Activator (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5534		Xeno-Plankton (Bio-Medical Subcombine D)	Xeno-Plankton (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5535		Monoclonal miRNA (Bio-Medical Subcombine D)	Monoclonal miRNA (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+6575		NO ITEM DESCRIPTION	Green (primary) blue (secondary) Dye	ITEM_QUALITY_Normal
+5536		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5537		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5538		Circuit Governor (Electronics Subcombine A)	Circuit Governor (Electronics Subcombine A)	ITEM_QUALITY_Normal
+5539		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5540		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5541		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5542		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5543		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5544		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5545		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5546		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5547		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+5548		Plasma-Plasmoid Converter (Power Systems Subcombine A)	Plasma-Plasmoid Converter (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5549		Thurisass Particle Accelerator (Power Systems Subcombine A)	Thurisass Particle Accelerator (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5550		Pancake Plasma Pad (Power Systems Subcombine A)	Pancake Plasma Pad (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5551		Periumbral Magnetron (Power Systems Subcombine B)	Periumbral Magnetron (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5176		Untested antidote for Tretonin poisoning	Antidote Sample	ITEM_QUALITY_Normal
+5552		Magnetic Pentode (Power Systems Subcombine B)	Magnetic Pentode (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5553		Standoff Solenoid (Power Systems Subcombine B)	Standoff Solenoid (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+8498		NO ITEM DESCRIPTION	Primary Dye: Burnt Orange	ITEM_QUALITY_Normal
+5554		Superficial Pinch (Power Systems Subcombine C)	Superficial Pinch (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5555		Foo Fountain (Power Systems Subcombine C)	Foo Fountain (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5556		Gap Processor (Power Systems Subcombine C)	Gap Processor (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5557		Toroidal Packet Transfer (Power Systems Subcombine D)	Toroidal Packet Transfer (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5558		PPOP-er (Power Systems Subcombine D)	PPOP-er (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5559		Sandwich Plasma Pad (Power Systems Subcombine D)	Sandwich Plasma Pad (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5560		FlexCeram (Materials Subcombine A)	FlexCeram (Materials Subcombine A)	ITEM_QUALITY_Normal
+5561		Glassy Reinforcement (Materials Subcombine A)	Glassy Reinforcement (Materials Subcombine A)	ITEM_QUALITY_Normal
+5562		No-P Ceramic (Materials Subcombine A)	No-P Ceramic (Materials Subcombine A)	ITEM_QUALITY_Normal
+5563		Eutectic Xenocrysts (Materials Subcombine B)	Eutectic Xenocrysts (Materials Subcombine B)	ITEM_QUALITY_Normal
+5564		Ket'tewet (Materials Subcombine B)	Ket'tewet (Materials Subcombine B)	ITEM_QUALITY_Normal
+5565		Microweight Support (Materials Subcombine B)	Microweight Support (Materials Subcombine B)	ITEM_QUALITY_Normal
+5566		Gilt Grapnel (Materials Subcombine C)	Gilt Grapnel (Materials Subcombine C)	ITEM_QUALITY_Normal
+5567		NbC-TaC-ZiC Microalloys (Materials Subcombine C)	NbC-TaC-ZiC Microalloys (Materials Subcombine C)	ITEM_QUALITY_Normal
+715		Large Increase to Max Dur/Con	Living Materials	ITEM_QUALITY_Normal
+5568		Devitrified Liquid Glass (Materials Subcombine C)	Devitrified Liquid Glass (Materials Subcombine C)	ITEM_QUALITY_Normal
+762		Inc. Energy armor	Structural Integrity Field	ITEM_QUALITY_Normal
+5569		BeNq-like Stabilizer (Materials Subcombine D)	BeNq-like Stabilizer (Materials Subcombine D)	ITEM_QUALITY_Normal
+5570		Lamellar Bombyx (Materials Subcombine D)	Lamellar Bombyx (Materials Subcombine D)	ITEM_QUALITY_Normal
+5571		Lattice Gas (Materials Subcombine D)	Lattice Gas (Materials Subcombine D)	ITEM_QUALITY_Normal
+5572		Matrilineal Bioline (Bio-Medical Subcombine A)	Matrilineal Bioline (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+2971		NO ITEM DESCRIPTION	Titanium Ablative Vest	ITEM_QUALITY_Normal
+5573		Speciated Mitochondria (Bio-Medical Subcombine A)	Speciated Mitochondria (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5574		Genome Snip (Bio-Medical Subcombine A)	Genome Snip (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5575		Crystal DNA (Bio-Medical Subcombine B)	Crystal DNA (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5576		Erbia Psuedocyte (Bio-Medical Subcombine B)	Erbia Psuedocyte (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5577		Phosphorus Philter (Bio-Medical Subcombine B)	Phosphorus Philter (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5578		T-Cell Isosource (Bio-Medical Subcombine C)	T-Cell Isosource (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5579		Ubiquitin Analogue (Bio-Medical Subcombine C)	Ubiquitin Analogue (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5580		Enzyme Cascade (Bio-Medical Subcombine C)	Enzyme Cascade (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5581		Myoplasm (Bio-Medical Subcombine D)	Myoplasm (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5582		GM Xeno-quinoa (Bio-Medical Subcombine D)	GM Xeno-quinoa (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5583		Artificial DNA (Bio-Medical Subcombine D)	Artificial DNA (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5584		4-Channel Handoff (Electronic Subcombine A)	4-Channel Handoff (Electronic Subcombine A)	ITEM_QUALITY_Normal
+5585		Fractal Gate (Electronic Subcombine A)	Fractal Gate (Electronic Subcombine A)	ITEM_QUALITY_Normal
+5586		Extreme-SNR Entropy Chip (Electronic Subcombine A)	Extreme-SNR Entropy Chip (Electronic Subcombine A)	ITEM_QUALITY_Normal
+5587		Homoepitaxial Dopant (Electronic Subcombine B)	Homoepitaxial Dopant (Electronic Subcombine B)	ITEM_QUALITY_Normal
+5588		PRAM Importer (Electronic Subcombine B)	PRAM Importer (Electronic Subcombine B)	ITEM_QUALITY_Normal
+5589		Rheostatic Foam (Material Subcombine A)	Rheostatic Foam (Material Subcombine A)	ITEM_QUALITY_Normal
+710		Item has unlimited Condition	Ancient Material Conversion	ITEM_QUALITY_Normal
+5590		Dimensional Memory (Electronic Subcombine B)	Dimensional Memory (Electronic Subcombine B)	ITEM_QUALITY_Normal
+5591		Friction Molding (Material Subcombine A)	Friction Molding (Material Subcombine A)	ITEM_QUALITY_Normal
+3743		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC48 Mini-game Instrument	ITEM_QUALITY_Normal
+3893		This is a generic mini-game instrument usable by all Archetypes. Test item only.	Generic TC51 Mini-game Instrument	ITEM_QUALITY_Normal
+6828		NO ITEM DESCRIPTION	Secondary Dye: Black	ITEM_QUALITY_Normal
+5592		SHAM Chain (Electronic Subcombine C)	SHAM Chain (Electronic Subcombine C)	ITEM_QUALITY_Normal
+5593		Objective Circuit (Electronic Subcombine C)	Objective Circuit (Electronic Subcombine C)	ITEM_QUALITY_Normal
+5594		Sub-P Ceramic (Material Subcombine A)	Sub-P Ceramic (Material Subcombine A)	ITEM_QUALITY_Normal
+5595		Epitaxial Slide (Material Subcombine B)	Epitaxial Slide (Material Subcombine B)	ITEM_QUALITY_Normal
+5596		Mirror Matter Circuit (Electronic Subcombine C)	Mirror Matter Circuit (Electronic Subcombine C)	ITEM_QUALITY_Normal
+8504		NO ITEM DESCRIPTION	Secondary Dye: Chocolate	ITEM_QUALITY_Normal
+5597		Multi-Alloy Rail (Material Subcombine B)	Multi-Alloy Rail (Material Subcombine B)	ITEM_QUALITY_Normal
+5598		CombEle4Da (Electronic Subcombine D)	CombEle4Da (Electronic Subcombine D)	ITEM_QUALITY_Normal
+5599		CombMat4Bc (Material Subcombine B)	CombMat4Bc (Material Subcombine B)	ITEM_QUALITY_Normal
+5600		CombEle4Db (Electronic Subcombine D)	CombEle4Db (Electronic Subcombine D)	ITEM_QUALITY_Normal
+5601		Metalloid Join (Material Subcombine C)	Metalloid Join (Material Subcombine C)	ITEM_QUALITY_Normal
+5602		CombEle4Dc (Electronic Subcombine D)	CombEle4Dc (Electronic Subcombine D)	ITEM_QUALITY_Normal
+4317		Eyewear	Eyewear	ITEM_QUALITY_Normal
+5603		Transuranic Torus (Power Systems Subcombine A)	Transuranic Torus (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5604		High-E Target (Power Systems Subcombine A)	High-E Target (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5605		Ansuss Particle Accelerator (Power Systems Subcombine A)	Ansuss Particle Accelerator (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5606		Isochronus N-tron (Power Systems Subcombine B)	Isochronus N-tron (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5607		Friendly Threshold (Power Systems Subcombine B)	Friendly Threshold (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5608		Undulator (Power Systems Subcombine B)	Undulator (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5609		Eddy Reductor (Power Systems Subcombine C)	Eddy Reductor (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5610		Eductor Pump (Power Systems Subcombine C)	Eductor Pump (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5611		Naquadriah Inverter (Power Systems Subcombine C)	Naquadriah Inverter (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5612		Sylvanite-Petzite Matrix (Material Subcombine C)	Sylvanite-Petzite Matrix (Material Subcombine C)	ITEM_QUALITY_Normal
+5613		Ylem Source (Power Systems Subcombine D)	Ylem Source (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+3486		30% Mitigation	Prison Jumpsuit Ablative Legs	ITEM_QUALITY_Normal
+5614		Glucinium Glass (Material Subcombine C)	Glucinium Glass (Material Subcombine C)	ITEM_QUALITY_Normal
+683		Increases Disguise Value	Holographic Coating	ITEM_QUALITY_Normal
+5615		Entropy Flip (Power Systems Subcombine D)	Entropy Flip (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5616		Protonium Spar (Material Subcombine D)	Protonium Spar (Material Subcombine D)	ITEM_QUALITY_Normal
+5617		Cogenerator (Power Systems Subcombine D)	Cogenerator (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5618		CombMat4Db (Material Subcombine D)	CombMat4Db (Material Subcombine D)	ITEM_QUALITY_Normal
+5619		CombMat4Dc (Material Subcombine D)	CombMat4Dc (Material Subcombine D)	ITEM_QUALITY_Normal
+5620		Prion Blend (Bio-Medical Subcombine A)	Prion Blend (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5621		Xeno Substrate (Bio-Medical Subcombine A)	Xeno Substrate (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5622		Sub-Prion Snip (Bio-Medical Subcombine A)	Sub-Prion Snip (Bio-Medical Subcombine A)	ITEM_QUALITY_Normal
+5623		Unstable Plating (Materials Subcombine A)	Unstable Plating (Materials Subcombine A)	ITEM_QUALITY_Normal
+5624		CombBio5Ba (Bio-Medical Subcombine B)	CombBio5Ba (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5625		Neutronium-like Core (Materials Subcombine A)	Neutronium-like Core (Materials Subcombine A)	ITEM_QUALITY_Normal
+5626		CombBio5Bb (Bio-Medical Subcombine B)	CombBio5Bb (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5627		Metastable Plating (Materials Subcombine A)	Metastable Plating (Materials Subcombine A)	ITEM_QUALITY_Normal
+5628		CombBio5Bc (Bio-Medical Subcombine B)	CombBio5Bc (Bio-Medical Subcombine B)	ITEM_QUALITY_Normal
+5629		CombMat5Ba (Materials Subcombine B)	CombMat5Ba (Materials Subcombine B)	ITEM_QUALITY_Normal
+5630		CombMat5Bb (Materials Subcombine B)	CombMat5Bb (Materials Subcombine B)	ITEM_QUALITY_Normal
+5631		CombMat5Bc (Materials Subcombine B)	CombMat5Bc (Materials Subcombine B)	ITEM_QUALITY_Normal
+5632		CombMat5Ca (Materials Subcombine C)	CombMat5Ca (Materials Subcombine C)	ITEM_QUALITY_Normal
+5799	3	In bandolier: Free cheat per mini-game attempt.	Asgard Mini-game Instrument	ITEM_QUALITY_Normal
+5802	2	In bandolier: Free cheat per mini-game attempt.	Archaeologist Mini-game Instrument	ITEM_QUALITY_Normal
+5633		CombMat5Cb (Materials Subcombine C)	CombMat5Cb (Materials Subcombine C)	ITEM_QUALITY_Normal
+1119		inc. acc	Laser Rangefinder	ITEM_QUALITY_Normal
+5634		CombMat5Cc (Materials Subcombine C)	CombMat5Cc (Materials Subcombine C)	ITEM_QUALITY_Normal
+5635		Stochastic Matter (Materials Subcombine D)	Stochastic Matter (Materials Subcombine D)	ITEM_QUALITY_Normal
+5636		CombMat5Db (Materials Subcombine D)	CombMat5Db (Materials Subcombine D)	ITEM_QUALITY_Normal
+5637		CombMat5Dc (Materials Subcombine D)	CombMat5Dc (Materials Subcombine D)	ITEM_QUALITY_Normal
+5638		CombBio5Ca (Bio-Medical Subcombine C)	CombBio5Ca (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5639		CombBio5Cb (Bio-Medical Subcombine C)	CombBio5Cb (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5640		CombBio5Cc (Bio-Medical Subcombine C)	CombBio5Cc (Bio-Medical Subcombine C)	ITEM_QUALITY_Normal
+5641		CombBio5Da (Bio-Medical Subcombine D)	CombBio5Da (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5642		CombBio5Db (Bio-Medical Subcombine D)	CombBio5Db (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5643		CombBio5Dc (Bio-Medical Subcombine D)	CombBio5Dc (Bio-Medical Subcombine D)	ITEM_QUALITY_Normal
+5644		Runic Assembler (Electronics Subcombine A)	Runic Assembler (Electronics Subcombine A)	ITEM_QUALITY_Normal
+5645		Global Circuit (Electronics Subcombine A)	Global Circuit (Electronics Subcombine A)	ITEM_QUALITY_Normal
+5646		Ultra-SNR Entropy Circuit (Electronics Subcombine A)	Ultra-SNR Entropy Circuit (Electronics Subcombine A)	ITEM_QUALITY_Normal
+5647		CombEle5Ba (Electronics Subcombine B)	CombEle5Ba (Electronics Subcombine B)	ITEM_QUALITY_Normal
+5648		CombEle5Bb (Electronics Subcombine B)	CombEle5Bb (Electronics Subcombine B)	ITEM_QUALITY_Normal
+5649		CombEle5Bc (Electronics Subcombine B)	CombEle5Bc (Electronics Subcombine B)	ITEM_QUALITY_Normal
+5650		CombEle5Ca (Electronics Subcombine C)	CombEle5Ca (Electronics Subcombine C)	ITEM_QUALITY_Normal
+5651		CombEle5Cb (Electronics Subcombine C)	CombEle5Cb (Electronics Subcombine C)	ITEM_QUALITY_Normal
+5652		CombEle5Cc (Electronics Subcombine C)	CombEle5Cc (Electronics Subcombine C)	ITEM_QUALITY_Normal
+5653		CombEle5Da (Electronics Subcombine D)	CombEle5Da (Electronics Subcombine D)	ITEM_QUALITY_Normal
+5804	4	In bandolier: Free cheat per mini-game attempt.	Commando Mini-game Instrument	ITEM_QUALITY_Normal
+5654		CombEle5Db (Electronics Subcombine D)	CombEle5Db (Electronics Subcombine D)	ITEM_QUALITY_Normal
+5177		Deserving of a proper burial	Trik'na's Body	ITEM_QUALITY_Normal
+4321		Eyewear	Eyewear	ITEM_QUALITY_Normal
+5655		CombEle5Dc (Electronics Subcombine D)	CombEle5Dc (Electronics Subcombine D)	ITEM_QUALITY_Normal
+5656		Vibratory Guide (Power Systems Subcombine A)	Vibratory Guide (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5657		Picocondensate (Power Systems Subcombine A)	Picocondensate (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+718		Increases Sockets by +2	Miniaturization	ITEM_QUALITY_Normal
+5658		Raido Particle Accelrator (Power Systems Subcombine A)	Raido Particle Accelrator (Power Systems Subcombine A)	ITEM_QUALITY_Normal
+5659		Isobaric Dynamo (Power Systems Subcombine B)	Isobaric Dynamo (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5660		Naquadah Penetrode (Power Systems Subcombine B)	Naquadah Penetrode (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5661		Hypercharger (Power Systems Subcombine B)	Hypercharger (Power Systems Subcombine B)	ITEM_QUALITY_Normal
+5662		CombPowCa (Power Systems Subcombine C)	CombPowCa (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5663		Strange Pump (Power Systems Subcombine C)	Strange Pump (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5664		CombPow5Cc (Power Systems Subcombine C)	CombPow5Cc (Power Systems Subcombine C)	ITEM_QUALITY_Normal
+5665		CombPow5Da (Power Systems Subcombine D)	CombPow5Da (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+5666		Charm Twist (Power Systems Subcombine D)	Charm Twist (Power Systems Subcombine D)	ITEM_QUALITY_Normal
+6824		NO ITEM DESCRIPTION	Primary Dye: Violet (Burgundy)	ITEM_QUALITY_Normal
+6825		NO ITEM DESCRIPTION	Secondary Dye: Yellow (Sand)	ITEM_QUALITY_Normal
+6829		NO ITEM DESCRIPTION	Secondary Dye: Violet (Royal1)	ITEM_QUALITY_Normal
+698		Increases Electrical Mit	Grounded Weave	ITEM_QUALITY_Normal
+700		Increases Impact Mit	Kevlar Lining	ITEM_QUALITY_Normal
+701		Increases Slash and Pierce Mit	Monofiliment Weave	ITEM_QUALITY_Normal
+8405		Power Systems Engineering Field Crafting Tool	PSAS-5 Field Crafting Tool	ITEM_QUALITY_Normal
+5809	1	In bandolier: Free cheat per mini-game attempt.	Goa'uld Mini-game Instrument	ITEM_QUALITY_Normal
+8406		Materials Engineering Field Crafting Tool	MAS-5 Field Crafting Tool	ITEM_QUALITY_Normal
+8407		Bio-Medical Engineering Field Crafting Tool	BMAS-10 Field Crafting Tool	ITEM_QUALITY_Normal
+8408		Bio-Medical Engineering Field Crafting Tool	BMAS-15 Field Crafting Tool	ITEM_QUALITY_Normal
+2973		NO ITEM DESCRIPTION	Titanium Ablative Vest	ITEM_QUALITY_Normal
+8409		Bio-Medical Engineering Field Crafting Tool	BMAS-20 Field Crafting Tool	ITEM_QUALITY_Normal
+8410		Bio-Medical Engineering Field Crafting Tool	BMAS-25 Field Crafting Tool	ITEM_QUALITY_Normal
+8411		Bio-Medical Engineering Field Crafting Tool	BMAS-30 Field Crafting Tool	ITEM_QUALITY_Normal
+8412		Bio-Medical Engineering Field Crafting Tool	BMAS-35 Field Crafting Tool	ITEM_QUALITY_Normal
+8413		Bio-Medical Engineering Field Crafting Tool	BMAS-40 Field Crafting Tool	ITEM_QUALITY_Normal
+8414		Bio-Medical Engineering Field Crafting Tool	BMAS-45 Field Crafting Tool	ITEM_QUALITY_Normal
+8415		Bio-Medical Engineering Field Crafting Tool	BMAS-50 Field Crafting Tool	ITEM_QUALITY_Normal
+8416		Bio-Medical Engineering Field Crafting Tool	BMAS-55 Field Crafting Tool	ITEM_QUALITY_Normal
+8417		Bio-Medical Engineering Field Crafting Tool	Efficient BMAS-35 Field Crafting Tool	ITEM_QUALITY_Great
+8418		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Aa	ITEM_QUALITY_Normal
+8419		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Aa	ITEM_QUALITY_Normal
+8420		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Aa	ITEM_QUALITY_Normal
+8422		Field Reverse Engineering Tool	RE Mark 1 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8423		Field Reverse Engineering Tool	RE Mark 2 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8424		Field Reverse Engineering Tool	RE Mark 3 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8425		Field Reverse Engineering Tool	RE Mark 4 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8426		Field Reverse Engineering Tool	RE Mark 5 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8427		Field Reverse Engineering Tool	RE Mark 6 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8428		Field Reverse Engineering Tool	RE Mark 7 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8429		Field Reverse Engineering Tool	RE Mark 8 Reverse Engineering Tool	ITEM_QUALITY_Normal
+5811	1	In bandolier: Free cheat per mini-game attempt.	Soldier Mini-game Instrument	ITEM_QUALITY_Normal
+8430		Field Reverse Engineering Tool	RE Mark 9 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8431		Field Reverse Engineering Tool	RE Mark 10 Reverse Engineering Tool	ITEM_QUALITY_Normal
+2279		Straegis Inductive Resonance Network	SIRN	ITEM_QUALITY_Normal
+8432		Field Reverse Engineering Tool	RE Mark 11 Reverse Engineering Tool	ITEM_QUALITY_Normal
+8433		Electronics Engineering Field Crafting Tool	EAS-10 Field Crafting Tool	ITEM_QUALITY_Normal
+8434		Electronics Engineering Field Crafting Tool	EAS-15 Field Crafting Tool	ITEM_QUALITY_Normal
+8435		Electronics Engineering Field Crafting Tool	EAS-20 Field Crafting Tool	ITEM_QUALITY_Normal
+8436		Electronics Engineering Field Crafting Tool	EAS-25 Field Crafting Tool	ITEM_QUALITY_Normal
+8437		Electronics Engineering Field Crafting Tool	EAS-30 Field Crafting Tool	ITEM_QUALITY_Normal
+8438		Electronics Engineering Field Crafting Tool	EAS-35 Field Crafting Tool	ITEM_QUALITY_Normal
+8439		Electronics Engineering Field Crafting Tool	EAS-40 Field Crafting Tool	ITEM_QUALITY_Normal
+8440		Electronics Engineering Field Crafting Tool	EAS-45 Field Crafting Tool	ITEM_QUALITY_Normal
+8441		Electronics Engineering Field Crafting Tool	EAS-50 Field Crafting Tool	ITEM_QUALITY_Normal
+8442		Electronics Engineering Field Crafting Tool	EAS-55 Field Crafting Tool	ITEM_QUALITY_Normal
+8443		Materials Engineering Field Crafting Tool	MAS-10 Field Crafting Tool	ITEM_QUALITY_Normal
+8444		Materials Engineering Field Crafting Tool	MAS-15 Field Crafting Tool	ITEM_QUALITY_Normal
+8445		Materials Engineering Field Crafting Tool	MAS-20 Field Crafting Tool	ITEM_QUALITY_Normal
+8446		Materials Engineering Field Crafting Tool	MAS-25 Field Crafting Tool	ITEM_QUALITY_Normal
+8447		Materials Engineering Field Crafting Tool	MAS-30 Field Crafting Tool	ITEM_QUALITY_Normal
+8448		Materials Engineering Field Crafting Tool	MAS-35 Field Crafting Tool	ITEM_QUALITY_Normal
+8449		Materials Engineering Field Crafting Tool	MAS-40 Field Crafting Tool	ITEM_QUALITY_Normal
+8450		Materials Engineering Field Crafting Tool	MAS-45 Field Crafting Tool	ITEM_QUALITY_Normal
+8451		Materials Engineering Field Crafting Tool	MAS-50 Field Crafting Tool	ITEM_QUALITY_Normal
+8452		Materials Engineering Field Crafting Tool	MAS-55 Field Crafting Tool	ITEM_QUALITY_Normal
+8454		Power Systems Engineering Field Crafting Tool	PSAS-15 Field Crafting Tool	ITEM_QUALITY_Normal
+8455		Power Systems Engineering Field Crafting Tool	PSAS-20 Field Crafting Tool	ITEM_QUALITY_Normal
+8456		Power Systems Engineering Field Crafting Tool	PSAS-25 Field Crafting Tool	ITEM_QUALITY_Normal
+8457		Power Systems Engineering Field Crafting Tool	PSAS-30 Field Crafting Tool	ITEM_QUALITY_Normal
+8458		Power Systems Engineering Field Crafting Tool	PSAS-35 Field Crafting Tool	ITEM_QUALITY_Normal
+8459		Power Systems Engineering Field Crafting Tool	PSAS-40 Field Crafting Tool	ITEM_QUALITY_Normal
+8460		Power Systems Engineering Field Crafting Tool	PSAS-45 Field Crafting Tool	ITEM_QUALITY_Normal
+8461		Power Systems Engineering Field Crafting Tool	PSAS-50 Field Crafting Tool	ITEM_QUALITY_Normal
+8462		Power Systems Engineering Field Crafting Tool	PSAS-55 Field Crafting Tool	ITEM_QUALITY_Normal
+8463		Electronics Engineering Field Crafting Tool	Efficient EAS-35 Field Crafting Tool	ITEM_QUALITY_Great
+8501		NO ITEM DESCRIPTION	Secondary Dye: Cherry	ITEM_QUALITY_Normal
+8465		Materials Engineering Field Crafting Tool	Efficient MAS-35 Field Crafting Tool	ITEM_QUALITY_Great
+8466		Power Systems Engineering Field Crafting Tool	Efficient PSAS-35 Field Crafting Tool	ITEM_QUALITY_Great
+8484		NO ITEM DESCRIPTION	Primary Dye: Scarlet	ITEM_QUALITY_Normal
+8487		NO ITEM DESCRIPTION	Primary Dye: Maroon	ITEM_QUALITY_Normal
+8488		NO ITEM DESCRIPTION	Primary Dye: Chocolate	ITEM_QUALITY_Normal
+8489		NO ITEM DESCRIPTION	Primary Dye: Mauve	ITEM_QUALITY_Normal
+8491		NO ITEM DESCRIPTION	Primary Dye: Puce	ITEM_QUALITY_Normal
+8492		NO ITEM DESCRIPTION	Primary Dye: Safety Orange	ITEM_QUALITY_Normal
+8493		NO ITEM DESCRIPTION	Primary Dye: Orange	ITEM_QUALITY_Normal
+8494		NO ITEM DESCRIPTION	Primary Dye: Pumpkin	ITEM_QUALITY_Normal
+8495		NO ITEM DESCRIPTION	Primary Dye: Tangerine	ITEM_QUALITY_Normal
+8496		NO ITEM DESCRIPTION	Primary Dye: Mahogany	ITEM_QUALITY_Normal
+8505		NO ITEM DESCRIPTION	Secondary Dye: Mauve	ITEM_QUALITY_Normal
+8506		NO ITEM DESCRIPTION	Secondary Dye: Sangria	ITEM_QUALITY_Normal
+8507		NO ITEM DESCRIPTION	Secondary Dye: Puce	ITEM_QUALITY_Normal
+8508		NO ITEM DESCRIPTION	Secondary Dye: Safety Orange	ITEM_QUALITY_Normal
+8509		NO ITEM DESCRIPTION	Secondary Dye: Orange	ITEM_QUALITY_Normal
+8511		NO ITEM DESCRIPTION	Secondary Dye: Tangerine	ITEM_QUALITY_Normal
+8512		NO ITEM DESCRIPTION	Secondary Dye: Pumpkin	ITEM_QUALITY_Normal
+8514		NO ITEM DESCRIPTION	Secondary Dye: Mahogany	ITEM_QUALITY_Normal
+8515		NO ITEM DESCRIPTION	Secondary Dye: Rust	ITEM_QUALITY_Normal
+8516		NO ITEM DESCRIPTION	Secondary Dye: Burnt Orange	ITEM_QUALITY_Normal
+8517		NO ITEM DESCRIPTION	Secondary Dye: Salmon	ITEM_QUALITY_Normal
+8518		NO ITEM DESCRIPTION	Primary Dye: Sun	ITEM_QUALITY_Normal
+8520		NO ITEM DESCRIPTION	Primary Dye: Amber	ITEM_QUALITY_Normal
+8521		NO ITEM DESCRIPTION	Primary Dye: Saffron	ITEM_QUALITY_Normal
+8522		NO ITEM DESCRIPTION	Primary Dye: Goldenrod	ITEM_QUALITY_Normal
+8523		NO ITEM DESCRIPTION	Primary Dye: Khaki	ITEM_QUALITY_Normal
+8524		NO ITEM DESCRIPTION	Primary Dye: Flax	ITEM_QUALITY_Normal
+8525		NO ITEM DESCRIPTION	Primary Dye: Sand	ITEM_QUALITY_Normal
+8526		NO ITEM DESCRIPTION	Secondary Dye: Sun	ITEM_QUALITY_Normal
+8527		NO ITEM DESCRIPTION	Secondary Dye: Lemon	ITEM_QUALITY_Normal
+8528		NO ITEM DESCRIPTION	Secondary Dye: Amber	ITEM_QUALITY_Normal
+8529		NO ITEM DESCRIPTION	Secondary Dye: Saffron	ITEM_QUALITY_Normal
+8530		NO ITEM DESCRIPTION	Secondary Dye: Goldenrod	ITEM_QUALITY_Normal
+8531		NO ITEM DESCRIPTION	Secondary Dye: Khaki	ITEM_QUALITY_Normal
+8532		NO ITEM DESCRIPTION	Secondary Dye: Flax	ITEM_QUALITY_Normal
+8533		NO ITEM DESCRIPTION	Secondary Dye: Sand	ITEM_QUALITY_Normal
+8534		NO ITEM DESCRIPTION	Primary Dye: Spring Green	ITEM_QUALITY_Normal
+8536		General Purpose Program	Workhorse General Purpose Program	ITEM_QUALITY_Normal
+8537		NO ITEM DESCRIPTION	Primary Dye: Lime	ITEM_QUALITY_Normal
+8538		NO ITEM DESCRIPTION	Primary Dye: Green	ITEM_QUALITY_Normal
+8539		NO ITEM DESCRIPTION	Primary Dye: Forest Green	ITEM_QUALITY_Normal
+8540		NO ITEM DESCRIPTION	Primary Dye: Asparagus	ITEM_QUALITY_Normal
+8541		NO ITEM DESCRIPTION	Primary Dye: Olive	ITEM_QUALITY_Normal
+8542		NO ITEM DESCRIPTION	Primary Dye: Camoflage Green	ITEM_QUALITY_Normal
+8543		NO ITEM DESCRIPTION	Secondary Dye: Spring Green	ITEM_QUALITY_Normal
+8544		NO ITEM DESCRIPTION	Secondary Dye: Chartreuse	ITEM_QUALITY_Normal
+3488		30% Mitigation	Prison Jumpsuit Ablative Vest	ITEM_QUALITY_Normal
+8545		NO ITEM DESCRIPTION	Secondary Dye: Lime	ITEM_QUALITY_Normal
+8546		NO ITEM DESCRIPTION	Secondary Dye: Green	ITEM_QUALITY_Normal
+8547		NO ITEM DESCRIPTION	Secondary Dye: Forest Green	ITEM_QUALITY_Normal
+8548		NO ITEM DESCRIPTION	Secondary Dye: Asparagus	ITEM_QUALITY_Normal
+8549		NO ITEM DESCRIPTION	Secondary Dye: Olive	ITEM_QUALITY_Normal
+8550		NO ITEM DESCRIPTION	Secondary Dye: Camoflage Green	ITEM_QUALITY_Normal
+8551		NO ITEM DESCRIPTION	Primary Dye: Bright Blue	ITEM_QUALITY_Normal
+8552		NO ITEM DESCRIPTION	Primary Dye: Egyptian Blue	ITEM_QUALITY_Normal
+8553		NO ITEM DESCRIPTION	Primary Dye: Lapis Lazuli	ITEM_QUALITY_Normal
+8554		NO ITEM DESCRIPTION	Primary Dye: Navy	ITEM_QUALITY_Normal
+8555		NO ITEM DESCRIPTION	Primary Dye: Sapphire	ITEM_QUALITY_Normal
+8556		NO ITEM DESCRIPTION	Primary Dye: Dress Blue	ITEM_QUALITY_Normal
+8557		NO ITEM DESCRIPTION	Primary Dye: Dark Olive	ITEM_QUALITY_Normal
+8558		NO ITEM DESCRIPTION	Primary Dye: Dress Grey	ITEM_QUALITY_Normal
+8559		NO ITEM DESCRIPTION	Secondary Dye: Dress Grey	ITEM_QUALITY_Normal
+8560		NO ITEM DESCRIPTION	Secondary Dye: Bright Blue	ITEM_QUALITY_Normal
+8561		NO ITEM DESCRIPTION	Secondary Dye: Egyptian Blue	ITEM_QUALITY_Normal
+8562		NO ITEM DESCRIPTION	Secondary Dye: Lapis Lazuli	ITEM_QUALITY_Normal
+8563		NO ITEM DESCRIPTION	Secondary Dye: Navy	ITEM_QUALITY_Normal
+8564		NO ITEM DESCRIPTION	Secondary Dye: Sapphire	ITEM_QUALITY_Normal
+5814	3	In bandolier: Free cheat per mini-game attempt.	Jaffa Mini-game Instrument	ITEM_QUALITY_Normal
+5815	4	In bandolier: Free cheat per mini-game attempt.	Scientist Mini-game Instrument	ITEM_QUALITY_Normal
+8565		NO ITEM DESCRIPTION	Secondary Dye: Dress Blue	ITEM_QUALITY_Normal
+8566		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+8567		NO ITEM DESCRIPTION	Primary Dye: Vivid Violet	ITEM_QUALITY_Normal
+8568		NO ITEM DESCRIPTION	Primary Dye: Electric Purple	ITEM_QUALITY_Normal
+2291		Unity Interface Module	UIM	ITEM_QUALITY_Normal
+8569		NO ITEM DESCRIPTION	Primary Dye: Dark Violet	ITEM_QUALITY_Normal
+8570		NO ITEM DESCRIPTION	Primary Dye: Rich Indigo	ITEM_QUALITY_Normal
+8571		NO ITEM DESCRIPTION	Primary Dye: Indigo	ITEM_QUALITY_Normal
+8572		NO ITEM DESCRIPTION	Primary Dye: Dye Indigo	ITEM_QUALITY_Normal
+8573		NO ITEM DESCRIPTION	Primary Dye: Burgundy	ITEM_QUALITY_Normal
+8574		NO ITEM DESCRIPTION	Primary Dye: Mulberry	ITEM_QUALITY_Normal
+8575		NO ITEM DESCRIPTION	Secondary Dye: Vivid Violet	ITEM_QUALITY_Normal
+8576		NO ITEM DESCRIPTION	Secondary Dye: Electric Purple	ITEM_QUALITY_Normal
+8577		NO ITEM DESCRIPTION	Secondary Dye: Dark Violet	ITEM_QUALITY_Normal
+8578		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+8579		NO ITEM DESCRIPTION	Secondary Dye: Indigo	ITEM_QUALITY_Normal
+8580		NO ITEM DESCRIPTION	Secondary Dye: Dye Indigo	ITEM_QUALITY_Normal
+8581		NO ITEM DESCRIPTION	Secondary Dye: Burgundy	ITEM_QUALITY_Normal
+8582		NO ITEM DESCRIPTION	Secondary Dye: Mulberry	ITEM_QUALITY_Normal
+8583		NO ITEM DESCRIPTION	Primary Dye: Fuschia	ITEM_QUALITY_Normal
+8584		NO ITEM DESCRIPTION	Primary Dye: Magenta	ITEM_QUALITY_Normal
+8585		NO ITEM DESCRIPTION	Primary Dye: Violet	ITEM_QUALITY_Normal
+8586		NO ITEM DESCRIPTION	Primary Dye: Deep Purple	ITEM_QUALITY_Normal
+8587		NO ITEM DESCRIPTION	Primary Dye: Royal Purple	ITEM_QUALITY_Normal
+8588		NO ITEM DESCRIPTION	Primary Dye: Midnight	ITEM_QUALITY_Normal
+8589		NO ITEM DESCRIPTION	Primary Dye: Viridian	ITEM_QUALITY_Normal
+8590		NO ITEM DESCRIPTION	Primary Dye: Faded Purple	ITEM_QUALITY_Normal
+8591		NO ITEM DESCRIPTION	Secondary Dye: Fuschia	ITEM_QUALITY_Normal
+8592		NO ITEM DESCRIPTION	Secondary Dye: Magenta	ITEM_QUALITY_Normal
+8593		NO ITEM DESCRIPTION	Secondary Dye: Violet	ITEM_QUALITY_Normal
+8594		NO ITEM DESCRIPTION	Secondary Dye: Deep Purple	ITEM_QUALITY_Normal
+8595		NO ITEM DESCRIPTION	Secondary Dye: Royal Purple	ITEM_QUALITY_Normal
+8596		NO ITEM DESCRIPTION	Secondary Dye: Midnight	ITEM_QUALITY_Normal
+8597		NO ITEM DESCRIPTION	Secondary Dye: Viridian	ITEM_QUALITY_Normal
+8598		NO ITEM DESCRIPTION	Secondary Dye: Faded Purple	ITEM_QUALITY_Normal
+8599		NO ITEM DESCRIPTION	Primary Dye: Black	ITEM_QUALITY_Normal
+8600		NO ITEM DESCRIPTION	Primary Dye: White	ITEM_QUALITY_Normal
+8601		NO ITEM DESCRIPTION	Primary Dye: Slate Grey	ITEM_QUALITY_Normal
+8602		NO ITEM DESCRIPTION	Primary Dye: Turquoise	ITEM_QUALITY_Normal
+8603		NO ITEM DESCRIPTION	Primary Dye: Verdigris	ITEM_QUALITY_Normal
+8604		NO ITEM DESCRIPTION	Primary Dye: Carmine	ITEM_QUALITY_Normal
+8605		NO ITEM DESCRIPTION	Primary Dye: Gold	ITEM_QUALITY_Normal
+8606		NO ITEM DESCRIPTION	Primary Dye: Earth Green	ITEM_QUALITY_Normal
+8607		NO ITEM DESCRIPTION	Secondary Dye: Black	ITEM_QUALITY_Normal
+8608		NO ITEM DESCRIPTION	Secondary Dye: White	ITEM_QUALITY_Normal
+8609		NO ITEM DESCRIPTION	Secondary Dye: Slate Grey	ITEM_QUALITY_Normal
+8610		NO ITEM DESCRIPTION	Secondary Dye: Turquoise	ITEM_QUALITY_Normal
+8611		NO ITEM DESCRIPTION	Secondary Dye: Verdigris	ITEM_QUALITY_Normal
+8612		NO ITEM DESCRIPTION	Secondary Dye: Carmine	ITEM_QUALITY_Normal
+8613		NO ITEM DESCRIPTION	Secondary Dye: Gold	ITEM_QUALITY_Normal
+8614		NO ITEM DESCRIPTION	Secondary Dye: Earth Green	ITEM_QUALITY_Normal
+8616		NO ITEM DESCRIPTION	GoaUld Starter Boots	ITEM_QUALITY_Normal
+8617		NO ITEM DESCRIPTION	GoaUld Starter Vest	ITEM_QUALITY_Normal
+8622		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Ab	ITEM_QUALITY_Normal
+8623		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Ac	ITEM_QUALITY_Normal
+8624		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Ba	ITEM_QUALITY_Normal
+8625		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Bb	ITEM_QUALITY_Normal
+8626		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Bc	ITEM_QUALITY_Normal
+8627		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Ca	ITEM_QUALITY_Normal
+8628		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Cb	ITEM_QUALITY_Normal
+8629		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Cc	ITEM_QUALITY_Normal
+8630		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Da	ITEM_QUALITY_Normal
+8632		NO ITEM DESCRIPTION	Blueprint: Tier 1 BioMedical Subcombine Dc	ITEM_QUALITY_Normal
+8633		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Ab	ITEM_QUALITY_Normal
+8634		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Ac	ITEM_QUALITY_Normal
+8635		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Ba	ITEM_QUALITY_Normal
+8636		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Bb	ITEM_QUALITY_Normal
+8637		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Bc	ITEM_QUALITY_Normal
+8638		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Ca	ITEM_QUALITY_Normal
+8639		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Cb	ITEM_QUALITY_Normal
+8640		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Cc	ITEM_QUALITY_Normal
+8641		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Da	ITEM_QUALITY_Normal
+8642		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Db	ITEM_QUALITY_Normal
+8643		NO ITEM DESCRIPTION	Blueprint: Tier 1 Electronics Subcombine Dc	ITEM_QUALITY_Normal
+8644		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Ab	ITEM_QUALITY_Normal
+8645		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Ac	ITEM_QUALITY_Normal
+8646		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Ba	ITEM_QUALITY_Normal
+8647		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Bb	ITEM_QUALITY_Normal
+8648		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Bc	ITEM_QUALITY_Normal
+8649		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Ca	ITEM_QUALITY_Normal
+8650		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Cb	ITEM_QUALITY_Normal
+8651		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Cc	ITEM_QUALITY_Normal
+8652		NO ITEM DESCRIPTION	NO ITEM NAME	ITEM_QUALITY_Normal
+8653		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Db	ITEM_QUALITY_Normal
+8654		NO ITEM DESCRIPTION	Blueprint: Tier 1 Power Systems Subcombine Dc	ITEM_QUALITY_Normal
+8655		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Ab	ITEM_QUALITY_Normal
+8656		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Ac	ITEM_QUALITY_Normal
+8657		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Ba	ITEM_QUALITY_Normal
+8658		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Bb	ITEM_QUALITY_Normal
+8660		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Ca	ITEM_QUALITY_Normal
+8661		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Cb	ITEM_QUALITY_Normal
+8662		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Cc	ITEM_QUALITY_Normal
+8663		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Da	ITEM_QUALITY_Normal
+8664		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Db	ITEM_QUALITY_Normal
+8665		NO ITEM DESCRIPTION	Blueprint: Tier 1 Materials Subcombine Dc	ITEM_QUALITY_Normal
+8666		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC3	ITEM_QUALITY_Normal
+8667		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC5	ITEM_QUALITY_Normal
+8668		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC8	ITEM_QUALITY_Normal
+8669		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC10	ITEM_QUALITY_Normal
+8670		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC13	ITEM_QUALITY_Normal
+8671		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC15	ITEM_QUALITY_Normal
+8672		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC18	ITEM_QUALITY_Normal
+8673		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC20	ITEM_QUALITY_Normal
+8674		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC23	ITEM_QUALITY_Normal
+8675		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC25	ITEM_QUALITY_Normal
+8676		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC28	ITEM_QUALITY_Normal
+8677		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC30	ITEM_QUALITY_Normal
+8678		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC33	ITEM_QUALITY_Normal
+8679		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC35	ITEM_QUALITY_Normal
+8680		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC38	ITEM_QUALITY_Normal
+8681		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC40	ITEM_QUALITY_Normal
+8682		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC43	ITEM_QUALITY_Normal
+8683		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC45	ITEM_QUALITY_Normal
+8684		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC48	ITEM_QUALITY_Normal
+8685		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC50	ITEM_QUALITY_Normal
+8687		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC53	ITEM_QUALITY_Normal
+8688		NO ITEM DESCRIPTION	Blueprint: Archaeologist Minigame Consumable TC55	ITEM_QUALITY_Normal
+8689		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC3	ITEM_QUALITY_Normal
+8690		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC5	ITEM_QUALITY_Normal
+8691		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC8	ITEM_QUALITY_Normal
+8692		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC10	ITEM_QUALITY_Normal
+8693		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC13	ITEM_QUALITY_Normal
+8694		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC15	ITEM_QUALITY_Normal
+8695		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC18	ITEM_QUALITY_Normal
+8696		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC20	ITEM_QUALITY_Normal
+8697		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC23	ITEM_QUALITY_Normal
+8698		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC25	ITEM_QUALITY_Normal
+8699		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC28	ITEM_QUALITY_Normal
+8700		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC30	ITEM_QUALITY_Normal
+8701		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC33	ITEM_QUALITY_Normal
+8702		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC35	ITEM_QUALITY_Normal
+8703		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC38	ITEM_QUALITY_Normal
+8704		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC40	ITEM_QUALITY_Normal
+8705		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC43	ITEM_QUALITY_Normal
+8706		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC45	ITEM_QUALITY_Normal
+8707		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC48	ITEM_QUALITY_Normal
+8708		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC50	ITEM_QUALITY_Normal
+8709		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC53	ITEM_QUALITY_Normal
+8710		NO ITEM DESCRIPTION	Blueprint: Asgard Minigame Consumable TC55	ITEM_QUALITY_Normal
+8711		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC3	ITEM_QUALITY_Normal
+8712		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC5	ITEM_QUALITY_Normal
+8713		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC8	ITEM_QUALITY_Normal
+8714		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC10	ITEM_QUALITY_Normal
+8715		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC13	ITEM_QUALITY_Normal
+8716		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC15	ITEM_QUALITY_Normal
+8717		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC18	ITEM_QUALITY_Normal
+10		The severed head of a gopher.	Gopher Head	ITEM_QUALITY_Normal
+1086		dec. target cover bonus	Airburst Rangefinder	ITEM_QUALITY_Normal
+1087		item no longer loses condition	Ancient Material Conversion	ITEM_QUALITY_Normal
+8718		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC20	ITEM_QUALITY_Normal
+8719		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC23	ITEM_QUALITY_Normal
+8720		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC25	ITEM_QUALITY_Normal
+8721		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC28	ITEM_QUALITY_Normal
+8722		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC30	ITEM_QUALITY_Normal
+8723		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC33	ITEM_QUALITY_Normal
+8724		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC35	ITEM_QUALITY_Normal
+8725		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC38	ITEM_QUALITY_Normal
+8726		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC40	ITEM_QUALITY_Normal
+8727		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC43	ITEM_QUALITY_Normal
+8728		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC45	ITEM_QUALITY_Normal
+8729		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC48	ITEM_QUALITY_Normal
+8730		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC50	ITEM_QUALITY_Normal
+8731		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC53	ITEM_QUALITY_Normal
+8732		NO ITEM DESCRIPTION	Blueprint: Commando Minigame Consumable TC55	ITEM_QUALITY_Normal
+8733		NO ITEM DESCRIPTION	Blueprint: Goa'uld Minigame Consumable TC3	ITEM_QUALITY_Normal
+8734		NO ITEM DESCRIPTION	Blueprint: Goa'uld Minigame Consumable TC5	ITEM_QUALITY_Normal
+8735		NO ITEM DESCRIPTION	Blueprint: Goa'uld Minigame Consumable TC8	ITEM_QUALITY_Normal
+8736		NO ITEM DESCRIPTION	Blueprint: Goa'uld Minigame Consumable TC10	ITEM_QUALITY_Normal
+5816	3	In bandolier: Free cheat per mini-game attempt.	Asgard Mini-game Instrument	ITEM_QUALITY_Normal

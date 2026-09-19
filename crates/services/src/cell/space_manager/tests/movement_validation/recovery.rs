@@ -521,6 +521,53 @@ fn an_out_of_bounds_respawner_is_skipped_in_favour_of_a_valid_one() {
     );
 }
 
+/// PR #662 review, finding 8. Six seeded `resources.respawners` rows are
+/// literal `(0, 0, 0)` placeholders — an unfilled seed cell, not an authored
+/// origin-adjacent spawn. The arrival path has filtered them out since Castle
+/// CA00; this path had not, so the same unauthored row that could never
+/// become a gate arrival could still snap a rubber-banding player to the
+/// world origin. Both now go through
+/// `cell::respawner_fallback::nearest_valid_respawner`.
+///
+/// Asserted on Agnos (no navmesh) so it holds on a checkout without the
+/// `data/` fixtures: `[0,0,0]` is inside the fallback AABB, so the bounds
+/// layer alone lets it through — the zero guard is the only thing that
+/// doesn't. Deleting the `is_unauthored` filter recovers onto the origin
+/// here, because it is also the nearest candidate to the stranded entity.
+#[test]
+fn an_unauthored_origin_respawner_is_never_a_recovery_target() {
+    const ORIGIN: [f32; 3] = [0.0, 0.0, 0.0];
+    const AUTHORED: [f32; 3] = [100.0, 0.0, 20.0];
+
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    mgr.respawners.push(respawner(1, "Agnos", ORIGIN));
+    mgr.respawners.push(respawner(2, "Agnos", AUTHORED));
+    mgr.update_entity_position(100, UNREACHABLE_POS, [0, 0, 0], [0.0; 3]);
+
+    let outcome = mgr.apply_client_position_update_at(
+        Instant::now(),
+        100,
+        UNREACHABLE_POS,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+
+    match outcome {
+        ClientMoveOutcome::Recovered { recovered_to, .. } => {
+            assert_ne!(
+                recovered_to, ORIGIN,
+                "a placeholder respawner row must not become a recovery target — \
+                 the player is teleported to the world origin and the correction \
+                 budget is cleared on the way"
+            );
+            assert_eq!(recovered_to, AUTHORED);
+        }
+        other => panic!("expected Recovered onto the authored respawner, got {other:?}"),
+    }
+}
+
 /// The navmesh half of the same rule: on a world that has a mesh, an authored
 /// respawner sitting off the walkable polygons is exactly as unusable as the
 /// position being recovered from, however close it is.

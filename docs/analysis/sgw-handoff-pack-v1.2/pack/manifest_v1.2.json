@@ -1,0 +1,329 @@
+{
+  "pack_name": "SGW_Claude_Server_Handoff_Pack_v1.2",
+  "generated_date": "2026-09-19",
+  "change": "Completes PROJECT Final-v1 combat formulas: armor/resistance/penetration, Focus/Health, status resist, AoE/LoS, TechComp/quality, stacking/caps and ammo fallback values.",
+  "combat_test_count": 29,
+  "combat_test_status": "PASS",
+  "files": [
+    {
+      "path": "data/SGW_Combat_Accuracy_Cover_Final_v1.json",
+      "bytes": 3039,
+      "sha256": "7e13f3528ee4e9abe85603b01b358046916c090a993d19aed1a0b05c7f53b91c"
+    },
+    {
+      "path": "data/SGW_Combat_System_Final_v1.json",
+      "bytes": 9109,
+      "sha256": "e222bbc01c30ec9734db6f5c064f0fe61721c8a0b23723cda43c475ba2a78228"
+    },
+    {
+      "path": "data/abilities_final_v1.json",
+      "bytes": 1122607,
+      "sha256": "ccfe71f0e443e56f7c76b8e2d42259cecb175142f8b23fb17fe8ecd70d0f9e50"
+    },
+    {
+      "path": "data/abilities_full_recovered_master.json",
+      "bytes": 3867554,
+      "sha256": "a983b40a428737ee84f9f317851fe3cdc0ae662acf301af10dcd2635afaf6411"
+    },
+    {
+      "path": "data/ability_reserve_review.json",
+      "bytes": 96708,
+      "sha256": "7ed3a3fa8e9989e0aec3735ba6d35d43807c621d6019e93ab13840e46f669724"
+    },
+    {
+      "path": "data/classes_and_skilltrees.json",
+      "bytes": 619933,
+      "sha256": "ebe587d5cb0f7b10fb5661da27861aa134e5062ded136ca9c9fa638778469e1b"
+    },
+    {
+      "path": "data/combat_config_v1.json",
+      "bytes": 9109,
+      "sha256": "e222bbc01c30ec9734db6f5c064f0fe61721c8a0b23723cda43c475ba2a78228"
+    },
+    {
+      "path": "data/items_weapons_ammo.json",
+      "bytes": 357872,
+      "sha256": "6cf3c9d8e24d45b00232b27b387186f9668942268fc2fe7857a7d3312ce711a4"
+    },
+    {
+      "path": "data/starter_loadouts.json",
+      "bytes": 2467,
+      "sha256": "e03fd75df693eb9697bbda1e4eb9b37076b9e6e03dc86d0432f38421ba60b5f9"
+    },
+    {
+      "path": "data/trainer_server_export.csv",
+      "bytes": 74108,
+      "sha256": "a845765e381125cfd2f5c5fb53e8ebd6bcec0d21c036b969b5aad3718bc911b2"
+    },
+    {
+      "path": "data/trainer_server_export.json",
+      "bytes": 267286,
+      "sha256": "730118717209f65ae0436e2e4e4150152060f2af124d2714963385601a26bd21"
+    },
+    {
+      "path": "data/weapons_full_recovered_variants.json",
+      "bytes": 1713890,
+      "sha256": "ba0408ed42b7a60c7ee1fc4e59b3738f23e3c1ff83359947adec3d959752ce12"
+    },
+    {
+      "path": "data/world_progression.json",
+      "bytes": 2336,
+      "sha256": "2f8ff6cf662dffde4e6f1f2235abe97eca29da652bb99078a4af779b944c9f5a"
+    },
+    {
+      "path": "docs/CLAUDE_START_PROMPT.md",
+      "bytes": 1709,
+      "sha256": "9c5a587f40a2c0bb5f0995ef3741daba80c98bb70fef2d0dc536ab22268a241a"
+    },
+    {
+      "path": "docs/COMBAT_ACCURACY_COVER_FINAL_V1.md",
+      "bytes": 2418,
+      "sha256": "3e690ff46772656691c3af40dfe868db29d19b1166cceecb13df031a1df0bd1a"
+    },
+    {
+      "path": "docs/COMBAT_SPEC.md",
+      "bytes": 2212,
+      "sha256": "7dfe12b5534562796cf81774e2969633ebae4185211e5597389effb795e6b915"
+    },
+    {
+      "path": "docs/COMBAT_SYSTEM_FINAL_V1.md",
+      "bytes": 5979,
+      "sha256": "e123d44f930e55a4551f744ae18558b7a7b164a4ff8e39e4b6202bd068a3bcdc"
+    },
+    {
+      "path": "docs/IMPLEMENTATION_CHECKLIST.md",
+      "bytes": 2946,
+      "sha256": "b18e242ae228d93e76ab403a1351b4a839f4c4d19a17e62c4fa970dd0234970f"
+    },
+    {
+      "path": "docs/KNOWN_UNKNOWNS.md",
+      "bytes": 2194,
+      "sha256": "36f761e3904951aa1390eb3da6d55a15d15a9e2f80337c361b6719427b79c653"
+    },
+    {
+      "path": "docs/QA_TESTS.md",
+      "bytes": 3509,
+      "sha256": "0397ce4c32f29ef303933cbfa83b2ca01c6b70ef138b16651bc63528f7385d09"
+    },
+    {
+      "path": "docs/README.md",
+      "bytes": 2665,
+      "sha256": "496a34092c1b7f387a79aaea7bcb094c27a7839897c73f3ddb78ed3be1dbf1fc"
+    },
+    {
+      "path": "docs/SERVER_SCHEMA_PROPOSAL.md",
+      "bytes": 1636,
+      "sha256": "2ca993fa1b6d69f5afec08a404c14f90d690e0d08b6eb9000019ec61fdff48c0"
+    },
+    {
+      "path": "docs/SOURCE_POLICY.md",
+      "bytes": 1463,
+      "sha256": "4c815a67ad1b3071c64d518845f09e5fe74c3f8e37feebaf1d1d2cb9f11b055d"
+    },
+    {
+      "path": "docs/WORLD_CONTENT_INDEX.md",
+      "bytes": 1723,
+      "sha256": "3ffc9b4419916f2e75673fafbbef20cc300dedbaedd3e212b25c6e303a05c5df"
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 11136,
+      "sha256": "74de58fb5e02492598c71666c7bf98de0f1d4c795e6ddc803f1168123130f427"
+    },
+    {
+      "path": "manifest_v1.1.json",
+      "bytes": 11280,
+      "sha256": "eceeb9f57deec65de1859c6a03c5f3d3beddad52b787a901edb4c140bc2bf6ca"
+    },
+    {
+      "path": "references/class_and_combat/SGW_All_Classes_Progression_Final_v1.xlsx",
+      "bytes": 178799,
+      "sha256": "c78840961023140bfbe56c28fd4021cfe2bfc5e93309bf172cea085dca554a14"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Archaeologist_Ability_Audit_v1.xlsx",
+      "bytes": 52841,
+      "sha256": "3538dfb680a8f618f3d80b4d0a2395a5d01c797bffcfdb29d00b0f49569962eb"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Asgard_Ability_Audit_v1.xlsx",
+      "bytes": 73565,
+      "sha256": "0a7d156958f5b915792b80e09ce4d3bfd989f24778567087a5fa9dbca3c5a71a"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Combat_Accuracy_Cover_Final_v1.xlsx",
+      "bytes": 17678,
+      "sha256": "b481b7072addb2386c36b19597970f60341dbec1f0f3fb8bda10892d7bd9a788"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Combat_Implementation_Master_v2.xlsx",
+      "bytes": 321632,
+      "sha256": "12a529de16b05a5155ffcce93982a543f052a97fd96d9ffc195cdd899b357b5a"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Combat_Missing_Formulas.txt",
+      "bytes": 1764,
+      "sha256": "65626ccb0991edad31b654329847ec6628e19085580a851957c1b87ce2f62479"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Combat_System_Final_v1.xlsx",
+      "bytes": 24749,
+      "sha256": "7f97129c52b8db263b434893bce32ef2fdcc8ade8af2eefcfdf32fab6380a9c3"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Jaffa_Goauld_Ability_Audit_v1.xlsx",
+      "bytes": 130584,
+      "sha256": "0a17565405d16629e072427ea3f02516116858c8b4efef9cf3f0444e46300d53"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Soldier_Progression_Final_v1.xlsx",
+      "bytes": 36967,
+      "sha256": "ffc4e8ea7aaa0ee7c7b679d3989cf251e08f93d75230711f0a7e295e2bed74b7"
+    },
+    {
+      "path": "references/class_and_combat/SGW_Weapon_Reconstruction_Master_Phase1_v1.xlsx",
+      "bytes": 234300,
+      "sha256": "df60acccb8cbb5320ed9ce2a19418f47eeceba5dd63019568272dff128da1af2"
+    },
+    {
+      "path": "references/source_extracts/MASTER_SOURCE(4).md",
+      "bytes": 15422,
+      "sha256": "641c7a4aec18551bb1cce465c65be5f2e2d7833bfa935c231b887c9001ae32c8"
+    },
+    {
+      "path": "references/source_extracts/SlashCommands_FullTable(1).txt",
+      "bytes": 70389,
+      "sha256": "ec475e104e9316a4ba20d4b5ef0eb6e6f7cfb91672ad177b099e760718aaf6be"
+    },
+    {
+      "path": "references/source_extracts/Tipps.txt",
+      "bytes": 19363,
+      "sha256": "7baa6bf61e44a6ea034b10072d43cca2ee8d07af6852bc8e512f54567ca50377"
+    },
+    {
+      "path": "references/source_extracts/abilities names and ids(1).txt",
+      "bytes": 95520,
+      "sha256": "999be10b70612f19b26e089b8608c268b69787bfe4bbed09776712b278099d64"
+    },
+    {
+      "path": "references/source_extracts/ability_set_abilities.sql",
+      "bytes": 261,
+      "sha256": "8e276d9f0a286bfc30f8c91779bd86df6c4dfbe0e1c53957c5a28644473a6d19"
+    },
+    {
+      "path": "references/source_extracts/ability_sets.sql",
+      "bytes": 326,
+      "sha256": "795b6f0103e8fd9bc8c24ca04364db490cd5e486a91b27503dadc9961b85edee"
+    },
+    {
+      "path": "references/source_extracts/archetype_ability_tree.sql",
+      "bytes": 31028,
+      "sha256": "b3bacd1ac1ee77ca86cc82690ad9c5004f775de651fc2747b95dbd32d3d789b2"
+    },
+    {
+      "path": "references/source_extracts/archetypes.sql",
+      "bytes": 2366,
+      "sha256": "b313de2e7e6f0e26dbd0fc27a00509003d149218173f3cdb464c05fa7ceed361"
+    },
+    {
+      "path": "references/source_extracts/items names and ids(1).txt",
+      "bytes": 86215,
+      "sha256": "dbd9324c6a017b1c4ea863ba84c7773879ada88321545a8d4ca0167041909dd1"
+    },
+    {
+      "path": "references/source_extracts/missions names descriptions and ids(1).txt",
+      "bytes": 55170,
+      "sha256": "534effdcea87ae8f8bcffabb68718f89357b95a6ee9f1c069d1316994a45efd9"
+    },
+    {
+      "path": "references/source_extracts/stargates(1).txt",
+      "bytes": 4260,
+      "sha256": "b805e41d233a671acb39fc6a2b60ffa59b655b3acb9966fc169f4f0176802e70"
+    },
+    {
+      "path": "references/world_content/SGW_Asgard_High_Council_Dev_Master_v1.xlsx",
+      "bytes": 52845,
+      "sha256": "ae12ca0b93697331b2f167001188ae5618b75bcf40364d572ced219bfb2fe778"
+    },
+    {
+      "path": "references/world_content/SGW_Beta_Site_Complete_Dev_Master_v1.xlsx",
+      "bytes": 270045,
+      "sha256": "23ee0c8007fd4d12a427205e124f38f49f536375e19cf59ce49640e6e7ba63ec"
+    },
+    {
+      "path": "references/world_content/SGW_Castle_CellBlock_Dev_Master_v3(2).xlsx",
+      "bytes": 81123,
+      "sha256": "3eca493b48b1f3aa2e7a8212e778dd9ce6b9eafa8262a369b07bfcff3f5d3637"
+    },
+    {
+      "path": "references/world_content/SGW_Castle_Dev_Master_v1.xlsx",
+      "bytes": 90318,
+      "sha256": "7a8b579fa13a0c70dcf9e7310a51456ce40d0790d4b882863d8ca6bce00f38e9"
+    },
+    {
+      "path": "references/world_content/SGW_Dakara_Free_Jaffa_Starter_Dev_Master_v1.xlsx",
+      "bytes": 77920,
+      "sha256": "37cc5968f8ff42c99b3d413e6d6a302be1f167c73936b223d51c55b5c6f7049f"
+    },
+    {
+      "path": "references/world_content/SGW_Dakara_Multi-Visit_Dev_Master_v1.xlsx",
+      "bytes": 208711,
+      "sha256": "0b24d3ce1d0f67d1c19c77b6d8ef40fe6142a3d60765aae774acac4c428373d1"
+    },
+    {
+      "path": "references/world_content/SGW_Earth_SGC_Goauld_Visit_Dev_Master_v1.xlsx",
+      "bytes": 48709,
+      "sha256": "f6ad642b97de503a964b5b8fa0e4673026a54b2fa4b1e1bab8b4f9301a056869"
+    },
+    {
+      "path": "references/world_content/SGW_Earth_SGC_SGU_Human_Starter_Dev_Master_v1.xlsx",
+      "bytes": 51739,
+      "sha256": "be88b91168252f3bcba75f37aeae6f1ae3fc95fd462848648e9b7d8921db1eba"
+    },
+    {
+      "path": "references/world_content/SGW_Free_Jaffa_Full_Starter_Prologue_to_Omega_v2.xlsx",
+      "bytes": 90109,
+      "sha256": "924161f5cc64dfcf719473c6e3efab9dd4d1f7e8770e0523478678427eb6a686"
+    },
+    {
+      "path": "references/world_content/SGW_Harset_Dev_Master_v1.xlsx",
+      "bytes": 305528,
+      "sha256": "bd9b41379c07cfb0f42a5d9b99157bc9b2220ae64359e82e212c9767e1d482c5"
+    },
+    {
+      "path": "references/world_content/SGW_Ihpet_Complete_Dev_Master_v1.xlsx",
+      "bytes": 201764,
+      "sha256": "6cecd4f6e99bac9e8e2eb1679e5ad38157ee3e3a2464580d009ea4ac44665ecc"
+    },
+    {
+      "path": "references/world_content/SGW_Menfa_Complete_Dev_Master_v1.xlsx",
+      "bytes": 184412,
+      "sha256": "fe61f21baa6cab8e009cc00df0adeb6895df9a19f326f659fa88b02bf35474a6"
+    },
+    {
+      "path": "references/world_content/SGW_Naitac_Reconstruction_Dev_Master_v1.xlsx",
+      "bytes": 28489,
+      "sha256": "9fd12647cae801cf9ec82ed123a38e3dbc2cf0484b9b0e83e0f859df11475444"
+    },
+    {
+      "path": "references/world_content/SGW_Omega_Site_Dev_Master_v1.xlsx",
+      "bytes": 252824,
+      "sha256": "63bb6afa339f75e0446e3cc25397328526bacc4d0a2b11d0687d5347aacc7dba"
+    },
+    {
+      "path": "references/world_content/SGW_Pen-Lai_Dev_Master_v1.xlsx",
+      "bytes": 38065,
+      "sha256": "af27188ed887642da4dbb3d9d70a4126540abc336c1223c4e59be043bfd58137"
+    },
+    {
+      "path": "references/world_content/SGW_Pertho_Asgard_Starter_Dev_Master_v1.xlsx",
+      "bytes": 63059,
+      "sha256": "48e092c576e88fec0d64d7ab14c43f097ddfbc7f8021e575967a9d47535a906d"
+    },
+    {
+      "path": "references/world_content/SGW_SGU_Human_Full_Starter_Prologue_to_Omega_v2.xlsx",
+      "bytes": 115000,
+      "sha256": "5a72da8fa1eaa6d14c5eb25f50003398ee4da683396d7ff4f01e22c52bf8ac98"
+    }
+  ]
+}
