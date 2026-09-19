@@ -66,7 +66,8 @@ fn add_player(mgr: &mut SpaceManager, id: u32, x: f32) {
 /// idle-auto-aggro scan skips same-faction players, and players default
 /// to faction 0.
 fn add_npc(mgr: &mut SpaceManager, id: u32, x: f32) {
-    mgr.spawn_npc(id, "Castle", [x, 0.0, 0.0], [0.0; 3]).unwrap();
+    mgr.spawn_npc(id, "Castle", [x, 0.0, 0.0], [0.0; 3])
+        .unwrap();
     if let Some(npc) = mgr.get_entity_mut(id) {
         npc.faction = HOSTILE_FACTION;
         if let Some(h) = npc.stats.get_mut(HEALTH) {
@@ -508,9 +509,15 @@ async fn submit_cancels_channels_the_npc_was_running() {
     mgr.effect_defs.insert(9101, channel.clone());
 
     let (tx, _rx) = mpsc::channel(64);
-    let registered =
-        crate::cell::effects::register_active_effect(&mut mgr, PLAYER_A, NPC, &channel, Instant::now(), &tx)
-            .await;
+    let registered = crate::cell::effects::register_active_effect(
+        &mut mgr,
+        PLAYER_A,
+        NPC,
+        &channel,
+        Instant::now(),
+        &tx,
+    )
+    .await;
     assert!(
         registered,
         "fixture invariant: the channel must actually register"
