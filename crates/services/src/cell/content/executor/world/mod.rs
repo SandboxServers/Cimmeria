@@ -530,7 +530,10 @@ pub(super) async fn move_entity(
 /// next frame rather than whenever the 100ms AoI tick next relays ghost
 /// positions. Witnesses the move drops entirely still get their `LeftAoI`
 /// from that tick, so a long-distance reposition needs no extra fan-out
-/// here.
+/// here. That immediate fan-out deliberately duplicates the AoI tick's own
+/// `EntityMoved` relay; harmless while NPC `UPDATE_AVATAR`/`EntityMoved`
+/// remains unreliable and self-correcting, but it would amplify position
+/// updates if that path ever becomes reliable for NPCs.
 pub(super) async fn move_waypoint(
     entity_tag: String,
     destination: [f32; 3],
