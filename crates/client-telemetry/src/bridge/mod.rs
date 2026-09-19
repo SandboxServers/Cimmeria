@@ -27,22 +27,40 @@
 
 use std::io;
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use serde_json::Value;
 
+pub mod crash;
 pub mod dispatch;
+pub mod journal;
 pub mod lua_eval;
 pub mod memory;
 pub mod transport;
 
 pub use crate::session::LabConfig;
 pub use dispatch::{RpcError, RpcRequest, RpcResponse};
+pub use journal::CrashMarker;
 pub use memory::ModuleInfo;
 pub use transport::{TransportError, MAX_FRAME_LEN};
+
+/// Tick-drain heartbeat counter. Incremented once per
+/// [`drain_main_thread`] call — i.e. once per `FEngineLoop::Tick`. The
+/// supervisor reads it through the `heartbeat` JSON-RPC method: a
+/// counter that stops advancing means the main thread is wedged (a
+/// modal load, a crash dialog, or a hang), and the supervisor
+/// terminates the process (ADR §6). Monotonic; wraps only after 2^64
+/// frames (never, in practice).
+static HEARTBEAT: AtomicU64 = AtomicU64::new(0);
+
+/// Current heartbeat (Tick-drain) count. Read on the main thread by the
+/// `heartbeat` dispatch method.
+pub fn heartbeat_count() -> u64 {
+    HEARTBEAT.load(Ordering::Relaxed)
+}
 
 /// Bounded dispatch queue capacity. Small on purpose — the client is
 /// synchronous (one outstanding request), so this is headroom, not a
@@ -83,7 +101,15 @@ impl BridgeHandle {
     /// Lua VM and process memory.
     pub fn drain(&self) {
         while let Ok(pending) = self.req_rx.try_recv() {
+            // Flag the command as executing so the crash filter can tell
+            // the supervisor a command was in flight when a fault hit
+            // (ADR §6 quarantine). Cleared unconditionally after the
+            // body returns — an *error response* is a normal outcome; a
+            // left-set flag only survives an actual fault, which
+            // terminates the process before the clear runs.
+            journal::mark_in_flight();
             let resp = dispatch::dispatch(&pending.request);
+            journal::clear_in_flight();
             // Client may have disconnected mid-flight; that's fine.
             let _ = pending.respond.send(resp);
         }
@@ -139,7 +165,14 @@ pub fn install_handle(handle: BridgeHandle) -> bool {
 
 /// Main-thread drain entry point, called once per frame from the
 /// `FEngineLoop::Tick` hook. No-op until a bridge is installed.
+///
+/// Bumps the [`HEARTBEAT`] counter **unconditionally** (even before a
+/// bridge is installed and even on frames with no queued commands) so
+/// the supervisor's watchdog measures the game's tick liveness, not
+/// bridge traffic. A frame that never reaches here is exactly the "main
+/// thread wedged" case the watchdog exists to catch.
 pub fn drain_main_thread() {
+    HEARTBEAT.fetch_add(1, Ordering::Relaxed);
     if let Some(handle) = BRIDGE.get() {
         handle.drain();
     }

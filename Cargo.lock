@@ -849,6 +849,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-client-launch"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.20",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "cimmeria-client-telemetry"
 version = "0.1.0"
 dependencies = [
@@ -983,12 +992,18 @@ name = "cimmeria-lab"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
+ "cimmeria-client-launch",
+ "png 0.17.16",
  "rmcp",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6068,6 +6083,7 @@ name = "sgw-launcher"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "cimmeria-client-launch",
  "ed25519-dalek",
  "eframe",
  "egui",
