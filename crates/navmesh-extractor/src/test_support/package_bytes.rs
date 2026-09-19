@@ -61,9 +61,12 @@ struct ExportRecord {
 
 impl ExportRecord {
     /// Fixed because `ComponentMap` and `GenerationNetObjectCount` are
-    /// always empty here: 3 index i32s + FName + archetype + u64 flags
-    /// + size + offset + empty-map count + export flags + empty-array
-    /// count + 16-byte GUID.
+    /// always empty here: 3 index i32s, FName, archetype, u64 flags,
+    /// size, offset, empty-map count, export flags, empty-array count,
+    /// 16-byte GUID.
+    //
+    // Commas, not `+`: a wrapped line starting with `+ ` reads as a
+    // Markdown list item to clippy's `doc_lazy_continuation`.
     const SIZE: usize = 68;
 
     fn encode(&self, out: &mut Vec<u8>, serial_offset: i32) {

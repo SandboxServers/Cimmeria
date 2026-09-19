@@ -54,6 +54,42 @@ const MIN_UP: f32 = std::f32::consts::FRAC_1_SQRT_2;
 /// Centimetres per BigWorld unit.
 const CM_PER_BW: f32 = 100.0;
 
+/// Lower-case substrings that would make a mesh vertical circulation
+/// or a doorway — the shapes that decide whether a navmesh gap is
+/// missing geometry or a scripted link. Matched against the resolved
+/// `package:object` key, so a prefab's own name cannot hide the mesh it
+/// actually places.
+const TRAVERSAL_KEYWORDS: &[&str] = &[
+    "elevator",
+    "lift",
+    "platform",
+    "stair",
+    "ramp",
+    "ladder",
+    "step",
+    "escalator",
+    "catwalk",
+    "bridge",
+    "walkway",
+    "door",
+    "gate",
+    "hatch",
+];
+
+/// One actor whose resolved mesh name matched [`TRAVERSAL_KEYWORDS`].
+struct Traversal {
+    chunk: String,
+    mesh: String,
+    bw: [f32; 3],
+    /// `direct` or `stub` — whether the mesh came off the instance's
+    /// own component or off the prefab archetype.
+    kind: &'static str,
+    /// Merged `bCollideActors`. `false` means it is NOT in the navmesh.
+    collides: bool,
+    /// Export-table `Archetype` is non-zero.
+    archetype_instanced: bool,
+}
+
 /// `bw = (ue.Y, ue.Z, ue.X) / 100` — the calibrated Castle mapping.
 fn ue3_to_bw(v: [f32; 3]) -> [f32; 3] {
     [v[1] / CM_PER_BW, v[2] / CM_PER_BW, v[0] / CM_PER_BW]
@@ -88,7 +124,10 @@ struct Placement {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let cooked = PathBuf::from(args.next().expect("usage: archetype_census <cooked-root> <map>"));
+    let cooked = PathBuf::from(
+        args.next()
+            .expect("usage: archetype_census <cooked-root> <map>"),
+    );
     let map = args.next().expect("map name");
     let mut positions_out: Option<PathBuf> = None;
     let mut meshes_out: Option<PathBuf> = None;
@@ -123,6 +162,7 @@ fn main() {
     let mut comp_transform_props: BTreeMap<String, u64> = BTreeMap::new();
     let mut actor_inherited_transform: BTreeMap<String, u64> = BTreeMap::new();
     let mut collision_disabled: BTreeMap<String, u64> = BTreeMap::new();
+    let mut traversal: Vec<Traversal> = Vec::new();
     let mut stub_total = 0u64;
     let mut direct_total = 0u64;
 
@@ -202,42 +242,63 @@ fn main() {
                 archetype::ActorArchetypeProps::default()
             };
             let kind = if is_stub { "stub" } else { "direct" };
-            if !arch.collides(&props) {
+            let collides = arch.collides(&props);
+
+            // Resolve the mesh for EVERY actor, emitted or not: the
+            // traversal scan below has to see suppressed actors too
+            // (an elevator with collision off is exactly the case that
+            // would otherwise look like "no elevator in the map").
+            let mesh_name = if is_stub {
+                archetype::resolve_via_archetype(&pkg, component, &index, &mut cache, &mut open)
+            } else {
+                mesh_ref::resolve_mesh_ref_from_component(&pkg, comp_ref)
+            }
+            .map(|(p, o)| format!("{p}:{o}"))
+            .unwrap_or_else(|r| format!("<{r:?}>"));
+
+            if TRAVERSAL_KEYWORDS
+                .iter()
+                .any(|k| mesh_name.to_lowercase().contains(k))
+            {
+                let xf = arch.merge_transform(&props);
+                let bw = ue3_to_bw(xf.location);
+                traversal.push(Traversal {
+                    chunk: chunk_name.clone(),
+                    mesh: mesh_name.clone(),
+                    bw,
+                    kind,
+                    collides,
+                    archetype_instanced: export.archetype != 0,
+                });
+            }
+
+            if !collides {
                 let path = import_chain(&pkg, export.archetype)
                     .map(|c| c.join("."))
                     .unwrap_or_else(|| "<instance>".to_string());
-                // Name the mesh it *would* have emitted — for the
-                // direct half this is the only way to see what the
-                // pre-existing over-emission consists of.
-                let mesh = if is_stub {
-                    archetype::resolve_via_archetype(
-                        &pkg, component, &index, &mut cache, &mut open,
-                    )
-                } else {
-                    mesh_ref::resolve_mesh_ref_from_component(&pkg, comp_ref)
-                }
-                .map(|(p, o)| format!("{p}:{o}"))
-                .unwrap_or_else(|r| format!("<{r:?}>"));
+                // Naming the mesh it *would* have emitted is the only
+                // way to see what the pre-existing over-emission on the
+                // direct half consists of.
                 *collision_disabled
-                    .entry(format!("{kind}\t{mesh}\t{path}"))
+                    .entry(format!("{kind}\t{mesh_name}\t{path}"))
                     .or_default() += 1;
                 continue;
             }
-            if arch.rotation.is_some() && !props.iter().any(|p| p.name == "Rotation") {
-                *actor_inherited_transform
-                    .entry(format!("{kind}:Rotation {:?}", arch.rotation.unwrap()))
-                    .or_default() += 1;
-            }
-            if arch.draw_scale_3d.is_some() && !props.iter().any(|p| p.name == "DrawScale3D") {
-                *actor_inherited_transform
-                    .entry(format!("{kind}:DrawScale3D {:?}", arch.draw_scale_3d.unwrap()))
-                    .or_default() += 1;
-            }
-            if arch.draw_scale.is_some() && !props.iter().any(|p| p.name == "DrawScale") {
-                *actor_inherited_transform
-                    .entry(format!("{kind}:DrawScale {:?}", arch.draw_scale.unwrap()))
-                    .or_default() += 1;
-            }
+            let mut note_inherited = |name: &str, value: Option<String>| {
+                // Only interesting when the archetype supplies it AND
+                // the instance is silent — that is the case where the
+                // pre-archetype extractor placed the mesh wrong.
+                if let Some(v) = value {
+                    if !props.iter().any(|p| p.name == name) {
+                        *actor_inherited_transform
+                            .entry(format!("{kind}:{name} {v}"))
+                            .or_default() += 1;
+                    }
+                }
+            };
+            note_inherited("Rotation", arch.rotation.map(|v| format!("{v:?}")));
+            note_inherited("DrawScale3D", arch.draw_scale_3d.map(|v| format!("{v:?}")));
+            note_inherited("DrawScale", arch.draw_scale.map(|v| format!("{v}")));
             if !props.iter().any(|p| p.name == "Location") {
                 *actor_inherited_transform
                     .entry(format!("{kind}:NO Location on the instance"))
@@ -257,7 +318,9 @@ fn main() {
             let key = match resolved {
                 Ok(k) => k,
                 Err(reason) => {
-                    *failures.entry(format!("{reason:?} {arch_path}")).or_default() += 1;
+                    *failures
+                        .entry(format!("{reason:?} {arch_path}"))
+                        .or_default() += 1;
                     continue;
                 }
             };
@@ -337,6 +400,31 @@ fn main() {
         println!("{n}\t{k}");
     }
     println!("TOTAL\t{cd_total}");
+
+    println!("\n== traversal-keyword actors (elevator/lift/stair/ramp/door/...) ==");
+    if traversal.is_empty() {
+        println!("(none)");
+    }
+    println!("bw_x\tbw_y\tbw_z\tchunk\tsource\tcollides\tarchetype\tmesh");
+    traversal.sort_by(|a, b| {
+        a.mesh
+            .cmp(&b.mesh)
+            .then(a.bw[0].total_cmp(&b.bw[0]))
+            .then(a.bw[2].total_cmp(&b.bw[2]))
+    });
+    for t in &traversal {
+        println!(
+            "{:.2}\t{:.2}\t{:.2}\t{}\t{}\t{}\t{}\t{}",
+            t.bw[0],
+            t.bw[1],
+            t.bw[2],
+            t.chunk,
+            t.kind,
+            if t.collides { "yes" } else { "NO" },
+            if t.archetype_instanced { "yes" } else { "no" },
+            t.mesh
+        );
+    }
 
     println!("\n== resolution failures ==");
     if failures.is_empty() {

@@ -84,14 +84,22 @@
 //! `archetype_census` binary re-measures both claims, so a map that
 //! behaves differently surfaces rather than silently shifting meshes.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use cimmeria_upk::{ExportEntry, Package, PropValue, TaggedProperty};
 use cimmeria_upk_objects::PackageIndex;
 
 use crate::coverage::SkipReason;
-use crate::staticmesh::mesh_ref::{find_float, find_object, find_rotator, find_vector, MeshRefResult};
+use crate::staticmesh::mesh_ref::{
+    find_float, find_object, find_rotator, find_vector, MeshRefResult,
+};
 use crate::transform::ActorTransform;
+
+pub mod chain;
+#[cfg(test)]
+mod tests;
+
+pub use chain::{walk_actor_chain, walk_mesh_chain, ActorProbe, TemplateProbe};
 
 /// How many `Archetype` hops to follow before declaring the chain
 /// pathological. Real SGW prefabs resolve in exactly one hop; the
@@ -362,45 +370,28 @@ pub fn resolve_actor_archetype(
         return *hit;
     }
     cache.misses += 1;
-    let props = walk_actor_chain(&chain, index, open, &mut HashSet::new(), 0);
+    let props = chain::walk_actor_chain(&chain, &mut |c| read_actor_template(c, index, open));
     cache.actor_props.insert(key, props);
     props
 }
 
-fn walk_actor_chain(
+/// Read one template actor out of its package, for
+/// [`chain::walk_actor_chain`].
+fn read_actor_template(
     chain: &[String],
     index: &PackageIndex,
     open: &mut OpenPrefabs,
-    visited: &mut HashSet<String>,
-    depth: usize,
-) -> ActorArchetypeProps {
-    if depth >= MAX_ARCHETYPE_DEPTH || !visited.insert(chain.join(".")) {
-        return ActorArchetypeProps::default();
-    }
+) -> Option<ActorProbe> {
     let path = chain[1..].join(".");
-    let Some((mut here, next_archetype)) = open.get(chain, index).and_then(|loaded| {
-        let idx = *loaded.by_path.get(&path)?;
-        let tmpl = &loaded.pkg.exports[idx];
-        let data = loaded.pkg.read_export_data(tmpl).ok()?;
-        let props =
-            cimmeria_upk::parse_tagged_properties(&data, ACTOR_PROP_OFFSET, &loaded.pkg.names);
-        Some((
-            ActorArchetypeProps::from_props(&props),
-            import_chain(&loaded.pkg, tmpl.archetype),
-        ))
-    }) else {
-        return ActorArchetypeProps::default();
-    };
-
-    // Keep climbing only while something is still undefined; a template
-    // that pins every field makes the rest of the chain irrelevant.
-    if !here.is_complete() {
-        if let Some(next) = next_archetype.filter(|c| c.len() >= 2) {
-            let up = walk_actor_chain(&next, index, open, visited, depth + 1);
-            here.inherit_from(&up);
-        }
-    }
-    here
+    let loaded = open.get(chain, index)?;
+    let idx = *loaded.by_path.get(&path)?;
+    let tmpl = &loaded.pkg.exports[idx];
+    let data = loaded.pkg.read_export_data(tmpl).ok()?;
+    let props = cimmeria_upk::parse_tagged_properties(&data, ACTOR_PROP_OFFSET, &loaded.pkg.names);
+    Some(ActorProbe {
+        props: ActorArchetypeProps::from_props(&props),
+        next: import_chain(&loaded.pkg, tmpl.archetype),
+    })
 }
 
 /// Resolve a stub component's `StaticMesh` by walking its archetype
@@ -426,115 +417,98 @@ pub fn resolve_via_archetype(
         }
     }
 
-    let Some(chain) = import_chain(pkg, component.archetype) else {
-        if component.archetype > 0 {
-            return resolve_local_archetype(pkg, component.archetype, index, cache, open);
-        }
-        return Err(SkipReason::ArchetypeUnrooted);
+    let chain = match import_chain(pkg, component.archetype) {
+        Some(chain) => chain,
+        // A positive archetype is a template in this same package:
+        // rare in cooked chunks, since the cooker imports prefab
+        // templates, but the editor writes it for a prefab instanced
+        // from a template in the same map.
+        None if component.archetype > 0 => match local_template_probe(pkg, component.archetype) {
+            Err(reason) => return Err(reason),
+            Ok(probe) => {
+                if probe.collide_actors == Some(false) {
+                    return Err(SkipReason::CollisionDisabled);
+                }
+                if let Some(mesh) = probe.mesh {
+                    return mesh;
+                }
+                match probe.next {
+                    Some(next) => next,
+                    None => return Err(SkipReason::ArchetypeNoMesh),
+                }
+            }
+        },
+        None => return Err(SkipReason::ArchetypeUnrooted),
     };
     if chain.len() < 2 {
         // A bare package reference with no object under it.
         return Err(SkipReason::ArchetypeUnrooted);
     }
-    resolve_chain_memoised(&chain, index, cache, open)
-}
 
-fn resolve_chain_memoised(
-    chain: &[String],
-    index: &PackageIndex,
-    cache: &mut ArchetypeCache,
-    open: &mut OpenPrefabs,
-) -> MeshRefResult {
     let key = chain.join(".");
     if let Some(hit) = cache.mesh_refs.get(&key) {
         cache.hits += 1;
         return hit.clone();
     }
     cache.misses += 1;
-    let outcome = walk_component_chain(chain, index, open, &mut HashSet::new(), 0);
+    let outcome = chain::walk_mesh_chain(&chain, &mut |c| read_mesh_template(c, index, open));
     cache.mesh_refs.insert(key, outcome.clone());
     outcome
 }
 
-/// The archetype lives in this same package (positive export index).
-/// Rare in cooked chunks — the cooker imports prefab templates — but
-/// legal, and the editor writes it for a prefab instanced from a
-/// template in the same map.
-fn resolve_local_archetype(
-    pkg: &Package,
-    archetype: i32,
-    index: &PackageIndex,
-    cache: &mut ArchetypeCache,
-    open: &mut OpenPrefabs,
-) -> MeshRefResult {
-    let idx = (archetype - 1) as usize;
-    let Some(tmpl) = pkg.exports.get(idx) else {
-        return Err(SkipReason::ArchetypeExportNotFound);
-    };
-    let Ok(data) = pkg.read_export_data(tmpl) else {
-        return Err(SkipReason::ArchetypeExportNotFound);
-    };
+/// Probe a template component that lives in this same package.
+fn local_template_probe(pkg: &Package, archetype: i32) -> Result<TemplateProbe, SkipReason> {
+    let tmpl = pkg
+        .exports
+        .get((archetype - 1) as usize)
+        .ok_or(SkipReason::ArchetypeExportNotFound)?;
+    let data = pkg
+        .read_export_data(tmpl)
+        .map_err(|_| SkipReason::ArchetypeExportNotFound)?;
     let props = cimmeria_upk::parse_tagged_properties(&data, COMPONENT_PROP_OFFSET, &pkg.names);
-    if find_bool(&props, "CollideActors") == Some(false) {
-        return Err(SkipReason::CollisionDisabled);
-    }
-    match find_object(&props, "StaticMesh") {
-        Some(0) => Err(SkipReason::NullMeshRef),
-        Some(m) => mesh_key_in(pkg, "", m),
-        // Keep climbing. A local template that is itself instanced from
-        // an imported one is the two-level case.
-        None => match import_chain(pkg, tmpl.archetype) {
-            Some(c) if c.len() >= 2 => resolve_chain_memoised(&c, index, cache, open),
-            _ => Err(SkipReason::ArchetypeNoMesh),
-        },
-    }
+    Ok(TemplateProbe {
+        // `own_package` is empty: a chunk-local `StaticMesh` export has
+        // no `(package, object)` key the index would know, which is the
+        // same conclusion the direct path reaches.
+        mesh: find_object(&props, "StaticMesh").map(|m| match m {
+            0 => Err(SkipReason::NullMeshRef),
+            m => mesh_key_in(pkg, "", m),
+        }),
+        collide_actors: find_bool(&props, "CollideActors"),
+        next: import_chain(pkg, tmpl.archetype),
+    })
 }
 
-/// Follow `chain` (root package first) into its package, read the
-/// template component, and either return its `StaticMesh` key or climb
-/// to the template's own archetype.
-fn walk_component_chain(
+/// Read one template component out of its package, for
+/// [`chain::walk_mesh_chain`].
+fn read_mesh_template(
     chain: &[String],
     index: &PackageIndex,
     open: &mut OpenPrefabs,
-    visited: &mut HashSet<String>,
-    depth: usize,
-) -> MeshRefResult {
-    if depth >= MAX_ARCHETYPE_DEPTH || !visited.insert(chain.join(".")) {
-        return Err(SkipReason::ArchetypeChainLoop);
-    }
+) -> Result<TemplateProbe, SkipReason> {
     let path = chain[1..].join(".");
-
-    let Some(loaded) = open.get(chain, index) else {
-        return Err(SkipReason::ArchetypePackageNotFound);
-    };
-    let Some(&tmpl_idx) = loaded.by_path.get(&path) else {
-        return Err(SkipReason::ArchetypeExportNotFound);
-    };
-    let tmpl = &loaded.pkg.exports[tmpl_idx];
-    let Ok(data) = loaded.pkg.read_export_data(tmpl) else {
-        return Err(SkipReason::ArchetypeExportNotFound);
-    };
+    let loaded = open
+        .get(chain, index)
+        .ok_or(SkipReason::ArchetypePackageNotFound)?;
+    let idx = *loaded
+        .by_path
+        .get(&path)
+        .ok_or(SkipReason::ArchetypeExportNotFound)?;
+    let tmpl = &loaded.pkg.exports[idx];
+    let data = loaded
+        .pkg
+        .read_export_data(tmpl)
+        .map_err(|_| SkipReason::ArchetypeExportNotFound)?;
     let props =
         cimmeria_upk::parse_tagged_properties(&data, COMPONENT_PROP_OFFSET, &loaded.pkg.names);
-
-    if find_bool(&props, "CollideActors") == Some(false) {
-        return Err(SkipReason::CollisionDisabled);
-    }
-
-    match find_object(&props, "StaticMesh") {
-        Some(0) => Err(SkipReason::NullMeshRef),
-        Some(m) => mesh_key_in(&loaded.pkg, &chain[0], m),
-        None => {
-            // Template is itself a stub — climb. Take the next chain
-            // before the borrow on `open` has to be released.
-            let next = match import_chain(&loaded.pkg, tmpl.archetype) {
-                Some(c) if c.len() >= 2 => c,
-                _ => return Err(SkipReason::ArchetypeNoMesh),
-            };
-            walk_component_chain(&next, index, open, visited, depth + 1)
-        }
-    }
+    Ok(TemplateProbe {
+        mesh: find_object(&props, "StaticMesh").map(|m| match m {
+            0 => Err(SkipReason::NullMeshRef),
+            m => mesh_key_in(&loaded.pkg, &chain[0], m),
+        }),
+        collide_actors: find_bool(&props, "CollideActors"),
+        next: import_chain(&loaded.pkg, tmpl.archetype),
+    })
 }
 
 /// Turn a `StaticMesh` object index, as seen from inside `pkg`, into
@@ -557,8 +531,6 @@ fn mesh_key_in(pkg: &Package, own_package: &str, mesh_obj: i32) -> MeshRefResult
             .get((mesh_obj - 1) as usize)
             .ok_or(SkipReason::UnresolvableMeshRef)?;
         if own_package.is_empty() {
-            // Same shape the direct path produces for a chunk-local
-            // export: a key the PackageIndex will not have.
             return Err(SkipReason::UnresolvableMeshRef);
         }
         Ok((own_package.to_string(), exp.object_name.clone()))

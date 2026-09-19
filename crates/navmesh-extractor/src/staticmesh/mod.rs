@@ -361,13 +361,9 @@ pub fn collect_static_mesh_instances(
         // real kDOP collision. Emitting those splits the exterior
         // navmesh, so this gate runs before anything else.
         let arch = match index {
-            Some(index) if export.archetype != 0 => archetype::resolve_actor_archetype(
-                pkg,
-                export.archetype,
-                index,
-                cache,
-                &mut open,
-            ),
+            Some(index) if export.archetype != 0 => {
+                archetype::resolve_actor_archetype(pkg, export.archetype, index, cache, &mut open)
+            }
             _ => archetype::ActorArchetypeProps::default(),
         };
         if !arch.collides(&props) {
@@ -390,13 +386,15 @@ pub fn collect_static_mesh_instances(
             // The cooked component is a stub: its `StaticMesh` lives on
             // the prefab archetype. Follow the chain when we have an
             // index to locate the archetype's package with.
-            Err(SkipReason::ArchetypeStubComponent) => match (index, pkg.exports.get((component_ref - 1) as usize)) {
-                (Some(index), Some(component)) => {
-                    via_archetype = true;
-                    archetype::resolve_via_archetype(pkg, component, index, cache, &mut open)
+            Err(SkipReason::ArchetypeStubComponent) => {
+                match (index, pkg.exports.get((component_ref - 1) as usize)) {
+                    (Some(index), Some(component)) => {
+                        via_archetype = true;
+                        archetype::resolve_via_archetype(pkg, component, index, cache, &mut open)
+                    }
+                    _ => Err(SkipReason::ArchetypeStubComponent),
                 }
-                _ => Err(SkipReason::ArchetypeStubComponent),
-            },
+            }
             other => other,
         };
         match resolved {
@@ -430,5 +428,7 @@ pub fn build_chunk_soup(instances: &[(StaticMesh, ActorTransform, String)]) -> T
     soup
 }
 
+#[cfg(test)]
+mod archetype_walk_tests;
 #[cfg(test)]
 mod tests;

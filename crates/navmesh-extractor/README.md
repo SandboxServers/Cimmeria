@@ -38,8 +38,9 @@ Recast wrapper later if it buys anything.
 |---|---|
 | 0 — `.nav` round-trip smoke | **shipped** — see `tests/nav_roundtrip_castle_cellblock.rs` |
 | 1.1 — crate scaffold | **shipped** — modules `chunk_id`, `geometry`, `obj`, `umap`, `nav_roundtrip` |
-| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output); archetype-based actors deferred |
+| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output) |
 | 1.2b — coverage report + floor probe + CLI | **shipped** — modules `coverage`, `floor_probe`, binary `extract_map`; see `tests/castle_coverage_and_probe.rs` and [Measured Castle coverage](#measured-castle-coverage) |
+| 1.2c — prefab archetypes + `bCollideActors` | **shipped** — module `staticmesh/archetype`, binary `archetype_census`; see `tests/archetype_castle.rs` and [Prefab archetypes](#prefab-archetypes) |
 | 1.3 — Terrain decoder | **shipped** — module `terrain`, wired into `extract_map`; see `tests/terrain_castle.rs` and [Phase 1.3 — Terrain](#phase-13--terrain) |
 | 1.4 — BSP `Model` / `Polys` decoder | **shipped** — `cimmeria_upk_objects::model` + module `bsp`, wired into `extract_map`; see `tests/bsp_castle_model_decode.rs`, `tests/bsp_castle_floor_evidence.rs`, `tests/bsp_castle_hull_cap.rs` and [Phase 1.4 — BSP](#phase-14--bsp) |
 | 2 — NavBuilder rebuild + Castle_CellBlock acceptance | follow-up |
@@ -67,16 +68,18 @@ Recast wrapper later if it buys anything.
 - `staticmesh/` — Phase 1.2 walker. `mod.rs` enumerates
   `StaticMeshActor` exports and builds the soup; `mesh_ref.rs` resolves
   `StaticMeshComponent.StaticMesh` and classifies every failure into a
-  `coverage::SkipReason`.
+  `coverage::SkipReason`; `archetype/` follows a prefab-instanced
+  actor's two archetype chains (`chain.rs` is the pure walk, `mod.rs`
+  the package I/O around it).
 - `terrain.rs` — Phase 1.3 `Terrain` walker; see below.
 - `bsp/` — Phase 1.4. `mod.rs` classifies and places every `Model`
   export and emits its collision triangles; `hull_cap.rs` holds the
   buried-outer-skin filter and the `TerrainCeiling` it needs.
 - `nav_components.rs` — `.nav` connectivity: flood fill, per-component
   stats, and `locate_within`, the tolerance-first probe resolver.
-- `coverage.rs` — per-chunk extraction accounting: skip reasons,
+- `coverage/` — per-chunk extraction accounting: skip reasons,
   per-source triangle tallies, archetype/prefab counts, export-class
-  census, TSV emitters.
+  census with a per-class `DecodeStatus`, TSV emitters.
 - `floor_probe/` — "is there walkable geometry under this world
   point?", run under a family of candidate UE3→BigWorld axis mappings.
   `mod.rs` is the geometry, `report.rs` the TSV and point-file I/O.
@@ -85,6 +88,17 @@ Recast wrapper later if it buys anything.
 - `bin/nav_inspect.rs` — `.nav` acceptance gate: component table plus
   named probe points. NavBuilder exits 0 even when it writes nothing,
   so "the command succeeded" proves nothing.
+- `bin/archetype_census.rs` — what the prefab-archetype set actually
+  *is*, per mesh: instance count, triangles, world footprint and how
+  much of it Recast would accept as floor, plus a traversal-keyword
+  scan over every actor. See [Prefab archetypes](#prefab-archetypes).
+- `bin/obj_slab.rs` — column / free-run / level-histogram / slope
+  queries over the chunk OBJs. `--levels` is the "is there a staircase
+  between these two storeys" question.
+- `test_support/` — synthetic UE3 package fixtures behind the
+  `test-support` feature, so the walkers have CI coverage without the
+  cooked client tree. `prefab_fixtures.rs` writes the prefab-template
+  `.upk` and the cooked instance that resolves against it.
 
 ## Command-line usage
 
@@ -133,6 +147,14 @@ it is deliberately outside the sum.
 `probe` writes `probe_mappings.tsv` (mapping ranking) and
 `probe_points.tsv` (per-point detail).
 
+```bash
+# 3. What is in the prefab-archetype set, per mesh.
+CIMMERIA_PACKAGE_INDEX=/tmp/package_index.bin \
+cargo run -p cimmeria-navmesh-extractor --release --bin archetype_census -- \
+  "/path/to/SGWGame/CookedPC" Castle \
+  [--positions <TSV>] [--meshes <TSV>]
+```
+
 The whole-map OBJ is **opt-in** via `--combined`, and its path must sit
 outside `--out`. NavBuilder's `chunked` mode globs `*.obj` and derives
 each file's chunk bounds from a `<hex8>o` stem; one file that doesn't
@@ -168,6 +190,10 @@ let coverage = extract_map_with_report(
         index: Some(&index),
         chunk_filter: None,   // e.g. Some("000a0002")
         combined_obj: None,   // if set, must be outside the output dir
+        // `ExtractOptions` grows knobs (`skip_terrain`, `skip_bsp`,
+        // `keep_hull_caps`); take their defaults rather than pinning
+        // a field list that a later phase will break.
+        ..Default::default()
     },
 )?;
 println!("{:?}", coverage.totals());
@@ -181,23 +207,196 @@ triangles are emitted. Useful in CI when the asset bundle is missing.
 
 Measured 2026-09-19 against `CookedPC/Maps/Castle` (144 chunks) with a
 full `PackageIndex` (2,821,598 exports across 5,019 packages).
-Extraction wall clock **2.9 s**; 144 MB of per-chunk OBJ plus a 150 MB
-combined OBJ.
 
-| Metric | Value |
+The actor table below is the **`StaticMeshActor` path only**. It is not
+the map's triangle budget: Terrain and BSP contribute separately and
+outweigh it by 2:1. The per-source split is the second table.
+
+| `StaticMeshActor` accounting | Before 1.2c | After 1.2c |
+|---|---|---|
+| `StaticMeshActor` exports | 6,430 | 6,430 |
+| ...mesh reference recovered | 5,469 (85.1%) | 6,430 (100%) |
+| ...of those, via the prefab archetype chain | 0 | 961 |
+| ...emitted as triangles | 5,469 (85.1%) | 4,860 (75.6%) |
+| ...suppressed, `bCollideActors = false` | 0 | 1,570 (24.4%) |
+| ...unresolved | 961 `archetype_stub_component` | 0 |
+
+Both changes land in 1.2c and they pull in opposite directions: the
+archetype chain *adds* 961 actors, and the collision gate *removes*
+1,570 (961 - 374 archetype ones that are non-colliding, plus 1,196
+chunk-local actors that were always being emitted wrongly). Net, 609
+fewer actors reach the soup and the map is more correct for it — see
+[`bCollideActors`](#bcollideactors--the-1570-actors-that-should-never-have-been-there).
+
+| Triangles by source | Before 1.2c | After 1.2c |
+|---|---|---|
+| `StaticMeshActor` | 1,292,291 | 1,254,597 |
+| `Terrain` | 2,878,890 | 2,878,890 |
+| BSP `Model` | 6,810 | 6,810 |
+| **Total in the OBJs** | **4,177,991** | **4,140,297** |
+
+Extraction wall clock ~3 s either way; 33 prefab packages opened across
+the map, 86 distinct archetype paths behind 961 stub actors.
+
+Whole-map `.nav`, both built with
+`NavBuilder chunked <dir> <out> nav partition=watershed agentHeight=1.8`
+`agentClimb=0.6 minRegionSize=24 maxSimplificationError=2.5`:
+
+| | Before 1.2c | After 1.2c |
+|---|---|---|
+| verts / polys / adjacency edges | 45,209 / 21,805 / 60,926 | 40,093 / 19,824 / 55,132 |
+| connected components | 997 | 553 |
+| walkable XZ area | 997,253 m² | 814,909 m² |
+| bounds x | -124.62 … 1212.86 | -15.66 … 1200.00 |
+| probe result | 11/11 ok, 3 components | 11/11 ok, 3 components |
+
+The 11 probes stay in the same three groups (interior / exterior /
+throne room) and three of them get *tighter*: `stargate` 0.45 m → 0.00 m,
+`armory` 1.49 m → 0.00 m, `checkpoint_bravo` dy +0.62 → +0.22. The
+edge count is well inside NavBuilder's 65,535 cap, with more headroom
+than before.
+
+### Prefab archetypes
+
+`PrefabInstance` exports do **not** own their `StaticMeshActor`s through
+the export table's `Outer` chain — the map-wide `prefab_outer_actors`
+count is 0; every actor is outered straight to `PersistentLevel`. What
+marks them is the export table's `Archetype` field, and each actor has
+*two* chains: the component's (which carries `StaticMesh`) and the
+actor's (which carries `bCollideActors` and any rotation/scale the
+instance omits). Following the actor's for the mesh is a dead end — the
+template actor has `CollisionComponent` and no `StaticMeshComponent`.
+The byte-level write-up is in
+[docs/engine/ue3-package-format.md](../../docs/engine/ue3-package-format.md#prefab-archetypes--the-cooked-staticmeshcomponent-stub).
+
+In `Castle-000a0002` the correspondence is exact: 147 `PrefabInstance`
+exports, 147 archetype-instanced `StaticMeshActor`s, 147 stubs — all 147
+now resolve, 125 to geometry and 22 to a collision veto.
+
+`Castle_CellBlock` is **not** archetype-free, contrary to an earlier
+note: 2,098 `StaticMeshActor` exports split 1,699 direct / 399
+archetype-instanced (19.0%), of which 216 emit geometry.
+
+What the 961 Castle stubs turn out to be — the question the census
+exists to answer — is **decorative clutter and cover, no traversal
+geometry**. Ranked by instances, of 46 distinct meshes that survive the
+collision gate:
+
+| Instances | Mesh | Tris each | Footprint m² | Walkable m² |
+|---|---|---|---|---|
+| 73 | `Em-Props:EM-ComputerTower00` | 12 | 25 | 13 |
+| 50 | `EM-Cover:EM-Cover_Concrete_High_I03` | 138 | 224 | 89 |
+| 44 | `Em-Props:EM-ViewScreen02` | 142 | 26 | 4 |
+| 38 | `Em-Props:EM-LockerMed00` | 192 | 146 | 59 |
+| 36 | `CA-Arch:CA-Cell_Doorway01` | 124 | 611 | 296 |
+| 36 | `Em-Props:EM-ViewScreen03` | 136 | 17 | 5 |
+| 27 | `EM-Cover:EM-Cover_Concrete_Med_I03` | 138 | 121 | 48 |
+| 27 | `Em-Props:EM-StandingLightFrost04` | 472 | 183 | 54 |
+| 23 | `EM_Earth_Military:EM-OutdoorHeater00` | 666 | 87 | 40 |
+| 23 | `CA-Interior:CA-hallway_decor_torch_01` | 180 | 105 | 45 |
+| 20 | `Em-Props:EM-StandingLightFrost01` | 1,968 | 232 | 83 |
+| 1 | `EM-Buildings:EM-Bunker_Frost00` | 2,748 | 2,838 | 1,054 |
+
+205,490 triangles over 587 emitted instances. Searching the full set for
+`*Stair*`, `*Ramp*`, `*Floor*`, `*Bridge*`, `*Catwalk*`, `*Step*`,
+`*Platform*` returns **nothing**. The only names that could plausibly
+affect traversal are:
+
+- `CA-Arch:CA-Cell_Doorway01` — 36 instances, all at BigWorld y 66.791,
+  i.e. exactly the Interrogation Block floor plane the playtest walked
+  (`zuritska_cell` is y 66.79). These are the cell-door thresholds:
+  296 m² of walkable surface at the player's feet in the one room the
+  README's floor probe measured at 0.1% StaticMesh coverage.
+- `Em-Props:EM-Elevator00` — 3 instances at BW (762.22, 29.76, 418.88),
+  (930.81, 24.57, 440.21), (591.14, 21.09, 570.85). Static shells, not
+  movers; the lift *car* is not in the StaticMesh set.
+- `EM-Buildings:EM-Bunker_Frost00` and `EM-GuardHouse00` — building
+  shells that were simply absent before.
+
+The missing 15% was therefore **not** the reason Castle's interior has
+no floor. That remains BSP (Phase 1.4).
+
+### Where Castle's stairs actually are
+
+`archetype_census` also scans **every** actor, archetype-instanced or
+not, for a mesh name matching `elevator`, `lift`, `platform`, `stair`,
+`ramp`, `ladder`, `step`, `catwalk`, `bridge`, `walkway`, `door`,
+`gate` or `hatch`, and reports it with its merged `bCollideActors`.
+The question it exists to answer is whether a hole in the navmesh is
+missing geometry or a scripted link.
+
+For Castle the answer is that the vertical circulation was never
+missing — it is all in the **direct** set, collision on, and has been
+in every OBJ this crate has ever written:
+
+| Mesh | Where (BigWorld) |
 |---|---|
-| Chunks processed | 144 |
-| Chunks that produced geometry | 62 |
-| Exports | 38,304 |
-| `StaticMeshActor` exports | 6,430 |
-| ...resolved to collision triangles | 5,469 (85.1%) |
-| ...skipped, all as `archetype_stub_component` | 961 (14.9%) |
-| Triangles emitted | 1,292,291 |
+| `CA-Props:CA-Stair00` ×3 | (348.64 / 355.04 / 361.44, 46.24, 846.34) |
+| `CA-Props:CA-Stair00` ×3 | (348.64 / 355.04 / 361.44, 54.40, 884.32) |
+| `CA-Interior:CA-large_hallway_ramp_a_00` | (355.04, 55.04, 863.48) |
+| `CA-Props:CA-Stair00`, `CA-small_hallway_ramp_a_00` | (218.80, 59.34, 931.84), (239.68, 68.96, 931.84) |
+| `HT-Props:HT-Stair00` ×4 | (296.91, 47.69, 752.50) → (306.13, 41.93, 761.74) |
+| `CA-Props:Ca-ThroneStairs` | (350.93, 36.64, 653.01) |
+| `EM-Cover:EM-PlatformRamp_00` ×4 | (335.92 / 374.40, 46.16, 809.92–822.52) |
 
-Every skipped actor falls into exactly one bucket: its cooked
-`StaticMeshComponent` carries no `StaticMesh` property because the
-actor was instanced from a prefab archetype in another package. There
-were no index misses, no decode failures and no collision-free meshes.
+The two `CA-Stair00` flights bracket the 12.00 m interior storey step
+(floors at BigWorld y 43.2 and 55.2) that `nav_inspect --gaps` reports
+as unbridgeable — so that gap is a Recast question, not an extraction
+one.
+
+The three `Em-Props:EM-Elevator00` shells are archetype-instanced and
+each pairs with a direct `EM-Elevator_Pad00` a metre away, at
+(588.0, 21.1, 564.3), (768.8, 29.8, 415.7) and (937.3, 24.6, 437.1) —
+all on the **exterior** lower level, none at an interior storey
+boundary. Three more `EM-Elevator00` in `00040009` have no pad.
+
+### `bCollideActors` — the 1,570 actors that should never have been there
+
+Chasing the archetype chain surfaced a second, larger defect that
+predates it. `AActor::bCollideActors` defaults to `true` and the cooker
+omits defaults, so the property appears only on actors the level author
+made non-colliding. The cook does **not** strip collision from their
+`StaticMesh`: the kDOP tree is present, so nothing downstream of the
+mesh can tell them apart from a wall.
+
+| Where the flag is set | Actors |
+|---|---|
+| prefab template (26 of 86 templates), inherited by the instance | 374 |
+| the chunk-local actor itself | 1,196 |
+| **total suppressed** | **1,570** |
+
+17 of the 26 templates are `bHidden = true, Group = PrecipPlanes` —
+flat cards placed in tent, bunker and guardhouse **doorways** so snow
+renders there. The 1,196 direct ones are icicles, floor signs, wall
+panels, hoses, pipes, security cameras, supply crates and wall lights.
+
+Emitting them is not cosmetic. Measured: with the archetype chain on and
+the gate *off*, Castle's exterior splits from one walkable component
+into three and the `gate_room_dhd` probe loses its floor entirely
+(nearest polygon 4.79 m away). With the gate on, the exterior is one
+component again and every probe is inside tolerance.
+
+The gate applies to direct actors as well as prefab ones, which is why
+the emitted-actor count *falls* from 5,469 to 4,860 even though 961 more
+actors now resolve.
+
+Sanity check against the one shipped reference navmesh: rebuilding
+`Castle_CellBlock` gives 2,338 verts / 1,283 polys / 17 components /
+674,708 m² walkable, against `data/spaces/castle_cellblock.nav`'s
+2,778 / 1,479 / 50 / 712,506 m². Within 5% on area with a third of the
+fragments — and the shipped mesh was built for a 0.6 m agent, so some of
+the difference is the 1.8 m agent culling low spaces, not lost geometry.
+
+### Class census and `collision_risk`
+
+`coverage_classes.tsv`'s `decoded` column is three-valued
+(`coverage::DecodeStatus`): `yes` for a class a walker enumerates
+directly, `via-owner` for one whose geometry reaches the soup through
+another export, `no` for one nothing reads. `collision_risk` is the
+intersection of "could carry collision" and `no`, so it shrinks as
+phases land instead of freezing at the Phase 1.2 answer. As of 1.4 the
+risk set is `BrushComponent`, `ModelComponent`, `Polys`, `InterpActor`,
+`KActor`, `FracturedStaticMeshActor`, `StaticMeshCollectionActor`.
 
 ### Undecoded classes still in the map
 
@@ -353,23 +552,14 @@ Two things the skin is **not** responsible for, both measured:
   Removing a single huge flat sheet *costs* 85 vertices, because the
   geometry underneath then contours separately.
 
-### The PrefabInstance gap
+### The PrefabInstance gap — closed in 1.2c
 
-`PrefabInstance` exports do **not** own their `StaticMeshActor`s
-through the export table's `Outer` chain — the map-wide
-`prefab_outer_actors` count is 0; every actor is outered straight to
-`PersistentLevel`. The prefab's actors *are* separately exported and
-*are* counted in the 6,430, but each one's cooked
-`StaticMeshComponent` is the ~76-byte archetype stub, so its mesh
-reference is unrecoverable without opening the archetype's package.
-
-In `Castle-000a0002` the correspondence is exact: 147 `PrefabInstance`
-exports, 147 archetype-instanced `StaticMeshActor`s, 147
-`archetype_stub_component` skips, 0 resolved. Map-wide it is 863
-`PrefabInstance` against 963 archetype actors of which 2 resolve.
-Closing this gap means resolving `ExportEntry::archetype` through the
-`PackageIndex` and merging the template component's properties —
-tractable, and worth roughly 15% more actors.
+Map-wide: 863 `PrefabInstance` exports against 963 archetype-instanced
+actors, of which 2 used to resolve (their cooked component happened to
+carry its own `StaticMesh`). All 963 resolve now. See
+[Prefab archetypes](#prefab-archetypes) for what they turned out to be
+and [`bCollideActors`](#bcollideactors--the-1570-actors-that-should-never-have-been-there)
+for why 374 of them are deliberately not emitted.
 
 ## NavBuilder interop — settled
 
@@ -423,9 +613,18 @@ crate; the NavBuilder-side write-up is
 - **Actor-placed BSP** (`Brush` / `BlockingVolume` with a non-empty
   `Model`) is implemented but has no real data to validate against —
   every Castle brush `Model` is an empty stub.
-- **Archetype-instanced `StaticMeshActor`s** are still unresolved; see
-  [The PrefabInstance gap](#the-prefabinstance-gap). Worth roughly 15%
-  more actors.
+- **Non-`StaticMeshActor` classes that own a `StaticMeshComponent`**
+  are still dropped by the walker's class filter: 14 `InterpActor`s in
+  Castle, which the archetype resolver handles unchanged when pointed
+  at them. 11 are security-camera heads, 1 an antenna, 1 a shelf box —
+  and 1 is `GLB-Global:GLB-RingTransporter00` at BigWorld
+  (466.45, 70.06, 991.55), the only Castle actor that sets
+  `bCollideActors` / `bBlockActors` / `bPathColliding` explicitly. A
+  mover's cooked `Location` is its editor-time pose, not necessarily
+  where it rests at runtime, which is why widening the filter is a
+  judgement call rather than an oversight.
+- **`Polys` is never read.** BSP collision comes from `UModel`'s node
+  tree, so this is believed correct rather than known correct.
 - **Terrain coordinate cross-check** — the height-vs-known-outdoor-point
   check is still open; no matching seed point was found in the interior
   tile sampled.
@@ -447,3 +646,21 @@ CIMMERIA_COOKED_PC=/path/to/SGWGame/CookedPC \
 CIMMERIA_PACKAGE_INDEX=/path/to/package_index.bin \
   cargo test -p cimmeria-navmesh-extractor
 ```
+
+A skipped test is not a pass, so the walkers are also covered without
+any of that, through the synthetic packages in [`test_support`](src/test_support/):
+
+| Layer | Where | Runs in CI |
+|---|---|---|
+| chain control flow — loops, depth budget, missing package vs missing export, collision veto ordering | `staticmesh/archetype/tests.rs`, against a `fetch` closure | yes |
+| chain over real package bytes — import chain ↔ dotted outer path, both property offsets, cross-package mesh keys | `staticmesh/archetype_walk_tests.rs`, against `test_support::prefab_package` | yes |
+| coverage arithmetic and TSV shape | `coverage/tests.rs` | yes |
+| the cooked SGW shapes themselves | `tests/archetype_castle.rs` | only with the client tree |
+
+`tests/archetype_castle.rs` pins `Castle-000a0002` at 147
+archetype-instanced actors → 125 emitted + 22 collision-vetoed, plus
+102 direct actors vetoed, and asserts the balance invariant. Both
+guards were revert-proved: disabling the `bCollideActors` gate fails
+`a_template_with_collision_off_is_skipped_not_emitted` and all three
+real-data tests; disabling archetype resolution fails eight of the
+eleven package-backed tests and two of the three real-data ones.
