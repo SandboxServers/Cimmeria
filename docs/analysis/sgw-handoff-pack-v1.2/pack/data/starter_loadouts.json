@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "rule": "This file intentionally distinguishes known start-world facts from unresolved starting inventory/abilities.",
+  "start_profiles": [
+    {
+      "profile": "SGU Human",
+      "applies_to_archetypes": [
+        "Soldier",
+        "Commando",
+        "Scientist",
+        "Archaeologist"
+      ],
+      "start_world": "Earth SGC",
+      "status": "USER-CONFIRMED / PROJECT TARGET",
+      "starting_inventory": null,
+      "starting_armor": null,
+      "starting_weapon": null,
+      "starting_branch_abilities": "See classes_and_skilltrees.json; exact char-creation grant package is not considered recovered original data.",
+      "reference_workbook": "SGW_Earth_SGC_SGU_Human_Starter_Dev_Master_v1.xlsx"
+    },
+    {
+      "profile": "Free Jaffa / Shol'va",
+      "applies_to_archetypes": [
+        "Free Jaffa / Shol'va"
+      ],
+      "start_world": "Dakara",
+      "status": "USER-CONFIRMED / PROJECT TARGET",
+      "starting_inventory": null,
+      "starting_armor": null,
+      "starting_weapon": null,
+      "starting_branch_abilities": "See classes_and_skilltrees.json; exact char-creation grant package unresolved.",
+      "reference_workbook": "SGW_Dakara_Free_Jaffa_Starter_Dev_Master_v1.xlsx"
+    },
+    {
+      "profile": "Asgard",
+      "applies_to_archetypes": [
+        "Asgard"
+      ],
+      "start_world": "Pertho",
+      "status": "USER-CONFIRMED / PROJECT TARGET",
+      "starting_inventory": null,
+      "starting_armor": null,
+      "starting_weapon": "Asgard program/equipment model; exact starter program package unresolved.",
+      "starting_branch_abilities": "See classes_and_skilltrees.json.",
+      "reference_workbook": "SGW_Pertho_Asgard_Starter_Dev_Master_v1.xlsx"
+    },
+    {
+      "profile": "Praxis Human/Jaffa/Goa'uld",
+      "applies_to_archetypes": [
+        "Soldier",
+        "Commando",
+        "Scientist",
+        "Archaeologist",
+        "Free Jaffa / Shol'va",
+        "Goa'uld"
+      ],
+      "start_world": null,
+      "status": "PARTIAL / UNRESOLVED",
+      "note": "Post-Tollana progression routes are known at project level; exact character-creation start/loadout should not be inferred from that."
+    }
+  ],
+  "source_backed_global_start_combat_rules": [
+    "Weapons are equipped then activated through one of four bandolier slots.",
+    "Each weapon has a basic auto-attack.",
+    "Reload is a separate action.",
+    "Some abilities require a specific active weapon."
+  ]
+}
