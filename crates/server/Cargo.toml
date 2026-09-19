@@ -14,6 +14,7 @@ axum = { workspace = true }
 cimmeria-admin-api = { workspace = true }
 cimmeria-common = { workspace = true }
 cimmeria-discord = { workspace = true }
+cimmeria-lab-mcp = { workspace = true }
 cimmeria-observability = { workspace = true }
 cimmeria-services = { workspace = true }
 sqlx = { workspace = true }
