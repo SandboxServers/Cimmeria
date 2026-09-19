@@ -98,7 +98,26 @@ fn print_summary(report: &MapCoverage, report_path: &Path, classes_path: &Path) 
         t.actors_resolved,
         pct(t.actors_resolved, t.actors_total)
     );
-    println!("triangles: {}", t.triangles_emitted);
+    println!(
+        "triangles: {} total = {} StaticMesh + {} Terrain + {} BSP{}",
+        t.triangles_emitted,
+        t.staticmesh_triangles,
+        t.terrain_triangles,
+        t.bsp_triangles,
+        if t.sources_balance() {
+            String::new()
+        } else {
+            "   *** SOURCES DO NOT SUM ***".to_string()
+        }
+    );
+    println!(
+        "  terrain: {} quads holed, {} parse failures | BSP: {} hull-cap triangles dropped, \
+         {} Model decode failures",
+        t.terrain_quads_holed,
+        t.terrain_parse_failures,
+        t.bsp_hull_cap_triangles,
+        t.bsp_models_failed
+    );
     println!(
         "obj bytes: {} per-chunk + {} combined",
         t.obj_bytes, report.combined_obj_bytes

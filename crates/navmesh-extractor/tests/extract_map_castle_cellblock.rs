@@ -50,6 +50,19 @@ fn try_load_package_index() -> Option<PackageIndex> {
     None
 }
 
+/// Count `f ` lines in an OBJ without loading it — the dense chunks run
+/// to tens of megabytes.
+fn count_obj_faces(path: &std::path::Path) -> usize {
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(path)
+        .unwrap_or_else(|e| panic!("open {} for face count: {e}", path.display()));
+    BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .filter(|l| l.starts_with("f "))
+        .count()
+}
+
 /// Unique temp directory per test thread — the round-trip test crate
 /// follows this pattern; we match it so concurrent runs don't collide.
 fn unique_tempdir(prefix: &str) -> PathBuf {
@@ -94,7 +107,7 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
     extract_map(&map_dir, &out_dir, Some(&index)).expect("extract_map");
     let combined_dir = unique_tempdir("cimmeria-navmesh-extract-map-combined");
     let combined_path = combined_dir.join("castle_cellblock.obj");
-    cimmeria_navmesh_extractor::extract_map_with_report(
+    let report = cimmeria_navmesh_extractor::extract_map_with_report(
         &map_dir,
         &out_dir,
         cimmeria_navmesh_extractor::ExtractOptions {
@@ -164,6 +177,66 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
         "Combined OBJ at {} is only {} bytes — extraction may be incomplete",
         combined_path.display(),
         combined_meta.len()
+    );
+
+    // The per-source accounting invariant, checked against the bytes on
+    // disk rather than against itself: for every chunk,
+    //
+    //   f-lines in the OBJ == triangles_emitted
+    //                      == staticmesh + terrain + bsp
+    //
+    // The coverage TSV is how anyone answers "how much of this map is
+    // BSP", so a source that lands in the soup without a tally silently
+    // rewrites that answer. Hull-cap triangles are deliberately absent
+    // from both sides: they never reach the soup.
+    let mut checked = 0usize;
+    for row in &report.chunks {
+        assert!(
+            row.sources_balance(),
+            "{}: triangles_emitted {} != {} StaticMesh + {} Terrain + {} BSP",
+            row.chunk,
+            row.triangles_emitted,
+            row.staticmesh_triangles,
+            row.terrain_triangles,
+            row.bsp_triangles
+        );
+        if row.triangles_emitted == 0 {
+            continue;
+        }
+        let obj = out_dir.join(format!("{:08x}o.obj", row.chunk_id));
+        let faces = count_obj_faces(&obj);
+        assert_eq!(
+            faces as u64, row.triangles_emitted,
+            "{}: the OBJ carries {faces} faces but the report claims {}",
+            row.chunk, row.triangles_emitted
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 5,
+        "only {checked} chunk(s) had geometry to check"
+    );
+    let totals = report.totals();
+    eprintln!(
+        "per-source totals: {} = {} StaticMesh + {} Terrain + {} BSP \
+         ({} hull-cap triangles dropped, {} terrain holes, {} terrain \
+         parse failures, {} Model decode failures) over {checked} chunks",
+        totals.triangles_emitted,
+        totals.staticmesh_triangles,
+        totals.terrain_triangles,
+        totals.bsp_triangles,
+        totals.bsp_hull_cap_triangles,
+        totals.terrain_quads_holed,
+        totals.terrain_parse_failures,
+        totals.bsp_models_failed,
+    );
+    assert!(
+        totals.sources_balance(),
+        "the TOTAL row must balance too: {} != {} + {} + {}",
+        totals.triangles_emitted,
+        totals.staticmesh_triangles,
+        totals.terrain_triangles,
+        totals.bsp_triangles
     );
 
     // Quick sanity scan: every OBJ must start with the extractor's

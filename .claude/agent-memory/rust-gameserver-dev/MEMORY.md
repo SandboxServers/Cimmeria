@@ -60,6 +60,10 @@
 - [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
 
+## Navmesh extraction (UE3 → NavBuilder)
+
+- [navmesh-probe-and-bsp-traps.md](navmesh-probe-and-bsp-traps.md) — **read before diagnosing a "missing floor".** `NavGraph::locate` is XZ-containment-first and manufactures false negatives on stacked meshes (use `locate_within`); the NavBuilder walkable convention is `N_recast.y = -n_ue3.z` of the emitted order (two odd permutations cancel); a geometric-only BSP filter that works on Castle deletes real floors on Castle_CellBlock — always validate on a second map; and removing a big flat sheet *costs* vertices rather than saving them.
+
 ## GM feedback (cell ↔ base)
 
 - [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — definitive (post-commit) GM feedback for base-round-trip commands: cell-side `cell_methods::gm::feedback::send_gm_feedback` (EntityMethodCall→onPlayerCommunication m28 CHAN_FEEDBACK=8) vs base-side `base::gm_feedback::send_gm_feedback_to_client` (send_to_witness_reliable). `GrantItem`/`RemoveInventoryItem` still gate on `notify_gm: bool`; `GrantCash`/`GrantXP` were changed (P05) to `gm_feedback_to: Option<u32>` so a selected-target grant's feedback goes to the caller, not the target — apply the same pattern to GrantItem/RemoveInventoryItem/GrantExpertise/GrantAppliedSciencePoints when a dot command needs it (P06 `.giveitem` will).

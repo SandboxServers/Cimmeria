@@ -40,6 +40,19 @@
 //! conservatively and reported by name via
 //! [`BspStats::unclassified_volume_classes`] so a new one can't slip in
 //! silently.
+//!
+//! # Outer-hull skin
+//!
+//! One more class of face is dropped, by geometry rather than by owner
+//! class: the top and bottom skin of the enclosing additive CSG block
+//! the Castle interior is carved out of, where the chunk's terrain
+//! proves it is buried. It is 68 % of the map's near-horizontal BSP
+//! area and its upward-facing half rasterises into 87,709 m² of
+//! unreachable walkable surface. See [`hull_cap`] for the rule and the
+//! measurements behind it; the filter is off unless
+//! [`BspOptions::terrain_ceiling`] is supplied.
+
+pub mod hull_cap;
 
 use cimmeria_upk::{Package, PropValue, TaggedProperty};
 use cimmeria_upk_objects::model::{deserialize_model, CollisionFilter, Model};
@@ -47,6 +60,8 @@ use cimmeria_upk_objects::model::{deserialize_model, CollisionFilter, Model};
 use crate::geometry::TriangleSoup;
 use crate::staticmesh::transform_from_actor_props;
 use crate::transform::ActorTransform;
+
+pub use hull_cap::{HullCap, TerrainCeiling};
 
 /// Tagged-property stream offset for an `AActor` export. Actors carry a
 /// 32-byte binary prefix ahead of their property block (components use
@@ -154,6 +169,27 @@ pub struct BspStats {
     pub excluded_by_flag: Vec<(&'static str, u32, usize)>,
     /// `(PolyFlags value, face-carrying node count)`, descending.
     pub poly_flag_histogram: Vec<(u32, usize)>,
+    /// `Model`s in which [`hull_cap::HullCap::detect`] found an
+    /// enclosing hull, i.e. where the cap filter could fire at all.
+    pub models_with_hull: usize,
+    /// Triangles dropped as outer-hull skin. Zero when
+    /// [`BspOptions::exclude_hull_caps`] is off.
+    pub hull_cap_triangles_excluded: usize,
+    /// Surface area of those triangles, m². Reported because the cap is
+    /// judged by how much unreachable *sheet* it removes, not by
+    /// triangle count — 962 Castle triangles carry 122,801 m².
+    pub hull_cap_area_m2: f64,
+}
+
+/// Knobs for [`collect_bsp_triangles_with`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BspOptions<'a> {
+    /// The chunk's terrain surface, used to decide whether an outer
+    /// hull plane is buried. **Without it nothing is dropped** — the
+    /// rule needs both halves and the geometric half alone deletes real
+    /// floors (see [`hull_cap`]). `extract_map` supplies it from the
+    /// terrain it has already decoded, unless `skip_terrain` is set.
+    pub terrain_ceiling: Option<&'a TerrainCeiling>,
 }
 
 /// A decoded BSP `Model` plus everything needed to place and attribute
@@ -181,6 +217,24 @@ pub struct BspModelInstance {
 }
 
 impl BspModelInstance {
+    /// Rotate a model-local *direction* (an authored surface normal)
+    /// into world space.
+    ///
+    /// A level model is already in world space. For an actor-placed
+    /// model the direction is carried through the transform as the
+    /// difference of two transformed points, which drops the
+    /// translation while keeping scale and rotation — the cap
+    /// classifier only looks at the sign of `z`, so a non-uniform
+    /// scale would not change its answer either.
+    pub fn normal_to_world(&self, n: [f32; 3]) -> [f32; 3] {
+        if self.is_level_model {
+            return n;
+        }
+        let o = self.transform.apply([0.0; 3]);
+        let p = self.transform.apply(n);
+        [p[0] - o[0], p[1] - o[1], p[2] - o[2]]
+    }
+
     /// Place a model-local vertex into world space.
     pub fn to_world(&self, v: [f32; 3]) -> [f32; 3] {
         if self.is_level_model {
@@ -255,7 +309,12 @@ impl OwnerKind {
 /// chunk — one bad `Model` shouldn't cost the whole tile's geometry —
 /// but [`BspStats::models_failed`] is expected to be zero on real data
 /// and the integration test asserts that.
-pub fn collect_bsp_triangles(pkg: &Package, soup: &mut TriangleSoup) -> BspStats {
+///
+/// `opts` is a required argument rather than a defaulted one because
+/// its only field — the terrain ceiling — silently disables the
+/// hull-cap filter when absent. A caller that forgets it would get a
+/// navmesh with the buried skin back in, and nothing would say so.
+pub fn collect_bsp_triangles(pkg: &Package, soup: &mut TriangleSoup, opts: BspOptions) -> BspStats {
     let (instances, mut stats) = collect_bsp_models(pkg);
 
     let filter = CollisionFilter::default();
@@ -282,12 +341,39 @@ pub fn collect_bsp_triangles(pkg: &Package, soup: &mut TriangleSoup) -> BspStats
             }
         }
 
-        for tri in &t.triangles {
-            let mut world = [
-                inst.to_world(tri[0]),
-                inst.to_world(tri[1]),
-                inst.to_world(tri[2]),
-            ];
+        // World-space first: the cap planes are a property of the placed
+        // model, and for an actor-placed model the local Z extent is not
+        // the world Z extent.
+        let world_tris: Vec<[[f32; 3]; 3]> = t
+            .triangles
+            .iter()
+            .map(|tri| {
+                [
+                    inst.to_world(tri[0]),
+                    inst.to_world(tri[1]),
+                    inst.to_world(tri[2]),
+                ]
+            })
+            .collect();
+        let cap = opts
+            .terrain_ceiling
+            .and_then(|ceiling| HullCap::detect(&world_tris).map(|cap| (cap, ceiling)));
+        if cap.is_some() {
+            stats.models_with_hull += 1;
+        }
+
+        for (i, world_tri) in world_tris.iter().enumerate() {
+            if let Some((cap, ceiling)) = cap {
+                let surf_index = t.triangle_surf[i] as usize;
+                let n =
+                    inst.normal_to_world(inst.model.surf_normal(surf_index).unwrap_or([0.0; 3]));
+                if cap.is_buried_cap(world_tri, n, ceiling) {
+                    stats.hull_cap_triangles_excluded += 1;
+                    stats.hull_cap_area_m2 += triangle_area_m2(world_tri);
+                    continue;
+                }
+            }
+            let mut world = *world_tri;
             if EMIT_REVERSED {
                 world.swap(1, 2);
             }
@@ -433,6 +519,18 @@ fn find_vector(props: &[TaggedProperty], name: &str) -> Option<[f32; 3]> {
             None
         }
     })
+}
+
+/// Area of a UE3-cm triangle in square metres.
+fn triangle_area_m2(t: &[[f32; 3]; 3]) -> f64 {
+    let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+    let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+    let n = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
+    0.5 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt() as f64 / 10_000.0
 }
 
 fn bump_class(hist: &mut Vec<(String, usize)>, class: &str) {
