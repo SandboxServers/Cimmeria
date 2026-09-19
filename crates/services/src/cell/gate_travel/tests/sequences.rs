@@ -18,7 +18,10 @@ use tokio::sync::mpsc;
 use super::super::sequences::{
     send_gate_sequence, EVENT_STARGATE_CROSS_GATE, EVENT_STARGATE_MAKE_GATE,
 };
-use super::{make_manager_with_stargates, CASTLE_EVENT_SET, SEQ_CROSS_GATE, SEQ_MAKE_GATE};
+use super::{
+    grant_all_addresses, make_manager_with_stargates, CASTLE_EVENT_SET, SEQ_CROSS_GATE,
+    SEQ_MAKE_GATE,
+};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::ON_SEQUENCE;
@@ -44,6 +47,7 @@ fn expected_args(seq_id: i32, eid: u32) -> Vec<u8> {
 fn one_player(mgr: &mut SpaceManager, eid: u32) {
     mgr.create_entity(eid, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(mgr, eid);
     if let Some(e) = mgr.get_entity_mut(eid) {
         e.is_player = true;
         e.player_id = Some(eid as i32);

@@ -46,6 +46,7 @@ use super::super::engine_loader::load_single_chain_for_test;
 use super::super::fire_enter_region;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use crate::cell::spawner::WorldRow;
 use crate::test_support::require_db_or_skip;
 use cimmeria_content_engine::chain::ChainEngine;
 
@@ -159,9 +160,12 @@ fn make_space_mgr() -> SpaceManager {
     </Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
     mgr.create_startup_spaces(cxml).unwrap();
-    mgr.stamp_world_ids(&HashMap::from([
-        ("Harset".to_string(), HARSET),
-        ("Harset_CmdCenter".to_string(), HARSET_CMD_CENTER),
+    mgr.stamp_world_rows(&HashMap::from([
+        ("Harset".to_string(), WorldRow::enforcing(HARSET)),
+        (
+            "Harset_CmdCenter".to_string(),
+            WorldRow::enforcing(HARSET_CMD_CENTER),
+        ),
     ]));
     mgr
 }

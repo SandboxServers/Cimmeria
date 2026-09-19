@@ -502,3 +502,31 @@ fn start_minigame_difficulty_rejects_non_integer_values() {
         "an explicit null must drop the row, not take the absent-param default",
     );
 }
+
+// ── grant_stargate_address (Harset H55) ──────────────────────────────
+
+/// The address rides in `target_id`, which is
+/// `resources.stargates.stargate_id`. Pin the column so a future author
+/// cannot "helpfully" move it to `target_key` — the executor validates
+/// the id against `SpaceManager::stargates`, whose key is that same
+/// `stargate_id`.
+#[test]
+fn grant_stargate_address_reads_the_id_from_target_id() {
+    use crate::actions::Action;
+    let mut row = make_row("grant_stargate_address", None, serde_json::json!({}));
+    row.target_id = Some(3); // Harset, `stargates.sql` world 57
+    assert_eq!(
+        convert_action(&row),
+        Some(Action::GrantStargateAddress { stargate_id: 3 }),
+    );
+}
+
+/// A row with no `target_id` names no address, so it must drop rather
+/// than convert to a zero grant. Zero is not a free id: the executor
+/// would look it up, miss, and warn once per firing for a row that can
+/// never be right.
+#[test]
+fn grant_stargate_address_without_a_target_id_drops_the_row() {
+    let row = make_row("grant_stargate_address", None, serde_json::json!({}));
+    assert!(convert_action(&row).is_none());
+}

@@ -55,7 +55,12 @@ pub use npcs::{
 // (`base::gm_spawn::load_spawn_record_for_template`). Crate-visible only — not
 // part of the spawner's public surface.
 pub(crate) use npcs::load_patrol_points;
-pub use regions::{load_regions_from_db, RegionLoadData};
+pub use regions::{
+    is_point_in_region, load_regions_from_db, RegionLoadData, GENERIC_REGION_CHECK_THRESHOLD,
+};
+// Exact XZ containment, re-exported for the playtest-friction watcher and
+// the `.bug` bookmark, which reach it via `playtest_friction`.
+pub(crate) use regions::region_contains_xz;
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;
@@ -65,4 +70,4 @@ pub use templates::load_spawn_templates;
 // `cargo fmt` sorts these re-exports, so keep this comment glued to the
 // line below rather than to the group.
 pub(crate) use templates::{build_prototype, entity_template_select};
-pub use worlds::load_world_ids;
+pub use worlds::{load_world_rows, WorldRow};

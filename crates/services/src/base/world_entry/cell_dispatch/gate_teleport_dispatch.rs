@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 
 use super::super::super::ConnectedClientState;
-use super::super::gate_travel::handle_gate_travel;
+use super::super::gate_travel::{handle_gate_travel, handle_grant_stargate_address};
 use super::super::reanchor_player::handle_reanchor_player;
 use super::super::teleport::handle_teleport_player;
 use super::DispatchCtx;
@@ -81,6 +81,21 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.connected,
                 ctx.entity_to_addr,
                 ctx.db_pool,
+            )
+            .await
+        }
+        CellToBaseMsg::GrantStargateAddress {
+            entity_id,
+            player_id,
+            stargate_id,
+        } => {
+            handle_grant_stargate_address(
+                entity_id,
+                player_id,
+                stargate_id,
+                ctx.db_pool,
+                ctx.connected,
+                ctx.entity_to_addr,
             )
             .await
         }

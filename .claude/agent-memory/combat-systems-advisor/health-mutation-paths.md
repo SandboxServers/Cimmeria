@@ -51,7 +51,20 @@ denominator.
    (which requires `threatened_mobs.is_empty()`) skips the player forever. Submit also
    leaves the player's auto-cycle armed and the NPC on `HOSTILE_FACTION`, so the player
    keeps shooting a surrendered NPC until it dies.
-3. **Pulsing DoT never kills properly.** `pulsing/tick.rs` applies damage but calls no
-   `mark_npc_dead` / `apply_death_transition`; a DoT that takes an NPC to 0 leaves a
-   walking 0-HP entity. Also means a DoT can silently cross a health threshold that a
-   per-hit crossing hook will never observe.
+3. ~~**Pulsing DoT never kills properly.**~~ **Fixed** by PR #662 review fix R1 (2026-09-18):
+   `pulsing/tick.rs::dot_kill_credit` routes a lethal pulse through
+   `abilities::kill_npc_out_of_band`, and `fire_pulse` calls `note_pre_damage_health` so a
+   DoT crossing reaches `entity_health_below`. **The fix created a new trap:** a DoT applied
+   before an NPC surrenders would then kill the surrendered NPC seconds later. Harset H08
+   closed it by flooring an `AiState::Submit` target's HEALTH at 1 in `fire_pulse` — a pulse
+   is an *automatic* damage path (the server re-delivers on its own cadence), and automatic
+   paths may wound a surrendered NPC but never finish it. Every deliberate path (direct hit,
+   AoE secondary, content `apply_effect`, GM kill) still kills. See
+   `docs/architecture/abilities-and-effects-system.md` decision 18 and
+   `docs/analysis/harset-rebuild/worknotes/H08.md` §2.2 for the full per-path table.
+
+4. **`npc_ai_submit`'s leak is closed** (Harset H08, same worknote): it now routes through
+   `clear_dead_npc_from_all_player_threat`, sweeps the attacker's auto-cycle, cancels the
+   NPC's channels, releases its cover slot and re-faces the attacker. Trap 2 above is
+   historical — kept because the *shape* (a non-death combat exit must copy the death
+   path's player-side subset) still applies to any future surrender-like state.

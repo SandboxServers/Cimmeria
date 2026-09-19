@@ -9,12 +9,16 @@
 //! - [`resend`] — resend active mission state on map load.
 //! - [`lifecycle`] — accept / abandon.
 //! - [`progression`] — advance step, complete objective, complete direct.
+//! - [`persist`] — serialize the live instance into the base-side
+//!   `MissionUpdate` that UPSERTs `sgw_mission`.
 
 mod lifecycle;
+mod persist;
 mod progression;
 mod resend;
 
 pub use lifecycle::{abandon_mission, accept_mission};
+pub use persist::{mission_update_msg, send_mission_update};
 pub use progression::{advance_step, complete_mission_direct, complete_objective};
 pub use resend::resend_missions;
 

@@ -7,10 +7,13 @@
 //!   layout and witness fan-out cardinality.
 //! - [`dial_timer`] — the 4-second timer, its cancellations, and the
 //!   crossing gate.
+//! - [`address_book`] — the CAT-O-01 dial gate: refusing an address the
+//!   player does not hold.
 
 use super::super::spawner::StargateEntry;
 use super::*;
 
+mod address_book;
 mod arrival;
 mod dial_timer;
 mod sequences;
@@ -133,11 +136,31 @@ pub(super) fn engine() -> ChainEngine {
     ChainEngine::new()
 }
 
+/// Put every address the fixture's `stargates` cache holds into the
+/// traveller's book.
+///
+/// `handle_dial_gate` refuses an address the player does not hold
+/// (CAT-O-01, H06) and a freshly created `CellEntity` is born with an empty
+/// book, so every test that expects a dial to get *past* the address gate
+/// has to grant first. Keyed off the cache rather than a literal list so a
+/// gate added to a fixture is dialable without also editing this.
+pub(super) fn grant_all_addresses(mgr: &mut SpaceManager, entity_id: u32) {
+    let ids: Vec<i32> = mgr.stargates.keys().copied().collect();
+    mgr.get_entity_mut(entity_id)
+        .expect("entity must exist before it can be granted addresses")
+        .known_stargates = ids;
+}
+
 #[tokio::test]
 async fn dial_gate_to_unknown_address_is_noop() {
     let mut mgr = make_manager_with_stargates();
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
+    // 999 is in the book but not in `stargates`, so this still exercises the
+    // "address does not exist" arm it always did rather than H06's
+    // address-book gate above it.
+    mgr.get_entity_mut(1).unwrap().known_stargates.push(999);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     handle_dial_gate(1, 999, 0, &tx, &mut mgr, &engine()).await;
@@ -161,6 +184,10 @@ async fn a_rejected_dial_cancels_the_dial_already_in_flight() {
     let mut mgr = make_manager_with_stargates();
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
+    // Granted so the 999 leg below lands on the unknown-address branch and
+    // not on H06's address-book gate.
+    mgr.get_entity_mut(1).unwrap().known_stargates.push(999);
     mgr.connect_entity(1);
     let (tx, _rx) = tokio::sync::mpsc::channel(16);
 
@@ -209,6 +236,7 @@ async fn dial_gate_same_world_is_noop() {
     let mut mgr = make_manager_with_stargates();
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     handle_dial_gate(1, 1, 0, &tx, &mut mgr, &engine()).await;
@@ -229,6 +257,7 @@ async fn dial_gate_with_closed_base_channel_leaves_the_entity_in_place() {
     strip_stargate_regions(&mut mgr);
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
     mgr.connect_entity(1);
     let space_before = mgr.get_entity_space_id(1);
 
@@ -258,6 +287,7 @@ async fn dial_gate_without_a_gate_region_travels_immediately() {
     strip_stargate_regions(&mut mgr);
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
     mgr.connect_entity(1);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
@@ -312,6 +342,7 @@ async fn dial_gate_with_a_gate_region_arms_instead_of_travelling() {
     let mut mgr = make_manager_with_stargates();
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
     mgr.connect_entity(1);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);

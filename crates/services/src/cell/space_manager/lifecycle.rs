@@ -65,12 +65,13 @@ impl SpaceManager {
         self.world_spaces.contains_key(world_name)
     }
 
-    /// Stamp the numeric `resources.worlds.world_id` onto every matching
+    /// Stamp the `resources.worlds` per-world settings — the numeric
+    /// `world_id` and the `navmesh_mode` — onto every matching
     /// [`WorldDef`](super::WorldDef), from a map produced by
-    /// [`spawner::load_world_ids`](crate::cell::spawner::load_world_ids).
+    /// [`spawner::load_world_rows`](crate::cell::spawner::load_world_rows).
     ///
     /// Kept as a stamp on the existing world table rather than a parallel
-    /// `HashMap<String, i32>`: `self.worlds` is already the canonical
+    /// `HashMap<String, WorldRow>`: `self.worlds` is already the canonical
     /// keyed-by-world-name structure, and a second map keyed identically
     /// would be free to drift from it.
     ///
@@ -80,33 +81,51 @@ impl SpaceManager {
     /// to paper over. Both set differences are logged once at startup:
     /// a `spaces.xml` world with no DB row silently disables every
     /// content-engine `world` condition in that world (the condition fails
-    /// closed), and a DB world with no `spaces.xml` entry can never be
-    /// loaded as a space at all.
-    pub fn stamp_world_ids(&mut self, world_ids: &HashMap<String, i32>) {
+    /// closed) **and** keeps that world's navmesh containment enforced,
+    /// and a DB world with no `spaces.xml` entry can never be loaded as a
+    /// space at all.
+    ///
+    /// A world this never reaches — because the DB was down, or because it
+    /// has no row — keeps [`NavmeshMode::Enforce`](super::NavmeshMode),
+    /// which is today's behaviour. The failure mode of a missed stamp is
+    /// therefore "stricter than intended", never "a movement gate quietly
+    /// disappeared".
+    pub fn stamp_world_rows(
+        &mut self,
+        world_rows: &HashMap<String, super::super::spawner::WorldRow>,
+    ) {
         let mut stamped = 0usize;
+        let mut advisory: Vec<String> = Vec::new();
         // Owned, not `&str`: the borrow would come out of `iter_mut` and
         // block the immutable reads below.
         let mut missing_in_db: Vec<String> = Vec::new();
         for (name, def) in self.worlds.iter_mut() {
-            match world_ids.get(name) {
-                Some(&id) => {
-                    def.world_id = Some(id);
+            match world_rows.get(name) {
+                Some(row) => {
+                    def.world_id = Some(row.world_id);
+                    def.navmesh_mode = row.navmesh_mode;
+                    if row.navmesh_mode == super::NavmeshMode::Advisory {
+                        advisory.push(name.clone());
+                    }
                     stamped += 1;
                 }
                 None => missing_in_db.push(name.clone()),
             }
         }
 
-        let missing_in_xml: Vec<&str> = world_ids
+        let missing_in_xml: Vec<&str> = world_rows
             .keys()
             .filter(|name| !self.worlds.contains_key(*name))
             .map(String::as_str)
             .collect();
 
+        advisory.sort();
         tracing::info!(
+            target: "movement.navmesh",
             stamped,
             worlds = self.worlds.len(),
-            "Stamped world ids onto spaces.xml world definitions"
+            advisory_worlds = ?advisory,
+            "Stamped world ids and navmesh modes onto spaces.xml world definitions"
         );
         if !missing_in_db.is_empty() {
             tracing::warn!(

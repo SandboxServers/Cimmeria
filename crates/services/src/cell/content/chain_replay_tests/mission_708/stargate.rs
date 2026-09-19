@@ -37,6 +37,11 @@ const PLAYER_ID: i32 = 7186;
 /// chains are seeded with.
 const HARSET: &str = "Harset";
 
+/// Harset's `resources.stargates.stargate_id`
+/// (`db/resources/Worlds/Seed/stargates.sql`, the row with
+/// `world_id = 57`). Chain 1357 grants this; step 4462 dials it.
+const HARSET_GATE: i32 = 3;
+
 /// A destination that is neither the keyed world nor the ORIGIN world.
 /// `gate_ctx` always stamps `world_name = "Castle"`, so passing "Castle"
 /// as the destination would make both params equal and the negative would
@@ -192,8 +197,15 @@ async fn the_dhd_launcher_only_answers_on_step_2418() {
 /// `ResolvedActions::default()` and NO condition evaluation
 /// (`event_dispatch/mod.rs:53-82`), so any gate must live on the
 /// launcher. Fired the same way the minigame callback does.
+///
+/// The fourth action, `grant_stargate_address 3`, is Harset packet H55's
+/// row in this Castle file: it is what makes step 4462 reachable. Before
+/// it, a created character's `known_stargates` was `'{}'`, the client's
+/// DHD never offered Harset, and H06's dial gate refused a forged dial —
+/// so the step the previous three actions advance to could not be
+/// completed by anyone.
 #[tokio::test]
-async fn chain_1357_advances_to_4462_clears_livewire_and_binds_the_dial_topic() {
+async fn chain_1357_advances_to_4462_clears_livewire_binds_the_topic_and_grants_harset() {
     let pool = require_db_or_skip!();
     let chain = super::super::super::engine_loader::load_single_chain_for_test(&pool, 1357)
         .await
@@ -211,9 +223,9 @@ async fn chain_1357_advances_to_4462_clears_livewire_and_binds_the_dial_topic() 
     let actions: Vec<&Action> = chain.actions.iter().collect();
     assert_eq!(
         actions.len(),
-        3,
-        "chain 1357 must resolve three actions (advance, clear Livewire, bind \
-         the dial topic); got {actions:?}",
+        4,
+        "chain 1357 must resolve four actions (advance, clear Livewire, bind \
+         the dial topic, grant Harset's address); got {actions:?}",
     );
     assert!(
         matches!(
@@ -248,6 +260,16 @@ async fn chain_1357_advances_to_4462_clears_livewire_and_binds_the_dial_topic() 
          to Option<i32> — `spawner/dialogs.rs:45` drops NULL-dialog rows at \
          load — but the seed row must be right before then. Got {:?}",
         actions[2],
+    );
+    assert_eq!(
+        actions[3],
+        &Action::GrantStargateAddress { stargate_id: 3 },
+        "chain 1357 must grant Harset's address. 3 is `stargates.stargate_id` \
+         for the row with `world_id = 57` — not the world id, and not the \
+         `address_origin` glyph (6), which repeats across rows and is not an \
+         identifier. Get this wrong and the player is handed an address that \
+         either points somewhere else or does not exist. Got {:?}",
+        actions[3],
     );
 }
 
@@ -431,5 +453,112 @@ async fn chain_1360_completes_708_on_crossing_and_never_on_dialling() {
         .is_empty(),
         "chain 1360 is keyed on Harset; crossing to any other world must not \
          complete mission 708",
+    );
+}
+
+/// Chain 1357, executed: the seeded `grant_stargate_address 3` row must
+/// reach base as a `CellToBaseMsg::GrantStargateAddress` and reach the
+/// client as `updateStargateAddress`.
+///
+/// Pushed through `execute_actions` for the same reason chain 1356 is:
+/// a resolve-only test cannot tell a wired executor arm from
+/// `execute_one`'s `other =>` catch-all, and a grant that resolves but
+/// never emits leaves step 4462 exactly as unreachable as it was before
+/// this row existed.
+///
+/// Fired by id with no condition evaluation, which is how the minigame
+/// victory callback reaches it (`event_dispatch/mod.rs::fire_chain_by_id`).
+#[tokio::test]
+async fn chain_1357_executed_grants_harset_to_the_player_and_the_client() {
+    let pool = require_db_or_skip!();
+    let engine = engine_for(&pool, 1357).await;
+
+    let mut mgr = make_castle_space_mgr();
+    // The executor validates the granted id against the same
+    // `resources.stargates` cache the dial handler resolves destinations
+    // from, so the fixture has to carry Harset's row. In the server this
+    // map is filled at startup from the table this seed row's target_id
+    // points into.
+    mgr.stargates.insert(
+        HARSET_GATE,
+        crate::cell::spawner::StargateEntry {
+            world_name: HARSET.to_string(),
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            yaw: 0.0,
+            address_origin: 6,
+            arrival: None,
+            event_set_id: None,
+        },
+    );
+    mgr.create_entity(PLAYER_EID, "Castle", [800.0, 55.0, 515.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(PLAYER_EID) {
+        p.is_player = true;
+        p.player_id = Some(PLAYER_ID);
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let exec_engine = ChainEngine::new();
+    let (actions, action_delays): (Vec<_>, Vec<_>) = engine
+        .get_chain_actions(1357)
+        .into_iter()
+        .map(|(a, delay_ms)| ((1357_i64, a), delay_ms))
+        .unzip();
+    assert!(
+        !actions.is_empty(),
+        "chain 1357 must carry actions -- an empty list would make every          assertion below vacuous",
+    );
+    execute_actions(
+        cimmeria_content_engine::chain::ResolvedActions {
+            actions,
+            action_delays,
+            ..Default::default()
+        },
+        PLAYER_EID,
+        PLAYER_ID,
+        &tx,
+        &mut mgr,
+        &exec_engine,
+    )
+    .await;
+
+    assert_eq!(
+        mgr.get_entity(PLAYER_EID).unwrap().known_stargates,
+        vec![HARSET_GATE],
+        "the cell's address book is what `handle_dial_gate` enforces against;          without this the dial at step 4462 is refused with onErrorCode 180",
+    );
+
+    let mut msgs = Vec::new();
+    while let Ok(m) = rx.try_recv() {
+        msgs.push(m);
+    }
+    let persists: Vec<_> = msgs
+        .iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::GrantStargateAddress { stargate_id, .. } => Some(*stargate_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        persists,
+        vec![HARSET_GATE],
+        "exactly one persistence request, for Harset's address; got {msgs:?}",
+    );
+    let notifies = msgs
+        .iter()
+        .filter(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::EntityMethodCall { method_index, .. }
+                    if *method_index
+                        == crate::cell::client_methods::gate_travel::UPDATE_STARGATE_ADDRESS
+            )
+        })
+        .count();
+    assert_eq!(
+        notifies, 1,
+        "exactly one updateStargateAddress -- the client is handed the full          address book only at map load, so without this the DHD does not offer          Harset until a relog. Got {msgs:?}",
     );
 }

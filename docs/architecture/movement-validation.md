@@ -46,7 +46,7 @@ rows because they have different actions.
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
-| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded. Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
+| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded **or when the world is seeded `navmesh_mode = 'advisory'`** — see [navmesh-containment-modes.md](navmesh-containment-modes.md). Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
 | 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
 | 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
@@ -216,6 +216,14 @@ The remaining layers stay enforced for GMs. Bounds still hard-rejects, so
 a GM cannot write a NaN or an absurd coordinate into the spatial grid, and
 the teleport gate still hard-rejects — the GM travel commands already call
 `note_authorized_teleport`, so their own moves are unaffected.
+
+The GM allowance is also the reason a partial navmesh stays invisible: only
+ordinary players hit the holes, so no GM tester reports them. That is the
+blind spot the per-world containment mode closes — the navmesh layer is now
+gated on `resources.worlds.navmesh_mode`, and an `advisory` world skips
+containment for *everyone* while keeping the mesh for pathing, line of sight
+and height. See
+[navmesh-containment-modes.md](navmesh-containment-modes.md).
 
 `access_level` is read from the `account.accesslevel` column at login and
 carried into the cell by `InitPlayerState`; it is never derived from a
