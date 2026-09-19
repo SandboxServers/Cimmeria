@@ -18,6 +18,14 @@
 //! - [`onphysics`] — the `movement_unrestricted` (fly/ghost) bypass.
 //! - [`recovery`] — snap-back termination: relocation, correction budget,
 //!   and the terminal-fallback resolver.
+//! - [`telemetry_reject`] — what a reject *reports*: world, the navmesh
+//!   containment gate and distances, the mesh hash, the per-entity
+//!   throttle, and the load-time fingerprint line they join to.
+//! - [`telemetry_sampling`] — the accepted-position sampler (rate,
+//!   minimum distance, players-only, navmesh state).
+//!
+//! Neither changes a validation decision; they live here because they
+//! need this module's real-navmesh fixture.
 
 use std::time::Instant;
 
@@ -81,3 +89,5 @@ mod kinematics;
 mod navmesh;
 mod onphysics;
 mod recovery;
+mod telemetry_reject;
+mod telemetry_sampling;

@@ -193,7 +193,7 @@ to crate-rename churn) and **named for the question they answer**.
 | `crafting.load` / `crafting.save` | INFO | `base::crafting::persistence::{load_crafting_state, save_crafting_state}` | Crafting state round-trip — correlator: `player_id` |
 | `cover.reservation` | WARN | `cell::cover::ai_integration::try_reserve_or_warn` | Cover-slot race-lost — defensive against future async refactors |
 | `spawner.npc_respawn` | INFO | `cell::service::ticks::npc_respawn::npc_respawn_tick` | Per-NPC respawn promotion — correlator: `world_name`, `respawn_secs` |
-| `movement.validation` | WARN | `cell::service::base_messages` | Movement reject (bounds violation) — snap-back to last_valid |
+| `movement.validation` | WARN (`validation_reject`, `validation_recovered`, `speed_warning`, `navmesh_gm_bypass`, `space_mismatch`) / ERROR (`correction_suppressed`) | `cell::service::base_messages`, `cell::space_manager::movement_telemetry` | Movement reject — snap-back to last_valid. Every row carries `world` (name, not just `space_id`). A `reason = "navmesh"` reject additionally carries the containment diagnosis: `gate` (`no_poly_in_extents` \| `horizontal` \| `below_surface` \| `above_jump_tolerance`), `nav_horiz_dist`, `nav_dy`, and `navmesh_hash`. **Throttled per entity** (first immediately, then ≤ 1/s) with `suppressed = N` naming the rows elided since the last emission — see [negative-logging-convention.md §pattern-d](negative-logging-convention.md#pattern-d--high-frequency-repeat-throttled-with-a-suppressed-count) |
 | `playtest.bookmark` | INFO | `cell::console::bookmark::emit` | One row per GM `.bug <note>` — the tester, their target, mission/step/objective state, regions, counters and the free-text note. Correlator: `bookmark_id`. The entry point for reconstructing a playtest without a chat log |
 | `playtest.bookmark.entity` | INFO | `cell::console::bookmark::emit` | One row per entity within 60 u of the tester at `.bug` time (nearest 32; the selected target always included). Position, velocity, `yaw_rad`, **`yaw_byte` (the facing actually transmitted)**, `wire_facing_vs_caller_deg`, `ground_y` / `y_above_ground`, AI state, nav path, threat, follow target, spawn distance. Join on `bookmark_id` |
 | `player.journal` | DEBUG | `cell::player_journal::note` | **The cross-system order for one player.** Every notable per-player event gets one strictly increasing `seq` and a closed `kind` vocabulary: `world_enter`, `reanchor`, `region_hint`, `cover_edge`, `step_advance`, `mission_complete`, `dialog`, `action_list` (the ordered actions a trigger resolved to, with delays), `deferred_scheduled`, `deferred_fired`, `death`, `respawn`, `kill`, `teleport`. `scope_name = 'player.journal' AND entity_id = N` ordered by `seq` replaces rebuilding order from timestamps across scopes. `.bug` attaches the last 24 entries as `recent_events` |
@@ -212,7 +212,9 @@ to crate-rename churn) and **named for the question they answer**.
 | `content.resolve` | DEBUG | `cimmeria_content_engine::chain::ChainEngine::resolve_event` | A chain whose **trigger matched but a condition failed** — names the first failing condition (`failed_condition`, `failed_condition_index`, `conditions_total`), the `chain_id` / `chain_name`, `trigger_type` and `source_entity`; `reason = "condition_failed"`. Distinguishes "nothing listens for this event" from "a chain listens but its step is not active yet" — the ordering-bug shape. Generic across every content trigger |
 | `cover.detection` | DEBUG | `cell::service::ticks::cover::log_cover_edge` | One row per player cover-set proximity edge (`edge = entered \| left`): position, `crouched`, `nodes_in_set_nearby`, `nearest_node_id` / `nearest_node_dist` / node position, `proximity_radius`. Cover detection is pure proximity and never consults crouch |
 | `mission.step_context` | DEBUG | `cell::missions::progression::advance_step` | State that is **already true** when a mission step activates: `regions_inside`, `cover_sets`, `crouched`, `in_combat`, position. Region and cover triggers are edge events, so anything listed here will not re-fire for the new step |
-| `movement.navmesh` | WARN | `cell::space_manager::lifecycle` | Space created with no `.nav` file (`reason = "navmesh_missing"`) — every navmesh consumer fails open, so NPCs there path in straight lines through geometry |
+| `movement.navmesh` | INFO (`event = "navmesh_loaded"`) / WARN (`reason = "navmesh_missing"`) | `cell::space_manager::movement_telemetry::log_navmesh_loaded`, `cell::space_manager::lifecycle` | **Which mesh a space is running.** The INFO line fires once per space creation with `path`, `polys`, `verts`, `file_bytes`, `agent_height` / `agent_climb` / `agent_radius`, the full `navmesh_hash` (FNV-1a 64 of the file, 16 hex digits) and `navmesh_short_hash` (first 8). Every per-event navmesh log carries the short form, so this row is the join target for "which mesh build was this session running on?". The WARN is the no-`.nav` case — every navmesh consumer fails open, so NPCs there path in straight lines through geometry |
+| `movement.position_sample` | DEBUG | `cell::space_manager::movement_telemetry::sample_accepted_position_at` | **Accepted** player positions, the positive-space counterpart to `movement.validation_reject`. ≤ 1 row per player per 5 s and only after ≥ 1 u of movement; players only (NPCs are covered by `movement.npc` / `npc_ai.tick`). Carries `world`, `space_id`, position, `on_navmesh`, `nav_dy` (height above the walkable surface), `navmesh_hash` and the identity pair. Grouping accepted positions by world builds the walked-surface map that makes a mesh hole visible *before* somebody falls into it |
+| `npc_ai.path_fail` | WARN | `cell::service::npc_ai::path_failure::report_path_failure` | One shape for "the pathfinder gave this NPC nothing usable", shared by `fight`, `follow`, `patrol`, `investigate` and `wander`. Carries `state`, `decision_outcome`, `reason` (`no_mesh` \| `no_path` \| `degenerate_path`), `world`, from/to positions, `dist`, `dy` (the air-climb signature) and `navmesh_hash`. **Throttled per NPC** (first immediately, then ≤ 1 / 5 s) with `suppressed = N`. Before this target, `patrol` / `investigate` / `wander` logged *nothing* when `find_path` returned `None` — they pushed the raw destination and walked through geometry silently |
 | `navmesh.load` | ERROR | `entity::navigation::check_count` | Hostile `.nav` header rejected — space loads navmesh-less |
 
 #### Saved views for reading a playtest
@@ -229,7 +231,7 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 |---|---|
 | `attack_in_place` | In range + LOS + ability ready — NPC fires |
 | `chase` | Out of range / LOS — pathfinding toward target |
-| `no_path` | Pathfinder returned no path (typically: zone missing navmesh) |
+| `no_path` | WARN — pathfinder returned no path (typically: zone missing navmesh). Raised from INFO when it moved onto the throttled `npc_ai.path_fail` target; a stuck NPC is a standing condition, and at INFO it was one row per tick forever |
 | `min_range_backup` | Target inside ability `min_range` — stepping back |
 | `no_ability` | Every known ability on cooldown / needs ammo |
 | `leashed` | Target moved past `LEASH_DISTANCE` from spawn |
@@ -248,6 +250,9 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `wander_dwell` | Wander tick paused at the current destination |
 | `investigate_arrived` | Investigate tick reached the POI — dwell starts |
 | `investigate_routed` | Investigate tick pathfinding toward the POI |
+| `patrol_no_path` | WARN — patrol leg found no navmesh path; the raw waypoint is pushed and the NPC walks toward it through geometry. Log field on `npc_ai.path_fail`; the handler's terminal outcome stays `patrol_continue` because the NPC does still move |
+| `investigate_no_path` | WARN — same shape for an investigate leg. Terminal outcome stays `investigate_routed` |
+| `wander_no_path` | WARN — same shape for a wander hop. Terminal outcome stays `wander_pick` |
 | `follow_band` | Follow target is inside the band — no work |
 | `despawn` | Despawn tick — entity is being removed from the space |
 | `submit_init` | Submit tick — first-entry combat-clear |
@@ -293,6 +298,21 @@ metric labels must be enumerated low-cardinality strings (`outcome`,
 correlators (`entity_id`, `player_id`, `peer`) belong in span/log
 fields. A counter labelled by `player_id` would degrade ClickHouse's
 merge-tree query performance non-linearly.
+
+**Movement / navigation counters.** Three counters carry a `world`
+label (≈24 shipped worlds — inside the ≤ ~30 design target in
+[instrumentation-discipline.md §rule-4](instrumentation-discipline.md#rule-4--metric-labels-are-enumerated-spanlog-fields-are-correlators),
+and the reason the September 2026 navmesh investigation had to join
+space ids to world names by hand):
+
+| Metric | Labels | Notes |
+|---|---|---|
+| `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
+| `npc_path_fail_total` | `world` (~24), `state` (5), `reason` (3) | Same discipline: counted every AI tick, logged ≤ 1 / 5 s per NPC |
+| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged |
+
+Never entity ids, positions or mesh hashes as labels — those are
+per-entity and per-build correlators and belong on the log event.
 
 **Resource attribute `deployment.environment`.** Every metric (and
 every span and log) carries this resource attribute, defaulted from

@@ -12,23 +12,28 @@
 //! Reference: `src/cellapp/entity/navigation.cpp` (C++ server implementation)
 //! Reference: `tools/SceneEditor/src/commands/navmesh.rs` (XRC parser)
 //!
-//! Module layout: the XRC binary-reader helpers and the header sanity caps
-//! live in [`xrc`]; this module owns the [`NavMesh`] handle and its query API.
+//! Module layout:
+//!
+//! - [`xrc`] — XRC binary-reader helpers and the header sanity caps.
+//! - [`load`] — `NavMesh::load`: parse + Detour tile construction.
+//! - [`fingerprint`] — which mesh this is ([`NavMeshFingerprint`]).
+//! - [`verdict`] — why a containment test said what it said
+//!   ([`PointVerdict`], [`NavGate`]).
+//! - this module — the [`NavMesh`] handle and its runtime query API.
 
+mod fingerprint;
+mod load;
+mod verdict;
 mod xrc;
 
 use std::ffi::c_void;
-use std::io::{BufReader, Read as IoRead};
-use std::path::Path;
 
 use cimmeria_common::Vector3;
 
 use crate::detour_ffi::{self, dt_status_failed};
 
-use xrc::{
-    check_count, checked_alloc_size, read_f32, read_u16, read_u32, read_u8, MAX_DETAIL_NMESHES,
-    MAX_DETAIL_NTRIS, MAX_DETAIL_NVERTS, MAX_NPOLYS, MAX_NVERTS, MAX_NVP,
-};
+pub use fingerprint::NavMeshFingerprint;
+pub use verdict::{NavGate, PointVerdict};
 
 // ── Maximum path sizes (matching C++ reference) ─────────────────────────
 
@@ -92,8 +97,10 @@ pub struct NavMesh {
     mesh: *mut c_void,
     /// Human-readable label (space name).
     name: String,
-    /// Polygon count from the XRC file (for diagnostics).
-    npolys: u32,
+    /// Which `.nav` file this is: content hash, size, header counts and
+    /// agent parameters. Every navmesh-related log line that names a
+    /// mesh names it through this — see [`Self::short_hash`].
+    fingerprint: NavMeshFingerprint,
     /// Agent configuration from the navmesh file.
     pub agent_height: f32,
     pub agent_radius: f32,
@@ -122,228 +129,27 @@ impl Drop for NavMesh {
 }
 
 impl NavMesh {
-    /// Load a navigation mesh from an XRC-format `.nav` file.
-    ///
-    /// Parses the XRC binary, builds a Detour navmesh tile, and initializes
-    /// a query object. Follows the exact pipeline from the C++ reference
-    /// implementation in `navigation.cpp`.
-    pub fn load(path: &Path) -> cimmeria_common::Result<Self> {
-        let name = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let file = std::fs::File::open(path)?;
-        let mut r = BufReader::new(file);
-
-        // ── Section 1: Agent parameters ─────────────────────────────────
-        let agent_height = read_f32(&mut r)?;
-        let agent_climb = read_f32(&mut r)?;
-        let agent_radius = read_f32(&mut r)?;
-
-        // ── Section 2: Mesh metadata ────────────────────────────────────
-        //
-        // Every header count is validated against its `MAX_*` cap before the
-        // matching allocation. A `.nav` file with `nverts = 0xFFFFFFFF` would
-        // otherwise wrap `nverts * 3` to a 3-element `Vec<u16>` and the
-        // following read loop would consume only three u16s while the rest
-        // of the claimed `0xFFFFFFFF * 3` vertex region went phantom —
-        // leaving every downstream section offset wrong and (on a u32
-        // multiplication that does *not* wrap) demanding a 12 GB allocation
-        // that crashes the server at startup. Operator-deployable input,
-        // strict bounds check.
-        let nverts = check_count(read_u32(&mut r)?, MAX_NVERTS, "nverts")?;
-        let npolys = check_count(read_u32(&mut r)?, MAX_NPOLYS, "npolys")?;
-        let nvp = check_count(read_u32(&mut r)?, MAX_NVP, "nvp")?;
-        let _border_size = read_u32(&mut r)?;
-
-        // ── Section 3: Grid config (quantization parameters) ────────────
-        let cs = read_f32(&mut r)?;
-        let ch = read_f32(&mut r)?;
-        let bmin = [read_f32(&mut r)?, read_f32(&mut r)?, read_f32(&mut r)?];
-        let bmax = [read_f32(&mut r)?, read_f32(&mut r)?, read_f32(&mut r)?];
-
-        // ── Section 4: Quantized vertices ───────────────────────────────
-        let verts_len = checked_alloc_size(nverts, 3, "nverts", "verts = nverts * 3 u16s")?;
-        let mut verts = vec![0u16; verts_len];
-        for v in &mut verts {
-            *v = read_u16(&mut r)?;
-        }
-
-        // ── Section 5: Polygon connectivity ─────────────────────────────
-        // Fold the `npolys * nvp * 2` product into one checked mul via
-        // `npolys * (nvp * 2)`. `nvp` is already bounded by `MAX_NVP = 64`
-        // so `nvp * 2` cannot overflow u32; `saturating_mul` is belt-and-
-        // suspenders against future cap changes. The `field` slot stays
-        // `"npolys"` (a real header field) and the multiplication shape
-        // moves into `alloc_desc` so an operator seeing the error knows
-        // both *which header field* and *which downstream allocation*
-        // would have busted.
-        let polys_len = checked_alloc_size(
-            npolys,
-            nvp.saturating_mul(2),
-            "npolys",
-            "polys = npolys * nvp * 2 u16s",
-        )?;
-        let mut polys = vec![0u16; polys_len];
-        for p in &mut polys {
-            *p = read_u16(&mut r)?;
-        }
-
-        // ── Sections 6-8: Regions, flags, areas ─────────────────────────
-        // These are parallel `npolys`-length arrays (stride 1). `npolys`
-        // is already capped by `check_count` above, so they're safe as
-        // raw `as usize` today — but route them through `checked_alloc_size`
-        // anyway. Defense in depth: if `MAX_NPOLYS` is ever raised, this
-        // multiplication still gets checked, and the allocation pattern
-        // stays uniform across every count-driven `Vec` in `NavMesh::load`.
-        let regs_len = checked_alloc_size(npolys, 1, "npolys", "regs = npolys u16s")?;
-        let mut regs = vec![0u16; regs_len];
-        for v in &mut regs {
-            *v = read_u16(&mut r)?;
-        }
-        let flags_len = checked_alloc_size(npolys, 1, "npolys", "flags = npolys u16s")?;
-        let mut flags = vec![0u16; flags_len];
-        for v in &mut flags {
-            *v = read_u16(&mut r)?;
-        }
-        let areas_len = checked_alloc_size(npolys, 1, "npolys", "areas = npolys bytes")?;
-        let mut areas = vec![0u8; areas_len];
-        for v in &mut areas {
-            *v = read_u8(&mut r)?;
-        }
-
-        // ── Sections 9-12: Detail mesh ──────────────────────────────────
-        let detail_nmeshes = check_count(read_u32(&mut r)?, MAX_DETAIL_NMESHES, "detail_nmeshes")?;
-        let detail_nverts = check_count(read_u32(&mut r)?, MAX_DETAIL_NVERTS, "detail_nverts")?;
-        let detail_ntris = check_count(read_u32(&mut r)?, MAX_DETAIL_NTRIS, "detail_ntris")?;
-
-        let detail_meshes_len = checked_alloc_size(
-            detail_nmeshes,
-            4,
-            "detail_nmeshes",
-            "detail_meshes = detail_nmeshes * 4 u32s",
-        )?;
-        let mut detail_meshes = vec![0u32; detail_meshes_len];
-        for v in &mut detail_meshes {
-            *v = read_u32(&mut r)?;
-        }
-
-        let detail_verts_len = checked_alloc_size(
-            detail_nverts,
-            3,
-            "detail_nverts",
-            "detail_verts = detail_nverts * 3 f32s",
-        )?;
-        let mut detail_verts = vec![0.0f32; detail_verts_len];
-        for v in &mut detail_verts {
-            *v = read_f32(&mut r)?;
-        }
-
-        let detail_tris_len = checked_alloc_size(
-            detail_ntris,
-            4,
-            "detail_ntris",
-            "detail_tris = detail_ntris * 4 bytes",
-        )?;
-        let mut detail_tris = vec![0u8; detail_tris_len];
-        r.read_exact(&mut detail_tris)?;
-
-        // ── Build Detour navmesh tile ───────────────────────────────────
-        // This mirrors the C++ navigation.cpp lines 109-138 exactly:
-        // populate dtNavMeshCreateParams and call dtCreateNavMeshData.
-        let mut nav_data: *mut u8 = std::ptr::null_mut();
-        let mut nav_data_size: i32 = 0;
-
-        let build_ok = unsafe {
-            detour_ffi::detour_build_navmesh_data(
-                verts.as_ptr(),
-                nverts as i32,
-                polys.as_ptr(),
-                npolys as i32,
-                nvp as i32,
-                flags.as_ptr(),
-                areas.as_ptr(),
-                bmin.as_ptr(),
-                bmax.as_ptr(),
-                cs,
-                ch,
-                agent_height,
-                agent_radius,
-                agent_climb,
-                detail_meshes.as_ptr(),
-                detail_nmeshes as i32,
-                detail_verts.as_ptr(),
-                detail_nverts as i32,
-                detail_tris.as_ptr(),
-                detail_ntris as i32,
-                &mut nav_data,
-                &mut nav_data_size,
-            )
-        };
-
-        if build_ok == 0 || nav_data.is_null() {
-            return Err(cimmeria_common::CimmeriaError::Entity(format!(
-                "Failed to build Detour navmesh data for '{name}'"
-            )));
-        }
-
-        // ── Init dtNavMesh ──────────────────────────────────────────────
-        let mesh_handle = unsafe { detour_ffi::detour_create_navmesh(nav_data, nav_data_size) };
-
-        // Free the intermediate tile data — detour_create_navmesh made its own copy
-        unsafe {
-            detour_ffi::detour_free_data(nav_data);
-        }
-
-        if mesh_handle.is_null() {
-            return Err(cimmeria_common::CimmeriaError::Entity(format!(
-                "Failed to create Detour navmesh for '{name}'"
-            )));
-        }
-
-        // ── Init dtNavMeshQuery (2048 nodes, matching C++ reference) ────
-        let query_handle = unsafe { detour_ffi::detour_create_query(mesh_handle, 2048) };
-
-        if query_handle.is_null() {
-            unsafe {
-                detour_ffi::detour_free_navmesh(mesh_handle);
-            }
-            return Err(cimmeria_common::CimmeriaError::Entity(format!(
-                "Failed to create Detour navmesh query for '{name}'"
-            )));
-        }
-
-        tracing::info!(
-            name = %name,
-            nverts,
-            npolys,
-            nvp,
-            detail_nmeshes,
-            detail_nverts,
-            detail_ntris,
-            agent_height,
-            agent_radius,
-            "NavMesh loaded via Detour FFI"
-        );
-
-        Ok(NavMesh {
-            query: query_handle,
-            mesh: mesh_handle,
-            name,
-            npolys,
-            agent_height,
-            agent_radius,
-            bmin,
-            bmax,
-        })
-    }
-
     // ── Public query API ─────────────────────────────────────────────────
 
     /// Number of polygons in the navmesh.
     pub fn poly_count(&self) -> u32 {
-        self.npolys
+        self.fingerprint.npolys
+    }
+
+    /// Which `.nav` file this mesh was built from — content hash, size,
+    /// header counts, agent parameters. Logged in full once, at space
+    /// creation.
+    pub fn fingerprint(&self) -> &NavMeshFingerprint {
+        &self.fingerprint
+    }
+
+    /// The 8-hex-digit form of the content hash, for per-event logs.
+    ///
+    /// Any log line that reports a navmesh decision should carry this, so
+    /// "was this player walking on the rebuilt mesh or the 2013 one?" is a
+    /// filter rather than a deploy-timestamp reconstruction.
+    pub fn short_hash(&self) -> &str {
+        &self.fingerprint.short_hash
     }
 
     /// Find the nearest polygon to a point.
@@ -434,32 +240,116 @@ impl NavMesh {
     /// nearby, without needing any caller context (last-known height,
     /// grounded state, etc.) that isn't already in `pos` itself.
     pub fn is_point_valid(&self, pos: &Vector3) -> bool {
-        if let Some((_, closest)) = self.find_nearest_poly_with_extents(pos, &DEST_EXTENTS) {
-            if self.within_containment_tolerance(pos, &closest) {
-                return true;
+        // Thin wrapper by construction: the boolean the movement
+        // validator acts on and the diagnosis the logs report are the
+        // same evaluation, so they cannot drift into disagreeing about
+        // whether a point is on the mesh. Reverting this to a second,
+        // parallel implementation is the specific regression
+        // `is_point_valid_agrees_with_diagnose_point_across_a_sweep`
+        // exists to catch.
+        self.diagnose_point(pos).valid
+    }
+
+    /// [`Self::is_point_valid`]'s decision **plus why**, and how far off.
+    ///
+    /// Same two-phase search, same gates, same answer in
+    /// [`PointVerdict::valid`]. The extra information is what makes a
+    /// `movement.validation_reject` row actionable: `gate` separates "the
+    /// mesh has a hole here" ([`NavGate::NoPolyInExtents`]) from "the
+    /// player is a metre inside the floor" ([`NavGate::BelowSurface`])
+    /// from "this jump was one unit too high"
+    /// ([`NavGate::AboveJumpTolerance`]), and the distances say by how
+    /// much — which is the difference between "rebuild the mesh" and
+    /// "widen the tolerance".
+    ///
+    /// ## Which phase's polygon is reported
+    ///
+    /// Phase 2 exists because Detour returns the polygon nearest in raw
+    /// 3D distance, which on multi-level geometry can be a mezzanine
+    /// rather than the floor below (see [`Self::is_point_valid`]'s doc).
+    /// When both phases fail, the verdict reports **phase 2's** polygon
+    /// if it found one, otherwise **phase 1's**. Falling back to phase 1
+    /// matters: a point clipped below the surface pushes phase 2's
+    /// downward-biased search box past the floor entirely, so phase 2
+    /// finds nothing — and reporting `no_poly_in_extents` there would
+    /// mislabel a floor-clip as a mesh hole, which are the two failures
+    /// an operator most needs to tell apart.
+    pub fn diagnose_point(&self, pos: &Vector3) -> PointVerdict {
+        let phase1 = self
+            .find_nearest_poly_with_extents(pos, &DEST_EXTENTS)
+            .map(|(_, closest)| closest);
+        if let Some(closest) = phase1 {
+            if let Some(v) = self.verdict_against(pos, &closest) {
+                if v.valid {
+                    return v;
+                }
             }
         }
 
         let biased_center = Vector3::new(pos.x, pos.y - JUMP_HEIGHT_TOLERANCE, pos.z);
-        match self.find_nearest_poly_with_extents(&biased_center, &JUMP_SEARCH_EXTENTS) {
-            Some((_, closest)) => self.within_containment_tolerance(pos, &closest),
-            None => false,
+        let phase2 = self
+            .find_nearest_poly_with_extents(&biased_center, &JUMP_SEARCH_EXTENTS)
+            .map(|(_, closest)| closest);
+
+        match phase2.or(phase1) {
+            Some(closest) => self
+                .verdict_against(pos, &closest)
+                .unwrap_or_else(PointVerdict::no_poly),
+            None => PointVerdict::no_poly(),
         }
     }
 
-    /// Shared horizontal/vertical gate for [`Self::is_point_valid`]'s two
-    /// search phases — always evaluated against the *original* query
-    /// point, regardless of which phase's search located `closest`.
-    fn within_containment_tolerance(&self, pos: &Vector3, closest: &Vector3) -> bool {
+    /// Build the verdict for `pos` against one candidate polygon point.
+    /// Always evaluated against the *original* query point, regardless of
+    /// which search phase located `closest`.
+    ///
+    /// `None` only when a coordinate is non-finite, which the movement
+    /// validator rejects before it ever reaches the navmesh layer — but
+    /// NPC path targets and content-authored coordinates reach here
+    /// without that gate, and a NaN would otherwise make every
+    /// comparison below `false` and silently read as "on the mesh".
+    fn verdict_against(&self, pos: &Vector3, closest: &Vector3) -> Option<PointVerdict> {
         let dx = pos.x - closest.x;
         let dz = pos.z - closest.z;
-        let horizontal_gate = self.agent_radius * 2.0;
-        if dx * dx + dz * dz >= horizontal_gate * horizontal_gate {
-            return false;
-        }
         let dy = pos.y - closest.y;
+        if !dx.is_finite() || !dz.is_finite() || !dy.is_finite() {
+            return None;
+        }
+        // Squared comparison in the gate, sqrt only for the report: the
+        // pre-diagnosis code compared squares, and moving the boundary
+        // test onto `sqrt()` would shift the accept/reject decision for
+        // points sitting exactly on the gate.
+        let horizontal_sq = dx * dx + dz * dz;
+
+        let gate = self.classify_containment(horizontal_sq, dy);
+        Some(PointVerdict {
+            valid: gate.is_none(),
+            gate,
+            horizontal_dist: Some(horizontal_sq.sqrt()),
+            dy: Some(dy),
+        })
+    }
+
+    /// The containment gates themselves, in evaluation order. `None`
+    /// means the point is contained. `horizontal_sq` is the **squared**
+    /// X/Z distance to the candidate polygon point.
+    ///
+    /// This is the single place the tolerances are compared, shared by
+    /// the boolean and the diagnosis — see [`Self::is_point_valid`] for
+    /// why the vertical gate is asymmetric.
+    fn classify_containment(&self, horizontal_sq: f32, dy: f32) -> Option<NavGate> {
+        let horizontal_gate = self.agent_radius * 2.0;
+        if horizontal_sq >= horizontal_gate * horizontal_gate {
+            return Some(NavGate::Horizontal);
+        }
         let below_surface_gate = self.agent_radius * BELOW_SURFACE_TOLERANCE_FACTOR;
-        dy >= -below_surface_gate && dy <= JUMP_HEIGHT_TOLERANCE
+        if dy < -below_surface_gate {
+            return Some(NavGate::BelowSurface);
+        }
+        if dy > JUMP_HEIGHT_TOLERANCE {
+            return Some(NavGate::AboveJumpTolerance);
+        }
+        None
     }
 
     /// Find the closest valid navmesh position to the given point.
@@ -731,6 +621,8 @@ impl std::fmt::Debug for NavMesh {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NavMesh")
             .field("name", &self.name)
+            .field("hash", &self.fingerprint.short_hash)
+            .field("polys", &self.fingerprint.npolys)
             .field("agent_height", &self.agent_height)
             .field("agent_radius", &self.agent_radius)
             .field("bmin", &self.bmin)

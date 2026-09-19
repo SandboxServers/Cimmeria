@@ -28,8 +28,11 @@ impl SpaceManager {
         let nav_path = format!("data/spaces/{nav_name}.nav");
         let navmesh = match NavMesh::load(std::path::Path::new(&nav_path)) {
             Ok(nm) => {
-                tracing::info!(space_id, world = %world_name, polys = nm.poly_count(),
-                    "NavMesh loaded for space");
+                super::movement_telemetry::log_navmesh_loaded(
+                    space_id,
+                    world_name,
+                    nm.fingerprint(),
+                );
                 Some(nm)
             }
             Err(e) => {
