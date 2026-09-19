@@ -15,6 +15,10 @@
 //!   of sight (real `harset.nav`), so it does not hold fire forever.
 //! - [`selector`]      — `choose_npc_ability` three-bucket selection
 //!   (cooldown skip, all-cooling, empty-bucket fallback, ammo-bearing).
+//! - [`melee_reach`]   — the reach filter H09 added on top of that
+//!   partition: a melee ability is only selectable inside
+//!   `NPC_MELEE_RANGE`, a mobile NPC closes the distance first, and a
+//!   pinned one uses its ranged half or holds.
 //! - [`ability_range`] — per-ability min/max range gating, max_range=0
 //!   fallback, min-range backup waypoint, launch-failure retry schedule
 //!   + sweep, missing-def fallback, stationary no-backoff.
@@ -35,6 +39,7 @@ use cimmeria_entity::stats::HEALTH;
 
 mod ability_range;
 mod aggression;
+mod melee_reach;
 mod off_mesh_sentry;
 mod selector;
 mod state_machine;
