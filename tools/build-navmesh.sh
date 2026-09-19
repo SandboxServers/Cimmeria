@@ -13,14 +13,25 @@
 #   --nav FILE       final .nav path (default: <out>/<mapname>.nav)
 #   --probes FILE    probe list handed to nav_inspect
 #   --skip-extract   reuse the OBJs already in <out>/chunks
+#   --param K=V      Recast parameter passed through to NavBuilder (repeatable);
+#                    run NavBuilder with no arguments for the key list
+#   --preset NAME    named parameter set; `castle` = the whole-map Castle set
+#                    from docs/engine/navmesh-build-pipeline.md section 6
+#
+# --param / --preset need the rebuilt NavBuilder (tools/build-navbuilder.ps1).
+# The 2026-03 reference binary NavBuilder_d.exe accepts exactly four
+# arguments and exits 0 even when it fails.
 #
 # Environment:
-#   CIMMERIA_NAVBUILDER   path to NavBuilder_d.exe (default: bin64/NavBuilder_d.exe)
+#   CIMMERIA_NAVBUILDER   path to NavBuilder (default: bin64/NavBuilder.exe if
+#                         present, else bin64/NavBuilder_d.exe)
 #   CIMMERIA_COOKED_PC    CookedPC root
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NAVBUILDER="${CIMMERIA_NAVBUILDER:-$REPO_ROOT/bin64/NavBuilder_d.exe}"
+DEFAULT_NAVBUILDER="$REPO_ROOT/bin64/NavBuilder_d.exe"
+[[ -x "$REPO_ROOT/bin64/NavBuilder.exe" ]] && DEFAULT_NAVBUILDER="$REPO_ROOT/bin64/NavBuilder.exe"
+NAVBUILDER="${CIMMERIA_NAVBUILDER:-$DEFAULT_NAVBUILDER}"
 COOKED="${CIMMERIA_COOKED_PC:-}"
 
 MAP=""
@@ -29,6 +40,12 @@ INDEX=""
 NAV=""
 PROBES=""
 SKIP_EXTRACT=0
+NAV_PARAMS=()
+
+# Whole-map Castle (World 8): fits Recast's 16-bit vertex AND edge caps with
+# ~7 % headroom and keeps the interior probes in one component.
+PRESET_CASTLE=(partition=watershed agentHeight=1.8 agentClimb=0.6
+  minRegionSize=24 maxSimplificationError=2.5)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,7 +55,14 @@ while [[ $# -gt 0 ]]; do
     --nav) NAV="$2"; shift 2 ;;
     --probes) PROBES="$2"; shift 2 ;;
     --skip-extract) SKIP_EXTRACT=1; shift ;;
-    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --param) NAV_PARAMS+=("$2"); shift 2 ;;
+    --preset)
+      case "$2" in
+        castle) NAV_PARAMS+=("${PRESET_CASTLE[@]}") ;;
+        *) echo "unknown preset: $2 (known: castle)" >&2; exit 2 ;;
+      esac
+      shift 2 ;;
+    -h|--help) sed -n '2,29p' "${BASH_SOURCE[0]}"; exit 0 ;;
     -*) echo "unknown flag: $1" >&2; exit 2 ;;
     *)
       if [[ -n "$MAP" ]]; then echo "unexpected argument: $1" >&2; exit 2; fi
@@ -96,12 +120,23 @@ done
 [[ -x "$NAVBUILDER" ]] || { echo "NavBuilder not found at $NAVBUILDER (set CIMMERIA_NAVBUILDER)" >&2; exit 4; }
 echo "==> NavBuilder chunked ($((${#CHUNK_OBJS[@]})) chunk OBJs)"
 rm -f "$NAV"
-# NavBuilder exits 0 even when it writes nothing, so the file check below is
-# the real success test — see builder.cpp::exportNavmesh (returns void on
-# every failure path).
-"$NAVBUILDER" chunked "$CHUNKS" "$NAV" nav
+# The rebuilt NavBuilder exits 1 usage, 2 internal error, 3 Recast build
+# failed (incl. the 16-bit vertex / edge caps), 4 output not writable. The
+# 2026-03 reference binary exits 0 on every failure, so the file check stays
+# as a second line of defence.
+NAV_RC=0
+"$NAVBUILDER" chunked "$CHUNKS" "$NAV" nav ${NAV_PARAMS[@]+"${NAV_PARAMS[@]}"} || NAV_RC=$?
+if [[ "$NAV_RC" -ne 0 ]]; then
+  rm -f "$NAV"
+  echo "NavBuilder failed with exit code $NAV_RC — see its ERROR lines above." >&2
+  if [[ "$NAV_RC" -eq 1 && ${#NAV_PARAMS[@]} -gt 0 ]]; then
+    echo "exit 1 with --param/--preset usually means the old 4-argument NavBuilder_d.exe;" >&2
+    echo "build the tunable one with tools/build-navbuilder.ps1 and set CIMMERIA_NAVBUILDER." >&2
+  fi
+  exit 5
+fi
 if [[ ! -s "$NAV" ]]; then
-  echo "NavBuilder produced no .nav (it still exits 0 — check its log above)" >&2
+  echo "NavBuilder exited 0 but produced no .nav (old reference binary?) — check its log above" >&2
   exit 5
 fi
 

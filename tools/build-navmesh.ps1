@@ -7,8 +7,11 @@
     docs/engine/navmesh-build-pipeline.md for the axis convention, the
     NavBuilder input layout and the failure modes this script guards.
 
-    NavBuilder exits 0 even when it writes nothing, so the output-file check
-    is the real success test.
+    The rebuilt NavBuilder (tools/build-navbuilder.ps1) exits 1 usage,
+    2 internal error, 3 Recast build failed (incl. the 16-bit vertex / edge
+    caps), 4 output not writable. The 2026-03 reference binary
+    NavBuilder_d.exe accepts exactly four arguments and exits 0 even when it
+    writes nothing, so the output-file check stays as a second line of defence.
 
 .PARAMETER Map
     Cooked map directory name under <CookedPC>/Maps, e.g. Castle_CellBlock.
@@ -31,8 +34,22 @@
 .PARAMETER SkipExtract
     Reuse the OBJs already in <OutDir>/chunks.
 
+.PARAMETER NavParam
+    Recast parameters passed through to NavBuilder as key=value, e.g.
+    -NavParam 'agentHeight=1.8','minRegionSize=24'. Quote any value that
+    contains a comma (bounds=...), or PowerShell splits it. Needs the rebuilt
+    NavBuilder; run it with no arguments for the key list.
+
+.PARAMETER Preset
+    Named parameter set. 'castle' is the whole-map Castle (World 8) set from
+    docs/engine/navmesh-build-pipeline.md section 6. -NavParam entries are
+    appended after the preset, so they win.
+
 .EXAMPLE
     tools/build-navmesh.ps1 Castle_CellBlock -ProbeFile probes/castle.txt
+
+.EXAMPLE
+    tools/build-navmesh.ps1 Castle -Preset castle -ProbeFile probes/castle.txt
 #>
 [CmdletBinding()]
 param(
@@ -42,14 +59,27 @@ param(
     [string]$IndexFile,
     [string]$NavFile,
     [string]$ProbeFile,
-    [switch]$SkipExtract
+    [switch]$SkipExtract,
+    [string[]]$NavParam = @(),
+    [ValidateSet('castle')][string]$Preset
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $navBuilder = if ($env:CIMMERIA_NAVBUILDER) { $env:CIMMERIA_NAVBUILDER }
+              elseif (Test-Path (Join-Path $repoRoot 'bin64/NavBuilder.exe')) { Join-Path $repoRoot 'bin64/NavBuilder.exe' }
               else { Join-Path $repoRoot 'bin64/NavBuilder_d.exe' }
+
+# Whole-map Castle (World 8): fits Recast's 16-bit vertex AND edge caps with
+# ~7 % headroom and keeps the interior probes in one component.
+$presets = @{
+    castle = @('partition=watershed', 'agentHeight=1.8', 'agentClimb=0.6',
+               'minRegionSize=24', 'maxSimplificationError=2.5')
+}
+$navParams = @()
+if ($Preset) { $navParams += $presets[$Preset] }
+$navParams += $NavParam
 
 if (-not $CookedPc) { throw 'Set -CookedPc or $env:CIMMERIA_COOKED_PC' }
 $mapDir = Join-Path $CookedPc "Maps/$Map"
@@ -92,11 +122,19 @@ if (-not (Test-Path -LiteralPath $navBuilder -PathType Leaf)) {
 }
 Write-Host "==> NavBuilder chunked ($($chunkObjs.Count) chunk OBJs)"
 if (Test-Path -LiteralPath $NavFile) { Remove-Item -LiteralPath $NavFile -Force }
-& $navBuilder chunked $chunks $NavFile nav
-# Deliberately not checking $LASTEXITCODE: builder.cpp::exportNavmesh logs
-# FAULT and returns void on every failure path, so the process still exits 0.
+& $navBuilder chunked $chunks $NavFile nav @navParams
+$navRc = $LASTEXITCODE
+if ($navRc -ne 0) {
+    if (Test-Path -LiteralPath $NavFile) { Remove-Item -LiteralPath $NavFile -Force }
+    $hint = ''
+    if ($navRc -eq 1 -and $navParams.Count -gt 0) {
+        $hint = ' Exit 1 with -NavParam/-Preset usually means the old 4-argument NavBuilder_d.exe;' +
+                ' build the tunable one with tools/build-navbuilder.ps1 and set $env:CIMMERIA_NAVBUILDER.'
+    }
+    throw "NavBuilder failed with exit code $navRc - see its ERROR lines above.$hint"
+}
 if (-not (Test-Path -LiteralPath $NavFile) -or (Get-Item -LiteralPath $NavFile).Length -eq 0) {
-    throw 'NavBuilder produced no .nav (it still exits 0 - check its log above)'
+    throw 'NavBuilder exited 0 but produced no .nav (old reference binary?) - check its log above'
 }
 
 # --- 3. Inspect -----------------------------------------------------------
