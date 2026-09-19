@@ -20,6 +20,7 @@
 
 - [build-environment.md](build-environment.md) — rust-lld override is OBSOLETE (fixed upstream); a fresh worktree needs `external/` junction-linked; cargo's stderr is block-buffered through the Bash tool so a hung *test* looks like a hung build (diagnose via `UserModeTime`).
 - [stale-branch-clippy-toolchain-drift.md](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable (no toolchain pin), so idle branches fail on brand-new lints unrelated to their diff; update-branch before investigating.
+- [lane-sh-masks-cargo-exit-code.md](lane-sh-masks-cargo-exit-code.md) — `lane.sh` / `live-db-test.sh` exit 0 even when cargo failed; redirect to a file and grep for `^error` + `[lane] released (exit 0)`.
 
 ## Working Environment
 
@@ -50,7 +51,7 @@
 
 - [content-chain-authoring-traps.md](content-chain-authoring-traps.md) — `display_dialog` silently drops NPC dialogs on non-interact triggers (monologue fallback only); `set_interaction_type` is zone-global; NOTHING respawns (`respawn_secs` NULL everywhere) so `entity_dead_tag` missions are one-shot; victory chains evaluate no conditions; label-signature asserts mask later test assertions.
 - **zero-baseline rule** (in the same file) — `entity_templates.interaction_type` IS the runtime `interaction_type_flags` value (`spawn.rs:127`); never clear an entity's last cue bit or it goes unclickable zone-wide, and NO test type can observe it.
-- [content-chain-dispatch-traps.md](content-chain-dispatch-traps.md) — **read before authoring any chain.** `display_dialog` needs an interact in the player's history (follow-up chains have only `last_interaction_target`); `dialog_choice` carries NO archetype so splits key on dialog id; `enabled=false` does nothing to a victory chain; deferred actions survive death but not disconnect (+ the rewind-`fire_at` test pattern); button-less dialogs still raise `dialog_choice`.
+- [content-chain-dispatch-traps.md](content-chain-dispatch-traps.md) — **read before authoring any chain.** `display_dialog` needs an interact in the player's history; `dialog_choice` carries NO archetype; `enabled=false` does nothing to a victory chain; deferred actions survive death but not disconnect; button-less dialogs still raise `dialog_choice`; template-slot binds are `find_map` (one dialog-carrying bind per slot, cross-mission collisions are the real risk); a step going active in-place gets NO second `player_loaded`, so hand back via `mission_completed`; `entity_interactions` has no Rust consumer.
 
 ## Stats / entity systems
 

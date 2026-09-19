@@ -1,8 +1,9 @@
 # Content-chain dispatch traps
 
-Five facts about the content engine that are not visible from the seed
+Eight facts about the content engine that are not visible from the seed
 SQL and have each cost a real bug. Verified 2026-09-18 against the Castle
-mission 701 port (packets CA01/CA03).
+mission 701 port (packets CA01/CA03); 6-8 added 2026-09-19 from the
+Harset H30/H31 packet.
 
 ## 1. `display_dialog` needs an interact in the player's history
 
@@ -100,3 +101,59 @@ unit test driving it must set that pin first.
 `load_single_chain_for_test` returns only the FIRST expansion when a
 chain has multiple trigger rows — use `load_chain_expansions_for_test`
 for OR-semantics chains or the 2nd+ trigger silently goes unasserted.
+
+## 6. One dialog-carrying bind per template slot, and the cross-mission collision
+
+`interactions::dispatch::interact.rs` looks a bind up as
+`available_interactions[template_id]` then `find_map`s for the first
+entry whose `dialog_id` is non-NULL (interaction-only binds are skipped
+so a flag-only indicator cannot swallow the click). **Not `.first()`** —
+an older comment said so and is wrong. A second *dialog-carrying* bind on
+one slot is permanently unreachable.
+
+The collision that actually happens is **cross-mission**, not within one
+mission: two different missions' restore chains binding the same NPC's
+template slot, each gated only on its own step. Harset 2026-09-19: chain
+6502 (mission 1360, dsm 5356) and chain 6526 (mission 1361, dsm 5253)
+both bind Col. Marsh's slot 10. Within a mission the "one
+`current_step_id`" argument makes step chains disjoint for free; across
+missions nothing does.
+
+Fix shape: give the lower-precedence bind chain the same disjointness
+condition the interact chain already carries (`step_status <other
+mission>/<step> neq active`), **plus** a hand-back chain, because…
+
+## 7. The `player_loaded` form of the edge-trigger race
+
+A step that becomes current while the player is already standing in the
+destination world gets **no second `player_loaded`** — `fire_player_loaded`
+runs from `service/base_messages/player_init`, i.e. once per world entry
+(login or a `cross_world_teleport`, which destroys and rebuilds the cell
+entity). So a restore chain alone can never paint an indicator for a
+transition that happens in-place.
+
+Rules that follow:
+
+- **Same world:** bind in-chain *and* in the restore chain.
+- **Across a world boundary:** do NOT bind in-chain (the bind dies with
+  the cell entity); leave it to the destination world's restore chain.
+- **Cross-mission hand-back:** use a `mission_completed '<id>'` chain.
+  `fire_mission_completed` (executor/mission.rs, gated on a real
+  active→completed transition) populates world + mission + archetype
+  context and runs *after* the completing chain's own
+  `remove_dialog_set`, so the slot ends the event holding exactly one
+  bind.
+
+This matters more than it sounds: `entity_templates.interaction_type = 0`
+with `static_interaction_sets = '{}'` is the norm for dialog NPCs, so
+with no bind the client never registers an interaction and the
+`interact_tag` chain's right-click is **never sent**. A missing bind is a
+dead mission, not a missing icon.
+
+## 8. `entity_interactions` has no Rust consumer
+
+`grep -rn entity_interactions crates/` returns nothing. The shipped 2009
+table (static per-template NPC interactions gated by
+`missions_not_accepted` etc., e.g. Anat's 742 offer) never reaches the
+runtime. Do not reason about a collision between it and a per-player
+bind — there is none.
