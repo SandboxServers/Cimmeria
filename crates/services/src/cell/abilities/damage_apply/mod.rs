@@ -18,7 +18,6 @@ use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
-use super::loot_drop::kill_xp;
 use super::messaging::{
     flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
 };
@@ -31,16 +30,21 @@ use super::rng::pseudo_random_seed;
 ///   - Read damage NVPs from the ability's effect definitions.
 ///   - Compute QR + roll a hit result for this attacker/target pair.
 ///   - Apply health/focus damage to the target.
-///   - Detect death; mutate the target's AI state, threat list, dead bit.
+///   - Detect death (direct damage).
 ///   - Send `onEffectResults` to the attacker (witnesses pick it up via
 ///     entity routing) and to the target if the target is a player.
 ///   - Send `onStatUpdate` to the target.
 ///   - Optionally flush the attacker's dirty ammo stat (for the primary
 ///     consume path; AoE-secondary calls pass `false` so they don't
 ///     re-flush).
-///   - On death, call into [`super::death::apply_death_transition`] +
-///     send the death sequence + grant kill XP + onBeginAidWait for
-///     player targets.
+///   - On death, call into [`super::death::resolve_death`] — the single
+///     kill path (state mutations, wire burst, threat drain, death
+///     sequence, kill XP, onBeginAidWait).
+///   - After the effect scripts run, sweep for an effect-driven death
+///     (a script's HEALTH bleed finishing a target the direct damage
+///     left standing) and resolve it in the SAME ability resolution.
+///     `resolve_death` is idempotent, so a target the direct-damage arm
+///     already killed is not re-killed.
 ///   - On survival, call into [`combat::generate_threat`] which mirrors
 ///     the threat-table addition into the player's `threatened_mobs`
 ///     set (#92) and broadcasts the BSF_InCombat transition if needed.
@@ -187,62 +191,12 @@ pub(super) async fn apply_damage_to_target(
         );
     }
 
-    // Check if target died — use entity's state_field so we preserve other flags
+    // Did the *direct* damage kill? The state mutations and the whole
+    // death burst are deferred to `death::resolve_death` below so the
+    // effect-results / stat-update packets are computed against
+    // pre-death state exactly as they were before the extraction. Only
+    // the threat gate needs the answer this early.
     let target_died = target.stats.get(HEALTH).is_some_and(|s| s.cur <= 0);
-    if target_died {
-        // Player corpses keep the cell entity alive across same-world
-        // respawn (`ReanchorPlayer` reuses the entity instead of
-        // destroying and re-creating). Any in-flight weapon-action
-        // timer survives unless cleared here, and the per-tick
-        // sweeps fire deferred actions regardless of `BSF_DEAD`.
-        // Pre-fix surface: a player who dies mid-reload would have
-        // `reload_completion_tick` refill their clip during the
-        // Defeat Window (free reload during the dead state); a
-        // player who dies during the fire-while-holstered draw
-        // queue would have `pending_attack_tick` fire `useAbility`
-        // against the cached target post-respawn (re-fire against
-        // a possibly-dead-or-departed entity). NPCs are destroyed
-        // outright on death, so the cleanup is player-only.
-        if target.is_player {
-            target.set_state_flag(combat::BSF_DEAD);
-            target.set_state_flag(combat::BSF_MOVEMENT_LOCK);
-            target.clear_weapon_action_state();
-        } else {
-            // NPC kill: route through the canonical helper so any
-            // future kill path (effect-driven deaths, scripted kills,
-            // GM commands) can call `combat::mark_npc_dead` and get
-            // the same state mutations — BSF_DEAD / BSF_MOVEMENT_LOCK,
-            // ai_state = Dead, respawn_at stamp, last_movement_type
-            // clear, nav_path / velocity reset.
-            //
-            // Do NOT clear `threat_list` here: `apply_death_transition`
-            // calls `clear_dead_npc_from_all_player_threat`, which walks
-            // this list to drain each aggroed player's `threatened_mobs`
-            // and broadcast the BSF_InCombat clear. Wiping it here leaves
-            // every aggroed player permanently in-combat. The drain step
-            // runs further down in this same function, immediately after
-            // `apply_death_transition` consumes the list.
-            //
-            // Do NOT zero `interaction_type_flags` here. Python
-            // `SGWMob.onDead()` OR-merges `INT_NormalLoot` and
-            // preserves all other bits — content-driven bits (quest
-            // tags, mission interactions) must survive death.
-            //
-            // `BSF_IN_COMBAT` clear stays here as a raw bit op (see
-            // python `SGWMob.py:292`) — the helper deliberately stays
-            // out of the combat-state-machine concerns.
-            combat::mark_npc_dead(target);
-            target.state_field &= !combat::BSF_IN_COMBAT;
-        }
-        tracing::info!(
-            attacker = entity_id,
-            target = target_eid,
-            ability_id,
-            is_npc = !target.is_player,
-            "Target killed!"
-        );
-    }
-    let target_state = target.state_field;
 
     // Serialize dirty stats for the target
     let target_stat_update = target.stats.serialize_dirty();
@@ -317,184 +271,27 @@ pub(super) async fn apply_damage_to_target(
         flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
     }
 
-    // ── Death side effects ──
-    // Wire-protocol burst (target reticle, BSF_InCombat clear, loot + InteractionType,
-    // dead-state flip) lives in `death::apply_death_transition` so the ordering
-    // constraints documented there stay in one place.
-
+    // ── Death resolution (direct damage) ──
+    //
+    // Everything a death entails — the kill-site state mutations, the
+    // ordered wire burst, the threat drain, the death animation, kill XP,
+    // and the player Defeat Window — lives in `death::resolve_death` so
+    // every kill path produces the same corpse. It runs here, after the
+    // effect-results / stat-update packets, exactly where the burst used
+    // to be inlined.
     if target_died {
-        super::death::apply_death_transition(
+        super::death::resolve_death(
             target_eid,
             entity_id,
-            target_state,
+            Some(ability_id),
             attacker_is_player,
-            target_is_player,
+            // Combat kills pay XP; `resolve_death` no-ops the grant for
+            // player targets.
+            true,
             tx,
             space_mgr,
         )
         .await;
-
-        // Drain the dying NPC's `threat_list` now that the death-transition
-        // consumer has read it. Mirrors the deferred-clear contract described
-        // on `clear_dead_npc_from_all_player_threat` and prevents the corpse
-        // from holding stale aggro entries indefinitely.
-        if !target_is_player {
-            if let Some(corpse) = space_mgr.get_entity_mut(target_eid) {
-                corpse.threat_list.clear();
-            }
-        }
-
-        // Send death animation via onSequence (Entity_Death = event_id 5001)
-        // Look up the death sequence from the target's event set via sequence_map
-        {
-            const EVENT_ENTITY_DEATH: i32 = 5001;
-            // Event set 1025 (Mob) drives the death anim for both NPCs and
-            // players today. If they ever diverge, branch on `e.is_player`.
-            let event_set_id = space_mgr.get_entity(target_eid).map(|_| 1025);
-            if let Some(esid) = event_set_id {
-                if let Some(&death_seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ENTITY_DEATH))
-                {
-                    let mut seq_args = Vec::with_capacity(28);
-                    seq_args.extend_from_slice(&death_seq_id.to_le_bytes()); // KismetEventSetSeqID
-                    seq_args.extend_from_slice(&(target_eid as i32).to_le_bytes()); // SourceID (dying entity)
-                    seq_args.extend_from_slice(&(target_eid as i32).to_le_bytes()); // TargetID (also dying entity — NOT killer, or client plays death anim on killer)
-                    seq_args.push(1); // PrimaryTarget
-                    seq_args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
-                    seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count
-                    seq_args.push(0); // ViewType
-                    seq_args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
-                                                                     // Death animation — fan to self+witnesses so a spectator
-                                                                     // sees the entity fall. This closes the death
-                                                                     // visibility gap.
-                    send_entity_method_to_self_and_witnesses(
-                        target_eid,
-                        crate::mercury::method_idx::ON_SEQUENCE,
-                        seq_args,
-                        tx,
-                        space_mgr,
-                    )
-                    .await;
-                    tracing::debug!(
-                        target: "abilities.sequence",
-                        event = "entity_death",
-                        source_id = target_eid,
-                        target_id = target_eid,
-                        sequence_id = death_seq_id,
-                        event_set_id = esid,
-                        "onSequence broadcast: Entity_Death (death animation)"
-                    );
-                }
-            }
-        }
-
-        // Grant XP to the attacker if the target is a non-player entity
-        if let Some(target) = space_mgr.get_entity(target_eid) {
-            if !target.is_player {
-                let xp = kill_xp(target.level);
-                tracing::info!(
-                    attacker = entity_id,
-                    target = target_eid,
-                    mob_level = target.level,
-                    xp,
-                    "Granting kill XP"
-                );
-                if let Err(e) = tx
-                    .send(CellToBaseMsg::GrantXP {
-                        entity_id,
-                        xp_amount: xp,
-                        // Mob-kill XP is not GM-sourced — no GM feedback line.
-                        gm_feedback_to: None,
-                    })
-                    .await
-                {
-                    tracing::error!(
-                        attacker = entity_id, target = target_eid, xp,
-                        error = %e,
-                        "GrantXP send to base failed -- player kill credit lost"
-                    );
-                }
-            }
-        }
-
-        // Send onBeginAidWait to player so they see the Defeat Window
-        // Reference: python/cell/SGWPlayer.py:1278 — self.client.onBeginAidWait(100, respawnerList)
-        if target_is_player {
-            // Look up respawners for the player's current world
-            let world_name = space_mgr.get_entity_world_name(target_eid);
-            let matching_respawners: Vec<_> = if let Some(ref wn) = world_name {
-                space_mgr
-                    .respawners
-                    .iter()
-                    .filter(|r| r.world_name == *wn)
-                    .collect()
-            } else {
-                vec![]
-            };
-
-            let (px, py, pz) = space_mgr
-                .get_entity(target_eid)
-                .map_or((0.0, 0.0, 0.0), |p| {
-                    (p.position.x, p.position.y, p.position.z)
-                });
-            let killer_name = space_mgr
-                .get_entity(entity_id)
-                .and_then(|k| k.npc_name.clone().or_else(|| k.character_name.clone()))
-                .unwrap_or_default();
-            let id = space_mgr.player_identity(target_eid);
-            tracing::info!(
-                target: "player.death",
-                entity_id = target_eid,
-                account_id = id.account_id,
-                player_id = id.player_id,
-                killer = entity_id,
-                killer_name = %killer_name,
-                ability_id,
-                world = ?world_name,
-                x = px,
-                y = py,
-                z = pz,
-                "player death"
-            );
-
-            let mut aid_args = Vec::with_capacity(64);
-            // INT32: TimeToAid (seconds until auto-respawn)
-            aid_args.extend_from_slice(&30i32.to_le_bytes());
-
-            if matching_respawners.is_empty() {
-                // Fallback: single entry with chardef spawn position
-                aid_args.extend_from_slice(&1u32.to_le_bytes()); // array count
-                aid_args.extend_from_slice(&0i32.to_le_bytes()); // respawnerID = 0 (default)
-                crate::mercury::write_wstring(&mut aid_args, "Respawn Point");
-            } else {
-                aid_args.extend_from_slice(&(matching_respawners.len() as u32).to_le_bytes());
-                for resp in &matching_respawners {
-                    aid_args.extend_from_slice(&resp.respawner_id.to_le_bytes());
-                    crate::mercury::write_wstring(&mut aid_args, &resp.name);
-                }
-            }
-
-            send_entity_method(
-                target_eid,
-                crate::mercury::method_idx::ON_BEGIN_AID_WAIT,
-                aid_args,
-                tx,
-                space_mgr,
-            )
-            .await;
-            tracing::info!(
-                target = target_eid,
-                world = ?world_name,
-                respawner_count = if matching_respawners.is_empty() { 1 } else { matching_respawners.len() },
-                respawner_ids = ?matching_respawners.iter().map(|r| r.respawner_id).collect::<Vec<_>>(),
-                filter = "world_name_only",
-                "Sent onBeginAidWait (Defeat Window)"
-            );
-            crate::cell::player_journal::note(
-                target_eid,
-                crate::cell::player_journal::kinds::DEATH,
-                format!("world={world_name:?}"),
-            );
-        }
     }
 
     // Generate threat on surviving NPCs so they aggro back. If this hit
@@ -582,6 +379,46 @@ pub(super) async fn apply_damage_to_target(
                 .await;
             }
         }
+    }
+
+    // ── Death resolution (effect-driven) ──
+    //
+    // Effect scripts write HEALTH directly — `RangedPhysicalDamage`'s
+    // Focus-pierce bleed, `MeleePhysicalDamage`, `RangedEnergyDamage`,
+    // `Suppression` — so a shot whose *direct* damage left the target
+    // standing can still take it to zero down here, long after the
+    // `target_died` check above has run. Playtest 2026-09-19: pistol auto
+    // attack (ability 579 / effect 641) bled MessHall_Guard1 to 0 HP, the
+    // mission's `entity_dead_tag` trigger fired off the health probe in
+    // `handle_use_ability_with_kill_credit`, and then nothing else
+    // happened — no corpse, no loot, no XP, `ai_state` still `Fighting`.
+    // The guard kept shooting back from 0 HP for 1.5 s until the player's
+    // NEXT shot re-entered the direct-damage arm and finally killed it.
+    //
+    // Sweeping here rather than inside each script keeps the scripts pure
+    // stat mutators (they hold `&mut SpaceManager` through a sync
+    // `EffectContext` and cannot await the wire burst). `resolve_death` is
+    // idempotent on `BSF_DEAD`, so the common case — direct damage already
+    // killed — costs one entity lookup and returns.
+    //
+    // Unconditional rather than gated on `!script_effect_ids.is_empty()`:
+    // any post-`calculate_damage` step that zeroes HEALTH should produce a
+    // corpse, and a target that arrives here already at 0 HP without
+    // `BSF_DEAD` is a bug we would rather fail safe on than propagate.
+    if space_mgr
+        .get_entity(target_eid)
+        .is_some_and(|e| e.stats.get(HEALTH).is_some_and(|s| s.cur <= 0))
+    {
+        super::death::resolve_death(
+            target_eid,
+            entity_id,
+            Some(ability_id),
+            attacker_is_player,
+            true,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     // ── Register pulsing effects ──
