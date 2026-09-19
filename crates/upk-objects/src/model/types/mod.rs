@@ -101,18 +101,35 @@ pub const NF_SHOOT_THROUGH: u8 = 0x02;
 /// Does not block visibility.
 pub const NF_NOT_VIS_BLOCKING: u8 = 0x04;
 
-/// The `PolyFlags` bits treated as "this surface does not block".
+/// Every `PolyFlags` bit whose per-triangle count is reported by
+/// [`BspTriangulation::excluded_by_flag`], whether or not the active
+/// filter drops it.
 ///
-/// **Change this table, not the triangulator**, when the PolyFlags
-/// semantics are pinned down for real. Every entry is reported
-/// individually by [`BspTriangulation::excluded_by_flag`], so adding a
-/// speculative bit here and reading the count back off a real tile is
-/// the intended way to test a hypothesis.
-pub const NON_COLLIDING_POLY_FLAGS: &[(&str, u32)] = &[
+/// This is the "make a wrong assumption visible" mechanism: adding a
+/// speculative bit here and reading the count back off a real tile
+/// tests a hypothesis without deleting any geometry.
+pub const REPORTED_POLY_FLAGS: &[(&str, u32)] = &[
     ("PF_Invisible", PF_INVISIBLE),
     ("PF_NotSolid", PF_NOT_SOLID),
     ("PF_Portal", PF_PORTAL),
 ];
+
+/// The `PolyFlags` bits treated as "this surface does not block", i.e.
+/// the ones [`CollisionFilter::default`] actually drops.
+///
+/// **Change this table, not the triangulator**, when the PolyFlags
+/// semantics are pinned down for real.
+///
+/// `PF_Invisible` is deliberately **not** here. It controls
+/// visibility, and UE3 has a separate `PF_NotSolid` for "does not
+/// block movement"; an invisible solid surface — a collision-only
+/// blocker, which level designers use precisely because it is
+/// invisible — still stops a player. Dropping it would punch a
+/// navmesh hole exactly where the player cannot walk. It stays in
+/// [`REPORTED_POLY_FLAGS`] so its count is still visible if the
+/// assumption ever needs revisiting.
+pub const NON_COLLIDING_POLY_FLAGS: &[(&str, u32)] =
+    &[("PF_NotSolid", PF_NOT_SOLID), ("PF_Portal", PF_PORTAL)];
 
 /// The `NodeFlags` bits treated as "this node does not block".
 ///
@@ -252,7 +269,7 @@ impl Model {
 
         let mut poly_hist: Vec<(u32, usize)> = Vec::new();
         let mut node_hist: Vec<(u8, usize)> = Vec::new();
-        let mut per_flag: Vec<(&'static str, u32, usize)> = NON_COLLIDING_POLY_FLAGS
+        let mut per_flag: Vec<(&'static str, u32, usize)> = REPORTED_POLY_FLAGS
             .iter()
             .map(|(n, b)| (*n, *b, 0usize))
             .collect();

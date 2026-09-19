@@ -40,6 +40,11 @@ pub mod nav_roundtrip;
 pub mod obj;
 pub mod staticmesh;
 pub mod terrain;
+/// Synthetic UE3 package fixtures. Behind `test-support` so nothing
+/// here reaches a release binary; see the module docs for why the
+/// builder lives in this crate rather than `cimmeria-upk`.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 pub mod transform;
 pub mod umap;
 
@@ -174,6 +179,39 @@ pub struct ExtractOptions<'a> {
     pub keep_hull_caps: bool,
 }
 
+/// Resolve a directory path to something two spellings of the same
+/// directory compare equal on.
+///
+/// `canonicalize` is the real answer — it resolves `.`, `..`, symlinks
+/// and (on Windows) case — but it requires the path to exist. For a
+/// directory that doesn't, fall back to a lexical cleanup: drop `.`
+/// components and pop a component for each `..`. An empty path means
+/// "the current directory", which is what `Path::parent` returns for a
+/// bare filename.
+fn normalize_dir(path: &Path) -> std::path::PathBuf {
+    let path = if path.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        path
+    };
+    if let Ok(real) = path.canonicalize() {
+        return real;
+    }
+    let mut out = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 /// [`extract_map`] plus a machine-readable per-chunk coverage report.
 ///
 /// The returned [`MapCoverage`] answers the question the phase table
@@ -199,8 +237,19 @@ pub fn extract_map_with_report(
     let started = std::time::Instant::now();
     tracing::info!(map_dir = %map_dir.display(), output_dir = %output_dir.display(), "extract_map: starting");
 
+    if !output_dir.exists() {
+        std::fs::create_dir_all(output_dir)?;
+    }
+
+    // Containment guard, after `create_dir_all` so `canonicalize` on
+    // `output_dir` can resolve. A lexical `parent() == Some(out)`
+    // comparison is bypassed by any equivalent spelling —
+    // `out` vs `./out/x.obj`, or `build/out` vs
+    // `build/x/../out/x.obj` — and the bypass is silent all the way
+    // through NavBuilder, which exits 0 with no output.
     if let Some(combined) = combined_obj {
-        if combined.parent() == Some(output_dir) {
+        let parent = combined.parent().unwrap_or(Path::new(""));
+        if normalize_dir(parent) == normalize_dir(output_dir) {
             return Err(ExtractError::Other(format!(
                 "combined OBJ {} would sit in the per-chunk output directory; \
                  NavBuilder's chunked mode then fails to create a heightfield \
@@ -209,10 +258,6 @@ pub fn extract_map_with_report(
                 output_dir.display()
             )));
         }
-    }
-
-    if !output_dir.exists() {
-        std::fs::create_dir_all(output_dir)?;
     }
 
     let all_chunks = umap::enumerate_chunks(map_dir)?;

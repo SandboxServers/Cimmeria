@@ -139,13 +139,13 @@ pub fn deserialize_terrain(data: &[u8], names: &[NameEntry]) -> Result<Terrain> 
         num_patches_y,
         num_vertices_x,
         num_vertices_y,
-        num_sections_x: find_u32(&props, "NumSectionsX").unwrap_or(1),
-        num_sections_y: find_u32(&props, "NumSectionsY").unwrap_or(1),
-        max_tesselation_level: find_u32(&props, "MaxTesselationLevel").unwrap_or(1),
-        location: find_vector(&props, "Location").unwrap_or([0.0; 3]),
-        rotation: find_rotator(&props, "Rotation").unwrap_or([0; 3]),
-        draw_scale: find_float(&props, "DrawScale").unwrap_or(1.0),
-        draw_scale_3d: find_vector(&props, "DrawScale3D")
+        num_sections_x: find_u32_opt(&props, "NumSectionsX")?.unwrap_or(1),
+        num_sections_y: find_u32_opt(&props, "NumSectionsY")?.unwrap_or(1),
+        max_tesselation_level: find_u32_opt(&props, "MaxTesselationLevel")?.unwrap_or(1),
+        location: find_vector(&props, "Location")?.unwrap_or([0.0; 3]),
+        rotation: find_rotator(&props, "Rotation")?.unwrap_or([0; 3]),
+        draw_scale: find_float(&props, "DrawScale")?.unwrap_or(1.0),
+        draw_scale_3d: find_vector(&props, "DrawScale3D")?
             .unwrap_or(SGW_TERRAIN_DEFAULT_DRAW_SCALE_3D),
         heights,
         info_data,
@@ -188,9 +188,12 @@ fn read_count(data: &[u8], pos: &mut usize, field: &str) -> Result<u32> {
 }
 
 /// Cross-check a binary alpha-size copy against its tagged-property
-/// twin. Absent property ⇒ nothing to check.
+/// twin. Absent property ⇒ nothing to check; a *malformed* one is an
+/// error rather than a skipped check, because this cross-check is the
+/// cheapest signal that the trailer walk has drifted and swallowing
+/// it removes the very guard it exists to be.
 fn check_alpha(props: &[TaggedProperty], name: &str, binary: u32) -> Result<()> {
-    if let Ok(from_props) = find_u32(props, name) {
+    if let Some(from_props) = find_u32_opt(props, name)? {
         if from_props != binary {
             return Err(ObjectError::InvalidData(format!(
                 "{} mismatch: tagged property says {}, binary trailer says {}",
@@ -216,34 +219,59 @@ fn find_u32(props: &[TaggedProperty], name: &str) -> Result<u32> {
     }
 }
 
-fn find_vector(props: &[TaggedProperty], name: &str) -> Option<[f32; 3]> {
-    props.iter().find(|p| p.name == name).and_then(|p| {
-        if let PropValue::Vector { x, y, z } = &p.value {
-            Some([*x, *y, *z])
-        } else {
-            None
-        }
-    })
+/// [`find_u32`] for an optional property: absent is `Ok(None)`, but a
+/// property that *is* present and holds the wrong type still fails.
+///
+/// The distinction matters because every optional terrain property has
+/// a plausible default. Collapsing "absent" and "wrong type" into the
+/// same `None` means a `Location` that decoded as something other than
+/// a `Vector` silently places the terrain at the origin — a whole
+/// chunk of ground in the wrong place, with nothing to say so.
+fn find_u32_opt(props: &[TaggedProperty], name: &str) -> Result<Option<u32>> {
+    match find_u32(props, name) {
+        Ok(v) => Ok(Some(v)),
+        Err(ObjectError::MissingProperty(_)) => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
-fn find_rotator(props: &[TaggedProperty], name: &str) -> Option<[i32; 3]> {
-    props.iter().find(|p| p.name == name).and_then(|p| {
-        if let PropValue::Rotator { pitch, yaw, roll } = &p.value {
-            Some([*pitch, *yaw, *roll])
-        } else {
-            None
-        }
-    })
+fn find_vector(props: &[TaggedProperty], name: &str) -> Result<Option<[f32; 3]>> {
+    match props.iter().find(|p| p.name == name) {
+        None => Ok(None),
+        Some(p) => match &p.value {
+            PropValue::Vector { x, y, z } => Ok(Some([*x, *y, *z])),
+            other => Err(ObjectError::InvalidData(format!(
+                "{} is {:?}, expected a Vector StructProperty",
+                name, other
+            ))),
+        },
+    }
 }
 
-fn find_float(props: &[TaggedProperty], name: &str) -> Option<f32> {
-    props.iter().find(|p| p.name == name).and_then(|p| {
-        if let PropValue::Float(v) = &p.value {
-            Some(*v)
-        } else {
-            None
-        }
-    })
+fn find_rotator(props: &[TaggedProperty], name: &str) -> Result<Option<[i32; 3]>> {
+    match props.iter().find(|p| p.name == name) {
+        None => Ok(None),
+        Some(p) => match &p.value {
+            PropValue::Rotator { pitch, yaw, roll } => Ok(Some([*pitch, *yaw, *roll])),
+            other => Err(ObjectError::InvalidData(format!(
+                "{} is {:?}, expected a Rotator StructProperty",
+                name, other
+            ))),
+        },
+    }
+}
+
+fn find_float(props: &[TaggedProperty], name: &str) -> Result<Option<f32>> {
+    match props.iter().find(|p| p.name == name) {
+        None => Ok(None),
+        Some(p) => match &p.value {
+            PropValue::Float(v) => Ok(Some(*v)),
+            other => Err(ObjectError::InvalidData(format!(
+                "{} is {:?}, expected FloatProperty",
+                name, other
+            ))),
+        },
+    }
 }
 
 /// Check that enough bytes remain for the next read.

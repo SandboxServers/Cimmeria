@@ -127,9 +127,18 @@ pub struct BspStats {
     pub models_total: usize,
     /// `Model` exports that decoded successfully.
     pub models_parsed: usize,
-    /// `Model` exports whose decode failed. Any non-zero value here is
-    /// a decoder bug, not a data problem — the deserializer enforces
-    /// exact consumption.
+    /// `Model` exports that did not reach the soup because something
+    /// about them failed to read: the export body, the `UModel`
+    /// payload, or the owning actor's placement properties. Any
+    /// non-zero value here is a decoder bug or corrupt input, not a
+    /// data-shape we tolerate — the deserializer enforces exact
+    /// consumption and a model with unreadable placement would land at
+    /// the wrong world position.
+    ///
+    /// A placement failure is counted here *and* in
+    /// [`models_parsed`](Self::models_parsed): the payload did decode,
+    /// it just cannot be placed. The two counters answer different
+    /// questions and deliberately overlap in that one case.
     pub models_failed: usize,
     /// One `"<export_name>#<idx>: <error>"` line per failed decode.
     pub parse_errors: Vec<String>,
@@ -173,7 +182,7 @@ pub struct BspStats {
     /// enclosing hull, i.e. where the cap filter could fire at all.
     pub models_with_hull: usize,
     /// Triangles dropped as outer-hull skin. Zero when
-    /// [`BspOptions::exclude_hull_caps`] is off.
+    /// [`BspOptions::terrain_ceiling`] is absent.
     pub hull_cap_triangles_excluded: usize,
     /// Surface area of those triangles, m². Reported because the cap is
     /// judged by how much unreachable *sheet* it removes, not by
@@ -181,7 +190,7 @@ pub struct BspStats {
     pub hull_cap_area_m2: f64,
 }
 
-/// Knobs for [`collect_bsp_triangles_with`].
+/// Knobs for [`collect_bsp_triangles`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BspOptions<'a> {
     /// The chunk's terrain surface, used to decide whether an outer
@@ -462,7 +471,22 @@ pub fn collect_bsp_models(pkg: &Package) -> (Vec<BspModelInstance>, BspStats) {
         let (transform, pre_pivot) = if is_level_model {
             (ActorTransform::default(), [0.0; 3])
         } else {
-            actor_placement(pkg, export.package_index)
+            // A model we cannot place is worse than a model we drop:
+            // identity defaults put real geometry at the world origin,
+            // and the navmesh then has a floor where there is none and
+            // a hole where the floor should be. Skip it and say so.
+            match actor_placement(pkg, export.package_index) {
+                Ok(placement) => placement,
+                Err(e) => {
+                    stats.models_failed += 1;
+                    stats.parse_errors.push(format!(
+                        "{}#{}: owner placement: {e}",
+                        export.object_name,
+                        idx + 1
+                    ));
+                    continue;
+                }
+            }
         };
 
         out.push(BspModelInstance {
@@ -488,19 +512,81 @@ pub fn collect_bsp_models(pkg: &Package) -> (Vec<BspModelInstance>, BspStats) {
 /// Castle brush `Model` is an empty stub, so this path emits nothing on
 /// the Castle data set — it is here for maps whose brushes do carry
 /// geometry, and is untested against real non-empty data.
-fn actor_placement(pkg: &Package, owner_index: i32) -> (ActorTransform, [f32; 3]) {
+///
+/// **Fallible on purpose.** Missing placement properties take UE3's
+/// cooked defaults, which is correct — a cooked actor at the origin
+/// with no rotation writes no `Location` tag. A property stream that
+/// *stopped early* is a different thing: the tags after the break are
+/// not absent, they are unread, and defaulting them silently moves the
+/// model. Callers must count the failure and drop the model rather
+/// than emit it somewhere plausible-looking.
+fn actor_placement(
+    pkg: &Package,
+    owner_index: i32,
+) -> std::result::Result<(ActorTransform, [f32; 3]), String> {
     let Some(owner) = owner_export(pkg, owner_index) else {
-        return (ActorTransform::default(), [0.0; 3]);
+        return Err(format!(
+            "owner index {owner_index} is not an export in this package"
+        ));
     };
-    let Ok(data) = pkg.read_export_data(owner) else {
-        return (ActorTransform::default(), [0.0; 3]);
-    };
+    let data = pkg
+        .read_export_data(owner)
+        .map_err(|e| format!("could not read owner {}: {e}", owner.object_name))?;
     if data.len() <= ACTOR_PROPS_OFFSET {
-        return (ActorTransform::default(), [0.0; 3]);
+        return Err(format!(
+            "owner {} body is {} bytes, too short for the {ACTOR_PROPS_OFFSET}-byte actor header \
+             plus a property stream",
+            owner.object_name,
+            data.len()
+        ));
     }
-    let props = cimmeria_upk::parse_tagged_properties(&data, ACTOR_PROPS_OFFSET, &pkg.names);
+    let (props, end) =
+        cimmeria_upk::parse_tagged_properties_with_end(&data, ACTOR_PROPS_OFFSET, &pkg.names);
+    if !ended_on_none_terminator(&data, end, &pkg.names) {
+        return Err(format!(
+            "owner {} property stream stopped at byte {end} of {} without reaching the `None` \
+             terminator; {} properties were read",
+            owner.object_name,
+            data.len(),
+            props.len()
+        ));
+    }
     let pre_pivot = find_vector(&props, "PrePivot").unwrap_or([0.0; 3]);
-    (transform_from_actor_props(&props), pre_pivot)
+    Ok((transform_from_actor_props(&props), pre_pivot))
+}
+
+/// Whether a tagged-property walk stopped on the `None` FName rather
+/// than on a malformed or truncated tag.
+///
+/// `parse_tagged_properties_with_end` reports where it stopped but not
+/// why. It always advances past the 8-byte FName it last read, so a
+/// clean walk leaves exactly the `None` FName in the eight bytes before
+/// `end`, and every early `break` leaves something else there (a
+/// garbage name index, a type FName, or a size/array-index pair).
+fn ended_on_none_terminator(data: &[u8], end: usize, names: &[cimmeria_upk::NameEntry]) -> bool {
+    let Some(start) = end.checked_sub(8) else {
+        return false;
+    };
+    if end > data.len() {
+        return false;
+    }
+    let idx = i32::from_le_bytes([
+        data[start],
+        data[start + 1],
+        data[start + 2],
+        data[start + 3],
+    ]);
+    let num = i32::from_le_bytes([
+        data[start + 4],
+        data[start + 5],
+        data[start + 6],
+        data[start + 7],
+    ]);
+    num == 0
+        && usize::try_from(idx)
+            .ok()
+            .and_then(|i| names.get(i))
+            .is_some_and(|n| n.name == "None")
 }
 
 /// Resolve a `package_index` to its owning export, if any.
@@ -541,117 +627,4 @@ fn bump_class(hist: &mut Vec<(String, usize)>, class: &str) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn level_owned_models_are_world_space() {
-        assert_eq!(classify_owner(Some("Level")), OwnerKind::Level);
-        assert!(OwnerKind::Level.emits_geometry());
-    }
-
-    #[test]
-    fn brush_and_blocking_volume_are_included() {
-        assert_eq!(classify_owner(Some("Brush")), OwnerKind::IncludedActor);
-        assert_eq!(
-            classify_owner(Some("BlockingVolume")),
-            OwnerKind::IncludedActor
-        );
-        assert!(OwnerKind::IncludedActor.emits_geometry());
-    }
-
-    #[test]
-    fn trigger_volumes_are_excluded() {
-        // Both observed Castle volume classes. A TriggerVolume's convex
-        // hull spans doorways — emitting it would seal the navmesh.
-        for c in ["TriggerVolume", "DynamicTriggerVolume"] {
-            assert_eq!(
-                classify_owner(Some(c)),
-                OwnerKind::ExcludedVolume,
-                "{c} must be excluded"
-            );
-        }
-        assert!(!OwnerKind::ExcludedVolume.emits_geometry());
-    }
-
-    #[test]
-    fn unknown_volume_classes_are_excluded_and_surfaced() {
-        // A `*Volume` class we've never seen is excluded conservatively
-        // rather than silently emitted, and lands in
-        // `unclassified_volume_classes` so it shows up in the report.
-        assert_eq!(
-            classify_owner(Some("UTKillZVolume")),
-            OwnerKind::UnknownVolume
-        );
-        assert!(!OwnerKind::UnknownVolume.emits_geometry());
-    }
-
-    #[test]
-    fn unknown_non_volume_owner_is_included() {
-        // A Model-owning actor that isn't a volume is brush geometry.
-        assert_eq!(
-            classify_owner(Some("SGWDoorBrush")),
-            OwnerKind::UnknownActor
-        );
-        assert!(OwnerKind::UnknownActor.emits_geometry());
-    }
-
-    #[test]
-    fn root_owned_model_is_the_builder_brush() {
-        assert_eq!(classify_owner(None), OwnerKind::BuilderBrush);
-        assert!(!OwnerKind::BuilderBrush.emits_geometry());
-    }
-
-    #[test]
-    fn level_model_placement_ignores_transform_and_prepivot() {
-        let inst = BspModelInstance {
-            export_index: 1,
-            owner_class: "Level".into(),
-            owner_name: "PersistentLevel".into(),
-            is_level_model: true,
-            transform: ActorTransform {
-                location: [1000.0, 2000.0, 3000.0],
-                ..Default::default()
-            },
-            pre_pivot: [5.0, 5.0, 5.0],
-            model: Model::default(),
-        };
-        // Level CSG is already world space — a stray transform on the
-        // Level export must not move it.
-        assert_eq!(inst.to_world([10.0, 20.0, 30.0]), [10.0, 20.0, 30.0]);
-    }
-
-    #[test]
-    fn actor_model_placement_subtracts_prepivot_before_transform() {
-        // UE3: FTranslationMatrix(-PrePivot) * Scale * Rotation *
-        // Translation. With scale 2 and PrePivot (1,1,1), local (3,1,1)
-        // lands at (2*2, 0, 0) + Location.
-        let inst = BspModelInstance {
-            export_index: 2,
-            owner_class: "Brush".into(),
-            owner_name: "Brush".into(),
-            is_level_model: false,
-            transform: ActorTransform {
-                location: [100.0, 0.0, 0.0],
-                draw_scale: 2.0,
-                ..Default::default()
-            },
-            pre_pivot: [1.0, 1.0, 1.0],
-            model: Model::default(),
-        };
-        assert_eq!(inst.to_world([3.0, 1.0, 1.0]), [104.0, 0.0, 0.0]);
-    }
-
-    #[test]
-    fn excluded_volume_class_table_carries_a_reason_for_each_entry() {
-        // The exclusion list is the kind of thing a future reader will
-        // want to challenge; every entry must say why.
-        for (class, reason) in EXCLUDED_VOLUME_CLASSES {
-            assert!(!class.is_empty());
-            assert!(
-                reason.len() > 20,
-                "{class} needs a real reason, got {reason:?}"
-            );
-        }
-    }
-}
+mod tests;

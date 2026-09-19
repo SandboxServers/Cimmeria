@@ -95,8 +95,8 @@ fn surf_normal_falls_back_to_the_plane_when_vnormal_is_out_of_range() {
 }
 
 #[test]
-fn default_filter_drops_invisible_and_not_solid_surfaces() {
-    for bit in [PF_INVISIBLE, PF_NOT_SOLID, PF_PORTAL] {
+fn default_filter_drops_not_solid_and_portal_surfaces() {
+    for bit in [PF_NOT_SOLID, PF_PORTAL] {
         let m = square_model(bit, 0);
         let t = m.triangulate(CollisionFilter::default());
         assert!(
@@ -106,6 +106,41 @@ fn default_filter_drops_invisible_and_not_solid_surfaces() {
         assert_eq!(t.nodes_excluded, 1);
         assert_eq!(t.triangles_excluded, 2);
     }
+}
+
+#[test]
+fn default_filter_keeps_an_invisible_but_solid_surface() {
+    // `PF_Invisible` says "do not draw", not "do not block". An
+    // invisible solid surface is a collision-only blocker; filtering it
+    // out deletes a wall from the navmesh and lets NPCs walk through
+    // it. The flag must still be *reported* so a future reader can
+    // re-test the assumption, but it must not be *dropped*.
+    let m = square_model(PF_INVISIBLE, 0);
+    let t = m.triangulate(CollisionFilter::default());
+    assert_eq!(t.triangles.len(), 2, "invisible solid surfaces still block");
+    assert_eq!(t.nodes_excluded, 0);
+    assert_eq!(t.triangles_excluded, 0);
+    assert_eq!(
+        CollisionFilter::default().poly_flag_mask & PF_INVISIBLE,
+        0,
+        "PF_Invisible must not be in the default drop mask"
+    );
+    let inv = t
+        .excluded_by_flag
+        .iter()
+        .find(|e| e.0 == "PF_Invisible")
+        .expect("PF_Invisible must stay in the report table");
+    assert_eq!(inv.2, 2, "both fan triangles still counted for the report");
+}
+
+#[test]
+fn an_invisible_and_not_solid_surface_is_still_dropped() {
+    // Removing PF_Invisible from the drop mask must not rescue a
+    // surface that also carries PF_NotSolid.
+    let m = square_model(PF_INVISIBLE | PF_NOT_SOLID, 0);
+    let t = m.triangulate(CollisionFilter::default());
+    assert!(t.triangles.is_empty());
+    assert_eq!(t.triangles_excluded, 2);
 }
 
 #[test]
@@ -265,6 +300,17 @@ fn default_filter_mask_matches_the_published_table() {
     let expected = NON_COLLIDING_POLY_FLAGS.iter().fold(0u32, |a, e| a | e.1);
     assert_eq!(CollisionFilter::default().poly_flag_mask, expected);
     assert_eq!(CollisionFilter::default().node_flag_mask, 0);
+    // The reported table is a strict superset of the dropped one:
+    // every bit we filter must also be counted, or a drop becomes
+    // invisible in the report.
+    for (name, bit) in NON_COLLIDING_POLY_FLAGS {
+        assert!(
+            REPORTED_POLY_FLAGS
+                .iter()
+                .any(|(n, b)| n == name && b == bit),
+            "{name} is dropped but not reported"
+        );
+    }
 }
 
 #[test]

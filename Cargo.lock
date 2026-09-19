@@ -1003,6 +1003,7 @@ name = "cimmeria-navmesh-extractor"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "cimmeria-navmesh-extractor",
  "cimmeria-upk",
  "cimmeria-upk-objects",
  "thiserror 2.0.20",

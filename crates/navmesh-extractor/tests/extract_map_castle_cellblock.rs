@@ -10,7 +10,6 @@
 
 use std::path::PathBuf;
 
-use cimmeria_navmesh_extractor::extract_map;
 use cimmeria_upk_objects::PackageIndex;
 
 fn castle_cellblock_dir() -> PathBuf {
@@ -103,8 +102,14 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
         return;
     };
 
+    // One extraction only. A prior `extract_map` pass into the same
+    // directory rewrote every OBJ the reported run then wrote, doubling
+    // the runtime of an already heavy asset test and — worse — leaving
+    // behind any file the reported run did *not* write, which the
+    // `obj_files.len() == chunk_objs` guard below would then count as
+    // if the second run had produced it. The thin `extract_map`
+    // wrapper is covered asset-free in `extract_map_synthetic.rs`.
     let out_dir = unique_tempdir("cimmeria-navmesh-extract-map");
-    extract_map(&map_dir, &out_dir, Some(&index)).expect("extract_map");
     let combined_dir = unique_tempdir("cimmeria-navmesh-extract-map-combined");
     let combined_path = combined_dir.join("castle_cellblock.obj");
     let report = cimmeria_navmesh_extractor::extract_map_with_report(
