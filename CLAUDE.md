@@ -67,7 +67,7 @@ cargo check --workspace \
   --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor \
   --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 
 # Kill stale builds
 pkill -f "cargo|rustc"
@@ -92,16 +92,16 @@ cargo fmt --all -- --check
 cargo clippy --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry \
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab \
   --all-targets -- -D warnings
 cargo build --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --all-targets
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 # Doctests aren't run by nextest — only cimmeria-commands has runnable
 # doctests today, so this is a one-crate sanity check:
 cargo test --doc -p cimmeria-commands

@@ -74,6 +74,51 @@ pub struct DllSession {
     pub machine_id: String,
     pub session_id: String,
     pub telemetry: TelemetryBlock,
+    /// Optional Live Research Lab bridge config. Written **only** by
+    /// the lab supervisor (`cimmeria-lab`), never by a normal
+    /// telemetry launch. Its presence is the second half of the
+    /// bridge's double activation gate: even a DLL compiled with
+    /// `--features lab-bridge` will not open the inbound command
+    /// channel unless this block is present. See
+    /// [`crate::bridge`] and `docs/architecture/live-research-lab.md`
+    /// §3.3.
+    ///
+    /// Deserialized unconditionally (so the schema is stable and
+    /// testable regardless of feature flags); only consumed under
+    /// the `lab-bridge` feature.
+    #[serde(default)]
+    pub lab: Option<LabConfig>,
+}
+
+/// The `lab` block of `current-session.json` — bind address, port,
+/// and per-launch token for the client bridge's inbound TCP channel.
+///
+/// Kept here (not under the feature) so the session schema is one
+/// stable shape and the "absent block = bridge never starts" guard
+/// is unit-testable without the feature compiled in.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct LabConfig {
+    /// Interface to bind. Default loopback; overridable for a second
+    /// PC on the LAN or VPN (per the ADR, the address is a knob but
+    /// the token is mandatory either way).
+    #[serde(default = "default_lab_bind")]
+    pub bind: String,
+    /// TCP port. Default 8770 — 8765 is claimed by both the SigNoz
+    /// MCP and the Atrea editor bridge ADR.
+    #[serde(default = "default_lab_port")]
+    pub port: u16,
+    /// 32-byte token as 64 lowercase hex chars, regenerated per
+    /// launch by the supervisor. Required on the first framed
+    /// message from any client.
+    pub token: String,
+}
+
+fn default_lab_bind() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_lab_port() -> u16 {
+    8770
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -279,6 +324,56 @@ mod tests {
         }
     }
 
+    /// No `lab` block → `lab` deserializes to `None`. This is the
+    /// schema half of the bridge's double gate: a normal telemetry
+    /// launch (which never writes a `lab` block) leaves the field
+    /// absent, and `bridge::maybe_start` reads that as "do not start."
+    #[test]
+    fn load_session_without_lab_block_leaves_lab_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("current-session.json");
+        fs::write(
+            &path,
+            r#"{
+                "install_id": "i", "machine_id": "m", "session_id": "s",
+                "telemetry": {
+                    "enabled": true, "token": "t",
+                    "upload_endpoint": "https://x/api", "expires_at_ms": 0,
+                    "chunk_max_bytes": 0, "flush_interval_ms": 0
+                }
+            }"#,
+        )
+        .unwrap();
+        let s = load_session(&path).unwrap();
+        assert_eq!(s.lab, None, "absent lab block must parse to None");
+    }
+
+    /// A `lab` block with only `token` fills `bind`/`port` from the
+    /// serde defaults (loopback / 8770).
+    #[test]
+    fn load_session_lab_block_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("current-session.json");
+        fs::write(
+            &path,
+            r#"{
+                "install_id": "i", "machine_id": "m", "session_id": "s",
+                "telemetry": {
+                    "enabled": true, "token": "t",
+                    "upload_endpoint": "https://x/api", "expires_at_ms": 0,
+                    "chunk_max_bytes": 0, "flush_interval_ms": 0
+                },
+                "lab": { "token": "abc123" }
+            }"#,
+        )
+        .unwrap();
+        let s = load_session(&path).unwrap();
+        let lab = s.lab.expect("lab block present");
+        assert_eq!(lab.bind, "127.0.0.1");
+        assert_eq!(lab.port, 8770);
+        assert_eq!(lab.token, "abc123");
+    }
+
     /// Identity fields helper produces the canonical 3-entry bag
     /// that every DLL event should carry.
     #[test]
@@ -295,6 +390,7 @@ mod tests {
                 chunk_max_bytes: 0,
                 flush_interval_ms: 0,
             },
+            lab: None,
         };
         let f = identity_fields(&s);
         assert_eq!(f.len(), 3);

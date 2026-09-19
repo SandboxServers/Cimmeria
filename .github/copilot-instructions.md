@@ -26,7 +26,7 @@ Recurring bugs — flag in review:
 - **File caps**: 500 lines soft, 700 hard. Split on natural seams (handler groups, lifecycle phases, message families) — not arbitrarily on line count. Flat names for 2–3 siblings; promote to a directory only at 4+. Use `foo/mod.rs` style. Avoid `helpers.rs`/`utils.rs`/`misc.rs` — name by behaviour.
 - **No defensive code for impossible scenarios.** Trust internal code and framework guarantees; validate only at system boundaries (user input, external APIs, DB roundtrips).
 - **No scope creep.** Don't add features, refactors, abstractions, feature flags, or backwards-compat shims beyond the task. Delete unused code outright — no commented-out blocks, no `// removed` markers.
-- **Build memory**: iterate with `cargo check -p <crate>`. A full link uses ~47 GB; never run multiple `cargo`/`rustc` processes concurrently. Workspace builds must `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry` — the same five exclusions CI uses ([.github/workflows/test.yml](workflows/test.yml)) — to avoid the Tauri/egui linker and the Windows-only cdylib.
+- **Build memory**: iterate with `cargo check -p <crate>`. A full link uses ~47 GB; never run multiple `cargo`/`rustc` processes concurrently. Workspace builds must `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab` — the same six exclusions CI uses ([.github/workflows/test.yml](workflows/test.yml)) — to avoid the Tauri/egui linker and the Windows-only cdylib.
 
 ## Comments
 

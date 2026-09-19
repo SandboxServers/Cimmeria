@@ -10,6 +10,15 @@ description = "Injected DLL that observes SGW.exe via CME EventSignal subscripti
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Live Research Lab client bridge (docs/architecture/live-research-lab.md
+# §3.3). OFF by default: a telemetry DLL handed to a normal player
+# physically lacks the inbound command channel. Even when compiled in,
+# the bridge only starts when current-session.json carries a `lab`
+# block (the second half of the double activation gate). All bridge
+# code lives under `src/bridge/` and compiles only with this feature.
+lab-bridge = []
+
 # Windows-only: the entire crate exists to be loaded into SGW.exe.
 # Targeting i686-pc-windows-msvc — the `-gnu` triple was demoted to
 # Tier 2 in Rust 1.88.0 (May 2025), so MSVC is the right default for

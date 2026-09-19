@@ -45,6 +45,13 @@ pub mod queue;
 pub mod session;
 pub mod uploader;
 
+// Live Research Lab client bridge — an inbound command channel behind
+// the `lab-bridge` feature (off by default). The double activation
+// gate (feature present AND a `lab` block in current-session.json) is
+// documented in [`bridge`] and `docs/architecture/live-research-lab.md`.
+#[cfg(feature = "lab-bridge")]
+pub mod bridge;
+
 #[cfg(windows)]
 mod boot;
 
