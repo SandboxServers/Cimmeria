@@ -13,7 +13,7 @@
 -- Chain ID ranges owned by this file (statically allocated in
 -- docs/analysis/harset-rebuild/work-packets.md to avoid seed-order
 -- sensitivity):
---   1360 / 567:  6501-6510   (H30; 6501-6504 used, 6505-6510 free)
+--   1360 / 567:  6501-6510   (H30; 6501-6505 used, 6506-6510 free)
 --   1361:        6511-6530   (H31; 6511-6527 used, 6528-6530 free)
 --   1362:        6531-6550   1363: 6551-6570   1365: 6571-6590
 --   1371:        6591-6605   1372: 6606-6620   1374: 6621-6645
@@ -29,7 +29,7 @@
 --
 -- ZERO new dialog_set_maps rows. All ten bindings these two packets need
 -- already exist in the shipped data, so the reserved 120101-120200 range
--- is untouched. The evidence tables are in worknotes/H30.md and H31.md.
+-- is untouched. The evidence tables are in worknotes/H30-H31.md.
 --
 -- Packets: Harset H30, H31. Base: content/harset-wave2 @ 94e65324.
 
@@ -78,46 +78,54 @@ SET search_path = resources, pg_catalog;
 --     it just arrives per-player instead of per-entity.
 --
 -- (C) WHEN A BEAT MUST USE THE BIND PATH INSTEAD OF `interact_tag`.
---     `fire_interact_tag` runs BEFORE `handle_interact` and short-circuits
---     it when it matches
---     (cell_methods/player/interaction/interact.rs). But
---     `last_interaction_target` is pinned INSIDE `handle_interact`
---     (interact.rs:89-91), so a chain that short-circuits it leaves that
---     pin unset.
+--     `fire_interact_tag` runs BEFORE `interactions::handle_interact` and
+--     SHORT-CIRCUITS it when it matches
+--     (cell_methods/player/interaction/interact.rs, the `if !handled`
+--     fall-through). `interactions::handle_interact` is the ONLY code that
+--     opens a bound dsm's dialog: it reads
+--     `available_interactions[template_id]` and sends `onDialogDisplay`.
 --
---     `display_dialog` resolves the wire EntityId from
---     `params["target_entity_id"]` (stamped only by `fire_interact_tag` /
---     `fire_interact_template`) and falls back to
---     `last_interaction_target` (executor/dialog.rs). `fire_dialog_choice`
---     stamps NEITHER. So a FOLLOW-UP `display_dialog` fired from a
---     `dialog_choice` trigger has no NPC to bind unless the original
---     dialog was opened by `handle_interact`.
+--     So an `interact_tag` chain on an NPC whose beat depends on a BOUND
+--     dialog suppresses that dialog entirely. Two beats depend on one:
+--     Hansen's 4459 and Anat's 4462 each carry the button whose
+--     `dialog_choice` drives the step (6518, 6525). Give either NPC an
+--     `interact_tag` chain and the button-bearing dialog never renders, so
+--     the `dialog_choice` chain can never fire and the step dead-ends.
 --
---     Two beats need such a follow-up — Hansen 4459 -> 4460 and Anat
---     4462 -> 4463. Both therefore use the BIND path: no `interact_tag`
---     chain, the dsm bind alone makes the NPC clickable, `handle_interact`
---     opens the dialog and pins the target, and the logic hangs off
---     `dialog_choice`. This is the same shape Castle chains 1011/1012 ->
---     1014/1015/1020/1021 use, and it is why those work today.
+--     Both therefore use the BIND path: no `interact_tag` chain, the dsm
+--     bind alone makes the NPC clickable, `handle_interact` opens the
+--     dialog, and the logic hangs off `dialog_choice`. Same shape as
+--     Castle chains 1011/1012 -> 1014/1015/1020/1021.
 --
 --     Every other beat in this file displays a BUTTONLESS blurb with no
 --     follow-up, so `interact_tag` is safe and is preferred there because
 --     it is explicitly step-gated rather than depending on bind lifecycle.
 --
---     ENGINE FOLLOW-UP (not fixable from a seed file, recorded for the
---     coordinator): `fire_interact_tag` should pin
---     `last_interaction_target` the way `handle_interact` does. Until it
---     does, `interact_tag` -> `dialog_choice` -> `display_dialog` is a
---     silent-content-loss shape. See worknotes/H31.md "Engine findings".
+--     SPEAKER RESOLUTION IS NO LONGER A CONSTRAINT HERE (corrected
+--     2026-09-19). `display_dialog` resolves the wire EntityId from
+--     `params["target_entity_id"]` and falls back to
+--     `last_interaction_target` (executor/dialog.rs), and
+--     `fire_dialog_choice` stamps neither. An earlier draft of this note
+--     said the pin was written inside `interactions::handle_interact` and
+--     was therefore lost whenever a chain short-circuited it, and filed an
+--     engine follow-up to move it. That follow-up is CLOSED: the pin now
+--     happens in `cell_methods/player/interaction/interact.rs` BEFORE any
+--     chain dispatch, right after the `interact_target_in_range` gate, so
+--     every right-click pins its target regardless of which path claims
+--     it. Do not re-file it.
 --
--- (D) `.first()` ON A TEMPLATE SLOT. `handle_interact` picks
---     `available_interactions[template_id].first()` — a single
---     insertion-ordered Vec. Two live binds on one template would make one
---     of them unreachable. This file never holds two binds on one slot at
---     once; the proof is in `mission_1361.rs`
---     (`no_template_slot_ever_holds_two_binds_at_once`). Slot 10 (Marsh)
---     is the one at risk and is kept single by the same DISJOINTNESS
---     conditions as (A).
+-- (D) ONE DIALOG-CARRYING BIND PER TEMPLATE SLOT.
+--     `interactions::handle_interact` scans
+--     `available_interactions[template_id]` with `find_map`, taking the
+--     first entry whose `dialog_id` is non-NULL (interaction-only binds —
+--     `dialog_set_maps.dialog_id IS NULL` — are skipped so a flag-only
+--     indicator cannot swallow the click). A second LIVE dialog-carrying
+--     bind on one slot is therefore permanently unreachable. This file
+--     never holds two binds on one slot at once; the proof is in
+--     `mission_1361.rs` (`no_template_slot_ever_holds_two_binds_at_once`).
+--     Slot 10 (Marsh) is the one at risk — dsm 5356, 5254 and 5253 all
+--     target it — and is kept single by the same DISJOINTNESS conditions
+--     as (A).
 --
 -- (E) `once` is dead (agent-memory content-engine-once-semantics). Every
 --     one-shot guard here is a `step_status` / `mission_status` condition
@@ -269,10 +277,60 @@ VALUES
   -- condition, and `populate_world_context` + the player_init call site
   -- both set `world_id` on this path so it evaluates correctly.
   (6502, 'world', 68, NULL, 'eq', NULL, 0),
-  (6502, 'step_status', 1360, '4038', 'eq', 'active', 1);
+  (6502, 'step_status', 1360, '4038', 'eq', 'active', 1),
+  -- DISJOINTNESS ON THE BIND SIDE (note D). The same row chain 6501
+  -- carries on the interact side. Without it, a player who is on 1360
+  -- step 4038 AND 1361 step 4694 at the same world entry gets BOTH 6502
+  -- (dsm 5356) and 6526 (dsm 5253) binding template slot 10, and
+  -- `handle_interact`'s `find_map` would make the second permanently
+  -- unreachable.
+  --
+  -- That state is reachable: 1361 is accepted while 4038 is NOT active
+  -- (chains 6511/6512 require `neq active`), but nothing stops the player
+  -- from going back to the Castle mid-Praxis, looting Frost, advancing
+  -- 1360 to 4038 and returning. Found by
+  -- `no_template_slot_ever_holds_two_binds_at_once`.
+  --
+  -- The precedence chosen here matches the interact side exactly: while
+  -- the Praxis turn-in is pending, Marsh wears the Praxis "?" and the
+  -- letter waits. Chain 6505 below hands the letter "!" back the instant
+  -- 1361 completes, so the player never needs a relog to see it.
+  (6502, 'step_status', 1361, '4694', 'neq', 'active', 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (6502, 'add_dialog_set', 5356, NULL, '{"slot": 10, "mission_id": 1360}', 0, 0);
+
+-- Chain 6505: hand the letter indicator back when 1361 completes.
+--
+-- This is the other half of 6502's DISJOINTNESS row. `player_loaded` is
+-- the only other thing that binds 5356, and it does not fire again when a
+-- player completes 1361 standing still in the Command Center — so without
+-- this chain the letter "!" would stay dark until the next world crossing
+-- or relog. That is not merely cosmetic: template 10 ships
+-- `entity_templates.interaction_type = 0` and
+-- `static_interaction_sets = '{}'`, so with no bind on slot 10 the client
+-- never registers an interaction on Marsh at all and the right-click that
+-- would fire chain 6501 is never sent. The turn-in would be unreachable.
+--
+-- `fire_mission_completed` (executor/mission.rs, gated on a real
+-- active -> completed transition) runs AFTER 6527's
+-- `remove_dialog_set 5253`, so slot 10 ends this event holding exactly
+-- one bind. It populates world, mission and archetype context, so the
+-- gates below evaluate normally.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (6505, '1360 - Re-bind Marsh''s letter indicator when 1361 completes (step 4038 still open)', 'mission', 1360, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6505, 'mission_completed', '1361', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (6505, 'world', 68, NULL, 'eq', NULL, 0),
+  (6505, 'mission_status', 1360, NULL, 'eq', 'active', 1),
+  (6505, 'step_status', 1360, '4038', 'eq', 'active', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (6505, 'add_dialog_set', 5356, NULL, '{"slot": 10, "mission_id": 1360}', 0, 0);
 
 -- ============================================================
 -- H30 / MISSION 567 -- Romney's Files, step 4039 (chains 6503-6504)
@@ -660,7 +718,7 @@ VALUES (6516, 'add_dialog_set', 6399, NULL, '{"slot": 212, "mission_id": 1361}',
 -- (Converse is a client SWF with a placeholder auto-win server-side).
 -- There is no failure branch: the single button is the only affordance the
 -- shipped data offers, so the check always succeeds. Recorded as a
--- fidelity note in worknotes/H31.md rather than invented.
+-- fidelity note in worknotes/H30-H31.md rather than invented.
 --
 -- NO `add_item` here -- see decision H31-D1 above.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -780,15 +838,20 @@ VALUES
 -- chain could address her even if we wanted one. The bind path sidesteps
 -- that entirely — `add_dialog_set` targets a TEMPLATE slot, not a tag.
 -- H12 should still give spawn 222 the tag `CmdCenter_Anat` (recorded in
--- worknotes/H31.md and in the tag registry) for later packets; nothing in
+-- worknotes/H30-H31.md and in the tag registry) for later packets; nothing in
 -- THIS file depends on it.
 --
 -- Anat also carries the game's only `entity_interactions` row (id 35,
 -- template 43, dsm 3127, gated `missions_not_accepted {742}`) — the
--- Goa'uld 742 offer. `handle_interact` checks per-player binds BEFORE the
--- static row, so while a player is on step 4693 the 742 offer is shadowed
--- for them. Harmless: 742 is Goa'uld-only (archetype 6) and 1361 is
--- Human-only, so no character can be in both states.
+-- Goa'uld 742 offer. It cannot collide with the 6523 bind for two
+-- independent reasons, either of which alone is sufficient:
+--   1. `entity_interactions` has NO Rust consumer at all — `grep -rn
+--      entity_interactions crates/` returns nothing, so the row never
+--      reaches the runtime. (Recorded as a finding in H30-H31.md: the
+--      table is shipped 2009 data with no loader.)
+--   2. Even if it were loaded, 742 is Goa'uld-only (archetype 6) and 1361
+--      is Human-only, so no character can be in both states.
+-- Do not "fix" this by removing the 6523 bind.
 
 -- Chain 6523: relog restore for step 4693.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

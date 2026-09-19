@@ -46,6 +46,7 @@
 | `CmdCenter_Blackstock` | 214 | office (if not in 57) |
 | `CmdCenter_SymbioteTank` | 245 | 1353 / 741 |
 | `CmdCenter_Athena` | 44 | 1363 tag target |
+| `CmdCenter_Anat` | 43 | 1361 step 4693. **Spawn 222 already exists in world 68 with `tag = NULL`** — M0/H12 must fill this tag in, not add a second spawn. Nothing in `harset_opcore_chains.sql` depends on it (the 1361 beat binds template slot 43, not the tag), so it is needed only by later packets. |
 
 ## Worlds 69 / 70 (per-player instances, `spawn_entity` tags)
 
