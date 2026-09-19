@@ -29,6 +29,68 @@ pub const ACTOR_PROPS_OFFSET: usize = 32;
 /// Bytes before an `ActorComponent`'s property stream.
 pub const COMPONENT_PROPS_OFFSET: usize = 8;
 
+/// Where a synthetic actor sits, and how it is scaled.
+///
+/// One named struct rather than five positional parameters repeated on
+/// every builder: `[0.0; 3], [0; 3], 1.0, [1.0; 3], None` says nothing
+/// at a call site, and the two builders that took it were only under
+/// the argument-count lint by suppression.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Placement {
+    pub location: [f32; 3],
+    /// UE3 rotator units (65536 per turn), `[pitch, yaw, roll]`.
+    pub rotation: [i32; 3],
+    pub draw_scale: f32,
+    pub draw_scale_3d: [f32; 3],
+    /// CSG pivot offset. Only a `Brush`-style owner carries one; `None`
+    /// omits the property entirely, which is what a plain actor does.
+    pub pre_pivot: Option<[f32; 3]>,
+}
+
+impl Default for Placement {
+    /// Origin, no rotation, unit scale, no `PrePivot` — the UE3 cooked
+    /// defaults, i.e. the properties the cooker would have omitted.
+    fn default() -> Self {
+        Self {
+            location: [0.0; 3],
+            rotation: [0; 3],
+            draw_scale: 1.0,
+            draw_scale_3d: [1.0; 3],
+            pre_pivot: None,
+        }
+    }
+}
+
+impl Placement {
+    /// Defaults but at `location`.
+    pub fn at(location: [f32; 3]) -> Self {
+        Self {
+            location,
+            ..Self::default()
+        }
+    }
+
+    pub fn with_rotation(mut self, rotation: [i32; 3]) -> Self {
+        self.rotation = rotation;
+        self
+    }
+
+    pub fn with_draw_scale(mut self, draw_scale: f32) -> Self {
+        self.draw_scale = draw_scale;
+        self
+    }
+
+    pub fn with_draw_scale_3d(mut self, draw_scale_3d: [f32; 3]) -> Self {
+        self.draw_scale_3d = draw_scale_3d;
+        self
+    }
+
+    pub fn with_pre_pivot(mut self, pre_pivot: [f32; 3]) -> Self {
+        self.pre_pivot = Some(pre_pivot);
+        self
+    }
+}
+
 /// A synthetic cooked map chunk.
 pub struct ChunkFixture {
     pkg: PackageBuilder,
@@ -86,27 +148,14 @@ impl ChunkFixture {
     /// This is the path that distinguishes `Brush` (included),
     /// `TriggerVolume` (excluded) and an unknown `*Volume` (excluded and
     /// reported) — the owner's *class* is the whole classifier.
-    #[allow(clippy::too_many_arguments)]
     pub fn add_owned_model(
         &mut self,
         owner_class: &str,
         owner_name: &str,
-        location: [f32; 3],
-        rotation: [i32; 3],
-        draw_scale: f32,
-        draw_scale_3d: [f32; 3],
-        pre_pivot: [f32; 3],
+        placement: Placement,
         model: &ModelPayload,
     ) -> (i32, i32) {
-        let owner = self.add_placed_actor(
-            owner_class,
-            owner_name,
-            location,
-            rotation,
-            draw_scale,
-            draw_scale_3d,
-            Some(pre_pivot),
-        );
+        let owner = self.add_placed_actor(owner_class, owner_name, placement);
         let model_class = self.pkg.class_ref("Model");
         let model_export = self
             .pkg
@@ -171,23 +220,13 @@ impl ChunkFixture {
 
     /// Add a placed actor of any class, with the four placement
     /// properties and optionally a `PrePivot`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_placed_actor(
-        &mut self,
-        class_name: &str,
-        name: &str,
-        location: [f32; 3],
-        rotation: [i32; 3],
-        draw_scale: f32,
-        draw_scale_3d: [f32; 3],
-        pre_pivot: Option<[f32; 3]>,
-    ) -> i32 {
+    pub fn add_placed_actor(&mut self, class_name: &str, name: &str, at: Placement) -> i32 {
         let class = self.pkg.class_ref(class_name);
         let export = self.pkg.add_export(class, self.level, name);
         let mut body = vec![0u8; ACTOR_PROPS_OFFSET];
         let mut props = self.pkg.props();
-        props.placement(location, rotation, draw_scale, draw_scale_3d);
-        if let Some(p) = pre_pivot {
+        props.placement(at.location, at.rotation, at.draw_scale, at.draw_scale_3d);
+        if let Some(p) = at.pre_pivot {
             props.vector("PrePivot", p);
         }
         body.extend_from_slice(&props.finish());

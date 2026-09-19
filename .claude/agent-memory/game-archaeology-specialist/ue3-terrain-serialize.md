@@ -32,7 +32,7 @@ Each Terrain export = **32-byte Actor header** + **UE3 tagged-property stream** 
 - `NumVerticesX = NumPatchesX + 1`, `NumVerticesY = NumPatchesY + 1` (e.g. 21)
 - `AlphaXSize`, `AlphaYSize` — alpha map texel dimensions (e.g. 84)
 - `Layers` — ArrayProperty (opaque blob; skip for collision)
-- `DrawScale`, `DrawScale3D` — ABSENT in Castle_CellBlock (default 1.0 / (1,1,1)); must default if absent
+- `DrawScale`, `DrawScale3D` — ABSENT in Castle_CellBlock; must default if absent. **`DrawScale` defaults to 1.0, but `DrawScale3D` defaults to `(100, 100, 100)`** for SGW's `ATerrain` class, not the `AActor` `(1,1,1)`. Reading the `AActor` default shrinks the map by 100x. (Corrected 2026-09-19; an earlier revision of this line said `(1,1,1)`.)
 
 **None FName** for Castle_CellBlock = `0x36 0x00 0x00 0x00  0x00 0x00 0x00 0x00` (name index 54).
 **SUPERSEDED (2026-09-19, terrain decoder):** the flat tagged-property walk in `crates/upk/src/properties.rs` skips `ArrayProperty` bodies by their declared size, so inner `None` terminators inside `Layers` are never seen and no "last None" search is needed. Kept for anyone hand-walking bytes. **GOTCHA (hand-walk only)**: The `Layers` array contains inner tagged-property sub-blocks each ending in their own None. First None occurrence is inside Layers. Use the LAST None occurrence as the outer terminator. For Terrain_A: inner None at +412, outer None at +805; trailer starts at +813.

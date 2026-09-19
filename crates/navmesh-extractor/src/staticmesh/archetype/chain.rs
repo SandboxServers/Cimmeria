@@ -39,6 +39,23 @@ pub struct ActorProbe {
     pub next: Option<Vec<String>>,
 }
 
+/// Result of [`walk_actor_chain`].
+///
+/// `props` alone is not enough for the caller to act on: an all-`None`
+/// result can mean "the chain defined nothing" **or** "the chain could
+/// not be read", and those differ by whether `bCollideActors` may
+/// safely default to UE3's `true`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ActorChainOutcome {
+    /// Nearest definition of each inherited property, as far as the
+    /// walk got.
+    pub props: ActorArchetypeProps,
+    /// `None` when every template the walk needed was readable.
+    /// `Some(reason)` when one was not — `props` then holds only what
+    /// was read *before* the failure.
+    pub unreadable: Option<SkipReason>,
+}
+
 /// Follow a component-archetype chain to a `StaticMesh` key.
 ///
 /// `fetch` maps a rooted chain (`["Em-Props", "Prefab", "Arc",
@@ -86,40 +103,56 @@ where
 /// Follow an actor-archetype chain, collecting the nearest definition
 /// of each inherited property.
 ///
-/// Unlike the mesh walk this has no failure mode worth reporting: an
-/// actor whose archetype cannot be read simply inherits nothing, which
-/// is exactly the behaviour that predates this module. It stops early
-/// once every field is pinned, because a nearer template's value wins
-/// and the rest of the chain cannot change the answer.
-pub fn walk_actor_chain<F>(chain: &[String], fetch: &mut F) -> ActorArchetypeProps
+/// It stops early once every field is pinned, because a nearer
+/// template's value wins and the rest of the chain cannot change the
+/// answer — that is a *complete* read even though the walk did not
+/// reach the root.
+///
+/// A `fetch` failure is reported rather than swallowed. An earlier
+/// revision returned the partially-merged properties and let the caller
+/// treat them as authoritative; the effect was that an unreadable
+/// template silently became `bCollideActors = true` (UE3's default for
+/// an actor that says nothing), and the component chain would then
+/// resolve a mesh and emit geometry the level author had switched
+/// collision off on.
+pub fn walk_actor_chain<F>(chain: &[String], fetch: &mut F) -> ActorChainOutcome
 where
-    F: FnMut(&[String]) -> Option<ActorProbe>,
+    F: FnMut(&[String]) -> Result<ActorProbe, SkipReason>,
 {
     let mut visited: Vec<String> = Vec::new();
     let mut current: Vec<String> = chain.to_vec();
-    let mut merged = ActorArchetypeProps::default();
+    let mut out = ActorChainOutcome::default();
 
     for _ in 0..MAX_ARCHETYPE_DEPTH {
         if current.len() < 2 {
-            return merged;
+            out.unreadable = Some(SkipReason::ArchetypeUnrooted);
+            return out;
         }
         let key = current.join(".");
         if visited.contains(&key) {
-            return merged;
+            out.unreadable = Some(SkipReason::ArchetypeChainLoop);
+            return out;
         }
         visited.push(key);
 
-        let Some(probe) = fetch(&current) else {
-            return merged;
+        let probe = match fetch(&current) {
+            Ok(p) => p,
+            Err(reason) => {
+                out.unreadable = Some(reason);
+                return out;
+            }
         };
-        merged.inherit_from(&probe.props);
-        if merged.is_complete() {
-            return merged;
+        out.props.inherit_from(&probe.props);
+        if out.props.is_complete() {
+            return out;
         }
         match probe.next {
             Some(next) if next.len() >= 2 => current = next,
-            _ => return merged,
+            // The chain ends here. Whatever it defined is the whole
+            // answer, and the rest takes the UE3 default.
+            _ => return out,
         }
     }
-    merged
+    out.unreadable = Some(SkipReason::ArchetypeChainLoop);
+    out
 }

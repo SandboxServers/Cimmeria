@@ -180,24 +180,10 @@ pub struct ExtractOptions<'a> {
     pub keep_hull_caps: bool,
 }
 
-/// Resolve a directory path to something two spellings of the same
-/// directory compare equal on.
-///
-/// `canonicalize` is the real answer — it resolves `.`, `..`, symlinks
-/// and (on Windows) case — but it requires the path to exist. For a
-/// directory that doesn't, fall back to a lexical cleanup: drop `.`
-/// components and pop a component for each `..`. An empty path means
-/// "the current directory", which is what `Path::parent` returns for a
-/// bare filename.
-fn normalize_dir(path: &Path) -> std::path::PathBuf {
-    let path = if path.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        path
-    };
-    if let Ok(real) = path.canonicalize() {
-        return real;
-    }
+/// Collapse `.` and `..` textually. No filesystem access, so it cannot
+/// be fooled into the wrong answer by a missing directory — and cannot
+/// resolve a symlink either.
+fn lexical_clean(path: &Path) -> std::path::PathBuf {
     let mut out = std::path::PathBuf::new();
     for component in path.components() {
         match component {
@@ -211,6 +197,68 @@ fn normalize_dir(path: &Path) -> std::path::PathBuf {
         }
     }
     out
+}
+
+/// Resolve a directory path to something two spellings of the same
+/// directory compare equal on.
+///
+/// `canonicalize` is the real answer — it resolves `.`, `..`, symlinks
+/// and (on Windows) case — but it requires the whole path to exist.
+///
+/// When it doesn't, a purely lexical cleanup is **not** a safe fallback
+/// for a containment comparison: it returns a *relative* path, and a
+/// relative path can never compare equal to the absolute path
+/// `canonicalize` gave the other side. That is a real bypass, not a
+/// theoretical one — with `output_dir = out`, the combined OBJ
+/// `out/not-yet-created/../whole.obj` has a parent
+/// (`out/not-yet-created/..`) that cannot be canonicalized, so the old
+/// fallback compared relative `out` against an absolute `…/out`, let the
+/// path through, and then `create_dir_all` + write resolved it straight
+/// back into the chunk directory.
+///
+/// So: clean lexically first, then **anchor** the result by
+/// canonicalizing the longest prefix that does exist and re-appending
+/// the rest. Both sides of the comparison then live in the same space.
+/// An empty path means "the current directory", which is what
+/// `Path::parent` returns for a bare filename.
+fn normalize_dir(path: &Path) -> std::path::PathBuf {
+    let path = if path.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        path
+    };
+    if let Ok(real) = path.canonicalize() {
+        return real;
+    }
+
+    let clean = lexical_clean(path);
+    let clean = if clean.as_os_str().is_empty() {
+        std::path::PathBuf::from(".")
+    } else {
+        clean
+    };
+
+    let mut rest: Vec<std::ffi::OsString> = Vec::new();
+    let mut probe = clean.clone();
+    loop {
+        if let Ok(real) = probe.canonicalize() {
+            let mut out = real;
+            for name in rest.iter().rev() {
+                out.push(name);
+            }
+            return out;
+        }
+        let Some(name) = probe.file_name().map(|n| n.to_os_string()) else {
+            // A root, or a leading `..` we cannot climb past: nothing
+            // left to anchor against.
+            return clean;
+        };
+        rest.push(name);
+        if !probe.pop() || probe.as_os_str().is_empty() {
+            // `parent()` of a bare relative name is `""`, i.e. the cwd.
+            probe = std::path::PathBuf::from(".");
+        }
+    }
 }
 
 /// [`extract_map`] plus a machine-readable per-chunk coverage report.

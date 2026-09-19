@@ -24,6 +24,7 @@
 //! source geometry there at all — which is itself the answer when a gap
 //! coincides with an un-extracted actor).
 
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -51,9 +52,17 @@ struct Args {
 fn nums(s: &str) -> Result<Vec<f32>, String> {
     s.split(',')
         .map(|p| {
-            p.trim()
-                .parse::<f32>()
-                .map_err(|e| format!("bad number {p:?}: {e}"))
+            let v: f32 = p
+                .trim()
+                .parse()
+                .map_err(|e| format!("bad number {p:?}: {e}"))?;
+            // `f32::from_str` accepts `inf` and `NaN`, and either one
+            // poisons every box bound, grid index and area sum it
+            // reaches — silently, because the report still prints.
+            if !v.is_finite() {
+                return Err(format!("{p:?} is not a finite number"));
+            }
+            Ok(v)
         })
         .collect()
 }
@@ -90,7 +99,14 @@ fn parse_box(v: &str) -> Result<Slab, String> {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut it = std::env::args().skip(1);
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    parse_args_from(&argv)
+}
+
+/// The real argument parser. Split out from [`parse_args`] so the flag
+/// handling can be exercised without a process boundary.
+fn parse_args_from(argv: &[String]) -> Result<Args, String> {
+    let mut it = argv.iter().cloned();
     let mut dir = None;
     let mut slabs = Vec::new();
     let mut columns = Vec::new();
@@ -126,10 +142,10 @@ fn parse_args() -> Result<Args, String> {
                 }
                 band = Some([n[0], n[1]]);
             }
-            "--levels" => levels = Some(one(&mut it, "--levels")?),
-            "--cell" => cell = one(&mut it, "--cell")?,
-            "--tilt" => tilt = one(&mut it, "--tilt")?,
-            "--margin" => margin = one(&mut it, "--margin")?,
+            "--levels" => levels = Some(positive(&mut it, "--levels")?),
+            "--cell" => cell = positive(&mut it, "--cell")?,
+            "--tilt" => tilt = positive(&mut it, "--tilt")?,
+            "--margin" => margin = non_negative(&mut it, "--margin")?,
             "-h" | "--help" => return Err(USAGE.to_string()),
             other if other.starts_with('-') => return Err(format!("unknown flag {other:?}")),
             other => {
@@ -157,14 +173,37 @@ fn parse_args() -> Result<Args, String> {
 }
 
 fn one(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<f32, String> {
-    it.next()
-        .ok_or_else(|| format!("{flag} needs a value"))?
-        .parse()
-        .map_err(|e| format!("bad {flag}: {e}"))
+    let raw = it.next().ok_or_else(|| format!("{flag} needs a value"))?;
+    let v: f32 = raw.parse().map_err(|e| format!("bad {flag}: {e}"))?;
+    if !v.is_finite() {
+        return Err(format!("bad {flag}: {raw:?} is not a finite number"));
+    }
+    Ok(v)
 }
 
-fn report(slab: &Slab, args: &Args) {
-    println!(
+/// A flag whose value is a length or an angle: zero or negative is not a
+/// smaller measurement, it is a broken one. `--cell 0` in particular
+/// divides through to an infinite grid width and allocates until the
+/// process dies.
+fn positive(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<f32, String> {
+    let v = one(it, flag)?;
+    if v <= 0.0 {
+        return Err(format!("bad {flag}: {v} must be greater than zero"));
+    }
+    Ok(v)
+}
+
+fn non_negative(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<f32, String> {
+    let v = one(it, flag)?;
+    if v < 0.0 {
+        return Err(format!("bad {flag}: {v} must not be negative"));
+    }
+    Ok(v)
+}
+
+fn report(out: &mut impl Write, slab: &Slab, args: &Args) -> io::Result<()> {
+    writeln!(
+        out,
         "\nbox {}  x[{:.1}, {:.1}]  y[{:.1}, {:.1}]  z[{:.1}, {:.1}]",
         slab.name,
         slab.bmin[0],
@@ -173,50 +212,55 @@ fn report(slab: &Slab, args: &Args) {
         slab.bmax[1],
         slab.bmin[2],
         slab.bmax[2]
-    );
-    println!("  triangles  {}", slab.tris.len());
+    )?;
+    writeln!(out, "  triangles  {}", slab.tris.len())?;
     if slab.tris.is_empty() {
-        println!("  EMPTY — no source geometry in this box");
-        return;
+        return writeln!(out, "  EMPTY — no source geometry in this box");
     }
     let chunks: Vec<String> = slab
         .by_chunk
         .iter()
         .map(|(k, v)| format!("{k}:{v}"))
         .collect();
-    println!("  from       {}", chunks.join(" "));
+    writeln!(out, "  from       {}", chunks.join(" "))?;
 
     let profile = slab.slope_profile(&[5.0, 45.0, 60.0, 90.1]);
-    println!(
+    writeln!(
+        out,
         "  footprint  flat<=5deg {:.1} m^2 | walkable<=45deg {:.1} m^2 | ramp 45-60 {:.1} m^2 | \
          steep>60 {:.1} m^2",
         profile[0].1, profile[1].1, profile[2].1, profile[3].1
-    );
+    )?;
 
     if let Some(bucket) = args.levels {
-        println!("  levels (near-horizontal area by {bucket:.2} m of height):");
+        writeln!(
+            out,
+            "  levels (near-horizontal area by {bucket:.2} m of height):"
+        )?;
         for l in slab.level_histogram(bucket, 60.0) {
-            println!(
+            writeln!(
+                out,
                 "      y[{:7.2},{:7.2}]  {:9.1} m^2  {:6} tris   x[{:.1}, {:.1}] z[{:.1}, {:.1}]",
                 l.y_lo, l.y_hi, l.area_xz, l.tris, l.bmin[0], l.bmax[0], l.bmin[1], l.bmax[1]
-            );
+            )?;
         }
     }
 
     for c in &args.columns {
         let col = slab.column(c[0], c[1], 60.0);
         if col.is_empty() {
-            println!("  column ({:.1}, {:.1}): no surface", c[0], c[1]);
+            writeln!(out, "  column ({:.1}, {:.1}): no surface", c[0], c[1])?;
             continue;
         }
-        println!("  column ({:.1}, {:.1}):", c[0], c[1]);
+        writeln!(out, "  column ({:.1}, {:.1}):", c[0], c[1])?;
         let mut prev: Option<f32> = None;
         for s in &col {
             let step = prev.map(|p| s.y - p).unwrap_or(0.0);
-            println!(
+            writeln!(
+                out,
                 "      y={:8.2}  tilt={:5.1} deg  faces_up={:<5}  step_from_below={:+.2} m",
                 s.y, s.tilt_degrees, s.faces_up, step
-            );
+            )?;
             prev = Some(s.y);
         }
     }
@@ -227,40 +271,51 @@ fn report(slab: &Slab, args: &Args) {
             .unwrap_or([slab.bmin[1] + 0.2, slab.bmin[1] + 1.8]);
         let occ = slab.occupancy(ylo, yhi, args.cell, args.tilt);
         let runs = occ.free_runs([l[0], l[1]], [l[2], l[3]]);
-        println!(
+        writeln!(
+            out,
             "  line ({:.1}, {:.1}) -> ({:.1}, {:.1}), band y[{:.2}, {:.2}], \
              walls steeper than {:.0} deg, cell {:.2} m",
             l[0], l[1], l[2], l[3], ylo, yhi, args.tilt, args.cell
-        );
+        )?;
         if runs.is_empty() {
-            println!("      fully blocked");
+            writeln!(out, "      fully blocked")?;
         }
         for (s, e) in &runs {
-            println!(
+            writeln!(
+                out,
                 "      clear {:.2} m  (at {:.2}..{:.2} m along the line)",
                 e - s,
                 s,
                 e
-            );
+            )?;
         }
     }
+    Ok(())
 }
 
-fn run(args: Args) -> Result<u8, String> {
+/// Load the chunk directory, write the whole report into `out`, and
+/// return the process exit code.
+///
+/// Reporting through `out` rather than `println!` is what lets a test
+/// assert on the text without a process boundary.
+fn run(out: &mut impl Write, args: &Args) -> Result<u8, String> {
     let dir: &Path = &args.dir;
-    let mut set = SlabSet::new(slabs_of(&args));
+    let mut set = SlabSet::new(slabs_of(args));
     set.margin = args.margin;
     set.load(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?;
-    println!(
+    let io_err = |e: io::Error| format!("write failed: {e}");
+    writeln!(
+        out,
         "chunks     {} read, {} skipped by the grid pre-filter (margin {:.0} m)",
         set.chunks_read.len(),
         set.chunks_skipped,
         args.margin
-    );
+    )
+    .map_err(io_err)?;
     let mut empty = false;
     for slab in &set.slabs {
-        report(slab, &args);
+        report(out, slab, args).map_err(io_err)?;
         empty |= slab.tris.is_empty();
     }
     Ok(if empty { EXIT_EMPTY } else { 0 })
@@ -283,51 +338,24 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_USAGE);
         }
     };
-    match run(args) {
-        Ok(code) => ExitCode::from(code),
+    let mut out = io::BufWriter::new(io::stdout().lock());
+    let code = match run(&mut out, &args) {
+        Ok(code) => code,
         Err(e) => {
             eprintln!("obj_slab: {e}");
-            ExitCode::from(EXIT_USAGE)
+            return ExitCode::from(EXIT_USAGE);
         }
+    };
+    if let Err(e) = out.flush() {
+        eprintln!("obj_slab: write failed: {e}");
+        return ExitCode::from(EXIT_USAGE);
     }
+    ExitCode::from(code)
 }
 
+// A bin target's file IS the crate root, so a bare `mod tests;` would look
+// for `src/bin/tests.rs` and collide with every other bin. Point at the
+// per-binary subdirectory explicitly.
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn at_defaults_to_an_8m_horizontal_12m_vertical_box() {
-        let s = parse_at("g=280,43.4,875").unwrap();
-        assert_eq!(s.name, "g");
-        assert!((s.bmin[0] - 272.0).abs() < 1e-3);
-        assert!((s.bmax[0] - 288.0).abs() < 1e-3);
-        assert!((s.bmin[1] - 31.4).abs() < 1e-3);
-        assert!((s.bmax[1] - 55.4).abs() < 1e-3);
-    }
-
-    #[test]
-    fn at_accepts_explicit_half_extents() {
-        let s = parse_at("g=0,0,0,2,3").unwrap();
-        assert_eq!(s.bmin, [-2.0, -3.0, -2.0]);
-        assert_eq!(s.bmax, [2.0, 3.0, 2.0]);
-    }
-
-    #[test]
-    fn box_corners_are_sorted_so_either_order_works() {
-        let a = parse_box("b=10,20,30,0,0,0").unwrap();
-        let b = parse_box("b=0,0,0,10,20,30").unwrap();
-        assert_eq!(a.bmin, b.bmin);
-        assert_eq!(a.bmax, b.bmax);
-        assert_eq!(a.bmin, [0.0, 0.0, 0.0]);
-    }
-
-    #[test]
-    fn malformed_specs_are_rejected_rather_than_defaulted() {
-        assert!(parse_at("no-equals").is_err());
-        assert!(parse_at("g=1,2").is_err(), "3 numbers minimum");
-        assert!(parse_at("g=1,2,3,4,5,6").is_err(), "5 numbers maximum");
-        assert!(parse_box("b=1,2,3").is_err());
-        assert!(parse_box("b=1,2,3,4,5,x").is_err());
-    }
-}
+#[path = "obj_slab/tests.rs"]
+mod tests;

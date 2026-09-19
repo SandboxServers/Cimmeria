@@ -211,11 +211,7 @@ fn a_chunk_fixture_presents_the_owner_graph_the_bsp_walker_classifies_on() {
     chunk.add_owned_model(
         "TriggerVolume",
         "TrigVol_0",
-        [0.0; 3],
-        [0; 3],
-        1.0,
-        [1.0; 3],
-        [0.0; 3],
+        Placement::default().with_pre_pivot([0.0; 3]),
         &quad,
     );
     chunk.add_builder_brush_model(&ModelPayload::empty());

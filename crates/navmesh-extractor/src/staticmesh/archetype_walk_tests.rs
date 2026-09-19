@@ -270,15 +270,26 @@ fn an_instance_mesh_overrides_the_archetypes() {
 
 #[test]
 fn an_archetype_package_missing_from_the_index_is_its_own_skip_reason() {
-    // No `prefab_package` call: the chunk points at a package that was
-    // never written, so the index cannot locate it.
+    // The *component* chain points at a package that was never
+    // written, so the index cannot locate it. The actor chain is
+    // pointed at a real prefab so that this test stays about the
+    // component chain -- an unreadable actor chain is its own,
+    // earlier, skip.
     let dir = scratch_dir("arch-missing-pkg");
+    prefab_package(
+        &dir,
+        &PrefabSpec::local("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_Arc1", "Fx-Lamp00"),
+        &StaticMeshPayload::unit_triangle(),
+    );
     let mut chunk = ChunkFixture::new();
-    chunk.add_prefab_instanced_actor(&PrefabInstanceSpec::new(
-        "StaticMeshActor",
-        [0.0; 3],
-        ("Fx-Absent", "Fx-Gone_Pf0", "Fx-Gone_Pf0_Arc0"),
-    ));
+    chunk.add_prefab_instanced_actor(
+        &PrefabInstanceSpec::new(
+            "StaticMeshActor",
+            [0.0; 3],
+            ("Fx-Absent", "Fx-Gone_Pf0", "Fx-Gone_Pf0_Arc0"),
+        )
+        .with_actor_template(("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_Arc1")),
+    );
     let path = chunk.write(&dir, "Fix", 0x000a_0008);
 
     let scene = Scene {
@@ -301,12 +312,17 @@ fn an_archetype_package_without_the_named_template_is_export_not_found() {
     );
 
     let mut chunk = ChunkFixture::new();
-    // Right package, wrong Arc.
-    chunk.add_prefab_instanced_actor(&PrefabInstanceSpec::new(
-        "StaticMeshActor",
-        [0.0; 3],
-        ("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_ArcNope"),
-    ));
+    // Right package, wrong Arc -- on the component chain only, so the
+    // actor chain still resolves and this test stays about the
+    // component one.
+    chunk.add_prefab_instanced_actor(
+        &PrefabInstanceSpec::new(
+            "StaticMeshActor",
+            [0.0; 3],
+            ("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_ArcNope"),
+        )
+        .with_actor_template(("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_Arc1")),
+    );
     let path = chunk.write(&dir, "Fix", 0x000a_0009);
 
     let scene = Scene {
@@ -408,4 +424,176 @@ fn the_cache_turns_repeated_archetype_paths_into_one_resolution() {
         walk.prefab_packages_opened, 1,
         "the prefab package is opened once for the whole chunk"
     );
+}
+
+// ---------- package-local shapes ----------
+
+#[test]
+fn a_package_local_static_mesh_export_is_decoded_from_the_chunk() {
+    // `resolve_mesh_ref_from_component` returns `("", object)` for a
+    // local export. Handing that tuple to `PackageIndex::find` yields
+    // `MeshNotInIndex` and the collision geometry is silently dropped;
+    // the empty package name has to mean "decode it from the package
+    // already open".
+    let dir = scratch_dir("arch-local-mesh");
+    let mut chunk = ChunkFixture::new();
+    let mesh = chunk.add_local_static_mesh("Local-Floor00", &StaticMeshPayload::unit_triangle());
+    chunk.add_actor_with_local_mesh("LocalActor", [10.0, 20.0, 30.0], mesh);
+    let path = chunk.write(&dir, "Fix", 0x000a_0020);
+
+    let pkg = Package::open(&path).expect("open chunk");
+    let index = index_over(&dir);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
+    assert_eq!(
+        walk.instances[0].mesh_ref,
+        (String::new(), "Local-Floor00".to_string()),
+        "an empty package name is the local-reference sentinel"
+    );
+
+    // ...and the triangles actually reach the soup.
+    let extraction = crate::staticmesh::extract_chunk_from_package(
+        &pkg,
+        Some(&index),
+        &mut ArchetypeCache::default(),
+    );
+    assert_eq!(extraction.actors_resolved, 1, "{:?}", extraction.skips);
+    assert_eq!(extraction.triangles_emitted, 1);
+    assert_eq!(extraction.skips.get(SkipReason::MeshNotInIndex), 0);
+}
+
+#[test]
+fn a_package_local_mesh_resolves_without_any_package_index() {
+    // The degraded-CI path. A local mesh needs no index at all, so
+    // `None` must not blanket-tally it as `NoPackageIndex`.
+    let dir = scratch_dir("arch-local-mesh-degraded");
+    let mut chunk = ChunkFixture::new();
+    let mesh = chunk.add_local_static_mesh("Local-Floor00", &StaticMeshPayload::unit_triangle());
+    chunk.add_actor_with_local_mesh("LocalActor", [0.0; 3], mesh);
+    let path = chunk.write(&dir, "Fix", 0x000a_0021);
+
+    let pkg = Package::open(&path).expect("open chunk");
+    let extraction =
+        crate::staticmesh::extract_chunk_from_package(&pkg, None, &mut ArchetypeCache::default());
+    assert_eq!(extraction.actors_resolved, 1, "{:?}", extraction.skips);
+    assert_eq!(extraction.triangles_emitted, 1);
+    assert_eq!(extraction.skips.get(SkipReason::NoPackageIndex), 0);
+}
+
+#[test]
+fn a_two_hop_same_package_archetype_chain_reaches_the_parents_mesh() {
+    // `import_chain` returns `None` for every *positive* index, so a
+    // walk that only follows import chains stops at the first local
+    // stub and reports `ArchetypeNoMesh` -- one hop short of the
+    // template that actually holds the mesh.
+    let dir = scratch_dir("arch-local-chain");
+    let mut chunk = ChunkFixture::new();
+    let mesh = chunk.add_local_static_mesh("Local-Crate00", &StaticMeshPayload::unit_triangle());
+    chunk.add_local_archetype_chain_actor("LocalChained", [5.0, 6.0, 7.0], 2, mesh);
+    let path = chunk.write(&dir, "Fix", 0x000a_0022);
+
+    let pkg = Package::open(&path).expect("open chunk");
+    let index = index_over(&dir);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    assert_eq!(
+        walk.skips.get(SkipReason::ArchetypeNoMesh),
+        0,
+        "the walk must climb the local parent, not stop at the stub"
+    );
+    assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
+    assert_eq!(
+        walk.instances[0].mesh_ref,
+        (String::new(), "Local-Crate00".to_string())
+    );
+    assert!(walk.instances[0].via_archetype);
+}
+
+#[test]
+fn a_one_hop_local_archetype_still_resolves() {
+    // The near-miss for the test above: the single-level case must not
+    // regress while the multi-level one is being fixed.
+    let dir = scratch_dir("arch-local-chain-1");
+    let mut chunk = ChunkFixture::new();
+    let mesh = chunk.add_local_static_mesh("Local-Crate00", &StaticMeshPayload::unit_triangle());
+    chunk.add_local_archetype_chain_actor("LocalOne", [0.0; 3], 1, mesh);
+    let path = chunk.write(&dir, "Fix", 0x000a_0023);
+
+    let pkg = Package::open(&path).expect("open chunk");
+    let index = index_over(&dir);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
+    assert_eq!(
+        walk.instances[0].mesh_ref,
+        (String::new(), "Local-Crate00".to_string())
+    );
+}
+
+// ---------- unreadable actor archetype ----------
+
+#[test]
+fn an_unreadable_actor_archetype_skips_the_actor_even_when_the_mesh_resolves() {
+    // The data-integrity shape. The component chain points at a real
+    // prefab and resolves a mesh; the *actor* chain points at a
+    // package the index has never heard of. Defaulting the unread
+    // chain to all-`None` makes `collides()` fall through to UE3's
+    // `true`, and the extractor emits geometry whose template may have
+    // said `bCollideActors = false` -- which on Castle is 26 prefabs
+    // of weather cards standing in doorways.
+    let dir = scratch_dir("arch-actor-unreadable");
+    prefab_package(
+        &dir,
+        &PrefabSpec::local("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_Arc1", "Fx-Lamp00"),
+        &StaticMeshPayload::unit_triangle(),
+    );
+
+    let mut chunk = ChunkFixture::new();
+    chunk.add_prefab_instanced_actor(
+        &PrefabInstanceSpec::new(
+            "StaticMeshActor",
+            [0.0; 3],
+            ("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_Arc1"),
+        )
+        // No `Fx-Missing.upk` is written, so the actor chain cannot be
+        // followed while the component chain can.
+        .with_actor_template(("Fx-Missing", "Fx-Ghost_Pf0", "Fx-Ghost_Pf0_Arc0")),
+    );
+    let path = chunk.write(&dir, "Fix", 0x000a_0024);
+
+    let pkg = Package::open(&path).expect("open chunk");
+    let index = index_over(&dir);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+
+    assert_eq!(walk.actors_total, 1);
+    assert!(
+        walk.instances.is_empty(),
+        "an actor whose collision flag is unknowable must not be emitted"
+    );
+    assert_eq!(walk.skips.get(SkipReason::ActorArchetypeUnreadable), 1);
+    assert_eq!(walk.skips.total(), 1, "{:?}", walk.skips);
+}
+
+#[test]
+fn a_readable_actor_archetype_still_emits() {
+    // The control: the same shape with both chains resolvable must
+    // still produce an instance, or the guard above is just deleting
+    // geometry.
+    let dir = scratch_dir("arch-actor-readable");
+    prefab_package(
+        &dir,
+        &PrefabSpec::local("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_Arc1", "Fx-Lamp00"),
+        &StaticMeshPayload::unit_triangle(),
+    );
+    let mut chunk = ChunkFixture::new();
+    chunk.add_prefab_instanced_actor(&PrefabInstanceSpec::new(
+        "StaticMeshActor",
+        [0.0; 3],
+        ("Fx-Props", "Fx-Lamp_Pf0", "Fx-Lamp_Pf0_Arc1"),
+    ));
+    let path = chunk.write(&dir, "Fix", 0x000a_0025);
+
+    let pkg = Package::open(&path).expect("open chunk");
+    let index = index_over(&dir);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    assert_eq!(walk.instances.len(), 1);
+    assert_eq!(walk.skips.get(SkipReason::ActorArchetypeUnreadable), 0);
 }
