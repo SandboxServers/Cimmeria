@@ -252,6 +252,12 @@ public:
 			}
 		}
 		
+		// Region ids are 16-bit with the top bit reserved (RC_BORDER_REG).
+		// rcBuildRegions checks for overflow; rcBuildRegionsMonotone does not
+		// and crashes or wraps on very large maps - prefer partition=watershed
+		// there.
+		INFO("Regions: %d (after merge/filter; ids are 15-bit)", compact->maxRegions);
+
 		DEBUG1("Simplifying region contours ...");
 		rcContourSet * contours = rcAllocContourSet();
 		if (!contours)
@@ -278,6 +284,35 @@ public:
 		if (!rcBuildPolyMesh(&ctx, *contours, config.maxVertsPerPoly, *polyMesh))
 		{
 			FAULT("Could not triangulate contours (a single Recast poly mesh is capped at 0xfffe = 65534 vertices; see the Recast line above)");
+			return EXIT_BUILD_FAILED;
+		}
+
+		// rcBuildPolyMesh's buildMeshAdjacency() stores edge indices in
+		// unsigned shorts (RecastMesh.cpp: `firstEdge[v0] = (unsigned short)edgeCount`)
+		// with no overflow check. Past 0xffff edges the neighbour links are
+		// silently corrupted: the mesh still saves and loads, but falls apart
+		// into thousands of disconnected fragments. Count edges exactly the way
+		// Recast does and refuse to write such a mesh.
+		unsigned int adjacencyEdges = 0;
+		for (int i = 0; i < polyMesh->npolys; i++)
+		{
+			const unsigned short * poly = &polyMesh->polys[i * polyMesh->nvp * 2];
+			for (int j = 0; j < polyMesh->nvp; j++)
+			{
+				if (poly[j] == RC_MESH_NULL_IDX)
+					break;
+				unsigned short next = (j + 1 >= polyMesh->nvp || poly[j + 1] == RC_MESH_NULL_IDX) ? poly[0] : poly[j + 1];
+				if (poly[j] < next)
+					adjacencyEdges++;
+			}
+		}
+		INFO("Poly mesh: nverts=%d npolys=%d adjacencyEdges=%u (caps: 65534 verts, 65535 edges; edges ~ nverts + npolys)",
+			polyMesh->nverts, polyMesh->npolys, adjacencyEdges);
+		if (adjacencyEdges > 0xffff)
+		{
+			FAULT("Poly mesh has %u adjacency edges; Recast indexes them with 16 bits (max 65535), so polygon "
+				"connectivity is corrupt. Reduce detail (maxSimplificationError, minRegionSize) or crop with bounds=",
+				adjacencyEdges);
 			return EXIT_BUILD_FAILED;
 		}
 
@@ -322,8 +357,8 @@ public:
 
 		if (polyMesh->npolys == 0)
 			WARN("Navmesh is EMPTY - no walkable surface survived (wrong OBJ axis order or winding?)");
-		INFO("Navmesh: nverts=%d npolys=%d (cap 65534) detailVerts=%d detailTris=%d",
-			polyMesh->nverts, polyMesh->npolys, detail->nverts, detail->ntris);
+		INFO("Navmesh: nverts=%d npolys=%d edges=%u (caps: 65534 verts, 65535 edges) detailVerts=%d detailTris=%d",
+			polyMesh->nverts, polyMesh->npolys, adjacencyEdges, detail->nverts, detail->ntris);
 
 		rcFreePolyMeshDetail(detail);
 		rcFreePolyMesh(polyMesh);
