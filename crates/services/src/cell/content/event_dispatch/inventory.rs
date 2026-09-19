@@ -68,6 +68,7 @@ pub async fn fire_item_use(
         );
     } else {
         tracing::debug!(entity_id, item_id, "fire_item_use: no chains matched");
+        crate::cell::playtest_friction::item_use_no_chain(entity_id, item_id);
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }

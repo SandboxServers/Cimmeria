@@ -184,7 +184,7 @@ to crate-rename churn) and **named for the question they answer**.
 | `aoi.create_emit` | DEBUG | `base::world_entry::cell_dispatch::aoi::{entered_aoi, flush_deferred_aoi}` | Per-packet entity-introduction delivery (CREATE_ENTITY+UPDATE_AVATAR / createOnClient cascade) — fields `witness_id`, `entity_id`, `class_id`, `phase` (`create_base` \| `cascade`), `addr_resolved`, `bytes`, `seq`. Success-side visibility for the invisible-static-NPC drop |
 | `aoi.create_send_failed` | WARN | `base::world_entry::cell_dispatch::aoi::{entered_aoi, flush_deferred_aoi}` | Entity-introduction packet/bundle that could NOT be delivered — `reason` (`entity_to_addr_miss` \| `client_disconnected` \| `send_error`), `phase`, `addr_resolved`. Negative-logging seam for the invisible-corpse class |
 | `movement.player` | DEBUG (1-in-10 sampled) | `cell::service::base_messages` position-update path | Player avatar position updates |
-| `movement.npc` | DEBUG (1-in-10 sampled `step`, always `waypoint_reached`) | `cell::service::ticks::npc_movement` | NPC nav-path movement |
+| `movement.npc` | DEBUG (1-in-10 sampled `step`, always `waypoint_reached`) | `cell::service::ticks::npc_movement` | NPC nav-path movement. `step` is sampled over a global step counter (every NPC is observable) and carries `yaw_rad` + `yaw_byte` |
 | `npc_ai` | DEBUG / INFO | `cell::service::npc_ai_fight` | NPC AI tick outcomes — see `decision_outcome` |
 | `threat` | INFO | `cell::combat::threat::{enter,exit}_player_combat` | Player combat-enter / combat-exit transitions (gated on actual state change) |
 | `trade.request` / `trade.cancel` / `trade.update_proposal` / `trade.lock_state` | INFO | `cell::cell_methods::player::trade::handlers` | Per-handler trade dispatch from the cell side |
@@ -194,6 +194,10 @@ to crate-rename churn) and **named for the question they answer**.
 | `cover.reservation` | WARN | `cell::cover::ai_integration::try_reserve_or_warn` | Cover-slot race-lost — defensive against future async refactors |
 | `spawner.npc_respawn` | INFO | `cell::service::ticks::npc_respawn::npc_respawn_tick` | Per-NPC respawn promotion — correlator: `world_name`, `respawn_secs` |
 | `movement.validation` | WARN | `cell::service::base_messages` | Movement reject (bounds violation) — snap-back to last_valid |
+| `playtest.bookmark` | INFO | `cell::console::bookmark::emit` | One row per GM `.bug <note>` — the tester, their target, mission/step/objective state, regions, counters and the free-text note. Correlator: `bookmark_id`. The entry point for reconstructing a playtest without a chat log |
+| `playtest.bookmark.entity` | INFO | `cell::console::bookmark::emit` | One row per entity within 60 u of the tester at `.bug` time (nearest 32; the selected target always included). Position, velocity, `yaw_rad`, **`yaw_byte` (the facing actually transmitted)**, `wire_facing_vs_caller_deg`, `ground_y` / `y_above_ground`, AI state, nav path, threat, follow target, spawn distance. Join on `bookmark_id` |
+| `playtest.friction` | WARN | `cell::playtest_friction` | Stuck-player detectors — one event per episode, discriminated by `signal`: `repeat_interact_no_effect` (5 dead-end interacts on one target / 60 s), `repeat_item_use_no_chain` (2 uses matching no chain / 120 s), `console_reject_streak` (3 rejected `.`-commands / 120 s), `escort_separated` (escort > 3x `follow_max_distance` for 5 AI ticks). Raised from behaviour, not from knowing the cause |
+| `movement.navmesh` | WARN | `cell::space_manager::lifecycle` | Space created with no `.nav` file (`reason = "navmesh_missing"`) — every navmesh consumer fails open, so NPCs there path in straight lines through geometry |
 | `navmesh.load` | ERROR | `entity::navigation::check_count` | Hostile `.nav` header rejected — space loads navmesh-less |
 
 #### `npc_ai.decision_outcome` enum
@@ -210,6 +214,11 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `min_range_backup` | Target inside ability `min_range` — stepping back |
 | `no_ability` | Every known ability on cooldown / needs ammo |
 | `leashed` | Target moved past `LEASH_DISTANCE` from spawn |
+| `repath_degenerate` | WARN — chase repath returned ≤1 waypoint; the previous path is left in place, so the NPC may keep walking toward where the target used to be |
+| `hold_no_repath` | Out of range / no LoS, but the existing path still ends within 5 u of the target — no new order this tick (previously silent) |
+| `follow_no_path` | WARN — follow found no navmesh path and fell back to a raw 3-axis straight line (`reason` = `no_mesh` \| `no_path`; `dy` is the air-climb signature) |
+| `follow_target_lost` | WARN — follow target no longer resolves; follow is cleared and the escort idles until a chain re-arms it |
+| `follow_dropped_no_target` | Follow state with no follow target — dropped to Idle |
 | `stationary_holds` | Stationary NPC out of range / no LOS — holds fire |
 | `stay_in_cover` | NPC in cover, threat in defensive arc — hold |
 | `move_to_cover` | NPC picked a fresh cover slot — paths to it |

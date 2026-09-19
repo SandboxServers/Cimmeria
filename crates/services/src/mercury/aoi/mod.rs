@@ -44,7 +44,7 @@ pub(crate) const BASEMSG_LEAVE_AOI: u8 = 0x0C;
 /// Pack a float angle (radians) into a single byte (256 steps per circle).
 ///
 /// Matches C++ `(uint8_t)(angle / 0.024543693f)`.
-pub(super) fn pack_angle(radians: f32) -> u8 {
+pub(crate) fn pack_angle(radians: f32) -> u8 {
     const SCALE: f32 = 0.024543693;
     (radians / SCALE) as u8
 }

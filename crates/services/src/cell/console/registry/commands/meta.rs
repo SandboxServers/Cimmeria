@@ -12,6 +12,13 @@ pub(super) const SPECS: &[Spec] = &[
         "List console commands (optionally filter by substring)",
     ),
     spec(
+        "bug",
+        0,
+        64,
+        Target::None,
+        "Bookmark this moment for the devs: snapshots you, your target and every nearby entity into telemetry (free-text note)",
+    ),
+    spec(
         "seedconfirm",
         0,
         0,

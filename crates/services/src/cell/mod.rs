@@ -20,6 +20,7 @@ pub(crate) mod kismet;
 pub mod mail;
 pub mod messages;
 pub mod missions;
+pub(crate) mod playtest_friction;
 pub mod ring_transport;
 mod service;
 pub mod space_manager;

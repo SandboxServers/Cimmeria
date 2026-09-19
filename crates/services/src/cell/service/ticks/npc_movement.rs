@@ -7,12 +7,17 @@ use super::super::super::space_manager::SpaceManager;
 /// — only the per-tick interpolated position updates are sampled,
 /// since those are the high-volume noise. 10 = ~10% of step events.
 ///
+/// The sample is taken over a global step counter, NOT over `npc_id`:
+/// the original `npc_id % N` gate logged every step of 10% of NPCs and
+/// made the other 90% permanently unobservable.
+///
 /// Tunable knob: the right rate is "enough to see the motion shape
 /// for one NPC over a few seconds, not enough to drown the log
 /// stream when 100 NPCs are pathing simultaneously." Bump up
 /// (1-in-5) when actively debugging NPC pathing; back off (1-in-50)
 /// when the field is quiet.
 const NPC_STEP_LOG_SAMPLE: u32 = 10;
+static NPC_STEP_LOG_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// Scale an NPC's template `move_speed` (world units per 100ms tick) by its
 /// `movementSpeedMod` stat.
@@ -168,7 +173,10 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
             // by tuning `NPC_STEP_LOG_SAMPLE`). State transitions
             // above are always-on; only these interpolated steps
             // are sampled.
-            if npc_id.is_multiple_of(NPC_STEP_LOG_SAMPLE) {
+            if NPC_STEP_LOG_COUNTER
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                .is_multiple_of(NPC_STEP_LOG_SAMPLE)
+            {
                 tracing::debug!(
                     target: "movement.npc",
                     event = "step",
@@ -177,6 +185,8 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                     new_x, new_y, new_z,
                     wp_x = next_wp.x, wp_y = next_wp.y, wp_z = next_wp.z,
                     dist_remaining = dist - move_speed,
+                    yaw_rad = yaw,
+                    yaw_byte = crate::mercury::aoi::pack_angle(yaw),
                     "NPC movement step (sampled)"
                 );
             }

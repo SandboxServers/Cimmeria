@@ -43,6 +43,13 @@ pub(super) async fn npc_ai_follow(
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.ai_state = AiState::Idle;
         }
+        tracing::debug!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "follow_dropped_no_target",
+            npc_id,
+            "NPC AI: follow state with no follow target -- dropping to Idle"
+        );
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     };
@@ -53,6 +60,15 @@ pub(super) async fn npc_ai_follow(
             npc.follow_target_id = None;
             npc.ai_state = AiState::Idle;
         }
+        tracing::warn!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "follow_target_lost",
+            reason = "entity_not_found",
+            npc_id,
+            target_id,
+            "NPC AI: follow target not found in space -- follow cleared, escort stands still until a chain re-arms it"
+        );
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     };
@@ -66,6 +82,14 @@ pub(super) async fn npc_ai_follow(
     .await;
 
     let dist = npc_pos.distance_to(&target_pos);
+    // Stuck-escort detector (clears itself once the escort is back in band).
+    crate::cell::playtest_friction::escort_tick(
+        npc_id,
+        target_id,
+        dist,
+        max_d,
+        space_mgr.space_has_navmesh(npc_id),
+    );
     if dist < min_d {
         // Too close — hold position.
         record_decision_outcome("follow_band");
@@ -99,6 +123,38 @@ pub(super) async fn npc_ai_follow(
     let path = space_mgr
         .find_path(npc_id, &npc_pos, &dest)
         .unwrap_or_default();
+    let routed = path.len() > 1;
+    let path_len = path.len();
+    if !routed {
+        // The unrouted `dest` is a raw 3-axis lerp toward the target,
+        // including the target's Y -- an airborne or upstairs target drags
+        // the follower through the air and through geometry.
+        let reason = if space_mgr.space_has_navmesh(npc_id) {
+            "no_path"
+        } else {
+            "no_mesh"
+        };
+        tracing::warn!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "follow_no_path",
+            reason,
+            npc_id,
+            target_id,
+            npc_x = npc_pos.x,
+            npc_y = npc_pos.y,
+            npc_z = npc_pos.z,
+            target_x = target_pos.x,
+            target_y = target_pos.y,
+            target_z = target_pos.z,
+            dest_x = dest.x,
+            dest_y = dest.y,
+            dest_z = dest.z,
+            dy = dest.y - npc_pos.y,
+            dist,
+            "NPC AI: follow found no navmesh path -- falling back to a straight line through geometry"
+        );
+    }
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
         if path.len() > 1 {
@@ -120,6 +176,15 @@ pub(super) async fn npc_ai_follow(
         target_id,
         dist,
         max_d,
+        routed,
+        path_len,
+        npc_x = npc_pos.x,
+        npc_y = npc_pos.y,
+        npc_z = npc_pos.z,
+        target_y = target_pos.y,
+        dest_x = dest.x,
+        dest_y = dest.y,
+        dest_z = dest.z,
         "NPC AI: follow → pathfinding toward target"
     );
 }
@@ -214,5 +279,65 @@ mod tests {
             "fallback waypoint must be the unrouted straight-line point, \
              got {dest:?}"
         );
+    }
+
+    /// Regression guard for the 2026-09-18 colo playtest: the straight-line
+    /// fallback above fired on 54 of 54 Castle follow legs with no log at
+    /// all. It must now say so, and say WHY (no mesh vs no route).
+    #[tokio::test]
+    async fn follow_straight_line_fallback_warns_with_reason() {
+        let mut mgr = make_space_mgr();
+        mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.spawn_npc(102, "Agnos", [50.0, 3.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(101) {
+            npc.ai_state = AiState::Follow;
+            npc.follow_target_id = Some(102);
+        }
+        let logs = crate::test_support::LogCapture::install();
+        let (tx, _rx) = mpsc::channel(8);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+
+        let ev = logs
+            .find_event(
+                tracing::Level::WARN,
+                "follow found no navmesh path",
+                "no_mesh",
+            )
+            .expect("unrouted follow leg must emit a follow_no_path warn");
+        assert!(ev.has_field("decision_outcome", "follow_no_path"));
+        assert!(ev.has_field("npc_id", "101"));
+        assert!(
+            ev.fields.contains_key("dy"),
+            "dy is the air-climb signature and must be on the event"
+        );
+    }
+
+    /// A follow target that no longer resolves used to clear the escort's
+    /// target and park it in Idle without a trace (the Marsh symptom).
+    #[tokio::test]
+    async fn follow_target_lost_warns_and_clears() {
+        let mut mgr = make_space_mgr();
+        mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(101) {
+            npc.ai_state = AiState::Follow;
+            npc.follow_target_id = Some(999);
+        }
+        let logs = crate::test_support::LogCapture::install();
+        let (tx, _rx) = mpsc::channel(8);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+
+        assert!(logs
+            .find_event(
+                tracing::Level::WARN,
+                "follow target not found",
+                "entity_not_found"
+            )
+            .is_some());
+        let npc = mgr.get_entity(101).unwrap();
+        assert_eq!(npc.follow_target_id, None);
+        assert_eq!(npc.ai_state, AiState::Idle);
     }
 }
