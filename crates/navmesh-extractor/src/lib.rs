@@ -30,6 +30,7 @@
 //! 1.3 (Terrain decode) lands in a follow-up change — its module hook
 //! is wired into [`extract_map`] as a `// TODO:` marker.
 
+pub mod bsp;
 pub mod chunk_id;
 pub mod geometry;
 pub mod nav_roundtrip;
