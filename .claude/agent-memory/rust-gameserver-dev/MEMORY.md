@@ -78,6 +78,7 @@
 - [sqlx-dynamic-sql-string.md](sqlx-dynamic-sql-string.md) — `sqlx::query` takes `&'static str` only, so a `fn(&str) -> String` shared-SELECT helper won't compile; use a `macro_rules!` + `concat!` re-exported with `pub(crate) use`.
 - [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
+- [worktree-shell-and-external-binary-tests.md](worktree-shell-and-external-binary-tests.md) — worktree-isolated Bash refuses `env VAR=x cmd`, heredoc-plus-shell-var and appends; and a test asserting a from-tree C++ binary's behaviour needs an explicit opt-in env var (bin64/ holds whatever branch built it last).
 
 ## Navmesh extraction (UE3 → NavBuilder)
 
