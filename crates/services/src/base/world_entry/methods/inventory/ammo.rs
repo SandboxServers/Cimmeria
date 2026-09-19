@@ -11,8 +11,10 @@ use sqlx::PgPool;
 /// `expected_instance_id` is added to the WHERE clause as a TOCTOU guard.
 /// Between the cell sending `BandolierAmmoUpdate` and this UPDATE running, the
 /// player could have swapped the slot's weapon. The predicate keys on the
-/// `sgw_inventory.item_id` per-row instance id (a server-allocated surrogate,
-/// unique per slot via `sgw_inventory_unique_slot`), so it fires even
+/// `sgw_inventory.item_id` per-row instance id — a server-allocated surrogate
+/// and the table's declared primary key (`sgw_inventory_pkey PRIMARY KEY
+/// (item_id)`, `db/sgw/_primary_keys.sql`), so at most one row can ever
+/// match — and it fires even
 /// when the swapped-in weapon shares the same *design* (`type_id`) as the one
 /// the ammo writeback was computed for. Keying on `type_id` instead — as an
 /// earlier version did — left a same-type-swap window: two physical instances
