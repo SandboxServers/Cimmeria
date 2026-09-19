@@ -20,4 +20,6 @@ mod orchestrator_shards;
 pub mod wire_log;
 
 #[cfg(test)]
+mod live_db_gate;
+#[cfg(test)]
 pub(crate) mod test_support;
