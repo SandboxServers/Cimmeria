@@ -238,7 +238,7 @@ async fn execute_one(
             step_id,
         } => {
             mission::advance_step(
-                mission_id, step_id, entity_id, player_id, chain_id, tx, space_mgr,
+                mission_id, step_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
             )
             .await;
         }

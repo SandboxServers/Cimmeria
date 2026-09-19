@@ -307,6 +307,16 @@ pub struct SpaceManager {
     /// space never gets a late `Stargate_MakeGate`. See
     /// `gate_dial_state` for the state machine.
     pub(crate) pending_gate_dials: HashMap<u32, PendingGateDial>,
+    /// Re-entrancy bound for the H52 step-activation region replay. A
+    /// replayed `enter_region` chain can advance another step, which replays
+    /// again; this caps the depth and remembers which `(entity, mission,
+    /// step)` triples the current outermost activation has already served.
+    /// Owned here because the recursion runs through
+    /// `content::executor::execute_actions`, which cannot thread a depth
+    /// parameter back to the dispatcher — the `&mut SpaceManager` every frame
+    /// already holds is the exclusive token. See
+    /// `content::event_dispatch::step_activation`.
+    pub(crate) step_region_replay: super::content::StepRegionReplayGuard,
 }
 
 impl SpaceManager {
@@ -351,6 +361,7 @@ impl SpaceManager {
             patrol_authoring: HashMap::new(),
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
+            step_region_replay: super::content::StepRegionReplayGuard::default(),
             pending_gate_dials: HashMap::new(),
         }
     }

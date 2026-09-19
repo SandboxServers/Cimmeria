@@ -78,6 +78,15 @@ pub(super) async fn accept_or_advance(
         )
         .await;
 
+        // H52: accepting a mission activates its first step, so a chain gated
+        // on that step and keyed on a volume the player is already standing in
+        // (742's offer, 1326's offer, the 1343 patrol's first leg inside the
+        // Jaffa Zone) has already spent its edge. Replay those volumes.
+        crate::cell::content::event_dispatch::fire_step_activation_regions(
+            entity_id, player_id, mission_id, step_id, engine, tx, space_mgr,
+        )
+        .await;
+
         // Discord gameplay-channel. Mission defs carry no name cell-side, so
         // the mission id is the identifier; the player name comes from the
         // entity's InitPlayerState-cached value.
@@ -172,6 +181,7 @@ pub(super) async fn complete(
 }
 
 /// `Action::AdvanceStep` — move a mission to a new step and persist.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn advance_step(
     mission_id: i32,
     step_id: i32,
@@ -180,6 +190,7 @@ pub(super) async fn advance_step(
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     tracing::info!(
         entity_id,
@@ -188,7 +199,8 @@ pub(super) async fn advance_step(
         chain_id,
         "Content: advancing step"
     );
-    crate::cell::missions::advance_step(entity_id, mission_id, step_id, tx, space_mgr).await;
+    let activated =
+        crate::cell::missions::advance_step(entity_id, mission_id, step_id, tx, space_mgr).await;
     // `advance_step` completes the old step's objectives and swaps in the
     // new step's, so the serialized arrays must be read back afterwards:
     // the old objectives survive only in `completed_objective_ids` (what
@@ -203,6 +215,17 @@ pub(super) async fn advance_step(
         space_mgr,
     )
     .await;
+    // H52: the new step's `enter_region` chains missed their edge if the
+    // player is standing in the volume right now. Fired after the persist so
+    // a chain that itself advances again sees a saved row consistent with
+    // cell state, and only on a real activation — a missing entity or an
+    // untracked mission left no step to serve.
+    if activated {
+        crate::cell::content::event_dispatch::fire_step_activation_regions(
+            entity_id, player_id, mission_id, step_id, engine, tx, space_mgr,
+        )
+        .await;
+    }
 }
 
 /// `Action::AbandonMission` — drop the mission from the player's tracker.

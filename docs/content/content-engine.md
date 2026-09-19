@@ -105,7 +105,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnEntityHealthBelow { entity_tag, pct }` | A tagged entity's health crosses `pct` **downward** on a single damaging hit. Seed `event_key` is `"<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`), parsed with `rsplit_once(':')` so a tag containing a colon still resolves; `pct` must be `1..=99` or the trigger row is dropped with a `health_pct_out_of_range` warn ([loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs)) — 100 is excluded because the band test's upper half is strict, so a full-health entity can never satisfy `before > 100` and `:100` would load a chain that never fires. See the band-test note below |
 | `OnAbilityUsed { ability_id? }` | Any entity uses an ability |
 | `OnInteraction { interaction_type? }` | Generic right-click |
-| `OnRegionEnter { region_key }` | Player enters a Kismet region (string key like `Castle_CellBlock.Region2`) |
+| `OnRegionEnter { region_key }` | Player enters a Kismet region (string key like `Castle_CellBlock.Region2`). Also **replayed by the server** when a mission step activates with the player already standing in the volume — see "Step-activation replay" below |
 | `OnRegionExit { region_key }` | Player exits region |
 | `OnMissionStep { mission_id, step }` | Mission advances to a specific step |
 | `OnItemAcquired { item_id? }` | Item enters inventory |
@@ -154,6 +154,23 @@ Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](..
 | `effect_removed` | `OnEffectRemoved` | " |
 
 This is the trigger-side mirror of the action-side gap catalogued below, and it is the reason `apply_effect`'s one seeded row cannot fire: the row sits on an `effect`-scoped chain whose trigger is one of these.
+
+### Step-activation replay of `enter_region`
+
+`enter_region` is an **edge** event. The client reports a volume crossing once, and a chain gated on a step that is not yet active sees that edge, fails its gate, and never gets another one until the player physically leaves and comes back. The 2026-09-18 Castle playtest lost objective 2484 to this ordering race, and the Harset seed lanes found four more instances of the same shape.
+
+The server closes the `enter_region` half of it. Whenever a mission step activates — `Action::AcceptMission` / `Action::AdvanceMission` (first step), `Action::AdvanceStep`, `gmMissionAssign`, `gmMissionAdvance` — every client-hinted region of the player's world that contains the player's **server-known** position is re-fired through the normal trigger path. Implementation: [`content::event_dispatch::step_activation`](../../crates/services/src/cell/content/event_dispatch/step_activation/mod.rs). Log line: `reason = "already_inside_on_step_activation"`, plus a `region_replay` entry in the player journal that a `.bug` report picks up.
+
+What an author needs to know:
+
+- **Only mission-gated chains are replayed.** A chain is eligible when at least one of its conditions is `mission_status`, `step_status` or `objective_status` (`Chain::is_mission_gated`). Those are idempotent under a double delivery: the chain's own actions move the state its gate reads, so when the client's real hint lands a moment later the gate is closed. A chain with no mission gate — a bare `enter_region` → `display_dialog` — is **refused** and logged at `debug` with `reason = "filtered_out"`, because replaying it would show the dialog twice. If your chain should replay, give it the `step_status` gate it wanted anyway.
+- **`world` and `archetype` are not mission gates.** Neither changes when the chain runs, so neither makes a re-fire safe. A chain gated only on `world` is not replayed.
+- **Containment is the same test the client hint uses** (`spawner::is_point_in_region`, the tolerance band including its vertical arm), against the position the *server* accepted — never a client-supplied coordinate.
+- **Only client-hinted volumes replay.** A region without `REGION_FLAG_CLIENT_HINTED` was never handed to the client, so there is no hint to stand in for.
+- **Content chains only.** Ring-transporter forwarding and `REGION_FLAG_STARGATE` passage hang off the same client call but are sequenced by the dispatch arm in `cell_methods::player::world`, *after* `fire_enter_region`. A replay never starts a ring transport and never carries a player through a gate.
+- **Bounded.** A replayed chain can itself advance a step, which activates another step, which replays again. A depth cap plus a per-activation visited set of `(entity, mission, step)` triples stops the recursion; a refusal is a `warn!` naming `replay_depth_exceeded` or `step_already_replayed`, which reads as "this chain is looping".
+
+Cover edges and `player_loaded` are **not** replayed. The cover edge belongs to the Castle Cellblock lane (objective 2484); `player_loaded` and the abandon case are covered by seed triggers and by `mission_abandoned` respectively.
 
 ### Conditions — *gates that AND together*
 

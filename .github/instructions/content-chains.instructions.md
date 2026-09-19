@@ -31,6 +31,32 @@ Every `op: "|"` (set) needs a matching `op: "~"` (clear) on the chain that compl
 
 For mission progression, also add a `player_loaded`-triggered chain that re-applies the bit for active steps. Interaction flags don't persist on the entity across server restart, so without restoration a relog mid-mission breaks interactivity. Worked example: chains 1045/1046 in `castle_cellblock_chains.sql` restore HackTheRings_Switch's bit based on which step is active.
 
+## Edge-triggered chains and the step-activation race
+
+`enter_region`, `player_loaded` and the cover triggers are **edges**: the
+client reports the crossing once. A chain gated on a mission step that is not
+yet active sees that edge, fails its gate, and never gets another one. The
+2026-09-18 Castle playtest lost objective 2484 to it.
+
+Review rules:
+
+- An `enter_region` chain gated on mission state is covered by the engine.
+  The server replays the edge when the step activates with the player already
+  inside the volume (`content-engine.md` §3, "Step-activation replay"). No
+  second trigger row is needed.
+- An `enter_region` chain gated on `world` or `archetype` **only** is not
+  covered — those are not mission gates, and the replay refuses the chain
+  because re-firing it would not be idempotent. Either give it the
+  `step_status` gate it wants, or add a second trigger on the event that
+  opens its gate.
+- `player_loaded` and cover chains are still not covered. They keep the
+  second-trigger rule: add a trigger on the event that opens the gate,
+  usually `mission_completed '<id>'` (a second trigger row on the same chain,
+  tested through `load_chain_expansions_for_test`, or a paired chain with a
+  condition-parity guard).
+- A chain that should repaint an offer after an **abandon** uses the
+  `mission_abandoned` trigger, not a second `mission_completed` row.
+
 ## Mission grants must gate on `not_active`
 
 Every chain whose actions include `accept_mission` must carry a

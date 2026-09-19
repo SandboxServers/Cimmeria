@@ -31,6 +31,11 @@ pub(crate) mod kinds {
     /// report can tell "the client never sent it" from "the server refused
     /// it" — the two look identical in-game (the door does nothing).
     pub(crate) const REGION_HINT_REFUSED: &str = "region_hint_refused";
+    /// A region entry the *server* synthesised because a mission step
+    /// activated while the player was already standing in the volume (H52).
+    /// Distinct from [`REGION_HINT`] so a `.bug` report can tell a real
+    /// client crossing from a replay.
+    pub(crate) const REGION_REPLAY: &str = "region_replay";
     pub(crate) const COVER_EDGE: &str = "cover_edge";
     pub(crate) const STEP_ADVANCE: &str = "step_advance";
     pub(crate) const MISSION_COMPLETE: &str = "mission_complete";

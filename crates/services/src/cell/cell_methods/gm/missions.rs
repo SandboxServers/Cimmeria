@@ -9,6 +9,7 @@
 //! the cell, so these handlers accept the numeric form only (parse the WSTRING
 //! as an `i32`) and reject a non-numeric key rather than guess.
 
+use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::missions::{
     MissionInstance, MissionObjective, MISSION_ACTIVE, MISSION_COMPLETED, STATUS_ACTIVE,
 };
@@ -20,6 +21,17 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::missions;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::read_wstring;
+
+/// The DB player id behind a cell entity, or 0 when it has none. The content
+/// dispatchers take it for logging and for the base-bound action arms; an
+/// entity with no `player_id` cannot be a live player anyway, and the H52
+/// replay's own player check rejects it.
+fn player_id_of(entity_id: u32, space_mgr: &SpaceManager) -> i32 {
+    space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0)
+}
 
 /// Parse the leading `WSTRING DesignID` as a positive numeric mission id.
 /// Returns `None` (after a warn) on malformed/non-numeric input.
@@ -55,6 +67,7 @@ pub(super) async fn handle_mission_assign(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> bool {
     let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionAssign") else {
         send_gm_feedback(
@@ -102,6 +115,17 @@ pub(super) async fn handle_mission_assign(
     // success when the mutation actually happened.
     let accepted =
         missions::accept_mission(entity_id, mission_id, step_id, objectives, tx, space_mgr).await;
+    if accepted {
+        // H52: the assigned mission's first step is now active. A chain gated
+        // on it and keyed on a volume the target is already standing in spent
+        // its edge before the assign, so replay those volumes —
+        // `gmMissionAssign` is the primary UAT tool for exactly that flow.
+        let player_id = player_id_of(entity_id, space_mgr);
+        crate::cell::content::fire_step_activation_regions(
+            entity_id, player_id, mission_id, step_id, engine, tx, space_mgr,
+        )
+        .await;
+    }
     let line = if accepted {
         format!("gmMissionAssign: assigned mission {mission_id} (step {step_id})")
     } else {
@@ -152,6 +176,7 @@ pub(super) async fn handle_mission_advance(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> bool {
     let Some((mission_id, consumed)) = parse_mission_id(entity_id, args, "gmMissionAdvance") else {
         send_gm_feedback(
@@ -195,7 +220,20 @@ pub(super) async fn handle_mission_advance(
         new_step_id,
         "gmMissionAdvance: advancing mission step"
     );
-    missions::advance_step(entity_id, mission_id, new_step_id, tx, space_mgr).await;
+    if missions::advance_step(entity_id, mission_id, new_step_id, tx, space_mgr).await {
+        // H52, same reasoning as `handle_mission_assign`.
+        let player_id = player_id_of(entity_id, space_mgr);
+        crate::cell::content::fire_step_activation_regions(
+            entity_id,
+            player_id,
+            mission_id,
+            new_step_id,
+            engine,
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
     send_gm_feedback(
         entity_id,
         &format!("gmMissionAdvance: mission {mission_id} advanced to step {new_step_id}"),

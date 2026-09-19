@@ -218,12 +218,14 @@ pub async fn dispatch(
         GM_SET_FOCUS => stats::handle_set_focus(entity_id, args, false, tx, space_mgr).await,
         GM_SET_FOCUS_MAX => stats::handle_set_focus(entity_id, args, true, tx, space_mgr).await,
         // -- missions --
-        GM_MISSION_ASSIGN => missions::handle_mission_assign(entity_id, args, tx, space_mgr).await,
+        GM_MISSION_ASSIGN => {
+            missions::handle_mission_assign(entity_id, args, tx, space_mgr, engine).await
+        }
         GM_MISSION_CLEAR | GM_MISSION_ABANDON => {
             missions::handle_mission_clear(entity_id, args, tx, space_mgr).await
         }
         GM_MISSION_ADVANCE => {
-            missions::handle_mission_advance(entity_id, args, tx, space_mgr).await
+            missions::handle_mission_advance(entity_id, args, tx, space_mgr, engine).await
         }
         GM_MISSION_LIST => missions::handle_mission_list(entity_id, tx, space_mgr).await,
         GM_MISSION_LIST_FULL => missions::handle_mission_list_full(entity_id, tx, space_mgr).await,
