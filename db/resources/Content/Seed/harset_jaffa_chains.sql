@@ -11,13 +11,16 @@
 -- 1xxx-5xxx id.
 --
 -- Populated so far:
---   1324 Present Yourself  6301-6310  (packet H20, worknotes/H20.md)
---   1326 Lan'toc           6331-6345  (packet H22, worknotes/H22.md)
+--   1324 Present Yourself  6301-6310  (packet H20)
+--   1326 Lan'toc           6331-6345  (packet H22)
+-- Worknote for both: docs/analysis/harset-rebuild/worknotes/H20-H22.md
 -- Still empty: 1325 (6311-6330, H21), 1343 (6346-6365, H23), 1347
 -- (6366-6380, H24), 1348 (6381-6400, H25), 1351 (6401-6415, H26),
 -- 1352 (6416-6440, H27), 1353 (6441-6470, H28).
 --
--- Base: content/harset-wave2 @ 94e65324.
+-- Base: content/harset-wave2 @ acc12c80 (PR #662 review fixes, main
+-- through #680 — includes Castle CA02, which changed how a NULL
+-- `dialog_id` dsm row loads; see the dsm 120002 note).
 -- ============================================================
 
 SET search_path = resources, pg_catalog;
@@ -66,9 +69,10 @@ SET search_path = resources, pg_catalog;
 --      site repo-wide is `cell/interactions/dispatch/interact.rs`.
 --
 --      Route B — no chain matched. `handle_interact` pins
---      `last_interaction_target`, opens
---      `available_interactions[template].first()`, and fires
---      `dialog_open`.
+--      `last_interaction_target`, opens the first entry of
+--      `available_interactions[template]` THAT CARRIES A DIALOG
+--      (interaction-only rows are stepped over), and fires `dialog_open`.
+--      If no bound entry has a dialog, the click does nothing at all.
 --
 --    CONSEQUENCE, and the reason chains 6302/6332 were deleted before
 --    this file shipped: a `display_dialog` on a FOLLOW-UP trigger
@@ -93,8 +97,11 @@ SET search_path = resources, pg_catalog;
 --    (a) BIND SIDE: at most one dsm is bound to a given template at any
 --        time, and the chain that binds the next one removes the
 --        previous one in the same action list.
---        `interactions/dispatch/interact.rs` picks `entries.first()` —
---        the OLDEST bind wins — and Moh'katan (template 54) accumulates
+--        `interactions/dispatch/interact.rs` picks the FIRST BOUND ENTRY
+--        THAT HAS A DIALOG (`entries.iter().find_map(|&(_, dialog_id, _)|
+--        dialog_id)` — it steps over interaction-only rows, see the
+--        dsm 120002 note below) — so the OLDEST dialog-bearing bind wins
+--        — and Moh'katan (template 54) accumulates
 --        binds from 1324, 1325, 1326, 1343, 1347, 1352 … across packets.
 --        A leaked bind leaves a stale icon, and in any state that has no
 --        matching `interact_tag` chain (every offer state, by rule 2) it
@@ -125,14 +132,36 @@ SET search_path = resources, pg_catalog;
 --    `player_loaded` chain gated on the active step is both the "paint it
 --    when you walk in" chain and the "re-paint it after a relog" chain —
 --    one row does both jobs. Every bind in this file has exactly one
---    matching `player_loaded` chain for the state it belongs to. The
+--    matching `player_loaded` chain for the state it belongs to.
+--
+--    A `player_loaded` chain is not enough ON ITS OWN when the state it
+--    paints becomes true while the player is already standing in the
+--    world — `player_loaded` is an edge, and there is no second edge to
+--    catch. That case needs a level-triggered partner; chain 6341 is the
+--    one instance of it in this file and its comment explains the shape.
+--    The
 --    world-57 NPCs restore on `player_loaded 'Harset'`, the world-68 ones
 --    on `player_loaded 'Harset_CmdCenter'`. A useful side effect: because
 --    the entity is recreated, `available_interactions` starts empty on
 --    every world entry, so a restore chain cannot accumulate duplicate
 --    binds even though `add_dialog_set` does not dedupe.
 --
--- Three smaller rules that bite in this file:
+-- Four smaller rules that bite in this file:
+--
+--   * DIALOGS 4375 AND 4376 HAVE NO BUTTONS AT ALL, AND CHAINS 6337/6338
+--     DEPEND ON THAT. A dialog whose screens carry zero
+--     `dialog_screen_buttons` rows sends `Event_NetOut_DialogButtonChoice`
+--     with `ButtonId = -1` when the player closes it (Done / Decline /
+--     the window X); a dialog that HAS buttons sends nothing on close and
+--     fires only on a button click. So keying `dialog_choice` on a
+--     button-less dialog is correct and precedented (`Castle.py` did it
+--     for 2574/2575; shipped chains 1020/1021 do it for 2300/5020) — and
+--     ADDING A BUTTON TO 4375 OR 4376 SILENTLY KILLS the chain that
+--     closes step 3960, stranding the mission with no error anywhere.
+--     Check by `screen_id` (`dialog_screen_buttons`' THIRD column), never
+--     by dialog id — a grep on the dialog id matches button ids and lies.
+--     Today: 4375 owns screens 80986-80988 and 4376 owns 80989-80993,
+--     none of which appears in `dialog_screen_buttons.sql`.
 --
 --   * `complete_objective` on a step's LAST NON-OPTIONAL objective calls
 --     `mission.complete()` (`cell/missions/progression.rs`), completing
@@ -202,17 +231,40 @@ VALUES (120001, 1391, 4365, 'Present Yourself', 536870912, 1, '{}', '{}', '{}', 
 -- entity of the bound template in the player's AoI, so binding once on
 -- slot 204 lights every template-204 NPC the player can see.
 --
--- 4375 is the dialog on the row because a dsm row with a NULL `dialog_id`
--- is dropped at load (`cell/spawner/dialogs.rs::load_dialog_set_maps`)
--- and would make the bind a silent cache miss. Which dialog actually
--- opens is decided by chains 6335/6336 (Route A), not by this row —
--- BUT ONLY WHILE THOSE CHAINS MATCH. If a future edit ever leaves this
--- bind live in a state where 6335/6336 do not match, the native Route B
--- path opens `first()` = 4375 on BOTH NPCs and the refuser swears
--- allegiance. Chains 6337/6338 remove the bind in the same action list
--- as the advance, so today no such window exists; keep it that way.
+-- `dialog_id` IS NULL ON PURPOSE — this is an interaction-only row.
+--
+-- An earlier draft put 4375 (the oath) on the row, on the belief that a
+-- NULL `dialog_id` was dropped at load and would make the bind a silent
+-- cache miss. That WAS true, and stopped being true with Castle packet
+-- CA02: `cell/spawner/dialogs.rs::load_dialog_set_maps` now KEEPS such
+-- rows as `DialogSetMapEntry { dialog_id: None, .. }`, precisely so a
+-- bind can raise an indicator with no dialog behind it (Castle.py binds
+-- seven of them — 3062, 3071, 3073, 5828, 5829, 5846, 5863). The bit is
+-- all this row was ever for; which dialog opens is decided by chains
+-- 6335/6336 (Route A), never by the row.
+--
+-- Naming a dialog here was also actively dangerous, and that is the
+-- reason for the change rather than mere tidiness. Both Lan'toc Jaffa
+-- are template 204, so ONE bind lights BOTH (that is intended — either
+-- one satisfies the step). But the click routes per-NPC: if a future
+-- edit ever leaves this bind live in a state where 6335/6336 do not
+-- match, the native Route B path opens the first dialog-bearing entry on
+-- slot 204 — which would have been 4375 — on BOTH NPCs, and the Jaffa
+-- who is supposed to REFUSE swears allegiance instead. With `dialog_id`
+-- NULL, `find_map` steps over this row and Route B opens nothing at all:
+-- a dead click instead of the wrong outcome. That is the 2026-09-18
+-- Castle playtest lesson (two NPCs of one identity, one of them painted
+-- with the wrong cue) applied before it can bite.
+--
+-- CONSTRAINT FOR H14/M0: template 204 must carry ONLY these two mission
+-- Jaffa in world 57. `send_interaction_update_if_visible` fans the merged
+-- flags to every template-204 entity in the player's AoI, so an ambient
+-- Jaffa reusing slot 204 would light up with a mission cue and then do
+-- nothing when clicked. Template 205 (`Harset_SuspiciousJaffa`) and 206
+-- (`Harset_AngryJaffa`) are the identical body set and are what ambient
+-- Ra's-Jaffa population should use.
 INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions)
-VALUES (120002, 1393, 4375, 'Lan''toc', 268435456, 1, '{}', '{}', '{}', '{}');
+VALUES (120002, 1393, NULL, 'Lan''toc', 268435456, 1, '{}', '{}', '{}', '{}');
 
 -- Keep the sequence ahead of the ids this file writes without ever
 -- lowering it. Four Harset seed files share the 120001+ block and load in
@@ -312,7 +364,7 @@ VALUES (6301, 'add_dialog_set', 5149, NULL, '{"slot": 54}', 0, 0);
 -- Net outcome is benign — mission accepted, conversation shown — but
 -- "nothing happens when I click Accept" is what a UAT will report.
 -- Recovering the real two-button behaviour needs a `button_id`
--- condition in the loader; recorded in worknotes/H20.md.
+-- condition in the loader; recorded in worknotes/H20-H22.md.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (6303, '1324 - Accept: accept the mission, show 4358, move the icon to Ba''al', 'mission', 1324, true, 0);
 
@@ -337,8 +389,9 @@ VALUES
 -- chain's own `display_dialog` resolves Ba'al without the pin. Nothing
 -- needs to display a second dialog afterwards, so the route is safe here.
 --
--- Dialog 4363 is the 17-screen council (`dialog_screens.sql:17909-17927`,
--- speakers 942 Ba'al, 941 Marsh, 944 Anat). `advance_step` rather than
+-- Dialog 4363 is the 10-screen council (`dialog_screens.sql:17909-17927`,
+-- screens 81723-81732; speakers 942 Ba'al, 941 Marsh, 944 Anat, plus the
+-- player's own 0). `advance_step` rather than
 -- `complete_objective 4543`: 4543 is the only non-optional objective of
 -- 3953, so completing it would complete the whole mission and orphan the
 -- return step.
@@ -537,7 +590,7 @@ VALUES (6307, 'add_dialog_set', 120001, NULL, '{"slot": 54}', 0, 0);
 -- row is cheaper than a disjointness argument.
 --
 -- The cost is that 1326 is unreachable until packet H21 lands 1325 —
--- recorded as a dependency in worknotes/H22.md rather than worked
+-- recorded as a dependency in worknotes/H20-H22.md rather than worked
 -- around, because the alternative (gating on 1324 alone) makes 1325 and
 -- 1326 collide the moment H21 ships.
 --
@@ -565,6 +618,62 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (6331, 'add_dialog_set', 5159, NULL, '{"slot": 54}', 0, 0);
 
+-- Chain 6341: the same bind, on the edge that 6331 cannot see.
+--
+-- EDGE-TRIGGER RACE (2026-09-18 Castle playtest, finding H9). Chain 6331
+-- fires on `player_loaded`, which is an EDGE: it runs on login, gate
+-- travel and the cross-world hop, and never again while the player stands
+-- still. But 1326's gate flips to satisfied the instant 1325 completes,
+-- and 1325 is turned in TO MOH'KATAN, IN WORLD 68 — the player is already
+-- standing in the Command Center when the condition becomes true. With
+-- 6331 alone the "?" would not appear until they walked out of the
+-- Command Center and back in, which reads to a player as the next mission
+-- simply not existing. This is the same shape as the Castle step that was
+-- unreachable because the player was already inside the region when the
+-- step activated.
+--
+-- `mission_completed` is the level trigger that closes it.
+-- `fire_mission_completed` (`content/event_dispatch/mission.rs`) runs
+-- AFTER `complete_mission_direct` has flipped the status and populates
+-- world, archetype and the full mission context, so this chain can carry
+-- the identical condition set to 6331 and be evaluated against the
+-- post-completion state — including `mission_status 1325 eq completed`,
+-- which is what has just become true.
+--
+-- The two chains are deliberately NOT merged into one chain with two
+-- trigger rows. N trigger rows on one chain materialize N in-memory
+-- `Chain`s sharing one condition set, which would work, but
+-- `load_single_chain_for_test` returns only the first expansion — a test
+-- written the obvious way would then guard the `player_loaded` row and
+-- silently ignore this one. Two chain ids keep both honest.
+--
+-- Double-binding is not a hazard: the executor's `add_dialog_set` pushes
+-- without dedupe, but `available_interactions` is rebuilt empty on every
+-- world entry, so 6331 and 6341 can never both be live in one session —
+-- and even if they were, both name dsm 5159, `find_map` takes the first
+-- and `remove_dialog_set`'s `retain` drops every copy.
+--
+-- H21 OWES THE MIRROR OF THIS: when 1324 completes (chain 6305, also in
+-- world 68) 1325's offer needs the same `mission_completed '1324'`
+-- partner, or 1325 inherits exactly this bug. Chain 6305's action order
+-- already reserves the slot for it.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (6341, '1326 - Moh''katan offer: bind the "?" the moment 1325 completes (edge closer for 6331)', 'mission', 1326, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6341, 'mission_completed', '1325', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (6341, 'world', 68, NULL, 'eq', NULL, 0),
+  (6341, 'archetype', NULL, NULL, 'eq', '8', 1),
+  (6341, 'mission_status', 1326, NULL, 'eq', 'not_active', 2),
+  (6341, 'mission_status', 1325, NULL, 'eq', 'completed', 3),
+  (6341, 'mission_status', 1324, NULL, 'eq', 'completed', 4);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (6341, 'add_dialog_set', 5159, NULL, '{"slot": 54}', 0, 0);
+
 -- Chain 6333: the Accept button on 4373 -> accept 1326, show the briefing.
 --
 -- Same "More Info is indistinguishable from Accept" fidelity note as
@@ -578,7 +687,7 @@ VALUES (6331, 'add_dialog_set', 5159, NULL, '{"slot": 54}', 0, 0);
 -- for 1326 sat on `dialog_choice '4374'`, with 4373's More Info opening
 -- 4374 first. Not restructured on that reading without UAT: moving the
 -- accept to 4374 would strand any player who clicks Accept on the blurb.
--- See worknotes/H22.md.
+-- See worknotes/H20-H22.md.
 --
 -- No bind is added here. The next indicator belongs to the Former-Ra
 -- Jaffa in world 57, and a bind made while the player stands in world 68
@@ -744,4 +853,5 @@ VALUES
   (6340, 'complete_mission', 1326, NULL, '{}', 0, 2);
 -- GC3: grant_xp goes here, same gate as chain 6305.
 
--- 6341-6345 are unallocated.
+-- 6341 is the offer edge-closer, authored above next to chain 6331 so the
+-- two halves of one gate read together. 6342-6345 are unallocated.

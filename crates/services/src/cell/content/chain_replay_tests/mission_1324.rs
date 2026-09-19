@@ -48,9 +48,9 @@
 //!    ends its state, the remove runs *before* any `complete_mission`
 //!    (which awaits `fire_mission_completed` mid-list and lets a
 //!    downstream chain bind the same slot), and every dsm id the chains
-//!    name resolves to a row with a non-NULL `dialog_id` — a NULL one is
-//!    dropped by `cell/spawner/dialogs.rs::load_dialog_set_maps` and the
-//!    bind becomes a silent cache miss.
+//!    name carries a non-zero `interaction_flags` — a zero merges
+//!    nothing onto these templates' own `interaction_type = 0` and
+//!    leaves the NPC unclickable with no error anywhere.
 //!
 //! Resolve-only is the right depth here (TESTING.md type 6): every verb
 //! these chains use — `accept_mission`, `complete_mission`,
@@ -158,6 +158,28 @@ pub(super) fn fire_interact_tag(
     let ctx = derive(ctx, "entity_tag", serde_json::json!(tag));
     let event = TriggerEvent {
         trigger_type: TriggerType::InteractTag,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+    engine.resolve_event(&event, &ctx)
+}
+
+/// Replay the `mission_completed` dispatch.
+///
+/// `fire_mission_completed` (`content/event_dispatch/mission.rs`) runs
+/// *after* `complete_mission_direct` has flipped the status, and
+/// populates world, archetype and the whole mission context — so the
+/// caller passes a context in which `mission_id` already reads
+/// `completed`, exactly as the runtime would see it.
+pub(super) fn fire_mission_completed(
+    engine: &ChainEngine,
+    ctx: &ExecutionContext,
+    mission_id: i32,
+) -> ResolvedActions {
+    let ctx = derive(ctx, "mission_id", serde_json::json!(mission_id));
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionCompleted,
         source_entity: None,
         target_entity: None,
         params: ctx.params.clone(),
@@ -473,7 +495,7 @@ async fn the_accept_chain_does_not_refire_once_1324_is_completed() {
 // Chain 6304 — the council scene
 // ---------------------------------------------------------------
 
-/// Positive: on step 3953, clicking Ba'al plays the 17-screen council
+/// Positive: on step 3953, clicking Ba'al plays the 10-screen council
 /// dialog 4363, advances to 3954, and hands the icon back to Moh'katan.
 ///
 /// `advance_step`, never `complete_objective 4543` — see the structural
@@ -670,7 +692,12 @@ async fn relog_restores_exactly_the_icon_the_active_step_owns() {
         with_mission(ctx, 1326, "not_active")
     };
 
-    let on_3953 = with_step(with_step(base(), 1324, 3953, "active"), 1324, 3954, "not_active");
+    let on_3953 = with_step(
+        with_step(base(), 1324, 3953, "active"),
+        1324,
+        3954,
+        "not_active",
+    );
     assert_eq!(
         labels(&fire_player_loaded(&engine, &on_3953, CMD_CENTER_NAME)),
         vec!["6306:add_dialog_set(5151@42)".to_string()],
@@ -717,7 +744,12 @@ async fn relog_restores_exactly_the_icon_the_active_step_owns() {
 #[tokio::test]
 async fn no_harset_jaffa_chain_completes_an_objective() {
     let pool = require_db_or_skip!();
-    let rows: Vec<(i64,)> = sqlx::query_as(
+    // `content_actions.chain_id` is `integer`, so the decode target is
+    // `i32`. An `i64` here would compile and pass while the query
+    // returns nothing, then blow up with a `ColumnDecode` error instead
+    // of this test's assertion message on the day it actually catches
+    // something.
+    let rows: Vec<(i32,)> = sqlx::query_as(
         "SELECT chain_id FROM resources.content_actions \
          WHERE chain_id BETWEEN 6301 AND 6500 AND action_type = 'complete_objective' \
          ORDER BY chain_id",
@@ -750,7 +782,7 @@ async fn no_harset_jaffa_chain_completes_an_objective() {
 #[tokio::test]
 async fn no_harset_jaffa_chain_sets_a_global_interaction_bit() {
     let pool = require_db_or_skip!();
-    let rows: Vec<(i64, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(i32, Option<String>)> = sqlx::query_as(
         "SELECT chain_id, target_key FROM resources.content_actions \
          WHERE chain_id BETWEEN 6301 AND 6500 AND action_type = 'set_interaction_type' \
          ORDER BY chain_id",
@@ -781,7 +813,7 @@ async fn no_harset_jaffa_chain_sets_a_global_interaction_bit() {
 #[tokio::test]
 async fn every_remove_dialog_set_precedes_its_chains_complete_mission() {
     let pool = require_db_or_skip!();
-    let rows: Vec<(i64, i32, i32)> = sqlx::query_as(
+    let rows: Vec<(i32, i32, i32)> = sqlx::query_as(
         "SELECT c.chain_id, \
                 MAX(CASE WHEN c.action_type = 'remove_dialog_set' THEN c.sort_order END), \
                 MIN(CASE WHEN c.action_type = 'complete_mission'  THEN c.sort_order END) \
@@ -815,33 +847,45 @@ async fn every_remove_dialog_set_precedes_its_chains_complete_mission() {
     }
 }
 
-/// Every dsm id these chains bind resolves to a row the runtime cache
-/// will actually keep.
+/// Every dsm id these chains bind carries the bit it is bound FOR, and
+/// carries a dialog exactly where a click has to open one.
 ///
-/// `cell/spawner/dialogs.rs::load_dialog_set_maps` SKIPS any row whose
-/// `dialog_id` is NULL, and `add_dialog_set` on a missing id logs
-/// `dialog_set_maps cache miss` and returns — the chain resolves, the
-/// action executes, and no icon appears. Nothing else in the stack
-/// notices. The flags are asserted too, because a row that survives the
-/// cache but carries `interaction_flags = 0` merges nothing onto these
-/// templates' own `interaction_type = 0` and leaves the NPC unclickable
-/// — which is exactly why dsm 120001 exists instead of the shipped row
-/// 6791.
+/// Two independent failure modes, both silent:
+///
+/// * `interaction_flags = 0` merges nothing onto templates 42/54/204,
+///   whose own `entity_templates.interaction_type` is 0. The chain
+///   resolves, the action executes, and the NPC stays scenery — the
+///   client never even sends the click. That is exactly why dsm 120001
+///   exists instead of the shipped row 6791, which binds the right
+///   dialog with zero flags.
+/// * A missing `dialog_id` on a row that the OFFER states depend on.
+///   The offer dialogs 4357 and 4373 are opened by Route B —
+///   `handle_interact` walking `available_interactions` — so those two
+///   rows must carry a dialog or the offer click does nothing. The
+///   turn-in and mid-mission rows are opened by their own Route A
+///   chains instead, so a dialog there is incidental.
+///
+/// The loader itself no longer discriminates: since Castle packet CA02,
+/// `cell/spawner/dialogs.rs::load_dialog_set_maps` KEEPS NULL-dialog
+/// rows as `dialog_id: None` so a bind can raise an indicator with no
+/// dialog behind it. dsm 120002 is deliberately one of those; its guard
+/// lives in [`super::mission_1326`].
 #[tokio::test]
-async fn every_bound_dialog_set_map_survives_the_loader_and_carries_a_bit() {
+async fn every_bound_dialog_set_map_carries_its_bit_and_needed_dialog() {
     let pool = require_db_or_skip!();
 
-    // (dsm_id, expected interaction_flags) for every id bound by
-    // chains 6301-6345.
-    const BOUND: [(i32, i64); 5] = [
-        (5149, 134_217_728),    // 1324 offer "?"     INT_NonAStoryMissionAvaliable
-        (5151, 268_435_456),    // 1324 council "!"   INT_NonAStoryMissionActive
-        (120_001, 536_870_912), // 1324 turn-in "?"   INT_NonAStoryMissionTurnIn
-        (5159, 134_217_728),    // 1326 offer "?"
-        (5161, 536_870_912),    // 1326 turn-in "?"
+    // (dsm_id, expected interaction_flags, must a click open a dialog
+    // through Route B?) for every id bound by chains 6301-6345 except
+    // 120002, which mission_1326.rs pins.
+    const BOUND: [(i32, i64, bool); 5] = [
+        (5149, 134_217_728, true), // 1324 offer "?"   INT_NonAStoryMissionAvaliable
+        (5151, 268_435_456, false), // 1324 council "!" INT_NonAStoryMissionActive (chain 6304 opens it)
+        (120_001, 536_870_912, false), // 1324 turn-in "?" INT_NonAStoryMissionTurnIn (chain 6305)
+        (5159, 134_217_728, true),  // 1326 offer "?"
+        (5161, 536_870_912, false), // 1326 turn-in "?" (chain 6340)
     ];
 
-    for (dsm_id, expected_flags) in BOUND {
+    for (dsm_id, expected_flags, route_b) in BOUND {
         let row: Option<(Option<i32>, i64)> = sqlx::query_as(
             "SELECT dialog_id, interaction_flags FROM resources.dialog_set_maps \
              WHERE dialog_set_map_id = $1",
@@ -855,12 +899,6 @@ async fn every_bound_dialog_set_map_survives_the_loader_and_carries_a_bit() {
             panic!("dialog_set_map {dsm_id} must exist — chains 6301-6345 bind it")
         });
 
-        assert!(
-            dialog_id.is_some(),
-            "dialog_set_map {dsm_id} has a NULL dialog_id; \
-             load_dialog_set_maps drops the row and every \
-             `add_dialog_set {dsm_id}` becomes a silent cache miss"
-        );
         assert_eq!(
             flags, expected_flags,
             "dialog_set_map {dsm_id} must carry interaction_flags \
@@ -868,5 +906,15 @@ async fn every_bound_dialog_set_map_survives_the_loader_and_carries_a_bit() {
              `entity_templates.interaction_type = 0`, so a zero here \
              leaves the NPC unclickable with no error anywhere"
         );
+        if route_b {
+            assert!(
+                dialog_id.is_some(),
+                "dialog_set_map {dsm_id} backs an OFFER state, whose \
+                 dialog is opened by `handle_interact` walking the \
+                 player's binds (Route B). With a NULL dialog_id that \
+                 walk steps over the row and the offer click does \
+                 nothing — no chain, no dialog, no log line."
+            );
+        }
     }
 }

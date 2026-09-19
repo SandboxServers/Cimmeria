@@ -1,6 +1,6 @@
 //! Mission 1326 — Lan'toc (packet H22,
 //! `docs/analysis/harset-rebuild/work-packets.md#h22`, seed
-//! `harset_jaffa_chains.sql` chains 6331, 6333-6340).
+//! `harset_jaffa_chains.sql` chains 6331, 6333-6341).
 //!
 //! Moh'katan (template 54, world 68) sends the player into the Harset
 //! Jaffa Zone (world 57) to present the Lan'toc loyalty rite to Jaffa
@@ -42,6 +42,14 @@
 //!    [`clicking_mohkatan_in_the_lantoc_offer_state_must_resolve_no_chain`]
 //!    for the guard.
 //!
+//! 5. **The offer is painted on two triggers, not one.** Chain 6331
+//!    fires on `player_loaded`, which is an edge — but 1325 is turned in
+//!    to Moh'katan in world 68, so the player is already standing where
+//!    the icon belongs when the gate opens, and there is no second
+//!    `player_loaded` to catch. Chain 6341 closes that window on
+//!    `mission_completed '1325'`, and carries the identical condition
+//!    set so the two can never disagree about who may see the offer.
+//!
 //! The offer chains additionally carry `mission_status 1325 eq
 //! completed` and `mission_status 1324 eq completed`. Moh'katan hands out
 //! 1324, 1325 and 1326 from one template and one tag; two offer chains
@@ -57,9 +65,9 @@
 //! disagreement about what state the other mission is in.
 
 use super::mission_1324::{
-    ctx_for, display_dialog_count, fire_dialog_choice, fire_interact_tag, fire_player_loaded,
-    labels, with_mission, with_step, CMD_CENTER, CMD_CENTER_NAME, HARSET, HARSET_NAME, JAFFA,
-    NOT_JAFFA,
+    ctx_for, display_dialog_count, fire_dialog_choice, fire_interact_tag, fire_mission_completed,
+    fire_player_loaded, labels, with_mission, with_step, CMD_CENTER, CMD_CENTER_NAME, HARSET,
+    HARSET_NAME, JAFFA, NOT_JAFFA,
 };
 
 use super::super::engine_loader::build_engine;
@@ -79,7 +87,13 @@ fn ready_for_lantoc(world_id: i32) -> ExecutionContext {
 /// A Jaffa mid-1326 on the "present the Lan'toc" step, standing in the
 /// Jaffa Zone.
 fn presenting_the_lantoc() -> ExecutionContext {
-    let ctx = ctx_for(JAFFA, Some(HARSET));
+    presenting_the_lantoc_in(HARSET)
+}
+
+/// The same state, in an arbitrary world — the world-68 variant is what
+/// the offer chains must stay dark for once 1326 has been accepted.
+fn presenting_the_lantoc_in(world_id: i32) -> ExecutionContext {
+    let ctx = ctx_for(JAFFA, Some(world_id));
     let ctx = with_mission(ctx, 1324, "completed");
     let ctx = with_mission(ctx, 1325, "completed");
     let ctx = with_mission(ctx, 1326, "active");
@@ -134,11 +148,7 @@ async fn clicking_mohkatan_in_the_lantoc_offer_state_must_resolve_no_chain() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
-    let resolved = fire_interact_tag(
-        &engine,
-        &ready_for_lantoc(CMD_CENTER),
-        "CmdCenter_Mohkatan",
-    );
+    let resolved = fire_interact_tag(&engine, &ready_for_lantoc(CMD_CENTER), "CmdCenter_Mohkatan");
 
     assert!(
         resolved.actions.is_empty(),
@@ -220,7 +230,12 @@ async fn the_lantoc_offer_does_not_paint_in_harset() {
     let engine = build_engine(Some(&pool)).await;
 
     assert!(
-        labels(&fire_player_loaded(&engine, &ready_for_lantoc(HARSET), HARSET_NAME)).is_empty(),
+        labels(&fire_player_loaded(
+            &engine,
+            &ready_for_lantoc(HARSET),
+            HARSET_NAME
+        ))
+        .is_empty(),
         "chain 6331 must carry `world eq 68` and its trigger's \
          Harset_CmdCenter name filter"
     );
@@ -430,8 +445,7 @@ async fn talking_to_the_other_jaffa_after_the_rite_resolves_nothing() {
 
     for step_3960 in ["completed", "not_active"] {
         for tag in ["Harset_FormerRaJaffa", "Harset_FormerRaJaffa2"] {
-            let resolved =
-                fire_interact_tag(&engine, &lantoc_presented(HARSET, step_3960), tag);
+            let resolved = fire_interact_tag(&engine, &lantoc_presented(HARSET, step_3960), tag);
             assert!(
                 labels(&resolved).is_empty(),
                 "'{tag}' must be inert once step 3960 has advanced (3960 \
@@ -616,17 +630,32 @@ async fn clicking_mohkatan_after_completing_1326_resolves_nothing() {
     }
 }
 
-/// The dsm this packet authors resolves to a cacheable row with the
-/// right bit.
+/// dsm 120002 is an INTERACTION-ONLY row: the right bit, and no dialog.
 ///
-/// The 1324 file guards the same property for the ids it binds; this one
-/// pins 120002's set, dialog and flags together. A NULL `dialog_id`
-/// would be dropped by `load_dialog_set_maps` and make the bind a silent
-/// cache miss; a zero `interaction_flags` would merge nothing onto
-/// template 204's own `interaction_type = 0`, leaving both Lan'toc Jaffa
-/// unclickable — the chains would be correct and the mission unplayable.
+/// The `dialog_id IS NULL` half is the guard that matters, and it is a
+/// guard rather than a description of the seed. One bind lights BOTH
+/// Lan'toc Jaffa, because `send_interaction_update_if_visible` fans the
+/// merged flags to every entity of the bound template in the player's
+/// AoI and both spawns are template 204. That is intended — either Jaffa
+/// satisfies the step. What is NOT acceptable is the row naming a
+/// dialog: `handle_interact` opens the first bound entry that has one,
+/// so in any state where chains 6335/6336 stop matching, a dialog on
+/// this row would open on BOTH NPCs and the Jaffa scripted to REFUSE
+/// would swear allegiance instead. With NULL, that path opens nothing.
+/// This is the 2026-09-18 Castle playtest lesson (two NPCs of one
+/// identity, one of them showing the other's cue) applied structurally.
+///
+/// NULL is only available because Castle packet CA02 taught
+/// `cell/spawner/dialogs.rs::load_dialog_set_maps` to keep such rows as
+/// `dialog_id: None` instead of dropping them. Before CA02 this bind
+/// would have been a silent cache miss — so this assertion is also the
+/// tripwire if that loader behaviour is ever reverted.
+///
+/// A zero `interaction_flags` would merge nothing onto template 204's own
+/// `interaction_type = 0` and leave both Jaffa unclickable, with the
+/// chains still perfectly correct and the mission unplayable.
 #[tokio::test]
-async fn the_lantoc_jaffa_bind_survives_the_loader_and_carries_a_bit() {
+async fn the_lantoc_jaffa_bind_is_interaction_only_and_carries_its_bit() {
     let pool = require_db_or_skip!();
 
     let row: Option<(i32, Option<i32>, i64)> = sqlx::query_as(
@@ -645,15 +674,171 @@ async fn the_lantoc_jaffa_bind_survives_the_loader_and_carries_a_bit() {
         "120002 belongs to the shipped Lan'toc dialog set 1393"
     );
     assert_eq!(
-        dialog_id,
-        Some(4375),
-        "120002 must carry a non-NULL dialog_id or load_dialog_set_maps \
-         drops the row and the bind becomes a silent cache miss"
+        dialog_id, None,
+        "120002 must have a NULL dialog_id. Both Lan'toc Jaffa are \
+         template 204 and one bind lights both, so a dialog here is \
+         reachable from EITHER of them through `handle_interact` — and \
+         the refusing Jaffa would open the oath. The outcome dialogs \
+         belong to chains 6335/6336, keyed per tag."
     );
     assert_eq!(
         flags, 268_435_456,
         "120002 must carry INT_NonAStoryMissionActive; template 204 has \
          `entity_templates.interaction_type = 0`, so a zero here leaves \
          both Lan'toc Jaffa unclickable"
+    );
+}
+
+/// Dialogs 4375 and 4376 must stay button-less, or chains 6337/6338 die.
+///
+/// A dialog with zero `dialog_screen_buttons` rows sends
+/// `Event_NetOut_DialogButtonChoice` with `ButtonId = -1` when the player
+/// closes it; a dialog that HAS buttons sends nothing on close and fires
+/// only on a click. Both outcome dialogs are button-less today, which is
+/// the only reason a `dialog_choice` trigger can close step 3960 at all.
+///
+/// Adding a button to either one — a perfectly reasonable-looking content
+/// edit — would silently strand the mission on step 3960 with no error
+/// on any layer. The guard is at the DB level rather than on resolved
+/// actions because the break is in the client's send decision, which no
+/// chain-replay context can model.
+#[tokio::test]
+async fn the_lantoc_outcome_dialogs_stay_button_less() {
+    let pool = require_db_or_skip!();
+
+    for dialog_id in [4375, 4376] {
+        let (buttons,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM resources.dialog_screen_buttons b \
+             JOIN resources.dialog_screens s ON s.screen_id = b.screen_id \
+             WHERE s.dialog_id = $1",
+        )
+        .bind(dialog_id)
+        .fetch_one(&pool)
+        .await
+        .expect("dialog_screen_buttons query must succeed");
+
+        assert_eq!(
+            buttons, 0,
+            "dialog {dialog_id} now has {buttons} button(s). Chains \
+             6337/6338 fire on `dialog_choice '{dialog_id}'`, which the \
+             client only sends on CLOSE for a button-less dialog. With a \
+             button present it sends on the click instead and the \
+             close-path choice disappears, so step 3960 can never \
+             advance. Move the chain to the new button's flow or keep \
+             the dialog button-less."
+        );
+    }
+}
+
+// ---------------------------------------------------------------
+// Chain 6341 — the offer edge-closer
+// ---------------------------------------------------------------
+
+/// Positive: completing 1325 paints 1326's offer icon immediately,
+/// without making the player leave the Command Center and come back.
+///
+/// This is the Castle playtest's edge-trigger finding (H9) applied here.
+/// Chain 6331 fires on `player_loaded`, an EDGE — but 1325 is turned in
+/// TO MOH'KATAN, IN WORLD 68, so the player is already standing where the
+/// icon belongs at the moment the gate opens, and there is no second
+/// `player_loaded` to catch. With 6331 alone the "?" would appear only
+/// after a world round-trip, which reads as the next mission not
+/// existing.
+///
+/// `fire_mission_completed` runs after `complete_mission_direct` has
+/// flipped the status (`content/executor/mission.rs`), so the chain sees
+/// 1325 as `completed` and can carry 6331's exact condition set.
+#[tokio::test]
+async fn completing_1325_paints_the_lantoc_offer_without_a_world_hop() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    let resolved = fire_mission_completed(&engine, &ready_for_lantoc(CMD_CENTER), 1325);
+
+    assert_eq!(
+        labels(&resolved),
+        vec!["6341:add_dialog_set(5159@54)".to_string()],
+        "completing 1325 in world 68 must bind dsm 5159 on slot 54 right \
+         away. An empty result here means chain 6341 was dropped and \
+         1326's offer is invisible until the player walks out of the \
+         Command Center and back in. Resolve: {:?}",
+        resolved.actions,
+    );
+}
+
+/// Negative: the edge-closer carries the same gates as 6331, so it
+/// cannot paint for the wrong archetype, the wrong world, or a player
+/// who has somehow completed 1325 without 1324.
+///
+/// The world gate is the one worth spelling out: if a later packet moves
+/// 1325's turn-in out of world 68 this chain goes quiet rather than
+/// binding an icon onto an NPC the player cannot see, and chain 6331
+/// still paints it on the next Command Center entry. Fail-closed to the
+/// slower path, never to a wrong one.
+#[tokio::test]
+async fn the_lantoc_edge_closer_carries_the_same_gates_as_the_offer() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    // Wrong archetype.
+    let ctx = with_mission(ctx_for(NOT_JAFFA, Some(CMD_CENTER)), 1324, "completed");
+    let ctx = with_mission(ctx, 1325, "completed");
+    let ctx = with_mission(ctx, 1326, "not_active");
+    assert!(
+        labels(&fire_mission_completed(&engine, &ctx, 1325)).is_empty(),
+        "chain 6341 must be archetype-gated like 6331"
+    );
+
+    // Wrong world.
+    assert!(
+        labels(&fire_mission_completed(
+            &engine,
+            &ready_for_lantoc(HARSET),
+            1325
+        ))
+        .is_empty(),
+        "chain 6341 must carry `world eq 68`"
+    );
+
+    // 1324 skipped (reachable only by a GM grant).
+    let ctx = with_mission(ctx_for(JAFFA, Some(CMD_CENTER)), 1324, "not_active");
+    let ctx = with_mission(ctx, 1325, "completed");
+    let ctx = with_mission(ctx, 1326, "not_active");
+    assert!(
+        labels(&fire_mission_completed(&engine, &ctx, 1325)).is_empty(),
+        "chain 6341 must carry `mission_status 1324 eq completed`"
+    );
+
+    // 1326 already taken — a replayed completion must not re-paint an
+    // offer the player has moved past.
+    assert!(
+        labels(&fire_mission_completed(
+            &engine,
+            &presenting_the_lantoc_in(CMD_CENTER),
+            1325
+        ))
+        .is_empty(),
+        "chain 6341 must carry `mission_status 1326 eq not_active`"
+    );
+}
+
+/// Negative: completing a DIFFERENT mission must not paint 1326's offer.
+///
+/// `OnMissionCompleted` matches on the mission id in `event_key`, so a
+/// NULL or mistyped key would turn this into a wildcard that binds the
+/// Lan'toc icon every time the player finishes anything at all.
+#[tokio::test]
+async fn completing_some_other_mission_does_not_paint_the_lantoc_offer() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    assert!(
+        labels(&fire_mission_completed(
+            &engine,
+            &ready_for_lantoc(CMD_CENTER),
+            1324
+        ))
+        .is_empty(),
+        "chain 6341's trigger must name mission 1325 specifically"
     );
 }
