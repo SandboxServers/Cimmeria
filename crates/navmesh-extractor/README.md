@@ -93,8 +93,16 @@ bundle is missing.
   as raw UE3 cm and trusts NavBuilder to swizzle, but **the cube
   round-trip described in Phase 0.3 of the deep dive has not been run
   yet** — flagged here for the next implementer.
-- **`Terrain` binary trailer** — recipe is documented at 92% confidence
-  in agent memory but has not been exercised against a real export.
+- **`Terrain` binary trailer** — recipe now validated (~96% confidence) on
+  two real exports across two different maps (`Castle_CellBlock` and
+  `Castle`); see the "Appendix: Terrain recipe real-data validation"
+  section of `docs/reverse-engineering/findings/bsp-model-polys-serialize.md`.
+  One property-tag-skip bug found and fixed. A decoder must walk every
+  `Terrain`-class export per chunk independently — count and patch-grid
+  size both vary by map (20×20/25-actors vs. 100×100/1-actor-with-25-
+  components observed). The height-vs-known-outdoor-point coordinate
+  cross-check remains open (no matching seed point found in the interior
+  tile sampled).
 - **`Model` / `Polys` BSP decoder** — layout confidence now HIGH (byte-exact
   validated against real `Castle-000a0002.umap` data); see
   `docs/reverse-engineering/findings/bsp-model-polys-serialize.md` for the
