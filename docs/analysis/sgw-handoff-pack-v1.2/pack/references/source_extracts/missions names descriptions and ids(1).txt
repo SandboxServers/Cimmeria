@@ -1,0 +1,1016 @@
+TO ASSIGN AND START A MISSION  /gmmissionassign [MissionDesignId] [DisplayAcceptWindow] 
+
+CommandName="/gmmissionassign" scmd:Access="p" scmd:Description="" scmd:EventName="Event_SlashCmd_MissionAssign" scmd:Usage="/gmmissionassign [MissionDesignId] [DisplayAcceptWindow]">
+<scmd:MandatoryParam scmd:PType="String" scmd:ParamName="MissionDesignId" scmd:ParamDescription=""/>
+<scmd:MandatoryParam scmd:PType="Boolean" scmd:ParamName="DisplayAcceptWindow" scmd:ParamDescription=""/>
+
+
+LOAD MISSION
+
+/gmloadmission [missionId]
+
+
+
+REFER TO ABOVE IF UNSURE
+
+
+100	The Reins of Ra	The Reins of Ra	Investigate the Reins of the Sun Chariot
+1002	Delusions	Delusions	Good Intentions
+1003	Question Saarthon	Question Saarthon	Men'fa
+1020	Investigate Men'fa	Investigate Men'fa	Men'fa
+103	Gate to Agnos	Gate to Agnos	Investigate the Anicent world "Agnos"
+104	Burtonol Campus Raid	Burtonol Campus Raid	Get to the bottom of Burtonol
+1041	Gather Intelligence	Gather Intelligence	Men'fa
+1042	Reprogram Goa'uld Drones	Reprogram Goa'uld Drones	Men'fa
+105	Vala's Big Score	Vala's Big Score	NO MISSION LABEL
+106	Who's in Charge Here?	Who's in Charge Here?	Investigate the Anicent world "Agnos"
+1060	Find the Mouth of Ptah	Find the Mouth of Ptah	Men'fa
+107	Vala's Even Bigger Score	Vala's Even Bigger Score	NO MISSION LABEL
+108	Vala's Truly Enormous Score	Vala's Truly Enormous Score	NO MISSION LABEL
+1080	Breach the Hall of Secrets	Breach the Hall of Secrets	Men'fa
+109	MagmaLife Raid	MagmaLife Raid	NO MISSION LABEL
+110	UICP Test	UICP Test	Investigate the Anicent world "Agnos"
+1100	The Mouth of Ptah	The Mouth of Ptah	Men'fa
+1101	Safkhet Encounter	Safkhet Encounter	Men'fa
+1102	Return with the Book of Gates	Return with the Book of Gates	Men'fa
+1103	Investigate Safkhet's Lab	Investigate Safkhet's Lab	General
+1104	Sabotage Stasis Pods	Sabotage Stasis Pods	Men'fa
+111	There's Got to Be a Better Way	There's Got to Be a Better Way	NO MISSION LABEL
+112	Rollo's Bandersnatch	Rollo's Bandersnatch	NO MISSION LABEL
+1120	Recover Enemy Intel	Recover Enemy Intel	Men'fa
+1121	Mission Reward Test	Mission Reward Test	General
+113	An Even Bargain	An Even Bargain	NO MISSION LABEL
+1140	Investigate Ra's Tech	Investigate Ra's Tech	Men'fa
+1142	Investigate Safkhet's Research	Investigate Safkhet's Research	Men'fa
+1143	Secure Genetic Information	Secure Genetic Information	General
+1144	Destroy Weapon Cache	Destroy Weapon Cache	Men'fa
+1145	Artifacts	Artifacts	Sudden Hostilities
+1146	Analysis	Analysis	Threats
+1147	Intriguing Data	Intriguing Data	Unexpected Complications
+1148	Assassinate Goa'uld Commander	Assassinate Goa'uld Commander	Men'fa
+1149	Rescue Saarthon	Rescue Saarthon	Men'fa
+115	Making a Bandersnatch	Making a Bandersnatch	NO MISSION LABEL
+116	Leading the Tour	Leading the Tour	NO MISSION LABEL
+1161	Investigate Men'fa	Investigate Men'fa	Men'fa
+1162	Find the Jaffa, Trik'na	Find the Jaffa, Trik'na	Men'fa
+1163	Reprogram Goa'uld Drones	Reprogram Goa'uld Drones	Men'fa
+1164	Question Saarthon	Question Saarthon	Men'fa
+1165	Investigate Safkhet's Lab	Investigate Safkhet's Lab	General
+1166	Find The Virus Lab	Find The Virus Lab	Men'fa
+1167	Breach The Hall Of Secrets	Breach The Hall Of Secrets	General
+1168	Safkhet Encounter	Safkhet Encounter	Men'fa
+1169	The Mouth of Ptah	The Mouth of Ptah	Men'fa
+117	First Component	First Component	NO MISSION LABEL
+1170	Return With The Cure	Return With The Cure	Men'fa
+1171	Sabotage Stasis Pods	Sabotage Stasis Pods	Men'fa
+1172	Recover Enemy Intel	Recover Enemy Intel	Men'fa
+1173	Investigate Ra's Tech	Investigate Ra's Tech	Men'fa
+1174	Investigate Safkhet's Research	Investigate Safkhet's Research	Men'fa
+1175	Rescue Saarthon	Rescue Saarthon	Men'fa
+1176	Destroy Weapon Cache	Destroy Weapon Cache	Men'fa
+118	By Special Request	By Special Request	NO MISSION LABEL
+1180	Sending Word Home	Sending Word Home	Threats
+119	Assumed Risk	Assumed Risk	NO MISSION LABEL
+120	Illana's Delicate Request	Illana's Delicate Request	NO MISSION LABEL
+1200	Meet Your Queen	Meet Your Queen	Harset
+1322	Vendetta	Vendetta	Harset
+121	Finding a Vapor Mister	Finding a Vapor Mister	NO MISSION LABEL
+122	Through the Gate	Through the Gate	Unleash the Venio
+1220	Ra's Research	Ra's Research	Men'fa
+1221	Recruit Opheltes	Recruit Opheltes	Lucia
+123	Crystal Upon Crystal	Crystal Upon Crystal	Unleash the Venio
+1240	Infiltrators	Infiltrators	Harset
+1241	Invasion Plans	Invasion Plans	Harset
+1243	Surveillance	Surveillance	Harset
+1244	Find the Mole	Find the Mole	Harset
+1245	Extreme Prejudice	Extreme Prejudice	Harset
+1246	Petbe's Murderer	Petbe's Murderer	Harset
+1247	Patsy	Patsy	Harset
+1248	The Furling Conenction	The Furling Conenction	Agnos
+1249	The Straegis	The Straegis	Agnos
+125	The Hideout	The Hideout	NO MISSION LABEL
+126	Child of the Ancients	Child of the Ancients	Unleash the Venio
+1260	Go To Yotunheim	Go To Yotunheim	General
+1261	Gather Intel	Gather Intel	General
+1262	Sabotage Thor's Hammer	Sabotage Thor's Hammer	General
+1263	Steal Technical Data	Steal Technical Data	General
+1264	Make Contact With The Asgard	Make Contact With The Asgard	General
+1265	What Is The Solocris?	What Is The Solocris?	General
+1266	Track Loki	Track Loki	General
+1267	Stop Ra Using The Black Hole	Stop Ra Using The Black Hole	General
+1268	Secure The Black Hole	Secure The Black Hole	General
+1269	Track Loki Part 2	Track Loki Part 2	General
+127	Tollak's Protocol	Tollak's Protocol	NO MISSION LABEL
+1270	Clear The Road	Clear The Road	General
+1271	Interrogate Loki	Interrogate Loki	General
+1272	Snatch The Solocris	Snatch The Solocris	General
+1273	Intercept The Solocris	Intercept The Solocris	General
+1274	Last Minute Looting	Last Minute Looting	General
+1275	Escape Yotunheim	Escape Yotunheim	General
+1276	Help The Asgard	Help The Asgard	General
+1277	Decrypt Tech	Decrypt Tech	General
+1278	Research The Furling	Research The Furling	General
+1279	Tactical Reconnaissance	Tactical Reconnaissance	General
+128	Tollak's Propulsion	Tollak's Propulsion	NO MISSION LABEL
+1280	Go To Yotunheim	Go To Yotunheim	General
+1281	Make Contact With Ullr	Make Contact With Ullr	General
+1282	Reactive Thor's Hammer	Reactive Thor's Hammer	General
+1283	Gather Intelligence	Gather Intelligence	General
+1284	Stop Vault Theft	Stop Vault Theft	General
+1285	Find Eir	Find Eir	General
+1286	Enter Facility	Enter Facility	General
+1287	Secure Data	Secure Data	General
+1288	Rescue Igyn	Rescue Igyn	General
+1289	Defuse Blackhole	Defuse Blackhole	General
+1290	Find Loki	Find Loki	General
+1291	Secure The Solocris	Secure The Solocris	General
+1292	Recover The Solocris	Recover The Solocris	General
+1293	Intercept The Solocris	Intercept The Solocris	General
+1294	Set Final Destruct	Set Final Destruct	General
+1295	Rescue The Last Agard	Rescue The Last Agard	General
+1296	Tactical Strike	Tactical Strike	General
+1297	Steal Back Consciousness	Steal Back Consciousness	General
+1298	Scan Ra's Forces	Scan Ra's Forces	General
+1299	Research The Furling	Research The Furling	General
+130	Fingers In Every Pot	Fingers In Every Pot	NO MISSION LABEL
+1300	My Three Sons	My Three Sons	General
+1301	Magra's Dowry	Magra's Dowry	General
+1302	Poisonous Implications	Poisonous Implications	General
+131	Red Collar Confrontation	Red Collar Confrontation	NO MISSION LABEL
+1320	Ra's Jaffa	Ra's Jaffa	Dakara E2
+1321	Find Zipacna	Find Zipacna	Dakara E2
+1324	Present Yourself	Present Yourself	Harset
+1325	Rin'la	Rin'la	Harset
+1326	Lan'toc	Lan'toc	Harset
+1327	Comrade	Comrade	Men'fa
+133	Gang Buster	Gang Buster	NO MISSION LABEL
+134	Bread by Burtonol	Bread by Burtonol	NO MISSION LABEL
+1340	Desecration	Desecration	Ihpet
+1341	Illana's Slaves	Illana's Slaves	Lucia
+1342	Recruiting Illana	Recruiting Illana	Lucia
+1343	Enemies Within	Enemies Within	Harset
+1344	Promising Tech	Promising Tech	Hebridan
+1345	Father's Daughter	Father's Daughter	Beta Site E2
+1346	Recruit Yao	Recruit Yao	Pen Lai
+1347	Divided Loyalties	Divided Loyalties	Harset
+1348	Shut Down Lethander	Shut Down Lethander	Harset
+1349	Impurities	Impurities	Agnos
+135	Buttering Up Opheltes	Buttering Up Opheltes	NO MISSION LABEL
+1350	The Furling	The Furling	Agnos
+1351	Counter Intelligence	Counter Intelligence	Harset
+1352	Murder Spree	Murder Spree	Harset
+1353	Transplant	Transplant	Harset
+136	Sifting Through the Rubble	Sifting Through the Rubble	NO MISSION LABEL
+1360	Frost's Letter	Frost's Letter	General
+1361	Meet The Praxis	Meet The Praxis	Harset
+1362	Security	Security	Harset
+1363	Prudence	Prudence	Harset
+1364	Symbiotes	Symbiotes	Tollana
+1365	Tollan Tech	Tollan Tech	Harset
+1366	Deliver Symbiote	Deliver Symbiote	Tollana
+1367	Sabotage The Outposts	Sabotage The Outposts	Dakara E2
+1368	Finding U'lien	Finding U'lien	Dakara E2
+1369	The Hak'tyl Witness	The Hak'tyl Witness	Dakara E2
+137	Clearing the Way	Clearing the Way	NO MISSION LABEL
+1370	Fellow Travelers	Fellow Travelers	Dakara E2
+1371	Profiling	Profiling	General
+1372	Tail	Tail	NO MISSION LABEL
+1373	Vala's Info	Vala's Info	Lucia
+1374	Security Holes	Security Holes	General
+1375	Moles	Moles	Harset
+1376	Rescue Dr. Zuritska!	Rescue Dr. Zuritska!	General
+1377	Replitech	Replitech	Harset
+1378	Tech Analysis	Tech Analysis	Agnos
+1379	Return To Dakara	Return To Dakara	Dakara E3
+138	Ring to Ring	Ring to Ring	NO MISSION LABEL
+1380	Find Rohurk	Find Rohurk	Dakara E3
+1381	Convincing Gerak	Convincing Gerak	Dakara E3
+1382	Convincing Hubrok	Convincing Hubrok	Dakara E3
+1383	Overthrow A'lem	Overthrow A'lem	Dakara E3
+1384	The Dakara Superweapon	The Dakara Superweapon	Dakara E3
+1385	Changes On Dakara	Changes On Dakara	Dakara E3
+1386	Ra's Remnants	Ra's Remnants	Dakara E3
+1387	Saving The Traitor	Saving The Traitor	Dakara E3
+1388	The Council In Exile	The Council In Exile	Dakara E3
+1389	Restoring Dakara	Restoring Dakara	Dakara E3
+139	Goro And Friends	Goro And Friends	NO MISSION LABEL
+1390	Stop The Dakara Superweapon	Stop The Dakara Superweapon	Dakara E3
+1391	Bra'tac's Request	Bra'tac's Request	General
+1392	Bra'tac's Message	Bra'tac's Message	General
+1393	The Ruk'yal's Secrets	The Ruk'yal's Secrets	Dakara E3
+1394	Too Many Executions	Too Many Executions	Dakara E3
+1395	Kal'ju's Fate	Kal'ju's Fate	General
+1396	Stopping Ra's Reinforcements	Stopping Ra's Reinforcements	Dakara E3
+1397	The Rebuilt Portal	The Rebuilt Portal	Dakara E3
+1398	Superweapon Analysis	Superweapon Analysis	Dakara E3
+1399	Superweapon Analysis	Superweapon Analysis	Dakara E3
+1400	Nomu's Control Device	Nomu's Control Device	Dakara E3
+1401	Letters Home	Letters Home	Beta Site E2
+1402	Madness of A'lem	Madness of A'lem	Dakara E3
+1403	Stopping Ra's Reinforcements	Stopping Ra's Reinforcements	Dakara E3
+1404	The Rebuilt Portal	The Rebuilt Portal	Dakara E3
+1405	Superweapon Analysis	Superweapon Analysis	Dakara E3
+1406	Superweapon Analysis	Superweapon Analysis	Dakara E3
+1407	Data Recovery	Data Recovery	Beta Site E2
+1408	Rescue	Rescue	Agnos
+1409	Black Hole	Black Hole	General
+1410	Trust	Trust	General
+1411	Mission Accomplished	Mission Accomplished	Beta Site
+1412	Payment for the Praxis	Payment for the Praxis	Beta Site
+1413	Acquisitions	Acquisitions	Taking Advantage
+1414	The Communication Sphere	The Communication Sphere	Taking Advantage
+1415	Survivors Part One	Survivors Part One	Survivors
+1416	Survivors Part Three	Survivors Part Three	Survivors
+1417	Survivors Part Two	Survivors Part Two	Survivors
+1418	Burn File	Burn File	General
+1419	Asgard Security - Deleted	Asgard Security - Deleted	General
+1420	Senl'c	Senl'c	General
+1421	DELETED	DELETED	General
+1422	The Meaning of the Pieces	The Meaning of the Pieces	The Four Pieces
+1423	The SGU	The SGU	General
+1425	SGU Database	SGU Database	General
+1426	Amateur Photography	Amateur Photography	General
+1427	The Ruins	The Ruins	General
+1428	Ra's Tech	Ra's Tech	General
+144	Increased Chatter	Increased Chatter	NO MISSION LABEL
+1440	The Artifacts	The Artifacts	General
+1441	Strange Readings	Strange Readings	General
+145	To Vokos	To Vokos	Find the Venio
+146	Five Minutes	Five Minutes	NO MISSION LABEL
+1460	Improving Security	Improving Security	General
+1461	Blanks	Blanks	Men'fa
+1462	Blanks	Blanks	Men'fa
+1463	When All Else Fails	When All Else Fails	Men'fa
+1464	When All Else Fails	When All Else Fails	Men'fa
+147	The Quality of Mercy	The Quality of Mercy	NO MISSION LABEL
+148	A Tangled Web	A Tangled Web	NO MISSION LABEL
+1480	Aid Work	Aid Work	General
+1481	Turning the Tables	Turning the Tables	General
+1482	Rescue	Rescue	General
+1483	Dendra	Dendra	General
+1484	Laro's Memory	Laro's Memory	General
+1485	Security Concerns	Security Concerns	General
+1486	Information Gathering	Information Gathering	General
+1487	Recon	Recon	General
+1488	Food Supply	Food Supply	General
+1489	Searching For O'Neill	Searching For O'Neill	General
+149	Putting It Together	Putting It Together	NO MISSION LABEL
+1490	Furling Test	Furling Test	General
+150	Damage Control	Damage Control	NO MISSION LABEL
+1500	The SGU	The SGU	General
+1501	Runk'an	Runk'an	General
+1502	The Nine Peaks Jaffa	The Nine Peaks Jaffa	General
+1503	The Antidote	The Antidote	General
+1504	Trik'na's Burial	Trik'na's Burial	General
+1505	The Cure	The Cure	General
+1506	Jaffazon	Jaffazon	General
+1507	Ishta	Ishta	General
+1508	Minefield	Minefield	General
+1509	Ra's Jaffa	Ra's Jaffa	General
+151	High Crimes and Propaganda	High Crimes and Propaganda	Narim's Rebels
+1510	The Jaffazon Call	The Jaffazon Call	General
+1511	Olive Branch	Olive Branch	General
+1512	Treachery	Treachery	General
+1513	Bomber	Bomber	General
+1514	Alasha	Alasha	General
+1515	Rituals	Rituals	General
+1516	Androids	Androids	General
+1517	The Tretonin Solution	The Tretonin Solution	General
+1518	Crash	Crash	General
+1519	Goldam's Attempt	Goldam's Attempt	General
+152	Armistice	Armistice	NO MISSION LABEL
+1520	Infirmary	Infirmary	General
+1521	Symbiote	Symbiote	General
+1522	The SGU	The SGU	General
+1523	Dangerous Tech	Dangerous Tech	General
+1524	Finding O'Neill	Finding O'Neill	General
+1525	Forgotten Relics	Forgotten Relics	General
+1526	Tretonin	Tretonin	General
+1527	Awakening	Awakening	General
+1528	Secure Ba'al's Escape	Secure Ba'al's Escape	General
+1529	Destroy the Evidence	Destroy the Evidence	General
+1530	Robe Yourself	Robe Yourself	General
+1531	Cover Your Tracks	Cover Your Tracks	General
+1532	Machinations	Machinations	General
+1533	Ra's Bodyguard	Ra's Bodyguard	General
+1534	Extermination	Extermination	General
+1535	Extermination pt. 2	Extermination pt. 2	General
+1536	Treasure Vault	Treasure Vault	General
+1537	Ra's Lab	Ra's Lab	General
+1538	Last Minute Details	Last Minute Details	General
+1539	Jaffa hunt	Jaffa hunt	General
+154	Paper Tiger	Paper Tiger	NO MISSION LABEL
+1540	Stasis Pods	Stasis Pods	General
+1541	The Furling	The Furling	General
+1542	Unas Genetics	Unas Genetics	General
+1543	Tech Trade	Tech Trade	General
+1544	Testing the Humans	Testing the Humans	General
+1545	Passing the Test	Passing the Test	General
+1546	Kassa Problem	Kassa Problem	General
+1547	Dangerous Toys	Dangerous Toys	General
+1548	Superweapon	Superweapon	General
+1549	Energy Creatures	Energy Creatures	General
+155	Welcoming Party	Welcoming Party	NO MISSION LABEL
+1550	Energy Intelligence	Energy Intelligence	General
+1551	Asgard Reborn	Asgard Reborn	General
+1552	The Asgard Genome	The Asgard Genome	General
+1553	The Asgard Condition	The Asgard Condition	General
+1554	Forgotten Tech	Forgotten Tech	General
+1555	Consciousness Hubs	Consciousness Hubs	General
+1556	Ra's Straegis	Ra's Straegis	General
+1557	The Furling	The Furling	General
+1558	Straegis Song	Straegis Song	General
+1559	Welcome to Stargate Command	Welcome to Stargate Command	General
+1562	Locate Col. Carter	Locate Col. Carter	General
+1563	Virus	Virus	General
+1564	Self-Destruct	Self-Destruct	General
+1565	Tactics	Tactics	General
+1566	Tactics pt. 2	Tactics pt. 2	General
+1567	Clear the Way	Clear the Way	General
+1568	Gate Room	Gate Room	General
+1569	Ordinance	Ordinance	General
+157	Narrow the grid	Narrow the grid	NO MISSION LABEL
+1570	SG-18	SG-18	General
+1571	Secure a Firearm	Secure a Firearm	General
+1572	Secret Cache	Secret Cache	General
+1573	Retribution	Retribution	General
+1574	Hideout	Hideout	General
+1575	Locate Nerus	Locate Nerus	General
+1576	Locate Nerus' Hideout	Locate Nerus' Hideout	General
+1577	Rescue Anat	Rescue Anat	General
+1578	Temple of Ammit	Temple of Ammit	General
+1579	Escape the Temple with Anat!	Escape the Temple with Anat!	General
+158	Price of Power	Price of Power	NO MISSION LABEL
+1580	Moles, Part 2	Moles, Part 2	Harset
+1581	Vandermoot	Vandermoot	Agnos
+159	Fruits Of Labor	Fruits Of Labor	NO MISSION LABEL
+160	Food Chain	Food Chain	NO MISSION LABEL
+1603	Investigate Ra's Tech	Investigate Ra's Tech	Men'fa
+1604	Yu's On First	Yu's On First	General
+1605	Lucia: A New Strategy	Lucia: A New Strategy	Start work on a mission to Lucia
+1606	Ra's Resurgence	Ra's Resurgence	Start work on a mission to Lucia
+1607	Late to the Party	Late to the Party	General
+1608	Pantry Raid	Pantry Raid	General
+1609	SGC: Stargate Commando	SGC: Stargate Commando	General
+161	Further Progress	Further Progress	NO MISSION LABEL
+1610	Carapace Courier	Carapace Courier	General
+1611	Save Your Receipts	Save Your Receipts	General
+1612	Anima Anathema	Anima Anathema	General
+1613	Jungle Trouble	Jungle Trouble	General
+1614	The Straegis Storm	The Straegis Storm	General
+1615	Out of the Frying Pan...	Out of the Frying Pan...	General
+1616	Hebridan Saved	Hebridan Saved	NO MISSION LABEL
+1617	Orientation	Orientation	General
+1618	Data Retrieval	Data Retrieval	General
+1619	Secure Asgard Consciousnesses	Secure Asgard Consciousnesses	General
+162	If You Want Something Done Right...	If You Want Something Done Right...	NO MISSION LABEL
+1620	Security Station	Security Station	General
+1621	Heimdall	Heimdall	General
+1622	Retrieve Experiment Data	Retrieve Experiment Data	General
+1623	Central Genetics Lab	Central Genetics Lab	General
+1624	Ambush	Ambush	General
+1625	Repair the Databank!	Repair the Databank!	General
+1626	A Goa'uld Contact	A Goa'uld Contact	General
+1628	mission test 2	mission test 2	General
+1629	Gaap's Goings On	Gaap's Goings On	General
+163	On The Trail	On The Trail	Follow Laro's plan to build an Anti-Straegis weapon
+1630	CONDITION_FEEDBACK_InvalidEntity 	CONDITION_FEEDBACK_InvalidEntity 	General
+1632	Asmodai's Interests	Asmodai's Interests	General
+1633	Self-Destruct	Self-Destruct	General
+1634	Rescue Operation	Rescue Operation	General
+1635	Southern Labs	Southern Labs	General
+1636	Reach the Northern Dome.	Reach the Northern Dome.	General
+1637	Northern Labs	Northern Labs	General
+1639	Council Guards	Council Guards	General
+164	Dead End	Dead End	NO MISSION LABEL
+1640	Duplicate Heimdall's Analyzer	Duplicate Heimdall's Analyzer	General
+1641	The Gathering	The Gathering	General
+1642	The High Council	The High Council	General
+1643	Beleth Post Mortem	Beleth Post Mortem	General
+1645	Withdrawal Orders	Withdrawal Orders	General
+1646	Moh'katan's Scouts	Moh'katan's Scouts	General
+1647	Enemy at the Gates	Enemy at the Gates	General
+1648	Loth'ta's Withdrawal	Loth'ta's Withdrawal	General
+1649	Moh'katan	Moh'katan	General
+165	Damaged Holorecord	Damaged Holorecord	NO MISSION LABEL
+1650	Confront Moh'katan	Confront Moh'katan	General
+1651	Renewed Attack	Renewed Attack	General
+1652	Fireball	Fireball	General
+1653	Superweapon	Superweapon	General
+1654	Aftermath	Aftermath	General
+1655	Shutdown	Shutdown	General
+166	Breathing Habit	Breathing Habit	NO MISSION LABEL
+1663	mission test	mission test	NO MISSION LABEL
+1664	Debriefing	Debriefing	General
+1665	Einjar's Data	Einjar's Data	NO MISSION LABEL
+1666	Left Behind	Left Behind	NO MISSION LABEL
+1667	Priorities	Priorities	NO MISSION LABEL
+1668	mission test	mission test	General
+167	Comforts of Home	Comforts of Home	NO MISSION LABEL
+196	Lost in Translation	Lost in Translation	NO MISSION LABEL
+199	Decoy	Decoy	NO MISSION LABEL
+168	Now That We Have Some Room to Breathe	Now That We Have Some Room to Breathe	NO MISSION LABEL
+1683	NO MISSION DISPLAY NAME	NO MISSION DISPLAY NAME	NO MISSION LABEL
+170	Enough Rest	Enough Rest	NO MISSION LABEL
+1703	Investigate Ra's Tech	Investigate Ra's Tech	Men'fa
+1704	Getting Even	Getting Even	NO MISSION LABEL
+171	Do You Know the Straegis?	Do You Know the Straegis?	NO MISSION LABEL
+172	Picking Laro's Brain	Picking Laro's Brain	NO MISSION LABEL
+1723	What's Behind Door Number Two?	What's Behind Door Number Two?	General
+1725	Walter's Rescue	Walter's Rescue	General
+173	Return to the Vault	Return to the Vault	NO MISSION LABEL
+174	The Mission's Never Over	The Mission's Never Over	NO MISSION LABEL
+1744	NO MISSION DISPLAY NAME	NO MISSION DISPLAY NAME	NO MISSION LABEL
+1745	Disarming the Self Distruct	Disarming the Self Distruct	General
+175	Extraordinary Reconnaissance	Extraordinary Reconnaissance	NO MISSION LABEL
+176	What Are These Things?	What Are These Things?	NO MISSION LABEL
+1765	Building a Doorway into the City	Building a Doorway into the City	General
+1766	Pilgrimage to Yu	Pilgrimage to Yu	General
+1767	Liberate Pen-Lai's Supplies	Liberate Pen-Lai's Supplies	General
+177	Tower of Ascendancy? Sounds Important	Tower of Ascendancy? Sounds Important	NO MISSION LABEL
+178	Disable the Power Manufacturing Facility	Disable the Power Manufacturing Facility	NO MISSION LABEL
+1785	Burn Down the Jaffa Barracks	Burn Down the Jaffa Barracks	General
+179	Laro Amuck	Laro Amuck	NO MISSION LABEL
+180	Two Distractions: Repair Node	Two Distractions: Repair Node	NO MISSION LABEL
+1805	Descent into the Temple of Ihpet	Descent into the Temple of Ihpet	General
+1806	Ra's Reliquary	Ra's Reliquary	General
+1807	Closed Beta (Site)	Closed Beta (Site)	NO MISSION LABEL
+1808	Baksheu Who?	Baksheu Who?	NO MISSION LABEL
+1809	Lying Down on the Job	Lying Down on the Job	NO MISSION LABEL
+181	Two Distractions: Raw Materials Processing	Two Distractions: Raw Materials Processing	NO MISSION LABEL
+1810	The Short, Grey Cavalry	The Short, Grey Cavalry	NO MISSION LABEL
+1811	The Scientific Method	The Scientific Method	NO MISSION LABEL
+1812	They're Stealing Our Stuff!	They're Stealing Our Stuff!	NO MISSION LABEL
+1813	Egghead Rescue	Egghead Rescue	NO MISSION LABEL
+1814	Stargazing	Stargazing	NO MISSION LABEL
+1815	So... About Those Jaffa	So... About Those Jaffa	NO MISSION LABEL
+1816	Rumors of My Demise...	Rumors of My Demise...	NO MISSION LABEL
+1817	Outbreak	Outbreak	NO MISSION LABEL
+1818	My Three Sons	My Three Sons	NO MISSION LABEL
+1819	Follow the Bodies	Follow the Bodies	NO MISSION LABEL
+182	A Present For Enemies	A Present For Enemies	NO MISSION LABEL
+1820	Engineering Reversed	Engineering Reversed	NO MISSION LABEL
+1821	Treasure Map of the Stars	Treasure Map of the Stars	NO MISSION LABEL
+1822	The Last Son of Ras'nor	The Last Son of Ras'nor	NO MISSION LABEL
+1823	Take Two of These...	Take Two of These...	NO MISSION LABEL
+1824	The Fall of Dakor	The Fall of Dakor	NO MISSION LABEL
+1825	Nemhet	Nemhet	NO MISSION LABEL
+1826	Hide and Seek	Hide and Seek	NO MISSION LABEL
+184	Goro and Friends	Goro and Friends	NO MISSION LABEL
+185	What does this Button Do?	What does this Button Do?	NO MISSION LABEL
+186	Science of Shanti	Science of Shanti	NO MISSION LABEL
+187	Gear for Geier	Gear for Geier	NO MISSION LABEL
+188	Previously Owned	Previously Owned	NO MISSION LABEL
+189	Ba'who?	Ba'who?	NO MISSION LABEL
+190	Fuling Glyphs	Fuling Glyphs	NO MISSION LABEL
+191	Wertz's Journals	Wertz's Journals	NO MISSION LABEL
+193	Weapons, or a Lack Thereof	Weapons, or a Lack Thereof	NO MISSION LABEL
+194	Watkin's Research	Watkin's Research	NO MISSION LABEL
+195	Crystal Upgrades	Crystal Upgrades	NO MISSION LABEL
+198	Culture Study	Culture Study	NO MISSION LABEL
+200	Strategic Retreat	Strategic Retreat	NO MISSION LABEL
+201	Loyalty and Friendship	Loyalty and Friendship	NO MISSION LABEL
+202	Civil Disobedience	Civil Disobedience	NO MISSION LABEL
+203	Execution	Execution	NO MISSION LABEL
+206	Ribbon Cutting	Ribbon Cutting	NO MISSION LABEL
+207	Cole's Law	Cole's Law	NO MISSION LABEL
+208	Free Llini	Free Llini	NO MISSION LABEL
+212	Relative Truth	Relative Truth	NO MISSION LABEL
+214	Northcott's Escape	Northcott's Escape	NO MISSION LABEL
+215	Field Assignment	Field Assignment	NO MISSION LABEL
+216	Allies or Enemies?	Allies or Enemies?	NO MISSION LABEL
+217	Shield Generators: Recon	Shield Generators: Recon	NO MISSION LABEL
+218	No Man Left Behind	No Man Left Behind	NO MISSION LABEL
+219	A Profitable Relationship	A Profitable Relationship	NO MISSION LABEL
+220	Let Them Eat. . . Anything	Let Them Eat. . . Anything	NO MISSION LABEL
+221	Revelations	Revelations	NO MISSION LABEL
+222	Gone Silent	Gone Silent	NO MISSION LABEL
+223	Message in a Bottle	Message in a Bottle	NO MISSION LABEL
+224	Rescue Op	Rescue Op	NO MISSION LABEL
+225	How Did Burtonol Get Here?	How Did Burtonol Get Here?	Agnos
+226	A Trap For Metcalfe	A Trap For Metcalfe	NO MISSION LABEL
+227	Shiny Androids	Shiny Androids	NO MISSION LABEL
+228	Rare Organic Specimens	Rare Organic Specimens	NO MISSION LABEL
+229	Oddly Compelled...	Oddly Compelled...	NO MISSION LABEL
+230	Did That Just Happen?	Did That Just Happen?	z
+231	For Study & Experimentation	For Study & Experimentation	NO MISSION LABEL
+232	Grave Robbing	Grave Robbing	z
+233	More Agnos Looting!	More Agnos Looting!	x
+234	If We Can't Have It...	If We Can't Have It...	NO MISSION LABEL
+235	... No One Can	... No One Can	NO MISSION LABEL
+236	Orb Inoculation	Orb Inoculation	NO MISSION LABEL
+237	Extermination	Extermination	NO MISSION LABEL
+238	A Child's Toy	A Child's Toy	NO MISSION LABEL
+239	Investigate the Failure	Investigate the Failure	NO MISSION LABEL
+240	Node 445F	Node 445F	NO MISSION LABEL
+241	A More Permanent Solution	A More Permanent Solution	x
+242	Living Space	Living Space	NO MISSION LABEL
+243	Tools and Things	Tools and Things	NO MISSION LABEL
+244	The Broken Holorecord	The Broken Holorecord	NO MISSION LABEL
+245	The Whole Story	The Whole Story	NO MISSION LABEL
+246	Beautiful Camp Frasier	Beautiful Camp Frasier	Finding Colonel Wertz
+247	Wisner's Status	Wisner's Status	Finding Colonel Wertz
+248	Inside Information	Inside Information	Finding Colonel Wertz
+249	Mission Files	Mission Files	Finding Colonel Wertz
+250	Enemy Hands	Enemy Hands	Finding Colonel Wertz
+252	Object of Wertz's Affection	Object of Wertz's Affection	Finding Colonel Wertz
+253	Decoding Venio	Decoding Venio	Finding Colonel Wertz
+254	Deja Vu	Deja Vu	Finding Colonel Wertz
+255	Forensics	Forensics	Finding Colonel Wertz
+256	Camp Kowalski	Camp Kowalski	Finding Colonel Wertz
+257	Radio for Watkin	Radio for Watkin	Finding Colonel Wertz
+258	Anima Thinks of You	Anima Thinks of You	Finding Colonel Wertz
+259	Maldinor	Maldinor	Finding Colonel Wertz
+260	Key to Finding Wertz	Key to Finding Wertz	Finding Colonel Wertz
+261	To Vokos	To Vokos	Finding Colonel Wertz
+262	Battle of Sha'hawt	Battle of Sha'hawt	Finding Colonel Wertz
+263	What is the Venio	What is the Venio	Secret of the Venio
+264	Straegis on Anima	Straegis on Anima	Secret of the Venio
+265	A Different Drummer	A Different Drummer	Secret of the Venio
+406	Shol'va, Indeed	Shol'va, Indeed	Dakara E2
+266	Follow That Straegis	Follow That Straegis	Secret of the Venio
+267	Calling All Straegis	Calling All Straegis	Secret of the Venio
+268	Through the Gate	Through the Gate	Secret of the Venio
+269	Child of the Ancients	Child of the Ancients	Secret of the Venio
+270	The Gateway to...	The Gateway to...	Secret of the Venio
+279	Illana's Burtonol Payoff	Illana's Burtonol Payoff	NO MISSION LABEL
+285	Baiting the Thieves	Baiting the Thieves	NO MISSION LABEL
+286	Tainted Kassa	Tainted Kassa	NO MISSION LABEL
+287	Gate to Agnos	Gate to Agnos	NO MISSION LABEL
+288	First Contact With "Laro"	First Contact With "Laro"	Investigate the library world "Agnos"
+289	Help from Daniel	Help from Daniel	Investigate the library world "Agnos"
+291	Defend the Storage Bay	Defend the Storage Bay	Earn Laro's confidence for library access
+292	Find Container 37A1	Find Container 37A1	Earn Laro's confidence for library access
+293	Recover the Stolen Container	Recover the Stolen Container	Earn Laro's confidence for library access
+294	Fix the Plasma Filtering Station	Fix the Plasma Filtering Station	Earn Laro's confidence for library access
+295	Ancient Readings on Lucia	Ancient Readings on Lucia	NO MISSION LABEL
+296	Stop the Plasma Leak	Stop the Plasma Leak	Earn Laro's confidence for library access
+297	Rebalance the Plasma Flow	Rebalance the Plasma Flow	Earn Laro's confidence for library access
+298	Beta Site Distress Call	Beta Site Distress Call	Defend the Beta Site
+299	Reprogramming the Androids	Reprogramming the Androids	NO MISSION LABEL
+301	Fix the Atmosphere Generating Plant	Fix the Atmosphere Generating Plant	NO MISSION LABEL
+302	Laro's Decision	Laro's Decision	NO MISSION LABEL
+303	A Long Rest	A Long Rest	NO MISSION LABEL
+304	Goldam & Laro	Goldam & Laro	NO MISSION LABEL
+305	The Mystery of the Straegis	The Mystery of the Straegis	NO MISSION LABEL
+306	(removed) Back to Tartarus	(removed) Back to Tartarus	NO MISSION LABEL
+307	(removed) Carter's Results	(removed) Carter's Results	NO MISSION LABEL
+308	An Anti-Straegis Shield	An Anti-Straegis Shield	NO MISSION LABEL
+309	New Questions	New Questions	x
+310	Probing Raid	Probing Raid	X
+311	Tollak's Drone	Tollak's Drone	NO MISSION LABEL
+312	Figuring Out the Plasma Beings	Figuring Out the Plasma Beings	NO MISSION LABEL
+313	The Purpose of the Tower	The Purpose of the Tower	x
+314	Assault on the Power Facility	Assault on the Power Facility	NO MISSION LABEL
+315	To Save Laro From Itself	To Save Laro From Itself	x
+317	A Poison for Laro	A Poison for Laro	z
+318	Hit & Run	Hit & Run	NO MISSION LABEL
+319	Straegis Bait	Straegis Bait	NO MISSION LABEL
+320	Delivering the Fatal Blow	Delivering the Fatal Blow	a
+321	Elegy for Laro & Agnos	Elegy for Laro & Agnos	x
+323	Android Field Research	Android Field Research	NO MISSION LABEL
+324	Missing: One Researcher	Missing: One Researcher	NO MISSION LABEL
+325	Concerning the Vessel	Concerning the Vessel	NO MISSION LABEL
+326	The Inheritance (cut)	The Inheritance (cut)	NO MISSION LABEL
+327	Carter's Questions (cut)	Carter's Questions (cut)	NO MISSION LABEL
+328	Preparing the Vessel	Preparing the Vessel	NO MISSION LABEL
+329	Filling the Vessel	Filling the Vessel	NO MISSION LABEL
+330	The Garden of Agnos	The Garden of Agnos	NO MISSION LABEL
+331	Felger's Plants	Felger's Plants	NO MISSION LABEL
+332	DELETE The Great Plant Exodus	DELETE The Great Plant Exodus	NO MISSION LABEL
+333	Lygonia	Lygonia	NO MISSION LABEL
+334	The Other Survivors	The Other Survivors	NO MISSION LABEL
+335	(cut) Tell Goldam About the Others	(cut) Tell Goldam About the Others	NO MISSION LABEL
+336	Temporary Supplies	Temporary Supplies	NO MISSION LABEL
+337	Alteran Medicine	Alteran Medicine	NO MISSION LABEL
+338	Zero Point Modules	Zero Point Modules	NO MISSION LABEL
+339	Locating the Stolen ZPM	Locating the Stolen ZPM	NO MISSION LABEL
+340	An Alternative Power Supply	An Alternative Power Supply	NO MISSION LABEL
+341	Caged Energy	Caged Energy	NO MISSION LABEL
+342	Delayed Shipment	Delayed Shipment	NO MISSION LABEL
+343	Please Find Kayin	Please Find Kayin	NO MISSION LABEL
+344	Red Collar Kid	Red Collar Kid	NO MISSION LABEL
+345	Red Collar Rescue	Red Collar Rescue	NO MISSION LABEL
+348	One of Our Own	One of Our Own	NO MISSION LABEL
+349	Wertz's Journals	Wertz's Journals	NO MISSION LABEL
+350	Previously Owned	Previously Owned	NO MISSION LABEL
+354	Entering the Chaos	Entering the Chaos	Welcome to Hebridan
+355	Securing TechSecure	Securing TechSecure	Welcome to Hebridan
+357	Drones, Coming to a Hebridan Near You	Drones, Coming to a Hebridan Near You	Solutions Courtesy of the SGU
+358	Hebridan, Sponsored By SGU	Hebridan, Sponsored By SGU	Welcome to Hebridan
+359	Satellites Working in Total Harmony	Satellites Working in Total Harmony	Solutions Courtesy of the SGU
+360	RepliTech Exterminators	RepliTech Exterminators	Clean up
+361	Tynan's Role	Tynan's Role	Clean up
+362	Burtonol's Blue Light Special	Burtonol's Blue Light Special	Clean up
+363	TechCon Shelters	TechCon Shelters	Help for Hebridan
+364	Evac-U-Pac Program	Evac-U-Pac Program	Help for Hebridan
+365	La'el's Note	La'el's Note	Strange Shipments
+366	Further Defense Against Ra	Further Defense Against Ra	Strange Shipments
+368	Becoming TechSecure	Becoming TechSecure	Not-So-TechSecure
+369	Not-So-TechSecure	Not-So-TechSecure	Not-So-TechSecure
+370	Burtonol Blocker	Burtonol Blocker	Droning On
+371	Rescue, Sponsored by Praxis	Rescue, Sponsored by Praxis	General
+372	Tynan's Secrets	Tynan's Secrets	Secrets, Lies and Red Tape
+373	Breaking Burtonol	Breaking Burtonol	Secrets, Lies and Red Tape
+374	Tynan's Fall	Tynan's Fall	Secrets, Lies and Red Tape
+375	Free Armor	Free Armor	Secrets, Lies and Red Tape
+376	A Task for Tynan	A Task for Tynan	Propping up the propaganda machine
+377	Securing the Shipyard	Securing the Shipyard	Shipments
+378	Secret Shipment	Secret Shipment	Shipments
+379	Reluctant Heroes	Reluctant Heroes	Reluctant Heroes
+38	Burtonol Bribe	Burtonol Bribe	Get to the bottom of Burtonol
+380	Salvaging Technology	Salvaging Technology	Salvage
+759	Camera...	Camera...	General
+381	Closing Shop	Closing Shop	Packing up Beta Site
+382	Rescue Operation	Rescue Operation	Sudden Hostilities
+383	Malfunction	Malfunction	Atypical Events
+384	Fire!	Fire!	Atypical Events
+385	Perimeter One	Perimeter One	Sudden Hostilities
+387	Perimeter Two	Perimeter Two	Sudden Hostilities
+388	Dakara in Chaos	Dakara in Chaos	Dakara E2
+389	Shadowing the Jaffa	Shadowing the Jaffa	Dakara E2
+390	Testing the Reins	Testing the Reins	Dakara E2
+391	A Secret in Dakara	A Secret in Dakara	Dakara E2
+392	The Drop Site	The Drop Site	Dakara E2
+393	The Unfinished Construction	The Unfinished Construction	Dakara E2
+394	Ra's Surprise	Ra's Surprise	DELETE.
+395	Take the Superweapon	Take the Superweapon	DELETE.
+396	Stop the Superweapon	Stop the Superweapon	DELETE.
+397	Encoded Orders	Encoded Orders	Dakara E2
+398	Disable Ra's Reinforcements	Disable Ra's Reinforcements	DELETE.
+399	Covering the Praxis's Tracks	Covering the Praxis's Tracks	Dakara E2
+400	Dakara Under Siege	Dakara Under Siege	Dakara E2
+401	The Jaffa Council	The Jaffa Council	Dakara E2
+402	Allies	Allies	Alliance
+403	Jaffa "Hostage Negotiations"	Jaffa "Hostage Negotiations"	Dakara E2
+404	Those Who "Caused Trouble"	Those Who "Caused Trouble"	Dakara E2
+405	Save the Council	Save the Council	Dakara E2
+407	Blackout	Blackout	Dakara E2
+408	A Pincer With Only One Arm	A Pincer With Only One Arm	DELETE.
+409	Rallying the Troops	Rallying the Troops	Dakara E2
+410	The Missing Unit	The Missing Unit	Dakara E2
+411	The Tide of the Sun God	The Tide of the Sun God	Dakara E2
+412	The Temple Doors	The Temple Doors	Get to the Superweapon before Ra can
+413	Dakara Is Breached	Dakara Is Breached	Get to the Superweapon before Ra can
+414	Reach the Superweapon	Reach the Superweapon	Get to the Superweapon before Ra can
+415	Shut Down the Superweapon	Shut Down the Superweapon	Get to the Superweapon before Ra can
+416	The Traitors' Devices	The Traitors' Devices	General
+417	Causing Trouble for Ra	Causing Trouble for Ra	Dakara E2
+418	A Galaxy of Free Jaffa	A Galaxy of Free Jaffa	Dakara E2
+419	A Mission of Mercy	A Mission of Mercy	Alliance
+420	Reclamation	Reclamation	A New Mission
+421	Mechanical Error	Mechanical Error	Unexpected Complications
+442	a	a	NO MISSION LABEL
+443	Incendiary	Incendiary	Unexpected Complications
+446	Making a Case	Making a Case	Alliance
+447	Salvaging Technology	Salvaging Technology	Opportunity
+449	Concerns	Concerns	Alliance
+452	MIA	MIA	No One Left Behind
+453	The Transporter	The Transporter	Poisonous Implications
+456	Moments of Revelation	Moments of Revelation	Poisonous Implications
+458	Evacuation	Evacuation	New Old Threats
+459	Looking for Answers	Looking for Answers	New Old Threats
+460	The Remedy	The Remedy	Seeking Resolution
+461	Kill Dakor	Kill Dakor	Seeking Resolution
+466	Power Behind the Throne	Power Behind the Throne	Endgame
+467	The Ruins of Khen'mer Fa	The Ruins of Khen'mer Fa	The Ruins of Beta Site
+468	The Ruins of Shoul'mur 	The Ruins of Shoul'mur 	The Ruins of Beta Site
+469	Tretonin Shipment	Tretonin Shipment	NO MISSION LABEL
+470	The Ruins of Barak'Ka	The Ruins of Barak'Ka	The Ruins of Beta Site
+471	Dakor's Madness	Dakor's Madness	Dakor's Madness
+473	Inventory	Inventory	Packing up Beta Site
+474	Experimental	Experimental	New Recruit
+475	Dakor's Past	Dakor's Past	Dakor's Madness
+476	No One Left Behind	No One Left Behind	No One Left Behind
+477	Covert Observations	Covert Observations	Covert Observations
+478	Instant IT	Instant IT	Packing up Beta Site
+479	Process Support	Process Support	Covert Observations
+480	Contents Under Pressure	Contents Under Pressure	Subtle Interference
+481	From on High	From on High	A New Mission
+482	The Gate Address	The Gate Address	Endgame
+49	Dirt on Jordin	Dirt on Jordin	Get to the bottom of Burtonol
+50	Visit Fletcher	Visit Fletcher	Get to the bottom of Burtonol
+501	Stumbling in Darkness	Stumbling in Darkness	NO MISSION LABEL
+502	The Furling Speak?	The Furling Speak?	NO MISSION LABEL
+503	Straegis vs. the Furling	Straegis vs. the Furling	NO MISSION LABEL
+504	The Icon Of Transformation	The Icon Of Transformation	NO MISSION LABEL
+505	Trust	Trust	NO MISSION LABEL
+506	Service	Service	NO MISSION LABEL
+507	Allegiance	Allegiance	NO MISSION LABEL
+508	Tools	Tools	NO MISSION LABEL
+509	Technology	Technology	NO MISSION LABEL
+51	Compost Flats Evictions	Compost Flats Evictions	Get to the bottom of Burtonol
+510	Creation	Creation	NO MISSION LABEL
+511	Future	Future	NO MISSION LABEL
+512	A Different Future	A Different Future	NO MISSION LABEL
+513	Present	Present	NO MISSION LABEL
+514	Destiny	Destiny	NO MISSION LABEL
+515	Will	Will	NO MISSION LABEL
+516	Purpose	Purpose	NO MISSION LABEL
+517	Straegis & Furling	Straegis & Furling	NO MISSION LABEL
+518	The Science Facility	The Science Facility	Sudden Hostilities
+52	Cargo Theft	Cargo Theft	Get to the bottom of Burtonol
+53	Netan's Aid	Netan's Aid	Get to the bottom of Burtonol
+54	A New Red Leader	A New Red Leader	Get to the bottom of Burtonol
+541	Rescuing Grazlak's Wife	Rescuing Grazlak's Wife	Investigate Ihpet
+542	Ihpet Reconaissance	Ihpet Reconaissance	Investigate Ihpet
+543	Investigate Experiments	Investigate Experiments	Investigate Ihpet
+544	Turn In Intelligence Items	Turn In Intelligence Items	General
+545	Collecting Genetic Samples	Collecting Genetic Samples	Investigate Ihpet
+546	The Venio's Activator	The Venio's Activator	Track down the Venio activator
+547	Salvadar's Log	Salvadar's Log	Track down the Venio activator
+548	Salvadar's Notes	Salvadar's Notes	Track down the Venio activator
+549	The Hidden Nox Embassy	The Hidden Nox Embassy	Track down the Venio activator
+550	The Asgard Authorization	The Asgard Authorization	Track down the Venio activator
+551	The Furling Are Gone	The Furling Are Gone	Track down the Venio activator
+552	Another Deal for the Aesir	Another Deal for the Aesir	Unite the other tribes to take down Slovar
+553	The Ancient Embassy	The Ancient Embassy	Track down the Venio activator
+554	Taking Down the Common Enemy	Taking Down the Common Enemy	Unite the other tribes to take down Slovar
+555	Stopping the "Holy War"	Stopping the "Holy War"	Track down the Venio activator
+556	The Ascended One	The Ascended One	Track down the Venio activator
+557	The Treaty Chamber's Secrets	The Treaty Chamber's Secrets	Track down the Venio activator
+558	The Asgard Treaty	The Asgard Treaty	General
+559	The Primordial Nox	The Primordial Nox	General
+56	Tech or Treat	Tech or Treat	Get to the bottom of Burtonol
+560	More on the Solocris	More on the Solocris	General
+561	The First Iteration of Humanity	The First Iteration of Humanity	General
+562	The Creators of the Goa'uld	The Creators of the Goa'uld	General
+563	Solocris Revelations	Solocris Revelations	General
+564	The Human Beta	The Human Beta	General
+565	The Furling Idea of a "Fifth Race"	The Furling Idea of a "Fifth Race"	General
+566	The Death of Vokos Primar	The Death of Vokos Primar	General
+567	Romney's Files	Romney's Files	General
+568	Finding Tollan Technology	Finding Tollan Technology	General
+569	Finding Tollan Technology Take Two	Finding Tollan Technology Take Two	General
+57	To Hebridan	To Hebridan	Get to the bottom of Burtonol
+570	Finding Tollan Technology Take Three	Finding Tollan Technology Take Three	General
+571	Strange Bedfellows	Strange Bedfellows	General
+572	She's Nicer When You Get to Know Her	She's Nicer When You Get to Know Her	General
+573	Femme Fatal	Femme Fatal	General
+574	To Catch a Thief	To Catch a Thief	General
+575	Hello, We're the NID	Hello, We're the NID	General
+576	Paranoia Will Destroy Us	Paranoia Will Destroy Us	General
+577	CSI Harset	CSI Harset	General
+578	Hello, We're the NID, Part 2	Hello, We're the NID, Part 2	General
+580	A Taste of Their Own Medicine	A Taste of Their Own Medicine	General
+581	Love's Labors, Lost	Love's Labors, Lost	General
+582	A Question of Loyalty	A Question of Loyalty	General
+583	Traitors by Association	Traitors by Association	General
+584	Penance	Penance	General
+585	The Enemy Among Us	The Enemy Among Us	General
+586	Homeworld Security	Homeworld Security	General
+587	Hello, We're the NID, Part 3	Hello, We're the NID, Part 3	General
+588	Inter-Factional Relations	Inter-Factional Relations	General
+589	The Mole	The Mole	General
+59	Heist Plans	Heist Plans	Investigate the Reins of the Sun Chariot
+590	Internment Camp Rescue	Internment Camp Rescue	General
+591	The Mole, Part 2	The Mole, Part 2	General
+592	Bodies Politik	Bodies Politik	General
+593	Hearing Through Walls	Hearing Through Walls	General
+594	Et Tu, Marsh	Et Tu, Marsh	General
+595	Letters to Home	Letters to Home	General
+596	A Simple Message	A Simple Message	General
+597	The Rest is Silence	The Rest is Silence	General
+598	Black Market	Black Market	General
+60	Green Boot Break-In	Green Boot Break-In	Investigate the Reins of the Sun Chariot
+601	Rescuing Harta's Assistant	Rescuing Harta's Assistant	General
+602	Data Stream	Data Stream	General
+603	Hungry for Information	Hungry for Information	General
+604	Infiltrate the Goa'uld Resort	Infiltrate the Goa'uld Resort	General
+605	Finding Beleth's Lackey	Finding Beleth's Lackey	General
+606	Going on Safari with Asmodai	Going on Safari with Asmodai	General
+607	Beleth's Other Lackey	Beleth's Other Lackey	General
+608	Gaap's Gladitorial Prospects	Gaap's Gladitorial Prospects	General
+609	Beleth's Retreat	Beleth's Retreat	General
+610	Beleth's Relic	Beleth's Relic	General
+611	Harset Turn In	Harset Turn In	General
+612	Finding the Book of the Gates	Finding the Book of the Gates	General
+613	Getting Through Narim's Screening	Getting Through Narim's Screening	General
+614	Bypassing the Tollan Network Block	Bypassing the Tollan Network Block	General
+615	Apartment Hunting (For Narim)	Apartment Hunting (For Narim)	General
+616	Following the Trail to Narim	Following the Trail to Narim	General
+617	Raiding Narim's Library	Raiding Narim's Library	General
+618	Delivering the Book of the Gates	Delivering the Book of the Gates	General
+619	Vacation's Over	Vacation's Over	General
+620	Tear Down the Wall	Tear Down the Wall	General
+621	Storming the Curia	Storming the Curia	General
+623	Beta Site Emergency	Beta Site Emergency	Beta Site
+624	Secure the Outposts	Secure the Outposts	Beta Site
+625	Restore the Gate	Restore the Gate	Beta Site
+626	Delayed Departure	Delayed Departure	Beta Site
+627	An Empty Case	An Empty Case	General
+628	The Four Pieces	The Four Pieces	The Four Pieces
+629	The First Piece	The First Piece	The Four Pieces
+630	Deal with the Devils	Deal with the Devils	General
+631	Omega Site Search	Omega Site Search	Taking Advantage
+632	The Second Piece	The Second Piece	The Four Pieces
+633	The Third Piece	The Third Piece	The Four Pieces
+634	The Final Piece	The Final Piece	The Four Pieces
+635	Understanding the Straegis	Understanding the Straegis	Understanding The Straegis
+636	The Beacons	The Beacons	Understanding The Straegis
+637	The Portal	The Portal	Understanding The Straegis
+622	Arm Yourself!	Arm Yourself!	General
+639	Find Ambernol	Find Ambernol	General
+642	Escape the Cells	Escape the Cells	General
+76	Keepers of the Venio	Keepers of the Venio	Find the Venio
+661	A Desperate Raid	A Desperate Raid	Take the fight to Ra's Battlecruiser
+662	Destination Unknown	Destination Unknown	Take the fight to Ra's Battlecruiser
+663	Shields Down, Heads Up	Shields Down, Heads Up	Take the fight to Ra's Battlecruiser
+664	Balance of Ma'at	Balance of Ma'at	Take the fight to Ra's Battlecruiser
+665	Capture & Control	Capture & Control	Take the fight to Ra's Battlecruiser
+666	Road to Nowhere	Road to Nowhere	Take the fight to Ra's Battlecruiser
+667	Quiet.. Too Quiet	Quiet.. Too Quiet	Take the fight to Ra's Battlecruiser
+668	Keeping the Balance	Keeping the Balance	Take the fight to Ra's Battlecruiser
+669	A Powerful Ally	A Powerful Ally	Release more Straegis from Ra's control
+670	Where The...	Where The...	Survive Ra's Flagship
+671	The Madness of Ra	The Madness of Ra	Survive Ra's Flagship
+672	Gift of Life	Gift of Life	Straegis vs. Jaffa
+673	A Bigger Gun	A Bigger Gun	Straegis vs. Jaffa
+674	Air of Majesty	Air of Majesty	Straegis vs. Jaffa
+675	The Straegis Aegis	The Straegis Aegis	Straegis vs. Jaffa
+676	Fire At Will	Fire At Will	Straegis vs. Jaffa
+677	A Question of Loyalty, Part 2	A Question of Loyalty, Part 2	General
+678	The Madness of Ra	The Madness of Ra	Survive Ra's Flagship
+679	Penance, Part 2	Penance, Part 2	General
+688	Secure the Armory	Secure the Armory	General
+700	The Hidden Empire	The Hidden Empire	General
+701	Reinforce Copplemann	Reinforce Copplemann	General
+702	Rescue Dr. Zuritska	Rescue Dr. Zuritska	General
+703	Payback	Payback	General
+704	Hack Communications	Hack Communications	General
+706	Power Behind the Throne	Power Behind the Throne	General
+708	Secure the Stargate	Secure the Stargate	General
+713	To Ihpet	To Ihpet	Ihpet Crater
+714	To Ihpet	To Ihpet	Ihpet Crater
+715	Temple of the Dawn	Temple of the Dawn	Ihpet Crater
+716	Recalibrate Energized Crystal Activator	Recalibrate Energized Crystal Activator	Ihpet Crater
+717	Temple of the High Sun	Temple of the High Sun	Ihpet Crater
+718	Second Recalibration	Second Recalibration	Ihpet Crater
+719	Temple of the Dusk	Temple of the Dusk	Ihpet Crater
+720	At Your Own Risk	At Your Own Risk	Ihpet Crater
+73	Working Up the Command Chain - Dealers	Working Up the Command Chain - Dealers	Investigate the Reins of the Sun Chariot
+74	Working Up the Command Chain - Distributors	Working Up the Command Chain - Distributors	Investigate the Reins of the Sun Chariot
+740	Uneasy Agreement	Uneasy Agreement	General
+741	Plant Spy	Plant Spy	Harset
+743	Recruit Morrigan	Recruit Morrigan	Tollana
+744	In Service to a Lesser	In Service to a Lesser	General
+745	Shiny Things	Shiny Things	General
+746	A Conspiracy of Means	A Conspiracy of Means	General
+747	Expedient Solutions for Political Problems	Expedient Solutions for Political Problems	General
+748	Resurrecting Athena	Resurrecting Athena	General
+749	Who Done It?	Who Done It?	General
+75	Working Up the Command Chain - Bosses	Working Up the Command Chain - Bosses	Investigate the Reins of the Sun Chariot
+750	Opheltes	Opheltes	General
+751	Recruit Amaterasu	Recruit Amaterasu	Lucia
+752	Zipacna	Zipacna	General
+753	Saving Lethander Privately	Saving Lethander Privately	General
+754	Keeping the Streets Safe	Keeping the Streets Safe	General
+755	Contingency Plan	Contingency Plan	General
+757	A Long Time Coming	A Long Time Coming	General
+758	Lights...	Lights...	General
+687	Aftermath	Aftermath	General
+760	Action!	Action!	General
+761	An Innocuous Delivery	An Innocuous Delivery	General
+762	I, Furling	I, Furling	General
+764	Assassination Proclamation	Assassination Proclamation	General
+765	Hypothetical Situation	Hypothetical Situation	General
+766	Serendipity	Serendipity	General
+767	Leaving the Nest	Leaving the Nest	General
+768	The Sins of the Child	The Sins of the Child	General
+769	A Question of Taste	A Question of Taste	General
+682	Hallway01 Controller	Hallway01 Controller	General
+683	Hallway02 Controller	Hallway02 Controller	General
+686	Hallway05 Controller	Hallway05 Controller	General
+742	Giving the Walls Ears	Giving the Walls Ears	General
+77	On the Trail of SG-18	On the Trail of SG-18	Find the Venio
+770	The Sins of the Child, Part 2	The Sins of the Child, Part 2	General
+771	Mother's Milk	Mother's Milk	General
+772	To Tartarus	To Tartarus	General
+773	Hazard Pay	Hazard Pay	General
+774	Strange Idols	Strange Idols	General
+775	Unexpected Discoveries	Unexpected Discoveries	General
+776	Strange Allies	Strange Allies	General
+777	The Armor Facility	The Armor Facility	General
+778	The Kull Question	The Kull Question	General
+779	Certus	Certus	General
+78	Wertz's Obsession	Wertz's Obsession	Find the Venio
+780	The Queen	The Queen	General
+781	I, Furling, Part 2	I, Furling, Part 2	General
+782	Cross the Styx	Cross the Styx	General
+783	The Natives	The Natives	General
+784	Like Taking Candy	Like Taking Candy	General
+785	Lying for Fun and Profit	Lying for Fun and Profit	General
+786	Still haven't found what I'm lookin' for	Still haven't found what I'm lookin' for	General
+787	Getting Rediculous	Getting Rediculous	General
+788	With or without You	With or without You	General
+789	Winner Take All	Winner Take All	General
+79	The Good Doctor	The Good Doctor	Find the Venio
+790	The Eye of Hathor	The Eye of Hathor	General
+80	End of the World	End of the World	Find the Venio
+800	Thoughts of Resurrection	Thoughts of Resurrection	Investigate Ihpet
+801	Follow the Conduit	Follow the Conduit	Investigate Ihpet
+802	Stop the Ritual	Stop the Ritual	Investigate Ihpet
+803	Ra, The Sun God	Ra, The Sun God	Investigate Ihpet
+804	News From Ihpet	News From Ihpet	Investigate Ihpet
+805	Word From Ihpet	Word From Ihpet	Investigate Ihpet
+806	Ihpet Excavation	Ihpet Excavation	Return to Ihpet
+807	The Sweet Song of Ihpet	The Sweet Song of Ihpet	Return to Ihpet
+808	The Compound	The Compound	Return to Ihpet
+809	Exhausting	Exhausting	Return to Ihpet
+81	You Seek the Venio	You Seek the Venio	Find the Venio
+810	What's Old Is New	What's Old Is New	Return to Ihpet
+811	Finally, Straegis	Finally, Straegis	Return to Ihpet
+812	The New Reactor	The New Reactor	Return to Ihpet
+813	Yeah, This Is Ra's Straegis Device	Yeah, This Is Ra's Straegis Device	Return to Ihpet
+814	And Stay Down	And Stay Down	Return to Ihpet
+815	No Survivors	No Survivors	Return to Ihpet
+816	Time to Go	Time to Go	Return to Ihpet
+817	Closing the Book on Ihpet	Closing the Book on Ihpet	Return to Ihpet
+818	Revenge Savored	Revenge Savored	Return to Ihpet
+819	Unused Explosive	Unused Explosive	Return to Ihpet
+82	With Furling	With Furling	Find the Venio
+820	Naquacite Carved Armor	Naquacite Carved Armor	Return to Ihpet
+821	Naquadah Reactor Readings	Naquadah Reactor Readings	Return to Ihpet
+822	Haven	Haven	General
+83	Decoding Venio	Decoding Venio	Find the Venio
+84	Great Venio Heist	Great Venio Heist	Find the Venio
+840	The Metamorphosis of Haven	The Metamorphosis of Haven	General
+841	Access	Access	General
+842	The Gauntlet	The Gauntlet	General
+843	Corridors	Corridors	General
+844	Cascade	Cascade	General
+845	Hostage Situation	Hostage Situation	General
+846	Failsafe	Failsafe	General
+847	Liberation	Liberation	General
+848	Endgame	Endgame	General
+849	Escape	Escape	General
+85	Insider Information	Insider Information	Find the Venio
+850	Transmission to Youtenheim	Transmission to Youtenheim	General
+851	Laro's Repairs	Laro's Repairs	General
+852	Goldam's Interception	Goldam's Interception	General
+854	Looking for Answers	Looking for Answers	New Old Threats
+86	Strange Tribe	Strange Tribe	Find the Venio
+860	The Ties That Bind	The Ties That Bind	General
+861	Green Boot Pickup	Green Boot Pickup	General
+862	Green Boot Delivery	Green Boot Delivery	General
+863	Travell's Betrayal	Travell's Betrayal	General
+864	Discredit Narim	Discredit Narim	General
+865	Derail Supply Train	Derail Supply Train	General
+866	Travell Brainwashing	Travell Brainwashing	General
+867	Travell's Deal	Travell's Deal	General
+868	Morrigan Companion	Morrigan Companion	General
+869	Framed Goa'uld	Framed Goa'uld	General
+87	Tribal Interrogation	Tribal Interrogation	Find the Venio
+870	Resort Papers	Resort Papers	General
+871	Ogilvie's Latest Troubles	Ogilvie's Latest Troubles	General
+872	Hacking the Tollan Computer Network	Hacking the Tollan Computer Network	General
+873	Jaffa Scouting Parties	Jaffa Scouting Parties	General
+874	Tollan Welcoming Party	Tollan Welcoming Party	General
+875	Missing Relative	Missing Relative	General
+876	Tollan Lovers	Tollan Lovers	General
+877	Safe Passage	Safe Passage	General
+878	Hired Muscle	Hired Muscle	General
+879	Rescuing Lyala	Rescuing Lyala	General
+88	Corgan's Revenge	Corgan's Revenge	Find the Venio
+880	Machra's Weapons Cache	Machra's Weapons Cache	General
+881	Hault Assault	Hault Assault	General
+882	Harset Supplies	Harset Supplies	General
+89	Maldinor	Maldinor	Find the Venio
+90	Key to Finding Wertz	Key to Finding Wertz	Find the Venio
+900	Census Taking	Census Taking	General
+901	Tracking the Terrorist	Tracking the Terrorist	General
+902	Scouring the Slums	Scouring the Slums	General
+903	A Sewer of Scum	A Sewer of Scum	General
+904	The Mathas Connection	The Mathas Connection	General
+905	Field of Sorrow	Field of Sorrow	General
+906	The Slavemaster	The Slavemaster	General
+907	A Tok'ra on Lucia?	A Tok'ra on Lucia?	General
+908	Finding the Tok'ra	Finding the Tok'ra	General
+909	Recovering Raully's Intel	Recovering Raully's Intel	General
+91	An Audience with Opheltes	An Audience with Opheltes	Investigate the Reins of the Sun Chariot
+910	Escalation	Escalation	General
+911	Compost Flats Search	Compost Flats Search	General
+912	Getting to the vRips	Getting to the vRips	General
+913	vRip Rescue	vRip Rescue	General
+914	Red Collar Recon	Red Collar Recon	General
+915	Melt Artillery	Melt Artillery	General
+916	Swap Munitions	Swap Munitions	General
+917	Cripple the Red Collar	Cripple the Red Collar	General
+918	Balance of Power	Balance of Power	General
+919	Breaking into Burtonol	Breaking into Burtonol	General
+92	Battle of Sha'hawt	Battle of Sha'hawt	Find the Venio
+920	Finding Burtonol's Secret	Finding Burtonol's Secret	General
+921	Destroying Burtonol's Secret	Destroying Burtonol's Secret	General
+922	Medical Aid	Medical Aid	General
+923	Brochures	Brochures	General
+924	(cut) Jax's Problem	(cut) Jax's Problem	General
+925	(cut) Jax is Safe	(cut) Jax is Safe	General
+926	No Controlling Legal Authority	No Controlling Legal Authority	General
+927	Stalling the Fallout	Stalling the Fallout	General
+928	Kassa's Curse	Kassa's Curse	General
+929	Kassa Vaccine	Kassa Vaccine	General
+93	What is the Venio	What is the Venio	Unleash the Venio
+930	Another Drug	Another Drug	General
+931	Another Drug Cure	Another Drug Cure	General
+932	Crevice Lakes Thugs	Crevice Lakes Thugs	General
+933	Evron's Wife	Evron's Wife	General

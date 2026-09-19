@@ -1,0 +1,2806 @@
+{
+  "count": 280,
+  "rule": "Do not delete or auto-promote these. Review source status before use.",
+  "records": [
+    {
+      "Archetype": "Soldier",
+      "Branch": "Automatic Weapons",
+      "Ability ID": 780,
+      "Ability Name": "Point Shooter",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Pistol",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Automatic Weapons",
+      "Ability ID": 1075,
+      "Ability Name": "Uzi Spray",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Automatic Weapons",
+      "Ability ID": 1511,
+      "Ability Name": "MS018_062008_Weapon Malfunction",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1249,
+      "Ability Name": "Alertness",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1944,
+      "Ability Name": "MS019_AshrakDaggerBackSlash*",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG | Blade | LMG / Minigun | Staff Weapon | Shotgun | Dart Pistol | Pistol | Zat'ni'katel | Rifle | Automatic Weapon | Dart Rifle | Assault Rifle | Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 660,
+      "Ability Name": "Bash",
+      "Candidate Status": "EQUIVALENT CLEAN DUPLICATES — RUNTIME CHOICE NEEDED",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 653,
+      "Ability Name": "Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Optional alien-weapon Soldier specialization held outside core v1"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 2130,
+      "Ability Name": "MS020_080817_CoverPenetration",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 772,
+      "Ability Name": "Damage Shot",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Optional alien-weapon Soldier specialization held outside core v1"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 2841,
+      "Ability Name": "Destruction Pulse",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Optional alien-weapon Soldier specialization held outside core v1"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1638,
+      "Ability Name": "Destruction Shot",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Optional alien-weapon Soldier specialization held outside core v1"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 774,
+      "Ability Name": "Disruption Shot",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Optional alien-weapon Soldier specialization held outside core v1"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 775,
+      "Ability Name": "Double Blast",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1833,
+      "Ability Name": "MS019_DoublePump",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Shotgun",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 2123,
+      "Ability Name": "MS020_080817_DuckandCover",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1482,
+      "Ability Name": "Ground Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Optional alien-weapon Soldier specialization held outside core v1"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 706,
+      "Ability Name": "Half Mag",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Pistol",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 2187,
+      "Ability Name": "NO ABILITY DISPLAY NAME!",
+      "Candidate Status": "UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1691,
+      "Ability Name": "MS018_062008_Radiated Blasts",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1922,
+      "Ability Name": "MS019_Rapid Blasts",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1695,
+      "Ability Name": "MS018_062008_Reign Of Chaos",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1928,
+      "Ability Name": "MS019_ReignOfChaos",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 654,
+      "Ability Name": "Single Pump",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Shotgun",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 2026,
+      "Ability Name": "Starburst",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Optional alien-weapon Soldier specialization held outside core v1"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1506,
+      "Ability Name": "MS018_062008_Sticky Object",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 2268,
+      "Ability Name": "MS020_080818_ThrowMastery",
+      "Candidate Status": "REVISION-ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Command",
+      "Ability ID": 1831,
+      "Ability Name": "Weld",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 812,
+      "Ability Name": "Denial of Area",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": 1,
+      "Weapon Family": "LMG / Minigun",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 820,
+      "Ability Name": "Dumbfire Missile",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 2420,
+      "Ability Name": "Grenade Type: Fragmentation",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 1880,
+      "Ability Name": "Incinerate Target",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Flamethrower",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 1478,
+      "Ability Name": "Launch Grenade: Fragmentation",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Grenade Launcher",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 1488,
+      "Ability Name": "Locked Target",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 1968,
+      "Ability Name": "NO ABILITY DISPLAY NAME!",
+      "Candidate Status": "UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "LMG / Minigun",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 1892,
+      "Ability Name": "Stance: Aim",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 1884,
+      "Ability Name": "Steady Fire",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 804,
+      "Ability Name": "Strafe",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "LMG / Minigun",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Soldier",
+      "Branch": "Heavy Weapons",
+      "Ability ID": 659,
+      "Ability Name": "Suppression Zone",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "LMG / Minigun",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 592,
+      "Ability Name": "Pistol Shot",
+      "Candidate Status": "LEGACY-ALIGNED CLEAN CANDIDATE — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Pistol",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 594,
+      "Ability Name": "Strike",
+      "Candidate Status": "RECONSTRUCTION STRONG — CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 597,
+      "Ability Name": "Heal Focus",
+      "Candidate Status": "RECONSTRUCTION STRONG — CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 598,
+      "Ability Name": "Quick Burst",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Automatic Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 654,
+      "Ability Name": "Single Pump",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Shotgun",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 656,
+      "Ability Name": "Sustained Bursts",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "LMG / Minigun",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 660,
+      "Ability Name": "Bash",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 696,
+      "Ability Name": "Mini-game: Bypass",
+      "Candidate Status": "RECONSTRUCTION STRONG — CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 697,
+      "Ability Name": "Mini-game: Shut Down",
+      "Candidate Status": "RECONSTRUCTION STRONG — CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 706,
+      "Ability Name": "Half Mag",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Pistol",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 716,
+      "Ability Name": "Wounding Shot",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 722,
+      "Ability Name": "Spray and Pray",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 745,
+      "Ability Name": "Double Pump",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Shotgun",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 780,
+      "Ability Name": "Point Shooter",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Pistol",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 856,
+      "Ability Name": "Takedown",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 867,
+      "Ability Name": "Quickload",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 868,
+      "Ability Name": "Flashbang Grenade",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 879,
+      "Ability Name": "Disarm",
+      "Candidate Status": "RECONSTRUCTION STRONG — CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 891,
+      "Ability Name": "Suppression Shot",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Automatic Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 1005,
+      "Ability Name": "Aimed Burst",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Automatic Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 1249,
+      "Ability Name": "Alertness",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": 1361,
+      "Ability Name": "Demolitions Mastery",
+      "Candidate Status": "LEGACY-ALIGNED CLEAN CANDIDATE — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 1619,
+      "Ability Name": "Combat Sprint",
+      "Candidate Status": "CROSS-CLASS LEGACY CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Precision / Marksmanship",
+      "Ability ID": 1724,
+      "Ability Name": "Intimidation",
+      "Candidate Status": "RECONSTRUCTION STRONG — CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Stealth / Infiltration",
+      "Ability ID": 1959,
+      "Ability Name": "Reveal Alarm",
+      "Candidate Status": "RECONSTRUCTION STRONG — CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Commando",
+      "Branch": "Demolitions",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION/TEST ONLY — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Medical",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Medical",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Medical",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Medical",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "UNNAMED-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Medical",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 519,
+      "Ability Name": "Fire Turret",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "REVISION-ONLY GROUP — REVIEW",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 3315,
+      "Ability Name": "Turret Area of Effect Attacks",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 1211,
+      "Ability Name": "Turret Attack: AOE",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 1205,
+      "Ability Name": "Turret Attack: Cone",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 3308,
+      "Ability Name": "Turret Attack: Draw Fire",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 973,
+      "Ability Name": "Turret Attack: Snare",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 969,
+      "Ability Name": "Turret Attack: Suppression",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 1152,
+      "Ability Name": "Turret Burst",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 3313,
+      "Ability Name": "Turret Cone Attacks",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 3312,
+      "Ability Name": "Turret Crippling Attacks",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 3311,
+      "Ability Name": "Turret Draw Fire Abilities",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": 3309,
+      "Ability Name": "Turret Self Destruct",
+      "Candidate Status": "PREFERRED ROBOTICS CANDIDATE — RECONSTRUCTION STRONG",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Turret/pet runtime ability; not player-purchased tree node"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Robotics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": 1233,
+      "Ability Name": "Draw Area",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": 700,
+      "Ability Name": "Mini-game: Analysis",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": 701,
+      "Ability Name": "Mini-game: Experiment",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": 703,
+      "Ability Name": "Mini-game: Instrument Augmentation",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": 704,
+      "Ability Name": "Mini-game: Scientific Law",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": 1020,
+      "Ability Name": "Shield: Ablative",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Scientist",
+      "Branch": "Support",
+      "Ability ID": 716,
+      "Ability Name": "Wounding Shot",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Anthropology",
+      "Ability ID": 1950,
+      "Ability Name": "Close In",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Anthropology",
+      "Ability ID": 1619,
+      "Ability Name": "Combat Sprint",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Anthropology",
+      "Ability ID": 747,
+      "Ability Name": "Conversation: Humanoid: Advanced",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Anthropology",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE SOURCE-BACKED CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Anthropology",
+      "Ability ID": 756,
+      "Ability Name": "Diminish: Concentration",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Anthropology",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE SOURCE-BACKED CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Anthropology",
+      "Ability ID": 782,
+      "Ability Name": "Remove: Confidence",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Archaeologist — review",
+      "Ability ID": 793,
+      "Ability Name": "Conversation: Ambassador",
+      "Candidate Status": "RELATED CLEAN CANDIDATE — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Archaeology",
+      "Ability ID": 1977,
+      "Ability Name": "Indomitable Spirit",
+      "Candidate Status": "ARCHAEOLOGY SECONDARY-EVIDENCE STRONG CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Sociology",
+      "Ability ID": 772,
+      "Ability Name": "Damage Shot",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Sociology",
+      "Ability ID": 2069,
+      "Ability Name": "Disintegration Shot",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Sociology",
+      "Ability ID": 745,
+      "Ability Name": "Double Pump",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Shotgun",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Sociology",
+      "Ability ID": 728,
+      "Ability Name": "Full Magazine",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Pistol",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Sociology",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE SOURCE-BACKED CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Archaeologist",
+      "Branch": "Sociology",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE SOURCE-BACKED CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Attack Programs",
+      "Ability ID": 3172,
+      "Ability Name": "Attack Protocol: ConvertNLMattertoDamage:Multiple",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Attack Programs",
+      "Ability ID": 3163,
+      "Ability Name": "Attack Protocol:Proximity:ReduceDensity",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Attack Programs",
+      "Ability ID": 1237,
+      "Ability Name": "Proximity Blast",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Attack Programs",
+      "Ability ID": 1222,
+      "Ability Name": "Suppress Target",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Attack Programs | Defensive Programs",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN SOURCE-BACKED VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Defensive Programs",
+      "Ability ID": 945,
+      "Ability Name": "Conversation: Mechanical:Advanced",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Defensive Programs",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN SOURCE-BACKED VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Defensive Programs",
+      "Ability ID": 3253,
+      "Ability Name": "DefensiveProtocol: ConvertEnergy: Enemy",
+      "Candidate Status": "PREFERRED CLEAN SOURCE-BACKED CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Scientific Programs",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN SOURCE-BACKED VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Scientific Programs",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN SOURCE-BACKED VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Asgard",
+      "Branch": "Scientific Programs",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "UNNAMED/REVISION GROUP — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Faction Physiology",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Faction Physiology",
+      "Ability ID": 2056,
+      "Ability Name": "Tritonin",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Minigame",
+      "Ability ID": 1782,
+      "Ability Name": "MS019_071708_Delay",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Minigame",
+      "Ability ID": 1832,
+      "Ability Name": "MS019_JaffaDelay",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Minigame",
+      "Ability ID": 698,
+      "Ability Name": "Mini-game: Delay",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Minigame",
+      "Ability ID": 699,
+      "Ability Name": "Mini-game: Second Chance",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Weapon",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Weapon",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Weapon",
+      "Ability ID": 1414,
+      "Ability Name": "Zat Auto Attack",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Core / Weapon",
+      "Ability ID": 1415,
+      "Ability Name": "Zat Melee AA",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage",
+      "Ability ID": 2719,
+      "Ability Name": "Lord's Command",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage | Heritage / Tactics review",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage / Tactics review",
+      "Ability ID": 2715,
+      "Ability Name": "Dominance Blast",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage / Tactics review",
+      "Ability ID": 2100,
+      "Ability Name": "MS020_080817_FlamethrowerTest",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage / Tactics review",
+      "Ability ID": 730,
+      "Ability Name": "Poisonous Blast",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage / Tactics review",
+      "Ability ID": 479,
+      "Ability Name": "Staff Blast",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage / Tactics review",
+      "Ability ID": 499,
+      "Ability Name": "Staff Fire Blast",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Heritage / Tactics review",
+      "Ability ID": 540,
+      "Ability Name": "Staff Strike",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2694,
+      "Ability Name": "Annihilation Beam",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1943,
+      "Ability Name": "MS019_AshrakDaggerParalyze*",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG | Blade | LMG / Minigun | Staff Weapon | Shotgun | Dart Pistol | Pistol | Zat'ni'katel | Rifle | Automatic Weapon | Dart Rifle | Assault Rifle | Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2869,
+      "Ability Name": "Disrupt Soul",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2717,
+      "Ability Name": "Fist of an Angry God",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1652,
+      "Ability Name": "Jaffa: Double Blast",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2383,
+      "Ability Name": "MS020_080905_Jaffa:DoubleBlast",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2775,
+      "Ability Name": "Lord's Decree",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2795,
+      "Ability Name": "Lord's Visage",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2823,
+      "Ability Name": "Lord's Vitae",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2827,
+      "Ability Name": "Lord's Will",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 3235,
+      "Ability Name": "Modified Orders",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 712,
+      "Ability Name": "Ribbon Device Auto Attack",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 711,
+      "Ability Name": "Ribbon Device Melee AA",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1624,
+      "Ability Name": "Ribbon Device: Fear",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1623,
+      "Ability Name": "Ribbon Device: Knockdown",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1949,
+      "Ability Name": "Ribbon Device: Shot",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1639,
+      "Ability Name": "Ribbon Device:Destruction Beam",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1627,
+      "Ability Name": "Ribbon Device:Disruption Beam",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1628,
+      "Ability Name": "Ribbon Device:Disruption Stream",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2296,
+      "Ability Name": "Stasis Control Panel - Hacked",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 1643,
+      "Ability Name": "Summon Jaffa",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Jaffa — review",
+      "Ability ID": 2718,
+      "Ability Name": "Wrath of God",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": 1771,
+      "Ability Name": "MS019_071108_Courage",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics | Tau'ri / Tactics review",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": 2316,
+      "Ability Name": "MS020_080829_Defender'sStance",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics | Tau'ri / Tactics review",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": 774,
+      "Ability Name": "Disruption Shot",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": 2006,
+      "Ability Name": "Distracting Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": 1954,
+      "Ability Name": "NO ABILITY DISPLAY NAME!",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": 2137,
+      "Ability Name": "MS020_080817_RevealIII",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tactics",
+      "Ability ID": 2846,
+      "Ability Name": "Ribbon Device: Lord's Presence",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Free Jaffa / Shol'va",
+      "Branch": "Tau'ri / Tactics review",
+      "Ability ID": 3091,
+      "Ability Name": "Pistol Shot",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2387,
+      "Ability Name": "MS020_080905_Ashrak:Assassin'sStrike",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2375,
+      "Ability Name": "MS020_080905_AshrakDagger:DecimationWound",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2376,
+      "Ability Name": "MS020_080905_AshrakDagger:Dervish",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2377,
+      "Ability Name": "MS020_080905_AshrakDagger:DoubleSlash",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2378,
+      "Ability Name": "MS020_080905_AshrakDagger:InevitableEnd",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2379,
+      "Ability Name": "MS020_080905_AshrakDagger:ProlongAgony",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1944,
+      "Ability Name": "MS019_AshrakDaggerBackSlash*",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG | Blade | LMG / Minigun | Staff Weapon | Shotgun | Dart Pistol | Pistol | Zat'ni'katel | Rifle | Automatic Weapon | Dart Rifle | Assault Rifle | Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1943,
+      "Ability Name": "MS019_AshrakDaggerParalyze*",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "SMG | Blade | LMG / Minigun | Staff Weapon | Shotgun | Dart Pistol | Pistol | Zat'ni'katel | Rifle | Automatic Weapon | Dart Rifle | Assault Rifle | Ribbon Device",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2412,
+      "Ability Name": "MS020_080905_AuraofGod:Contamination",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1767,
+      "Ability Name": "DEBUG_AUDIO_Turn Off All Sounds",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Debug/audio ability excluded"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1765,
+      "Ability Name": "DEBUG_AUDIO_Turn Off Ambient Sounds",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Debug/audio ability excluded"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1766,
+      "Ability Name": "DEBUG_AUDIO_Turn Off Weapon Sounds",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Debug/audio ability excluded"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak | Goa'uld — review | Servant Lord",
+      "Ability ID": 1945,
+      "Ability Name": "NO ABILITY DISPLAY NAME!",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1938,
+      "Ability Name": "MS019_PhasePosition",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 802,
+      "Ability Name": "Reveal Mini-Games",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak | Goa'uld — review",
+      "Ability ID": 1624,
+      "Ability Name": "Ribbon Device: Fear",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak | Goa'uld — review",
+      "Ability ID": 1623,
+      "Ability Name": "Ribbon Device: Knockdown",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1949,
+      "Ability Name": "Ribbon Device: Shot",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 3217,
+      "Ability Name": "MS021_081010_ScienceProtocol:Hologram:Humanoid",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 1934,
+      "Ability Name": "MS019_StealthII",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2825,
+      "Ability Name": "Summon Ashrak",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak",
+      "Ability ID": 2386,
+      "Ability Name": "MS020_080905_SummonAshrakWarrior",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak | Battle Lord",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Ashrak | Battle Lord",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2841,
+      "Ability Name": "Destruction Pulse",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2100,
+      "Ability Name": "MS020_080817_FlamethrowerTest",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2714,
+      "Ability Name": "Impose Dominance: Humanoid",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 1917,
+      "Ability Name": "MS019_LaunchGrenade",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2263,
+      "Ability Name": "MS020_080817_LaunchGrenade:Incendiary",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2264,
+      "Ability Name": "MS020_080817_LaunchGrenade:Shockwave",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2265,
+      "Ability Name": "MS020_080817_LaunchGrenade:TearGas",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2430,
+      "Ability Name": "MS020_080818_SmokeGrenade",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2026,
+      "Ability Name": "Starburst",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 1641,
+      "Ability Name": "Terror Pod",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 1640,
+      "Ability Name": "Terror Stone",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Battle Lord",
+      "Ability ID": 2028,
+      "Ability Name": "Terror Urn",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Minigame",
+      "Ability ID": 689,
+      "Ability Name": "Mini-game: Deft Replacement",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Minigame",
+      "Ability ID": 688,
+      "Ability Name": "Mini-game: Indelicate Alteration",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Minigame",
+      "Ability ID": 687,
+      "Ability Name": "Mini-game: Primal Savvy",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 2001,
+      "Ability Name": "Arc of Fury",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 2029,
+      "Ability Name": "Bewilderment",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 3277,
+      "Ability Name": "Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 2058,
+      "Ability Name": "Devastating Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 2006,
+      "Ability Name": "Distracting Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 2042,
+      "Ability Name": "Maximum Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 3091,
+      "Ability Name": "Pistol Shot",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 730,
+      "Ability Name": "Poisonous Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 1905,
+      "Ability Name": "Radiated Blasts",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 712,
+      "Ability Name": "Ribbon Device Auto Attack",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 711,
+      "Ability Name": "Ribbon Device Melee AA",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Ribbon Device",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 479,
+      "Ability Name": "Staff Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 499,
+      "Ability Name": "Staff Fire Blast",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 540,
+      "Ability Name": "Staff Strike",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 1984,
+      "Ability Name": "Staff Swing",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 2043,
+      "Ability Name": "Weapon of Terror",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 2025,
+      "Ability Name": "Whirlwind",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 1,
+      "Weapon Family": "Staff Weapon",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 1414,
+      "Ability Name": "Zat Auto Attack",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon",
+      "Ability ID": 1415,
+      "Ability Name": "Zat Melee AA",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "Zat'ni'katel",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 2389,
+      "Ability Name": "MS020_080905_AppeaseYourGod",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 2384,
+      "Ability Name": "MS020_080905_DefendYourGod",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 3002,
+      "Ability Name": "Identifying Goa'uld Commander",
+      "Candidate Status": "CLEAN CANDIDATE — BRANCH REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 1867,
+      "Ability Name": "MS019_Lotar: Heal Health",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 2391,
+      "Ability Name": "MS020_080905_MercyofGod",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 1860,
+      "Ability Name": "MS019_Ribbon Device Shot",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 2385,
+      "Ability Name": "MS020_080905_SummonLotar",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Goa'uld — review",
+      "Ability ID": 2374,
+      "Ability Name": "MS020_080905_WrathofGod",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Servant Lord",
+      "Ability ID": 1771,
+      "Ability Name": "MS019_071108_Courage",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon | Servant Lord",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Servant Lord",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Core / Weapon | Servant Lord",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Servant Lord",
+      "Ability ID": 1935,
+      "Ability Name": "MS019_FocusRegeneration*",
+      "Candidate Status": "REVISION/UNNAMED ONLY — REVIEW",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Revision / unresolved / review candidate"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Servant Lord",
+      "Ability ID": "",
+      "Ability Name": "",
+      "Candidate Status": "MULTIPLE CLEAN VARIANTS — UNRESOLVED",
+      "Raw Training Cost": "",
+      "Weapon Family": "",
+      "Reason Held": "No resolved current lead ability / unresolved group"
+    },
+    {
+      "Archetype": "Goa'uld",
+      "Branch": "Servant Lord",
+      "Ability ID": 1723,
+      "Ability Name": "Stance: Courage",
+      "Candidate Status": "PREFERRED CLEAN CANDIDATE",
+      "Raw Training Cost": 0,
+      "Weapon Family": "",
+      "Reason Held": "Valid candidate reserved for later expansion/balance pass"
+    }
+  ]
+}
