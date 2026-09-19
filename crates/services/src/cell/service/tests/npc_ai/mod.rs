@@ -32,6 +32,7 @@ mod ability_range;
 mod aggression;
 mod selector;
 mod state_machine;
+mod tick_row;
 
 /// Build a non-instanced "Castle" space and seed an NPC at id=200 in
 /// AiState::Fighting with the given spawn position. Returns the

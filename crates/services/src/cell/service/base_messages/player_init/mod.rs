@@ -429,6 +429,17 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     )
     .await;
 
+    // Everything the cell sends on world entry (regions, missions, stats)
+    // is queued above this line; the first `region_hint` after this entry is
+    // the client proving it received the region list.
+    let missions = space_mgr
+        .get_entity(entity_id)
+        .map_or(0, |e| e.missions.count());
+    crate::cell::player_journal::note(
+        entity_id,
+        crate::cell::player_journal::kinds::WORLD_ENTER,
+        format!("world={world_name} missions={missions}"),
+    );
     content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
 }
 

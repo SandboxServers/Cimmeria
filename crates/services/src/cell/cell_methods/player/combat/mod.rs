@@ -37,6 +37,11 @@ pub async fn dispatch(
                 let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, respawner_id, "callForAid");
                 crate::cell::playtest_friction::respawned(entity_id);
+                crate::cell::player_journal::note(
+                    entity_id,
+                    crate::cell::player_journal::kinds::RESPAWN,
+                    format!("respawner={respawner_id}"),
+                );
                 respawn::handle_respawn(entity_id, respawner_id, tx, space_mgr).await;
             }
             true

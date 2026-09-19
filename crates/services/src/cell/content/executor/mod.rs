@@ -93,6 +93,28 @@ pub(super) async fn execute_actions(
         action_delays,
         params,
     } = resolved;
+    if !actions.is_empty() {
+        // One ordered line per resolved action list: item grants, step
+        // advances, dialogs and their delays as the executor will run them.
+        let order: Vec<String> = actions
+            .iter()
+            .enumerate()
+            .map(|(i, (chain_id, action))| {
+                let d = action_delays.get(i).copied().unwrap_or(0);
+                let k = crate::cell::player_journal::action_kind(action);
+                if d > 0 {
+                    format!("{chain_id}:{k}+{d}ms")
+                } else {
+                    format!("{chain_id}:{k}")
+                }
+            })
+            .collect();
+        crate::cell::player_journal::note(
+            entity_id,
+            crate::cell::player_journal::kinds::ACTION_LIST,
+            order.join(" > "),
+        );
+    }
     for (i, (chain_id, action)) in actions.into_iter().enumerate() {
         let delay_ms = action_delays.get(i).copied().unwrap_or(0);
         if delay_ms > 0 {

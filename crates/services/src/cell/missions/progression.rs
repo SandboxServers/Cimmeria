@@ -124,6 +124,11 @@ pub async fn advance_step(
         new_objectives = new_objectives.len(),
         "Mission step advanced"
     );
+    crate::cell::player_journal::note(
+        entity_id,
+        crate::cell::player_journal::kinds::STEP_ADVANCE,
+        format!("mission={mission_id} step={old_step_id:?}->{new_step_id}"),
+    );
 
     // Send onStepUpdate(old_step_id, COMPLETED)
     if let Some(sid) = old_step_id {
@@ -250,6 +255,11 @@ pub async fn complete_objective(
             .await;
 
         tracing::info!(entity_id, mission_id, "Mission completed!");
+        crate::cell::player_journal::note(
+            entity_id,
+            crate::cell::player_journal::kinds::MISSION_COMPLETE,
+            format!("mission={mission_id}"),
+        );
     }
 }
 
@@ -317,6 +327,11 @@ pub async fn complete_mission_direct(
     let step_id = mission.completed_steps.last().copied();
 
     tracing::info!(entity_id, mission_id, "Mission completed directly");
+    crate::cell::player_journal::note(
+        entity_id,
+        crate::cell::player_journal::kinds::MISSION_COMPLETE,
+        format!("mission={mission_id} direct"),
+    );
 
     // Send objective updates
     for oid in &objective_ids {

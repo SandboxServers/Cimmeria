@@ -126,6 +126,8 @@ pub(crate) struct Bookmark {
     /// `(cover_set_id, seconds inside)` per the server's proximity detection.
     pub cover_sets: Vec<(i32, f32)>,
     pub crouched: bool,
+    /// Last journal entries for the tester, oldest first, as JSON.
+    pub recent_events_json: String,
     pub speed_scale: f32,
     pub focus_cur: i32,
     pub focus_max: i32,
@@ -328,6 +330,15 @@ pub(crate) fn capture(
         cover_sets: space_mgr
             .cover_detection
             .current_sets(caller.entity_id, now),
+        recent_events_json: serde_json::Value::Array(
+            crate::cell::player_journal::tail(caller_id, 24)
+                .into_iter()
+                .map(|(seq, ms_ago, kind, detail)| {
+                    serde_json::json!({"seq": seq, "ms_ago": ms_ago, "kind": kind, "detail": detail})
+                })
+                .collect(),
+        )
+        .to_string(),
         crouched: caller.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0,
         speed_scale: caller.stats.movement_speed_scale(),
         focus_cur: focus.map_or(0, |s| s.cur),
@@ -463,6 +474,7 @@ pub(crate) fn emit(b: &Bookmark, account_id: u32, player_id: i32, access_level: 
         regions_inside = ?b.regions_inside,
         missions = %b.missions_json,
         counters = %b.counters_json,
+        recent_events = %b.recent_events_json,
         entities_captured = b.entities.len(),
         entities_in_radius = b.entities_in_radius,
         capture_radius = CAPTURE_RADIUS,
