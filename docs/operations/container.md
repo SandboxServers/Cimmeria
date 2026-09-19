@@ -74,6 +74,7 @@ Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.r
 | `BASE_PORT` | `32832` | |
 | `CELL_PORT` | `50000` | |
 | `ADMIN_PORT` | `8443` | |
+| `ADMIN_BIND` | `127.0.0.1` | **Leave loopback.** The admin API has no auth (#439); a wide bind exposes unauthenticated admin control. Note the colo's `-p 8443:8443` publish makes the port host-reachable regardless of this bind — remove that publish until JWT lands. |
 | `DB_URL` | `host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw` | Libpq-style — see note below. Note this differs from the non-container default (`port=5433`). |
 | `DEVELOPER_MODE` | `true` | Relaxed auth + multi-login |
 | `RUST_LOG` | `info` | tracing-subscriber filter |

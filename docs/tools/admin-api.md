@@ -51,6 +51,15 @@ The Tauri desktop app has **two** paths to the backend:
 | Browser | `{window.location.protocol}//{window.location.hostname}:8443` |
 | Override | `VITE_ADMIN_API_ORIGIN` environment variable |
 
+The server binds the admin API to **loopback by default** (`ADMIN_BIND` defaults to
+`127.0.0.1`; see `crates/common/src/config.rs`). The admin API has no authentication yet
+(JWT middleware is TODO — issue #439), so a non-loopback `ADMIN_BIND` exposes
+unauthenticated administrative control (server stop, content rewrite, log/credential
+streaming via `/ws/logs`) to every host that can route to the port. Only set it wide
+together with the JWT work. In a container, note that a published port (`-p 8443:8443`)
+is reachable from the host regardless of the in-container bind, so the colo must stop
+publishing 8443 until JWT lands (see [`colo-deploy.md`](../operations/colo-deploy.md)).
+
 All REST endpoints are prefixed with `/api/`. WebSocket endpoints are prefixed with `/ws/`.
 
 ## REST Endpoints

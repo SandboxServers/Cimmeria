@@ -18,6 +18,7 @@
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
 //! | `CELL_PORT` | `50000` | CellApp port |
 //! | `ADMIN_PORT` | `8443` | Admin REST API port |
+//! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string |
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
 //! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
@@ -32,7 +33,7 @@
 //! | `OTEL_RESOURCE_ATTRIBUTES` | unset | Comma-separated `k=v` resource attrs piped onto every span. Common: `deployment.environment=colo,service.namespace=cimmeria`. Note: `deployment.environment` is also defaulted from `CIMMERIA_DEPLOY_ENV` below; this env var overrides it via the SDK's resource merge. |
 //! | `OTEL_TRACES_SAMPLER` | `always_on` | `always_on`, `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
 //! | `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` on every span/log/metric resource. Typical values: `dev`, `staging`, `colo`. SigNoz dashboards split aggregates on this so colo production data isn't polluted by dev-laptop noise. |
-//! | `CIMMERIA_LAB_MCP_BIND` | unset | Bind address for the live-research-lab MCP endpoint (issue #687), e.g. `127.0.0.1:8451`. **No default** — the endpoint stays OFF unless this *and* `CIMMERIA_LAB_MCP_TOKEN` are both set. It runs on its OWN `TcpListener`, never on the admin API router (which binds all interfaces with no auth). Keep it off player-facing interfaces. |
+//! | `CIMMERIA_LAB_MCP_BIND` | unset | Bind address for the live-research-lab MCP endpoint (issue #687), e.g. `127.0.0.1:8451`. **No default** — the endpoint stays OFF unless this *and* `CIMMERIA_LAB_MCP_TOKEN` are both set. It runs on its OWN `TcpListener`, never on the admin API router (which defaults to loopback but still has no auth until JWT lands). Keep it off player-facing interfaces. |
 //! | `CIMMERIA_LAB_MCP_TOKEN` | unset | Shared bearer token for the lab MCP endpoint. Must be **≥32 bytes** or the endpoint logs an error and refuses to start. Every request must present `Authorization: Bearer <token>` (constant-time compared). |
 //!
 //! # Example
@@ -141,6 +142,7 @@ async fn main() {
     );
 
     let admin_port = config.admin_port;
+    let admin_bind = config.admin_bind.clone();
     // Capture ports for the Discord startup embed before `config` moves
     // into the orchestrator.
     let (auth_port_for_discord, base_port_for_discord, cell_port_for_discord) =
@@ -181,7 +183,7 @@ async fn main() {
         login_tx.clone(),
         login_buffer.clone(),
     );
-    let admin_addr = format!("0.0.0.0:{admin_port}");
+    let admin_addr = format!("{admin_bind}:{admin_port}");
     let admin_listener = match tokio::net::TcpListener::bind(&admin_addr).await {
         Ok(listener) => {
             tracing::info!(addr = %admin_addr, "Admin API listening");
@@ -376,6 +378,9 @@ fn config_from_env() -> ServerConfig {
         if let Ok(p) = v.parse() {
             cfg.admin_port = p;
         }
+    }
+    if let Ok(v) = std::env::var("ADMIN_BIND") {
+        cfg.admin_bind = v;
     }
     if let Ok(v) = std::env::var("DB_URL") {
         cfg.db_connection_string = v;
