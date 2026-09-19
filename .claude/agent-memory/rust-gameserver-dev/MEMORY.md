@@ -54,6 +54,10 @@
 - [player-loaded-edge-trigger-race.md](player-loaded-edge-trigger-race.md) — a `player_loaded`/`enter_region` chain gated on a state NEVER fires for the player who was already inside when the gate opened; fix with a second trigger row on the state-change event.
 - [chain-replay-trigger-param-vacuity.md](chain-replay-trigger-param-vacuity.md) — a hand-built `TriggerEvent` missing `dialog_id`/`item_id`/`entity_tag` matches NOTHING, so every negative assertion passes on a trigger miss.
 
+## Mission persistence
+
+- [mission-persist-hydrate-roundtrip.md](mission-persist-hydrate-roundtrip.md) — **read before touching mission save/restore.** One serializer (`missions/persist.rs`) + one hydrator (`player_init/mission_restore.rs`); the roster is rebuilt from `resources.mission_objectives` (self-heals pre-#657 rows, and there are NO migrations); `complete_objective` returns bool so a no-op cannot fake a live executor arm; the hand-built-fixture trap that let #657 survive.
+
 ## Stats / entity systems
 
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
