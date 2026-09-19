@@ -40,7 +40,8 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| SmartFoxServer 1.x host | DONE | `minigame/server/` (`mod.rs` lifecycle, `framing.rs`, `handshake.rs`, `result_dispatch.rs`) + `protocol.rs` |
+| SmartFoxServer 1.x host | DONE | `minigame/server/` (`mod.rs` lifecycle, `admission.rs`, `framing.rs`, `handshake.rs`, `result_dispatch.rs`) + `protocol.rs` |
+| Connection admission | DONE | Connection cap (256) and a 15 s handshake deadline on the public port. See [Connection admission](#connection-admission) |
 | Session / ticket registry | DONE | `minigame/session.rs`; ticket carries seed, difficulty, and the victory chains |
 | Session expiry | DONE | A registered session whose SWF never connects is swept after `PENDING_SESSION_TTL` (180 s). See [Session lifecycle](#session-lifecycle) |
 | Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome |
@@ -168,6 +169,50 @@ two client-driven RPCs instead — `endMinigameForPlayer` and
 those through to `SessionRegistry::remove` is the faithful fix; the TTL
 still earns its place afterwards for the case the original had no answer to
 either, a client that crashes without sending anything.
+
+## Connection admission
+
+The SmartFox port is internet-facing, and every peer is anonymous until its
+ticket checks out. `server/admission.rs` puts two limits in front of the
+handshake:
+
+- **Connection cap.** At most `MAX_CONNECTIONS` (256) sockets are served at
+  once. The next one is closed as soon as it is accepted, so it never gets a
+  task or a read buffer. A slot is freed when its connection task ends, on
+  every exit path. Real demand is at most one socket per online player,
+  because a session is one per entity and its room is `maxu='1'`.
+- **Handshake deadline.** A connection must finish both `verChk` and ticket
+  login within `HANDSHAKE_TIMEOUT` (15 s) of being accepted. This is one
+  deadline for the whole handshake, not a timeout per read, so a client that
+  trickles one byte at a time cannot keep resetting it. The client does all
+  its slow work (the pre-game dialog, loading the SWF) before it connects, so
+  a real player completes the handshake almost at once. The game loop after
+  login is not bound by the deadline: a player may stay on a board for as
+  long as the game's own timer allows.
+
+Everything an anonymous peer can trigger before login is logged at DEBUG,
+with the peer address and a `reason` field (`handshake_timeout`,
+`expected_verchk`, `expected_login`, `bad_api_version`). WARN events are
+forwarded to Discord, so a port scanner must not post there. Refusals at the
+cap are the exception: they warn at most once a minute under
+`reason = "connection_cap"`, with a count of the connections refused since
+the last warning.
+
+Neither limit is a port of the original. Its reads had no timeout and it
+had no connection cap (`deprecated/cpp/src/baseapp/minigame_connection.cpp`).
+The in-band cross-domain policy still sends `domain='*'`, byte for byte as
+the original did. It is sent in reply to `verChk`, after the socket is
+already open, so it controls nothing.
+
+Not yet covered:
+
+- **No per-IP limit.** A single host that reconnects fast enough can keep
+  every slot busy. Dev setups often run several clients from one IP, so a
+  per-IP limit needs a design decision first.
+- **No TCP keepalive.** A client that crashes without closing its
+  connection keeps its entity's session slot occupied, just as it did in the
+  original. The faithful fix is the client cleanup RPCs listed under
+  [Session lifecycle](#session-lifecycle).
 
 ### Result codes
 

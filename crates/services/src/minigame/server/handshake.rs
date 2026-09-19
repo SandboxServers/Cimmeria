@@ -3,8 +3,22 @@
 //! Both run before the session belongs to a connection task, so a failure
 //! here just drops the socket — there is nothing registered to clean up
 //! yet. Everything after login lives in [`super::run_session`].
+//!
+//! Every read here is bounded by one deadline shared across both phases.
+//! The port is public and the peer is anonymous until the ticket checks
+//! out, so a client that connects and then stalls — or trickles a byte at a
+//! time — must lose its socket rather than pin a task and a buffer. The
+//! deadline covers the whole handshake, not each read, so a trickle cannot
+//! keep resetting it.
+//!
+//! For the same reason every rejection here logs at DEBUG: an anonymous
+//! scanner is expected noise on a public port, and WARN events are
+//! forwarded to Discord.
+
+use std::net::SocketAddr;
 
 use tokio::net::TcpStream;
+use tokio::time::Instant;
 
 use super::framing::{read_null_terminated, send_null_terminated};
 use crate::minigame::game::{create_game, MinigameInstance};
@@ -14,6 +28,29 @@ use crate::minigame::session::{MinigameSession, SessionRegistry};
 /// SmartFoxServer API version the original SWFs were built against.
 const API_VERSION: u32 = 154;
 
+/// Read the next handshake frame, giving up at `deadline`.
+async fn read_handshake_frame(
+    stream: &mut TcpStream,
+    buf: &mut [u8],
+    buf_len: &mut usize,
+    deadline: Instant,
+    peer: SocketAddr,
+) -> Option<String> {
+    match tokio::time::timeout_at(deadline, read_null_terminated(stream, buf, buf_len)).await {
+        Ok(frame) => frame,
+        Err(_) => {
+            // Debug, not warn: an idle probe on a public port is expected
+            // noise, and warn would forward every one to Discord.
+            tracing::debug!(
+                %peer,
+                reason = "handshake_timeout",
+                "Minigame handshake timed out; dropping connection"
+            );
+            None
+        }
+    }
+}
+
 /// Phase 1 — answer `verChk` with the Flash cross-domain policy and
 /// `apiOK`, returning the version the client claimed.
 pub(super) async fn read_and_handle_version(
@@ -21,8 +58,10 @@ pub(super) async fn read_and_handle_version(
     buf: &mut [u8],
     buf_len: &mut usize,
     external_port: u16,
+    deadline: Instant,
+    peer: SocketAddr,
 ) -> Option<u32> {
-    let msg = read_null_terminated(stream, buf, buf_len).await?;
+    let msg = read_handshake_frame(stream, buf, buf_len, deadline, peer).await?;
     let parsed = protocol::parse_message(&msg)?;
 
     match parsed {
@@ -40,7 +79,7 @@ pub(super) async fn read_and_handle_version(
             Some(version)
         }
         _ => {
-            tracing::warn!("Expected verChk, got something else");
+            tracing::debug!(%peer, reason = "expected_verchk", "Minigame handshake: expected verChk");
             None
         }
     }
@@ -55,8 +94,10 @@ pub(super) async fn read_and_handle_login(
     buf_len: &mut usize,
     api_version: u32,
     registry: &SessionRegistry,
+    deadline: Instant,
+    peer: SocketAddr,
 ) -> Option<(MinigameSession, Box<dyn MinigameInstance>)> {
-    let msg = read_null_terminated(stream, buf, buf_len).await?;
+    let msg = read_handshake_frame(stream, buf, buf_len, deadline, peer).await?;
     let parsed = protocol::parse_message(&msg)?;
 
     match parsed {
@@ -71,7 +112,13 @@ pub(super) async fn read_and_handle_login(
                     "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
                 );
                 let _ = send_null_terminated(stream, &fail).await;
-                tracing::warn!(api_version, expected = API_VERSION, "Bad API version");
+                tracing::debug!(
+                    %peer,
+                    api_version,
+                    expected = API_VERSION,
+                    reason = "bad_api_version",
+                    "Minigame handshake: bad API version"
+                );
                 return None;
             }
 
@@ -106,7 +153,7 @@ pub(super) async fn read_and_handle_login(
             Some((session, game.unwrap()))
         }
         _ => {
-            tracing::warn!("Expected login, got something else");
+            tracing::debug!(%peer, reason = "expected_login", "Minigame handshake: expected login");
             None
         }
     }

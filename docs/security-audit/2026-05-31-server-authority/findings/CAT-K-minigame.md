@@ -23,7 +23,12 @@
 >   ticket authenticates an unbounded number of concurrent connections
 >   until `remove()` is called. The comparison `session.ticket != password`
 >   (`session.rs:107`) is a variable-time `String` compare.
-> - **Minigame SFS DoS (→ #532): STILL OPEN.** The accept loop
+> - **Minigame SFS DoS (→ #532): FIXED (2026-09-19)** for the connection
+>   cap and the handshake read deadline — see `minigame/server/admission.rs`
+>   and [minigame-system.md § Connection admission](../../../gameplay/minigame-system.md#connection-admission).
+>   There is still no per-IP limit. The original 2026-07-25 finding follows,
+>   and its `server.rs` paths predate the split into `server/`:
+>   The accept loop
 >   (`crates/services/src/minigame/server.rs:89-101`) spawns a task per
 >   connection with **no connection cap, no per-IP limit, and no accept
 >   rate limit**, and `handle_connection` (`server.rs:104-128`) applies
