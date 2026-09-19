@@ -67,14 +67,54 @@ pub enum Action {
         position: [f32; 3],
     },
 
-    /// Spawn a new entity from a template at the given position.
+    /// Spawn a mission-scoped NPC from an `entity_templates` row into the
+    /// **acting player's current space**, tagged so `entity_dead_tag` /
+    /// `interact_tag` chains can find it again.
+    ///
+    /// The space is never named by the seed row: a chain authored for a
+    /// per-player instance (Harset Market / Storage, Castle Cellblock) has
+    /// no way to know which instance the firing player is in, and naming a
+    /// world would let the same row populate somebody else's copy. The
+    /// executor reads the space off the triggering entity instead.
+    ///
+    /// `allow_shared` is the escape hatch for the refusal that follows from
+    /// that: spawning into a *non-instanced* world drops a mission NPC into
+    /// the shared hub where every other player sees it (and, for a hostile,
+    /// gets attacked by it). Mission content must not be able to do that by
+    /// accident, so the executor refuses unless the author opts in.
+    ///
+    /// `is_stationary` / `aggression` complete the spawn descriptor.
+    /// Neither has an `entity_templates` column — `is_stationary` lives on
+    /// `spawnlist` and aggression is a pure runtime field — so `None` means
+    /// "off" rather than "inherit".
+    ///
+    /// There is deliberately **no `respawn_secs`**. A content-scoped spawn
+    /// is always one-shot (the respawn tick has no instance-lifetime
+    /// awareness, and a revived mission NPC would re-fire its
+    /// `entity_dead_tag` chain), so the field was parsed, carried here,
+    /// threaded through the executor and then unconditionally discarded. A
+    /// seed row that supplies it still loads; the loader warns once with
+    /// `reason = "respawn_secs_not_honoured"` (PR #662 review, finding 5).
     SpawnEntity {
         template_id: i32,
         position: [f32; 3],
+        /// Yaw in radians, matching `spawnlist.heading`.
+        heading: f32,
+        /// `spawnlist.tag` equivalent. Mandatory: an untagged mission spawn
+        /// can never be despawned, killed-by-tag or interacted with, and the
+        /// idempotence guard keys on it.
+        tag: String,
+        is_stationary: Option<bool>,
+        aggression: Option<i32>,
+        /// Opt in to spawning into a non-instanced (shared) world.
+        allow_shared: Option<bool>,
     },
 
-    /// Despawn the target entity (from context).
-    DespawnEntity,
+    /// Despawn the tagged entity: fan `LeftAoI` to every current witness,
+    /// scrub the witness sets, then destroy. The counterpart to
+    /// [`Action::SpawnEntity`]; [`Action::DestroyTaggedEntity`] is the
+    /// older spelling of the same behaviour and routes identically.
+    DespawnEntity { entity_tag: String },
 
     /// Open a dialog set for the source entity (player).
     StartDialog { dialog_set_id: i32 },
@@ -252,7 +292,10 @@ pub enum Action {
         state: NpcAiStateAction,
     },
 
-    /// Destroy a tagged entity (remove from world).
+    /// Destroy a tagged entity (remove from world). Alias of
+    /// [`Action::DespawnEntity`] — both execute the same witness-scrubbing
+    /// despawn. Kept as a separate variant because `destroy_entity` is the
+    /// spelling already in the seed.
     DestroyTaggedEntity { entity_tag: String },
 
     /// Activate a transporter to move the player to a region.

@@ -91,6 +91,75 @@ impl SpaceManager {
         self.spawn_npc_from_record_into(entity_id, record, space_id)
     }
 
+    /// Spawn a **mission-scoped** NPC from a cached `entity_templates`
+    /// prototype into a specific space, applying the per-spawn overrides a
+    /// content `spawn_entity` action carries.
+    ///
+    /// Returns the new NPC's entity id (the caller does not allocate it —
+    /// keeping the allocation in here means a failed template lookup can't
+    /// burn an id).
+    ///
+    /// # Why `respawn_secs` is forced to `None`
+    ///
+    /// Not defensiveness — a correctness requirement. `npc_respawn_tick`
+    /// selects purely on `ai_state == Dead && respawn_at <= now`, and
+    /// `mark_npc_dead` stamps `respawn_at` from `entity.respawn_secs`.
+    /// Neither consults `spawn_id`, so the `-1` non-DB sentinel gives no
+    /// protection at all (the comment on the GM path that credits the
+    /// sentinel is describing the right behaviour via the wrong mechanism —
+    /// its `respawn_secs: None` is doing all the work).
+    ///
+    /// A revived mission NPC re-fires its `entity_dead_tag` chain, so a
+    /// kill objective can complete twice. That is worse than no respawn, and
+    /// the template's own `respawn_secs` would opt every mission spawn into
+    /// it *silently* — hence the unconditional override rather than a
+    /// "only if the action didn't ask" one. Content-scoped respawn needs
+    /// instance-lifetime awareness in the respawn tick and is a recorded gap.
+    pub fn spawn_npc_from_template(
+        &mut self,
+        template_id: i32,
+        space_id: u32,
+        world_name: &str,
+        position: [f32; 3],
+        heading: f32,
+        tag: &str,
+        is_stationary: bool,
+        aggression: i32,
+    ) -> Result<u32, String> {
+        let Some(prototype) = self.spawn_templates.get(&template_id) else {
+            return Err(format!(
+                "template {template_id} not in the entity_templates cache"
+            ));
+        };
+        let mut record = prototype.clone();
+        record.world_name = world_name.to_string();
+        record.x = position[0];
+        record.y = position[1];
+        record.z = position[2];
+        record.heading = heading;
+        record.tag = Some(tag.to_string());
+        record.is_stationary = is_stationary;
+        record.respawn_secs = None;
+
+        let entity_id = self.allocate_npc_id();
+        self.spawn_npc_from_record_into(entity_id, &record, space_id)?;
+
+        // `aggression` has no `SpawnRecord` / `entity_templates` field — it
+        // is a pure runtime `CellEntity` value, the same one
+        // `Action::SetAggression` writes. Set it here rather than making
+        // content author a second action, so the NPC is hostile from the
+        // first AI tick instead of the second.
+        //
+        // No ordering hazard: the AI tick runs from the cell message loop
+        // on the same task, and this whole function holds `&mut self`.
+        if aggression != 0 {
+            if let Some(e) = self.get_entity_mut(entity_id) {
+                e.aggression = aggression;
+            }
+        }
+        Ok(entity_id)
+    }
+
     /// Internal: spawn an NPC from a record into a given space_id.
     fn spawn_npc_from_record_into(
         &mut self,

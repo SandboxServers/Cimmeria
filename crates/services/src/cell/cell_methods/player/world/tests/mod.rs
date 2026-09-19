@@ -118,6 +118,8 @@ async fn entering_a_stargate_region_with_an_open_dial_travels() {
             y: 2.0,
             z: 3.0,
             yaw: 0.5,
+            address_origin: 18,
+            arrival: None,
             event_set_id: None,
         },
     );
@@ -191,6 +193,8 @@ async fn exiting_a_stargate_region_does_not_travel() {
             y: 2.0,
             z: 3.0,
             yaw: 0.5,
+            address_origin: 18,
+            arrival: None,
             event_set_id: None,
         },
     );

@@ -2,6 +2,8 @@
 //! associated `parse_comparison_op` / `parse_mission_status` /
 //! `parse_step_status` helpers.
 
+use tracing::warn;
+
 use crate::conditions::{ComparisonOp, Condition, MissionStatusValue, StepStatusValue};
 
 use super::DbConditionRow;
@@ -64,6 +66,35 @@ pub(super) fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
             // operator that the evaluator can't honor.
             let stat_id = row.target_id?;
             Some(Condition::StatBelowMax { stat_id })
+        }
+        "world" => {
+            // `target_id` carries the numeric `resources.worlds.world_id`,
+            // matching `stat_below_max` (id in the typed integer column)
+            // rather than `archetype` (id parsed out of the `value` text).
+            // A world id is a foreign key, not a free-form value, so it
+            // belongs in the integer column where a bad value fails at
+            // insert time instead of silently dropping the condition row.
+            let world_id = row.target_id?;
+            // Ordered operators are meaningless on an opaque id — gating on
+            // id adjacency (`Harset`=57 < `Harset_CmdCenter`=68) is never
+            // what an author meant. Warn, but still build the condition:
+            // returning `None` here would make `build_chains_from_rows`
+            // drop the row and leave the chain *ungated*, so a typo'd
+            // operator would fire a door teleport in every world. The
+            // evaluator answers `false` for ordered ops, so the chain fails
+            // closed instead.
+            if !matches!(op, ComparisonOp::Eq | ComparisonOp::Neq) {
+                warn!(
+                    chain_id = row.chain_id,
+                    operator = %row.operator,
+                    world_id,
+                    "world condition only supports eq/neq — this row will never match",
+                );
+            }
+            Some(Condition::World {
+                operator: op,
+                world_id,
+            })
         }
         _ => None,
     }

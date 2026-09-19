@@ -1,6 +1,6 @@
 # Abilities + Effects System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **Audience**: Engineers touching combat / abilities / effects on the cell
 > **Type**: ADR + reference
 > **Owner**: Combat systems
@@ -266,6 +266,63 @@ door.
 **Code:** [`crates/services/src/cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
 dispatched from [`executor/mod.rs`](../../crates/services/src/cell/content/executor/mod.rs).
 
+### 17. `entity_health_below` samples at the damage seams and drains at the engine holders
+
+**Decision:** `pct_before` is sampled inside the two health-application seams —
+[`abilities/damage_apply`](../../crates/services/src/cell/abilities/damage_apply/) (single
+target, AoE secondary, cone secondary, and the effect scripts it dispatches) and
+[`effects/pulsing/tick.rs`](../../crates/services/src/cell/effects/pulsing/tick.rs)
+(`fire_pulse`) — by
+[`combat::note_pre_damage_health`](../../crates/services/src/cell/combat/damage_credit.rs),
+which queues it on the `SpaceManager`. The callers that *do* hold a `&ChainEngine` drain the
+queue immediately after the hit via `content::fire_pending_health_below`: the kill-credit
+wrapper, the `useAbilityOnGroundTarget` handler, the pulse tick, and a per-tick safety drain
+in the cell message loop. The pure percentage arithmetic lives in
+[`cell/combat/health_threshold.rs`](../../crates/services/src/cell/combat/health_threshold.rs).
+
+**Why a queue rather than a threaded handle.** The trigger needs three things at once: the
+target's health on **both** sides of the hit, the attacking player as the acting entity, and
+a `&ChainEngine`. The seams have the first two and must not grow the third —
+`apply_damage_to_target` is reused by NPC AI, and threading a content handle through the
+damage stack would put the content engine in the middle of combat resolution. The queue is
+the same scratchpad shape the cone path already uses for kill credit
+(`CellEntity::last_aoe_deaths`, decision 13).
+
+**Why not at the kill-credit wrapper.** That is where this originally lived (Harset H04), and
+it covered the single-target player path only. Because the predicate is a stateless downward
+band, a crossing made on any *other* path is lost **forever** rather than merely late: every
+later hit arrives with `pct_before <= threshold`, so the band can never be satisfied again
+short of a heal. Missing a sample is therefore not a gap in coverage but a permanent
+disarming of the chain — which is why the sample has to sit at the seam every path shares.
+
+**Death is read from `BSF_DEAD`, not `health.cur <= 0`.** This is the load-bearing detail.
+An effect script runs after the NVP damage path and outside its `target_died` guard, so a
+heal script on a killing blow can leave a corpse sitting at positive health. A health-based
+liveness check would then fire a threshold chain on that corpse. The dispatcher
+(`fire_health_below_for_hit`) drops any hit whose target ends dead, keeping the zero-health
+check alongside the flag for an entity that is at zero but not yet marked. The `!just_died`
+branch in the wrapper is defence in depth, not the enforcement — the authority is at the
+dispatcher, at the one place that knows the hit was lethal.
+
+**A DoT kill is a real kill.** Closing the pulse gap exposed a second one: `fire_pulse`
+writes the HEALTH stat directly, so none of `apply_damage_to_target`'s death machinery ran.
+A mob finished by a tick sat at zero health, never flipped `BSF_DEAD`, dropped no loot and
+fired no `entity_dead_tag` — a kill-count mission stalled whenever the killing blow happened
+to be a tick rather than a shot. The pulse tick now routes through the canonical
+`abilities::kill_npc_out_of_band` (the GM-kill primitive, renamed and given an
+`attacker_is_player` flag) and then fires `EntityDeath` for the effect's invoker. Ordering is
+load-bearing: death first, threshold drain second, so the corpse already carries `BSF_DEAD`
+when the dispatcher decides whether to suppress the threshold chain.
+
+**Death is still read from `BSF_DEAD`, not `health.cur <= 0`** — see below; the exclusivity
+contract ("exactly one of `entity_dead_tag` and `entity_health_below` per hit") now holds on
+the pulse and AoE paths too.
+
+**Reversibility:** Moderate. The queue is one `Vec` on `SpaceManager` and two call sites; a
+future path that mutates health without going through either seam needs its own
+`note_pre_damage_health` call, and the per-tick safety drain bounds how long a sample from a
+forgotten drain site can sit unfired.
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:
@@ -282,4 +339,5 @@ These were considered and deliberately deferred:
 - [`state-field-bits.md`](state-field-bits.md) — the `BSF_*` bit catalog
 - [`negative-logging-convention.md`](negative-logging-convention.md) — the observability discipline applied across the effect dispatcher
 - [`docs/game-systems.md`](../game-systems.md) — top-level systems overview (abilities + effects section gets updated alongside this ADR)
+- [`docs/content/content-engine.md`](../content/content-engine.md) — the `entity_health_below` trigger's authoring shape and band-test semantics (decision 17), and the `launch_ability` / `apply_effect` action rows (decision 16)
 - [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md) — `onTimerUpdate` (12), `onEffectResults` (14), `onKnownAbilitiesUpdate` (101)

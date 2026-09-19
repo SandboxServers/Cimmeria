@@ -17,6 +17,58 @@ use crate::cell::messages::CellToBaseMsg;
 
 use super::{handle_initial_response, handle_interact};
 
+/// Routing guard: right-clicking a DHD prop must reach the DHD branch and
+/// claim the interaction, not fall through to the generic static-type
+/// dispatch (which for a prop with no `interaction_type` is a silent
+/// no-op — exactly the "the DHD does nothing" symptom of audit defect
+/// H-B2). The byte-exact wire assertions live in
+/// `crate::cell::interactions::dhd`.
+#[tokio::test]
+async fn interact_on_a_dhd_prop_routes_to_on_display_dhd() {
+    use cimmeria_entity::interaction_flags::INT_DHD;
+
+    let mut mgr = crate::test_support::make_space_manager();
+    mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let dhd_id = mgr.allocate_npc_id();
+    mgr.spawn_npc(dhd_id, "Agnos", [1.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(prop) = mgr.get_entity_mut(dhd_id) {
+        prop.interaction_type_flags = INT_DHD;
+        // A DHD prop carries no dialog: pre-H01 this interaction dead-ended.
+        prop.interaction_type = None;
+    }
+    mgr.stargates.insert(
+        15,
+        crate::cell::spawner::StargateEntry {
+            world_name: "Agnos".to_string(),
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            yaw: 0.0,
+            address_origin: 15,
+            arrival: None,
+            event_set_id: None,
+        },
+    );
+
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(
+        handle_interact(1, dhd_id, &tx, &mut mgr).await.is_none(),
+        "the DHD branch opens no dialog"
+    );
+
+    let mut saw_dhd = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+            if method_index == crate::cell::client_methods::player::ON_DISPLAY_DHD {
+                saw_dhd = true;
+            }
+        }
+    }
+    assert!(saw_dhd, "expected onDisplayDHD (120)");
+}
+
 #[tokio::test]
 async fn interact_requires_target_in_range() {
     // Create a space manager with entities

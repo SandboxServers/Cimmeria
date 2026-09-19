@@ -3,6 +3,9 @@
 //! Conditions gate whether a chain's actions execute. All conditions on a chain
 //! must evaluate to `true` (logical AND) for the action list to run.
 
+#[cfg(test)]
+mod tests;
+
 use serde::{Deserialize, Serialize};
 
 use crate::context::ExecutionContext;
@@ -92,6 +95,34 @@ pub enum Condition {
     /// if either param is missing — fail-closed so a wiring mistake
     /// can't accidentally make consumables free-to-spam at full stat.
     StatBelowMax { stat_id: i32 },
+
+    /// True iff the acting player's current world matches `world_id` under
+    /// `operator`. `world_id` is `resources.worlds.world_id` — the same id
+    /// space `spawnlist`, `stargates` and `ring_transport_regions` use;
+    /// `entities/spaces.xml` maps the id's world name to its bounds.
+    ///
+    /// Reads the typed [`ExecutionContext::world_id`] field, *not* a
+    /// `params` key: the value is resolved from the player's space by the
+    /// services-side populator, and a typed field makes "nobody populated
+    /// it" distinguishable from "populated with 0".
+    ///
+    /// Exists because no trigger carries the world. `OnRegionEnter` matches
+    /// a bare `point_sets.name` string, so two worlds that both contain a
+    /// region called `X.CommandCenterTransition` fire the same chain, and
+    /// `OnPlayerLoaded`'s optional `world_name` filter is the only other
+    /// world-aware primitive in the engine. A `world` condition lets any
+    /// chain — region, player_loaded, interact, death — be zone-scoped.
+    ///
+    /// **Fail-closed** when `ctx.world_id` is `None`, for *every* operator
+    /// including `Neq`: an unpopulated context means we do not know where
+    /// the player is, and firing a door teleport in the wrong world is the
+    /// exact bug class this condition was added to prevent. An author who
+    /// wants "anywhere but Harset" still writes `neq 57`, which holds
+    /// wherever the populator ran.
+    World {
+        operator: ComparisonOp,
+        world_id: i32,
+    },
 }
 
 /// Faction relationship levels.
@@ -266,7 +297,36 @@ impl Condition {
                     _ => false,
                 }
             }
+            Condition::World { operator, world_id } => {
+                let Some(actual) = ctx.world_id else {
+                    // Fail-closed for every operator. A dispatcher that
+                    // forgot `populate_world_context` must not make a
+                    // world-gated chain fire everywhere — that is the
+                    // `OnRegionEnter`-ignores-world bug the condition
+                    // exists to close.
+                    tracing::debug!(
+                        expected_world_id = world_id,
+                        "Condition::World evaluated against a context with no world_id — \
+                         failing closed; the firing dispatcher did not populate it"
+                    );
+                    return false;
+                };
+                compare_world_id(actual, *world_id, operator)
+            }
         }
+    }
+}
+
+/// Compare two world ids. Only `Eq` and `Neq` are meaningful — a world id
+/// is an opaque identifier, not a scale, so `world gt 57` has no sane
+/// meaning and answers `false` rather than "Harset_CmdCenter (68) is
+/// greater than Harset (57)". The loader keeps such a row (dropping it
+/// would leave the chain ungated) but warns at load time.
+fn compare_world_id(actual: i32, expected: i32, op: &ComparisonOp) -> bool {
+    match op {
+        ComparisonOp::Eq => actual == expected,
+        ComparisonOp::Neq => actual != expected,
+        _ => false,
     }
 }
 
@@ -288,221 +348,5 @@ fn compare_i64(actual: i64, expected: i64, op: &ComparisonOp) -> bool {
         ComparisonOp::Lte => actual <= expected,
         ComparisonOp::Gt => actual > expected,
         ComparisonOp::Lt => actual < expected,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::context::ExecutionContext;
-
-    #[test]
-    fn faction_relation_serialization_roundtrip() {
-        let relations = vec![
-            FactionRelation::Friendly,
-            FactionRelation::Neutral,
-            FactionRelation::Hostile,
-        ];
-        for rel in &relations {
-            let json = serde_json::to_string(rel).unwrap();
-            let deserialized: FactionRelation = serde_json::from_str(&json).unwrap();
-            assert_eq!(*rel, deserialized);
-        }
-    }
-
-    #[test]
-    fn condition_serialization_roundtrip() {
-        let condition = Condition::PropertyEquals {
-            property: "health".to_string(),
-            value: serde_json::json!(100),
-        };
-        let json = serde_json::to_string(&condition).unwrap();
-        let deserialized: Condition = serde_json::from_str(&json).unwrap();
-        let _ = format!("{:?}", deserialized);
-    }
-
-    #[test]
-    fn has_item_condition_serialization() {
-        let condition = Condition::HasItem {
-            item_id: 42,
-            min_count: Some(3),
-        };
-        let json = serde_json::to_string(&condition).unwrap();
-        assert!(json.contains("42"));
-        assert!(json.contains("3"));
-    }
-
-    #[test]
-    fn mission_status_eq_not_active() {
-        let condition = Condition::MissionStatus {
-            mission_id: 622,
-            operator: ComparisonOp::Eq,
-            expected_status: MissionStatusValue::NotActive,
-        };
-        let ctx = ExecutionContext::new();
-        // No param set → defaults to "not_active"
-        assert!(condition.evaluate(&ctx));
-    }
-
-    #[test]
-    fn mission_status_neq_active() {
-        let condition = Condition::MissionStatus {
-            mission_id: 622,
-            operator: ComparisonOp::Neq,
-            expected_status: MissionStatusValue::Active,
-        };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param(
-            "mission_622_status".to_string(),
-            serde_json::json!("not_active"),
-        );
-        assert!(condition.evaluate(&ctx));
-    }
-
-    #[test]
-    fn step_status_active() {
-        let condition = Condition::StepStatus {
-            mission_id: 638,
-            step_id: 2114,
-            operator: ComparisonOp::Eq,
-            expected_status: StepStatusValue::Active,
-        };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param(
-            "mission_638_step_2114_status".to_string(),
-            serde_json::json!("active"),
-        );
-        assert!(condition.evaluate(&ctx));
-    }
-
-    /// `StepStatusValue::Completed` lets a chain check whether a step has
-    /// already been advanced past, distinct from "step never reached"
-    /// (the unwrap_or("not_active") fallback). Population is the
-    /// populator's job in `services::cell::content::mission_context`;
-    /// this test only pins the comparison rule.
-    #[test]
-    fn step_status_completed() {
-        let condition = Condition::StepStatus {
-            mission_id: 641,
-            step_id: 2121,
-            operator: ComparisonOp::Eq,
-            expected_status: StepStatusValue::Completed,
-        };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param(
-            "mission_641_step_2121_status".to_string(),
-            serde_json::json!("completed"),
-        );
-        assert!(condition.evaluate(&ctx));
-
-        // Same step, but populator hasn't fired yet → param missing →
-        // evaluator falls back to "not_active" → `eq completed` must be false.
-        let empty = ExecutionContext::new();
-        assert!(!condition.evaluate(&empty));
-    }
-
-    /// A step that's currently active is NOT completed. Locks down the
-    /// "active overrides completed if both somehow set" behaviour at the
-    /// evaluator level — population order in `mission_context.rs` writes
-    /// `active` last so it wins, and this test pins that the comparator
-    /// doesn't accidentally treat them as equivalent.
-    #[test]
-    fn step_status_active_is_not_completed() {
-        let condition = Condition::StepStatus {
-            mission_id: 641,
-            step_id: 3563,
-            operator: ComparisonOp::Eq,
-            expected_status: StepStatusValue::Completed,
-        };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param(
-            "mission_641_step_3563_status".to_string(),
-            serde_json::json!("active"),
-        );
-        assert!(!condition.evaluate(&ctx));
-    }
-
-    #[test]
-    fn archetype_eq() {
-        let condition = Condition::Archetype {
-            operator: ComparisonOp::Eq,
-            archetype_id: 8,
-        };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param("archetype".to_string(), serde_json::json!(8));
-        assert!(condition.evaluate(&ctx));
-    }
-
-    #[test]
-    fn archetype_neq() {
-        let condition = Condition::Archetype {
-            operator: ComparisonOp::Neq,
-            archetype_id: 8,
-        };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param("archetype".to_string(), serde_json::json!(3));
-        assert!(condition.evaluate(&ctx));
-    }
-
-    #[test]
-    fn counter_gte() {
-        let condition = Condition::Counter {
-            counter_name: "hallway01_kills".to_string(),
-            operator: ComparisonOp::Gte,
-            value: 3,
-        };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param("counter_hallway01_kills".to_string(), serde_json::json!(3));
-        assert!(condition.evaluate(&ctx));
-
-        ctx.set_param("counter_hallway01_kills".to_string(), serde_json::json!(2));
-        assert!(!condition.evaluate(&ctx));
-    }
-
-    /// `Condition::StatBelowMax` — pin the headroom semantics that gate
-    /// consumable chains. Slappack chain 4001 (`stat_below_max stat_id 7`)
-    /// relies on three branches: cur < max → fire (heal lands), cur == max
-    /// → no-op (chain doesn't fire, stack preserved), and missing populator
-    /// → fail-closed (treat as "no headroom" so a wiring mistake doesn't
-    /// silently make consumables free at full stat).
-    #[test]
-    fn stat_below_max_fires_when_cur_below_max() {
-        let condition = Condition::StatBelowMax { stat_id: 7 };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(50));
-        ctx.set_param("stat_7_max".to_string(), serde_json::json!(100));
-        assert!(condition.evaluate(&ctx));
-    }
-
-    #[test]
-    fn stat_below_max_blocks_when_cur_equals_max() {
-        let condition = Condition::StatBelowMax { stat_id: 7 };
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(100));
-        ctx.set_param("stat_7_max".to_string(), serde_json::json!(100));
-        assert!(
-            !condition.evaluate(&ctx),
-            "at full stat the chain must NOT fire — burning a slappack at \
-             full HP is the bug class this gates against",
-        );
-    }
-
-    #[test]
-    fn stat_below_max_fails_closed_on_missing_params() {
-        let condition = Condition::StatBelowMax { stat_id: 7 };
-
-        // Empty context — both keys missing.
-        assert!(
-            !condition.evaluate(&ExecutionContext::new()),
-            "missing populator must fail closed; otherwise a wiring mistake \
-             that drops `populate_stats_context` makes consumables free at \
-             full stat",
-        );
-
-        // Half-populated context — only `cur` set, `max` missing. Same
-        // fail-closed branch.
-        let mut partial = ExecutionContext::new();
-        partial.set_param("stat_7_cur".to_string(), serde_json::json!(50));
-        assert!(!condition.evaluate(&partial));
     }
 }

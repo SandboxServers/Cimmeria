@@ -2,12 +2,12 @@
 title: "Space Management"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Space Management
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **RE Status**: Space/extent data verified against `entities/`; C++ sections describe the
 > deprecated server; BigWorld sections unverifiable in this checkout
 > **Sources**: `entities/cell_spaces.xml`, `entities/spaces.xml`, `data/spaces/`,
@@ -79,6 +79,25 @@ all 24 rows verified against the file 2026-07-25.
 | Tollana_Curia | **yes** | 0 to 200 | 0 to 200 | 200×200 |
 
 Total: 16 persistent (non-instanced) spaces loaded at startup. 8 additional instanced spaces created on demand (24 total defined in `spaces.xml`).
+
+> **`spaces.xml` is the only source of the instancing flag — `worlds.flags` is dead data.**
+> `SpaceManager::is_world_instanced` reads `WorldDef.instanced`, which is parsed from the
+> `Instanced` attribute above ([`space_manager/lifecycle.rs:121`](../../crates/services/src/cell/space_manager/lifecycle.rs#L121)).
+> The `resources.worlds.flags` column is never read by the cell runtime; the only consumer
+> anywhere is the admin-api spaces listing, which selects it for display. Do not reach for
+> it as a substitute. The two disagree today: `Harset_CmdCenter` (world 68) has `flags = 1`
+> but `Instanced="false"`, and treating the column as the instancing bit would turn the
+> shared Command Center — one global Anat for everyone — into a per-player instance.
+> `Harset_Market` (69) and `Harset_StorageRm` (70) happen to agree, and `Harset` (57) has
+> `flags = 0`, so 68 is the row that would flip.
+>
+> **`Harset_Market` has a degenerate AABB.** `spaces.xml` gives world 69 all four bounds as
+> `0`, so its extents are a zero-area box at the origin. This is inert today because
+> `WorldDef.min_x..max_y` are parsed and then never read — movement bounds come from the
+> navmesh when one exists, and from `SpaceBounds::FALLBACK` when it does not, and
+> `Harset_Market` has no `.nav` file. The day those fields are wired into the movement
+> validator, this world rejects every position in it. Fix the XML, not the validator.
+> (Harset audit defect H-B11.)
 
 ### spaces.xml element format
 

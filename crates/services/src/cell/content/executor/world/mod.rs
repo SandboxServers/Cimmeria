@@ -1,5 +1,9 @@
 //! World-mutation action handlers: interaction-type flags, visibility,
-//! destruction, waypoint movement, aggression, threat generation.
+//! waypoint movement, aggression, threat generation.
+//!
+//! Entity destruction is **not** here: `DestroyTaggedEntity` dispatches
+//! straight to [`super::spawn::despawn_by_tag`] alongside
+//! `DespawnEntity`.
 //!
 //! These all locate a target entity by tag and either flip a flag or push
 //! a state change.
@@ -8,7 +12,7 @@ use tokio::sync::mpsc;
 
 use super::transport;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
+use crate::cell::space_manager::SpaceManager;
 
 #[cfg(test)]
 mod tests;
@@ -227,64 +231,6 @@ pub(super) fn set_npc_ai_state(
     }
 }
 
-/// `Action::DestroyTaggedEntity` — remove the tagged entity from the space
-/// and immediately fan `LeftAoI` to every witness.
-///
-/// C08b (2026-09-17): switched from the bare `SpaceManager::destroy_entity`
-/// to `despawn_npc`. The bare call removes the entity from `space.entities`
-/// and the spatial grid but leaves it sitting in every observer's
-/// `witnesses` set — the next AoI tick *would* eventually notice and emit
-/// `LeftAoI`, but only for players the tick happens to visit and only after
-/// up to a full tick of the client rendering a corpse-less ghost (the same
-/// failure shape as issue #582's invisible-corpse bug). `despawn_npc` fans
-/// `LeftAoI` immediately and scrubs the witness sets in the same pass. This
-/// also (silently) fixes chain 1032's `ArmYourself_AmbernolVial` destroy,
-/// which shared the same latent gap.
-pub(super) async fn destroy_tagged_entity(
-    entity_tag: String,
-    entity_id: u32,
-    chain_id: i64,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
-        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for DestroyTaggedEntity");
-        return;
-    };
-    match space_mgr.despawn_npc(target_id, tx).await {
-        DespawnOutcome::Despawned { witnesses_notified } => {
-            tracing::info!(
-                entity_id, %entity_tag, target_id, chain_id, witnesses_notified,
-                "Content: destroying tagged entity"
-            );
-        }
-        DespawnOutcome::RefusedPlayer => {
-            // A tag resolved to a player entity (mistagged content or a
-            // tag collision) -- `despawn_npc` already refused server-side;
-            // WARN so the chain author's target survives loudly rather
-            // than looking like a silent no-op.
-            tracing::warn!(
-                entity_id, %entity_tag, target_id, chain_id,
-                "DestroyTaggedEntity: target resolved to a player entity -- despawn refused"
-            );
-        }
-        DespawnOutcome::NotFound => {
-            // Not actually reachable today: `despawn_npc`'s own
-            // existence checks (`entity_space`/`spaces`/`entities`
-            // lookups) run synchronously before its first `.await`, and
-            // `SpaceManager` is owned exclusively by this single-threaded
-            // cell message loop, so nothing can remove the entity between
-            // the tag lookup above and those checks. Handled defensively
-            // rather than `unreachable!()` in case that invariant ever
-            // changes.
-            tracing::debug!(
-                entity_id, %entity_tag, target_id, chain_id,
-                "DestroyTaggedEntity: despawn_npc reported target not found"
-            );
-        }
-    }
-}
-
 /// `Action::GenerateThreat` — push the player's threat level on the tagged
 /// NPC. If a state-flag transition lands (NPC enters combat), broadcast the
 /// new state to the originating player so the in-combat HUD flips.
@@ -372,8 +318,43 @@ pub(super) async fn generate_threat(
     }
 }
 
-/// `Action::SetVisible` — emit a per-target `onVisible(0|1)` to flip the
-/// client-side visibility bit on the tagged entity.
+/// `Action::SetVisible` — show or hide the tagged entity for everyone
+/// currently witnessing it.
+///
+/// # What this used to do, and why it did nothing (H-B5)
+///
+/// It sent one `CellToBaseMsg::EntityMethodCall` addressed to `target_id`.
+/// Base routes that through `entity_to_addr`, which only ever holds *player*
+/// entries — an NPC id resolves to no address and the message is dropped.
+/// Every seeded `set_visible` row was a silent no-op. The old test asserted
+/// only that the message was constructed, so it passed throughout.
+///
+/// # The asymmetry is deliberate
+///
+/// Hide and show use different primitives, mirroring C++
+/// `ClientHandler::leaveAoI(id, deleteEntity=false)` / `enterAoI`
+/// (`client_handler.cpp:507-528`) and matching
+/// [`crate::cell::ring_transport`]'s `send_visible`:
+///
+/// - **Hide** → `BASEMSG_ENTITY_INVISIBLE (0x0B)` per witness. The engine
+///   does not use `onVisible(0)` for hiding; only `0x0B` works.
+/// - **Show** → entity method `onVisible(1)` per witness, via
+///   [`crate::cell::abilities::send_entity_method_to_witnesses`] (which also
+///   carries `entity_is_player` for wire idbase selection).
+///
+/// Unlike the ring helper this does *not* add the target to the audience:
+/// the ring hides a **player** (who must see their own fade), whereas a
+/// content target is an NPC with no client of its own.
+///
+/// # Known gap: not durable across an AoI re-entry
+///
+/// Neither direction is recorded on the entity, and the AoI create cascade
+/// unconditionally appends `onVisible(1)`
+/// (`crates/services/src/mercury/aoi/create.rs`). A witness who leaves and
+/// re-enters AoI — or connects after the hide — therefore sees a
+/// content-hidden entity. Making it durable needs a `hidden` bit on
+/// `CellEntity` that the create cascade consults, which reaches outside this
+/// packet's owned paths; recorded as a gap in the H03 worknote.
 pub(super) async fn set_visible(
     entity_tag: String,
     visible: bool,
@@ -382,17 +363,52 @@ pub(super) async fn set_visible(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
-        tracing::debug!(entity_id, %entity_tag, target_id, visible, chain_id, "Content: set visible");
-        let vis_byte: u8 = if visible { 1 } else { 0 };
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id: target_id,
-                method_index: crate::mercury::method_idx::ON_VISIBLE,
-                args: vec![vis_byte],
-            })
-            .await;
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetVisible");
+        return;
+    };
+
+    if visible {
+        let notified = crate::cell::abilities::send_entity_method_to_witnesses(
+            target_id,
+            crate::mercury::method_idx::ON_VISIBLE,
+            vec![1u8],
+            tx,
+            space_mgr,
+        )
+        .await;
+        tracing::debug!(
+            entity_id, %entity_tag, target_id, visible, witnesses_notified = notified, chain_id,
+            "Content: set visible (show)"
+        );
+        return;
     }
+
+    let witnesses = space_mgr.get_witnesses_of(target_id);
+    let mut notified = 0usize;
+    for witness_id in &witnesses {
+        match tx
+            .send(CellToBaseMsg::EntityInvisible {
+                witness_id: *witness_id,
+                entity_id: target_id,
+            })
+            .await
+        {
+            Ok(()) => notified += 1,
+            Err(e) => {
+                tracing::warn!(
+                    witness_id = *witness_id, entity_id, %entity_tag, target_id, chain_id,
+                    reason = "set_visible_send_failed",
+                    "SetVisible: cell→base send failed -- this witness keeps seeing \
+                     the entity that content just hid: {e}"
+                );
+            }
+        }
+    }
+    tracing::debug!(
+        entity_id, %entity_tag, target_id, visible, witnesses_notified = notified, chain_id,
+        "Content: set visible (hide)"
+    );
 }
 
 /// `Action::MoveEntity` — reposition either the acting player or a

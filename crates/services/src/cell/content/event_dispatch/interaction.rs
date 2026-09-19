@@ -15,7 +15,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::executor;
-use super::super::mission_context::populate_mission_context;
+use super::super::mission_context::{populate_mission_context, populate_world_context};
 
 /// Fire `OnInteractTag` event when a player interacts with a tagged entity.
 ///
@@ -37,6 +37,7 @@ pub async fn fire_interact_tag(
         serde_json::json!(target_entity_id),
     );
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {
@@ -84,6 +85,7 @@ pub async fn fire_interact_template(
         serde_json::json!(target_entity_id),
     );
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {

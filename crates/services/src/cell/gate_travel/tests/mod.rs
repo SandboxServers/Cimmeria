@@ -1,6 +1,8 @@
 //! `cell::gate_travel` tests.
 //!
 //! - this file — `onDialGate` validation and the arm-vs-travel decision.
+//! - [`arrival`] — the H01 arrival contract: where `perform_gate_travel`
+//!   places the traveller, and the refusal when nowhere is standable.
 //! - [`sequences`] — `Stargate_MakeGate` / `Stargate_CrossGate` wire
 //!   layout and witness fan-out cardinality.
 //! - [`dial_timer`] — the 4-second timer, its cancellations, and the
@@ -9,6 +11,7 @@
 use super::super::spawner::StargateEntry;
 use super::*;
 
+mod arrival;
 mod dial_timer;
 mod sequences;
 
@@ -48,6 +51,8 @@ pub(super) fn make_manager_with_stargates() -> SpaceManager {
             y: 0.0,
             z: 0.0,
             yaw: 0.0,
+            address_origin: 15,
+            arrival: None,
             event_set_id: Some(CASTLE_EVENT_SET),
         },
     );
@@ -59,6 +64,8 @@ pub(super) fn make_manager_with_stargates() -> SpaceManager {
             y: 63.466,
             z: 551.716,
             yaw: 2.152,
+            address_origin: 18,
+            arrival: None,
             event_set_id: Some(CASTLE_EVENT_SET),
         },
     );
@@ -70,6 +77,8 @@ pub(super) fn make_manager_with_stargates() -> SpaceManager {
             y: 0.0,
             z: 0.0,
             yaw: 0.0,
+            address_origin: 15,
+            arrival: None,
             event_set_id: None,
         },
     );

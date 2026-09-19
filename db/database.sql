@@ -342,6 +342,7 @@
 \ir resources/Content/Seed/castle_702_704_chains.sql
 \ir resources/Content/Seed/consumables_chains.sql
 \ir resources/Content/Seed/effects_chains.sql
+\ir resources/Content/Seed/harset_space_chains.sql
 \ir resources/Content/Seed/sgc_w1_chains.sql
 
 \ir resources/_foreign_keys.sql

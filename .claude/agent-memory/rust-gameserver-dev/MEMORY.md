@@ -34,6 +34,18 @@
 - [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — an `add_dialog_set` bind pushes only `InteractionType(UINT64 TypeId)`; NULL-dialog rows are bindable indicators, `onInitialInteraction` (104) is never emitted, `topic_text` is dead data.
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
 
+## Seed authoring
+
+- [entity-template-seed-authoring.md](entity-template-seed-authoring.md) — **read before touching `entity_templates` / `ability_sets` seed rows.** One ability per set (PK is `ability_set_id` alone); `event_set_id = NULL` on an ability means no attack animation; faction 10 is immutable AND gates both the player damage path and the right-click reroute, so talk-then-kill NPCs need two templates; mob level bands live in `texts.sql` moniker names; a template with neither `components` nor `static_mesh` is permanently invisible.
+
+## Content engine
+
+- [content-engine-condition-gotchas.md](content-engine-condition-gotchas.md) — **read before adding a `Condition` variant.** A rejected condition row UNGATES the chain (loader `filter_map` drops the row, keeps the chain) so reject-at-load is fail-OPEN; fail-closed is the minority convention; world ids live only in `resources.worlds` (column `world`, not `world_name`), never in spaces.xml; ~17 `event_dispatch` sites with no chokepoint; `console/net.rs` puts a space id in a world-id field.
+
+## Content engine / executor
+
+- [cell-startup-caches-vs-base-roundtrip.md](cell-startup-caches-vs-base-roundtrip.md) — the cell HAS a DB pool at startup and ~20 `SpaceManager` caches (incl. `spawn_templates` since H03); a cell→base round-trip inside a content action breaks the chain's ordered action list, because the next action resolves via `find_entity_by_tag`.
+
 ## Content engine / chain authoring
 
 - [content-chain-authoring-traps.md](content-chain-authoring-traps.md) — `display_dialog` silently drops NPC dialogs on non-interact triggers (monologue fallback only); `set_interaction_type` is zone-global; NOTHING respawns (`respawn_secs` NULL everywhere) so `entity_dead_tag` missions are one-shot; victory chains evaluate no conditions; label-signature asserts mask later test assertions.
@@ -48,13 +60,19 @@
 ## Tooling quirks
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
+- [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
+- [sqlx-dynamic-sql-string.md](sqlx-dynamic-sql-string.md) — `sqlx::query` takes `&'static str` only, so a `fn(&str) -> String` shared-SELECT helper won't compile; use a `macro_rules!` + `concat!` re-exported with `pub(crate) use`.
 - [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
 
 ## GM feedback (cell ↔ base)
 
 - [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — definitive (post-commit) GM feedback for base-round-trip commands: cell-side `cell_methods::gm::feedback::send_gm_feedback` (EntityMethodCall→onPlayerCommunication m28 CHAN_FEEDBACK=8) vs base-side `base::gm_feedback::send_gm_feedback_to_client` (send_to_witness_reliable). `GrantItem`/`RemoveInventoryItem` still gate on `notify_gm: bool`; `GrantCash`/`GrantXP` were changed (P05) to `gm_feedback_to: Option<u32>` so a selected-target grant's feedback goes to the caller, not the target — apply the same pattern to GrantItem/RemoveInventoryItem/GrantExpertise/GrantAppliedSciencePoints when a dot command needs it (P06 `.giveitem` will).
+
+## Ring transport / entity teardown
+
+- [ring-transport-fsm.md](ring-transport-fsm.md) — **read before any ring-travel or entity-teardown work.** `disconnect_entity` (async, has `tx`, emits LeftAoI now) vs `destroy_entity` (sync, no `tx`, deferred) and which hook goes where; the cross-world hand-off destroy trap; track participants by id not count; abort order is show-then-unlock; `BSF_MOVEMENT_LOCK`/`BSF_DEAD` are ref-counted so raw `|=`/`&= !` sticks the bit; reuse `cimmeria_mercury::clock::Clock` for injectable time in services.
 
 ## Cross-world / cross-space transfer
 
@@ -91,7 +109,7 @@
 - [bincode-persisted-cache-format.md](bincode-persisted-cache-format.md) — bincode 2 needs `config::legacy()` for 1.x-written files; wrong config decodes SILENTLY, so assert bytes-consumed == len and use an old-version byte fixture (round-trip alone can't catch it).
 - [live-db-scratch-cluster.md](live-db-scratch-cluster.md) — `db.bat init` does NOT create the db/role or load the schema; recipe for an isolated scratchpad Postgres on :5544 so live-DB guards can actually be revert-verified.
 - [chain-replay-executor-guards.md](chain-replay-executor-guards.md) — chain-replay must run `execute_actions` (not just `resolve_event`) when the change is an executor arm; sentinel-chain pattern for verbs with zero seed rows; `0x7000_5000` reserved.
-- [local-postgres-port.md](local-postgres-port.md) — dev Postgres is on **5544**, not the documented 5433; on the wrong port `require_db_or_skip!` self-skips and still reports PASS, so green means nothing until you check the skip count.
+- [local-postgres-port.md](local-postgres-port.md) — probe the dev Postgres port AND database name before every live-DB run (both move; parallel campaigns use per-campaign scratch DBs like `sgw_harset`); on a wrong one `require_db_or_skip!` self-skips and still reports PASS, so green means nothing until you check the skip count.
 - [test-file-split-without-touching-mod-rs.md](test-file-split-without-touching-mod-rs.md) — `tests.rs` → `tests/mod.rs` + `tests/newfile.rs` needs ZERO edits to the shared parent `mod.rs` (`mod tests;` resolves identically either way); private helpers stay reachable via `super::` with no visibility changes.
 - [revert-verification-loses-uncommitted-fmt.md](revert-verification-loses-uncommitted-fmt.md) — `git checkout --` restoring from a WIP checkpoint silently discards an uncommitted `cargo fmt` pass; fmt BEFORE the checkpoint. Also: `git add crates/services` stages the gitignored `logs/`.
 - [vacuous-guard-and-sentinel-collision-review.md](vacuous-guard-and-sentinel-collision-review.md) — **review checklist for any packet branch**: vacuous guards (revert proof names the wrong test), fixture-checks-itself asserts, live-DB-only coverage of a pure-value feature (`require_db_or_skip!` PASSes on skip), and cross-branch `0x7000_xxxx` sentinel collisions + the current claim registry.

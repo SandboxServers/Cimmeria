@@ -55,6 +55,24 @@ impl CellService {
         let npc_count = spawner::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
         tracing::info!(npc_count, "NPC population initialized");
 
+        // Stamp numeric world ids onto the spaces.xml world table. The
+        // content engine's `world` condition resolves the acting player's
+        // space through these; without them every `world`-gated chain
+        // fails closed, so this logs at WARN rather than staying silent.
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_world_ids(pool).await {
+                Ok(ids) => {
+                    space_mgr.stamp_world_ids(&ids);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load world ids: {e} — content-engine `world` \
+                         conditions will fail closed everywhere"
+                    );
+                }
+            }
+        }
+
         // Load dialog_set_maps cache for per-player interaction system
         if let Some(ref pool) = self.db_pool {
             match spawner::load_dialog_set_maps(pool).await {
@@ -274,6 +292,29 @@ impl CellService {
                     tracing::warn!("Failed to load loot tables: {e}");
                 }
             }
+            // Prototype records for the content engine's `spawn_entity`
+            // action. Distinct from the `spawn_records` above: those are
+            // `spawnlist` placements, these are every template whether or
+            // not it is placed anywhere.
+            match spawner::load_spawn_templates(pool).await {
+                Ok(map) => {
+                    tracing::info!(
+                        count = map.len(),
+                        "Loaded entity templates for content spawn_entity"
+                    );
+                    space_mgr.spawn_templates = map;
+                }
+                Err(e) => {
+                    // Not fatal, but every `spawn_entity` chain action will
+                    // refuse until a restart succeeds — worth an error, not
+                    // a warn, since the symptom (missions with no NPCs) is
+                    // far from the cause.
+                    tracing::error!(
+                        "Failed to load entity templates: {e} -- every content \
+                         spawn_entity action will refuse for this process lifetime"
+                    );
+                }
+            }
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
                     space_mgr.ring_transporters.load(&regions);
@@ -294,8 +335,18 @@ impl CellService {
                     }
                     space_mgr.ring_point_set_to_region = point_set_to_region;
                     space_mgr.ring_regions = regions;
+                    // One pass over the pad coordinates now, while the startup
+                    // spaces (and their navmeshes) are already resident. A pad
+                    // the navmesh rejects aborts every trip to it at runtime,
+                    // and "the rings don't work" is a long way from "this seed
+                    // row is off-mesh" without this line.
+                    let off_mesh_pads = super::super::ring_transport::audit_ring_pads(
+                        &space_mgr.ring_regions,
+                        &space_mgr,
+                    );
                     tracing::info!(
                         count = space_mgr.ring_regions.len(),
+                        off_mesh_pads = ?off_mesh_pads,
                         "Initialized ring transporters"
                     );
                 }

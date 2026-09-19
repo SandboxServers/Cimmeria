@@ -2,12 +2,14 @@
 title: "Ring Transport System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-18
 ---
 
 # Ring Transport System
 
 Complete analysis of the Ring Transport / Asgard Teleporter system as implemented in the original Stargate Worlds game. Covers server logic, client behavior, database schema, entity definitions, visual effects, and mission integration.
+
+> **Reading this doc.** Most sections describe the **2009 Python original**, which is the reference Cimmeria ports. Where Cimmeria deliberately diverges, the section says so inline — see [Bounded aborts](#bounded-aborts-cimmeria-not-2009), which are new, and the arrival validation at the end of it. The Rust implementation lives in [`crates/services/src/cell/ring_transport/`](../../crates/services/src/cell/ring_transport/).
 
 ## Overview
 
@@ -112,6 +114,42 @@ RECEIVING RING:
 | Cooldown | +2.5s | Movement unlocked, `teleport::in` event fires |
 
 **Total minimum time:** ~9.5s + map load time
+
+#### Bounded aborts (Cimmeria, not 2009)
+
+The Python original had no timeouts: `SEND_WAIT`, `RECV_WAIT`, `RECV_WARMUP` and `REMOTE_LOAD_WAIT` all waited forever. Because `selectDestination` refuses any destination that is not `IDLE`, one stalled trip removed that pad from every peer that could reach it — on Harset's five-ring fully-connected mesh, permanently, for everybody. Cimmeria adds a bounded deadline to each of those four states ([`ring_transport/transporter/mod.rs:75-110`](../../crates/services/src/cell/ring_transport/transporter/mod.rs#L75-L110)):
+
+| Constant | Value | State it bounds |
+|---|---|---|
+| `SEND_WAIT_TIMEOUT` | 60s | Source waits for the player to walk onto the pad after picking a destination |
+| `RECV_WAIT_TIMEOUT` | 65s | Destination holds itself reserved for a source that has not begun sending |
+| `RECV_WARMUP_TIMEOUT` | 15s | Destination mirrors the source's 4s warmup; the rest is tick-lag headroom |
+| `REMOTE_LOAD_WAIT_TIMEOUT` | 90s | Cross-world client world-load round trip (`GateTravel` → `onClientReady` → `AdvanceRingDestination`) |
+
+`RECV_WAIT_TIMEOUT` is deliberately **longer** than `SEND_WAIT_TIMEOUT` so the source always aborts first. If the destination expired first it would return to `IDLE`, a third ring could reserve it, and the original source's teleport would land in a trip it does not belong to.
+
+None of the four values is recovered data — they are judgement calls. `REMOTE_LOAD_WAIT_TIMEOUT` is the one to tune against a real client on a cold world load: raising it is safe, lowering it risks eating arrival mission credit.
+
+**What an abort does.** Both ends return to `IDLE` and every trip participant is **shown and then unlocked, in that order** (`abort_to_idle`). The order matters: unlocking first opens a window in which the player can move while witnesses still hold them hidden, and because the show fan-out is computed from the witness list at call time, a witness who enters AoI inside that window never receives the `onVisible(1)` and renders a permanently invisible avatar. The unlock goes through the **ref-counted** state-flag helpers, so a ring release no longer clears `BSF_MOVEMENT_LOCK` out from under an unrelated stun; the consequence is that `onStateFieldUpdate` is now sent only on the actual transition of the bit, not unconditionally.
+
+**Passenger bookkeeping.** The destination tracks `expected_players: Vec<u32>` rather than a bare count, and `num_remote_players()` is derived from it so the two can never disagree. An early-returned or disconnected passenger is removed from that list by id, which is what lets an abort un-hide the travellers who are in flight but not yet loaded.
+
+The readiness gate is `players_loaded.len() == num_remote_players()` — a *length* comparison — so **membership is checked before an arrival is counted**. `player_loaded` refuses an entity that is not in `expected_players`, and the cross-world `AdvanceRingDestination` hook (`handle_remote_player_loaded`) gates on the ring being in `RemoteLoadWait` *and* expecting this player. Without both halves, a passenger whose load timed out on one trip could satisfy the next trip's gate on its way in, advancing the ring for a passenger list the arrival is not on and leaving that trip's real travellers hidden and locked past the transition that releases them. A refused arrival is not dropped: it takes the late-arrival release (shown, unlocked, `teleport_in` fired) so its mission credit survives.
+
+**Departure cleanup.** A participant going away is handled two ways ([`runtime/teardown.rs`](../../crates/services/src/cell/ring_transport/runtime/teardown.rs)):
+
+- **Client disconnect** calls `forget_player` synchronously from `SpaceManager::disconnect_entity`, before the AoI teardown runs. Rings the player was holding are released immediately; rings where co-travellers survive get a queued load-readiness re-check, because the expectation just shrank by one and the remaining travellers may now be ready.
+- **Every other teardown path** (GM despawn, respawn, a non-ring teleport) goes through the synchronous `SpaceManager::destroy_entity`, which has no channel to send on, so it records the departure and the next 100ms ring tick reconciles it.
+
+Aborts log at `warn` with `region_id`, `peer_region_id`, `state` and a stable `reason` — one of `stall_timeout`, `player_gone`, `peer_aborted`, `destination_region_missing`, `ring_pad_off_navmesh`, `peer_not_prepared`.
+
+**The destination must be prepared before the source commits.** `kick_off_warmup` advances the destination `RecvWait → RecvWarmup` only when its `remote_region_id` back-pointer names *this* source. If it does not — the pad is reserved by a different source, or its own `RecvWait` lapsed between destination selection and the player stepping onto the pad — the source **aborts** (`peer_not_prepared`) and releases its passengers instead of running the trip. There is no later rescue: the warmup arm only aborts when the static `ring_regions` table has no row for the destination, which it always does, so an unprepared destination would take the teleport and then be unable to act on it (`advance_destination_after_warmup` only drives `RecvWarmup → RemoteLoadWait`). The passengers would sit hidden and movement-locked on an `IDLE` ring with no deadline armed — the unbounded-state shape the bounded aborts exist to prevent. Aborting the source leaves the other trip's reservation untouched; `abort_pair` only tears down a peer that points back.
+
+**Arrival validation is validate-only.** `warmup_timer_expired` copies the destination pad's row coordinate **verbatim**. It is checked first — `cell::arrival::check_arrival`, the same navmesh + AABB test the inbound position validator applies ([`runtime/tick.rs`](../../crates/services/src/cell/ring_transport/runtime/tick.rs)) — but never *substituted*. In particular the nearest-respawner fallback that stargate travel uses is deliberately **not** applied here: the pad row is the arrival, the client plays the ring matinee at that pad and the FSM fires `FireTeleportIn` for that region, so quietly landing the passengers somewhere else in the world would desync the fiction from the geometry with nothing in the log connecting them. A pad the destination world's navmesh rejects therefore has no second answer, and the trip aborts (`ring_pad_off_navmesh`) rather than teleporting onto a point every position update would be suppressed from. A world with no resident navmesh is unvalidatable, not rejected. Ring rows carry no yaw and the transporter does not use one, so `0.0` is passed.
+
+Pad rows are also audited **once at startup** (`audit_ring_pads`, called from the cell service's ring-load step): every row whose world has a resident navmesh is checked, and the offending `region_id` / `tag` / coordinate is logged at `error` with `reason = "ring_pad_off_navmesh"`, with the failing ids summarised on the `Initialized ring transporters` line. Finding an off-mesh pad the first time a player rings is the wrong moment — the symptom is "the rings don't work" and the cause is a seed row three layers down. Fix by re-pinning the row in `db/resources/Worlds/Seed/ring_transport_regions.sql`.
+
+See [gate-travel.md § Arrival placement](gate-travel.md#arrival-placement) for the gate-travel contract, which *does* substitute a respawner (a gate arrival is a pin on a prop transform, not a pad the client is animating at).
 
 #### Key Methods
 
@@ -341,13 +379,15 @@ CREATE TABLE ring_transport_regions (
 | 3 | CellblockRing3 | {} | Dead end — receive only |
 
 #### Harset (world 57) — 5 regions, fully connected mesh
-| ID | Tag | Destinations |
-|---|---|---|
-| 4 | HarsetRingLeftBottom | {5,6,7,8} |
-| 5 | HarsetRingRightBottom | {4,6,7,8} |
-| 6 | HarsetRingLeft | {4,5,7,8} |
-| 7 | HarsetRingLeftTop | {4,5,6,8} |
-| 8 | HarsetinRingRight | {4,5,6,7} |
+| ID | `ring_transport_regions.tag` | `spawnlist.tag` (the console) | Destinations |
+|---|---|---|---|
+| 4 | `HarsetRingLeftBottomRegion` | `HarsetRingLeftBottom` | {5,6,7,8} |
+| 5 | `HarsetRingRightBottomRegion` | `HarsetRingRightBottom` | {4,6,7,8} |
+| 6 | `HarsetRingLeftRegion` | `HarsetRingLeft` | {4,5,7,8} |
+| 7 | `HarsetRingLeftTopRegion` | `HarsetRingLeftTop` | {4,5,6,8} |
+| 8 | `HarsetinRingRightRegion` | `HarsetRingRight` | {4,5,6,7} |
+
+> **Region 8's name is spelled two ways, and only one of them is load-bearing.** The `ring_transport_regions.tag` column reads `HarsetinRingRightRegion` — an authoring typo in the shipped 2009 data (`Harsetin`, not `Harset`). It is **cosmetic**: nothing matches on that column. The ring FSM keys on `region_id`, and the five `interact_tag` chains in [`harset_space_chains.sql`](../../db/resources/Content/Seed/harset_space_chains.sql) (6001-6005) key on the *spawn* tag, which is spelled correctly as `HarsetRingRight`. The other four rings agree between the two columns; only region 8 diverges. The typo is deliberately not "fixed" — renaming the column would break anything keying on the current spelling for no behavioural gain. Anything matching on a name must use the spelling from the source it is reading.
 
 #### Omega Site (world 18) — 5 regions, hub + cross-world link
 | ID | Tag | Destinations | Notes |
