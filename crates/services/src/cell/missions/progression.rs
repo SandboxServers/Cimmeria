@@ -118,20 +118,32 @@ pub async fn advance_step(
         // frame carries the objective's real flags — the reference
         // MissionManager sends them even on completed frames. Reporting the
         // objectives first diverges deliberately from MissionManager.py's
-        // step-before-objective order (:851-862), so the checkmarks land
-        // while the old step is still the client's current step.
+        // step-before-objective order (:851-862). That ordering is a
+        // deliberate hypothesis (checkmarks land while the old step is still
+        // the client's current step), not a verified wire requirement — see
+        // docs/gameplay/mission-system.md.
         let mut args = Vec::with_capacity(7);
         args.extend_from_slice(&obj.objective_id.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
         args.push(if obj.hidden { 1 } else { 0 });
         args.push(if obj.optional { 1 } else { 0 });
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_OBJECTIVE_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                mission_id,
+                objective_id = obj.objective_id,
+                reason = "advance_step_objective_send_failed",
+                "advance_step: onObjectiveUpdate send failed -- the client keeps \
+                 the objective unchecked until relog: {e}"
+            );
+        }
     }
 
     let old_step_id = mission.current_step_id;
@@ -638,5 +650,64 @@ mod tests {
             }
             _ => panic!("expected onStepUpdate"),
         }
+    }
+
+    /// Regression guard for the objective-completed fan-out on
+    /// `advance_step`: a closed cell→base channel must surface
+    /// `reason=advance_step_objective_send_failed`, not drop silently.
+    #[tokio::test]
+    async fn advance_step_warns_when_objective_update_send_fails() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+
+        let (tx, rx) = mpsc::channel(16);
+        accept_mission(
+            1,
+            100,
+            200,
+            vec![
+                MissionObjective {
+                    objective_id: 300,
+                    status: STATUS_ACTIVE,
+                    hidden: false,
+                    optional: false,
+                },
+                MissionObjective {
+                    objective_id: 301,
+                    status: STATUS_ACTIVE,
+                    hidden: false,
+                    optional: false,
+                },
+            ],
+            &tx,
+            &mut mgr,
+        )
+        .await;
+        drop(rx); // close the cell→base channel
+
+        advance_step(1, 100, 201, &tx, &mut mgr).await;
+
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "onObjectiveUpdate send failed",
+                    "advance_step_objective_send_failed"
+                )
+                .is_some(),
+            "negative-logging convention: advance_step must WARN when the \
+             objective-completed onObjectiveUpdate send fails; reverting to \
+             `let _ = tx.send(...)` hides the unchecked-objective window. \
+             Captured: {:#?}",
+            capture.all()
+        );
     }
 }

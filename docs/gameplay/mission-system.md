@@ -109,6 +109,15 @@ Without that report, whichever objective on a multi-objective AND-gate step
 finishes second (via `advance_step` rather than `complete_objective`) never
 reaches the client as completed before the step disappears.
 
+**Frame order (not verified).** Sending objective-completed frames before
+the step transition is a deliberate choice, not a proven client requirement.
+The reference Python `MissionManager.advance()` emits step updates before
+objective updates (`MissionManager.py:851-862`). Rust inverts that order so
+checkmarks can land while the old step is still the client's current step.
+In-game validation is still needed on mission **639** step **2144** and
+mission **688** step **2356** — the two AND-gate steps that motivated issue
+**#656**.
+
 MissionManager.complete(missionId)
   |-> instance.complete()
        |-> status = MISSION_Completed
