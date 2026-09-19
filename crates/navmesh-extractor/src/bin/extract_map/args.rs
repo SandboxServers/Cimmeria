@@ -24,6 +24,10 @@ pub(crate) struct ExtractArgs {
     pub chunk_filter: Option<String>,
     pub report: Option<PathBuf>,
     pub classes: Option<PathBuf>,
+    /// Opt-in whole-map OBJ. Defaults to not writing one: a non
+    /// `<hex8>o.obj` file in the per-chunk directory breaks
+    /// NavBuilder's chunked build (and NavBuilder still exits 0).
+    pub combined: Option<PathBuf>,
 }
 
 impl ExtractArgs {
@@ -84,6 +88,14 @@ impl Args {
             return Ok(None);
         }
 
+        // Positional shorthand for the extract path, so the
+        // `tools/build-navmesh.*` wrappers can call
+        // `extract_map <cooked-root> <map> <out> <index>` without
+        // knowing the flag names.
+        if mode != "extract" && mode != "probe" && !mode.starts_with("--") {
+            return positional_extract(argv).map(Some);
+        }
+
         let mut flags = Flags::collect(&argv[1..])?;
         let parsed = match mode.as_str() {
             "extract" => Args::Extract(ExtractArgs {
@@ -94,6 +106,7 @@ impl Args {
                 chunk_filter: flags.take("--chunk-filter"),
                 report: flags.take_path("--report"),
                 classes: flags.take_path("--classes"),
+                combined: flags.take_path("--combined"),
             }),
             "probe" => {
                 let mappings = match flags.take("--mapping") {
@@ -130,6 +143,32 @@ impl Args {
         flags.finish()?;
         Ok(Some(parsed))
     }
+}
+
+/// `extract_map <cooked-root> <map-name> <out-dir> <index-path>`.
+fn positional_extract(argv: &[String]) -> Result<Args, String> {
+    if argv.len() != 4 {
+        return Err(format!(
+            "positional form takes exactly 4 arguments \
+             (<cooked-root> <map-name> <out-dir> <index-path>), got {}",
+            argv.len()
+        ));
+    }
+    if let Some(flagged) = argv.iter().find(|a| a.starts_with("--")) {
+        return Err(format!(
+            "positional form takes no flags, but saw {flagged:?}"
+        ));
+    }
+    Ok(Args::Extract(ExtractArgs {
+        cooked_root: PathBuf::from(&argv[0]),
+        map: argv[1].clone(),
+        out: PathBuf::from(&argv[2]),
+        index: PathBuf::from(&argv[3]),
+        chunk_filter: None,
+        report: None,
+        classes: None,
+        combined: None,
+    }))
 }
 
 /// `--flag value` pairs, consumed by name so an unrecognised flag can be
@@ -217,9 +256,36 @@ mod tests {
     }
 
     #[test]
-    fn unknown_mode_is_an_error() {
+    fn a_bare_word_that_is_not_a_mode_is_read_as_the_positional_form() {
+        // Four bare words: the `tools/build-navmesh.*` wrapper shape.
+        let a = Args::parse(&argv(&[
+            "/c/CookedPC",
+            "Castle",
+            "/tmp/out",
+            "/tmp/index.bin",
+        ]))
+        .unwrap()
+        .unwrap();
+        let Args::Extract(a) = a else {
+            panic!("wrong mode")
+        };
+        assert_eq!(a.cooked_root, PathBuf::from("/c/CookedPC"));
+        assert_eq!(a.map, "Castle");
+        assert_eq!(a.out, PathBuf::from("/tmp/out"));
+        assert_eq!(a.index, PathBuf::from("/tmp/index.bin"));
+        assert_eq!(a.combined, None, "never into the per-chunk dir by default");
+
+        // Anything other than exactly four is an error, not a partial run.
         let err = Args::parse(&argv(&["frobnicate"])).unwrap_err();
-        assert!(err.contains("unknown mode"), "{err}");
+        assert!(err.contains("exactly 4 arguments"), "{err}");
+        let err = Args::parse(&argv(&["/c", "Castle", "/o", "/i", "extra"])).unwrap_err();
+        assert!(err.contains("exactly 4 arguments"), "{err}");
+    }
+
+    #[test]
+    fn the_positional_form_rejects_a_stray_flag() {
+        let err = Args::parse(&argv(&["/c", "Castle", "/o", "--index"])).unwrap_err();
+        assert!(err.contains("takes no flags"), "{err}");
     }
 
     #[test]
@@ -248,6 +314,9 @@ mod tests {
             PathBuf::from("/tmp/out/coverage_classes.tsv")
         );
         assert_eq!(a.chunk_filter, None);
+        // No whole-map OBJ unless asked: one in the per-chunk dir kills
+        // NavBuilder's chunked build while it still exits 0.
+        assert_eq!(a.combined, None);
     }
 
     #[test]
@@ -268,6 +337,8 @@ mod tests {
             "/tmp/r.tsv",
             "--classes",
             "/tmp/c.tsv",
+            "--combined",
+            "/tmp/whole/castle.obj",
         ]))
         .unwrap()
         .unwrap();
@@ -277,6 +348,7 @@ mod tests {
         assert_eq!(a.chunk_filter.as_deref(), Some("000a0002"));
         assert_eq!(a.report_path(), PathBuf::from("/tmp/r.tsv"));
         assert_eq!(a.classes_path(), PathBuf::from("/tmp/c.tsv"));
+        assert_eq!(a.combined, Some(PathBuf::from("/tmp/whole/castle.obj")));
     }
 
     #[test]

@@ -346,9 +346,10 @@ impl ProbeRun {
         self.add_triangle_bw(tri);
     }
 
-    /// Feed one triangle already in BigWorld units.
+    /// Feed one triangle already in BigWorld units, in the **emitted**
+    /// (UE3-native) index order.
     pub fn add_triangle_bw(&mut self, tri: [[f32; 3]; 3]) {
-        let up = triangle_up(&tri);
+        let up = recast_up(&tri);
         let walkable = up >= self.config.min_up;
         let vertical = up.abs() < 0.3;
 
@@ -469,8 +470,29 @@ pub fn point_to_triangle_aabb_distance(tri: &[[f32; 3]; 3], point: [f32; 3]) -> 
     d2.sqrt()
 }
 
-/// Unit-normal Y component of a triangle — positive means the face points
-/// up. Returns 0 for a degenerate triangle.
+/// The up component of the normal **Recast will compute** for a
+/// triangle the extractor emitted in this index order.
+///
+/// NavBuilder's `loadOBJ` pushes each face as
+/// `(faces[i], faces[i-1], faces[0])` — `mesh.cpp:123-128` — so Recast
+/// sees the reverse of the order we wrote, and its normal is the
+/// negation of [`triangle_up`]. The axis swizzle itself does not flip
+/// anything: `bw = (ue.Y, ue.Z, ue.X)` is a cyclic (even) permutation
+/// with determinant +1.
+///
+/// Getting this sign wrong does not fail loudly — it silently reports
+/// ceilings as floors, which for a multi-storey interior looks
+/// entirely plausible.
+pub fn recast_up(tri: &[[f32; 3]; 3]) -> f32 {
+    -triangle_up(tri)
+}
+
+/// Unit-normal Y component of a triangle in the order given — positive
+/// means the face points up under the standard right-hand rule.
+/// Returns 0 for a degenerate triangle.
+///
+/// This is *not* what Recast sees for an extractor-written OBJ; use
+/// [`recast_up`] for that.
 pub fn triangle_up(tri: &[[f32; 3]; 3]) -> f32 {
     let e1 = [
         tri[1][0] - tri[0][0],

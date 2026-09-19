@@ -113,14 +113,48 @@ pub fn extract_map(
     output_dir: &Path,
     index: Option<&cimmeria_upk_objects::PackageIndex>,
 ) -> Result<()> {
-    extract_map_with_report(map_dir, output_dir, index, None).map(|_| ())
+    extract_map_with_report(
+        map_dir,
+        output_dir,
+        ExtractOptions {
+            index,
+            ..Default::default()
+        },
+    )
+    .map(|_| ())
+}
+
+/// Knobs for [`extract_map_with_report`].
+///
+/// A struct rather than four positional arguments because three of the
+/// four are optional and one of them (`combined_obj`) is easy to get
+/// dangerously wrong — see its doc.
+// No `Debug`: `PackageIndex` doesn't implement it, and a 2.8M-entry
+// index is not something you want in a log line anyway.
+#[derive(Default, Clone, Copy)]
+pub struct ExtractOptions<'a> {
+    /// Cross-package export index used to resolve `StaticMeshActor` →
+    /// `StaticMesh` references. `None` runs in degraded mode: actors
+    /// are walked and counted, but no triangles are emitted.
+    pub index: Option<&'a cimmeria_upk_objects::PackageIndex>,
+    /// Keep only chunks whose filename contains this substring
+    /// (case-insensitive) — useful for iterating on one interior tile
+    /// without re-walking 144 chunks.
+    pub chunk_filter: Option<&'a str>,
+    /// Where to write the single whole-map OBJ, if anywhere. Default
+    /// `None`: no combined file.
+    ///
+    /// **It must not land in `output_dir`.** NavBuilder's `chunked`
+    /// mode globs `*.obj` and derives each file's chunk bounds from a
+    /// `<hex8>o` stem; a file that doesn't match leaves the bounds
+    /// uninitialised, the build dies with "Failed to create
+    /// heightfield", nothing is written — and NavBuilder still exits 0.
+    /// [`extract_map_with_report`] rejects a path inside `output_dir`
+    /// rather than let that happen silently.
+    pub combined_obj: Option<&'a Path>,
 }
 
 /// [`extract_map`] plus a machine-readable per-chunk coverage report.
-///
-/// `chunk_filter`, when supplied, keeps only chunks whose filename
-/// contains the substring (case-insensitive) — useful for iterating on
-/// one interior tile without re-walking 144 chunks.
 ///
 /// The returned [`MapCoverage`] answers the question the phase table
 /// can't: how many `StaticMeshActor`s resolved, why the rest didn't, and
@@ -129,11 +163,27 @@ pub fn extract_map(
 pub fn extract_map_with_report(
     map_dir: &Path,
     output_dir: &Path,
-    index: Option<&cimmeria_upk_objects::PackageIndex>,
-    chunk_filter: Option<&str>,
+    opts: ExtractOptions<'_>,
 ) -> Result<MapCoverage> {
+    let ExtractOptions {
+        index,
+        chunk_filter,
+        combined_obj,
+    } = opts;
     let started = std::time::Instant::now();
     tracing::info!(map_dir = %map_dir.display(), output_dir = %output_dir.display(), "extract_map: starting");
+
+    if let Some(combined) = combined_obj {
+        if combined.parent() == Some(output_dir) {
+            return Err(ExtractError::Other(format!(
+                "combined OBJ {} would sit in the per-chunk output directory; \
+                 NavBuilder's chunked mode then fails to create a heightfield \
+                 and exits 0 with no output. Pick a directory outside {}.",
+                combined.display(),
+                output_dir.display()
+            )));
+        }
+    }
 
     if !output_dir.exists() {
         std::fs::create_dir_all(output_dir)?;
@@ -166,7 +216,7 @@ pub fn extract_map_with_report(
         .to_string();
 
     let mut report = MapCoverage {
-        map_name: map_name.clone(),
+        map_name,
         chunks_filtered_out: enumerated - chunks.len(),
         ..Default::default()
     };
@@ -279,14 +329,17 @@ pub fn extract_map_with_report(
         combined_soups.push(extraction.soup);
     }
 
-    if !combined_soups.is_empty() {
-        // Combined OBJ is named after the map directory (lowercase) so a
-        // CI run on `Castle_CellBlock/` produces `castle_cellblock.obj`,
-        // matching the historical naming convention from
-        // `data/spaces/*.nav`.
-        let combined_path = output_dir.join(format!("{}.obj", map_name.to_lowercase()));
-        obj::write_combined_obj(&combined_path, &combined_soups)?;
-        report.combined_obj_bytes = std::fs::metadata(&combined_path)
+    if let (Some(combined_path), false) = (combined_obj, combined_soups.is_empty()) {
+        // Opt-in only, and never into `output_dir` — the guard at the
+        // top of this function enforces that, because a stray `*.obj`
+        // there silently kills NavBuilder's chunked build.
+        if let Some(parent) = combined_path.parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+        obj::write_combined_obj(combined_path, &combined_soups)?;
+        report.combined_obj_bytes = std::fs::metadata(combined_path)
             .map(|m| m.len())
             .unwrap_or(0);
         tracing::info!(

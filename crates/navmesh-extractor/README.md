@@ -55,8 +55,11 @@ Recast wrapper later if it buys anything.
 - `umap.rs` — wraps `cimmeria_upk::Package` for chunk enumeration.
 - `geometry.rs` — `TriangleSoup` accumulator, terrain triangulation
   helper (stub for Phase 1.3).
-- `obj.rs` — Wavefront OBJ writer **and** reader (the reader lets the
-  floor probe run against the artifact NavBuilder actually consumes).
+- `obj.rs` — Wavefront OBJ writer **and** reader, plus the
+  `ue3_to_obj` / `obj_to_ue3` axis swap and the CRLF discipline
+  NavBuilder's parser requires. `read_obj_as_ue3` is what the floor
+  probe uses, so the probe runs against the artifact NavBuilder
+  consumes.
 - `nav_roundtrip.rs` — Phase 0 XRC `.nav` reader / writer pair.
 - `transform.rs` — actor-to-world `ActorTransform` math
   (`Location` + UE3 `Rotator` + `DrawScale` + `DrawScale3D`).
@@ -76,6 +79,8 @@ Recast wrapper later if it buys anything.
 ```bash
 # 1. Extract a whole map. The index cache is built on first use
 #    (~45 s over the ~5000 packages in CookedPC) and reloaded after.
+#    Positional shorthand, for wrapper scripts:
+#      extract_map <cooked-root> <map-name> <out-dir> <index-path>
 cargo run -p cimmeria-navmesh-extractor --release --bin extract_map -- \
   extract \
   --cooked-root "/path/to/SGWGame/CookedPC" \
@@ -83,7 +88,7 @@ cargo run -p cimmeria-navmesh-extractor --release --bin extract_map -- \
   --out  /tmp/castle-obj \
   --index /tmp/package_index.bin \
   [--chunk-filter 000a0002] \
-  [--report <TSV>] [--classes <TSV>]
+  [--report <TSV>] [--classes <TSV>] [--combined /tmp/whole/castle.obj]
 
 # 2. Floor-probe the OBJs it wrote, under all 48 candidate axis
 #    mappings (or a named subset).
@@ -95,12 +100,19 @@ cargo run -p cimmeria-navmesh-extractor --release --bin extract_map -- \
   [--below 1.5] [--above 0.5] [--neighbourhood 5.0]
 ```
 
-`extract` writes `<chunkid>o.obj` per chunk, a combined `<map>.obj`,
-`coverage.tsv` (one row per chunk plus a `TOTAL` row) and
-`coverage_classes.tsv` (every export class, with a `collision_risk`
-flag for the ones we don't decode). `probe` writes
-`probe_mappings.tsv` (mapping ranking) and `probe_points.tsv`
-(per-point detail).
+`extract` writes `<chunkid>o.obj` per chunk, `coverage.tsv` (one row
+per chunk plus a `TOTAL` row) and `coverage_classes.tsv` (every export
+class, with a `collision_risk` flag for the ones we don't decode).
+`probe` writes `probe_mappings.tsv` (mapping ranking) and
+`probe_points.tsv` (per-point detail).
+
+The whole-map OBJ is **opt-in** via `--combined`, and its path must sit
+outside `--out`. NavBuilder's `chunked` mode globs `*.obj` and derives
+each file's chunk bounds from a `<hex8>o` stem; one file that doesn't
+match leaves those bounds uninitialised, the build dies with "Failed to
+create heightfield", nothing is written — and NavBuilder still exits 0.
+`extract_map_with_report` refuses such a path rather than let that
+happen quietly.
 
 A mapping label reads left to right as "BigWorld x from …, BigWorld y
 (up) from …, BigWorld z from …": `+Y+Z+X` means
@@ -114,7 +126,7 @@ A probe points file is
 ## Library usage
 
 ```rust
-use cimmeria_navmesh_extractor::extract_map_with_report;
+use cimmeria_navmesh_extractor::{extract_map_with_report, ExtractOptions};
 use cimmeria_upk_objects::PackageIndex;
 
 // Build once, reuse across maps. ~45 seconds on a cold cache.
@@ -125,8 +137,11 @@ index.save("package_index.bin".as_ref())?;
 let coverage = extract_map_with_report(
     "path/to/CookedPC/Maps/Castle".as_ref(),
     "out/castle".as_ref(),
-    Some(&index),
-    None, // optional chunk-filter substring
+    ExtractOptions {
+        index: Some(&index),
+        chunk_filter: None,   // e.g. Some("000a0002")
+        combined_obj: None,   // if set, must be outside the output dir
+    },
 )?;
 println!("{:?}", coverage.totals());
 ```
@@ -177,17 +192,31 @@ The question the coverage numbers exist to answer. Probing a grid over
 the floor plane of two rooms a player demonstrably walked (the CLI's
 `probe` mode, mapping `+Y+Z+X`, default ±1.5/0.5 window):
 
-| Room | Grid points | With a StaticMesh floor | With a walkable surface *somewhere* in the column |
+| Room | Grid points | With a StaticMesh floor | With any triangle in the column |
 |---|---|---|---|
-| Interrogation Block (`Castle-000a0002`, y = 66.79, 2-unit grid) | 1,365 | 59 (**4.3%**) | 1,301 (95.3%) |
-| Level-5 Communications (`Castle-00080002`, y = 55.20, 1-unit grid) | 506 | 117 (**23.1%**) | 128 (25.3%) |
+| Interrogation Block (`Castle-000a0002`, y = 66.79, 2-unit grid) | 1,365 | 2 (**0.1%**) | 1,365 (100%) |
+| Level-5 Communications (`Castle-00080002`, y = 55.20, 1-unit grid) | 506 | 100 (**19.8%**) | 130 (25.7%) |
 
-In the Interrogation Block, 95% of the floor plane has walkable
-geometry *above* it (ceilings, roof sections) and nothing under it. Of
-the three HIGH-confidence playtest points, only the Level-5 comms room
-has a StaticMesh surface 0.78 units below the player's feet; the
-Zuritska cell and the Romney corridor have hundreds of wall triangles
-within 5 units and no floor at all.
+The Interrogation Block — the tile the 2026-09-18 playtest walked, and
+the one holding the Zuritska cell — has a triangle in every single
+column and a walkable surface at the right height in two of them. The
+geometry over those columns is the roof and the ceiling; the floor is
+simply not in the StaticMesh set.
+
+Of the three HIGH-confidence playtest points, only the Level-5 comms
+room has a StaticMesh surface at the player's feet; the Zuritska cell
+and the Romney corridor have hundreds of wall triangles within 5 units
+and no floor at all.
+
+> Walkability here means what Recast means, which is *not* the
+> right-hand normal of the order the extractor emits: NavBuilder's
+> `loadOBJ` reverses each face (`mesh.cpp:123-128`), so
+> `N_recast.y = -n_ue3.z`. Measuring with the naive sign reports the
+> Interrogation Block at 4.3% instead of 0.1% — the difference is
+> entirely ceiling triangles, and for a multi-storey interior the wrong
+> answer looks perfectly plausible. `floor_probe::recast_up` models the
+> reversal; `recast_up_is_the_negation_of_the_emitted_order_normal`
+> pins it.
 
 All sixteen chunks carrying `ModelComponent` exports — i.e. BSP
 surfaces that were actually built, as opposed to the empty default
@@ -216,35 +245,45 @@ Closing this gap means resolving `ExportEntry::archetype` through the
 `PackageIndex` and merging the template component's properties —
 tractable, and worth roughly 15% more actors.
 
+## NavBuilder interop — settled
+
+Four things about the OBJ hand-off were unknown or wrong until the
+`nav-axis` worker measured them end to end against the real
+`NavBuilder_d.exe`. They are now pinned by code and tests in this
+crate; the NavBuilder-side write-up is
+[docs/engine/navmesh-build-pipeline.md](../../docs/engine/navmesh-build-pipeline.md).
+
+1. **Axis order.** The confirmed world mapping is
+   `bw = (ue.Y, ue.Z, ue.X) / 100`, matching
+   `docs/analysis/castle-rebuild/worknotes/ca05.md` §"Axis/scale
+   calibration". Solving NavBuilder's `loadOBJ`
+   (`v.x = obj_z/100, v.y = obj_y/100, v.z = obj_x/100`) for that, the
+   OBJ must be written as `v <ue.X> <ue.Z> <ue.Y>` — see
+   [`obj::ue3_to_obj`]. Emitting raw `(X, Y, Z)` feeds BigWorld's up
+   axis from UE3's horizontal Y and produces an empty 72-byte `.nav`
+   with `npolys = 0`. This crate's floor probe agrees independently: of
+   48 candidate permutation/sign mappings, only `+Y+Z+X` puts Castle's
+   geometry near the probe set (9 of 12 points within 5 BigWorld units,
+   several within 0.05); `+Z+Y+X` — the raw-UE3 emission — leaves the
+   nearest triangle 59–804 units away from every one of them.
+2. **CRLF, always.** NavBuilder's face parser loops
+   `while (pos < line.length() - 1)` (`mesh.cpp:115`), so an
+   LF-terminated `f` line loses its last index whenever that token is a
+   single digit. One fixture: 14 polys with CRLF, 6 with LF. The writer
+   emits `\r\n` explicitly on every platform.
+3. **Winding is verbatim.** `loadOBJ` pushes each face reversed
+   (`mesh.cpp:123-128`), so Recast's normal is the negation of the
+   emitted order's. Keeping the kDOP list's native index order is what
+   makes floors walkable; reversing it makes the roof walkable.
+4. **No stray `*.obj` in the chunk directory**, and never an
+   `o Terrain_*` group — NavBuilder skips those groups wholesale
+   (`mesh.cpp:88-96`). Chunk ids do **not** offset vertices: actor
+   `Location` is already world-absolute (`Castle-00060003` decodes to
+   `(positionX=3, positionZ=6)` and its `Ca-ThronePillar00` lands at
+   BigWorld `(353.42, 38.17, 636.00)` with nothing added).
+
 ## Known unknowns
 
-- **OBJ axis convention.** NavBuilder's `loadOBJ` does
-  `v.x = obj_z/100, v.y = obj_y/100, v.z = obj_x/100`. The intent is
-  UE3-Z-up → BW-Y-up + cm → BW-units. The extractor emits OBJ vertices
-  as raw UE3 cm and trusts NavBuilder to swizzle, but **the cube
-  round-trip described in Phase 0.3 of the deep dive has not been run
-  yet** — flagged here for the next implementer.
-
-  Evidence added by the floor probe (it does **not** settle where the
-  fix belongs — that is the NavBuilder-side question): of the 48
-  candidate permutation/sign mappings, only `+Y+Z+X`
-  (`bw = (ue.Y, ue.Z, ue.X) / 100`) puts Castle's geometry anywhere
-  near the probe set — 9 of 12 known world points have geometry within
-  5 BigWorld units, several within 0.05. Applying NavBuilder's swizzle
-  to a raw-UE3-cm OBJ yields `+Z+Y+X`, which puts the nearest triangle
-  59–804 units from every one of those points, because it feeds
-  BigWorld's up axis from UE3's horizontal Y. `+Y+Z+X` matches the
-  independently calibrated mapping in
-  `docs/analysis/castle-rebuild/worknotes/ca05.md` §"Axis/scale
-  calibration". So either the OBJ writer must emit
-  `(ue.X, ue.Z, ue.Y)` or NavBuilder's `loadOBJ` must change; the two
-  have to be decided together.
-- **Chunk offsets.** Actor `Location` in a Castle chunk is already
-  world-absolute: `Castle-00060003` decodes to `(positionX=3,
-  positionZ=6)` and its `Ca-ThronePillar00` already lands at BigWorld
-  `(353.42, 38.17, 636.00)` with no offset applied. The extractor adds
-  none. Whether NavBuilder's `chunked` mode adds one on top — which
-  would double-offset — is a NavBuilder-side question.
 - **`Terrain` binary trailer** — recipe is documented at 92% confidence
   in agent memory but has not been exercised against a real export.
 - **`Model` / `Polys` BSP decoder** — confidence ~50%, needs Ghidra

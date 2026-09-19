@@ -57,7 +57,9 @@ pub(crate) fn run(args: ProbeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let t = Instant::now();
     let mut triangles = 0u64;
     for path in &obj_files {
-        let soup = obj::read_obj(path)?;
+        // Back to UE3 cm — the OBJ on disk is Y/Z-swapped for
+        // NavBuilder, and the probe's mappings are UE3 -> BigWorld.
+        let soup = obj::read_obj_as_ue3(path)?;
         triangles += soup.triangle_count() as u64;
         for run in &mut runs {
             run.add_soup(&soup);

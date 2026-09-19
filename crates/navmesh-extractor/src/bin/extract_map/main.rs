@@ -4,17 +4,23 @@
 //! Two modes:
 //!
 //! ```text
+//! extract_map <cooked-root> <map-name> <out-dir> <index-path>   (shorthand)
+//!
 //! extract_map extract --cooked-root <DIR> --map <NAME> --out <DIR> --index <CACHE>
 //!                     [--chunk-filter <SUBSTR>] [--report <TSV>] [--classes <TSV>]
+//!                     [--combined <OBJ>]
 //!
 //! extract_map probe   --obj-dir <DIR> [--mapping all|<LABEL>[,<LABEL>…]]
 //!                     [--points <TSV>] [--report <TSV>] [--detail <TSV>]
 //!                     [--below <F>] [--above <F>] [--neighbourhood <F>]
 //! ```
 //!
-//! `extract` writes one `<chunkid>o.obj` per chunk plus a combined
-//! `<map>.obj`, and a per-chunk coverage TSV (see
-//! [`cimmeria_navmesh_extractor::coverage`]).
+//! `extract` writes one `<chunkid>o.obj` per chunk and a per-chunk
+//! coverage TSV (see [`cimmeria_navmesh_extractor::coverage`]). The
+//! whole-map OBJ is opt-in via `--combined` and must land outside
+//! `--out` — NavBuilder's chunked mode globs `*.obj` and cannot derive
+//! chunk bounds from a stem that isn't `<hex8>o`, after which it dies
+//! with "Failed to create heightfield" and still exits 0.
 //!
 //! `probe` reads those OBJs back and asks, for every known-walkable
 //! world point, whether an upward-facing triangle sits underneath it —
@@ -38,6 +44,7 @@ pub(crate) const USAGE: &str = "\
 extract_map — UE3 .umap -> OBJ collision extraction + floor-coverage probe
 
 USAGE:
+  extract_map <cooked-root> <map-name> <out-dir> <index-path>      (shorthand)
   extract_map extract --cooked-root <DIR> --map <NAME> --out <DIR> --index <CACHE>
                       [--chunk-filter <SUBSTR>] [--report <TSV>] [--classes <TSV>]
   extract_map probe   --obj-dir <DIR> [--mapping all|<LABEL>[,<LABEL>...]]
@@ -52,6 +59,10 @@ extract:
   --chunk-filter <S>    Only process chunks whose filename contains S.
   --report <TSV>        Per-chunk coverage TSV. Default <out>/coverage.tsv.
   --classes <TSV>       Export-class census TSV. Default <out>/coverage_classes.tsv.
+  --combined <OBJ>      Also write one whole-map OBJ here. Off by default, and
+                        it MUST NOT be inside --out: NavBuilder chunked mode
+                        globs *.obj and dies (exit 0, no output) on a file
+                        whose stem is not <hex8>o.
 
 probe:
   --obj-dir <DIR>       Directory of <chunkid>o.obj files (an extract --out).

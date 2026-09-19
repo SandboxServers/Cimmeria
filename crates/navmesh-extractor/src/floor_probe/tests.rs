@@ -11,9 +11,29 @@ fn approx(a: f32, b: f32) -> bool {
 /// A horizontal quad (two triangles) at UE3 Z = `z_cm`, spanning
 /// `x_cm ± half` and `y_cm ± half` in the UE3 horizontal plane.
 ///
-/// Under [`AxisMapping::CA05`] this becomes a BigWorld floor at
+/// Under [`AxisMapping::CA05`] this becomes a BigWorld surface at
 /// `y = z_cm / 100`, centred on `(y_cm / 100, _, x_cm / 100)`.
+///
+/// The winding is **clockwise in the UE3 XY plane**, i.e. the
+/// right-hand normal points along −Z. That is what a Recast-walkable
+/// floor looks like coming out of this extractor, because NavBuilder's
+/// `loadOBJ` reverses the index order before Recast sees it — see
+/// [`recast_up`]. [`ue3_ceiling_quad`] is the same quad wound the other
+/// way.
 fn ue3_floor_quad(x_cm: f32, y_cm: f32, z_cm: f32, half: f32) -> TriangleSoup {
+    let mut soup = TriangleSoup::new(None);
+    let a = [x_cm - half, y_cm - half, z_cm];
+    let b = [x_cm + half, y_cm - half, z_cm];
+    let c = [x_cm + half, y_cm + half, z_cm];
+    let d = [x_cm - half, y_cm + half, z_cm];
+    soup.push([c, b, a]);
+    soup.push([d, c, a]);
+    soup
+}
+
+/// The same quad with the opposite winding — Recast sees this as a
+/// downward-facing surface (a ceiling), never as walkable ground.
+fn ue3_ceiling_quad(x_cm: f32, y_cm: f32, z_cm: f32, half: f32) -> TriangleSoup {
     let mut soup = TriangleSoup::new(None);
     let a = [x_cm - half, y_cm - half, z_cm];
     let b = [x_cm + half, y_cm - half, z_cm];
@@ -118,6 +138,55 @@ fn triangle_up_is_one_for_a_flat_ccw_floor_and_zero_for_a_wall() {
 
     let degenerate = [[0.0; 3], [0.0; 3], [0.0; 3]];
     assert_eq!(triangle_up(&degenerate), 0.0);
+}
+
+/// NavBuilder's `loadOBJ` reverses the index order (`mesh.cpp:123-128`),
+/// so what Recast rasterises as ground is the *negation* of the
+/// right-hand normal of the order we emitted. If this ever collapses
+/// to `recast_up == triangle_up`, the probe starts calling ceilings
+/// floors and every coverage number it reports is about the wrong
+/// surface.
+#[test]
+fn recast_up_is_the_negation_of_the_emitted_order_normal() {
+    let tri = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+    assert!(approx(recast_up(&tri), -triangle_up(&tri)));
+    let reversed = [tri[2], tri[1], tri[0]];
+    assert!(approx(recast_up(&reversed), -recast_up(&tri)));
+}
+
+/// The fixture pair must actually disagree — otherwise every
+/// walkability assertion below is vacuous.
+#[test]
+fn the_floor_and_ceiling_fixtures_have_opposite_recast_normals() {
+    let floor = ue3_floor_quad(0.0, 0.0, 0.0, 100.0);
+    let ceiling = ue3_ceiling_quad(0.0, 0.0, 0.0, 100.0);
+    let tri = |s: &TriangleSoup| {
+        let m = AxisMapping::CA05;
+        [
+            m.apply(s.vertices[0]),
+            m.apply(s.vertices[1]),
+            m.apply(s.vertices[2]),
+        ]
+    };
+    assert!(recast_up(&tri(&floor)) > 0.99, "floor must face up");
+    assert!(recast_up(&tri(&ceiling)) < -0.99, "ceiling must face down");
+}
+
+/// A surface with the wrong winding directly under the point is not a
+/// floor, however flat it is.
+#[test]
+fn a_downward_facing_surface_under_the_point_is_not_a_floor() {
+    let soup = ue3_ceiling_quad(20_000.0, 10_000.0, 5_000.0, 500.0);
+    let mut run = ProbeRun::new(
+        AxisMapping::CA05,
+        ProbeConfig::default(),
+        one_point([100.0, 50.0, 200.0], Confidence::High),
+    );
+    run.add_soup(&soup);
+    let r = &run.results()[0];
+    assert!(!r.has_floor(), "{r:?}");
+    assert_eq!(r.column_tris, 2, "it is still in the vertical column");
+    assert_eq!(r.column_walkable, 0, "but it faces the wrong way");
 }
 
 #[test]
@@ -332,13 +401,23 @@ fn point_to_aabb_distance_is_zero_inside_and_axis_wise_outside() {
 
 #[test]
 fn a_steep_ramp_beyond_the_slope_limit_is_not_walkable() {
-    // Rises 10 BW units over 1 BW unit of run — way past 45°.
+    // Rises 10 BW units over 1 BW unit of run — way past 45°. Wound
+    // the floor way round, so it is rejected for its slope rather than
+    // for facing downwards.
     let mut soup = TriangleSoup::new(None);
     soup.push([
-        [19_950.0, 9_950.0, 5_000.0],
-        [20_050.0, 9_950.0, 6_000.0],
         [19_950.0, 10_050.0, 5_000.0],
+        [20_050.0, 9_950.0, 6_000.0],
+        [19_950.0, 9_950.0, 5_000.0],
     ]);
+    let up = recast_up(&[
+        AxisMapping::CA05.apply(soup.vertices[0]),
+        AxisMapping::CA05.apply(soup.vertices[1]),
+        AxisMapping::CA05.apply(soup.vertices[2]),
+    ]);
+    assert!(up > 0.0, "the ramp faces up, it is just too steep: {up}");
+    assert!(up < ProbeConfig::default().min_up, "up = {up}");
+
     let mut run = ProbeRun::new(
         AxisMapping::CA05,
         ProbeConfig::default(),

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cimmeria_navmesh_extractor::coverage::{MapCoverage, SkipReason, UNDECODED_COLLISION_CLASSES};
-use cimmeria_navmesh_extractor::extract_map_with_report;
+use cimmeria_navmesh_extractor::{extract_map_with_report, ExtractOptions};
 use cimmeria_upk_objects::PackageIndex;
 
 use crate::args::ExtractArgs;
@@ -22,8 +22,11 @@ pub(crate) fn run(args: ExtractArgs) -> Result<(), Box<dyn std::error::Error>> {
     let report = extract_map_with_report(
         &map_dir,
         &args.out,
-        Some(&index),
-        args.chunk_filter.as_deref(),
+        ExtractOptions {
+            index: Some(&index),
+            chunk_filter: args.chunk_filter.as_deref(),
+            combined_obj: args.combined.as_deref(),
+        },
     )?;
 
     let report_path = args.report_path();

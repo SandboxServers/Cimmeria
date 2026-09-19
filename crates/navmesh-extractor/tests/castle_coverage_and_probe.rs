@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use cimmeria_navmesh_extractor::floor_probe::{
     AxisMapping, Confidence, ProbeConfig, ProbePoint, ProbeRun,
 };
-use cimmeria_navmesh_extractor::{extract_map_with_report, obj};
+use cimmeria_navmesh_extractor::{extract_map_with_report, obj, ExtractOptions};
 use cimmeria_upk_objects::PackageIndex;
 
 /// The chunk under test, and the world point inside it.
@@ -114,8 +114,16 @@ fn castle_interior_chunk_coverage_and_axis_mapping() {
     };
 
     let out = unique_tempdir("cimmeria-castle-coverage");
-    let report = extract_map_with_report(&map_dir, &out, Some(&index), Some(CHUNK))
-        .expect("extract_map_with_report");
+    let report = extract_map_with_report(
+        &map_dir,
+        &out,
+        ExtractOptions {
+            index: Some(&index),
+            chunk_filter: Some(CHUNK),
+            combined_obj: None,
+        },
+    )
+    .expect("extract_map_with_report");
 
     // ---- coverage accounting ----
 
@@ -194,11 +202,27 @@ fn castle_interior_chunk_coverage_and_axis_mapping() {
     // current raw-UE3 swizzle puts it tens of units away.
 
     let obj_path = out.join(format!("{CHUNK}o.obj"));
-    let soup = obj::read_obj(&obj_path).expect("read back the emitted OBJ");
+    let soup = obj::read_obj_as_ue3(&obj_path).expect("read back the emitted OBJ");
     assert_eq!(
         soup.triangle_count() as u64,
         chunk.triangles_emitted,
         "OBJ round-trip lost triangles"
+    );
+
+    // The OBJ NavBuilder reads must be CRLF and Y/Z-swapped. Both are
+    // silent failures downstream: LF drops faces whose last index is
+    // one digit, and raw (X, Y, Z) rasterises every floor as a wall.
+    let raw = std::fs::read(&obj_path).expect("read OBJ bytes");
+    let lf_only = raw
+        .windows(2)
+        .filter(|w| w[1] == b'\n' && w[0] != b'\r')
+        .count();
+    assert_eq!(lf_only, 0, "emitted OBJ has bare LF line endings");
+    let obj_space = obj::read_obj(&obj_path).expect("read OBJ verbatim");
+    assert_eq!(
+        obj_space.vertices[0],
+        obj::ue3_to_obj(soup.vertices[0]),
+        "OBJ vertices are not Y/Z-swapped"
     );
 
     let point = vec![ProbePoint::new(

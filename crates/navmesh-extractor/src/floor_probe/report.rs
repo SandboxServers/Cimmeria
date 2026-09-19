@@ -245,15 +245,17 @@ mod tests {
     fn the_mapping_that_finds_the_floor_ranks_first() {
         let mut soup = crate::geometry::TriangleSoup::new(None);
         // BW (100, 50, 200) under CA05 == UE3 (20000, 10000, 5000).
+        // Wound clockwise in UE3 XY so that Recast — which reverses the
+        // index order in `loadOBJ` — sees an upward-facing floor.
         soup.push([
-            [19_500.0, 9_500.0, 5_000.0],
-            [20_500.0, 9_500.0, 5_000.0],
             [20_500.0, 10_500.0, 5_000.0],
+            [20_500.0, 9_500.0, 5_000.0],
+            [19_500.0, 9_500.0, 5_000.0],
         ]);
         soup.push([
-            [19_500.0, 9_500.0, 5_000.0],
-            [20_500.0, 10_500.0, 5_000.0],
             [19_500.0, 10_500.0, 5_000.0],
+            [20_500.0, 10_500.0, 5_000.0],
+            [19_500.0, 9_500.0, 5_000.0],
         ]);
 
         let mut runs: Vec<ProbeRun> = AxisMapping::all()
