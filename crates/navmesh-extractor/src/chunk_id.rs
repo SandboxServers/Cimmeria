@@ -31,16 +31,23 @@
 //! - **low u16  → UE3 Y** (lateral)
 //! - **high u16 → UE3 X**
 //!
-//! After NavBuilder's `loadOBJ` swizzle (`v.x = obj.z/100, v.y = obj.y/100,
-//! v.z = obj.x/100`), this lands as:
+//! Under the confirmed world mapping `bw = (ue.Y, ue.Z, ue.X) / 100`
+//! (see [`crate::obj`]), this lands as:
 //!
-//! - **low u16  → BW Z**
-//! - **high u16 → BW X**
+//! - **low u16  → UE3 Y → BW X**
+//! - **high u16 → UE3 X → BW Z**
 //!
-//! For the extractor itself this only matters when we emit OBJ vertices —
-//! we emit in UE3 cm coordinates and let NavBuilder do the swizzle. The
-//! [`ChunkId::position_x`] / [`ChunkId::position_z`] accessors here
-//! preserve the C++ NavBuilder field names for round-trip compatibility.
+//! Checked against real geometry: `Castle-00060003` decodes to
+//! `(low = 3, high = 6)` and its `Ca-ThronePillar00` actor sits at BW
+//! `(353.42, 38.17, 636.00)` — x in the low half's 300–400 band, z in
+//! the high half's 600–700 band.
+//!
+//! The [`ChunkId::position_x`] / [`ChunkId::position_z`] accessors keep
+//! the C++ NavBuilder field names for round-trip compatibility, even
+//! though `position_x` is the one that indexes BW **x** and
+//! `position_z` the one that indexes BW **z** — confusingly, those
+//! names do line up with the BW axes, but NOT with the UE3 axes they
+//! are read from.
 
 use std::path::Path;
 

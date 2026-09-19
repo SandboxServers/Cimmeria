@@ -2,7 +2,7 @@
 title: "SGW UE3 Package Binary Format"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-19
 ---
 
 # SGW UE3 Package Binary Format
@@ -17,7 +17,15 @@ deviates from stock in several places, and every deviation below cost real time
 to find by staring at bytes. Read this before pointing a stock-UE3 parser at an
 SGW package.
 
-**Build identifier**: `file_ver = 486`, `licensee_ver = 6`.
+**Build identifier**: `file_ver = 486`, `licensee_ver = 6` (this document's
+source sample). **Note**: a separate QA `.umap` sample (`Castle-000a0002.umap`,
+used by the `castle.nav` spike, issue #46) reads `licensee_ver = 8` — both
+values are apparently in circulation across SGW's cooked content. The wire
+*format* itself is identical either way; only a handful of `Ar.Ver()`
+(Epic-version, not licensee-version) gate constants in native `Serialize`
+overrides depend on version, and both samples share `file_ver = 486`. See
+[`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md)
+for the `Model`/`Polys` cross-check that surfaced this.
 
 > **Provenance.** These findings come from a 2026 effort to splice actor +
 > component clusters from the shipped 8293 beta build into the QA build the
@@ -141,6 +149,98 @@ The property stream carries `CullDistance`, `CachedCullDistance`,
 empirical scan found no `class_idx`-shaped values in the 226-byte prefix — so
 copying both binary regions verbatim is safe when relocating a component.
 
+## Prefab archetypes — the cooked `StaticMeshComponent` stub
+
+When the cooker writes a `PrefabInstance` out to a streaming chunk, the
+prefab's actors are **flattened**: each becomes an ordinary top-level export
+outered straight to `PersistentLevel`, not to the `PrefabInstance`. Walking
+the `Outer` chain looking for a `PrefabInstance` parent therefore finds
+nothing — measured across all 144 `Castle` chunks, `prefab_outer_actors` is 0
+while 963 actors are archetype-instanced.
+
+What marks them instead is the export table's **`Archetype`** field, and there
+are two independent chains per actor:
+
+| Chain | Rooted at | Carries |
+|---|---|---|
+| component | `Archetype` of the `StaticMeshComponent` export | `StaticMesh` |
+| actor | `Archetype` of the `StaticMeshActor` export | `bCollideActors`, `Rotation`, `DrawScale3D` |
+
+The instance's own cooked `StaticMeshComponent` is a **stub**: a property
+stream holding only per-instance overrides — typically `CullDistance`,
+`CachedCullDistance`, `IrrelevantLights`, sometimes `BlockRigidBody` — and
+**no `StaticMesh` property at all**. UE3 does not need one there; property
+lookup falls through to the archetype for anything the instance does not
+override.
+
+```text
+chunk export   StaticMeshComponent          (stub, no StaticMesh)
+     |  ExportEntry::Archetype  (negative => import)
+     v
+import chain   Em-Props
+                 . EM-ComputerTower00_Pf0           (class Prefab)
+                 . EM-ComputerTower00_Pf0_Arc1      (class StaticMeshActor)
+                 . StaticMeshComponent0             (class StaticMeshComponent)
+     |  open Em-Props.upk, find the export at that dotted Outer path
+     v
+template component property stream (component prefix, offset 8)
+     StaticMesh = Obj(1541)  ->  Em-Props:EM-ComputerTower00
+```
+
+Three traps:
+
+1. **The actor archetype is a dead end for the mesh.** The template actor
+   (`..._Arc1`) carries `Tag`, `CollisionComponent` and placement properties —
+   but *not* `StaticMeshComponent`. Only the component's own archetype leads
+   to `StaticMesh`.
+2. **The template's object name is not unique.** Every SGW prefab names its
+   component `StaticMeshComponent0`; `Em-Props.upk` alone holds 218 of them
+   (and 278 `RB_BodySetup`). A `(package, object_name)` index cannot
+   disambiguate. Resolution has to match the full dotted `Outer` path inside
+   the package. The first path component after the package name *is* unique
+   (it is a top-level `Prefab` export), which is what lets a name-keyed index
+   still locate the right **file**.
+3. **A template's `StaticMesh` may itself be an import into a third package.**
+   `EM_Earth_Military`'s tent prefabs reference
+   `SGW_Weather:DoorwayPrecipitationPlanes`. The resulting key must name the
+   package the *mesh* lives in, not the prefab's.
+
+### `bCollideActors` — render-only geometry with real collision data
+
+`AActor::bCollideActors` defaults to `true` and the cooker omits defaults, so
+the property appears **only** when an actor is non-colliding. It is set on the
+prefab *template* actor and inherited, or set directly on a chunk-local actor.
+
+This matters because the cook does **not** strip collision from a
+non-colliding actor's `StaticMesh`: the kDOP tree is present and populated, so
+nothing downstream of the mesh can tell such an actor apart from a wall.
+Measured on `Castle`: 26 of 86 prefab templates and 1,196 chunk-local actors
+set it `false` — 1,570 actors in all. 17 of the 26 templates are
+`bHidden = true, Group = PrecipPlanes`: flat cards placed in tent, bunker and
+guardhouse **doorways** so snow renders there. The rest are icicles, floor
+signs, wall panels, hoses, pipes, security cameras, crates and wall lights.
+
+Any consumer that rasterises cooked geometry has to honour the flag. Emitting
+those 1,570 actors into `castle.nav` splits the exterior from one walkable
+component into three and leaves the Stargate DHD with no floor under it.
+
+### Property inheritance, and the one property that must NOT be inherited
+
+Instance properties override the archetype's; absent ones inherit. That is
+what makes the `StaticMesh` lookup work, and it applies equally to
+`bCollideActors`, `Rotation`, `DrawScale` and `DrawScale3D`.
+
+It does **not** apply to `Location`. A prefab template actor's `Location` is
+its offset *inside the prefab* (`(128, -2031.99, 0)`); inheriting it would
+place the instance at that offset from the world origin. Every cooked
+instance carries its own absolute `Location`, so the case does not arise in
+the SGW data — but a resolver that merges the whole property set blindly will
+scatter geometry the first time it meets a map where one does not.
+
+Component-local `Translation` / `Rotation` / `Scale` / `Scale3D` are absent
+from every `Castle` component, instance and template alike, so the actor
+transform is the whole story there.
+
 ## ULevel binary layout
 
 The `PersistentLevel` export (class `Level`) serializes:
@@ -180,13 +280,20 @@ loop until 'None':
     value bytes of length `size`
 ```
 
-Two version-specific traps:
+Three version-specific traps:
 
 - **`BoolProperty` has `size == 0`** and carries its value as 4 tag-embedded
   bytes where the value bytes would normally be. Miss this and every subsequent
   property in the stream is misaligned.
 - **`ByteProperty` has no enum-name FName in ver 486.** That is a UDK ver 633+
   addition. A parser written against modern UDK will over-read here.
+- **`ArrayProperty` carries no inner-type FName in ver 486 either.** The
+  "since ver 332" row in the table above describes stock UE3; SGW's stream does
+  not have it. A flat byte-skip that jumps by the tag's declared `size` — which
+  already covers the array's entire nested content, inner `None` terminators
+  included — lands byte-exactly on the next tag. Consuming an extra 8 bytes
+  desynchronises the stream. Verified against 1744 `Terrain` exports whose
+  native trailer then decodes to the exact declared export size.
 
 ## Coordinate system
 
@@ -203,6 +310,47 @@ the HUD read `X=-295.407, Y=68.511, Z=-169.726`.
 Apply this whenever you correlate a HUD reading against package data or
 server-side entity positions.
 
+## Terrain actor serial blob — property stream + native trailer
+
+`Terrain` is an `AActor` subclass, so its export opens with the 32-byte actor
+prefix above, then a normal property tag stream, then a native trailer written
+by `ATerrain::Serialize` (`SGW.exe` @ `0x007517C0`):
+
+```text
++0x000  i32   Heights.Num              = NumVerticesX * NumVerticesY
++0x004  u16   Heights[N]               0x8000 == no displacement
++????   i32   InfoData.Num             = same N
++????   u8    InfoData[N]              bit 0 = TID_Visibility_Off
++????   i32   AlphaXSize               binary copy of the tagged property
++????   i32   AlphaYSize               binary copy of the tagged property
++????   i32   WeightedTextureMaps.Num  1..3 in shipped content
++????   [i32 len + len bytes] * that count
++????   i32   WeightMapTextures.Num    0 in shipped content
++????         lighting GUIDs + foliage proxy data — 92..3304 bytes, undecoded
+```
+
+Parsed by [`crates/upk-objects/src/terrain/`](../../crates/upk-objects/src/terrain/);
+triangulated into navmesh collision geometry by
+[`crates/navmesh-extractor/src/terrain.rs`](../../crates/navmesh-extractor/src/terrain.rs).
+
+Four things a new parser gets wrong:
+
+- **Height scale is `(h - 32768) / 128` in actor-local units**, then scaled by
+  `DrawScale * DrawScale3D.Z`. Only that bias maps the flat `0x8000` sheet in
+  Castle_CellBlock onto the shipped navmesh's BW y ≈ 0 ground plane.
+- **`DrawScale3D` defaults to `(100, 100, 100)`, not `(1, 1, 1)`,** when the
+  property is absent. All 144 `Castle` terrains and 400 of 1600
+  `Castle_CellBlock` terrains omit it; at `(1, 1, 1)` their patches would be
+  1 cm wide instead of the 100 cm the world grid demands.
+- **`InfoData` visibility is read per-quad, keyed by the quad's lower-left
+  corner vertex.** The final heightmap row and column therefore never gate a
+  quad.
+- **`NumSectionsX * NumSectionsY` is a render partition of one heightmap**, not
+  a terrain count. A `Castle` chunk has one `Terrain` export and 25
+  `TerrainComponent` exports; a `Castle_CellBlock` chunk has 25 `Terrain`
+  exports and 25 `TerrainComponent` exports. Walk every `Terrain`-class export
+  and treat each independently.
+
 ## Open format questions
 
 Unresolved when the splicing effort stopped. Each is a real gap in the format
@@ -215,11 +363,62 @@ understanding above, not merely a tooling limitation.
 | What is in the component's 594-byte suffix? | Likely cover-slot geometry — slot positions and fire-link references. If it references other exports by index, any relocation that copies it verbatim silently corrupts those references. |
 | Does `Level` hold post-`Actors` references needing patching? | After `Actors[]` come URL, Model, ModelComponents, GameSequences, `NavListStart`, `CoverListStart`, `CoverListEnd`. SGW's cover-linkage data specifically is undecoded. |
 
+**Resolved** (2026-09-19, issue #46): the `Model` (BSP) export format —
+`UModel::Serialize`'s full field order and sizes, `FBspNode`/`FBspSurf`
+layouts, and whether cooked packages strip `Polys` (they don't) — is now
+documented in
+[`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md)
+**and implemented** in
+[`crates/upk-objects/src/model/`](../../crates/upk-objects/src/model/).
+That was previously an open question for this document's scope too (a
+`Model` export's serial data is exactly the kind of "variable-length
+trailer" this document otherwise catalogs) but is substantial enough to
+warrant its own finding doc rather than a section here.
+
+### `Model` / `Polys` deserializers
+
+[`crates/upk-objects/src/model/`](../../crates/upk-objects/src/model/) is
+the live decoder, structured like its `static_mesh` sibling:
+
+| File | Holds |
+|---|---|
+| [`model/mod.rs`](../../crates/upk-objects/src/model/mod.rs) | The full `UModel` / `UPolys` wire-layout table in module docs, plus re-exports |
+| [`model/types/mod.rs`](../../crates/upk-objects/src/model/types/mod.rs) | `Model`, `BspNode`, `BspSurf`, `BspVert`, `Poly`, `Polys`; the `EPolyFlags` / `EBspNodeFlags` filter table; `Model::triangulate` (node → convex fan) and `Model::surf_normal` |
+| [`model/parse/mod.rs`](../../crates/upk-objects/src/model/parse/mod.rs) | `deserialize_model` / `deserialize_polys` and the field-offset constants |
+| [`model/types/tests.rs`](../../crates/upk-objects/src/model/types/tests.rs) | Triangulation, winding, flag-filter and out-of-range unit tests |
+| [`model/parse/tests.rs`](../../crates/upk-objects/src/model/parse/tests.rs) | Byte-exact wire-format fixtures, including the "an empty `Model` is exactly 108 bytes" arithmetic self-check |
+
+Two properties of this decoder are worth knowing before you use it:
+
+- **Exact consumption is enforced.** Both entry points error if the
+  declared fields stop short of, or overrun, the export's serial data.
+  Everything after `Verts` is skipped by declared size, so an upstream
+  off-by-one surfaces *only* as a non-zero remainder; accepting it
+  silently would let a mis-parsed `Nodes` array reach downstream code
+  looking plausible.
+- **The `EPolyFlags` bit meanings are assumed, not re-derived.** The
+  filter is a named table in `model/types/mod.rs`, and
+  `Model::triangulate` reports a per-flag triangle exclusion count for
+  *every* entry regardless of whether the active filter uses that bit —
+  so a wrong assumption shows up as an implausible drop count rather
+  than as a silent hole. On `Castle-000a0002.umap` the only observed
+  `PolyFlags` values are `0xE00` and `0x200`, and the filter excludes
+  nothing.
+
+The consumer is
+[`crates/navmesh-extractor/src/bsp.rs`](../../crates/navmesh-extractor/src/bsp.rs),
+which classifies each `Model` by its owning export's class (`Level` →
+world space; `Brush`/`BlockingVolume` → actor transform;
+`TriggerVolume`/`DynamicTriggerVolume` → excluded).
+
 ## Related documents
 
 - [`crates/upk-objects/`](../../crates/upk-objects/) — the live Rust
-  deserializers for UE3 objects in these packages (`StaticMesh`, `Texture2D`,
-  bulk data, cross-package export index).
+  deserializers for UE3 objects in these packages (`StaticMesh`, `Terrain`,
+  `Model`/`Polys`, `Texture2D`, bulk data, cross-package export index).
+- [`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md) —
+  `UModel`/`UPolys`/`FBspNode`/`FBspSurf`/`FPoly` binary layout, byte-exact
+  validated against real package data.
 - [cooked-data-pak-format.md](cooked-data-pak-format.md) — BigWorld's `.pak`
   resource format. Different format, different pipeline; do not confuse them.
 - [cover-system.md](../reverse-engineering/findings/cover-system.md) — what the

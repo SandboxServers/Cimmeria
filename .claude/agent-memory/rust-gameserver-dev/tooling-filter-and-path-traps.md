@@ -44,5 +44,37 @@ MSYS would mangle into a drive path) and give the `@file` a Windows path. This i
 the reliable way to post multi-line PR review replies — a heredoc through
 `-f body=...` mangles markdown tables and backticks.
 
+**3. Editing CRLF docs from a python script: never put `\r\n` in the
+replacement text.** `docs/**/*.md` and `crates/**/README.md` are CRLF. The
+working pattern is to author the new text with plain `\n` and normalise once:
+
+```python
+s = open(p, encoding="utf-8", newline="").read()   # newline="" preserves CRLF
+def sub(old, new):
+    o, n = old.replace("\n", "\r\n"), new.replace("\n", "\r\n")
+    assert o in s, old[:150]                        # assert, or a silent no-op
+    ...
+open(p, "w", encoding="utf-8", newline="").write(s)
+```
+
+The trap: if the replacement string already contains a literal `\r\n`, that
+final `.replace("\n", "\r\n")` turns it into `\r\r\n`. One bare CR makes `file`
+report "CRLF, CR line terminators" and `git diff --stat` shows the **whole file**
+rewritten (611 insertions / 449 deletions on a 449-line README) — which looks
+exactly like an accidental line-ending flip and is easy to "fix" by reverting
+good work. Check with `file <path>` after every scripted doc edit; find the
+offender with `re.finditer(rb"\r(?!\n)", open(p,"rb").read())`.
+
+Two smaller ones from the same session:
+
+- The Bash tool **refuses** `lane.sh <cmd>` when any argument is computed at
+  runtime (`$VAR`, `$(...)`) or the command is a complex heredoc, because it
+  can't prove the command isn't `git`. Write the payload to a file first and
+  pass a plain literal path — including for list arguments, which means a bin
+  that takes `<list-file>` beats one that takes `<item>...`.
+- A python `.replace()` against a CRLF file **silently does nothing** when the
+  pattern has LF newlines. Always `assert old in s` before writing, or the
+  script prints "ok" having changed nothing.
+
 Related: [[revert-verification-loses-uncommitted-fmt]],
 [[cargo-test-vs-nextest-flakiness]].

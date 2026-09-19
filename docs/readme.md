@@ -197,6 +197,8 @@ How the underlying BigWorld engine and CME game framework operate inside sgw.exe
 | [client-visual-system.md](engine/client-visual-system.md) | Client visual system: rendering, scene graph, and how entities are drawn in the BigWorld/UE3 client | Complete |
 | [cooked-data-pak-format.md](engine/cooked-data-pak-format.md) | Cooked-data PAK file format: on-disk layout, entry table, compression, and how the client reads resource packs | Complete |
 | [ue3-package-format.md](engine/ue3-package-format.md) | SGW UE3 package binary format (ver 486 licensee fork): section ordering and the `total_header_size` trap, LZO chunking, variable-length export trailers, actor/component serial prefixes, ULevel `Actors` layout, ver-486 property tag stream, HUD↔world coordinate swizzle | Complete |
+| [navmesh-build-pipeline.md](engine/navmesh-build-pipeline.md) | UE3 -> OBJ -> NavBuilder -> `.nav` build pipeline: axis/handedness mapping, chunk-OBJ conventions, NavBuilder failure modes, the `nav_inspect` connectivity gate, and StaticMesh-only calibration against the shipped Castle Cellblock mesh | Complete |
+| [navbuilder-recast-limits.md](engine/navbuilder-recast-limits.md) | Rebuilding `NavBuilder.exe`, parity with the 2026-03 reference binary, Recast's four fixed-width index limits and how each one fails, and the measured Castle (World 8) Recast parameter table | Complete |
 
 See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-analysis.md), [technical/sgw-binary-overview.md](technical/sgw-binary-overview.md)
 

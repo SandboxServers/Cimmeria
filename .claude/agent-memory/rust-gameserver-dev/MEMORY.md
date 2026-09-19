@@ -27,13 +27,21 @@
 - [concurrent-claude-sessions.md](concurrent-claude-sessions.md) — when other Claude sessions are running on the same repo, use a git worktree under `.claude/worktrees/<slug>/` for branch isolation. Junction-link `external/` into the worktree (`external/` is gitignored).
 - [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha is often NOT an ancestor (the parent rewrote it); find the fork point by message. Cargo.lock re-dirties every build. Use `..` in `Action::` test match arms.
 
+## Navmesh / UE3 geometry export
+
+- [navbuilder-obj-interop.md](navbuilder-obj-interop.md) — **read before touching the OBJ writer or any walkability test.** NavBuilder exits 0 on all four silent-failure traps: axis order (`v ue.X ue.Z ue.Y`), CRLF-only, reversed winding (`N_recast.y = -n_ue3.z`), and a stray `*.obj` in the chunk dir.
+- [castle-staticmesh-coverage.md](castle-staticmesh-coverage.md) — Castle interior floors are BSP; ~0% of the Interrogation Block floor plane is StaticMesh. All 6,430 actors now resolve, 4,860 emitted (1,570 vetoed by `bCollideActors`); the 15% archetype gap was decorative clutter, NOT the missing floor.
+
 ## Wire-format gotchas
 
 - [gm-tail-dispatch-doc-filename-trap.md](gm-tail-dispatch-doc-filename-trap.md) — `client-method-dispatch-table.md` (interface, 0-66ish) vs `cell-method-dispatch-table.md` (full + 109+ GM tail) are DIFFERENT files, easy to cite the wrong one; GM-tail offset counting convention (`index = 109 + K`, count every `<Exposed/>` in def document order); movement-validator per-entity bypass pattern (touch_clock + update_entity_position must both still run on the bypass path).
 - [method-idx-duplicate-table-drift.md](method-idx-duplicate-table-drift.md) — TWO client-method index tables; `cell/client_methods/` is authoritative, `mercury::method_idx` is a drifted partial copy (shipped vendor payload to mission handlers).
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
 - [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — an `add_dialog_set` bind pushes only `InteractionType(UINT64 TypeId)`; NULL-dialog rows are bindable indicators, `onInitialInteraction` (104) is never emitted, `topic_text` is dead data.
-- [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
+- [ue3-absent-property-defaults.md](ue3-absent-property-defaults.md) — **read before decoding any UE3 export whose props are optional.** An absent tagged property means the *class* default, which SGW licensee-modified (`Terrain.DrawScale3D` is `(100,100,100)`, not `(1,1,1)`); recover it from world-grid arithmetic + one known world coordinate, never from "what the majority writes".
+- [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — **read before extracting any cooked UE3 geometry.** `bCollideActors=false` actors STILL carry real kDOP data, so nothing below the mesh layer can tell a weather card in a doorway from a wall (1,570 in Castle); prefab actors have TWO archetype chains and the actor's is a dead end for the mesh; template object names are not unique (218 `StaticMeshComponent0` in one .upk) so match the dotted Outer path; never inherit `Location`; tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8).
+- [navbuilder-obj-traps.md](navbuilder-obj-traps.md) — **read before touching the navmesh build chain.** UE3→BW is a Y/Z column swap (`v x z y`), CRLF is mandatory or faces vanish, NavBuilder exits 0 on every failure, and a stray non-`<hex8>o.obj` in a chunked input dir reads uninitialised bounds. Detail in `docs/engine/navmesh-build-pipeline.md`.
+- [ue3-bsp-model-decode.md](ue3-bsp-model-decode.md) — **read before any UModel/BSP work.** Empty Model == exactly 108 bytes (layout self-check); BSP node winding is the OPPOSITE of StaticMesh so fans must be reversed for NavBuilder; classify by owner export class; Castle brush-owned Models all DECODE to stubs but the cause is UNPROVEN and it is now the leading candidate for the missing interior storey connector; the persistent .umap has no BSP; ModelComponent is render-only.
 
 ## Seed authoring
 
@@ -75,6 +83,9 @@
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
 - [seed-name-id-and-asset-naming.md](seed-name-id-and-asset-naming.md) — **read before authoring any named NPC/prop seed row or concluding a map asset is missing.** `name_id` is client-PAK-resolved so new `texts.sql` moniker ids can never render (and NULL ships a nameless NPC silently); a moniker names the UE3 *asset family*, which is how to find map assets an English-keyword scan misses; binary `grep` on a chunk-compressed `.umap` gives false negatives.
 
+## Navmesh / Recast
+
+- [navmesh-recast-and-castle-topology.md](navmesh-recast-and-castle-topology.md) — Recast's UNCHECKED 24-bit `rcCompactCell::index` span cap is the real `cs` floor (silent empty mesh at exit 0, not the 16-bit caps); a bin target's `mod tests;` needs `#[path]`; Castle's 11 probes are 3 components at EVERY parameter set and InterpActors are a dead end.
 ## Handover / resuming work
 
 - [resuming-a-dead-workers-wip.md](resuming-a-dead-workers-wip.md) — a `wip(...) unbuilt, unverified` commit may not compile (H06's called a function nobody wrote); its tests encode the design it *started* from; its integration requests go stale; a `TBD` validation table means nothing is proven. Port hunks by hand across a file→directory split, never resolve modify/delete by taking a side.
@@ -86,10 +97,15 @@
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
 - [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
+- [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path; a scripted CRLF doc edit must never put a carriage return in its replacement text (one bare CR makes git rewrite the whole file) and must `assert old in s` or it silently no-ops.
 - [sqlx-dynamic-sql-string.md](sqlx-dynamic-sql-string.md) — `sqlx::query` takes `&'static str` only, so a `fn(&str) -> String` shared-SELECT helper won't compile; use a `macro_rules!` + `concat!` re-exported with `pub(crate) use`.
 - [sqlx-chain-id-is-i32-vacuous-guards.md](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is `integer` (i32), not i64; a wrong decode type PASSES forever inside a "must return no rows" guard and then panics with `ColumnDecode` instead of the assertion message on the day it catches something.
 - [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
+
+## Navmesh extraction (UE3 → NavBuilder)
+
+- [navmesh-probe-and-bsp-traps.md](navmesh-probe-and-bsp-traps.md) — **read before diagnosing a "missing floor".** `NavGraph::locate` is XZ-containment-first and manufactures false negatives on stacked meshes (use `locate_within`); the NavBuilder walkable convention is `N_recast.y = -n_ue3.z` of the emitted order (two odd permutations cancel); a geometric-only BSP filter that works on Castle deletes real floors on Castle_CellBlock — always validate on a second map; and removing a big flat sheet *costs* vertices rather than saving them.
 
 ## GM feedback (cell ↔ base)
 

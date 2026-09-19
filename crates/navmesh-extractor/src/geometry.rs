@@ -7,9 +7,10 @@
 //! `Mesh::loadOBJ` re-swizzles them into BW post-divide units on read
 //! (`v.x = obj.z/100, v.y = obj.y/100, v.z = obj.x/100`).
 //!
-//! Phase 0 ships only the data structures + transform plumbing.
-//! Phase 1.2 fills `static_mesh_instance_triangles`. Phase 1.3 fills
-//! `triangulate_terrain`.
+//! This module owns only the accumulator and the translate helper.
+//! Triangle *producers* live next to the decoder they consume:
+//! [`crate::staticmesh`] for `StaticMeshActor`, [`crate::terrain`] for
+//! `Terrain`.
 
 /// Three vertices forming a single triangle, in UE3 cm coordinates.
 pub type Triangle = [[f32; 3]; 3];
@@ -60,50 +61,47 @@ impl TriangleSoup {
     pub fn triangle_count(&self) -> usize {
         self.faces.len()
     }
+
+    /// Resolve a face range back into world-space triangles.
+    ///
+    /// Exists so a later extraction phase can read what an earlier one
+    /// pushed — the BSP hull-cap filter needs the terrain triangles that
+    /// went in just before it — without either decoding twice or
+    /// carrying a second soup. Out-of-range faces are skipped, as are
+    /// dangling vertex indices; a soup built by [`Self::push`] has
+    /// neither.
+    pub fn triangles_in(&self, faces: std::ops::Range<usize>) -> Vec<Triangle> {
+        let end = faces.end.min(self.faces.len());
+        let start = faces.start.min(end);
+        self.faces[start..end]
+            .iter()
+            .filter_map(|f| {
+                Some([
+                    *self.vertices.get(f[0] as usize - 1)?,
+                    *self.vertices.get(f[1] as usize - 1)?,
+                    *self.vertices.get(f[2] as usize - 1)?,
+                ])
+            })
+            .collect()
+    }
 }
 
 /// Apply a translation to every triangle (vertex-by-vertex).
 ///
-/// Used by the per-chunk extractor to move chunk-local actor vertices
-/// into world space when an export's `Location` is stored relative
-/// to the chunk origin. (For the Castle_CellBlock dataset every
-/// inspected Terrain export has `Location = (0,0,0)`, so the chunk
-/// filename's grid offset is the only translation in play — but we
-/// keep the per-triangle translate routine general for non-cellblock
-/// maps that DO emit non-zero locations.)
+/// Kept for callers that need to move chunk-local vertices into world
+/// space. Neither of the two extractors needs it today: both
+/// `StaticMeshActor` and `Terrain` exports store an **absolute
+/// world-space** `Location`. (An earlier revision of this comment
+/// claimed every Castle_CellBlock `Terrain` sits at `(0,0,0)`; that is
+/// wrong — the 25 terrains in chunk `00000000` are at
+/// `(0..8000, 0..8000, 0)` and the map's 1600 terrains tile an exact
+/// 2000 cm grid from -40000 to +38000 on both axes.)
 pub fn translate_triangles(soup: &mut TriangleSoup, offset: [f32; 3]) {
     for v in &mut soup.vertices {
         v[0] += offset[0];
         v[1] += offset[1];
         v[2] += offset[2];
     }
-}
-
-/// Triangulate a UE3 terrain patch into world-space triangles.
-///
-/// **Stub for Phase 1.3.** The recipe is documented in
-/// `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`:
-///
-/// - Two triangles per cell `(i, j)`: `(v00, v10, v11)` and `(v00, v11, v01)`.
-/// - `idx(i, j) = j * NumVerticesX + i`.
-/// - `z = location.z + (height_u16 / 65535.0) * draw_scale * draw_scale_3d.z * 256.0`.
-/// - Skip any cell where any of its four vertices has `InfoData[idx] & 0x01 != 0`
-///   (`TERRAINFLAG_Invisible`).
-///
-/// Returns an empty soup until Phase 1.3 lands. The signature is set
-/// up now so the orchestrator's call site doesn't need to change when
-/// the body is filled in.
-#[allow(clippy::too_many_arguments)]
-pub fn triangulate_terrain(
-    _heights: &[u16],
-    _info_data: &[u8],
-    _num_vertices_x: i32,
-    _num_vertices_y: i32,
-    _location: [f32; 3],
-    _draw_scale: f32,
-    _draw_scale_3d: [f32; 3],
-) -> TriangleSoup {
-    TriangleSoup::new(None)
 }
 
 #[cfg(test)]
@@ -135,14 +133,5 @@ mod tests {
         assert_eq!(soup.vertices[0], [10.0, 20.0, 30.0]);
         assert_eq!(soup.vertices[1], [11.0, 20.0, 30.0]);
         assert_eq!(soup.vertices[2], [10.0, 21.0, 30.0]);
-    }
-
-    #[test]
-    fn triangulate_terrain_stub_returns_empty() {
-        // Phase 1.3 follow-up will replace this assertion. Until then
-        // the stub must return an empty soup so the orchestrator's
-        // no-op loop terminates cleanly.
-        let soup = triangulate_terrain(&[], &[], 21, 21, [0.0; 3], 1.0, [1.0; 3]);
-        assert_eq!(soup.triangle_count(), 0);
     }
 }

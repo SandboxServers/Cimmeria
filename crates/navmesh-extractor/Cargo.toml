@@ -12,5 +12,16 @@ byteorder = "1"
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
+[features]
+# Exposes `test_support`, the synthetic UE3 package fixture builder.
+# Off by default so nothing in it reaches a release binary; the
+# self-dev-dependency below turns it on for this crate's own
+# integration tests, and sibling crates opt in the same way.
+test-support = []
+
 [dev-dependencies]
 cimmeria-upk = { workspace = true }
+# Self-dependency purely to enable `test-support` for the integration
+# tests under `tests/` — they link the lib target, and a feature can
+# only be switched on through a dependency edge.
+cimmeria-navmesh-extractor = { path = ".", features = ["test-support"] }

@@ -10,7 +10,6 @@
 
 use std::path::PathBuf;
 
-use cimmeria_navmesh_extractor::extract_map;
 use cimmeria_upk_objects::PackageIndex;
 
 fn castle_cellblock_dir() -> PathBuf {
@@ -27,6 +26,11 @@ fn castle_cellblock_dir() -> PathBuf {
 }
 
 fn try_load_package_index() -> Option<PackageIndex> {
+    // An explicit cache path wins: the index is ~190 MB, so developers
+    // keep it out of the repo tree.
+    if let Ok(p) = std::env::var("CIMMERIA_PACKAGE_INDEX") {
+        return PackageIndex::load(PathBuf::from(p).as_path()).ok();
+    }
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for ancestor in manifest.ancestors().take(10) {
         for name in [
@@ -43,6 +47,19 @@ fn try_load_package_index() -> Option<PackageIndex> {
         }
     }
     None
+}
+
+/// Count `f ` lines in an OBJ without loading it — the dense chunks run
+/// to tens of megabytes.
+fn count_obj_faces(path: &std::path::Path) -> usize {
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(path)
+        .unwrap_or_else(|e| panic!("open {} for face count: {e}", path.display()));
+    BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .filter(|l| l.starts_with("f "))
+        .count()
 }
 
 /// Unique temp directory per test thread — the round-trip test crate
@@ -85,8 +102,27 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
         return;
     };
 
+    // One extraction only. A prior `extract_map` pass into the same
+    // directory rewrote every OBJ the reported run then wrote, doubling
+    // the runtime of an already heavy asset test and — worse — leaving
+    // behind any file the reported run did *not* write, which the
+    // `obj_files.len() == chunk_objs` guard below would then count as
+    // if the second run had produced it. The thin `extract_map`
+    // wrapper is covered asset-free in `extract_map_synthetic.rs`.
     let out_dir = unique_tempdir("cimmeria-navmesh-extract-map");
-    extract_map(&map_dir, &out_dir, Some(&index)).expect("extract_map");
+    let combined_dir = unique_tempdir("cimmeria-navmesh-extract-map-combined");
+    let combined_path = combined_dir.join("castle_cellblock.obj");
+    let report = cimmeria_navmesh_extractor::extract_map_with_report(
+        &map_dir,
+        &out_dir,
+        cimmeria_navmesh_extractor::ExtractOptions {
+            index: Some(&index),
+            chunk_filter: None,
+            combined_obj: Some(&combined_path),
+            ..Default::default()
+        },
+    )
+    .expect("extract_map_with_report");
 
     // Inventory the output.
     let mut obj_files: Vec<_> = std::fs::read_dir(&out_dir)
@@ -106,46 +142,106 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
                 .unwrap_or(false)
         })
         .count();
-    let combined_objs = obj_files
-        .iter()
-        .filter(|p| {
-            p.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s == "castle_cellblock")
-                .unwrap_or(false)
-        })
-        .count();
-
     eprintln!(
-        "extract_map output: {} total OBJ ({} per-chunk, {} combined)",
+        "extract_map output: {} total OBJ ({} per-chunk)",
         obj_files.len(),
-        chunk_objs,
-        combined_objs
+        chunk_objs
     );
 
-    // We expect SOME per-chunk OBJs (the resolvable subset) and exactly
-    // one combined map-level OBJ.
     assert!(
         chunk_objs >= 5,
         "Expected ≥5 per-chunk OBJ files; got {chunk_objs}"
     );
+
+    // NOTHING but `<hex8>o.obj` may sit in the per-chunk directory.
+    // NavBuilder's chunked mode globs `*.obj` and derives chunk bounds
+    // from the stem; a whole-map `castle_cellblock.obj` next to them
+    // leaves those bounds uninitialised, the build fails with "Failed
+    // to create heightfield", and NavBuilder still exits 0. The
+    // combined OBJ is opt-in and goes to its own directory.
     assert_eq!(
-        combined_objs, 1,
-        "Expected exactly one combined map-level OBJ"
+        obj_files.len(),
+        chunk_objs,
+        "non-chunk OBJ in the per-chunk output dir: {:?}",
+        obj_files
+            .iter()
+            .filter(|p| p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| !(s.len() == 9 && s.ends_with('o')))
+                .unwrap_or(true))
+            .collect::<Vec<_>>()
     );
 
-    // Combined OBJ should be hefty — the dense chunk alone produces
-    // ~85k triangles, and 65 chunks combined will land in the hundreds
-    // of thousands. Cross-check against the file size as a rough proxy:
-    // each triangle line in the OBJ is ~30 bytes (`f a b c\n`), so the
-    // combined OBJ should be at least a few MB.
-    let combined_path = out_dir.join("castle_cellblock.obj");
-    let combined_meta = std::fs::metadata(&combined_path).expect("combined.obj exists");
+    // The opt-in combined OBJ landed in its own directory and is hefty
+    // — the dense chunk alone produces ~85k triangles, and 65 chunks
+    // combined land in the hundreds of thousands.
+    let combined_meta = std::fs::metadata(&combined_path).expect("combined OBJ exists");
     assert!(
         combined_meta.len() >= 1_000_000,
         "Combined OBJ at {} is only {} bytes — extraction may be incomplete",
         combined_path.display(),
         combined_meta.len()
+    );
+
+    // The per-source accounting invariant, checked against the bytes on
+    // disk rather than against itself: for every chunk,
+    //
+    //   f-lines in the OBJ == triangles_emitted
+    //                      == staticmesh + terrain + bsp
+    //
+    // The coverage TSV is how anyone answers "how much of this map is
+    // BSP", so a source that lands in the soup without a tally silently
+    // rewrites that answer. Hull-cap triangles are deliberately absent
+    // from both sides: they never reach the soup.
+    let mut checked = 0usize;
+    for row in &report.chunks {
+        assert!(
+            row.sources_balance(),
+            "{}: triangles_emitted {} != {} StaticMesh + {} Terrain + {} BSP",
+            row.chunk,
+            row.triangles_emitted,
+            row.staticmesh_triangles,
+            row.terrain_triangles,
+            row.bsp_triangles
+        );
+        if row.triangles_emitted == 0 {
+            continue;
+        }
+        let obj = out_dir.join(format!("{:08x}o.obj", row.chunk_id));
+        let faces = count_obj_faces(&obj);
+        assert_eq!(
+            faces as u64, row.triangles_emitted,
+            "{}: the OBJ carries {faces} faces but the report claims {}",
+            row.chunk, row.triangles_emitted
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 5,
+        "only {checked} chunk(s) had geometry to check"
+    );
+    let totals = report.totals();
+    eprintln!(
+        "per-source totals: {} = {} StaticMesh + {} Terrain + {} BSP \
+         ({} hull-cap triangles dropped, {} terrain holes, {} terrain \
+         parse failures, {} Model decode failures) over {checked} chunks",
+        totals.triangles_emitted,
+        totals.staticmesh_triangles,
+        totals.terrain_triangles,
+        totals.bsp_triangles,
+        totals.bsp_hull_cap_triangles,
+        totals.terrain_quads_holed,
+        totals.terrain_parse_failures,
+        totals.bsp_models_failed,
+    );
+    assert!(
+        totals.sources_balance(),
+        "the TOTAL row must balance too: {} != {} + {} + {}",
+        totals.triangles_emitted,
+        totals.staticmesh_triangles,
+        totals.terrain_triangles,
+        totals.bsp_triangles
     );
 
     // Quick sanity scan: every OBJ must start with the extractor's
