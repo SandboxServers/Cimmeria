@@ -22,7 +22,6 @@ use cimmeria_entity::movement_validation::{MovementReject, MovementValidator};
 use cimmeria_entity::navigation::NavMesh;
 
 use super::super::super::{ClientMoveOutcome, NavmeshMode, SpaceManager};
-use super::super::make_manager;
 use crate::cell::spawner::WorldRow;
 
 /// `resources.worlds.world_id` for Harset.
@@ -52,13 +51,39 @@ fn harset_mesh() -> Option<NavMesh> {
     Some(NavMesh::load(path).expect("load data/spaces/harset.nav"))
 }
 
+/// A manager whose only world is a non-instanced Harset, so the startup
+/// space lands in `world_spaces` and `create_entity` can find it.
+///
+/// Built here rather than by extending the module-wide `make_manager`
+/// fixture: that one is shared with the space-lifecycle tests, which pin
+/// `space_count()` and the exact `(cell_id << 16) | index` ids, and adding a
+/// third startup world to it moves every one of those numbers. The AABB is
+/// the real `entities/spaces.xml` row for Harset, but it is not load-bearing
+/// — a meshed space takes its bounds from the mesh extents.
+fn harset_manager() -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces>
+    <Space WorldName="Harset" Instanced="false" MinX="-1000" MaxX="800" MinY="-800" MaxY="800" />
+</Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Harset" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr
+}
+
 /// A manager with a player standing on [`ON_MESH`] in a Harset space
 /// carrying the real mesh, stamped to `mode`.
 ///
 /// Returns `None` when the fixture is absent so callers skip in one line.
 fn harset_with_player(mode: NavmeshMode) -> Option<(SpaceManager, u32)> {
     let mesh = harset_mesh()?;
-    let mut mgr = make_manager();
+    let mut mgr = harset_manager();
     mgr.stamp_world_rows(&HashMap::from([(
         "Harset".to_string(),
         WorldRow {
@@ -68,7 +93,7 @@ fn harset_with_player(mode: NavmeshMode) -> Option<(SpaceManager, u32)> {
     )]));
     let space_id = mgr
         .create_entity(100, "Harset", ON_MESH, [0.0; 3])
-        .expect("Harset startup space must exist in the test spaces.xml");
+        .expect("Harset startup space must exist");
     mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(mesh);
     Some((mgr, space_id))
 }

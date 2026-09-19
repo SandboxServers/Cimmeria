@@ -19,17 +19,12 @@ const TEST_SPACES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
     <Space WorldName="Castle" Instanced="false" MinX="0" MaxX="2400" MinY="0" MaxY="2400" />
     <Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
     <Space WorldName="SGC_W1" Instanced="true" MinX="-400" MaxX="400" MinY="-400" MaxY="800" />
-    <Space WorldName="Harset" Instanced="false" MinX="-1000" MaxX="800" MinY="-800" MaxY="800" />
 </Spaces>"#;
 
 const TEST_CELL_SPACES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces>
     <Space WorldName="Agnos" />
     <Space WorldName="Castle" />
-    <!-- Non-instanced, so it gets a startup space and a `world_spaces`
-         entry: the navmesh-mode tests need both a space to inject a mesh
-         into and a world-name lookup for the arrival-side checks. -->
-    <Space WorldName="Harset" />
 </Spaces>"#;
 
 fn make_manager() -> SpaceManager {
