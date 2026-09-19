@@ -13,7 +13,9 @@ pub mod health_threshold;
 pub mod state;
 pub mod threat;
 
-pub use auto_cycle::{arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target};
+pub use auto_cycle::{
+    arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target, is_auto_cycle_target_valid,
+};
 pub use damage::{calculate_damage, calculate_qr, calculate_result, QrResult};
 pub use health_threshold::{health_pct, health_pct_from, HealthPct};
 
