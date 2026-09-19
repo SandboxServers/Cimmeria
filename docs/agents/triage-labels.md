@@ -1,5 +1,9 @@
 # Triage Labels
 
+> **Last updated**: 2026-09-19
+> **Audience**: Agent skills that triage, and the maintainers who label
+> **Type**: Reference
+
 The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker, and says what each one means here.
 
 | Label in mattpocock/skills | Label in our tracker | Meaning                                  |

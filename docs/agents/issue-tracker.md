@@ -1,5 +1,9 @@
 # Issue tracker: GitHub
 
+> **Last updated**: 2026-09-19
+> **Audience**: Agent skills that read or write issues and PRs
+> **Type**: Reference
+
 Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
 ## Conventions
@@ -35,7 +39,7 @@ Doc links, Ghidra addresses, log lines, or capture offsets that support the prem
 State what docs/protocol/ and the RE findings already say about it, including disagreement.
 
 ## Acceptance criteria
-Observable outcomes: a byte string, a DB row, a log field, a client-visible behaviour.
+Observable outcomes: a byte string, a DB row, a log field, a client-visible behavior.
 
 ## Test type
 One or more of the types in TESTING.md, with the bug shape the guard must reproduce.

@@ -1,5 +1,9 @@
 # Domain Docs
 
+> **Last updated**: 2026-09-19
+> **Audience**: Agent skills and contributors locating domain documentation
+> **Type**: Reference
+
 How agent skills should find and use this repo's domain knowledge before exploring code.
 
 Skills that default to a root `CONTEXT.md` and a `docs/adr/` directory (the Matt Pocock engineering skills do) must follow the overrides in this file instead. **Do not create `CONTEXT.md`, `CONTEXT-MAP.md`, or `docs/adr/` in this repo.** Both roles are already filled, and a second glossary or a second ADR directory splits the source of truth.
@@ -18,7 +22,7 @@ Skills that default to a root `CONTEXT.md` and a `docs/adr/` directory (the Matt
 | Engine internals | [`docs/engine/`](../engine/) | BigWorld, CME, cooked data, UE3 packages. |
 | Spec "bible" | [`docs/spec/`](../spec/), drafts in [`docs/drafts/spec/`](../drafts/spec/) | Drafts are work in progress. See "When sources disagree". |
 | Canonical entity definitions | `entities/entities.xml`, `entities/defs/*.def` | Source of method and property order. |
-| Original server reference | `deprecated/` | Reference for original intent only. Not authoritative for client behaviour. |
+| Original server reference | `deprecated/` | Reference for original intent only. Not authoritative for client behavior. |
 | Prior agent findings | `.claude/agent-memory/<agent>/MEMORY.md` | Committed to the repo. Read the index for the agent whose domain you are in. |
 | Project rules and gotchas | [`rules-and-gotchas.md`](rules-and-gotchas.md) | Decisions already made and traps already hit. Read before proposing an approach. |
 
@@ -26,7 +30,7 @@ Skills that default to a root `CONTEXT.md` and a `docs/adr/` directory (the Matt
 
 1. Search `docs/` for the system or keyword. The answer is usually already written down.
 2. For a method index or message id, read the dispatch table in `docs/protocol/` before counting entries in a `.def` file. If the entry is missing, add it to the table after you derive it.
-3. For client behaviour, check `docs/reverse-engineering/findings/` before opening Ghidra.
+3. For client behavior, check `docs/reverse-engineering/findings/` before opening Ghidra.
 4. Read the `docs/architecture/` docs that touch the area you are about to change.
 5. If the docs do not cover it, investigate, then document what you found in the same PR.
 

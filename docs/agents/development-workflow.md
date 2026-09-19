@@ -1,10 +1,14 @@
 # Development Workflow for AI-Assisted Work
 
+> **Last updated**: 2026-09-19
+> **Audience**: Contributors doing AI-assisted work, and their agents
+> **Type**: How-to
+
 How a change moves from ticket to merged PR in this repo when an AI harness is doing the work. It is harness-neutral: the steps apply whether you drive them through Claude Code subagents, another tool's equivalents, or by hand.
 
 The repo already ships the pieces. Anyone who clones it with Claude Code gets them automatically:
 
-- [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, doc-update map, file organisation.
+- [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, doc-update map, file organization.
 - [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots.
 - [`.claude/agents/`](../../.claude/agents/): sixteen domain subagents (roster below).
 - `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs. Committed on purpose.
@@ -19,7 +23,7 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 4. **Pick the test type first**, using the picker in `TESTING.md`. Write the guard so it reproduces the bug shape.
 5. **Implement** with `rust-gameserver-dev` (or directly), iterating with `cargo check -p <crate>`.
 6. **Ask "what if the client lies?"** Run `server-authority-enforcer` over any handler that takes client-supplied data into server state.
-7. **Prove the guard.** Revert the fix, confirm the test fails, restore the fix. `testing-validation-engineer` does this review. Commit your work before you revert anything: a verification `git checkout` wipes uncommitted edits.
+7. **Prove the guard.** First commit your work (a WIP commit is fine). Then undo only the fix by editing it out of the one file, run the test, and confirm it fails. Restore with `git checkout HEAD -- <that one file>`. Never restore with `git checkout .`, `git reset --hard`, or `git stash`: other sessions may share the checkout and the stash. `testing-validation-engineer` does this review.
 8. **Update the docs** named by the `CLAUDE.md` doc-update map, preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync.
 9. **Run the pre-PR checklist** from `CLAUDE.md`, including clippy on the toolchain CI uses (see "Build and CI" in `rules-and-gotchas.md`).
 10. **Open the PR** with the template filled in, including what you could not test.
@@ -53,8 +57,8 @@ Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/ag
 ## Running agents
 
 - **Parallel writers need isolated worktrees.** Two implementation agents in one checkout race on git state: one agent's `git checkout` reverts the other's edits. Give each its own worktree under `.claude/worktrees/` (ignored by git). Read-only agents do not need one.
-- **A fresh worktree does not build until `external/` is linked in.** `external/` is populated by `setup.ps1` and is not in git, and `crates/entity/build.rs` reads `../../external/recast`. Link it with a junction (Windows) or symlink. When deleting such a worktree on Windows, remove the junction first with `cmd /c rmdir <worktree>\external`, or the recursive delete can follow it into the real directory.
-- **One cargo at a time per machine.** A full link can take ~47 GB. Agents running in parallel must serialise their builds. Setting `RUSTC_WRAPPER=sccache` keeps per-worktree `target/` directories from recompiling every dependency.
+- **A fresh worktree does not build until `external/` is linked in.** `external/` is populated by `setup.ps1` and is not in git, and `crates/entity/build.rs` reads `../../external/recast`. Link it with a junction (Windows) or symlink. When deleting such a worktree on Windows, remove the junction first with plain `cmd /c rmdir <worktree>\external` (this removes only the link). Never use `rmdir /s`, `rm -rf`, or `Remove-Item -Recurse` on the junction or on a worktree that still contains it: a recursive delete can follow the link and empty the real `external/` directory.
+- **The one-`cargo`-at-a-time rule in `CLAUDE.md` is per machine, not per worktree.** Agents running in parallel must serialize their builds. Setting `RUSTC_WRAPPER=sccache` keeps per-worktree `target/` directories from recompiling every dependency.
 - **One live test database per concurrent run.** Live-DB tests reload and mutate the database. Point each worktree at its own database on the bundled Postgres (`:5433`) through `DATABASE_URL`, and never reload a database another run is using.
 - **Do not switch branches in a checkout someone else is using.** Do integration work from a dedicated worktree.
 - **Run the advisors on the model they were defined for.** They are tuned for judgment-heavy review; routing them to a smaller model to save tokens costs more in rework than it saves.

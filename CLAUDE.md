@@ -21,8 +21,7 @@ The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agen
 - **Seeds are the source of truth.** Change seeded data in `db/resources/`; do not add `db/scripts/*.sql` migrations without asking.
 - **Prefer server-authoritative changes that need no client patch.** New opcodes, wire-crypto changes, and new client UI need a maintainer decision first.
 - **Every button press gets visible feedback on the first press**, whatever the original server did.
-- **CI clippy runs on current stable Rust**, usually newer than yours. Run clippy on that toolchain before pushing.
-- **Parallel agents: one worktree each, one `cargo` at a time, one test database each.** Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
+- **Parallel agents: one worktree each, one test database each**, on top of the one-`cargo`-at-a-time rule below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 
 ## Build rules
 
@@ -135,7 +134,7 @@ tools/lint-figure-style.ps1         # Windows PowerShell
 The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/markdownlint-cli2) against [`.markdownlint-cli2.yaml`](.markdownlint-cli2.yaml) at the repo root. CI mirrors local invocation via [`DavidAnson/markdownlint-cli2-action`](.github/workflows/markdownlint.yml). First local run downloads the binary on-demand via `npx`; running `npm install` once pins the version from `package.json` for offline reuse. Phase 2 hardens the lint from warn-only to blocking — until then, fix what's easy and let reviewers nudge the rest.
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
-- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site.
+- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** CI floats on current stable Rust (no `rust-toolchain` pin), so its clippy is often newer than yours. Install that version side by side (`rustup toolchain install <version> --profile minimal`) and run `cargo +<version> clippy …` before pushing — see [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md) "Build and CI".
 - **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
 - **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
 - **test-live-db fails** → CI runs `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
