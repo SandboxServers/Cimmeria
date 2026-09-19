@@ -38,6 +38,7 @@ pub mod nav_components;
 pub mod nav_roundtrip;
 pub mod obj;
 pub mod staticmesh;
+pub mod terrain;
 pub mod transform;
 pub mod umap;
 

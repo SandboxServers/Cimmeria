@@ -188,13 +188,20 @@ loop until 'None':
     value bytes of length `size`
 ```
 
-Two version-specific traps:
+Three version-specific traps:
 
 - **`BoolProperty` has `size == 0`** and carries its value as 4 tag-embedded
   bytes where the value bytes would normally be. Miss this and every subsequent
   property in the stream is misaligned.
 - **`ByteProperty` has no enum-name FName in ver 486.** That is a UDK ver 633+
   addition. A parser written against modern UDK will over-read here.
+- **`ArrayProperty` carries no inner-type FName in ver 486 either.** The
+  "since ver 332" row in the table above describes stock UE3; SGW's stream does
+  not have it. A flat byte-skip that jumps by the tag's declared `size` — which
+  already covers the array's entire nested content, inner `None` terminators
+  included — lands byte-exactly on the next tag. Consuming an extra 8 bytes
+  desynchronises the stream. Verified against 1744 `Terrain` exports whose
+  native trailer then decodes to the exact declared export size.
 
 ## Coordinate system
 
@@ -210,6 +217,47 @@ the HUD read `X=-295.407, Y=68.511, Z=-169.726`.
 
 Apply this whenever you correlate a HUD reading against package data or
 server-side entity positions.
+
+## Terrain actor serial blob — property stream + native trailer
+
+`Terrain` is an `AActor` subclass, so its export opens with the 32-byte actor
+prefix above, then a normal property tag stream, then a native trailer written
+by `ATerrain::Serialize` (`SGW.exe` @ `0x007517C0`):
+
+```text
++0x000  i32   Heights.Num              = NumVerticesX * NumVerticesY
++0x004  u16   Heights[N]               0x8000 == no displacement
++????   i32   InfoData.Num             = same N
++????   u8    InfoData[N]              bit 0 = TID_Visibility_Off
++????   i32   AlphaXSize               binary copy of the tagged property
++????   i32   AlphaYSize               binary copy of the tagged property
++????   i32   WeightedTextureMaps.Num  1..3 in shipped content
++????   [i32 len + len bytes] * that count
++????   i32   WeightMapTextures.Num    0 in shipped content
++????         lighting GUIDs + foliage proxy data — 92..3304 bytes, undecoded
+```
+
+Parsed by [`crates/upk-objects/src/terrain/`](../../crates/upk-objects/src/terrain/);
+triangulated into navmesh collision geometry by
+[`crates/navmesh-extractor/src/terrain.rs`](../../crates/navmesh-extractor/src/terrain.rs).
+
+Four things a new parser gets wrong:
+
+- **Height scale is `(h - 32768) / 128` in actor-local units**, then scaled by
+  `DrawScale * DrawScale3D.Z`. Only that bias maps the flat `0x8000` sheet in
+  Castle_CellBlock onto the shipped navmesh's BW y ≈ 0 ground plane.
+- **`DrawScale3D` defaults to `(100, 100, 100)`, not `(1, 1, 1)`,** when the
+  property is absent. All 144 `Castle` terrains and 400 of 1600
+  `Castle_CellBlock` terrains omit it; at `(1, 1, 1)` their patches would be
+  1 cm wide instead of the 100 cm the world grid demands.
+- **`InfoData` visibility is read per-quad, keyed by the quad's lower-left
+  corner vertex.** The final heightmap row and column therefore never gate a
+  quad.
+- **`NumSectionsX * NumSectionsY` is a render partition of one heightmap**, not
+  a terrain count. A `Castle` chunk has one `Terrain` export and 25
+  `TerrainComponent` exports; a `Castle_CellBlock` chunk has 25 `Terrain`
+  exports and 25 `TerrainComponent` exports. Walk every `Terrain`-class export
+  and treat each independently.
 
 ## Open format questions
 
@@ -236,8 +284,8 @@ warrant its own finding doc rather than a section here.
 ## Related documents
 
 - [`crates/upk-objects/`](../../crates/upk-objects/) — the live Rust
-  deserializers for UE3 objects in these packages (`StaticMesh`, `Texture2D`,
-  bulk data, cross-package export index).
+  deserializers for UE3 objects in these packages (`StaticMesh`, `Terrain`,
+  `Texture2D`, bulk data, cross-package export index).
 - [`../reverse-engineering/findings/bsp-model-polys-serialize.md`](../reverse-engineering/findings/bsp-model-polys-serialize.md) —
   `UModel`/`UPolys`/`FBspNode`/`FBspSurf`/`FPoly` binary layout, byte-exact
   validated against real package data.

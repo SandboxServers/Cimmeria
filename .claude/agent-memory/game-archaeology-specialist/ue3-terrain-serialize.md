@@ -64,9 +64,27 @@ Each Terrain export = **32-byte Actor header** + **UE3 tagged-property stream** 
 
 ### World-space conversion
 
-- Z = Location.Z + (height_u16 / 65535.0) * DrawScale * DrawScale3D.Z * 256.0
-- Cell size X = DrawScale * DrawScale3D.X * 256.0 cm per patch
-- 20×20 terrain = 5120 cm × 5120 cm
+**CORRECTED 2026-09-19 by the Rust decoder landing (worker `nav-terrain`,
+branch `navmesh/terrain-decoder`). The three bullets below were wrong; the
+struck-through numbers are kept so nobody re-derives them.**
+
+- ~~Z = Location.Z + (height_u16 / 65535.0) * DrawScale * DrawScale3D.Z * 256.0~~
+- ~~Cell size X = DrawScale * DrawScale3D.X * 256.0 cm per patch~~
+- ~~20×20 terrain = 5120 cm × 5120 cm~~
+
+Correct conversion (UE3 canonical, validated against real data — see
+"Real-data validation, Rust decoder" below):
+
+- Local vertex = `(i, j, (height_u16 - 32768) * TERRAIN_ZSCALE)` where
+  `TERRAIN_ZSCALE = 1/128`. Then apply the ordinary actor transform:
+  scale by `DrawScale * DrawScale3D`, rotate, translate by `Location`.
+- `0x8000` ⇒ local Z exactly 0. The old `h/65535*256` form put a flat
+  sheet at +128 local units instead of 0.
+- Patch spacing = `DrawScale * DrawScale3D.X` cm = **100 cm** in every
+  shipped SGW map, so a 20×20 terrain is 2000 × 2000 cm and a 100×100
+  terrain is 10000 × 10000 cm (exactly one 100 m chunk).
+- **`DrawScale3D` defaults to `(100, 100, 100)` when absent, not
+  `(1,1,1)`.** See below.
 
 ### Phase gate
 
@@ -140,6 +158,42 @@ conventions**, not one:
   unattempted. Needs an outdoor Castle tile + a matching seed coordinate to
   close.
 
+### Real-data validation, Rust decoder (2026-09-19, worker `nav-terrain`)
+
+`crates/upk-objects/src/terrain/` + `crates/navmesh-extractor/src/terrain.rs`.
+Trailer layout above confirmed byte-exact on **1744** terrain exports
+(1600 Castle_CellBlock + 144 Castle), zero parse failures, plus spot
+checks in Harset / Agnos / SGC (600 more, zero failures). Corrections:
+
+- **`DrawScale3D` class default is `(100, 100, 100)`.** 400 of 1600
+  Castle_CellBlock terrains and all 144 Castle terrains omit the
+  property; the other 1200 write `(100, 100, 200)` explicitly. UE3 only
+  serialises a property that differs from the default, so the default
+  must be `(100,100,*)` with Z ≠ 200. The Z component is pinned by the
+  gate-room/DHD seed point (BW y 55.10): the decoded Castle terrain
+  under it is **55.14** at Z=100 and 110.28 at Z=200. The 1200 explicit
+  `(100,100,200)` actors are all flat (`0x8000`), so their doubled Z is
+  unobservable.
+- **`InfoData` visibility is per-QUAD, keyed by the quad's lower-left
+  corner vertex** (`ATerrain::IsTerrainQuadVisible`). The last heightmap
+  row/column therefore never gates a quad. Lower-left vs any-corner
+  policy differs by only 379 quads of 34,327 in Castle_CellBlock, but
+  lower-left is the engine's rule.
+- `WeightedTextureMaps.Num` is **not** always 1 — Castle tiles ship 3.
+- **Zero remainder is not achievable**: every real export has a 92–3304
+  byte lighting-GUID/foliage tail after `WeightMapTextures.Num`. The
+  decoder records it as `Terrain::lighting_trailer_bytes` and the
+  integration tests pin the exact value (152 Castle_CellBlock,
+  164 Castle-000a0002) rather than pretending it is decoded.
+- Ground truth: decoded Castle_CellBlock terrain = 605,673 m² at BW y 0.0
+  over BW x/z ∈ [-400, 400]; the shipped `castle_cellblock.nav`'s
+  BW y ≈ 0.2 sheet = 637,283 m² over x/z ∈ [-399.1, 399.2]. The 31,610 m²
+  difference is the building footprint that terrain punches out as holes
+  and the shipped mesh covers with floor geometry.
+- The shipped nav's other two flat sheets (30,499 m² at BW y 94.6,
+  22,838 m² at 53.4) are **not terrain** — every Castle_CellBlock terrain
+  actor has `Location.Z = 0`. They are upper-storey BSP/StaticMesh floors.
+
 **Why:** Unblocks issue #46 navmesh extraction pipeline — UTerrain binary layout was the blocking unknown at 55% confidence.
 
 **How to apply:** When implementing `terrain.rs`, use a flat byte-skip
@@ -149,4 +203,12 @@ special-casing needed) rather than a recursive one, and walk every
 fixed per-chunk count or a fixed patch-grid size (20×20 and 100×100 are
 both attested).
 
-**How to apply:** When implementing `terrain.rs` in the navmesh extractor, use this exact sequence; particularly the LAST-None-scan for the outer terminator and the AlphaXSize/AlphaYSize binary-copy consume step.
+**How to apply:** The decoder now exists —
+`cimmeria_upk_objects::deserialize_terrain` +
+`cimmeria_navmesh_extractor::terrain::collect_terrain_triangles`. Read
+those before re-deriving anything here. A LAST-None-scan is **not**
+needed: `cimmeria_upk::parse_tagged_properties_with_end` already does the
+flat byte-skip and lands on the outer `None` directly. The
+AlphaXSize/AlphaYSize binary-copy consume step is real and the decoder
+cross-checks the two copies against the tagged-property values as a
+drift detector.
