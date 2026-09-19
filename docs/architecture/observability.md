@@ -251,7 +251,8 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `investigate_routed` | Investigate tick pathfinding toward the POI |
 | `follow_band` | Follow target is inside the band — no work |
 | `despawn` | Despawn tick — entity is being removed from the space |
-| `submit_init` | Submit tick — first-entry combat-clear |
+| `submit_init` | Submit tick — the pass that actually disengages both sides: player-side threat scrub, auto-cycle sweep, channel cancel, cover release, re-face. Re-fires if somebody re-engages a surrendered NPC |
+| `submit_hold` | Submit tick — nothing left to clean, the NPC is parked. The steady state for a surrendered NPC, one row per ~2 s AI tick for the space's life. A `submit_init` where you expect `submit_hold` means something keeps re-aggroing it |
 | `error_hold` | Error state — diagnostic quiescent fallback |
 
 Successor PRs may add `patrol_arrived` / `wander_waypoint_set` / etc.
