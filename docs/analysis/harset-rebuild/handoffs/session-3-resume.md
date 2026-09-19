@@ -66,3 +66,11 @@ The owner lifted the three-agent cap for this purpose. `harset/goauld` and `hars
 | `harset-H53` | New this session, P0 (advisory navmesh) |
 
 H52 is not dispatched: it edits the same step-activation seam in `progression.rs` as H50, so it goes after H50 merges. H05 (minigame competency) is unblocked since Castle #652 merged and has never been started.
+
+## Update 2026-09-19 (later still): every shelved packet is merged and the combined base is green
+
+`content/harset-wave2` at `6af8c3f3` (plus docs commits) = wave 1 + H51, H53, H06, H08, H09, H50 and the three faction seed lanes (H20, H22, H30, H31, H40, H41). Coordinator-run on `sgw_harset_integration`, fresh reload: fmt clean, clippy `-D warnings` clean, content-engine + entity 463 passed, services live-DB 2692 passed, 0 failed, 0 skipped. Not pushed; no wave-2 PR yet.
+
+Running at time of writing, each in a new worktree off that base: agent `harset-H55` (branch `harset/H55`, P0: `grant_stargate_address` action + Castle chain 1357 grants Harset's gate; without it no player can dial Harset) and agent `harset-H52` (branch `harset/H52`: H52 step-activation region re-evaluation, then H54 `mission_abandoned` trigger). If they died, their commits are on those branches.
+
+Then: merge both, validate, push `content/harset-wave2`, open PR "wave 2" against `content/harset-rebuild` (or `main` if #662 has merged by then). Never started: H05 (minigame competency, unblocked). Follow-ups recorded in the ledger and owned by nobody: player melee reach in `handle_use_ability` (H09 note), `callForAid` and `setRingTransporterDestination` unscoped client ids (H55 Exclude), no "stopped" `setMovementType` (H08 note), `entity_interactions` is dead data, the 37 optional-only steps (H50 worknote), `mission_742.rs` over the 700-line cap.
