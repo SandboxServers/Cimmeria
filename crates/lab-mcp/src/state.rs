@@ -5,14 +5,15 @@
 //! the admin API's [`LogBuffer`] ring (for `server_log_tail`). It is the same
 //! `Arc<Orchestrator>` handle the admin API gets in `main.rs`.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use sqlx::PgPool;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use cimmeria_admin_api::ws::broadcast_layer::LogBuffer;
 use cimmeria_services::base::OnlinePlayer;
-use cimmeria_services::cell::messages::BaseToCellMsg;
+use cimmeria_services::cell::messages::{BaseToCellMsg, LabQuery, LabQueryReply};
 use cimmeria_services::orchestrator::Orchestrator;
 
 /// Shared, cheaply-cloneable handle passed to every tool.
@@ -57,5 +58,40 @@ impl LabState {
     /// Snapshot of the recent-log ring buffer (oldest first).
     pub fn log_snapshot(&self) -> Vec<cimmeria_admin_api::ws::broadcast_layer::LogEntry> {
         self.log_buffer.snapshot()
+    }
+
+    /// Send a read-only [`LabQuery`] to the cell loop and await its reply.
+    ///
+    /// Mirrors the `LabConsoleExec` round-trip: clone the cell sender, send the
+    /// query with a `oneshot` reply channel, and translate the reply's own
+    /// `Result` plus the two channel-failure modes into one `Result`. Used by
+    /// the `server_entity_*` / `server_witnesses` tools.
+    pub async fn lab_query(&self, query: LabQuery) -> Result<LabQueryReply, String> {
+        let Some(tx) = self.cell_tx().await else {
+            return Err("cell service channel not available".to_string());
+        };
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(BaseToCellMsg::LabQuery { query, reply_tx })
+            .await
+            .map_err(|e| format!("failed to send to cell service: {e}"))?;
+        match reply_rx.await {
+            Ok(result) => result,
+            Err(_) => Err("cell service dropped the reply (shutting down?)".to_string()),
+        }
+    }
+
+    /// Resolve a connected player's session socket address by entity id.
+    ///
+    /// Reads the base `online_players` roster (the same source
+    /// `server_sessions` reports) and parses the session field. `None` when no
+    /// in-world player carries that entity id, or its session string does not
+    /// parse as a socket address. Used by `server_packet_tap_start` to bind a
+    /// tap's inbound half to the right socket.
+    pub async fn session_addr_for_entity(&self, entity_id: u32) -> Option<SocketAddr> {
+        self.online_players()
+            .await
+            .into_iter()
+            .find(|p| p.id == entity_id)
+            .and_then(|p| p.session.parse().ok())
     }
 }

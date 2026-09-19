@@ -46,6 +46,7 @@ use std::net::SocketAddr;
 
 pub mod client_names;
 pub mod decoders;
+pub mod tap;
 
 /// Maximum bytes of `args_hex` to record per event. Caps the per-event
 /// size at ~512 hex chars + structured fields → ~1 KB/event. Larger
@@ -87,6 +88,12 @@ pub fn log_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
         peer = %peer,
         "wire_inbound"
     );
+
+    // Per-session packet tap (#688): no-op unless a tap is active for this
+    // peer's session. Fed the raw inputs rather than the already-computed
+    // pieces above so the tap has zero cost on the untapped hot path — it
+    // re-derives name/hex/decode only for a session that is actually tapped.
+    tap::record_inbound(peer, msg_id, payload);
 }
 
 /// Record an outbound entity-method call (the cell-to-base bridge).
@@ -119,6 +126,10 @@ pub fn log_outbound_entity_method(
         target_entity_id,
         "wire_outbound"
     );
+
+    // Per-session packet tap (#688): no-op unless a tap is active for the
+    // witness session. See `log_inbound` above for the zero-cost rationale.
+    tap::record_outbound(witness_id, target_entity_id, method_index, args);
 }
 
 /// Hex-encode the first [`HEX_DUMP_CAP`] bytes of `bytes`. Inline
