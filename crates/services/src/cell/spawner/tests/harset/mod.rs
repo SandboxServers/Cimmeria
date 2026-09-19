@@ -32,10 +32,15 @@
 //!   the composite primary key that lets a set hold more than one ability at
 //!   all, plus the loader-to-`choose_npc_ability` round-trip over a multi-row
 //!   set.
+//! - [`world57_placement`]: live-DB guards on the world-57 population and
+//!   named regions placed by pass B (packets H14 and H15) -- tags the merged
+//!   mission chains already dispatch on, the D-H03 no-hostiles rule, the
+//!   recorded on-mesh/off-mesh verdict per row, and the region volumes.
 
 mod ability_sets;
 mod factions;
 mod templates;
+mod world57_placement;
 
 use crate::cell::combat::{HOSTILE_FACTION, NPC_DEFAULT_ABILITY};
 use crate::cell::spawner::{load_spawn_templates, load_spawns_from_db};
