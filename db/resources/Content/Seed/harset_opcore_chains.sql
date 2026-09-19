@@ -388,6 +388,16 @@ VALUES
 
 -- Chain 6504: relog restore for step 4039. Disabled with its sibling so
 -- the "?" never appears on Copplemann for a step the player cannot finish.
+--
+-- H9 RESIDUAL, for whoever authors the Castle side. This chain is
+-- `player_loaded`-only, which is correct ONLY while 567's earlier legs
+-- (steps 2000 and 2012, both unauthored) stay Castle-side: the step then
+-- becomes current in another world and the crossing fires the trigger. If
+-- the Castle packet ever makes 4039 current while the player is already in
+-- world 68, this chain needs a second trigger row the way 6511 does, or the
+-- turn-in indicator never appears. There is no `advance_step` trigger to
+-- hang it on today, so the fix would have to be an in-chain bind on
+-- whatever advances to 4039.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (6504, '567 - Restore Copplemann files binding on Command Center load (step 4039) (DISABLED with 6503, U17)', 'mission', 567, false, 0);
 
@@ -547,8 +557,37 @@ VALUES (6504, 'add_dialog_set', 2817, NULL, '{"slot": 48, "mission_id": 567}', 0
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (6511, '1361 - Offer indicator on Marsh for Humans (DISABLED: needs the 68->57 door, chain 6007/M0)', 'mission', 1361, false, 0);
 
+-- TWO TRIGGER ROWS. `build_chains_from_rows` emits one Chain per trigger row,
+-- sharing this chain's conditions and actions, so both paths run the same gate
+-- and the same bind.
+--
+-- `player_loaded` alone is NOT enough, and the case it misses is the
+-- GUARANTEED first visit. This is playtest finding H9 in its `player_loaded`
+-- form: a chain keyed on an edge never fires when the gate opens while the
+-- player is already past that edge. Here the gate is
+-- `step_status 1360/4038 neq active`, and it opens the moment chain 6501
+-- completes 1360 -- inside world 68, with no second world entry to come. The
+-- player walks in from the Cellblock carrying Frost's letter, hands it over,
+-- and Marsh goes dark: 6501's `remove_dialog_set 5356` clears the only bind on
+-- template slot 10, `entity_templates` row 10 carries `interaction_type = 0`
+-- and `static_interaction_sets = '{}'`, so the client stops registering an
+-- interaction on him entirely and the right-click that would fire 6512 is
+-- never sent. Meet The Praxis would be unreachable until the player crossed a
+-- world boundary for unrelated reasons.
+--
+-- `mission_completed '1360'` closes that. `fire_mission_completed`
+-- (executor/mission.rs, gated on a real active -> completed transition)
+-- populates world, archetype and mission context after the mutation, so all
+-- five conditions below evaluate normally, and it runs after 6501's
+-- `remove_dialog_set` (sort_order 2) -- so slot 10 ends that one click holding
+-- exactly one bind, dsm 5254. Pinned by
+-- `chain_6511_offers_the_praxis_the_moment_the_letter_is_handed_over`.
+--
+-- 6512 needs no second trigger: `interact_tag` re-evaluates on every click.
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (6511, 'player_loaded', 'Harset_CmdCenter', 'player', false, 0);
+VALUES
+  (6511, 'player_loaded', 'Harset_CmdCenter', 'player', false, 0),
+  (6511, 'mission_completed', '1360', 'player', false, 1);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
