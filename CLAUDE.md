@@ -181,6 +181,7 @@ The map of "what changed → what to update":
 | Admin-API / Admin-panel / Tauri-app surface (REST routes, WebSocket streams, IPC commands) | [docs/tools/admin-api.md](docs/tools/admin-api.md), [docs/tools/admin-panel.md](docs/tools/admin-panel.md), and the `cimmeria-admin-api` row in [crates/README.md](crates/README.md) if the public surface shifts |
 | Developer how-to guides (adding a handler, extending the content engine, writing a migration) | [docs/guides/add-a-message-handler.md](docs/guides/add-a-message-handler.md), [docs/guides/extend-the-content-engine.md](docs/guides/extend-the-content-engine.md), [docs/guides/write-a-database-migration.md](docs/guides/write-a-database-migration.md). When adding a new how-to, also link from [docs/readme.md](docs/readme.md) → `guides/` and from [CONTRIBUTING.md](CONTRIBUTING.md). |
 | Operations / deployment runbooks (container image, colo deploy, telemetry, SigNoz) | [docs/operations/<file>.md](docs/operations/) and the `Top-Level Documents` table in [docs/readme.md](docs/readme.md) if a new operator-facing entry is added |
+| Issue-tracker, triage-label, or domain-doc configuration consumed by the engineering agent skills (`/triage`, `/to-tickets`, `/to-spec`, `/code-review`, `/domain-modeling`) | [docs/agents/](docs/agents/) (`issue-tracker.md`, `triage-labels.md`, `domain.md`) and the `## Agent skills` block at the bottom of this file. Re-run `/mattpocock-skills:setup-matt-pocock-skills` to switch trackers or regenerate from scratch. |
 
 Index entries in [docs/readme.md](docs/readme.md) and the per-section `README.md` files (`docs/content/README.md`, `docs/protocol/README.md`, etc.) must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
 
@@ -199,3 +200,16 @@ Files should "do what it says on the tin" — a reader (human or LLM) should pre
 - **Naming.** Avoid `helpers.rs`, `utils.rs`, `misc.rs`, `extra.rs` — they hide content. Use `cooldowns.rs`, `damage_resolution.rs`, `witness_list.rs`.
 - **Module style.** The repo uses `foo/mod.rs` (not the modern `foo.rs` + `foo/` style). Stay consistent.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `SandboxServers/Cimmeria`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root plus `docs/adr/` for new ADRs; existing architecture decisions live under `docs/architecture/`. See `docs/agents/domain.md`.
