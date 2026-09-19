@@ -147,10 +147,10 @@ not record. Log the outbound intent, not just the internal state:
 | `repath_degenerate`, `hold_no_repath` (§6) | **Shipped** |
 | Colo rows tagged `dev` (§9.5) | **Fixed** — `CIMMERIA_DEPLOY_ENV: "colo"` in `docker/compose.yml` |
 | 60 s verbose capture after `.bug`; Discord deep link | Not yet |
-| `playtest.friction` detectors (§9.3b) | **Shipped: 4 of 9** — `repeat_interact_no_effect`, `repeat_item_use_no_chain`, `console_reject_streak` (plus a DEBUG row per rejected command with its `reason`), `escort_separated`. Once per episode, re-firing once per window while the condition persists. Not yet: `step_stalled`, `objective_never_completed`, `region_dwell_no_hint`, `dialog_displaced`, `death_then_silence` |
+| `playtest.friction` detectors (§9.3b) | **Shipped: all 9.** Episode counters — `repeat_interact_no_effect`, `repeat_item_use_no_chain`, `console_reject_streak` (plus a DEBUG row per rejected command), `escort_separated`. Per-player watch, re-evaluated every 2 s — `step_stalled`, `region_dwell_no_hint` (server-side point-in-polygon vs client hints), `death_then_silence`, `dialog_displaced`, `objective_never_completed` |
 | `session.journal`, `play_session_id`, `service.version` (§9.5–9.6) | Not yet |
 | Unified `decision_outcome` (log + span + counter from one helper); `issue_move_order` + `leg_seq` | Not yet |
-| Outbound-intent logging: `setMovementType` outcomes, sampled UPDATE_AVATAR sends, dialog / mission sends, respawn resend list (§9.4) | Not yet |
+| Outbound-intent logging (§9.4) | **Partly shipped:** `movement.movement_type` (every `setMovementType` outcome, including the `cleared` case that sends nothing), `wire.out.avatar_update` (1-in-100 record of the position and `yaw_byte` a witness was sent), and the reanchor log now lists `resent` / `not_resent`. Not yet: dialog / mission-log sends, respawner id list |
 | Console reject logging, `unhandled_interaction_flag`, `condition_failed`, region-hint containment | Not yet |
 
 No behaviour was changed in this PR — it is logging only. The defects in §2 are all still present.
@@ -160,3 +160,5 @@ Reading a bookmark in SigNoz: `scope_name = 'playtest.bookmark'` lists the notes
 `wire_facing_vs_caller_deg` — a chasing NPC near 180 with `yaw_byte = 0` is H1. For "it is floating", read
 `y_above_ground` (meshed worlds) or `dy_vs_caller` (meshless worlds such as Castle, where `ground_y` is absent and
 `navmesh_loaded = false` on the header says why).
+
+Saved SigNoz views (category `playtest`): **Playtest: bookmarks (.bug notes)**, **Playtest: friction (stuck-player detectors)**, and **Playtest: position trail** — player samples, NPC waypoints/steps, `wire.out.avatar_update` and `setMovementType` rows interleaved with position and `yaw_byte` columns. Narrow the time range to ±30 s around a bookmark to see where everyone was, where they were going and what the client was told.
