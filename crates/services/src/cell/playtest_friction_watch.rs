@@ -334,6 +334,15 @@ pub(crate) fn respawned(entity_id: u32) {
     with_watch(entity_id, |w| w.note_respawn(Instant::now()));
 }
 
+/// The previous dialog shown to this player and how long ago, if any.
+pub(crate) fn last_dialog(entity_id: u32) -> Option<(i32, u64)> {
+    let now = Instant::now();
+    with_watch(entity_id, |w| {
+        w.last_dialog
+            .map(|(id, at)| (id, now.saturating_duration_since(at).as_millis() as u64))
+    })
+}
+
 /// A dialog is about to be displayed to the player.
 pub(crate) fn dialog_shown(entity_id: u32, dialog_id: i32) {
     if let Some(f) = with_watch(entity_id, |w| w.note_dialog(dialog_id, Instant::now())) {

@@ -435,6 +435,38 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     let missions = space_mgr
         .get_entity(entity_id)
         .map_or(0, |e| e.missions.count());
+    {
+        let id = space_mgr.player_identity(entity_id);
+        let (name, archetype, level, access_level) =
+            space_mgr
+                .get_entity(entity_id)
+                .map_or_else(Default::default, |e| {
+                    (
+                        e.character_name.clone().unwrap_or_default(),
+                        e.archetype_id.unwrap_or(0),
+                        e.level,
+                        e.access_level,
+                    )
+                });
+        // Pair with `session.end`. Client telemetry (`launcher.ingest` /
+        // `launcher.bundle`) is ingested by admin-api, which this crate cannot
+        // see -- so liveness is a QUERY: a `session.start` for an account with
+        // no `launcher.*` rows in the same window means the tester is playing
+        // without client logs. See the "sessions vs client telemetry" view.
+        tracing::info!(
+            target: "session.start",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            character_name = %name,
+            archetype,
+            level,
+            access_level,
+            world = %world_name,
+            missions,
+            "player entered world"
+        );
+    }
     crate::cell::player_journal::note(
         entity_id,
         crate::cell::player_journal::kinds::WORLD_ENTER,

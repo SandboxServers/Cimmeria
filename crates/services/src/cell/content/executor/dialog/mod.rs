@@ -109,6 +109,18 @@ pub(super) async fn display(
 
     tracing::Span::current().record("npc_entity_id", npc_entity_id);
     // Stuck-player detector: a dialog replaced within seconds cannot be read.
+    let (replaced_dialog_id, ms_since_previous) =
+        crate::cell::playtest_friction_watch::last_dialog(entity_id).unwrap_or((0, 0));
+    tracing::debug!(
+        target: "dialog.display",
+        entity_id,
+        dialog_id,
+        chain_id,
+        npc_entity_id,
+        replaced_dialog_id,
+        ms_since_previous,
+        "dialog displayed -- replaced_dialog_id is the previous one shown to this player"
+    );
     crate::cell::playtest_friction::dialog_shown(entity_id, dialog_id);
     crate::cell::player_journal::note(
         entity_id,
