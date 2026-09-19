@@ -235,6 +235,10 @@ VALUES (6006, 'cross_world_teleport', NULL, 'Harset_CmdCenter',
 --    6.5 m of headroom. The seeded y of -67.600 sits 0.04 m above that
 --    floor. The point is neither inside geometry nor above a fall, which
 --    was the only question the M0 walk was still needed for.
+--    Independently confirmed afterwards by a second tool and method: the
+--    Castle-nav session's rebuilt Harset mesh puts a walkable polygon
+--    0.03 m under this exact point, in its main hub component. The 2009
+--    coordinate is correct and always was.
 -- 2. DOES IT PING-PONG? No. Point set 2078
 --    ('Harset.CommandCenterTransition', the outbound door in world 57)
 --    is an AABB spanning z -243.52..-238.41; the arrival at z -231 is

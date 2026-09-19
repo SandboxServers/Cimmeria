@@ -124,12 +124,16 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 --     (-0.372, -67.364, 37.353)) by 8.33 m and of point set 2078
 --     'Harset.CommandCenterTransition' (z -238..-244) by the length of the
 --     zone, so respawning triggers neither volume.
--- NOT placed at the zone's busiest point: 6,049 of the ~10,000 telemetry
--- samples land at (1.0, -68.925, 2.9), the plaza gateway between the two
--- GA-GuardPost00 props — but that point is in navmesh component 1028, one of
--- the 1,939 fragments the H53 defect leaves behind, so it would not serve as
--- an arrival-recovery candidate. Worth re-pinning there once the mesh is
--- rebuilt.
+-- NOT placed at the zone's busiest point: (1.0, -68.92, 2.9) — the plaza
+-- gateway between the two GA-GuardPost00 props — carries 6,049 of the 28,988
+-- reject rows that quote a real accepted position, the largest of the 38
+-- distinct ones, with four more clean anchors within 5 m. (It survives the
+-- synthetic-point filter: only (0,0,0) and (1,1,1) are excluded for Harset,
+-- so the round x = 1.00 is a coincidence.) It is in navmesh component 1028,
+-- one of the 1,939 fragments the H53 defect leaves behind, so it would not
+-- serve as an arrival-recovery candidate and nothing could path to it. On the
+-- rebuilt mse13 mesh that whole cluster joins the hub component, so this is
+-- the obvious re-pin the day harset.nav is rebuilt.
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (20, 57, 'Harset Gate Plaza Respawn', -8, -68.989999999999995, 34);
 
 -- PLACEMENT PL-A-03, provisional until a playtest.

@@ -90,14 +90,23 @@ async fn harset_gate_arrival_pin_is_on_the_mesh_and_the_gate_row_is_not() {
          (row PL-A-01) rather than leaving it here"
     );
 
-    // Control: the row the pin replaces. If this ever starts passing the
-    // navmesh has been rebuilt and the pin should be re-derived (and this
-    // test rewritten) rather than silently kept.
+    // Control, and a deliberate tripwire. The row the pin replaces must be
+    // off-mesh, because that is the *only* reason the pin exists: probed
+    // against the Castle-nav session's rebuilt Harset meshes (374 components
+    // instead of 1,939, humanoid agent 1.8/0.6) this same row reads on-mesh
+    // with dy -0.04 — standing on the gate dais. So a rebuilt
+    // `data/spaces/harset.nav` most likely makes the pin unnecessary rather
+    // than wrong, and the right response to this assertion firing is to
+    // consider setting the four `arrival_*` columns back to NULL (the 2009
+    // behaviour), not to hunt for a new offset.
     let row = [gate.x, gate.y, gate.z];
     assert!(
         !mesh.is_point_valid(&v(row)),
-        "the raw gate row {row:?} now reads on-mesh — harset.nav has changed \
-         under this pin; re-derive PL-A-01 against the new mesh"
+        "the raw gate row {row:?} now reads on-mesh — harset.nav has been \
+         rebuilt under this pin. Re-read PL-A-01 in \
+         docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md: the \
+         pin is a workaround for the old mesh and dropping it may now be \
+         correct"
     );
 
     // The facing is derived, not defaulted. Asserted as a DIRECTION rather
@@ -227,12 +236,15 @@ async fn the_three_harset_respawners_exist_and_stand_on_real_ground() {
 /// they actually sit at, and that `navmesh_mode = 'advisory'` is the only
 /// thing keeping those four rings alive.
 ///
-/// The pad rows themselves are correct and are deliberately NOT changed:
-/// `obj_slab` finds an up-facing ring-platform surface within 0.04 m of every
-/// one of the five authored `y` values (a disc ~1.1 m above the surrounding
-/// floor). What is missing is mesh, not ground — `harset.nav`'s nearest
-/// polygon to pads 5/6/7/8 is 9 to 238 m away vertically, in one case on a
-/// different storey entirely.
+/// The pad rows themselves are correct and are deliberately NOT changed, and
+/// two independent sources now say so. `obj_slab` finds an up-facing
+/// ring-platform surface within 0.04 m of every one of the five authored `y`
+/// values (a disc ~1.1 m above the surrounding floor); and probed against the
+/// Castle-nav session's rebuilt Harset meshes (374 components instead of
+/// 1,939, humanoid agent 1.8/0.6) **all five pads are on-mesh within 0.13 m,
+/// in one component**. What is missing is mesh, not ground — the shipped
+/// `harset.nav`'s nearest polygon to pads 5/6/7/8 is 9 to 238 m away
+/// vertically, in one case on a different storey entirely.
 ///
 /// Consequence, and the reason this is worth a test: the day someone flips
 /// world 57 to `enforce` without rebuilding the mesh, `runtime::tick` starts
@@ -277,11 +289,13 @@ async fn four_of_the_five_harset_ring_pads_survive_only_because_world_57_is_advi
         (on_mesh.as_slice(), off_mesh.as_slice()),
         ([4].as_slice(), [5, 6, 7, 8].as_slice()),
         "the Harset ring-pad mesh coverage has changed. If harset.nav was \
-         rebuilt this is good news: re-run the obj_slab check in \
-         docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md \
-         (row PL-A-05) and update this expectation. If a pad ROW was edited \
-         instead, revert it — all five rows sit within 0.04 m of their \
-         authored ring platform and the mesh is what is wrong."
+         rebuilt this is good news and the expected answer is all five \
+         on-mesh: that is what the rebuilt mse13/mse25 meshes already give \
+         (within 0.13 m, one component). Update this expectation from row \
+         PL-A-05 in \
+         docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md. If a \
+         pad ROW was edited instead, revert it — all five rows sit within \
+         0.04 m of their authored ring platform and the mesh is what is wrong."
     );
 
     // And today: world 57 is advisory, so none of them is refused and
