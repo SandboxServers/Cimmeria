@@ -274,10 +274,10 @@ async fn launch_ability_with_unknown_ability_id_is_a_noop() {
 /// `Action::ApplyEffect` is the single-effect degenerate case of the same
 /// helper — no ability lookup, the effect id comes straight off the action.
 ///
-/// This arm cannot fire from seeded content today (the only `apply_effect`
-/// row sits on an `effect`-scoped chain and no `effect_*` trigger is
-/// dispatched), so this test is the only thing exercising it. It is
-/// deliberately a direct `execute_actions` call rather than a chain replay.
+/// The arm is reachable from seeded content since `OnEffectInit` dispatch
+/// landed; this test stays a deliberate direct `execute_actions` call
+/// because it targets the executor arm, not the dispatch seam (the seam
+/// has its own tests in `event_dispatch::effects`).
 #[tokio::test]
 async fn apply_effect_registers_the_named_effect_on_the_source_entity() {
     let mut mgr = make_mgr_with_defs();

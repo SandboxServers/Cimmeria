@@ -22,11 +22,11 @@ mod chain_replay_tests;
 pub use engine_loader::build_engine;
 pub use event_dispatch::{
     fire_chain_by_id, fire_cover_duration, fire_cover_entered, fire_cover_left, fire_dialog_choice,
-    fire_dialog_open, fire_enter_region, fire_entity_death, fire_entity_health_below,
-    fire_exit_region, fire_health_below_for_hit, fire_interact_tag, fire_interact_template,
-    fire_item_equipped, fire_item_use, fire_npc_flanked, fire_pending_health_below,
-    fire_player_flanked_npc, fire_player_loaded, fire_stargate_crossed, fire_stargate_dialed,
-    fire_teleport_in,
+    fire_dialog_open, fire_effect_init, fire_enter_region, fire_entity_death,
+    fire_entity_health_below, fire_exit_region, fire_health_below_for_hit, fire_interact_tag,
+    fire_interact_template, fire_item_equipped, fire_item_use, fire_npc_flanked,
+    fire_pending_health_below, fire_player_flanked_npc, fire_player_loaded, fire_stargate_crossed,
+    fire_stargate_dialed, fire_teleport_in,
 };
 // Cell-tick drain for `content_actions.delay_ms > 0` (C08a) — called once
 // per tick from `cell::service::message_loop`, same flat depth as the
@@ -52,12 +52,38 @@ mod tests {
     };
     use tokio::sync::mpsc;
 
-    fn make_test_space_mgr() -> SpaceManager {
+    pub(super) fn make_test_space_mgr() -> SpaceManager {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         let cxml = r#"<?xml version="1.0"?><Spaces></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
         mgr.create_startup_spaces(cxml).unwrap();
+        mgr
+    }
+
+    /// `make_test_space_mgr` plus a player entity and a registered pulsing
+    /// effect def — the effect-init dispatch tests' fixture. `effect_defs`
+    /// entries are what `effect_apply::apply_effect` resolves.
+    pub(super) fn make_test_effect_mgr() -> SpaceManager {
+        use cimmeria_entity::abilities::EffectDef;
+
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+        }
+        mgr.effect_defs.insert(
+            700,
+            EffectDef {
+                effect_id: 700,
+                ability_id: 700,
+                pulse_count: 2,
+                pulse_duration: 1.0,
+                ..EffectDef::default()
+            },
+        );
         mgr
     }
 

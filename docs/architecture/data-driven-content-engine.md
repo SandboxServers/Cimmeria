@@ -342,10 +342,20 @@ Every event type the engine must handle, mapped from the patterns found in all e
 
 | event_type | event_key format | Fires when | Source |
 |---|---|---|---|
-| `effect_init` | Effect ID | Effect applied to entity | `onEffectInit()` |
-| `effect_pulse_begin` | Effect ID | Effect pulse starts | `onPulseBegin()` |
-| `effect_pulse_end` | Effect ID | Effect pulse ends | `onPulseEnd()` |
-| `effect_removed` | Effect ID | Effect removed from entity | `onEffectRemoved()` |
+| `effect_init` | (ignored today) | Effect applied to entity | `fire_effect_init` in `cell::content::event_dispatch` (fires from content `ApplyEffect`/`LaunchAbility` effect registration) |
+| `effect_pulse_begin` | (ignored — not dispatched) | Effect pulse starts | not dispatched |
+| `effect_pulse_end` | (ignored — not dispatched) | Effect pulse ends | not dispatched |
+| `effect_removed` | (ignored — not dispatched) | Effect removed from entity | not dispatched |
+
+> **`event_key` reconciliation (design vs reality):** this table historically
+> specified "Effect ID" as the `event_key` format for all four effect events,
+> but the loader ignores `event_key` for them (`loader/trigger.rs` maps
+> `effect_init` → unit `Trigger::OnEffectInit`) and the matcher is a pure
+> unit match. The seeded `effects_chains.sql` rows are NULL-keyed. Since
+> #610, `effect_init` carries the effect id in `TriggerEvent.params`
+> (`effect_id`) **as data** — a follow-up can turn on id-filtered matching
+> behind that param. The seed header's old `on_effect_event()` description
+> was the fiction this row corrects.
 
 ---
 
