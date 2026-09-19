@@ -388,54 +388,82 @@ fn recovery_and_suppression_rows_carry_the_same_diagnosis_as_a_reject() {
     }
 }
 
-/// All three outcomes share one per-entity window, because they are one
-/// event seen three ways. A `CorrectionSuppressed` entity re-reports at
-/// the full 10 Hz client rate indefinitely; giving it its own unthrottled
-/// stream would reintroduce exactly the flood the throttle was added for.
-///
-/// Also the positive proof that the other two outcomes reach the
-/// accounting seam at all: an occurrence that never calls `admit` cannot
-/// show up in the next row's `suppressed` count.
+/// **The transition guard.** Each outcome gets its own throttle window.
+/// A single per-entity window looked tidier and was wrong: an entity on
+/// its way to `CorrectionSuppressed` spends its whole correction budget
+/// as ordinary rejects first, which at the 10 Hz client rate takes
+/// ~0.5 s — inside the window the first reject opened. The row that says
+/// "the server has stopped correcting this client", which is the one an
+/// operator is meant to act on, was therefore swallowed and only
+/// appeared a second later.
 #[test]
-fn every_hard_reject_outcome_shares_one_throttle_window() {
+fn the_suppression_transition_is_not_swallowed_by_the_reject_window() {
     let capture = LogCapture::install();
     let (mut mgr, space_id) = agnos_with(7201);
     let t0 = Instant::now();
 
-    mgr.report_movement_reject(report_for(7201, space_id, MovementReject::OutOfBounds), t0);
-    // Inside the window: counted, not written.
-    mgr.report_movement_recovered(
-        RecoveryReport {
-            common: common_for(7201, space_id, MovementReject::OutOfBounds, SPAWN),
-            from: SPAWN,
-            recovered_to: SPAWN,
-        },
-        t0 + Duration::from_millis(100),
-    );
-    assert!(
-        capture
-            .find_message(Level::WARN, "movement.validation_recovered")
-            .is_none(),
-        "a recovery inside the same entity's open window must be \
-         absorbed by the throttle, not written"
-    );
-
+    // The full correction budget, well inside one throttle window.
+    for i in 0..6 {
+        mgr.report_movement_reject(
+            report_for(7201, space_id, MovementReject::OutOfBounds),
+            t0 + Duration::from_millis(i * 100),
+        );
+    }
     mgr.report_correction_suppressed(
         SuppressionReport {
             common: common_for(7201, space_id, MovementReject::OutOfBounds, SPAWN),
             from: SPAWN,
             strikes: 6,
         },
-        t0 + Duration::from_secs(2),
+        t0 + Duration::from_millis(600),
     );
-    let ev = capture
-        .find_message(Level::ERROR, "movement.correction_suppressed")
-        .expect("past the window, the next hard reject must emit");
+
+    assert!(
+        capture
+            .find_message(Level::ERROR, "movement.correction_suppressed")
+            .is_some(),
+        "the suppression row must not wait out the window the preceding \
+         rejects opened — it is the first row that says anything changed"
+    );
+}
+
+/// Positive proof that a repeated non-`Rejected` outcome reaches the
+/// throttle at all — an occurrence that never calls `admit` cannot show
+/// up in the next row's `suppressed` count, and a kind that is never
+/// admitted would emit every time instead.
+#[test]
+fn a_repeated_recovery_is_throttled_within_its_own_kind() {
+    let capture = LogCapture::install();
+    let (mut mgr, space_id) = agnos_with(7202);
+    let t0 = Instant::now();
+    let recovery = RecoveryReport {
+        common: common_for(7202, space_id, MovementReject::OutOfBounds, SPAWN),
+        from: SPAWN,
+        recovered_to: SPAWN,
+    };
+
+    mgr.report_movement_recovered(recovery, t0);
+    mgr.report_movement_recovered(recovery, t0 + Duration::from_millis(100));
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.message_contains("movement.validation_recovered"))
+        .collect();
+    assert_eq!(rows.len(), 1, "the second recovery is inside the window");
+
+    mgr.report_movement_recovered(recovery, t0 + Duration::from_secs(2));
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.message_contains("movement.validation_recovered"))
+        .collect();
+    let ev = rows
+        .last()
+        .expect("past the window, the next recovery must emit");
     assert!(
         ev.has_field("suppressed", "1"),
         "the elided recovery must be accounted for in the next emitted \
-         row's suppressed count — if it never reached `admit`, it was \
-         never counted either: {ev:#?}"
+         row's suppressed count: {ev:#?}"
     );
 }
 

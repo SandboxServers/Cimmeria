@@ -198,8 +198,12 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         "reason" => reason_label,
     );
 
+    // One kind: every AI state's path failure shares a window, because
+    // a stuck NPC does not change state and the row already names which
+    // handler was routing.
     let Some(suppressed) = space_mgr.movement_telemetry.npc_path_fail_log.admit(
         npc_id,
+        "path_fail",
         now,
         PATH_FAIL_LOG_MIN_INTERVAL,
     ) else {

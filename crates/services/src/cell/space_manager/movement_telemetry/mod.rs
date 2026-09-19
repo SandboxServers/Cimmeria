@@ -137,15 +137,30 @@ pub(crate) const UNKNOWN_WORLD: &str = "unknown";
 pub(crate) const GATE_NOT_APPLICABLE: &str = "n/a";
 
 /// "First one now, then at most one per `interval`, and say how many
-/// were skipped" — keyed by entity.
+/// were skipped" — keyed by entity **and kind**.
 ///
 /// Deliberately not a rate limiter: nothing is dropped silently. Every
 /// suppressed occurrence is counted and reported on the next row that
 /// gets through, so the log still answers "how bad was it" even though
 /// it no longer contains one line per occurrence.
+///
+/// # Why `kind` is part of the key
+///
+/// A window per entity alone hides **transitions**. The three hard-reject
+/// outcomes are reached in sequence: an entity that is going to end up
+/// `CorrectionSuppressed` first spends its correction budget as ordinary
+/// `Rejected` rows, which at 10 Hz takes ~0.5 s — inside the first
+/// window. A single shared window therefore swallowed the one row that
+/// says "the server has stopped correcting this client", which is the
+/// row an operator is meant to act on, and only let it through a second
+/// later.
+///
+/// Per-kind windows cost nothing in the steady state (a stuck entity
+/// repeats *one* kind, so it is still ~1 row/s) and bound the pathological
+/// alternating case at one row per kind per interval.
 #[derive(Debug, Default)]
 pub(crate) struct LogThrottle {
-    entries: HashMap<u32, ThrottleEntry>,
+    entries: HashMap<(u32, &'static str), ThrottleEntry>,
 }
 
 #[derive(Debug)]
@@ -161,16 +176,21 @@ impl LogThrottle {
     /// `Some(n)` means "emit, and report `suppressed = n`" (`n == 0` for
     /// the first occurrence and for any occurrence after a quiet
     /// window). `None` means "count it, write nothing".
+    ///
+    /// `kind` is a stable low-cardinality token naming what is being
+    /// throttled for this entity; each gets its own window. A caller
+    /// with only one row shape passes one constant.
     pub(crate) fn admit(
         &mut self,
         entity_id: u32,
+        kind: &'static str,
         now: Instant,
         interval: Duration,
     ) -> Option<u32> {
-        match self.entries.get_mut(&entity_id) {
+        match self.entries.get_mut(&(entity_id, kind)) {
             None => {
                 self.entries.insert(
-                    entity_id,
+                    (entity_id, kind),
                     ThrottleEntry {
                         last_emit: now,
                         suppressed: 0,
@@ -197,15 +217,16 @@ impl LogThrottle {
         }
     }
 
-    /// Drop an entity's state. Called from every teardown path, so the
-    /// map cannot grow past the live entity population and a recycled
-    /// `entity_id` never inherits a predecessor's suppression count.
+    /// Drop **every** kind's state for an entity. Called from every
+    /// teardown path, so the map cannot grow past the live entity
+    /// population and a recycled `entity_id` never inherits a
+    /// predecessor's suppression count.
     pub(crate) fn forget(&mut self, entity_id: u32) {
-        self.entries.remove(&entity_id);
+        self.entries.retain(|(id, _), _| *id != entity_id);
     }
 
-    /// Number of tracked entities. Test-only: the leak guard asserts
-    /// this returns to zero after teardown.
+    /// Number of tracked (entity, kind) slots. Test-only: the leak guard
+    /// asserts this returns to zero after teardown.
     #[cfg(test)]
     pub(crate) fn tracked(&self) -> usize {
         self.entries.len()

@@ -21,6 +21,11 @@
 //! one place that counts and diagnoses; each outcome's row is a
 //! presentation of the same accounting.
 //!
+//! The throttle windows stay **separate per outcome**, though — see
+//! [`super::LogThrottle`]. Sharing one would hide the transition into
+//! `correction_suppressed` behind the ordinary rejects that led to it,
+//! which is the row an operator is meant to act on.
+//!
 //! Nothing here changes what the client is sent — the handler still
 //! emits `FORCED_POSITION` for `Rejected`/`Recovered` and nothing for
 //! `CorrectionSuppressed`.
@@ -36,6 +41,15 @@ use cimmeria_entity::navigation::PointVerdict;
 
 use super::super::SpaceManager;
 use super::{GATE_NOT_APPLICABLE, REJECT_LOG_MIN_INTERVAL, UNKNOWN_WORLD};
+
+// Throttle kinds. One window each, so the *transition* into a new
+// outcome is never absorbed by the window the previous one opened —
+// an entity on its way to `correction_suppressed` spends its whole
+// correction budget as ordinary rejects first, which at 10 Hz takes
+// ~0.5 s and would otherwise hide the row an operator acts on.
+const KIND_REJECT: &str = "reject";
+const KIND_RECOVERED: &str = "recovered";
+const KIND_SUPPRESSED: &str = "suppressed";
 
 /// The part of a hard reject that is identical whichever outcome the
 /// validator chose for it.
@@ -109,7 +123,17 @@ impl SpaceManager {
     /// suppressing a log line must not suppress the count, or the
     /// throttle would silently deflate the reject rate an operator
     /// alerts on.
-    fn account_hard_reject(&mut self, common: HardReject, now: Instant) -> RejectAccounting {
+    ///
+    /// `kind` names which of the three rows is about to be written. It
+    /// is the throttle's second key: see [`super::LogThrottle`] for why
+    /// a window per entity alone hid the transition into
+    /// `correction_suppressed`.
+    fn account_hard_reject(
+        &mut self,
+        common: HardReject,
+        kind: &'static str,
+        now: Instant,
+    ) -> RejectAccounting {
         let HardReject {
             entity_id,
             space_id,
@@ -154,7 +178,7 @@ impl SpaceManager {
         let emit =
             self.movement_telemetry
                 .reject_log
-                .admit(entity_id, now, REJECT_LOG_MIN_INTERVAL);
+                .admit(entity_id, kind, now, REJECT_LOG_MIN_INTERVAL);
 
         RejectAccounting {
             identity,
@@ -194,7 +218,7 @@ impl SpaceManager {
             last_valid,
             bounds,
         } = report;
-        let acct = self.account_hard_reject(common, now);
+        let acct = self.account_hard_reject(common, KIND_REJECT, now);
         let Some(suppressed) = acct.emit else {
             return acct.identity;
         };
@@ -249,7 +273,7 @@ impl SpaceManager {
             from,
             recovered_to,
         } = report;
-        let acct = self.account_hard_reject(common, now);
+        let acct = self.account_hard_reject(common, KIND_RECOVERED, now);
         let Some(suppressed) = acct.emit else {
             return acct.identity;
         };
@@ -303,7 +327,7 @@ impl SpaceManager {
             from,
             strikes,
         } = report;
-        let acct = self.account_hard_reject(common, now);
+        let acct = self.account_hard_reject(common, KIND_SUPPRESSED, now);
 
         cimmeria_observability::counter!(
             "movement_validation_corrections_suppressed_total",

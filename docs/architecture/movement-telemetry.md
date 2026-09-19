@@ -145,10 +145,15 @@ re-reporting at 10 Hz.
 
 Two properties that are easy to break:
 
-- **One window per entity, shared by all three outcomes.** They are one
-  event seen three ways, and only one can fire per packet. Giving
-  `CorrectionSuppressed` its own stream would reintroduce the flood the
-  throttle exists for, at ERROR.
+- **The window is keyed by entity *and* row kind.** A window per entity
+  alone hides transitions: an entity on its way to
+  `CorrectionSuppressed` spends its whole correction budget as ordinary
+  `Rejected` rows first, which at 10 Hz takes ~0.5 s — inside the window
+  the first reject opened. The row that says "the server has stopped
+  correcting this client", the one an operator is meant to act on, was
+  therefore swallowed and appeared a second late. Per-kind windows cost
+  nothing in the steady state (a stuck entity repeats *one* kind) and
+  bound the alternating case at one row per kind per second.
 - **The counter is incremented before the throttle decision.**
   Suppressing a log line must not suppress the count, or the throttle
   silently deflates the rate an operator alerts on.
@@ -212,7 +217,7 @@ All in
 
 | File | Guards |
 |---|---|
-| `telemetry_reject.rs` | `world` and its `unknown` fallback, the gate + distances + mesh hash, the "a bounds reject names no gate" negative, the throttle and its per-entity independence, the diagnosis on **all three** outcomes, the shared window, the `navmesh_loaded` field set |
+| `telemetry_reject.rs` | `world` and its `unknown` fallback, the gate + distances + mesh hash, the "a bounds reject names no gate" negative, the throttle and its per-entity independence, the diagnosis on **all three** outcomes, the suppression transition surviving the reject window, a repeated recovery being throttled within its own kind, the `navmesh_loaded` field set |
 | `telemetry_sampling.rs` | sample rate, minimum distance, players-only, navmesh state, the injected-clock window, "a rejected move does not sample" |
 | `telemetry_lifecycle.rs` | release on `destroy_entity`, release on `destroy_space`, and the recycled-id stale window |
 

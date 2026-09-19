@@ -86,9 +86,12 @@ fn destroying_a_space_releases_its_npcs_telemetry_state() {
     // Give the NPC a path-failure throttle slot — the map the review
     // named, and the one only `destroy_space` can release for an NPC in
     // an instance.
-    mgr.movement_telemetry
-        .npc_path_fail_log
-        .admit(7102, Instant::now(), Duration::from_secs(5));
+    mgr.movement_telemetry.npc_path_fail_log.admit(
+        7102,
+        "path_fail",
+        Instant::now(),
+        Duration::from_secs(5),
+    );
     assert_eq!(
         mgr.movement_telemetry.tracked(),
         1,
@@ -127,7 +130,7 @@ fn a_reused_entity_id_does_not_inherit_a_destroyed_spaces_throttle_window() {
     assert_eq!(
         mgr.movement_telemetry
             .npc_path_fail_log
-            .admit(7104, t0, window),
+            .admit(7104, "path_fail", t0, window),
         Some(0),
         "precondition: the first occurrence for a fresh id emits"
     );
@@ -140,6 +143,7 @@ fn a_reused_entity_id_does_not_inherit_a_destroyed_spaces_throttle_window() {
     assert_eq!(
         mgr.movement_telemetry.npc_path_fail_log.admit(
             7104,
+            "path_fail",
             t0 + Duration::from_millis(10),
             window
         ),
