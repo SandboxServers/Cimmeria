@@ -17,6 +17,29 @@ use super::super::super::space_manager::SpaceManager;
 /// (1-in-5) when actively debugging NPC pathing; back off (1-in-50)
 /// when the field is quiet.
 const NPC_STEP_LOG_SAMPLE: u32 = 10;
+/// The first N steps of every leg are always logged: leg starts are where
+/// facing and grounding go wrong, and a 1-in-10 sample usually misses them.
+const NPC_LEG_HEAD_STEPS: u32 = 5;
+static NPC_LEG_STEPS: std::sync::Mutex<Option<std::collections::HashMap<u32, (usize, u32)>>> =
+    std::sync::Mutex::new(None);
+
+/// 1-based index of this step within the NPC's current leg. A leg starts when
+/// the path gets LONGER than it was last step (a new path was installed);
+/// consuming waypoints only ever shortens it.
+fn leg_step_index(npc_id: u32, path_len: usize) -> u32 {
+    let mut guard = NPC_LEG_STEPS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let map = guard.get_or_insert_with(std::collections::HashMap::new);
+    let e = map.entry(npc_id).or_insert((0, 0));
+    if path_len > e.0 {
+        e.1 = 0;
+    }
+    e.0 = path_len;
+    e.1 += 1;
+    e.1
+}
+
 static NPC_STEP_LOG_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// Scale an NPC's template `move_speed` (world units per 100ms tick) by its
@@ -176,10 +199,16 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
             // by tuning `NPC_STEP_LOG_SAMPLE`). State transitions
             // above are always-on; only these interpolated steps
             // are sampled.
-            if NPC_STEP_LOG_COUNTER
+            let leg_step = leg_step_index(
+                npc_id,
+                space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len()),
+            );
+            let sampled = NPC_STEP_LOG_COUNTER
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                .is_multiple_of(NPC_STEP_LOG_SAMPLE)
-            {
+                .is_multiple_of(NPC_STEP_LOG_SAMPLE);
+            if leg_step <= NPC_LEG_HEAD_STEPS || sampled {
+                // Only queried for logged steps. `None` = no navmesh here.
+                let ground_y = space_mgr.get_navmesh_height(npc_id, new_x, new_z);
                 tracing::debug!(
                     target: "movement.npc",
                     event = "step",
@@ -190,6 +219,10 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                     dist_remaining = dist - move_speed,
                     yaw_rad = yaw,
                     yaw_byte = crate::mercury::aoi::pack_angle(yaw),
+                    leg_step,
+                    y_source = "lerp",
+                    ?ground_y,
+                    y_offset_from_ground = ?ground_y.map(|g| new_y - g),
                     "NPC movement step (sampled)"
                 );
             }
@@ -586,5 +619,23 @@ mod tests {
             0.0,
             "a negative mod must stall the NPC, never reverse it"
         );
+    }
+}
+
+#[cfg(test)]
+mod leg_step_tests {
+    use super::leg_step_index;
+
+    /// A leg starts when the path gets longer; consuming waypoints never
+    /// restarts the count.
+    #[test]
+    fn leg_step_restarts_only_when_a_new_path_is_installed() {
+        let npc = 4_200_001;
+        assert_eq!(leg_step_index(npc, 3), 1);
+        assert_eq!(leg_step_index(npc, 3), 2);
+        assert_eq!(leg_step_index(npc, 2), 3, "waypoint consumed: same leg");
+        assert_eq!(leg_step_index(npc, 1), 4);
+        assert_eq!(leg_step_index(npc, 4), 1, "longer path = new leg");
+        assert_eq!(leg_step_index(npc + 1, 1), 1, "per NPC");
     }
 }

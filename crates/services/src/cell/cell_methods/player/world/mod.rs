@@ -80,6 +80,11 @@ pub async fn dispatch(
                 if let Some(tag) = region_tag {
                     tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
                     crate::cell::playtest_friction::region_hint(entity_id, region_id as u32);
+                    crate::cell::player_journal::note(
+                        entity_id,
+                        crate::cell::player_journal::kinds::REGION_HINT,
+                        format!("{tag} entering={b_entering}"),
+                    );
 
                     let player_id = space_mgr
                         .get_entity(entity_id)

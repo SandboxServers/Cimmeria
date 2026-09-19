@@ -165,3 +165,22 @@ Reading a bookmark in SigNoz: `scope_name = 'playtest.bookmark'` lists the notes
 `navmesh_loaded = false` on the header says why).
 
 Saved SigNoz views (category `playtest`): **Playtest: bookmarks (.bug notes)**, **Playtest: friction (stuck-player detectors)**, and **Playtest: position trail** — player samples, NPC waypoints/steps, `wire.out.avatar_update` and `setMovementType` rows interleaved with position and `yaw_byte` columns. Narrow the time range to ±30 s around a bookmark to see where everyone was, where they were going and what the client was told.
+
+### 9.9 Ordering seams (PR `feat/ordering-seams`)
+
+The playtest's hardest bugs were ordering bugs *between* systems that each logged correctly. Shipped:
+
+| Seam | What it records |
+|---|---|
+| `player.journal` | One strictly increasing `seq` per player across world entry, reanchor, region hints, cover edges, step advances, mission completes, dialogs, resolved action lists, deferred schedule/fire, death, respawn, kills and teleports. `.bug` attaches the last 24 as `recent_events` |
+| `content.deferred` | When a delayed action fires: its delay, how late it was, and everything journaled for that player in between |
+| World entry vs reanchor | `world_enter` (cell) and `reanchor` (base) share the journal: a `reanchor` with no `world_enter` after it is the cell never re-sending regions and missions |
+| Combat vs content | `death`, `respawn` and `kill` (with whether any chain matched) sit in the same sequence as step advances and action lists; `fire_entity_death` now logs its misses |
+| Item / mission coupling | `action_list` gives the executor's exact order, e.g. `1293:AddItem > 1293:AdvanceStep > 1172:DisplayDialog+10600ms` |
+| Follow vs transport | `escort_leader_teleported` names every NPC following a player at the moment that player is teleported |
+| `npc_ai.tick` | Where each ticked NPC is, where it is going, the facing byte clients get, what it targets or follows — every AI tick, with `fight.rs` outcomes now in the shared vocabulary and counter |
+| `spawner.npc_behaviour`, `player.death`, `respawner_ids` | From section 6's table |
+
+Also shipped in the same PR: `movement.npc` steps log the first 5 of every leg with `leg_step`, `y_source`, `ground_y`, `y_offset_from_ground`; `player.respawn` with state flags and health before/after; `dialog.display` with `replaced_dialog_id` / `ms_since_previous` and `button_id` on dialog choices; `cover.flank_check`; `console.feedback`; **`wire.in` method names** (they were all `unknown` because the name table was indexed by raw message id against the wrong range — now by method index, including the `0xBD` sub-slot form); `session.start` / `session.end` with `disconnect_reason`; and a *sessions vs client telemetry* saved view as the liveness panel.
+
+Still open from section 6: `issue_move_order` + `leg_seq` (a field on the entity and seven call sites routed through one helper — `leg_step` is the interim), dialog `speaker` / `screen_count`, and a base-method name table for `wire.in`.

@@ -109,6 +109,7 @@ impl SpaceManager {
     /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
         crate::cell::playtest_friction::forget(entity_id);
+        crate::cell::player_journal::forget(entity_id);
         // Snapshot the identity while the entity still exists — it is removed
         // from its space below, and this is the last chance to attribute the
         // teardown to an account. `entity_id` alone is not enough here of all

@@ -181,6 +181,7 @@ pub(super) async fn npc_ai_fight(
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.ai_state = AiState::Leashing;
                 npc.threat_list.clear();
+                super::note_outcome("leashed");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -267,6 +268,7 @@ pub(super) async fn npc_ai_fight(
         match decision {
             CoverDecision::StayInCover { pos, slot } => {
                 nav_target_pos = pos;
+                super::note_outcome("stay_in_cover");
                 tracing::debug!(
                     target: "npc_ai",
                     event = "decision",
@@ -280,6 +282,7 @@ pub(super) async fn npc_ai_fight(
             }
             CoverDecision::MoveToCover { pos, slot } => {
                 nav_target_pos = pos;
+                super::note_outcome("move_to_cover");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -292,6 +295,7 @@ pub(super) async fn npc_ai_fight(
                 );
             }
             CoverDecision::Released { prior_slot } => {
+                super::note_outcome("cover_released_flanked");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -362,6 +366,7 @@ pub(super) async fn npc_ai_fight(
             // off-mesh flyer positions — and no log line surfaced
             // it. Same pattern that the existing `no_path` log
             // catches for non-stationary NPCs.
+            super::note_outcome("stationary_holds");
             tracing::info!(
                 target: "npc_ai",
                 event = "decision",
@@ -402,6 +407,7 @@ pub(super) async fn npc_ai_fight(
                     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                         npc.nav_path = waypoints;
                     }
+                    super::note_outcome("chase");
                     tracing::debug!(
                         target: "npc_ai",
                         event = "decision",
@@ -416,6 +422,7 @@ pub(super) async fn npc_ai_fight(
                 } else {
                     let stale_path_len =
                         space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len());
+                    super::note_outcome("repath_degenerate");
                     tracing::warn!(
                         target: "npc_ai",
                         event = "decision",
@@ -435,6 +442,7 @@ pub(super) async fn npc_ai_fight(
                 // span already carries `space_id`, so SigNoz can group
                 // `groupBy=decision_outcome` across the npc_ai target and
                 // pivot per zone via the span's space_id attribute.
+                super::note_outcome("no_path");
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -448,6 +456,7 @@ pub(super) async fn npc_ai_fight(
                 );
             }
         } else {
+            super::note_outcome("hold_no_repath");
             tracing::debug!(
                 target: "npc_ai",
                 event = "decision",
@@ -478,6 +487,7 @@ pub(super) async fn npc_ai_fight(
                 npc.nav_path.clear();
                 npc.nav_path.push_back(backup);
             }
+            super::note_outcome("min_range_backup");
             tracing::debug!(
                 target: "npc_ai",
                 event = "decision",
@@ -514,6 +524,7 @@ pub(super) async fn npc_ai_fight(
     let chosen_ability = match chosen_ability {
         Some(id) => id,
         None => {
+            super::note_outcome("no_ability");
             tracing::debug!(
                 target: "npc_ai",
                 event = "decision",
@@ -527,6 +538,7 @@ pub(super) async fn npc_ai_fight(
         }
     };
 
+    super::note_outcome("attack_in_place");
     tracing::debug!(
         target: "npc_ai",
         event = "decision",

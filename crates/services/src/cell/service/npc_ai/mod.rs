@@ -88,9 +88,36 @@ pub(crate) use follow::npc_ai_follow_for_test;
 /// Calling this twice in one handler emits two counter increments —
 /// callers should pick one terminal outcome per tick.
 pub(super) fn record_decision_outcome(outcome: &'static str) {
+    set_last_outcome(outcome);
     tracing::Span::current().record("decision_outcome", outcome);
     cimmeria_observability::counter!(
         "npc_ai_decisions_total",
         "decision_outcome" => outcome,
     );
+}
+
+/// The terminal outcome of the handler that just ran, for the per-tick
+/// `npc_ai.tick` row. The AI tick runs NPCs strictly one after another on the
+/// cell task, so one slot is enough; `dispatch` clears it before each handler.
+static LAST_OUTCOME: std::sync::Mutex<&'static str> = std::sync::Mutex::new("");
+
+fn set_last_outcome(outcome: &'static str) {
+    *LAST_OUTCOME
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = outcome;
+}
+
+pub(super) fn take_last_outcome() -> &'static str {
+    std::mem::take(
+        &mut *LAST_OUTCOME
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
+
+/// `fight.rs` writes `decision_outcome` as an inline log field, so its
+/// decisions never reached the `npc_ai_decisions_total` counter or the span.
+/// Called immediately before each of those log lines.
+pub(super) fn note_outcome(outcome: &'static str) {
+    record_decision_outcome(outcome);
 }

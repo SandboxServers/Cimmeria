@@ -178,6 +178,11 @@ fn log_cover_edge(space_mgr: &SpaceManager, edge: &'static str, player_id: u32, 
         }
     }
     let (node_id, dist, npos) = nearest.unwrap_or((0, -1.0, pos));
+    crate::cell::player_journal::note(
+        player_id,
+        crate::cell::player_journal::kinds::COVER_EDGE,
+        format!("{edge} set={cover_set_id} crouched={crouched}"),
+    );
     tracing::debug!(
         target: "cover.detection",
         edge,
