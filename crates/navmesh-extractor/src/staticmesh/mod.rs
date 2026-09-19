@@ -236,12 +236,10 @@ pub fn extract_chunk_from_package(
             // dense chunk that's 375 redundant heap allocations on the
             // hot path.
             for t in &local_tris {
-                let world_tri = [
-                    inst.transform.apply(t[0]),
-                    inst.transform.apply(t[1]),
-                    inst.transform.apply(t[2]),
-                ];
-                result.soup.push(world_tri);
+                // `apply_triangle`, not three `apply` calls: a mirrored
+                // instance must keep its facing or its floor reads as a
+                // ceiling.
+                result.soup.push(inst.transform.apply_triangle(*t));
             }
             result.actors_resolved += 1;
             if inst.from_archetype {

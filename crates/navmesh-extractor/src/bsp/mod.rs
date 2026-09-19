@@ -353,15 +353,23 @@ pub fn collect_bsp_triangles(pkg: &Package, soup: &mut TriangleSoup, opts: BspOp
         // World-space first: the cap planes are a property of the placed
         // model, and for an actor-placed model the local Z extent is not
         // the world Z extent.
+        // A mirrored brush (negative scale determinant) reverses winding
+        // just as a mirrored StaticMesh does; keep each face's facing.
+        let mirrored = !inst.is_level_model && inst.transform.is_mirrored();
         let world_tris: Vec<[[f32; 3]; 3]> = t
             .triangles
             .iter()
             .map(|tri| {
-                [
+                let (a, b, c) = (
                     inst.to_world(tri[0]),
                     inst.to_world(tri[1]),
                     inst.to_world(tri[2]),
-                ]
+                );
+                if mirrored {
+                    [a, c, b]
+                } else {
+                    [a, b, c]
+                }
             })
             .collect();
         let cap = opts

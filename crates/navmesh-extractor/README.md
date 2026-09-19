@@ -356,18 +356,38 @@ survives every parameter set down to `cs=0.1 ch=0.05 minRegionSize=1`.
 [docs/engine/navmesh-build-pipeline.md](../../docs/engine/navmesh-build-pipeline.md)
 §7.4.)
 
-So the storey connector is still unaccounted for, and the extractor's
-own numbers say where it is *not*. Per-chunk, for the stair spine's
-tile `Castle-00080003`: 878 BSP triangles already emitted from 40
-`Model` exports, alongside 38 `Brush` and 82 `ModelComponent`. BSP is
-therefore **not** an undecoded candidate there — Phase 1.4 reads it and
-it is already in the OBJ. `StaticMeshCollectionActor`, `KActor`,
-`FracturedStaticMeshActor` and `BlockingVolume` have **zero exports in
-Castle**, so none of them can be it either. What remains is the one
-gap [Known unknowns](#known-unknowns) already records: every
-`Brush`-owned `Model` in Castle decodes to a 108-byte stub, so those 38
-brushes emit nothing, and nobody has established whether that is
-correct cooked data or a decoder gap.
+**Resolved: the connector was there all along, facing the wrong way.**
+Brush 11 in that tile is a subtractive box at BigWorld
+x[339.7, 370.4] y[47.0, 65.0] z[845.6, 881.3] — the stairwell shaft
+itself, carved through both storeys, with doorway brushes at each end
+(y 47–55 at z 844–846, y 55.2–65 at z 881–883). The piece that bridges
+the 51.5–54.5 band is `CA-Interior:CA-large_hallway_ramp_a_00` at
+(355.04, 55.04, 863.48), and it is authored with
+`DrawScale3D = (-1, 1, 1)`: a mirrored instance. Mirroring reverses
+triangle winding, NavBuilder decides walkability from winding alone, and
+the walker emitted the three transformed vertices verbatim — so the
+ramp's tread reached Recast as a ceiling. 198 of Castle's 6,436
+`StaticMeshActor`s are mirrored (93 of Castle_CellBlock's 2,098),
+including three on the stairwell centreline.
+`ActorTransform::apply_triangle` now swaps two vertices when the scale
+determinant is negative (`transform::tests::a_mirrored_instance_keeps_its_treads_facing_the_same_way`).
+With that, a cropped stairwell build yields one component spanning
+y 47.4 → 56.4 across z 836 → 894, and on the whole map `throne_room`
+joins the interior component (17,006 m² → 53,556 m²; probe groups 3 → 2).
+
+The 108-byte `Brush`-owned `Model`s are **correct cooked data, not a
+decoder gap**: the export table itself records `serial_size = 108`, and
+the bytes are bounds (28) + all-zero array counts + a live `Polys`
+reference. The brush's box lives in that `Polys` export (840 bytes = 6
+quads); 36 of the 38 brushes in `Castle-00080003` are `CSG_Subtract`
+(the carved rooms), so their shape is already in the level `Model` as
+the room's walls, floor and ceiling.
+
+What is still split is exterior ↔ interior: `nav_inspect --gaps
+--gap-h 12 --gap-v 8` finds a three-hop chain of terrain shelves at
+(725.6, 30.4, 462.9) → (675.6, 18.6, 488.3) → (622.4, 24.0, 508.2) with
+2.4–3.4 m steps — outdoor ground between the gate area and the keep,
+not a building.
 
 The three `Em-Props:EM-Elevator00` shells are archetype-instanced and
 each pairs with a direct `EM-Elevator_Pad00` a metre away, at
