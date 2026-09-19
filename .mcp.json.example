@@ -11,7 +11,7 @@
     "  docs/guides/re-toolchain-setup.md     -- end-to-end setup",
     "  docs/guides/reverse-engineering-with-claude.md  -- the workflow doc",
     "",
-    "Three servers are wired:",
+    "Five servers are wired:",
     "  cimmeria-rag : Azure-hosted RAG over the Cimmeria repo + docs + RE notes.",
     "                 Read-only. No local dependencies. Always reachable.",
     "  ghidra       : Static analysis of SGW.exe via the bethington/ghidra-mcp",
@@ -19,6 +19,17 @@
     "                 plugin server started.",
     "  x64dbg       : Dynamic analysis via dariushoule/x64dbg-automate. Requires",
     "                 x96dbg.exe launched with the x64dbg-automate plugin loaded.",
+    "  cimmeria-lab : Live Research Lab supervisor (stdio). Drives a running",
+    "                 SGW.exe on this dev box: Lua eval, non-freezing hooks,",
+    "                 screenshots, autologin, and the merged timeline. Windows",
+    "                 only. Build once: cargo build -p cimmeria-lab. See",
+    "                 docs/guides/live-research-lab.md and re-toolchain-setup.md.",
+    "  lab-server   : In-server lab endpoint (http, token-gated). Live entity /",
+    "                 witness / packet-tap / dot-console reads from a running",
+    "                 cimmeria-server. Only present when the server was started",
+    "                 with CIMMERIA_LAB_MCP_BIND + CIMMERIA_LAB_MCP_TOKEN set",
+    "                 (fail-closed). On the colo it is reachable over WireGuard",
+    "                 only -- see docs/operations/colo-deploy.md.",
     "",
     "The GHIDRA_MCP_URL port can drift on Windows when iphlpsvc holds 8089-8099.",
     "The plugin falls back to the first free port in 8089..8104 — confirm the",
@@ -48,6 +59,23 @@
       "command": "<CIMMERIA_ROOT>\\.venvs\\x64dbg-mcp\\Scripts\\x64dbg-automate-mcp.exe",
       "env": {
         "X64DBG_PATH": "<CIMMERIA_ROOT>\\dbg\\release\\x96dbg.exe"
+      }
+    },
+    "cimmeria-lab": {
+      "type": "stdio",
+      "command": "<CIMMERIA_ROOT>\\target\\debug\\cimmeria-lab.exe",
+      "env": {
+        "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
+        "CIMMERIA_LAB_BRIDGE": "127.0.0.1:8770",
+        "CIMMERIA_LAB_MCP_URL": "http://127.0.0.1:8444/mcp",
+        "CIMMERIA_LAB_MCP_TOKEN": "REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN"
+      }
+    },
+    "lab-server": {
+      "type": "http",
+      "url": "http://127.0.0.1:8444/mcp",
+      "headers": {
+        "Authorization": "Bearer REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN"
       }
     }
   }

@@ -12,6 +12,8 @@ mod general;
 mod gm_spawn_ready;
 mod identity_propagation;
 mod item_events;
+mod lab_console;
+mod lab_query;
 mod minigame;
 mod movement;
 mod request_entity_update;

@@ -42,11 +42,19 @@ worktree) — it is not portable across machines/users. See
 
 ## A build can leave an unrelated `Cargo.lock` diff
 
-Running any cargo command may re-resolve a transitive patch version (seen
-2026-09-17: `thiserror 2.0.19` → `2.0.20`, two lines). It is nothing to do
-with your change. Check `git diff --stat Cargo.lock` before staging and
-`git checkout -- Cargo.lock` if the diff isn't yours — `git add <dir>` won't
-catch it, but `git add -A` or a careless `git commit -a` would.
+Running any cargo command re-dirties `Cargo.lock` by two lines
+(`thiserror 2.0.19` → `2.0.20` on the `asn1-rs` and `x509-parser` edges).
+**Root cause, diagnosed 2026-09-18: it is not a version bump, it is cargo
+repairing an inconsistent lockfile that is committed on `origin/main`.**
+The lock has a `thiserror` `[[package]]` entry at `2.0.20` while those two
+dependency edges still name a `2.0.19` entry that no longer exists, so
+cargo rewrites them on every build, in every worktree, on every branch.
+
+Do **not** carry it in a feature PR — it would conflict with every other
+concurrent branch. `git checkout -- Cargo.lock` right before staging, and
+re-check after any validation run (a `cargo fmt --check` is enough to
+re-dirty it). `git add <dir>` won't catch it; `git add -A` or `git commit -a`
+would. Fixing it properly is one standalone commit on `main`.
 
 ## Cargo through the Bash tool looks hung when it isn't
 

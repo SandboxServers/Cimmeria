@@ -8,14 +8,20 @@
 //! - `data` — shared structs (`MailOp`, `NpcAoIData`, `SavedMission`).
 //! - `base_to_cell` — `BaseToCellMsg` (BaseApp → CellApp messages).
 //! - `cell_to_base` — `CellToBaseMsg` (CellApp → BaseApp messages).
+//! - `lab` — the live-research-lab read-only query contract (`LabQuery`).
 
 mod base_to_cell;
 mod cell_to_base;
 mod data;
+mod lab;
 
-pub use base_to_cell::BaseToCellMsg;
+pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
 pub use data::{MailOp, NpcAoIData, SavedMission};
+pub use lab::{
+    LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,
+    LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
+};
 
 #[cfg(test)]
 mod tests;

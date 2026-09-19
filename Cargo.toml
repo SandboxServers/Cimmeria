@@ -31,6 +31,9 @@ members = [
     "crates/discord",
     "crates/client-telemetry",
     "crates/observability",
+    "crates/lab-mcp",
+    "crates/lab",
+    "crates/client-launch",
 ]
 default-members = [
     "crates/common",
@@ -47,6 +50,7 @@ default-members = [
     "crates/wireclient",
     "crates/discord",
     "crates/observability",
+    "crates/lab-mcp",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -187,6 +191,7 @@ cimmeria-wireclient = { path = "crates/wireclient" }
 cimmeria-discord = { path = "crates/discord" }
 cimmeria-client-telemetry = { path = "crates/client-telemetry" }
 cimmeria-observability = { path = "crates/observability" }
+cimmeria-lab-mcp = { path = "crates/lab-mcp" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

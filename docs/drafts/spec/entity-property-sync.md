@@ -99,9 +99,11 @@ evidence_refs:
     # §1.12 — SimpleMetaDataType<T> ctor range (17 functions, sequential)
     - ghidra://SGW.exe@0x0159db10
     - ghidra://SGW.exe@0x0159e510
-    # §1.6 / §2.5 / R1 — typeID 0-based assignment from entities.xml (replaces earlier 1-based claim)
+    # §1.6 / §2.5 / R1 — typeID assignment from entities.xml: raw index (desc+0x1c) vs wire clientIndex (desc+0x1e, skips ServerOnly)
     - ghidra://SGW.exe@0x00c67190
     - ghidra://SGW.exe@0x01590520
+    - ghidra://SGW.exe@0x01593cd0
+    - ghidra://SGW.exe@0x0158e710
   client:
     - game/sgw/Common/res/entities/entities.xml:1-32
     - game/sgw/Common/res/entities/defs/alias.xml
@@ -327,7 +329,7 @@ The companion upstream handler that processes *inbound* entity RPC events is `Pr
 ```text
 createBasePlayer wire layout:
   Offset 0: entityId  u32 LE  — player entity ID; stored at ServerConnection+0x16c
-  Offset 4: typeId    u16 LE  — entity class index in entities.xml (0x02 = SGWPlayer; 0-based, assigned by EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520 via BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190)
+  Offset 4: typeId    u16 LE  — entity clientIndex (0x02 = SGWPlayer, 0x07 = Account; 0-based over the entities.xml entries that are NOT <ServerOnly/>, assigned by EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520 via BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190 — see §2.5)
   Offset 6: [property stream — variable, handled by entity-creation delegate]
 ```
 
@@ -335,7 +337,7 @@ The decompile shows `*(undefined4 *)((int)this + 0x16c) = uVar1` after the 4-byt
 
 Property stream format for `createBasePlayer`: properties filtered by `CLIENT_DATA | BASE_DATA` (properties with `DATA_OWN_CLIENT (0x04)` or `DATA_BASE (0x08)` flags), serialized in sequential propID order with no propID prefix bytes — the client knows the ordering from the schema fingerprint.
 
-**Wire-confirmed.** Three `createBasePlayer` messages decrypted from `sessions/2026-05-16_08-21.pcap` (Rust-server emissions, character-select + first seconds of world-entry) show the `[u32 entityId][u16 typeId][property stream]` shape unambiguously — payloads `01 00 00 00 07 00`, `02 00 00 00 02 00`, `01 00 00 00 07 00` decode to entityIDs (1, 2, 1) and typeIDs (7, 2, 7). Under the 0-based typeID assignment confirmed by `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520` (see §2.5's table), typeID `0x02` is **SGWPlayer** (the actual world-entry payload — `msg 2` above) and typeID `0x07` is **SGWBlackMarket** (server-only, never client-instantiable; the two `msg 1`/`msg 3` emissions are silent-fail per §1.16 F4 and reflect a Rust-server bug emitting `ACCOUNT_CLASS_ID = 0x07` when the correct typeID for `Account` is `0x08` — tracked as [issue #313](https://github.com/SandboxServers/Cimmeria/issues/313)). The captured `msg 2` property stream is zero bytes — SGWPlayer has no `OWN_CLIENT`/`OTHER_CLIENT` props in the SGW `.def` tree per §1.2's keyword surface, so this is the expected stream length for SGWPlayer. The byte-offset layout is locked; the typeID-to-entity-name resolution was previously mis-stated by an earlier revision based on a circular wire-decode chain (resolver tool's `[expect 0x0003 = SGWPlayer]` constant fed back into the chapter as evidence) — corrected here with binary anchors. See audit Appendix C.3.
+**Wire-confirmed.** Three `createBasePlayer` messages decrypted from `sessions/2026-05-16_08-21.pcap` (Rust-server emissions, character-select + first seconds of world-entry) show the `[u32 entityId][u16 typeId][property stream]` shape unambiguously — payloads `01 00 00 00 07 00`, `02 00 00 00 02 00`, `01 00 00 00 07 00` decode to entityIDs (1, 2, 1) and typeIDs (7, 2, 7). Under the clientIndex assignment confirmed by `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520` (see §2.5's table), typeID `0x02` is **SGWPlayer** (the actual world-entry payload — `msg 2` above) and typeID `0x07` is **Account** (the character-select entity — `msg 1`/`msg 3`; `SGWBlackMarket` sits at raw document index 7 but is `<ServerOnly/>` and never takes a clientIndex). An earlier revision of this paragraph read `0x07` as SGWBlackMarket and called the emission a Rust-server bug ([issue #313](https://github.com/SandboxServers/Cimmeria/issues/313)); that was wrong — see the §2.5 indexing-history correction. The captured `msg 2` property stream is zero bytes — SGWPlayer has no `OWN_CLIENT`/`OTHER_CLIENT` props in the SGW `.def` tree per §1.2's keyword surface, so this is the expected stream length for SGWPlayer. The byte-offset layout is locked; the typeID-to-entity-name resolution was mis-stated twice by earlier revisions — first as 1-based via a circular wire-decode chain (resolver tool's `[expect 0x0003 = SGWPlayer]` constant fed back into the chapter as evidence), then as the raw 0-based document index from a partial decompile — and is corrected here with binary anchors. See audit Appendix C.3.
 
 **Buffering rule**: after reading entityId and typeId, if the `createCellPlayer` message buffer at `ServerConnection+0xfe0` has pending content (`remainingLength() > 0`), the handler immediately calls `ServerConnection_CreateCellPlayer` on the buffered data. Confirmed by the decompile: `if (0 < iVar4) { ... ServerConnection_CreateCellPlayer(..., pStream_00); ... }`.
 
@@ -714,7 +716,7 @@ The five gotchas below are the ones a server implementer is likeliest to trip on
 
 Each requirement names the wire-format invariant a server must satisfy and cross-references the §1 evidence and the matching S-code in §1.17 (or F-code in §1.16). Reviewers can use the R-code as shorthand; implementers can use the citation as the proof.
 
-**R1 — Use the typeID matching the entity name's position in `entities.xml`** (0-based; SGWPlayer = `0x02`, Account = `0x08`). §1.6 reads a `u16 typeId` at offset 4 of `createBasePlayer`; §2.5 documents the 0-based document-index assignment, confirmed by `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520` (counter `uVar18` initialized to `0`, assigned to the slot at `+0x1c` as `(short)uVar18`, incremented per slot regardless of parse success — called from `BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190` which loads `entities/entities.xml`). A typeID off-by-one resolves to a different entity description on the client; for server-only entities (`<ServerOnly/>` in the `.def`) the client silently fails to instantiate per §1.16 F4 (no in-handler validation gate). The currently-deployed Rust server has exactly this bug for the Account entity ([issue #313](https://github.com/SandboxServers/Cimmeria/issues/313)). **Citation**: `game/sgw/Common/res/entities/entities.xml:1-32`; `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0`; `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520`; `BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190`.
+**R1 — Use the entity's clientIndex as the wire typeID** (0-based over the `entities.xml` entries that are not `<ServerOnly/>`; SGWPlayer = `0x02`, SGWGmPlayer = `0x03`, Account = `0x07`). §1.6 reads a `u16 typeId` at offset 4 of `createBasePlayer`; §2.5 documents the assignment, confirmed by `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520`, which keeps **two** counters: the raw document index (`uVar18`, written to `desc+0x1c`, incremented for every entry) and the clientIndex (`iStack_3c`, written to `desc+0x1e`, incremented only when `name_ == clientName_`). `EntityDescription_parse @ ghidra://SGW.exe@0x01593cd0` blanks `clientName_` when the `.def` carries `<ServerOnly/>`, so server-only entries consume a raw index but never a clientIndex. The client resolves wire typeIDs through the clientIndex → raw-index map (`FUN_0158e710 @ ghidra://SGW.exe@0x0158e710`; a miss returns `0xFFFF` and logs "No client->server entity description mapping found for entity type %d"). Sending a raw document index instead is off by one for every entity after the first server-only entry — `0x08` for Account is unmapped on the client and breaks character select ([issue #313](https://github.com/SandboxServers/Cimmeria/issues/313) proposed exactly that and was closed as invalid). The Rust constants (`ACCOUNT_CLASS_ID = 0x07`) are correct and guarded by `entity_class_ids_are_client_indices_not_raw_document_indices`. **Citation**: `game/sgw/Common/res/entities/entities.xml:1-32`; `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0`; `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520`; `EntityDescription_parse @ ghidra://SGW.exe@0x01593cd0`; `FUN_0158e710 @ ghidra://SGW.exe@0x0158e710`; `BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190`.
 
 **R2 — Compute the sub-slot threshold `idBase` from each entity's exposed-method count.** Per §1.4: `idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF`. The threshold is per-entity, not global. SGWPlayer (`nExposedCount = 157`) has `idBase = 61`; other entity types will differ. See **S1**. **Citation**: `EntityDescription_AssignClientMethodIds @ ghidra://SGW.exe@0x01590df0`.
 
@@ -748,7 +750,7 @@ The evidence base for this section is the 18 entity `.def` files, the 19 interfa
 
 Entity property sync has no client-side decode logic that you can read by opening a `.cpp` file in the client tree — the decoder is C++ inside `SGW.exe`, reverse-engineered in §1. What the client *does* expose, end-user-readable, is the **schema** the decoder uses to build its propID and methodID tables. That schema is XML, lives in `game/sgw/Common/res/entities/`, and has four entry points:
 
-1. `entities.xml` — the master type table. 18 entries map a typeID ordinal (0-based, by document order) to an entity name. The wire `typeId` field in `createBasePlayer` (§1.6) is an index into this table. (Index assignment confirmed by `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520`; see §2.5.)
+1. `entities.xml` — the master type table. 18 entries, in document order. Each gets a raw index; the 8 that are not `<ServerOnly/>` also get a clientIndex, and the wire `typeId` field in `createBasePlayer` (§1.6) is that **clientIndex**, not the raw index. (Assignment confirmed by `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520`; see §2.5.)
 2. `defs/<EntityName>.def` — one XML file per entity, declaring its parent, the interfaces it implements, its properties, and its three method categories (`<ClientMethods>`, `<CellMethods>`, `<BaseMethods>`).
 3. `defs/interfaces/<InterfaceName>.def` — interface schemas, structurally identical to entity defs except they have no `<ClientName>` element and are never instantiated directly. They contribute properties and methods to entities that `<Implements>` them.
 4. `defs/alias.xml` — the user-defined-type table. Composite types (`FIXED_DICT`, `ARRAY <of>`) referenced by name in `.def` `<Type>` elements resolve through this file.
@@ -901,7 +903,7 @@ Per §1.5, the base-method wire byte uses a 6-bit primary ID space (`(methodId &
 
 ### 2.5 `entities.xml` — the type ID table
 
-`game/sgw/Common/res/entities/entities.xml:1-32` is short enough to reproduce in full. Entries appear in document order; the engine assigns each one a 0-based typeID at startup based on its position (`uVar18 = 0` initial, `(short)uVar18` written to the entity slot, `uVar18 + 1` per iteration — see `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520` called from `BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190`):
+`game/sgw/Common/res/entities/entities.xml:1-32` is short enough to reproduce in full. Entries appear in document order; at startup the engine assigns each one a 0-based raw index (`uVar18 = 0` initial, `(short)uVar18` written to `desc+0x1c`, `uVar18 + 1` per iteration) and, for entries that are not `<ServerOnly/>`, a 0-based clientIndex from a second counter (`desc+0x1e`) — see `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520` called from `BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190`:
 
 ```xml
 <root>
@@ -926,12 +928,12 @@ Per §1.5, the base-method wire byte uses a 6-bit primary ID space (`(methodId &
 </root>
 ```
 
-18 entries. The typeID assigned to each is its **0-based** document index — `SGWSpawnableEntity = 0`, `SGWBeing = 1`, `SGWPlayer = 2`, and so on. §1.6's `createBasePlayer` wire layout reads a `u16 typeId` at offset 4; that value is an index into this table.
+18 entries. Each gets a **0-based raw document index**; the wire typeID is the separate **clientIndex**, which counts only entries that are not `<ServerOnly/>`. The two agree for the first seven entries (`SGWSpawnableEntity = 0` … `SGWDuelMarker = 6`) and diverge after `SGWBlackMarket`: `Account` is raw index 8 but clientIndex **7**. §1.6's `createBasePlayer` wire layout reads a `u16 typeId` at offset 4; that value is the clientIndex column below.
 
-Complete catalog (every entry in `entities.xml` line order, with the typeID the engine assigns from its 0-based position per `EntityDescription_ReadFromStream`):
+Complete catalog (every entry in `entities.xml` line order, with the raw index and the wire clientIndex the engine assigns per `EntityDescriptionMap_parse`):
 
-| typeID | Hex | Entity name | Server-only? | Notes |
-|--------|------|-------------|--------------|-------|
+| Raw index | Wire typeID (clientIndex) | Entity name | Server-only? | Notes |
+|-----------|---------------------------|-------------|--------------|-------|
 | 0 | `0x00` | `SGWSpawnableEntity` | no | Parent of `SGWBeing`; abstract spawnable base (client-instantiable in principle but rarely seen on the wire). |
 | 1 | `0x01` | `SGWBeing` | no | Parent of `SGWPlayer`, `SGWGmPlayer`, `SGWMob`, `SGWPet`. |
 | 2 | `0x02` | `SGWPlayer` | no | Player entity — the §1.6 / §1.7 worked-example typeID. |
@@ -939,19 +941,19 @@ Complete catalog (every entry in `entities.xml` line order, with the typeID the 
 | 4 | `0x04` | `SGWMob` | no | NPC mob — the §1.9 AoI cascade worked example. |
 | 5 | `0x05` | `SGWPet` | no | Player pet entity. |
 | 6 | `0x06` | `SGWDuelMarker` | no | Duel zone marker. |
-| 7 | `0x07` | `SGWBlackMarket` | yes (`<ServerOnly/>` in `SGWBlackMarket.def`) | Black-market vendor entity — server-only despite the player-facing name; UI rides on cell-method RPCs. A server emitting `createBasePlayer` with this typeID will silently fail to instantiate on the client per §1.16 F4. |
-| 8 | `0x08` | `Account` | no | Login / character-select entity (thin, no `SGWBeing` ancestry). |
-| 9 | `0x09` | `SGWEntity` | yes (`<ServerOnly/>` in `SGWEntity.def:3`) | Abstract root entity base. |
-| 10 | `0x0A` | `SGWPlayerGroupAuthority` | yes | Server-only entity that manages distribution groups of player entities. |
-| 11 | `0x0B` | `SGWSpaceCreator` | yes | Server-only entity that creates and maintains a space. |
-| 12 | `0x0C` | `SGWSpawnRegion` | yes | Spawn region geometry (server-side). |
-| 13 | `0x0D` | `SGWSpawnSet` | yes | Contains spawn point objects and spawns mobs. |
-| 14 | `0x0E` | `SGWPlayerRespawner` | yes | "Basically, a graveyard" per the XML comment. |
-| 15 | `0x0F` | `SGWCoverSet` | yes | An entity to contain cover node objects. |
-| 16 | `0x10` | `SGWEscrow` | yes | An entity to handle item transactions. |
-| 17 | `0x11` | `SGWChannelManager` | yes | Channel manager. |
+| 7 | — | `SGWBlackMarket` | yes (`<ServerOnly/>` in `SGWBlackMarket.def`) | Black-market vendor entity — server-only despite the player-facing name; UI rides on cell-method RPCs. Takes a raw index but no clientIndex, so it has no wire typeID. |
+| 8 | `0x07` | `Account` | no | Login / character-select entity (thin, no `SGWBeing` ancestry). Wire typeID is `0x07`, **not** its raw index. |
+| 9 | — | `SGWEntity` | yes (`<ServerOnly/>` in `SGWEntity.def:3`) | Abstract root entity base. |
+| 10 | — | `SGWPlayerGroupAuthority` | yes | Server-only entity that manages distribution groups of player entities. |
+| 11 | — | `SGWSpaceCreator` | yes | Server-only entity that creates and maintains a space. |
+| 12 | — | `SGWSpawnRegion` | yes | Spawn region geometry (server-side). |
+| 13 | — | `SGWSpawnSet` | yes | Contains spawn point objects and spawns mobs. |
+| 14 | — | `SGWPlayerRespawner` | yes | "Basically, a graveyard" per the XML comment. |
+| 15 | — | `SGWCoverSet` | yes | An entity to contain cover node objects. |
+| 16 | — | `SGWEscrow` | yes | An entity to handle item transactions. |
+| 17 | — | `SGWChannelManager` | yes | Channel manager. |
 
-**Indexing-history correction.** An earlier revision of this chapter (and a parallel revision of `tools/entity_property_sync_resolver.py`'s `[expect 0x0003 = SGWPlayer]` annotation) shifted the table to a 1-based scheme based on a circular wire-decode — the resolver tool's hard-coded assumption fed the audit's typeID-to-entity-name interpretation, and the chapter then cited the audit as evidence. The earlier `0x02 = SGWPlayer` agent-memory note was correct; the "off-by-one correction" to `0x03` was the bug. The Ghidra anchor that settles it (`EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520`) is the missing primary evidence: counter starts at zero, writes the slot's typeID as `(short)uVar18`, increments unconditionally per entity. Rust's `SGWPLAYER_CLASS_ID = 0x02` (in `crates/services/src/mercury/mod.rs`) is correct under this table; its `ACCOUNT_CLASS_ID = 0x07` is wrong and should be `0x08` ([issue #313](https://github.com/SandboxServers/Cimmeria/issues/313)).
+**Indexing-history correction (corrected twice).** (1) An earlier revision of this chapter (and a parallel revision of `tools/entity_property_sync_resolver.py`'s `[expect 0x0003 = SGWPlayer]` annotation) shifted the table to a 1-based scheme based on a circular wire-decode — the resolver tool's hard-coded assumption fed the audit's typeID-to-entity-name interpretation, and the chapter then cited the audit as evidence. The earlier `0x02 = SGWPlayer` agent-memory note was correct; the "off-by-one correction" to `0x03` was the bug. (2) The follow-up revision then over-corrected: it quoted only the raw-index half of `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520` (counter `uVar18`, written to `desc+0x1c`, incremented for every entry) and concluded the wire typeID is the raw document index, making Account `0x08` and Rust's `ACCOUNT_CLASS_ID = 0x07` a bug ([issue #313](https://github.com/SandboxServers/Cimmeria/issues/313), PR #704). The same function's second counter (`iStack_3c`, written to `desc+0x1e` only when `name_ == clientName_`) is the clientIndex; `EntityDescription_parse @ ghidra://SGW.exe@0x01593cd0` blanks `clientName_` for `<ServerOnly/>` defs; and the client resolves wire typeIDs through the clientIndex → raw-index map (`FUN_0158e710 @ ghidra://SGW.exe@0x0158e710`). Re-verified against the binary on 2026-09-19. Rust's `SGWPLAYER_CLASS_ID = 0x02`, `SGWGMPLAYER_CLASS_ID = 0x03` and `ACCOUNT_CLASS_ID = 0x07` (in `crates/services/src/mercury/mod.rs`) are all correct, and #313 was closed as invalid. Character select corroborates it: `createCharacter` / `playCharacter` are exposed Account base methods the client can only send from a live Account entity, and they work with `0x07` on the wire. Canonical statement: [client-verified-wire-formats.md](../../protocol/client-verified-wire-formats.md) "Entity Class IDs".
 
 Ten of the 18 entries are server-only (each carries `<ServerOnly/>` in its `.def`): `SGWBlackMarket`, `SGWEntity`, `SGWPlayerGroupAuthority`, `SGWSpaceCreator`, `SGWSpawnRegion`, `SGWSpawnSet`, `SGWPlayerRespawner`, `SGWCoverSet`, `SGWEscrow`, `SGWChannelManager` — see the table above for each row's disposition. The client still allocates a typeID for each (the index assignment is purely positional) but never instantiates an entity of those types.
 
@@ -1108,7 +1110,7 @@ Practical consequence: a server engineer changing entity-sync behavior cannot do
 
 | Claim | Primary client artifact | Cross-check |
 |-------|--------------------------|-------------|
-| 18 entity types registered in `entities.xml`, **0-based** document-index typeID | `game/sgw/Common/res/entities/entities.xml:1-32` | §1.6 reads u16 typeId field; assignment confirmed by `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520` (called from `BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190`) — see §2.5 indexing-history correction |
+| 18 entity types registered in `entities.xml`; wire typeID is the **0-based clientIndex** over the 8 non-`<ServerOnly/>` entries (Account = `0x07`) | `game/sgw/Common/res/entities/entities.xml:1-32` | §1.6 reads u16 typeId field; assignment confirmed by `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520` (called from `BWClassMap::InitEntityClassTable @ ghidra://SGW.exe@0x00c67190`) — see §2.5 indexing-history correction |
 | `.def` parse order: `<Parent>` → `<Implements>` → `<Properties>` → `<ClientMethods>` → `<CellMethods>` → `<BaseMethods>` | Inspection of all 18 entity defs + 19 interface defs — every file follows this section order | §1.3 confirms the parser's call sequence in `EntityDescription_ParseDef` |
 | `<Parent>` element is single-valued (one parent), recursive | `SGWPlayer.def:4` (`<Parent>SGWBeing</Parent>`); `SGWBeing.def:3` (`<Parent>SGWSpawnableEntity</Parent>`); `SGWSpawnableEntity.def:3` (`<Parent>SGWEntity</Parent>`); `SGWEntity.def` has no `<Parent>` — root | §1.1 confirms recursive parent walk in `EntityDescription_Parse @ ghidra://SGW.exe@0x01593cd0` |
 | Only three `<Flags>` keywords used in SGW: `BASE`, `CELL_PRIVATE`, `CELL_PUBLIC` | grep across all 37 `.def` files: `find game/sgw/Common/res/entities/defs/ -name '*.def' -exec grep -h '<Flags>' {} \;` produces only these three after whitespace normalization | §1.2's 8-bit flag table includes `OWN_CLIENT`, `OTHER_CLIENTS`, `CLIENT_ONLY`, `EDITOR_ONLY` — those four stock-BW keywords are not used in the SGW client tree |
@@ -1395,28 +1397,28 @@ Full property catalog for `SGWPlayer` produced by walking the parse cascade (`<P
 
 ### 2 Appendix B — 18-entity method-count table
 
-Cascade-walked totals (parent recursive + implements + own) for every entity in `entities.xml`, in document order. Counts produced programmatically by the same walker that produced Appendix A; "Exposed" subscript counts the methods that get a wire methodID (cell/base methods with `<Exposed/>`). Server-only entities are flagged `[SO]` after the name.
+Cascade-walked totals (parent recursive + implements + own) for every entity in `entities.xml`, in document order. Counts produced programmatically by the same walker that produced Appendix A; "Exposed" subscript counts the methods that get a wire methodID (cell/base methods with `<Exposed/>`). Server-only entities are flagged `[SO]` after the name. The index columns follow §2.5: `Raw index` is the 0-based document position, `Wire typeID` is the clientIndex the client actually resolves (server-only entities have none). An earlier revision of this table carried a 1-based `TypeID` column from the superseded indexing scheme.
 
-| TypeID | Entity | Parent chain | Props | ClientMethods | CellMethods (Exposed) | BaseMethods (Exposed) |
-|-------:|--------|--------------|------:|--------------:|----------------------:|----------------------:|
-| 0x01 | `SGWSpawnableEntity` | SGWEntity | 22 | 12 | 43 (0) | 2 (0) |
-| 0x02 | `SGWBeing` | SGWSpawnableEntity → SGWEntity | 99 | 27 | 89 (8) | 5 (0) |
-| 0x03 | `SGWPlayer` | SGWBeing → SGWSpawnableEntity → SGWEntity | 244 | 157 | 315 (109) | 82 (30) |
-| 0x04 | `SGWGmPlayer` | SGWPlayer → SGWBeing → SGWSpawnableEntity → SGWEntity | 246 | 163 | 433 (226) | 90 (30) |
-| 0x05 | `SGWMob` | SGWBeing → SGWSpawnableEntity → SGWEntity | 198 | 29 | 132 (8) | 5 (0) |
-| 0x06 | `SGWPet` | SGWMob → SGWBeing → SGWSpawnableEntity → SGWEntity | 210 | 32 | 140 (8) | 5 (0) |
-| 0x07 | `SGWDuelMarker` | SGWSpawnableEntity → SGWEntity | 24 | 12 | 44 (0) | 2 (0) |
-| 0x08 | `SGWBlackMarket` `[SO]` | (root) | 1 | 0 | 0 (0) | 6 (0) |
-| 0x09 | `Account` | GamePawn (UE3 — not a BW def) | 2 | 6 | 0 (0) | 10 (8) |
-| 0x0A | `SGWEntity` `[SO]` | (root) | 10 | 0 | 32 (0) | 2 (0) |
-| 0x0B | `SGWPlayerGroupAuthority` `[SO]` | SGWEntity | 13 | 0 | 32 (0) | 6 (0) |
-| 0x0C | `SGWSpaceCreator` `[SO]` | SGWEntity | 19 | 0 | 35 (0) | 22 (0) |
-| 0x0D | `SGWSpawnRegion` `[SO]` | SGWEntity | 37 | 0 | 32 (0) | 17 (0) |
-| 0x0E | `SGWSpawnSet` `[SO]` | SGWEntity | 36 | 0 | 32 (0) | 12 (0) |
-| 0x0F | `SGWPlayerRespawner` `[SO]` | SGWEntity | 14 | 0 | 33 (0) | 2 (0) |
-| 0x10 | `SGWCoverSet` `[SO]` | SGWEntity | 16 | 0 | 34 (0) | 2 (0) |
-| 0x11 | `SGWEscrow` `[SO]` | SGWEntity | 12 | 0 | 34 (0) | 2 (0) |
-| 0x12 | `SGWChannelManager` `[SO]` | (root) | 0 | 0 | 0 (0) | 15 (0) |
+| Raw index | Wire typeID | Entity | Parent chain | Props | ClientMethods | CellMethods (Exposed) | BaseMethods (Exposed) |
+|----------:|------------:|--------|--------------|------:|--------------:|----------------------:|----------------------:|
+| 0 | `0x00` | `SGWSpawnableEntity` | SGWEntity | 22 | 12 | 43 (0) | 2 (0) |
+| 1 | `0x01` | `SGWBeing` | SGWSpawnableEntity → SGWEntity | 99 | 27 | 89 (8) | 5 (0) |
+| 2 | `0x02` | `SGWPlayer` | SGWBeing → SGWSpawnableEntity → SGWEntity | 244 | 157 | 315 (109) | 82 (30) |
+| 3 | `0x03` | `SGWGmPlayer` | SGWPlayer → SGWBeing → SGWSpawnableEntity → SGWEntity | 246 | 163 | 433 (226) | 90 (30) |
+| 4 | `0x04` | `SGWMob` | SGWBeing → SGWSpawnableEntity → SGWEntity | 198 | 29 | 132 (8) | 5 (0) |
+| 5 | `0x05` | `SGWPet` | SGWMob → SGWBeing → SGWSpawnableEntity → SGWEntity | 210 | 32 | 140 (8) | 5 (0) |
+| 6 | `0x06` | `SGWDuelMarker` | SGWSpawnableEntity → SGWEntity | 24 | 12 | 44 (0) | 2 (0) |
+| 7 | — | `SGWBlackMarket` `[SO]` | (root) | 1 | 0 | 0 (0) | 6 (0) |
+| 8 | `0x07` | `Account` | GamePawn (UE3 — not a BW def) | 2 | 6 | 0 (0) | 10 (8) |
+| 9 | — | `SGWEntity` `[SO]` | (root) | 10 | 0 | 32 (0) | 2 (0) |
+| 10 | — | `SGWPlayerGroupAuthority` `[SO]` | SGWEntity | 13 | 0 | 32 (0) | 6 (0) |
+| 11 | — | `SGWSpaceCreator` `[SO]` | SGWEntity | 19 | 0 | 35 (0) | 22 (0) |
+| 12 | — | `SGWSpawnRegion` `[SO]` | SGWEntity | 37 | 0 | 32 (0) | 17 (0) |
+| 13 | — | `SGWSpawnSet` `[SO]` | SGWEntity | 36 | 0 | 32 (0) | 12 (0) |
+| 14 | — | `SGWPlayerRespawner` `[SO]` | SGWEntity | 14 | 0 | 33 (0) | 2 (0) |
+| 15 | — | `SGWCoverSet` `[SO]` | SGWEntity | 16 | 0 | 34 (0) | 2 (0) |
+| 16 | — | `SGWEscrow` `[SO]` | SGWEntity | 12 | 0 | 34 (0) | 2 (0) |
+| 17 | — | `SGWChannelManager` `[SO]` | (root) | 0 | 0 | 0 (0) | 15 (0) |
 
 **Reading the table.** `Props` is the count of properties contributed to the all-properties array at `EntityDescription+0x5c/+0x60` after the parse cascade. `ClientMethods` is the size of the client-method ordinal table — this is the number that plugs into §1.4's `idBase` formula for that entity. `CellMethods (Exposed)` and `BaseMethods (Exposed)` give total / exposed pairs; the exposed count is what determines the wire methodID space (cell `0x80..0xBF`, base `0xC0..0xFF`). Most server-only entities have zero exposed methods — they don't communicate with clients at all.
 

@@ -365,8 +365,10 @@ pub enum Action {
     },
 
     // ── Space script action types ────────────────────────────────────────
-    /// Animated NPC pathing — moves a tagged entity along a path with walk animation.
-    /// Unlike MoveEntity (instant teleport), this triggers movement over time.
+    /// Snap a tagged NPC to a destination — an instant server-side position
+    /// write, not a path or a walk animation. `speed` is parsed from the
+    /// seed row but the executor does not use it; this variant exists as
+    /// the space-script spelling for a scripted reposition.
     MoveWaypoint {
         entity_tag: String,
         destination: [f32; 3],

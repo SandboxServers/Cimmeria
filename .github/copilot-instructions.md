@@ -5,6 +5,11 @@ Cimmeria is a server emulator for the cancelled MMO **Stargate Worlds**. Active 
 ## Safety rules (review blockers)
 
 - Active schemas live in `db/database.sql`, `db/sgw/`, `db/resources/`.
+- **Seeds are the source of truth.** Seeded-data changes edit `db/resources/<area>/Seed/` directly. Flag any new `db/scripts/*.sql` migration that a maintainer did not ask for.
+- **A change to a wire constant, method index, or message layout must cite evidence** (a `docs/protocol/` section or a Ghidra address), and must not contradict `docs/protocol/` without correcting it in the same PR. Issue text and draft chapters under `docs/drafts/spec/` are claims, not evidence.
+- **Wire entity typeIDs are the client's clientIndex** (`<ServerOnly/>` entities skipped): `SGWPlayer = 0x02`, `SGWGmPlayer = 0x03`, `Account = 0x07`. Flag any PR that changes `Account` to `0x08`; see `docs/protocol/client-verified-wire-formats.md` "Entity Class IDs".
+- **A test that compares a constant with the same literal is not a regression guard.** Ask what independent source the expected value comes from.
+- **New opcodes, wire-crypto changes, or anything needing a client patch** need a maintainer decision recorded in the PR. Server-authoritative changes that reuse existing messages are preferred.
 
 ## Content-chain review checklist (`db/resources/Content/Seed/*.sql`)
 
@@ -21,7 +26,7 @@ Recurring bugs — flag in review:
 - **File caps**: 500 lines soft, 700 hard. Split on natural seams (handler groups, lifecycle phases, message families) — not arbitrarily on line count. Flat names for 2–3 siblings; promote to a directory only at 4+. Use `foo/mod.rs` style. Avoid `helpers.rs`/`utils.rs`/`misc.rs` — name by behaviour.
 - **No defensive code for impossible scenarios.** Trust internal code and framework guarantees; validate only at system boundaries (user input, external APIs, DB roundtrips).
 - **No scope creep.** Don't add features, refactors, abstractions, feature flags, or backwards-compat shims beyond the task. Delete unused code outright — no commented-out blocks, no `// removed` markers.
-- **Build memory**: iterate with `cargo check -p <crate>`. A full link uses ~47 GB; never run multiple `cargo`/`rustc` processes concurrently. Workspace builds must `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry` — the same five exclusions CI uses ([.github/workflows/test.yml](workflows/test.yml)) — to avoid the Tauri/egui linker and the Windows-only cdylib.
+- **Build memory**: iterate with `cargo check -p <crate>`. A full link uses ~47 GB; never run multiple `cargo`/`rustc` processes concurrently. Workspace builds must `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab` — the same six exclusions CI uses ([.github/workflows/test.yml](workflows/test.yml)) — to avoid the Tauri/egui linker and the Windows-only cdylib.
 
 ## Comments
 
@@ -39,7 +44,7 @@ When adding a client method call, confirm the index against `docs/protocol/clien
 
 ## Required tests on every PR
 
-A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the ten test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session / network chaos) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
+A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the twelve test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session / network chaos / wire-level replay / negative-log) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
 
 - The test must fail when the fix is reverted (regression-guard shape, not happy-path).
 - Tighten assertions: composite keys, exact final positions, `== 1` not `>= 1`, exact byte strings for serializers.
@@ -60,4 +65,4 @@ Run the markdown lint as the doc-side equivalent of `cargo clippy`: `tools/lint-
 
 ## Where to find more
 
-Full conventions: `CLAUDE.md`. Testing: `TESTING.md`. Architecture: `docs/architecture/`. Content engine: `docs/architecture/data-driven-content-engine.md`. Roadmap + status: `docs/project-status.md`, `docs/gap-analysis.md` (**not** `docs/architecture/migration-roadmap.md` — that is a historical C++-only dependency plan; its "CRITICAL OpenSSL" row is not a Cimmeria finding). Live-DB infra: `docs/architecture/integration-test-infra.md`.
+Full conventions: `CLAUDE.md`. Project rules and known traps: `docs/agents/rules-and-gotchas.md`. Evidence rules when sources disagree: `docs/agents/domain.md`. Testing: `TESTING.md`. Architecture: `docs/architecture/`. Content engine: `docs/architecture/data-driven-content-engine.md`. Roadmap + status: `docs/project-status.md`, `docs/gap-analysis.md` (**not** `docs/architecture/migration-roadmap.md` — that is a historical C++-only dependency plan; its "CRITICAL OpenSSL" row is not a Cimmeria finding). Live-DB infra: `docs/architecture/integration-test-infra.md`.

@@ -1,6 +1,17 @@
 //! `BaseToCellMsg` — messages sent from BaseApp to CellApp.
 
 use super::data::SavedMission;
+use super::lab::{LabQuery, LabQueryResult};
+
+/// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
+/// lines the command produced (decoded from the single-recipient
+/// `onPlayerCommunication` sends, in emit order, possibly empty); on failure,
+/// a human-readable reason — today only the access-level gate the in-world
+/// `.`-console path also enforces ("acting entity is not a GM / is unknown").
+///
+/// This is the reply payload the live-research-lab MCP `server_console_exec`
+/// tool awaits (issue #687).
+pub type LabConsoleResult = Result<Vec<String>, String>;
 
 /// Messages sent from BaseApp to CellApp.
 // Cannot derive Debug because oneshot::Sender doesn't implement Debug.
@@ -254,6 +265,46 @@ pub enum BaseToCellMsg {
 
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
     ReloadContentEngine,
+
+    /// Run a GM `.`-console line on behalf of `entity_id` and return the
+    /// captured feedback output instead of sending it to the player as chat.
+    ///
+    /// Backs the live-research-lab MCP `server_console_exec` tool (issue #687)
+    /// and follows the [`Self::CreateEntity`] request/reply precedent: the
+    /// caller (the lab-mcp endpoint, base-side) awaits `reply_tx` for the
+    /// [`LabConsoleResult`].
+    ///
+    /// The GM access-level gate that [`crate::cell::chat`] applies to in-world
+    /// `.`-console input is re-applied here to the acting entity — a non-GM
+    /// (or unknown) `entity_id` is rejected with `Err(_)`, never executed.
+    /// Authorization is on the server-side `access_level` (from
+    /// `account.accesslevel`), never a client-asserted byte.
+    ///
+    /// Side-effecting messages the command emits (spawn round-trips,
+    /// teleports, witness fan-out, …) are forwarded to base exactly as the
+    /// in-world path would; only the single-recipient GM feedback lines are
+    /// captured into the reply.
+    LabConsoleExec {
+        entity_id: u32,
+        line: String,
+        reply_tx: tokio::sync::oneshot::Sender<LabConsoleResult>,
+    },
+
+    /// Read-only live-state snapshot for the live-research-lab MCP endpoint
+    /// (issue #688, phase 5). Answered *between ticks* by the cell loop reading
+    /// its owned `SpaceManager` — the same request/reply shape as
+    /// [`Self::CreateEntity`] and [`Self::LabConsoleExec`].
+    ///
+    /// **Read-only invariant.** The handler
+    /// (`cell::service::base_messages::lab_query`) takes `&SpaceManager` and
+    /// only copies out primitives into a [`LabQueryResult`]; it must never
+    /// mutate simulation state. Result sizes are bounded
+    /// ([`crate::cell::messages::LAB_ENTITY_QUERY_CAP`] entities per query) so a
+    /// snapshot can't stall the tick.
+    LabQuery {
+        query: LabQuery,
+        reply_tx: tokio::sync::oneshot::Sender<LabQueryResult>,
+    },
 
     /// Minigame result callback (forwarded from BaseApp after minigame server reports).
     MinigameResult {

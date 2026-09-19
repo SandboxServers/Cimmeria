@@ -1,0 +1,7 @@
+{
+  "_comment": "Live Research Lab account (issue #685). Copy to <game install>/Binaries/sessions/lab-account.json (gitignored) and fill in real values. The cimmeria-lab supervisor reads it for lab_login. 'server' is the shard NAME selected at the ServerSelect screen; lab_client_start/lab_login accept an optional 'server' arg that overrides it (local vs colo). 'character' must match a playable character's name exactly.",
+  "server": "Cimmeria",
+  "username": "labaccount",
+  "password": "change-me",
+  "character": "LabRat"
+}
