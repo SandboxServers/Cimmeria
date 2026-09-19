@@ -23,6 +23,21 @@ const SHORT_DEADLINE: Duration = Duration::from_millis(200);
 /// that never hangs up fails on this instead of wedging the suite.
 const OBSERVE_WITHIN: Duration = Duration::from_secs(5);
 
+/// The `victory` extension command: an instant win for `PlaceholderGame`.
+const VICTORY: &str = "<msg t='xt'><body action='xtReq'>\
+     <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
+     </body></msg>";
+
+/// SFS login frame for a `Hack` session: `nick` is the entity id, `pword`
+/// the ticket.
+fn hack_login(entity_id: u32, ticket: &str) -> String {
+    format!(
+        "<msg t='sys'><body action='login' r='0'><login z='Hack'>\
+         <nick><![CDATA[{entity_id}]]></nick><pword><![CDATA[{ticket}]]></pword>\
+         </login></body></msg>"
+    )
+}
+
 /// Connect a loopback pair and return `(client, server, client_addr)`.
 async fn loopback_pair() -> (TcpStream, TcpStream, std::net::SocketAddr) {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -289,28 +304,16 @@ async fn a_session_that_logged_in_outlives_the_handshake_deadline() {
         completes_version_check(&mut client).await,
         "verChk must be served"
     );
-    send_null_terminated(
-        &mut client,
-        &format!(
-            "<msg t='sys'><body action='login' r='0'><login z='Hack'>\
-             <nick><![CDATA[4311]]></nick><pword><![CDATA[{ticket}]]></pword>\
-             </login></body></msg>"
-        ),
-    )
-    .await
-    .expect("login send must succeed");
+    send_null_terminated(&mut client, &hack_login(4311, &ticket))
+        .await
+        .expect("login send must succeed");
     super::tests::read_until_game_begin(&mut client).await;
 
     // Idle well past the handshake deadline, then win.
     tokio::time::sleep(SHORT_DEADLINE * 3).await;
-    send_null_terminated(
-        &mut client,
-        "<msg t='xt'><body action='xtReq'>\
-         <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
-         </body></msg>",
-    )
-    .await
-    .expect("victory send must succeed");
+    send_null_terminated(&mut client, VICTORY)
+        .await
+        .expect("victory send must succeed");
     drop(client);
     tokio::time::timeout(OBSERVE_WITHIN, handle)
         .await
@@ -413,5 +416,101 @@ async fn a_flood_past_the_cap_warns_once_not_per_connection() {
     assert_eq!(
         cap_warnings, 1,
         "four refusals inside one warn interval must produce exactly one WARN",
+    );
+}
+
+/// One ticket, one game. A player who opens a second socket with their own
+/// ticket while a round is in play must not get a second game instance —
+/// each instance's victory would fire `on_victory_chains` again, paying the
+/// reward twice. The original's cell dropped a second result; this server
+/// has no such guard, so the refusal has to happen at login. The second
+/// socket gets `loginFailed`, as the original sent for a rejected login.
+#[tokio::test]
+async fn a_second_login_with_a_ticket_in_play_is_refused() {
+    let registry = SessionRegistry::new();
+    let ticket = registry
+        .register(4312, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![4242])
+        .await
+        .expect("fresh registry must accept the session");
+    let (tx, mut rx) = mpsc::channel(16);
+
+    let (mut first, server, peer) = loopback_pair().await;
+    let first_task = tokio::spawn(handle_connection(
+        server,
+        peer,
+        registry.clone(),
+        tx.clone(),
+        9339,
+        OBSERVE_WITHIN,
+    ));
+    assert!(completes_version_check(&mut first).await, "first verChk");
+    send_null_terminated(&mut first, &hack_login(4312, &ticket))
+        .await
+        .expect("first login send must succeed");
+    super::tests::read_until_game_begin(&mut first).await;
+
+    // Same ticket, second socket, while the first round is live. It tries
+    // to win too — the bug shape is the duplicate victory, not the login.
+    let (mut second, server, peer) = loopback_pair().await;
+    let second_task = tokio::spawn(handle_connection(
+        server,
+        peer,
+        registry.clone(),
+        tx,
+        9339,
+        OBSERVE_WITHIN,
+    ));
+    assert!(completes_version_check(&mut second).await, "second verChk");
+    send_null_terminated(&mut second, &hack_login(4312, &ticket))
+        .await
+        .expect("second login send must succeed");
+    let _ = send_null_terminated(&mut second, VICTORY).await;
+    let mut seen = String::new();
+    let mut chunk = vec![0u8; MAX_MESSAGE_LEN];
+    let closed = tokio::time::timeout(OBSERVE_WITHIN, async {
+        loop {
+            match second.read(&mut chunk).await {
+                Ok(0) | Err(_) => return,
+                Ok(n) => seen.push_str(&String::from_utf8_lossy(&chunk[..n])),
+            }
+        }
+    })
+    .await
+    .is_ok();
+    assert!(
+        closed,
+        "the second socket must be closed after its login is refused"
+    );
+    assert!(
+        seen.contains("<var n='_cmd' t='s'>loginFailed</var>"),
+        "the refused login must be told loginFailed; got:\n{}",
+        seen.replace('\0', "\n"),
+    );
+    tokio::time::timeout(OBSERVE_WITHIN, second_task)
+        .await
+        .expect("the refused connection task must end")
+        .expect("connection task must not panic");
+
+    // The first connection is still the session's owner and can win.
+    send_null_terminated(&mut first, VICTORY)
+        .await
+        .expect("first victory send must succeed");
+    drop(first);
+    tokio::time::timeout(OBSERVE_WITHIN, first_task)
+        .await
+        .expect("the first connection task must end")
+        .expect("connection task must not panic");
+
+    let mut victories = 0;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::MinigameResult { result_code, .. } = msg {
+            assert_eq!(result_code, RESULT_VICTORY, "only victories were sent");
+            victories += 1;
+        }
+    }
+    assert_eq!(
+        victories, 1,
+        "two sockets on one ticket must yield exactly one victory — a second \
+         would fire the victory chains again",
     );
 }

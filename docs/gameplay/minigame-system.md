@@ -151,6 +151,18 @@ the connection task that owns it finishes. Two things end it:
    loss, or the player closing the window — the task unregisters it. A
    connected session is never expired by age, because a Livewire round can
    run longer than the TTL.
+
+   A ticket admits **one** connection. A second login with the same ticket
+   while the round is in play is refused with `loginFailed`
+   (`reason = "already_claimed"`), and the first connection keeps the
+   session. Without this, each socket got its own game instance and every
+   victory fired `on_victory_chains` again, which paid the reward twice. The
+   original accepted the second login too, but its cell handler
+   (`deprecated/python/cell/SGWPlayer.py`, `handleMinigameResults`)
+   accepted only the first result. Cimmeria's cell has no such guard, so the
+   refusal has to happen at login. The claim also refuses a never-connected
+   session that is past `PENDING_SESSION_TTL` but not yet swept, using the
+   same expiry rule as the sweep.
 2. **The expiry sweep.** A session whose SWF never connects has no task to
    clean it up. `spawn_sweep` runs every `SWEEP_INTERVAL` (60 s) and drops
    every unconnected session older than `PENDING_SESSION_TTL` (180 s).

@@ -51,6 +51,15 @@ async fn read_handshake_frame(
     }
 }
 
+/// Tell the SWF its login was rejected. Best effort: the connection is
+/// dropped straight after either way.
+async fn send_login_failed(stream: &mut TcpStream) {
+    let fail = protocol::encode_extension_raw(
+        "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
+    );
+    let _ = send_null_terminated(stream, &fail).await;
+}
+
 /// Phase 1 — answer `verChk` with the Flash cross-domain policy and
 /// `apiOK`, returning the version the client claimed.
 pub(super) async fn read_and_handle_version(
@@ -108,10 +117,7 @@ pub(super) async fn read_and_handle_login(
         } => {
             // Check API version
             if api_version != API_VERSION {
-                let fail = protocol::encode_extension_raw(
-                    "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
-                );
-                let _ = send_null_terminated(stream, &fail).await;
+                send_login_failed(stream).await;
                 tracing::debug!(
                     %peer,
                     api_version,
@@ -125,9 +131,15 @@ pub(super) async fn read_and_handle_login(
             let entity_id: u32 = nick.parse().ok()?;
             // Validate and claim atomically — see `authenticate_and_claim` for
             // the interleaving that a separate `mark_connected` would allow.
-            let session = registry
+            let Some(session) = registry
                 .authenticate_and_claim(entity_id, &password, &zone)
-                .await?;
+                .await
+            else {
+                // The registry has already logged why. Tell the SWF, as the
+                // original did for any rejected login.
+                send_login_failed(stream).await;
+                return None;
+            };
 
             // Create game instance. Unreachable today: `games::create` has a
             // `_` arm that falls back to `PlaceholderGame`, so it always
@@ -141,10 +153,7 @@ pub(super) async fn read_and_handle_login(
                 // it here or the entity is stuck until relog — the very shape
                 // of defect B4.
                 registry.remove_if_ticket(entity_id, &session.ticket).await;
-                let fail = protocol::encode_extension_raw(
-                    "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
-                );
-                let _ = send_null_terminated(stream, &fail).await;
+                send_login_failed(stream).await;
                 tracing::warn!(entity_id, game = %zone, "Failed to create minigame");
                 return None;
             }

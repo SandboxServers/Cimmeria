@@ -172,7 +172,8 @@ impl SessionRegistry {
 
     /// Authenticate a login attempt **and claim the matched session**, in one
     /// locked step. Returns the claimed session if the ticket and game name
-    /// match.
+    /// match, the session is not already claimed by another connection, and
+    /// it has not outlived [`PENDING_SESSION_TTL`] unclaimed.
     ///
     /// This is the only entry point a connection task may use. Validating and
     /// claiming separately is a real race, not a theoretical one: `authenticate`
@@ -202,6 +203,26 @@ impl SessionRegistry {
                 expected = %session.game_name,
                 got = %game_name,
                 "Minigame game name mismatch"
+            );
+            return None;
+        }
+        // Checked after the ticket so only the ticket holder learns the
+        // session is in play. First connection wins: a second socket would
+        // get its own game instance, and each victory would fire the chains.
+        if session.connected {
+            tracing::warn!(
+                entity_id,
+                reason = "already_claimed",
+                "Minigame ticket presented by a second connection while in play"
+            );
+            return None;
+        }
+        // The sweep may not have run yet; refuse what it would evict.
+        if is_expired_pending(session, Instant::now(), PENDING_SESSION_TTL) {
+            tracing::info!(
+                entity_id,
+                reason = "session_expired",
+                "Minigame login for a session past its TTL"
             );
             return None;
         }
@@ -301,7 +322,7 @@ fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec
     let expired: Vec<u32> = inner
         .sessions
         .iter()
-        .filter(|(_, s)| !s.connected && now.saturating_duration_since(s.created_at) >= ttl)
+        .filter(|(_, s)| is_expired_pending(s, now, ttl))
         .map(|(id, _)| *id)
         .collect();
 
@@ -320,6 +341,12 @@ fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec
         }
     }
     expired
+}
+
+/// A session nobody connected to within `ttl`. The one expiry rule, shared
+/// by the sweep and the login claim so the two can never disagree.
+fn is_expired_pending(session: &MinigameSession, now: Instant, ttl: Duration) -> bool {
+    !session.connected && now.saturating_duration_since(session.created_at) >= ttl
 }
 
 /// Generate a 64-character hex ticket (matching C++ implementation).

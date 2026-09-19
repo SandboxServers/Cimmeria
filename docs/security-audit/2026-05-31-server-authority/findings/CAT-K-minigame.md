@@ -11,14 +11,25 @@
 >   (`crates/services/src/cell/cell_methods/minigame.rs:7-10`), i.e. inside
 >   the inherited SGWPlayer range and outside the allow-list. They are
 >   still stubs, so this is latent — but do not assume #475 closed it.
-> - **CAT-K-03 (session has no TTL): STILL OPEN, and now provably so.**
+> - **CAT-K-03 (session has no TTL): FIXED (2026-09-19).** A
+>   never-connected session is swept after `PENDING_SESSION_TTL`, and
+>   `authenticate_and_claim` refuses one past the TTL even before the sweep
+>   runs (`minigame/session/mod.rs`). The original 2026-07-25 finding
+>   follows:
+>   STILL OPEN, and now provably so.
 >   `MinigameSession` *has* a `created_at: Instant` field
 >   (`crates/services/src/minigame/session.rs:27`), but it is written at
 >   `register` (`session.rs:86`) and **never read anywhere** — the only
 >   other reference in the tree is a test fixture. `authenticate`
 >   (`session.rs:100-121`) checks ticket equality and game name, nothing
 >   else. The field reads as an abandoned TTL attempt.
-> - **CAT-K-07 (ticket has no IP / connection binding): STILL OPEN.**
+> - **CAT-K-07 (ticket has no IP / connection binding): PARTLY FIXED
+>   (2026-09-19).** Login now claims the session, and a second connection
+>   presenting a ticket that is already in play is refused with
+>   `loginFailed`, so one ticket can no longer run two games and pay out
+>   twice. The ticket is still not bound to an IP, and the comparison is
+>   still variable-time. The original 2026-07-25 finding follows:
+>   STILL OPEN.
 >   `authenticate` also does not *consume* the session on success, so one
 >   ticket authenticates an unbounded number of concurrent connections
 >   until `remove()` is called. The comparison `session.ticket != password`
