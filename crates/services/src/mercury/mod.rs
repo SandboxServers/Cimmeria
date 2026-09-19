@@ -122,11 +122,26 @@ pub(crate) const BASEMSG_RESOURCE_FRAGMENT: u8 = 0x36;
 /// Wire format: `[reason:u8]` (0 = normal logoff).
 pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 
-/// Account entity class ID (EntityTypeID 7 — client skips ServerOnly entities).
-/// entities.xml has SGWBlackMarket(ServerOnly) at index 7, but client numbering
-/// excludes it: 0=SGWSpawnableEntity..6=SGWDuelMarker, 7=Account.
-/// Confirmed by C++ server pcap: `Base Player Create: type=7`.
-pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
+/// Account entity class ID (typeID 0x08).
+///
+/// TypeIDs are assigned 0-based in `entities/entities.xml` document order by
+/// `EntityDescription_ReadFromStream @ ghidra://SGW.exe@0x01590520`
+/// (counter starts at 0, written as `(short)uVar18`, incremented per slot
+/// regardless of parse success — ServerOnly entries still consume a slot).
+/// `Account` is the 9th entry (position 8):
+///
+/// ```text
+/// 0 SGWSpawnableEntity  1 SGWBeing  2 SGWPlayer  3 SGWGmPlayer
+/// 4 SGWMob  5 SGWPet  6 SGWDuelMarker  7 SGWBlackMarket (ServerOnly)
+/// 8 Account  9 SGWEntity (ServerOnly)
+/// ```
+///
+/// Emitting `0x07` earlier made the client resolve the create as
+/// SGWBlackMarket (`<ServerOnly/>`, no client `.def`) and silently fail to
+/// instantiate (§1.16 F4 "no in-handler validation"); visible everywhere only
+/// when gameplay needs a live Account entity on the client. See
+/// `docs/audits/entity-property-sync-section2-audit-2026-05-16.md` Appendix C.3.
+pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x08;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// SGWGmPlayer entity class ID (EntityTypeID 3 in entity definitions).

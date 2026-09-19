@@ -3,8 +3,8 @@
 //! entity-method encoding boundaries.
 
 use super::super::{
-    write_wstring, BASEMSG_LOGGED_OFF, BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT,
-    FRAG_FIRST_AND_LAST,
+    write_wstring, ACCOUNT_CLASS_ID, BASEMSG_CREATE_BASE_PLAYER, BASEMSG_LOGGED_OFF,
+    BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT, FRAG_FIRST_AND_LAST,
 };
 use super::*;
 use cimmeria_mercury::encryption::MercuryEncryption;
@@ -111,6 +111,53 @@ fn char_list_empty() {
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert!(!out.is_empty());
+}
+
+/// Regression guard for #313: `ACCOUNT_CLASS_ID` must be 0x08 — the
+/// 0-based `entities/entities.xml` document index of `Account` (9th entry,
+/// row index 8) as assigned by `EntityDescription_ReadFromStream @
+/// ghidra://SGW.exe@0x01590520`. The prior value 0x07 aliased
+/// `SGWBlackMarket` (a `<ServerOnly/>` entity with no client `.def`), which
+/// the client silently failed to instantiate (§1.16 F4).
+#[test]
+fn account_class_id_is_entities_xml_row_8() {
+    assert_eq!(
+        ACCOUNT_CLASS_ID, 0x08,
+        "Account typeID must match Account's 0-based position in \
+         entities/entities.xml (row 8); 0x07 is SGWBlackMarket (ServerOnly) \
+         which the client cannot instantiate"
+    );
+}
+
+/// Byte-exact wire guard for #313: the `createBasePlayer` (msg 0x05)
+/// payload inside `build_char_list` must carry typeID `0x08` for the
+/// Account entity, not `0x07`.
+#[test]
+fn char_list_create_base_player_carries_account_type_0x08() {
+    let out = build_char_list(
+        &TEST_KEY,
+        3,
+        &[],
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let pt = enc.decrypt(&out).unwrap();
+
+    // Plaintext layout: [flags u8][body...]. Body starts with
+    // BASEMSG_CREATE_BASE_PLAYER (0x05), WORD_LENGTH 6, entityId u32,
+    // then classId u8 + propertyCount u8.
+    assert_eq!(pt[1], BASEMSG_CREATE_BASE_PLAYER, "msg id");
+    assert_eq!(&pt[2..4], &6u16.to_le_bytes(), "WORD_LENGTH = 6");
+    assert_eq!(&pt[4..8], &1u32.to_le_bytes(), "account entityId");
+    assert_eq!(pt[8], ACCOUNT_CLASS_ID, "Account typeID byte");
+    assert_eq!(
+        pt[8], 0x08,
+        "createBasePlayer must emit typeID 0x08 (Account); 0x07 resolves \
+         to ServerOnly SGWBlackMarket and silently fails to instantiate (#313)"
+    );
+    assert_eq!(pt[9], 0x00, "propertyCount = 0");
 }
 
 #[test]
