@@ -9,9 +9,12 @@
 //! an escort 95 units behind its leader. None of them produced a warning.
 //!
 //! Signals: `repeat_interact_no_effect`, `repeat_item_use_no_chain`,
-//! `console_reject_streak`, `escort_separated` (episode counters, below) and
-//! `step_stalled`, `region_dwell_no_hint`, `death_then_silence`,
-//! `dialog_displaced`, `objective_never_completed` ([`PlayerWatch`]).
+//! `console_reject_streak`, `escort_separated` (episode counters, below);
+//! `step_stalled`, `region_dwell_no_hint`, `death_then_silence` (time-based,
+//! re-evaluated by [`PlayerWatch::evaluate`] on the 2 s movement tick); and two
+//! that fire at the gameplay event itself, moving or not: `dialog_displaced`
+//! (when a dialog is displayed) and `objective_never_completed` (when a chain
+//! force-completes a mission).
 //!
 //! One event shape, target `playtest.friction`, WARN, discriminated by
 //! `signal`. A detector fires **once per episode**: when the same
