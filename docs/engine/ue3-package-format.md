@@ -450,7 +450,9 @@ upk_patch clone-actors <target_in> <source> <out> --actors 1174,226,1178 \
 Both commands refuse to write over their input and re-open the output to check
 that every untouched export reads back byte-identical.
 
-**Client-load status:** awaiting the first in-client test (2026-09-19). See
+**Client-load status:** confirmed 2026-09-19. A patched `Castle_CellBlock-fffdfffc`
+(uncompressed, tables at the end, 6 cloned exports) loads in the QA client and
+the cloned actors render. See
 [the ring-transport Phase 0 notes](../analysis/ring-transport-cellblock-castle/README.md#phase-0-status).
 
 ## Open format questions

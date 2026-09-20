@@ -127,7 +127,7 @@ Everything produced by phases 1–2 is `PROJECT FINAL`: a reconstruction using o
 
 ## Phase 0 status
 
-**2026-09-19: tooling done, client-load test pending.**
+**2026-09-19: PASSED.** The owner logged in to CellBlock with the `ringpad` chunk installed. The zone loaded normally and the cloned station rendered in the stasis hall, lit and at floor height: base platform with its four pylons, the ring on the pad, and the console beside it. Open question 1 is answered: the client loads an uncompressed `.umap` with its tables rebuilt at the end of the file, new names, imports and exports, and a spliced actor list. Phase 1 is unblocked.
 
 - The append-only patcher is in [`crates/upk/src/patcher/`](../../../crates/upk/src/patcher/) (CLI `upk_patch`); the layout is described in [ue3-package-format.md](../../engine/ue3-package-format.md#writing-packages--the-append-only-patcher). It does not move existing bytes, which removes the bulk-data offset problem and the header-recompute work item (#8) from the plan above.
 - Work item 6 is resolved: the `Level` actor array is `owner ref, count, refs` directly after the (empty) tagged property list, and `WorldInfo` is element 0. No `Level` export inspected holds inline bulk data.
@@ -143,7 +143,7 @@ Test files live outside `CookedPC` (the engine scans that tree for packages, so 
 | `map-backups/phase0-artifacts/B-ringpad-fffdfffc.umap` | Same, plus the cloned ring station |
 | `map-backups/phase0-artifacts/Install-Phase0.ps1` | `original` / `roundtrip` / `ringpad` swap script |
 
-What the in-client test decides:
+What the in-client test decided (first row was the outcome):
 
 | Result with `ringpad` installed | Meaning | Next |
 |---|---|---|
@@ -157,7 +157,7 @@ The cloned actors block movement on the client only. The server has no collision
 
 | # | Question | How to close it |
 |---|---|---|
-| 1 | Does the client load an uncompressed `.umap`? | Phase 0 experiment. |
+| 1 | ~~Does the client load an uncompressed `.umap`?~~ | **Yes** (2026-09-19, see [Phase 0 status](#phase-0-status)). |
 | 2 | Which function consumes the resolved script name, and what happens when it fails to resolve? | Decompile forward from the `onSequence` subscriber (data xref `0x019c7f44`). Decides how unpatched clients behave. |
 | 3 | What do `SeqEvent_RegionTeleport` / `SeqEvent_Console` bind to in the level? | Decode `Targets` / originator in sequence 772. |
 | 4 | Exact end of the `ULevel` property block and start of the actor array. | Implement `ULevel::Serialize` for Epic 486. |
