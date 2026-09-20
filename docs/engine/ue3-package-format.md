@@ -37,6 +37,11 @@ for the `Model`/`Polys` cross-check that surfaced this.
 > format findings survived; the toolchain did not. `tools/ue3_extract_cover_nodes.py`
 > and `tools/upk_parser.py` are what remain. If splicing is ever revived,
 > everything below is the spec you would rebuild against.
+>
+> **2026-09 update.** Splicing was revived in Rust as the append-only patcher in
+> [`crates/upk/src/patcher/`](../../crates/upk/src/patcher/) (CLI: `upk_patch`). See
+> [Writing packages](#writing-packages--the-append-only-patcher). It avoids the
+> offset-shifting approach the Python tools took.
 
 ## Section ordering
 
@@ -93,8 +98,24 @@ apparently a `ComponentMap<FName, INT>` whose size varies per actor.
 | Average across all entries | 93 bytes | ~53 bytes |
 | Max observed | — | needs a `max_trailer` bound of at least 2000 for ComponentMap-heavy actors |
 
-**A sequential walker cannot assume a fixed stride.** It has to detect each
-entry's end by probing forward for the next valid preamble.
+**A sequential walker cannot assume a fixed stride**, but it does not have to
+probe either: the trailer is fully decoded (`FUN_004bc9b0`), so each entry's
+length follows from its own counts.
+
+```text
++40      i32 ComponentMap count
+         count x { FName name (8), i32 export index }
+         u32 ExportFlags
+         i32 GenerationNetObjectCount count, then count x i32
+         FGuid PackageGuid (16)
+```
+
+**`ComponentMap` values are 0-based export indices, not object refs.** Every
+other object reference in a package is 1-based (`export index + 1`), so a tool
+that remaps the map as refs lands one export off. A component rarely follows
+its actor directly in the table, so the wrong entry is usually an unrelated
+object. The byte-exact reader and writer are in
+[`raw_tables.rs`](../../crates/upk/src/patcher/raw_tables.rs).
 
 ### Cover-node trailer layout (40 bytes)
 
@@ -131,6 +152,31 @@ property tag stream, decoded by comparing cover nodes across the two builds:
 The two duplicate `class_idx` slots at `+0..7` are **real import references** —
 any tool that relocates an actor between packages must remap them, not copy them
 through. The remaining fields are per-instance state.
+
+### QA-build placed actors: the prefix is an `FStateFrame` plus `NetIndex`
+
+In `StaticMeshActor` and `InterpActor` exports from the QA maps, the same 32
+bytes read as the state frame written by `UObject::Serialize`, followed by the
+object's `NetIndex`:
+
+```text
++0..3    Node        = the actor's class (import ref)
++4..7    StateNode   = same
++8..15   ProbeMask   = 0xFFFFFFFFFFFFFFFF
++16..19  class-dependent (0x00320031 for InterpActor, 0x006f0074 for StaticMeshActor)
++20..23  zero
++24..27  -1
++28..31  NetIndex
+```
+
+A clone must remap `+0` and `+4`, and should set `NetIndex` to `-1`
+(`INDEX_NONE`): the source value belongs to the source package's net-object
+numbering. `+16..19` copies through from a source actor of the same class.
+
+`ActorComponent` exports carry an 8-byte prefix instead: `TemplateOwnerClass`
+(an object ref, usually 0) then `NetIndex`. A `StaticMeshComponent` with no baked
+lighting ends with 4 zero bytes after its property list (an empty `LODData`
+array); one with a vertex lightmap carries kilobytes of inline bulk data there.
 
 ## Component serial blob — 226-byte prefix + 594-byte suffix
 
@@ -248,20 +294,27 @@ transform is the whole story there.
 The `PersistentLevel` export (class `Level`) serializes:
 
 ```text
-+0..15           16-byte binary header (4 × i32: 313, 684, 0, [self_export_idx])
-+16..19          i32 Actors_count
-+20..23          i32 WorldInfo standalone ref (WorldInfo_0's export index — NOT Actors[0])
-+24..            Actors[count] — count × i32 export indices
-+24+count*4..    remaining ULevel data (URL, Model, ModelComponents, GameSequences,
-                 cached physics data, NavLists, CoverLists, …)
++0..3            i32 NetIndex
++4..11           FName `None` (the level has no tagged properties)
++12..15          i32 Actors owner ref (the level's own 1-based export ref)
++16..19          i32 Actors count
++20..            Actors[count], count x i32 object refs; Actors[0] is the WorldInfo
++20+count*4..    FURL (Protocol FString `unreal`, ...), Model, ModelComponents,
+                 GameSequences, cached physics data, NavLists, CoverLists, ...
 ```
 
-Note the trap at `+20`: that slot is a standalone `WorldInfo` reference, **not**
-the first element of the `Actors` array. The array starts at `+24`.
+`+4..11` is a property terminator, not a fixed constant: parse the tagged list
+from `+4` and take the array from wherever it ends.
 
-Appending an actor means: read the count at `+16`, insert an `i32` export index
-at `+24 + count*4`, increment the count, grow `Level`'s `serial_size` by 4 in its
-export-table entry, and shift every downstream export's `serial_offset` by +4.
+> **Corrected 2026-09.** This section used to place a standalone `WorldInfo` ref
+> at `+20` and start the array at `+24`. That reads one element too many: in
+> `Castle_CellBlock-fffdfffc` (count 365) the i32 at `+20+365*4` is `7`, the
+> length of the `unreal` protocol string. `WorldInfo` is simply element 0.
+
+Appending an actor means inserting its ref at `+20 + count*4` and incrementing
+the count. The export grows, so its data has to move; the patcher appends the
+new copy at the end of the file instead of shifting every later export (see
+[Writing packages](#writing-packages--the-append-only-patcher)).
 
 Sanity check before trusting a parse: the count at `+16` should be in
 `[1, 10000]`. SGW levels run roughly 200–1500 actors.
@@ -352,6 +405,55 @@ Four things a new parser gets wrong:
   `TerrainComponent` exports; a `Castle_CellBlock` chunk has 25 `Terrain`
   exports and 25 `TerrainComponent` exports. Walk every `Terrain`-class export
   and treat each independently.
+
+## Writing packages — the append-only patcher
+
+[`crates/upk/src/patcher/`](../../crates/upk/src/patcher/) writes packages, under one rule:
+**no existing byte moves.** Bulk-data headers store their own absolute file
+offset, so a writer that re-lays a package out must find and fix every one (the
+2026-05 Python splicer needed a `bulkfix` pass for exactly this). The patcher
+never shifts anything:
+
+```text
+[summary]            patched in place (counts, offsets, compression cleared)
+[original body]      verbatim, at its original offsets; the old tables become dead space
+[new export data]    appended (including the new copy of any export that grew)
+[name table]         original bytes + new entries
+[import table]       original bytes + new entries
+[export table]       original entries (size/offset patched where data was replaced) + new
+[depends table]      original bytes + one empty list per new export
+```
+
+- The tables stay contiguous from `name_offset` to `total_header_size`, which
+  now equals the file length. That span is what the UE3 linker precaches.
+- Output is always uncompressed: `compression_flags = 0`, no chunk table, and
+  `PKG_StoreCompressed` (`0x02000000`) cleared from the package flags. The
+  uncompressed summary is exactly `name_offset` bytes, so it fits in place.
+- The last generation's export and name counts are updated.
+- A relocated export is scanned for self-referential offsets (an i32 equal to
+  its own file position + 4, the inline bulk-data signature). Finding one is an
+  error rather than a silent corruption. No `Level` export has tripped it.
+- Cross-package cloning remaps every name index and object ref through
+  [`property_remap.rs`](../../crates/upk/src/patcher/property_remap.rs), adding
+  names and imports (with their outer chains) to the target as needed. Property
+  types it cannot remap safely (`ArrayProperty`, `ByteProperty`) are errors.
+
+```bash
+# Rewrite a chunk uncompressed with no content change
+upk_patch roundtrip <in.umap> <out.umap>
+
+# Clone placed actors (0-based export indices in <source>) and their components
+upk_patch clone-actors <target_in> <source> <out> --actors 1174,226,1178 \
+    --first-at -22298,-33098,7345        # UE units; or --offset DX,DY,DZ
+```
+
+Both commands refuse to write over their input and re-open the output to check
+that every untouched export reads back byte-identical.
+
+**Client-load status:** confirmed 2026-09-19. A patched `Castle_CellBlock-fffdfffc`
+(uncompressed, tables at the end, 6 cloned exports) loads in the QA client and
+the cloned actors render. See
+[the ring-transport Phase 0 notes](../analysis/ring-transport-cellblock-castle/README.md#phase-0-status).
 
 ## Open format questions
 

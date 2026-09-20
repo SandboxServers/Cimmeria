@@ -206,6 +206,16 @@ impl Package {
         }
     }
 
+    /// The full uncompressed package image: every summary offset and every
+    /// export `serial_offset` indexes straight into it. For an LZO package this
+    /// is the decompressed buffer; for an uncompressed one, the file itself.
+    pub fn image(&self) -> Result<Vec<u8>> {
+        match &self.decompressed {
+            Some(data) => Ok(data.clone()),
+            None => Ok(std::fs::read(&self.filepath)?),
+        }
+    }
+
     /// Read the serial data for an export entry.
     pub fn read_export_data(&self, export: &ExportEntry) -> Result<Vec<u8>> {
         if export.serial_size <= 0 {
