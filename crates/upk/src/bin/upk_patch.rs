@@ -2,15 +2,18 @@
 //!
 //! Usage:
 //!   upk-patch roundtrip <in> <out>
-//!   upk-patch clone-actors <target_in> <source> <out> --actors A,B,C
-//!             (--first-at X,Y,Z | --offset DX,DY,DZ)
+//!   upk-patch clone-objects <target_in> <source> <out> --roots A,B,C
+//!             [--map SRC:DST,...] [--first-at X,Y,Z | --offset DX,DY,DZ | --anchor SRC:DST]
 //!
 //! `roundtrip` rewrites a package uncompressed with no content change.
-//! `clone-actors` copies placed actors (0-based export indices in <source>) and
-//! their components into <target_in>. Coordinates are UE units.
+//! `clone-objects` copies each root (a 0-based export index in <source>) and
+//! everything outered to it into <target_in>. `--map` redirects refs to a source
+//! export onto an existing target export instead of cloning it. `--anchor` places
+//! the clones relative to target actor DST as they sit relative to source actor
+//! SRC, yaw included. Coordinates are UE units. <source> may be <target_in>.
 //! Both refuse to overwrite <in>, and both re-open the output to verify it.
 
-use cimmeria_upk::patcher::{clone_actors, PatchSession, Placement};
+use cimmeria_upk::patcher::{clone_objects, CloneRequest, PatchSession, Placement};
 use cimmeria_upk::{extract_actors, Package};
 use std::env;
 use std::path::Path;
@@ -23,7 +26,7 @@ fn fail(msg: &str) -> ! {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch clone-actors <target_in> <source> <out> --actors A,B,C (--first-at X,Y,Z | --offset DX,DY,DZ)"
+        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z | --offset DX,DY,DZ | --anchor SRC:DST]"
     );
     process::exit(1);
 }
@@ -43,6 +46,27 @@ fn parse_vec3(s: &str) -> [f32; 3] {
         [x, y, z] => [x, y, z],
         _ => fail("expected three comma-separated numbers"),
     }
+}
+
+fn parse_indices(s: &str) -> Vec<usize> {
+    s.split(',')
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| {
+            p.trim()
+                .parse()
+                .unwrap_or_else(|_| fail("bad export index"))
+        })
+        .collect()
+}
+
+fn parse_pairs(s: &str) -> Vec<(usize, usize)> {
+    s.split(',')
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| match parse_indices(&p.replace(':', ","))[..] {
+            [a, b] => (a, b),
+            _ => fail("expected SRC:DST"),
+        })
+        .collect()
 }
 
 fn refuse_in_place(input: &str, output: &str) {
@@ -117,54 +141,79 @@ fn main() {
             println!("wrote {output} ({} bytes, uncompressed)", bytes.len());
             verify(input, output, &[]);
         }
-        Some("clone-actors") if args.len() >= 5 => {
+        Some("clone-objects") if args.len() >= 5 => {
             let (input, source, output) = (&args[2], &args[3], &args[4]);
             refuse_in_place(input, output);
-            let actors: Vec<usize> = flag(&args, "--actors")
-                .unwrap_or_else(|| usage())
-                .split(',')
-                .map(|s| s.trim().parse().unwrap_or_else(|_| fail("bad actor index")))
-                .collect();
-            let placement = match (flag(&args, "--first-at"), flag(&args, "--offset")) {
-                (Some(p), None) => Placement::FirstActorAt(parse_vec3(p)),
-                (None, Some(d)) => Placement::Offset(parse_vec3(d)),
+            let roots = parse_indices(flag(&args, "--roots").unwrap_or_else(|| usage()));
+            let mapped = parse_pairs(flag(&args, "--map").unwrap_or(""));
+            let placement = match (
+                flag(&args, "--first-at"),
+                flag(&args, "--offset"),
+                flag(&args, "--anchor"),
+            ) {
+                (Some(p), None, None) => Placement::FirstActorAt(parse_vec3(p)),
+                (None, Some(d), None) => Placement::Offset(parse_vec3(d)),
+                (None, None, Some(a)) => match parse_pairs(a)[..] {
+                    [(source, target)] => Placement::Anchor { source, target },
+                    _ => fail("--anchor takes one SRC:DST pair"),
+                },
+                (None, None, None) => Placement::Offset([0.0; 3]),
                 _ => usage(),
             };
 
             let src = PatchSession::open(source).unwrap_or_else(|e| fail(&e.to_string()));
             let mut dst = PatchSession::open(input).unwrap_or_else(|e| fail(&e.to_string()));
-            let level = dst
-                .level_export_index()
-                .unwrap_or_else(|e| fail(&e.to_string()));
-            let report = clone_actors(&mut dst, &src, &actors, placement)
-                .unwrap_or_else(|e| fail(&e.to_string()));
-            for a in &report.actors {
-                println!(
-                    "cloned source export {} ({}) -> ref {} at UE ({:.1}, {:.1}, {:.1}) = game ({:.3}, {:.3}, {:.3}), {} component(s)",
-                    a.source_index,
-                    a.class,
-                    a.target_ref,
-                    a.location[0],
-                    a.location[1],
-                    a.location[2],
-                    a.location[1] / 100.0,
-                    a.location[2] / 100.0,
-                    a.location[0] / 100.0,
-                    a.components
-                );
+            let request = CloneRequest {
+                roots: &roots,
+                mapped: &mapped,
+                placement,
+            };
+            let report =
+                clone_objects(&mut dst, &src, &request).unwrap_or_else(|e| fail(&e.to_string()));
+            for o in report.objects.iter().filter(|o| o.is_root) {
+                match o.location {
+                    Some(l) => println!(
+                        "cloned source export {} ({}) -> ref {} '{}' at UE ({:.1}, {:.1}, {:.1}) = game ({:.3}, {:.3}, {:.3})",
+                        o.source_index,
+                        o.class,
+                        o.target_ref,
+                        o.name,
+                        l[0],
+                        l[1],
+                        l[2],
+                        l[1] / 100.0,
+                        l[2] / 100.0,
+                        l[0] / 100.0
+                    ),
+                    None => println!(
+                        "cloned source export {} ({}) -> ref {} '{}'",
+                        o.source_index, o.class, o.target_ref, o.name
+                    ),
+                }
             }
             println!(
-                "added {} name(s), {} import(s), {} export(s); level actors {} -> {}",
+                "added {} name(s), {} import(s), {} export(s) from {} root(s)",
                 report.names_added,
                 report.imports_added,
                 report.exports_added,
-                report.level_actor_count.0,
-                report.level_actor_count.1
+                report.objects.iter().filter(|o| o.is_root).count()
             );
+            let mut changed = Vec::new();
+            if let Some((from, to)) = report.level_actor_count {
+                println!("level actors {from} -> {to}");
+                changed.push(
+                    dst.level_export_index()
+                        .unwrap_or_else(|e| fail(&e.to_string())),
+                );
+            }
+            for (parent, seq) in &report.sequences_attached {
+                println!("sequence ref {seq} attached to SequenceObjects of export {parent}");
+                changed.push(*parent);
+            }
             let bytes = dst.finish().unwrap_or_else(|e| fail(&e.to_string()));
             std::fs::write(output, &bytes).unwrap_or_else(|e| fail(&e.to_string()));
             println!("wrote {output} ({} bytes, uncompressed)", bytes.len());
-            verify(input, output, &[level]);
+            verify(input, output, &changed);
         }
         _ => usage(),
     }
