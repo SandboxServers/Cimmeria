@@ -18,7 +18,8 @@
 //! is the only layout assumption the UE3 linker makes (it precaches that span).
 //! Output is always uncompressed.
 
-mod actor_clone;
+mod host_splice;
+mod object_clone;
 mod property_remap;
 pub mod raw_tables;
 
@@ -32,7 +33,7 @@ use crate::error::{Result, UpkError};
 use crate::package::Package;
 use raw_tables::{RawExport, RawImport, SummaryLayout, EXPORT_SERIAL_SIZE_AT, IMPORT_ENTRY_SIZE};
 
-pub use actor_clone::{clone_actors, CloneReport, Placement};
+pub use object_clone::{clone_objects, CloneReport, CloneRequest, ClonedObject, Placement};
 
 /// `PKG_StoreCompressed`; must be cleared when the output is uncompressed.
 const PKG_STORE_COMPRESSED: u32 = 0x0200_0000;
@@ -267,6 +268,42 @@ impl PatchSession {
     /// The ref the next [`Self::add_export`] call will return.
     pub fn next_export_ref(&self) -> i32 {
         self.export_count() as i32 + 1
+    }
+
+    /// Outer ref of any export, original or queued.
+    pub fn new_export_outer(&self, export_ref: i32) -> Result<i32> {
+        let index = export_ref as usize - 1;
+        match index.checked_sub(self.exports.len()) {
+            None => Ok(self.exports[index].0.outer),
+            Some(n) => self
+                .new_exports
+                .get(n)
+                .map(|(e, _)| e.outer)
+                .ok_or_else(|| UpkError::Parse(format!("export ref {export_ref} out of range"))),
+        }
+    }
+
+    /// An FName instance number that makes `(outer, name)` unique in this package:
+    /// `preferred` when it is free, otherwise one past the highest in use. Two
+    /// exports with the same outer, name and number are the same object to UE3.
+    pub fn free_name_number(&self, outer: i32, name_index: i32, preferred: i32) -> Result<i32> {
+        let wanted = self.name(name_index)?.to_lowercase();
+        let mut used = Vec::new();
+        let all = self
+            .exports
+            .iter()
+            .map(|(e, _)| e)
+            .chain(self.new_exports.iter().map(|(e, _)| e));
+        for e in all {
+            if e.outer == outer && self.name(e.object_name.0)?.to_lowercase() == wanted {
+                used.push(e.object_name.1);
+            }
+        }
+        Ok(if used.contains(&preferred) {
+            used.iter().max().map_or(preferred, |m| m + 1)
+        } else {
+            preferred
+        })
     }
 
     /// Replace an original export's serial data. The new data is appended to
