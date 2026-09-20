@@ -7,7 +7,12 @@ db/resources/Events/Seed/sequences.sql is invisible to clients until the PAK
 carries a matching `_<sequence_id>` entry. Keep the two in sync.
 
 The PAK is a zip: one XML entry per sequence plus a 4-byte little-endian
-`MetaData` version. The version is bumped so clients drop their cached copy.
+`MetaData` version. **The version is deliberately left alone.** Category 1 has
+no per-key push, so a version the client does not already hold makes the server
+answer invalidate-all with nothing pushed: the client empties its sequence table,
+persists the empty table, and no Kismet sequence plays until its cache file is
+restored by hand. New entries reach clients by shipping this same PAK, at this
+same version, into the client's SourceCache.en-us and Cache.en-US.
 
 Usage:
     python tools/pak_add_kismet_sequence.py \
@@ -63,13 +68,13 @@ def main() -> int:
     # New entries copy their zip attributes from an existing one so the archive
     # stays uniform.
     model = next(info for info, _ in entries if info.filename != "MetaData")
-    version = None
+    has_metadata = False
     tmp = args.pak + ".tmp"
     with zipfile.ZipFile(tmp, "w") as dst:
         for info, data in entries:
             if info.filename == "MetaData":
-                version = struct.unpack("<I", data[:4])[0] + 1
-                data = struct.pack("<I", version) + data[4:]
+                has_metadata = True
+                version = struct.unpack("<I", data[:4])[0]
             dst.writestr(info, data, compress_type=info.compress_type)
         for seq, event, script in additions:
             info = zipfile.ZipInfo(f"_{seq}", date_time=model.date_time)
@@ -77,11 +82,12 @@ def main() -> int:
             info.external_attr = model.external_attr
             xml = TEMPLATE.format(script=script, event=event, seq=seq)
             dst.writestr(info, xml.encode("utf-8"), compress_type=model.compress_type)
-    if version is None:
+    if not has_metadata:
         os.remove(tmp)
         sys.exit(f"{args.pak} has no MetaData entry; refusing to write an unversioned PAK")
     os.replace(tmp, args.pak)
-    print(f"{args.pak}: added {len(additions)} sequence(s), MetaData version -> {version}")
+    print(f"{args.pak}: added {len(additions)} sequence(s); MetaData version stays {version}")
+    print("Ship this PAK to clients (SourceCache.en-us and Cache.en-US) for the entries to resolve.")
     return 0
 
 
