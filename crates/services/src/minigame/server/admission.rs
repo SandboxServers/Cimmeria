@@ -32,6 +32,8 @@ const CAP_WARN_INTERVAL: Duration = Duration::from_secs(60);
 pub(super) struct ConnectionLimits {
     /// Most connections served at once. The next one is closed on accept.
     pub max_connections: usize,
+    /// Most connections served at once from one peer IP.
+    pub max_per_ip: usize,
     /// How long a connection has to finish verChk + login, from accept.
     pub handshake_timeout: Duration,
 }

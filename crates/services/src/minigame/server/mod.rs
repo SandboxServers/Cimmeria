@@ -41,6 +41,9 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 /// Most minigame connections served at once.
 const MAX_CONNECTIONS: usize = 256;
 
+/// Most minigame connections served at once from one peer IP.
+const MAX_CONNECTIONS_PER_IP: usize = 32;
+
 /// Start the minigame TCP server.
 pub async fn run(
     addr: &str,
@@ -73,6 +76,7 @@ pub async fn run(
         external_port,
         ConnectionLimits {
             max_connections: MAX_CONNECTIONS,
+            max_per_ip: MAX_CONNECTIONS_PER_IP,
             handshake_timeout: HANDSHAKE_TIMEOUT,
         },
     )
