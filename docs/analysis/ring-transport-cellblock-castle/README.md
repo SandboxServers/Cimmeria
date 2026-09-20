@@ -153,13 +153,34 @@ What the in-client test decided (first row was the outcome):
 
 The cloned actors block movement on the client only. The server has no collision for them, so standing on the pad may trip movement validation; walk around it for this test.
 
+## Phase 1 status
+
+**2026-09-19: built, awaiting the in-client test.** Region 3's wired rig was cloned onto the Armory pad inside `Castle_CellBlock-fffeffff`.
+
+- The rig is 32 Kismet objects under sequence 772, driving five ring `InterpActor`s (218, 219, 220, 227, 228) and an `Emitter` (216) whose particle component owns 20 mesh sub-components. Everything parses as tagged properties; the only native tail is `SeqAct_Interp`'s empty `SavedActorTransforms`.
+- The rig's top ring (220, at base + 20) is mapped onto the ring the designers already placed at the pad (226) instead of being cloned, so the pad does not end up with two rings in one spot. The other four rings and the emitter are cloned.
+- The Armory pad is rotated 90 degrees from region 3's, so placement is an anchor transform from base 1192 to base 1174 that carries the yaw difference.
+- Result: 62 new exports, no new names or imports, level actors 713 to 718. The other 1,762 exports read back byte-identical; the two that changed are the `Level` (actor list) and `Prefabs` (`SequenceObjects`).
+- This answers open question 3: the rig's `SeqEvent_RegionTeleport` nodes have no `Originator` and bind to nothing in the level. Their only variable link, `Source`, points at a `SeqVar_Object` inside the rig. The client reaches a rig purely through the sequence's object path, which is why the clone needs its own name: `Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0`.
+
+Server side, sequences 10187 (Teleport Out, event 8000) and 10188 (Teleport In, 8001) point at that path. **The client's `sequences` table is served from `data/cache/CookedDataKismetSeqEvent.pak`, not from the database**, so a seed row alone is invisible to clients. [`tools/pak_add_kismet_sequence.py`](../../../tools/pak_add_kismet_sequence.py) adds the matching PAK entries and bumps the PAK's `MetaData` version so clients refetch. Region 33 is not repointed yet; that is Phase 3.
+
+To test: close the client, run `map-backups\phase1-artifacts\Install-Phase1.ps1 rig`, restart the server on this branch (for the PAK), stand at the Armory pad, and run `.net_seq 10187 3`. The rings should rise and flash as they do at region 3 with `.net_seq 1951 3`. `Install-Phase1.ps1 original` restores the stock chunk.
+
+| Result | Meaning | Next |
+|---|---|---|
+| Rings animate at the Armory pad | The cloned Kismet resolves by path and drives the cloned actors | Phase 2: clone into `Castle-00090004` (about 31 new imports) |
+| Nothing happens, but `.net_seq 1951 3` animates region 3 | The clone is not reachable: check the path suffix and the `Prefabs` attachment | Inspect with `upk_info` / `inspect-export` |
+| Nothing happens at region 3 either | `.net_seq` is not a valid trigger for map-local ring sequences | Test through the ring FSM instead (walk into region 1) |
+| CellBlock fails to load near the Armory | The rig clone produced something the engine rejects | `Install-Phase1.ps1 original`, then bisect by cloning actors only |
+
 ## Open questions
 
 | # | Question | How to close it |
 |---|---|---|
 | 1 | ~~Does the client load an uncompressed `.umap`?~~ | **Yes** (2026-09-19, see [Phase 0 status](#phase-0-status)). |
 | 2 | Which function consumes the resolved script name, and what happens when it fails to resolve? | Decompile forward from the `onSequence` subscriber (data xref `0x019c7f44`). Decides how unpatched clients behave. |
-| 3 | What do `SeqEvent_RegionTeleport` / `SeqEvent_Console` bind to in the level? | Decode `Targets` / originator in sequence 772. |
+| 3 | ~~What do `SeqEvent_RegionTeleport` / `SeqEvent_Console` bind to in the level?~~ | **Nothing.** No `Originator`; the rig is reached by the sequence's object path (see [Phase 1 status](#phase-1-status)). |
 | 4 | Exact end of the `ULevel` property block and start of the actor array. | Implement `ULevel::Serialize` for Epic 486. |
 | 5 | Licensee version: [ue3-package-format.md](../../engine/ue3-package-format.md) says 6, `upk_info` reports 8 on these chunks. | Check the header parse against a hex dump; fix whichever is wrong. |
 | 6 | The rigs' designer comment "event switched due to code bug". | Low priority. A clone inherits the shipped workaround unchanged. |
