@@ -49,7 +49,11 @@ Review rules:
   because re-firing it would not be idempotent. Either give it the
   `step_status` gate it wants, or add a second trigger on the event that
   opens its gate.
-- `player_loaded` and cover chains are still not covered. They keep the
+- A `player_entered_cover` chain gated on mission state is covered the same
+  way: the server replays the enter edge for each cover set the player is
+  already in when the step activates. `player_left_cover` and the cover
+  duration milestones are not replayed.
+- `player_loaded` chains are still not covered. They keep the
   second-trigger rule: add a trigger on the event that opens the gate,
   usually `mission_completed '<id>'` (a second trigger row on the same chain,
   tested through `load_chain_expansions_for_test`, or a paired chain with a
