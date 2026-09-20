@@ -341,7 +341,10 @@ Three version-specific traps:
   bytes where the value bytes would normally be. Miss this and every subsequent
   property in the stream is misaligned.
 - **`ByteProperty` has no enum-name FName in ver 486.** That is a UDK ver 633+
-  addition. A parser written against modern UDK will over-read here.
+  addition. A parser written against modern UDK will over-read here. (The
+  crate's own parser did until 2026-09: it skipped 8 bytes whenever the i32 at
+  the value looked like a name index, which swallowed the next tag on Kismet
+  and Matinee objects such as `InterpTrackMove.MoveFrame`.)
 - **`ArrayProperty` carries no inner-type FName in ver 486 either.** The
   "since ver 332" row in the table above describes stock UE3; SGW's stream does
   not have it. A flat byte-skip that jumps by the tag's declared `size` — which
@@ -349,6 +352,20 @@ Three version-specific traps:
   included — lands byte-exactly on the next tag. Consuming an extra 8 bytes
   desynchronises the stream. Verified against 1744 `Terrain` exports whose
   native trailer then decodes to the exact declared export size.
+
+### Array contents
+
+With no inner-type name in the tag, an array's element type has to come from
+its shape. The value is an `i32 count` followed by the elements:
+
+| Element type | Layout | How to recognise it |
+|---|---|---|
+| Struct (`OutputLinks`, `VariableLinks`, `InputLinks`, `Links`, `EventTrack`, `Points`) | each element is a full tagged property list ending in `None` | parses cleanly and ends exactly at `size` |
+| Object ref (`SequenceObjects`, `LinkedVariables`, `InterpGroups`, `InterpTracks`, `SMComponents`, `Materials`, `Targets`) | `count` x i32 | `size == 4 + 4 * count`; **indistinguishable from an int array by shape**, so identify by property name |
+
+Struct arrays nest: a Kismet event's `OutputLinks[n].Links[m].LinkedOp` is an
+object ref two arrays deep. Binary structs inside elements (`Vector` in
+`InterpCurvePointVector.OutVal`) still serialize raw.
 
 ## Coordinate system
 
@@ -433,18 +450,35 @@ never shifts anything:
 - A relocated export is scanned for self-referential offsets (an i32 equal to
   its own file position + 4, the inline bulk-data signature). Finding one is an
   error rather than a silent corruption. No `Level` export has tripped it.
-- Cross-package cloning remaps every name index and object ref through
+- Cloning remaps every name index and object ref through
   [`property_remap.rs`](../../crates/upk/src/patcher/property_remap.rs), adding
-  names and imports (with their outer chains) to the target as needed. Property
-  types it cannot remap safely (`ArrayProperty`, `ByteProperty`) are errors.
+  names and imports (with their outer chains) to the target as needed. Arrays
+  are handled per [Array contents](#array-contents); a bare i32 array whose
+  name is not a known object array is an error, as is any ref that does not
+  resolve to a cloned object, an explicitly mapped one, the level or an import.
+- [`object_clone.rs`](../../crates/upk/src/patcher/object_clone.rs) clones object graphs: each root
+  brings everything outered to it, recursively. Actors (`RF_HasStack`,
+  `0x0200000000000000`), components and plain objects differ only in prefix.
+  Cloned actors are spliced into the level's actor array, and a cloned root
+  `Sequence` is appended to its parent's `SequenceObjects`; without that the
+  engine never registers its events.
+- A root takes a free FName instance number under its new outer. Two exports
+  with the same outer, name and number are one object to UE3, so copying
+  `InterpActor_7` beside an existing `InterpActor_7` would construct one over
+  the other. The number is also what makes a same-package sequence clone
+  addressable: `..._Pf0_Seq` becomes `..._Pf0_Seq_0`.
 
 ```bash
 # Rewrite a chunk uncompressed with no content change
 upk_patch roundtrip <in.umap> <out.umap>
 
-# Clone placed actors (0-based export indices in <source>) and their components
-upk_patch clone-actors <target_in> <source> <out> --actors 1174,226,1178 \
-    --first-at -22298,-33098,7345        # UE units; or --offset DX,DY,DZ
+# Clone roots (0-based export indices in <source>) with everything outered to them.
+# <source> may be the same file as <target_in>.
+upk_patch clone-objects <target_in> <source> <out> --roots 772,216,218 \
+    --map 764:764,220:226 \    # source export -> existing target export, not cloned
+    --anchor 1192:1174         # place relative to target actor 1174 as the
+                               # originals sit relative to source actor 1192, yaw included
+                               # (or --first-at X,Y,Z / --offset DX,DY,DZ, UE units)
 ```
 
 Both commands refuse to write over their input and re-open the output to check
