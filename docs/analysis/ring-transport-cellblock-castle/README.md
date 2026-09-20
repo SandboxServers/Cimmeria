@@ -125,6 +125,34 @@ Phase 3 does not depend on phases 0–2 except for the sequence rows, so option 
 
 Everything produced by phases 1–2 is `PROJECT FINAL`: a reconstruction using original assets and an original sequence, completing a station the designers placed but did not wire. It is not recovered original Kismet.
 
+## Phase 0 status
+
+**2026-09-19: tooling done, client-load test pending.**
+
+- The append-only patcher is in [`crates/upk/src/patcher/`](../../../crates/upk/src/patcher/) (CLI `upk_patch`); the layout is described in [ue3-package-format.md](../../engine/ue3-package-format.md#writing-packages--the-append-only-patcher). It does not move existing bytes, which removes the bulk-data offset problem and the header-recompute work item (#8) from the plan above.
+- Work item 6 is resolved: the `Level` actor array is `owner ref, count, refs` directly after the (empty) tagged property list, and `WorldInfo` is element 0. No `Level` export inspected holds inline bulk data.
+- A clone across packages works at the file level: the un-wired Armory station (base 1174, ring 226, console 1178 from `Castle_CellBlock-fffeffff`) was cloned into the stasis hall chunk `Castle_CellBlock-fffdfffc` at UE `(-22298, -33098, 7345)`, game `(-330.98, 73.45, -222.98)`, about 6 m from the `Stasis Chamber` respawner. That added 6 exports, 7 imports and 8 names; the other 1,009 exports read back byte-identical.
+- New finding: export `ComponentMap` values are 0-based export indices, not 1-based refs.
+
+Test files live outside `CookedPC` (the engine scans that tree for packages, so backups must not sit inside it):
+
+| Path (under the `SGW` folder next to the client) | Content |
+|---|---|
+| `map-backups/2026-09-19-pre-ring-patch/` | Both map folders, 216 files, with `SHA256SUMS.txt` |
+| `map-backups/phase0-artifacts/A-roundtrip-only-fffdfffc.umap` | Stasis chunk rewritten uncompressed, no content change |
+| `map-backups/phase0-artifacts/B-ringpad-fffdfffc.umap` | Same, plus the cloned ring station |
+| `map-backups/phase0-artifacts/Install-Phase0.ps1` | `original` / `roundtrip` / `ringpad` swap script |
+
+What the in-client test decides:
+
+| Result with `ringpad` installed | Meaning | Next |
+|---|---|---|
+| CellBlock loads and the station is visible in the stasis hall | Open question 1 is answered yes; names, imports, exports and the actor-list splice all load | Phase 1 |
+| CellBlock loads, no station | The chunk loads uncompressed but the new actors are not registered or not rendered | Compare against `roundtrip`; inspect the actor-list and component data |
+| Crash or hang entering CellBlock | Install `roundtrip` to split "uncompressed, tables at end" from "new content" | If `roundtrip` also fails, add an LZO recompress step or a conventional table layout |
+
+The cloned actors block movement on the client only. The server has no collision for them, so standing on the pad may trip movement validation; walk around it for this test.
+
 ## Open questions
 
 | # | Question | How to close it |
