@@ -7,6 +7,7 @@
 - [Admin API unauthenticated](exploit_admin_api_unauth.md) — `/api/config/stop` and `/api/editor/content` bind on 0.0.0.0 with no auth middleware; trivially DoS-able.
 - [useAbility no faction check](exploit_use_ability_no_faction.md) — single-target ability resolves damage on any non-dead target in range; party/vendor friendly fire possible.
 - [Lootable no ownership](exploit_loot_no_ownership.md) — lootItem trusts player's own `looting_entity` state; no kill-credit check, no post-interact range re-check.
+- [Dev-session / telemetry trust boundary](reference_dev_session_telemetry_trust_boundary.md) — scope+iss claims never verified; install_id is published at info, so per-identity quotas are victim-targeted.
 - [Reference: authoritative state locations](reference_authority_sources.md) — where the server-of-truth state lives for inventory, position, currency, GM flag.
 
 ## 2026-05-31 server-authority audit — per-system findings
