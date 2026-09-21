@@ -312,6 +312,33 @@ pub enum Action {
     /// Send a system message to the player.
     SystemMessage { message_id: i32 },
 
+    /// Speak one line of NPC dialogue into the triggering player's chat
+    /// window **without** opening a dialog window.
+    ///
+    /// The 2009 client's dialog module has no non-modal path at all — its
+    /// lowest screen type registers the modal Blurb window under a "TEMP
+    /// HACK" comment — so a companion combat line ("Let's move out!")
+    /// cannot be a dialog. The grounded non-modal route is the chat
+    /// message the server already drives successfully:
+    /// `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`
+    /// (`entities/defs/interfaces/Communicator.def`).
+    ///
+    /// - `screen_id` names a `resources.dialog_screens` row. The executor
+    ///   resolves the line text from the cell's startup catalogue so
+    ///   content authors never retype 2009 text and never drift from it.
+    /// - `speaker` is an explicit param rather than a `speakers` lookup
+    ///   because the companion-bark screens carry `speaker_id = 0`.
+    /// - `channel` is the `EChannel` wire byte. Only `CHAN_say` (0) is
+    ///   accepted today; `CHAN_splash` is unverified in the client.
+    ///
+    /// This deliberately does **not** route through [`Action::SystemMessage`],
+    /// whose wire format is still unknown.
+    NpcBark {
+        screen_id: i32,
+        speaker: String,
+        channel: u8,
+    },
+
     /// Apply QR combat damage to a stat.
     QrCombatDamage {
         stat_id: i32,
