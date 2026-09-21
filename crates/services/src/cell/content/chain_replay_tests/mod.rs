@@ -32,6 +32,7 @@ mod grant_xp;
 mod harset_space;
 mod harset_spawn_entity;
 mod livewire_pairs;
+mod marsh_barks;
 mod mission_1200;
 mod mission_1324;
 mod mission_1326;
