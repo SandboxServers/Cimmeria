@@ -5,6 +5,19 @@
 //! player was actually shown. This module owns the bookkeeping; the
 //! cell-side handlers own the wire I/O and the logging.
 //!
+//! `CellEntity::offered_dialog_ids` is pushed when `onDialogDisplay` is
+//! sent (`cell::interactions::send_dialog_display`, the single choke
+//! point all display paths route through) and removed on the matching
+//! `DIALOG_BUTTON_CHOICE`. Without it, a forged choice packet for any
+//! discovered `dialog_id` drives the bound chain's actions (GrantXP,
+//! GrantItem, AcceptMission, Teleport, …) with no precondition at all.
+//!
+//! The field is private by deliberate exception to `CellEntity`'s
+//! all-`pub` convention, because the four accessors below are what keep
+//! the [`MAX_OFFERED_DIALOGS`] bound and the one-shot guarantee. A direct
+//! `push_back` could not forge past the gate, but it could break the
+//! bound or duplicate an id into a double-fire.
+//!
 //! **Why a set and not a single pin.** The client's `DialogController`
 //! keeps two active slots (one non-tutorial, one tutorial) and evicts the
 //! previous occupant through its discard path when a *different* id

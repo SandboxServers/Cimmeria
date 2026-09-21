@@ -633,31 +633,10 @@ pub struct CellEntity {
     /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
     pub last_interaction_target: Option<u32>,
 
-    /// Dialog ids this player has been shown and has not yet answered,
-    /// oldest first. Pushed when `onDialogDisplay` is sent
-    /// (`cell::interactions::send_dialog_display`, the single choke point all
-    /// display paths route through), and removed on the matching
-    /// `DIALOG_BUTTON_CHOICE`.
-    ///
-    /// This is the server-side "was dialog X offered to player Y?"
-    /// precondition the `DialogButtonChoice` handler checks before firing an
-    /// `OnDialogChoice` content chain. Without it, a forged choice packet for
-    /// any discovered `dialog_id` drives the chain's actions (GrantXP,
-    /// GrantItem, AcceptMission, Teleport, …) with no precondition
-    /// (CAT-J-01 / #479). Mirrors python `SGWPlayer.displayedDialogs`
-    /// (`deprecated/python/cell/SGWPlayer.py`), which was likewise a dict and
-    /// not a single slot: the client can hold two dialogs at once and evicts
-    /// the older one with a late `(oldId, -1)` close, so a single pin loses
-    /// that dialog's chain (DU-08).
-    ///
-    /// Private by deliberate exception to this struct's all-`pub` field
-    /// convention: [`CellEntity::offer_dialog`] /
-    /// [`CellEntity::take_offered_dialog`] /
-    /// [`CellEntity::dialog_is_offered`] / [`CellEntity::offered_dialogs`]
-    /// are the only mutation and read paths, and they are what keep the
-    /// `MAX_OFFERED_DIALOGS` bound and the one-shot guarantee. A direct
-    /// `push_back` could not forge past the gate, but it could break the
-    /// bound or duplicate an id into a double-fire.
+    /// Dialogs offered to this player and not yet answered, oldest first —
+    /// the `dialogButtonChoice` server-authority precondition. Private on
+    /// purpose; see the `offered_dialogs` module for the rules and the
+    /// accessors that enforce them.
     pub(super) offered_dialog_ids: VecDeque<i32>,
 
     /// Entity ID of the currently-open vendor (only for player entities).
