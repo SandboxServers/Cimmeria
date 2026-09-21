@@ -73,7 +73,7 @@ Review rules:
 - Do not key a chain on a Tutorial dialog or a type-0 (`DUIST_None`) dialog. Tutorial renders no cooked buttons at all, so nothing can fire the chain.
 - `dialog_choice` matches on the dialog id alone — there is no `button_id` condition — so every button on a keyed dialog fires the same chain.
 
-[`crates/content-engine/tests/dialog_button_linter.rs`](../../crates/content-engine/tests/dialog_button_linter.rs) enforces all three against the Castle and Castle_CellBlock seeds, alongside [`interact_tag_linter.rs`](../../crates/content-engine/tests/interact_tag_linter.rs) for the interaction-type rule above. Both run with no database. Client evidence for the button behaviour is the Client Contract in [docs/analysis/dialog-ui-redesign/work-packets.md](../../docs/analysis/dialog-ui-redesign/work-packets.md).
+[`crates/content-engine/tests/dialog_button_linter.rs`](../../crates/content-engine/tests/dialog_button_linter.rs) enforces these rules against the Castle and Castle_CellBlock seeds, alongside [`interact_tag_linter.rs`](../../crates/content-engine/tests/interact_tag_linter.rs) for the interaction-type rule above. Both run with no database. Full reasoning, client evidence and the window/button compatibility tables are in [docs/content/dialog-ui-client-contract.md](../../docs/content/dialog-ui-client-contract.md).
 
 ## Mission grants must gate on `not_active`
 
@@ -85,31 +85,6 @@ failed-without-`can_repeat_on_fail`, or completed past `num_repeats`),
 so a missing gate no longer corrupts saved mission rows — but it still
 fires the chain's *other* actions (dialogs, highlights) spuriously, so
 the condition remains a review requirement.
-
-## Dialog buttons and the two hard rules
-
-A `dialog_choice` chain only fires if the client actually sends something. It
-sends on a button click, and — **only when the dialog has zero buttons across
-all of its screens** — on close, with `button_id = -1`. A dialog that has any
-button sends nothing when the player closes it.
-
-Two rules follow. Both are enforceable by reading the seed, and both soft-lock
-a real player when broken. Full reasoning, evidence and the window/button
-compatibility tables are in
-[docs/content/dialog-ui-client-contract.md](../../docs/content/dialog-ui-client-contract.md).
-
-- **A dialog that keys a `dialog_choice` chain has either zero buttons, or a
-  button on its FINAL screen.** A button that stops before the last screen
-  leaves a player who reads to the end with nothing to click and a Done that
-  emits nothing.
-- **Never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003,
-  5004, 5008 or 5009.** All are button-less today and key chains through the
-  `-1` close. Any button stops the close emitting — including one the window
-  cannot even draw, since an undrawable button still counts toward the total.
-
-Check the button type against the window as well: `DUIST_DefaultBlurb` can
-only draw More Info (1) and Accept (2); `DUIST_DefaultDialog` can only draw
-Accept (2) and Generic 1-3 (4, 5, 6); `DUIST_DefaultTutorial` draws none.
 
 ## Inventory consumption
 
