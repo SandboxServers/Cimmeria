@@ -9,7 +9,8 @@
 - **Scope shipped:** twelve `ButtonPlan::StripAll` rows, the matching deletion of 45 seed
   button rows, a two-directional patch-versus-seed agreement test, a chain-replay module
   firing all five keyed chains from the `-1` close path, the DU-L allowlist removal for
-  3999, a UAT scenario and two doc notes.
+  3999, a guard that runs every plan against the committed cooked archive, a UAT scenario
+  and two doc notes.
 - **Decisions in force:** Client Contract F1-F14 and both hard rules; D-DU1 (resolved:
   strip all four post-accept blurbs).
 - **Depends on:** DU-01 (the patch engine), DU-L (the linter).
@@ -19,6 +20,11 @@
   coordinator's table-agnostic guard commit). Worktree `.claude/worktrees/du02a`.
 - **Owned paths:**
   - `crates/services/src/base/dialog_overrides/patches_cellblock.rs`
+  - `crates/services/src/base/dialog_overrides/patch_seed_agreement_cellblock.rs` (new)
+  - `crates/services/src/base/dialog_overrides/mod.rs` — **one line**, the `#[cfg(test)]
+    mod` declaration for the file above. The packet said not to touch this file; the
+    coordinator's later correction asked for the new guard, which cannot exist without it.
+    DU-02b added the mirror line for its own file, so expect a two-line merge there.
   - `crates/services/src/cell/content/chain_replay_tests/cellblock_dialog_closes.rs` (new)
   - `crates/services/src/cell/content/chain_replay_tests/mod.rs` (one `mod` line)
   - `crates/content-engine/tests/dialog_button_linter.rs` (three edits, below)
@@ -28,7 +34,7 @@
   - `docs/analysis/castle-cellblock-rebuild/uat-guide.md`
   - `docs/content/mission-chains.md`
   - `docs/analysis/dialog-ui-redesign/worknotes/du02a.md` (this file)
-- **Explicitly not touched:** `dialog_overrides/{mod,patch,emit,parse,patch_tests}.rs`,
+- **Explicitly not touched:** `dialog_overrides/{patch,emit,parse,patch_tests}.rs`,
   `patches_castle.rs`, every Castle chain seed, `cell/interactions/dialog.rs`,
   `cell_methods/player/interaction/dialog.rs`, `crates/content-engine/src/**`,
   `chain_replay_tests/mission_{638,640,641}.rs`, `work-packets.md`, `docs/readme.md`.
@@ -37,8 +43,16 @@
   `cell/content/event_dispatch/dialog.rs`; `cell/cell_methods/player/interaction/dialog.rs`;
   `castle_cellblock_chains.sql`; `chain_replay_tests/{mod,mission_638,mission_640,
   mission_641,mission_708,mission_1324,mission_1326}.rs`; `dialog_button_linter.rs` and
-  its four submodules; `TESTING.md` type 6; `CLAUDE.md`. Read-only, not in git and not
-  read by any test: `data/cache/CookedDataDialogs.pak`.
+  its four submodules; `TESTING.md` type 6; `CLAUDE.md`;
+  `data/cache/CookedDataDialogs.pak`; DU-02b's `patch_seed_agreement_castle.rs` (read for
+  its archive-loading approach only — no helper is shared between the two files).
+
+**Correction, from the coordinator (2026-09-21).** `data/cache/CookedDataDialogs.pak` **is**
+tracked in git (commit `cad5b754`, twenty-one archives under `data/cache/`). The worker
+rules and the ledger both said it was not. Verified here with
+`git ls-files --error-unmatch data/cache/CookedDataDialogs.pak`. Tests may read it, and
+`base/resources/tests/committed_paks.rs` already did. The cooked-entry guard below is the
+consequence.
 
 ## Audit of the twelve dialogs
 
@@ -97,24 +111,31 @@ not in this packet). The column is a surrogate key with no foreign key pointing 
 
 ## Design decisions
 
-**The agreement test lives in `patches_cellblock.rs`, as a `#[cfg(test)] mod tests`.**
-The packet offered two homes and I took neither as stated, for a reason worth recording.
+**The agreement tests live in their own `patch_seed_agreement_cellblock.rs`.**
+The packet offered two homes and I took neither as stated, for reasons worth recording.
 
 - *Not the content-engine linter crate.* It cannot see `CELLBLOCK_DIALOG_PATCHES`:
   `cimmeria-services` depends on `cimmeria-content-engine`, not the other way round. A
   linter-side test could only re-assert what the seed says, which is the half that is
   already covered.
-- *Not a new module under `dialog_overrides/`.* That needs a `mod` line in `mod.rs`, which
-  this packet may not edit (shared with DU-02b).
+- *A new module under `dialog_overrides/`* needs a `mod` line in `mod.rs`, which the packet
+  told me not to edit. I first put the tests in a `#[cfg(test)] mod tests` inside
+  `patches_cellblock.rs` to avoid it. The coordinator's correction then asked for a
+  `cellblock`-named test file mirroring DU-02b's, so the tests moved and the one-line `mod`
+  declaration was added after all. Symmetry is worth it: the two files are now trivially
+  dedupable at integration.
 - *Not a live-DB test*, though `mission_1326.rs:711` is a precedent for counting seed
   buttons through the database. A live-DB test self-skips without `DATABASE_URL`, so a
   contributor running plain `cargo test` would see it pass while the seed and the patch
   disagreed. The file-parsing form always runs, in both CI gating jobs, and compares
   against the Rust constant the DB cannot see.
 
-So the tests sit beside the table they guard, which also means DU-02b's equivalent lands
-in `patches_castle.rs` and the two branches never touch the same file. The cost is a
-~60-line seed scanner that will exist twice once DU-02b lands — see "Integration edits".
+The seed scanner is deliberately duplicated rather than shared with
+`patch_seed_agreement_castle.rs`: a small duplicate is cheaper than a merge conflict
+between two branches in flight, and the coordinator will dedupe at integration. The two
+scanners differ in approach — mine reads only fields that precede `text` and needs no quote
+tracking; DU-02b's is quote-aware and also reads the text. Either is correct; whichever
+survives dedupe should keep DU-02b's, since it is the more general.
 
 **Two tests, because one only fails in one direction.** `cellblock_patches_agree_with_the_
 dialog_seed` iterates the patch table, so deleting a row makes it stop checking that dialog
@@ -147,6 +168,18 @@ a negative firing dialog 2298 so a trigger that matched everything would fail.
 **`mission_638`, `mission_640` and `mission_641` are untouched**, which the packet requires
 and which is part of the claim: they cover the interact and pickup halves of the same
 missions and nothing about those changed.
+
+**The cooked-entry guard is the one that catches a typo.** Both seed-side tests compare the
+plan to `dialog_screen_buttons.sql`, and `StripAll` asserts "this dialog has no seed button
+rows" — which a dialog id that does not exist satisfies perfectly. At runtime
+`apply_dialog_patches` warns and keeps the canonical bytes when a dialog or screen is
+absent, so a mistyped id is silent everywhere: the seed says the buttons are gone, DU-L
+agrees, and the player is still looking at them. With 3999 out of the allowlist there would
+be no red test at all. `cellblock_patches_apply_to_the_committed_cooked_entries` runs every
+row against the committed archive, asserts the entry **had** buttons before the strip (or
+the assertion is vacuous), asserts none survive, and asserts every screen's speaker and
+escaped text plus the root attributes come out unchanged. Proof (c2) below shows the two
+seed-side tests going green on exactly the mutation it catches.
 
 **Declined: adding the five keyed dialogs to DU-L's `NEVER_ADD_A_BUTTON` list.** The
 advisor recommended it, reasoning that a future packet could re-add an Accept to 4001 and
@@ -203,7 +236,9 @@ clean here.
 
 | File | What |
 |---|---|
-| `crates/services/src/base/dialog_overrides/patches_cellblock.rs` | twelve `StripAll` rows with per-row rationale; `tests` module with the seed scanner and three tests (407 lines) |
+| `crates/services/src/base/dialog_overrides/patches_cellblock.rs` | twelve `StripAll` rows with per-row rationale (177 lines) |
+| `crates/services/src/base/dialog_overrides/patch_seed_agreement_cellblock.rs` | new; seed scanner, cooked-archive loader, four tests (413 lines) |
+| `crates/services/src/base/dialog_overrides/mod.rs` | one `#[cfg(test)] mod` line |
 | `crates/services/src/cell/content/chain_replay_tests/cellblock_dialog_closes.rs` | new; 11 tests over chains 1019, 1053, 1054, 1058, 1059 (359 lines) |
 | `crates/services/src/cell/content/chain_replay_tests/mod.rs` | one `mod` line, alphabetically placed so `cargo fmt` leaves it alone |
 | `crates/content-engine/tests/dialog_button_linter/rules.rs` | 3999 out of `R1_ALLOWLIST` |
@@ -282,7 +317,30 @@ seed says are gone. …
 (a) and (b) ran together: `3 tests run: 1 passed, 2 failed`, each naming its own dialog.
 Both reverted; the suite returned to 3 passed.
 
-### (c) 3999's seven buttons restored → R1 fires, with no allowlist left to suppress it
+### (c) A patch row pointed at a dialog that does not exist → only the cooked guard fires
+
+Changed 2308 to 23080 in both `CELLBLOCK_DIALOG_PATCHES` and the test's `ROSTER`, i.e. a
+typo made consistently, which is how a real one would look. Running
+`cargo test -p cimmeria-services --lib patch_seed_agreement_cellblock -- --test-threads=1`
+through the lane wrapper → exit 101, **3 passed / 1 failed**:
+
+```text
+cellblock_patch_table_covers_exactly_the_du02a_roster ... ok
+cellblock_patches_agree_with_the_dialog_seed ... ok
+cellblock_patches_apply_to_the_committed_cooked_entries ... FAILED
+the_cellblock_seed_scan_reads_every_insert_row ... ok
+
+panicked at patch_seed_agreement_cellblock.rs:176:
+cooked entry _23080 is not in the committed dialog archive: specified file not found in
+archive
+```
+
+The two seed-side tests passing is the point, not an accident: dialog 23080 has no seed
+button rows, so `StripAll`'s "the seed holds nothing" is satisfied perfectly. At runtime
+this row would warn once at PAK load and leave 2308's two buttons in place forever. Only
+the archive knows. Restored; all four pass.
+
+### (d) 3999's seven buttons restored → R1 fires, with no allowlist left to suppress it
 
 Re-added rows 3069-3075 (screens 96252-96258, type 4 id 70 "Receive Item").
 `$L/lane.sh cargo test -p cimmeria-content-engine --test dialog_button_linter` → exit 101,
@@ -326,17 +384,49 @@ throughout; recorded the DU-L two-deletion requirement (which the packet already
   is that behaviour is unchanged. **Recommended to the coordinator as a DU-08 follow-up.**
 - *Extending the never-add-a-button list* — see "Design decisions" for the reasoning.
 
+## The 2516 / 5859 stagger, and the first shipped eviction close
+
+The coordinator asked for this to be recorded rather than fixed. Chains 1161 and 1172 both
+fire on `mission_completed 686` and display two dialogs from that one event, 2516 at
+`delay_ms 10100` and 5859 at `delay_ms 10600` — a 500 ms stagger, added in review on
+2026-09-18 so 5859 would not race chain 1161's Matinee (sequence 1751, ~10.0096 s).
+
+**Verified independently, as asked:** nothing keys either one. Scanning all eleven files
+under `db/resources/Content/Seed/` for `dialog_choice` triggers gives exactly these keys —
+2299, 2300, 2573, 2574, 2575, 2576, 2577, 2581, 2636, 2638, 2639, 2640, 3999, 4001, 4357,
+4373, 4375, 4376, 4452, 4457, 4459, 4462, 5003, 5004, 5008, 5009, 5020, 5021, 5022, 5023,
+5354, 5355, 5356, 5357, 5358, 5359, 5365, 5435, 5861. **None of 2516, 5859, 2309, 2305,
+4000, 2308 or 2518 appears.** Their closes resolve zero actions.
+
+What changes: the client holds one non-tutorial dialog, so 5859 evicts 2516. Today 2516
+carries an Accept, so the eviction sends nothing. Once it is button-less the eviction sends
+`(2516, -1)` — **the first shipped eviction close**. On today's server the single
+open-dialog pin has already moved to 5859, so that `-1` is rejected with a `warn!` on every
+run of the scene, which is a forgery/replay signal firing on legitimate traffic. After
+DU-08 the offered-dialog set accepts it and it matches no chain. Nothing is lost either
+way.
+
+**The 500 ms question, plainly: the player cannot read 2516 before 5859 replaces it, and
+could not before this packet either.** 2516 is 50 words (258 characters) of Straegis
+narration; at an ordinary 200-300 words per minute it needs 10 to 15 seconds. The stagger
+gives it half a second. Stripping the button does not shorten that window by a millisecond
+— the eviction already happens today, silently. All this packet does is make it audible in
+the log. This is a pre-existing content-timing defect and it is the owner's call: the fix
+is a larger `delay_ms` on chain 1172, or dropping 2516's display and letting 5859 stand
+alone, neither of which belongs in a packet whose claim is that behaviour is unchanged.
+Recorded as a known cosmetic issue in UAT scenario T30 and in a comment beside chain 1172.
+
 ## Known gaps
 
 1. **The seed scanner will exist twice.** DU-02b needs the same ~60 lines in
    `patches_castle.rs`. Neither packet may add a module to `dialog_overrides/mod.rs`, so
    the duplication is structural until the coordinator extracts a shared `seed_scan.rs`.
    See "Integration edits".
-2. **Nothing verifies the patch against the PAK in CI.** The cooked archive is not in git,
-   so the agreement test compares the patch to the *seed*, and the seed-to-PAK agreement
-   was established by hand (this packet) and is not re-checked. A PAK that drifts from the
-   seed would make the patch's `screen_id`s stale — the engine handles that gracefully
-   (`warn!` + keep the canonical entry, DU-01), it just would not be caught early.
+2. **The seed-to-PAK agreement itself is still hand-established.** The cooked guard proves
+   each plan *applies* to the committed archive and yields the intended layout, and the
+   seed guard proves the plan matches the seed — but nothing asserts that the archive and
+   the seed describe the same buttons for a dialog **outside** the patch table. That
+   full-catalogue comparison would be a useful separate test; it is not this packet's.
 3. **No test observes the `warn!` from the 2516 eviction.** It is emitted from a handler
    this packet may not touch; a `LogCapture` guard belongs with DU-08, which changes that
    code.
@@ -355,17 +445,25 @@ throughout; recorded the DU-L two-deletion requirement (which the packet already
    button-count floors are now 1 and are correct for the post-Wave-1 end state (2 Blurb
    rows, 3 `DialogWin` rows, 1 Generic1). DU-02b should leave them; its own edits to
    `R1_ALLOWLIST` and the layout pin will merge cleanly alongside mine.
-3. **Shared seed scanner.** Once both zone packets have landed, consider extracting the
-   scanner in `patches_cellblock.rs::tests` and `patches_castle.rs::tests` into a
-   `dialog_overrides/seed_scan.rs` with a `#[cfg(test)]` `mod` line. Neither packet could
-   do it without editing the shared `mod.rs`.
-4. **`#[allow(dead_code)]` on `ButtonPlan` stays for now.** DU-01's note says the first
+3. **Two `mod` lines in `dialog_overrides/mod.rs`.** DU-02a and DU-02b each add one
+   `#[cfg(test)] mod patch_seed_agreement_<zone>;` immediately above `mod patch_tests;`.
+   Both sort before `patch_tests` alphabetically so `cargo fmt`'s `reorder_modules` is
+   stable, but the two branches insert at the same point and will need a two-line merge.
+4. **Shared seed scanner and cooked loader.** `patch_seed_agreement_cellblock.rs` and
+   `patch_seed_agreement_castle.rs` each carry their own seed scanner and their own
+   `cooked_entry`, duplicated on purpose while both branches were in flight. Worth
+   collapsing into a `dialog_overrides/seed_scan.rs` at integration; keep DU-02b's
+   scanner, which is quote-aware and also reads button text, over mine, which only reads
+   the fields preceding `text`.
+5. **`#[allow(dead_code)]` on `ButtonPlan` stays for now.** DU-01's note says the first
    Wave 1 packet should drop it; it cannot go until `OnlyOn` (DU-02b) and `Keep` (DU-05)
    both have non-test constructors.
-5. **DU-08 follow-up.** Add the mirror gate to chains 1053, 1054, 1058 and 1059, and a
+6. **DU-08 follow-up.** Add the mirror gate to chains 1053, 1054, 1058 and 1059, and a
    `LogCapture` guard for the 2516 eviction rejection. Both fall inside DU-08's stated
    audit scope.
-6. **Doc index.** Nothing new to index — `uat-guide.md`, `mission-chains.md` and the
+7. **Owner decision owed on the 2516 stagger** — see the section above. Not a defect this
+   packet introduces, and not one it can fix.
+8. **Doc index.** Nothing new to index — `uat-guide.md`, `mission-chains.md` and the
    worknotes directory are all already listed.
 
 ## Log
@@ -382,3 +480,7 @@ throughout; recorded the DU-L two-deletion requirement (which the packet already
   fmt, `+1.98.1` clippy, the two live-DB runs.
 - 2026-09-21 — UAT scenario T30, the two `mission-chains.md` notes, the two chain-seed
   comments the advisor's Q5 and the 2308 finding called for, and this worknote.
+- 2026-09-21 — coordinator corrections: the cooked PAK is in git after all, so the
+  agreement tests moved into `patch_seed_agreement_cellblock.rs` and gained a guard that
+  runs every plan against the committed archive; recorded the 2516/5859 eviction and
+  verified from the seed that neither dialog is keyed.
