@@ -68,7 +68,7 @@ Only rows that change are listed. Every other dialog in the brief already matche
 | 2309 | Accept on 3 of 3 | none | no | DU-02a | cosmetic |
 | 2516 | Accept | none | no | DU-02a | narration |
 | 5859 | Accept (Blurb) | none | no | DU-02a | objective update, X-close only |
-| 2305, 4000, 2308, 2518 | Accept, some with More Info (Blurb) | D-DU1 | no | DU-02a | shown AFTER accept by chains 1151-1154, so both buttons are dead |
+| 2305, 4000, 2308, 2518 | Accept, some with More Info (Blurb) | none (D-DU1) | no | DU-02a | shown AFTER accept by chains 1151-1154, so both buttons are dead; X-close only |
 | 2573 | Accept on 7 of 7 | Accept on final 113558 only | yes (1204) | DU-02b | Decline appears with it (F6) |
 | 5861 | Accept on 5 of 8 | Accept on final 96789 only | yes (1205) | DU-02b | closes D-CA13 |
 | 2576 | Take Missions on 3 of 5 | Take Missions on final 96825 only | yes (1237-1239) | DU-02b | closes 701 seed GAP 3 |
@@ -135,7 +135,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-01
 
-**Status:** Ready. **Scope title:** patch-mode dialog overrides with button emission. **Agent:** rust-gameserver-dev.
+**Status:** Review ([PR #767](https://github.com/SandboxServers/Cimmeria/pull/767), worktree `du01`, branch `dialog-ui/du01-override-patch-engine`; worknote [worknotes/du01.md](worknotes/du01.md)). Shipped layout: `crates/services/src/base/dialog_overrides/` with `mod.rs`, `emit.rs`, `parse.rs`, `patch.rs`, `patch_tests.rs` and the two zone tables `patches_cellblock.rs` and `patches_castle.rs` (NOT the `dialog_patches_*.rs` names below). Button attributes are emitted as `ButtonType ButtonID Text`, the order all 4,349 shipped buttons use. **Scope title:** patch-mode dialog overrides with button emission. **Agent:** rust-gameserver-dev.
 **Entries:** `crates/services/src/base/dialog_overrides.rs`, `base/resources/mod.rs:203-223,364-408`, `docs/engine/cooked-data-pak-format.md` (Server-Build shape), `docs/architecture/mission-pak-overrides.md`.
 **Scope:** add a second override kind that transforms the canonical cooked entry instead of re-authoring its text. Shape: `DialogPatch { dialog_id, ui_screen_type: Option<u32>, buttons: ButtonPlan }` with `ButtonPlan::{Keep, StripAll, OnlyOn { screen_id, button_type, button_id, text }}`. The patcher parses the QA-build entry (SOAP namespaces present), keeps every `Screens` row byte-for-byte in text and speaker, preserves button order within a screen (the client resolves clicks by array position), applies the plan, and re-emits Server-Build XML through one shared emitter that now writes nested `<Buttons>`. Extend `DialogScreen` with an optional button list so full regenerations can carry buttons too. Fold patches into `compute_dialog_metadata_bump`. A patch whose dialog id or `screen_id` is absent from the loaded PAK must `warn!` and skip, never panic (negative-logging convention). Keep patch tables in one file per zone (`dialog_patches_cellblock.rs`, `dialog_patches_castle.rs`) so Wave 1 packets never touch the same file. Ship with both tables empty.
 **Acceptance:** byte-exact emitter tests for a screen with zero, one and two buttons; patch tests on inline QA-shape fixtures of 2576 and 3999 proving `OnlyOn` leaves exactly one button on the named screen and `StripAll` leaves none while text is unchanged; a guard that fails if the missing-screen `warn!` is removed (`LogCapture`); bump changes when a plan changes and is stable across runs. The PAK is not in git, so no test may read `data/cache/`.
@@ -143,7 +143,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-L
 
-**Status:** Ready. **Scope title:** dialog button linter. **Agent:** testing-validation-engineer.
+**Status:** Review ([PR #768](https://github.com/SandboxServers/Cimmeria/pull/768), worktree `dul`, branch `dialog-ui/dul-button-linter`; worknote [worknotes/dul.md](worknotes/dul.md)). Shipped as `crates/content-engine/tests/dialog_button_linter.rs` plus a `dialog_button_linter/` module dir; rules R1-R4; the R1 allowlist holds exactly 3999, 5861 and 2576 and no other violator exists. Removing an allowlist entry is not enough: `allowlisted_dialogs_still_ship_the_soft_locking_layout` pins each violator's layout and its row must be deleted by the fixing packet too. **Scope title:** dialog button linter. **Agent:** testing-validation-engineer.
 **Entries:** `crates/content-engine/tests/interact_tag_linter.rs` (precedent), `db/resources/Dialogs/Seed/dialog_screen_buttons.sql`, `dialog_screens.sql`, the four `castle_*_chains.sql` files.
 **Scope:** a seed-parsing test, no DB, enforcing the two hard rules in Client Contract for every dialog id that keys a `dialog_choice` chain in the Castle and Cellblock seed files. Carry an explicit allowlist for 3999, 5861 and 2576 that DU-02a and DU-02b must empty. Add a second check, which is a correctness rule and not style (F7: an undrawable button still suppresses the close event): a Blurb may only carry button types 1 and 2; a Dialog, Radio or Realization window may only carry types 2, 4, 5 and 6; a chain-keyed dialog may not be a Tutorial or `DUIST_None` type.
 **Acceptance:** linter fails when a button row is added to 5003; fails when 2576's final-screen button is removed after DU-02b; the allowlist is empty at the end of Wave 1.
@@ -151,15 +151,15 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-02a
 
-**Status:** BlockedDependency (DU-01). **Scope title:** Cellblock button patches. **Review:** mission-systems-advisor.
+**Status:** Writing (2026-09-21, worktree `du02a`, branch `dialog-ui/du02a-cellblock-buttons`, stacked on `dialog-ui/wave1-base` = main + DU-01 + DU-L). **Scope title:** Cellblock button patches. **Review:** mission-systems-advisor.
 **Entries:** Target Matrix rows 2299 to 2518; `castle_cellblock_chains.sql` chains keyed on 2299, 4001, 5022, 3999, 5023; chains 1151-1154, 1161, 1172.
-**Scope:** `StripAll` patches for 2299, 4001, 5022, 3999, 5023, 2309, 2516 and 5859; delete the matching `dialog_screen_buttons.sql` rows in the same commit. Apply D-DU1 to the four post-accept blurbs. Confirm from the chain seeds that the weapon behind "Receive Item" is granted by the 3999/5023 `dialog_choice` chain or earlier, and record which.
+**Scope:** `StripAll` patches for 2299, 4001, 5022, 3999, 5023, 2309, 2516 and 5859; delete the matching `dialog_screen_buttons.sql` rows in the same commit. Apply D-DU1 (resolved: `StripAll`) to the four post-accept blurbs 2305, 4000, 2308 and 2518. Confirm from the chain seeds that the weapon behind "Receive Item" is granted by the 3999/5023 `dialog_choice` chain or earlier, and record which.
 **Acceptance:** existing chain-replay tests for missions 638, 640 and 641 stay green unmodified (chains match on dialog id only, F9); new replay cases feed `button_id = -1` for each stripped keyed dialog and assert the same resolved actions; patch-versus-seed agreement test; DU-L allowlist entry for 3999 removed.
 **Exclude:** type changes (DU-05); any change to 2300, 5021, 5020.
 
 ### DU-02b
 
-**Status:** BlockedDependency (DU-01). **Scope title:** Castle button patches. **Review:** mission-systems-advisor.
+**Status:** Writing (2026-09-21, worktree `du02b`, branch `dialog-ui/du02b-castle-buttons`, stacked on `dialog-ui/wave1-base` = main + DU-01 + DU-L). **Scope title:** Castle button patches. **Review:** mission-systems-advisor.
 **Entries:** Target Matrix rows 2573, 5861, 2576; `castle_701_chains.sql` chains 1204, 1205, 1237-1239 and its GAP 3 note; Castle audit D-CA13.
 **Scope:** `OnlyOn` patches: 2573 Accept (type 2, id 8) on 113558; 5861 Accept on 96789; 2576 Take Missions (type 4, id 71) on 96825. Move the seed button rows to match. Update the GAP 3 and D-CA13 notes to resolved.
 **Acceptance:** replay tests for 701 accept and the 2576 turn-in unchanged and green; patch-versus-seed agreement test; DU-L allowlist entries for 5861 and 2576 removed. UAT row: read 2576 to the last screen, press Take Missions, missions 702 and 703 arrive; close early with X, nothing is granted and Copplemann can be re-asked.
@@ -218,7 +218,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 | Id | Question | Default if unanswered |
 |---|---|---|
-| D-DU1 | Blurbs 2305, 4000, 2308, 2518 appear after the mission is already accepted. Keep Accept as an acknowledgement button, or strip to X-close only? More Info on 4000 and 2308 is a dead button either way. Note: whenever Accept shows, the client also shows a Decline button that appears to do nothing on a Blurb (F7), which argues for stripping. | Keep Accept, strip More Info. |
+| D-DU1 | Blurbs 2305, 4000, 2308, 2518 appear after the mission is already accepted. Keep Accept as an acknowledgement button, or strip to X-close only? More Info on 4000 and 2308 is a dead button either way. Note: whenever Accept shows, the client also shows a Decline button that appears to do nothing on a Blurb (F7), which argues for stripping. | **Resolved 2026-09-21 by the coordinator, reversible per dialog:** strip all buttons. Keeping Accept also shows the Blurb's inert Decline (F7), which breaks the project rule that every button press gets visible feedback on the first press. |
 | D-DU2 | Is the Blurb 2572 offer flow wanted now? It needs a new engine condition and changes how mission 701 is offered to Humans. | Defer; ship DU-02b without it. |
 | D-DU3 | Radio lure means the player can ignore a transmission. Acceptable for all six, or should 2584 stay immediate because it carries the throne-room briefing? | Lure for all but 2584. |
 
