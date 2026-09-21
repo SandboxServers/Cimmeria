@@ -154,6 +154,14 @@ pub struct SpaceManager {
     /// blank an NPC portrait and substitute the player's name for
     /// every NPC line.
     pub monologue_dialog_ids: std::collections::HashSet<i32>,
+    /// Line text for every dialog screen: `screen_id → text`. Populated
+    /// at startup from `resources.dialog_screens`. Read only by the
+    /// `npc_bark` content action, which speaks an original 2009 line
+    /// into the triggering player's chat window rather than opening a
+    /// dialog window (the client has no non-modal dialog path). Keeping
+    /// the text here is what lets a bark seed row name a `screen_id`
+    /// instead of retyping the line and drifting from the catalogue.
+    pub dialog_screen_text: HashMap<i32, String>,
     /// Cached mission definitions: mission_id → (first step_id, objectives).
     /// Populated at startup from `resources.mission_steps` + `resources.mission_objectives`.
     pub mission_defs: HashMap<i32, super::spawner::MissionDefEntry>,
@@ -348,6 +356,7 @@ impl SpaceManager {
             next_npc_id: 100_000,
             dialog_set_maps: HashMap::new(),
             monologue_dialog_ids: std::collections::HashSet::new(),
+            dialog_screen_text: HashMap::new(),
             mission_defs: HashMap::new(),
             stargates: HashMap::new(),
             step_objectives: HashMap::new(),

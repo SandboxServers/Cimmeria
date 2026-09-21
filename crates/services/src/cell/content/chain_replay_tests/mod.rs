@@ -18,7 +18,8 @@
 //! near the seed it touches. Four modules are organised by *action verb*
 //! instead, because the risk they guard is the executor arm rather than
 //! any one mission's wiring: [`sgc_w1_move_entity`], [`grant_xp`],
-//! [`livewire_pairs`] and [`castle_702_704_executor`]. Those four also run
+//! [`npc_bark`], [`livewire_pairs`] and [`castle_702_704_executor`].
+//! Those five also run
 //! the resolved actions through
 //! `executor::execute_actions` and assert on the resulting
 //! `CellToBaseMsg` traffic — a resolve-only test cannot tell a wired
@@ -64,6 +65,7 @@ mod mission_708;
 mod mission_742;
 mod mission_abandoned;
 mod mission_relog_persistence;
+mod npc_bark;
 mod region8_guard_aggro;
 mod region_transition_accepts;
 mod sgc_w1_move_entity;

@@ -9,7 +9,37 @@ metadata:
 
 GM action handlers confirm results to the GM via `onPlayerCommunication`
 (method index **28**, `crate::mercury::method_idx::ON_PLAYER_COMMUNICATION`) on
-chat channel **CHAN_FEEDBACK = 8**, speaker "SYSTEM", flags 0.
+chat channel **CHAN_FEEDBACK = 9**, speaker "SYSTEM", flags 0.
+
+(Was 8 when this note was first written. It was changed because the client only
+registers the channels in the base's `DEFAULT_CHAT_CHANNELS` and an
+*unregistered* channel falls back to its **red unknown-channel splash popup**;
+9 is the registered `tell` channel. Reasoning is in `gm_feedback.rs:14-22`.)
+
+## Method 28 is the one non-modal text route — and its constants are a mess
+
+Verified 2026-09-21 while adding the `npc_bark` content action (DU-03). Three
+separate facts worth having before touching anything method-28 shaped:
+
+1. **The serializer exists FOUR times** — `cell/chat.rs`
+   (`serialize_on_player_communication`, now `pub(crate)` so
+   `cell/content/executor/bark.rs` reuses it), `cell/cell_methods/gm/feedback.rs`
+   (private copy), and an inline `write_wstring`-based build in
+   `cell/console/net.rs`. Wire shape is WSTRING speaker (u32 UTF-16 code-unit
+   count + N×2B LE), UINT8 SpeakerFlags, UINT8 Channel, WSTRING text. Reuse
+   `cell::chat::serialize_on_player_communication`; do not add a fifth.
+2. **`cell/chat.rs`'s channel constants diverge from
+   `entities/defs/enumerations.xml` for every channel ≥7.** The `.def` is
+   `CHAN_server=8, CHAN_feedback=9, CHAN_tell=10, CHAN_splash=11`; `chat.rs` is
+   `CHAN_SERVER=7, CHAN_FEEDBACK=9, CHAN_TELL=9, CHAN_SPLASH=10`. The feedback
+   value is a deliberate, documented client-reality override; `CHAN_SPLASH=10`
+   looks like a plain off-by-one against canon and has no reader today. **Only
+   `CHAN_say = 0` is agreed by both sources** — trust nothing else without
+   re-verifying in the client.
+3. **`Action::SystemMessage` is a log-only stub and must stay that way.** An
+   earlier attempt routed its message id through method 28 and produced garbled
+   `"[] says"` chat plus client freezes. An empty speaker WSTRING is what causes
+   that, which is why `npc_bark` rejects a blank `speaker` at load.
 
 Two delivery helpers (the wire serializer is duplicated in both — precedent for
 duplicating small serializers across cell/base):

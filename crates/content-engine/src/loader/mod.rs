@@ -12,6 +12,8 @@
 //! - [`action`]    — `convert_action` + `parse_destination`
 //! - [`action_spawn`] — the entity-lifecycle verbs (`spawn_entity` /
 //!   `despawn_entity`), delegated to from `convert_action`'s fallthrough
+//! - [`action_bark`] — the `npc_bark` verb, delegated to from
+//!   `convert_action`'s `"npc_bark"` arm
 //!
 //! `mod.rs` keeps the orchestration ([`build_chains_from_rows`]),
 //! the JSON loader, and the public DB row structs.
@@ -26,6 +28,7 @@ use crate::conditions::Condition;
 use crate::triggers::Trigger;
 
 mod action;
+mod action_bark;
 mod action_spawn;
 mod condition;
 mod trigger;
