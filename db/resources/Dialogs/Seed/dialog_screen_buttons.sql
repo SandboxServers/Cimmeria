@@ -4468,25 +4468,9 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2232, 8, 96765, 2, 'Accept');
 
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2233, 8, 113552, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2234, 8, 113553, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2235, 8, 113554, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2236, 8, 113555, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2237, 8, 113556, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2238, 8, 113557, 2, 'Accept');
-
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2239, 8, 113558, 2, 'Accept');
 
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2240, 71, 96821, 4, 'Take Missions');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2241, 71, 96822, 4, 'Take Missions');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2242, 71, 96823, 4, 'Take Missions');
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2240, 71, 96825, 4, 'Take Missions');
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2243, 8, 72093, 2, 'Accept');
 
@@ -8454,15 +8438,7 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4225, 8, 96367, 2, 'Accept');
 
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4226, 8, 96782, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4227, 8, 96783, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4228, 8, 96784, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4229, 8, 96785, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4230, 8, 96786, 2, 'Accept');
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4226, 8, 96789, 2, 'Accept');
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (4231, 8, 104805, 2, 'Accept');
 

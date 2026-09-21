@@ -250,8 +250,8 @@ fn every_insert_row_in_the_dialog_seeds_is_parsed() {
     }
 }
 
-/// The three allowlisted dialogs must still ship the exact broken layout
-/// the allowlist records.
+/// Every still-allowlisted dialog must ship the exact broken layout the
+/// allowlist records.
 ///
 /// Pinning the layout, not merely "it violates R1", keeps the allowlist
 /// honest in both directions. If DU-02a strips 3999's buttons or DU-02b
@@ -264,11 +264,9 @@ fn allowlisted_dialogs_still_ship_the_soft_locking_layout() {
     let seed = load_dialog_seed(&workspace_root());
 
     // (dialog, screens, screens carrying buttons, final screen)
-    let expected: [(i32, usize, usize, i32); 3] = [
-        (3999, 9, 7, 96260),
-        (5861, 8, 5, 96789),
-        (2576, 5, 3, 96825),
-    ];
+    // 5861 and 2576 left this table with DU-02b, which moved their single
+    // surviving button onto the final screen.
+    let expected: [(i32, usize, usize, i32); 1] = [(3999, 9, 7, 96260)];
     for (dialog, screens, with_buttons, final_screen) in expected {
         assert_eq!(
             seed.screens_in_order(dialog).len(),

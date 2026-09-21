@@ -42,7 +42,11 @@ pub(crate) struct R1Exemption {
     pub(crate) removed_by: &'static str,
 }
 
-/// The three dialogs that ship in the soft-locking shape.
+/// The dialogs that ship in the soft-locking shape.
+///
+/// It held three (3999, 5861, 2576). DU-02b moved 5861's Accept onto
+/// final screen 96789 and 2576's Take Missions onto final screen 96825,
+/// so only 3999 is left; DU-02a empties it.
 ///
 /// This is a debt register, not a policy: each entry names the packet
 /// that empties it, and [`r1_violations`] fails on a STALE entry as well
@@ -53,24 +57,12 @@ pub(crate) struct R1Exemption {
 ///
 /// A fourth violator has never been found: a full scan of the four chain
 /// seeds on 2026-09-21 turned up exactly nineteen `dialog_choice`-keyed
-/// dialogs, of which these three and no others break R1.
-pub(crate) const R1_ALLOWLIST: [R1Exemption; 3] = [
-    R1Exemption {
-        dialog_id: 3999,
-        reason: "Receive Item (type 4, id 70) on screens 96252-96258; final 96260 is bare",
-        removed_by: "DU-02a (StripAll)",
-    },
-    R1Exemption {
-        dialog_id: 5861,
-        reason: "Accept (type 2, id 8) on screens 96782-96786; final 96789 is bare",
-        removed_by: "DU-02b (OnlyOn final 96789)",
-    },
-    R1Exemption {
-        dialog_id: 2576,
-        reason: "Take Missions (type 4, id 71) on screens 96821-96823; final 96825 is bare",
-        removed_by: "DU-02b (OnlyOn final 96825)",
-    },
-];
+/// dialogs, of which those three and no others broke R1.
+pub(crate) const R1_ALLOWLIST: [R1Exemption; 1] = [R1Exemption {
+    dialog_id: 3999,
+    reason: "Receive Item (type 4, id 70) on screens 96252-96258; final 96260 is bare",
+    removed_by: "DU-02a (StripAll)",
+}];
 
 /// R1 — a chain-keyed dialog has zero buttons, or a button on its final
 /// screen. Also reports allowlist entries that have gone stale.
