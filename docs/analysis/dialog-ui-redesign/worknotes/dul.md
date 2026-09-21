@@ -355,6 +355,53 @@ patch sets a window type the seed does not, the linter checks the wrong window. 
 same seed-versus-override split as known gap 1, and the per-zone patch-versus-seed agreement
 test DU-02a/b already owe is what closes it.
 
+## Rebase onto PR #766 (2026-09-21)
+
+Rebased from `192d4216` onto `b0b594e9`, which merged DU-DOC and DU-RE. Nothing in the
+linter changed; two things in the docs did.
+
+**The rebase itself was clean.** `git rebase origin/main` reported no conflict and lost
+nothing: `3bd12fcd`, the rebased tip, carries both my section and main's new "Dialog buttons
+and the two hard rules" section. Verified by diffing the rebased branch against `origin/main`
+for every path #766 touched — the other ten files were byte-identical.
+
+**A teammate's commit then chose between them, and this packet reversed that choice.**
+`b060d3dd` ("fold the two dialog-button rule sections into one", 2026-09-21 14:44) removed
+main's 25-line section and kept mine. I had already started from the assumption that the
+rebase was at fault and had restored main's text before spotting the commit; the diagnosis in
+the first version of this note and of `177eb72d`'s message was wrong and both are corrected.
+
+The reversal stands, for reasons worth recording rather than assuming:
+
+- The coordinator's instruction was to keep both additions and "link to
+  `docs/content/dialog-ui-client-contract.md` for the rule text". Main's section is the one
+  that carries that link; mine restated the rules inline.
+- Main's section is upstream text that survived review on PR #766. A feature branch silently
+  replacing it with its own wording is the kind of change nobody reads in a diff.
+
+Net effect: the branch is now a pure 18-line addition on top of main's file. If the
+coordinator prefers `b060d3dd`'s direction, reverting `177eb72d`'s doc hunk restores it.
+
+**Deduplicated against the new canonical doc.** #766 added
+`docs/content/dialog-ui-client-contract.md`, which now owns the rule text and the per-window
+drawable-button matrix. My instructions-file section restated it, so it is gone; what remains
+there is the linter pointer plus the three facts that doc and main's section do not state:
+Radio and Realization take the Dialog button set, "final screen" means the highest
+`dialog_screens.index`, and a chain may not be keyed on a Tutorial or type-0 dialog.
+
+**The linter's tables were checked against the canonical doc and agree exactly** — Blurb 1-2,
+Dialog/Radio/Realization 2 and 4-6, Tutorial none, `DUIST_None` on the Blurb window. The doc
+also records that Decline (3) is chrome the client draws for itself and is never authored,
+which is why type 3 is absent from every row of `drawable_button_types`: a cooked type-3
+button is a violation on any window. Module docs now cite the canonical doc first.
+
+**Gap the doc names that the linter cannot check:** button ORDER inside a screen is
+wire-visible — the client resolves a click to an array position and sends the `button_id`
+stored there — so reordering a screen's buttons changes what the server receives with nothing
+visible having moved. `dialog_screen_buttons` has no ordering column, so the seed cannot
+express or verify the cooked order; only the pak can. Out of scope here, and worth a row in
+DU-01's patch-versus-seed agreement test.
+
 ## Judgment call flagged for review
 
 The packet said to mention the linter in

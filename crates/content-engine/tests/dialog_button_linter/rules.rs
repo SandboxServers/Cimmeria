@@ -181,6 +181,12 @@ pub(crate) fn r2_violations(seed: &DialogSeed, refs: &ChainRefs, protected: &[i3
 /// it, and nothing reaches the server. That is the same soft-lock R1
 /// catches, arriving by a different route.
 ///
+/// This table is the executable form of the drawable-button matrix in
+/// `docs/content/dialog-ui-client-contract.md` § Buttons. Note that
+/// Decline (3) is chrome the client draws for itself and is never
+/// authored, so it is absent from every row here — a cooked type-3
+/// button is a violation on any window.
+///
 /// Sources: `Dialog/Dialog.lua:3-8` (DialogWin draws Accept 2 and
 /// Generic1-3 = 4, 5, 6), `Dialog/Blurb.lua:3-6` (BlurbWin draws More
 /// Info 1 and Accept 2), `Dialog/Blurb.lua:35-38` (F5 — type 0

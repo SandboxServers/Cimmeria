@@ -4,8 +4,11 @@
 //!
 //! # The bug shape
 //!
-//! Read from the client, not inferred. The facts are the Client Contract
-//! rows F6-F9 of `docs/analysis/dialog-ui-redesign/work-packets.md`:
+//! Read from the client, not inferred. The canonical write-up is
+//! `docs/content/dialog-ui-client-contract.md` — window types, the
+//! per-window drawable-button table, close semantics — and the facts
+//! below are its rows F6-F9, first recorded in the Client Contract of
+//! `docs/analysis/dialog-ui-redesign/work-packets.md`:
 //!
 //! * **F8.** Closing a dialog that has ZERO buttons sends
 //!   `dialogButtonChoice(dialogId, -1)`. Closing a dialog that has ANY
