@@ -32,6 +32,12 @@ own dialog.
 Also: re-adding a button on a keyed dialog's FINAL screen keeps the DU-L linter
 green (R1 is satisfied), so the agreement test is the only thing that catches it.
 
+## 2b. The cooked PAKs ARE in git, and a seed-only guard cannot catch a typo
+
+`data/cache/*.pak` is tracked (21 archives, commit `cad5b754`) and tests may read it; `base/resources/tests/committed_paks.rs` already did. Ledgers and worker briefs in this campaign said otherwise — check `git ls-files data/cache/` rather than believing a doc.
+
+This is load-bearing, not trivia. A `StripAll` plan asserts "this dialog holds no seed button rows", which **a dialog id that does not exist satisfies perfectly**. At runtime `apply_dialog_patches` warns once and keeps the canonical bytes, so a mistyped id is silent on every layer: seed says fixed, linter agrees, player still sees the buttons. Run every plan against the committed archive (`zip::ZipArchive`, entry `_<dialog_id>`), assert the entry HAD buttons before the strip, and assert speaker/escaped text/root attributes survive unchanged. Proof: point a row at a nonexistent id — both seed-side tests stay green, only the cooked guard fires.
+
 ## 3. Where such a test can live
 
 `cimmeria-services` depends on `cimmeria-content-engine`, not the reverse, so a
