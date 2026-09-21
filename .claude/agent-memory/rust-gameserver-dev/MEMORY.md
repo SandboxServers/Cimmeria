@@ -150,6 +150,7 @@
 ## AoI / entity lifecycle
 
 - [destroy-entity-vs-despawn-npc.md](destroy-entity-vs-despawn-npc.md) — `SpaceManager::destroy_entity` is bare state-removal with NO immediate LeftAoI fanout; `despawn_npc` is the correct primitive for any observer-visible NPC removal (content chains, GM commands). `content::executor::world::destroy_tagged_entity` had this exact gap until C08b fixed it.
+- [effect-scripts-run-after-the-death-check.md](effect-scripts-run-after-the-death-check.md) — **read before any new kill path.** Effect scripts write HEALTH AFTER `damage_apply`'s lethality probe (sync `EffectContext`, can't await), so they made 0-HP NPCs that kept fighting; `abilities::death::resolve_death` is now the ONLY kill path, plus the bleed-kill test-fixture recipe.
 
 ## Testing patterns
 

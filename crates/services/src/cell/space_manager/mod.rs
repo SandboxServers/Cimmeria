@@ -33,7 +33,7 @@ mod spatial;
 mod spawn;
 mod xml;
 
-pub(crate) use movement_telemetry::{MovementTelemetry, RejectReport};
+pub(crate) use movement_telemetry::{LogThrottle, MovementTelemetry, RejectReport};
 
 #[cfg(test)]
 mod tests;
@@ -270,6 +270,10 @@ pub struct SpaceManager {
     /// population. See
     /// [`movement_telemetry`] for why each piece exists.
     pub(crate) movement_telemetry: MovementTelemetry,
+    /// Gates the NPC AI's "0 HEALTH with no `BSF_DEAD`" invariant warning,
+    /// one slot per NPC — see `cell::service::npc_ai::dispatch`. Released in
+    /// `destroy_entity`.
+    pub(crate) zero_health_npc_log: LogThrottle,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -367,6 +371,7 @@ impl SpaceManager {
             pending_ai_retries: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
+            zero_health_npc_log: LogThrottle::default(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),

@@ -209,7 +209,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 35 documents.
+How the Cimmeria emulator itself is structured. 36 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -248,6 +248,7 @@ How the Cimmeria emulator itself is structured. 35 documents.
 | [wireclient.md](architecture/wireclient.md) | ADR for `cimmeria-wireclient`: headless wire-level test client, `session_trace` JSONL schema, pcap exporter | Complete |
 | [black-market.md](architecture/black-market.md) | ADR for the Black Market / auction house (#571, PR #586 — **unmerged**): cell methods 61–66 in / client methods 90–95 out, the four-state auction lifecycle, DELETE-based item escrow + SQL-guarded cash escrow, the 30 s expiry sweep, the reserved system seller for boot-seed listings, and the shelved client-method binding that forces a runtime patch (#587). Open: guessed `next_min_bid`, unbounded search (CAT-I-05), undecodable `sellerName` | Implemented, unmerged |
 | [player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md) | ADR for player-to-player AoI introduction: the `SGWPlayer` `createOnClient` ghost cascade, the cell/base split of live state vs session identity joined at emit time, the `is_introducible` load-window gate, the `aoi.player_ghost_incomplete` seam, and the two-client UAT that is still outstanding | Implemented, unvalidated |
+| [first-login-cinematic-aoi-hold.md](architecture/first-login-cinematic-aoi-hold.md) | ADR (Accepted — experimental) for the #582 invisible-static-NPC mitigation: why the 2026-09-19 repro puts the drop inside the client *after* a fully ACKed delivery, the cinematic-`CollectGarbage` lead (n=1), what the hold buffers and what it deliberately does not, the `cancelMovie` / 16 s release, and the `OTEL_FILTER` gap that kept `aoi.create_emit` out of SigNoz | Implemented, unvalidated |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 

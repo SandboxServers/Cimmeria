@@ -1,7 +1,7 @@
 # Castle Cellblock In-Game UAT Guide
 
 > Type: how-to. Audience: the project owner, running the real SGW client against a local server.
-> Updated: 2026-09-18. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [packet ledger](work-packets.md), [session resume handoff](handoffs/session-resume.md), [mission chains](../../content/mission-chains.md), [commands reference](../../commands.md).
+> Updated: 2026-09-19. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [packet ledger](work-packets.md), [session resume handoff](handoffs/session-resume.md), [mission chains](../../content/mission-chains.md), [commands reference](../../commands.md).
 
 This is the acceptance pass for everything the Castle Cellblock rebuild campaign has merged to `main`. You run it with the game open; each scenario tells you exactly what to click, what you should see, and what would count as a regression. Nothing here has been run in-client before — every scenario is pending.
 
@@ -877,5 +877,25 @@ These are expected absences. Do not file them as bugs from this pass.
 3. If that warning **did** fire, the drop is at the emit and the reason field names it.
 4. If it did **not** fire, the packets were sent successfully and the drop is downstream — that is the more useful finding, and it goes on issue #582.
 5. Relog and confirm the entity appears. "Invisible until relog" is the signature.
+
+**New since the 2026-09-19 colo repro.** That session proved the packets are not only sent but *acknowledged* — one reliable retransmit in 75 seconds — so the drop is inside the client, after delivery. The one differential was the first-login intro movie: the failing session watched it to the end, the succeeding one pressed Esc after 1.5 s. On that lead the server now **holds entity introductions on a character's first login until the movie is over** ([architecture/first-login-cinematic-aoi-hold.md](../../architecture/first-login-cinematic-aoi-hold.md)). It is an experiment, and this pass is how we find out whether it worked.
+
+**What this changes for you as a tester:**
+
+- On a brand-new character, the Cellblock is **empty during the intro movie** and populates as it ends. That is the new expected behaviour, not a bug — do not file it.
+- Entities appear immediately if you press **Esc**, otherwise about **16 seconds** after the movie starts (the movie is 13.1 s plus GC headroom). The server's clock runs from `onClientReady`, which is the same instant it sends `onPlayMovie` — so time it from the first frame of the movie, not from the loading screen. In SigNoz, `held_ms` on the `hold_released` row is the exact figure.
+- Nothing changes for a character you have logged in before.
+
+**Cover both exits at least once.** Make one fresh character and let `Cine-SGWLogo` run to its natural end; make another and Esc it within a second or two. The natural-end path is the one that failed in the repro, and it is the only path the 16 s timer covers — the client sends nothing when a movie ends on its own.
+
+**If the corpse is still missing with the hold in place**, the theory is wrong, and that is a genuinely useful result. Pull these three before anything else and attach them to #582:
+
+| Query (SigNoz Logs Explorer) | What it tells you |
+|---|---|
+| `scope_name = 'aoi.cinematic_hold'` | Whether a hold started at all, and how it ended: `event = "hold_released"` carries `reason` (`cancel_movie` \| `timeout`), `flushed` (how many held messages went out) and `held_ms`. No `hold_started` row on a first login means the hold never armed |
+| `scope_name = 'aoi.create_emit'` filtered to the corpse's `entity_id` (bundle rows report `entered` + `packets` instead of a per-entity id) | Whether the introduction went out after the movie, and on which `phase` (`create_base` \| `cascade`). This seam was silent in every earlier repro because the OTLP filter never named it; that is fixed, so it should be there this time |
+| `scope_name = 'mercury.retransmit'` over the session's first 75 s | Whether delivery is still clean. A handful of retransmits would reopen the Mercury question the 2026-09-19 session closed |
+
+Locally you get two of the three. `aoi.cinematic_hold` is INFO and lands in `logs\server.log` (JSON, one object per line); `mercury.retransmit` lands in `logs\protocol.log` (`server.log` mutes it to WARN). `aoi.create_emit` is DEBUG and no local file sink names it — it goes to SigNoz only, so that row has to come from there.
 
 Content-driven despawns previously used the bare `destroy_entity` path rather than `despawn_npc`, which reproduced the same shape. C08b's follow-up commit widened the fix to the remaining call sites, so `Content: destroying tagged entity` now reports a `witnesses_notified` count — if that count is zero when other players or you should have seen the despawn, that is worth recording too.
