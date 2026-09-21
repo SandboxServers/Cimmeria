@@ -61,6 +61,19 @@ Review rules:
 - A chain that should repaint an offer after an **abandon** uses the
   `mission_abandoned` trigger, not a second `mission_completed` row.
 
+## Dialog buttons on a `dialog_choice`-keyed dialog
+
+Adding a `dialog_choice` trigger makes a dialog's *button layout* load-bearing, and the layout lives in a different tree (`db/resources/Dialogs/Seed/`). Closing a dialog that has **zero** buttons sends `dialogButtonChoice(id, -1)` and fires the chain; closing one that has **any** button sends nothing at all. So a keyed dialog whose buttons stop before its final screen soft-locks every player who pages to the end and presses Done — Done is a close, not a button.
+
+Review rules:
+
+- A keyed dialog must have zero button rows, or at least one button row on its **final** screen (`dialog_screens.index` is the ordering column, not `screen_id`).
+- Never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003, 5004, 5008 or 5009. They advance only through the zero-button close, and a button on the final screen would satisfy the rule above while still silencing them.
+- A Blurb (`ui_screen_type = 'DUIST_DefaultBlurb'`) draws only button types 1 (More Info) and 2 (Accept), and has no Next. Anything else on a Blurb is invisible.
+- `dialog_choice` matches on the dialog id alone — there is no `button_id` condition — so every button on a keyed dialog fires the same chain.
+
+[`crates/content-engine/tests/dialog_button_linter.rs`](../../crates/content-engine/tests/dialog_button_linter.rs) enforces all three against the Castle and Castle_CellBlock seeds, alongside [`interact_tag_linter.rs`](../../crates/content-engine/tests/interact_tag_linter.rs) for the interaction-type rule above. Both run with no database. Client evidence for the button behaviour is the Client Contract in [docs/analysis/dialog-ui-redesign/work-packets.md](../../docs/analysis/dialog-ui-redesign/work-packets.md).
+
 ## Mission grants must gate on `not_active`
 
 Every chain whose actions include `accept_mission` must carry a
