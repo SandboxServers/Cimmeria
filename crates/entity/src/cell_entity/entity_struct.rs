@@ -633,23 +633,32 @@ pub struct CellEntity {
     /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
     pub last_interaction_target: Option<u32>,
 
-    /// The `dialog_id` of the dialog currently displayed to this player, or
-    /// `None` when no dialog is open. Set when `onDialogDisplay` is sent
+    /// Dialog ids this player has been shown and has not yet answered,
+    /// oldest first. Pushed when `onDialogDisplay` is sent
     /// (`cell::interactions::send_dialog_display`, the single choke point all
-    /// display paths route through), validated and cleared on
+    /// display paths route through), and removed on the matching
     /// `DIALOG_BUTTON_CHOICE`.
     ///
-    /// This is the server-side "is dialog X open for player Y?" precondition
-    /// the `DialogButtonChoice` handler checks before firing an
+    /// This is the server-side "was dialog X offered to player Y?"
+    /// precondition the `DialogButtonChoice` handler checks before firing an
     /// `OnDialogChoice` content chain. Without it, a forged choice packet for
     /// any discovered `dialog_id` drives the chain's actions (GrantXP,
     /// GrantItem, AcceptMission, Teleport, …) with no precondition
     /// (CAT-J-01 / #479). Mirrors python `SGWPlayer.displayedDialogs`
-    /// (`deprecated/python/cell/SGWPlayer.py`): set on `displayDialog`,
-    /// `del`'d on `dialogButtonChoice`. A single slot suffices — SGW content
-    /// is strictly sequential (display → choice → display), never
-    /// overlapping dialogs.
-    pub open_dialog_id: Option<i32>,
+    /// (`deprecated/python/cell/SGWPlayer.py`), which was likewise a dict and
+    /// not a single slot: the client can hold two dialogs at once and evicts
+    /// the older one with a late `(oldId, -1)` close, so a single pin loses
+    /// that dialog's chain (DU-08).
+    ///
+    /// Private by deliberate exception to this struct's all-`pub` field
+    /// convention: [`CellEntity::offer_dialog`] /
+    /// [`CellEntity::take_offered_dialog`] /
+    /// [`CellEntity::dialog_is_offered`] / [`CellEntity::offered_dialogs`]
+    /// are the only mutation and read paths, and they are what keep the
+    /// `MAX_OFFERED_DIALOGS` bound and the one-shot guarantee. A direct
+    /// `push_back` could not forge past the gate, but it could break the
+    /// bound or duplicate an id into a double-fire.
+    pub(super) offered_dialog_ids: VecDeque<i32>,
 
     /// Entity ID of the currently-open vendor (only for player entities).
     pub vendor_entity: Option<u32>,

@@ -110,7 +110,7 @@ impl CellEntity {
             next_loot_index: 1,
             looting_entity: None,
             last_interaction_target: None,
-            open_dialog_id: None,
+            offered_dialog_ids: VecDeque::new(),
             vendor_entity: None,
             trade_partner_entity_id: None,
             trade_proposal: None,
