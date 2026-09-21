@@ -115,6 +115,7 @@ Content-level audit of all game data plus the cradle-to-grave reference for the 
 | [reconstruction-map.md](content/reconstruction-map.md) | What can be rebuilt vs holes vs never-built, priority recommendations | Complete |
 | [external-data-analysis.md](content/external-data-analysis.md) | Analysis of 11 external dev team spreadsheets and text files | Complete |
 | [interaction-flags.md](content/interaction-flags.md) | `EInteractionNotificationType` bitmask reference for `set_interaction_type` actions | Complete |
+| [dialog-ui-client-contract.md](content/dialog-ui-client-contract.md) | **REFERENCE** — the 2009 dialog window's real behaviour and the authoring rules that follow: window types, drawable button types, close semantics + the two hard rules, lure delivery, one-dialog-at-a-time eviction | Complete |
 | [equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md) | **EXPLANATION** — chain shape for granting weapons via a manual equip step instead of force-equipping into the bandolier (mission 622 / 641 worked examples) | Complete |
 | [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, vocabulary, schema, lifecycle, observability, performance | Complete |
 | [extending-the-engine.md](content/extending-the-engine.md) | **HOW-TO** — add a new trigger / condition / action variant | Complete |
@@ -447,7 +448,8 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 | [animation-system.md](reverse-engineering/findings/animation-system.md) | — | Animation system: sequence lookup, combat/weapon animation triggers | HIGH |
 | [minigame-architecture.md](reverse-engineering/findings/minigame-architecture.md) | — | Minigame architecture from the client binary: SmartFoxServer session, per-game flow | HIGH |
 | [stargate-dhd-state-machine.md](reverse-engineering/findings/stargate-dhd-state-machine.md) | — | Stargate DHD state machine; finding that `onDHDReply` is a comms channel, not a travel event | HIGH |
-| [dialog-portrait-lookup.md](reverse-engineering/findings/dialog-portrait-lookup.md) | — | Dialog portrait and speaker-name lookup path | HIGH |
+| [dialog-controller-wire-flow.md](reverse-engineering/findings/dialog-controller-wire-flow.md) | — | DialogController display path: the `IsImmediate` display-versus-queue split, two active slots and eviction, the zero-button close sentinel versus the cooked `ButtonID` on a click | HIGH |
+| [dialog-portrait-lookup.md](reverse-engineering/findings/dialog-portrait-lookup.md) | — | Dialog portrait and speaker-name lookup path (one handler label corrected 2026-09-21; the speaker-name track is disputed) | HIGH |
 | [client-instrumentation-hookpoints.md](reverse-engineering/findings/client-instrumentation-hookpoints.md) | — | Client instrumentation hookpoints for from-scratch telemetry | HIGH |
 | [client-wire-emit-suppression.md](reverse-engineering/findings/client-wire-emit-suppression.md) | — | Client-side wire-emit suppression cases (heal-focus, P90 swap) | HIGH |
 | [right-click-routing-on-corpse.md](reverse-engineering/findings/right-click-routing-on-corpse.md) | — | Right-click routing on corpses: why some corpses fail to open the loot window | HIGH |
