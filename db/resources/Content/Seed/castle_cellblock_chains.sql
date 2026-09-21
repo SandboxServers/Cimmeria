@@ -43,6 +43,13 @@
 --   GC1 -- Escape escort (2026-09-17): chains 1171-1175, inside
 --     work-packets.md's own reserved 1171-1190 block for GC1's children
 --     (verified empty before use). 5 of 20 reserved ids used so far.
+--   Marsh escort barks (DU-07 addition, 2026-09-21): chains 1176-1178,
+--     the next three ids in that SAME GC1 block -- these lines are GC1
+--     escort content and belong with 1171-1175 rather than in a block of
+--     their own. Occupancy re-checked immediately before use: zero
+--     chain_ids in 1176-1190 existed anywhere under
+--     db/resources/Content/Seed/. 1179-1190 remain free, which leaves
+--     GC1c (lockdown VFX, still BlockedEvidence) its headroom.
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
@@ -1529,6 +1536,9 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1082, 'accept_mission', 684, NULL, '{}', 0, 0);
 
 -- Chain 1083: enter Region5 when 685 completed and 686 not active → accept 686
+-- CO-GATED with DU-07's bark chain 1178 (same trigger, same two conditions,
+-- copied deliberately): keep the two condition sets identical, or 1178's
+-- Marsh line starts repeating on every Region5 re-entry.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1083, '685→686 - Enter Region5: accept 686', 'mission', 685, true, 0);
 
@@ -2368,20 +2378,31 @@ VALUES (1162, 'destroy_entity', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
 --     accompanying barrier would tell the player their way out is blocked
 --     when nothing in the world actually blocks it.
 --   - 5019 ("Let's move out! / I'll draw their fire!... / Crouch down.../
---     Flank their position...") is EXCLUDED even though its first four
+--     Flank their position...") is still EXCLUDED **as a dialog** and must
+--     never be passed to `display_dialog` in any form. Its first four
 --     screens read like a clean Mess Hall flanking cue (matching the v3
---     audit's `06_Marsh_Companion_Death` note). Its fifth and final screen
---     ("I don't have much time... I mean the Col. Marsh from this time...
---     The Straegis can sense time travellers") is the excluded legacy
---     "Future Self" time-travel content (work-packets.md's Explicit
---     Non-Goals table: "Hidden mission 642, Frost-alive intro, Future Self
---     dialog | Legacy revision; nothing in the seed references them").
---     `display_dialog` shows every screen of a dialog in one action -- there
---     is no way to author only 5019's first four screens -- so the whole
---     dialog is out. This also resolves the open "5019 for whom" question
---     the ledger flagged as unresolved (Legacy_Unresolved row): it was never
---     resolvable because part of it belongs to different, out-of-scope
---     content.
+--     audit's `06_Marsh_Companion_Death` note), but its last three screens
+--     96355-96357 ("I don't have much time... I mean the Col. Marsh from
+--     this time... The Straegis can sense time travellers") are the
+--     excluded legacy "Future Self" time-travel content (work-packets.md's
+--     Explicit Non-Goals table: "Hidden mission 642, Frost-alive intro,
+--     Future Self dialog | Legacy revision; nothing in the seed references
+--     them"). `display_dialog` shows every screen of a dialog in one action
+--     -- there is no way to display only 5019's first four screens -- so
+--     the dialog as a whole is out and stays out. This also resolves the
+--     open "5019 for whom" question the ledger flagged as unresolved
+--     (Legacy_Unresolved row): it was never resolvable because part of it
+--     belongs to different, out-of-scope content.
+--
+--     UPDATED 2026-09-21 (DU-07): three of those first four screens are now
+--     delivered WITHOUT the dialog, as `npc_bark` chat lines -- see chains
+--     1176-1178 below. `npc_bark` names ONE `dialog_screens` row by id and
+--     speaks its text down `onPlayerCommunication` (client method 28), so
+--     it can carry 96351/96352/96354 without dragging 96355-96357 along and
+--     without opening a window. Screen 96353 is deliberately unauthored;
+--     chain 1178's comment says why. The `display_dialog` exclusion above is
+--     unchanged and is not softened by this: a bark is a different action
+--     from a different route, and dialog 5019 itself is still never shown.
 --   - 5859 ("Find a way out of the Cellblock. Without Marsh.") is the v3
 --     spec's newly-surfaced post-death line (audit.md "New Evidence From
 --     v3" section). All its screens are speaker_id 0, so it qualifies for
@@ -2535,6 +2556,238 @@ VALUES (1175, 'mission_completed', '686', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1175, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
+
+-- ============================================================
+-- DU-07 — Col. Marsh companion barks (dialog 5019, screens 96351/96352/
+-- 96354). Chains 1176-1178.
+-- ============================================================
+--
+-- Evidence classes, per packet rule:
+--   * The LINES are ORIGINAL_DATA. Every one is a shipped 2009
+--     `resources.dialog_screens` row of dialog 5019 (seed lines 21706,
+--     21708, 21712), reproduced byte-for-byte because `npc_bark` names the
+--     screen by id and the executor resolves the text server-side from the
+--     startup cache. No line is retyped into a seed row, so a `texts`/
+--     `dialog_screens` edit can never silently change what a player hears
+--     without also failing `chain_replay_tests/marsh_barks.rs`.
+--   * The TRIGGER WIRING is RECONSTRUCTION. Dialog 5019 has no recovered
+--     Atrea script, no Python subscription and no Kismet binding anywhere
+--     in `deprecated/` -- it is one of the Cellblock's Legacy_Unresolved
+--     rows. Each chain's own comment argues why its trigger is a
+--     reasonable reading of that line's text.
+--
+-- Why barks and not a dialog: dialog 5019 must never be displayed (see the
+-- GC1a dialog-selection block above -- screens 96355-96357 are excluded
+-- Future Self content and `display_dialog` is all-or-nothing). Beyond that,
+-- these are combat callouts: the client's dialog module has no non-modal
+-- path at all, so ANY of these four lines shown as a dialog stops the
+-- player dead in a window mid-firefight. `npc_bark` sends one screen's text
+-- as a chat line down `onPlayerCommunication` (client method 28) to the
+-- triggering player only -- no window, no witness fan-out. See
+-- docs/content/content-engine.md "npc_bark params".
+--
+-- SPEAKER STRING (documented judgment call). `npc_bark`'s `speaker` is a
+-- literal, because 5019's screens all carry `speaker_id = 0` and the server
+-- has nothing to look up. Two shipped 2009 speaker rows name this NPC:
+-- `speakers.speaker_id 261 = 'Col. Marsh'` (speakers.sql:37) and
+-- `941 = 'Colonel Marsh'` (speakers.sql:69, which is also template 10's own
+-- `speaker_id`, and matches his nameplate `texts.moniker_id 7569`). These
+-- rows use **'Col. Marsh'** (261) because that is the spelling 5019's
+-- companion-phase sibling dialog 2309 actually ships on its Marsh lines
+-- (dialog_screens.sql:10576, 10580) -- chain 1171 displays that dialog in
+-- this same phase, so the chat line and the dialog window agree. The
+-- nameplate above his head reads 'Colonel Marsh'; both spellings are
+-- already visible in shipped content. Changing to the nameplate spelling is
+-- a three-row edit if that is preferred.
+--
+-- FIRE-ONCE (important, and NOT what the column name suggests).
+-- `content_triggers.once` is DEAD in this engine: the loader reads it into
+-- `DbTriggerRow.once` (crates/content-engine/src/loader/mod.rs:64,
+-- cell/content/engine_loader.rs:79) and `convert_trigger` never looks at it
+-- again -- `Chain` has no such field and `ChainEngine` keeps no firing
+-- history. So `once = true` on chains 1008 and 1044 is inert, and these
+-- three rows say `false` to avoid encoding a guarantee the engine does not
+-- provide. "At most once per mission run" is therefore carried entirely by
+-- each chain's mission/step gate; each comment below says exactly which
+-- co-firing chain closes that gate.
+--
+-- The `counter` condition is NOT usable as a tightener here.
+-- `Condition::Counter` defaults a missing context key to 0
+-- (conditions/mod.rs:306 `unwrap_or(0)`) and `fire_enter_region` never
+-- calls `populate_counters_context` (event_dispatch/region.rs:44-49), so a
+-- `counter messhall_kills eq 0` row would read 0 forever and pass
+-- vacuously -- a guard that looks like a gate and is not one.
+--
+-- SCREEN 96353 ("Crouch down when you're in cover!") IS DELIBERATELY
+-- UNAUTHORED, and there is no chain for it below. The only trigger that
+-- means "the player is in cover" is `player_entered_cover`, which needs a
+-- cover set placed in world space. `resources.cover_sets` has no world,
+-- space or placement-transform column at all (db/resources/AI/Tables/
+-- cover_sets.sql) and `cell/cover/mod.rs:16` says the index is
+-- per-process, not per-space; C05's extraction pass concluded the 1,380
+-- auto-extracted sets store prefab-LOCAL coordinates and are therefore
+-- non-functional as placed cover everywhere (work-packets.md:84). The one
+-- world-space-correct set in the game is the hand-seeded 1381
+-- `Castle_CellBlock_MedStationDesk` (cover_sets.sql:1405), which is the
+-- tutorial med station in the Preparation room -- not the Mess Hall and
+-- not Hallway05. Hanging this line on an unrelated event would put a
+-- cover instruction on a moment that has nothing to do with cover, so it
+-- waits. This is DEFERRED, not impossible: hand-seeding a Mess Hall cover
+-- set the way C05 seeded 1381 makes both this line and C06's flank
+-- objectives 2725/2731 reachable in one stroke.
+--
+-- REGION NAMING, checked rather than assumed. docs/content/mission-chains.md
+-- (lines 473/483/519/529) labels `Castle_Cellblock.Region9` "the mess hall".
+-- That label is WRONG and chain 1177 below deliberately does not follow it:
+--   * Region9 (point_set 2040) is x -84.74..-70.14, y 44.64..50.95,
+--     z -169.84..-152.89 -- a small volume at the topside ring pad
+--     (-89.689, 45.188, -161.533), about 5 units off its western face.
+--     Chain 1073's own comment already reads it as "the corridor outside
+--     the topside ring room".
+--   * Region3 (point_set 2034) is x -107.25..-71.82, y 34.52..45.90,
+--     z -133.02..-84.23 and CONTAINS both Mess Hall guard spawns --
+--     MessHall_Guard1 (-96.25, 34.591, -91.590) and MessHall_Guard2
+--     (-95.890, 34.591, -98.808), spawnlist.sql:54 and :48.
+--   * Decisive: the original `Castle_CellBlock.py` fires the discovery
+--     splash `onSystemCommunication(11, 5182, ...)` on ENTERING Region3
+--     (deprecated/python/cell/spaces/Castle_CellBlock.py:444-452), and
+--     `texts.moniker_id 5182` is `string_Cellblock_Discovery_DisplayName_
+--     MessHall` = "Level 7: Mess Hall" (texts.sql:48911).
+-- Region3 is the Mess Hall. The mission-chains.md mislabel is flagged as an
+-- out-of-scope finding in the DU-07 worknote; not corrected from here.
+
+-- Chain 1176 (DU-07): the player rings up to the topside route -> Marsh's
+-- departure line.
+--
+-- RECONSTRUCTION rationale: "Let's move out!" is a departure cue, and the
+-- ring ride IS the departure -- it is the single moment the escort starts.
+-- GC1b-1/GC1b-2 already hang Marsh's reposition (1173) and his follow start
+-- (1174) on this exact event, so the line lands on the beat where he
+-- becomes a companion. Chain 1171 shows dialog 2309 ("That's about all we
+-- can do from here. C'mon, let's move out.") on the Preparation-room side of
+-- the same beat; this is the wordless follow-through once the rings fire.
+--
+-- Gate: `step_status 680 2344 active`, NOT `mission_status 680 active`.
+-- Mission 680 stays active from acceptance all the way to Region9, and
+-- nothing on this edge closes it -- so a mission gate would re-speak the
+-- line on a second ring ride (die topside, respawn at a Preparation-room
+-- respawner, walk back to ring switch 2, ride up again -- the 2026-09-18
+-- colo playtest recorded four Castle respawners offered with no discovery
+-- gating). Step 2344 is the step chain 1072 advances away from on this
+-- same event, so it retires into `completed_steps` and the gate closes for
+-- good. Deliberately not 2345: `advance_step` re-sets the new step
+-- unconditionally, so a 2345 gate would re-open on a second ride.
+-- Conditions are evaluated against the pre-mutation context (every chain in
+-- the bucket is resolved before any action runs --
+-- `chain/mod.rs resolve_event_filtered` collects, `executor::execute_actions`
+-- runs), so 1072 advancing the step in the same pass cannot starve this gate
+-- on the first ride.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1176, 'DU-07 - Escort start: Marsh barks "Let''s move out!" (5019/96351)', 'mission', 680, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1176, 'teleport_in', '3', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1176, 'step_status', 680, '2344', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1176, 'npc_bark', NULL, NULL,
+ '{"screen_id": 96351, "speaker": "Col. Marsh", "channel": "say"}', 0, 0);
+
+-- Chain 1177 (DU-07): the player walks into the Mess Hall -> Marsh calls the
+-- flanking play.
+--
+-- RECONSTRUCTION rationale: this is the most literal of the three. The line
+-- is "I'll draw their fire! Take a flanking position behind that table." and
+-- mission 681's own secondary objective 2725 reads "Take position behind the
+-- long table to flank the guards and negate their cover"
+-- (mission_objectives.sql; C06 wires it as chain 1141). Both name the same
+-- table in the same room, so the line belongs on the threshold of that room
+-- and nowhere else. It fires on ENTRY rather than on the flank itself,
+-- because it is an instruction: a player who hears "take a flanking
+-- position" only after already flanking has been told nothing.
+--
+-- Region3, not Region9 -- see the REGION NAMING block above for the
+-- evidence. This is the only chain in this file that binds the Region3
+-- ENTER edge; chain 1081 binds its EXIT edge, and the original Python fired
+-- the "Level 7: Mess Hall" discovery splash on this same enter edge, so the
+-- edge itself is exercised, client-hinted (point_sets.flags = 1) and known
+-- to fire.
+--
+-- Gate: mission 681 active (accepted moments earlier by chain 1073 on the
+-- Region9 crossing, so it is already true on the way in) AND 682 not yet
+-- active. Chain 1087 completes 681 and accepts 682 on the mess-hall kill
+-- counter, which closes BOTH arms, so the line cannot be heard again after
+-- the room is cleared, and the H52 step-activation replay that 1087's
+-- `accept_mission 682` kicks off re-evaluates this chain against the
+-- post-mutation context and correctly refuses it
+-- (event_dispatch/step_activation/mod.rs). Known and accepted exposure: a
+-- player who backs out of Region3 and charges back in BEFORE killing a
+-- guard hears the line again. The engine has no fire-once primitive (see
+-- FIRE-ONCE above) and every `enter_region` chain in this file carries the
+-- same exposure; for a combat callout a repeat on a re-entry is the
+-- least-bad failure mode.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1177, 'DU-07 - Mess Hall entry: Marsh barks the long-table flank cue (5019/96352)', 'mission', 681, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1177, 'enter_region', 'Castle_Cellblock.Region3', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1177, 'mission_status', 681, NULL, 'eq', 'active', 0),
+  (1177, 'mission_status', 682, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1177, 'npc_bark', NULL, NULL,
+ '{"screen_id": 96352, "speaker": "Col. Marsh", "channel": "say"}', 0, 0);
+
+-- Chain 1178 (DU-07): the player walks into Hallway05 -> Marsh calls the
+-- second, table-less flank.
+--
+-- RECONSTRUCTION rationale: 96354 ("Flank their position while I draw their
+-- fire!") is 96352 with the table taken out of it -- the same play, phrased
+-- for a room that has no long table. The zone has exactly one other flanking
+-- encounter, and it is Hallway05: mission 686's secondary objective 2731
+-- reads "Take a flanking position to negate the guards' protective cover",
+-- with no prop named (C06 wires it as chain 1142). Two lines, two flank
+-- objectives, one with a table and one without -- the mapping is forced.
+--
+-- Region5 (point_set 2036, x -108.86..-83.86, y 24.64..29.58,
+-- z -54.44..-34.38) contains both Hallway05 guard spawns: Hallway05_Guard1
+-- (-100.160, 24.670, -43.895) and Hallway05_Guard2 (-101.500, 24.670,
+-- -51.300), spawnlist.sql:138 and :102. The original Python subscribed the
+-- same region (Castle_CellBlock.py:503-512).
+--
+-- Gate: deliberately the EXACT two conditions chain 1083 uses on this same
+-- edge -- 685 completed, 686 not yet active. 1083 accepts 686 in the same
+-- pass, which closes the second arm permanently, so this is the tightest
+-- once-per-run gate available and it cannot drift out of step with the
+-- accept it rides. KEEP THESE TWO CONDITION SETS IDENTICAL TO CHAIN 1083's:
+-- if 1083 is ever loosened, this bark starts repeating.
+--
+-- Marsh is still alive and still present here: template 10 is faction 3, and
+-- only faction 10 (HOSTILE_FACTION, cell/combat/mod.rs:21) is damageable or
+-- auto-aggroable, so nothing in the zone can kill him; chains 1161/1162
+-- despawn him on `mission_completed 686`, which is strictly later than this
+-- edge (this edge ACCEPTS 686). Whether he is standing next to the player
+-- when the line lands is a separate, pre-existing GC1 problem -- see the
+-- worknote's "Known gaps".
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1178, 'DU-07 - Hallway05 entry: Marsh barks the second flank cue (5019/96354)', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1178, 'enter_region', 'Castle_Cellblock.Region5', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1178, 'mission_status', 685, NULL, 'eq', 'completed', 0),
+  (1178, 'mission_status', 686, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1178, 'npc_bark', NULL, NULL,
+ '{"screen_id": 96354, "speaker": "Col. Marsh", "channel": "say"}', 0, 0);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- C06: flanking objectives 2725 (Mess Hall) and 2731 (Hallway05)
