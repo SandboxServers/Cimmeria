@@ -90,7 +90,7 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
         dialog_id: 3995,
         dialog_flags: 0,
         kismet_event_set_id: 0,
-        ui_screen_type: 2,
+        ui_screen_type: 4, // DU-00 PROBE: DUIST_DefaultRadio (throwaway branch, never merge)
         screens: &[DialogScreen {
             screen_id: 96108,
             speaker_id: 0,
@@ -107,7 +107,7 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
         dialog_id: 3996,
         dialog_flags: 0,
         kismet_event_set_id: 0,
-        ui_screen_type: 2,
+        ui_screen_type: 5, // DU-00 PROBE: DUIST_DefaultRealization (throwaway branch, never merge)
         screens: &[DialogScreen {
             screen_id: 96109,
             speaker_id: 0,
@@ -184,7 +184,7 @@ mod tests {
         assert!(
             s.contains(
                 "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"3995\" \
-                 KismetEventSetID=\"0\" UIScreenType=\"2\">"
+                 KismetEventSetID=\"0\" UIScreenType=\"4\">"
             ),
             "root attributes must be alphabetized Server-Build order: {s}",
         );
