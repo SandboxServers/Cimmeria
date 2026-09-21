@@ -53,7 +53,7 @@
 
 ## Content engine / executor
 
-- [cell-startup-caches-vs-base-roundtrip.md](cell-startup-caches-vs-base-roundtrip.md) — the cell HAS a DB pool at startup and ~20 `SpaceManager` caches (incl. `spawn_templates` since H03); a cell→base round-trip inside a content action breaks the chain's ordered action list, because the next action resolves via `find_entity_by_tag`.
+- [cell-startup-caches-vs-base-roundtrip.md](cell-startup-caches-vs-base-roundtrip.md) — the cell HAS a DB pool at startup and ~20 `SpaceManager` caches; a cell→base round-trip inside a content action breaks the chain's ordered action list. Adding a cache is always the same 4 edits; `dialog_screens` text IS reachable (`screen_id` globally unique).
 
 ## Content engine / chain authoring
 
@@ -95,7 +95,7 @@
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
 - [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
-- [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
+- [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be LAST in a file; and clippy 1.98+ denies `chunks_exact(2)` in a WSTRING decoder (use `as_chunks::<2>()`).
 - [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path; a scripted CRLF doc edit must never put a carriage return in its replacement text (one bare CR makes git rewrite the whole file) and must `assert old in s` or it silently no-ops.
 - [sqlx-dynamic-sql-string.md](sqlx-dynamic-sql-string.md) — `sqlx::query` takes `&'static str` only, so a `fn(&str) -> String` shared-SELECT helper won't compile; use a `macro_rules!` + `concat!` re-exported with `pub(crate) use`.
 - [sqlx-chain-id-is-i32-vacuous-guards.md](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is `integer` (i32), not i64; a wrong decode type PASSES forever inside a "must return no rows" guard and then panics with `ColumnDecode` instead of the assertion message on the day it catches something.
@@ -108,7 +108,7 @@
 
 ## GM feedback (cell ↔ base)
 
-- [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — definitive (post-commit) GM feedback for base-round-trip commands: cell-side `cell_methods::gm::feedback::send_gm_feedback` (EntityMethodCall→onPlayerCommunication m28 CHAN_FEEDBACK=8) vs base-side `base::gm_feedback::send_gm_feedback_to_client` (send_to_witness_reliable). `GrantItem`/`RemoveInventoryItem` still gate on `notify_gm: bool`; `GrantCash`/`GrantXP` were changed (P05) to `gm_feedback_to: Option<u32>` so a selected-target grant's feedback goes to the caller, not the target — apply the same pattern to GrantItem/RemoveInventoryItem/GrantExpertise/GrantAppliedSciencePoints when a dot command needs it (P06 `.giveitem` will).
+- [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — **read before any method-28 work.** Four copies of the `onPlayerCommunication` serializer; `chat.rs` channel constants diverge from `enumerations.xml` for every channel ≥7 (only `CHAN_say=0` is agreed); `CHAN_FEEDBACK` is 9, not 8. Plus the cell-vs-base GM feedback split and the `notify_gm: bool` → `gm_feedback_to: Option<u32>` migration still owed by GrantItem/RemoveInventoryItem/GrantExpertise/GrantAppliedSciencePoints.
 
 ## Ring transport / entity teardown
 
