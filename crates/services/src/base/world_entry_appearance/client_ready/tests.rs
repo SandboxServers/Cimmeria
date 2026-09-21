@@ -122,6 +122,19 @@ async fn first_login_update_errors_when_player_row_missing() {
     // 0x7000_0FFF).
     const MISSING_PLAYER_ID: i32 = 0x7FFE_FF99;
 
+    // The handler runs a real UPDATE against this id. Refuse to go on if a
+    // row owns it: the test would clear some character's `first_login` and
+    // stop exercising the zero-row branch.
+    let existing: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sgw_player WHERE player_id = $1")
+        .bind(MISSING_PLAYER_ID)
+        .fetch_one(&pool)
+        .await
+        .expect("probe sgw_player for the sentinel id");
+    assert_eq!(
+        existing, 0,
+        "sentinel player_id {MISSING_PLAYER_ID:#x} must not exist in sgw_player"
+    );
+
     let addr: SocketAddr = "127.0.0.1:55700".parse().unwrap();
     let entity_id: u32 = 9999;
     let key = [0u8; 32];

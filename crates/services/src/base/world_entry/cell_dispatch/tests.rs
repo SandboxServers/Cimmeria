@@ -96,9 +96,12 @@ async fn flush_deferred_aoi_drains_buffer_and_dispatches_to_aoi_handlers() {
             method_index: 0x10,
             args: vec![0xAA, 0xBB],
         });
+    // A different entity from the one that entered: `EnteredAoI(X)` followed
+    // by `LeftAoI(X)` cancels before dispatch (`deferred_aoi_lifecycle`), and
+    // this test is about each kind reaching its handler.
     state
         .deferred_aoi_msgs
-        .push(DeferredAoiMsg::LeftAoI { entity_id: 200 });
+        .push(DeferredAoiMsg::LeftAoI { entity_id: 201 });
 
     let connected = Arc::new(Mutex::new(HashMap::from([(witness_addr, state)])));
     // EntityMethodCall dispatches to the target entity's owning client

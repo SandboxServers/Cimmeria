@@ -26,6 +26,7 @@ pub(crate) mod contact_list;
 pub(crate) mod cooked_data;
 pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
+pub(crate) mod deferred_aoi_lifecycle;
 pub(crate) mod dialog_overrides;
 pub(crate) mod dispatch;
 pub(crate) mod gm_feedback;

@@ -11,7 +11,7 @@
 //! 3. **Hold leaks onto player-self traffic** — mission, dialog and hotbar
 //!    calls must still flow during the movie.
 
-use std::time::Instant;
+use tokio::time::Instant;
 
 use super::super::*;
 use super::one_session;
@@ -36,6 +36,7 @@ fn held_session(
         .cinematic_aoi_hold = Some(CinematicAoiHold {
         token: 1,
         started: Instant::now(),
+        releasing: false,
     });
     (addr, connected, entity_to_addr)
 }
@@ -260,6 +261,42 @@ async fn player_self_method_call_is_not_held_by_cinematic_hold() {
         typed_transport.send_count_to(addr),
         1,
         "player-self method call goes out during the hold"
+    );
+    assert!(connected
+        .lock()
+        .unwrap()
+        .get(&addr)
+        .unwrap()
+        .deferred_aoi_msgs
+        .is_empty());
+}
+
+/// Same contract for the batched arm, which has its own defer check: a
+/// world-entry region-hint batch that lands during the movie goes out as its
+/// one bundled send. Swapping that arm's `should_defer` for
+/// `should_hold_entity_traffic` unrolls the batch into the buffer instead.
+#[tokio::test]
+async fn player_self_method_batch_is_not_held_by_cinematic_hold() {
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let entity_id = 715u32;
+    let (addr, connected, entity_to_addr) = held_session(entity_id);
+
+    dispatch(
+        CellToBaseMsg::EntityMethodCallBatch {
+            entity_id,
+            calls: vec![(0x42, vec![0xAA]), (0x43, vec![0xBB]), (0x44, vec![0xCC])],
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    assert_eq!(
+        typed_transport.send_count_to(addr),
+        1,
+        "the batch goes out during the hold as one send"
     );
     assert!(connected
         .lock()

@@ -26,8 +26,8 @@ is wrong and the decision should be revisited, not patched.
 
 On a character's **first** login the server now holds entity introductions off
 the wire until the intro movie is over — immediately when the player presses
-Esc, otherwise 16 seconds after world entry. NPCs and other players appear as
-the movie ends instead of arriving while it plays. Nothing changes for a
+Esc, otherwise 16 seconds after `onClientReady`. NPCs and other players appear
+as the movie ends instead of arriving while it plays. Nothing changes for a
 returning character.
 
 The reason is a client-side drop that survives a perfectly delivered packet.
@@ -94,7 +94,7 @@ flush them.
 
 ### Where the hold starts
 
-[`world_entry_appearance/cinematic_aoi_hold.rs`](../../crates/services/src/base/world_entry_appearance/cinematic_aoi_hold.rs)
+[`world_entry_appearance/cinematic_aoi_hold/`](../../crates/services/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs)
 owns the hold. `begin` runs inside `handle_on_client_ready`'s
 `pending_client_ready` take, in the **same critical section**, when
 `first_login != 0`.
@@ -129,15 +129,37 @@ Whichever comes first:
   appearance is what the client needs first.
 - **`HOLD_DURATION` = 16 s** — the timeout task armed at `onClientReady`. The
   client sends nothing when a movie ends on its own, so a timer is the only
-  available signal.
+  available signal. The deadline is measured from the moment the hold
+  *began* (`sleep_until(hold.started + HOLD_DURATION)`), not from when the
+  task was armed: the handler arms it only after its DB reads and cell sends,
+  and a slow dependency there must shorten the remaining wait, not stretch
+  the hold past the movie.
 
 16 s is `Cine-SGWLogo`'s 13.10 s (314 frames @ 23.976 fps) plus room for the
 exit GC. It is not an arbitrary safety margin: in the repro the player's first
 input came 16.4 s after ready, so NPCs arriving at 16 s land *behind* the intro
 dialog rather than popping into a room the player has already started reading.
 
-Two invariants in the release path are worth knowing before you touch it:
+Four invariants in the release and flush path are worth knowing before you
+touch it:
 
+- **Exactly one task releases a hold.** `cancelMovie` and the timeout can both
+  fire at the 16-second boundary. The first to arrive claims the hold
+  (`CinematicAoiHold::releasing`) under the `connected` lock and the second
+  returns at once. Without the claim, the second task finds the buffer
+  momentarily empty while the first is still awaiting its sends, lifts the
+  hold, and live traffic overtakes the in-flight creates.
+- **An entity's leave and re-entry keep their order.** The flush bundles
+  introductions ahead of everything else, which is only safe while no entity
+  both leaves and enters inside one dispatch — and over 16 seconds a patrolling
+  NPC does exactly that. `deferred_aoi_lifecycle::lifecycle_segments` cancels
+  an `EnteredAoI(X)` against the `LeftAoI(X)` that undoes it (along with
+  anything said about X in between — the client never needs to hear about an
+  entity that came and went while it was not listening), and starts a new
+  dispatch segment at an `EnteredAoI(X)` that follows a `LeftAoI(X)`, so the
+  leave reaches the client before the re-introduction. The world-entry burst
+  is introductions only, stays one segment, and keeps its two-bundle packet
+  budget.
 - **The hold lifts only when a flush leaves the buffer empty under the same
   lock.** Messages that arrive while a flush is awaiting its sends buffer
   behind it and go out on the next pass. Without this, a live `LeftAoI(X)`
@@ -195,7 +217,8 @@ information.
 
 - **Player-visible.** On a character's first login, NPCs and other players
   appear when the intro movie ends — immediately on Esc, otherwise 16 s after
-  world entry. Returning characters are unaffected.
+  `onClientReady` (the client's "map loaded, send me entities" signal, which
+  is also when the movie starts). Returning characters are unaffected.
 - **The deferred window gets longer.** The emit-time identity join described in
   [player-ghost-aoi-cascade.md](player-ghost-aoi-cascade.md) now has to survive
   up to 16 seconds rather than a few. It already does — the join reads the

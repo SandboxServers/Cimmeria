@@ -429,7 +429,10 @@ the GM path `false`, so an admin command cannot mint levels.
 **Reversibility:** High. The sweep is one `if` in `damage_apply`; the AI filter is one
 `.filter(...)`. Deleting either fails
 `effect_script_bleed_to_zero_runs_death_transition_in_same_resolution` /
-`npc_killed_by_an_effect_bleed_does_not_shoot_back` respectively.
+`zero_health_npc_without_dead_bit_gets_no_ai_turn` respectively.
+(`npc_killed_by_an_effect_bleed_does_not_shoot_back` is the end-to-end cover for
+both together; on its own it cannot isolate the AI filter, because the death it
+resolves also stamps `AiState::Dead`.)
 
 ## Cross-cutting follow-ups
 

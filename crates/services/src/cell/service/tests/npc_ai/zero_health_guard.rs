@@ -171,3 +171,121 @@ async fn npc_killed_by_an_effect_bleed_does_not_shoot_back() {
         mgr.get_entity(200).unwrap().ai_state
     );
 }
+
+// ── Warn throttle ────────────────────────────────────────────────────────
+//
+// Nothing clears a 0-HEALTH-without-BSF_DEAD NPC, so the natural tick reaches
+// it every ~2 s for as long as the zone is up. Unthrottled that is one WARN
+// row per NPC per tick, forever, in the console and in SigNoz.
+
+const ZERO_HEALTH_WARN: &str = "skipping NPC at 0 HEALTH with no BSF_DEAD";
+
+/// Put `npc_id` into the invariant-violating shape: HEALTH 0, no `BSF_DEAD`.
+fn zero_health_without_death(mgr: &mut crate::cell::space_manager::SpaceManager, npc_id: u32) {
+    let npc = mgr.get_entity_mut(npc_id).expect("fixture NPC");
+    let h = npc.stats.get_mut(HEALTH).expect("HEALTH stat");
+    h.update(0, 0, 100);
+    h.clear_dirty();
+}
+
+fn zero_health_warns(
+    capture: &crate::test_support::LogCaptureGuard,
+) -> Vec<crate::test_support::Captured> {
+    capture
+        .all()
+        .into_iter()
+        .filter(|e| e.level == tracing::Level::WARN && e.message_contains(ZERO_HEALTH_WARN))
+        .collect()
+}
+
+/// A burst of ticks inside the window writes one row; the next row after
+/// the window reports how many were elided. Every tick still skips the NPC —
+/// the throttle governs the log line, never the filter. Removing the
+/// `admit` gate writes five rows here.
+#[test]
+fn zero_health_warn_is_throttled_per_npc_and_reports_suppressed() {
+    use crate::cell::service::npc_ai::{npc_is_incapacitated, ZERO_HEALTH_WARN_MIN_INTERVAL};
+    use std::time::{Duration, Instant};
+
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    zero_health_without_death(&mut mgr, 200);
+
+    let t0 = Instant::now();
+    for tick in 0..4 {
+        let now = t0 + Duration::from_secs(2 * tick);
+        assert!(
+            npc_is_incapacitated(&mut mgr, 200, now),
+            "suppressed or not, the NPC is still skipped"
+        );
+    }
+    assert_eq!(
+        zero_health_warns(&capture).len(),
+        1,
+        "four ticks inside the window write one row"
+    );
+
+    assert!(npc_is_incapacitated(
+        &mut mgr,
+        200,
+        t0 + ZERO_HEALTH_WARN_MIN_INTERVAL
+    ));
+    let rows = zero_health_warns(&capture);
+    assert_eq!(rows.len(), 2, "the window elapsed, so the next tick writes");
+    assert!(rows[0].has_field("suppressed", "0"), "{:#?}", rows[0]);
+    assert!(
+        rows[1].has_field("suppressed", "3"),
+        "the row after the window counts the three elided ticks: {:#?}",
+        rows[1]
+    );
+}
+
+/// One stuck NPC must not silence another: the slot is per NPC id.
+#[test]
+fn zero_health_warn_throttle_is_independent_per_npc() {
+    use crate::cell::service::npc_ai::npc_is_incapacitated;
+
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    mgr.create_entity(201, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(201) {
+        npc.is_player = false;
+        npc.class_id = 0x04;
+    }
+    zero_health_without_death(&mut mgr, 200);
+    zero_health_without_death(&mut mgr, 201);
+
+    let now = std::time::Instant::now();
+    assert!(npc_is_incapacitated(&mut mgr, 200, now));
+    assert!(npc_is_incapacitated(&mut mgr, 201, now));
+
+    let rows = zero_health_warns(&capture);
+    assert_eq!(rows.len(), 2, "one row each: {rows:#?}");
+    assert!(rows.iter().any(|r| r.has_field("npc_id", "200")));
+    assert!(rows.iter().any(|r| r.has_field("npc_id", "201")));
+}
+
+/// `destroy_entity` releases the slot, so the table cannot outgrow the live
+/// NPC population and a respawn on a recycled id warns on its first bad tick
+/// instead of inheriting its predecessor's window.
+#[test]
+fn destroy_entity_releases_the_zero_health_warn_slot() {
+    use crate::cell::service::npc_ai::npc_is_incapacitated;
+
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    zero_health_without_death(&mut mgr, 200);
+    assert!(npc_is_incapacitated(
+        &mut mgr,
+        200,
+        std::time::Instant::now()
+    ));
+    assert_eq!(mgr.zero_health_npc_log.tracked(), 1);
+
+    mgr.destroy_entity(200);
+    assert_eq!(
+        mgr.zero_health_npc_log.tracked(),
+        0,
+        "the throttle slot must not outlive the NPC"
+    );
+}

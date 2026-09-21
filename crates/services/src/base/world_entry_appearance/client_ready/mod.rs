@@ -121,7 +121,7 @@ pub(crate) async fn handle_on_client_ready(
     // still awaiting DB reads — a hold armed any later (say, next to
     // `send_cinematic`) lets those creates reach a client that is about to
     // play a fullscreen movie. See `cinematic_aoi_hold`.
-    let (pending, player_name, access_level, account_id, aoi_hold_token) = {
+    let (pending, player_name, access_level, account_id, aoi_hold) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
         match entry {
@@ -132,7 +132,7 @@ pub(crate) async fn handle_on_client_ready(
             // without trusting any client byte (#475 / CAT-N-03).
             Some(c) => {
                 let pending = c.pending_client_ready.take();
-                let aoi_hold_token = pending
+                let aoi_hold = pending
                     .as_ref()
                     .filter(|p| p.first_login != 0)
                     .map(|_| cinematic_aoi_hold::begin(c));
@@ -141,7 +141,7 @@ pub(crate) async fn handle_on_client_ready(
                     c.player_name.clone(),
                     c.access_level,
                     c.account_id,
-                    aoi_hold_token,
+                    aoi_hold,
                 )
             }
             // No session for this addr: `pending` is `None` so we bail below
@@ -518,7 +518,7 @@ pub(crate) async fn handle_on_client_ready(
     //
     // On first login only the player-self method calls go now. Entity
     // introductions stay buffered until the movie is cancelled or runs out.
-    if let Some(token) = aoi_hold_token {
+    if let Some(hold) = aoi_hold {
         super::super::world_entry::cell_dispatch::flush_deferred_self_methods(
             entity_id,
             addr,
@@ -528,7 +528,7 @@ pub(crate) async fn handle_on_client_ready(
         )
         .await;
         cinematic_aoi_hold::arm_timeout(
-            token,
+            hold,
             entity_id,
             addr,
             transport,

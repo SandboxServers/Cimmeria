@@ -1,6 +1,8 @@
 //! AI tick entry + fast-retry sweep — the state-machine dispatchers
 //! that route each NPC to its per-state handler.
 
+use std::time::{Duration, Instant};
+
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -30,7 +32,17 @@ use super::wander::npc_ai_wander;
 /// A 0-HP NPC *without* `BSF_DEAD` is an invariant violation, so it warns
 /// (a proper corpse carries the bit and is silently skipped). See
 /// `docs/architecture/negative-logging-convention.md`.
-fn npc_is_incapacitated(space_mgr: &SpaceManager, npc_id: u32) -> bool {
+///
+/// The warning is throttled per NPC. Nothing clears the condition — the NPC
+/// stays in `all_npc_entity_ids()` at 0 HEALTH — so the natural tick would
+/// otherwise repeat it for as long as the zone is up. One row per NPC per
+/// [`ZERO_HEALTH_WARN_MIN_INTERVAL`], carrying `suppressed = N` for the
+/// skipped ticks in between, keeps the fact and the rate without the volume.
+pub(in crate::cell::service) fn npc_is_incapacitated(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    now: Instant,
+) -> bool {
     let Some(e) = space_mgr.get_entity(npc_id) else {
         return false;
     };
@@ -41,7 +53,18 @@ fn npc_is_incapacitated(space_mgr: &SpaceManager, npc_id: u32) -> bool {
     if !zeroed {
         return false;
     }
-    if !crate::cell::combat::is_dead_state(e.state_field) {
+    if crate::cell::combat::is_dead_state(e.state_field) {
+        return true;
+    }
+    let Some(suppressed) =
+        space_mgr
+            .zero_health_npc_log
+            .admit(npc_id, now, ZERO_HEALTH_WARN_MIN_INTERVAL)
+    else {
+        return true;
+    };
+    // Re-borrowed: `admit` above needed `&mut`.
+    if let Some(e) = space_mgr.get_entity(npc_id) {
         tracing::warn!(
             target: "npc_ai.tick",
             npc_id,
@@ -49,12 +72,19 @@ fn npc_is_incapacitated(space_mgr: &SpaceManager, npc_id: u32) -> bool {
             tag = e.tag.as_deref().unwrap_or(""),
             ai_state = ?e.ai_state,
             state_field = e.state_field,
+            suppressed,
             "npc_ai: skipping NPC at 0 HEALTH with no BSF_DEAD — a kill path \
              zeroed health without running abilities::death::resolve_death"
         );
     }
     true
 }
+
+/// Minimum gap between two zero-health invariant warnings for one NPC. The
+/// AI tick reaches a stuck NPC about every two seconds; a minute is frequent
+/// enough to show the condition persisting and rare enough to leave on.
+pub(in crate::cell::service) const ZERO_HEALTH_WARN_MIN_INTERVAL: Duration =
+    Duration::from_secs(60);
 
 /// NPC AI tick — drives Fighting, Leashing, and Idle-with-aggression
 /// NPCs. The `Idle` filter on `aggression > 0` is what makes the
@@ -70,10 +100,11 @@ pub(in crate::cell::service) async fn npc_ai_tick(
 
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
     // while calling handle_use_ability (which needs &mut SpaceManager).
-    let npc_snapshot: Vec<(u32, AiState, i32, bool, bool)> = space_mgr
-        .all_npc_entity_ids()
+    let now = Instant::now();
+    let mut npc_ids = space_mgr.all_npc_entity_ids();
+    npc_ids.retain(|&eid| !npc_is_incapacitated(space_mgr, eid, now));
+    let npc_snapshot: Vec<(u32, AiState, i32, bool, bool)> = npc_ids
         .iter()
-        .filter(|&&eid| !npc_is_incapacitated(space_mgr, eid))
         .filter_map(|&eid| {
             space_mgr.get_entity(eid).map(|e| {
                 (
@@ -225,7 +256,7 @@ pub(in crate::cell::service) async fn npc_ai_retry_sweep(
     let mut to_remove: Vec<u32> = Vec::new();
     let mut to_run: Vec<u32> = Vec::new();
     for npc_id in candidates {
-        if npc_is_incapacitated(space_mgr, npc_id) {
+        if npc_is_incapacitated(space_mgr, npc_id, now) {
             // At or below zero HEALTH — the retry slot is meaningless and
             // the corpse must not get a fast-retry swing in. Drop it.
             to_remove.push(npc_id);

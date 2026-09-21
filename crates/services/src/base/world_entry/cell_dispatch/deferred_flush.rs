@@ -15,6 +15,7 @@ use cimmeria_mercury::transport::Transport;
 use crate::mercury::compose_create_entity_base_body;
 
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
+use super::super::super::deferred_aoi_lifecycle::lifecycle_segments;
 use super::super::super::helpers::{send_bundle_to_witness_reliable, BundleSendOutcome};
 use super::super::super::ConnectedClientState;
 use super::aoi::{entity_invisible, entity_method_call, left_aoi, witness_entity_method};
@@ -167,6 +168,15 @@ pub(crate) async fn flush_deferred_self_methods(
 /// The tail flushes **after** the two bundles to guarantee any
 /// `LeftAoI(X)` — or held `WitnessEntityMethod(X)` — runs after the matching
 /// `EnteredAoI(X)`'s cascade.
+///
+/// # Lifecycle segments
+///
+/// "Introductions first" is only correct while no entity both leaves and
+/// enters inside one dispatch. [`lifecycle_segments`] cancels an enter against
+/// the leave that undoes it and cuts the rest into segments that each keep
+/// that property; every segment is then dispatched in the shape above. The
+/// world-entry burst is introductions only, so it stays a single segment and
+/// keeps its packet budget.
 async fn dispatch_deferred(
     witness_id: u32,
     addr: SocketAddr,
@@ -179,14 +189,31 @@ async fn dispatch_deferred(
     if buffered.is_empty() {
         return;
     }
+    let buffered_count = buffered.len();
+    let segments = lifecycle_segments(buffered);
     tracing::info!(
         %addr,
         witness_id,
-        count = buffered.len(),
+        count = buffered_count,
+        dispatched = segments.iter().map(Vec::len).sum::<usize>(),
+        segments = segments.len(),
         trigger,
         "Flushing deferred-AoI buffer"
     );
+    for segment in segments {
+        dispatch_segment(witness_id, segment, transport, connected, entity_to_addr).await;
+    }
+}
 
+/// Dispatch one lifecycle segment: its introductions as the two bundles, then
+/// everything else in encounter order.
+async fn dispatch_segment(
+    witness_id: u32,
+    buffered: Vec<DeferredAoiMsg>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
     // Pre-aggregate EnteredAoI events into two cross-entity bundles.
     // Tracked separately so phase-1 emits before phase-2 (the client must
     // process each NPC's CREATE_ENTITY transaction before its cascade).
@@ -330,5 +357,99 @@ async fn dispatch_deferred(
                 entity_invisible(witness_id, entity_id, transport, connected, entity_to_addr).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{test_default_connected_client_state, TestTransport};
+
+    const WITNESS: u32 = 100;
+    /// A patrolling NPC the client already has when the hold begins.
+    const PATROLLER: u32 = 7;
+
+    fn entered(entity_id: u32) -> DeferredAoiMsg {
+        DeferredAoiMsg::EnteredAoI {
+            entity_id,
+            class_id: 1,
+            position: [0.0; 3],
+            direction: [0.0; 3],
+            level: 1,
+            npc_data: None,
+            player_data: None,
+        }
+    }
+
+    /// Flush `buffered` on a fresh session and return what hit the wire, in
+    /// send order. Every session starts at seq 0 with the same key, so the
+    /// same message at the same position yields the same bytes.
+    async fn flush_on_fresh_session(buffered: Vec<DeferredAoiMsg>) -> Vec<Vec<u8>> {
+        let addr: SocketAddr = "127.0.0.1:54501".parse().unwrap();
+        let typed_transport = Arc::new(TestTransport::new());
+        let transport: Arc<dyn Transport> = typed_transport.clone();
+        let mut state = test_default_connected_client_state();
+        state.deferred_aoi_msgs = buffered;
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(WITNESS, addr)])));
+
+        flush_deferred_aoi(
+            WITNESS,
+            addr,
+            "cinematic_hold_release",
+            &transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+        typed_transport.filter_to(addr)
+    }
+
+    /// The patroller walks out of range and back during a hold, so the buffer
+    /// is `LeftAoI(7), EnteredAoI(7)`. Bundling introductions ahead of the
+    /// tail sends the create first and the leave last, and the client ends
+    /// the flush without an NPC that is standing in front of the player.
+    /// Dispatching the raw buffer as one segment puts the leave packet last
+    /// and fails the first assertion.
+    #[tokio::test]
+    async fn leave_then_reenter_reaches_the_wire_as_leave_then_create() {
+        let leave_alone = flush_on_fresh_session(vec![DeferredAoiMsg::LeftAoI {
+            entity_id: PATROLLER,
+        }])
+        .await;
+        assert_eq!(leave_alone.len(), 1, "a leave is one packet");
+
+        let sent = flush_on_fresh_session(vec![
+            DeferredAoiMsg::LeftAoI {
+                entity_id: PATROLLER,
+            },
+            entered(PATROLLER),
+        ])
+        .await;
+
+        assert_eq!(
+            sent.first(),
+            leave_alone.first(),
+            "the leave goes out first, at seq 0 — byte-identical to a lone leave"
+        );
+        assert_eq!(
+            sent.len(),
+            3,
+            "then the re-introduction's phase-1 and phase-2 bundles"
+        );
+    }
+
+    /// An NPC that came and went during the hold is never introduced: no
+    /// create, no leave, nothing on the wire for it.
+    #[tokio::test]
+    async fn enter_then_leave_during_the_hold_sends_nothing() {
+        let sent = flush_on_fresh_session(vec![
+            entered(PATROLLER),
+            DeferredAoiMsg::LeftAoI {
+                entity_id: PATROLLER,
+            },
+        ])
+        .await;
+        assert!(sent.is_empty(), "{} packets sent", sent.len());
     }
 }

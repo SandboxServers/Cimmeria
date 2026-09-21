@@ -331,7 +331,8 @@ mod tests {
             .unwrap()
             .cinematic_aoi_hold = Some(super::super::world_entry_appearance::CinematicAoiHold {
             token: 7,
-            started: std::time::Instant::now(),
+            started: tokio::time::Instant::now(),
+            releasing: false,
         });
 
         assert!(

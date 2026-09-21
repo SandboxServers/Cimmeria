@@ -883,7 +883,7 @@ These are expected absences. Do not file them as bugs from this pass.
 **What this changes for you as a tester:**
 
 - On a brand-new character, the Cellblock is **empty during the intro movie** and populates as it ends. That is the new expected behaviour, not a bug — do not file it.
-- Entities appear immediately if you press **Esc**, otherwise about **16 seconds** after world entry (the movie is 13.1 s plus GC headroom).
+- Entities appear immediately if you press **Esc**, otherwise about **16 seconds** after the movie starts (the movie is 13.1 s plus GC headroom). The server's clock runs from `onClientReady`, which is the same instant it sends `onPlayMovie` — so time it from the first frame of the movie, not from the loading screen. In SigNoz, `held_ms` on the `hold_released` row is the exact figure.
 - Nothing changes for a character you have logged in before.
 
 **Cover both exits at least once.** Make one fresh character and let `Cine-SGWLogo` run to its natural end; make another and Esc it within a second or two. The natural-end path is the one that failed in the repro, and it is the only path the 16 s timer covers — the client sends nothing when a movie ends on its own.
@@ -896,6 +896,6 @@ These are expected absences. Do not file them as bugs from this pass.
 | `scope_name = 'aoi.create_emit'` filtered to the corpse's `entity_id` (bundle rows report `entered` + `packets` instead of a per-entity id) | Whether the introduction went out after the movie, and on which `phase` (`create_base` \| `cascade`). This seam was silent in every earlier repro because the OTLP filter never named it; that is fixed, so it should be there this time |
 | `scope_name = 'mercury.retransmit'` over the session's first 75 s | Whether delivery is still clean. A handful of retransmits would reopen the Mercury question the 2026-09-19 session closed |
 
-Locally, the same rows are in `logs\server.log` (JSON, one object per line) and `logs\protocol.log` — grep the target name.
+Locally you get two of the three. `aoi.cinematic_hold` is INFO and lands in `logs\server.log` (JSON, one object per line); `mercury.retransmit` lands in `logs\protocol.log` (`server.log` mutes it to WARN). `aoi.create_emit` is DEBUG and no local file sink names it — it goes to SigNoz only, so that row has to come from there.
 
 Content-driven despawns previously used the bare `destroy_entity` path rather than `despawn_npc`, which reproduced the same shape. C08b's follow-up commit widened the fix to the remaining call sites, so `Content: destroying tagged entity` now reports a `witnesses_notified` count — if that count is zero when other players or you should have seen the despawn, that is worth recording too.
