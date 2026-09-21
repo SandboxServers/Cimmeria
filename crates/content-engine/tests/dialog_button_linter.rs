@@ -27,7 +27,12 @@
 //! 5861 and 2576 ship in exactly that shape today and are carried in
 //! `rules::R1_ALLOWLIST` until DU-02a and DU-02b fix them.
 //!
-//! # The three rules
+//! # The four rules
+//!
+//! R1 and R2 are about WHERE the buttons sit. R3 and R4 are about
+//! whether the window can draw them at all. All four end in the same
+//! failure for the player, because the client counts COOKED buttons —
+//! not rendered ones — when it decides whether to emit the close event.
 //!
 //! * **R1** — every dialog id that keys a `dialog_choice` chain in the
 //!   four Castle / Cellblock chain seeds has either zero button rows, or
@@ -36,10 +41,18 @@
 //!   Those dialogs advance only through F8's `-1`, and a button on the
 //!   final screen would satisfy R1 while still silencing them, so R2 is
 //!   a separate rule rather than a special case of R1.
-//! * **R3** — a Blurb (`ui_screen_type = 'DUIST_DefaultBlurb'`)
-//!   referenced by those chain files carries only button types 1 (More
-//!   Info) and 2 (Accept). `BlurbWin` renders nothing else and has no
-//!   Next (F7), so any other type is drawn nowhere and clickable never.
+//! * **R3** — every button on a chain-referenced dialog is one its own
+//!   window can draw: `BlurbWin` draws More Info (1) and Accept (2),
+//!   `DialogWin` draws Accept (2) and Generic1-3 (4, 5, 6), and Radio
+//!   and Realization are the same window as Dialog (F4). This is a
+//!   soft-lock rule, not a style rule — the client counts COOKED
+//!   buttons to decide whether to send the `-1` close, so an undrawable
+//!   button is invisible to the player and silences the close event at
+//!   the same time.
+//! * **R4** — a chain-keyed dialog is a window that can carry the
+//!   interaction at all. Tutorial draws no cooked buttons, and
+//!   `DUIST_None` is the type-0 "TEMP HACK" Blurb, so keying either is
+//!   a wiring mistake rather than a layout one.
 //!
 //! # Seed versus cooked data
 //!
@@ -70,13 +83,16 @@ mod seed_model;
 #[path = "dialog_button_linter/sql_scan.rs"]
 mod sql_scan;
 
-use rules::{r1_violations, r2_violations, r3_violations, NEVER_ADD_A_BUTTON, R1_ALLOWLIST};
+use rules::{
+    enum_labels, r1_violations, r2_violations, r3_violations, r4_violations, untaught_enum_labels,
+    NEVER_ADD_A_BUTTON, R1_ALLOWLIST,
+};
 use seed_model::{
     load_chain_refs, load_dialog_seed, read, workspace_root, ChainRefs, DialogSeed, CHAIN_FILES,
 };
 
 // ---------------------------------------------------------------------
-// The three rules, against the live seed
+// The four rules, against the live seed
 // ---------------------------------------------------------------------
 
 #[test]
@@ -113,7 +129,7 @@ fn never_add_a_button_dialogs_still_have_zero_buttons() {
 }
 
 #[test]
-fn blurbs_referenced_by_castle_chains_use_only_more_info_and_accept() {
+fn chain_referenced_dialogs_only_carry_buttons_their_window_can_draw() {
     let root = workspace_root();
     let seed = load_dialog_seed(&root);
     let refs = load_chain_refs(&root);
@@ -124,6 +140,61 @@ fn blurbs_referenced_by_castle_chains_use_only_more_info_and_accept() {
         "dialog button linter (R3) found {n} problem(s):\n{body}",
         n = violations.len(),
         body = violations.join("\n"),
+    );
+}
+
+#[test]
+fn chain_keyed_dialogs_are_windows_that_can_carry_the_interaction() {
+    let root = workspace_root();
+    let seed = load_dialog_seed(&root);
+    let refs = load_chain_refs(&root);
+
+    let violations = r4_violations(&seed, &refs);
+    assert!(
+        violations.is_empty(),
+        "dialog button linter (R4) found {n} problem(s):\n{body}",
+        n = violations.len(),
+        body = violations.join("\n"),
+    );
+}
+
+/// Every `EDialogUIScreenType` label must be known to the R3 table.
+///
+/// R3 reports an unrecognised window type rather than skipping it, so a
+/// new enum value cannot pass silently — but it would pass *noisily*,
+/// one message per referenced dialog, long after the value shipped.
+/// Reading the labels straight out of the schema turns that into one
+/// clear failure at the point the enum changes. It also pins the
+/// six-label set that DU-04 and DU-05 depend on: `DUIST_DefaultRadio`
+/// and `DUIST_DefaultRealization` exist in the type but no seed row uses
+/// them yet (F11), so nothing else in the suite would notice if they
+/// were dropped.
+#[test]
+fn every_ui_screen_type_label_is_known_to_the_button_rules() {
+    let enum_sql =
+        read(&workspace_root().join("db/resources/Dialogs/Types/EDialogUIScreenType.sql"));
+    let labels = enum_labels(&enum_sql);
+    assert_eq!(
+        labels,
+        vec![
+            "DUIST_None",
+            "DUIST_DefaultBlurb",
+            "DUIST_DefaultDialog",
+            "DUIST_DefaultTutorial",
+            "DUIST_DefaultRadio",
+            "DUIST_DefaultRealization",
+        ],
+        "the enum's labels, in declaration order — the ordinal is what the cooked \
+         UIScreenType byte carries (Blurb 1, Dialog 2, Tutorial 3, Radio 4, Realization 5, \
+         and no Lua constant for 0)"
+    );
+
+    let untaught = untaught_enum_labels(&enum_sql);
+    assert!(
+        untaught.is_empty(),
+        "ui_screen_type label(s) {untaught:?} have no entry in \
+         drawable_button_types() (tests/dialog_button_linter/rules.rs). Until they do, R3 \
+         cannot check any dialog that uses them."
     );
 }
 
@@ -273,12 +344,27 @@ fn the_chain_scan_finds_the_dialogs_it_is_supposed_to_lint() {
     assert_r3_has_subjects(&seed, &refs);
 }
 
-/// R3 needs referenced Blurbs that actually carry buttons, or its inner
-/// loop never executes and the rule is decoration.
+/// R3 needs referenced dialogs of BOTH window families actually carrying
+/// buttons, or its inner loop never executes and the rule is decoration.
+///
+/// The Blurb half was the whole of R3 before the window-capability
+/// widening, and it covers five of the thirty-seven referenced dialogs.
+/// The `DialogWin` half — the other thirty-two — is checked separately
+/// here so that a regression narrowing R3 back to Blurbs fails loudly
+/// rather than going green on a suite that never looked at a Dialog.
 fn assert_r3_has_subjects(seed: &DialogSeed, refs: &ChainRefs) {
-    let blurbs: Vec<i32> = refs
-        .referenced()
-        .into_iter()
+    let referenced = refs.referenced();
+    let buttons_across = |dialogs: &[i32]| -> usize {
+        dialogs
+            .iter()
+            .flat_map(|d| seed.screens_in_order(*d))
+            .map(|s| seed.buttons_on(s).len())
+            .sum()
+    };
+
+    let blurbs: Vec<i32> = referenced
+        .iter()
+        .copied()
         .filter(|d| seed.is_blurb(*d))
         .collect();
     assert!(
@@ -291,14 +377,43 @@ fn assert_r3_has_subjects(seed: &DialogSeed, refs: &ChainRefs) {
         "Blurb 2298 (mission 639's offer, More Info + Accept) must be in the referenced \
          set; got {blurbs:?}"
     );
-    let button_rows: usize = blurbs
+    assert!(
+        buttons_across(&blurbs) >= 5,
+        "the referenced Blurbs carry only {n} button rows between them — R3's Blurb half \
+         is inspecting nothing",
+        n = buttons_across(&blurbs),
+    );
+
+    let dialog_windows: Vec<i32> = referenced
+        .iter()
+        .copied()
+        .filter(|d| seed.ui_screen_type.get(d).map(String::as_str) == Some("DUIST_DefaultDialog"))
+        .collect();
+    assert!(
+        dialog_windows.len() >= 20,
+        "R3 has only {n} referenced DialogWin dialog(s) to check — the widened \
+         window-capability rule is back to inspecting Blurbs only",
+        n = dialog_windows.len(),
+    );
+    assert!(
+        buttons_across(&dialog_windows) >= 30,
+        "the referenced DialogWin dialogs carry only {n} button rows between them",
+        n = buttons_across(&dialog_windows),
+    );
+    // Generic1 (type 4) is legal on DialogWin and illegal on BlurbWin.
+    // 2576's "Take Missions" and 3999's "Receive Item" are both type 4,
+    // so a rule that applied the Blurb set everywhere would flag them —
+    // this pins that the per-window table is really per-window.
+    let generic_buttons = dialog_windows
         .iter()
         .flat_map(|d| seed.screens_in_order(*d))
-        .map(|s| seed.buttons_on(s).len())
-        .sum();
+        .flat_map(|s| seed.buttons_on(s))
+        .filter(|b| b.button_type == 4)
+        .count();
     assert!(
-        button_rows >= 5,
-        "the referenced Blurbs carry only {button_rows} button rows between them — R3 is \
-         inspecting nothing"
+        generic_buttons >= 10,
+        "only {generic_buttons} Generic1 (type 4) buttons on referenced DialogWin dialogs \
+         — they are legal there and illegal on a Blurb, so this is what proves the table \
+         is applied per window type"
     );
 }

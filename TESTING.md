@@ -117,13 +117,15 @@ This guide is the playbook for writing tests that survive review and catch real 
 | Linter | Enforces |
 |---|---|
 | [interact_tag_linter.rs](crates/content-engine/tests/interact_tag_linter.rs) | Every `interact_tag` chain has a `set_interaction_type` for that tag, every region key byte-matches a `point_sets.name`, every `*_chains.sql` is `\ir`'d from `db/database.sql`. |
-| [dialog_button_linter.rs](crates/content-engine/tests/dialog_button_linter.rs) | A dialog that keys a `dialog_choice` chain has zero buttons or a button on its **final** screen; the never-add-a-button dialogs stay zero-button; a Blurb uses only button types 1 and 2. |
+| [dialog_button_linter.rs](crates/content-engine/tests/dialog_button_linter.rs) | A dialog that keys a `dialog_choice` chain has zero buttons or a button on its **final** screen; the never-add-a-button dialogs stay zero-button; every button is one its own window can draw (Blurb 1-2, Dialog/Radio/Realization 2 and 4-6); a chain key is not a Tutorial or type-0 dialog. |
 
 **Patterns to follow:**
 
 - **Assert the scan is not vacuous.** Every rule here is "no violations found", so a parser that silently returns nothing passes all of them. Both linters pin a parsed row count against the raw file (`every_insert_row_in_the_dialog_seeds_is_parsed` compares against the count of `INSERT INTO <table>` occurrences) and name specific rows the scan must find.
 - **Drive the production predicate from the synthetic tests.** Re-implementing the rule in the test body means a loosened rule stays green. Both linters factor the check into a function (`region_key_violations`, `r1_violations`) that the live test and the synthetic guards both call.
 - **An allowlist entry is debt, so make it expire.** `dialog_button_linter` fails on a *stale* entry as well as on an unlisted violator: once a dialog is fixed, its exemption has to be deleted or the suite stays red.
+- **Report the case you cannot judge; never skip it.** A rule that `continue`s past an enum value it does not recognise reports "no violations" on data it never looked at. `dialog_button_linter` reports the unknown window type instead, and reads the `EDialogUIScreenType` labels out of the schema so a new value fails once, loudly, at the point it is added.
+- **A rule with no live violator still needs to be seen failing.** R3 and R4 are green on the whole seed, so their only proof is the synthetic guards driving the production predicate, plus a recorded seed mutation. Write both; "it passes" is not evidence a rule works.
 - **Read the seed the way the loader does.** Dialog ids reach a `dialog_choice` trigger as a quoted `event_key` that the loader `parse()`s; the linter does the same, so a row the loader would reject is not silently linted as valid.
 
 ### 7. C++ legacy + Python script tests

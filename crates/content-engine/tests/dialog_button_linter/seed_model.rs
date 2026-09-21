@@ -177,6 +177,31 @@ impl ChainRefs {
         }
     }
 
+    /// Every chain that mentions this dialog, keyed or displaying,
+    /// labelled so the reader knows which it is.
+    ///
+    /// R3 covers displayed-as-well-as-keyed dialogs, and for a dialog
+    /// that is only ever displayed, [`chains_for`](Self::chains_for)
+    /// has nothing to say. Pointing at the `display_dialog` action is
+    /// what lets the author find the wiring.
+    pub(crate) fn references_for(&self, dialog_id: i32) -> String {
+        let mut parts = Vec::new();
+        if let Some(keyed) = self.keyed.get(&dialog_id) {
+            for (file, chain) in keyed {
+                parts.push(format!("{file}:chain {chain} (dialog_choice)"));
+            }
+        }
+        if let Some(displayed) = self.displayed.get(&dialog_id) {
+            for (file, chain) in displayed {
+                parts.push(format!("{file}:chain {chain} (display_dialog)"));
+            }
+        }
+        if parts.is_empty() {
+            return "(no chain reference)".to_string();
+        }
+        parts.join(", ")
+    }
+
     pub(crate) fn referenced(&self) -> BTreeSet<i32> {
         self.keyed
             .keys()

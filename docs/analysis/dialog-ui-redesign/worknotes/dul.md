@@ -244,6 +244,117 @@ message naming the dialog and the owning packet.
 4. **`docs/readme.md` / index files.** Nothing added there by this packet; the two docs it
    touched are already indexed.
 
+## Follow-up: coordinator corrections (2026-09-21, second commit series)
+
+The coordinator relayed two client facts from the docs worker's Lua verification. Both are
+folded in; the test count went from 17 to 23.
+
+### R3 widened from "Blurb button types" to a window-capability rule
+
+The client decides whether to emit the close event by counting **cooked** buttons, not
+rendered ones. A button the window cannot draw is therefore invisible *and* suppresses
+`dialogButtonChoice(id, -1)` — the same soft-lock R1 catches, by a different route. So R3 is
+now a correctness rule over every chain-referenced dialog, not a style rule over Blurbs, and
+its failure message says SOFT-LOCK and names the suppressed close event.
+
+| `ui_screen_type` | Window | Drawable `button_type` |
+|---|---|---|
+| `DUIST_DefaultBlurb`, `DUIST_None` | BlurbWin (F5: type 0 is the "TEMP HACK" registration) | 1, 2 |
+| `DUIST_DefaultDialog`, `DUIST_DefaultRadio`, `DUIST_DefaultRealization` | DialogWin (F4: same window and init function) | 2, 4, 5, 6 |
+| `DUIST_DefaultTutorial` | TutorialScreen | none |
+
+The widening more than sextupled R3's subject set: it previously looked at 5 of the 37
+chain-referenced dialogs, and now looks at all 37 — the other 32 are `DUIST_DefaultDialog`
+carrying 53 button rows between them. The easy mistake it newly catches is a More Info
+(type 1) button on a default Dialog.
+
+### R4 added: a chain key must be a window that can carry the interaction
+
+Tutorial renders no cooked buttons, and `DUIST_None` is the type-0 hack. Keying a chain on
+either is a wiring mistake rather than a layout one, so it is reported separately with its
+own reason string instead of being forced through R1 or R3.
+
+### Findings from the widened rules
+
+1. **Zero new violators.** All 37 chain-referenced dialogs pass the window-capability check,
+   and all 19 keyed dialogs are `DUIST_DefaultDialog`. No `FOUND BY DU-L` allowlist entries
+   were needed; `R1_ALLOWLIST` still holds exactly 3999, 5861 and 2576.
+2. **The `EDialogUIScreenType` enum already carries all six labels**, in the order
+   `DUIST_None`, `DUIST_DefaultBlurb`, `DUIST_DefaultDialog`, `DUIST_DefaultTutorial`,
+   `DUIST_DefaultRadio`, `DUIST_DefaultRealization` — matching the Lua constants
+   (Blurb 1, Dialog 2, Tutorial 3, Radio 4, Realization 5, no constant for 0). **DU-04 and
+   DU-05 do not need to extend the enum**; they only need to set the values, which no seed
+   row uses today (consistent with F11). `every_ui_screen_type_label_is_known_to_the_button_rules`
+   pins that six-label list, so nothing else in the suite is required to notice if Radio or
+   Realization were dropped before DU-04 gets to them.
+3. **Seed-wide census:** 4,281 `DUIST_DefaultDialog`, 988 `DUIST_DefaultBlurb`, 128
+   `DUIST_None`, 15 `DUIST_DefaultTutorial`, zero Radio, zero Realization.
+
+### Design decision: report what the linter cannot judge
+
+An unrecognised `ui_screen_type`, or a referenced dialog with no `dialogs.sql` row, is
+reported as an R3 violation rather than skipped. Skipping is the vacuous-pass shape — the
+rule would go green on data it never inspected. `untaught_enum_labels` additionally reads the
+enum straight out of `db/resources/Dialogs/Types/EDialogUIScreenType.sql`, so a seventh value
+fails once at the point it is added rather than once per referenced dialog months later.
+
+R3 messages also name the `display_dialog` chain for a dialog that is displayed but never
+keyed; `chains_for` had nothing to say about those, which left the first draft of the message
+reading "referenced by (no dialog_choice chain)".
+
+### Regression proof for the new rules
+
+Both rules are green on the whole seed, so the synthetic guards in `rule_guards.rs` are the
+only place either is observed firing. To prove the live wiring end to end as well, one run
+carried two seed mutations at once, reverted afterwards (`git status --porcelain -- db/`
+clean):
+
+- `dialog_screen_buttons.sql`: dialog 2298 (a Blurb the Cellblock chains display) screen
+  96174, `button_type` 2 -> 4.
+- `dialogs.sql`: dialog 5003 (keyed by chain 1343) `ui_screen_type`
+  `DUIST_DefaultDialog` -> `DUIST_DefaultTutorial`.
+
+`CARGO_BUILD_JOBS=4 $L/lane.sh cargo test -p cimmeria-content-engine --test dialog_button_linter`
+-> exit 101, 21 passed / 2 failed:
+
+```text
+  R3 dialog 2298 (DUIST_DefaultBlurb, referenced by castle_cellblock_chains.sql:chain 1018
+  (display_dialog), castle_cellblock_chains.sql:chain 1019 (display_dialog)) screen 96174:
+  button type 4 (id 8, "Accept") is not one of [1, 2], the types that window draws. This is
+  a SOFT-LOCK, not a cosmetic issue: the client counts COOKED buttons to decide whether to
+  send dialogButtonChoice(2298, -1) on close (F8) ...
+
+  R4 dialog 5003: keyed by castle_706_708_chains.sql:chain 1343 but its ui_screen_type is
+  DUIST_DefaultTutorial. TutorialScreen.lua renders no cooked buttons at all, so the player
+  has nothing to press and the chain has nothing to fire it. ...
+```
+
+### Commands (second series)
+
+All prefixed with `CARGO_BUILD_JOBS=4` per the coordinator's memory-pressure notice, and
+scoped to `-p cimmeria-content-engine` only. No out-of-memory, paging-file, `STATUS_NO_MEMORY`
+or `LNK1102` failure occurred.
+
+```text
+CARGO_BUILD_JOBS=4 $L/lane.sh cargo test -p cimmeria-content-engine --test dialog_button_linter
+  -> exit 0; 23 passed, 0 failed, 0 ignored. No skips.
+CARGO_BUILD_JOBS=4 $L/lane.sh cargo fmt --all                                         -> exit 0
+CARGO_BUILD_JOBS=4 $L/lane.sh cargo +1.98.1 clippy -p cimmeria-content-engine --all-targets -- -D warnings
+  -> exit 0, no warnings
+```
+
+### Gap closed, gap opened
+
+Known gap 2 above ("R3's subject set is five Blurbs") is superseded: R3 now covers all 37
+referenced dialogs. The rule still has no live violator, which is why the synthetic guards
+and the recorded mutation both exist.
+
+New gap: R3 and R4 read `ui_screen_type` from the seed, and DU-05 changes that column on
+fifteen dialogs while DU-01's override patches change what the client actually receives. If a
+patch sets a window type the seed does not, the linter checks the wrong window. That is the
+same seed-versus-override split as known gap 1, and the per-zone patch-versus-seed agreement
+test DU-02a/b already owe is what closes it.
+
 ## Judgment call flagged for review
 
 The packet said to mention the linter in

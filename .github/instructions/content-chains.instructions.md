@@ -69,7 +69,8 @@ Review rules:
 
 - A keyed dialog must have zero button rows, or at least one button row on its **final** screen (`dialog_screens.index` is the ordering column, not `screen_id`).
 - Never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003, 5004, 5008 or 5009. They advance only through the zero-button close, and a button on the final screen would satisfy the rule above while still silencing them.
-- A Blurb (`ui_screen_type = 'DUIST_DefaultBlurb'`) draws only button types 1 (More Info) and 2 (Accept), and has no Next. Anything else on a Blurb is invisible.
+- Every button must be one its own window can draw. `BlurbWin` draws only More Info (1) and Accept (2) and has no Next; `DialogWin` draws only Accept (2) and Generic1-3 (4, 5, 6), and Radio and Realization are the same window. **An undrawable button is a soft-lock, not a cosmetic bug** — the client counts cooked buttons when deciding whether to send the close event, so the button is invisible *and* silences the `-1`. A More Info button on a default Dialog is the easy mistake here.
+- Do not key a chain on a Tutorial dialog or a type-0 (`DUIST_None`) dialog. Tutorial renders no cooked buttons at all, so nothing can fire the chain.
 - `dialog_choice` matches on the dialog id alone — there is no `button_id` condition — so every button on a keyed dialog fires the same chain.
 
 [`crates/content-engine/tests/dialog_button_linter.rs`](../../crates/content-engine/tests/dialog_button_linter.rs) enforces all three against the Castle and Castle_CellBlock seeds, alongside [`interact_tag_linter.rs`](../../crates/content-engine/tests/interact_tag_linter.rs) for the interaction-type rule above. Both run with no database. Client evidence for the button behaviour is the Client Contract in [docs/analysis/dialog-ui-redesign/work-packets.md](../../docs/analysis/dialog-ui-redesign/work-packets.md).
