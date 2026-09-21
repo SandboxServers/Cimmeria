@@ -25,6 +25,7 @@
 //! executor arm from the `other =>` catch-all.
 
 mod castle_702_704_executor;
+mod cellblock_dialog_closes;
 mod entity_health_below;
 mod gc1_escort;
 mod grant_xp;
