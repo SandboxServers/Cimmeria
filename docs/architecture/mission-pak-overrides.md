@@ -2,10 +2,12 @@
 
 > **Type**: explanation
 > **Audience**: engineers
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-21
 > **Companion docs**: [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md), [docs/protocol/message-catalog.md](../protocol/message-catalog.md), [docs/content/mission-chains.md](../content/mission-chains.md), [docs/content/equip-from-inventory-pattern.md](../content/equip-from-inventory-pattern.md), [TESTING.md](../../TESTING.md)
 
 This document explains how Cimmeria adds **new mission steps** that the client renders in its quest log without reshipping `CookedDataMissions.pak` to every player. If you only need the operator runbook ("I want to add an Equip-the-X step to mission N"), skip to [Adding a new override](#adding-a-new-override).
+
+The same in-memory-override mechanism carries Cimmeria's item and dialog changes. The mission case is the worked example throughout; [Dialog overrides](#dialog-overrides) covers what is different about dialogs, which is the only category with two distinct override kinds.
 
 ## The problem
 
@@ -69,6 +71,12 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 | Push patched XML after the reply | `crates/services/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
 | Wire encoder for `onVersionInfo` with `InvalidKeys` | `crates/services/src/mercury/protocol/resources.rs:80-113` | `build_version_info` |
 | Wire-format guard | `crates/services/src/mercury/protocol/tests.rs:159-171` | `version_info_per_key_invalidation_round_trips_through_encoder` |
+| Dialog full regeneration | `crates/services/src/base/dialog_overrides/mod.rs` | `DialogOverride`, `DialogScreen`, `DialogButton`, `DIALOG_OVERRIDES`, `generate_dialog_xml` |
+| Dialog patch of a shipped entry | `crates/services/src/base/dialog_overrides/patch.rs` | `DialogPatch`, `ButtonPlan`, `apply_dialog_patch`, `apply_dialog_patches` |
+| Per-zone dialog patch tables | `crates/services/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES` |
+| Shared Server-Build dialog emitter | `crates/services/src/base/dialog_overrides/emit.rs` | `emit_cooked_dialog`, `escape_xml_attr`, `CookedDialog` |
+| Cooked-dialog reader | `crates/services/src/base/dialog_overrides/parse.rs` | `parse_cooked_dialog` |
+| Apply both dialog kinds + bump | `crates/services/src/base/resources/mod.rs` | `ResourceCache::apply_dialog_overrides` |
 
 ## The XML-index gotcha
 
@@ -135,6 +143,74 @@ Two design points worth calling out:
 
 Edit either an override's `mission_id` or `injected_steps_xml` and the hash changes, the bump changes, the client mismatches, and the per-key handshake fires. Same content across two starts → same bump → same MetaData → no churn.
 
+## Dialog overrides
+
+Dialogs ride the same handshake, the same `overridden_elements` bookkeeping and the same bump policy, but they are the one category where a single mechanism was not enough. The catalogue is `CookedDataDialogs.pak` (category 5, 5,405 entries).
+
+What makes dialogs different from missions: the server's `displayDialog` path carries **only the dialog id**. The client draws the window type, every screen's text and speaker, and every button from its own cooked entry. Editing `db/resources/Dialogs/Seed/dialog_screens.sql` changes nothing a player can see. An in-memory override is the only delivery route.
+
+### Two override kinds
+
+**Full regeneration** — `DialogOverride`, in `crates/services/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible.
+
+**Patch** — `DialogPatch`, in `crates/services/src/base/dialog_overrides/patch.rs`. Parses the entry the client already shipped, edits only what the plan names, and re-emits. Use it for one of the 5,405 dialogs the game shipped. Restating tens of screens of voiced dialogue in a Rust source file to move one button is a transcription error waiting to happen; a patch cannot make that mistake, because it never retypes the text.
+
+A patch declares a dialog id, an optional replacement `ui_screen_type`, and one of three button plans:
+
+| Plan | Effect |
+|---|---|
+| `ButtonPlan::Keep` | Every button stays where the cook put it, in document order. Pair with a `ui_screen_type` change. |
+| `ButtonPlan::StripAll` | Every button is removed from every screen. |
+| `ButtonPlan::OnlyOn { screen_id, button_type, button_id, text }` | Every button is removed, then exactly one is placed on the named screen. |
+
+Both kinds serialise through one emitter (`emit_cooked_dialog`), so they cannot drift into two different on-the-wire shapes.
+
+### Why buttons are a gameplay decision
+
+Closing a dialog that has **zero** buttons makes the client send `dialogButtonChoice(dialogId, -1)`. Closing one that has **any** button sends nothing. Clicking a button sends that button's cooked `ButtonID` and closes.
+
+So whether a dialog carries a button decides whether a `dialog_choice` content chain ever fires. A dialog that keys such a chain must have either no buttons at all, or a button on its **final** screen — a button that stops before the final screen soft-locks a player who reads to the end and presses Done. That is what `StripAll` and `OnlyOn` exist to fix.
+
+Button **order** within a screen is load-bearing for the same reason: the client turns a click into a position in the screen's button array and sends whichever `ButtonID` sits at that position, so the parser and emitter both preserve document order.
+
+The full client contract these rules come from — fourteen facts read out of the client rather than inferred — is in [docs/analysis/dialog-ui-redesign/work-packets.md](../analysis/dialog-ui-redesign/work-packets.md).
+
+### Text is kept in its escaped form
+
+A patch carries every screen's `Text` attribute through **exactly as the cook wrote it**, entity references and all. It is never decoded and re-encoded.
+
+That is deliberate. The QA entries write a newline as `&#xA;`, leave apostrophes raw rather than as `&apos;`, and carry `&lt;&lt;playername>>` template markers. Decoding and re-encoding would turn `&#xA;` into a literal newline, which an XML reader then normalises to a space — silently reflowing a line the patch promised not to touch. Keeping the raw form makes "change the buttons, keep the text" a byte-exact promise.
+
+Rust-authored strings go the other way: an authored screen body or button label is written plainly in the source and escaped by `escape_xml_attr` on the way out.
+
+### Attribute order in the emitted XML
+
+Root attributes are alphabetised (`DialogFlags`, `DialogID`, `KismetEventSetID`, `UIScreenType`), which is the Server-Build convention.
+
+Children are not alphabetised, because the Server Build did not alphabetise them either: [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md) shows `<Screens SpeakerID ScreenID Text>`, where alphabetical would be `ScreenID SpeakerID Text`. Comparing the two builds, the cooker's child transform was "move `Text` last, leave everything else in its cooked order".
+
+Applying that same transform to `<Buttons>` is a no-op. All 4,349 `<Buttons>` elements in the committed QA PAK are already `ButtonType ButtonID Text`, with an explicit `</Buttons>` close and none self-closing (census 2026-09-21). So the emitter writes `<Buttons ButtonType ButtonID Text></Buttons>`. Order is a readability choice rather than a functional one — the client's cooked parser looks attributes up by name — but emitting the shipped order keeps a diff between a patched entry and its original legible.
+
+### When a patch cannot apply
+
+A patch transforms an entry that must already exist, so unlike a full regeneration it can fail. Three cases each emit a `warn!` with a stable `reason` field and leave the canonical bytes untouched; none aborts the pass or server startup:
+
+| `reason` | Cause |
+|---|---|
+| `dialog_entry_absent` | The dialog id is not in the loaded catalogue. |
+| `screen_absent` | `OnlyOn` named a `screen_id` the entry does not have. The whole patch is refused, checked before any mutation, so the entry is never left stripped-but-not-repopulated. |
+| `unparsable_entry` | The cooked XML shape no longer parses. |
+
+Field naming follows [docs/architecture/negative-logging-convention.md](negative-logging-convention.md), and each warn has a `LogCapture` guard.
+
+### Adding a dialog patch
+
+1. Add the `DialogPatch` to the zone table — `patches_cellblock.rs` for Castle_CellBlock, `patches_castle.rs` for Castle. One file per zone so two packets editing different zones never collide.
+2. Make `db/resources/Dialogs/Seed/dialog_screen_buttons.sql` agree in the same commit. The client renders from the patch; the seed is the committed record and what the dialog button linter reads. They are kept in sync by hand, exactly as the full-regeneration overrides already require.
+3. Check the two hard rules: a dialog keying a `dialog_choice` chain ends with zero buttons or a button on its final screen; and never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003, 5004 or 5009.
+
+Both zone tables ship empty. A patch plan participates in the metadata bump, so editing one re-invalidates that entry on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
+
 ## Adding a new override
 
 When you want a new client-visible step to appear in the quest log:
@@ -156,6 +232,7 @@ Three layers of regression coverage:
 
 - **Unit tests on the patcher** (`crates/services/src/base/mission_overrides.rs:146-271`, 5 tests) — XML insertion-point arithmetic, malformed-input refusal, the index-pinning guard for mission 641, and the duplicate-render guard for objective display text.
 - **Wire-format guard** on the encoder (`crates/services/src/mercury/protocol/tests.rs:159-171`) — pins that `build_version_info` accepts `&[u32]` and that empty vs populated keys produce different output sizes. Catches a future signature change that drops the slice or makes it optional.
+- **Dialog emitter, parser and patch tests** (`crates/services/src/base/dialog_overrides/`) — byte-exact emitter pins for a screen with zero, one and two buttons; parse/emit round trips that prove escaped text and `&#xA;` survive verbatim; patch tests on inline QA-shape fixtures proving `OnlyOn` leaves exactly one button on the named screen and `StripAll` leaves none while every speaker, screen id and body is unchanged; and `LogCapture` guards on all three skip warns.
 - **Chain-replay tests** for the two missions that use this mechanism (`crates/services/src/cell/content/chain_replay_tests/mission_622.rs` — the sequenced Frost → 80623 → Guard → 80622 → equip flow, the per-step re-loot guards, and the login-restore chains 1006/1007; `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` for chains 1055/1066). These exercise the full `chain_id → trigger → condition → action` round-trip against the seeded `resources.content_*` tables, including the equip-step gating.
 
 See [TESTING.md](../../TESTING.md) for the picker that maps these test types to bug shapes.
@@ -171,5 +248,7 @@ See [TESTING.md](../../TESTING.md) for the picker that maps these test types to 
 - [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md) — the on-disk PAK format, three-way QA / Server / Discord build comparison, why we serve QA-build PAKs.
 - [docs/protocol/message-catalog.md](../protocol/message-catalog.md) — `onVersionInfo` (`Event_NetIn_onVersionInfo`) and the protocol-internal `versionInfoRequest` / `elementDataRequest` events.
 - [docs/content/mission-chains.md](../content/mission-chains.md) — the full mission catalogue; chains 1003/1004 (mission 622) and 1055/1066 (mission 641) use this mechanism.
+- [docs/analysis/dialog-ui-redesign/work-packets.md](../analysis/dialog-ui-redesign/work-packets.md) — the client contract behind the dialog button rules, read out of the client rather than inferred.
+- [docs/architecture/negative-logging-convention.md](negative-logging-convention.md) — the `reason`-field convention the dialog patch skips follow.
 - [docs/content/equip-from-inventory-pattern.md](../content/equip-from-inventory-pattern.md) — the chain-author-facing companion: when and how to wire an equip step using `MissionOverride` plus an `item_equipped` trigger.
 - [TESTING.md](../../TESTING.md) — picker for which test type fits which bug shape; the override path uses unit + wire-format + chain-replay.
