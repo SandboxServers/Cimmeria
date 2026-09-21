@@ -41,6 +41,13 @@ pub(crate) mod kinds {
     pub(crate) const STEP_ADVANCE: &str = "step_advance";
     pub(crate) const MISSION_COMPLETE: &str = "mission_complete";
     pub(crate) const DIALOG: &str = "dialog";
+    /// A non-modal companion line spoken into the chat window by the
+    /// `npc_bark` content action. Deliberately distinct from
+    /// [`DIALOG`]: the whole point of a bark is that it opens no window,
+    /// so a `.bug` report that lumped the two together could not tell
+    /// "the player was interrupted" from "the player was told something
+    /// while they kept moving".
+    pub(crate) const BARK: &str = "bark";
     pub(crate) const ACTION_LIST: &str = "action_list";
     pub(crate) const DEFERRED_SCHEDULED: &str = "deferred_scheduled";
     pub(crate) const DEFERRED_FIRED: &str = "deferred_fired";
