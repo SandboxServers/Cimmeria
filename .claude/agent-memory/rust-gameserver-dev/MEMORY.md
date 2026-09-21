@@ -130,6 +130,10 @@
 
 - [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — dependabot bumps `egui` and `eframe` separately; the egui-only PR is a no-op for the launcher (two egui versions coexist in the lock) and defers all API breakage to the eframe PR. Launcher clippy only runs in the Windows job of `launcher-build.yml`.
 
+## Dialog buttons / seed-patch agreement
+
+- [dialog-button-strip-and-seed-agreement.md](dialog-button-strip-and-seed-agreement.md) — **read before stripping or moving a dialog button.** A linter vacuity floor calibrated on today's data blocks the packet that changes it (floor is 1); a patch-vs-seed test needs a roster pin or deleting a row silently stops checking; the close-path `-1` IS the discard so eviction cannot double-emit; `fire_dialog_choice` sets no `archetype`.
+
 ## Content chains (seed authoring)
 
 - [content-chain-condition-context-gaps.md](content-chain-condition-context-gaps.md) — **read before authoring any `content_*` rows.** `archetype` is NOT in the context on dialog chains so `archetype neq N` fails OPEN; zero-button dialogs DO fire `dialog_choice` with `button_id = -1` (adding a button kills the chain); `complete_objective` auto-complete sends the WRONG status byte; `delay_ms > 0` queues not runs; multi-trigger chains need `load_chain_expansions_for_test`; `set_interaction_type` is zone-wide so clearing can break other players.
