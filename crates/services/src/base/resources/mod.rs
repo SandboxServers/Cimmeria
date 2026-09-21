@@ -207,11 +207,23 @@ fn compute_item_metadata_bump(overrides: &[super::item_overrides::ItemOverride])
 }
 
 /// Companion of [`compute_metadata_bump`] for the dialogs category.
-/// Hashes every field that affects the rendered XML (dialog id, flags,
-/// kismet/screen-type, and each screen's id/speaker/text) so two server
-/// starts on identical override content produce identical bumps and no
-/// re-invalidation churn; any edit changes the bump and refetches.
-fn compute_dialog_metadata_bump(overrides: &[super::dialog_overrides::DialogOverride]) -> u32 {
+///
+/// Hashes every field that affects the rendered XML, across BOTH override
+/// kinds: a full regeneration's id / flags / kismet id / screen type and
+/// each screen's id, speaker, text and buttons; and a patch's dialog id,
+/// replacement screen type and button plan. Two server starts on identical
+/// content produce identical bumps and no re-invalidation churn; any edit
+/// to either kind changes the bump and the client refetches.
+///
+/// Fields are hashed one at a time rather than by hashing the slices, so
+/// an empty button list or an empty patch table writes nothing to the
+/// hasher. That is what makes shipping the two zone patch tables empty a
+/// true no-op: the bump is identical to the pre-patch-engine value and no
+/// client refetches for a change it cannot see.
+fn compute_dialog_metadata_bump(
+    overrides: &[super::dialog_overrides::DialogOverride],
+    patch_tables: &[&[super::dialog_overrides::DialogPatch]],
+) -> u32 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for ov in overrides {
@@ -223,7 +235,17 @@ fn compute_dialog_metadata_bump(overrides: &[super::dialog_overrides::DialogOver
             screen.screen_id.hash(&mut hasher);
             screen.speaker_id.hash(&mut hasher);
             screen.text.hash(&mut hasher);
+            for button in screen.buttons {
+                button.button_type.hash(&mut hasher);
+                button.button_id.hash(&mut hasher);
+                button.text.hash(&mut hasher);
+            }
         }
+    }
+    for patch in patch_tables.iter().copied().flatten() {
+        patch.dialog_id.hash(&mut hasher);
+        patch.ui_screen_type.hash(&mut hasher);
+        patch.buttons.hash(&mut hasher);
     }
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }
@@ -374,25 +396,38 @@ impl ResourceCache {
     }
 
     /// Patch the freshly-loaded `CookedDataDialogs` category with
-    /// Cimmeria's regenerated dialog entries, bumping the category
-    /// metadata so the client's next `versionInfoRequest` triggers the
-    /// per-key invalidation handshake.
+    /// Cimmeria's dialog overrides, bumping the category metadata so the
+    /// client's next `versionInfoRequest` triggers the per-key
+    /// invalidation handshake.
     ///
-    /// Unlike [`Self::apply_item_overrides`] / [`Self::apply_mission_overrides`],
-    /// each override *regenerates* the whole `<COOKED_DIALOG>` entry rather
-    /// than patching a substring, so it works whether or not the dialog id
-    /// was present in the PAK: a corrected existing dialog (Frost's 3995)
-    /// and a brand-new one (the Guard corpse's 3996) are both just an
-    /// `elements.insert(dialog_id, generated)`. There's no "entry not
-    /// present" skip and no "XML shape didn't match" failure — generation
-    /// is infallible.
+    /// Two kinds run here, in this order:
+    ///
+    /// 1. **Full regenerations** (`DIALOG_OVERRIDES`). Each emits a whole
+    ///    `<COOKED_DIALOG>` from Rust-authored text, so it works whether
+    ///    or not the dialog id was present in the PAK: a corrected
+    ///    existing dialog (Frost's 3995) and a brand-new one (the Guard
+    ///    corpse's 3996) are both just an `elements.insert`. There's no
+    ///    "entry not present" skip and no shape failure — generation is
+    ///    infallible.
+    /// 2. **Patches** (`DIALOG_PATCH_TABLES`). Each transforms the entry
+    ///    the client already shipped, so it CAN fail: a missing dialog
+    ///    id, a missing `OnlyOn` screen, or a cooked shape that no longer
+    ///    parses all warn and skip, leaving the canonical bytes intact.
+    ///    See [`super::dialog_overrides::apply_dialog_patches`].
+    ///
+    /// Regenerations run first so a patch could in principle transform a
+    /// regenerated entry; nothing does that today, and a unit test keeps
+    /// the two tables disjoint.
     fn apply_dialog_overrides(
         categories: &mut HashMap<u32, CategoryData>,
     ) -> HashMap<u32, Vec<u32>> {
-        use super::dialog_overrides::{generate_dialog_xml, DIALOG_OVERRIDES};
+        use super::dialog_overrides::{
+            apply_dialog_patches, generate_dialog_xml, no_patches_registered, DIALOG_OVERRIDES,
+            DIALOG_PATCH_TABLES,
+        };
 
         let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
-        if DIALOG_OVERRIDES.is_empty() {
+        if DIALOG_OVERRIDES.is_empty() && no_patches_registered() {
             return overridden;
         }
 
@@ -417,9 +452,24 @@ impl ResourceCache {
             );
         }
 
-        let bump = compute_dialog_metadata_bump(DIALOG_OVERRIDES);
+        applied.extend(apply_dialog_patches(
+            &mut dialogs.elements,
+            DIALOG_PATCH_TABLES,
+        ));
+
+        // Every patch may have been skipped (all targets absent), in which
+        // case nothing changed and bumping would make every client refetch
+        // entries that are byte-identical to what they hold.
+        if applied.is_empty() {
+            return overridden;
+        }
+
+        let bump = compute_dialog_metadata_bump(DIALOG_OVERRIDES, DIALOG_PATCH_TABLES);
         dialogs.metadata = dialogs.metadata.wrapping_add(bump);
         applied.sort_unstable();
+        // A dialog that is both regenerated and patched would otherwise be
+        // named twice in `InvalidKeys`.
+        applied.dedup();
         tracing::info!(
             category = CATEGORY_DIALOGS,
             count = applied.len(),

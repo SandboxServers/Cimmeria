@@ -551,6 +551,7 @@ fn compute_dialog_metadata_bump_is_deterministic_and_change_sensitive() {
             screen_id: 96109,
             speaker_id: 0,
             text: "original",
+            buttons: &[],
         }],
     }];
     const CHANGED_TEXT: &[DialogOverride] = &[DialogOverride {
@@ -562,19 +563,144 @@ fn compute_dialog_metadata_bump_is_deterministic_and_change_sensitive() {
             screen_id: 96109,
             speaker_id: 0,
             text: "edited",
+            buttons: &[],
         }],
     }];
 
-    let a = compute_dialog_metadata_bump(BASE);
+    let a = compute_dialog_metadata_bump(BASE, &[]);
     assert_eq!(
         a,
-        compute_dialog_metadata_bump(BASE),
+        compute_dialog_metadata_bump(BASE, &[]),
         "same content → same bump"
     );
     assert_eq!(a & 0x1, 0x1, "low bit must be set");
     assert_ne!(
         a,
-        compute_dialog_metadata_bump(CHANGED_TEXT),
+        compute_dialog_metadata_bump(CHANGED_TEXT, &[]),
         "a screen-text edit must change the bump so the client refetches",
+    );
+}
+
+/// Adding a button to an authored override must change the bump. Without
+/// the per-button hashing, a Wave 1 packet that put a button on a
+/// Cimmeria-authored dialog would ship XML the client never refetches.
+#[test]
+fn compute_dialog_metadata_bump_changes_when_an_authored_button_changes() {
+    use crate::base::dialog_overrides::{DialogButton, DialogOverride, DialogScreen};
+
+    const NO_BUTTON: &[DialogOverride] = &[DialogOverride {
+        dialog_id: 3996,
+        dialog_flags: 0,
+        kismet_event_set_id: 0,
+        ui_screen_type: 2,
+        screens: &[DialogScreen {
+            screen_id: 96109,
+            speaker_id: 0,
+            text: "body",
+            buttons: &[],
+        }],
+    }];
+    const WITH_BUTTON: &[DialogOverride] = &[DialogOverride {
+        dialog_id: 3996,
+        dialog_flags: 0,
+        kismet_event_set_id: 0,
+        ui_screen_type: 2,
+        screens: &[DialogScreen {
+            screen_id: 96109,
+            speaker_id: 0,
+            text: "body",
+            buttons: &[DialogButton {
+                button_type: 2,
+                button_id: 8,
+                text: "Accept",
+            }],
+        }],
+    }];
+
+    assert_ne!(
+        compute_dialog_metadata_bump(NO_BUTTON, &[]),
+        compute_dialog_metadata_bump(WITH_BUTTON, &[]),
+        "adding a button must change the bump so the client refetches",
+    );
+}
+
+/// A patch plan participates in the bump: changing the plan, the target
+/// screen or the replacement type must re-invalidate, and repeating the
+/// same plan must not. Without this, a Wave 1 packet could edit a plan and
+/// ship XML that every already-connected client keeps a stale copy of.
+#[test]
+fn compute_dialog_metadata_bump_tracks_patch_plans() {
+    use crate::base::dialog_overrides::patch::{ButtonPlan, DialogPatch};
+
+    const STRIP: &[DialogPatch] = &[DialogPatch {
+        dialog_id: 3999,
+        ui_screen_type: None,
+        buttons: ButtonPlan::StripAll,
+    }];
+    const ONLY_ON_96825: &[DialogPatch] = &[DialogPatch {
+        dialog_id: 3999,
+        ui_screen_type: None,
+        buttons: ButtonPlan::OnlyOn {
+            screen_id: 96825,
+            button_type: 4,
+            button_id: 71,
+            text: "Take Missions",
+        },
+    }];
+    const ONLY_ON_96824: &[DialogPatch] = &[DialogPatch {
+        dialog_id: 3999,
+        ui_screen_type: None,
+        buttons: ButtonPlan::OnlyOn {
+            screen_id: 96824,
+            button_type: 4,
+            button_id: 71,
+            text: "Take Missions",
+        },
+    }];
+    const STRIP_AND_RETYPE: &[DialogPatch] = &[DialogPatch {
+        dialog_id: 3999,
+        ui_screen_type: Some(5),
+        buttons: ButtonPlan::StripAll,
+    }];
+
+    let strip = compute_dialog_metadata_bump(&[], &[STRIP]);
+    assert_eq!(
+        strip,
+        compute_dialog_metadata_bump(&[], &[STRIP]),
+        "the same plan must hash to the same bump across server starts",
+    );
+    assert_eq!(strip & 0x1, 0x1, "low bit must be set");
+
+    for (label, other) in [
+        ("plan variant", ONLY_ON_96825),
+        ("target screen", ONLY_ON_96824),
+        ("replacement type", STRIP_AND_RETYPE),
+    ] {
+        assert_ne!(
+            strip,
+            compute_dialog_metadata_bump(&[], &[other]),
+            "a {label} change must change the bump",
+        );
+    }
+    assert_ne!(
+        compute_dialog_metadata_bump(&[], &[ONLY_ON_96825]),
+        compute_dialog_metadata_bump(&[], &[ONLY_ON_96824]),
+        "moving the button to a different screen must change the bump",
+    );
+}
+
+/// An empty patch table is bump-neutral: it writes nothing to the hasher,
+/// so shipping DU-01 with both zone tables empty leaves the dialogs
+/// metadata exactly where the pre-patch-engine code left it and no client
+/// refetches for a change it cannot see.
+#[test]
+fn compute_dialog_metadata_bump_is_unchanged_by_an_empty_patch_table() {
+    use crate::base::dialog_overrides::{DialogPatch, DIALOG_OVERRIDES};
+
+    const EMPTY: &[DialogPatch] = &[];
+    assert_eq!(
+        compute_dialog_metadata_bump(DIALOG_OVERRIDES, &[]),
+        compute_dialog_metadata_bump(DIALOG_OVERRIDES, &[EMPTY, EMPTY]),
+        "empty patch tables must not move the bump",
     );
 }
