@@ -43,6 +43,7 @@ mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod minigame;
 mod player_ghost;
+mod position;
 mod progression_dispatch;
 mod state_field;
 mod system_options;
@@ -156,6 +157,7 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::ActiveSlotUpdate { .. }
         | CellToBaseMsg::SystemOptionsUpdate { .. }
         | CellToBaseMsg::StateFieldUpdate { .. }
+        | CellToBaseMsg::PersistPosition { .. }
         | CellToBaseMsg::RefreshAppearance { .. }
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,
     }

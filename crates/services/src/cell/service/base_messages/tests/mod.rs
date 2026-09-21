@@ -9,6 +9,7 @@ mod bandolier_sync_reload;
 mod bandolier_update;
 mod broadcast_to_witnesses;
 mod create_entity_instance;
+mod disconnect_persist_position;
 mod general;
 mod gm_spawn_ready;
 mod identity_propagation;

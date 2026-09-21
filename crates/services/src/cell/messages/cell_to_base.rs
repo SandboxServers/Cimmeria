@@ -333,6 +333,22 @@ pub enum CellToBaseMsg {
         vendor_template_id: Option<i32>,
     },
 
+    /// Persist the player's last known world + position when the session
+    /// ends (sent from the `DisconnectEntity` arm, before teardown), so the
+    /// next login resumes where the player logged out.
+    ///
+    /// Until this existed, `sgw_player.world_location` / `pos_*` were
+    /// written only by gate travel and the GM teleport, so a returning
+    /// character spawned at the last gate arrival — or the creation point —
+    /// regardless of where they logged out. Same cell-mutates /
+    /// base-persists split as `StateFieldUpdate`; the base handler resolves
+    /// `world_id` from `resources.worlds` the way gate travel does.
+    PersistPosition {
+        player_id: i32,
+        world_name: String,
+        position: [f32; 3],
+    },
+
     /// Persist the player's active bandolier slot.
     ///
     /// `entity_id` is carried so the base handler can broadcast a fresh
