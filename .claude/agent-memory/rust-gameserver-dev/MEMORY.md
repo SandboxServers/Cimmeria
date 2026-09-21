@@ -172,3 +172,7 @@
 - [navmesh-onmesh-assertions-are-weak.md](navmesh-onmesh-assertions-are-weak.md) - **read before asserting a coordinate is on the navmesh.** `is_point_valid` and `find_path(..).is_some()` both pass on the WRONG component.
 - [map-data-placement-toolkit.md](map-data-placement-toolkit.md) - **read before deriving a spawn/region coordinate from a cooked map.** obj_slab chunk pre-filter, heading = atan2(dx,dz), 4-corner BoundingBox convention.
 - [telemetry-last-valid-is-mostly-synthetic.md](telemetry-last-valid-is-mostly-synthetic.md) - **read before using last_valid_* as walkable evidence.** 77% of Harset rejects are (0,0,0); use only the cleaned list.
+
+## UE3 packages / map data
+
+- [ue3-prefab-rig-anatomy.md](ue3-prefab-rig-anatomy.md) — **before decoding a component export or scoping a .umap patch.** Component props start at byte 8; prefab meshes live on imported archetypes; Matinee keys are relative; `.upk` uncompressed vs `.umap` LZO; `crates/upk` is read-only.
