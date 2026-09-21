@@ -45,13 +45,27 @@ movement-physics-advisor should consult-review on **CAT-J-01** and **CAT-J-04**.
 
 ### CAT-J-01 — DialogButtonChoice fires arbitrary content chain with no "is this dialog open?" check
 
-**Status**: ✅ RESOLVED (#479) — `CellEntity::open_dialog_id` is pinned by
-`send_dialog_display` (the single choke point all display paths route
-through) and matched on strict equality in the `DIALOG_BUTTON_CHOICE`
-handler; a forged/replayed choice for an un-opened `dialog_id` is dropped
-with a `warn!` and never fires the chain. The pin is cleared one-shot on a
-valid choice (mirrors python `SGWPlayer.displayedDialogs`), which also
-makes a replayed choice idempotent (closes the replay sub-finding). The
+**Status**: ✅ RESOLVED (#479, widened by DU-08) — `send_dialog_display`
+(the single choke point all display paths route through) records every
+displayed `dialog_id` in `CellEntity::offered_dialog_ids`, and the
+`DIALOG_BUTTON_CHOICE` handler rejects any choice whose id is not in that
+set, with a `warn!`, never firing the chain. A valid choice removes
+exactly that id (one-shot), so a replayed choice is rejected too (closes
+the replay sub-finding).
+
+The original fix used a single `open_dialog_id` pin. DU-08 replaced it
+with a bounded set (8, oldest evicted with a `warn!`) after a Ghidra pass
+on the client showed the pin was too narrow, not too wide: the client
+holds two active dialog slots and evicts the older one through a discard
+path that sends `dialogButtonChoice(oldId, -1)` for a zero-button dialog
+*after* the server has already recorded the replacement. The pin rejected
+that close and silently lost the evicted dialog's `dialog_choice` chain.
+Legacy python kept a dict (`SGWPlayer.displayedDialogs`) for the same
+reason. The authority property is unchanged: the server, not the client,
+decides which ids are answerable, and each is answerable once. Per-session
+state dies with the cell entity (logout, cross-world travel, GM despawn
+all route through `SpaceManager::destroy_entity`); same-world respawn
+deliberately keeps the set. The
 `button_id` stays unvalidated by design — `OnDialogChoice` matches
 `dialog_id` only. **Does not** address CAT-J-04 (no level/faction/prereq
 gate on `accept_or_advance`); a legitimately-opened reward dialog still
@@ -126,11 +140,11 @@ giver's space, or meeting any of the gating conditions the chain author
    without the dialogue-context the chain author assumed.
 
 **Suggested remediation (one line)**
-Pin the currently-open dialog on the player (e.g. `player.open_dialog_id:
-Option<i32>`) at `send_dialog_display` time, clear it on choice or on a new
-dialog open, and reject `DIALOG_BUTTON_CHOICE` whose `dialog_id !=
-player.open_dialog_id` with a `warn!` (consult mission-systems-advisor on
-multi-dialog overlap rules).
+Record every displayed dialog id on the player (a bounded set, e.g.
+`player.offered_dialog_ids`) at `send_dialog_display` time, remove the id
+on a valid choice, and reject `DIALOG_BUTTON_CHOICE` for any id not in the
+set with a `warn!`. A single pin is not enough — see the multi-dialog
+overlap rules in the status note above.
 
 **Would benefit from x64dbg trace?**
 Yes — confirm the precise wire shape (8 bytes vs longer encoding for the

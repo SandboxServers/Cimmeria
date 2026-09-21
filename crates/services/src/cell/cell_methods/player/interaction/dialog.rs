@@ -1,5 +1,5 @@
 //! Dialog interaction handlers: `dialogButtonChoice` (with the #479
-//! open-dialog server-authority gate) and `initialResponse`.
+//! offered-dialog server-authority gate) and `initialResponse`.
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -22,36 +22,42 @@ pub(super) async fn handle_dialog_button_choice(
     let button_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
     tracing::info!(entity_id, dialog_id, button_id, "dialogButtonChoice");
 
-    // Server-authority precondition (CAT-J-01 / #479): the dialog
-    // must actually be open for this player. `open_dialog_id` is
-    // pinned by `send_dialog_display` on every display path and
-    // matched here on strict equality. Without this gate, a forged
-    // `DialogButtonChoice` for any discovered `dialog_id` drives the
-    // bound `OnDialogChoice` chain's actions (GrantXP / GrantItem /
-    // AcceptMission / Teleport / …) with no precondition. Mirrors
-    // python `SGWPlayer.dialogButtonChoice` rejecting a choice whose
-    // id isn't in `displayedDialogs`. The pin is cleared on a valid
-    // choice (one-shot — SGW sends exactly one choice per displayed
-    // dialog_id), which also makes a replayed choice idempotent.
-    let open_dialog_id = space_mgr
-        .get_entity(entity_id)
-        .and_then(|e| e.open_dialog_id);
-    if open_dialog_id != Some(dialog_id) {
+    // Server-authority precondition (CAT-J-01 / #479): the dialog must
+    // have been offered to THIS player. `send_dialog_display` records
+    // every display in `offered_dialog_ids`; the take below removes it.
+    // Without this gate, a forged `DialogButtonChoice` for any discovered
+    // `dialog_id` drives the bound `OnDialogChoice` chain's actions
+    // (GrantXP / GrantItem / AcceptMission / Teleport / …) with no
+    // precondition. Mirrors python `SGWPlayer.dialogButtonChoice`
+    // rejecting a choice whose id isn't in `displayedDialogs`.
+    //
+    // The take happens BEFORE the chain fires, for two reasons: it makes
+    // the choice one-shot (a replay finds the id gone and is rejected),
+    // and a chain action may display a follow-up dialog whose
+    // `send_dialog_display` must be free to record its own id.
+    //
+    // A SET rather than a single pin because the client holds two active
+    // dialogs and evicts the older one, whose zero-button close arrives
+    // after the replacement was displayed (DU-08 / client contract F13).
+    // A single pin rejected that close and silently dropped the evicted
+    // dialog's chain.
+    let offered = space_mgr
+        .get_entity_mut(entity_id)
+        .is_some_and(|e| e.take_offered_dialog(dialog_id));
+    if !offered {
+        let offered_dialog_ids = space_mgr
+            .get_entity(entity_id)
+            .map(|e| e.offered_dialogs())
+            .unwrap_or_default();
         tracing::warn!(
             entity_id,
             dialog_id,
             button_id,
-            open_dialog_id = ?open_dialog_id,
-            "dialogButtonChoice rejected -- no matching open dialog for this player \
+            ?offered_dialog_ids,
+            "dialogButtonChoice rejected -- dialog was never offered to this player \
              (forged/replayed choice or stale client state); chain not fired (#479)"
         );
         return;
-    }
-    // Clear the pin BEFORE firing the chain: a chain action may
-    // open a follow-up dialog (`display_dialog`), whose
-    // `send_dialog_display` re-arms the pin for the next choice.
-    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
-        player.open_dialog_id = None;
     }
 
     let player_id = space_mgr
