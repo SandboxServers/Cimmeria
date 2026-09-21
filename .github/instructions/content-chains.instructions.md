@@ -61,6 +61,20 @@ Review rules:
 - A chain that should repaint an offer after an **abandon** uses the
   `mission_abandoned` trigger, not a second `mission_completed` row.
 
+## Dialog buttons on a `dialog_choice`-keyed dialog
+
+Adding a `dialog_choice` trigger makes a dialog's *button layout* load-bearing, and the layout lives in a different tree (`db/resources/Dialogs/Seed/`). Closing a dialog that has **zero** buttons sends `dialogButtonChoice(id, -1)` and fires the chain; closing one that has **any** button sends nothing at all. So a keyed dialog whose buttons stop before its final screen soft-locks every player who pages to the end and presses Done — Done is a close, not a button.
+
+Review rules:
+
+- A keyed dialog must have zero button rows, or at least one button row on its **final** screen (`dialog_screens.index` is the ordering column, not `screen_id`).
+- Never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003, 5004, 5008 or 5009. They advance only through the zero-button close, and a button on the final screen would satisfy the rule above while still silencing them.
+- Every button must be one its own window can draw. `BlurbWin` draws only More Info (1) and Accept (2) and has no Next; `DialogWin` draws only Accept (2) and Generic1-3 (4, 5, 6), and Radio and Realization are the same window. **An undrawable button is a soft-lock, not a cosmetic bug** — the client counts cooked buttons when deciding whether to send the close event, so the button is invisible *and* silences the `-1`. A More Info button on a default Dialog is the easy mistake here.
+- Do not key a chain on a Tutorial dialog or a type-0 (`DUIST_None`) dialog. Tutorial renders no cooked buttons at all, so nothing can fire the chain.
+- `dialog_choice` matches on the dialog id alone — there is no `button_id` condition — so every button on a keyed dialog fires the same chain.
+
+[`crates/content-engine/tests/dialog_button_linter.rs`](../../crates/content-engine/tests/dialog_button_linter.rs) enforces these rules against the Castle and Castle_CellBlock seeds, alongside [`interact_tag_linter.rs`](../../crates/content-engine/tests/interact_tag_linter.rs) for the interaction-type rule above. Both run with no database. Full reasoning, client evidence and the window/button compatibility tables are in [docs/content/dialog-ui-client-contract.md](../../docs/content/dialog-ui-client-contract.md).
+
 ## Mission grants must gate on `not_active`
 
 Every chain whose actions include `accept_mission` must carry a
@@ -71,31 +85,6 @@ failed-without-`can_repeat_on_fail`, or completed past `num_repeats`),
 so a missing gate no longer corrupts saved mission rows — but it still
 fires the chain's *other* actions (dialogs, highlights) spuriously, so
 the condition remains a review requirement.
-
-## Dialog buttons and the two hard rules
-
-A `dialog_choice` chain only fires if the client actually sends something. It
-sends on a button click, and — **only when the dialog has zero buttons across
-all of its screens** — on close, with `button_id = -1`. A dialog that has any
-button sends nothing when the player closes it.
-
-Two rules follow. Both are enforceable by reading the seed, and both soft-lock
-a real player when broken. Full reasoning, evidence and the window/button
-compatibility tables are in
-[docs/content/dialog-ui-client-contract.md](../../docs/content/dialog-ui-client-contract.md).
-
-- **A dialog that keys a `dialog_choice` chain has either zero buttons, or a
-  button on its FINAL screen.** A button that stops before the last screen
-  leaves a player who reads to the end with nothing to click and a Done that
-  emits nothing.
-- **Never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003,
-  5004, 5008 or 5009.** All are button-less today and key chains through the
-  `-1` close. Any button stops the close emitting — including one the window
-  cannot even draw, since an undrawable button still counts toward the total.
-
-Check the button type against the window as well: `DUIST_DefaultBlurb` can
-only draw More Info (1) and Accept (2); `DUIST_DefaultDialog` can only draw
-Accept (2) and Generic 1-3 (4, 5, 6); `DUIST_DefaultTutorial` draws none.
 
 ## Inventory consumption
 
