@@ -57,6 +57,7 @@ mod patches_cellblock;
 
 #[cfg(test)]
 mod patch_seed_agreement_castle;
+mod patch_seed_agreement_cellblock;
 #[cfg(test)]
 mod patch_tests;
 

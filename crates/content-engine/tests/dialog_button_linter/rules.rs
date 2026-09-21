@@ -44,9 +44,10 @@ pub(crate) struct R1Exemption {
 
 /// The dialogs that ship in the soft-locking shape.
 ///
-/// It held three (3999, 5861, 2576). DU-02b moved 5861's Accept onto
-/// final screen 96789 and 2576's Take Missions onto final screen 96825,
-/// so only 3999 is left; DU-02a empties it.
+/// It held three (3999, 5861, 2576). DU-02a stripped every button from
+/// 3999; DU-02b moved 5861's Accept onto final screen 96789 and 2576's
+/// Take Missions onto final screen 96825. It is now empty, and should stay
+/// empty: fix the dialog rather than exempt it.
 ///
 /// This is a debt register, not a policy: each entry names the packet
 /// that empties it, and [`r1_violations`] fails on a STALE entry as well
@@ -58,11 +59,7 @@ pub(crate) struct R1Exemption {
 /// A fourth violator has never been found: a full scan of the four chain
 /// seeds on 2026-09-21 turned up exactly nineteen `dialog_choice`-keyed
 /// dialogs, of which those three and no others broke R1.
-pub(crate) const R1_ALLOWLIST: [R1Exemption; 1] = [R1Exemption {
-    dialog_id: 3999,
-    reason: "Receive Item (type 4, id 70) on screens 96252-96258; final 96260 is bare",
-    removed_by: "DU-02a (StripAll)",
-}];
+pub(crate) const R1_ALLOWLIST: [R1Exemption; 0] = [];
 
 /// R1 — a chain-keyed dialog has zero buttons, or a button on its final
 /// screen. Also reports allowlist entries that have gone stale.
