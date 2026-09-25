@@ -285,7 +285,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA30
 
-**Status:** Ready. **Scope title:** Fix the docs this audit disproved. **Advisor:** documentation-writer.
+**Status:** Review (branch pushed, 68732034). **Scope title:** Fix the docs this audit disproved. **Advisor:** documentation-writer.
 
 **Scope:** every row in [audit §6](audit.md#6-documentation-that-is-wrong) that no earlier packet fixed. Annotate the 2026-09-18 playtest appendix rows rather than rewriting them.
 
