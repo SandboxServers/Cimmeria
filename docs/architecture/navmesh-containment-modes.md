@@ -109,9 +109,9 @@ seeded in
   `harset_cmdcenter.nav`. Three of them had a 2012 mesh that was
   `enforce`: SGC_W1 and Agnos had no player telemetry to run the old-vs-new
   regression check against, and Harset_StorageRm failed it (the rebuild
-  accepts 16 of the 24 real positions the 2012 mesh accepted). Four of the
-  big exteriors (Agnos, Lucia, Tollana, Beta_Site_Evo_1) are also cropped to
-  fit Recast's caps and have no mesh outside the crop. Per-world evidence:
+  accepts 16 of the 24 real positions the 2012 mesh accepted). The seven big
+  exteriors are tiled meshes (NA28), new at the whole-map extent, and no
+  player has walked them under containment. Per-world evidence:
   [data/spaces/README.md](../../data/spaces/README.md).
 
 **Castle_CellBlock** (`world_id` 12) is the one meshed world left on

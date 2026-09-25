@@ -361,6 +361,19 @@ The drone's `stationary_relaxed` shot is still pinned by NA16's `stationary_los.
 
 The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Castle and cross. You land on the gate dais facing the plaza, can walk off at once, and are not sent back through the gate. The two Lan'toc Jaffa, the two listening-device baskets and Petbe's quarters search object still stand where they were seeded.
 
+### NA28
+
+**Status:** Review (branch `npcai/na28-tiled-navmesh` pushed, no PR). **Scope title:** Tiled navmeshes so the large exteriors get full coverage. **Advisor:** movement-teleport-advisor. **Owner approval (2026-09-25):** "Yes" to the tiled-mesh follow-up NA26 left open.
+
+**Scope:**
+
+- **NavBuilder.** `tile=<cells>` builds one `rcPolyMesh` per tile (RecastDemo's tile border, per-tile logging, `threads=`), filters the small islands Recast leaves on tile seams, checks the 22-bit poly-ref budget, and writes a tiled `XRCT` `.nav`. `tile=0`, the default, is byte-identical to the old builder. The Recast pipeline moved to `recast_pipeline.cpp` so both modes share it. Method: `docs/engine/navmesh-build-pipeline.md` §10.
+- **Loader.** `crates/entity/src/navigation/load.rs` detects the layout by its magic; `load_tiled.rs` adds every tile to one `dtNavMesh`, under per-tile header caps, with the fingerprint hashing the whole file as before. `nav_inspect` reads both layouts and links portals with Detour's test.
+- **Meshes.** Agnos, Lucia, Tollana and Beta_Site_Evo_1 rebuilt at full extent (no crop), Dakara_E1 and both Menfa maps at `cs=0.3`. All stay `navmesh_mode = 'advisory'`; no seed change. Numbers and the old-vs-new comparison are in `data/spaces/README.md`.
+- **Tests.** Synthetic two-tile loader tests (path, height, sight line, slide and recovery across the border; unlinked tiles stay islands; hostile tiled headers), `nav_tiled` round-trip, `NavGraph::from_tiled` portal linking, `nav_inspect` on a tiled file, and `tests/navbuilder_tiled.rs` against a tree-built NavBuilder (seams rejoin, output independent of the thread count, the seam filter is what removes a straddling island). No test was pinned to the seven meshes.
+
+**Acceptance:** entity, navmesh-extractor and services suites green; the probe and coverage comparison in `data/spaces/README.md`. **Owner decisions left open:** none new. Promoting the tree-built NavBuilder to `bin64\NavBuilder.exe` is a local step outside the branch.
+
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:

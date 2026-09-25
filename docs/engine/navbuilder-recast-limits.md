@@ -1,6 +1,6 @@
 # NavBuilder: rebuilding it, and Recast's index limits
 
-> **Last updated**: 2026-09-25 (13-bit span height)
+> **Last updated**: 2026-09-25 (tiling as the cap mitigation)
 > **Status**: Verified against `bin64/NavBuilder.exe` (rebuilt from
 > `deprecated/cpp/src/nav_builder/`) on the 144-chunk Castle extraction.
 
@@ -22,7 +22,7 @@ its precompiled header (`deprecated/cpp/src/stdafx.hpp`) pulls in Boost
 (python, asio, thread), SOCI and TinyXML, and it links `unified_kernel.lib`
 — none of which `setup.ps1` provisions since the Rust rewrite. NavBuilder
 itself needs only a logger and three Boost.uBLAS names, so the script
-compiles the five `nav_builder/*.cpp` files plus `Recast/Source/*.cpp`
+compiles every `nav_builder/*.cpp` file plus `Recast/Source/*.cpp`
 straight into one exe with `cl` (located through `vswhere`), defining
 `NAVBUILDER_STANDALONE` and putting
 `deprecated/cpp/src/nav_builder/standalone/` first on the include path. That
@@ -303,8 +303,24 @@ of cost:
    `bounds=150,550,650,1150` (the interior complex) is 20,743 / 10,152 /
    28,490 at **un-degraded** `maxSimplificationError=1.3 minRegionSize=8`.
    The extractor need not change; Recast clips to the box.
-3. One `.nav` per region of interest, or a tiled Detour mesh — both need
-   server-side loader work and are out of scope here.
+3. **`tile=128`** — build a tiled mesh
+   ([navmesh-build-pipeline.md §10](navmesh-build-pipeline.md#10-tiled-builds-na28-2026-09-25)).
+   Every cap on this page is per `rcPolyMesh`, and a tile is one, so none of
+   them binds on a real map any more: the largest tile of the whole of
+   Beta_Site_Evo_1 at `cs=0.3` has 76,159 spans (0.5 % of the 24-bit cap),
+   540 contour vertices and 512 adjacency edges (under 1 % of the 16-bit
+   caps). What replaces them is the poly-ref budget: tile bits plus poly
+   bits at most 22, which NavBuilder checks and the loader checks again.
+   The 13-bit span height is **not** lifted by tiling, since every tile
+   keeps the whole map's Y range; raise `ch` as before.
+
+The server loads both layouts (`crates/entity/src/navigation/load.rs`
+detects the tiled one by its `XRCT` magic), so this step no longer needs
+loader work. Tiling is not free: seams add vertices and polygons (NA26's
+Beta_Site_Evo_1 crop built tiled has 27,731 polygons against 23,497 in one
+mesh, about 18 % more, and the file grows by the same share), and small
+islands that straddle a seam escape Recast's region filter until
+NavBuilder's seam filter removes them.
 
 Decimating terrain in the extractor does **not** help with the caps: they
 count output contour vertices, which depend on the shape of the walkable

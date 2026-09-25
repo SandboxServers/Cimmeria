@@ -22,10 +22,11 @@ containment must not start snapping players back (the Castle precedent).
   Harset (space 65544) and carry no `world` field; map space ids by coordinate.
 - nav file name = spaces.xml world name lower-cased, NOT `client_map`.
   SandBox plays on Harset_CmdCenter and loads `sandbox.nav` (a copy).
-- Agnos, Lucia, Tollana, Beta_Site_Evo_1 are CROPPED (single-tile XRC cannot
-  hold them); outside the crop there is no mesh. A "player fell through / NPC
-  walks through walls in Lucia" report outside the crop is the crop, not a bug.
-  Crops are in `data/spaces/README.md`. Full coverage needs a tiled Detour mesh.
+- SUPERSEDED by NA28 (2026-09-25, branch `npcai/na28-tiled-navmesh`): NA26
+  shipped Agnos, Lucia, Tollana, Beta_Site_Evo_1 CROPPED and Dakara_E1 /
+  both Menfa at cs=0.6; NA28 replaced all seven with whole-map tiled meshes.
+  If NA28 is not on the branch you are reading, the crops still apply. See
+  [[tiled-navmesh-seams]].
 - Recast span heights are 13-bit: `(bmax.y - bmin.y) / ch > 8191` flattens
   everything above onto one ceiling at exit 0. NavBuilder now refuses it;
   `bounds=` does not crop Y. Tollana ships at `ch=0.3` for this.
