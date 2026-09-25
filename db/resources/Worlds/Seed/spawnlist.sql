@@ -694,7 +694,13 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- reason, so "off-mesh" here is a statement about the navmesh, not about
 -- the placement. World 57 is `navmesh_mode = 'advisory'` (H53), so an
 -- off-mesh spawn is not rubber-banded; it does mean NPC pathing there is
--- dead, which is why every row below is `is_stationary = true`.
+-- dead, which is why every row below was `is_stationary = true`.
+-- NA29 (owner decision 2026-09-25): on the NA26 harset.nav, 303, 304, 306,
+-- 307 and 313 are on-mesh with a clear agent-radius disc (13/13 samples at
+-- r = 0.6) and path to points 3 m away and to the gate, so they are now
+-- `is_stationary = false`. 308 stays stationary: it sits 3.44 m ABOVE the
+-- rebuilt surface and passes `is_point_valid` only on the 4.0 jump
+-- tolerance -- see its own comment.
 -- Consequence: rows on the stargate plaza are placed on-mesh on the hub
 -- component (187); rows in the Jaffa Zone, at the shield towers and on the
 -- palace terrace are placed on the TRUE GEOMETRY FLOOR from `obj_slab` and
@@ -753,8 +759,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- two men standing in the camp street rather than one entity. Both face the
 -- `HarsetRingLeft` pad at (-194.5, -40.2, 81.3), which is how a player
 -- arrives in this quarter.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (303, -160.0, -41.28, 84.0, 4.6335, 57, 204, 'Harset_FormerRaJaffa', NULL, true, 30);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (304, -160.0, -41.28, 89.0, 4.4921, 57, 204, 'Harset_FormerRaJaffa2', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (303, -160.0, -41.28, 84.0, 4.6335, 57, 204, 'Harset_FormerRaJaffa', NULL, false, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (304, -160.0, -41.28, 89.0, 4.4921, 57, 204, 'Harset_FormerRaJaffa2', NULL, false, 30);
 
 -- PL-B-06: the Suspicious Jaffa (1371 / 1322 arrest target). The one
 -- Jaffa Zone placement in this block that IS on-mesh: the shipped mesh has
@@ -776,8 +782,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- y[-42, -41] in both columns. Each faces the tent it belongs to.
 -- `respawn_secs` is set for consistency with D-H17; a prop never dies, so
 -- it never fires.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (306, -186.0, -41.28, 118.5, 2.8993, 57, 164, 'SecondBug', NULL, true, 30);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (307, -147.0, -41.28, 104.5, 3.6932, 57, 164, 'ThirdBug', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (306, -186.0, -41.28, 118.5, 2.8993, 57, 164, 'SecondBug', NULL, false, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (307, -147.0, -41.28, 104.5, 3.6932, 57, 164, 'ThirdBug', NULL, false, 30);
 
 -- PL-B-09 / PL-B-10 / PL-B-11: the three shield towers (1240 "examine 3
 -- Shield Towers"). Strong landmark evidence: the map contains exactly three
@@ -792,6 +798,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- Tower 2's console is the exception: it stands on the -28.25 terrace rather
 -- than on the tower's own -31.1 pad, because the rebuilt mesh says that pad
 -- is an unreachable island. Its heading still faces the tower pivot.
+-- Tower 1's console (308) is the one Harset row NA29 kept `is_stationary`:
+-- on the NA26 mesh its y -41.36 is 3.44 m above the nearest walkable
+-- surface, accepted only by the 4.0 jump tolerance, probably on a raised
+-- platform the extractor does not decode. A mobile NPC here would be
+-- grounded 3.4 m down the first time it paths. Re-pin Y from a `.location`
+-- reading at the tower base before making it mobile.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (308, -223.0, -41.36, 37.72, 4.7124, 57, 243, 'Harset_ShieldTower1', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (309, -168.0, -28.25, 233.5, 1.2094, 57, 243, 'Harset_ShieldTower2', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (310, -3.0, -30.72, 285.5, 0.7378, 57, 243, 'Harset_ShieldTower3', NULL, true, 30);
@@ -836,7 +848,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- Note the shield-tower-2 console (spawn 309) stands on the same terrace;
 -- a tower in the palace forecourt is coherent, and the two regions
 -- deliberately overlap.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (313, -160.5, -28.25, 232.6, 5.0039, 57, 244, 'Harset_PetbeQuarters', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (313, -160.5, -28.25, 232.6, 5.0039, 57, 244, 'Harset_PetbeQuarters', NULL, false, 30);
 
 --
 -- TOC entry 3335 (class 0 OID 0)

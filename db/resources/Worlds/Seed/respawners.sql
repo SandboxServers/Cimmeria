@@ -110,9 +110,10 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (21, 68, 'Command Center Respawn', 0, 0.355, -20);
 
 -- PLACEMENT PL-A-02, provisional until a playtest.
--- Row 20: world 57 Harset. The gate plaza, 3 m west of the gate arrival pin
--- (stargates.stargate_id = 3) so a hub death returns the player to the same
--- place a traveller arrives. Evidence: MAP-GEOMETRY + MAP-LANDMARK.
+-- Row 20: world 57 Harset. The gate plaza, 3 m west of where the gate
+-- arrival pin (stargates.stargate_id = 3) stood until NA29 dropped it, so a
+-- hub death returns the player beside the gate; travellers now arrive on the
+-- gate row itself, about 9 m east on the dais. Evidence: MAP-GEOMETRY + MAP-LANDMARK.
 --   * (-8.0, 34.0) is interior to navmesh component 187 — the 24,770 m^2 hub
 --     component — and so is every sample on the 0.6 m and 1.2 m rings around
 --     it (37/37). That matters more here than for the gate pin: this row is
