@@ -49,7 +49,11 @@ Review rules:
   because re-firing it would not be idempotent. Either give it the
   `step_status` gate it wants, or add a second trigger on the event that
   opens its gate.
-- `player_loaded` and cover chains are still not covered. They keep the
+- A `player_entered_cover` chain gated on mission state is covered the same
+  way: the server replays the enter edge for each cover set the player is
+  already in when the step activates. `player_left_cover` and the cover
+  duration milestones are not replayed.
+- `player_loaded` chains are still not covered. They keep the
   second-trigger rule: add a trigger on the event that opens the gate,
   usually `mission_completed '<id>'` (a second trigger row on the same chain,
   tested through `load_chain_expansions_for_test`, or a paired chain with a
@@ -67,6 +71,31 @@ failed-without-`can_repeat_on_fail`, or completed past `num_repeats`),
 so a missing gate no longer corrupts saved mission rows — but it still
 fires the chain's *other* actions (dialogs, highlights) spuriously, so
 the condition remains a review requirement.
+
+## Dialog buttons and the two hard rules
+
+A `dialog_choice` chain only fires if the client actually sends something. It
+sends on a button click, and — **only when the dialog has zero buttons across
+all of its screens** — on close, with `button_id = -1`. A dialog that has any
+button sends nothing when the player closes it.
+
+Two rules follow. Both are enforceable by reading the seed, and both soft-lock
+a real player when broken. Full reasoning, evidence and the window/button
+compatibility tables are in
+[docs/content/dialog-ui-client-contract.md](../../docs/content/dialog-ui-client-contract.md).
+
+- **A dialog that keys a `dialog_choice` chain has either zero buttons, or a
+  button on its FINAL screen.** A button that stops before the last screen
+  leaves a player who reads to the end with nothing to click and a Done that
+  emits nothing.
+- **Never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003,
+  5004, 5008 or 5009.** All are button-less today and key chains through the
+  `-1` close. Any button stops the close emitting — including one the window
+  cannot even draw, since an undrawable button still counts toward the total.
+
+Check the button type against the window as well: `DUIST_DefaultBlurb` can
+only draw More Info (1) and Accept (2); `DUIST_DefaultDialog` can only draw
+Accept (2) and Generic 1-3 (4, 5, 6); `DUIST_DefaultTutorial` draws none.
 
 ## Inventory consumption (`item_use` / `remove_item` pairing)
 
@@ -139,6 +168,7 @@ two zones' blocks; effect chains start at 2001.
 - `docs/content/extending-the-engine.md` — how-to guide for adding a new trigger / condition / action variant.
 - `docs/content/proposed-extensions.md` — justified roadmap of engine extensions still to come.
 - `docs/content/interaction-flags.md` — full per-bit cookbook with worked patterns.
+- `docs/content/dialog-ui-client-contract.md` — what the client's dialog window really does: window types, drawable button types, close semantics, lure delivery.
 - `docs/content/mission-chains.md` — every chain catalogued.
 - `docs/architecture/data-driven-content-engine.md` — original design doc (historical; superseded by the runtime reference above for what's actually shipping).
 - `python/cell/spaces/Castle_CellBlock.py` — original level script (source of truth for what the auto-converter *should* have produced).

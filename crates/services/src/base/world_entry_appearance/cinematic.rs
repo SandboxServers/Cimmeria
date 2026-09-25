@@ -194,8 +194,9 @@ async fn resend_appearance_after_cinematic(
 
 /// Handle the client's `cancelMovie` (exposed cell method index 108): the
 /// cinematic was dismissed (Esc or Lua-stop). Resends BeingAppearance +
-/// onEntityTint to recover from the cinematic-exit GC, and flips
-/// `cinematic_spam_cancel` so `send_cinematic`'s spam loop stops early.
+/// onEntityTint to recover from the cinematic-exit GC, flips
+/// `cinematic_spam_cancel` so `send_cinematic`'s spam loop stops early, and
+/// releases the first-login AoI hold if one is active.
 pub(crate) async fn handle_cancel_movie(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -216,4 +217,15 @@ pub(crate) async fn handle_cancel_movie(
     resend_appearance_after_cinematic(transport, addr, entity_id, connected, entity_to_addr).await;
 
     tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent; spam guard signalled to stop");
+
+    // The movie is over, so the entity introductions held for it can go —
+    // after the appearance resend, which is what the client needs first.
+    super::cinematic_aoi_hold::release_on_cancel(
+        entity_id,
+        addr,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 }

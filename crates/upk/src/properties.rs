@@ -122,18 +122,12 @@ pub fn parse_tagged_properties_with_end(
             continue;
         }
 
-        if type_name == "ByteProperty" {
-            // Check if there's an extra enum FName by validating the name index.
-            // UE3 VER_ADDED_ENUM_NAME_TO_BYTE_PROPERTY_TAG varies by licensee.
-            // SGW v486: enum FName is present but only if the next 4 bytes decode
-            // to a valid name index. If invalid, skip nothing.
-            if pos + 8 <= data.len() {
-                let enum_name_idx = LittleEndian::read_i32(&data[pos..]) as usize;
-                if enum_name_idx < names.len() {
-                    pos += 8;
-                }
-            }
-        }
+        // ByteProperty: at Epic 486 the tag carries no enum name (that arrived with
+        // VER_ADDED_ENUM_NAME_TO_BYTE_PROPERTY_TAG, much later) and the value is the
+        // raw byte. An earlier heuristic skipped 8 bytes whenever the next i32 looked
+        // like a name index, which it always does: it is the next property's name.
+        // That swallowed the following tag and derailed every object with a byte
+        // property (InterpTrackMove.MoveFrame, SeqEvent.EventType, ...).
 
         // Read value data
         if pos + prop_size > data.len() {
@@ -236,5 +230,50 @@ fn parse_fstring_from_bytes(data: &[u8]) -> String {
         } else {
             String::new()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(list: &[&str]) -> Vec<NameEntry> {
+        list.iter()
+            .map(|n| NameEntry {
+                name: n.to_string(),
+                flags: 0,
+            })
+            .collect()
+    }
+
+    fn tag(out: &mut Vec<u8>, name: i32, ty: i32, size: i32) {
+        for v in [name, 0, ty, 0, size, 0] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+
+    /// A byte property followed by another property. The old heuristic read the
+    /// next tag's name index as an "enum name", skipped 8 bytes, and lost
+    /// everything after the byte. Shape taken from `InterpTrackMove`.
+    ///
+    /// The heuristic fired when the i32 starting at the value byte was a valid name
+    /// index. That i32 is the value byte plus the low three bytes of the next
+    /// tag's name index, so it is small exactly when both are: here value 0 and
+    /// name index 0. Real packages hit it constantly with ~700 names.
+    #[test]
+    fn byte_property_does_not_swallow_the_following_tag() {
+        let names = names(&["Time", "None", "MoveFrame", "ByteProperty", "FloatProperty"]);
+        let mut data = Vec::new();
+        tag(&mut data, 2, 3, 1);
+        data.push(0);
+        tag(&mut data, 0, 4, 4);
+        data.extend_from_slice(&6.05f32.to_le_bytes());
+        data.extend_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0]); // None
+
+        let (props, end) = parse_tagged_properties_with_end(&data, 0, &names);
+        assert_eq!(props.len(), 2, "{props:?}");
+        assert!(matches!(&props[0].value, PropValue::Byte(b) if b == &[0]));
+        assert!(matches!(props[1].value, PropValue::Float(f) if f == 6.05));
+        assert_eq!(end, data.len());
     }
 }

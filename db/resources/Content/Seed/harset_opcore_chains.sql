@@ -14,7 +14,8 @@
 -- docs/analysis/harset-rebuild/work-packets.md to avoid seed-order
 -- sensitivity):
 --   1360 / 567:  6501-6510   (H30; 6501-6505 used, 6506-6510 free)
---   1361:        6511-6530   (H31; 6511-6527 used, 6528-6530 free)
+--   1361:        6511-6530   (H31; 6511-6527 used, 6528 abandon PL-A-07,
+--                            6529-6530 free)
 --   1362:        6531-6550   1363: 6551-6570   1365: 6571-6590
 --   1371:        6591-6605   1372: 6606-6620   1374: 6621-6645
 --   1375:        6646-6665   1377: 6666-6680   1410: 6681-6690
@@ -512,46 +513,36 @@ VALUES (6504, 'add_dialog_set', 2817, NULL, '{"slot": 48, "mission_id": 567}', 0
 -- it would trade a narrow hole for a guaranteed mis-accept.
 
 -- ------------------------------------------------------------
--- 1361 ACCEPTANCE (6511-6513) -- DISABLED pending M0.
+-- 1361 ACCEPTANCE (6511-6513) -- LIVE since placement PL-A-07.
 -- ------------------------------------------------------------
 --
--- *** ALL THREE DISABLED. Blocker: the return door is dark. ***
+-- *** ALL THREE ENABLED. The blocker (a dark return door) is gone. ***
 --
 -- Step 4041 is at Hansen in world 57 and steps 4040/4042 are in world 68,
 -- so the mission REQUIRES a working 68 -> 57 crossing. The only one is
--- chain 6007 (harset_space_chains.sql), which ships `enabled = false`
--- because `NavMesh::is_point_valid` rejects its 2009 arrival coordinate
--- (0, -67.600, -231) and `resolve_recovery_position` has nothing to offer
--- in world 57 — the player would be silently ghosted
--- (`CorrectionSuppressed`) rather than rubber-banded.
+-- chain 6007 (harset_space_chains.sql). H31 shipped these three disabled
+-- because 6007 was disabled; 6007 is now enabled (placement PL-A-06 —
+-- `obj_slab` confirmed a real floor 0.04 m under the recovered arrival
+-- coordinate, 7.41 m clear of the opposing trigger box, and world 57's
+-- `navmesh_mode = 'advisory'` plus the new world-57 respawner row 20
+-- remove the freeze the original objection rested on). The coordinate was
+-- never changed, so nothing about 1361's route has moved.
 --
--- Shipping the acceptance path live against a dark return leg would soft-
--- stick every player who accepts 1361 at step 4041 with no recovery: there
--- is no `fail_objective` executor arm and no chain-authorable abandon. A
--- mission that cannot be started is a strictly better failure than one
--- that cannot be finished.
+-- The biconditional is pinned by
+-- `praxis_acceptance_is_enabled_iff_the_return_door_is` in
+-- mission_1361/acceptance.rs: these three and 6007 move together in both
+-- directions. If 6007 is ever disabled again, disable these three and
+-- 6528 in the same change, or every player who accepts 1361 soft-sticks
+-- at step 4041 — there is still no `fail_objective` executor arm.
 --
--- The campaign rule forbids inventing the coordinate here (every Harset
--- coordinate is recovered from the Python or pinned in M0), and chain 6007
--- belongs to packet H10's file, so this packet cannot fix it.
+-- 6514-6527 were already ENABLED: they are all `step_status`-gated on a
+-- mission that could not be accepted, so they were unreachable rather than
+-- wrong, and they became correct the moment acceptance opened.
 --
--- M0 MUST flip 6007 AND these three rows together. The biconditional is
--- pinned by `praxis_acceptance_is_enabled_iff_the_return_door_is` in
--- mission_1361.rs, so the two cannot drift apart silently.
---
--- 6514-6527 stay ENABLED: they are all `step_status`-gated on a mission
--- that cannot be accepted, so they are unreachable today and correct the
--- moment acceptance opens. Keeping them live means M0 flips three
--- booleans, not seventeen.
---
--- NO `mission_abandoned` CHAIN FOR 1361, DELIBERATELY (packet H54). H54
--- added the trigger, and 1361's offer has exactly the shape that wants
--- it — but 1361 cannot be accepted today, so there is nothing to abandon
--- and an abandon chain would be unreachable code whose `enabled` flag the
--- biconditional above does not pin. Whoever flips 6511-6513 at M0 should
--- author the abandon twin in the same change, modelled on chain 6308 in
--- `harset_jaffa_chains.sql`: clear whatever bind is live on Marsh
--- (template 10), then re-add dsm 5352.
+-- THE ABANDON TWIN IS CHAIN 6528, added by the same placement. H54 added
+-- the `mission_abandoned` trigger and recorded that 1361 wanted a twin but
+-- could not have a useful one while the mission could not be accepted.
+-- Accepting is now possible, so the twin ships; see its own block below.
 --
 -- 1360 NEEDS NONE EITHER. Its offer is not a chain in this file — the
 -- letter is granted upstream — so an abandon leaves no gate reopened and
@@ -569,7 +560,7 @@ VALUES (6504, 'add_dialog_set', 2817, NULL, '{"slot": 48, "mission_id": 567}', 0
 -- "More Info" trap. Keep these two lists in lockstep; the invariant is
 -- pinned by `offer_bind_and_offer_dialog_carry_identical_conditions`.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (6511, '1361 - Offer indicator on Marsh for Humans (DISABLED: needs the 68->57 door, chain 6007/M0)', 'mission', 1361, false, 0);
+VALUES (6511, '1361 - Offer indicator on Marsh for Humans', 'mission', 1361, true, 0);
 
 -- TWO TRIGGER ROWS. `build_chains_from_rows` emits one Chain per trigger row,
 -- sharing this chain's conditions and actions, so both paths run the same gate
@@ -628,7 +619,7 @@ VALUES (6511, 'add_dialog_set', 5254, NULL, '{"slot": 10, "mission_id": 1361}', 
 -- Chain 6512: right-click Marsh -> the Praxis briefing.
 -- Conditions are a byte-for-byte copy of 6511's; see the note there.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (6512, '1361 - Marsh interact: show the Praxis briefing 4457 (DISABLED with 6511)', 'mission', 1361, false, 0);
+VALUES (6512, '1361 - Marsh interact: show the Praxis briefing 4457', 'mission', 1361, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6512, 'interact_tag', 'CmdCenter_Marsh', 'player', false, 0);
@@ -647,7 +638,7 @@ VALUES (6512, 'display_dialog', 4457, NULL, '{}', 0, 0);
 -- Chain 6513: the player clicks Accept on 4457.
 -- No archetype gate — see the ARCHETYPE note above.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (6513, '1361 - Briefing 4457 accepted: accept Meet The Praxis, point at Moh''katan (DISABLED with 6511)', 'mission', 1361, false, 0);
+VALUES (6513, '1361 - Briefing 4457 accepted: accept Meet The Praxis, point at Moh''katan', 'mission', 1361, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6513, 'dialog_choice', '4457', 'player', false, 0);
@@ -999,3 +990,79 @@ VALUES
   -- Terminal step; closes objective 5573 with the mission (note F).
   (6527, 'complete_mission', 1361, NULL, '{}', 0, 2);
   -- GC3: grant_xp -- same as 6501.
+
+-- ------------------------------------------------------------
+-- ABANDON (6528) -- placement PL-A-07
+-- ------------------------------------------------------------
+
+-- Chain 6528: the player abandons 1361 while standing in the Command
+-- Center. Put Marsh's offer back and clear whatever bind the abandoned
+-- mission still had live.
+--
+-- Authored by placement PL-A-07 as the twin H54 asked for and could not
+-- write: until 6511-6513 were enabled, 1361 could not be accepted, so an
+-- abandon chain would have been unreachable code whose `enabled` flag the
+-- 6007 biconditional did not cover. Modelled line-for-line on chain 6308
+-- (`harset_jaffa_chains.sql`), the same shape for mission 1324.
+--
+-- WHY THE UNBINDS COME FIRST, AND WHY ALL OF THEM. `abandonMission` fires
+-- `mission_abandoned` AFTER the instance is removed (H54), so
+-- `mission_status 1361 eq not_active` holds and this chain can carry chain
+-- 6511's gate -- but by the same token the STEP is gone, so nothing here
+-- can tell 4040 from 4694. Every bind 1361 can hold on a world-68 template
+-- is therefore cleared unconditionally; `remove_dialog_set` on a slot that
+-- holds nothing is a no-op (`executor/dialog/mod.rs` -- `retain` removes
+-- nothing and the recomputed flag mask is pushed unchanged). The four slots
+-- and their dsm rows are exactly the ones chains 6511-6527 install:
+--   slot 10  Marsh      5254 (offer)      5253 (turn-in, step 4694)
+--   slot 54  Moh'katan  6397 (step 4040)  6398 (step 4042)
+--   slot 42  Baal       6395
+--   slot 43  Anat       6396
+-- Slot 212 (Hansen, dsm 6399) is NOT cleared: Hansen is in world 57 and
+-- this chain is gated on 68, so that bind is already gone --
+-- `available_interactions` is rebuilt empty on every world entry.
+--
+-- ORDERING IS LOAD-BEARING on slot 10: `interactions/dispatch/interact.rs`
+-- takes the FIRST bound entry that carries a dialog, so 5253 must be gone
+-- before 5254 goes on, or Marsh would keep replaying the turn-in debrief
+-- instead of re-offering the mission.
+--
+-- Gated on world 68 for the same reason 6308 is: the binds are per-player
+-- entries keyed on a template in the player's CURRENT space. Abandoning
+-- from world 57 (mid step 4041, at Hansen) needs nothing -- chain 6511's
+-- `player_loaded` repaints the offer on the way back into the Command
+-- Center.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (6528, '1361 - Abandoned in the Command Center: clear the live binds and repaint Marsh''s offer', 'mission', 1361, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6528, 'mission_abandoned', '1361', 'player', false, 0);
+
+-- Chain 6511's gate, minus its `step_status 1360/4038 neq active`
+-- DISJOINTNESS row: that row exists to keep 6511 off the one right-click
+-- that also runs 6501, and this chain is not driven by a click. Keeping it
+-- would additionally refuse to repaint the offer for a player who abandoned
+-- 1361 while 1360 was somehow re-active, which is not a state worth going
+-- dark for.
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (6528, 'world', 68, NULL, 'eq', NULL, 0),
+  -- Humans only, matching 6511: two `neq` rows because "Human" is four
+  -- archetypes. EArchetype 8 = Jaffa, 6 = Goa'uld
+  -- (entities/defs/enumerations.xml:364,366).
+  (6528, 'archetype', NULL, NULL, 'neq', '8', 1),
+  (6528, 'archetype', NULL, NULL, 'neq', '6', 2),
+  -- Canonical post-abandon guard: the dispatcher populates the context
+  -- after the instance is removed, so this holds on a real abandon and
+  -- refuses to fire if the mission is somehow still active.
+  (6528, 'mission_status', 1361, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (6528, 'remove_dialog_set', 5253, NULL, '{"slot": 10}', 0, 0),
+  (6528, 'remove_dialog_set', 6397, NULL, '{"slot": 54}', 0, 1),
+  (6528, 'remove_dialog_set', 6398, NULL, '{"slot": 54}', 0, 2),
+  (6528, 'remove_dialog_set', 6395, NULL, '{"slot": 42}', 0, 3),
+  (6528, 'remove_dialog_set', 6396, NULL, '{"slot": 43}', 0, 4),
+  -- Last, so it is the only dialog-carrying bind left on slot 10.
+  (6528, 'add_dialog_set', 5254, NULL, '{"slot": 10, "mission_id": 1361}', 0, 5);

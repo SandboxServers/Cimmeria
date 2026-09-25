@@ -139,6 +139,45 @@ impl CoverDetectionTick {
     }
 }
 
+/// Cover sets with a node inside `proximity_radius` of `pos`, each with the
+/// height and quality of its best node there.
+///
+/// The one containment test for "is a player at `pos` in this cover set":
+/// the detection tick diffs it against the player's last-known sets, and the
+/// step-activation replay re-checks it before re-firing a spent edge.
+pub fn sets_near(
+    cover: &Cover,
+    pos: &Vector3,
+    proximity_radius: f32,
+) -> HashMap<i32, (CoverHeight, CoverQuality)> {
+    // 2-m Y-axis tolerance keeps cover detection on the same floor
+    // as the player — 5 m was loose enough to pick up cover on the
+    // floor above/below in multi-level chunks.
+    let node_indices = cover.index.nearby(pos, proximity_radius, Some(2.0));
+
+    // For each chunk represented in the hits, find the highest-quality
+    // node to use as the "representative" for the trigger payload. A
+    // chunk has one cover set; multiple nodes share the chunk_id.
+    let mut chunk_reps: HashMap<i32, (CoverHeight, CoverQuality)> = HashMap::new();
+    for idx in node_indices {
+        let Some(n) = cover.index.node(idx) else {
+            continue;
+        };
+        chunk_reps
+            .entry(n.chunk_id)
+            .and_modify(|rep| {
+                // Prefer higher height; on tie prefer higher quality.
+                if (n.height as u8) > (rep.0 as u8)
+                    || ((n.height as u8) == (rep.0 as u8) && (n.quality as u8) > (rep.1 as u8))
+                {
+                    *rep = (n.height, n.quality);
+                }
+            })
+            .or_insert((n.height, n.quality));
+    }
+    chunk_reps
+}
+
 /// Run one detection tick. `players` is the list of (player_id, position)
 /// pairs currently in the cell — caller computes from the entity table.
 ///
@@ -172,31 +211,7 @@ pub fn run_detection_tick(
 
     for (player_id, player_pos) in players {
         // Query nearby cover nodes; fold to set of cover_set_ids (chunk_ids).
-        // 2-m Y-axis tolerance keeps cover detection on the same floor
-        // as the player — 5 m was loose enough to pick up cover on the
-        // floor above/below in multi-level chunks.
-        let node_indices = cover.index.nearby(player_pos, proximity_radius, Some(2.0));
-
-        // For each chunk represented in the hits, find the highest-quality
-        // node to use as the "representative" for the trigger payload. A
-        // chunk has one cover set; multiple nodes share the chunk_id.
-        let mut chunk_reps: HashMap<i32, (CoverHeight, CoverQuality)> = HashMap::new();
-        for idx in node_indices {
-            let Some(n) = cover.index.node(idx) else {
-                continue;
-            };
-            chunk_reps
-                .entry(n.chunk_id)
-                .and_modify(|rep| {
-                    // Prefer higher height; on tie prefer higher quality.
-                    if (n.height as u8) > (rep.0 as u8)
-                        || ((n.height as u8) == (rep.0 as u8) && (n.quality as u8) > (rep.1 as u8))
-                    {
-                        *rep = (n.height, n.quality);
-                    }
-                })
-                .or_insert((n.height, n.quality));
-        }
+        let chunk_reps = sets_near(cover, player_pos, proximity_radius);
         let current_sets: HashSet<i32> = chunk_reps.keys().copied().collect();
 
         // Diff against the player's prior state.

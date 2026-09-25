@@ -5,6 +5,7 @@
 use super::*;
 
 mod aoi;
+mod aoi_player_intro;
 mod entity_lifecycle;
 mod instances;
 mod movement_validation;
