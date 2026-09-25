@@ -300,6 +300,8 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                 npc.direction = spawn_dir;
             }
         }
+        // An NPC authored in cover respawns holding its slot (NA22).
+        crate::cell::cover::hold_spawn_cover(space_mgr, entity_id, "respawn");
 
         // Phase 4: wire broadcasts. Position update FIRST so the
         // EntityMoved fan-out reaches witnesses before the

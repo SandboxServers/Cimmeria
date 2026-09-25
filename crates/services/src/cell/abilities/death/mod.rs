@@ -142,10 +142,8 @@ pub(super) async fn apply_death_transition(
     //     wasn't in cover. Players also pass through here on PvP death
     //     paths; they don't reserve NPC cover slots, so the call is a
     //     no-op for them but the symmetry is cleaner than gating on
-    //     `target_is_player`.
-    space_mgr
-        .cover
-        .release_for_entity(cimmeria_common::EntityId(target_eid as i32));
+    //     `target_is_player`. Also removes Cover Stance (NA22).
+    crate::cell::cover::release_npc_cover(space_mgr, target_eid, "death");
 
     // 2. Drop the dying NPC from EVERY player's threatened_mobs set —
     //    not just the killer's. Multiple players can have the same mob on

@@ -1,36 +1,60 @@
 //! NPC AI ↔ cover-system bridge.
 //!
 //! The NPC AI tick calls [`maintain_cover_for_npc`] once per tick on
-//! every NPC in `Fighting` state with a known top threat. The function:
+//! every NPC in `Fighting` state with a known top threat. Cover is a
+//! **firing position** (D-NA05, NA22): a slot is only worth holding or
+//! taking if the NPC can shoot its target from it. The function:
 //!
-//! 1. Checks whether the NPC currently holds a cover slot. If yes:
-//!    - **Flank test** via [`is_flanked`]. If the threat has moved
-//!      outside the cover-orient defensive arc, the slot is released
-//!      and the NPC re-evaluates next tick.
-//!    - Otherwise the NPC stays in cover.
-//! 2. If the NPC doesn't hold cover and the threat is out of optimal
-//!    weapon range, attempts to [`pick_best`] a cover slot near the
-//!    NPC. On success: reserves the slot and returns
-//!    [`CoverDecision::MoveToCover`] — the caller sets the NPC's
-//!    `nav_path` to the slot position and broadcasts
-//!    `MobMovementType::Cover` on transition into cover-advance.
-//! 3. Returns [`CoverDecision::NoCover`] when `use_cover` is false,
-//!    when no cover candidate is available, or when the target is
-//!    within optimal range (no need for cover — just fight).
+//! 1. If the NPC holds a slot:
+//!    - **Flank test** via [`is_flanked`]. The threat has moved outside
+//!      the cover's defensive arc → release ([`ReleaseReason::Flanked`]);
+//!      the NPC re-picks next tick.
+//!    - **Reach test.** The target is no longer inside the attack range
+//!      from the slot → release ([`ReleaseReason::OutOfRange`]). Measured
+//!      from the NPC itself once it stands at the slot (the distance the
+//!      attack uses), from the slot while it is still walking there.
+//!    - Otherwise [`CoverDecision::StayInCover`]: an NPC spawned in cover,
+//!      or one that reached its slot, holds it through the fight.
+//! 2. If it holds none, it looks for the best free slot **within attack
+//!    range of the target** ([`PICK_RANGE_MARGIN`] inside it, so a slot is
+//!    not taken at the edge and dropped a step later), whether or not the
+//!    target is in range right now (audit C3: it used to look only when
+//!    out of range). An NPC that already has a shot takes a short walk
+//!    ([`IN_RANGE_MAX_MOVE`]) and, when it finds nothing, does not look
+//!    again for [`SEEK_RETRY`] — the seek hysteresis. On success the slot
+//!    is reserved and the decision is [`CoverDecision::MoveToCover`].
+//! 3. Otherwise [`CoverDecision::NoCover`], with a [`NoCoverReason`].
 //!
-//! This function does not mutate the NPC's `nav_path` or broadcast
-//! movement types — those are caller concerns. Reservation state is
-//! the only thing this function touches, because the reservation
-//! table is the load-bearing invariant for "no two NPCs in the same
-//! slot" and has to be atomically consistent with the decision.
+//! This function does not mutate the NPC's `nav_path`, velocity or Cover
+//! Stance — those are caller concerns (`npc_ai::fight_cover`,
+//! [`super::stance`]). Reservation state (and the seek deferral that rides
+//! on it) is the only thing it touches, because the reservation table is
+//! the load-bearing invariant for "no two NPCs in the same slot" and has
+//! to be atomically consistent with the decision.
 
 use cimmeria_common::{EntityId, Vector3};
-use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use super::reservation::CoverReservations;
 use super::scoring::{is_flanked, pick_best_traced, CoverWeights, PickTrace, ScoringContext};
 use super::types::{Cover, CoverSlotKey};
+
+/// A slot must sit at least this far inside the attack range from the
+/// target to be picked. With the reach test releasing only past the range
+/// itself, this is the hysteresis band that keeps a strafing target from
+/// flipping an NPC between "take the slot" and "leave it" every tick.
+pub const PICK_RANGE_MARGIN: f32 = 2.0;
+/// The longest walk to cover an NPC that already has a shot will take.
+pub const IN_RANGE_MAX_MOVE: f32 = 10.0;
+/// After a seek finds nothing (in range) or the chosen slot turns out to
+/// be unreachable, the NPC does not look again for this long.
+pub const SEEK_RETRY: Duration = Duration::from_secs(4);
+/// An NPC within this horizontal distance of its slot stands at it: the
+/// reach test switches to the NPC's own distance, and (with no path left
+/// to walk) the fight tick treats it as arrived. Also the spawn-hold
+/// radius: an NPC authored within this of a node spawns holding it.
+pub const COVER_ARRIVE_RADIUS: f32 = 1.5;
 
 /// Attempt to reserve `slot` for `npc_id` on a held reservation guard,
 /// emitting a `warn!` per docs/architecture/negative-logging-convention.md
@@ -44,7 +68,7 @@ use super::types::{Cover, CoverSlotKey};
 /// the guarded outer function (which is unreachable from the current
 /// production code — the warn is purely defensive against future
 /// async refactors that break the single-guard invariant).
-fn try_reserve_or_warn(
+pub(super) fn try_reserve_or_warn(
     reservations_guard: &mut MutexGuard<'_, CoverReservations>,
     npc_id: EntityId,
     slot: CoverSlotKey,
@@ -79,7 +103,7 @@ fn try_reserve_or_warn(
 /// worst case is some live reservations are inconsistent and the next
 /// scoring pass will re-evaluate. Better to log + continue than to
 /// panic the cell process and kill every active player session.
-fn lock_or_recover(m: &Mutex<CoverReservations>) -> MutexGuard<'_, CoverReservations> {
+pub(super) fn lock_or_recover(m: &Mutex<CoverReservations>) -> MutexGuard<'_, CoverReservations> {
     match m.lock() {
         Ok(g) => g,
         Err(poisoned) => {
@@ -92,25 +116,53 @@ fn lock_or_recover(m: &Mutex<CoverReservations>) -> MutexGuard<'_, CoverReservat
     }
 }
 
+/// Why a held slot was given up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReleaseReason {
+    /// The threat left the cover's defensive arc.
+    Flanked,
+    /// The target is out of attack range from the slot.
+    OutOfRange,
+    /// The fight tick could not route to the slot (set by the caller, not
+    /// by [`maintain_cover_for_npc`]).
+    Unreachable,
+    /// The reservation named a node the index does not hold (defensive;
+    /// unreachable while the index is immutable).
+    Stale,
+}
+
+impl ReleaseReason {
+    /// The `decision_outcome` value of the release row. Treat as API.
+    pub fn outcome(self) -> &'static str {
+        match self {
+            Self::Flanked => "cover_released_flanked",
+            Self::OutOfRange => "cover_released_out_of_range",
+            Self::Unreachable => "cover_released_unreachable",
+            Self::Stale => "cover_released_stale",
+        }
+    }
+}
+
 /// The decision returned by [`maintain_cover_for_npc`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CoverDecision {
-    /// NPC is already in cover; the cover still defends. Caller should
-    /// fire ability from current position (or path closer if out of
-    /// weapon range, but not via the cover system — direct chase).
+    /// NPC holds this slot and it still defends and reaches the target.
+    /// The caller walks the NPC to `pos` if it is not there yet, and
+    /// otherwise holds it there and fires.
     StayInCover { slot: CoverSlotKey, pos: Vector3 },
-    /// NPC was just released from a flank-detected slot. Caller should
-    /// continue the fight cycle normally; cover will be re-picked next
-    /// tick if appropriate.
-    Released { prior_slot: CoverSlotKey },
+    /// NPC gave up its slot. Caller stops the walk toward it and continues
+    /// the fight cycle normally; cover will be re-picked next tick if
+    /// appropriate.
+    Released {
+        prior_slot: CoverSlotKey,
+        reason: ReleaseReason,
+    },
     /// NPC should move to this cover slot. The slot is already reserved
     /// for this NPC at the time this enum is constructed; the caller
-    /// must update `nav_path` to the slot position and (if desired)
-    /// broadcast `MobMovementType::Cover` to AoI witnesses.
+    /// must route the NPC to the slot position.
     MoveToCover { slot: CoverSlotKey, pos: Vector3 },
     /// No cover branch — caller falls back to existing pursue-target
-    /// logic. This is the "in range and ok" path and the "no candidates
-    /// available" path.
+    /// logic.
     NoCover,
 }
 
@@ -122,13 +174,17 @@ pub enum NoCoverReason {
     /// The NPC does not use cover.
     UseCoverFalse,
 
-    /// Nothing unreserved inside `MAX_COVER_DISTANCE` and the vertical band.
+    /// Out of range: nothing unreserved inside `MAX_COVER_DISTANCE`, the
+    /// vertical band and the attack range of the target.
     NoCandidateInRadius,
     /// The chosen slot was taken between pick and reserve.
     ReserveLost,
-    /// The target is in range and the NPC holds no slot: cover is only
-    /// sought out of range today (audit C3).
+    /// The target is in range and no free slot within
+    /// [`IN_RANGE_MAX_MOVE`] reaches it: the NPC fights where it stands.
     InRangeNoBetterSlot,
+    /// A recent seek found nothing (or an unreachable slot); the next one
+    /// waits out [`SEEK_RETRY`].
+    SeekCooldown,
     /// The NPC's world has no `resources.worlds` id, so it has no cover.
     NoWorld,
     /// The picked index did not resolve to a node (defensive; unreachable
@@ -144,6 +200,7 @@ impl NoCoverReason {
             Self::NoCandidateInRadius => "no_candidate_in_radius",
             Self::ReserveLost => "reserve_lost",
             Self::InRangeNoBetterSlot => "in_range_no_better_slot",
+            Self::SeekCooldown => "seek_cooldown",
             Self::NoWorld => "no_world",
             Self::IndexMiss => "index_miss",
         }
@@ -159,40 +216,44 @@ pub struct CoverTrace {
     pub pick: Option<PickTrace>,
 }
 
+/// The NPC-side inputs of one cover decision.
+#[derive(Debug, Clone, Copy)]
+pub struct CoverQuery {
+    pub npc_id: EntityId,
+    pub npc_pos: Vector3,
+    /// The NPC's `resources.worlds.world_id`; a new slot is only picked
+    /// from that world's cover (`None` never picks one). A slot already
+    /// held is kept or released on its own merits.
+    pub world_id: Option<i32>,
+    pub threat_pos: Vector3,
+    /// Whether the target is inside `attack_range` of the NPC now.
+    pub in_range: bool,
+    /// The chosen ability's reach (`max_range`).
+    pub attack_range: f32,
+    /// `CellEntity.use_cover`. False short-circuits to `NoCover`.
+    pub use_cover: bool,
+    pub now: Instant,
+}
+
+/// Horizontal (XZ) distance.
+pub(crate) fn horizontal(a: &Vector3, b: &Vector3) -> f32 {
+    ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
+}
+
 /// Run one tick of cover maintenance for the given NPC. See module
 /// docs for the decision tree.
-///
-/// `world_id` is the NPC's `resources.worlds.world_id`; a new slot is only
-/// picked from that world's cover (`None` never picks one). A slot already
-/// held is kept or released on its own merits.
-///
-/// `use_cover` is read from the entity's `CellEntity.use_cover` field.
-/// When false the function short-circuits to `NoCover` immediately.
 pub fn maintain_cover_for_npc(
-    npc_id: EntityId,
-    npc_pos: Vector3,
-    world_id: Option<i32>,
-    threat_pos: Vector3,
-    in_range: bool,
-    use_cover: bool,
+    q: CoverQuery,
     cover: &Cover,
     weights: &CoverWeights,
 ) -> CoverDecision {
-    maintain_cover_for_npc_traced(
-        npc_id, npc_pos, world_id, threat_pos, in_range, use_cover, cover, weights,
-    )
-    .0
+    maintain_cover_for_npc_traced(q, cover, weights).0
 }
 
 /// [`maintain_cover_for_npc`] plus why: the no-cover reason and the
 /// scoring pass. The decision is the same.
 pub fn maintain_cover_for_npc_traced(
-    npc_id: EntityId,
-    npc_pos: Vector3,
-    world_id: Option<i32>,
-    threat_pos: Vector3,
-    in_range: bool,
-    use_cover: bool,
+    q: CoverQuery,
     cover: &Cover,
     weights: &CoverWeights,
 ) -> (CoverDecision, CoverTrace) {
@@ -206,92 +267,116 @@ pub fn maintain_cover_for_npc_traced(
         )
     };
     let decided = |d| (d, CoverTrace::default());
-    if !use_cover {
+    if !q.use_cover {
         return no_cover(NoCoverReason::UseCoverFalse, None);
     }
+    let npc_id = q.npc_id;
 
     // Hold the reservations lock for the entire pick+reserve sequence.
     // Three separate lock acquisitions previously opened a TOCTOU window
     // where another NPC could reserve the same slot between `pick_best`
-    // and `reserve_for_entity`, and where `ally_counts` could go stale
-    // between the count pass and the reserve. Single-guard scope below
-    // closes both races. `lock_or_recover` returns the inner data even
-    // on a poisoned mutex (a poisoned cover-reservation table is
-    // recoverable — the worst case is some live reservations get lost,
-    // not data corruption — so we log + continue rather than panic the
-    // cell process).
+    // and `reserve_for_entity`, and where the ally positions could go
+    // stale between the collection pass and the reserve. Single-guard
+    // scope below closes both races.
     let mut reservations_guard = lock_or_recover(&cover.reservations);
 
     // Step 1: in cover already?
     if let Some(slot) = reservations_guard.slot_for_entity(npc_id) {
-        if let Some(node) = cover.index.node_by_key(slot) {
-            let flanked = is_flanked(node.pos, node.orient, threat_pos);
-            tracing::debug!(
-                target: "cover.flank_check",
-                npc_id = npc_id.0,
-                slot = ?slot,
-                node_x = node.pos.x,
-                node_y = node.pos.y,
-                node_z = node.pos.z,
-                node_orient = node.orient,
-                threat_x = threat_pos.x,
-                threat_y = threat_pos.y,
-                threat_z = threat_pos.z,
-                flanked,
-                "cover flank check -- an NPC holding a cover slot tested whether its threat is outside the defensive arc"
-            );
-            if flanked {
-                // Release and let the caller re-evaluate next tick.
-                reservations_guard.release_for_entity(npc_id);
-                return decided(CoverDecision::Released { prior_slot: slot });
-            }
-            return decided(CoverDecision::StayInCover {
-                slot,
-                pos: node.pos,
+        let Some(node) = cover.index.node_by_key(slot) else {
+            // Stale reservation — slot index gone. The spatial index is
+            // immutable post-startup; this branch defends against a
+            // future feature that removes nodes at runtime (none today).
+            reservations_guard.release_for_entity(npc_id);
+            return decided(CoverDecision::Released {
+                prior_slot: slot,
+                reason: ReleaseReason::Stale,
+            });
+        };
+        let flanked = is_flanked(node.pos, node.orient, q.threat_pos);
+        let at_slot = horizontal(&q.npc_pos, &node.pos) <= COVER_ARRIVE_RADIUS;
+        let reaches = if at_slot {
+            q.in_range
+        } else {
+            node.pos.distance_to(&q.threat_pos) <= q.attack_range
+        };
+        tracing::debug!(
+            target: "cover.flank_check",
+            npc_id = npc_id.0,
+            slot = ?slot,
+            node_x = node.pos.x,
+            node_y = node.pos.y,
+            node_z = node.pos.z,
+            node_orient = node.orient,
+            threat_x = q.threat_pos.x,
+            threat_y = q.threat_pos.y,
+            threat_z = q.threat_pos.z,
+            flanked,
+            at_slot,
+            reaches,
+            "cover flank check -- an NPC holding a cover slot tested whether its threat is outside the defensive arc"
+        );
+        let reason = if flanked {
+            Some(ReleaseReason::Flanked)
+        } else if !reaches {
+            Some(ReleaseReason::OutOfRange)
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            // Release and let the caller re-evaluate next tick.
+            reservations_guard.release_for_entity(npc_id);
+            return decided(CoverDecision::Released {
+                prior_slot: slot,
+                reason,
             });
         }
-        // Stale reservation — slot index gone. The spatial index is
-        // immutable post-startup; this branch defends against the
-        // pathological case where a future feature removes nodes at
-        // runtime (none today).
-        reservations_guard.release_for_entity(npc_id);
-        return decided(CoverDecision::Released { prior_slot: slot });
+        return decided(CoverDecision::StayInCover {
+            slot,
+            pos: node.pos,
+        });
     }
 
-    // Step 2: target in range and no current cover → no need for cover.
-    if in_range {
-        return no_cover(NoCoverReason::InRangeNoBetterSlot, None);
+    // Step 2: the seek hysteresis. An NPC that has a shot and found no
+    // slot a moment ago keeps shooting rather than rescanning every tick.
+    if q.in_range && reservations_guard.seek_deferred(npc_id, q.now) {
+        return no_cover(NoCoverReason::SeekCooldown, None);
     }
 
-    // Step 3 needs a world to search: cover positions are per world, and
-    // an NPC in a world with no `resources.worlds` id has no cover.
-    let Some(world_id) = world_id else {
+    // Cover positions are per world, and an NPC in a world with no
+    // `resources.worlds` id has no cover.
+    let Some(world_id) = q.world_id else {
         return no_cover(NoCoverReason::NoWorld, None);
     };
 
-    // Step 3: pick + reserve a new slot under the same guard. Squad-
-    // affinity counts walk the reservation table once; pick_best runs
-    // immediately after; reserve happens before the guard drops. No
-    // window for another caller to claim the same slot mid-sequence.
-    let mut ally_counts: HashMap<i32, usize> = HashMap::new();
-    for (other_id, slot) in reservations_guard.iter() {
-        if other_id == npc_id {
-            continue;
-        }
-        *ally_counts.entry(slot.chunk_id).or_insert(0) += 1;
-    }
-
-    let ctx = ScoringContext::new(npc_pos, threat_pos);
+    // Step 3: pick + reserve a new slot under the same guard. The ally
+    // positions come from the reservation table; pick_best runs
+    // immediately after; reserve happens before the guard drops.
+    let ally_slots: Vec<Vector3> = reservations_guard
+        .iter()
+        .filter(|&(other_id, _)| other_id != npc_id)
+        .filter_map(|(_, slot)| cover.index.node_by_key(slot).map(|n| n.pos))
+        .collect();
+    let max_move = if q.in_range {
+        IN_RANGE_MAX_MOVE
+    } else {
+        super::MAX_COVER_DISTANCE
+    };
+    let ctx = ScoringContext::new(q.npc_pos, q.threat_pos)
+        .with_limits((q.attack_range - PICK_RANGE_MARGIN).max(0.0), max_move);
     let pick = pick_best_traced(
         &cover.index,
         world_id,
         &reservations_guard,
         &ctx,
         weights,
-        &ally_counts,
+        &ally_slots,
     );
     let chosen_idx = match pick.best {
         Some(c) => c.idx,
+        None if q.in_range => {
+            reservations_guard.defer_seek(npc_id, q.now + SEEK_RETRY);
+            return no_cover(NoCoverReason::InRangeNoBetterSlot, Some(pick));
+        }
         None => return no_cover(NoCoverReason::NoCandidateInRadius, Some(pick)),
     };
     let node = match cover.index.node(chosen_idx) {
@@ -320,316 +405,4 @@ pub fn maintain_cover_for_npc_traced(
             pick: Some(pick),
         },
     )
-}
-
-#[cfg(test)]
-mod ai_integration_tests {
-    use super::*;
-    use crate::cell::cover::types::{CoverHeight, CoverNode, CoverQuality};
-
-    fn cover_with(nodes: Vec<CoverNode>) -> Cover {
-        Cover::from_loaded(Vec::new(), nodes)
-    }
-
-    fn n(chunk_id: i32, node_id: i32, x: f32, z: f32, orient: f32) -> CoverNode {
-        CoverNode {
-            chunk_id,
-            node_id,
-            world_id: crate::cell::cover::TEST_WORLD_ID,
-            pos: Vector3::new(x, 0.0, z),
-            orient,
-            height: CoverHeight::Mid,
-            quality: CoverQuality::Best,
-            width: 1.0,
-            tail: [0; 4],
-        }
-    }
-
-    #[test]
-    fn use_cover_false_returns_no_cover() {
-        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
-        let dec = maintain_cover_for_npc(
-            EntityId(1),
-            Vector3::zero(),
-            Some(crate::cell::cover::TEST_WORLD_ID),
-            Vector3::new(20.0, 0.0, 0.0),
-            false,
-            false, // use_cover=false
-            &cover,
-            &CoverWeights::default(),
-        );
-        assert_eq!(dec, CoverDecision::NoCover);
-    }
-
-    #[test]
-    fn in_range_no_current_cover_returns_no_cover() {
-        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
-        let dec = maintain_cover_for_npc(
-            EntityId(1),
-            Vector3::zero(),
-            Some(crate::cell::cover::TEST_WORLD_ID),
-            Vector3::new(3.0, 0.0, 0.0),
-            true, // in_range=true
-            true,
-            &cover,
-            &CoverWeights::default(),
-        );
-        assert_eq!(dec, CoverDecision::NoCover);
-    }
-
-    #[test]
-    fn out_of_range_with_candidate_returns_move_to_cover() {
-        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
-        let dec = maintain_cover_for_npc(
-            EntityId(1),
-            Vector3::zero(),
-            Some(crate::cell::cover::TEST_WORLD_ID),
-            Vector3::new(20.0, 0.0, 0.0),
-            false,
-            true,
-            &cover,
-            &CoverWeights::default(),
-        );
-        match dec {
-            CoverDecision::MoveToCover { slot, .. } => {
-                assert_eq!(slot.chunk_id, 1);
-                assert_eq!(slot.node_id, 0);
-                // Slot must be reserved after the call.
-                let r = cover.reservations.lock().unwrap();
-                assert_eq!(r.holder(slot), Some(EntityId(1)));
-            }
-            other => panic!("expected MoveToCover, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn flanked_npc_releases_and_returns_released() {
-        // Cover at (5,0,0) facing +X (orient=0). NPC reserves it.
-        // Threat starts at (20,0,0) — in defensive arc.
-        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
-        cover
-            .reservations
-            .lock()
-            .unwrap()
-            .reserve_for_entity(EntityId(42), CoverSlotKey::new(1, 0))
-            .unwrap();
-
-        // Threat moves to (-20, 0, 0) — flanked.
-        let dec = maintain_cover_for_npc(
-            EntityId(42),
-            Vector3::new(5.0, 0.0, 0.0),
-            Some(crate::cell::cover::TEST_WORLD_ID),
-            Vector3::new(-20.0, 0.0, 0.0),
-            false,
-            true,
-            &cover,
-            &CoverWeights::default(),
-        );
-        match dec {
-            CoverDecision::Released { prior_slot } => {
-                assert_eq!(prior_slot, CoverSlotKey::new(1, 0));
-                // Slot must be freed.
-                let r = cover.reservations.lock().unwrap();
-                assert!(r.holder(prior_slot).is_none());
-            }
-            other => panic!("expected Released, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn squad_affinity_routes_two_npcs_to_different_chunks() {
-        // Two chunks of equal quality, each with one cover slot. NPC #1
-        // reserves a slot in chunk 1; NPC #2 then calls maintain_cover.
-        // The squad-affinity penalty must steer NPC #2 away from chunk
-        // 1's remaining slots and into chunk 2 instead. Pre-fix (no
-        // affinity), NPC #2 picks whichever chunk happens to score
-        // first on quality+distance — clustering all NPCs into one
-        // chunk and breaking AI-pacing variety.
-        //
-        // Layout: NPC at origin, threat at +X (20,0,0).
-        //  - chunk 1 has two slots — one for NPC #1 (pre-reserved on
-        //    node 0), one open on node 1. Open slot at (5,0,0) is the
-        //    closest cover, best baseline geometry.
-        //  - chunk 2 has one slot at (8,0,0): same orient, worse move.
-        // Without affinity: NPC #2 picks chunk 1's open slot (node 1)
-        // because it has the highest score (closer to NPC).
-        // With affinity (1 ally already in chunk 1 from the pre-seeded
-        // reservation), chunk 1's open slot is penalised and chunk 2
-        // wins. Removing the `ally_counts` wiring in maintain_cover
-        // sends NPC #2 back to chunk 1's open slot.
-        let cover = cover_with(vec![
-            n(1, 0, 5.5, 0.0, 0.0), // chunk 1 slot 0 — reserved by ally
-            n(1, 1, 5.0, 0.0, 0.0), // chunk 1 slot 1 — open, best baseline
-            n(2, 0, 8.0, 0.0, 0.0), // chunk 2 slot — worse baseline
-        ]);
-        // Pin NPC #1 in chunk 1 (on slot 0) so chunk 1 carries an
-        // ally count of 1; node 1 stays available.
-        cover
-            .reservations
-            .lock()
-            .unwrap()
-            .reserve_for_entity(EntityId(1), CoverSlotKey::new(1, 0))
-            .unwrap();
-
-        let dec = maintain_cover_for_npc(
-            EntityId(2),
-            Vector3::zero(),
-            Some(crate::cell::cover::TEST_WORLD_ID),
-            Vector3::new(20.0, 0.0, 0.0),
-            false,
-            true,
-            &cover,
-            &CoverWeights::default(),
-        );
-        match dec {
-            CoverDecision::MoveToCover { slot, .. } => {
-                assert_eq!(
-                    slot.chunk_id, 2,
-                    "squad-affinity must penalise chunk 1 (already has ally) so the \
-                     second NPC routes to chunk 2 instead; got {slot:?}. Removing the \
-                     penalty term in scoring.rs would pick chunk 1 here (the slot is \
-                     marginally closer to the NPC by 1 z-unit but has the affinity \
-                     penalty against it)."
-                );
-            }
-            other => panic!("expected MoveToCover into chunk 2, got {other:?}"),
-        }
-    }
-
-    /// **Negative-logging regression guard (audit #482 P0).** When the
-    /// reservation table reports a slot already held by a *different*
-    /// entity, the reserve attempt must emit a structured `warn!` with
-    /// `target = "cover.reservation"` and `reason = "cover_slot_taken"`
-    /// before falling back to `Err(())`. Without this warn, a future
-    /// async refactor that breaks the single-guard invariant in
-    /// `maintain_cover_for_npc` would silently degrade NPC cover
-    /// decisions — no log line names the race, no SigNoz query catches
-    /// the rate.
-    ///
-    /// Bug shape this catches: revert the warn to a bare `Err(())`
-    /// return and the test asserts on a missing event.
-    #[test]
-    fn try_reserve_warns_when_slot_taken_by_other_holder() {
-        use crate::test_support::LogCapture;
-        use tracing::Level;
-
-        let capture = LogCapture::install();
-
-        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
-        // Pre-occupy the slot with a DIFFERENT entity so the
-        // try_reserve call lands on the AlreadyReserved path.
-        cover
-            .reservations
-            .lock()
-            .unwrap()
-            .reserve_for_entity(EntityId(99), CoverSlotKey::new(1, 0))
-            .unwrap();
-
-        let mut guard = cover.reservations.lock().unwrap();
-        let result = try_reserve_or_warn(&mut guard, EntityId(42), CoverSlotKey::new(1, 0));
-        drop(guard);
-
-        assert!(
-            result.is_err(),
-            "race-lost path must return Err so the caller falls back to NoCover"
-        );
-
-        let event = capture
-            .find_event(
-                Level::WARN,
-                "cover reserve_for_entity lost the race",
-                "cover_slot_taken",
-            )
-            .unwrap_or_else(|| {
-                panic!(
-                    "must emit warn at target=cover.reservation with \
-                     reason=cover_slot_taken; reverting the warn site \
-                     breaks ops visibility of the cover-race condition. \
-                     Captured: {:#?}",
-                    capture.all()
-                )
-            });
-        assert!(
-            event.has_field("npc_id", "42"),
-            "warn must carry the npc_id field for correlation: {event:#?}"
-        );
-        assert!(
-            event.has_field("holder", "99"),
-            "warn must carry the current slot holder for correlation: {event:#?}"
-        );
-        assert!(
-            event.has_field("chunk_id", "1"),
-            "warn must carry the slot's chunk_id: {event:#?}"
-        );
-    }
-
-    /// Same helper, but called for the entity that ALREADY holds the
-    /// slot — idempotent re-reserve must NOT emit a warn (the
-    /// reservation contract treats this as Ok(())).
-    #[test]
-    fn try_reserve_no_warn_on_idempotent_reserve_by_same_holder() {
-        use crate::test_support::LogCapture;
-        use tracing::Level;
-
-        let capture = LogCapture::install();
-
-        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
-        cover
-            .reservations
-            .lock()
-            .unwrap()
-            .reserve_for_entity(EntityId(42), CoverSlotKey::new(1, 0))
-            .unwrap();
-
-        let mut guard = cover.reservations.lock().unwrap();
-        let result = try_reserve_or_warn(&mut guard, EntityId(42), CoverSlotKey::new(1, 0));
-        drop(guard);
-
-        assert!(
-            result.is_ok(),
-            "same-entity re-reserve must return Ok per CoverReservations contract"
-        );
-        assert!(
-            capture
-                .find_event(
-                    Level::WARN,
-                    "cover reserve_for_entity lost the race",
-                    "cover_slot_taken"
-                )
-                .is_none(),
-            "idempotent re-reserve must NOT emit the race-lost warn"
-        );
-    }
-
-    #[test]
-    fn stay_in_cover_when_not_flanked() {
-        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
-        cover
-            .reservations
-            .lock()
-            .unwrap()
-            .reserve_for_entity(EntityId(42), CoverSlotKey::new(1, 0))
-            .unwrap();
-
-        // Threat in defensive arc (still in front of cover orient).
-        let dec = maintain_cover_for_npc(
-            EntityId(42),
-            Vector3::new(5.0, 0.0, 0.0),
-            Some(crate::cell::cover::TEST_WORLD_ID),
-            Vector3::new(20.0, 0.0, 0.0),
-            false,
-            true,
-            &cover,
-            &CoverWeights::default(),
-        );
-        match dec {
-            CoverDecision::StayInCover { slot, .. } => {
-                assert_eq!(slot, CoverSlotKey::new(1, 0));
-                // Reservation must persist.
-                let r = cover.reservations.lock().unwrap();
-                assert_eq!(r.holder(slot), Some(EntityId(42)));
-            }
-            other => panic!("expected StayInCover, got {other:?}"),
-        }
-    }
 }

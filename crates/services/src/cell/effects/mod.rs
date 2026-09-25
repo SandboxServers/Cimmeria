@@ -50,6 +50,7 @@
 //!   `effect.params` HashMap is already loaded from `resources.effect_nvps`
 //!   by `load_effect_defs`. Scripts read it directly via `ctx.effect.param_*`.
 
+pub mod cover_stance;
 pub mod pulsing;
 pub mod registry;
 pub mod scripts;

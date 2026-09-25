@@ -99,6 +99,9 @@ impl SpaceManager {
         for id in ids {
             self.log_cover_coverage(id);
         }
+        // The startup population spawned before the cover index and the
+        // world ids existed, so its spawn holds found nothing (NA22).
+        crate::cell::cover::hold_spawn_cover_all(self);
     }
 
     /// Check if a non-instanced space already exists for a world name.

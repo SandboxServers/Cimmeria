@@ -106,6 +106,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         aggro_radius: None,
         assist_radius: None,
         aggression_override: None,
+        use_cover: None,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();

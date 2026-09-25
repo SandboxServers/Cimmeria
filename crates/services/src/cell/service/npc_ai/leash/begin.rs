@@ -220,10 +220,9 @@ pub(in crate::cell::service::npc_ai) async fn begin_leash(
     };
     super::super::detectors::threat::check_cleared(space_mgr, npc_id, clear, now);
 
-    // Leash is a combat-end transition: give the cover slot back.
-    space_mgr
-        .cover
-        .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
+    // Leash is a combat-end transition: give the cover slot back and drop
+    // Cover Stance (NA22). The walk home re-takes the spawn slot on arrival.
+    crate::cell::cover::release_npc_cover(space_mgr, npc_id, "leash");
     // Cache only: no movement-type message exists server-to-client (NA10).
     // The client sees the walk home from position and velocity.
     crate::cell::abilities::broadcast_movement_type(

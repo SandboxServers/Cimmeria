@@ -112,25 +112,15 @@ pub(super) async fn npc_ai_fight(
     // distance but stands there" for any ability with `max_range < 30`
     // (e.g., a grenade at `max_range = 15`).
     let in_range = dist_to_target <= max_range;
-    // A stationary NPC does not treat a same-storey navmesh `Blocked` as a
-    // wall: the mesh cannot see over a desk and the NPC cannot walk around
-    // one (NA16 / audit S11). A mobile NPC keeps the strict verdict and
-    // paths toward its target instead.
-    let has_los = space_mgr.attack_line_of_sight(npc_id, target_id, is_stationary);
-
-    // Cover-system integration. When `use_cover` is on (set by the
-    // spawner for NPCs from `SGWMob.def`'s `useCover` flag) and the
-    // threat is engaged, `maintain_cover_for_npc` decides whether to
-    // stay in the current cover, move to a new cover slot, or fall
-    // back to direct chase. The returned `nav_target_pos` is the
-    // position the chase block below paths toward — it overrides the
-    // threat's position with the chosen cover slot's position so the
-    // NPC paths to cover instead of running at the player.
-    //
-    // Reservation state is owned by the cover module; the function is
-    // a pure decision against an atomic snapshot. Release on death /
-    // leash / idle is handled elsewhere in this file.
-    let nav_target_pos = super::fight_cover::route_via_cover(
+    // Cover (NA22). Cover is a firing position: an NPC that uses cover
+    // holds the slot it spawned at or reached, walks to a free slot that
+    // reaches its target (the walk is routed by `chase::cover_slot`), and
+    // fires from the slot once there. It runs whether or not the target is
+    // in range (audit C3). Reservation state is owned by the cover module;
+    // release on death / leash / surrender goes through
+    // `cover::release_npc_cover`.
+    let melee_only = super::ability_select::npc_is_melee_only(npc_id, space_mgr);
+    let route = super::fight_cover::route_via_cover(
         super::fight_cover::CoverStep {
             npc_id,
             target_id,
@@ -138,14 +128,35 @@ pub(super) async fn npc_ai_fight(
             world_id: space_mgr.get_entity_world_id(npc_id),
             target_pos,
             in_range,
+            attack_range: max_range,
             use_cover,
             is_stationary,
+            melee_only,
         },
         tx,
         space_mgr,
         engine,
     )
     .await;
+    // Standing at its slot the NPC fires over the cover and does not chase.
+    // The cover step only holds a slot while the target is in range, so
+    // `in_cover` implies `in_range`.
+    let in_cover = match route {
+        super::fight_cover::CoverRoute::ToSlot => return,
+        super::fight_cover::CoverRoute::InSlot => true,
+        super::fight_cover::CoverRoute::Target => false,
+    };
+    let nav_target_pos = target_pos;
+
+    // A stationary NPC does not treat a same-storey navmesh `Blocked` as a
+    // wall: the mesh cannot see over a desk and the NPC cannot walk around
+    // one (NA16 / audit S11). A mobile NPC keeps the strict verdict and
+    // paths toward its target instead. An NPC at its cover slot (holding
+    // Cover Stance) fires over the cover whatever the ray says: the prop is
+    // usually a hole in the mesh, so the ray from behind it reads as blocked
+    // by construction (`AttackLosPolicy::InCoverSlot`, NA22). Computed after
+    // the cover step so the arrival tick already sees the stance.
+    let has_los = space_mgr.attack_line_of_sight(npc_id, target_id, is_stationary);
 
     // Out of range OR occluded — keep pathfinding so the NPC can reposition
     // to regain line of sight. Treating "in range but blocked" as a stop
@@ -157,7 +168,7 @@ pub(super) async fn npc_ai_fight(
     // A pinned NPC never leaves its spawn, so the NPC-distance leash never
     // fires for it; it disengages when its target is lost instead (dead,
     // gone, or out of its AoI for the grace period, see `fight_target`).
-    if !in_range || !has_los {
+    if !in_cover && (!in_range || !has_los) {
         if is_stationary {
             // Stationary NPC out of range OR with no LoS — silently
             // skipped pre-fix. Emit a structured info log so this
@@ -240,8 +251,8 @@ pub(super) async fn npc_ai_fight(
     //
     // Stationary NPCs skip the backup — they're pinned in place by
     // design. A sniper turret with a min-range gap just won't fire on
-    // a close target, same as today.
-    if min_range > 0.0 && dist_to_target < min_range && !is_stationary {
+    // a close target, same as today. An NPC in cover holds its slot too.
+    if min_range > 0.0 && dist_to_target < min_range && !is_stationary && !in_cover {
         if let Some(backup) =
             backup_waypoint_on_mesh(space_mgr, npc_id, npc_pos, target_pos, min_range)
         {
@@ -321,6 +332,7 @@ pub(super) async fn npc_ai_fight(
         dist_to_target,
         max_range,
         min_range,
+        in_cover,
         "NPC AI: attacking top threat target"
     );
     let fired = crate::cell::abilities::handle_use_ability(

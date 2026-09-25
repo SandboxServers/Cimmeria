@@ -67,6 +67,7 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         aggro_radius: None,
         assist_radius: None,
         aggression_override: None,
+        use_cover: None,
     }
 }
 

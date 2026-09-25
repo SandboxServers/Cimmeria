@@ -27,6 +27,10 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "Suppression" => Some(&scripts::Suppression),
         "RangedPhysicalDamage" => Some(&scripts::RangedPhysicalDamage),
         "RangedEnergyDamage" => Some(&scripts::RangedEnergyDamage),
+        // Cover Stance (ability 1451), granted and removed by the cover
+        // hold in `cell::cover::stance` (NA22).
+        "CoverStance" => Some(&super::cover_stance::CoverStance),
+        "RemoveCoverStance" => Some(&super::cover_stance::RemoveCoverStance),
         _ => None,
     }
 }
@@ -46,6 +50,8 @@ mod tests {
         assert!(lookup("Suppression").is_some());
         assert!(lookup("RangedPhysicalDamage").is_some());
         assert!(lookup("RangedEnergyDamage").is_some());
+        assert!(lookup("CoverStance").is_some());
+        assert!(lookup("RemoveCoverStance").is_some());
     }
 
     #[test]

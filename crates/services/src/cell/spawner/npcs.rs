@@ -118,6 +118,11 @@ pub struct SpawnRecord {
     /// not proximity, starts the fight. Always `None` on a template
     /// prototype: it is a placement property, like `is_stationary`.
     pub aggression_override: Option<cimmeria_entity::cell_entity::MobAggression>,
+    /// `entity_templates.use_cover`. `None` (NULL) applies the default
+    /// rule at spawn: a hostile (`faction = 10`) NPC takes cover. A
+    /// stationary NPC or a prop never does, whatever the column says
+    /// (NA22, `SGWMob.def` `useCover`).
+    pub use_cover: Option<bool>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -167,6 +172,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                COALESCE(t.move_speed, 0.6) AS move_speed, \
                t.leash_distance, t.aggro_radius, t.assist_radius, s.aggression_override, \
+               t.use_cover, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -245,6 +251,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             aggression_override: normalize_aggression_override(
                 r.get::<Option<i16>, _>("aggression_override"),
             ),
+            use_cover: r.get::<Option<bool>, _>("use_cover"),
         })
         .collect();
 

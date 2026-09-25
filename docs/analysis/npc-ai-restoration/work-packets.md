@@ -38,7 +38,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA00
 
-**Status:** Review (branch pushed, d5b9d5f8). **Scope title:** Telemetry plumbing, the AI state-transition helper, and deploy identity. **Depends:** land or rebase PR #726 first (it rewrites the path-fail messages and the `destroy_space` throttle cleanup). **Advisor:** npc-ai-spawn-advisor, testing-validation-engineer.
+**Status:** UATPending (merged 2026-09-25, PR #776 32d2faa5; earlier: branch pushed, d5b9d5f8). **Scope title:** Telemetry plumbing, the AI state-transition helper, and deploy identity. **Depends:** land or rebase PR #726 first (it rewrites the path-fail messages and the `destroy_space` throttle cleanup). **Advisor:** npc-ai-spawn-advisor, testing-validation-engineer.
 
 **Entries:**
 
@@ -65,7 +65,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA01
 
-**Status:** Review (branch pushed, 8bbfb905). **Scope title:** Storey-aware navmesh height query (M4). **Depends:** none (it touches the `entity` crate only). **Advisor:** movement-teleport-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #774 6e6ec5c3; earlier: branch pushed, 8bbfb905). **Scope title:** Storey-aware navmesh height query (M4). **Depends:** none (it touches the `entity` crate only). **Advisor:** movement-teleport-advisor.
 
 **Entries:** `crates/entity/src/navigation/mod.rs:394-434` (`get_height_at`); its callers `npc_movement.rs:211`, `spawner/npcs.rs`, `console/bookmark.rs:171`, and `grep get_navmesh_height`.
 
@@ -79,7 +79,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA02
 
-**Status:** Review (branch pushed, e270c296). **Scope title:** Stuck, float, path, LoS and cover detectors. **Advisor:** npc-ai-spawn-advisor, movement-teleport-advisor, aoi-witness-broadcast (for `wire.out`).
+**Status:** UATPending (merged 2026-09-25, PR #781 1e283f61; earlier: branch pushed, e270c296). **Scope title:** Stuck, float, path, LoS and cover detectors. **Advisor:** npc-ai-spawn-advisor, movement-teleport-advisor, aoi-witness-broadcast (for `wire.out`).
 
 **Entries:** telemetry.md §2.1-2.5; `crates/entity/src/detour_ffi.rs:108-114`; `navigation/mod.rs` `find_path`; `path_failure/mod.rs`; `space_manager/spatial.rs` (LoS); `cover/ai_integration.rs`; `fight.rs:363`; `startup.rs:224-243`.
 
@@ -102,7 +102,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA03
 
-**Status:** Review (branch `npcai/na03-signoz-dashboard` pushed 2026-09-25). The dashboard **Cimmeria — NPC AI health** (id `01a0d755-9145-7eed-aedf-29d0efa28e1e`) and nine `NPC AI —` log views exist in the colo SigNoz under the owner's campaign authorization; exports in [operations/signoz/](../../operations/signoz/npc-ai-views.md); runbook [operations/npc-ai-telemetry-runbook.md](../../operations/npc-ai-telemetry-runbook.md). The acceptance render waits on a colo deploy with NA00/NA02: today only `npc_ai_decisions_total`, `npc_path_fail_total` and `npc_respawns_total` have data. **Scope title:** SigNoz saved views, the NPC AI health dashboard and the runbook. **Advisor:** documentation-writer.
+**Status:** UATPending (merged 2026-09-25, PR #782 bcfa23e3; earlier: branch `npcai/na03-signoz-dashboard` pushed 2026-09-25). The dashboard **Cimmeria — NPC AI health** (id `01a0d755-9145-7eed-aedf-29d0efa28e1e`) and nine `NPC AI —` log views exist in the colo SigNoz under the owner's campaign authorization; exports in [operations/signoz/](../../operations/signoz/npc-ai-views.md); runbook [operations/npc-ai-telemetry-runbook.md](../../operations/npc-ai-telemetry-runbook.md). The acceptance render waits on a colo deploy with NA00/NA02: today only `npc_ai_decisions_total`, `npc_path_fail_total` and `npc_respawns_total` have data. **Scope title:** SigNoz saved views, the NPC AI health dashboard and the runbook. **Advisor:** documentation-writer.
 
 **Scope:**
 
@@ -115,7 +115,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA10
 
-**Status:** Review (branch `npcai/na10-stop-hygiene` pushed 2026-09-25). Evidence decision: zero velocity only. The client has no movement-type receiver, and the old `setMovementType` broadcast reached witnesses as a truncated `onSequence`, so NA10 removed it ([findings §11](../../reverse-engineering/findings/npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver)). **Scope title:** Movement stop hygiene: stale velocity and movement type (S1, S2, S13, part of S4). **Advisor:** aoi-witness-broadcast, movement-teleport-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #779 bde45a9c; earlier: branch `npcai/na10-stop-hygiene` pushed 2026-09-25). Evidence decision: zero velocity only. The client has no movement-type receiver, and the old `setMovementType` broadcast reached witnesses as a truncated `onSequence`, so NA10 removed it ([findings §11](../../reverse-engineering/findings/npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver)). **Scope title:** Movement stop hygiene: stale velocity and movement type (S1, S2, S13, part of S4). **Advisor:** aoi-witness-broadcast, movement-teleport-advisor.
 
 **Scope:**
 
@@ -131,7 +131,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA11
 
-**Status:** Review (branch `npcai/na11-ground-clamp`, on main after NA10 #779). Per-step and per-arrival ground clamp on the storey nearest the lerp, grounded `vy`, horizontal step budget; backup via `moveAlongSurface`; patrol, investigate and wander endpoints snapped; spawn Y grounded inside the `is_point_valid` band. `DT_STRAIGHTPATH_ALL_CROSSINGS` measured and not adopted: over 60 random Cellblock routes the clamp alone leaves 0 of 34,412 ticks more than 0.3 u off the floor (old lerp: 234, worst 4.7 u under), and crossings only add arrival snaps (3.5% slower). **Scope title:** Server-side ground clamp and safe fallbacks (M1-M3, M5). **Advisor:** movement-teleport-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #783 02e163fa; earlier: branch `npcai/na11-ground-clamp`, on main after NA10 #779). Per-step and per-arrival ground clamp on the storey nearest the lerp, grounded `vy`, horizontal step budget; backup via `moveAlongSurface`; patrol, investigate and wander endpoints snapped; spawn Y grounded inside the `is_point_valid` band. `DT_STRAIGHTPATH_ALL_CROSSINGS` measured and not adopted: over 60 random Cellblock routes the clamp alone leaves 0 of 34,412 ticks more than 0.3 u off the floor (old lerp: 234, worst 4.7 u under), and crossings only add arrival snaps (3.5% slower). **Scope title:** Server-side ground clamp and safe fallbacks (M1-M3, M5). **Advisor:** movement-teleport-advisor.
 
 **Scope:**
 
@@ -153,7 +153,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA12
 
-**Status:** Review (branch `npcai/na12-leash-reset` pushed 2026-09-25, feature commit d68b04d3, rebased on main after NA02/#781; wired into the NA02 leash, threat and idle_parked detectors). NPC-to-spawn horizontal leash with a 5 u band and 20 u vertical cap, `entity_templates.leash_distance` (nullable, default 50), lost target (dead / gone / out of AoI 5 s), walk home with evade, reset on arrival, snap fallback (no route or 20 s), player combat drain, 5 s re-aggro window. **Scope title:** Leash, evade and reset rework (S3-S7, S12). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #785 83dfefa2; earlier: branch `npcai/na12-leash-reset` pushed 2026-09-25, feature commit d68b04d3, rebased on main after NA02/#781; wired into the NA02 leash, threat and idle_parked detectors). NPC-to-spawn horizontal leash with a 5 u band and 20 u vertical cap, `entity_templates.leash_distance` (nullable, default 50), lost target (dead / gone / out of AoI 5 s), walk home with evade, reset on arrival, snap fallback (no route or 20 s), player combat drain, 5 s re-aggro window. **Scope title:** Leash, evade and reset rework (S3-S7, S12). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
 
 **Scope:**
 
@@ -176,7 +176,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA13
 
-**Status:** Review (branch `npcai/na13-faction-aggro` pushed 2026-09-25, on NA12). Effective aggression = override (`spawnlist.aggression_override`, `set_aggression`, console) else the 2009 `FACTION_REACTION_TABLE` (code constant pinned to `enumerations.xml`; players react as faction 3); only HOSTILE aggroes. Runtime field is now `aggro.override_level: Option<MobAggression>`; the two `set_aggression` rows keep `level 1` (= HOSTILE). Gates: `entity_templates.aggro_radius` (default 18 u), 4 u vertical band, LoS with `Unknown` failing closed where a navmesh exists, dead, GM `.aggro off`. Spawns 20 and 10 seeded NEUTRAL; no other Castle/Harset chain calls `set_aggression`. Wire broadcast NOT shipped: the client consumes the level via `onAggressionOverrideUpdate` (SGWMob, index unverified), not `onEntityProperty` type 6 (open item in [npc-ai.md](../../gameplay/npc-ai.md#wire-not-broadcast-yet-open-item)). **Scope title:** Faction-derived proximity aggro with radius, LoS, vertical band and GM toggle (A1-A6, A8). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor, server-authority-enforcer (GM toggle), database-persistence (seed columns).
+**Status:** UATPending (merged 2026-09-25, PR #787 b66fd426; earlier: branch `npcai/na13-faction-aggro` pushed 2026-09-25, on NA12). Effective aggression = override (`spawnlist.aggression_override`, `set_aggression`, console) else the 2009 `FACTION_REACTION_TABLE` (code constant pinned to `enumerations.xml`; players react as faction 3); only HOSTILE aggroes. Runtime field is now `aggro.override_level: Option<MobAggression>`; the two `set_aggression` rows keep `level 1` (= HOSTILE). Gates: `entity_templates.aggro_radius` (default 18 u), 4 u vertical band, LoS with `Unknown` failing closed where a navmesh exists, dead, GM `.aggro off`. Spawns 20 and 10 seeded NEUTRAL; no other Castle/Harset chain calls `set_aggression`. Wire broadcast NOT shipped: the client consumes the level via `onAggressionOverrideUpdate` (SGWMob, index unverified), not `onEntityProperty` type 6 (open item in [npc-ai.md](../../gameplay/npc-ai.md#wire-not-broadcast-yet-open-item)). **Scope title:** Faction-derived proximity aggro with radius, LoS, vertical band and GM toggle (A1-A6, A8). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor, server-authority-enforcer (GM toggle), database-persistence (seed columns).
 
 **Scope:**
 
@@ -203,7 +203,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA14
 
-**Status:** Review (branch `npcai/na14-assist-aggro` pushed 2026-09-25, on main after NA13/#787). `combat::generate_threat` calls `npc_ai::recruit_assisters` when an NPC enters Fighting from damage or proximity; same-faction NPCs that are HOSTILE themselves, Idle/Patrol/Wander, within their `entity_templates.assist_radius` (new nullable column, CHECK > 0, default 10 u) of the victim, within the 4 u band and in navmesh LoS (Unknown fails closed) take a 1.0 seed with `cause=assist` (transition `reason=assist`). Assist and content threat do not recruit (no chaining); a GM with `.aggro off` pulls no assisters. Telemetry: `npc_ai.aggro event=acquired cause=assist`, `npc_ai.aggro_scan event=assist_joined` / `assist_rejected` (new reason `not_idle`). Tests: meshless tick tests (join, no chain, NEUTRAL, busy states incl. Leashing, patrol/wander, faction/band/template radius, content threat, proximity, GM) and `castle_cellblock.nav` tests (MessHall pair assists, Hallway guards 18.6 u apart do not), live-DB guards for the column; revert-checked. UAT: shoot one MessHall guard, both engage; SigNoz `npc_ai.aggro` grouped by `cause` shows `assist`. **Scope title:** Same-room assist aggro (A7, D-NA04). **Advisor:** npc-ai-spawn-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #789 26bd65e3; earlier: branch `npcai/na14-assist-aggro` pushed 2026-09-25, on main after NA13/#787). `combat::generate_threat` calls `npc_ai::recruit_assisters` when an NPC enters Fighting from damage or proximity; same-faction NPCs that are HOSTILE themselves, Idle/Patrol/Wander, within their `entity_templates.assist_radius` (new nullable column, CHECK > 0, default 10 u) of the victim, within the 4 u band and in navmesh LoS (Unknown fails closed) take a 1.0 seed with `cause=assist` (transition `reason=assist`). Assist and content threat do not recruit (no chaining); a GM with `.aggro off` pulls no assisters. Telemetry: `npc_ai.aggro event=acquired cause=assist`, `npc_ai.aggro_scan event=assist_joined` / `assist_rejected` (new reason `not_idle`). Tests: meshless tick tests (join, no chain, NEUTRAL, busy states incl. Leashing, patrol/wander, faction/band/template radius, content threat, proximity, GM) and `castle_cellblock.nav` tests (MessHall pair assists, Hallway guards 18.6 u apart do not), live-DB guards for the column; revert-checked. UAT: shoot one MessHall guard, both engage; SigNoz `npc_ai.aggro` grouped by `cause` shows `assist`. **Scope title:** Same-room assist aggro (A7, D-NA04). **Advisor:** npc-ai-spawn-advisor.
 
 **Scope:** when an NPC enters Fighting from damage or proximity, same-faction Idle NPCs within `assist_radius` (a template column, default 10 u) with LoS to the victim and the same vertical band take a threat seed on the same target, with `cause=assist`. No chaining: an assisting NPC does not recruit further. Mark the deviation from legacy in code and in the docs.
 
@@ -211,7 +211,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA15
 
-**Status:** Review (branch `npcai/na15-path-robustness` pushed 2026-09-25, on main after NA12 #785). The chase moved out of `fight.rs` into `npc_ai/chase/`. A partial route is walked to its end, then the NPC holds with zero velocity and no new route requests, and walks home after 8 s (`reason=unreachable`). A partial route home walks to its end and snaps (`arrival=snap_partial_route`) instead of waiting out the 20 s timeout. An off-mesh start is snapped onto the nearest polygon within 2 u / ±4 u and retried once, or the NPC goes home. A degenerate repath clears the stale route. Chases stop `max(min_range, 1.0)` short of the target. The repath test is 5 u horizontal or 1.5 u vertical. An off-mesh target (S14) is routed to the nearest on-mesh point within 8 u / ±4 u. Tick tests: `service/tests/npc_ai/path_robustness.rs`, each revert-proven. **Scope title:** Path robustness (S8-S10, S14). **Advisor:** movement-teleport-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #788 0da904cd; earlier: branch `npcai/na15-path-robustness` pushed 2026-09-25, on main after NA12 #785). The chase moved out of `fight.rs` into `npc_ai/chase/`. A partial route is walked to its end, then the NPC holds with zero velocity and no new route requests, and walks home after 8 s (`reason=unreachable`). A partial route home walks to its end and snaps (`arrival=snap_partial_route`) instead of waiting out the 20 s timeout. An off-mesh start is snapped onto the nearest polygon within 2 u / ±4 u and retried once, or the NPC goes home. A degenerate repath clears the stale route. Chases stop `max(min_range, 1.0)` short of the target. The repath test is 5 u horizontal or 1.5 u vertical. An off-mesh target (S14) is routed to the nearest on-mesh point within 8 u / ±4 u. Tick tests: `service/tests/npc_ai/path_robustness.rs`, each revert-proven. **Scope title:** Path robustness (S8-S10, S14). **Advisor:** movement-teleport-advisor.
 
 **Scope:**
 
@@ -225,7 +225,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA16
 
-**Status:** Review (branch `npcai/na16-line-of-sight`). The S11 cause is the med-station desk, not eye height. The desk is a navmesh hole between the drone and the vial, and the ray reads `Blocked` over a 1 m desk. A stationary NPC's attack line of sight now ignores a same-storey (4 u band) navmesh `Blocked`. Mobile NPCs and aggro keep the strict verdict. S15: 45% of same-storey `Blocked` verdicts are false against the collision geometry, and the navmesh-only heuristics were rejected on numbers. Approved as D-NA11. The collision-geometry occluder is follow-up #784 (new data artifact). No fire-time line-of-sight check: the fight tick covers NPCs, and a navmesh check would give players false "no line of sight" errors. See audit S11/S15 and [npc-ai.md](../../gameplay/npc-ai.md#rust-line-of-sight-in-the-fight-tick). **Scope title:** Line of sight source and the stationary PRU (S11, S15). **Advisor:** combat-systems-advisor, movement-teleport-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #786 4233273f; earlier: branch `npcai/na16-line-of-sight`). The S11 cause is the med-station desk, not eye height. The desk is a navmesh hole between the drone and the vial, and the ray reads `Blocked` over a 1 m desk. A stationary NPC's attack line of sight now ignores a same-storey (4 u band) navmesh `Blocked`. Mobile NPCs and aggro keep the strict verdict. S15: 45% of same-storey `Blocked` verdicts are false against the collision geometry, and the navmesh-only heuristics were rejected on numbers. Approved as D-NA11. The collision-geometry occluder is follow-up #784 (new data artifact). No fire-time line-of-sight check: the fight tick covers NPCs, and a navmesh check would give players false "no line of sight" errors. See audit S11/S15 and [npc-ai.md](../../gameplay/npc-ai.md#rust-line-of-sight-in-the-fight-tick). **Scope title:** Line of sight source and the stationary PRU (S11, S15). **Advisor:** combat-systems-advisor, movement-teleport-advisor.
 
 **Scope:**
 
@@ -240,7 +240,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA20
 
-**Status:** Done (evidence only). Finding: [`docs/reverse-engineering/findings/cover-world-placement.md`](../../reverse-engineering/findings/cover-world-placement.md). Go/no-go for NA21: **go, smaller scope than estimated** — Castle/Castle_CellBlock's real cover nodes are `ASGWSpecCoverNode` actors and `StaticMeshActor.CoverNodeArray` groups baked directly into the `.umap` chunks (4,024 nodes total), already in absolute world space with no owner-transform composition needed for either pattern found; no new binary-format decoder is required, only a property walk the existing `crates/upk::extract_actors`/`ACTOR_CLASSES` machinery already supports. Q4 (client pose trigger) remains unresolved — UnrealScript bytecode, not natively recoverable — and does not block NA21. **Scope title:** Where the world-space cover data lives (C1, C2, C6). **Advisor:** game-archaeology-specialist.
+**Status:** Done (evidence only; merged PR #777 731eadc7). Finding: [`docs/reverse-engineering/findings/cover-world-placement.md`](../../reverse-engineering/findings/cover-world-placement.md). Go/no-go for NA21: **go, smaller scope than estimated** — Castle/Castle_CellBlock's real cover nodes are `ASGWSpecCoverNode` actors and `StaticMeshActor.CoverNodeArray` groups baked directly into the `.umap` chunks (4,024 nodes total), already in absolute world space with no owner-transform composition needed for either pattern found; no new binary-format decoder is required, only a property walk the existing `crates/upk::extract_actors`/`ACTOR_CLASSES` machinery already supports. Q4 (client pose trigger) remains unresolved — UnrealScript bytecode, not natively recoverable — and does not block NA21. **Scope title:** Where the world-space cover data lives (C1, C2, C6). **Advisor:** game-archaeology-specialist.
 
 **Scope:**
 
@@ -254,7 +254,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA21
 
-**Status:** Review (branch `npcai/na21-cover-extractor`). `cover_extract` (`crates/navmesh-extractor`) emits world-space cover from the `.umap` chunks: 236 nodes / 58 sets for Castle_CellBlock (world 12), 3,788 / 481 for Castle (world 8). `cover_sets` gained `world_id` (FK to `worlds`) and `cover_nodes` gained `width`. The 9,346 prefab-local `.pak` rows were dropped. Set 1381 was retired, because the extractor reproduces the desk as set 1200001, and chains 1132/1133 were rekeyed. The cell's cover index is partitioned per world. See [cover-extraction.md](../../engine/cover-extraction.md). **Scope title:** Per-map cover extractor and space-scoped seeds (C1, C2). **Advisor:** game-archaeology-specialist, database-persistence.
+**Status:** UATPending (merged 2026-09-25, PR #780 e9653a73; earlier: branch `npcai/na21-cover-extractor`). `cover_extract` (`crates/navmesh-extractor`) emits world-space cover from the `.umap` chunks: 236 nodes / 58 sets for Castle_CellBlock (world 12), 3,788 / 481 for Castle (world 8). `cover_sets` gained `world_id` (FK to `worlds`) and `cover_nodes` gained `width`. The 9,346 prefab-local `.pak` rows were dropped. Set 1381 was retired, because the extractor reproduces the desk as set 1200001, and chains 1132/1133 were rekeyed. The cell's cover index is partitioned per world. See [cover-extraction.md](../../engine/cover-extraction.md). **Scope title:** Per-map cover extractor and space-scoped seeds (C1, C2). **Advisor:** game-archaeology-specialist, database-persistence.
 
 **Scope:**
 
@@ -267,7 +267,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA22
 
-**Status:** BlockedDependency (NA21, NA10, NA12; NA20 for pose). **Scope title:** Cover behaviour: hold, seek, pose (C3-C5, C7). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
+**Status:** UATPending (the last packet; merged in the PR that carries this close-out; earlier: branch `npcai/na22-cover-behaviour` pushed 2026-09-25). Cover is a firing position: the fight tick seeks the best free slot within attack range less 2 u in range too (10 u walk, 4 s seek retry), holds it until flanked or out of range, stops at it with zero velocity and fires without chasing. Spawn hold within 1.5 u (spawn, startup sweep, respawn, leash home). Cover Stance (ability 1451) through new `CoverStance` / `RemoveCoverStance` scripts on effects 4565 / 1742, removed on leave, leash, death and surrender. `entity_templates.use_cover` (NULL = hostile faction 10; stationary, props and melee-only never). Squad affinity by distance (2 u), not by set. No pose wire (D-NA10); the Q4 owner experiment decides the crouch. See [architecture/cover-system.md](../../architecture/cover-system.md). **Scope title:** Cover behaviour: hold, seek, pose (C3-C5, C7). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
 
 **Scope:**
 
@@ -285,7 +285,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA30
 
-**Status:** Review (branch pushed, 68732034). **Scope title:** Fix the docs this audit disproved. **Advisor:** documentation-writer.
+**Status:** Done (docs only; merged 2026-09-25, PR #775 507cc572; earlier: branch pushed, 68732034). **Scope title:** Fix the docs this audit disproved. **Advisor:** documentation-writer.
 
 **Scope:** every row in [audit §6](audit.md#6-documentation-that-is-wrong) that no earlier packet fixed. Annotate the 2026-09-18 playtest appendix rows rather than rewriting them.
 

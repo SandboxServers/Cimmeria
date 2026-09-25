@@ -8,9 +8,21 @@
 //! Two parallel maps stay consistent because every mutation goes through
 //! one of the methods below — the invariant a future refactor must
 //! preserve.
+//!
+//! Two pieces of per-NPC cover state ride along (NA22), because they
+//! live and die with the reservation:
+//!
+//! - **`in_stance`**: the NPC reached its slot and holds Cover Stance
+//!   (ability 1451). Only `cover::stance` writes it, so the buff is
+//!   granted once per arrival and revoked exactly once.
+//! - **`seek_after`**: an NPC that looked for cover and found none (or
+//!   found its slot unreachable) does not look again before this instant.
+//!   This is the seek hysteresis: an NPC that already has a shot re-checks
+//!   cover every few seconds, not every tick.
 
 use cimmeria_common::EntityId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use super::types::CoverSlotKey;
 
@@ -23,6 +35,8 @@ pub enum ReserveError {
 pub struct CoverReservations {
     slot_to_entity: HashMap<CoverSlotKey, EntityId>,
     entity_to_slot: HashMap<EntityId, CoverSlotKey>,
+    in_stance: HashSet<EntityId>,
+    seek_after: HashMap<EntityId, Instant>,
 }
 
 impl CoverReservations {
@@ -118,5 +132,45 @@ impl CoverReservations {
 
     pub fn iter(&self) -> impl Iterator<Item = (EntityId, CoverSlotKey)> + '_ {
         self.entity_to_slot.iter().map(|(&e, &s)| (e, s))
+    }
+
+    /// Record that `entity_id` holds Cover Stance. Returns `true` when it
+    /// did not already, i.e. when the caller should apply the buff.
+    pub fn enter_stance(&mut self, entity_id: EntityId) -> bool {
+        self.in_stance.insert(entity_id)
+    }
+
+    /// Forget `entity_id`'s Cover Stance. Returns `true` when it held one,
+    /// i.e. when the caller should remove the buff.
+    pub fn leave_stance(&mut self, entity_id: EntityId) -> bool {
+        self.in_stance.remove(&entity_id)
+    }
+
+    pub fn in_stance(&self, entity_id: EntityId) -> bool {
+        self.in_stance.contains(&entity_id)
+    }
+
+    /// Do not look for a new slot for `entity_id` before `until`.
+    pub fn defer_seek(&mut self, entity_id: EntityId, until: Instant) {
+        self.seek_after.insert(entity_id, until);
+    }
+
+    /// Whether a seek for `entity_id` is still deferred at `now`. An
+    /// expired deferral is dropped here, so the map only holds live ones.
+    pub fn seek_deferred(&mut self, entity_id: EntityId, now: Instant) -> bool {
+        match self.seek_after.get(&entity_id) {
+            Some(&until) if now < until => true,
+            Some(_) => {
+                self.seek_after.remove(&entity_id);
+                false
+            }
+            None => false,
+        }
+    }
+
+    /// Drop the seek deferral (death, leash, surrender: the next fight
+    /// starts fresh).
+    pub fn clear_seek(&mut self, entity_id: EntityId) {
+        self.seek_after.remove(&entity_id);
     }
 }

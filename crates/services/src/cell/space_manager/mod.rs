@@ -32,6 +32,8 @@ mod queries;
 mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
+#[cfg(test)]
+pub(crate) use spawn::resolve_use_cover;
 mod xml;
 
 pub(crate) use movement_telemetry::{

@@ -119,6 +119,12 @@ CREATE TABLE entity_templates (
         CHECK (assist_radius IS NULL OR assist_radius > 0.0),
     CONSTRAINT entity_templates_aggro_radius_positive
         CHECK (aggro_radius IS NULL OR aggro_radius > 0.0),
+    -- Whether the NPC takes cover in combat (NA22; the client's
+    -- `SGWMob.def` `useCover`). NULL -> the runtime default: a hostile
+    -- (`faction = 10`) NPC does. A stationary NPC or a prop never does,
+    -- and a melee-only NPC is skipped at fight time, whatever this says.
+    -- See docs/architecture/cover-system.md.
+    use_cover boolean,
     CONSTRAINT entity_templates_leash_distance_positive
         CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive
