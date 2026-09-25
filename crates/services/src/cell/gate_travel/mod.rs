@@ -1,15 +1,26 @@
 //! Stargate travel handler for the CellService.
 //!
-//! Two entry points, matching the two halves of the 2009 flow in
-//! `deprecated/python/cell/SGWPlayer.py:2046-2129`:
+//! Two entry points, originally modelled on the two halves of
+//! `deprecated/python/cell/SGWPlayer.py:2046-2129` — see the correction
+//! note below before treating that file as a behavioural reference:
 //!
-//! 1. [`handle_dial_gate`] — `onDialGate`. Validates the destination,
-//!    arms a 4-second dial (`beginDialing`), and returns. It does NOT
-//!    travel: the gate has to open first.
+//! 1. [`handle_dial_gate`] — `onDialGate`. Validates the destination, arms
+//!    the dial (`begin_gate_dial` / `GATE_DIAL_DURATION`), and returns. It
+//!    does NOT travel: the gate has to open first.
 //! 2. [`handle_stargate_region_entered`] — the player walks into the
 //!    gate's `REGION_FLAG_Stargate` volume (`GenericRegion.py:174-176`
 //!    dispatches this instead of a generic region event). If the dial is
-//!    open, `stargatePassed` emits `Stargate_CrossGate` and then travels.
+//!    open, [`on_stargate_passage`] sends the crossing notifications and
+//!    arms a post-crossing hold (`begin_crossing_hold` /
+//!    `CROSSING_CINEMATIC_HOLD`) before the deferred travel runs.
+//!
+//! **The deprecated Python is not a behavioural reference.** The owner
+//! confirmed (2026-09-25, NA35) that the legacy server never had working
+//! gate travel end to end. Timing constants in this module and in
+//! `space_manager::gate_dial_state` are grounded in the client binary
+//! alone — see
+//! `docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md`
+//! and D-CA20 in `docs/analysis/castle-rebuild/README.md`.
 //!
 //! Stargate destinations are loaded from `resources.stargates` at startup
 //! and cached in `SpaceManager.stargates`; the gate regions come from
@@ -19,8 +30,9 @@
 //! region (`Castle.Stargate`, `Harset.Stargate`, …). On a world without
 //! one there is no way to reach the crossing, so a dial there travels
 //! immediately, as this handler did before CA10. That keeps every
-//! currently-working route working; it is a deliberate divergence from
-//! the Python, which would simply have left the player standing there.
+//! currently-working route working, and (NA35) does not get the
+//! `onStargatePassage` send or the crossing hold — there is no gate prop
+//! for a cinematic to play against, so nothing races.
 
 use tokio::sync::mpsc;
 
@@ -29,27 +41,33 @@ use cimmeria_content_engine::chain::ChainEngine;
 use super::arrival::validate_gate_arrival;
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
+use crate::cell::client_methods::gate_travel::ON_STARGATE_PASSAGE;
 
 mod address_book;
 // `pub(crate)` so the base-side fan-out byte test can drive the real
 // emitter rather than hand-building `WitnessEntityMethod` messages.
 pub(crate) mod sequences;
-mod tick;
+pub(crate) mod tick;
 
 use address_book::player_knows_stargate;
 pub(crate) use sequences::world_has_stargate_region;
-pub use tick::gate_dial_tick;
+pub use tick::{crossing_tick, gate_dial_tick};
 
-use sequences::{origin_gate_event_set, send_gate_sequence, EVENT_STARGATE_CROSS_GATE};
+use sequences::{
+    origin_gate_event_set, send_gate_sequence, set_crossing_movement_lock,
+    EVENT_STARGATE_CROSS_GATE,
+};
 
 // ── Dial ─────────────────────────────────────────────────────────────────────
 
 /// Handle the `onDialGate` cell method call.
 ///
-/// Validates the target stargate address and arms the dial. Four seconds
-/// later [`gate_dial_tick`] fires `Stargate_MakeGate` and the gate becomes
-/// passable; the actual world transition happens when the player walks
-/// into the gate region.
+/// Validates the target stargate address and arms the dial. On the next
+/// cell tick after `GATE_DIAL_DURATION` elapses, [`gate_dial_tick`] fires
+/// `Stargate_MakeGate` and the gate becomes passable; the actual world
+/// transition happens when the player walks into the gate region (and is
+/// itself deferred behind `CROSSING_CINEMATIC_HOLD` — see
+/// [`handle_stargate_region_entered`]).
 ///
 /// `target_address_id == -1` is the client's cancel sentinel and drops any
 /// armed dial (`SGWPlayer.cancelDialing`).
@@ -248,15 +266,29 @@ pub async fn handle_dial_gate(
 /// world transition, because it also owns deciding whether the gate was
 /// crossable in the first place.
 ///
-/// Emission order matches `SGWPlayer.stargatePassed`
-/// (`SGWPlayer.py:2117-2129`): sequence, then `fire('stargate::passage')`,
-/// then the move. Getting the sequence out before `RESET_ENTITIES` is the
-/// load-bearing part — after the teardown the client has no entity to play
-/// it on.
+/// Emission order: `onSequence(Stargate_CrossGate)`, then
+/// `onStargatePassage`, then the `stargate_crossed` content trigger.
+/// Sequence-before-transition is the load-bearing part — after the
+/// `RESET_ENTITIES` teardown the client has no entity to play it on — and
+/// is why the caller defers that teardown behind `CROSSING_CINEMATIC_HOLD`
+/// rather than issuing it here.
+///
+/// `onStargatePassage(INT32 addressId)` (client method 68,
+/// `entities/defs/interfaces/GateTravel.def`) is sent to the crossing
+/// player ONLY, never fanned to witnesses like the sequence above: the
+/// argument is the traveller's own destination address, not something a
+/// bystander's client renders. Confirmed real and distinct from
+/// `onSequence` — `stargate-dhd-state-machine.md` records a dedicated
+/// `VGateTravel` `MemberCallback` subscriber for
+/// `Event_NetIn_onStargatePassage` at `ghidra://SGW.exe@0x00e30010`,
+/// independently re-confirmed this session. The `ON_STARGATE_PASSAGE`
+/// constant existed with zero send call sites before NA35 — this closes
+/// that gap.
 pub async fn on_stargate_passage(
     entity_id: u32,
     player_id: i32,
     origin_event_set_id: Option<i32>,
+    target_address_id: i32,
     destination_world: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -271,6 +303,23 @@ pub async fn on_stargate_passage(
     )
     .await;
 
+    if let Err(e) = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_STARGATE_PASSAGE,
+            args: target_address_id.to_le_bytes().to_vec(),
+        })
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            target_address_id,
+            reason = "on_stargate_passage_send_failed",
+            "gate crossing: onStargatePassage could not be enqueued ({e}) \
+             — the crossing still proceeds on the onSequence alone"
+        );
+    }
+
     super::content::fire_stargate_crossed(
         entity_id,
         player_id,
@@ -284,8 +333,13 @@ pub async fn on_stargate_passage(
 
 /// The player entered a `REGION_FLAG_Stargate` volume.
 ///
-/// `SGWPlayer.stargatePassed`: no-op unless a dial is armed AND the gate
-/// has opened, then [`on_stargate_passage`], then the transition.
+/// No-op unless a dial is armed AND the gate has opened. Otherwise: sends
+/// the crossing notifications ([`on_stargate_passage`]), consumes the
+/// dial, locks the traveller's movement, and arms `CROSSING_CINEMATIC_HOLD`
+/// (NA35) rather than transitioning immediately — [`crate::cell::gate_travel::tick::crossing_tick`]
+/// runs the actual transition once the hold elapses. See the module doc
+/// comment for why the hold exists and what is NOT yet verified about its
+/// duration.
 #[tracing::instrument(
     name = "gate_travel.cross",
     level = "info",
@@ -318,7 +372,8 @@ pub async fn handle_stargate_region_entered(
         entity_id,
         target_address_id = dial.target_address_id,
         target_world = %dial.target_world_name,
-        "Stargate passed — crossing"
+        "Stargate passed — crossing; world transition deferred behind the \
+         crossing hold"
     );
 
     let player_id = space_mgr
@@ -329,6 +384,7 @@ pub async fn handle_stargate_region_entered(
         entity_id,
         player_id,
         dial.origin_event_set_id,
+        dial.target_address_id,
         &dial.target_world_name,
         tx,
         space_mgr,
@@ -336,13 +392,23 @@ pub async fn handle_stargate_region_entered(
     )
     .await;
 
-    // `stargatePassed` clears `dialedAddress`/`gatePassable` before
-    // `moveTo`. `destroy_entity` inside `perform_gate_travel` would scrub
-    // it anyway, but clearing here keeps the "one crossing per dial"
-    // invariant true even if the travel is refused below.
+    // Consumes the dial immediately (matching the pre-NA35 ordering) so a
+    // second region-enter hint during the hold can't re-trigger a second
+    // crossing against the same dial — the "one crossing per dial"
+    // invariant this comment used to defend around `destroy_entity` now
+    // has to hold across the hold window too, not just across the
+    // (now-deferred) teardown.
     space_mgr.cancel_gate_dial(entity_id);
 
-    perform_gate_travel(entity_id, dial.target_address_id, tx, space_mgr).await;
+    // Lock movement for the hold: the traveller is still resident in the
+    // OLD world for `CROSSING_CINEMATIC_HOLD` and must not be able to walk
+    // away from whatever the crossing cinematic is playing against, or
+    // take further action in a world they are about to be torn out of.
+    // Cleared either by `crossing_tick` on a failed deferred travel, or
+    // implicitly by `destroy_entity` on a successful one.
+    set_crossing_movement_lock(entity_id, true, tx, space_mgr).await;
+
+    space_mgr.begin_crossing_hold(entity_id, dial.target_address_id);
 }
 
 // ── Transition ───────────────────────────────────────────────────────────────
@@ -350,6 +416,13 @@ pub async fn handle_stargate_region_entered(
 /// Tear the entity out of its space and hand the world transition to the
 /// BaseApp. Unchanged from the pre-CA10 tail of `handle_dial_gate`, plus the
 /// H01 arrival contract below.
+///
+/// Two callers, both deliberate (NA35): the no-gate-region immediate-travel
+/// fallback in [`handle_dial_gate`] calls this synchronously (there is no
+/// gate prop for a cinematic to race), and [`tick::crossing_tick`] calls it
+/// once `CROSSING_CINEMATIC_HOLD` has elapsed for a walk-through crossing.
+/// The latter is why a failure here must clear `BSF_MovementLock` — see
+/// `crossing_tick`.
 ///
 /// Returns `true` only when a `GateTravel` was enqueued and the traveller was
 /// torn down cell-side.

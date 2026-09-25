@@ -95,12 +95,20 @@ pub(super) async fn run_cell_loop(
                 // above; short-circuits when the queue is empty.
                 content::deferred_content_action_tick(tx, &mut space_mgr, &engine).await;
 
-                // Open any stargate whose 4-second dial timer has
-                // elapsed (CA10): fires `Stargate_MakeGate` to the
-                // dialer and their witnesses and makes the gate
-                // crossable. Same tick-drain shape; short-circuits
-                // when nobody is dialling.
+                // Open any stargate whose dial timer has elapsed: fires
+                // `Stargate_MakeGate` to the dialer and their witnesses
+                // and makes the gate crossable. Same tick-drain shape;
+                // short-circuits when nobody is dialling.
                 super::super::gate_travel::gate_dial_tick(tx, &mut space_mgr).await;
+
+                // Run the deferred world transition for any stargate
+                // crossing whose post-crossing cinematic hold (NA35) has
+                // elapsed — `Stargate_CrossGate`/`onStargatePassage`
+                // already went out and the traveller's movement is
+                // locked; this is what actually issues `RESET_ENTITIES`.
+                // Same tick-drain shape; short-circuits when nobody is
+                // mid-crossing.
+                super::super::gate_travel::crossing_tick(tx, &mut space_mgr).await;
 
                 // Drive the server-side auto-cycle loop: re-fire any
                 // armed player's stashed ability against the LIVE

@@ -1,26 +1,34 @@
-//! The 4-second dial timer, its cancellations, and the crossing gate.
+//! The dial timer, the post-crossing cinematic hold, their cancellations,
+//! and the crossing gate.
 //!
-//! `SGWPlayer.beginDialing` arms the timer, `cancelDialing` drops it,
-//! `gateDialTimerExpired` opens the gate exactly once, and
-//! `stargatePassed` is a no-op unless `dialedAddress is not None and
-//! gatePassable`.
+//! `begin_gate_dial` arms the dial timer, `cancel_gate_dial` drops it,
+//! `gate_dial_tick` opens the gate exactly once, and
+//! `handle_stargate_region_entered` is a no-op unless a dial is armed AND
+//! passable. A successful crossing arms a second, independent deadline —
+//! `CROSSING_CINEMATIC_HOLD` — via `begin_crossing_hold`, drained by
+//! `crossing_tick` (NA35).
 //!
-//! These drive `SpaceManager`'s deadline directly rather than sleeping
-//! four real seconds — `take_opened_gate_dials` takes `now`, so the tests
-//! move the clock instead of waiting on it. The one test that must go
-//! through `gate_dial_tick` (which reads `Instant::now()` itself) rewinds
-//! `open_at` into the past first.
+//! These drive `SpaceManager`'s deadlines directly rather than sleeping
+//! real time — `take_opened_gate_dials` / `take_ready_crossings` take
+//! `now`, so the tests move the clock instead of waiting on it. The tests
+//! that must go through `gate_dial_tick` / `crossing_tick` (which read
+//! `Instant::now()` themselves) rewind the relevant deadline into the past
+//! first.
 
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
 use super::super::sequences::{EVENT_STARGATE_CROSS_GATE, EVENT_STARGATE_MAKE_GATE};
-use super::super::{gate_dial_tick, handle_dial_gate, handle_stargate_region_entered};
+use super::super::{
+    crossing_tick, gate_dial_tick, handle_dial_gate, handle_stargate_region_entered,
+};
 use super::{
     engine, grant_all_addresses, make_manager_with_stargates, SEQ_CROSS_GATE, SEQ_MAKE_GATE,
 };
+use crate::cell::client_methods::gate_travel::ON_STARGATE_PASSAGE;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::ring_transport::BSF_MOVEMENT_LOCK;
 use crate::cell::space_manager::SpaceManager;
 
 const DIALER: u32 = 1;
@@ -53,6 +61,16 @@ fn expire_the_timer(mgr: &mut SpaceManager) {
         .get_mut(&DIALER)
         .expect("a dial must be armed");
     dial.open_at = Instant::now() - Duration::from_millis(1);
+}
+
+/// Rewind `entity_id`'s armed crossing hold so `crossing_tick`'s internal
+/// `Instant::now()` sees it as elapsed. Mirrors `expire_the_timer`.
+fn expire_the_crossing_hold(mgr: &mut SpaceManager, entity_id: u32) {
+    let crossing = mgr
+        .pending_crossings
+        .get_mut(&entity_id)
+        .expect("a crossing hold must be armed");
+    crossing.travel_at = Instant::now() - Duration::from_millis(1);
 }
 
 /// End-to-end: arm → tick → `Stargate_MakeGate` on the wire, gate
@@ -247,11 +265,15 @@ async fn a_traveller_arriving_while_another_player_holds_an_open_dial_is_not_cro
     assert!(dial.passable);
 }
 
-/// The full crossing: `Stargate_CrossGate` goes out BEFORE the
-/// `GateTravel` teardown, and the dial is consumed so a second crossing
-/// can't re-travel.
+/// The crossing: `Stargate_CrossGate` and `onStargatePassage` go out
+/// immediately, the dial is consumed, and the traveller's movement is
+/// locked — but the world transition (`GateTravel`) is DEFERRED behind the
+/// crossing hold (NA35), not issued synchronously. This is the wire-order
+/// and byte-exact half of the coordinator's four required test shapes;
+/// `crossing_hold_elapsing_runs_the_deferred_travel` below covers the
+/// hold-then-travel sequence.
 #[tokio::test]
-async fn crossing_an_open_gate_sends_cross_gate_then_travels() {
+async fn crossing_an_open_gate_sends_cross_gate_then_onstargatepassage_and_defers_travel() {
     let (mut mgr, mut rx, tx) = armed_dialer().await;
     expire_the_timer(&mut mgr);
     gate_dial_tick(&tx, &mut mgr).await;
@@ -271,11 +293,117 @@ async fn crossing_an_open_gate_sends_cross_gate_then_travels() {
                 "6113 resolves through the ORIGIN gate's event set"
             );
         }
-        other => panic!("the crossing animation must precede the teardown, got {other:?}"),
+        other => panic!("the crossing animation must precede everything else, got {other:?}"),
     }
 
-    let second = rx.try_recv().expect("GateTravel must follow");
+    let second = rx
+        .try_recv()
+        .expect("onStargatePassage must follow the sequence");
     match second {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            assert_eq!(entity_id, DIALER, "sent to the traveller only, not fanned");
+            assert_eq!(method_index, ON_STARGATE_PASSAGE, "client method 68");
+            assert_eq!(
+                args,
+                2_i32.to_le_bytes().to_vec(),
+                "addressId is the destination stargate id, 4-byte LE INT32 \
+                 per entities/defs/interfaces/GateTravel.def"
+            );
+        }
+        other => panic!("expected onStargatePassage EntityMethodCall, got {other:?}"),
+    }
+
+    // The movement-lock update is the third and last message this call
+    // produces — `onStateFieldUpdate` (method 19) carrying the new
+    // `state_field` with `BSF_MovementLock` set.
+    let third = rx.try_recv().expect("movement-lock update must follow");
+    match third {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            assert_eq!(entity_id, DIALER);
+            assert_eq!(
+                method_index,
+                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE
+            );
+            let state_field = u32::from_le_bytes(args.try_into().unwrap());
+            assert_ne!(
+                state_field & BSF_MOVEMENT_LOCK,
+                0,
+                "the traveller must be movement-locked for the hold"
+            );
+        }
+        other => panic!("expected onStateFieldUpdate EntityMethodCall, got {other:?}"),
+    }
+
+    assert!(
+        rx.try_recv().is_err(),
+        "no GateTravel yet — the world transition is deferred behind the \
+         crossing hold, not issued synchronously"
+    );
+
+    assert!(
+        mgr.get_entity(DIALER).is_some(),
+        "the traveller is still resident in the OLD world during the hold"
+    );
+    assert!(mgr.gate_dial(DIALER).is_none(), "dial consumed on crossing");
+    let hold = mgr
+        .crossing_hold(DIALER)
+        .expect("a crossing hold must be armed");
+    assert_eq!(hold.target_address_id, 2);
+    let locked_state = mgr
+        .get_entity(DIALER)
+        .expect("entity still resident")
+        .state_field;
+    assert_ne!(
+        locked_state & BSF_MOVEMENT_LOCK,
+        0,
+        "the entity's own state_field must carry the lock, not just the \
+         wire notification"
+    );
+}
+
+/// The other half of the coordinator's hold-then-travel shape: once
+/// `CROSSING_CINEMATIC_HOLD` elapses, `crossing_tick` runs the deferred
+/// `GateTravel` and tears the entity down. Movement-lock cleanup is
+/// implicit here (the entity no longer exists to hold a stale flag); the
+/// explicit-cleanup path is `deferred_travel_failure_clears_the_movement_lock`
+/// below.
+#[tokio::test]
+async fn crossing_hold_elapsing_runs_the_deferred_travel() {
+    let (mut mgr, mut rx, tx) = armed_dialer().await;
+    expire_the_timer(&mut mgr);
+    gate_dial_tick(&tx, &mut mgr).await;
+    rx.try_recv().expect("gate opened");
+
+    handle_stargate_region_entered(DIALER, &tx, &mut mgr, &engine()).await;
+    // Drain the three crossing-start messages (sequence, passage, lock) —
+    // asserted in detail by the test above.
+    rx.try_recv().unwrap();
+    rx.try_recv().unwrap();
+    rx.try_recv().unwrap();
+
+    // A tick before the hold elapses must do nothing.
+    crossing_tick(&tx, &mut mgr).await;
+    assert!(
+        rx.try_recv().is_err(),
+        "a tick before the hold elapses must emit nothing"
+    );
+    assert!(mgr.get_entity(DIALER).is_some());
+
+    expire_the_crossing_hold(&mut mgr, DIALER);
+    crossing_tick(&tx, &mut mgr).await;
+
+    let msg = rx
+        .try_recv()
+        .expect("GateTravel must be sent once the hold elapses");
+    match msg {
         CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name,
@@ -288,7 +416,121 @@ async fn crossing_an_open_gate_sends_cross_gate_then_travels() {
     }
 
     assert!(mgr.get_entity(DIALER).is_none(), "entity torn down");
-    assert!(mgr.gate_dial(DIALER).is_none(), "dial consumed");
+    assert!(
+        mgr.crossing_hold(DIALER).is_none(),
+        "the hold is consumed, not left armed"
+    );
+
+    // A second tick must not re-run the travel against a now-nonexistent
+    // entity.
+    crossing_tick(&tx, &mut mgr).await;
+    assert!(
+        rx.try_recv().is_err(),
+        "the deferred travel must run exactly once per crossing"
+    );
+}
+
+/// Disconnect during the hold (coordinator's fourth required test shape):
+/// the pending crossing must be cancelled, not run against a departed
+/// session, mirroring `disconnect_entity_drops_the_pending_dial` for the
+/// dial timer.
+#[tokio::test]
+async fn disconnect_during_the_crossing_hold_cancels_the_deferred_travel() {
+    let (mut mgr, mut rx, tx) = armed_dialer().await;
+    expire_the_timer(&mut mgr);
+    gate_dial_tick(&tx, &mut mgr).await;
+    rx.try_recv().expect("gate opened");
+
+    handle_stargate_region_entered(DIALER, &tx, &mut mgr, &engine()).await;
+    assert!(mgr.crossing_hold(DIALER).is_some(), "hold must be armed");
+
+    // Expire the hold FIRST, so the test would fail if `disconnect_entity`
+    // did not scrub the pending crossing — without this a tick emits
+    // nothing anyway whether or not the scrub ran, proving nothing.
+    expire_the_crossing_hold(&mut mgr, DIALER);
+    mgr.disconnect_entity(DIALER, &tx).await;
+
+    // Drain whatever `disconnect_entity` itself sent (AoI leave notices
+    // etc.) before asserting on the crossing tick specifically.
+    while rx.try_recv().is_ok() {}
+
+    crossing_tick(&tx, &mut mgr).await;
+    assert!(
+        rx.try_recv().is_err(),
+        "a disconnected traveller must not get a deferred GateTravel run \
+         against their dead session"
+    );
+    assert!(mgr.crossing_hold(DIALER).is_none());
+}
+
+/// A deferred travel can still fail its own arrival validation (H01) after
+/// the hold has already elapsed — the destination could vanish from the
+/// stargate cache, or (as exercised here, the simplest failure to force)
+/// the entity itself could be gone by the time the tick runs. Whichever
+/// way `perform_gate_travel` returns `false`, the movement lock set at
+/// crossing time must not be left stuck.
+///
+/// This test forces the failure via a destination that has no
+/// `resources.stargates` row by the time the tick runs, which is the same
+/// "destination vanished from the cache" branch `perform_gate_travel`
+/// already logs — cheaper to construct here than an off-mesh arrival
+/// fixture, and it exercises the exact code path `crossing_tick`'s
+/// failure arm covers.
+#[tokio::test]
+async fn deferred_travel_failure_clears_the_movement_lock() {
+    let (mut mgr, mut rx, tx) = armed_dialer().await;
+    expire_the_timer(&mut mgr);
+    gate_dial_tick(&tx, &mut mgr).await;
+    rx.try_recv().expect("gate opened");
+
+    handle_stargate_region_entered(DIALER, &tx, &mut mgr, &engine()).await;
+    while rx.try_recv().is_ok() {}
+
+    assert_ne!(
+        mgr.get_entity(DIALER).unwrap().state_field & BSF_MOVEMENT_LOCK,
+        0,
+        "precondition: movement must be locked for the hold"
+    );
+
+    // The destination vanishes from the cache before the hold elapses —
+    // e.g. a hot-reload of `resources.stargates` mid-session.
+    mgr.stargates.remove(&2);
+
+    expire_the_crossing_hold(&mut mgr, DIALER);
+    crossing_tick(&tx, &mut mgr).await;
+
+    assert!(
+        mgr.get_entity(DIALER).is_some(),
+        "a failed deferred travel must leave the traveller in place"
+    );
+    assert_eq!(
+        mgr.get_entity(DIALER).unwrap().state_field & BSF_MOVEMENT_LOCK,
+        0,
+        "the movement lock must be released on a failed deferred travel — \
+         otherwise the traveller is stuck immobile with no completed travel"
+    );
+
+    // The lock-release itself must have gone out over the wire, not just
+    // updated local state.
+    let unlock = rx
+        .try_recv()
+        .expect("a movement-lock release must be sent on failure");
+    match unlock {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            assert_eq!(entity_id, DIALER);
+            assert_eq!(
+                method_index,
+                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE
+            );
+            let state_field = u32::from_le_bytes(args.try_into().unwrap());
+            assert_eq!(state_field & BSF_MOVEMENT_LOCK, 0);
+        }
+        other => panic!("expected an onStateFieldUpdate release, got {other:?}"),
+    }
 }
 
 /// Event ids are original data (`entities/defs/enumerations.xml:821,834`)
