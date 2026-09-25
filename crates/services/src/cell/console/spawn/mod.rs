@@ -24,6 +24,7 @@ use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 mod authoring;
@@ -262,6 +263,7 @@ async fn respawn_all(
         .collect();
     let mut reset = 0usize;
     for id in &npcs {
+        let world = npc_ai::world_label(space_mgr, *id);
         if let Some(e) = space_mgr.get_entity_mut(*id) {
             if let Some(spawn) = e.spawn_position {
                 e.position = spawn;
@@ -272,7 +274,12 @@ async fn respawn_all(
             }
             e.threat_list.clear();
             e.respawn_at = None;
-            e.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
+            npc_ai::set_ai_state_on(
+                e,
+                &world,
+                cimmeria_entity::cell_entity::AiState::Idle,
+                AiTransitionReason::GmCommand,
+            );
             reset += 1;
         }
     }

@@ -503,8 +503,12 @@ async fn killed_harset_guard_is_stamped_and_revived_by_the_respawn_tick() {
         if let Some(hp) = npc.stats.get_mut(HEALTH) {
             hp.set_current(0);
         }
-        mark_npc_dead(npc);
-        assert_eq!(npc.ai_state, AiState::Dead, "kill must set ai_state = Dead");
+        mark_npc_dead(npc, "Harset");
+        assert_eq!(
+            npc.ai_state(),
+            AiState::Dead,
+            "kill must set ai_state = Dead"
+        );
         // H-B7 guard: this is `None` whenever the seed's respawn_secs is
         // reverted, and the expect below is where that regression lands.
         let stamped = npc
@@ -529,7 +533,7 @@ async fn killed_harset_guard_is_stamped_and_revived_by_the_respawn_tick() {
 
     let npc = mgr.get_entity(npc_id).expect("guard must still exist");
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Idle,
         "the respawn tick must promote the guard back to Idle"
     );

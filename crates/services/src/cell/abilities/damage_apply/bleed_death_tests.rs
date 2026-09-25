@@ -113,9 +113,9 @@ async fn effect_script_bleed_to_zero_runs_death_transition_in_same_resolution() 
          a 0-HP NPC without the bit is the playtest corpse that kept fighting"
     );
     assert!(
-        matches!(npc.ai_state, AiState::Dead),
+        matches!(npc.ai_state(), AiState::Dead),
         "ai_state must be Dead so the AI tick stops giving the corpse turns; got {:?}",
-        npc.ai_state
+        npc.ai_state()
     );
 
     let msgs = drain(&mut rx);
@@ -160,11 +160,11 @@ async fn melee_script_bleed_to_zero_runs_death_transition_in_same_resolution() {
 
     let npc = mgr.get_entity(2).unwrap();
     assert!(
-        is_dead_state(npc.state_field) && matches!(npc.ai_state, AiState::Dead),
+        is_dead_state(npc.state_field) && matches!(npc.ai_state(), AiState::Dead),
         "MeleePhysicalDamage bleed to zero must also resolve the death; \
          state_field={:#x} ai_state={:?}",
         npc.state_field,
-        npc.ai_state
+        npc.ai_state()
     );
     assert!(
         drain(&mut rx)

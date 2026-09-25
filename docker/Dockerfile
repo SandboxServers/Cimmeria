@@ -84,6 +84,14 @@ COPY tools ./tools
 
 ENV CARGO_INCREMENTAL=0
 
+# Git commit baked into the binary as the OTLP `service.version` resource
+# attribute (crates/server/build.rs). `.git` is not in the build context, so
+# the release workflow passes the SHA in; a local `docker build` without the
+# arg ships "unknown". Declared this late so a new SHA only invalidates the
+# cargo layer, which every commit rebuilds anyway.
+ARG CIMMERIA_GIT_SHA=unknown
+ENV CIMMERIA_GIT_SHA=${CIMMERIA_GIT_SHA}
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build -p cimmeria-server --release \
@@ -259,6 +267,12 @@ ENV AUTH_HOST=0.0.0.0 \
     BASE_PORT=32832 \
     CELL_PORT=50000 \
     ADMIN_PORT=8443 \
+    # The binary defaults ADMIN_BIND to 127.0.0.1 (#439: the admin API has
+    # no auth yet). Inside a container that default is unreachable: Docker's
+    # `-p 8443:8443` forwards to the container's bridge address, never to its
+    # loopback. Bind wide here and control exposure with the publish instead
+    # (`-p 127.0.0.1:8443:8443`, or drop the publish).
+    ADMIN_BIND=0.0.0.0 \
     # Libpq-style on purpose — orchestrator_postgres::ensure_postgresql_running
     # parses host= and port= tokens, not URL DSNs. A URL form would make the
     # auto-start probe default to localhost:5433 and emit spurious warnings

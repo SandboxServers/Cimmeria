@@ -112,6 +112,22 @@ This guide is the playbook for writing tests that survive review and catch real 
 - **If the thing you changed is an executor arm, resolving is not enough.** A resolve-only replay passes identically whether the executor has a match arm or drops the action in its `other =>` catch-all — that is precisely how `move_entity`’s five seeded rows no-opped in production while the suite stayed green. Push the `ResolvedActions` through `executor::execute_actions` and assert on the emitted `CellToBaseMsg`. See `chain_replay_tests/sgc_w1_move_entity.rs`.
 - **A verb with zero seed rows still gets a replay test.** Insert a sentinel chain (`0x7000_xxxx` chain id, per the live-DB rules above), load it through `load_single_chain_for_test`, then delete by exact id *before* asserting so a failing run cannot leave a live chain registered in the shared DB. See `chain_replay_tests/grant_xp.rs`.
 
+**Seed linters (a no-DB sibling).** Some seed invariants span two tables — or a table and a chain file — and a replay test cannot see them, because the chain loads and resolves perfectly while the *data it points at* is wrong. Those live as integration tests under `crates/content-engine/tests/`, parsing the seed SQL directly with no database:
+
+| Linter | Enforces |
+|---|---|
+| [interact_tag_linter.rs](crates/content-engine/tests/interact_tag_linter.rs) | Every `interact_tag` chain has a `set_interaction_type` for that tag, every region key byte-matches a `point_sets.name`, every `*_chains.sql` is `\ir`'d from `db/database.sql`. |
+| [dialog_button_linter.rs](crates/content-engine/tests/dialog_button_linter.rs) | A dialog that keys a `dialog_choice` chain has zero buttons or a button on its **final** screen; the never-add-a-button dialogs stay zero-button; every button is one its own window can draw (Blurb 1-2, Dialog/Radio/Realization 2 and 4-6); a chain key is not a Tutorial or type-0 dialog. |
+
+**Patterns to follow:**
+
+- **Assert the scan is not vacuous.** Every rule here is "no violations found", so a parser that silently returns nothing passes all of them. Both linters pin a parsed row count against the raw file (`every_insert_row_in_the_dialog_seeds_is_parsed` compares against the count of `INSERT INTO <table>` occurrences) and name specific rows the scan must find.
+- **Drive the production predicate from the synthetic tests.** Re-implementing the rule in the test body means a loosened rule stays green. Both linters factor the check into a function (`region_key_violations`, `r1_violations`) that the live test and the synthetic guards both call.
+- **An allowlist entry is debt, so make it expire.** `dialog_button_linter` fails on a *stale* entry as well as on an unlisted violator: once a dialog is fixed, its exemption has to be deleted or the suite stays red.
+- **Report the case you cannot judge; never skip it.** A rule that `continue`s past an enum value it does not recognise reports "no violations" on data it never looked at. `dialog_button_linter` reports the unknown window type instead, and reads the `EDialogUIScreenType` labels out of the schema so a new value fails once, loudly, at the point it is added.
+- **A rule with no live violator still needs to be seen failing.** R3 and R4 are green on the whole seed, so their only proof is the synthetic guards driving the production predicate, plus a recorded seed mutation. Write both; "it passes" is not evidence a rule works.
+- **Read the seed the way the loader does.** Dialog ids reach a `dialog_choice` trigger as a quoted `event_key` that the loader `parse()`s; the linter does the same, so a row the loader would reject is not silently linted as valid.
+
 ### 7. C++ legacy + Python script tests
 
 The `src/` (C++) and `python/` (game scripts) trees are reference-only for active development. They have their own (smaller) test surface that is not part of the CI gate. **Don't write new tests there** unless you are specifically validating the reference behavior we're trying to match in Rust; in that case, document why in the test header and link the corresponding Rust test.
@@ -185,6 +201,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - **Use seeded RNG.** Any probabilistic drop (`DropProbability::pct(N)`) or `LossyTransport` config must explicitly set the seed (`rng_seed: Some(0xC0FFEE)`) so the test is bitwise-reproducible across CI runs and platforms.
 - **`reset_counters` between phases.** Tests that combine handshake + chaos primitives should call `policy.reset_counters()` after the harness handshake completes so `send_count`-indexed primitives (`drop_at_send_count`) align to the test's sends only.
 - **Respect `RETRANSMIT_BUDGET_PER_TICK = 5`.** A burst that exceeds the budget needs multiple ticks to fully retransmit, and between ticks the clock must advance enough to exceed the (potentially doubled) RTO. The `lomiada_single_packet_gap` test stays inside the budget; `burst_loss_mid_stream` exercises the multi-tick drain explicitly.
+- **Receive before you build an ack carrier.** The harness puts every `send_bundle` on the wire immediately — a send that spills into `unsent_packets` is deferred for *tracking*, not held back. The peer's recv pump is asynchronous and records the owed ack just before it pushes the bundle to the inbox, so a carrier built after a partial `recv_n_bundles` piggybacks a **prefix** ack and the un-acked tail is promoted back into the sender's TX window (the load-dependent `tx_window.len() != 0` flake in #713). Receive every bundle you expect acked (`recv_n_bundles(n)` returning `n` implies `pending_acks_len() == n`), then send the carrier and assert the carrier's own receive — the pump applies `process_acks` before delivering it. When the scenario *wants* a partial ack (to exercise deferred-queue promotion), force it with `drop_next` rather than timing; `tx_window_overflow_with_recovery` is the example.
 - **Assert safety invariants at scenario end.** Call `invariants::all_safety_invariants(&channel)` to catch any silent tx_window overflow / orphan-retransmit blowup the scenario might have left behind.
 - **Pcap-replay tests should skip-not-fail when fixtures are missing.** Some dev environments exclude `debug/`; gate the test body on `if !pcap.exists() || !keys.exists() { return; }`.
 - **L2 integration tests are slow.** A `Transatlantic` profile run over 500 packets takes ~30s wall time because of the 60ms-per-recv latency. Use a smaller send count for quick smoke; reserve full-volume runs for a slower CI tier if one exists.
@@ -266,6 +283,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 | An invariant that spans two or more handlers | PL/pgSQL smoke + Rust harness |
 | A race condition or `join!`-of-futures correctness | Concurrency regression guard |
 | Content seed correctness (chains, triggers, action wiring) | Chain-replay test |
+| A seed invariant spanning two tables or a table and a chain file (dialog buttons vs `dialog_choice` keys, `interact_tag` vs `set_interaction_type`) | Seed linter under `crates/content-engine/tests/` |
 | A BaseApp handler's outbound fan-out (which addrs, in what order, with which bytes) | Fan-out byte test |
 | Mercury protocol-layer behavior (reliable delivery under loss, fragment reassembly, keepalive cadence, encryption round-trip, RTO convergence) | Mercury session test |
 | A protocol-state recovery shape (single-packet drop in a long stream, burst loss, asymmetric ack loss, sustained probabilistic loss, lossy-socket integration), or a pcap-replay regression against a captured production session | Network chaos test |

@@ -29,8 +29,11 @@ Dispatchers that DO populate `archetype`: `interaction.rs` (both
 let dialog id carry the branch on the choice chain. That is
 server-authoritative because `handle_dialog_button_choice`
 (`cell_methods/player/interaction/dialog.rs`, the #479 gate) rejects a
-`dialogButtonChoice` unless `open_dialog_id` matches — the server must have
-displayed it.
+`dialogButtonChoice` unless the id is in the player's `offered_dialog_ids` set
+— the server must have displayed it. (DU-08, 2026-09-21, replaced the single
+`open_dialog_id` pin with a bounded set: the client holds two dialog slots and
+answers an evicted zero-button dialog AFTER the replacement was displayed, so a
+single pin silently dropped that chain. Still one-shot per id.)
 
 **Caveat that makes the gate real:** `initialResponse`
 (`cell/interactions/dispatch/initial_response.rs`) scans the player's WHOLE

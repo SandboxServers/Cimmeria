@@ -4,10 +4,11 @@
 //! inside `CookedDataDialogs.pak` on the client — **not** in any wire
 //! message or in the server's `dialogs` / `dialog_screens` tables. The
 //! server's `displayDialog` path only carries the dialog *id*; the client
-//! looks the screen text up from its own cooked catalogue. So editing a
-//! row in `db/resources/Dialogs/Seed/dialog_screens.sql` has zero in-game
-//! effect on what renders — and a brand-new dialog id the client has never
-//! seen renders as an empty box.
+//! looks the screen text, the window type and the buttons up from its own
+//! cooked catalogue. So editing a row in
+//! `db/resources/Dialogs/Seed/dialog_screens.sql` has zero in-game effect
+//! on what renders — and a brand-new dialog id the client has never seen
+//! renders as an empty box.
 //!
 //! Same trick as [`super::mission_overrides`] / [`super::item_overrides`]:
 //! patch the catalogue in memory at server startup and lean on the
@@ -16,26 +17,70 @@
 //! the client. Self-healing — runtime cache invalidation, no manual client
 //! steps, no on-disk PAK edit, no client-artifact redistribution.
 //!
-//! Unlike the mission/item override modules, which *patch* an attribute or
-//! splice a child into the canonical XML, a dialog override **regenerates
-//! the whole `<COOKED_DIALOG>` entry from scratch**. The cooked dialog
-//! entries are small (root + one or more `<Screens>`) and we control every
-//! field, so emitting the complete Server-Build XML is more robust than
-//! anchoring on a substring — and it makes the *new-entry* case (a dialog
-//! id the PAK never shipped, like the Guard corpse's 3996) identical to the
-//! *corrected-entry* case (Frost's 3995): both are just an
+//! # Two override kinds
+//!
+//! **Full regeneration** — [`DialogOverride`], this file. Emits a complete
+//! `<COOKED_DIALOG>` from Rust-authored text. Right for a dialog Cimmeria
+//! invented, where there is no canonical entry to preserve: the new-entry
+//! case (the Guard corpse's 3996, which the PAK never shipped) and the
+//! corrected-entry case (Frost's 3995) are both just an
 //! `elements.insert(dialog_id, generated_xml)`.
 //!
-//! The emitted XML follows the Server-Build conventions documented in
-//! [`docs/engine/cooked-data-pak-format.md`]: no SOAP namespaces,
-//! alphabetized root attributes (`DialogFlags`, `DialogID`,
-//! `KismetEventSetID`, `UIScreenType`), and child `<Screens>` with
-//! `SpeakerID` → `ScreenID` → `Text` order and an explicit `</Screens>`
-//! close.
+//! **Patch** — [`DialogPatch`], in [`patch`]. Parses the entry the client
+//! already shipped, edits only what the plan names, and re-emits. Right for
+//! one of the 5,405 shipped dialogs: restating tens of screens of voiced
+//! dialogue in Rust to move one button would be a transcription error
+//! waiting to happen. Every screen's speaker, id and text come out
+//! byte-identical to the source, `&#xA;` newline references and all.
+//!
+//! Both kinds funnel through the one emitter in [`emit`], so they cannot
+//! drift into two different on-the-wire shapes. The emitted XML follows the
+//! Server-Build conventions in `docs/engine/cooked-data-pak-format.md`: no
+//! SOAP namespaces, alphabetised root attributes, `<Screens>` children with
+//! `SpeakerID` → `ScreenID` → `Text` and an explicit close, and nested
+//! `<Buttons ButtonType ButtonID Text></Buttons>`.
+//!
+//! # Buttons decide how a dialog closes
+//!
+//! Closing a dialog with ZERO buttons sends `dialogButtonChoice(id, -1)`;
+//! closing one with ANY button sends nothing. That `-1` is what most
+//! progression chains actually run on, so whether a dialog carries a button
+//! is a gameplay decision, not a cosmetic one. See
+//! `docs/analysis/dialog-ui-redesign/work-packets.md` for the client
+//! contract this module implements.
+
+pub mod emit;
+pub mod parse;
+pub mod patch;
+mod patches_castle;
+mod patches_cellblock;
+
+#[cfg(test)]
+mod patch_tests;
+
+pub use emit::{emit_cooked_dialog, escape_xml_attr, CookedButton, CookedDialog, CookedScreen};
+pub use patch::{apply_dialog_patches, no_patches_registered, DialogPatch, DIALOG_PATCH_TABLES};
+
+/// One button on an authored screen.
+///
+/// `button_id` is the cooked id the client puts on the wire when the
+/// button is clicked, not the button's index: 8 Accept, 9 More Info,
+/// 70 Receive Item, 71 Take Missions. `button_type` picks the widget:
+/// 1 More Info, 2 Accept, 3 Decline, 4/5/6 Generic1-3.
+///
+/// Order within [`DialogScreen::buttons`] is significant — the client
+/// resolves a click to a position in the array and sends whichever
+/// `ButtonID` sits there.
+pub struct DialogButton {
+    pub button_type: u32,
+    pub button_id: u32,
+    /// Raw, human-readable label. XML escaping is applied by the emitter.
+    pub text: &'static str,
+}
 
 /// One screen line within a dialog. `text` is the raw, human-readable
 /// string — XML escaping (`"` → `&quot;`, `&` → `&amp;`, `<`/`>`) is
-/// applied by the generator, so callers write the text exactly as it
+/// applied by the emitter, so callers write the text exactly as it
 /// should read in-game.
 pub struct DialogScreen {
     pub screen_id: u32,
@@ -43,6 +88,10 @@ pub struct DialogScreen {
     /// dialogs are narrator text, not spoken by an NPC).
     pub speaker_id: u32,
     pub text: &'static str,
+    /// Buttons offered on this screen, in the order the client should see
+    /// them. Empty means the dialog closes with `dialogButtonChoice(id,
+    /// -1)`, which is what the two search-corpse dialogs below rely on.
+    pub buttons: &'static [DialogButton],
 }
 
 /// One dialog's override: the dialog id to (re)generate and its screen
@@ -56,6 +105,9 @@ pub struct DialogScreen {
 /// `ui_screen_type` mirrors the `dialogs.ui_screen_type` enum value the
 /// client expects; `2` is `DUIST_DefaultDialog` (the plain text box used
 /// by the search-corpse dialogs — see `entities/defs/enumerations.xml`).
+///
+/// To change one of the dialogs the game shipped, reach for
+/// [`DialogPatch`] instead.
 pub struct DialogOverride {
     pub dialog_id: u32,
     pub dialog_flags: u32,
@@ -97,6 +149,9 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             text: "There are no obvious wounds on Cpl. Frost, though it appears he died \
                    soon after killing that NID Guard. On his body you find a letter \
                    addressed to \"Jess\" - Frost's wife.",
+            // Zero buttons: the search chain fires off the `-1` the client
+            // sends when a button-less dialog is closed (fact F8).
+            buttons: &[],
         }],
     },
     // Mission 622 loot split — the NID Guard's corpse (dialog 3996). A
@@ -113,58 +168,45 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             speaker_id: 0,
             text: "The NID Guard died with his weapon still drawn. You pry the pistol \
                    from his grip - it's still serviceable.",
+            buttons: &[],
         }],
     },
 ];
 
-/// XML-escape a text value destined for a double-quoted attribute.
-///
-/// Escapes the five XML predefined entities. `"` → `&quot;` is the
-/// load-bearing one for these dialogs (the Frost text quotes "Jess");
-/// `&` must come logically "first" in intent but since we scan char by
-/// char and emit the entity for each source char, ordering is a non-issue
-/// — a literal `&` in the source becomes `&amp;`, never re-escaped.
-fn escape_xml_attr(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            _ => out.push(c),
-        }
+/// Build the emitter's model from an authored override. Raw text is
+/// escaped here; everything downstream deals in escaped values.
+fn cooked_from_override(ov: &DialogOverride) -> CookedDialog {
+    CookedDialog {
+        dialog_flags: ov.dialog_flags,
+        dialog_id: ov.dialog_id,
+        kismet_event_set_id: ov.kismet_event_set_id,
+        ui_screen_type: ov.ui_screen_type,
+        screens: ov
+            .screens
+            .iter()
+            .map(|screen| CookedScreen {
+                speaker_id: screen.speaker_id,
+                screen_id: Some(screen.screen_id),
+                text_escaped: escape_xml_attr(screen.text),
+                buttons: screen
+                    .buttons
+                    .iter()
+                    .map(|b| CookedButton {
+                        button_type: b.button_type,
+                        button_id: b.button_id,
+                        text_escaped: escape_xml_attr(b.text),
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
-    out
 }
 
 /// Generate the full Server-Build `<COOKED_DIALOG>` XML bytes for one
 /// override. Always succeeds — there's no canonical entry to anchor
 /// against, we emit the complete document from the struct fields.
-///
-/// Root attributes are alphabetized (`DialogFlags`, `DialogID`,
-/// `KismetEventSetID`, `UIScreenType`); each `<Screens>` child emits
-/// `SpeakerID` → `ScreenID` → `Text` with an explicit close, matching the
-/// Server-Build shape in `docs/engine/cooked-data-pak-format.md`.
 pub fn generate_dialog_xml(ov: &DialogOverride) -> Vec<u8> {
-    let mut xml = String::with_capacity(256);
-    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-    xml.push_str(&format!(
-        "<COOKED_DIALOG DialogFlags=\"{}\" DialogID=\"{}\" KismetEventSetID=\"{}\" \
-         UIScreenType=\"{}\">",
-        ov.dialog_flags, ov.dialog_id, ov.kismet_event_set_id, ov.ui_screen_type,
-    ));
-    for screen in ov.screens {
-        xml.push_str(&format!(
-            "<Screens SpeakerID=\"{}\" ScreenID=\"{}\" Text=\"{}\"></Screens>",
-            screen.speaker_id,
-            screen.screen_id,
-            escape_xml_attr(screen.text),
-        ));
-    }
-    xml.push_str("</COOKED_DIALOG>");
-    xml.into_bytes()
+    emit_cooked_dialog(&cooked_from_override(ov))
 }
 
 #[cfg(test)]
@@ -285,14 +327,77 @@ mod tests {
         }
     }
 
-    /// `escape_xml_attr` covers all five predefined entities and leaves
-    /// apostrophes-as-`&apos;` (safe inside a double-quoted attribute, and
-    /// harmless). Pins the escaping contract directly.
+    /// Byte-exact pin on 3995. The two shipped overrides predate the
+    /// patch engine; routing them through the shared emitter must not
+    /// have moved a single byte, or every client that already cached
+    /// them refetches for nothing.
     #[test]
-    fn escape_covers_predefined_entities() {
+    fn frost_override_bytes_are_unchanged_by_the_shared_emitter() {
+        let ov = DIALOG_OVERRIDES
+            .iter()
+            .find(|o| o.dialog_id == 3995)
+            .expect("Frost dialog 3995 must be registered");
         assert_eq!(
-            escape_xml_attr("a & b < c > d \" e ' f"),
-            "a &amp; b &lt; c &gt; d &quot; e &apos; f",
+            String::from_utf8(generate_dialog_xml(ov)).unwrap(),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+             <COOKED_DIALOG DialogFlags=\"0\" DialogID=\"3995\" KismetEventSetID=\"0\" \
+             UIScreenType=\"2\">\
+             <Screens SpeakerID=\"0\" ScreenID=\"96108\" \
+             Text=\"There are no obvious wounds on Cpl. Frost, though it appears he died \
+             soon after killing that NID Guard. On his body you find a letter addressed to \
+             &quot;Jess&quot; - Frost&apos;s wife.\"></Screens>\
+             </COOKED_DIALOG>",
         );
+    }
+
+    /// An authored override CAN now carry buttons, which is what lets a
+    /// future Cimmeria-invented dialog offer one. The two shipped entries
+    /// deliberately do not.
+    #[test]
+    fn authored_buttons_reach_the_emitted_xml() {
+        const WITH_BUTTON: DialogOverride = DialogOverride {
+            dialog_id: 4242,
+            dialog_flags: 0,
+            kismet_event_set_id: 0,
+            ui_screen_type: 2,
+            screens: &[DialogScreen {
+                screen_id: 1,
+                speaker_id: 0,
+                text: "Well?",
+                buttons: &[DialogButton {
+                    button_type: 2,
+                    button_id: 8,
+                    text: "Accept",
+                }],
+            }],
+        };
+        assert_eq!(
+            String::from_utf8(generate_dialog_xml(&WITH_BUTTON)).unwrap(),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+             <COOKED_DIALOG DialogFlags=\"0\" DialogID=\"4242\" KismetEventSetID=\"0\" \
+             UIScreenType=\"2\">\
+             <Screens SpeakerID=\"0\" ScreenID=\"1\" Text=\"Well?\">\
+             <Buttons ButtonType=\"2\" ButtonID=\"8\" Text=\"Accept\"></Buttons>\
+             </Screens>\
+             </COOKED_DIALOG>",
+        );
+    }
+
+    /// The two shipped overrides must keep zero buttons. A button here
+    /// would stop the client sending `dialogButtonChoice(id, -1)` on
+    /// close, and the mission 622 search chains key on exactly that.
+    #[test]
+    fn shipped_overrides_carry_no_buttons() {
+        for ov in DIALOG_OVERRIDES {
+            for screen in ov.screens {
+                assert!(
+                    screen.buttons.is_empty(),
+                    "dialog {} screen {} must stay button-less: the search chains \
+                     depend on the close sending -1 (client contract F8)",
+                    ov.dialog_id,
+                    screen.screen_id,
+                );
+            }
+        }
     }
 }

@@ -629,6 +629,8 @@ keep rendering the mob at the chase-end position until the next AoI sweep
 happens to resync it. *That* is "stuck to geometry", and it is why the owner's
 recollection of a clean leash return does not match this build.
 
+> **Correction (2026-09-24, NPC AI audit S4):** "no position packet at all" is wrong. `compute_player_aoi` pushes an `EntityMoved` for every entity still in a witness's AoI on every AoI tick, straight from `other.position` (`space_manager/aoi.rs`), so the snap reaches clients within about 100 ms. It arrives as an unreliable avatar update carrying the stale chase velocity, not a forced position. The real defects are that the leash never clears `nav_path` (the movement tick walks the NPC from spawn back out along the leftover chase path), never zeroes velocity, and bypasses the spatial-grid update in `write_position`. See [audit S4](../../npc-ai-restoration/audit.md#3-symptom-4-stuck-partway-frozen-attacking-or-running-in-place) and [ai-aggro-audit.md](../../npc-ai-restoration/evidence/ai-aggro-audit.md). The text above is kept as the playtest record.
+
 **Fix shape:** leash should reuse the respawn snap block verbatim
 (`update_entity_position` + `npc.direction = spawn_dir` + `EntityMoved`
 fan-out), or — better, matching the owner's memory — become a multi-tick

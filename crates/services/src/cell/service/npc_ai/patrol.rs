@@ -87,9 +87,12 @@ pub(super) async fn npc_ai_patrol(
     // doesn't see a Patrol byte for an NPC that's about to leave
     // the state. The drop also broadcasts None to clear the cache.
     if path_empty {
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            cimmeria_entity::cell_entity::AiState::Idle,
+            super::AiTransitionReason::PatrolNoPath,
+        );
         // decision_outcome left empty — empty-path is a transition
         // out of Patrol, not a Patrol outcome. The next AI tick's
         // Idle branch will record its own outcome.
@@ -179,16 +182,18 @@ pub(super) async fn npc_ai_patrol(
         // branch and skip the remainder of the dwell. Clearing means
         // the re-arrival re-stamps from scratch, which is the
         // expected "pause for delay_secs after arriving" semantic.
-        let path = space_mgr
-            .find_path(npc_id, &npc_pos, &waypoint)
-            .unwrap_or_default();
-        if path.len() <= 1 {
-            // Previously silent. `unwrap_or_default` turns "no route"
-            // into an empty Vec, the `else` arm below pushes the raw
-            // waypoint, and the NPC walks to it through whatever
-            // geometry is in the way with no log at any level — the
+        // Kept as an `Option` until after classification: collapsing it
+        // to a `Vec` first makes "the pathfinder declined" and "the
+        // pathfinder answered with one unusable waypoint" indis-
+        // tinguishable, and they are different findings.
+        let path = space_mgr.find_path(npc_id, &npc_pos, &waypoint);
+        if path.as_ref().is_none_or(|p| p.len() <= 1) {
+            // Previously silent. The `else` arm below pushes the raw
+            // waypoint and the NPC walks to it through whatever
+            // geometry is in the way, with no log at any level — the
             // 2026-09-18 Castle "NPCs cut through walls" shape.
-            let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+            let reason =
+                super::path_failure::PathFailReason::classify(space_mgr, npc_id, path.as_deref());
             super::path_failure::report_path_failure(
                 space_mgr,
                 super::path_failure::PathFailure {
@@ -198,11 +203,13 @@ pub(super) async fn npc_ai_patrol(
                     from: npc_pos,
                     to: waypoint,
                     reason,
+                    fallback: super::path_failure::PathFallback::DirectWaypoint,
                     target_id: None,
                 },
                 std::time::Instant::now(),
             );
         }
+        let path = path.unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.patrol_dwell_until = None;
             npc.nav_path.clear();

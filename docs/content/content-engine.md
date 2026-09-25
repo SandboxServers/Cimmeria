@@ -113,7 +113,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnCustomEvent { event_name }` | Generic invoke escape hatch / synthetic for triggerless chains |
 | `OnPlayerLoaded { world_name? }` | Player completes mapLoaded |
 | `OnDialogOpen { dialog_id }` | Server sent `onDialogDisplay` |
-| `OnDialogChoice { dialog_id }` | Player clicked a dialog button. **Server-gated**: the `DialogButtonChoice` handler rejects the event unless `CellEntity::open_dialog_id == dialog_id` (the dialog was actually displayed to this player via `send_dialog_display`); a forged/replayed choice for an un-opened `dialog_id` is dropped with a `warn!` and never fires the chain (CAT-J-01 / #479). |
+| `OnDialogChoice { dialog_id }` | Player clicked a dialog button. **Server-gated**: the `DialogButtonChoice` handler rejects the event unless `dialog_id` is in `CellEntity::offered_dialog_ids` — the bounded set of dialogs actually displayed to this player via `send_dialog_display`. A valid choice removes the id (one-shot), so a forged or replayed choice is dropped with a `warn!` and never fires the chain (CAT-J-01 / #479, widened to a set by DU-08 because the client evicts an open dialog and answers it late). |
 | `OnInteractTag { entity_tag }` | Right-click on tagged NPC/object |
 | `OnInteractTemplate { template_name }` | Right-click on entity from named template |
 | `OnItemUse { item_id }` | Player double-clicked inventory item |
@@ -233,7 +233,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `add_dialog` | `AddDialog` | 10 |
 | `add_dialog_set` | `AddDialogSet` | 6 |
 | `remove_dialog_set` | `RemoveDialogSet` | 2 |
-| `npc_bark` | `NpcBark` | 0 |
+| `npc_bark` | `NpcBark` | 3 |
 | `add_item` | `GrantItem` | 14 |
 | `remove_item` | `RemoveItem` | 2 |
 | `grant_xp` | `GrantXP` | 0 |

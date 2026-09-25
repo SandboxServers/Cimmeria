@@ -435,7 +435,13 @@ pub struct CellEntity {
     /// the runtime (`Idle`, `Fighting`, `Leashing`, `Dead`). The other
     /// variants are entry points for future content hooks and AI tick
     /// extensions.
-    pub ai_state: AiState,
+    ///
+    /// Private on purpose: read it with [`CellEntity::ai_state`]. Every
+    /// write must go through the services-side transition helper
+    /// (`cell::service::npc_ai::transition::set_ai_state`), which emits the
+    /// `npc_ai.transition` row and counter; a raw field write would leave a
+    /// hole in the per-NPC state timeline (audit gap T8).
+    pub(super) ai_state: AiState,
     /// Threat list: entity_id → accumulated threat value.
     pub threat_list: HashMap<u32, f32>,
     /// Position where this NPC was spawned (for leashing).
@@ -633,23 +639,11 @@ pub struct CellEntity {
     /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
     pub last_interaction_target: Option<u32>,
 
-    /// The `dialog_id` of the dialog currently displayed to this player, or
-    /// `None` when no dialog is open. Set when `onDialogDisplay` is sent
-    /// (`cell::interactions::send_dialog_display`, the single choke point all
-    /// display paths route through), validated and cleared on
-    /// `DIALOG_BUTTON_CHOICE`.
-    ///
-    /// This is the server-side "is dialog X open for player Y?" precondition
-    /// the `DialogButtonChoice` handler checks before firing an
-    /// `OnDialogChoice` content chain. Without it, a forged choice packet for
-    /// any discovered `dialog_id` drives the chain's actions (GrantXP,
-    /// GrantItem, AcceptMission, Teleport, …) with no precondition
-    /// (CAT-J-01 / #479). Mirrors python `SGWPlayer.displayedDialogs`
-    /// (`deprecated/python/cell/SGWPlayer.py`): set on `displayDialog`,
-    /// `del`'d on `dialogButtonChoice`. A single slot suffices — SGW content
-    /// is strictly sequential (display → choice → display), never
-    /// overlapping dialogs.
-    pub open_dialog_id: Option<i32>,
+    /// Dialogs offered to this player and not yet answered, oldest first —
+    /// the `dialogButtonChoice` server-authority precondition. Private on
+    /// purpose; see the `offered_dialogs` module for the rules and the
+    /// accessors that enforce them.
+    pub(super) offered_dialog_ids: VecDeque<i32>,
 
     /// Entity ID of the currently-open vendor (only for player entities).
     pub vendor_entity: Option<u32>,

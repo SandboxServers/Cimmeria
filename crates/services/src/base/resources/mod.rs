@@ -118,7 +118,17 @@ pub(crate) struct ResourceCache {
     overridden_elements: Arc<HashMap<u32, Vec<u32>>>,
 }
 
-/// Category ID -> PAK filename mapping (from `resource.cpp`).
+/// Category ID -> PAK filename mapping.
+///
+/// The IDs are the client's registration order, confirmed from
+/// `CookedData_RegisterAllLibCategories` (SGW.exe `0x00420074`): the client
+/// registers **exactly 21** ServerSource categories, numbered 1–21, with
+/// category 21 = `BehaviorEventData` / `CookedBehaviorEvents.pak`. There is
+/// **no** client-side category 0, category 22, or `pet_command` — the
+/// legacy `resource.cpp`/`Def.py` table that reserved `21: pet_command` and
+/// put `behavior_event` at 22 drifted from the client and is not the wire
+/// contract. See `docs/reverse-engineering/findings/cooked-data-pipeline.md`
+/// and `docs/protocol/client-verified-wire-formats.md` §8.
 pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
     (1, "CookedDataKismetSeqEvent.pak"),
     (2, "CookedDataAbilities.pak"),
@@ -140,7 +150,18 @@ pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
     (18, "CookedParadigm.pak"),
     (19, "SpecialWords.pak"),
     (20, "CookedInteractions.pak"),
+    (CATEGORY_BEHAVIOR_EVENTS, "CookedBehaviorEvents.pak"),
 ];
+
+/// Category id for `CookedBehaviorEvents.pak` (see [`CATEGORY_PAKS`]).
+///
+/// The client registers this as `BehaviorEventData` — the 21st and final
+/// `ServerSource` category at `CookedData_RegisterAllLibCategories`
+/// (`SGW.exe` `0x00420074`). The legacy `resource.cpp`/`Def.py` map reserved
+/// 21 for `pet_command` (never implemented client-side) and pushed
+/// `behavior_event` to 22, drifting past the client's contiguous 1–21 enum:
+/// a fragment tagged 22 is silently dropped. Match the client: 21.
+const CATEGORY_BEHAVIOR_EVENTS: u32 = 21;
 
 /// Category id for `CookedDataMissions.pak` (see [`CATEGORY_PAKS`]).
 const CATEGORY_MISSIONS: u32 = 3;
@@ -162,87 +183,14 @@ const CATEGORY_DIALOGS: u32 = 5;
 /// be pushed via the cooked-data invalidation handshake.
 const CATEGORY_KISMET_SEQUENCES: u32 = 1;
 
-/// Compute the deterministic metadata bump for a set of overrides.
-///
-/// The bump is hashed from every field that affects what the client sees:
-/// `mission_id`, `insert_after_step_id`, and the injected XML. Two server
-/// starts on the same override content produce the same bump (no
-/// re-invalidation churn); changing any field changes the bump (client
-/// mismatches and refetches).
-///
-/// The result is OR'd with 1 so the low bit is always set — guards
-/// against the rare hash that lands on `0`, which would leave the
-/// metadata unchanged and the client stuck on stale entries.
-fn compute_metadata_bump(
-    overrides: &[super::mission_overrides::MissionOverride],
-    text_overrides: &[super::mission_overrides::StepTextOverride],
-) -> u32 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for ov in overrides {
-        ov.mission_id.hash(&mut hasher);
-        ov.insert_after_step_id.hash(&mut hasher);
-        ov.injected_steps_xml.hash(&mut hasher);
-    }
-    for ov in text_overrides {
-        ov.mission_id.hash(&mut hasher);
-        ov.step_id.hash(&mut hasher);
-        ov.new_step_display_log_text.hash(&mut hasher);
-    }
-    ((hasher.finish() as u32) & 0xFFFF) | 0x1
-}
+mod metadata_bump;
 
-/// Companion of [`compute_metadata_bump`] for the items category.
-/// Same deterministic-hash + low-bit-set discipline so two server
-/// starts on identical override content produce identical bumps.
-fn compute_item_metadata_bump(overrides: &[super::item_overrides::ItemOverride]) -> u32 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for ov in overrides {
-        ov.item_id.hash(&mut hasher);
-        ov.new_icon_location.hash(&mut hasher);
-        ov.new_max_stack_size.hash(&mut hasher);
-    }
-    ((hasher.finish() as u32) & 0xFFFF) | 0x1
-}
-
-/// Companion of [`compute_metadata_bump`] for the dialogs category.
-/// Hashes every field that affects the rendered XML (dialog id, flags,
-/// kismet/screen-type, and each screen's id/speaker/text) so two server
-/// starts on identical override content produce identical bumps and no
-/// re-invalidation churn; any edit changes the bump and refetches.
-fn compute_dialog_metadata_bump(overrides: &[super::dialog_overrides::DialogOverride]) -> u32 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for ov in overrides {
-        ov.dialog_id.hash(&mut hasher);
-        ov.dialog_flags.hash(&mut hasher);
-        ov.kismet_event_set_id.hash(&mut hasher);
-        ov.ui_screen_type.hash(&mut hasher);
-        for screen in ov.screens {
-            screen.screen_id.hash(&mut hasher);
-            screen.speaker_id.hash(&mut hasher);
-            screen.text.hash(&mut hasher);
-        }
-    }
-    ((hasher.finish() as u32) & 0xFFFF) | 0x1
-}
-
-/// Companion bump for the Kismet sequences category. Hashes every field the
-/// client sees, so identical override content gives an identical version
-/// across server starts and any edit changes it.
-fn compute_sequence_metadata_bump(
-    overrides: &[super::sequence_overrides::SequenceOverride],
-) -> u32 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for ov in overrides {
-        ov.sequence_id.hash(&mut hasher);
-        ov.event_id.hash(&mut hasher);
-        ov.kismet_script_name.hash(&mut hasher);
-    }
-    ((hasher.finish() as u32) & 0xFFFF) | 0x1
-}
+// Visible to this module and its `tests` child, which exercises each bump
+// helper directly. Not re-exported past `resources`.
+use metadata_bump::{
+    compute_dialog_metadata_bump, compute_item_metadata_bump, compute_metadata_bump,
+    compute_sequence_metadata_bump,
+};
 
 impl ResourceCache {
     /// Load all PAK files from the given directory and apply Cimmeria
@@ -374,25 +322,38 @@ impl ResourceCache {
     }
 
     /// Patch the freshly-loaded `CookedDataDialogs` category with
-    /// Cimmeria's regenerated dialog entries, bumping the category
-    /// metadata so the client's next `versionInfoRequest` triggers the
-    /// per-key invalidation handshake.
+    /// Cimmeria's dialog overrides, bumping the category metadata so the
+    /// client's next `versionInfoRequest` triggers the per-key
+    /// invalidation handshake.
     ///
-    /// Unlike [`Self::apply_item_overrides`] / [`Self::apply_mission_overrides`],
-    /// each override *regenerates* the whole `<COOKED_DIALOG>` entry rather
-    /// than patching a substring, so it works whether or not the dialog id
-    /// was present in the PAK: a corrected existing dialog (Frost's 3995)
-    /// and a brand-new one (the Guard corpse's 3996) are both just an
-    /// `elements.insert(dialog_id, generated)`. There's no "entry not
-    /// present" skip and no "XML shape didn't match" failure — generation
-    /// is infallible.
+    /// Two kinds run here, in this order:
+    ///
+    /// 1. **Full regenerations** (`DIALOG_OVERRIDES`). Each emits a whole
+    ///    `<COOKED_DIALOG>` from Rust-authored text, so it works whether
+    ///    or not the dialog id was present in the PAK: a corrected
+    ///    existing dialog (Frost's 3995) and a brand-new one (the Guard
+    ///    corpse's 3996) are both just an `elements.insert`. There's no
+    ///    "entry not present" skip and no shape failure — generation is
+    ///    infallible.
+    /// 2. **Patches** (`DIALOG_PATCH_TABLES`). Each transforms the entry
+    ///    the client already shipped, so it CAN fail: a missing dialog
+    ///    id, a missing `OnlyOn` screen, or a cooked shape that no longer
+    ///    parses all warn and skip, leaving the canonical bytes intact.
+    ///    See [`super::dialog_overrides::apply_dialog_patches`].
+    ///
+    /// Regenerations run first so a patch could in principle transform a
+    /// regenerated entry; nothing does that today, and a unit test keeps
+    /// the two tables disjoint.
     fn apply_dialog_overrides(
         categories: &mut HashMap<u32, CategoryData>,
     ) -> HashMap<u32, Vec<u32>> {
-        use super::dialog_overrides::{generate_dialog_xml, DIALOG_OVERRIDES};
+        use super::dialog_overrides::{
+            apply_dialog_patches, generate_dialog_xml, no_patches_registered, DIALOG_OVERRIDES,
+            DIALOG_PATCH_TABLES,
+        };
 
         let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
-        if DIALOG_OVERRIDES.is_empty() {
+        if DIALOG_OVERRIDES.is_empty() && no_patches_registered() {
             return overridden;
         }
 
@@ -417,9 +378,24 @@ impl ResourceCache {
             );
         }
 
-        let bump = compute_dialog_metadata_bump(DIALOG_OVERRIDES);
+        applied.extend(apply_dialog_patches(
+            &mut dialogs.elements,
+            DIALOG_PATCH_TABLES,
+        ));
+
+        // Every patch may have been skipped (all targets absent), in which
+        // case nothing changed and bumping would make every client refetch
+        // entries that are byte-identical to what they hold.
+        if applied.is_empty() {
+            return overridden;
+        }
+
+        let bump = compute_dialog_metadata_bump(DIALOG_OVERRIDES, DIALOG_PATCH_TABLES);
         dialogs.metadata = dialogs.metadata.wrapping_add(bump);
         applied.sort_unstable();
+        // A dialog that is both regenerated and patched would otherwise be
+        // named twice in `InvalidKeys`.
+        applied.dedup();
         tracing::info!(
             category = CATEGORY_DIALOGS,
             count = applied.len(),

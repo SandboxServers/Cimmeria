@@ -16,9 +16,9 @@ use super::*;
 /// `complete_mission` in one chain cannot gate another in the same event.
 ///
 /// If two of these ever co-fired, both `display_dialog` actions would run
-/// and the second `send_dialog_display` would re-pin `open_dialog_id` —
-/// the player would see only one blurb while both chains' state changes
-/// landed. Silent content loss.
+/// and the client — which holds one non-tutorial dialog at a time —
+/// would discard the first unread, so the player would see only one blurb
+/// while both chains' state changes landed. Silent content loss.
 ///
 /// This runs against `build_engine`, i.e. the whole seeded DB, because a
 /// per-chain test cannot observe a collision by construction. It also

@@ -25,7 +25,7 @@ The entry point on the client is `EntityManager::onEntityMoveWithError` (`0x00dd
 1. Reads raw BigWorld coordinates (meters, BW axis order).
 2. Multiplies all position and velocity components by `BW_TO_UE3_SCALE = 100.0f` (`DAT_018cad90`).
 3. Swaps axes: `UE3_X = BW_Z × 100`, `UE3_Y = BW_X × 100`, `UE3_Z = BW_Y × 100`.
-4. Detects "use current" sentinel (`FLT_MAX / infinity` at `DAT_019d1a44`) — if a component equals the sentinel, the entity's current value is preserved.
+4. Detects "use current" sentinel (`-13000.0f` at `DAT_019d1a44`; an earlier revision said `FLT_MAX`, corrected 2026-09-24) — if a component equals the sentinel, the entity's current value is preserved.
 5. Delegates to `GameEntityBase::ApplyTransform` (`0x00e68a30`).
 
 ---
@@ -63,11 +63,13 @@ The client renders AI movement state received from the server via the `onRemoteE
 |-------|-----------|-------------|
 | 0 | CoverAdvance | Moving toward a cover node (see [`cover-system.md`](cover-system.md)) |
 | 1 | CombatAdvance | Moving toward a combat target |
-| 2 | Leash | Returning to spawn point after target left leash radius |
-| 3 | Patrol | Following a defined patrol route |
-| 4 | Follow | Following a player or squad leader |
-| 5 | Wander | Random idle wandering |
+| 2 | Patrol | Following a defined patrol route |
+| 3 | Follow | Following a player or squad leader |
+| 4 | Wander | Random idle wandering |
+| 5 | Leash | Returning to spawn point after target left leash radius |
 | 6 | Avoid | Obstacle / collision avoidance maneuver |
+
+> **Correction (2026-09-24):** an earlier revision of this table put Leash at 2 and shifted Patrol, Follow and Wander up by one, apparently from the order of the debug strings in `.rdata`. The jump table says otherwise. `MovementTypeSwitch` switches on the raw `aMovementType` byte (`MOVZX EBP, byte ...` at `0x00deb844`, `CMP EBP, 6` at `0x00deba58`, `JMP [EBP*4 + 0x00dec018]` at `0x00deba69`). The table entries are case 0 → `0x00deba70` ("is moving to cover"), 1 → `0x00debaa4` ("is making a combat advance"), 2 → `0x00debb04` (the patrol string, wide, at `0x019d2d5c`), 3 → `0x00debb38` ("is following"), 4 → `0x00debb64` ("is wandering"), **5 → `0x00debad0` ("is leashing", `0x019d2d2c`)**, 6 → `0x00debb95` ("is avoiding"). This matches `EMobMovementType` in `entities/defs/enumerations.xml` (`MOB_MOVEMENT_Leash = 5`, `MOB_MOVEMENT_Patrol = 2`) and the server's `MobMovementType::Leash` wire byte.
 
 **Evidence**: String cross-references in `FUN_00deb660` (`0x00deb660`); jump table at `0x00dec018`; strings "is moving to cover", "is making a combat advance", "is leashing" found in the function body. Function is 610 instructions (body `0x00deb660`–`0x00dec015`); decompilation times out and was examined via `read_memory` + `get_assembly_context`.
 
@@ -112,7 +114,7 @@ When the server signals path completion or cancellation:
 | `BW_TO_UE3_SCALE` | `0x018cad90` | `100.0f` | BW meters → UE3 centimeters |
 | `RAD_TO_URU` | `0x018cafcc` | `10430.378f` | Radians → UE3 rotation units (65536/2π) |
 | `NEG_RAD_TO_URU` | `0x018cafd0` | `-10430.378f` | Negated (axis handedness) |
-| Position sentinel | `DAT_019d1a44` | FLT_MAX / ∞ | "preserve current component" |
+| Position sentinel | `DAT_019d1a44` | `-13000.0f` (bytes `00 20 4b c6`) | "preserve current component" |
 
 Axis swap (confirmed in `EntityManager::onEntityMoveWithError` `0x00dd1650`):
 ```
@@ -129,7 +131,7 @@ When an NPC's target exits `LEASH_DISTANCE` from the NPC's spawn point, the serv
 
 ### What the binary expects (confirmed from client callback registration and string evidence)
 
-The client expects `movementType = 2` (Leash state) on the `onRemoteEntityMove` CME signal, followed by a waypath back to spawn. `MovementTypeSwitch` case 2 ("is leashing") would trigger the Leash animation/path-following on the client side.
+The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2; see the §3 correction) on the `onRemoteEntityMove` CME signal, followed by a waypath back to spawn. `MovementTypeSwitch` case 5 ("is leashing") would trigger the Leash animation/path-following on the client side.
 
 ### What Cimmeria currently sends
 
@@ -138,10 +140,10 @@ The client expects `movementType = 2` (Leash state) on the `onRemoteEntityMove` 
 2. Restores health to max.
 3. Resets `ai_state` to `AiState::Idle`.
 4. Sends `onStatUpdate` (method 20) and `onStateFieldUpdate` (method 19).
-5. Does **not** send `movementType=2` or a waypath.
+5. Does **not** send `movementType=5` or a waypath.
 
 **Gap**: The client never sees the leash animation. From the player's perspective, the NPC teleports to its spawn point. The correct behavior is:
-1. Send `onRemoteEntityMove` with `movementType=2` + waypath from current NPC position to spawn.
+1. Send `onRemoteEntityMove` with `movementType=5` + waypath from current NPC position to spawn.
 2. Move the NPC along that path over time (with `npc_movement_tick`).
 3. When spawn position is reached, send `movementType` reset and health restore.
 
@@ -162,7 +164,7 @@ The client expects `movementType = 2` (Leash state) on the `onRemoteEntityMove` 
 ## 8. Open Questions
 
 1. **onRemoteEntityMove payload structure**: Does it carry the full waypath array or only the next waypoint? Wire capture needed to confirm.
-2. **movementType=2 wire payload**: What exact CME fields accompany the Leash signal? Field names (destination, waypointCount, etc.) are not yet recovered from the binary.
+2. **movementType=5 (Leash) wire payload**: What exact CME fields accompany the Leash signal? Field names (destination, waypointCount, etc.) are not yet recovered from the binary.
 3. **Path actor to waypoint correspondence**: Do path visualization actors created in `onPositionUpdate` map 1:1 to server `nav_path` waypoints?
 4. **Cover system intersection**: How do `CoverAdvance` (state 0) and `CombatAdvance` (state 1) transitions interact? Cross-reference `W-cover` findings in [`cover-system.md`](cover-system.md).
 5. **EntityInterpolatorUpdate multi-tick**: Does the physics interpolator at `entity+0x1d0` smooth over a configurable number of frames, or is it a fixed BigWorld 200ms window?
@@ -172,7 +174,7 @@ The client expects `movementType = 2` (Leash state) on the `onRemoteEntityMove` 
 ## 9. Implementation Recommendations for Cimmeria
 
 ### Short-term (behavior correctness)
-- **Fix leash**: Instead of instant snap, pathfind from current NPC position to spawn, emit `onRemoteEntityMove` with `movementType=2` + waypath, then move along path. Health restore fires on arrival.
+- **Fix leash**: Instead of instant snap, pathfind from current NPC position to spawn, emit `onRemoteEntityMove` with `movementType=5` (Leash; `2` is Patrol, see the §3 correction) + waypath, then move along path. Health restore fires on arrival.
 - **Fix combat advance**: After `space_mgr.find_path()` succeeds in `npc_ai_fight()`, emit `onRemoteEntityMove` with `movementType=1` + path waypoints.
 
 ### Longer-term (fidelity)
@@ -203,4 +205,4 @@ The client expects `movementType = 2` (Leash state) on the `onRemoteEntityMove` 
 | `0x00e688c0` | `EntityVisibilityManager` | Distance-cull / LOD |
 | `0x00e69690` | `EntityInterpolatorUpdate` | Physics interpolator dispatch |
 | `0x018cad90` | `BW_TO_UE3_SCALE` | `100.0f` constant |
-| `0x019d1a44` | Position sentinel | FLT_MAX = "use current component" |
+| `0x019d1a44` | Position sentinel | `-13000.0f` = "use current component" |

@@ -123,9 +123,11 @@ this shape exactly — the client's gSOAP deserializer binds attributes by name 
 
 ## Resource Categories
 
-The wire protocol defines **22 resource categories** (indices 1–22; index 0 is a reserved
-empty slot). The authoritative list is the string array in
-`deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp:16-38`.
+The wire protocol defines **21 resource categories**, numbered 1–21, matching the
+client's registration in `CookedData_RegisterAllLibCategories` (SGW.exe `0x00420074`).
+The authoritative list is the client's 21 category registrations; the legacy string array
+in `deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp:16-38` has 22 entries because it
+reserves index 0 and a `pet_command` entry that was never implemented client-side.
 
 The table below maps each category index to the PAK that serves it and the entry count
 measured from `data/cache/` on 2026-07-25. The counts exclude the `MetaData` entry and sum
@@ -154,13 +156,13 @@ to exactly 55,025, matching the archive totals above.
 | 18 | `racial_paradigm` | `CookedParadigm.pak` | 5 |
 | 19 | `special_words` | `SpecialWords.pak` | 1 |
 | 20 | `interaction` | `CookedInteractions.pak` | 40 |
-| 21 | `pet_command` | **no PAK ships** | — |
-| 22 | `behavior_event` | `CookedBehaviorEvents.pak` | **0** (stub archive) |
+| 21 | `behavior_event` | `CookedBehaviorEvents.pak` | **0** (stub archive) |
 | | | **Total** | **55,025** |
 
-Two categories carry no data. `pet_command` (21) has no PAK file at all, and
-`behavior_event` (22) ships only a 120-byte stub archive containing a `MetaData` value of 1
-and no entries. Requests for either will miss the cache.
+The behavior-event category carries no data: `CookedBehaviorEvents.pak` is only a 120-byte
+stub archive containing a `MetaData` value of 1 and no entries. Requests for it will miss
+the cache. The legacy `pet_command` category (index 21 in `resource.cpp`) has no
+client-side counterpart — the client numbers `behavior_event` as 21.
 
 > [!NOTE]
 > **Category 7 (`char_creation`) is deliberately not server-pushed.** It is absent from the
@@ -419,8 +421,10 @@ change both together.
 
 ### Resource Category IDs
 
-From `deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp:16-38`, the 22 categories by index
-(see the mapping table earlier in this document for the PAK that backs each one):
+From the client's registration (`CookedData_RegisterAllLibCategories`), the 21 categories by
+index (see the mapping table earlier in this document for the PAK that backs each one). The
+legacy `resource.cpp` table listed an extra `pet_command` entry at 21 and moved
+`behavior_event` to 22; the client has neither — its enum is the contiguous 1–21 below:
 
 | Index | Category Name | Description |
 |-------|--------------|-------------|
@@ -445,8 +449,7 @@ From `deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp:16-38`, the 22 categor
 | 18 | `racial_paradigm` | Racial paradigms |
 | 19 | `special_words` | Chat filter words |
 | 20 | `interaction` | Interactions |
-| 21 | `pet_command` | Pet commands |
-| 22 | `behavior_event` | NPC behavior events |
+| 21 | `behavior_event` | NPC behavior events |
 
 ### ClientCache Entity Interface
 
@@ -554,6 +557,6 @@ above are from the archives actually committed to this repository.
 - [x] ~~Document the exact XSD schema for each cooked data type~~ → See "XSD Schemas" section above. No XSD files exist server-side. Client uses gSOAP-generated type bindings with 42 CookedData types registered. Full type inventory documented.
 - [x] ~~Determine if the client validates XML against XSD at runtime~~ → See "Client XSD Validation" section above. No runtime XSD validation. Client uses gSOAP compile-time deserializers; parse failures trigger `onCookedDataError` events.
 - [x] ~~Document the incremental update protocol~~ → ClientCache `versionInfoRequest`/`onVersionInfo`/`elementDataRequest` in `findings/entity-types-wire-formats.md`
-- [x] ~~Map the exact Mercury message format for cooked data delivery~~ → See "Mercury Resource Delivery Format" section above. Uses `BASEMSG_RESOURCE_FRAGMENT (0x36)`; original C++ fragmented at 1000 bytes, Cimmeria at 1390. Wire format: dataId, chunkId, flags, then header (msgType, categoryId, elementId) on first fragment only, followed by XML body. 22 resource categories mapped.
+- [x] ~~Map the exact Mercury message format for cooked data delivery~~ → See "Mercury Resource Delivery Format" section above. Uses `BASEMSG_RESOURCE_FRAGMENT (0x36)`; original C++ fragmented at 1000 bytes, Cimmeria at 1390. Wire format: dataId, chunkId, flags, then header (msgType, categoryId, elementId) on first fragment only, followed by XML body. 21 resource categories mapped.
 - [x] ~~Verify the PAK file compression level and format details~~ → See "PAK File Format Details" section above. Standard ZIP archives with DEFLATE compression (method 8). **21** PAK files containing **55,025** entries totaling ~34.3 MB uncompressed / ~18.0 MB compressed. MetaData entry is a 4-byte little-endian uint32. XML entries named by `_<databaseId>`.
-- [ ] Confirm whether category 21 (`pet_command`) was ever cooked. No PAK ships for it in any known build; it may have been abandoned before content authoring began.
+- [x] ~~Confirm whether category 21 (`pet_command`) was ever cooked.~~ Resolved: the client never registered a `pet_command` category. The client numbers `behavior_event` as 21 (`CookedBehaviorEvents.pak`); the legacy `resource.cpp` 21/22 split is a server-side naming drift, not a wire category.

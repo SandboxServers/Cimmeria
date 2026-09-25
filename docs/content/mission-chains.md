@@ -470,13 +470,13 @@ self.n35_var_Player.missions.accept(680)
 **Triggers**:
 - `entity.interact.tag::Preparation_RingSwitch` -- use the ring transporter switch
 - `teleport::in` (regionId 3) -- teleport arrival
-- `client_hinted_region::Castle_Cellblock.Region9` -- entering the mess hall
+- `client_hinted_region::Castle_Cellblock.Region9` -- entering the corridor outside the topside ring room; the Mess Hall itself is Region3
 
 **Mission flow**:
 1. Player interacts with `Preparation_RingSwitch` when step 2344 is active:
    - Interact with ring transporter region 2 (teleport player)
 2. Player arrives via teleport (regionId 3): advance to step 2345
-3. Player enters Region9 (Mess Hall): if mission 681 is not active, accept mission 681
+3. Player enters Region9 (the ring-room corridor, on the way to the Mess Hall): if mission 681 is not active, accept mission 681
 
 **Entity tags**: `Preparation_RingSwitch`
 
@@ -516,7 +516,7 @@ if args['entering']:
 **Triggers**:
 - `entity.dead.tag::MessHall_Guard1` -- guard 1 killed
 - `entity.dead.tag::MessHall_Guard2` -- guard 2 killed
-- `client_hinted_region::Castle_Cellblock.Region9` -- leaving the mess hall
+- `client_hinted_region::Castle_Cellblock.Region9` -- leaving the corridor outside the topside ring room; the Mess Hall itself is Region3
 
 **Mission flow**:
 1. Kill counter initialized to 0, target = 2

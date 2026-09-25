@@ -26,7 +26,7 @@ async fn idle_npc_with_aggression_aggros_opposing_player() {
 
     let npc = mgr.get_entity(200_001).unwrap();
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Fighting,
         "aggression=1 with opposing-faction witness must transition to Fighting",
     );
@@ -54,7 +54,7 @@ async fn idle_npc_without_aggression_stays_idle() {
     .await;
 
     let npc = mgr.get_entity(200_002).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(npc.ai_state(), AiState::Idle);
     assert!(npc.threat_list.is_empty());
 }
 
@@ -77,6 +77,6 @@ async fn aggression_skips_same_faction_witnesses() {
     .await;
 
     let npc = mgr.get_entity(200_003).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle, "same faction must not aggro");
+    assert_eq!(npc.ai_state(), AiState::Idle, "same faction must not aggro");
     assert!(npc.threat_list.is_empty());
 }

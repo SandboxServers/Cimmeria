@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use cimmeria_common::Vector3;
 use tokio::sync::mpsc;
 
-use super::{report_path_failure, PathFailReason, PathFailure};
+use super::{report_path_failure, PathFailReason, PathFailure, PathFallback};
 use crate::cell::space_manager::SpaceManager;
 use crate::test_support::LogCapture;
 
@@ -42,6 +42,7 @@ fn failure(npc_id: u32, state: &'static str, outcome: &'static str) -> PathFailu
         from: Vector3::new(0.0, 0.0, 0.0),
         to: Vector3::new(10.0, 4.0, 0.0),
         reason: PathFailReason::NoMesh,
+        fallback: PathFallback::DirectWaypoint,
         target_id: None,
     }
 }
@@ -129,11 +130,11 @@ fn reason_distinguishes_a_missing_mesh_from_a_missing_route() {
     );
 }
 
-/// A degenerate repath says something different to the operator: the
-/// NPC keeps its *previous* path, so it walks toward where the target
-/// used to be rather than through a wall toward where it is.
+/// A handler that enqueued nothing says something different to the
+/// operator: the NPC keeps its *previous* path, so it walks toward
+/// where the target used to be — or does not move at all.
 #[test]
-fn a_degenerate_path_gets_its_own_message() {
+fn a_path_unchanged_fallback_gets_its_own_message() {
     let mut mgr = make_space_mgr();
     mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
@@ -141,16 +142,98 @@ fn a_degenerate_path_gets_its_own_message() {
 
     let mut f = failure(101, "fight", "repath_degenerate");
     f.reason = PathFailReason::DegeneratePath;
+    f.fallback = PathFallback::PathUnchanged;
     f.target_id = Some(202);
     report_path_failure(&mut mgr, f, Instant::now());
 
     let ev = &rows(&capture)[0];
     assert!(ev.has_field("reason", "degenerate_path"), "{ev:#?}");
+    assert!(ev.has_field("fallback", "path_unchanged"), "{ev:#?}");
     assert!(ev.has_field("target_id", "202"), "{ev:#?}");
     assert!(
-        ev.message_contains("previous path left in place"),
-        "the degenerate case leaves a stale route running, which is a \
-         different symptom from a straight-line fallback: {ev:#?}"
+        ev.message_contains("enqueued nothing"),
+        "leaving a stale route running is a different symptom from a \
+         straight-line fallback: {ev:#?}"
+    );
+    assert!(
+        !ev.message_contains("straight line"),
+        "this NPC is not walking a straight line through geometry — it \
+         is not walking anywhere new at all: {ev:#?}"
+    );
+}
+
+/// **The message-accuracy guard.** The shared emitter used to pick the
+/// message from `reason`, which made every non-degenerate failure claim
+/// "falling back to a straight line through geometry". `fight`'s
+/// `no_path` branch enqueues nothing, so that row sent operators
+/// looking for a wall-clipping NPC that was in fact standing still.
+///
+/// `reason` and `fallback` are independent: the same `no_path` reason
+/// must produce the straight-line message from a state that pushes a
+/// direct waypoint and the stale-path message from one that does not.
+#[test]
+fn the_message_follows_the_fallback_not_the_reason() {
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.spawn_npc(102, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let capture = LogCapture::install();
+
+    let mut standing = failure(101, "fight", "no_path");
+    standing.fallback = PathFallback::PathUnchanged;
+    report_path_failure(&mut mgr, standing, Instant::now());
+
+    let mut walking = failure(102, "patrol", "patrol_no_path");
+    walking.fallback = PathFallback::DirectWaypoint;
+    report_path_failure(&mut mgr, walking, Instant::now());
+
+    let rows = rows(&capture);
+    let fight = rows
+        .iter()
+        .find(|r| r.has_field("state", "fight"))
+        .expect("fight row");
+    let patrol = rows
+        .iter()
+        .find(|r| r.has_field("state", "patrol"))
+        .expect("patrol row");
+
+    assert!(fight.has_field("reason", "no_mesh") && patrol.has_field("reason", "no_mesh"));
+    assert!(
+        fight.message_contains("enqueued nothing") && !fight.message_contains("straight line"),
+        "fight's no-path branch does not enqueue a direct waypoint, so \
+         the row must not promise a straight-line fallback: {fight:#?}"
+    );
+    assert!(
+        patrol.message_contains("straight line"),
+        "patrol does push the raw waypoint, which is the wall-clipping \
+         shape the 2026-09-18 Castle playtest saw: {patrol:#?}"
+    );
+}
+
+/// `classify` must keep `None` and a returned one-waypoint path apart.
+/// Collapsing the result to a `Vec` first — which every caller but
+/// `fight` used to do — reported a degenerate answer as `no_mesh` /
+/// `no_path`, so "the mesh is missing" and "the mesh answered with
+/// something unwalkable" looked identical in a SigNoz `group by
+/// reason`.
+#[test]
+fn classify_separates_a_missing_path_from_a_degenerate_one() {
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+
+    assert_eq!(
+        PathFailReason::classify(&mgr, 101, None),
+        PathFailReason::NoMesh,
+        "a meshless space declining to route is a zone-level content gap"
+    );
+    let one = [Vector3::new(0.0, 0.0, 0.0)];
+    assert_eq!(
+        PathFailReason::classify(&mgr, 101, Some(&one)),
+        PathFailReason::DegeneratePath,
+        "a pathfinder that answered with one waypoint did not fail to \
+         find the mesh — it found it and returned something unwalkable"
     );
 }
 
@@ -245,7 +328,10 @@ async fn patrol_reports_its_path_failure() {
     mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
-        npc.ai_state = cimmeria_entity::cell_entity::AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(
+            npc,
+            cimmeria_entity::cell_entity::AiState::Patrol,
+        );
         npc.patrol_path = vec![Vector3::new(40.0, 0.0, 40.0), Vector3::new(60.0, 0.0, 60.0)];
         npc.patrol_next_index = 0;
     }
@@ -277,7 +363,10 @@ async fn wander_reports_its_path_failure() {
     mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
-        npc.ai_state = cimmeria_entity::cell_entity::AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(
+            npc,
+            cimmeria_entity::cell_entity::AiState::Wander,
+        );
         npc.wander_radius = 20.0;
         npc.spawn_position = Some(Vector3::new(10.0, 0.0, 10.0));
         // `None` means "just arrived" and only stamps a dwell; the
@@ -300,7 +389,10 @@ async fn investigate_reports_its_path_failure() {
     mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
-        npc.ai_state = cimmeria_entity::cell_entity::AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(
+            npc,
+            cimmeria_entity::cell_entity::AiState::Investigating,
+        );
         npc.poi = Some(Vector3::new(40.0, 0.0, 40.0));
         npc.investigate_until = None;
     }

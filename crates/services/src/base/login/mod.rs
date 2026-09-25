@@ -61,6 +61,23 @@ pub(crate) async fn handle_login(
         }
     };
 
+    // Cross-IP detection (issue #442, warn-only first): the ticket was
+    // issued to a specific client IP at Phase 2. Consuming it from a
+    // different IP is the replay signature of a harvested ticket. WARN
+    // (not reject) so NAT / dual-stack surface-IP differences are
+    // measured before the gate hardens — this signal is lower-confidence
+    // than the Phase-2 check because the Mercury UDP source address can
+    // differ from the SOAP source behind carrier-grade NAT.
+    if !crate::auth::client_ips_match(login.client_ip, addr.ip()) {
+        tracing::warn!(
+            account_id = login.account_id,
+            ticket_ip = %login.client_ip,
+            client_ip = %addr.ip(),
+            reason = "ticket_ip_mismatch",
+            "Phase 3 ticket consumed from a different IP than it was issued to — possible stolen ticket"
+        );
+    }
+
     // Backfill account_id onto the parent span now that the ticket has
     // resolved — every nested call below (duplicate eviction, channel
     // register, tick-loop spawn) gets correlated under the same

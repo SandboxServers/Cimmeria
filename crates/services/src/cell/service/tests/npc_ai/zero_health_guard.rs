@@ -34,7 +34,7 @@ async fn zero_health_npc_without_dead_bit_gets_no_ai_turn() {
             h.update(0, 0, 100);
             h.clear_dirty();
         }
-        npc.ai_state = AiState::Fighting;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Fighting);
         npc.threat_list.clear();
     }
 
@@ -47,7 +47,7 @@ async fn zero_health_npc_without_dead_bit_gets_no_ai_turn() {
     .await;
 
     assert!(
-        matches!(mgr.get_entity(200).unwrap().ai_state, AiState::Fighting),
+        matches!(mgr.get_entity(200).unwrap().ai_state(), AiState::Fighting),
         "a 0-HEALTH NPC must be skipped before its handler runs — reaching \
          npc_ai_fight with an empty threat list would have reset it to Idle"
     );
@@ -166,9 +166,9 @@ async fn npc_killed_by_an_effect_bleed_does_not_shoot_back() {
         "the player must take no damage from a corpse"
     );
     assert!(
-        matches!(mgr.get_entity(200).unwrap().ai_state, AiState::Dead),
+        matches!(mgr.get_entity(200).unwrap().ai_state(), AiState::Dead),
         "the bleed kill must have left the NPC in AiState::Dead; got {:?}",
-        mgr.get_entity(200).unwrap().ai_state
+        mgr.get_entity(200).unwrap().ai_state()
     );
 }
 

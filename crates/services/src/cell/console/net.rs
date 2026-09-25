@@ -10,6 +10,7 @@
 //! `deprecated/python/cell/commands/Misc.py` (`debug_*`) +
 //! `deprecated/python/cell/commands/Entity.py` (`threaten`/`aggression`).
 
+use cimmeria_entity::abilities::serialize_timer_update;
 use cimmeria_entity::cell_entity::AiState;
 use tokio::sync::mpsc;
 
@@ -17,6 +18,7 @@ use super::send_gm_feedback;
 use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
 use crate::cell::interactions;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::{ON_PLAYER_COMMUNICATION, ON_SEQUENCE};
 
@@ -157,10 +159,11 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
     let Some(ty) = super::parse_i32(caller_id, args, 1, "timer type", tx).await else {
         return;
     };
-    // `Type` is a UINT8 on the wire — reject out-of-range so the byte isn't
-    // silently truncated into a different timer type.
-    let Ok(ty) = u8::try_from(ty) else {
-        send_gm_feedback(caller_id, "net_timer: type must be 0-255.", tx).await;
+    // `Type` is an INT8 on the wire (`interfaces/SGWBeing.def`) — reject
+    // out-of-range so the byte isn't silently truncated into a different
+    // timer type.
+    let Ok(ty) = i8::try_from(ty) else {
+        send_gm_feedback(caller_id, "net_timer: type must be -128..127.", tx).await;
         return;
     };
     let total_time = match args.get(2) {
@@ -171,12 +174,19 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
             .unwrap_or(1.0),
         None => 1.0,
     };
-    let mut buf = Vec::with_capacity(17);
-    buf.extend_from_slice(&id.to_le_bytes());
-    buf.push(ty);
-    buf.extend_from_slice(&(caller_id as i32).to_le_bytes()); // SourceID
-    buf.extend_from_slice(&total_time.to_le_bytes());
-    buf.extend_from_slice(&total_time.to_le_bytes()); // BigWorldTimeComplete (relative)
+    let secondary_id = match args.get(3) {
+        Some(s) => s.parse::<i32>().unwrap_or(0),
+        None => 0,
+    };
+    // SourceID = caller; BigWorldTimeComplete is still relative (see #271).
+    let buf = serialize_timer_update(
+        id,
+        ty,
+        caller_id as i32,
+        secondary_id,
+        total_time,
+        total_time,
+    );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: caller_id,
@@ -418,14 +428,15 @@ async fn debug_follow(
     let Some(target) = target_id else {
         return;
     };
+    let world = npc_ai::world_label(space_mgr, target);
     let now_following = if let Some(e) = space_mgr.get_entity_mut(target) {
         if e.follow_target_id == Some(caller_id) {
             e.follow_target_id = None;
-            e.ai_state = AiState::Idle;
+            npc_ai::set_ai_state_on(e, &world, AiState::Idle, AiTransitionReason::GmCommand);
             false
         } else {
             e.follow_target_id = Some(caller_id);
-            e.ai_state = AiState::Follow;
+            npc_ai::set_ai_state_on(e, &world, AiState::Follow, AiTransitionReason::GmCommand);
             true
         }
     } else {

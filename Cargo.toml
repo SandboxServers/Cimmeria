@@ -131,13 +131,13 @@ tokio-rustls = "0.26"
 rustls-pemfile = "2"
 
 # Encoding
-base64 = "0.22"
+base64 = "0.23"
 
 # Async utilities
 futures-util = "0.3"
 
 # Archive reading (CookedCharCreation.pak is a ZIP)
-zip = { version = "3", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Streaming compression — used by the launcher chunk uploader and by
 # the admin-api ingest endpoint that unwraps those chunks.

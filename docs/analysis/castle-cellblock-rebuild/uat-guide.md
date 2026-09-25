@@ -574,7 +574,7 @@ Three of Col. Marsh's companion lines from dialog **5019** are now spoken as **c
 - **Dialog 5019 opening as a window, at any point.** It is still permanently excluded — screens 96355-96357 are the out-of-scope "Future Self" time-travel content and a dialog cannot be shown in part. Barks bypass it; they do not unlock it.
 - **A fourth line.** "Crouch down when you're in cover!" (screen 96353) is deliberately unauthored — there is no placed cover data in either room for it to hang on. If you hear it, something wired it to an unrelated event.
 - **Any Future Self line** ("I don't have much time…", "We never found out who controlled the Straegis…", "O'Neill better convince those pinheads at the Pentagon…"). None of these should ever reach you.
-- **A line repeating.** Each fires at most once per run of its mission. Specifically: ride the rings once and walk back and forth across each threshold a few times. The Mess Hall line has one accepted repeat window — if you back out of the room and charge in again *before killing a guard*, you will hear it a second time. That is known and accepted (the engine has no fire-once primitive; see the seed comment). Once a guard is dead, it must stay silent.
+- **A line repeating.** The ring-arrival line (chain 1176) and the second flank line (chain 1178) fire at most once per run of their mission; the Mess Hall line (chain 1177) has the one repeat window described below. Specifically: ride the rings once and walk back and forth across each threshold a few times. The Mess Hall line has one accepted repeat window — if you back out of the room and charge in again *before killing a guard*, you will hear it a second time. That is known and accepted (the engine has no fire-once primitive; see the seed comment). Once a guard is dead, it must stay silent.
 - **A line after Marsh is gone.** After the Straegis scene ([T16/T17](#t16--t17--the-straegis-attack-scene-c08b-gc1a-gc1b-2)) Marsh is despawned; walk the whole route again from Region6 onward and confirm none of the three speaks.
 - **A line at the wrong moment.** The Mess Hall cue must land at the *Mess Hall*, not at the ring pad. The two rooms are about 70 units apart; if you hear lines 1 and 2 within a second of each other, the region binding is wrong.
 
@@ -592,7 +592,7 @@ Three of Col. Marsh's companion lines from dialog **5019** are now spoken as **c
 
 **Steps:**
 
-1. Walk into `Castle_Cellblock.Region9` (the Mess Hall).
+1. Walk into `Castle_Cellblock.Region9` (the corridor outside the topside ring room), then on into the Mess Hall (`Region3`).
 2. Kill `MessHall_Guard1` at `(-96.25, 34.59, -91.59)` and `MessHall_Guard2` at `(-95.89, 34.59, -98.81)`.
 
 **Expected:**
