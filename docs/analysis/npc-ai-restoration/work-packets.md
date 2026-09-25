@@ -374,6 +374,22 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 **Acceptance:** entity, navmesh-extractor and services suites green; the probe and coverage comparison in `data/spaces/README.md`. **Owner decisions left open:** none new. Promoting the tree-built NavBuilder to `bin64\NavBuilder.exe` is a local step outside the branch.
 
+### NA27
+
+**Status:** Phase 1 done, **no-go** under the size budget. Nothing is committed under `data/spaces/`, and runtime line of sight is unchanged (branch `npcai/na27-occluder`). **Scope title:** Line of sight from collision geometry ([#784](https://github.com/SandboxServers/Cimmeria/issues/784)). **Advisor:** npc-ai-spawn-advisor.
+
+**Scope:**
+
+- Phase 1: an occluder format (a column grid of solid Y spans with sub-cell rectangles, plus an exact terrain heightfield), built for all 23 maps at 0.25, 0.5 and 1.0 m. Measure size, RAM, build time and accuracy on NA16's sweep.
+- Phase 2, only on a go: load `data/spaces/<world>.occ` beside the `.nav`, and let it replace the navmesh ray for aggro, attack and cover sight.
+
+**Result:** see [worknotes/na27-occluder-phase1.md](worknotes/na27-occluder-phase1.md).
+
+- **Accuracy.** At 0.5 m there are no false clears on either sweep. False blocks are 1.24% (Castle_CellBlock) and 1.05% (Castle) of truly clear pairs, and most of them are rays grazing within 0.1 m of a wall edge. The navmesh is wrong on 38% (Castle_CellBlock) and 49% (Castle) of its `Blocked` answers.
+- **Query cost.** 1.9 µs per segment.
+- **Why no-go.** The owner's rule was that the biggest world must fit in about 10 MB on disk and 50 MB of RAM. Agnos needs 57 MB and 288 MB at 0.5 m, and 22 MB and 98 MB at 1.0 m. Fifteen of the 23 worlds fit, including every Castle and Harset world.
+- **What shipped.** `crates/occluder` (format, builder, segment test) and `occluder_extract` (build, measure, probe), with synthetic tests.
+
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:

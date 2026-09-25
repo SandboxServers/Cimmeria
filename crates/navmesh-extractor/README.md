@@ -102,6 +102,15 @@ Recast wrapper later if it buys anything.
   package, `grouping.rs` forms cover sets, `sql.rs` renders the seeds.
   `bin/cover_extract.rs` is the CLI; see
   [docs/engine/cover-extraction.md](../../docs/engine/cover-extraction.md).
+- `occluder/` — inputs for the `cimmeria-occluder` line-of-sight grid
+  (NA27): `mod.rs` walks a map's chunks in memory and hands each chunk's
+  triangles over in BigWorld metres, split into terrain and StaticMesh
+  plus BSP. `exact.rs` is the exact segment tracer used as ground truth.
+  `sweep.rs` samples navmesh point pairs and scores the occluder and a
+  navmesh ray against the tracer. `bin/occluder_extract/` is the CLI:
+  `build` writes a `.occ`, `measure` reports size, RAM, build time and
+  accuracy per cell size, and `probe` prints one segment's verdict.
+  Results: [the NA27 worknote](../../docs/analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).
 - `bin/obj_slab.rs` — column / free-run / level-histogram / slope
   queries over the chunk OBJs. `--levels` is the "is there a staircase
   between these two storeys" question.
