@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 71 per-system reverse engineering findings with evidence.
+This directory contains 72 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -59,6 +59,7 @@ This directory contains 71 per-system reverse engineering findings with evidence
 | `mercury-protocol-internals.md` | V5 | Mercury protocol internals — client-binary analysis of the Mercury transport layer beyond the Nub anatomy | HIGH |
 | `minigame-architecture.md` | V5 | Minigame architecture — client-binary analysis of the SmartFoxServer-based minigame subsystem | HIGH |
 | `npc-ai-state-machine.md` | V5 | NPC AI state machine — client-binary analysis of mob aiState transitions (Idle/Fighting/Dead/Leashing) | HIGH |
+| `npc-aggression-broadcast.md` | NA33 | SGWMob flat ClientMethod indices for `onAggressionOverrideUpdate`/`onAggressionOverrideCleared` (27/28); legacy `setAggression` sent a client-dead `onEntityProperty` instead of the working ClientMethod `createOnClient` used | HIGH (indices, handler); MEDIUM (specific UI consumption — no Lua source located) |
 | `npc-movement-pathfinding.md` | V5 | NPC movement and pathfinding — client-binary analysis of mob movement, navmesh use, and patrol routing | MEDIUM |
 | `right-click-routing-on-corpse.md` | V5 | Right-click routing — why corpses fail to open loot; the corpse-context-menu dispatch diagnosis | HIGH |
 | `spawn-system-mechanics.md` | V5 | Spawn system mechanics — client-binary analysis of spawn sets, regions, and spawnable-entity wiring | HIGH |

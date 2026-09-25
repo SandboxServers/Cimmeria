@@ -396,6 +396,19 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
   - **Numbers.** The 23 files total 131.4 MB after NA28's tiled meshes (the seven rebuilt worlds are marked in the data README). Agnos is 30.5 MB on disk, 168.0 MB with every page unpacked and 4.0 MB with one player. A query costs 1-5 µs.
   - **Tests.** They pin the drone at the desk, `Hallway02_Guard` at the wall, `Hallway01_Guard` at all three of Lomiada's spots (it sees her at 13.6 u too), guard-room walls, storeys, the off-area fallback and residency, and each is revert-proven.
 
+### NA33
+
+**Status:** Done (merged 2026-09-25, branch `npcai/na33-aggression-broadcast`). **Scope title:** Broadcast the NPC aggression level to clients (D-NA16). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
+
+**Scope:**
+
+- Verified the SGWMob flat `ClientMethod` indices Ghidra-side: `onAggressionOverrideUpdate` = 27, `onAggressionOverrideCleared` = 28. SGWMob and SGWPlayer share indices 0-26 (the `SGWSpawnableEntity` → `SGWBeing` prefix is structurally identical for both); SGWMob's own `<Implements>` is just `Lootable`, whose `<ClientMethods>` is empty, so its own two methods begin right after the shared prefix. Client registers both through `MemberCallback<GameMob, ...>` at `0x00d31cd0`; the Update handler at `0x00d31bd0` reads the `aAggressionLevel` INT8 and stores it at `GameMob + 0x16c`. See [findings/npc-aggression-broadcast.md](../../reverse-engineering/findings/npc-aggression-broadcast.md).
+- Added `mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE` / `ON_AGGRESSION_OVERRIDE_CLEARED` and the SGWMob rows in `docs/protocol/client-method-dispatch-table.md`.
+- Wired the broadcast into all three runtime-change call sites (content `set_aggression` action, the `.aggression` GM console command, the surrender/`npc_ai_submit` disarm) and the AoI-entry replay (mirrors python `SGWMob.createOnClient`'s conditional send — only when an override is active). Deliberately does **not** replicate legacy `setAggression`'s `onEntityProperty(GENERICPROPERTY_MobAggression)` broadcast: NA13 found no client consumer for that property type, so the literal legacy wire call was dead code in 2009. `onAggressionOverrideUpdate`/`Cleared` are the ClientMethods the client actually has a live, working handler for — same intent `createOnClient` already had, extended to the runtime-change path python never wired it for. No client patch.
+- `UIAggressionLevel` (RTTI `0x01de972c`) is registered alongside `UIArchetype`/`UIStatType`/`TargetType`/`UIDamageType` as a Lua-scriptable enum type (`0x00ab1a5e`), not a CEGUI widget — the family the UI/reticle Lua layer reads for nameplate and interaction-verb display. The specific consuming Lua script was not located (no client Lua source in this tree); this is inferred with medium confidence, not directly observed.
+
+**Acceptance:** byte-exact wire-format tests (`aggression_wire_tests.rs`) and fan-out tests, each revert-proven; AoI-entry replay tests (`aoi_entry_replays_active_aggression_override`, and the negative `aoi_entry_sends_nothing_for_a_faction_derived_mob`); a surrender-broadcast test (`submit_broadcasts_the_disarm_to_witnesses`); a console wire test (`na13_console_aggression_broadcasts_update_then_cleared`). Full `cimmeria-services` suite green (3,242 tests); `cimmeria-server` logging target-scan guard green (no new custom tracing target introduced).
+
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:

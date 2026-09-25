@@ -329,7 +329,7 @@ async fn execute_one(
             entity_tag,
             level: agg_level,
         } => {
-            world::set_aggression(entity_tag, agg_level, entity_id, chain_id, space_mgr);
+            world::set_aggression(entity_tag, agg_level, entity_id, chain_id, tx, space_mgr).await;
         }
         Action::SetNpcPoi {
             entity_tag,
