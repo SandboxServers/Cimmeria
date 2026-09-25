@@ -58,6 +58,12 @@ pub(super) async fn npc_ai_investigate(
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     };
+    // Content authors the POI's Y. Put it on the floor, or an NPC standing
+    // on the mesh under a POI 1 u up never reads as "arrived" and re-routes
+    // to where it already is on every tick (audit M5).
+    let poi_pos = space_mgr
+        .snap_to_navmesh(npc_id, &poi_pos)
+        .unwrap_or(poi_pos);
 
     // Use CombatAdvance as the closest movement-type — no dedicated
     // "investigating" byte exists in EMobMovementType, and the

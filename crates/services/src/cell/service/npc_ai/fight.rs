@@ -9,7 +9,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::ability_select::{
-    ability_ranges, choose_npc_ability_within_reach, compute_backup_waypoint,
+    ability_ranges, backup_waypoint_on_mesh, choose_npc_ability_within_reach,
 };
 
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
@@ -430,15 +430,17 @@ pub(super) async fn npc_ai_fight(
 
     // Min-range backup: target is inside the chosen ability's
     // `min_range`. The ability would refuse to fire (e.g., a sniper at
-    // `min_range = 5`, target at distance 3). Step the NPC back along
-    // the target→NPC vector to `min_range + 1.0` so the next tick lands
-    // it just outside the dead zone and can fire.
+    // `min_range = 5`, target at distance 3). Step the NPC back, away from
+    // the target in X and Z and across the navmesh, to `min_range + 1.0`
+    // so the next tick lands it just outside the dead zone and can fire.
     //
     // Stationary NPCs skip the backup — they're pinned in place by
     // design. A sniper turret with a min-range gap just won't fire on
     // a close target, same as today.
     if min_range > 0.0 && dist_to_target < min_range && !is_stationary {
-        if let Some(backup) = compute_backup_waypoint(npc_pos, target_pos, min_range) {
+        if let Some(backup) =
+            backup_waypoint_on_mesh(space_mgr, npc_id, npc_pos, target_pos, min_range)
+        {
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 super::replace_nav_path_on(npc, [backup]);
             }
@@ -456,6 +458,7 @@ pub(super) async fn npc_ai_fight(
                 dist_to_target,
                 min_range,
                 backup_x = backup.x,
+                backup_y = backup.y,
                 backup_z = backup.z,
                 "NPC AI: target inside min_range — stepping back to fire"
             );

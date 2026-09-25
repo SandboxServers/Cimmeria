@@ -130,6 +130,12 @@ pub(super) async fn npc_ai_patrol(
     let Some(waypoint) = target_waypoint else {
         return;
     };
+    // Patrol points are authored. On the floor, the arrival check below can
+    // succeed, and the no-route fallback does not walk into the air or the
+    // floor (audit M5).
+    let waypoint = space_mgr
+        .snap_to_navmesh(npc_id, &waypoint)
+        .unwrap_or(waypoint);
     let close = npc_pos.distance_to(&waypoint) < 1.0;
 
     if close {
