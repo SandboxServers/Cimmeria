@@ -342,6 +342,25 @@ The drone's `stationary_relaxed` shot is still pinned by NA16's `stationary_los.
 
 **Acceptance:** entity, navmesh-extractor and services suites green, live-DB suite green on the reloaded seed; the telemetry comparison in `data/spaces/README.md`. **Owner decisions left open:** whether PL-A-01's Harset arrival pin should be dropped now that the gate row is on-mesh, and whether the six Harset rows that moved onto the mesh (303, 304, 306, 307, 308, 313) should stop being `is_stationary`.
 
+### NA29
+
+**Status:** Review (branch `npcai/na29-harset-arrival` pushed, no PR). **Scope title:** Harset gate arrival on the gate row; five world-57 spawns made mobile. **Advisor:** movement-teleport-advisor. **Owner decisions (2026-09-25):** "As long as the arrival is on the navmesh and doesn't cause issues put it in the original location", and yes to un-stationarying the rows NA26 moved onto the mesh. These close the two decisions NA26 left open.
+
+**Scope:**
+
+- **Gate arrival.** The four `arrival_*` values on the `'Harset'` stargates row are `NULL` again, so travellers arrive on the gate row (-0.076, -67.274, 38.011), yaw 3.141, as the 2009 server did. On the NA26 mesh the row is on the gate dais (dy -0.04). The agent-radius disc is on-mesh at r 0.6 and 1.2 (13/13 each). `find_path` is `Ok` to the plaza, respawner 20, the DHD, all five ring pads and the Command Center door. `validate_gate_arrival` returns `Validated`, and the yaw faces out of the gate.
+- **The gate volume.** The row is inside point set 1001 `Harset.Stargate`, 0.72 m off the axis of the 2.5 m cylinder. Landing there fires nothing. The dial is per entity, and a traveller's dial is cancelled and scrubbed before the move, so its enter hint is a no-op even while another player has the gate open. No chain triggers on the tag, and 1001 is not a ring pad. Ledger: [PL-A-01, dropped](../harset-rebuild/placements/A-arrival-and-travel.md#pl-a-01--the-pin-was-dropped-na29).
+- **Spawns.** 303, 304, 306, 307 and 313 are `is_stationary = false`. Each has a 13/13 disc at r 0.6 and an `Ok` path to the gate. 308 stays stationary: it is 3.44 m above the mesh surface and passes only on the 4.0 jump tolerance, probably standing on a raised platform the extractor does not decode. Ledger: [NA29: five rows walk](../harset-rebuild/placements/B-world57-population-and-regions.md#na29-five-rows-walk).
+
+**Acceptance:** each new or changed guard is revert-proven:
+
+- `harset_gate_arrival_is_the_gate_row_on_the_mesh_and_inert_in_the_gate_volume` fails when the pin is re-added, when the row is moved off the dais or out of 1001, and when an `enter_region` chain is keyed on `Harset.Stargate`.
+- `a_traveller_arriving_while_another_player_holds_an_open_dial_is_not_crossed` fails when the crossing looks up any open dial instead of the traveller's own.
+- `world57_mobile_placements_can_walk` fails when a mobile row's disc leaves the mesh or 308 is re-pinned to the surface.
+- `world57_placement_rows_are_seeded_with_their_tags_and_templates` fails when a mobile row is set stationary again.
+
+The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Castle and cross. You land on the gate dais facing the plaza, can walk off at once, and are not sent back through the gate. The two Lan'toc Jaffa, the two listening-device baskets and Petbe's quarters search object still stand where they were seeded.
+
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:

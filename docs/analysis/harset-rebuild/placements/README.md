@@ -38,7 +38,7 @@ These are **unseeded**. Nothing was invented to fill them. Each entry names what
 | PL-A-03 | Market respawner (48.0, 3.61, 78.0) | MEDIUM, floor evidence only: world 69 has no navmesh at all |
 | PL-C encounter anchors | 15 candidate points in Market and Storage | INFERRED from cover-node clusters, MEDIUM at best, no chains authored |
 
-The strong rows are the gate-3 arrival pin (-5.0, -68.99, 33.0, yaw 3.141), the world-57 respawner (-8.0, -68.99, 34.0) and the world-70 respawner (50.0, 0.0, 44.0): each stands on the true floor. The two world-57 rows are inside the main plaza navmesh component near where real players stood; the world-70 row is on-mesh in the room's own component with the floor matching the fence props, but has no player-position evidence.
+The strong rows are the gate-3 arrival pin (-5.0, -68.99, 33.0, yaw 3.141; dropped on 2026-09-25 by NPC-AI NA29, so travellers now arrive on the gate row), the world-57 respawner (-8.0, -68.99, 34.0) and the world-70 respawner (50.0, 0.0, 44.0): each stands on the true floor. The two world-57 rows are inside the main plaza navmesh component near where real players stood; the world-70 row is on-mesh in the room's own component with the floor matching the fence props, but has no player-position evidence.
 
 ## The systemic finding: `harset.nav` is the defect
 
