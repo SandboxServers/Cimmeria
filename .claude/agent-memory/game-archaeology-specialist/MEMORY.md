@@ -77,7 +77,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 ## Stargate dial/travel timing (NA35, 2026-09-25)
 
-- [Stargate dial and travel timing](stargate-dial-travel-timing-na35.md) — **[PROMOTE → spec.gate-travel.dhd-and-stargate]** — deprecated Python is not gate-travel evidence (legacy server never worked end to end); DHD dial is single-shot and server-invisible per-chevron (chevron broadcast needs a client patch); `onStargatePassage` (method 68) declared but never sent; `GATE_DIAL_DURATION` 4s has no binary basis.
+- [Stargate dial and travel timing](stargate-dial-travel-timing-na35.md) — **[PROMOTE → spec.gate-travel.dhd-and-stargate]** — deprecated Python is not gate-travel evidence; DHD dial is single-shot and server-invisible per-chevron (chevron broadcast needs a client patch); `GATE_DIAL_DURATION`/`onStargatePassage`/crossing-hold fixed 2026-09-25 (`907c187a`).
 
 ## Recurring RE-table failure modes
 
