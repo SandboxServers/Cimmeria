@@ -1,0 +1,14 @@
+{
+  "authoritative_workbook": "SGW_All_Classes_Progression_Final_v1.xlsx",
+  "sha256": "c78840961023140bfbe56c28fd4021cfe2bfc5e93309bf172cea085dca554a14",
+  "archetypes": 7,
+  "branches": 21,
+  "nodes": 439,
+  "unique_ability_ids": 419,
+  "shared_ability_ids": 19,
+  "reserve_review_candidates": 280,
+  "raw_training_cost_zero_nodes": 59,
+  "nodes_unlocking_above_current_repo_level_20": 243,
+  "repo_head_when_handoff_built": "acbcc22e7adc002ebb1a857a94fc64431adf6a4e",
+  "repo_head_title": "feat(npc-ai): collision-geometry line of sight from per-world occluders, paged and trimmed (NA27, #784) (#797)"
+}
