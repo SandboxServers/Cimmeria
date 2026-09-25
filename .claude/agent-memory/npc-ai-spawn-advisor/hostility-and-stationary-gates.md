@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **Stale since NA13 (2026-09-25):** the `aggression` field and "faction 10 alone never aggroes" claims below are superseded; see [[faction-derived-aggro-na13]].
+
 # Two gates that silently make NPC config inert (verified 2026-09-17)
 
 ## `HOSTILE_FACTION = 10` is the whole hostility model

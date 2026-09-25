@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **Stale since NA13 (2026-09-25):** the `aggression` field and "faction 10 alone never aggroes" claims below are superseded; see [[faction-derived-aggro-na13]].
+
 > **Status 2026-09-19 — a dated snapshot.** These thirteen findings were verified against the
 > 2026-09-18 playtest and code; several fixes merged the next day (#677, #680, #682, #709).
 > Re-verified since: item 10 (leash is a raw field write) is **still true**. Item 12's "no
