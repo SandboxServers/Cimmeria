@@ -17,6 +17,31 @@ use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntr
 
 use crate::otel;
 
+/// `EnvFilter` directives shared by the OTLP trace and log layers.
+///
+/// A custom `target:` that is not named here inherits the leading `info`, so
+/// its DEBUG events never reach SigNoz however useful they are.
+/// `aoi.create_emit` was built to localize the invisible-static-NPC drop and
+/// was absent from the 2026-09-19 repro for exactly that reason.
+const OTEL_FILTER: &str = "info,\
+                cimmeria_services=debug,\
+                cimmeria_mercury=debug,\
+                mercury.packet=info,\
+                mercury.retransmit=info,\
+                mercury.backpressure=warn,\
+                wire.in=info,wire.out=info,\
+                aoi.entity_enter=debug,aoi.entity_leave=debug,\
+                aoi.create_emit=debug,\
+                movement.npc=debug,movement.player=debug,\
+                npc_ai=debug,\
+                threat=info,\
+                auth=info,\
+                world_entry=info,\
+                vendor=info,mail=info,progression=info,inventory=info,mission=info,\
+                sqlx::query=debug,\
+                tungstenite=off,tokio_tungstenite=off,hyper=off,\
+                h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
+
 // ── Logging ──────────────────────────────────────────────────────────────────
 
 /// Archive any `.log` files from a previous session into `logs/archive/<timestamp>/`.
@@ -303,23 +328,7 @@ pub(crate) fn init_logging(
     // Unlike the human-facing sinks above, OTLP keeps `mercury.packet` at info —
     // it's the load-bearing analytical surface here, so muting/sampling it would
     // defeat the purpose. The trace and log layers share one filter.
-    let otel_filter = "info,\
-                cimmeria_services=debug,\
-                cimmeria_mercury=debug,\
-                mercury.packet=info,\
-                mercury.retransmit=info,\
-                mercury.backpressure=warn,\
-                wire.in=info,wire.out=info,\
-                aoi.entity_enter=debug,aoi.entity_leave=debug,\
-                movement.npc=debug,movement.player=debug,\
-                npc_ai=debug,\
-                threat=info,\
-                auth=info,\
-                world_entry=info,\
-                vendor=info,mail=info,progression=info,inventory=info,mission=info,\
-                sqlx::query=debug,\
-                tungstenite=off,tokio_tungstenite=off,hyper=off,\
-                h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
+    let otel_filter = OTEL_FILTER;
 
     if let Some(layer) = otel_trace_layer {
         layers.push(Box::new(layer.with_filter(EnvFilter::new(otel_filter))));
@@ -374,7 +383,7 @@ pub(crate) fn init_logging(
 
 #[cfg(test)]
 mod tests {
-    use super::{archive_previous_logs_in, chrono_timestamp, days_to_ymd};
+    use super::{archive_previous_logs_in, chrono_timestamp, days_to_ymd, OTEL_FILTER};
     use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -481,5 +490,26 @@ mod tests {
             .collect();
         assert_eq!(moved.len(), 2, "both .log files archived: {moved:?}");
         fs::remove_dir_all(&dir).ok();
+    }
+
+    // A custom `target:` absent from `OTEL_FILTER` inherits the leading
+    // `info`, which drops its DEBUG events before they reach SigNoz. These
+    // seams exist to diagnose field bugs from SigNoz, so each must be named at
+    // the level it emits.
+    #[test]
+    fn otel_filter_exports_the_debug_level_aoi_seams() {
+        for directive in [
+            "aoi.entity_enter=debug",
+            "aoi.entity_leave=debug",
+            "aoi.create_emit=debug",
+        ] {
+            assert!(
+                OTEL_FILTER.split(',').any(|d| d.trim() == directive),
+                "OTEL_FILTER must carry `{directive}` or the seam never reaches SigNoz"
+            );
+        }
+        OTEL_FILTER
+            .parse::<tracing_subscriber::EnvFilter>()
+            .expect("OTEL_FILTER must stay a valid EnvFilter directive string");
     }
 }

@@ -36,6 +36,7 @@ pub(crate) mod kinds {
     /// Distinct from [`REGION_HINT`] so a `.bug` report can tell a real
     /// client crossing from a replay.
     pub(crate) const REGION_REPLAY: &str = "region_replay";
+    pub(crate) const COVER_REPLAY: &str = "cover_replay";
     pub(crate) const COVER_EDGE: &str = "cover_edge";
     pub(crate) const STEP_ADVANCE: &str = "step_advance";
     pub(crate) const MISSION_COMPLETE: &str = "mission_complete";

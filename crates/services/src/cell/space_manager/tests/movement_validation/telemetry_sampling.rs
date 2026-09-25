@@ -246,6 +246,55 @@ fn a_rejected_move_does_not_sample() {
     );
 }
 
+/// **The injected-clock guard.** `apply_client_position_update_at` takes
+/// the server's monotonic processing instant so tests can drive the
+/// kinematics layer deterministically; the accept path used to throw it
+/// away and read `Instant::now()` for the sampler instead. That both
+/// stamped the sample at a different time than the packet was processed
+/// at, and put the 5 s window out of reach of a time-injected test —
+/// every injected-clock run sampled once and then never again, because
+/// no wall-clock time passes inside a test.
+///
+/// Two accepted moves six injected seconds apart must therefore produce
+/// two samples. Reverting `accept` to `Instant::now()` yields one.
+#[test]
+fn the_sampler_honours_the_injected_processing_clock() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    player_in(&mut mgr, 7107, "Agnos");
+    let t0 = Instant::now();
+
+    let first =
+        mgr.apply_client_position_update_at(t0, 7107, [11.0, 0.0, 20.0], [0, 0, 0], [0.0; 3]);
+    assert!(matches!(
+        first,
+        super::super::super::ClientMoveOutcome::Accepted { .. }
+    ));
+
+    // Far enough in injected time to clear POSITION_SAMPLE_MIN_INTERVAL,
+    // and far enough in space to clear POSITION_SAMPLE_MIN_DISTANCE —
+    // but at a walking pace the speed layer has no opinion about.
+    let second = mgr.apply_client_position_update_at(
+        t0 + Duration::from_secs(6),
+        7107,
+        [21.0, 0.0, 20.0],
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(matches!(
+        second,
+        super::super::super::ClientMoveOutcome::Accepted { .. }
+    ));
+
+    assert_eq!(
+        sample_rows(&capture).len(),
+        2,
+        "the sampler's window must be measured against the `now` the \
+         caller threaded in, not a fresh `Instant::now()`: {:#?}",
+        sample_rows(&capture)
+    );
+}
+
 /// Sanity: the diagnosis seam agrees with the boolean one the validator
 /// actually gates on, at the `SpaceManager` level too (the entity crate
 /// pins the same invariant inside `NavMesh`). A meshless space returns

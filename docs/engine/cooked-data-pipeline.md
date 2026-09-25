@@ -72,6 +72,8 @@ crates/services/src/base/cooked_data.rs
 Game Client (CookedDataCache)
 ```
 
+Kismet sequences (category 1) use the same mechanism through `crates/services/src/base/sequence_overrides.rs`. It matters more there than anywhere: a category with **no** override list answers a version mismatch with `invalidate_all = true` and pushes nothing, and the client, which never lazy-fetches, empties and persists its whole table. Never change a PAK's on-disk `MetaData` version to signal a change; add an override.
+
 Cimmeria's database layer is **`sqlx` 0.8**, not SOCI, and there is no Boost.Python
 binding — the server is a single Rust process (`crates/server/`).
 

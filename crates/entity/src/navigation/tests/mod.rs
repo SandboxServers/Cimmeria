@@ -4,9 +4,11 @@
 //! the XRC reader live alongside the helpers in [`super::xrc`].
 //!
 //! The containment-diagnosis guards ([`super::NavMesh::diagnose_point`])
-//! live in [`diagnose`].
+//! live in [`diagnose`]; the fingerprint-stability pins and the
+//! file-size gate live in [`fingerprint_and_size_cap`].
 
 mod diagnose;
+mod fingerprint_and_size_cap;
 
 use super::*;
 
@@ -343,7 +345,7 @@ fn raycast_with_off_mesh_end_projects_to_polygon() {
 /// runner parallelises by default, so naming the file by pid+nanos
 /// alone would race two threads into the same path on fast hardware
 /// where multiple tests start within the same nanosecond.
-fn make_tmp_nav_path(suffix: &str) -> std::path::PathBuf {
+pub(super) fn make_tmp_nav_path(suffix: &str) -> std::path::PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

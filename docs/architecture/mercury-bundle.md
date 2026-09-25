@@ -1,6 +1,6 @@
 # Mercury Bundle abstraction
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-19
 > **Audience**: Engineers touching Mercury send paths, AoI fanout, world-entry
 > bursts, or anything that calls `send_to_witness_reliable`
 > **Type**: Architecture decision + reference for callers
@@ -36,7 +36,7 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   [base/helpers/mod.rs](../../crates/services/src/base/helpers/mod.rs) ties the
   bundle to the session UDP socket + Channel TX-window registration. ✅
 - **Layer B (conservative slice for #356)**: the AoI EnteredAoI burst in
-  [base/world_entry/cell_dispatch/aoi.rs](../../crates/services/src/base/world_entry/cell_dispatch/aoi.rs)
+  [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/services/src/base/world_entry/cell_dispatch/deferred_flush.rs)
   now bundles into 2 cross-entity bundles (phase-1, phase-2) instead of
   2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
   (was 56 pre-bundle). ✅
@@ -97,8 +97,8 @@ decision sits with the caller, not with a per-channel auto-accumulator.
     per-handler. Tracked separately; not a per-handler migration. The
     "EnteredAoI(X) followed by EntityMethodCall(X) for same X in the same
     drain pass" interleave requires the audit-and-split logic the
-    `flush_deferred_aoi` path already implements; lifting that pattern to
-    every drain-pass send is a separate, larger refactor.
+    `deferred_flush::flush_deferred_aoi` path already implements; lifting
+    that pattern to every drain-pass send is a separate, larger refactor.
 
 ## The transaction-state rule
 
