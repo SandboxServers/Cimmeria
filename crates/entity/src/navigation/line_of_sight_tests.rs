@@ -78,8 +78,11 @@ fn a_sentry_the_mesh_does_not_cover_is_unknown_not_blocked() {
 }
 
 /// The other half: `Unknown` must not swallow a real obstruction. With both
-/// endpoints on the mesh a boundary hit is still `Blocked`, so an NPC keeps
-/// holding fire behind a wall.
+/// endpoints on the mesh a boundary hit is still `Blocked`, so a mobile NPC
+/// keeps holding fire behind a wall. Spawn 225 is itself stationary, and
+/// since NA16 a stationary attacker fires through a same-storey `Blocked`
+/// (see `line_of_sight_policy_tests`). This verdict is what aggro and
+/// mobile NPCs still act on.
 #[test]
 fn a_boundary_between_two_meshed_points_is_still_blocked() {
     let Some(mesh) = harset() else { return };

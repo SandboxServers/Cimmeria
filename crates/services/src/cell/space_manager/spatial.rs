@@ -62,6 +62,27 @@ impl SpaceManager {
         probe.result
     }
 
+    /// Whether a fighting NPC may fire at `target` this tick, as far as line
+    /// of sight goes.
+    ///
+    /// A mobile attacker gets [`Self::has_line_of_sight`]. A stationary one
+    /// gets [`LineOfSight::permits_stationary_attack`]: a navmesh `Blocked`
+    /// on the NPC's own storey does not stop it firing, because the mesh
+    /// cannot see over furniture and the NPC cannot walk around it (NA16,
+    /// audit S11: the Find Ambernol drone and the med-station desk).
+    pub fn attack_line_of_sight(&self, npc_id: u32, target_id: u32, is_stationary: bool) -> bool {
+        let los = self.line_of_sight(npc_id, target_id);
+        if !is_stationary {
+            return los.is_clear_or_unknown();
+        }
+        let dy = match (self.get_entity(npc_id), self.get_entity(target_id)) {
+            (Some(npc), Some(target)) => target.position.y - npc.position.y,
+            // `line_of_sight` already answered Unknown for a missing entity.
+            _ => 0.0,
+        };
+        los.permits_stationary_attack(dy)
+    }
+
     /// Whether the space containing `entity_id` has a navmesh loaded.
     ///
     /// `has_line_of_sight`, `find_path` and `is_position_valid` all fail open

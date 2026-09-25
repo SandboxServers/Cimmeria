@@ -112,7 +112,11 @@ pub(super) async fn npc_ai_fight(
     // distance but stands there" for any ability with `max_range < 30`
     // (e.g., a grenade at `max_range = 15`).
     let in_range = dist_to_target <= max_range;
-    let has_los = space_mgr.has_line_of_sight(npc_id, target_id);
+    // A stationary NPC does not treat a same-storey navmesh `Blocked` as a
+    // wall: the mesh cannot see over a desk and the NPC cannot walk around
+    // one (NA16 / audit S11). A mobile NPC keeps the strict verdict and
+    // paths toward its target instead.
+    let has_los = space_mgr.attack_line_of_sight(npc_id, target_id, is_stationary);
 
     // Cover-system integration. When `use_cover` is on (set by the
     // spawner for NPCs from `SGWMob.def`'s `useCover` flag) and the

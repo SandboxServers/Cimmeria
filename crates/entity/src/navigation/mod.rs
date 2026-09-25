@@ -36,7 +36,7 @@ mod surface;
 mod verdict;
 mod xrc;
 
-pub use line_of_sight::{LineOfSight, LosProbe};
+pub use line_of_sight::{LineOfSight, LosProbe, STATIONARY_ATTACK_VERTICAL_BAND};
 pub use path::{PathOutcome, PathStatus};
 
 use std::ffi::c_void;
@@ -461,6 +461,8 @@ impl std::fmt::Debug for NavMesh {
     }
 }
 
+#[cfg(test)]
+mod line_of_sight_policy_tests;
 #[cfg(test)]
 mod line_of_sight_tests;
 #[cfg(test)]

@@ -18,6 +18,8 @@
 //! - [`stationary_facing`] — a pinned NPC turns to face its target even
 //!   while holding fire (`stationary_holds`), and keeps its yaw when the
 //!   target has no XZ bearing.
+//! - [`stationary_los`] — a pinned NPC fires across furniture the navmesh
+//!   cuts out (real `castle_cellblock.nav`, NA16); a mobile one paths round it.
 //! - [`off_mesh_sentry`] — a sentry outside navmesh coverage still has line
 //!   of sight (real `harset.nav`), so it does not hold fire forever.
 //! - [`selector`]      — `choose_npc_ability` three-bucket selection
@@ -57,6 +59,7 @@ mod off_mesh_sentry;
 mod selector;
 mod state_machine;
 mod stationary_facing;
+mod stationary_los;
 mod stop_hygiene;
 mod tick_row;
 mod zero_health_guard;
