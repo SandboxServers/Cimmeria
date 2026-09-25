@@ -14,7 +14,11 @@ cimmeria-common = { workspace = true }
 # machine (reassembly, ACK piggyback, retransmit bookkeeping) against a
 # REAL BaseApp socket instead of a paired loopback peer. See
 # `docs/architecture/wireclient.md` Phase 1.5.
-cimmeria-mercury = { workspace = true, features = ["test-harness"] }
+# `test-support` pulls in `lossy_transport::{LossyTransport, LossyConfig,
+# LossyProfile}` -- the network-chaos wrapper the lossy-network E2E test
+# installs on the server side via `cimmeria-services`'s `chaos-testing`
+# feature (see the dev-dependency below).
+cimmeria-mercury = { workspace = true, features = ["test-harness", "test-support"] }
 
 tokio = { workspace = true }
 bytes = { workspace = true }
@@ -35,8 +39,10 @@ hex = "0.4"
 # Orchestrator (auth+base+cell) for the two-client Castle visibility
 # end-to-end test (NA37). Mirrors the `cimmeria-services::auth::login_smoke`
 # pattern so wireclient covers the client side of the same handshake the
-# server side already pins.
-cimmeria-services = { path = "../services" }
+# server side already pins. `chaos-testing` additionally exposes
+# `BaseService::set_transport_override` for the lossy-network E2E variant
+# (NA37 round 2).
+cimmeria-services = { path = "../services", features = ["chaos-testing"] }
 
 # Sentinel account/character rows for the live-DB two-client test --
 # same insert-and-clean-up-by-exact-sentinel convention as

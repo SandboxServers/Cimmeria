@@ -61,6 +61,18 @@ pub struct BaseService {
     /// `ConnectedClientState` at login. Server-wide today — no per-client
     /// negotiation yet.
     enc_version: EncryptionVersion,
+
+    /// Test-only transport substitute for `start()`'s recv loop -- lets a
+    /// services-layer chaos integration test spin up a real `BaseService`
+    /// against a `LossyTransport` instead of a plain `UdpTransport`,
+    /// wrapping a socket the test bound and already knows the port of
+    /// (so `ServerConfig::base_port` and the actual bound port agree).
+    /// `None` (the default) means `start()` binds `listener_addr` and
+    /// wraps it in a plain `UdpTransport`, unchanged from before this
+    /// field existed. See `set_transport_override` and
+    /// `docs/architecture/network-chaos-testing.md`.
+    #[cfg(feature = "chaos-testing")]
+    transport_override: Option<Arc<dyn cimmeria_mercury::transport::BidirectionalTransport>>,
 }
 
 impl BaseService {
@@ -83,7 +95,26 @@ impl BaseService {
             minigame_external_host: config.base_external_host.clone(),
             minigame_external_port: config.minigame_port,
             enc_version: EncryptionVersion::from_config_u8(config.mercury_encryption_version),
+            #[cfg(feature = "chaos-testing")]
+            transport_override: None,
         }
+    }
+
+    /// Substitute the socket `start()` would otherwise bind + wrap in a
+    /// plain `UdpTransport` with `transport`, which must already be bound
+    /// to the port `listener_addr`/`ServerConfig::base_port` names (chaos
+    /// tests bind their own socket, read its port back, and set that port
+    /// on the `ServerConfig` before constructing this `BaseService` --
+    /// see `docs/architecture/network-chaos-testing.md`). Must be called
+    /// before `start()`; `start()` takes the override and does not bind a
+    /// second socket when one is present. Only compiled under the
+    /// `chaos-testing` feature so production builds never see this seam.
+    #[cfg(feature = "chaos-testing")]
+    pub fn set_transport_override(
+        &mut self,
+        transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport>,
+    ) {
+        self.transport_override = Some(transport);
     }
 
     /// Snapshot of all connected players for the admin API.
@@ -136,12 +167,37 @@ impl BaseService {
     pub async fn start(&mut self) -> Result<(), BaseError> {
         tracing::info!(addr = %self.listener_addr, "Starting base service UDP listener");
 
-        tracing::trace!(addr = %self.listener_addr, "Binding UDP socket for base service");
-        let socket = Arc::new(UdpSocket::bind(self.listener_addr).await.map_err(|e| {
-            tracing::error!(addr = %self.listener_addr, error = %e, "Failed to bind base UDP socket");
-            e
-        })?);
-        tracing::info!(addr = %socket.local_addr().unwrap(), "Base service UDP socket bound");
+        // Chaos tests supply their own already-bound (possibly
+        // `LossyTransport`-wrapped) transport via `set_transport_override`.
+        // When present, skip binding a second socket entirely -- the
+        // override IS the recv-loop transport.
+        #[cfg(feature = "chaos-testing")]
+        let bidi_transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport> =
+            if let Some(t) = self.transport_override.take() {
+                tracing::info!(
+                    addr = %t.local_addr().unwrap_or(self.listener_addr),
+                    "Base service using chaos-test transport override (no socket bind)"
+                );
+                t
+            } else {
+                tracing::trace!(addr = %self.listener_addr, "Binding UDP socket for base service");
+                let socket = Arc::new(UdpSocket::bind(self.listener_addr).await.map_err(|e| {
+                    tracing::error!(addr = %self.listener_addr, error = %e, "Failed to bind base UDP socket");
+                    e
+                })?);
+                tracing::info!(addr = %socket.local_addr().unwrap(), "Base service UDP socket bound");
+                Arc::new(UdpTransport::new(socket))
+            };
+        #[cfg(not(feature = "chaos-testing"))]
+        let bidi_transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport> = {
+            tracing::trace!(addr = %self.listener_addr, "Binding UDP socket for base service");
+            let socket = Arc::new(UdpSocket::bind(self.listener_addr).await.map_err(|e| {
+                tracing::error!(addr = %self.listener_addr, error = %e, "Failed to bind base UDP socket");
+                e
+            })?);
+            tracing::info!(addr = %socket.local_addr().unwrap(), "Base service UDP socket bound");
+            Arc::new(UdpTransport::new(socket))
+        };
 
         let pending_logins = Arc::clone(&self.pending_logins);
         let db_pool = self.db_pool.clone();
@@ -162,13 +218,10 @@ impl BaseService {
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
-        // Wrap the recv socket as a `BidirectionalTransport` once. The
-        // recv loop owns it for `recv_from`; the cell→base handler gets
-        // a clone projected to the send-only `Transport` super-trait.
-        // Chaos integration tests substitute a `LossyTransport` wrapping
-        // the same UDP socket without touching call sites.
-        let bidi_transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport> =
-            Arc::new(UdpTransport::new(Arc::clone(&socket)));
+        // `bidi_transport` (bound above, real socket or chaos override) is
+        // shared: the recv loop owns it for `recv_from`, and the
+        // cell→base handler gets a clone projected to the send-only
+        // `Transport` super-trait.
         let transport_for_cell: Arc<dyn Transport> = bidi_transport.clone();
         let connected_for_cell = Arc::clone(&connected);
         let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
