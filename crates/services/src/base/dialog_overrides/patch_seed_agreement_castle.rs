@@ -36,7 +36,7 @@
 //! Castle only. DU-02a owns the equivalent guard for the Cellblock table;
 //! it lives in its own file so the two packets never edit the same one.
 //! The shared, table-agnostic guards (no dialog claimed twice, no dialog
-//! both regenerated and patched) stay in `patch_tests.rs`.
+//! both regenerated and patched) stay in `patch_tests/`.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

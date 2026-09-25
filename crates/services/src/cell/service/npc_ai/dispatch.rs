@@ -8,8 +8,9 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::fight::{npc_ai_fight, npc_ai_idle_auto_aggro};
+use super::fight::npc_ai_fight;
 use super::follow::npc_ai_follow;
+use super::idle_aggro::npc_ai_idle_auto_aggro;
 use super::investigate::npc_ai_investigate;
 use super::leash::npc_ai_leash;
 use super::lifecycle::{npc_ai_despawn, npc_ai_error, npc_ai_submit};
@@ -56,11 +57,12 @@ pub(in crate::cell::service) fn npc_is_incapacitated(
     if crate::cell::combat::is_dead_state(e.state_field) {
         return true;
     }
-    let Some(suppressed) =
-        space_mgr
-            .zero_health_npc_log
-            .admit(npc_id, now, ZERO_HEALTH_WARN_MIN_INTERVAL)
-    else {
+    let Some(suppressed) = space_mgr.zero_health_npc_log.admit(
+        npc_id,
+        "zero_health",
+        now,
+        ZERO_HEALTH_WARN_MIN_INTERVAL,
+    ) else {
         return true;
     };
     // Re-borrowed: `admit` above needed `&mut`.
@@ -70,7 +72,7 @@ pub(in crate::cell::service) fn npc_is_incapacitated(
             npc_id,
             npc_name = e.npc_name.as_deref().unwrap_or(""),
             tag = e.tag.as_deref().unwrap_or(""),
-            ai_state = ?e.ai_state,
+            ai_state = ?e.ai_state(),
             state_field = e.state_field,
             suppressed,
             "npc_ai: skipping NPC at 0 HEALTH with no BSF_DEAD — a kill path \
@@ -109,7 +111,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
             space_mgr.get_entity(eid).map(|e| {
                 (
                     eid,
-                    e.ai_state,
+                    e.ai_state(),
                     e.aggression,
                     !e.patrol_path.is_empty(),
                     e.wander_radius > 0.0,
@@ -180,14 +182,20 @@ pub(in crate::cell::service) async fn npc_ai_tick(
                     if aggression > 0 {
                         npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
                     } else if has_patrol {
-                        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                            npc.ai_state = AiState::Patrol;
-                        }
+                        super::set_ai_state(
+                            space_mgr,
+                            npc_id,
+                            AiState::Patrol,
+                            super::AiTransitionReason::PatrolStart,
+                        );
                         npc_ai_patrol(npc_id, tx, space_mgr).await;
                     } else if has_wander {
-                        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                            npc.ai_state = AiState::Wander;
-                        }
+                        super::set_ai_state(
+                            space_mgr,
+                            npc_id,
+                            AiState::Wander,
+                            super::AiTransitionReason::WanderStart,
+                        );
                         npc_ai_wander(npc_id, tx, space_mgr).await;
                     }
                 }
@@ -268,7 +276,7 @@ pub(in crate::cell::service) async fn npc_ai_retry_sweep(
             continue;
         };
         let deadline_due = e.ai_retry_at.is_some_and(|t| t <= now);
-        let fighting = e.ai_state == AiState::Fighting;
+        let fighting = e.ai_state() == AiState::Fighting;
         if !fighting {
             // State-transitioned out of Fighting (Idle / Leashing /
             // Dead) — the natural-cadence tick handles those states
@@ -330,7 +338,7 @@ fn log_ai_tick(
         npc_name = e.npc_name.as_deref().unwrap_or(""),
         tag = e.tag.as_deref().unwrap_or(""),
         state_before = ?state_before,
-        ai_state = ?e.ai_state,
+        ai_state = ?e.ai_state(),
         decision_outcome = outcome,
         x = e.position.x,
         y = e.position.y,
@@ -349,7 +357,7 @@ fn log_ai_tick(
         dist_to_target = ?target.map(|p| p.distance_to(&e.position)),
         has_los = target.is_some().then(|| space_mgr.has_line_of_sight(npc_id, target_id)),
         follow_target_id = e.follow_target_id.unwrap_or(0),
-        dist_to_spawn = ?e.spawn_position.map(|p| p.distance_to(&e.position)),
+        npc_to_spawn = ?e.spawn_position.map(|p| p.distance_to(&e.position)),
         move_speed = e.move_speed,
         navmesh_loaded = space_mgr.space_has_navmesh(npc_id),
         "NPC AI tick"

@@ -56,9 +56,12 @@ pub(super) async fn npc_ai_wander(
     // doesn't see a Wander byte for an NPC that's about to leave
     // Wander this same tick.
     if radius <= 0.0 {
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            cimmeria_entity::cell_entity::AiState::Idle,
+            super::AiTransitionReason::WanderNoRadius,
+        );
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     }
@@ -136,9 +139,12 @@ pub(super) async fn npc_ai_wander(
 
     let Some(spawn) = spawn_pos else {
         // No spawn anchor — wander can't pick a destination. Drop to Idle.
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            cimmeria_entity::cell_entity::AiState::Idle,
+            super::AiTransitionReason::WanderNoSpawn,
+        );
         return;
     };
 
@@ -166,12 +172,12 @@ pub(super) async fn npc_ai_wander(
         spawn
     };
 
-    let path = space_mgr
-        .find_path(npc_id, &npc_pos, &target)
-        .unwrap_or_default();
-    if path.len() <= 1 {
-        // Previously silent — see `patrol.rs` for the same shape.
-        let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+    let path = space_mgr.find_path(npc_id, &npc_pos, &target);
+    if path.as_ref().is_none_or(|p| p.len() <= 1) {
+        // Previously silent — see `patrol.rs` for the same shape, and
+        // for why the `Option` survives until after classification.
+        let reason =
+            super::path_failure::PathFailReason::classify(space_mgr, npc_id, path.as_deref());
         super::path_failure::report_path_failure(
             space_mgr,
             super::path_failure::PathFailure {
@@ -181,11 +187,13 @@ pub(super) async fn npc_ai_wander(
                 from: npc_pos,
                 to: target,
                 reason,
+                fallback: super::path_failure::PathFallback::DirectWaypoint,
                 target_id: None,
             },
             std::time::Instant::now(),
         );
     }
+    let path = path.unwrap_or_default();
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         // Clear the dwell deadline now that we're starting the next
         // hop. The next arrival (`nav_empty` again) will see

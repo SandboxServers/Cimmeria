@@ -389,7 +389,7 @@ fn log_spawn_behaviour(space_mgr: &SpaceManager, npc_id: u32) {
         spawn_yaw_rad = e.direction.y,
         on_navmesh = space_mgr.is_position_valid(npc_id, &e.position),
         navmesh_loaded = space_mgr.space_has_navmesh(npc_id),
-        ground_y = ?space_mgr.get_navmesh_height(npc_id, e.position.x, e.position.z),
+        ground_y = ?space_mgr.get_navmesh_height(npc_id, e.position.x, e.position.y, e.position.z),
         level = e.level,
         faction = e.faction,
         aggression = e.aggression,

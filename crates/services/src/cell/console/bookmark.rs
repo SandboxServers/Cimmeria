@@ -123,7 +123,10 @@ pub(crate) struct Bookmark {
     pub counters_json: String,
     pub threatened_mobs: Vec<u32>,
     pub in_aid_wait_or_dead: bool,
-    pub open_dialog_id: i32,
+    /// Dialog ids offered to the caller and not yet answered, oldest
+    /// first. A non-empty list on a stuck player is the "the server
+    /// thinks a dialog is live that the client isn't showing" signal.
+    pub offered_dialog_ids: Vec<i32>,
     pub last_interaction_target: u32,
     pub active_bandolier_slot: i32,
     pub weapon_visual: String,
@@ -168,7 +171,7 @@ fn snapshot_entity(
     let bearing = dx.atan2(dz);
     let yaw_rad = e.direction.y;
     let yaw_byte = pack_angle(yaw_rad);
-    let ground_y = space_mgr.get_navmesh_height(eid, e.position.x, e.position.z);
+    let ground_y = space_mgr.get_navmesh_height(eid, e.position.x, e.position.y, e.position.z);
     let (threat_top_id, threat_top_value) = e
         .threat_list
         .iter()
@@ -211,7 +214,7 @@ fn snapshot_entity(
         health_max: health.map_or(0, |s| s.max),
         state_field: e.state_field,
         interaction_type_flags: e.interaction_type_flags,
-        ai_state: format!("{:?}", e.ai_state),
+        ai_state: format!("{:?}", e.ai_state()),
         last_movement_type: e
             .last_movement_type
             .map_or_else(|| "None".to_string(), |m| format!("{m:?}")),
@@ -328,7 +331,7 @@ pub(crate) fn capture(
         counters_json: serde_json::to_string(&caller.counters).unwrap_or_default(),
         threatened_mobs: caller.threatened_mobs.iter().copied().collect(),
         in_aid_wait_or_dead: caller.stats.get(HEALTH).is_some_and(|h| h.cur <= 0),
-        open_dialog_id: caller.open_dialog_id.unwrap_or(0),
+        offered_dialog_ids: caller.offered_dialogs(),
         last_interaction_target: caller.last_interaction_target.unwrap_or(0),
         active_bandolier_slot: caller.active_bandolier_slot,
         weapon_visual: caller.weapon_visual.clone().unwrap_or_default(),
@@ -473,7 +476,7 @@ pub(crate) fn emit(b: &Bookmark, account_id: u32, player_id: i32, access_level: 
         witness_count = c.witness_count,
         target_id = b.selected_target_id,
         last_interaction_target = b.last_interaction_target,
-        open_dialog_id = b.open_dialog_id,
+        offered_dialog_ids = ?b.offered_dialog_ids,
         active_bandolier_slot = b.active_bandolier_slot,
         weapon_visual = %b.weapon_visual,
         weapon_holstered = b.weapon_holstered,

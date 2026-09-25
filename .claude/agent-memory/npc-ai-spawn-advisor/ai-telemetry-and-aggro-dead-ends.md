@@ -94,7 +94,7 @@ measured death→respawn deltas 120.2–120.9 s. Snaps to `spawn_pos`, clears
 `crates/services/src/cell/combat/threat/player_combat.rs::clear_dead_npc_from_all_player_threat`
 now exists — **#92 has landed**, contrary to older notes.
 
-**10. Leash never walks home and never restores heading.** `leash.rs:48` writes
+**10. Leash never walks home and never restores heading.** *(Correction 2026-09-24: the "client never learns" part is WRONG — `space_manager/aoi.rs:228-241` emits `EntityMoved` for every in-AoI entity every AoI tick from raw `position`, so the snap IS relayed as UPDATE_AVATAR. Real defects: grid not updated, `nav_path` not cleared so the NPC walks back out along stale chase waypoints, stale velocity. See [[leash-and-fight-exit-traps]].)* `leash.rs:48` writes
 `npc.position = spawn_pos` as a **raw field write** — no `update_entity_position`,
 no `EntityMoved` fan-out, and **no `spawn_dir` restore**. It sends only entity
 methods 20 (stats) and 19 (state field), so the client never learns the NPC

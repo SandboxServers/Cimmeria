@@ -24,7 +24,7 @@ async fn npc_ai_fighting_with_empty_threat_resets_to_idle() {
     )
     .await;
     assert!(matches!(
-        mgr.get_entity(200).unwrap().ai_state,
+        mgr.get_entity(200).unwrap().ai_state(),
         AiState::Idle
     ));
 }
@@ -58,7 +58,7 @@ async fn npc_ai_target_beyond_leash_distance_triggers_leashing() {
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
-    assert!(matches!(npc.ai_state, AiState::Leashing));
+    assert!(matches!(npc.ai_state(), AiState::Leashing));
     assert!(
         npc.threat_list.is_empty(),
         "leashing must clear the threat list"
@@ -118,7 +118,7 @@ async fn npc_ai_dead_target_is_removed_but_other_threats_remain() {
         "live secondary threat must survive the dead-target prune"
     );
     assert!(
-        matches!(npc.ai_state, AiState::Fighting),
+        matches!(npc.ai_state(), AiState::Fighting),
         "AI stays Fighting so next tick picks up another target"
     );
 }
@@ -230,7 +230,7 @@ async fn npc_ai_stationary_does_not_pathfind_when_out_of_range() {
         npc.nav_path
     );
     assert!(
-        matches!(npc.ai_state, AiState::Fighting),
+        matches!(npc.ai_state(), AiState::Fighting),
         "stationary NPC stays Fighting; only the leash branch transitions"
     );
 }
@@ -242,7 +242,7 @@ async fn npc_ai_stationary_does_not_pathfind_when_out_of_range() {
 async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
     let mut mgr = make_ai_fixture([0.0; 3], [40.0, 0.0, 40.0]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Leashing;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Leashing);
         // Seed pre-leash state: a damaged NPC with stale threat targets
         // and an active cooldown carried over from the Fighting phase.
         // The leash tick must wipe ALL of these — pin each one so a
@@ -265,7 +265,7 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
-    assert!(matches!(npc.ai_state, AiState::Idle));
+    assert!(matches!(npc.ai_state(), AiState::Idle));
     assert_eq!(
         npc.position,
         Vector3::new(0.0, 0.0, 0.0),
@@ -298,7 +298,7 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
 async fn npc_ai_leashing_with_follow_target_skips_spawn_snap() {
     let mut mgr = make_ai_fixture([0.0; 3], [40.0, 0.0, 40.0]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Leashing;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Leashing);
         npc.follow_target_id = Some(999);
         npc.threat_list.insert(100, 5.0);
         npc.abilities
@@ -316,7 +316,7 @@ async fn npc_ai_leashing_with_follow_target_skips_spawn_snap() {
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
-    assert!(matches!(npc.ai_state, AiState::Idle));
+    assert!(matches!(npc.ai_state(), AiState::Idle));
     assert_eq!(
         npc.position,
         Vector3::new(40.0, 0.0, 40.0),
@@ -402,7 +402,7 @@ async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
-        matches!(npc.ai_state, AiState::Fighting),
+        matches!(npc.ai_state(), AiState::Fighting),
         "NPC must stay Fighting with live threats"
     );
     assert!(
@@ -445,7 +445,7 @@ async fn npc_ai_fight_single_nan_target_does_not_panic() {
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
-        matches!(npc.ai_state, AiState::Fighting),
+        matches!(npc.ai_state(), AiState::Fighting),
         "single NaN-threat target must not panic and stays Fighting"
     );
 }
@@ -487,7 +487,7 @@ async fn npc_ai_fight_nan_in_threat_list_with_other_targets_does_not_panic() {
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
-        matches!(npc.ai_state, AiState::Fighting),
+        matches!(npc.ai_state(), AiState::Fighting),
         "NaN-vs-finite comparison must fall through Equal without panicking"
     );
 }
@@ -516,7 +516,7 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
     let _ = mgr.compute_aoi_changes();
 
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Leashing;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Leashing);
         if let Some(h) = npc.stats.get_mut(HEALTH) {
             h.update(0, 5, 100); // damaged
             h.clear_dirty();

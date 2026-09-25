@@ -51,9 +51,18 @@ const MAX_STRAIGHT_PATH: i32 = 256;
 const START_EXTENTS: [f32; 3] = [0.5, 0.5, 0.5];
 /// Loose extents for destination — entity might be jumping, on a rail, etc.
 const DEST_EXTENTS: [f32; 3] = [3.0, 3.0, 3.0];
-/// Generous extents for height queries — large Y extent since caller
-/// passes y=0 and the mesh could be at any elevation.
-const HEIGHT_EXTENTS: [f32; 3] = [2.0, 500.0, 2.0];
+/// Search box for [`NavMesh::get_height_near`], centred on the caller's
+/// reference Y.
+///
+/// The Y half-extent reuses [`JUMP_HEIGHT_TOLERANCE`] so "near" means the
+/// same thing here as in [`NavMesh::is_point_valid`]: a mover more than a
+/// jump apex away from every surface is not standing on any of them. It
+/// must stay well below the smallest storey gap on a shipped mesh, or a
+/// query from one floor can read the floor above or below it; the
+/// storey-height guards in `tests/height.rs` pin that on
+/// `castle_cellblock`. The XZ half-extent is tight on purpose: the caller
+/// wants the surface *under* `(x, z)`, not the nearest one beside it.
+const HEIGHT_NEAR_EXTENTS: [f32; 3] = [0.5, JUMP_HEIGHT_TOLERANCE, 0.5];
 /// Upward vertical containment tolerance for [`NavMesh::is_point_valid`] —
 /// how far *above* the walkable surface a proposed position may sit and
 /// still be accepted as "mid-jump" rather than off-mesh.
@@ -386,48 +395,44 @@ impl NavMesh {
         self.find_nearest_poly(pos).map(|(_, p)| p).unwrap_or(*pos)
     }
 
-    /// Sample the navmesh surface height at the given XZ position.
+    /// Sample the walkable surface height under `(x, z)` on the storey
+    /// nearest `y_ref`.
     ///
-    /// Finds the walkable polygon containing (x, z) and returns the
-    /// interpolated Y height on that polygon's surface using the detail
-    /// mesh for accuracy. Returns `None` if no walkable polygon is nearby.
-    pub fn get_height_at(&self, x: f32, z: f32) -> Option<f32> {
-        let center = [x, 0.0, z];
-        let mut nearest_ref: u32 = 0;
-        let mut nearest_pt = [0.0f32; 3];
+    /// `y_ref` is the caller's current (or intended) Y. It is what makes
+    /// this storey-aware: the search box is centred on it with a
+    /// [`JUMP_HEIGHT_TOLERANCE`] half-height, so on a two-storey column an
+    /// entity on the upper floor reads the upper floor. The function this
+    /// replaced searched from world `Y = 0` with a ±500 box and returned
+    /// whichever storey Detour judged nearest to the origin, which on
+    /// `castle_cellblock`'s guard column is the floor ~68 units below the
+    /// guard (NPC AI restoration audit M4).
+    ///
+    /// Returns `None` when there is no walkable surface within
+    /// ±[`JUMP_HEIGHT_TOLERANCE`] of `y_ref` near `(x, z)`. That is not the
+    /// same as "off-mesh": an entity floating more than that above its
+    /// floor also reads `None`, so a caller logging the offset from ground
+    /// must treat `None` as "no ground near this Y", not "no mesh here".
+    pub fn get_height_near(&self, x: f32, y_ref: f32, z: f32) -> Option<f32> {
+        let (poly_ref, nearest) =
+            self.find_nearest_poly_with_extents(&Vector3::new(x, y_ref, z), &HEIGHT_NEAR_EXTENTS)?;
 
-        let status = unsafe {
-            detour_ffi::detour_find_nearest_poly(
-                self.query,
-                center.as_ptr(),
-                HEIGHT_EXTENTS.as_ptr(),
-                &mut nearest_ref,
-                nearest_pt.as_mut_ptr(),
-            )
-        };
-
-        if dt_status_failed(status) || nearest_ref == 0 {
-            return None;
-        }
-
-        // Use getPolyHeight for detail-mesh accuracy.
-        // Pass the XZ we want but with the nearest_pt Y (which is on the poly),
-        // because getPolyHeight needs a point that's actually near the polygon
-        // in order to find the right detail triangle.
-        let query_pt = [x, nearest_pt[1], z];
+        // getPolyHeight picks the detail triangle from the query point, so
+        // pass the XZ we want with the Y Detour already put on the poly.
+        let query_pt = [x, nearest.y, z];
         let mut height: f32 = 0.0;
         let status = unsafe {
             detour_ffi::detour_get_poly_height(
                 self.query,
-                nearest_ref,
+                poly_ref as u32,
                 query_pt.as_ptr(),
                 &mut height,
             )
         };
 
         if dt_status_failed(status) {
-            // Fall back to nearest poly point Y
-            Some(nearest_pt[1])
+            // (x, z) is outside the poly's XZ footprint (the box reached a
+            // neighbour's edge); the clamped nearest point is the best Y.
+            Some(nearest.y)
         } else {
             Some(height)
         }

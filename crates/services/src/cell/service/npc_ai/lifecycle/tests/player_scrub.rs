@@ -4,6 +4,7 @@
 //! the NPC.
 
 use super::*;
+use crate::cell::combat::AggroCause;
 
 // ── The player-side scrub (H04 worknote request B) ─────────────────────
 
@@ -28,7 +29,7 @@ async fn submit_takes_the_attacker_out_of_combat() {
     add_npc(&mut mgr, NPC, 5.0);
 
     // Both sides enter combat.
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
     assert_ne!(
         mgr.get_entity(PLAYER_A).unwrap().state_field & BSF_IN_COMBAT,
         0,
@@ -82,8 +83,8 @@ async fn submit_clears_every_attacker_not_just_the_last_one() {
     add_player(&mut mgr, PLAYER_B, 2.0);
     add_npc(&mut mgr, NPC, 5.0);
 
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
-    let _ = generate_threat(&mut mgr, PLAYER_B, NPC, 90.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
+    let _ = generate_threat(&mut mgr, PLAYER_B, NPC, 90.0, AggroCause::Damage);
     for pid in [PLAYER_A, PLAYER_B] {
         assert_ne!(
             mgr.get_entity(pid).unwrap().state_field & BSF_IN_COMBAT,
@@ -124,8 +125,8 @@ async fn submit_leaves_a_player_in_combat_with_another_live_mob() {
     add_npc(&mut mgr, NPC, 5.0);
     add_npc(&mut mgr, NPC + 1, 8.0);
 
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC + 1, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC + 1, 50.0, AggroCause::Damage);
 
     content_sets_submit(&mut mgr, NPC);
     let (tx, _rx) = mpsc::channel(64);
@@ -162,7 +163,7 @@ async fn re_engaging_a_surrendered_npc_scrubs_the_attacker_again() {
     let mut mgr = make_mgr();
     add_player(&mut mgr, PLAYER_A, 0.0);
     add_npc(&mut mgr, NPC, 5.0);
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
 
     content_sets_submit(&mut mgr, NPC);
     let (tx, _rx) = mpsc::channel(64);
@@ -171,14 +172,14 @@ async fn re_engaging_a_surrendered_npc_scrubs_the_attacker_again() {
 
     // Player shoots the surrendered NPC anyway — allowed, and it re-arms
     // both sides' combat state.
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 25.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 25.0, AggroCause::Damage);
     assert_ne!(
         mgr.get_entity(PLAYER_A).unwrap().state_field & BSF_IN_COMBAT,
         0,
         "fixture invariant: the stray shot must put the player back in combat"
     );
     assert_eq!(
-        mgr.get_entity(NPC).unwrap().ai_state,
+        mgr.get_entity(NPC).unwrap().ai_state(),
         AiState::Submit,
         "and the NPC must NOT be preempted back into Fighting",
     );

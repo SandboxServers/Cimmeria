@@ -40,9 +40,12 @@ pub(super) async fn npc_ai_follow(
     // so the wire doesn't see a Follow byte for an NPC that's about
     // to leave Follow this same tick.
     let Some(target_id) = target_id else {
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            AiState::Idle,
+            super::AiTransitionReason::FollowNoTarget,
+        );
         tracing::debug!(
             target: "npc_ai",
             event = "decision",
@@ -58,8 +61,13 @@ pub(super) async fn npc_ai_follow(
         // Target despawned/disconnected. Clear and drop to Idle.
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.follow_target_id = None;
-            npc.ai_state = AiState::Idle;
         }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            AiState::Idle,
+            super::AiTransitionReason::FollowTargetGone,
+        );
         tracing::warn!(
             target: "npc_ai",
             event = "decision",
@@ -120,10 +128,12 @@ pub(super) async fn npc_ai_follow(
         npc_pos.y + dy * scale,
         npc_pos.z + dz * scale,
     );
-    let path = space_mgr
-        .find_path(npc_id, &npc_pos, &dest)
-        .unwrap_or_default();
-    let routed = path.len() > 1;
+    // Kept as an `Option` until after classification — see
+    // `patrol.rs`: `None` (the pathfinder declined) and
+    // `Some(one_waypoint)` (it answered with something unwalkable) are
+    // different findings and get different `reason` tokens.
+    let routing = space_mgr.find_path(npc_id, &npc_pos, &dest);
+    let routed = routing.as_ref().is_some_and(|p| p.len() > 1);
     // Unrouted: keep the follower on its OWN height. The raw lerp copied the
     // leader's Y, so a jumping or upstairs leader dragged the escort into the
     // air ("levitating, then he came down" -- 2026-09-18 playtest).
@@ -132,14 +142,14 @@ pub(super) async fn npc_ai_follow(
     } else {
         cimmeria_common::Vector3::new(dest.x, npc_pos.y, dest.z)
     };
-    let path_len = path.len();
     if !routed {
         // The unrouted `dest` is a raw 3-axis lerp toward the target,
         // including the target's Y -- an airborne or upstairs target drags
         // the follower through the air and through geometry.
         // Resolved before the call: `report_path_failure` takes `&mut`
         // and this classifier takes `&`.
-        let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+        let reason =
+            super::path_failure::PathFailReason::classify(space_mgr, npc_id, routing.as_deref());
         super::path_failure::report_path_failure(
             space_mgr,
             super::path_failure::PathFailure {
@@ -149,11 +159,15 @@ pub(super) async fn npc_ai_follow(
                 from: npc_pos,
                 to: dest,
                 reason,
+                // The block below clears `nav_path` and pushes `dest`.
+                fallback: super::path_failure::PathFallback::DirectWaypoint,
                 target_id: Some(target_id),
             },
             std::time::Instant::now(),
         );
     }
+    let path = routing.unwrap_or_default();
+    let path_len = path.len();
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
         if path.len() > 1 {
@@ -251,7 +265,7 @@ mod tests {
         mgr.spawn_npc(102, "Agnos", [50.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(102);
             // follow_min/max_distance default to 2.0/5.0 (construction.rs);
             // the target is 50 units away, well outside the band, so the
@@ -291,7 +305,7 @@ mod tests {
         mgr.spawn_npc(102, "Agnos", [50.0, 3.0, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(102);
         }
         let logs = crate::test_support::LogCapture::install();
@@ -301,12 +315,17 @@ mod tests {
         let ev = logs
             .find_event(
                 tracing::Level::WARN,
-                "follow found no navmesh path",
+                "follow got no usable navmesh route",
                 "no_mesh",
             )
             .expect("unrouted follow leg must emit a follow_no_path warn");
         assert!(ev.has_field("decision_outcome", "follow_no_path"));
         assert!(ev.has_field("npc_id", "101"));
+        assert!(
+            ev.has_field("fallback", "direct_waypoint"),
+            "follow clears nav_path and pushes the raw dest, so the row \
+             must promise the straight-line fallback it actually takes"
+        );
         assert!(
             ev.fields.contains_key("dy"),
             "dy is the air-climb signature and must be on the event"
@@ -321,7 +340,7 @@ mod tests {
         mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(999);
         }
         let logs = crate::test_support::LogCapture::install();
@@ -337,7 +356,7 @@ mod tests {
             .is_some());
         let npc = mgr.get_entity(101).unwrap();
         assert_eq!(npc.follow_target_id, None);
-        assert_eq!(npc.ai_state, AiState::Idle);
+        assert_eq!(npc.ai_state(), AiState::Idle);
     }
 
     /// The unrouted fallback must keep the follower on its OWN height. It used
@@ -351,7 +370,7 @@ mod tests {
         mgr.spawn_npc(102, "Agnos", [50.0, 11.5, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(102);
         }
         let (tx, _rx) = mpsc::channel(8);

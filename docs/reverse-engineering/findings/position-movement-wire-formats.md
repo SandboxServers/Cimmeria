@@ -34,15 +34,17 @@ Server forces an entity to a specific position. Used for teleports, spawn positi
 | 12 | 4 | float32 | posX | Position X (world coords) |
 | 16 | 4 | float32 | posY | Position Y (height) |
 | 20 | 4 | float32 | posZ | Position Z (world coords) |
-| 24 | 4 | float32 | velX | Velocity X |
-| 28 | 4 | float32 | velY | Velocity Y |
-| 32 | 4 | float32 | velZ | Velocity Z |
+| 24 | 4 | float32 | prevPosX | Previous-position reference X |
+| 28 | 4 | float32 | prevPosY | Previous-position reference Y |
+| 32 | 4 | float32 | prevPosZ | Previous-position reference Z |
 | 36 | 4 | float32 | roll | Roll angle (radians) |
 | 40 | 4 | float32 | pitch | Pitch angle (radians) |
 | 44 | 4 | float32 | yaw | Yaw angle (radians) |
 | 48 | 1 | uint8 | physics | Physics/movement mode |
 
 **Total: 49 bytes**
+
+> **Field-name correction (W-mercury-bible, 2026-05-14):** The 12 bytes at wire offsets 24-35 of `forcedPosition` were originally documented as "velocity Vec3" based on the comment in `client_handler.cpp:407-413`. Ghidra analysis of `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` shows the block is passed as a pointer (`LEA EAX, [ESI+0x18]`) to `PackageAndSendEntityMove` as `pOrientation`, then copied into `pPrevPos` (which aliases the current-position slot at `&(ESI+0xc)`). It is the client's **previous-position reference**, used for delta-encoding the retransmitted `addMove`. The zeros at world entry exist because there is no prior position to delta from, not because the field is velocity.
 
 ### Field Notes
 
@@ -117,13 +119,15 @@ Unlike `forcedPosition` and `detailedPosition` which use full float32 for all fi
 When present (FullPos/OnChunk/OnGround variants), position is encoded as three float32 values (12 bytes total), the same as in forcedPosition. The position type name (FullPos/OnChunk/OnGround) determines how the CLIENT INTERPRETS the Y value:
 
 - **FullPos**: All three components (X, Y, Z) used directly
-- **OnChunk**: X and Z used; Y replaced with sentinel (client derives Y from chunk height)
-- **OnGround**: X and Z used; Y replaced with sentinel (client derives Y from terrain)
+- **OnChunk**: X and Z used; Y replaced with sentinel (client keeps the entity's current height)
+- **OnGround**: X and Z used; Y replaced with sentinel (client keeps the entity's current height)
 
-**Critical finding**: All three position types use the SAME wire format (3 x float32 = 12 bytes). The difference is purely in the handler function: FullPos handlers read `posY = data[offset+4]`, while OnChunk and OnGround handlers set `posY = SENTINEL` (a constant at `DAT_019d1a44`, likely `FLT_MAX`). The 4 bytes at the Y position offset are present in all variants but ignored by OnChunk/OnGround handlers. Confirmed by decompiling:
+**Critical finding**: All three position types use the SAME wire format (3 x float32 = 12 bytes). The difference is purely in the handler function: FullPos handlers read `posY = data[offset+4]`, while OnChunk and OnGround handlers set `posY = SENTINEL` (a constant at `DAT_019d1a44`, `-13000.0f`). The 4 bytes at the Y position offset are present in all variants but ignored by OnChunk/OnGround handlers. Confirmed by decompiling:
 - `FUN_00ddb0c0` (NoAliasFullPosNoDir): `local_8 = param_1[2]` (uses Y)
 - `FUN_00ddb220` (NoAliasOnChunkYPR): `local_8 = DAT_019d1a44` (ignores Y)
 - `FUN_00ddb830` (NoAliasOnGroundYPR): `local_8 = DAT_019d1a44` (ignores Y)
+
+> **Correction (2026-09-24):** an earlier revision said the sentinel was "likely `FLT_MAX`" and that the client derives Y from chunk height or terrain. Both are wrong. `DAT_019d1a44` holds bytes `00 20 4b c6`, which is `-13000.0f`. `BW_client_entity_manager_6` (`0x00dd1859`) replaces any component equal to the sentinel with the actor's current client `Location`, with no ray-cast or height-map query. See [spec.protocol.position-updates §1.2.2](../../drafts/spec/position-updates.md#122-position-type-semantics) and [npc-ground-audit.md §B](../../analysis/npc-ai-restoration/evidence/npc-ground-audit.md#b-how-the-client-renders-npc-y-ghidra).
 
 When absent (NoPos variants), no position data is sent. The client uses the entity's previous position.
 

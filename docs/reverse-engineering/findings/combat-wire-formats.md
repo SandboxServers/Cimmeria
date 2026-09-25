@@ -481,7 +481,7 @@ These are ClientMethods sent from the server. The server serializes them identic
 | 0 | 4 | int32 | ID | Timer/ability/effect ID |
 | 4 | 1 | int8 | Type | Timer category (see below) |
 | 5 | 4 | int32 | SourceID | Entity that caused the timer |
-| 9 | 4 | int32 | SecondaryId | Secondary identifier (unused, always 0) |
+| 9 | 4 | int32 | SecondaryId | Effect-instance lookup key for `DurationEffect`; other timer types may use 0 |
 | 13 | 4 | float32 | TotalTime | Total duration in seconds |
 | 17 | 4 | float32 | BigWorldTimeComplete | BigWorld timestamp when timer expires |
 
@@ -496,7 +496,7 @@ These are ClientMethods sent from the server. The server serializes them identic
 | 2 | `AbilityWarmup` | Ability ID |
 | 3 | `DurationEffect` | Effect ID |
 
-**Python validation**: `python/client/SGWBeing.py` `onTimerUpdate(id, timerCategory, entityId, 0, duration, endTime)` — matches. The 4th parameter `SecondaryId` is always passed as 0 in the Python caller.
+**Python validation**: `python/client/SGWBeing.py` `onTimerUpdate(id, timerCategory, entityId, 0, duration, endTime)` — matches. The 4th parameter `SecondaryId` is 0 for the cooldown callers, but `deprecated/python/cell/AbilityManager.py` `updateEffectTimer` passes `instance.effect.id` for `DurationEffect`, which is the key `EffectSet_HandleOnTimerUpdate` looks the active effect up by (see [effect-execution-model.md](effect-execution-model.md)).
 
 ---
 

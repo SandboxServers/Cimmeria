@@ -101,12 +101,16 @@ pub fn is_dead_state(state_field: u32) -> bool {
 /// Player entities are out of scope — the player-side death path has
 /// its own concerns (weapon-action cleanup, defeat window, respawner
 /// list). Callers must gate on `!entity.is_player` before invoking.
-pub fn mark_npc_dead(entity: &mut cimmeria_entity::cell_entity::CellEntity) {
+///
+/// `world` labels the `npc_ai.transition` row; resolve it with
+/// `npc_ai::world_label` before taking the `&mut` borrow.
+pub fn mark_npc_dead(entity: &mut cimmeria_entity::cell_entity::CellEntity, world: &str) {
+    use crate::cell::service::npc_ai::{set_ai_state_on, AiTransitionReason};
     use cimmeria_entity::cell_entity::AiState;
 
     entity.set_state_flag(BSF_DEAD);
     entity.set_state_flag(BSF_MOVEMENT_LOCK);
-    entity.ai_state = AiState::Dead;
+    set_ai_state_on(entity, world, AiState::Dead, AiTransitionReason::Died);
     if let Some(secs) = entity.respawn_secs {
         entity.respawn_at =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(secs as u64));

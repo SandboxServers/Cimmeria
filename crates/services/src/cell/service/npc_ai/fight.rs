@@ -1,7 +1,7 @@
 //! Fighting state: attack the top-threat target (with cover routing,
 //! range/LOS gating, and min-range backup) or transition to Leashing.
-//! Also the Idle-auto-aggro seed that promotes an aggressive idle NPC
-//! into combat.
+//! The Idle auto-aggro seed that promotes an aggressive idle NPC into
+//! combat lives in [`super::idle_aggro`].
 
 use tokio::sync::mpsc;
 
@@ -11,72 +11,6 @@ use crate::cell::space_manager::SpaceManager;
 use super::ability_select::{
     ability_ranges, choose_npc_ability_within_reach, compute_backup_waypoint,
 };
-
-/// Auto-aggro tick for Idle NPCs with `aggression > 0`.
-///
-/// Scans witnesses for opposing-faction players, seeds a small threat on
-/// the closest. The next AI tick transitions the NPC to Fighting.
-///
-/// Seed magnitude (`1.0`) is intentionally tiny so an explicit
-/// `generate_threat` from a content chain (e.g., chain 1032's `1000`)
-/// dominates and focuses the NPC on the triggering player rather than
-/// whichever player happens to be closest. Caller (`npc_ai_tick`)
-/// guarantees `aggression > 0`.
-pub(super) async fn npc_ai_idle_auto_aggro(
-    npc_id: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    use crate::cell::combat;
-
-    let (npc_pos, npc_faction) = match space_mgr.get_entity(npc_id) {
-        Some(e) => (e.position, e.faction),
-        None => return,
-    };
-
-    // Witnesses-of-NPC = players currently rendering this NPC, i.e. players
-    // in the NPC's AoI. That's exactly the candidate set the Python `Atrea`
-    // engine scans — restricted to players because NPCs don't aggro on
-    // other NPCs from idle.
-    let witnesses = space_mgr.get_witnesses_of(npc_id);
-    let target = witnesses
-        .into_iter()
-        .filter_map(|pid| {
-            let p = space_mgr.get_entity(pid)?;
-            if !p.is_player || p.faction == npc_faction {
-                return None;
-            }
-            // Skip dead players (BSF_DEAD in state_field — bit 0).
-            if combat::is_dead_state(p.state_field) {
-                return None;
-            }
-            let dist = npc_pos.distance_to(&p.position);
-            Some((pid, dist))
-        })
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(pid, _)| pid);
-
-    if let Some(player_id) = target {
-        tracing::info!(
-            npc_id,
-            player_id,
-            "NPC AI: aggression-driven auto-aggro on opposing-faction player"
-        );
-        // Invariant: when `enter_player_combat` flips `weapon_holstered`
-        // to false on first-add, the client's cached `ComponentList`
-        // must be refreshed — otherwise the fire path passes the
-        // `needs_unholster_queue` gate (server thinks drawn) while
-        // the client still renders the holstered mesh. The
-        // `onStateFieldUpdate` half is intentionally suppressed here
-        // (auto-aggro can fire before the player has any visible
-        // reason to know — lighting up `BSF_IN_COMBAT` is the "ghost
-        // combat HUD" carve-out); the damage path broadcasts it on
-        // the next explicit hit.
-        if combat::generate_threat(space_mgr, player_id, npc_id, 1.0).is_some() {
-            crate::cell::abilities::request_appearance_refresh(player_id, tx, space_mgr).await;
-        }
-    }
-}
 
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
 pub(super) async fn npc_ai_fight(
@@ -127,8 +61,14 @@ pub(super) async fn npc_ai_fight(
         Some(tid) => tid,
         None => {
             // No threat targets left — reset to idle
+            let world = super::world_label(space_mgr, npc_id);
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                npc.ai_state = AiState::Idle;
+                super::set_ai_state_on(
+                    npc,
+                    &world,
+                    AiState::Idle,
+                    super::AiTransitionReason::ThreatEmpty,
+                );
                 npc.threat_list.clear();
                 tracing::debug!(npc_id, "NPC AI: no threat targets, resetting to Idle");
             }
@@ -176,21 +116,36 @@ pub(super) async fn npc_ai_fight(
         }
     };
 
-    // Leash check: if target is too far from NPC's spawn point, disengage
+    // Leash check: if target is too far from NPC's spawn point, disengage.
+    // The test is spawn->TARGET, not spawn->NPC: the NPC gives up when the
+    // player has left its territory, wherever the NPC itself stands.
     if let Some(spawn) = spawn_pos {
-        let dist_to_spawn = spawn.distance_to(&target_pos);
-        if dist_to_spawn > combat::LEASH_DISTANCE {
+        let target_to_spawn = spawn.distance_to(&target_pos);
+        if target_to_spawn > combat::LEASH_DISTANCE {
+            let world = super::world_label(space_mgr, npc_id);
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                npc.ai_state = AiState::Leashing;
+                // Logged before the threat list is cleared so the
+                // transition row's `threat_count` shows what was dropped.
+                super::set_ai_state_on(
+                    npc,
+                    &world,
+                    AiState::Leashing,
+                    super::AiTransitionReason::LeashOut,
+                );
                 npc.threat_list.clear();
                 super::note_outcome("leashed");
+                // Distances are named by their endpoints (T7). This row
+                // used to call spawn->target `dist_to_spawn` while the tick
+                // row used that name for NPC->spawn.
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
                     decision_outcome = "leashed",
                     npc_id,
                     target_id,
-                    dist_to_spawn,
+                    target_to_spawn,
+                    npc_to_spawn = spawn.distance_to(&npc_pos),
+                    leash_distance = combat::LEASH_DISTANCE,
                     "NPC AI: target too far from spawn, leashing"
                 );
             }
@@ -461,6 +416,10 @@ pub(super) async fn npc_ai_fight(
                             from: npc_pos,
                             to: nav_target_pos,
                             reason: super::path_failure::PathFailReason::DegeneratePath,
+                            // `nav_path` is deliberately untouched on this
+                            // branch: a one-waypoint repath is not worth
+                            // discarding a route that may still be usable.
+                            fallback: super::path_failure::PathFallback::PathUnchanged,
                             target_id: Some(target_id),
                         },
                         std::time::Instant::now(),
@@ -484,6 +443,14 @@ pub(super) async fn npc_ai_fight(
                         from: npc_pos,
                         to: nav_target_pos,
                         reason,
+                        // Unlike every other state, `fight` does **not**
+                        // enqueue the raw target as a direct waypoint
+                        // here — so the chaser stands still, or keeps
+                        // walking a stale route. The shared message used
+                        // to claim a straight-line fallback for this
+                        // branch, which sent operators looking for a
+                        // wall-clipping NPC that was never moving.
+                        fallback: super::path_failure::PathFallback::PathUnchanged,
                         target_id: Some(target_id),
                     },
                     std::time::Instant::now(),

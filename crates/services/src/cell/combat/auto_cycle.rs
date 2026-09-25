@@ -86,7 +86,7 @@ use super::state::{is_dead_state, BSF_AUTO_CYCLING};
 /// loop stops.
 #[must_use]
 pub fn is_auto_cycle_target_valid(target: &CellEntity) -> bool {
-    !is_dead_state(target.state_field) && target.ai_state != AiState::Submit
+    !is_dead_state(target.state_field) && target.ai_state() != AiState::Submit
 }
 
 /// Arm the auto-cycle loop on `player_id` with the given ability.
@@ -455,7 +455,10 @@ mod tests {
             "a live, fighting NPC is a valid loop target"
         );
 
-        mgr.get_entity_mut(50).unwrap().ai_state = AiState::Submit;
+        crate::cell::service::npc_ai::force_ai_state(
+            mgr.get_entity_mut(50).unwrap(),
+            AiState::Submit,
+        );
         assert!(
             !is_auto_cycle_target_valid(mgr.get_entity(50).unwrap()),
             "a surrendered NPC must stop the loop — it is alive and still \
@@ -465,7 +468,7 @@ mod tests {
         // Dead beats surrendered, and the dead half must survive on its
         // own if the surrender half is ever reverted.
         let npc = mgr.get_entity_mut(50).unwrap();
-        npc.ai_state = AiState::Fighting;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Fighting);
         npc.state_field |= crate::cell::combat::state::BSF_DEAD;
         assert!(
             !is_auto_cycle_target_valid(mgr.get_entity(50).unwrap()),

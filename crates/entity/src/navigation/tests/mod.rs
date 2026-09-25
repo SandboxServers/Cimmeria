@@ -4,9 +4,13 @@
 //! the XRC reader live alongside the helpers in [`super::xrc`].
 //!
 //! The containment-diagnosis guards ([`super::NavMesh::diagnose_point`])
-//! live in [`diagnose`].
+//! live in [`diagnose`]; the fingerprint-stability pins and the
+//! file-size gate live in [`fingerprint_and_size_cap`]; the storey-aware
+//! height guards in [`height`].
 
 mod diagnose;
+mod fingerprint_and_size_cap;
+mod height;
 
 use super::*;
 
@@ -343,7 +347,7 @@ fn raycast_with_off_mesh_end_projects_to_polygon() {
 /// runner parallelises by default, so naming the file by pid+nanos
 /// alone would race two threads into the same path on fast hardware
 /// where multiple tests start within the same nanosecond.
-fn make_tmp_nav_path(suffix: &str) -> std::path::PathBuf {
+pub(super) fn make_tmp_nav_path(suffix: &str) -> std::path::PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -482,32 +486,4 @@ fn navmesh_load_rejects_oversized_detail_nverts() {
 fn navmesh_load_rejects_oversized_detail_ntris() {
     let path = write_hostile_at(OFFSET_DETAIL_NTRIS);
     assert_hostile_field(&path, "detail_ntris");
-}
-
-#[test]
-fn load_and_height_query() {
-    let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
-    if !path.exists() {
-        return;
-    }
-    let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
-
-    // Query height at the guard position XZ.
-    // The navmesh is in Recast/BigWorld coordinate space — Y values won't
-    // match UE3 game coordinates directly. Just verify we get a result and
-    // that it's a finite number within the mesh bounds.
-    let height = mesh.get_height_at(-289.465, -154.276);
-    assert!(
-        height.is_some(),
-        "Should find height at guard spawn XZ position"
-    );
-    let h = height.unwrap();
-    assert!(h.is_finite(), "Height should be finite, got {h}");
-    // Height should be between the mesh's Y bounds (with some tolerance)
-    assert!(
-        h >= mesh.bmin[1] - 1.0 && h <= mesh.bmax[1] + 1.0,
-        "Height {h} should be within mesh Y bounds [{}, {}]",
-        mesh.bmin[1],
-        mesh.bmax[1]
-    );
 }

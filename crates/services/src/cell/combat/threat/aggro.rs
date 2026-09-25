@@ -6,6 +6,35 @@
 //! player attackers) mirrors the addition into the player's combat state
 //! via [`super::player_combat::enter_player_combat`].
 
+use crate::cell::service::npc_ai;
+
+/// What made an NPC engage, passed to [`generate_threat`] and reported as
+/// `cause` on the `npc_ai.aggro event=acquired` row. Enumerated; the label
+/// is a metric label.
+///
+/// `assist` (a neighbour pulling the NPC in) is reserved for NA14 and is
+/// deliberately not a variant until something produces it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AggroCause {
+    /// The Idle auto-aggro scan picked a witness.
+    Proximity,
+    /// Damage landed on the NPC.
+    Damage,
+    /// A content chain's `generate_threat` action.
+    ContentThreat,
+}
+
+impl AggroCause {
+    /// Stable snake_case label. Treat as API.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Proximity => "proximity",
+            Self::Damage => "damage",
+            Self::ContentThreat => "content_threat",
+        }
+    }
+}
+
 /// Leash distance in world units — if an NPC's target moves further than this
 /// from the NPC's spawn position, the NPC resets and walks home.
 pub const LEASH_DISTANCE: f32 = 50.0;
@@ -96,53 +125,55 @@ pub fn generate_threat(
     attacker_id: u32,
     target_id: u32,
     threat_amount: f32,
+    cause: AggroCause,
 ) -> Option<u32> {
     use cimmeria_entity::cell_entity::AiState;
 
-    let target_is_npc = if let Some(target) = space_mgr.get_entity_mut(target_id) {
-        if target.is_player {
-            return None;
-        }
-        // Threat preemption: any non-Dead, non-already-fighting state
-        // transitions to Fighting. Patrol/Wander/Investigating/Follow
-        // NPCs that get attacked drop their current behavior and
-        // engage. Per-state scratch (patrol index, wander deadline,
-        // POI, follow target) persists on the entity so the
-        // post-Leashing return-to-Idle path can resume the
-        // pre-fight behavior from where it left off.
-        let preemptable = matches!(
-            target.ai_state,
+    // Threat preemption: any non-Dead, non-already-fighting state
+    // transitions to Fighting. Patrol/Wander/Investigating/Follow NPCs
+    // that get attacked drop their current behavior and engage.
+    // Per-state scratch (patrol index, wander deadline, POI, follow
+    // target) persists on the entity so the post-Leashing return-to-Idle
+    // path can resume the pre-fight behavior from where it left off.
+    let preemptable = match space_mgr.get_entity(target_id) {
+        None => return None,
+        Some(target) if target.is_player => return None,
+        Some(target) => matches!(
+            target.ai_state(),
             AiState::Idle
                 | AiState::Patrol
                 | AiState::Wander
                 | AiState::Investigating
                 | AiState::Follow
-        );
-        if preemptable {
-            let prev = target.ai_state;
-            target.ai_state = AiState::Fighting;
+        ),
+    };
+    // Resolved before the `&mut` borrow below; only needed on entry.
+    let world = preemptable.then(|| npc_ai::world_label(space_mgr, target_id));
+
+    let mut entered_from = None;
+    if let Some(target) = space_mgr.get_entity_mut(target_id) {
+        if let Some(world) = &world {
+            entered_from = Some(npc_ai::set_ai_state_on(
+                target,
+                world,
+                AiState::Fighting,
+                cause.transition_reason(),
+            ));
             // Clear in-flight nav so the fight handler can pathfind
             // toward the target instead of continuing to a stale
             // patrol/wander waypoint.
             target.nav_path.clear();
-            tracing::info!(
-                npc_id = target_id,
-                attacker = attacker_id,
-                ?prev,
-                "NPC aggro: preempt -> Fighting"
-            );
         }
         *target.threat_list.entry(attacker_id).or_insert(0.0) += threat_amount;
-        true
-    } else {
-        false
-    };
-
-    if target_is_npc {
-        super::player_combat::enter_player_combat(space_mgr, attacker_id, target_id)
-    } else {
-        None
     }
+
+    // Every entry into Fighting says why (`npc_ai.aggro event=acquired`).
+    // This replaces the old unstructured "preempt -> Fighting" line.
+    if let Some(from) = entered_from {
+        npc_ai::log_aggro_acquired(space_mgr, target_id, attacker_id, from, cause);
+    }
+
+    super::player_combat::enter_player_combat(space_mgr, attacker_id, target_id)
 }
 
 #[cfg(test)]
@@ -201,12 +232,12 @@ mod tests {
         use cimmeria_entity::cell_entity::AiState;
         let mut mgr = make_test_space_mgr_with_npc();
 
-        assert_eq!(mgr.get_entity(100).unwrap().ai_state, AiState::Idle);
+        assert_eq!(mgr.get_entity(100).unwrap().ai_state(), AiState::Idle);
 
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
 
         let npc = mgr.get_entity(100).unwrap();
-        assert_eq!(npc.ai_state, AiState::Fighting);
+        assert_eq!(npc.ai_state(), AiState::Fighting);
         assert_eq!(npc.threat_list[&1], 50.0);
     }
 
@@ -214,8 +245,8 @@ mod tests {
     fn generate_threat_accumulates() {
         let mut mgr = make_test_space_mgr_with_npc();
 
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
-        let _ = generate_threat(&mut mgr, 1, 100, 30.0);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
+        let _ = generate_threat(&mut mgr, 1, 100, 30.0, AggroCause::Damage);
 
         assert_eq!(mgr.get_entity(100).unwrap().threat_list[&1], 80.0);
     }
@@ -225,8 +256,8 @@ mod tests {
         let mut mgr = make_test_space_mgr_with_npc();
         add_player(&mut mgr, 2, 20.0);
 
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
-        let _ = generate_threat(&mut mgr, 2, 100, 100.0);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
+        let _ = generate_threat(&mut mgr, 2, 100, 100.0, AggroCause::Damage);
 
         let npc = mgr.get_entity(100).unwrap();
         assert_eq!(npc.threat_list.len(), 2);
@@ -248,11 +279,11 @@ mod tests {
 
         // NPC entity 100 attacking player entity 1 — should be a no-op on
         // the player side and return None (no combat-enter broadcast).
-        let result = generate_threat(&mut mgr, 100, 1, 50.0);
+        let result = generate_threat(&mut mgr, 100, 1, 50.0, AggroCause::Damage);
         assert_eq!(result, None);
 
         let player = mgr.get_entity(1).unwrap();
-        assert_eq!(player.ai_state, AiState::Idle);
+        assert_eq!(player.ai_state(), AiState::Idle);
         assert!(player.threat_list.is_empty());
     }
 
@@ -261,11 +292,11 @@ mod tests {
         use cimmeria_entity::cell_entity::AiState;
         let mut mgr = make_test_space_mgr_with_npc();
 
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
-        assert_eq!(mgr.get_entity(100).unwrap().ai_state, AiState::Fighting);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
+        assert_eq!(mgr.get_entity(100).unwrap().ai_state(), AiState::Fighting);
 
-        let _ = generate_threat(&mut mgr, 1, 100, 25.0);
-        assert_eq!(mgr.get_entity(100).unwrap().ai_state, AiState::Fighting);
+        let _ = generate_threat(&mut mgr, 1, 100, 25.0, AggroCause::Damage);
+        assert_eq!(mgr.get_entity(100).unwrap().ai_state(), AiState::Fighting);
     }
 
     // ── generate_threat: returns combat-enter state on first add ──────────
@@ -274,7 +305,7 @@ mod tests {
     fn generate_threat_returns_state_on_player_first_aggro() {
         let mut mgr = make_test_space_mgr_with_npc();
 
-        let result = generate_threat(&mut mgr, 1, 100, 50.0);
+        let result = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
         assert!(
             result.is_some(),
             "first aggro must return new state for broadcast"
@@ -289,9 +320,9 @@ mod tests {
     fn generate_threat_returns_none_on_subsequent_hits() {
         let mut mgr = make_test_space_mgr_with_npc();
 
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
         // Second hit on same mob — already in set, no transition.
-        let result = generate_threat(&mut mgr, 1, 100, 30.0);
+        let result = generate_threat(&mut mgr, 1, 100, 30.0, AggroCause::Damage);
         assert_eq!(result, None);
     }
 
@@ -302,7 +333,7 @@ mod tests {
 
         // NPC 101 attacking NPC 100 (e.g., pet) — NPC 100 enters Fighting,
         // but no player is involved so no combat-enter broadcast.
-        let result = generate_threat(&mut mgr, 101, 100, 50.0);
+        let result = generate_threat(&mut mgr, 101, 100, 50.0, AggroCause::Damage);
         assert_eq!(result, None);
 
         // NPC 100's threat_list still got the NPC attacker so AI works.
@@ -316,7 +347,7 @@ mod tests {
         let mut mgr = make_test_space_mgr_with_npc();
 
         // Aggro
-        let entered = generate_threat(&mut mgr, 1, 100, 50.0);
+        let entered = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
         assert!(entered.is_some(), "first aggro should signal combat enter");
         assert_ne!(mgr.get_entity(1).unwrap().state_field & BSF_IN_COMBAT, 0);
 
@@ -333,11 +364,11 @@ mod tests {
         add_npc(&mut mgr, 101, 25.0);
 
         // First aggro: combat enters.
-        let entered = generate_threat(&mut mgr, 1, 100, 50.0);
+        let entered = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
         assert!(entered.is_some());
 
         // Second aggro on different mob: no transition, no broadcast.
-        let second = generate_threat(&mut mgr, 1, 101, 30.0);
+        let second = generate_threat(&mut mgr, 1, 101, 30.0, AggroCause::Damage);
         assert_eq!(second, None);
         assert_eq!(mgr.get_entity(1).unwrap().threatened_mobs.len(), 2);
 

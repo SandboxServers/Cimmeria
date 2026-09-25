@@ -119,7 +119,7 @@ async fn respawn_with_no_witnesses_is_silent_and_state_correct() {
     if let Some(npc) = mgr.get_entity_mut(50) {
         npc.set_state_flag(BSF_DEAD);
         npc.set_state_flag(BSF_MOVEMENT_LOCK);
-        npc.ai_state = AiState::Dead;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Dead);
         if let Some(hp) = npc.stats.get_mut(HEALTH) {
             hp.set_current(0);
         }
@@ -137,7 +137,7 @@ async fn respawn_with_no_witnesses_is_silent_and_state_correct() {
 
     // Server state correct.
     let npc = mgr.get_entity(50).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(npc.ai_state(), AiState::Idle);
     assert_eq!(npc.state_field & BSF_DEAD, 0);
     let hp = npc.stats.get(HEALTH).unwrap();
     assert_eq!(hp.cur, hp.max);
@@ -239,7 +239,7 @@ async fn kill_via_damage_apply_then_respawn_then_kill_again() {
 
     // damage_apply → mark_npc_dead must have stamped respawn_at.
     let npc = mgr.get_entity(50).unwrap();
-    assert_eq!(npc.ai_state, AiState::Dead, "cycle 1 → Dead");
+    assert_eq!(npc.ai_state(), AiState::Dead, "cycle 1 → Dead");
     assert!(
         npc.respawn_at.is_some(),
         "cycle 1 → respawn_at must be stamped by mark_npc_dead",
@@ -270,7 +270,7 @@ async fn kill_via_damage_apply_then_respawn_then_kill_again() {
     npc_respawn_tick(&tx, &mut mgr).await;
 
     let npc = mgr.get_entity(50).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle, "post-respawn → Idle");
+    assert_eq!(npc.ai_state(), AiState::Idle, "post-respawn → Idle");
     assert_eq!(npc.state_field & BSF_DEAD, 0);
     assert!(
         !npc.state_flag_counts.contains_key(&BSF_DEAD),

@@ -12,8 +12,11 @@ use tokio::sync::mpsc;
 
 use super::transport;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 
+#[cfg(test)]
+mod aggression_log_tests;
 #[cfg(test)]
 mod tests;
 
@@ -81,6 +84,10 @@ pub(super) async fn set_interaction_type(
 /// the chain. Without that explicit seed the drone would aggro on the
 /// next idle tick anyway, but the seed delivers the correct frame
 /// ordering (drone faces the player immediately, not 2s later).
+///
+/// A tag that matches nothing is a WARN (`event="set_aggression_tag_miss"`):
+/// a mistyped chain tag leaves a guard passive forever, which on the floor
+/// looks exactly like an aggro bug (audit gap T10).
 pub(super) fn set_aggression(
     entity_tag: String,
     agg_level: i32,
@@ -88,11 +95,32 @@ pub(super) fn set_aggression(
     chain_id: i64,
     space_mgr: &mut SpaceManager,
 ) {
-    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
-        tracing::debug!(entity_id, %entity_tag, target_id, agg_level, chain_id, "Content: set aggression");
-        if let Some(target) = space_mgr.get_entity_mut(target_id) {
-            target.aggression = agg_level;
-        }
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::warn!(
+            target: "content",
+            event = "set_aggression_tag_miss",
+            reason = "tag_not_found",
+            entity_id,
+            tag = %entity_tag,
+            chain_id,
+            agg_level,
+            "Content: set_aggression matched no entity -- the NPC's aggression is unchanged"
+        );
+        return;
+    };
+    if let Some(target) = space_mgr.get_entity_mut(target_id) {
+        let from = std::mem::replace(&mut target.aggression, agg_level);
+        tracing::info!(
+            target: "content",
+            event = "set_aggression",
+            entity_id,
+            tag = %entity_tag,
+            target_id,
+            from,
+            to = agg_level,
+            chain_id,
+            "Content: set aggression"
+        );
     }
 }
 
@@ -119,9 +147,15 @@ pub(super) fn set_npc_poi(
             entity_id, %entity_tag, target_id, x, y, z, chain_id,
             "Content: set NPC POI (Investigating)"
         );
+        let world = npc_ai::world_label(space_mgr, target_id);
         if let Some(target) = space_mgr.get_entity_mut(target_id) {
             target.poi = Some(cimmeria_common::Vector3::new(x, y, z));
-            target.ai_state = AiState::Investigating;
+            npc_ai::set_ai_state_on(
+                target,
+                &world,
+                AiState::Investigating,
+                AiTransitionReason::Content,
+            );
             // Clear in-flight nav so the investigate handler can
             // pathfind to the POI from the current position rather
             // than continuing toward a stale patrol/wander waypoint.
@@ -184,16 +218,18 @@ pub(super) fn set_follow_target(
         entity_id, %entity_tag, npc_id, ?target_tag, use_player, ?resolved_target, chain_id,
         "Content: set follow target"
     );
+    let world = npc_ai::world_label(space_mgr, npc_id);
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.follow_target_id = resolved_target;
         // Transition to Follow if a target landed; otherwise drop to
         // Idle and clear any in-flight nav so the AI tick re-routes
         // cleanly.
-        if resolved_target.is_some() {
-            npc.ai_state = AiState::Follow;
+        let to = if resolved_target.is_some() {
+            AiState::Follow
         } else {
-            npc.ai_state = AiState::Idle;
-        }
+            AiState::Idle
+        };
+        npc_ai::set_ai_state_on(npc, &world, to, AiTransitionReason::Content);
         npc.nav_path.clear();
     }
 }
@@ -224,8 +260,9 @@ pub(super) fn set_npc_ai_state(
         entity_id, %entity_tag, target_id, ?state, ?new_state, chain_id,
         "Content: set NPC AI state"
     );
+    let world = npc_ai::world_label(space_mgr, target_id);
     if let Some(npc) = space_mgr.get_entity_mut(target_id) {
-        npc.ai_state = new_state;
+        npc_ai::set_ai_state_on(npc, &world, new_state, AiTransitionReason::Content);
         // Clear in-flight nav so the new-state handler can re-route.
         npc.nav_path.clear();
     }
@@ -255,6 +292,7 @@ pub(super) async fn generate_threat(
                 entity_id, // attacker = the player
                 target_id, // target = the NPC
                 threat_level as f32,
+                crate::cell::combat::AggroCause::ContentThreat,
             ) {
                 // Player just entered combat. `enter_player_combat`
                 // (inside `combat::generate_threat`) flipped

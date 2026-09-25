@@ -319,6 +319,7 @@ pub(super) async fn apply_damage_to_target(
             entity_id,
             target_eid,
             _total_health_damage as f32,
+            crate::cell::combat::AggroCause::Damage,
         ) {
             super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
             // BSF_InCombat flip — broadcast to self+witnesses so a spectator

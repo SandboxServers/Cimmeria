@@ -65,7 +65,7 @@ pub(super) fn make_ai_fixture(npc_spawn: [f32; 3], npc_pos: [f32; 3]) -> SpaceMa
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.is_player = false;
         npc.class_id = 0x04; // SGWMob — required for all_npc_entity_ids()
-        npc.ai_state = AiState::Fighting;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Fighting);
         npc.spawn_position = Some(Vector3::new(npc_spawn[0], npc_spawn[1], npc_spawn[2]));
         if let Some(h) = npc.stats.get_mut(HEALTH) {
             h.update(0, 100, 100);
@@ -101,7 +101,7 @@ pub(super) fn make_aggression_fixture(
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(npc_id) {
         npc.faction = npc_faction;
-        npc.ai_state = AiState::Idle;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Idle);
     }
     mgr.create_entity(player_id, "Castle", player_pos, [0.0; 3])
         .unwrap();

@@ -380,7 +380,7 @@ pub(crate) fn leader_teleported(
             npc_name = npc.npc_name.as_deref().unwrap_or(""),
             tag = npc.tag.as_deref().unwrap_or(""),
             target_id = leader_id,
-            ai_state = ?npc.ai_state,
+            ai_state = ?npc.ai_state(),
             nav_path_len = npc.nav_path.len(),
             dist_before_teleport = npc.position.distance_to(&leader_pos),
             "friction: a followed player is teleporting -- the escort stays where it is and must path to the new location on foot"
