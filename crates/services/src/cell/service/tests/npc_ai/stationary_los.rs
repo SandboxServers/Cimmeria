@@ -95,6 +95,18 @@ async fn the_stationary_drone_fires_across_the_med_station_desk() {
         "the drone must not take the `stationary_holds` branch. Captured: {:#?}",
         capture.all()
     );
+    // The SigNoz view of the same tick: the navmesh verdict stays `blocked`,
+    // and `los_policy` says the stationary rule let the drone fire anyway.
+    let row = capture
+        .find_message(Level::DEBUG, "NPC AI tick")
+        .expect("the drone's tick row");
+    let field = |k: &str| row.fields.get(k).cloned().unwrap_or_default();
+    assert!(field("los").contains("blocked"), "los: {:?}", field("los"));
+    assert!(
+        field("los_policy").contains("stationary_relaxed"),
+        "a drone firing across a navmesh `blocked` must say why on the tick          row; los_policy: {:?}",
+        field("los_policy")
+    );
 }
 
 /// The control: a mobile NPC in the same spot keeps the strict verdict. It
@@ -108,7 +120,16 @@ async fn a_mobile_npc_still_walks_around_the_desk_instead_of_firing() {
     };
     assert!(!mgr.attack_line_of_sight(200, 100, false));
 
+    let capture = crate::test_support::LogCapture::install();
     tick(&mut mgr).await;
+    let row = capture
+        .find_message(tracing::Level::DEBUG, "NPC AI tick")
+        .expect("the NPC's tick row");
+    let policy = row.fields.get("los_policy").cloned().unwrap_or_default();
+    assert!(
+        policy.contains("strict"),
+        "a mobile NPC is on the strict rule; los_policy: {policy:?}"
+    );
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -118,5 +139,29 @@ async fn a_mobile_npc_still_walks_around_the_desk_instead_of_firing() {
     assert!(
         !npc.nav_path.is_empty(),
         "a mobile NPC with a Blocked line must path toward its target"
+    );
+}
+
+/// Out of the band a stationary NPC keeps the navmesh `Blocked`: the band
+/// is the only storey guard (a turret must not shoot at the floor below).
+#[test]
+fn a_stationary_npc_holds_on_a_blocked_line_to_another_storey() {
+    use crate::cell::space_manager::AttackLosPolicy;
+    let Some(mut mgr) = drone_fighting_across_the_desk(true) else {
+        return;
+    };
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.position.y -= 8.0;
+    }
+    let policy = mgr.attack_los_policy(200, 100, true, LineOfSight::Blocked);
+    assert_eq!(policy, AttackLosPolicy::StationaryOtherStorey);
+    assert!(!policy.permits());
+    assert_eq!(
+        mgr.attack_los_policy(200, 100, true, LineOfSight::Unknown),
+        AttackLosPolicy::Stationary
+    );
+    assert_eq!(
+        mgr.attack_los_policy(200, 100, false, LineOfSight::Blocked),
+        AttackLosPolicy::Strict(false)
     );
 }

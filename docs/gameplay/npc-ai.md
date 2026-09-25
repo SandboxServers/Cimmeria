@@ -448,8 +448,14 @@ The fight tick (`npc_ai/fight.rs`) calls
 A stationary NPC cannot walk around the obstacle, so a false `Blocked`
 would silence it for the whole fight. This is what happened to the Find
 Ambernol drone at the med-station desk (NPC AI restoration NA16, audit
-S11). The cost is that a turret that is already fighting can shoot
-through a real wall on its own storey.
+S11, decision D-NA11). The cost is that a turret that is already fighting
+can shoot through a real wall on its own storey.
+
+The `npc_ai.tick` row carries both the navmesh verdict (`los`) and the rule
+that acted on it (`los_policy`: `strict`, `stationary`,
+`stationary_relaxed` or `stationary_other_storey`). A drone firing across
+the desk logs `los=blocked los_policy=stationary_relaxed`. The collision
+geometry occluder that would replace this rule is tracked in #784.
 
 Ability launch (`use_ability/handle.rs`) checks range only. An NPC's line
 of sight is checked by the fight tick in the same tick, just before the

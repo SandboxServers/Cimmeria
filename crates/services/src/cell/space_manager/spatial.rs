@@ -69,18 +69,40 @@ impl SpaceManager {
     /// gets [`LineOfSight::permits_stationary_attack`]: a navmesh `Blocked`
     /// on the NPC's own storey does not stop it firing, because the mesh
     /// cannot see over furniture and the NPC cannot walk around it (NA16,
-    /// audit S11: the Find Ambernol drone and the med-station desk).
+    /// audit S11: the Find Ambernol drone and the med-station desk;
+    /// decision D-NA11).
     pub fn attack_line_of_sight(&self, npc_id: u32, target_id: u32, is_stationary: bool) -> bool {
         let los = self.line_of_sight(npc_id, target_id);
+        self.attack_los_policy(npc_id, target_id, is_stationary, los)
+            .permits()
+    }
+
+    /// Which attack line-of-sight rule applies to an already-computed
+    /// navmesh verdict. Pure: it runs no ray, so the `npc_ai.tick` row can
+    /// label the verdict it already has without a second sampled probe.
+    pub fn attack_los_policy(
+        &self,
+        npc_id: u32,
+        target_id: u32,
+        is_stationary: bool,
+        los: LineOfSight,
+    ) -> AttackLosPolicy {
         if !is_stationary {
-            return los.is_clear_or_unknown();
+            return AttackLosPolicy::Strict(los.is_clear_or_unknown());
+        }
+        if los != LineOfSight::Blocked {
+            return AttackLosPolicy::Stationary;
         }
         let dy = match (self.get_entity(npc_id), self.get_entity(target_id)) {
             (Some(npc), Some(target)) => target.position.y - npc.position.y,
             // `line_of_sight` already answered Unknown for a missing entity.
             _ => 0.0,
         };
-        los.permits_stationary_attack(dy)
+        if los.permits_stationary_attack(dy) {
+            AttackLosPolicy::StationaryRelaxed
+        } else {
+            AttackLosPolicy::StationaryOtherStorey
+        }
     }
 
     /// Whether the space containing `entity_id` has a navmesh loaded.
@@ -217,5 +239,44 @@ impl SpaceManager {
         let space = self.spaces.get(space_id)?;
         let navmesh = space.navmesh.as_ref()?;
         navmesh.move_along_surface(from, to)
+    }
+}
+
+/// The attack line-of-sight rule that decided a fight tick (NA16, D-NA11).
+/// Logged on the `npc_ai.tick` row as `los_policy`, so a row that reads
+/// `los=blocked` while the NPC fires says why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttackLosPolicy {
+    /// A mobile NPC: the navmesh verdict as is (`Blocked` holds and paths
+    /// toward the target). Carries whether it permits the shot.
+    Strict(bool),
+    /// A stationary NPC whose verdict was `Clear` or `Unknown`: fires.
+    Stationary,
+    /// A stationary NPC whose navmesh verdict was `Blocked` on its own
+    /// storey: fires anyway, because the mesh cannot see over furniture.
+    StationaryRelaxed,
+    /// A stationary NPC whose navmesh verdict was `Blocked` with the target
+    /// outside the same-floor band: holds.
+    StationaryOtherStorey,
+}
+
+impl AttackLosPolicy {
+    /// Whether this rule lets the NPC fire.
+    pub fn permits(self) -> bool {
+        match self {
+            Self::Strict(ok) => ok,
+            Self::Stationary | Self::StationaryRelaxed => true,
+            Self::StationaryOtherStorey => false,
+        }
+    }
+
+    /// Stable label for the `los_policy` log field.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Strict(_) => "strict",
+            Self::Stationary => "stationary",
+            Self::StationaryRelaxed => "stationary_relaxed",
+            Self::StationaryOtherStorey => "stationary_other_storey",
+        }
     }
 }
