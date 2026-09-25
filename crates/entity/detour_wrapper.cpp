@@ -29,6 +29,7 @@ extern "C" int detour_build_navmesh_data(
     const unsigned int* detailMeshes, int ndetailMeshes,
     const float* detailVerts, int ndetailVerts,
     const unsigned char* detailTris, int ndetailTris,
+    int tileX, int tileY,
     unsigned char** outData, int* outDataSize)
 {
     dtNavMeshCreateParams params;
@@ -56,6 +57,9 @@ extern "C" int detour_build_navmesh_data(
     dtVcopy(params.bmax, bmax);
     params.cs = cs;
     params.ch = ch;
+    params.tileX = tileX;
+    params.tileY = tileY;
+    params.tileLayer = 0;
     params.buildBvTree = true;
 
     return dtCreateNavMeshData(&params, outData, outDataSize) ? 1 : 0;
@@ -115,6 +119,48 @@ extern "C" DetourNavMeshHandle detour_create_navmesh(const unsigned char* data, 
     }
 
     return (DetourNavMeshHandle)mesh;
+}
+
+extern "C" DetourNavMeshHandle detour_create_tiled_navmesh(const float orig[3], float tileWidth, float tileHeight,
+    int maxTiles, int maxPolys)
+{
+    if (maxTiles <= 0 || maxPolys <= 0)
+        return nullptr;
+
+    dtNavMeshParams params;
+    memset(&params, 0, sizeof(params));
+    dtVcopy(params.orig, orig);
+    params.tileWidth = tileWidth;
+    params.tileHeight = tileHeight;
+    params.maxTiles = maxTiles;
+    params.maxPolys = maxPolys;
+
+    dtNavMesh* mesh = dtAllocNavMesh();
+    if (!mesh)
+        return nullptr;
+    if (dtStatusFailed(mesh->init(&params))) {
+        dtFreeNavMesh(mesh);
+        return nullptr;
+    }
+    return (DetourNavMeshHandle)mesh;
+}
+
+extern "C" dtStatus detour_add_tile(DetourNavMeshHandle handle, const unsigned char* data, int dataSize)
+{
+    if (!handle || !data || dataSize <= 0)
+        return DT_FAILURE | DT_INVALID_PARAM;
+
+    // Same ownership rule as detour_create_navmesh: the mesh frees its own
+    // copy (DT_TILE_FREE_DATA); on failure addTile has not taken it.
+    unsigned char* copy = (unsigned char*)dtAlloc(dataSize, DT_ALLOC_PERM);
+    if (!copy)
+        return DT_FAILURE | DT_OUT_OF_MEMORY;
+    memcpy(copy, data, dataSize);
+
+    dtStatus status = ((dtNavMesh*)handle)->addTile(copy, dataSize, DT_TILE_FREE_DATA, 0, nullptr);
+    if (dtStatusFailed(status))
+        dtFree(copy);
+    return status;
 }
 
 extern "C" void detour_free_navmesh(DetourNavMeshHandle handle)

@@ -74,7 +74,7 @@ const MAX_DETAIL_NTRIS: u32 = 10_000_000;
 /// the value on success. Used by [`XrcNav::read`] to reject hostile
 /// inputs before they reach a multiplication that could overflow into
 /// a too-small `Vec` allocation.
-fn check_count(value: u32, max: u32, field: &'static str) -> crate::Result<u32> {
+pub(crate) fn check_count(value: u32, max: u32, field: &'static str) -> crate::Result<u32> {
     if value > max {
         return Err(ExtractError::NavHeaderOutOfRange {
             field,
@@ -90,7 +90,11 @@ fn check_count(value: u32, max: u32, field: &'static str) -> crate::Result<u32> 
 /// the on-disk header types — overflow can only happen on 32-bit hosts
 /// or for adversarially-chosen values, but `checked_mul` makes the
 /// failure mode explicit regardless of platform.
-fn checked_alloc_size(count: u32, stride: u32, field: &'static str) -> crate::Result<usize> {
+pub(crate) fn checked_alloc_size(
+    count: u32,
+    stride: u32,
+    field: &'static str,
+) -> crate::Result<usize> {
     let product =
         (count as u64)
             .checked_mul(stride as u64)
@@ -152,13 +156,41 @@ impl XrcNav {
     /// multiplication into a tiny `Vec` allocation that subsequent
     /// reads would walk past.
     pub fn read<R: Read + Seek>(r: &mut R) -> crate::Result<Self> {
-        let agent_height = r.read_f32::<LittleEndian>()?;
-        let agent_climb = r.read_f32::<LittleEndian>()?;
-        let agent_radius = r.read_f32::<LittleEndian>()?;
+        let agent = [
+            r.read_f32::<LittleEndian>()?,
+            r.read_f32::<LittleEndian>()?,
+            r.read_f32::<LittleEndian>()?,
+        ];
+        let nav = Self::read_block(r, agent, [MAX_NVERTS, MAX_NPOLYS, MAX_NVP])?;
 
-        let nverts = check_count(r.read_u32::<LittleEndian>()?, MAX_NVERTS, "nverts")?;
-        let npolys = check_count(r.read_u32::<LittleEndian>()?, MAX_NPOLYS, "npolys")?;
-        let nvp = check_count(r.read_u32::<LittleEndian>()?, MAX_NVP, "nvp")?;
+        // Confirm no trailing bytes — would indicate a format extension
+        // we haven't accounted for. The C++ writer emits exactly the
+        // sections above and then stops.
+        let pos = r.stream_position()?;
+        let end = r.seek(SeekFrom::End(0))?;
+        if pos != end {
+            return Err(ExtractError::Other(format!(
+                "trailing bytes after detail_tris: {} bytes",
+                end - pos
+            )));
+        }
+        Ok(nav)
+    }
+
+    /// Read one poly-mesh block — everything from `nverts` to the last
+    /// detail triangle — under the given `[nverts, npolys, nvp]` caps. The
+    /// single-mesh file is the agent floats plus one block; a tiled file
+    /// ([`crate::nav_tiled`]) repeats the block per tile, and passes the
+    /// header's agent to each so every tile is a self-contained [`XrcNav`].
+    pub(crate) fn read_block<R: Read>(
+        r: &mut R,
+        agent: [f32; 3],
+        caps: [u32; 3],
+    ) -> crate::Result<Self> {
+        let [agent_height, agent_climb, agent_radius] = agent;
+        let nverts = check_count(r.read_u32::<LittleEndian>()?, caps[0], "nverts")?;
+        let npolys = check_count(r.read_u32::<LittleEndian>()?, caps[1], "npolys")?;
+        let nvp = check_count(r.read_u32::<LittleEndian>()?, caps[2], "nvp")?;
         let border_size = r.read_u32::<LittleEndian>()?;
 
         let cs = r.read_f32::<LittleEndian>()?;
@@ -228,18 +260,6 @@ impl XrcNav {
         let mut detail_tris = vec![0u8; detail_tris_len];
         r.read_exact(&mut detail_tris)?;
 
-        // Confirm no trailing bytes — would indicate a format extension
-        // we haven't accounted for. The C++ writer emits exactly the
-        // sections above and then stops.
-        let pos = r.stream_position()?;
-        let end = r.seek(SeekFrom::End(0))?;
-        if pos != end {
-            return Err(ExtractError::Other(format!(
-                "trailing bytes after detail_tris: {} bytes",
-                end - pos
-            )));
-        }
-
         Ok(Self {
             agent_height,
             agent_climb,
@@ -273,6 +293,12 @@ impl XrcNav {
         w.write_f32::<LittleEndian>(self.agent_height)?;
         w.write_f32::<LittleEndian>(self.agent_climb)?;
         w.write_f32::<LittleEndian>(self.agent_radius)?;
+        self.write_block(w)
+    }
+
+    /// Emit one poly-mesh block (no agent floats) — the inverse of
+    /// [`Self::read_block`].
+    pub(crate) fn write_block<W: Write>(&self, w: &mut W) -> crate::Result<()> {
         w.write_u32::<LittleEndian>(self.nverts)?;
         w.write_u32::<LittleEndian>(self.npolys)?;
         w.write_u32::<LittleEndian>(self.nvp)?;

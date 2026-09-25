@@ -1,18 +1,30 @@
-//! XRC `.nav` parsing and Detour tile construction — everything that runs
+//! XRC `.nav` parsing and Detour mesh construction — everything that runs
 //! once, at space creation, to turn a file into a [`NavMesh`].
 //!
 //! Split out of `navigation/mod.rs`, which keeps the runtime query API.
 //!
+//! Two layouts, told apart by the first four bytes:
+//!
+//! - **Single mesh** — three agent floats and one poly-mesh block
+//!   ([`super::poly_block`]). What NavBuilder has always written; loaded as
+//!   a one-tile `dtNavMesh`.
+//! - **Tiled** — the `XRCT` magic, a tile-grid header and one block per
+//!   tile ([`super::load_tiled`]). Written by `NavBuilder tile=<cells>` for
+//!   maps too big for one `rcPolyMesh`; every tile goes into one
+//!   `dtNavMesh`, so queries cross tile borders the way they cross polygon
+//!   edges.
+//!
 //! The parse streams: it reads through a [`HashingReader`] wrapped
 //! around a `BufReader`, so every header count reaches
-//! [`check_count`] after ~60 bytes have been read and long before the
-//! allocation it would drive, while the [`NavMeshFingerprint`]'s hash
-//! still covers every byte of the file. An earlier revision read the
+//! [`super::xrc::check_count`] after ~60 bytes have been read and long
+//! before the allocation it would drive, while the [`NavMeshFingerprint`]'s
+//! hash still covers every byte of the file. An earlier revision read the
 //! whole file with `std::fs::read` to get bytes to hash; that put a
 //! whole-file allocation *ahead* of the hostile-header caps, so a
 //! corrupt or sparse deployment asset became a startup OOM instead of a
 //! rejected file (PR #700 review).
 
+use std::ffi::c_void;
 use std::fs::File;
 use std::io::{BufReader, Read as IoRead};
 use std::path::Path;
@@ -20,25 +32,81 @@ use std::path::Path;
 use crate::detour_ffi;
 
 use super::fingerprint::{AgentParams, HashingReader, NavMeshFingerprint};
-use super::xrc::{
-    check_count, check_file_size, checked_alloc_size, read_f32, read_u16, read_u32, read_u8,
-    MAX_DETAIL_NMESHES, MAX_DETAIL_NTRIS, MAX_DETAIL_NVERTS, MAX_NPOLYS, MAX_NVERTS, MAX_NVP,
-};
+use super::load_tiled::{self, XRCT_MAGIC};
+use super::poly_block::{BlockCaps, PolyMeshBlock};
+use super::xrc::{check_file_size, read_f32, MAX_NPOLYS, MAX_NVERTS, MAX_NVP};
 use super::NavMesh;
 
+/// The caps a single-mesh block is read under.
+const SINGLE_CAPS: BlockCaps = BlockCaps {
+    nverts: MAX_NVERTS,
+    npolys: MAX_NPOLYS,
+    nvp: MAX_NVP,
+};
+
+/// An initialised `dtNavMesh`, freed on drop unless handed to the
+/// [`NavMesh`] with [`OwnedDetourMesh::into_raw`].
+pub(super) struct OwnedDetourMesh(*mut c_void);
+
+impl OwnedDetourMesh {
+    /// Wrap a handle; `None` when it is null.
+    pub fn new(handle: *mut c_void) -> Option<Self> {
+        (!handle.is_null()).then_some(Self(handle))
+    }
+
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.0
+    }
+
+    fn into_raw(self) -> *mut c_void {
+        let handle = self.0;
+        std::mem::forget(self);
+        handle
+    }
+}
+
+impl Drop for OwnedDetourMesh {
+    fn drop(&mut self) {
+        // SAFETY: the handle came from detour_create_navmesh or
+        // detour_create_tiled_navmesh and is freed exactly once.
+        unsafe { detour_ffi::detour_free_navmesh(self.0) }
+    }
+}
+
+/// What either layout's parser hands back: the populated mesh plus the
+/// totals the fingerprint and the load line report.
+pub(super) struct BuiltMesh {
+    pub mesh: OwnedDetourMesh,
+    pub agent: AgentParams,
+    pub tiles: u32,
+    pub nverts: u32,
+    pub npolys: u32,
+    pub nvp: u32,
+    pub detail_nmeshes: u32,
+    pub detail_nverts: u32,
+    pub detail_ntris: u32,
+    pub bmin: [f32; 3],
+    pub bmax: [f32; 3],
+}
+
+pub(super) fn build_failed(name: &str, what: &str) -> cimmeria_common::CimmeriaError {
+    cimmeria_common::CimmeriaError::Entity(format!("Failed to {what} for '{name}'"))
+}
+
 impl NavMesh {
-    /// Load a navigation mesh from an XRC-format `.nav` file.
+    /// Load a navigation mesh from an XRC-format `.nav` file, single-mesh
+    /// or tiled.
     ///
-    /// Parses the XRC binary, builds a Detour navmesh tile, and initializes
-    /// a query object. Follows the exact pipeline from the C++ reference
-    /// implementation in `navigation.cpp`.
+    /// Parses the XRC binary, builds the Detour tile(s), and initializes
+    /// a query object. The single-mesh path follows the C++ reference
+    /// implementation in `navigation.cpp` exactly.
     ///
     /// Rejection is ordered by how little it costs to decide:
     ///
     /// 1. The `metadata` length against [`check_file_size`] — no bytes
     ///    read, the file is not even opened.
-    /// 2. Each header count against its `MAX_*` cap, ~60 bytes in, before
-    ///    the `Vec` it sizes exists.
+    /// 2. Each header count against its `MAX_*` cap, ~60 bytes in (or
+    ///    ~60 bytes into its tile), before the `Vec` it sizes exists.
     /// 3. Short reads, from any truncated section.
     ///
     /// The [`NavMeshFingerprint`] falls out of the same single pass: the
@@ -54,205 +122,51 @@ impl NavMesh {
         check_file_size(std::fs::metadata(path)?.len())?;
         let mut r = HashingReader::new(BufReader::new(File::open(path)?));
 
-        // ── Section 1: Agent parameters ─────────────────────────────────
-        let agent = AgentParams {
-            height: read_f32(&mut r)?,
-            climb: read_f32(&mut r)?,
-            radius: read_f32(&mut r)?,
+        // A single-mesh file starts with agent_height as an f32. "XRCT"
+        // read that way is ~3.4e12, which no agent is, so the magic is
+        // unambiguous.
+        let mut head = [0u8; 4];
+        r.read_exact(&mut head)?;
+        let built = if head == XRCT_MAGIC {
+            load_tiled::read_tiled(&mut r, &name)?
+        } else {
+            read_single(&mut r, f32::from_le_bytes(head), &name)?
         };
-
-        // ── Section 2: Mesh metadata ────────────────────────────────────
-        //
-        // Every header count is validated against its `MAX_*` cap before the
-        // matching allocation. A `.nav` file with `nverts = 0xFFFFFFFF` would
-        // otherwise wrap `nverts * 3` to a 3-element `Vec<u16>` and the
-        // following read loop would consume only three u16s while the rest
-        // of the claimed `0xFFFFFFFF * 3` vertex region went phantom —
-        // leaving every downstream section offset wrong and (on a u32
-        // multiplication that does *not* wrap) demanding a 12 GB allocation
-        // that crashes the server at startup. Operator-deployable input,
-        // strict bounds check.
-        let nverts = check_count(read_u32(&mut r)?, MAX_NVERTS, "nverts")?;
-        let npolys = check_count(read_u32(&mut r)?, MAX_NPOLYS, "npolys")?;
-        let nvp = check_count(read_u32(&mut r)?, MAX_NVP, "nvp")?;
-        let _border_size = read_u32(&mut r)?;
-
-        // ── Section 3: Grid config (quantization parameters) ────────────
-        let cs = read_f32(&mut r)?;
-        let ch = read_f32(&mut r)?;
-        let bmin = [read_f32(&mut r)?, read_f32(&mut r)?, read_f32(&mut r)?];
-        let bmax = [read_f32(&mut r)?, read_f32(&mut r)?, read_f32(&mut r)?];
-
-        // ── Section 4: Quantized vertices ───────────────────────────────
-        let verts_len = checked_alloc_size(nverts, 3, "nverts", "verts = nverts * 3 u16s")?;
-        let mut verts = vec![0u16; verts_len];
-        for v in &mut verts {
-            *v = read_u16(&mut r)?;
-        }
-
-        // ── Section 5: Polygon connectivity ─────────────────────────────
-        // Fold the `npolys * nvp * 2` product into one checked mul via
-        // `npolys * (nvp * 2)`. `nvp` is already bounded by `MAX_NVP = 64`
-        // so `nvp * 2` cannot overflow u32; `saturating_mul` is belt-and-
-        // suspenders against future cap changes. The `field` slot stays
-        // `"npolys"` (a real header field) and the multiplication shape
-        // moves into `alloc_desc` so an operator seeing the error knows
-        // both *which header field* and *which downstream allocation*
-        // would have busted.
-        let polys_len = checked_alloc_size(
-            npolys,
-            nvp.saturating_mul(2),
-            "npolys",
-            "polys = npolys * nvp * 2 u16s",
-        )?;
-        let mut polys = vec![0u16; polys_len];
-        for p in &mut polys {
-            *p = read_u16(&mut r)?;
-        }
-
-        // ── Sections 6-8: Regions, flags, areas ─────────────────────────
-        // These are parallel `npolys`-length arrays (stride 1). `npolys`
-        // is already capped by `check_count` above, so they're safe as
-        // raw `as usize` today — but route them through `checked_alloc_size`
-        // anyway. Defense in depth: if `MAX_NPOLYS` is ever raised, this
-        // multiplication still gets checked, and the allocation pattern
-        // stays uniform across every count-driven `Vec` in `NavMesh::load`.
-        let regs_len = checked_alloc_size(npolys, 1, "npolys", "regs = npolys u16s")?;
-        let mut regs = vec![0u16; regs_len];
-        for v in &mut regs {
-            *v = read_u16(&mut r)?;
-        }
-        let flags_len = checked_alloc_size(npolys, 1, "npolys", "flags = npolys u16s")?;
-        let mut flags = vec![0u16; flags_len];
-        for v in &mut flags {
-            *v = read_u16(&mut r)?;
-        }
-        let areas_len = checked_alloc_size(npolys, 1, "npolys", "areas = npolys bytes")?;
-        let mut areas = vec![0u8; areas_len];
-        for v in &mut areas {
-            *v = read_u8(&mut r)?;
-        }
-
-        // ── Sections 9-12: Detail mesh ──────────────────────────────────
-        let detail_nmeshes = check_count(read_u32(&mut r)?, MAX_DETAIL_NMESHES, "detail_nmeshes")?;
-        let detail_nverts = check_count(read_u32(&mut r)?, MAX_DETAIL_NVERTS, "detail_nverts")?;
-        let detail_ntris = check_count(read_u32(&mut r)?, MAX_DETAIL_NTRIS, "detail_ntris")?;
-
-        let detail_meshes_len = checked_alloc_size(
-            detail_nmeshes,
-            4,
-            "detail_nmeshes",
-            "detail_meshes = detail_nmeshes * 4 u32s",
-        )?;
-        let mut detail_meshes = vec![0u32; detail_meshes_len];
-        for v in &mut detail_meshes {
-            *v = read_u32(&mut r)?;
-        }
-
-        let detail_verts_len = checked_alloc_size(
-            detail_nverts,
-            3,
-            "detail_nverts",
-            "detail_verts = detail_nverts * 3 f32s",
-        )?;
-        let mut detail_verts = vec![0.0f32; detail_verts_len];
-        for v in &mut detail_verts {
-            *v = read_f32(&mut r)?;
-        }
-
-        let detail_tris_len = checked_alloc_size(
-            detail_ntris,
-            4,
-            "detail_ntris",
-            "detail_tris = detail_ntris * 4 bytes",
-        )?;
-        let mut detail_tris = vec![0u8; detail_tris_len];
-        r.read_exact(&mut detail_tris)?;
 
         // Nothing else is parsed out of the file; drain whatever is left
-        // so the fingerprint covers trailing bytes too, and close the
-        // reader before the FFI block below.
+        // so the fingerprint covers trailing bytes too.
         let (content_hash, file_bytes) = r.finish()?;
 
-        // ── Build Detour navmesh tile ───────────────────────────────────
-        // This mirrors the C++ navigation.cpp lines 109-138 exactly:
-        // populate dtNavMeshCreateParams and call dtCreateNavMeshData.
-        let mut nav_data: *mut u8 = std::ptr::null_mut();
-        let mut nav_data_size: i32 = 0;
-
-        let build_ok = unsafe {
-            detour_ffi::detour_build_navmesh_data(
-                verts.as_ptr(),
-                nverts as i32,
-                polys.as_ptr(),
-                npolys as i32,
-                nvp as i32,
-                flags.as_ptr(),
-                areas.as_ptr(),
-                bmin.as_ptr(),
-                bmax.as_ptr(),
-                cs,
-                ch,
-                agent.height,
-                agent.radius,
-                agent.climb,
-                detail_meshes.as_ptr(),
-                detail_nmeshes as i32,
-                detail_verts.as_ptr(),
-                detail_nverts as i32,
-                detail_tris.as_ptr(),
-                detail_ntris as i32,
-                &mut nav_data,
-                &mut nav_data_size,
-            )
-        };
-
-        if build_ok == 0 || nav_data.is_null() {
-            return Err(cimmeria_common::CimmeriaError::Entity(format!(
-                "Failed to build Detour navmesh data for '{name}'"
-            )));
-        }
-
-        // ── Init dtNavMesh ──────────────────────────────────────────────
-        let mesh_handle = unsafe { detour_ffi::detour_create_navmesh(nav_data, nav_data_size) };
-
-        // Free the intermediate tile data — detour_create_navmesh made its own copy
-        unsafe {
-            detour_ffi::detour_free_data(nav_data);
-        }
-
-        if mesh_handle.is_null() {
-            return Err(cimmeria_common::CimmeriaError::Entity(format!(
-                "Failed to create Detour navmesh for '{name}'"
-            )));
-        }
-
         // ── Init dtNavMeshQuery (2048 nodes, matching C++ reference) ────
-        let query_handle = unsafe { detour_ffi::detour_create_query(mesh_handle, 2048) };
-
+        // SAFETY: the mesh handle is live; the query keeps a pointer to it
+        // and is freed before it (NavMesh's Drop).
+        let query_handle = unsafe { detour_ffi::detour_create_query(built.mesh.as_ptr(), 2048) };
         if query_handle.is_null() {
-            unsafe {
-                detour_ffi::detour_free_navmesh(mesh_handle);
-            }
-            return Err(cimmeria_common::CimmeriaError::Entity(format!(
-                "Failed to create Detour navmesh query for '{name}'"
-            )));
+            return Err(build_failed(&name, "create Detour navmesh query"));
         }
 
-        let fingerprint =
-            NavMeshFingerprint::new(path, file_bytes, content_hash, nverts, npolys, agent);
+        let fingerprint = NavMeshFingerprint::new(
+            path,
+            file_bytes,
+            content_hash,
+            built.nverts,
+            built.npolys,
+            built.tiles,
+            built.agent,
+        );
 
         tracing::info!(
             name = %name,
-            nverts,
-            npolys,
-            nvp,
-            detail_nmeshes,
-            detail_nverts,
-            detail_ntris,
-            agent_height = agent.height,
-            agent_climb = agent.climb,
-            agent_radius = agent.radius,
+            tiles = built.tiles,
+            nverts = built.nverts,
+            npolys = built.npolys,
+            nvp = built.nvp,
+            detail_nmeshes = built.detail_nmeshes,
+            detail_nverts = built.detail_nverts,
+            detail_ntris = built.detail_ntris,
+            agent_height = built.agent.height,
+            agent_climb = built.agent.climb,
+            agent_radius = built.agent.radius,
             file_bytes = fingerprint.file_bytes,
             navmesh_hash = %fingerprint.content_hash,
             navmesh_short_hash = %fingerprint.short_hash,
@@ -261,13 +175,56 @@ impl NavMesh {
 
         Ok(NavMesh {
             query: query_handle,
-            mesh: mesh_handle,
+            mesh: built.mesh.into_raw(),
             name,
             fingerprint,
-            agent_height: agent.height,
-            agent_radius: agent.radius,
-            bmin,
-            bmax,
+            agent_height: built.agent.height,
+            agent_radius: built.agent.radius,
+            bmin: built.bmin,
+            bmax: built.bmax,
         })
     }
+}
+
+/// The single-mesh layout, from after the first four bytes (which were
+/// `agent_height`).
+fn read_single(
+    r: &mut impl IoRead,
+    agent_height: f32,
+    name: &str,
+) -> cimmeria_common::Result<BuiltMesh> {
+    // ── Section 1: Agent parameters ─────────────────────────────────────
+    let agent = AgentParams {
+        height: agent_height,
+        climb: read_f32(r)?,
+        radius: read_f32(r)?,
+    };
+
+    // ── Sections 2-12: the one poly-mesh block ──────────────────────────
+    let block = PolyMeshBlock::read(r, SINGLE_CAPS)?;
+
+    // ── Build the Detour tile and a one-tile dtNavMesh ──────────────────
+    // This mirrors the C++ navigation.cpp lines 109-138 exactly:
+    // populate dtNavMeshCreateParams and call dtCreateNavMeshData.
+    let data = block
+        .build_tile(agent, 0, 0)
+        .ok_or_else(|| build_failed(name, "build Detour navmesh data"))?;
+    // SAFETY: `data` is a live dtCreateNavMeshData buffer; the call copies it.
+    let handle = unsafe { detour_ffi::detour_create_navmesh(data.as_ptr(), data.len()) };
+    let mesh =
+        OwnedDetourMesh::new(handle).ok_or_else(|| build_failed(name, "create Detour navmesh"))?;
+
+    Ok(BuiltMesh {
+        mesh,
+        agent,
+        tiles: 1,
+        nverts: block.nverts,
+        npolys: block.npolys,
+        nvp: block.nvp,
+        detail_nmeshes: block.detail_nmeshes,
+        detail_nverts: block.detail_nverts,
+        detail_ntris: block.detail_ntris,
+        bmin: block.bmin,
+        bmax: block.bmax,
+    })
 }

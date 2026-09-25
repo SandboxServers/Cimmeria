@@ -5,6 +5,7 @@ fn main() {
     // build.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=detour_wrapper.cpp");
+    println!("cargo:rerun-if-changed=detour_wrapper.h");
     cc::Build::new()
         .cpp(true)
         .include("../../external/recast/Detour/Include")

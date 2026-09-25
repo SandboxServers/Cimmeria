@@ -66,10 +66,14 @@ pub struct NavMeshFingerprint {
     /// carry, so a hot-path log line stays short while still being
     /// joinable back to the load line.
     pub short_hash: String,
-    /// Vertex count from the XRC header.
+    /// Vertex count from the XRC header (summed over tiles for a tiled
+    /// file).
     pub nverts: u32,
-    /// Polygon count from the XRC header.
+    /// Polygon count from the XRC header (summed over tiles).
     pub npolys: u32,
+    /// Detour tiles: 1 for a single-mesh file, the header's `ntiles` for a
+    /// tiled (`XRCT`) one.
+    pub tiles: u32,
     /// Agent capsule height the mesh was baked for.
     pub agent_height: f32,
     /// Maximum step-up the mesh was baked for.
@@ -91,6 +95,7 @@ impl NavMeshFingerprint {
         content_hash: u64,
         nverts: u32,
         npolys: u32,
+        tiles: u32,
         agent: AgentParams,
     ) -> Self {
         let content_hash = format!("{content_hash:016x}");
@@ -106,6 +111,7 @@ impl NavMeshFingerprint {
             short_hash,
             nverts,
             npolys,
+            tiles,
             agent_height: agent.height,
             agent_climb: agent.climb,
             agent_radius: agent.radius,
@@ -212,6 +218,7 @@ mod tests {
             fnv1a_64(bytes),
             1,
             2,
+            1,
             AgentParams {
                 height: 1.8,
                 climb: 0.6,

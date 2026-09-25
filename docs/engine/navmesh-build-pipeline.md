@@ -1,6 +1,6 @@
 # Navmesh Build Pipeline (UE3 → OBJ → NavBuilder → `.nav`)
 
-> **Last updated**: 2026-09-25 (§9, every world)
+> **Last updated**: 2026-09-25 (§10, tiled builds)
 > **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5 and §6 (gap finding and classification) measured on the 144-chunk Castle extraction the same day; the builder reference moved to [navbuilder-recast-limits.md](navbuilder-recast-limits.md) and the Castle connectivity analysis to [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md).
 
 How a cooked UE3 map becomes a `data/spaces/<space>.nav` that
@@ -255,6 +255,9 @@ the constant that used to be hard-coded in `builder.cpp`.
 | `detailSampleDist`, `detailSampleMaxError` | `6`, `1` | multiples of `cs` / `ch` |
 | `partition` | `monotone` | `monotone` or `watershed` |
 | `bounds` | — | `minX,minZ,maxX,maxZ` crop, BigWorld metres. Overrides the vertex/chunk bounds union on X and Z; Recast clips triangles to it. Quote it in PowerShell |
+| `tile` | `0` | tile side in cells, `16`–`4096`. `0` writes the single-mesh XRC layout, byte-identical to before; anything else writes the tiled `XRCT` layout (§10) |
+| `threads` | `4` | tiled build workers, `1`–`64`. The output does not depend on it |
+| `seamFilter` | `1` | tiled only: drop the small islands left along tile seams (§10). `0` is for diagnosis |
 
 | Exit | Meaning |
 |---|---|
@@ -614,10 +617,111 @@ NavBuilder now exits 3 when `(bmax.y - bmin.y) / ch > 8191`
 (`tests/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`);
 raise `ch` (Tollana ships at `ch=0.3`). `bounds=` does not crop Y.
 
-**Follow-up.** The maps that do not fit whole need a tiled Detour mesh: a
-multi-tile `.nav` format, a tiled NavBuilder mode, and a loader in
-`crates/entity/src/navigation/load.rs` that adds one tile per section. None
-of that exists today; the XRC format holds one `rcPolyMesh`.
+**Superseded for the big exteriors.** NA28 rebuilt the four cropped maps
+whole and Dakara_E1 and both Menfa maps at `cs=0.3` with the tiled mode in
+§10, so no shipped mesh is cropped any more. The ladder above still describes
+how every other world was built.
+
+## 10. Tiled builds (NA28, 2026-09-25)
+
+Every Recast index cap in
+[navbuilder-recast-limits.md](navbuilder-recast-limits.md) is per
+`rcPolyMesh`. `tile=<cells>` builds one `rcPolyMesh` per tile, so the caps
+apply per tile and a whole outdoor map at `cs=0.3` fits: Beta_Site_Evo_1's
+largest 128-cell tile has 76,159 spans, 540 contour vertices and 512
+adjacency edges, against caps of 16.7 M, 65,534 and 65,535.
+
+```bash
+NavBuilder chunked <chunks> <out.nav> nav partition=watershed agentHeight=1.8 agentClimb=0.6 \
+    cs=0.3 minRegionSize=24 maxSimplificationError=2.5 bounds=<chunk grid + 20 m> tile=128 threads=6
+```
+
+**What the builder does.** It computes the whole-map config exactly as the
+single-mesh build does (bounds, the 13-bit height check, the derived cell
+counts), then follows RecastDemo's `Sample_TileMesh`:
+
+1. Mark triangle walkability once, then bin every triangle into the tiles
+   its XZ box touches, border included. Unwalkable triangles are kept; they
+   are the walls.
+2. Per tile, on `threads` workers: a heightfield of `tile + 2 × border`
+   cells, `border = walkableRadius + 3`, then the same pipeline as a single
+   mesh (`recast_pipeline.cpp`) with `borderSize` passed to the region
+   builder. That makes `rcBuildPolyMesh` mark the edges on the tile's sides
+   as portals (`0x8000 | side`) instead of boundaries. A tile with no
+   triangles or nothing walkable is skipped. Each non-empty tile logs one
+   line: triangles, spans, regions, contour vertices, `nverts`, `npolys`,
+   edges. Recast's own messages carry a `Recast Tile x,y:` prefix.
+3. **Seam filter** (`tile_seam_filter.cpp`). `rcBuildRegions` never drops
+   a small region that touches the tile border, because it cannot see
+   whether the region continues next door. So every small island that
+   straddles a seam survives: Agnos in 128-cell tiles came out with 1,262
+   components under 10 m², against none in the single-mesh build. The
+   filter joins the tiles the way Detour will (below), sums each connected
+   component's compact spans per region (what `rcBuildRegions` measures),
+   and deletes every component under `minRegionSize² × cs²`, the
+   single-mesh threshold. It counts spans rather than polygon area because
+   contour simplification narrows thin walkways, and polygon area would
+   drop walkways the region builder keeps.
+4. Check the poly-ref budget: a 32-bit `dtPolyRef` is salt, tile and
+   polygon index, and `dtNavMesh::init` refuses fewer than 10 salt bits, so
+   `bits(tiles) + bits(largest tile's polygons) ≤ 22`. Beta_Site_Evo_1 is
+   13 + 8. Past it the build exits 3; use bigger tiles.
+5. Write the tiles in row-major order. The file does not depend on the
+   thread count (`tests/navbuilder_tiled.rs` builds with 1 and 4 workers
+   and compares bytes).
+
+`tile=0` (the default) runs the old code path. Its output is byte-identical
+to the pre-NA28 builder: Castle_CellBlock, Harset_CmdCenter and SGC, each at
+the defaults and at NA26's parameters, hash the same, and the INFO lines
+match.
+
+**The file.** Detour's usual multi-tile file (RecastDemo's `MSET`) stores
+each tile as the bytes `dtCreateNavMeshData` produced, which is Detour's
+in-memory layout, and `addTile` checks little beyond its magic. The tiled
+XRC layout keeps Recast's arrays on disk instead, so tiles go through the
+same capped, streaming reader as a single mesh and the Detour serialisation
+stays inside the loader:
+
+```text
+"XRCT", version u32 = 1
+agentHeight, agentClimb, agentRadius     3 × f32
+orig                                     3 × f32   dtNavMeshParams::orig
+tileWidth, tileHeight                    2 × f32   metres
+ntiles, maxTilePolys                     2 × u32
+ntiles × { tileX i32, tileY i32, <the single-mesh layout from nverts on> }
+```
+
+A single-mesh file starts with `agentHeight` as an `f32`; `"XRCT"` read that
+way is about 3.4e12, so the loader tells the two apart by the first four
+bytes.
+
+**The loader** (`crates/entity/src/navigation/load_tiled.rs`) checks the
+version, the tile count (at most 65,536), `maxTilePolys` and the poly-ref
+budget before it allocates anything, initialises a `dtNavMesh` from
+`dtNavMeshParams`, then reads each tile under per-tile caps (`nverts`,
+`npolys` ≤ 0xfffe, `nvp` ≤ 6, `npolys` ≤ `maxTilePolys`), builds it with
+`dtCreateNavMeshData` at its `(tileX, tileY)` and adds it. Detour links the
+portal edges of neighbouring tiles itself (`connectExtLinks`), so every
+query in `NavMesh` works across tile borders unchanged. The fingerprint
+hashes the whole file as before and records `tiles`; `bmin`/`bmax` are the
+union of the tiles'. The synthetic two-tile tests in
+`navigation/tests/tiled.rs` cover a path, a height query, a sight line, a
+slide and a recovery across the border, and the same fixture with the
+portal markers removed, which must come back as two islands.
+
+**`nav_inspect`** reads both layouts. For a tiled file
+`NavGraph::from_tiled` links portal edges with Detour's own test: edges on
+facing sides of neighbouring tiles, on the same line within 0.01 m,
+overlapping by more than 0.01 m at each end, with heights crossing or within
+`2 × agentClimb` (`overlapSlabs`). The seam filter uses the same test in
+C++; on Beta_Site_Evo_1 both count 2,332 components before filtering.
+
+**Choosing the tile.** 128 cells at `cs=0.3` is 38.4 m, which puts the
+biggest map (Beta_Site_Evo_1, 4,352 tiles) at 13 tile bits and 8 poly bits.
+Smaller tiles add seam vertices and polygons and use more tile bits; larger
+ones buy nothing, since no tile of a real map comes near a cap. The seven
+NA28 meshes and their numbers are in
+[data/spaces/README.md](../../data/spaces/README.md).
 
 ## Cross-references
 
@@ -628,5 +732,5 @@ of that exists today; the XRC format holds one `rcPolyMesh`.
 - [crates/navmesh-extractor/README.md](../../crates/navmesh-extractor/README.md) — extractor phases and status
 - [cover-extraction.md](cover-extraction.md) — the same crate's `cover_extract` tool: world-space cover nodes from the chunks, using this axis mapping
 - [ue3-package-format.md](ue3-package-format.md) — the `.umap` container this all starts from
-- `deprecated/cpp/src/nav_builder/` — NavBuilder source (`builder.cpp`, `chunk.cpp`, `mesh.cpp`, `mesh_exporter.cpp`)
+- `deprecated/cpp/src/nav_builder/` — NavBuilder source (`builder.cpp`, `chunk.cpp`, `mesh.cpp`, `mesh_exporter.cpp`; the Recast pipeline in `recast_pipeline.cpp`, the tiled mode in `tiled_builder.cpp` and `tile_seam_filter.cpp`, both file layouts in `xrc_writer.cpp`)
 - `crates/entity/src/navigation/` — runtime loader (Detour FFI)
