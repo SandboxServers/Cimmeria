@@ -175,54 +175,52 @@ pub(crate) async fn send_entity_method_to_self_and_witnesses(
     send_entity_method_to_witnesses(entity_id, method_index, args, tx, space_mgr).await
 }
 
-/// Broadcast a `setMovementType(aMovementType)` to the entity's own
-/// client + all AoI witnesses, with idempotent dedup against the
-/// cached `last_movement_type` field on the entity.
+/// Record an NPC's movement type (`EMobMovementType`) in the dedup cache
+/// `last_movement_type`. **Nothing goes on the wire.**
 ///
-/// Used by the NPC AI tick at every state transition (Patrol enter,
-/// Leashing enter, Fighting enter, etc.) and by future content actions
-/// that flip movement state from a chain. The dedup is the load-bearing
-/// part — without it the AI tick would re-send the same byte every
-/// 2 seconds while an NPC sits in Patrol, drowning the wire and the
-/// client's animation state machine.
+/// The client has no server-to-client movement-type message. `setMovementType`
+/// is a cell method only (`SGWBeing.def`, `<Exposed/>`, client to server; the
+/// client has `Event_NetOut_SetMovementType` and no NetIn twin). This function
+/// used to send a `WitnessEntityMethod` with method index `1` and a one-byte
+/// payload. For a witness, client method `1` of every NPC entity type is
+/// `onSequence` (`client_methods::spawnable_entity::ON_SEQUENCE`), the Kismet
+/// sequence trigger that attack animations use. So every Fighting, Patrol,
+/// Leash or Follow entry sent each witness a truncated `onSequence`. The
+/// client handler once thought to be the movement-type animation switch,
+/// `0x00deb660`, is the GM path visualiser for `SGWGmPlayer.onShowPath`
+/// (NA10, 2026-09-25; see
+/// `docs/reverse-engineering/findings/npc-movement-pathfinding.md`).
 ///
-/// `kind = None` clears the cached value but does **not** emit a wire
-/// message — the client retains whatever animation the last broadcast
-/// set until something new comes through. This matches the Python
-/// original's pattern of "drop the timer" rather than "send a sentinel
-/// to reset."
+/// What the client animates comes from the velocity on each `EntityMoved`.
+/// To stop an NPC, zero its velocity (`npc_ai::stop_npc_movement`). No
+/// movement type is needed.
 ///
-/// Wire format: method index `1` on the `SGWBeing` interface
-/// (`<Exposed/>` in `entities/defs/interfaces/SGWBeing.def:225-228`).
-/// In BigWorld an Exposed cell method propagates outbound to ghost
-/// listeners with the same index, so the broadcast reuses
-/// `SET_MOVEMENT_TYPE` rather than carving out a separate `onMovementType`.
-/// Single-byte payload (`UINT8 aMovementType`).
+/// The cache is kept, and callers still report their state here, so that
+/// `last_movement_type` stays a truthful "what is this NPC doing" field for
+/// telemetry and the debug bookmark. `kind = None` clears it. Each change logs
+/// `movement.movement_type outcome=suppressed` (or `cleared`) at DEBUG.
+///
+/// `tx` is unused now and kept so the dozen call sites stay unchanged. A
+/// future GM `onShowPath` feature is the correct way to show a movement type
+/// on a client.
 pub(crate) async fn broadcast_movement_type(
     entity_id: u32,
     kind: Option<cimmeria_entity::cell_entity::MobMovementType>,
-    tx: &mpsc::Sender<CellToBaseMsg>,
+    _tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    // NPC-only guard. `setMovementType` is a mob-animation hint with
-    // no player-side concept — players don't have a movement-type
-    // animation graph the way mobs do. If a caller routes this at a
-    // player entity, no-op and warn so the misuse is visible without
-    // sending a meaningless byte to the player's client.
+    // NPC-only guard. Players have no movement-type concept; a caller
+    // routing this at a player is a bug worth seeing.
     let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     if is_player {
         tracing::warn!(
             entity_id,
             ?kind,
-            "broadcast_movement_type called on a player entity — no-op (setMovementType is NPC-only)"
+            "broadcast_movement_type called on a player entity — no-op (movement type is NPC-only)"
         );
         return;
     }
 
-    // Compare-and-set against the cached value. Two-step borrow:
-    // immutable read, then mutable write, then drop the borrow before
-    // the await below so the helper's `&SpaceManager` parameter doesn't
-    // alias the mutable borrow.
     let last = space_mgr
         .get_entity(entity_id)
         .and_then(|e| e.last_movement_type);
@@ -233,50 +231,31 @@ pub(crate) async fn broadcast_movement_type(
             entity_id,
             ?kind,
             outcome = "deduped",
-            "setMovementType unchanged -- nothing sent"
+            "movement type unchanged"
         );
         return;
     }
     if let Some(e) = space_mgr.get_entity_mut(entity_id) {
         e.last_movement_type = kind;
     }
-    let Some(k) = kind else {
-        // Clear the cached value (done above) — but don't send a wire
-        // message. See doc comment for the rationale.
-        //
-        // The client keeps playing whatever animation `prior_kind` selected,
-        // so an NPC that translates after this renders in a stale pose.
-        tracing::debug!(
+    match kind {
+        None => tracing::debug!(
             target: "movement.movement_type",
             entity_id,
             prior_kind = ?last,
             outcome = "cleared",
-            "setMovementType cache cleared -- NO wire message; client keeps the prior animation state"
-        );
-        return;
-    };
-    let witness_count = space_mgr
-        .get_entity(entity_id)
-        .map_or(0, |e| e.witnesses.len());
-    tracing::debug!(
-        target: "movement.movement_type",
-        entity_id,
-        kind = ?k,
-        kind_byte = k as u8,
-        prior_kind = ?last,
-        outcome = "sent",
-        witness_count,
-        "setMovementType sent -- selects the mob animation state on every witness"
-    );
-    let args = vec![k as u8];
-    send_entity_method_to_self_and_witnesses(
-        entity_id,
-        crate::cell::cell_methods::being::SET_MOVEMENT_TYPE,
-        args,
-        tx,
-        space_mgr,
-    )
-    .await;
+            "movement type cache cleared"
+        ),
+        Some(k) => tracing::debug!(
+            target: "movement.movement_type",
+            entity_id,
+            kind = ?k,
+            kind_byte = k as u8,
+            prior_kind = ?last,
+            outcome = "suppressed",
+            "movement type recorded; not sent (no client receiver exists, index 1 is onSequence)"
+        ),
+    }
 }
 
 /// Send a `CellToBaseMsg::RefreshAppearance` for a player entity, reading
@@ -535,136 +514,71 @@ mod tests {
 
     // ── broadcast_movement_type ────────────────────────────────────────────
 
-    /// `broadcast_movement_type(Patrol)` on an NPC produces exactly one
-    /// 1-byte payload `[0x02]` (EMobMovementType::Patrol) to each witness
-    /// and caches `last_movement_type = Some(Patrol)` on the entity.
-    ///
-    /// Wire format pin: any refactor that drops the byte payload, sends
-    /// the discriminant as a UINT32, or routes to the wrong method index
-    /// will fail this test.
+    fn movement_type_rows(logs: &crate::test_support::LogCaptureGuard, outcome: &str) -> usize {
+        logs.all()
+            .into_iter()
+            .filter(|c| c.target == "movement.movement_type" && c.has_field("outcome", outcome))
+            .count()
+    }
+
+    /// NA10 regression guard. A movement-type change is recorded in the cache
+    /// and sends **nothing**. It used to send each witness a
+    /// `WitnessEntityMethod` with method index 1 and payload `[kind]`. Client
+    /// method 1 is `onSequence`, so that was a truncated Kismet-sequence
+    /// trigger, not a movement type. Restoring the send fails this test.
     #[tokio::test]
-    async fn broadcast_movement_type_patrol_emits_single_byte_to_witnesses() {
+    async fn broadcast_movement_type_records_the_cache_and_sends_nothing() {
         use cimmeria_entity::cell_entity::MobMovementType;
 
         let (mut mgr, _rx) = make_mgr_two_players_and_npc();
         let (tx, mut rx) = mpsc::channel(64);
+        let logs = crate::test_support::LogCapture::install();
 
         broadcast_movement_type(3, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
 
-        // Both players witness the NPC; each gets one WitnessEntityMethod.
         let msgs = drain(&mut rx);
-        let mt_sends: Vec<_> = msgs
-            .iter()
-            .filter_map(|m| match m {
-                CellToBaseMsg::WitnessEntityMethod {
-                    entity_id: 3,
-                    method_index,
-                    args,
-                    ..
-                } if *method_index == crate::cell::cell_methods::being::SET_MOVEMENT_TYPE => {
-                    Some(args.clone())
-                }
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            mt_sends.len(),
-            2,
-            "two witnesses must each receive exactly one setMovementType"
+        assert!(
+            msgs.is_empty(),
+            "no wire message may go out for a movement type: {msgs:?}"
         );
-        for payload in &mt_sends {
-            assert_eq!(
-                payload,
-                &vec![MobMovementType::Patrol as u8],
-                "payload must be exactly [0x02] (Patrol discriminant)"
-            );
-        }
-        // Cache is set.
         assert_eq!(
             mgr.get_entity(3).unwrap().last_movement_type,
             Some(MobMovementType::Patrol),
         );
+        assert_eq!(movement_type_rows(&logs, "suppressed"), 1);
     }
 
-    /// Re-broadcasting the same kind is a wire no-op — the dedup against
-    /// `last_movement_type` is the load-bearing invariant. Without it
-    /// every Fighting tick would re-spam CombatAdvance every 2 s while
-    /// an NPC sits in combat.
+    /// Re-asserting the same kind is deduplicated: one `suppressed` row per
+    /// change, not one per AI tick.
     #[tokio::test]
-    async fn broadcast_movement_type_same_kind_does_not_re_emit() {
+    async fn broadcast_movement_type_same_kind_logs_once() {
+        use cimmeria_entity::cell_entity::MobMovementType;
+
+        let (mut mgr, _rx) = make_mgr_two_players_and_npc();
+        let (tx, _rx2) = mpsc::channel(64);
+        let logs = crate::test_support::LogCapture::install();
+
+        broadcast_movement_type(3, Some(MobMovementType::CombatAdvance), &tx, &mut mgr).await;
+        broadcast_movement_type(3, Some(MobMovementType::CombatAdvance), &tx, &mut mgr).await;
+        assert_eq!(movement_type_rows(&logs, "suppressed"), 1);
+    }
+
+    /// `None` clears the cache, so the next kind is a change again.
+    #[tokio::test]
+    async fn broadcast_movement_type_none_clears_the_cache() {
         use cimmeria_entity::cell_entity::MobMovementType;
 
         let (mut mgr, _rx) = make_mgr_two_players_and_npc();
         let (tx, mut rx) = mpsc::channel(64);
+        let logs = crate::test_support::LogCapture::install();
 
-        // First broadcast: 2 messages (2 witnesses).
-        broadcast_movement_type(3, Some(MobMovementType::CombatAdvance), &tx, &mut mgr).await;
-        let first = drain(&mut rx).len();
-        assert_eq!(first, 2, "first broadcast must emit one per witness");
-
-        // Second broadcast of the same kind: 0 messages.
-        broadcast_movement_type(3, Some(MobMovementType::CombatAdvance), &tx, &mut mgr).await;
-        let second = drain(&mut rx).len();
-        assert_eq!(
-            second, 0,
-            "same-kind re-broadcast must be a wire no-op (dedup against last_movement_type)",
-        );
-    }
-
-    /// `None` (clear) does NOT emit a wire message — the client retains
-    /// whatever animation the last broadcast set. The cache resets so
-    /// the next non-None broadcast goes through even if it matches the
-    /// last broadcast kind.
-    #[tokio::test]
-    async fn broadcast_movement_type_none_clears_cache_without_wire_send() {
-        use cimmeria_entity::cell_entity::MobMovementType;
-
-        let (mut mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, mut rx) = mpsc::channel(64);
-
-        // Prime the cache.
         broadcast_movement_type(3, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
-        let _ = drain(&mut rx);
-
-        // Clear → no wire send, cache reset.
         broadcast_movement_type(3, None, &tx, &mut mgr).await;
-        assert!(
-            drain(&mut rx).is_empty(),
-            "None broadcast must not emit any wire message",
-        );
         assert_eq!(mgr.get_entity(3).unwrap().last_movement_type, None);
-
-        // Now Patrol again should re-broadcast (cache was cleared).
         broadcast_movement_type(3, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
-        let count = drain(&mut rx).len();
-        assert_eq!(
-            count, 2,
-            "post-clear re-broadcast must go through to all witnesses",
-        );
-    }
 
-    /// Method index pin: broadcast routes through
-    /// `cell_methods::being::SET_MOVEMENT_TYPE` (`1`), not the
-    /// `setTargetID` index (`0`) or any of the player onState methods.
-    /// A refactor that renames the constant or hard-codes a different
-    /// index will trip this.
-    #[tokio::test]
-    async fn broadcast_movement_type_uses_set_movement_type_method_index() {
-        use cimmeria_entity::cell_entity::MobMovementType;
-
-        let (mut mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, mut rx) = mpsc::channel(64);
-        broadcast_movement_type(3, Some(MobMovementType::Wander), &tx, &mut mgr).await;
-
-        let msgs = drain(&mut rx);
-        for m in &msgs {
-            if let CellToBaseMsg::WitnessEntityMethod { method_index, .. } = m {
-                assert_eq!(
-                    *method_index,
-                    crate::cell::cell_methods::being::SET_MOVEMENT_TYPE,
-                    "broadcast must use SET_MOVEMENT_TYPE (1), not {method_index}",
-                );
-            }
-        }
+        assert_eq!(movement_type_rows(&logs, "cleared"), 1);
+        assert_eq!(movement_type_rows(&logs, "suppressed"), 2);
+        assert!(drain(&mut rx).is_empty());
     }
 }

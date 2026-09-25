@@ -169,13 +169,10 @@ pub(super) async fn npc_ai_follow(
     let path = routing.unwrap_or_default();
     let path_len = path.len();
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-        npc.nav_path.clear();
         if path.len() > 1 {
-            for wp in path.into_iter().skip(1) {
-                npc.nav_path.push_back(wp);
-            }
+            super::replace_nav_path_on(npc, path.into_iter().skip(1));
         } else {
-            npc.nav_path.push_back(dest);
+            super::replace_nav_path_on(npc, [dest]);
         }
     }
     // Out-of-band pathfind queued — the next tick observes

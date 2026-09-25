@@ -1363,6 +1363,8 @@ Axis swap: `UE3_X = BW_Z × 100`, `UE3_Y = BW_X × 100`, `UE3_Z = BW_Y × 100`
 
 ### AI Movement FSM (7 states — jump table 0x00dec018 inside 0x00deb660)
 
+> **Corrected 2026-09-25:** `0x00deb660` is the `GameProxyPlayer` handler for `Event_NetIn_onShowPath` (GM path debug), not an NPC animation FSM. The table below is only its per-type label. See [`findings/npc-movement-pathfinding.md`](findings/npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver) §11.
+
 | State | Index | Name |
 |-------|-------|------|
 | CoverAdvance | 0 | Move toward cover node |
@@ -1381,17 +1383,17 @@ Corrected 2026-09-24: Leash is case 5 (`0x00debad0`), Patrol is case 2 (`0x00deb
 |---------|----------|-------|
 | `0x00dd1650` | `EntityManager::onEntityMoveWithError` | Wire → UE3 coordinate conversion; BW→UE3 scale + axis swap + sentinel handling; delegates to ApplyTransform |
 | `0x00dd19e0` | `GameEntityManager_UpdateControlledEntityTransform` | Player-controlled entity transform push |
-| `0x00deb660` | `MovementTypeSwitch` | 7-state AI FSM dispatcher; 610 instructions; jump table at `0x00dec018`. Too large to decompile (timeout). Key debug strings inside: "is moving to cover", "is making a combat advance", "is leashing" |
-| `0x00dec018` | AI movement jump table | Cases 0–6 for the 7 movement states |
-| `0x00deaaf0` | `onPositionUpdate` | BigWorld position update callback. Also **allocates new UE3 actors** for path waypoint visualization (not just updates position) |
-| `0x00dec040` | `PathDestroy` | Fires on path completion/cancellation; destroys path-visualization actors by `wcsicmp` name match |
+| `0x00deb660` | `GameProxyPlayer` `onShowPath` handler (was "MovementTypeSwitch") | GM path visualiser for `SGWGmPlayer.onShowPath(aEntityId, aMovementType, aPath)`; registered via `CallbackImpl<Event_NetIn_onShowPath>` (2026-09-25). The movement type only picks the debug label and colour. Jump table at `0x00dec018` |
+| `0x00dec018` | `onShowPath` label jump table | Cases 0–6 → per-`EMobMovementType` debug string |
+| `0x00deaaf0` | `GameProxyPlayer` `onShowCommandWaypoints` handler (was "onPositionUpdate") | Allocates UE3 actors for path-waypoint visualisation; registered via `CallbackImpl<Event_NetIn_onShowCommandWaypoints>` |
+| `0x00dec040` | `GameProxyPlayer` `onDisableShowPath` handler (was "PathDestroy") | Destroys path-visualisation actors by `wcsicmp` name match; registered via `CallbackImpl<Event_NetIn_onDisableShowPath>` |
 | `0x00dec6d0` | `onSquadList` | Squad-member path data receiver |
 | `0x00dec9e0` | `onBigWorldTimeComplete` | BigWorld time-sync callback |
 | `0x00dedf30` | `TickUpdate` | Per-tick movement advance (advances entity along waypath) |
 | `0x00def320` | `ApplyTargetChange` | Target acquisition / heading update |
 | `0x00df08c0` | `TargetIDReceiver` | CME NetIn target-id event receiver |
 | `0x00df3550` | `RegionUpdate` | BigWorld space/region change callback |
-| `0x00df3ab0` | `SGWBeing_RegisterCallbacks` | Registers TickUpdate + onPositionUpdate + MovementTypeSwitch + PathDestroy + RegionUpdate for SGWBeing |
+| `0x00df3ab0` | `SGWBeing_RegisterCallbacks` | Registers TickUpdate, RegionUpdate and the GM path-debug handlers (`onShowCommandWaypoints`, `onShowPath`, `onDisableShowPath`); the callbacks are `GameProxyPlayer` members (2026-09-25) |
 | `0x00df3cc0` | `SGWMob_RegisterCallbacks` | Identical callback set to SGWBeing (confirmed by decompile) |
 | `0x00e68a30` | `GameEntityBase::ApplyTransform` | Routes to: Path A (direct write, force flag), Path B (vehicle interpolator at entity+0xe4), Path C (physics interpolator at entity+0x1d0) |
 | `0x00e688c0` | `EntityVisibilityManager` | Distance-cull / LOD management for entities |

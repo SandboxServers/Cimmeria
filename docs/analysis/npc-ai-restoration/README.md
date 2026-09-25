@@ -21,7 +21,7 @@ The [audit](audit.md) holds the evidence and confidence for every row. In short:
 | Symptom | Root cause | Packets |
 |---|---|---|
 | Later mobs don't aggro | Idle NPCs with `aggression = 0` are never ticked, and nothing seeds aggression. Only the first guard (chain 1008) and the PRU (chain 1032) are armed, both by content chains. Once armed, the proximity scan has no radius, line-of-sight or floor gate: it pulled at 60-201 m. | NA13, NA14 |
-| Running in place, frozen but attacking | Stopping mid-path clears the path but not the velocity. The AoI tick then tells clients "moving at 6 u/s" every 100 ms, and the movement type stays `CombatAdvance`. | NA10 |
+| Running in place, frozen but attacking | Stopping mid-path clears the path but not the velocity. The AoI tick then tells clients "moving at 6 u/s" every 100 ms. (The `CombatAdvance` movement type never reached the client as a type; NA10 found it went out as a truncated `onSequence` and removed it.) | NA10 |
 | Stuck partway | The leash measures spawn-to-*player* at 50 u, which is right at the tutorial staging spot. The leash is a teleport that keeps the old path. Aggro and leash form a 6 s loop (120 leashes in 12 min for one guard). A fight that ends leaves the NPC Idle in place and never ticked again. Player combat state is never drained. | NA12, NA15 |
 | Floating | Detour paths are 2D and we lerp Y along each leg, so the NPC climbs over flat floor toward a ramp and is then frozen at that height when it stops to shoot. Our ground query returns the storey nearest Y = 0, so the telemetry could not see it. The OnGround wire variant is **not** a fix: the client keeps the current height and does not ray-cast. | NA01, NA11 |
 | No cover | The cover AI is built and wired, but its 9,346 nodes are prefab-local offsets that were never transformed to world space. Cover is also only considered when the target is out of range. | NA20, NA21, NA22 |
@@ -44,6 +44,7 @@ The owner answered the design questions on 2026-09-24. Rows marked PROPOSED are 
 | D-NA07 | PROPOSED | **Ground NPCs server-side** (per-tick storey-aware height). Keep avatar-update variant 0x10. Do not use 0x18. | Binary evidence M6. Needs no client patch. |
 | D-NA08 | PROPOSED | **Aggro line of sight fails closed on `Unknown`**, while attack line of sight keeps failing open. | An off-mesh ray should not pull a mob through a wall, but a mob already fighting should not stop shooting because of a mesh hole. |
 | D-NA09 | PROPOSED | Default radii: aggro 18 u, assist 10 u, leash 50 u NPC-to-spawn with 5 u of hysteresis, vertical band 4 u. Each becomes an `entity_templates` column with these defaults, tuned at UAT. | These are starting values; the originals are unrecovered. |
+| D-NA10 | APPROVED (coordinator, 2026-09-25, under the owner's autonomous-run authorization) | **Correction to D-NA03 and D-NA05: there is no server-to-client movement-type message.** The walk home is shown by position and velocity alone, and the cover pose cannot come from movement type 0. The old `broadcast_movement_type` sent a truncated `onSequence` (witness method 1) and is now suppressed (NA10). 0x00deb660 is the GM `onShowPath` visualiser. | Ghidra evidence in NA10, [findings/npc-movement-pathfinding.md §11](../../reverse-engineering/findings/npc-movement-pathfinding.md). |
 
 ## Coordinator launch prompt
 

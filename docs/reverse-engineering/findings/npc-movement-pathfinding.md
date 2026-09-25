@@ -57,6 +57,8 @@ When entity field `+0x1d0` holds a physics interpolator object:
 
 ## 3. AI Movement State Machine
 
+> **Superseded (2026-09-25, NA10): this section is not an NPC animation state machine.** `0x00deb660` is registered through `CallbackImpl<Event_NetIn_onShowPath>` on `GameProxyPlayer`. It is the GM path visualiser for `SGWGmPlayer.onShowPath(aEntityId, aMovementType, aPath)`. The movement type only picks the debug text and colour. See [§11](#11-correction-2026-09-25-the-client-has-no-movement-type-receiver). The case table below is still correct as a decode of `EMobMovementType`.
+
 The client renders AI movement state received from the server via the `onRemoteEntityMove` CME event signal. The AI movement FSM has **7 states**, dispatched by a jump table at `0x00dec018` inside `MovementTypeSwitch` (`FUN_00deb660`):
 
 | Index | State Name | Description |
@@ -79,8 +81,8 @@ The client renders AI movement state received from the server via the `onRemoteE
 |----------|---------|-------------|
 | `TickUpdate` | `0x00dedf30` | Called every game tick — advances entity along waypath |
 | `onPositionUpdate` | `0x00deaaf0` | BigWorld position update signal |
-| `MovementTypeSwitch` | `0x00deb660` | Fires when server sends new movementType |
-| `PathDestroy` | `0x00dec040` | Fires when server ends a waypath |
+| `MovementTypeSwitch` | `0x00deb660` | **Corrected 2026-09-25:** `Event_NetIn_onShowPath` (GM path debug), not a movement-type receiver |
+| `PathDestroy` | `0x00dec040` | **Corrected 2026-09-25:** `Event_NetIn_onDisableShowPath` (GM path debug) |
 | `RegionUpdate` | `0x00df3550` | BigWorld space/region change |
 
 Both `SGWBeing_RegisterCallbacks` (`0x00df3ab0`) and `SGWMob_RegisterCallbacks` (`0x00df3cc0`) register the **identical set** of these callbacks — confirmed by decompiling both. SGWBeing and SGWMob share a common movement implementation.
@@ -127,6 +129,8 @@ UE3_Z = BW_Y × 100.0
 
 ## 6. Leash-Back-to-Spawn Mechanics
 
+> **Superseded (2026-09-25):** no `movementType` reaches the client for a leash or any other NPC state. See [§11](#11-correction-2026-09-25-the-client-has-no-movement-type-receiver). A walk home is shown by position and velocity alone.
+
 When an NPC's target exits `LEASH_DISTANCE` from the NPC's spawn point, the server transitions the NPC to `AiState::Leashing`.
 
 ### What the binary expects (confirmed from client callback registration and string evidence)
@@ -151,6 +155,8 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 
 ## 7. Combat Advance — Server-Side Movement Emission Gap
 
+> **Superseded (2026-09-25):** there is no `movementType=1 + waypath` payload to send; see [§11](#11-correction-2026-09-25-the-client-has-no-movement-type-receiver).
+
 `npc_movement_tick()` in `crates/services/src/cell/service/ticks/npc_movement.rs`:
 - Moves NPCs along `nav_path` at `move_speed` per tick (100ms tick; velocity = `move_speed × 10.0` for per-second scaling).
 - Calls `space_mgr.update_entity_position()` which propagates position to witnesses via AoI `EntityMoved`.
@@ -173,6 +179,8 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 
 ## 9. Implementation Recommendations for Cimmeria
 
+> **Superseded (2026-09-25):** the `onRemoteEntityMove` / `movementType` recommendations below rest on the §3 misreading. See [§11](#11-correction-2026-09-25-the-client-has-no-movement-type-receiver).
+
 ### Short-term (behavior correctness)
 - **Fix leash**: Instead of instant snap, pathfind from current NPC position to spawn, emit `onRemoteEntityMove` with `movementType=5` (Leash; `2` is Patrol, see the §3 correction) + waypath, then move along path. Health restore fires on arrival.
 - **Fix combat advance**: After `space_mgr.find_path()` succeeds in `npc_ai_fight()`, emit `onRemoteEntityMove` with `movementType=1` + path waypoints.
@@ -189,10 +197,10 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 |---------|------|-------|
 | `0x00dd1650` | `EntityManager::onEntityMoveWithError` | Wire → UE3 conversion entry point |
 | `0x00dd19e0` | `GameEntityManager_UpdateControlledEntityTransform` | Player-controlled entity transform |
-| `0x00deb660` | `MovementTypeSwitch` | 7-state AI FSM; jump table at `0x00dec018` |
-| `0x00dec018` | AI movement jump table | Cases 0–6 for CoverAdvance…Avoid |
-| `0x00deaaf0` | `onPositionUpdate` | Creates UE3 path-visualization actors |
-| `0x00dec040` | `PathDestroy` | Destroys path actors by wcsicmp name |
+| `0x00deb660` | `GameProxyPlayer` `onShowPath` handler (was "MovementTypeSwitch") | GM path debug; text/colour per `aMovementType`, jump table at `0x00dec018` |
+| `0x00dec018` | `onShowPath` label jump table | Cases 0–6 for CoverAdvance…Avoid |
+| `0x00deaaf0` | `GameProxyPlayer` `onShowCommandWaypoints` handler (was "onPositionUpdate") | Creates UE3 path-visualization actors |
+| `0x00dec040` | `GameProxyPlayer` `onDisableShowPath` handler (was "PathDestroy") | Destroys path actors by wcsicmp name |
 | `0x00dec6d0` | `onSquadList` | Squad-member path receiver |
 | `0x00dec9e0` | `onBigWorldTimeComplete` | BigWorld time-sync callback |
 | `0x00dedf30` | `TickUpdate` | Per-tick movement advance |
@@ -206,3 +214,28 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 | `0x00e69690` | `EntityInterpolatorUpdate` | Physics interpolator dispatch |
 | `0x018cad90` | `BW_TO_UE3_SCALE` | `100.0f` constant |
 | `0x019d1a44` | Position sentinel | `-13000.0f` = "use current component" |
+
+---
+
+## 11. Correction (2026-09-25): the client has no movement-type receiver
+
+Found by NA10 of the NPC AI restoration while choosing what to send when an NPC stops. It supersedes §3, §6, §7 and §9 where they talk about a server-sent movement type.
+
+**The handler at `0x00deb660` is the GM path visualiser.**
+
+- It is registered through `FUN_00dfaf20`, which constructs `CME::EventSignal::MemberCallback<..., GameProxyPlayer, ..., Event_NetIn_onShowPath>` (`FUN_00df7690`).
+- Its arguments are read by name: `aPath`, `aMovementType` and `aEntityId` (ASCII at `0x019d2c70`, `0x019d2c78` and `0x019d2c88`). Those are the three arguments of `SGWGmPlayer.onShowPath` in `entities/defs/SGWGmPlayer.def`.
+- Each jump-table case only picks a wide label ("Entity: %d is moving to cover", "... is making a combat advance", and so on) and a debug colour. It then spawns and positions path-marker actors.
+- The two sibling registrations are the same kind: `0x00deaaf0` is `Event_NetIn_onShowCommandWaypoints` (`FUN_00df7610`) and `0x00dec040` is `Event_NetIn_onDisableShowPath` (`FUN_00df7710`). All three are `GameProxyPlayer` member callbacks. The registrars `0x00df3ab0` and `0x00df3cc0` were previously named `SGWBeing_/SGWMob_RegisterCallbacks`.
+
+**`setMovementType` only goes from client to server.** It is an `<Exposed/>` cell method in `SGWBeing.def`. The binary has `Event_NetOut_SetMovementType` and no `Event_NetIn_*` twin. No `<ClientMethods>` entry anywhere carries a movement type.
+
+**What Cimmeria was actually sending.** `broadcast_movement_type` sent `WitnessEntityMethod { method_index: 1, args: [kind] }`. For a witness, client method 1 of every NPC entity type is `onSequence` (`SGWSpawnableEntity`, `client_methods::spawnable_entity::ON_SEQUENCE`). That is the same method attack animations use. So every Fighting, Patrol, Leash or Follow entry sent each witness a one-byte, truncated `onSequence`. NA10 removed the send. The server keeps the value as a cache only, logged as `movement.movement_type outcome=suppressed`.
+
+**What the client animates from.** `EntityManager::onEntityMoveWithError` (`0x00dd1650`) scales the wire velocity by 100 and swaps its axes. `GameEntityBase::ApplyTransform` (`0x00e68a30`) writes it into the UE3 actor next to `Location` and `Rotation`. That velocity is the only per-NPC "moving" signal on the wire. An NPC is shown standing by broadcasting a zero velocity. Cimmeria does this with `npc_ai::movement_stop` (NA10).
+
+**Consequences for other work**
+
+- A leash walk home is shown by position and velocity. There is no Leash type to send.
+- A cover pose cannot come from movement type 0. It has to come from something else, such as a stance, a state flag or an ability animation (NA20 / NA22).
+- Showing an NPC's movement mode on a client is a GM-only feature through `onShowPath`, if it is ever wanted.

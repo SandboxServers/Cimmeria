@@ -22,10 +22,9 @@ pub(super) async fn npc_ai_fight(
     use crate::cell::combat;
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
-    // Movement-type broadcast on Fighting entry. Dedup'd against the
-    // cached `last_movement_type` — subsequent Fighting ticks are
-    // no-ops on the wire. See `broadcast_movement_type` doc for
-    // rationale (animation hint, not gameplay-side state).
+    // Record CombatAdvance in the movement-type cache. Nothing goes on the
+    // wire: the client has no movement-type receiver (NA10, see
+    // `broadcast_movement_type`).
     crate::cell::abilities::broadcast_movement_type(
         npc_id,
         Some(MobMovementType::CombatAdvance),
@@ -153,12 +152,8 @@ pub(super) async fn npc_ai_fight(
             space_mgr
                 .cover
                 .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
-            // Broadcast Leash movement-type now rather than wait for
-            // the next AI tick (which would land ~2s later). The leash
-            // handler itself snaps the position instantly, so even
-            // though there's no actual leash-walk yet, the wire
-            // signal lets the client play any leash-specific VFX it
-            // wants for one frame before the corpse snaps home.
+            // Record Leash in the movement-type cache now rather than on the
+            // next AI tick. Cache only: nothing reaches the client (NA10).
             crate::cell::abilities::broadcast_movement_type(
                 npc_id,
                 Some(MobMovementType::Leash),
@@ -279,13 +274,12 @@ pub(super) async fn npc_ai_fight(
                     node_id = prior_slot.node_id,
                     "NPC AI: released flanked cover slot, re-evaluating next tick"
                 );
-                // Clear any stale nav_path pointing at the now-released
-                // cover slot. Without this, the NPC would continue
-                // walking toward the abandoned slot for one more
-                // movement tick before the re-pick lands next AI tick.
-                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                    npc.nav_path.clear();
-                }
+                // Stop walking toward the now-released cover slot. Without
+                // this the NPC walks toward the abandoned slot for one
+                // more movement tick before the re-pick lands next AI
+                // tick. Velocity is zeroed with the path so the client
+                // does not keep running it in place (NA10).
+                super::stop_npc_movement(space_mgr, npc_id, super::StopReason::CoverReleased);
                 // Fire the OnNpcFlanked content trigger so chain
                 // authors can hook narrative reactions (the AI itself
                 // already repositions; this is just the affordance).
@@ -386,7 +380,7 @@ pub(super) async fn npc_ai_fight(
                     let waypoints: std::collections::VecDeque<_> =
                         path.into_iter().skip(1).collect();
                     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                        npc.nav_path = waypoints;
+                        super::replace_nav_path_on(npc, waypoints);
                     }
                     super::note_outcome("chase");
                     tracing::debug!(
@@ -485,8 +479,7 @@ pub(super) async fn npc_ai_fight(
     if min_range > 0.0 && dist_to_target < min_range && !is_stationary {
         if let Some(backup) = compute_backup_waypoint(npc_pos, target_pos, min_range) {
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                npc.nav_path.clear();
-                npc.nav_path.push_back(backup);
+                super::replace_nav_path_on(npc, [backup]);
             }
             super::note_outcome("min_range_backup");
             tracing::debug!(
@@ -508,15 +501,18 @@ pub(super) async fn npc_ai_fight(
 
     // In range, LOS confirmed, and not too close — stop moving and attack.
     //
+    // Stopping zeroes velocity as well as clearing the path. Clearing only
+    // the path left velocity at the chase speed, and the AoI tick kept
+    // telling every witness the NPC was moving, so it ran in place (NA10,
+    // audit S1).
+    //
     // Face the target too. `direction` was only ever written by the movement
     // tick, which skips path-less NPCs -- and this branch clears the path --
     // so an attacker's yaw froze the moment it stopped while the player
     // strafed around it. Done before the ability check so a mob waiting on a
     // cooldown still tracks its target. No extra wire traffic: the AoI tick
     // already sends direction with every position update.
-    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-        npc.nav_path.clear();
-    }
+    super::stop_npc_movement(space_mgr, npc_id, super::StopReason::AttackInPlace);
     face_target(space_mgr, npc_id, npc_pos, target_pos);
 
     // `chosen_ability` may still be `None` here when every known ability

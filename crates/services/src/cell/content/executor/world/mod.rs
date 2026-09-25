@@ -156,10 +156,12 @@ pub(super) fn set_npc_poi(
                 AiState::Investigating,
                 AiTransitionReason::Content,
             );
-            // Clear in-flight nav so the investigate handler can
-            // pathfind to the POI from the current position rather
-            // than continuing toward a stale patrol/wander waypoint.
-            target.nav_path.clear();
+            // Stop the NPC so the investigate handler paths to the POI
+            // from where it stands rather than continuing toward a stale
+            // patrol/wander waypoint. Explicit even though a state change
+            // stops it too: a new POI on an NPC already investigating is
+            // not a state change, and must still reroute.
+            npc_ai::stop_movement_on(target);
         }
     } else {
         tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcPoi");
@@ -230,7 +232,9 @@ pub(super) fn set_follow_target(
             AiState::Idle
         };
         npc_ai::set_ai_state_on(npc, &world, to, AiTransitionReason::Content);
-        npc.nav_path.clear();
+        // Stop even when the state did not change (a new follow target on
+        // an NPC already following), so the AI tick reroutes cleanly.
+        npc_ai::stop_movement_on(npc);
     }
 }
 
@@ -263,8 +267,8 @@ pub(super) fn set_npc_ai_state(
     let world = npc_ai::world_label(space_mgr, target_id);
     if let Some(npc) = space_mgr.get_entity_mut(target_id) {
         npc_ai::set_ai_state_on(npc, &world, new_state, AiTransitionReason::Content);
-        // Clear in-flight nav so the new-state handler can re-route.
-        npc.nav_path.clear();
+        // Stop (path and velocity) so the new-state handler can re-route.
+        npc_ai::stop_movement_on(npc);
     }
 }
 

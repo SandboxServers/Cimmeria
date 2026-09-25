@@ -140,8 +140,7 @@ pub(super) async fn npc_ai_submit(
     // every entity still in view, whether or not it moved. No extra
     // fan-out is needed here, and none of it is conditional on the
     // NPC having a path.
-    npc.nav_path.clear();
-    npc.velocity = [0.0; 3];
+    super::stop_movement_on(npc);
     // Raw clear, not `unset_state_flag`. `BSF_IN_COMBAT` has no
     // ref-counted enter path on the NPC side — nothing ever calls
     // `set_state_flag(BSF_IN_COMBAT)` — so the counter entry does not
@@ -261,18 +260,11 @@ pub(super) async fn npc_ai_submit(
         .await;
     }
 
-    // `None` is the codebase-wide "stopped" convention — every other AI
-    // stop path (fight→idle, leash arrival, patrol/wander/investigate
-    // dwell) uses it. Be clear about what it does: it clears the
-    // server-side cache and sends NOTHING on the wire, so the client
-    // keeps playing whatever animation the last `setMovementType`
-    // selected. The enum has no "stopped" discriminant to send instead
-    // (`Cover`/`CombatAdvance`/`Patrol`/`Follow`/`Wander`/`Leash`/`Avoid`
-    // are all *how am I moving* kinds), so inventing one here would be a
-    // wire change on a guess. What actually stops the NPC visibly moving
-    // is the zeroed velocity above, which the AoI tick transmits.
-    // Coupling `setMovementType` to path start/stop is the repo-wide fix
-    // (2026-09-18 playtest, recommended change 9) and is not H08's.
+    // `None` is the codebase-wide "stopped" convention for the
+    // movement-type cache. The cache never reaches the client: there is no
+    // server-to-client movement-type message (NA10, see
+    // `broadcast_movement_type`). What stops the NPC visibly moving is the
+    // zeroed velocity above, which the AoI tick transmits.
     crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
     tracing::info!(
         npc_id,

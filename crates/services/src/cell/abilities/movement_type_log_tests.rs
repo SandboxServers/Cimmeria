@@ -1,6 +1,8 @@
-//! `setMovementType` selects the mob animation on every witness, and two of
-//! its three outcomes put nothing on the wire. Each must leave a record, or a
-//! "moonwalking" NPC (translating in a stale pose) cannot be diagnosed.
+//! A movement-type change is recorded server-side only. Nothing goes on the
+//! wire: no server-to-client movement-type message exists, and the old send
+//! reached witnesses as a truncated `onSequence` (NA10). Each change must
+//! still leave a record, so the NPC's intended movement mode can be read out
+//! of SigNoz.
 
 use cimmeria_entity::cell_entity::MobMovementType;
 use tokio::sync::mpsc;
@@ -21,21 +23,19 @@ fn fixture() -> SpaceManager {
 }
 
 #[tokio::test]
-async fn movement_type_sent_and_cleared_are_both_logged() {
+async fn movement_type_suppressed_and_cleared_are_both_logged() {
     let mut mgr = fixture();
     let (tx, _rx) = mpsc::channel(8);
     let logs = LogCapture::install();
 
     broadcast_movement_type(101, Some(MobMovementType::Follow), &tx, &mut mgr).await;
-    let sent = logs
-        .find_message(Level::DEBUG, "setMovementType sent")
-        .expect("a sent movement type must be logged");
-    assert_eq!(sent.target, "movement.movement_type");
-    assert!(sent.has_field("outcome", "sent"));
-    assert!(sent.has_field("kind_byte", "3"));
+    let recorded = logs
+        .find_message(Level::DEBUG, "movement type recorded")
+        .expect("a recorded movement type must be logged");
+    assert_eq!(recorded.target, "movement.movement_type");
+    assert!(recorded.has_field("outcome", "suppressed"));
+    assert!(recorded.has_field("kind_byte", "3"));
 
-    // Clearing sends NOTHING -- the client keeps the Follow animation. That
-    // silent divergence is exactly what has to be visible.
     broadcast_movement_type(101, None, &tx, &mut mgr).await;
     let cleared = logs
         .find_message(Level::DEBUG, "cache cleared")

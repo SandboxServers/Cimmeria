@@ -16,11 +16,9 @@ pub(super) async fn npc_ai_leash(
 ) {
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
-    // The Fighting → Leashing transition site in `npc_ai_fight`
-    // already broadcasts Leash, so this is a no-op in the normal
-    // path — but for completeness (and for the future when leash
-    // becomes a multi-tick walk-back rather than a snap) call it
-    // here too. Dedup'd by `last_movement_type`.
+    // The Fighting → Leashing transition site in `npc_ai_fight` already
+    // records Leash, so this is a no-op in the normal path. Cache only:
+    // nothing reaches the client (NA10, see `broadcast_movement_type`).
     crate::cell::abilities::broadcast_movement_type(
         npc_id,
         Some(MobMovementType::Leash),
@@ -29,26 +27,47 @@ pub(super) async fn npc_ai_leash(
     )
     .await;
 
+    // Snap back to spawn position -- but NOT for a follower. A
+    // fighting escort NPC (follow_target_id still set — Follow
+    // doesn't auto-clear on threat preemption, see
+    // `Action::SetFollowTarget` doc) that got yanked back to
+    // spawn_position here would be stranded: Follow doesn't
+    // auto-resume post-fight either, so nothing would walk it back
+    // to the player, and it would sit at spawn until a content
+    // chain re-fires SetFollowTarget. Leaving it at its
+    // leash-time position keeps it near the player it was
+    // escorting instead of teleporting it away (GC1b-0 hardening).
+    //
+    // The snap goes through the grid-updating position writer. It used to
+    // write `npc.position` directly, which left the AoI spatial grid
+    // indexing the NPC at its chase position. It also left the chase path
+    // and velocity in place, so the movement tick walked the NPC from
+    // spawn back out along the stale route (NA10, audit S4). The authored
+    // spawn facing is restored the way the respawn tick restores it.
+    let (snap_to, spawn_facing) = match space_mgr.get_entity(npc_id) {
+        Some(npc) => (
+            npc.spawn_position
+                .filter(|_| npc.follow_target_id.is_none()),
+            npc.spawn_direction,
+        ),
+        None => return,
+    };
+    match snap_to {
+        Some(spawn_pos) => super::snap_npc_to(space_mgr, npc_id, spawn_pos, spawn_facing),
+        // A follower stays where it is, but it still stops.
+        None => {
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                super::stop_movement_on(npc);
+            }
+        }
+    }
+
     let world = super::world_label(space_mgr, npc_id);
     let (stat_update, state_field) = {
         let npc = match space_mgr.get_entity_mut(npc_id) {
             Some(e) => e,
             None => return,
         };
-
-        // Snap back to spawn position -- but NOT for a follower. A
-        // fighting escort NPC (follow_target_id still set — Follow
-        // doesn't auto-clear on threat preemption, see
-        // `Action::SetFollowTarget` doc) that got yanked back to
-        // spawn_position here would be stranded: Follow doesn't
-        // auto-resume post-fight either, so nothing would walk it back
-        // to the player, and it would sit at spawn until a content
-        // chain re-fires SetFollowTarget. Leaving it at its
-        // leash-time position keeps it near the player it was
-        // escorting instead of teleporting it away (GC1b-0 hardening).
-        if let (None, Some(spawn_pos)) = (npc.follow_target_id, npc.spawn_position) {
-            npc.position = spawn_pos;
-        }
 
         // Restore health to max
         if let Some(health) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
@@ -89,9 +108,7 @@ pub(super) async fn npc_ai_leash(
     state_args.extend_from_slice(&state_field.to_le_bytes());
     crate::cell::abilities::send_entity_method(npc_id, 19, state_args, tx, space_mgr).await;
 
-    // Leash complete — clear the cached movement-type so the next
-    // Fighting transition re-broadcasts CombatAdvance. None emits no
-    // wire byte (client keeps its idle pose); only the dedup cache
-    // resets. See `broadcast_movement_type` doc.
+    // Leash complete: clear the cached movement type. The client never saw
+    // it; what shows the NPC standing is the zero velocity the snap wrote.
     crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
 }

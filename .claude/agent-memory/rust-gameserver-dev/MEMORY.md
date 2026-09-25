@@ -184,3 +184,4 @@
 
 - [ue3-prefab-rig-anatomy.md](ue3-prefab-rig-anatomy.md) — **before decoding a component export or scoping a .umap patch.** Component props start at byte 8; prefab meshes live on imported archetypes; Matinee keys are relative; `.upk` uncompressed vs `.umap` LZO; `crates/upk` is read-only.
 - [ai-state-private-and-revert-proof-mtime.md](ai-state-private-and-revert-proof-mtime.md) — `ai_state` is private since NA00 (write via `npc_ai::set_ai_state`); copy2-restored files keep old mtimes so cargo reuses a mutated build.
+- [no-movement-type-wire-and-nav-path-writers.md](no-movement-type-wire-and-nav-path-writers.md) — no movement-type wire exists (witness method 1 = onSequence); every NPC nav_path write goes through `movement_stop` (guard test).

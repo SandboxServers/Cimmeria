@@ -49,6 +49,7 @@ mod idle_aggro;
 mod investigate;
 mod leash;
 mod lifecycle;
+mod movement_stop;
 mod path_failure;
 mod patrol;
 mod transition;
@@ -85,6 +86,11 @@ pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 // combat, the content executor, the GM console, the respawn tick -- reach
 // it through this re-export.
 pub(in crate::cell) use aggro_acquired::log_aggro_acquired;
+// Stopping and rerouting an NPC: the only writers of `nav_path` outside the
+// movement tick (NA10). Combat and the content executor reach them here.
+pub(in crate::cell) use movement_stop::{
+    replace_nav_path_on, snap_npc_to, stop_movement_on, stop_npc_movement, StopReason,
+};
 pub(in crate::cell) use transition::{
     set_ai_state, set_ai_state_on, world_label, AiTransitionReason,
 };
