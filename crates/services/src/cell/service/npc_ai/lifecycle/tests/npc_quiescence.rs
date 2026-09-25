@@ -5,6 +5,7 @@
 //! see the `npc_ai_submit` doc comment for what is left out and why.
 
 use super::*;
+use crate::cell::combat::AggroCause;
 
 // ── Non-hostility for the instance's life ──────────────────────────────
 
@@ -36,7 +37,7 @@ async fn a_submitted_npc_does_not_re_aggro_on_proximity() {
     run_ai_tick(&tx, &mut mgr).await;
 
     let npc = mgr.get_entity(NPC).unwrap();
-    assert_eq!(npc.ai_state, AiState::Submit, "the surrender holds");
+    assert_eq!(npc.ai_state(), AiState::Submit, "the surrender holds");
     assert_eq!(npc.aggression, 0, "and the NPC is disarmed");
     assert!(
         mgr.get_entity(PLAYER_A).unwrap().threatened_mobs.is_empty(),
@@ -48,7 +49,7 @@ async fn a_submitted_npc_does_not_re_aggro_on_proximity() {
     // resolves to nothing, the GM console, a respawn). A still-aggressive
     // NPC would immediately aggro the player standing beside it.
     if let Some(npc) = mgr.get_entity_mut(NPC) {
-        npc.ai_state = AiState::Idle;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Idle);
     }
     run_ai_tick(&tx, &mut mgr).await;
 
@@ -103,7 +104,7 @@ async fn submit_cancels_channels_the_npc_was_running() {
         "fixture invariant: the channel must actually register"
     );
     // Give the handler a reason to run its cleanup pass.
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
 
     content_sets_submit(&mut mgr, NPC);
     run_ai_tick(&tx, &mut mgr).await;
@@ -133,7 +134,7 @@ async fn submit_releases_the_npcs_cover_slot() {
         .unwrap()
         .reserve_for_entity(EntityId(NPC as i32), slot)
         .expect("fixture invariant: the slot must reserve");
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
 
     content_sets_submit(&mut mgr, NPC);
     let (tx, _rx) = mpsc::channel(64);
@@ -163,7 +164,7 @@ async fn submit_still_quiesces_the_npc_itself() {
     let mut mgr = make_mgr();
     add_player(&mut mgr, PLAYER_A, 0.0);
     add_npc(&mut mgr, NPC, 5.0);
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
     if let Some(npc) = mgr.get_entity_mut(NPC) {
         npc.state_field |= BSF_IN_COMBAT;
         npc.last_movement_type = Some(MobMovementType::CombatAdvance);
@@ -213,7 +214,7 @@ async fn submit_turns_the_npc_to_face_the_player_it_surrendered_to() {
         // Frozen mid-chase, facing away from the player.
         npc.direction = cimmeria_common::Vector3::new(0.0, std::f32::consts::PI, 0.0);
     }
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
 
     content_sets_submit(&mut mgr, NPC);
     let (tx, _rx) = mpsc::channel(64);
@@ -256,8 +257,8 @@ async fn submit_faces_the_highest_threat_attacker() {
         npc.position = cimmeria_common::Vector3::new(0.0, 0.0, 0.0);
     }
     // B is the chip-damage bystander; A is the duelist.
-    let _ = generate_threat(&mut mgr, PLAYER_B, NPC, 5.0);
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 500.0);
+    let _ = generate_threat(&mut mgr, PLAYER_B, NPC, 5.0, AggroCause::Damage);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 500.0, AggroCause::Damage);
 
     content_sets_submit(&mut mgr, NPC);
     let (tx, _rx) = mpsc::channel(64);

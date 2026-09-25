@@ -113,7 +113,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnCustomEvent { event_name }` | Generic invoke escape hatch / synthetic for triggerless chains |
 | `OnPlayerLoaded { world_name? }` | Player completes mapLoaded |
 | `OnDialogOpen { dialog_id }` | Server sent `onDialogDisplay` |
-| `OnDialogChoice { dialog_id }` | Player clicked a dialog button. **Server-gated**: the `DialogButtonChoice` handler rejects the event unless `CellEntity::open_dialog_id == dialog_id` (the dialog was actually displayed to this player via `send_dialog_display`); a forged/replayed choice for an un-opened `dialog_id` is dropped with a `warn!` and never fires the chain (CAT-J-01 / #479). |
+| `OnDialogChoice { dialog_id }` | Player clicked a dialog button. **Server-gated**: the `DialogButtonChoice` handler rejects the event unless `dialog_id` is in `CellEntity::offered_dialog_ids` — the bounded set of dialogs actually displayed to this player via `send_dialog_display`. A valid choice removes the id (one-shot), so a forged or replayed choice is dropped with a `warn!` and never fires the chain (CAT-J-01 / #479, widened to a set by DU-08 because the client evicts an open dialog and answers it late). |
 | `OnInteractTag { entity_tag }` | Right-click on tagged NPC/object |
 | `OnInteractTemplate { template_name }` | Right-click on entity from named template |
 | `OnItemUse { item_id }` | Player double-clicked inventory item |
@@ -233,6 +233,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `add_dialog` | `AddDialog` | 10 |
 | `add_dialog_set` | `AddDialogSet` | 6 |
 | `remove_dialog_set` | `RemoveDialogSet` | 2 |
+| `npc_bark` | `NpcBark` | 3 |
 | `add_item` | `GrantItem` | 14 |
 | `remove_item` | `RemoveItem` | 2 |
 | `grant_xp` | `GrantXP` | 0 |
@@ -350,6 +351,60 @@ down to 4 with a `warn!` — 1-4 is the range content should actually use.
 A victory chain needs no `content_triggers` row; the loader gives a
 triggerless chain a never-firing `OnCustomEvent` placeholder so it stays
 reachable only through `on_victory_chains`.
+
+##### `npc_bark` params
+
+A **bark** is a companion line spoken into the triggering player's chat
+window with no window to close — Col. Marsh's "Let's move out!" while the
+player keeps moving and firing. It exists because the client has no
+non-modal dialog path at all: its lowest screen type (`DUIST_None`, 0) is
+registered to the modal Blurb window under a "TEMP HACK" comment, and every
+other type registers the same modal `DialogWin`. A companion line sent as a
+dialog stops the player dead.
+
+Barks ride the one non-modal text route the client honours,
+`onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)` (client method
+28 — [dispatch table](../protocol/client-method-dispatch-table.md)), through
+the **same serializer the chat broadcaster uses**
+([`cell/chat.rs`](../../crates/services/src/cell/chat.rs)). Deliberately not
+`system_message`, whose wire format is still unknown and whose earlier
+attempt at method 28 produced garbled `"[] says"` chat (§10).
+
+`target_id` and `target_key` are both unused. Three params:
+
+| Param | Required | Meaning |
+|---|---|---|
+| `screen_id` | **yes** | A `resources.dialog_screens` row. The executor resolves the line text server-side, so an author names the shipped 2009 line by id and never retypes it |
+| `speaker` | **yes** | The name the chat window prefixes the line with. Explicit rather than a `speakers` lookup because the bark screens carry `speaker_id = 0` |
+| `channel` | no (defaults to `say`) | `EChannel` name, case-insensitive. **Only `say` is accepted.** `CHAN_splash` is not: its native trigger has never been traced |
+
+All three are **rejected, not defaulted through** — a bad row is dropped at
+load with a `warn!` naming the chain. The failure modes here are not "the
+line is missing" but "the line is visibly wrong": a blank `speaker` renders
+as the client's empty-name prefix, and an unregistered channel pops its red
+unknown-channel splash.
+
+The line goes to the **triggering player only** — not the say-chat witness
+fan-out and not the sender echo. A bark is per-player mission feedback;
+fanning it out would speak one player's escort line into a stranger's chat
+window in a shared world.
+
+Three executor refusals, each a `warn!` with a stable `reason`
+([executor/bark.rs](../../crates/services/src/cell/content/executor/bark.rs)),
+all of which send nothing at all:
+
+1. **`screen_not_cached`** — no `dialog_screens` row for that `screen_id`,
+   or the startup cache failed to load.
+2. **`empty_text`** — the row exists but its text is blank.
+3. **`actor_not_player`** — the chain fired from an NPC, so "the triggering
+   player" is undefined and method 28 resolves to no client address.
+
+The text catalogue is `SpaceManager::dialog_screen_text`, loaded once at cell
+startup by `spawner::load_dialog_screen_text` (13,467 rows; `screen_id` is
+globally unique). It is a startup cache for the same reason
+`spawn_entity` caches `entity_templates`: the executor has no DB pool at
+action time, and a cell→base round trip mid-chain would break the chain's
+ordered action list.
 
 #### Entity-lifecycle verbs
 
@@ -629,7 +684,7 @@ Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire f
 
 Biggest functional impacts: **no chain can strip an effect, schedule a timer, or deal scripted damage today.** See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
-**`SystemMessage` wire format is still unresolved** (issue #268). The arm at [executor/mod.rs:275-287](../../crates/services/src/cell/content/executor/mod.rs#L275-L287) carries the reasoning: an earlier implementation routed the message id through `onPlayerCommunication` (method 28), which produced garbled `"[] says"` chat spam and client freezes, so it was reduced to an `info!`. Finding the correct client method for localized string-id display (possibly `onErrorCode` or a UI-specific method) still needs RE.
+**`SystemMessage` wire format is still unresolved** (issue #268). The arm at [executor/mod.rs:275-287](../../crates/services/src/cell/content/executor/mod.rs#L275-L287) carries the reasoning: an earlier implementation routed the message id through `onPlayerCommunication` (method 28), which produced garbled `"[] says"` chat spam and client freezes, so it was reduced to an `info!`. Finding the correct client method for localized string-id display (possibly `onErrorCode` or a UI-specific method) still needs RE. For plain NPC speech that needs no localized string id, use `npc_bark` instead — it reaches the client today.
 
 ---
 

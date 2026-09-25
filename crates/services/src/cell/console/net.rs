@@ -10,6 +10,7 @@
 //! `deprecated/python/cell/commands/Misc.py` (`debug_*`) +
 //! `deprecated/python/cell/commands/Entity.py` (`threaten`/`aggression`).
 
+use cimmeria_entity::abilities::serialize_timer_update;
 use cimmeria_entity::cell_entity::AiState;
 use tokio::sync::mpsc;
 
@@ -17,6 +18,7 @@ use super::send_gm_feedback;
 use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
 use crate::cell::interactions;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::{ON_PLAYER_COMMUNICATION, ON_SEQUENCE};
 
@@ -176,13 +178,15 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
         Some(s) => s.parse::<i32>().unwrap_or(0),
         None => 0,
     };
-    let mut buf = Vec::with_capacity(21);
-    buf.extend_from_slice(&id.to_le_bytes());
-    buf.push(ty as u8);
-    buf.extend_from_slice(&(caller_id as i32).to_le_bytes()); // SourceID
-    buf.extend_from_slice(&secondary_id.to_le_bytes());
-    buf.extend_from_slice(&total_time.to_le_bytes());
-    buf.extend_from_slice(&total_time.to_le_bytes()); // BigWorldTimeComplete (relative)
+    // SourceID = caller; BigWorldTimeComplete is still relative (see #271).
+    let buf = serialize_timer_update(
+        id,
+        ty,
+        caller_id as i32,
+        secondary_id,
+        total_time,
+        total_time,
+    );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: caller_id,
@@ -424,14 +428,15 @@ async fn debug_follow(
     let Some(target) = target_id else {
         return;
     };
+    let world = npc_ai::world_label(space_mgr, target);
     let now_following = if let Some(e) = space_mgr.get_entity_mut(target) {
         if e.follow_target_id == Some(caller_id) {
             e.follow_target_id = None;
-            e.ai_state = AiState::Idle;
+            npc_ai::set_ai_state_on(e, &world, AiState::Idle, AiTransitionReason::GmCommand);
             false
         } else {
             e.follow_target_id = Some(caller_id);
-            e.ai_state = AiState::Follow;
+            npc_ai::set_ai_state_on(e, &world, AiState::Follow, AiTransitionReason::GmCommand);
             true
         }
     } else {

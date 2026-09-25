@@ -40,9 +40,12 @@ pub(super) async fn npc_ai_follow(
     // so the wire doesn't see a Follow byte for an NPC that's about
     // to leave Follow this same tick.
     let Some(target_id) = target_id else {
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            AiState::Idle,
+            super::AiTransitionReason::FollowNoTarget,
+        );
         tracing::debug!(
             target: "npc_ai",
             event = "decision",
@@ -58,8 +61,13 @@ pub(super) async fn npc_ai_follow(
         // Target despawned/disconnected. Clear and drop to Idle.
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.follow_target_id = None;
-            npc.ai_state = AiState::Idle;
         }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            AiState::Idle,
+            super::AiTransitionReason::FollowTargetGone,
+        );
         tracing::warn!(
             target: "npc_ai",
             event = "decision",
@@ -257,7 +265,7 @@ mod tests {
         mgr.spawn_npc(102, "Agnos", [50.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(102);
             // follow_min/max_distance default to 2.0/5.0 (construction.rs);
             // the target is 50 units away, well outside the band, so the
@@ -297,7 +305,7 @@ mod tests {
         mgr.spawn_npc(102, "Agnos", [50.0, 3.0, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(102);
         }
         let logs = crate::test_support::LogCapture::install();
@@ -332,7 +340,7 @@ mod tests {
         mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(999);
         }
         let logs = crate::test_support::LogCapture::install();
@@ -348,7 +356,7 @@ mod tests {
             .is_some());
         let npc = mgr.get_entity(101).unwrap();
         assert_eq!(npc.follow_target_id, None);
-        assert_eq!(npc.ai_state, AiState::Idle);
+        assert_eq!(npc.ai_state(), AiState::Idle);
     }
 
     /// The unrouted fallback must keep the follower on its OWN height. It used
@@ -362,7 +370,7 @@ mod tests {
         mgr.spawn_npc(102, "Agnos", [50.0, 11.5, 0.0], [0.0; 3])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(101) {
-            npc.ai_state = AiState::Follow;
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
             npc.follow_target_id = Some(102);
         }
         let (tx, _rx) = mpsc::channel(8);

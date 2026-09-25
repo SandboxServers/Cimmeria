@@ -23,6 +23,7 @@ use sqlx::PgPool;
 
 mod arrival;
 mod body;
+mod dialog_buttons;
 mod persistence;
 mod restore;
 

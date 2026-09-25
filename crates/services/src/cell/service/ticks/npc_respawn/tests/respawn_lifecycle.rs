@@ -26,7 +26,7 @@ async fn ready_dead_npc_respawns_to_idle_at_spawn_position() {
     npc_respawn_tick(&tx, &mut mgr).await;
 
     let npc = mgr.get_entity(50).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle, "AI state must reset to Idle");
+    assert_eq!(npc.ai_state(), AiState::Idle, "AI state must reset to Idle");
     assert_eq!(
         npc.state_field & BSF_DEAD,
         0,
@@ -176,7 +176,7 @@ async fn no_respawn_when_deadline_unset() {
 
     let npc = mgr.get_entity(50).unwrap();
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Dead,
         "Dead NPC without respawn_at must stay Dead"
     );
@@ -199,7 +199,11 @@ async fn future_deadline_is_a_no_op() {
     npc_respawn_tick(&tx, &mut mgr).await;
 
     let npc = mgr.get_entity(50).unwrap();
-    assert_eq!(npc.ai_state, AiState::Dead, "future deadline → still Dead");
+    assert_eq!(
+        npc.ai_state(),
+        AiState::Dead,
+        "future deadline → still Dead"
+    );
     assert!(npc.respawn_at.is_some(), "future deadline must persist");
     assert!(
         drain(&mut rx).is_empty(),
@@ -296,7 +300,7 @@ async fn kill_respawn_rekill_loop_is_idempotent() {
     npc_respawn_tick(&tx, &mut mgr).await;
     {
         let npc = mgr.get_entity(50).unwrap();
-        assert_eq!(npc.ai_state, AiState::Idle, "cycle 1 → Idle");
+        assert_eq!(npc.ai_state(), AiState::Idle, "cycle 1 → Idle");
         assert!(npc.respawn_at.is_none(), "cycle 1 → respawn_at cleared");
     }
 
@@ -305,7 +309,7 @@ async fn kill_respawn_rekill_loop_is_idempotent() {
         let npc = mgr.get_entity_mut(50).unwrap();
         npc.set_state_flag(BSF_DEAD);
         npc.set_state_flag(BSF_MOVEMENT_LOCK);
-        npc.ai_state = AiState::Dead;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Dead);
         if let Some(hp) = npc.stats.get_mut(HEALTH) {
             hp.set_current(0);
         }
@@ -323,7 +327,7 @@ async fn kill_respawn_rekill_loop_is_idempotent() {
     npc_respawn_tick(&tx, &mut mgr).await;
     {
         let npc = mgr.get_entity(50).unwrap();
-        assert_eq!(npc.ai_state, AiState::Idle, "cycle 2 → Idle");
+        assert_eq!(npc.ai_state(), AiState::Idle, "cycle 2 → Idle");
         assert_eq!(
             npc.state_field & BSF_DEAD,
             0,

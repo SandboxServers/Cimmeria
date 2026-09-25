@@ -104,7 +104,7 @@ fn add_npc(mgr: &mut SpaceManager, id: u32, x: f32) {
 /// a bare `ai_state` write plus a nav clear, no cleanup of its own.
 fn content_sets_submit(mgr: &mut SpaceManager, npc_id: u32) {
     if let Some(npc) = mgr.get_entity_mut(npc_id) {
-        npc.ai_state = AiState::Submit;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Submit);
         npc.nav_path.clear();
     }
 }

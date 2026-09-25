@@ -503,8 +503,8 @@ complete surface:
 | `GET /api/editor/draft/{scope_id}/{mission_id}` | `routes/editor.rs:143-146` |
 | `POST /api/editor/draft` | `routes/editor.rs:147` |
 | `GET /api/audit/logins` | `routes/audit.rs:52` — live |
-| `POST /api/auth/dev-session` | `routes/dev_session.rs:155` |
-| `POST /api/auth/dev-session/refresh` | `routes/dev_session.rs:156` |
+| `POST /api/auth/dev-session` | `routes/dev_session/mod.rs` — quota-limited; 429 + `Retry-After` over quota, 400 on a malformed `install_id` |
+| `POST /api/auth/dev-session/refresh` | `routes/dev_session/mod.rs` — quota-limited; 401 once the session passes its lifetime cap |
 | `POST /api/telemetry/upload-chunk` | `routes/telemetry/mod.rs:91-94` |
 | `POST /api/telemetry/upload-bundle` | `routes/telemetry/mod.rs:95-98` |
 | `GET /swagger-ui`, `GET /api-docs/openapi.json` | `crates/admin-api/src/lib.rs:117` |
@@ -534,7 +534,7 @@ the Tauri IPC commands below are a second, parallel path to the same job.
 | `crates/services/src/base/service.rs` | `online_players()` (line 90) — not yet called by admin-api |
 | `crates/admin-api/src/routes/editor.rs` | HTTP chain-editor content + draft persistence |
 | `crates/admin-api/src/routes/audit.rs` | `GET /api/audit/logins` |
-| `crates/admin-api/src/routes/dev_session.rs` | Launcher dev-session token mint + refresh |
+| `crates/admin-api/src/routes/dev_session/` | Launcher dev-session token mint + refresh (`token.rs` claims/HMAC, `quota.rs` mint+refresh limits) |
 | `crates/admin-api/src/routes/telemetry/` | Launcher telemetry chunk + bundle ingest |
 | `frontend/src/lib/admin-api.ts` | TypeScript API client + dashboard builders |
 | `frontend/src/lib/view-models.ts` | UI utility functions |

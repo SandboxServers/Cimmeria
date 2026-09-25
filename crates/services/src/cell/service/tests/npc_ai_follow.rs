@@ -1,5 +1,6 @@
 //! `npc_ai_follow` distance-band maintenance + target-tracking.
 
+use crate::cell::combat::AggroCause;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::{AiState, MobMovementType};
@@ -46,7 +47,7 @@ async fn follow_out_of_band_pathfinds_toward_target() {
     spawn_follower_at(&mut mgr, 200, [0.0; 3]);
     spawn_player_at(&mut mgr, 1, [20.0, 0.0, 0.0]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(1);
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -77,7 +78,7 @@ async fn follow_in_band_holds_position() {
     spawn_follower_at(&mut mgr, 200, [0.0; 3]);
     spawn_player_at(&mut mgr, 1, [3.0, 0.0, 0.0]); // distance 3, inside [2, 5]
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(1);
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -103,7 +104,7 @@ async fn follow_below_min_distance_holds_position() {
     spawn_follower_at(&mut mgr, 200, [0.0; 3]);
     spawn_player_at(&mut mgr, 1, [1.0, 0.0, 0.0]); // distance 1, below min=2
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(1);
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -128,7 +129,7 @@ async fn follow_with_gone_target_drops_to_idle() {
     let mut mgr = make_castle_mgr();
     spawn_follower_at(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(999); // never existed
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -141,7 +142,7 @@ async fn follow_with_gone_target_drops_to_idle() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(npc.ai_state(), AiState::Idle);
     assert_eq!(npc.follow_target_id, None);
     assert_eq!(npc.last_movement_type, None);
 }
@@ -152,7 +153,7 @@ async fn follow_with_no_target_drops_to_idle() {
     let mut mgr = make_castle_mgr();
     spawn_follower_at(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = None;
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -165,7 +166,7 @@ async fn follow_with_no_target_drops_to_idle() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(npc.ai_state(), AiState::Idle);
 }
 
 /// Threat preemption preserves the follow target — content authors
@@ -176,15 +177,15 @@ async fn follow_preempted_by_threat_clears_nav_keeps_target() {
     spawn_follower_at(&mut mgr, 200, [0.0; 3]);
     spawn_player_at(&mut mgr, 1, [20.0, 0.0, 0.0]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(1);
         npc.nav_path.push_back(Vector3::new(10.0, 0.0, 0.0));
     }
 
-    let _ = crate::cell::combat::generate_threat(&mut mgr, 1, 200, 50.0);
+    let _ = crate::cell::combat::generate_threat(&mut mgr, 1, 200, 50.0, AggroCause::Damage);
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Fighting);
+    assert_eq!(npc.ai_state(), AiState::Fighting);
     assert!(npc.nav_path.is_empty());
     assert_eq!(
         npc.follow_target_id,

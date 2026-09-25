@@ -34,7 +34,7 @@ async fn despawning_removes_entity_from_space() {
     let mut mgr = make_castle_mgr();
     spawn_npc(&mut mgr, 200);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Despawning;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Despawning);
     }
     assert!(mgr.get_entity(200).is_some(), "fixture invariant");
     let (tx, _rx) = mpsc::channel(16);
@@ -60,7 +60,7 @@ async fn submit_clears_combat_state_and_holds() {
     let mut mgr = make_castle_mgr();
     spawn_npc(&mut mgr, 200);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Submit;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Submit);
         npc.threat_list.insert(1, 99.0);
         npc.state_field |= BSF_IN_COMBAT;
         npc.last_movement_type = Some(MobMovementType::CombatAdvance); // simulate prior state
@@ -75,7 +75,7 @@ async fn submit_clears_combat_state_and_holds() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Submit);
+    assert_eq!(npc.ai_state(), AiState::Submit);
     assert!(npc.threat_list.is_empty(), "Submit must drop threat");
     assert_eq!(
         npc.state_field & BSF_IN_COMBAT,
@@ -96,7 +96,7 @@ async fn error_state_is_inert_per_tick() {
     let mut mgr = make_castle_mgr();
     spawn_npc(&mut mgr, 200);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Error;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Error);
     }
     let (tx, _rx) = mpsc::channel(16);
 
@@ -108,7 +108,7 @@ async fn error_state_is_inert_per_tick() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Error, "Error must persist");
+    assert_eq!(npc.ai_state(), AiState::Error, "Error must persist");
     assert!(npc.nav_path.is_empty(), "Error must not queue movement");
 }
 
@@ -131,7 +131,7 @@ async fn despawn_handler_records_decision_outcome_on_span() {
     let mut mgr = make_castle_mgr();
     spawn_npc(&mut mgr, 200);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Despawning;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Despawning);
     }
 
     let capture = LogCapture::install();
@@ -164,7 +164,7 @@ async fn error_handler_records_decision_outcome_on_span() {
     let mut mgr = make_castle_mgr();
     spawn_npc(&mut mgr, 200);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Error;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Error);
     }
 
     let capture = LogCapture::install();

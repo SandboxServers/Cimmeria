@@ -160,6 +160,7 @@ mod tests {
     use super::*;
     use crate::cell::combat::state::BSF_IN_COMBAT;
     use crate::cell::combat::threat::aggro::generate_threat;
+    use crate::cell::combat::AggroCause;
     use crate::cell::space_manager::SpaceManager;
 
     fn make_test_space_mgr_with_npc() -> SpaceManager {
@@ -394,7 +395,7 @@ mod tests {
     fn dead_npc_clears_only_player_with_single_threat_source() {
         // 1 player aggroed by 1 mob; mob dies → BSF clears for the player.
         let mut mgr = make_test_space_mgr_with_npc();
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
         assert_ne!(mgr.get_entity(1).unwrap().state_field & BSF_IN_COMBAT, 0);
 
         let to_broadcast = clear_dead_npc_from_all_player_threat(&mut mgr, 100);
@@ -414,8 +415,8 @@ mod tests {
         // 1 player aggroed by 2 mobs; only 1 dies → BSF stays set.
         let mut mgr = make_test_space_mgr_with_npc();
         add_npc(&mut mgr, 101, 25.0);
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
-        let _ = generate_threat(&mut mgr, 1, 101, 50.0);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
+        let _ = generate_threat(&mut mgr, 1, 101, 50.0, AggroCause::Damage);
         assert_eq!(mgr.get_entity(1).unwrap().threatened_mobs.len(), 2);
 
         // NPC 100 dies — player still has 101 on the list.
@@ -443,8 +444,8 @@ mod tests {
         // only fix would have left half-broken (non-killer stays in combat).
         let mut mgr = make_test_space_mgr_with_npc();
         add_player(&mut mgr, 2, 20.0);
-        let _ = generate_threat(&mut mgr, 1, 100, 50.0);
-        let _ = generate_threat(&mut mgr, 2, 100, 50.0);
+        let _ = generate_threat(&mut mgr, 1, 100, 50.0, AggroCause::Damage);
+        let _ = generate_threat(&mut mgr, 2, 100, 50.0, AggroCause::Damage);
 
         let to_broadcast = clear_dead_npc_from_all_player_threat(&mut mgr, 100);
         assert_eq!(to_broadcast.len(), 2);
@@ -462,7 +463,7 @@ mod tests {
         // When 100 dies, no player needs a broadcast.
         let mut mgr = make_test_space_mgr_with_npc();
         add_npc(&mut mgr, 101, 25.0);
-        let _ = generate_threat(&mut mgr, 101, 100, 50.0);
+        let _ = generate_threat(&mut mgr, 101, 100, 50.0, AggroCause::Damage);
 
         let to_broadcast = clear_dead_npc_from_all_player_threat(&mut mgr, 100);
         assert!(to_broadcast.is_empty());

@@ -97,6 +97,24 @@ Check the button type against the window as well: `DUIST_DefaultBlurb` can
 only draw More Info (1) and Accept (2); `DUIST_DefaultDialog` can only draw
 Accept (2) and Generic 1-3 (4, 5, 6); `DUIST_DefaultTutorial` draws none.
 
+`DUIST_DefaultRadio` and `DUIST_DefaultRealization` are the same window as
+`DUIST_DefaultDialog` and take the same button types. Two more review points
+the tables above do not cover:
+
+- **"Final screen" means the highest `dialog_screens.index`, not the highest
+  `screen_id`.** The two agree for every dialog shipping today, which is
+  exactly why the wrong one is easy to write.
+- **Do not key a `dialog_choice` chain on a Tutorial or a type-0
+  (`DUIST_None`) dialog.** Tutorial never draws a cooked button, so the player
+  has nothing to click and nothing can fire the chain.
+
+[`crates/content-engine/tests/dialog_button_linter.rs`](../../crates/content-engine/tests/dialog_button_linter.rs)
+enforces all of the above against the Castle and Castle_CellBlock chain seeds,
+alongside
+[`interact_tag_linter.rs`](../../crates/content-engine/tests/interact_tag_linter.rs)
+for the interaction-type rule at the top of this file. Both parse the seed
+directly and need no database.
+
 ## Inventory consumption (`item_use` / `remove_item` pairing)
 
 `UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, slappacks, mission objects) must include an explicit `remove_item` action. Reusable tools (radios, worn equipment, disguises) must omit it.

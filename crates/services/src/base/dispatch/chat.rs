@@ -17,6 +17,8 @@ use crate::mercury::read_wstring;
 use super::super::ConnectedClientState;
 use super::speaker_flags;
 
+const MAX_DND_MESSAGE_CHARS: usize = 128;
+
 /// `sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)`.
 ///
 /// Routes spatial channels (say/emote/yell) to the CellService with the
@@ -148,7 +150,8 @@ pub(super) fn handle_chat_set_afk(addr: SocketAddr) {
 /// `chatSetDNDMessage(WSTRING message)`.
 ///
 /// Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an empty or 1-char
-/// message clears DND; anything longer sets it.
+/// message clears DND; anything longer sets it. The stored text is truncated
+/// to 128 Unicode scalar values.
 pub(super) fn handle_chat_set_dnd(
     payload: &[u8],
     addr: SocketAddr,
@@ -158,7 +161,9 @@ pub(super) fn handle_chat_set_dnd(
     //
     // Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an
     // empty or 1-char message clears DND; anything longer sets
-    // it. The stored message itself is currently only used as
+    // it, stored truncated to MAX_DND_MESSAGE_CHARS so the per-client
+    // state is bounded (#471 CAT-L-02). Truncating rather than
+    // refusing keeps the player's /dnd visibly taking effect. The stored message itself is currently only used as
     // an "is DND active?" signal for the speaker_flags bit —
     // the auto-reply-tell path is future work.
     //
@@ -182,9 +187,25 @@ pub(super) fn handle_chat_set_dnd(
             return;
         }
     };
+    let message_chars = message.chars().count();
+    let message = match message.char_indices().nth(MAX_DND_MESSAGE_CHARS) {
+        Some((cut, _)) => {
+            tracing::debug!(
+                %addr,
+                message_chars,
+                limit = MAX_DND_MESSAGE_CHARS,
+                reason = "dnd_message_truncated",
+                "chatSetDNDMessage: message exceeds limit -- stored truncated",
+            );
+            let mut message = message;
+            message.truncate(cut);
+            message
+        }
+        None => message,
+    };
     let mut clients = connected.lock().unwrap();
     if let Some(c) = clients.get_mut(&addr) {
-        c.dnd_message = if message.chars().count() > 1 {
+        c.dnd_message = if message_chars > 1 {
             Some(message)
         } else {
             None

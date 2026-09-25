@@ -1,15 +1,18 @@
 # Stargate DHD State Machine
 
 > **Date**: 2026-05-13
+> **Last updated**: 2026-09-19 (static declaration and Rust call-site audit; no new binary or live-client verification)
+> **Type**: Reference
+> **Audience**: Engineers implementing or investigating gate travel
 > **Phase**: V5 Documentation Campaign — W-content-mech Session 5
-> **Confidence**: HIGH for subscriber graph and event inventory; MEDIUM for state ordering (no persistent client state enum found; states inferred from event sequence and subscriber roles)
+> **Confidence**: HIGH for subscriber graph and event inventory; MEDIUM for state ordering and the declaration-derived `onDHDReply` payload; its binary payload and visible UI remain unverified
 > **Sources**: Ghidra decompilation of SGW.exe; `EmitNetOut_onDialGate` at `0x00e2e120`; MemberCallback RTTI; cross-reference to `gate-travel-wire-formats.md`
 
 ---
 
 ## Overview
 
-Gate travel is split across three client classes. `class_GateTravel` (VGateTravel) owns the wire protocol and gate address management. `class_Communicator` (VCommunicator) owns DHD NPC-reply handling. `class_GameProxyPlayer` (VGameProxyPlayer) owns ring transporter destination lists. There is no single monolithic DHD state machine class; state is implicit in the sequence of events.
+Gate travel is split across three client classes. `class_GateTravel` (VGateTravel) owns the wire protocol and gate address management. `class_Communicator` (VCommunicator) has the recorded `onDHDReply` subscriber. `class_GameProxyPlayer` (VGameProxyPlayer) owns ring transporter destination lists. There is no single monolithic DHD state machine class; state is implicit in the sequence of events.
 
 The `USeqEvent_Stargate` (`0x0069fba0`) is a Kismet sequence event used for Unreal Engine in-level scripting; it is a presentation layer and does not drive the protocol.
 
@@ -40,9 +43,9 @@ All confirmed from MemberCallback vfunc_3 RTTI descriptors:
 
 | Event | MemberCallback vfunc_3 | Notes |
 |---|---|---|
-| `Event_NetIn_onDHDReply` | `0x00cf5440` | NPC Dial-Home Device reply — handled by Communicator, NOT GateTravel |
+| `Event_NetIn_onDHDReply` | `0x00cf5440` | Recorded subscriber is VCommunicator; payload and visible UI not established by RTTI |
 
-This is a key architectural finding: `onDHDReply` is a **communication channel** event (NPC speaking back to the player through the DHD), not a gate travel event. It is classified under the same CME channel as chat messages (`onChatJoined`, `onTellSent`, etc.).
+The MemberCallback RTTI associates `Event_NetIn_onDHDReply` with VCommunicator [SGW 0x00cf5440]. This places the recorded subscriber alongside communication events, separately from the VGateTravel subscriber for `onDisplayDHD` [SGW 0x00e2fd90]. It does not establish the exact UI, prove an NPC dialogue flow, or show that an entity ID selects the subscriber. The `.def` describes the method as feedback on attempted DHD use; see the [declaration and implementation audit](#ondhdreply-declaration-and-rust-audit).
 
 ### class_GameProxyPlayer (VGameProxyPlayer) Subscriptions (Ring Transporter)
 
@@ -56,7 +59,7 @@ This is a key architectural finding: `onDHDReply` is a **communication channel**
 
 ### `EmitNetOut_onDialGate` Field Layout (confirmed from decompilation at `0x00e2e120`)
 
-```
+```text
 Event_NetOut_onDialGate {
     TargetAddressId: INT32   // index resolved from 6-glyph address comparison
     SourceAddressId: INT32   // index resolved from this entity's address
@@ -64,6 +67,7 @@ Event_NetOut_onDialGate {
 ```
 
 The emitter at `0x00e2e120` performs:
+
 1. Validates target entity type via `FUN_00e2ba80` + `FUN_00d2d910`
 2. Searches `this+0x18`/`this+0x1c` (active address vector) for 6-glyph match via `FUN_00d2d8f0` (reads one glyph per call, 6 iterations)
 3. Falls through to `this+0x28`/`this+0x2c` (pending address vector) if not found in active
@@ -78,7 +82,7 @@ The 6-glyph Stargate address is stored as a struct at `this+0x18` offset (INT32 
 
 ### `EmitNetOut_SetRingTransporterDestination` Field Layout (confirmed from `0x00aeab70`)
 
-```
+```text
 Event_NetOut_SetRingTransporterDestination {
     aRegionId:      INT32   // ring transporter region
     aDestinationId: INT32   // destination within region
@@ -93,7 +97,7 @@ Constructor: `EventNetOut_SetRingTransporterDestination_Ctor` at `0x00ae9d70` st
 
 No persistent client-side state enum was found. The state machine is implicit:
 
-```
+```text
 STATE: idle
   │
   │  [Server sends onDisplayDHD (PointOfOrigin: UINT8)]
@@ -128,28 +132,27 @@ Incremental address updates (any time):
   → VGateTravel updates local address set (active+pending vectors)
 ```
 
-### DHD Text Interaction (VCommunicator path)
+### `onDHDReply` Declaration and Rust Audit
 
-When a player interacts with a DHD NPC entity (the DHD droid/computer, not the physical Stargate ring):
+**Static audit: 2026-09-19.** The declaration is known; the binary payload and live-client presentation remain unverified.
 
-```
-[Player interacts with DHD NPC]
-       │
-       ▼
-[Server sends: Event_NetIn_onDHDReply]  → VCommunicator handles
-       │  (text response from the DHD NPC — chat/communication channel)
-       │
-       ▼
-[DHD NPC dialogue shown in chat/dialog UI]
-```
+| Evidence | What it establishes | Limit |
+|---|---|---|
+| [SGWPlayer.def](../../../entities/defs/SGWPlayer.def), `ClientMethods/onDHDReply` [DEF SGWPlayer.def:onDHDReply] | One argument: `WSTRING aMessage`; comment: "Give the client feedback on attempted DHD use" | Declared intent and signature, not a verified client payload decoder |
+| [Canonical client dispatch table](../../protocol/client-method-dispatch-table.md), SGWPlayer row 100 | `onDHDReply` is client method **100**, with `WSTRING aMessage` | A method index does not establish when the server emits it |
+| MemberCallback RTTI [SGW 0x00cf5440] | Recorded `Event_NetIn_onDHDReply` subscriber is VCommunicator | Does not verify field decoding, a displayed text widget, or subscriber selection by entity ID |
+| [Rust client-method constants](../../../crates/services/src/cell/client_methods/player.rs), `ON_DHD_REPLY` | Constant exists with value 100 | No production send call uses it in the audited Rust tree |
+| [Wire-log decoder](../../../crates/services/src/wire_log/decoders/generated.rs), `decode_100` | Reads one `wstring()` as `aMessage`; [name table](../../../crates/services/src/wire_log/client_names.rs) names method 100 | Diagnostic decoding is not a production emitter or independent client confirmation |
 
-This is distinct from `onDisplayDHD` which shows the glyph-selection UI.
+A search of `crates/` for `onDHDReply` and `ON_DHD_REPLY` finds the constant, a method-index comment in `mercury/mod.rs`, and the wire-log name/decoder. No production Rust emitter was found. The absence of a named call site is a static audit result, not a packet-capture observation. The declaration contains no NPC or gate entity-ID argument, and neither the declaration nor the recorded subscriber establishes that changing the RPC's entity ID would route it to VCommunicator.
+
+`onDisplayDHD` is a separate glyph-selection method and has a VGateTravel subscriber [SGW 0x00e2fd90]. Do not treat `onDHDReply` as a verified gate-state transition or assume it must be sent on every dial success or failure. Confirm the client handler's field consumption and visible feedback in a live session before specifying the missing send path. The companion [wire-format note](gate-travel-wire-formats.md#ondhdreply--dhd-feedback-declared) records the declared argument without claiming a verified byte layout.
 
 ---
 
 ## Ring Transporter Chain (Extended from gate-travel-wire-formats.md)
 
-```
+```text
 [Player approaches ring transporter platform]
        │
        ▼
@@ -178,7 +181,7 @@ This is distinct from `onDisplayDHD` which shows the glyph-selection UI.
 
 ### 2. onDHDReply is VCommunicator, not VGateTravel
 
-`gate-travel-wire-formats.md` does not explicitly classify `onDHDReply` under a client class. Confirmed: VCommunicator handles it alongside chat events (`onChatJoined`, `onTellSent`). It is a narrative/dialogue event, not a state transition event for the gate machine.
+The recorded MemberCallback RTTI identifies VCommunicator at `0x00cf5440`, separately from VGateTravel. The [static audit above](#ondhdreply-declaration-and-rust-audit) distinguishes that subscriber evidence from the declared `WSTRING aMessage` and the still-unverified payload decoding and UI behavior.
 
 ### 3. onDisplayDHD is VGateTravel
 
@@ -214,13 +217,13 @@ The client stores Stargate addresses as 6-element arrays of UINT8 glyphs. The re
 
 1. **StargateTriggerFailed wire fields** — event is confirmed present (RTTI + registration stub) but no emitter was found. Likely: a failure reason code (INT8 or INT32) or possibly zero-argument. Needs server-side `.py` or a live packet capture.
 2. **Gate address struct layout** — the 6-glyph address is resolved from `this+0x18` (vector of pointers). The pointed-to struct layout is partially known: `FUN_00d2d8f0(ptr, index)` reads one UINT8 glyph. Full struct size unknown.
-3. **onDHDReply wire fields** — `Event_NetIn_onDHDReply` fields not confirmed from binary. Likely similar to other NPC dialogue events in VCommunicator.
+3. **onDHDReply binary payload and UI** — the declaration is `WSTRING aMessage` at client method 100, but the client decoder and presentation path have not been confirmed from binary or live testing. No production Rust emitter was found in the static audit. Trace the complete client handler and verify visible feedback before implementing a send path.
 4. **Pending address vector** (`this+0x28`/`0x2c`) — what populates the pending list vs active list (`this+0x18`/`0x1c`)? Hypothesis: pending = addresses player knows but the local gate can't dial yet (e.g., requires server-side gate to be active). Needs Ghidra cross-reference on `updateStargateAddress` handler.
 
 ---
 
 ## Related Documents
 
-- [gate-travel-wire-formats.md](gate-travel-wire-formats.md) — wire format tables (extend with StargateTriggerFailed, ring transporter fields, VCommunicator classification of onDHDReply)
+- [gate-travel-wire-formats.md](gate-travel-wire-formats.md) — wire format tables and the declaration-derived `onDHDReply` signature
 - [cme-event-signal.md](cme-event-signal.md) — CME EventSignal pipeline
 - [right-click-routing-on-corpse.md](right-click-routing-on-corpse.md) — VGateTravel entity interaction context

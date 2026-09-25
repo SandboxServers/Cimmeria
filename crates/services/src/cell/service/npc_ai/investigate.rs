@@ -47,9 +47,14 @@ pub(super) async fn npc_ai_investigate(
     // leave Investigating this tick.
     let Some(poi_pos) = poi else {
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = AiState::Idle;
             npc.investigate_until = None;
         }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            AiState::Idle,
+            super::AiTransitionReason::InvestigateNoPoi,
+        );
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     };
@@ -105,10 +110,15 @@ pub(super) async fn npc_ai_investigate(
             Some(_) => {
                 // Dwell elapsed → return to Idle.
                 if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                    npc.ai_state = AiState::Idle;
                     npc.poi = None;
                     npc.investigate_until = None;
                 }
+                super::set_ai_state(
+                    space_mgr,
+                    npc_id,
+                    AiState::Idle,
+                    super::AiTransitionReason::InvestigateDone,
+                );
                 crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
             }
         }

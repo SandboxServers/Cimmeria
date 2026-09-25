@@ -200,6 +200,16 @@ pub(crate) async fn handle_respawn(
     // set is implicitly reset there; same-world has to do it manually.
     entity.threatened_mobs.clear();
 
+    // `offered_dialog_ids` is deliberately NOT cleared here, unlike
+    // everything else in this block. It is not combat state: the offers
+    // were made to this same player in this same session, each is still
+    // single-use, and each choice chain still evaluates its own
+    // conditions when answered. Clearing would destroy exactly the case
+    // DU-08 exists to protect — a zero-button dialog whose late
+    // `(id, -1)` close is interleaved with a death — and buy no
+    // authority in exchange. Cross-world respawn destroys the entity, so
+    // the set goes with it there.
+
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
     // Authorized teleport (death → respawn point): reseed the movement-
     // validator clock so the first post-respawn client packet isn't

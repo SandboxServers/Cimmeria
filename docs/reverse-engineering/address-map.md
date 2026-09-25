@@ -1205,7 +1205,17 @@ Cross-world: `CellToBaseMsg::GateTravel` — full instance teardown.
 
 ## Cover System
 
-See [`findings/cover-system.md`](findings/cover-system.md) for full analysis.
+See [`findings/cover-system.md`](findings/cover-system.md) for full analysis, and
+[`findings/cover-world-placement.md`](findings/cover-world-placement.md) (NA20, 2026-09-24)
+for where Castle/Castle_CellBlock's actual placed cover nodes live: **not**
+`covernodes_*.pak`, and not `CA-Prebuilt.upk`/`GA-Arch.upk` (a case-insensitive
+string scan of both files for `covernode` returns zero hits — that premise was
+wrong). The real per-level data is `ASGWSpecCoverNode` actors and
+`StaticMeshActor.CoverNodeArray` groups baked directly into the `.umap` chunks,
+already in absolute UE3 world space (4,024 nodes across the two maps, no
+owner-transform composition needed for either pattern found). This does not
+change `USGWCoverNodeComponent_SpawnCoverNode` below, which is likely the
+separate prefab-pak pipeline (unreconciled — see the finding's Open Questions).
 
 ### Cover Weight Event Handlers (Client → Server)
 
@@ -1340,14 +1350,14 @@ See [`findings/npc-movement-pathfinding.md`](findings/npc-movement-pathfinding.m
 
 Key finding: No dedicated CME move-emitter functions exist. Server streams position via BigWorld avatarUpdate wire (msg 0x10–0x2F / 0x30–0x31). Client receives via `onEntityMoveWithError`, converts BW→UE3 (×100 + axis swap), and renders via `GameEntityBase::ApplyTransform` with optional physics interpolation.
 
-**Server gap (Cimmeria)**: `npc_ai_leash()` snaps NPC to spawn instantly without sending `movementType=2` + waypath. `npc_movement_tick()` sends raw AoI position updates without `movementType=1` (CombatAdvance) + path payload.
+**Server gap (Cimmeria)**: `npc_ai_leash()` snaps NPC to spawn instantly without sending `movementType=5` (Leash) + waypath. `npc_movement_tick()` sends raw AoI position updates without `movementType=1` (CombatAdvance) + path payload.
 
 ### Wire-to-UE3 conversion (confirmed in 0x00dd1650)
 
 | Constant | Address | Value |
 |----------|---------|-------|
 | `BW_TO_UE3_SCALE` | `0x018cad90` | `100.0f` (BW meters → UE3 cm) |
-| Position sentinel | `DAT_019d1a44` | FLT_MAX / ∞ ("use current component") |
+| Position sentinel | `DAT_019d1a44` | `-13000.0f`, bytes `00 20 4b c6` ("use current component"; corrected 2026-09-24 from FLT_MAX) |
 
 Axis swap: `UE3_X = BW_Z × 100`, `UE3_Y = BW_X × 100`, `UE3_Z = BW_Y × 100`
 
@@ -1357,11 +1367,13 @@ Axis swap: `UE3_X = BW_Z × 100`, `UE3_Y = BW_X × 100`, `UE3_Z = BW_Y × 100`
 |-------|-------|------|
 | CoverAdvance | 0 | Move toward cover node |
 | CombatAdvance | 1 | Move toward combat target |
-| Leash | 2 | Return to spawn point |
-| Patrol | 3 | Follow patrol route |
-| Follow | 4 | Follow player/squad leader |
-| Wander | 5 | Random idle wander |
+| Patrol | 2 | Follow patrol route |
+| Follow | 3 | Follow player/squad leader |
+| Wander | 4 | Random idle wander |
+| Leash | 5 | Return to spawn point |
 | Avoid | 6 | Obstacle/collision avoidance |
+
+Corrected 2026-09-24: Leash is case 5 (`0x00debad0`), Patrol is case 2 (`0x00debb04`), matching `EMobMovementType`. See [`findings/npc-movement-pathfinding.md`](findings/npc-movement-pathfinding.md) §3.
 
 ### NPC Movement Functions
 

@@ -226,6 +226,13 @@ Both branches converge: both call `displayDialog(None, 2298)`, `missions.accept(
 
 **Dialog IDs**: 5021, 2300, 5020, 2299, 2298
 
+**Zero-button dialogs**: 2300, 5021 and 5020 never had a `dialog_screen_buttons` row, and
+packet DU-02a stripped 2299's five Accept buttons to match. All four now advance only
+through the close path, which the 2009 client reports as `dialogButtonChoice(id, -1)` when
+and only when the dialog carries no button at all. **Adding a button to any of them
+silently breaks the chain that keys on it** unless the button sits on the dialog's final
+screen. See [dialog-ui-client-contract.md](dialog-ui-client-contract.md).
+
 **Minigames**: Livewire (cell door hack)
 
 **Sequences**: 1749
@@ -426,6 +433,13 @@ self.n154_var_Player.missions.accept(641)
 
 **Dialog IDs**: 5023 (Jaffa), 3999 (Human), 3998 (completion)
 
+**Zero-button dialogs**: DU-02a stripped every button from 4001, 5022, 3999 and 5023, so
+all four fire their chain from the close path (`dialogButtonChoice(id, -1)`). 3999 was
+broken before that: its "Receive Item" buttons stopped on screen 96258, two screens short
+of the final 96260, so a player who read Marsh's second briefing to the end had nothing to
+press and chain 1058 never fired. The label was always misleading — item 21 is granted by
+chain 1055's `add_item` on the `Preparation_SMG1A` locker interact, never by the dialog.
+
 **Minigames**: Livewire (terminal hack)
 
 **Live data-driven shape (chains 1055 + 1066)** [CONFIRMED]
@@ -470,13 +484,13 @@ self.n35_var_Player.missions.accept(680)
 **Triggers**:
 - `entity.interact.tag::Preparation_RingSwitch` -- use the ring transporter switch
 - `teleport::in` (regionId 3) -- teleport arrival
-- `client_hinted_region::Castle_Cellblock.Region9` -- entering the mess hall
+- `client_hinted_region::Castle_Cellblock.Region9` -- entering the corridor outside the topside ring room; the Mess Hall itself is Region3
 
 **Mission flow**:
 1. Player interacts with `Preparation_RingSwitch` when step 2344 is active:
    - Interact with ring transporter region 2 (teleport player)
 2. Player arrives via teleport (regionId 3): advance to step 2345
-3. Player enters Region9 (Mess Hall): if mission 681 is not active, accept mission 681
+3. Player enters Region9 (the ring-room corridor, on the way to the Mess Hall): if mission 681 is not active, accept mission 681
 
 **Entity tags**: `Preparation_RingSwitch`
 
@@ -516,7 +530,7 @@ if args['entering']:
 **Triggers**:
 - `entity.dead.tag::MessHall_Guard1` -- guard 1 killed
 - `entity.dead.tag::MessHall_Guard2` -- guard 2 killed
-- `client_hinted_region::Castle_Cellblock.Region9` -- leaving the mess hall
+- `client_hinted_region::Castle_Cellblock.Region9` -- leaving the corridor outside the topside ring room; the Mess Hall itself is Region3
 
 **Mission flow**:
 1. Kill counter initialized to 0, target = 2

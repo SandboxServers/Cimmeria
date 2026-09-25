@@ -336,10 +336,12 @@ async fn chain_6501_fails_closed_without_a_world_context() {
 /// on `interact_tag 'CmdCenter_Marsh'`, and `resolve_event` APPENDS every
 /// matching chain's actions with no first-match break — so without the
 /// gate one click would resolve both `display_dialog 4576` and
-/// `display_dialog 4465`, the second `send_dialog_display` would re-pin
-/// `open_dialog_id`, and the player would never see the letter blurb
-/// while its `remove_item` and `complete_mission` still ran. Silent
-/// content loss, not a crash.
+/// `display_dialog 4465`, and the client — which holds one non-tutorial
+/// dialog at a time — would discard the first before the player could
+/// read it, while its `remove_item` and `complete_mission` still ran.
+/// Silent content loss, not a crash. (DU-08 made the server accept the
+/// discarded dialog's late close, so its own chain is no longer lost;
+/// the unread blurb still is.)
 #[tokio::test]
 async fn chain_6501_yields_to_the_praxis_turn_in() {
     let ctx = marsh_ctx(CMD_CENTER, "active", "active", "active");

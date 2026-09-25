@@ -191,7 +191,7 @@ async fn lethal_hit_against_npc_emits_grant_xp_and_state_flip() {
     );
     // NPC AI transitioned to Dead.
     assert!(matches!(
-        mgr.get_entity(2).unwrap().ai_state,
+        mgr.get_entity(2).unwrap().ai_state(),
         cimmeria_entity::cell_entity::AiState::Dead
     ));
 }

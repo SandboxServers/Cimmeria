@@ -112,6 +112,22 @@ impl CellService {
             }
         }
 
+        // Load dialog screen text for the `npc_bark` content action. An
+        // empty cache makes every bark warn and send nothing rather than
+        // speak a wrong line, so WARN is the right level: the failure is
+        // contained, but no companion line reaches any player until it is
+        // fixed.
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_dialog_screen_text(pool).await {
+                Ok(text) => {
+                    space_mgr.dialog_screen_text = text;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load dialog screen text: {e}");
+                }
+            }
+        }
+
         // Load mission definitions cache for AcceptMission content actions
         if let Some(ref pool) = self.db_pool {
             match spawner::load_mission_defs(pool).await {

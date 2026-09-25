@@ -24,7 +24,8 @@
 //!
 //! - [`dispatch`] — the [`npc_ai_tick`] state-machine entry and the
 //!   [`npc_ai_retry_sweep`] fast-retry pass.
-//! - [`fight`] — the Fighting handler and Idle-auto-aggro seed.
+//! - [`fight`] — the Fighting handler.
+//! - [`idle_aggro`] — the Idle auto-aggro scan that seeds Fighting.
 //! - [`ability_select`] — ability bucket choice, range resolution,
 //!   and the min-range backup-waypoint geometry.
 //! - [`patrol`] / [`wander`] / [`investigate`] / [`follow`] — the
@@ -34,16 +35,23 @@
 //!   submit, error).
 //! - [`path_failure`] — the one throttled emitter every state above
 //!   uses when `find_path` gives it nothing usable.
+//! - [`aggro_acquired`] — the `npc_ai.aggro event=acquired` row and
+//!   its cause-to-transition-reason mapping.
+//! - [`transition`] — `set_ai_state`, the single writer of `ai_state`,
+//!   which emits `npc_ai.transition` and `npc_ai_transitions_total`.
 
 mod ability_select;
+mod aggro_acquired;
 mod dispatch;
 mod fight;
 mod follow;
+mod idle_aggro;
 mod investigate;
 mod leash;
 mod lifecycle;
 mod path_failure;
 mod patrol;
+mod transition;
 mod wander;
 
 // Re-export discipline: external callers reach these via
@@ -71,6 +79,19 @@ mod wander;
 #[cfg(test)]
 pub(in crate::cell) use ability_select::{choose_npc_ability, choose_npc_ability_within_reach};
 pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
+
+// The AI-state transition helper is the only way to change `ai_state`
+// (the field is private in the entity crate). Callers across `cell` --
+// combat, the content executor, the GM console, the respawn tick -- reach
+// it through this re-export.
+pub(in crate::cell) use aggro_acquired::log_aggro_acquired;
+pub(in crate::cell) use transition::{
+    set_ai_state, set_ai_state_on, world_label, AiTransitionReason,
+};
+
+// Test fixtures arrange a starting state without a transition row.
+#[cfg(test)]
+pub(in crate::cell) use transition::force_ai_state;
 
 // Test-only re-export: the sibling `tests/npc_ai.rs` exercises the
 // private `compute_backup_waypoint` degenerate branch through this

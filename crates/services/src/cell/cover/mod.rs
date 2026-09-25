@@ -5,9 +5,10 @@
 //! `tools/ue3_extract_cover_nodes.py`), indexes it spatially, and provides
 //! reservation + scoring primitives for the NPC AI cover-advance behavior.
 //!
-//! See `docs/architecture/cover-system.md` for the design overview and
-//! `docs/reverse-engineering/findings/cover-system.md` for the binary
+//! See `docs/reverse-engineering/findings/cover-system.md` for the binary
 //! format + wire-surface reverse-engineering that motivated the design.
+//! There is no architecture doc yet; the NPC AI restoration packet NA22
+//! writes `docs/architecture/cover-system.md`.
 //!
 //! Submodules:
 //! - [`types`] — `CoverNode`, `CoverSetMeta`, `CoverHeight`, `CoverQuality`,

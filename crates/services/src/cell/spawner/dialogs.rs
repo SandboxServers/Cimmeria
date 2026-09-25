@@ -1,7 +1,10 @@
-//! Dialog set map cache + monologue dialog id cache.
+//! Dialog set map cache, monologue dialog id cache, dialog screen text cache.
 //!
 //! - `load_dialog_set_maps` maps `dialog_set_map_id → (dialog_id, interaction_flags)`
 //!   for `add_dialog_set` content actions.
+//! - `load_dialog_screen_text` maps `screen_id → text` so the `npc_bark`
+//!   content action can speak an original 2009 line without a content
+//!   author retyping it into the seed.
 //! - `load_monologue_dialog_ids` returns the set of `dialog_id` values whose
 //!   every screen has `speaker_id = 0` — player-narration / inner-thought
 //!   dialogs that have no NPC speaker. The executor uses this to decide
@@ -122,4 +125,56 @@ pub async fn load_monologue_dialog_ids(pool: &PgPool) -> Result<HashSet<i32>, sq
 
     tracing::info!(count = ids.len(), "Loaded monologue dialog id cache");
     Ok(ids)
+}
+
+/// Load `screen_id → text` for every row in `resources.dialog_screens`.
+///
+/// The `npc_bark` content action names a `screen_id` and nothing else;
+/// the executor resolves the line here. Keeping the text server-side is
+/// the whole point of the verb: the bark lines are shipped 2009 content
+/// (dialog 5019 screens 96351-96354 are Col. Marsh's escort lines), and
+/// a `"text"` param would let an author's retype drift from the
+/// catalogue with nothing to catch it.
+///
+/// Loaded once at cell startup, alongside the ~20 other resource caches,
+/// because the content executor has no DB pool at action time — a bark
+/// cannot afford a cell→base round trip mid-chain (it would break the
+/// chain's ordered action list, the same reason `spawn_entity` caches
+/// `entity_templates`).
+///
+/// `screen_id` is globally unique across the 13,467 seeded rows, so this
+/// is a flat map rather than keying on `(dialog_id, screen_id)`. A future
+/// duplicate would be a seed defect, not a shape the executor should
+/// disambiguate, so it is reported rather than silently last-wins.
+pub async fn load_dialog_screen_text(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, String>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query("SELECT screen_id, text FROM resources.dialog_screens")
+        .fetch_all(pool)
+        .await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    let mut duplicates = 0usize;
+    for r in &rows {
+        let screen_id: i32 = r.get("screen_id");
+        let text: String = r.get("text");
+        if map.insert(screen_id, text).is_some() {
+            duplicates += 1;
+        }
+    }
+
+    if duplicates > 0 {
+        // A duplicate means a `npc_bark` naming that screen_id speaks
+        // whichever row the query happened to return last — not a
+        // failure the executor can detect, so surface it at load.
+        tracing::warn!(
+            duplicates,
+            "dialog_screens has duplicate screen_id values -- npc_bark text \
+             resolution for those ids is order-dependent"
+        );
+    }
+    tracing::info!(count = map.len(), "Loaded dialog screen text cache");
+    Ok(map)
 }

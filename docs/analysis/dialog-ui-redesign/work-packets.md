@@ -4,7 +4,7 @@
 > Created: 2026-09-21. Source brief: external handoff "Castle_CellBlock + Castle Dialog UI Reassignment" (not imported; its usable content is restated here).
 > Companions: [Cellblock ledger](../castle-cellblock-rebuild/work-packets.md), [Castle ledger](../castle-rebuild/work-packets.md), [m706-708 worknote](../castle-rebuild/worknotes/m706-708.md) (engine fact 1), [TESTING.md](../../../TESTING.md).
 
-This ledger reuses the dispatch, ownership, worknote and acceptance rules of the [legacy command parity ledger](../legacy-command-parity/work-packets.md#dispatch-rules). Status vocabulary is the Castle ledger's. Nothing here has been implemented, built or tested in the client.
+This ledger reuses the dispatch, ownership, worknote and acceptance rules of the [legacy command parity ledger](../legacy-command-parity/work-packets.md#dispatch-rules). Status vocabulary is the Castle ledger's. Wave 0 and Wave 1 (DU-01, DU-L, DU-02a, DU-02b, DU-03, DU-07, DU-08) were merged on 2026-09-25; none of it has been tested in the client yet (DU-UAT).
 
 ## Client Contract
 
@@ -24,7 +24,7 @@ Every packet is bound by these facts. Each was read from the client, not inferre
 | F10 | `IsImmediate` alone decides display versus queue, for every screen type. `1` opens the window. `0` raises `DialogAvailable`, and Lua only has lure queues for Radio (radio icon), Realization (idea icon) and Tutorial. A Blurb or Dialog type sent with `IsImmediate=0` silently vanishes. Opening a lure is local only; the server is told nothing. Cimmeria always sends `1`, as the legacy Python did. | `FUN_00d25900`, `FUN_00d25200`, `FUN_00d25160` in SGW.exe; `Dialog/PushMission.lua:3-4`, `Dialog/DialogSetup.lua:93-151`; `deprecated/python/cell/SGWPlayer.py:718` |
 | F11 | No shipped dialog uses type 4 or 5. Census: type 2 = 4,279, type 1 = 983, type 0 = 128, type 3 = 15. Types 4 and 5 are unexercised by original content. | PAK census 2026-09-21 |
 | F12 | A working non-modal text route already exists: `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`, used by chat and GM feedback (owner-confirmed working). Channels include `CHAN_say` (0) and `CHAN_splash` (11). | `entities/defs/interfaces/Communicator.def:48-53`, `crates/services/src/cell/chat.rs:49,167`, `ChatWindow/ChatWindow.lua:93-118` |
-| F13 | The client holds one non-tutorial and one tutorial dialog at a time. A second non-tutorial display EVICTS the first through the discard path, so an evicted zero-button dialog sends its `-1` AFTER the server has re-pinned to the new dialog. The server single-pins (`open_dialog_id`) and rejects that choice, so the evicted dialog's chain never fires. The legacy Python kept a dict of displayed dialogs. A queued dialog opened later hits the same rejection. | `FUN_00d24f10` in SGW.exe; `cell_methods/player/interaction/dialog.rs:36-55`; `deprecated/python/cell/SGWPlayer.py` `displayedDialogs` |
+| F13 | The client holds one non-tutorial and one tutorial dialog at a time. A second non-tutorial display EVICTS the first through the discard path, so an evicted zero-button dialog sends its `-1` AFTER the server has re-pinned to the new dialog. The server single-pinned (`open_dialog_id`) and rejected that choice, so the evicted dialog's chain never fired (fixed by DU-08, PR #770). The legacy Python kept a dict of displayed dialogs. A queued dialog opened later hits the same rejection. | `FUN_00d24f10` in SGW.exe; `cell_methods/player/interaction/dialog.rs:36-55`; `deprecated/python/cell/SGWPlayer.py` `displayedDialogs` |
 | F14 | A button click puts the cooked `ButtonID` on the wire, not the button's index: 8 for Accept, 9 for More Info, 70 for Receive Item, 71 for Take Missions. Colo telemetry also shows players clicking More Info on Blurb 2298, which does nothing today. | SigNoz `dialogButtonChoice` logs, 7 days to 2026-09-21; local `logs/server.log` shows `-1` for closes of 2982, 3995, 3996 |
 
 Consequences that overrule the brief:
@@ -68,7 +68,7 @@ Only rows that change are listed. Every other dialog in the brief already matche
 | 2309 | Accept on 3 of 3 | none | no | DU-02a | cosmetic |
 | 2516 | Accept | none | no | DU-02a | narration |
 | 5859 | Accept (Blurb) | none | no | DU-02a | objective update, X-close only |
-| 2305, 4000, 2308, 2518 | Accept, some with More Info (Blurb) | D-DU1 | no | DU-02a | shown AFTER accept by chains 1151-1154, so both buttons are dead |
+| 2305, 4000, 2308, 2518 | Accept, some with More Info (Blurb) | none (D-DU1) | no | DU-02a | shown AFTER accept by chains 1151-1154, so both buttons are dead; X-close only |
 | 2573 | Accept on 7 of 7 | Accept on final 113558 only | yes (1204) | DU-02b | Decline appears with it (F6) |
 | 5861 | Accept on 5 of 8 | Accept on final 96789 only | yes (1205) | DU-02b | closes D-CA13 |
 | 2576 | Take Missions on 3 of 5 | Take Missions on final 96825 only | yes (1237-1239) | DU-02b | closes 701 seed GAP 3 |
@@ -135,7 +135,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-01
 
-**Status:** Ready. **Scope title:** patch-mode dialog overrides with button emission. **Agent:** rust-gameserver-dev.
+**Status:** UATPending (merged 2026-09-25, [PR #767](https://github.com/SandboxServers/Cimmeria/pull/767) 14812a24; worknote [worknotes/du01.md](worknotes/du01.md)). Review hardened the parser against nested or misplaced elements and stray character data, and split the tests into `patch_tests/mod.rs` and `patch_tests/batch.rs`. Shipped layout: `crates/services/src/base/dialog_overrides/` with `mod.rs`, `emit.rs`, `parse.rs`, `patch.rs`, `patch_tests/` and the two zone tables `patches_cellblock.rs` and `patches_castle.rs` (NOT the `dialog_patches_*.rs` names below). Button attributes are emitted as `ButtonType ButtonID Text`, the order all 4,349 shipped buttons use. **Scope title:** patch-mode dialog overrides with button emission. **Agent:** rust-gameserver-dev.
 **Entries:** `crates/services/src/base/dialog_overrides.rs`, `base/resources/mod.rs:203-223,364-408`, `docs/engine/cooked-data-pak-format.md` (Server-Build shape), `docs/architecture/mission-pak-overrides.md`.
 **Scope:** add a second override kind that transforms the canonical cooked entry instead of re-authoring its text. Shape: `DialogPatch { dialog_id, ui_screen_type: Option<u32>, buttons: ButtonPlan }` with `ButtonPlan::{Keep, StripAll, OnlyOn { screen_id, button_type, button_id, text }}`. The patcher parses the QA-build entry (SOAP namespaces present), keeps every `Screens` row byte-for-byte in text and speaker, preserves button order within a screen (the client resolves clicks by array position), applies the plan, and re-emits Server-Build XML through one shared emitter that now writes nested `<Buttons>`. Extend `DialogScreen` with an optional button list so full regenerations can carry buttons too. Fold patches into `compute_dialog_metadata_bump`. A patch whose dialog id or `screen_id` is absent from the loaded PAK must `warn!` and skip, never panic (negative-logging convention). Keep patch tables in one file per zone (`dialog_patches_cellblock.rs`, `dialog_patches_castle.rs`) so Wave 1 packets never touch the same file. Ship with both tables empty.
 **Acceptance:** byte-exact emitter tests for a screen with zero, one and two buttons; patch tests on inline QA-shape fixtures of 2576 and 3999 proving `OnlyOn` leaves exactly one button on the named screen and `StripAll` leaves none while text is unchanged; a guard that fails if the missing-screen `warn!` is removed (`LogCapture`); bump changes when a plan changes and is stable across runs. The PAK is not in git, so no test may read `data/cache/`.
@@ -143,7 +143,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-L
 
-**Status:** Ready. **Scope title:** dialog button linter. **Agent:** testing-validation-engineer.
+**Status:** Integrated (merged 2026-09-25, [PR #768](https://github.com/SandboxServers/Cimmeria/pull/768) ad870efc; worknote [worknotes/dul.md](worknotes/dul.md)). Shipped as `crates/content-engine/tests/dialog_button_linter.rs` plus a `dialog_button_linter/` module dir; rules R1-R4. DU-02a and DU-02b emptied the R1 allowlist (3999, 5861, 2576) and the layout pin with it. Scope is the four Castle / Cellblock chain seeds; widening to the Harset and SGC_W1 seeds was green on 2026-09-25 and is a follow-up. **Scope title:** dialog button linter. **Agent:** testing-validation-engineer.
 **Entries:** `crates/content-engine/tests/interact_tag_linter.rs` (precedent), `db/resources/Dialogs/Seed/dialog_screen_buttons.sql`, `dialog_screens.sql`, the four `castle_*_chains.sql` files.
 **Scope:** a seed-parsing test, no DB, enforcing the two hard rules in Client Contract for every dialog id that keys a `dialog_choice` chain in the Castle and Cellblock seed files. Carry an explicit allowlist for 3999, 5861 and 2576 that DU-02a and DU-02b must empty. Add a second check, which is a correctness rule and not style (F7: an undrawable button still suppresses the close event): a Blurb may only carry button types 1 and 2; a Dialog, Radio or Realization window may only carry types 2, 4, 5 and 6; a chain-keyed dialog may not be a Tutorial or `DUIST_None` type.
 **Acceptance:** linter fails when a button row is added to 5003; fails when 2576's final-screen button is removed after DU-02b; the allowlist is empty at the end of Wave 1.
@@ -151,15 +151,15 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-02a
 
-**Status:** BlockedDependency (DU-01). **Scope title:** Cellblock button patches. **Review:** mission-systems-advisor.
+**Status:** UATPending (merged 2026-09-25, [PR #773](https://github.com/SandboxServers/Cimmeria/pull/773) 5a1f5121; worknote [worknotes/du02a.md](worknotes/du02a.md); UAT T30 and T31 in the Cellblock UAT guide). Twelve `StripAll` rows; the 2516 to 5859 eviction delay (chains 1161/1172) is left for an owner content decision. **Scope title:** Cellblock button patches. **Review:** mission-systems-advisor.
 **Entries:** Target Matrix rows 2299 to 2518; `castle_cellblock_chains.sql` chains keyed on 2299, 4001, 5022, 3999, 5023; chains 1151-1154, 1161, 1172.
-**Scope:** `StripAll` patches for 2299, 4001, 5022, 3999, 5023, 2309, 2516 and 5859; delete the matching `dialog_screen_buttons.sql` rows in the same commit. Apply D-DU1 to the four post-accept blurbs. Confirm from the chain seeds that the weapon behind "Receive Item" is granted by the 3999/5023 `dialog_choice` chain or earlier, and record which.
+**Scope:** `StripAll` patches for 2299, 4001, 5022, 3999, 5023, 2309, 2516 and 5859; delete the matching `dialog_screen_buttons.sql` rows in the same commit. Apply D-DU1 (resolved: `StripAll`) to the four post-accept blurbs 2305, 4000, 2308 and 2518. Confirm from the chain seeds that the weapon behind "Receive Item" is granted by the 3999/5023 `dialog_choice` chain or earlier, and record which.
 **Acceptance:** existing chain-replay tests for missions 638, 640 and 641 stay green unmodified (chains match on dialog id only, F9); new replay cases feed `button_id = -1` for each stripped keyed dialog and assert the same resolved actions; patch-versus-seed agreement test; DU-L allowlist entry for 3999 removed.
 **Exclude:** type changes (DU-05); any change to 2300, 5021, 5020.
 
 ### DU-02b
 
-**Status:** BlockedDependency (DU-01). **Scope title:** Castle button patches. **Review:** mission-systems-advisor.
+**Status:** UATPending (merged 2026-09-25, [PR #771](https://github.com/SandboxServers/Cimmeria/pull/771) c9958ec5; worknote [worknotes/du02b.md](worknotes/du02b.md)). Three `OnlyOn` rows (2573, 5861, 2576); GAP 3 and D-CA13 closed. **Scope title:** Castle button patches. **Review:** mission-systems-advisor.
 **Entries:** Target Matrix rows 2573, 5861, 2576; `castle_701_chains.sql` chains 1204, 1205, 1237-1239 and its GAP 3 note; Castle audit D-CA13.
 **Scope:** `OnlyOn` patches: 2573 Accept (type 2, id 8) on 113558; 5861 Accept on 96789; 2576 Take Missions (type 4, id 71) on 96825. Move the seed button rows to match. Update the GAP 3 and D-CA13 notes to resolved.
 **Acceptance:** replay tests for 701 accept and the 2576 turn-in unchanged and green; patch-versus-seed agreement test; DU-L allowlist entries for 5861 and 2576 removed. UAT row: read 2576 to the last screen, press Take Missions, missions 702 and 703 arrive; close early with X, nothing is granted and Copplemann can be re-asked.
@@ -167,7 +167,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-03
 
-**Status:** Ready. **Scope title:** non-modal NPC bark action. **Agent:** rust-gameserver-dev; coordinator lands the `executor/mod.rs` arm.
+**Status:** UATPending (merged 2026-09-25, [PR #769](https://github.com/SandboxServers/Cimmeria/pull/769) 656694a3; worknote [worknotes/du03.md](worknotes/du03.md)). Action tests moved to `actions_tests.rs` to keep `actions.rs` under the hard cap. **Scope title:** non-modal NPC bark action. **Agent:** rust-gameserver-dev; coordinator lands the `executor/mod.rs` arm.
 **Entries:** `crates/services/src/cell/chat.rs` (payload builder for method 28), `crates/content-engine/src/loader/action.rs`, `cell/content/executor/`, `db/resources/Dialogs/Seed/dialog_screens.sql` and `speakers.sql`, F12.
 **Scope:** new action `npc_bark` with params `{ "screen_id": N, "speaker": "Col. Marsh", "channel": "say" }`. The executor resolves the line text server-side from the `dialog_screens` resource row and sends `onPlayerCommunication(speaker, 0, channel, text)` to the triggering player only. The speaker is an explicit param because 5019's screens carry `SpeakerID 0`. Do not route through the `SystemMessage` stub, whose wire format is still unknown.
 **Acceptance:** byte-exact wire test of the method-28 payload; loader unit test; chain-replay test for a fixture chain; a guard that an unknown `screen_id` warns and sends nothing. UAT row: line appears in the chat window as Marsh while the player keeps moving and firing; no window opens.
@@ -175,14 +175,14 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-08
 
-**Status:** Ready. **Scope title:** offered-dialog set replaces the single open-dialog pin. **Agents:** rust-gameserver-dev, server-authority-enforcer review.
+**Status:** UATPending (merged 2026-09-25, [PR #770](https://github.com/SandboxServers/Cimmeria/pull/770) 35886693; worknote [worknotes/du08.md](worknotes/du08.md)). Bounded set in `crates/entity/src/cell_entity/offered_dialogs.rs`; evict-then-close path not yet seen in the client. **Scope title:** offered-dialog set replaces the single open-dialog pin. **Agents:** rust-gameserver-dev, server-authority-enforcer review.
 **Entries:** `cell/interactions/dialog.rs:42-49`, `cell_methods/player/interaction/dialog.rs:25-55`, security finding CAT-J-01 (#479), F13.
 **Scope:** replace `open_dialog_id: Option<i32>` with a small bounded set of offered dialog ids. `send_dialog_display` inserts; a valid choice removes exactly that id (still one-shot); logout and world change clear it. This fixes a live defect independent of the lure: when the server displays B while zero-button A is open, the client evicts A and sends `(A, -1)`, which today is rejected, so A's chain is lost. Bound the set (eight is ample: the client holds two active dialogs plus lures) and evict the oldest with a `warn!`.
 **Acceptance:** authority tests: forged id still rejected; replayed id rejected; display A, display B, then choice `(A, -1)` is accepted and fires A's chain (this case must FAIL on today's code); then the choice for B is accepted; set cleared on logout; overflow warns. Audit every chain in the Castle and Cellblock seeds that displays a dialog from a `dialog_choice` chain and record whether a now-accepted eviction changes behaviour.
 
 ### DU-04
 
-**Status:** BlockedDependency (DU-00, DU-01, DU-08). **Scope title:** Radio lure delivery. **Agents:** rust-gameserver-dev, mission-systems-advisor for the chain edits.
+**Status:** BlockedDependency (DU-00; DU-01 and DU-08 merged 2026-09-25). **Scope title:** Radio lure delivery. **Agents:** rust-gameserver-dev, mission-systems-advisor for the chain edits.
 **Scope:** type-4 patches for the six Radio dialogs. The type is REQUIRED here, not a label: a type-2 dialog sent non-immediate has no queue and vanishes (F10). `display_dialog` gains an optional `"immediate": false` param that sets the `IsImmediate` wire byte to 0; the loader must REJECT `immediate: false` for any dialog whose seed `ui_screen_type` is not Radio or Realization. The offered-dialog set from DU-08 already covers a lure opened minutes later, because opening it tells the server nothing. Decide the wire `EntityId` for a remote speaker using `docs/reverse-engineering/findings/dialog-portrait-lookup.md`, since 5862 is currently pinned to Gerschon only for transport. Convert chain displays of 5862, 4982, 4985, 4989, 4991 and 2584 to non-immediate.
 **Acceptance:** wire test pinning byte 12 to 0 and to 1; authority tests that a forged choice is still rejected, a queued-then-opened choice is accepted, and an id is single-use; replay tests for each converted chain. UAT: radio icon flashes on Castle entry as a Jaffa, clicking it opens 5862, 2584 changes speakers correctly.
 **Relog:** the client queue is memory only. None of the six is a progression key, so a transmission lost to a relog is acceptable; do not add restore chains.
@@ -190,7 +190,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-05
 
-**Status:** BlockedDependency (DU-01, DU-00). **Scope title:** Realization labels. **Scope:** type-5 patches for the fifteen dialogs in the matrix, `ui_screen_type = 5` on overrides 3995 and 3996, and the matching `dialogs.sql` seed values. `ButtonPlan::Keep` on all of them.
+**Status:** BlockedDependency (DU-00; DU-01 merged 2026-09-25). **Scope title:** Realization labels. **Scope:** type-5 patches for the fifteen dialogs in the matrix, `ui_screen_type = 5` on overrides 3995 and 3996, and the matching `dialogs.sql` seed values. `ButtonPlan::Keep` on all of them.
 **Acceptance:** patch-versus-seed agreement test; DU-L still green for 2575 and 5004. **Value:** documentary only. The trace found no per-type audio and F4 shows no visual difference. It does make these dialogs eligible for the idea-icon lure later. First packet to cut.
 
 ### DU-06
@@ -201,7 +201,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-07
 
-**Status:** BlockedDependency (DU-03) and gated on the Cellblock Marsh escort phase. **Scope title:** Marsh bark chains. **Agents:** mission-systems-advisor, npc-ai-spawn-advisor.
+**Status:** UATPending (merged 2026-09-25, [PR #772](https://github.com/SandboxServers/Cimmeria/pull/772) 958a1e23; worknote [worknotes/du07.md](worknotes/du07.md); UAT T32 in the Cellblock UAT guide). Chains 1176-1178 cover three of the four lines; 96353 "Crouch down" stays unauthored because no cover placement data exists. **Scope title:** Marsh bark chains. **Agents:** mission-systems-advisor, npc-ai-spawn-advisor.
 **Scope:** fire the four usable 5019 lines from existing triggers: escort start ("Let's move out!"), Mess Hall region entry ("I'll draw their fire!..."), first cover use or the `player_flanked_npc` trigger from C06 ("Crouch down...", "Flank their position..."). Each line once per mission run. New chain ids from the Cellblock ledger's free block.
 **Acceptance:** replay tests per chain plus the already-fired negative case; relog does not replay barks.
 
@@ -212,13 +212,13 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-UAT
 
-**Status:** BlockedDependency (all). **Scope:** add rows to the Cellblock and Castle UAT guides for: 3999 read-to-end then Done grants progress; 2576 final-screen Take Missions; 5861 Accept and Decline; 5859 closes with X and nothing else happens; Marsh barks never open a window; Radio lure if DU-04 shipped. Screenshots for 2572, 4001, 5862, 2584, 2580 and a bark line.
+**Status:** Ready for an owner client session (Wave 0/1 merged 2026-09-25; Cellblock UAT T30, T31, T32; DU-02b's 2576 row; DU-08 evict-then-close). **Scope:** add rows to the Cellblock and Castle UAT guides for: 3999 read-to-end then Done grants progress; 2576 final-screen Take Missions; 5861 Accept and Decline; 5859 closes with X and nothing else happens; Marsh barks never open a window; Radio lure if DU-04 shipped. Screenshots for 2572, 4001, 5862, 2584, 2580 and a bark line.
 
 ## Open Decisions
 
 | Id | Question | Default if unanswered |
 |---|---|---|
-| D-DU1 | Blurbs 2305, 4000, 2308, 2518 appear after the mission is already accepted. Keep Accept as an acknowledgement button, or strip to X-close only? More Info on 4000 and 2308 is a dead button either way. Note: whenever Accept shows, the client also shows a Decline button that appears to do nothing on a Blurb (F7), which argues for stripping. | Keep Accept, strip More Info. |
+| D-DU1 | Blurbs 2305, 4000, 2308, 2518 appear after the mission is already accepted. Keep Accept as an acknowledgement button, or strip to X-close only? More Info on 4000 and 2308 is a dead button either way. Note: whenever Accept shows, the client also shows a Decline button that appears to do nothing on a Blurb (F7), which argues for stripping. | **Resolved 2026-09-21 by the coordinator, reversible per dialog:** strip all buttons. Keeping Accept also shows the Blurb's inert Decline (F7), which breaks the project rule that every button press gets visible feedback on the first press. |
 | D-DU2 | Is the Blurb 2572 offer flow wanted now? It needs a new engine condition and changes how mission 701 is offered to Humans. | Defer; ship DU-02b without it. |
 | D-DU3 | Radio lure means the player can ignore a transmission. Acceptable for all six, or should 2584 stay immediate because it carries the throne-room briefing? | Lure for all but 2584. |
 

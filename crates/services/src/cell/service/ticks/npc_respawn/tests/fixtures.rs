@@ -49,7 +49,7 @@ pub(super) fn make_mgr_with_dead_npc(
         // Death state.
         npc.set_state_flag(BSF_DEAD);
         npc.set_state_flag(BSF_MOVEMENT_LOCK);
-        npc.ai_state = AiState::Dead;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Dead);
         // HP=0 so the post-respawn assertion that HP=max is
         // meaningful.
         if let Some(hp) = npc.stats.get_mut(HEALTH) {

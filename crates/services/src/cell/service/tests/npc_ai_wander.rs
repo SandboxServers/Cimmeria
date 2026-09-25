@@ -49,7 +49,7 @@ async fn idle_npc_with_wander_radius_transitions_to_wander_same_tick() {
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Wander,
         "Idle + wander_radius > 0 → Wander on same tick",
     );
@@ -71,7 +71,7 @@ async fn wander_with_future_deadline_is_a_no_op() {
     let mut mgr = make_castle_mgr();
     spawn_wander_npc(&mut mgr, 200, 10.0);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Wander);
         npc.wander_next_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
         npc.nav_path.clear();
     }
@@ -102,7 +102,7 @@ async fn wander_with_zero_radius_drops_to_idle() {
     let mut mgr = make_castle_mgr();
     spawn_wander_npc(&mut mgr, 200, 10.0);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Wander);
         npc.wander_radius = 0.0; // content-action wipe simulated
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -115,7 +115,7 @@ async fn wander_with_zero_radius_drops_to_idle() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle, "zero radius → Idle");
+    assert_eq!(npc.ai_state(), AiState::Idle, "zero radius → Idle");
     assert_eq!(
         npc.last_movement_type, None,
         "movement-type cache must clear on Wander → Idle drop",
@@ -129,7 +129,7 @@ async fn wander_with_active_nav_path_is_a_no_op() {
     let mut mgr = make_castle_mgr();
     spawn_wander_npc(&mut mgr, 200, 10.0);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Wander);
         npc.nav_path
             .push_back(cimmeria_common::Vector3::new(5.0, 0.0, 5.0));
     }
@@ -173,7 +173,7 @@ async fn idle_with_patrol_and_wander_picks_patrol() {
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Patrol,
         "patrol_path takes priority over wander_radius",
     );
@@ -193,7 +193,7 @@ async fn wander_arrival_stamps_dwell_within_min_max_band() {
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.wander_min_dwell_secs = 2.0;
         npc.wander_max_dwell_secs = 4.0;
-        npc.ai_state = AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Wander);
         npc.wander_next_at = None;
         npc.nav_path.clear();
     }
@@ -229,7 +229,7 @@ async fn wander_first_entry_stamps_dwell_without_routing() {
     let mut mgr = make_castle_mgr();
     spawn_wander_npc(&mut mgr, 200, 10.0);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Wander);
         npc.wander_next_at = None;
         npc.nav_path.clear();
     }
@@ -258,7 +258,7 @@ async fn wander_elapsed_dwell_routes_to_new_destination_and_clears_deadline() {
     let mut mgr = make_castle_mgr();
     spawn_wander_npc(&mut mgr, 200, 10.0);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Wander);
         npc.wander_next_at = Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
         npc.nav_path.clear();
     }

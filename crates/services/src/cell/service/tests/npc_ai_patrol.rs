@@ -9,6 +9,7 @@
 //!   persists so the post-fight return resumes the route.
 //! - Empty `patrol_path` mid-tick (defensive) → drop back to Idle.
 
+use crate::cell::combat::AggroCause;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::{AiState, MobMovementType};
@@ -68,7 +69,7 @@ async fn idle_npc_with_patrol_path_transitions_to_patrol_same_tick() {
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Patrol,
         "Idle + patrol_path → Patrol on same tick",
     );
@@ -96,7 +97,7 @@ async fn patrol_advances_index_when_dwell_elapses_at_waypoint() {
     // waypoint queue happens on the FOLLOWING tick, when `close`
     // becomes false against the new target (index 1).
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
         npc.patrol_next_index = 0;
         npc.position = path[0]; // physically at the current target
         npc.patrol_dwell_until =
@@ -139,7 +140,7 @@ async fn patrol_arrival_stamps_dwell_deadline() {
     let mut mgr = make_castle_mgr();
     let path = spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
         npc.patrol_next_index = 0;
         npc.position = path[0]; // just arrived
         npc.patrol_dwell_until = None; // no dwell yet
@@ -187,16 +188,16 @@ async fn patrol_preempted_by_threat_clears_nav_but_keeps_patrol_index() {
     // Pre-arrange: NPC is mid-route, in Patrol, with nav_path holding
     // the current waypoint.
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
         npc.patrol_next_index = 2;
         npc.nav_path.push_back(Vector3::new(0.0, 0.0, 10.0));
     }
 
-    let _ = crate::cell::combat::generate_threat(&mut mgr, 1, 200, 50.0);
+    let _ = crate::cell::combat::generate_threat(&mut mgr, 1, 200, 50.0, AggroCause::Damage);
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Fighting,
         "Patrol + damage → Fighting (preemption)",
     );
@@ -218,7 +219,7 @@ async fn patrol_with_empty_path_drops_to_idle() {
     let mut mgr = make_castle_mgr();
     spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
         npc.patrol_path.clear(); // simulate content-action wipe
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -231,7 +232,7 @@ async fn patrol_with_empty_path_drops_to_idle() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle, "empty path → Idle");
+    assert_eq!(npc.ai_state(), AiState::Idle, "empty path → Idle");
     assert_eq!(
         npc.last_movement_type, None,
         "movement-type cache must clear on Patrol → Idle drop",
@@ -246,7 +247,7 @@ async fn patrol_with_future_dwell_deadline_is_a_no_op() {
     let mut mgr = make_castle_mgr();
     let path = spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
         npc.patrol_next_index = 1;
         // NPC physically AT waypoint 1 (close to target). With a
         // future dwell deadline, the handler must observe "still
@@ -295,7 +296,7 @@ async fn patrol_knockback_during_dwell_re_stamps_on_re_arrival() {
     // Pre-arrange: NPC dwelling at waypoint 0 with a future deadline.
     let past_dwell = std::time::Instant::now() - std::time::Duration::from_secs(60);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
         npc.patrol_next_index = 0;
         npc.position = path[0];
         npc.patrol_dwell_until = Some(past_dwell);
@@ -395,7 +396,7 @@ async fn patrol_with_single_waypoint_holds_position_and_re_stamps_dwell() {
     )
     .await;
     let after_arrival = mgr.get_entity(200).unwrap();
-    assert_eq!(after_arrival.ai_state, AiState::Patrol);
+    assert_eq!(after_arrival.ai_state(), AiState::Patrol);
     assert!(after_arrival.patrol_dwell_until.is_some());
     assert!(after_arrival.nav_path.is_empty());
     assert_eq!(after_arrival.patrol_next_index, 0);

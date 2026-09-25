@@ -63,7 +63,21 @@
 //! | `OTEL_SERVICE_NAME` | Defaults to `cimmeria-server`. Shows up in SigNoz's service map. |
 //! | `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated `k=v` pairs piped through to every event. Common keys: `deployment.environment`, `service.namespace`. |
 //! | `OTEL_TRACES_SAMPLER` | `always_on` (default), `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
-//! | `CIMMERIA_DEPLOY_ENV` | Default `"dev"`. Sets `deployment.environment` on every signal — overridable by `OTEL_RESOURCE_ATTRIBUTES`. |
+//! | `CIMMERIA_DEPLOY_ENV` | Default `"dev"`. Sets `deployment.environment` and `cimmeria.deploy_env` on every signal. |
+//!
+//! # Deploy identity
+//!
+//! Every provider's resource carries (see [`identity_attributes`]):
+//!
+//! - `deployment.environment` and `cimmeria.deploy_env` — from
+//!   `CIMMERIA_DEPLOY_ENV` (`colo` on the colo, `dev` elsewhere);
+//! - `host.name` — the machine (or container) hostname;
+//! - `service.version` — the git commit baked in at build time by
+//!   `crates/server/build.rs` (`CIMMERIA_GIT_SHA` in the container build,
+//!   `git rev-parse HEAD` otherwise, `"unknown"` when neither is available).
+//!
+//! Without these a colo row and a dev-laptop row were indistinguishable and
+//! no row could be tied to a build (audit gap T2).
 //!
 //! All env vars match the OpenTelemetry SDK spec — pinned so the
 //! standard `opentelemetry-otlp` crate reads them directly without us
@@ -107,6 +121,40 @@ const DEFAULT_SERVICE_NAME: &str = "cimmeria-server";
 /// dual-querying. See [`is_network_noise_target`] for the routing
 /// predicate.
 const NETWORK_SERVICE_NAME: &str = "cimmeria-network";
+
+/// Git commit this binary was built from, or `"unknown"`. Set by
+/// `crates/server/build.rs`.
+pub const BUILD_SHA: &str = env!("CIMMERIA_BUILD_SHA");
+
+/// Resource attributes that identify *which deployment and which build*
+/// emitted a signal. Shared by every provider (both log indexes, traces and
+/// metrics) so a query can filter on them whichever signal it starts from.
+///
+/// Explicit builder attributes win over `OTEL_RESOURCE_ATTRIBUTES` in the
+/// SDK's resource merge, so these are authoritative.
+fn identity_attributes(
+    deploy_env: &str,
+    host_name: &str,
+    version: &str,
+) -> Vec<opentelemetry::KeyValue> {
+    use opentelemetry::KeyValue;
+    vec![
+        KeyValue::new("deployment.environment", deploy_env.to_string()),
+        KeyValue::new("cimmeria.deploy_env", deploy_env.to_string()),
+        KeyValue::new("host.name", host_name.to_string()),
+        KeyValue::new("service.version", version.to_string()),
+    ]
+}
+
+/// This host's name, or `"unknown"` if the OS will not say.
+fn host_name() -> String {
+    let name = gethostname::gethostname().to_string_lossy().into_owned();
+    if name.is_empty() {
+        "unknown".to_string()
+    } else {
+        name
+    }
+}
 
 /// True if `target` (which OTel surfaces as `scope_name`) is a
 /// high-volume wire-level event that should land in the
@@ -174,12 +222,11 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     let service_name =
         env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| DEFAULT_SERVICE_NAME.to_string());
     let deploy_env = env::var("CIMMERIA_DEPLOY_ENV").unwrap_or_else(|_| "dev".to_string());
+    let host = host_name();
+    let identity = identity_attributes(&deploy_env, &host, BUILD_SHA);
     let resource = Resource::builder()
         .with_service_name(service_name.clone())
-        .with_attribute(opentelemetry::KeyValue::new(
-            "deployment.environment",
-            deploy_env.clone(),
-        ))
+        .with_attributes(identity.clone())
         .build();
     // High-noise wire-level events ride a separate provider with
     // `service.name = cimmeria-network`. Same deployment.environment
@@ -189,10 +236,7 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     // predicate; the per-layer filter is applied in `main.rs`.
     let network_resource = Resource::builder()
         .with_service_name(NETWORK_SERVICE_NAME)
-        .with_attribute(opentelemetry::KeyValue::new(
-            "deployment.environment",
-            deploy_env.clone(),
-        ))
+        .with_attributes(identity)
         .build();
     // OTEL_RESOURCE_ATTRIBUTES is parsed by `opentelemetry_sdk` itself
     // when present, so we don't need to manually split-and-merge it
@@ -376,7 +420,7 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     };
 
     eprintln!(
-        "[otel] Streaming to {endpoint} (protocol={protocol}, signals=traces+logs{metrics}, deployment.environment={deploy_env})",
+        "[otel] Streaming to {endpoint} (protocol={protocol}, signals=traces+logs{metrics}, deployment.environment={deploy_env}, host.name={host}, service.version={BUILD_SHA})",
         metrics = if meter_provider.is_some() { "+metrics" } else { "" },
     );
 
@@ -494,6 +538,36 @@ mod tests {
             "cimmeria_services::base::tick_sync"
         ));
         assert!(is_network_noise_target("cimmeria_mercury::session"));
+    }
+
+    /// The identity attributes the SigNoz runbook filters on. Fails if one
+    /// is dropped or renamed (`cimmeria.deploy_env='colo'` is the first
+    /// clause of every NPC-AI query in telemetry.md §3).
+    #[test]
+    fn identity_attributes_carry_env_host_and_version() {
+        let attrs = identity_attributes("colo", "box-7", "0123abcd");
+        let get = |k: &str| {
+            attrs
+                .iter()
+                .find(|kv| kv.key.as_str() == k)
+                .map(|kv| kv.value.to_string())
+        };
+        assert_eq!(get("deployment.environment").as_deref(), Some("colo"));
+        assert_eq!(get("cimmeria.deploy_env").as_deref(), Some("colo"));
+        assert_eq!(get("host.name").as_deref(), Some("box-7"));
+        assert_eq!(get("service.version").as_deref(), Some("0123abcd"));
+        assert_eq!(attrs.len(), 4);
+    }
+
+    /// The baked SHA is never empty: a hex commit or the literal "unknown".
+    #[test]
+    fn build_sha_is_a_commit_or_unknown() {
+        assert!(
+            BUILD_SHA == "unknown"
+                || (BUILD_SHA.len() >= 7 && BUILD_SHA.chars().all(|c| c.is_ascii_hexdigit())),
+            "unexpected CIMMERIA_BUILD_SHA {BUILD_SHA:?}"
+        );
+        assert!(!host_name().is_empty());
     }
 
     #[test]

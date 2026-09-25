@@ -137,14 +137,14 @@ pub async fn register_active_effect(
     );
 
     // Send onTimerUpdate(TIMER_DURATION_EFFECT) so the client renders a
-    // buff/debuff icon with the duration countdown. `effect_id` is the
-    // packet's `id` field — the client uses it to correlate with the
-    // clear packet when the effect expires.
+    // buff/debuff icon with the duration countdown. `effect_id` is both the
+    // packet ID and the SecondaryId used to look up the active effect timer.
     let total_time = effect.total_duration();
     let timer_bytes = serialize_timer_update(
         effect.effect_id,
         TIMER_DURATION_EFFECT,
         invoker_id as i32,
+        effect.effect_id,
         total_time,
         total_time,
     );

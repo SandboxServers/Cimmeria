@@ -14,7 +14,7 @@ use super::rng::pseudo_random_seed;
 
 #[test]
 fn timer_update_has_correct_format() {
-    let data = serialize_timer_update(597, TIMER_ABILITY_COOLDOWN, 100, 5.0, 12345.0);
+    let data = serialize_timer_update(597, TIMER_ABILITY_COOLDOWN, 100, 0, 5.0, 12345.0);
     assert_eq!(data.len(), 21);
     let id = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
     assert_eq!(id, 597);

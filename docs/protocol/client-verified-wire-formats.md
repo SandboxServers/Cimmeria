@@ -195,7 +195,13 @@ RESOURCE_FRAGMENT (0x36) uses a linked-list reassembly model:
 > and puts `behavior_event` at 22. If the client's enum is the contiguous
 > 1-based sequence its string table implies, `behavior_event` is **21**
 > client-side and a server that sends 22 addresses a category the client does
-> not have. Tracked as issue #267.
+> not have.
+>
+> **RESOLVED server-side (issue #267).** The Rust category map
+> (`crates/services/src/base/resources/mod.rs` `CATEGORY_PAKS`) now registers 21 categories
+> **1–21**, with 21 = `CookedBehaviorEvents.pak` (`BehaviorEventData`) and no `pet_command`;
+> a byte-exact wire test pins the fragment tag as 21. The numeric enum values were confirmed
+> out of the binary in the cooked-data findings (category id stored at `LibCategory+0x4`).
 >
 > Only the string set is confirmed here; the numeric enum values have not been
 > read out of the binary. Note also that `CookedBehaviorEvents.pak` is absent
