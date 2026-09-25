@@ -12,6 +12,7 @@ use cimmeria_entity::navigation::NavMesh;
 use cimmeria_entity::space::Space;
 
 pub use client_move::ClientMoveOutcome;
+pub(crate) use crossing_hold_state::PendingCrossing;
 pub(crate) use deferred_content_actions::PendingContentAction;
 pub use entities::DespawnOutcome;
 pub(crate) use gate_dial_state::PendingGateDial;
@@ -25,6 +26,7 @@ mod cover_hit;
 pub use cover_hit::{CoverStanding, PLAYER_COVER_MAX_DY};
 mod cover_sight;
 pub use cover_sight::{NpcSight, SightOrigin};
+mod crossing_hold_state;
 mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
@@ -370,6 +372,16 @@ pub struct SpaceManager {
     /// space never gets a late `Stargate_MakeGate`. See
     /// `gate_dial_state` for the state machine.
     pub(crate) pending_gate_dials: HashMap<u32, PendingGateDial>,
+    /// In-flight post-crossing holds, keyed by the crossing player. Armed by
+    /// `cell::gate_travel::on_stargate_passage` right after
+    /// `Stargate_CrossGate`/`onStargatePassage` are sent, drained (and the
+    /// deferred `perform_gate_travel` run) by
+    /// `cell::gate_travel::tick::crossing_tick` on the 100ms cell tick.
+    /// Scrubbed by `destroy_entity` / `disconnect_entity` so a crossing
+    /// player who leaves mid-hold never gets a deferred travel run against
+    /// a dead session. See `crossing_hold_state` for the state machine
+    /// (NA35).
+    pub(crate) pending_crossings: HashMap<u32, PendingCrossing>,
     /// Re-entrancy bound for the H52 step-activation region replay. A
     /// replayed `enter_region` chain can advance another step, which replays
     /// again; this caps the depth and remembers which `(entity, mission,
@@ -434,6 +446,7 @@ impl SpaceManager {
             pending_health_below: Vec::new(),
             step_region_replay: super::content::StepRegionReplayGuard::default(),
             pending_gate_dials: HashMap::new(),
+            pending_crossings: HashMap::new(),
         }
     }
 }

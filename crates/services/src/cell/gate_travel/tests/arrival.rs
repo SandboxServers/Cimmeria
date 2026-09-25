@@ -293,6 +293,17 @@ async fn crossing_into_an_unrecoverable_arrival_sends_no_transfer() {
     gate_dial_tick(&tx, &mut mgr).await;
     handle_stargate_region_entered(1, &tx, &mut mgr, &engine()).await;
 
+    // NA35: the crossing no longer runs `perform_gate_travel` (and its
+    // arrival check) synchronously — it arms a `CROSSING_CINEMATIC_HOLD`
+    // and defers to `crossing_tick`. Without expiring and draining the
+    // hold here, `saw_gate_travel` would be false regardless of whether
+    // the arrival is recoverable, making this assertion pass vacuously.
+    mgr.pending_crossings
+        .get_mut(&1)
+        .expect("a crossing hold must be armed")
+        .travel_at = Instant::now() - Duration::from_millis(1);
+    super::super::crossing_tick(&tx, &mut mgr).await;
+
     assert!(
         !saw_gate_travel(&mut rx),
         "a crossing into an unrecoverable arrival must send no GateTravel"

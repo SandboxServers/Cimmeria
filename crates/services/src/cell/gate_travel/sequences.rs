@@ -1,30 +1,38 @@
 //! Stargate Kismet sequence emission (`Stargate_MakeGate` /
 //! `Stargate_CrossGate`) and the per-world gate lookups it needs.
 //!
-//! Evidence: `deprecated/python/cell/SGWPlayer.py:2105-2129`. The 2009
-//! server emitted exactly two of the fifteen `Stargate_*` sequence events:
+//! We emit exactly two of the fourteen `Stargate_*` sequence events:
 //!
-//! - `gateDialTimerExpired` → `onSequence(Stargate_MakeGate)` (6100),
-//!   four seconds after a successful dial.
-//! - `stargatePassed` → `onSequence(Stargate_CrossGate)` (6113), on
-//!   entering the gate region, immediately before `moveTo`.
+//! - on a successful dial → `onSequence(Stargate_MakeGate)` (6100).
+//! - on entering the gate region with an open dial →
+//!   `onSequence(Stargate_CrossGate)` (6113), immediately before the
+//!   deferred world transition.
 //!
-//! `cancelDialing` emits nothing — `Stargate_DestroyGate` (6103) is never
-//! sent, and neither are the seven chevron events (6106-6112), even
-//! though every gate's event set defines sequences for all of them. Per
-//! decision D-CA10 we emit the same two and no more.
+//! **This is not because the 2009 server did the same.** The owner
+//! confirmed (2026-09-25, NA35) that the deprecated legacy server never
+//! had working gate travel end to end, so its emission choices carry no
+//! authority. The reason to hold the line at these two is a client-binary
+//! fact: `FUN_005682d0` (`ghidra://SGW.exe@0x005682d0`) shows the DHD
+//! dial UI collects all 7 glyphs and reports the finished address to the
+//! server exactly once — there is no wire-level signal for in-progress
+//! chevron selection (6106-6112) for the server to key a broadcast on.
+//! `Stargate_DestroyGate` (6103) remains unemitted for a weaker reason:
+//! simply unexamined, not confirmed unwanted. See
+//! `docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md`.
 //!
-//! The one deliberate addition over 2009 is the witness fan-out: the
-//! Python sent to `self.client` only, so a second player standing at the
-//! gate saw nothing. `docs/gameplay/gate-travel.md` lists that as the
-//! "Stargate witness visibility" gap.
+//! The one deliberate addition over the legacy-server witness behaviour
+//! (which sent to `self.client` only) is fanning both sequences to every
+//! witness of the dialer/crosser, not just the dialer/crosser themselves.
+//! `docs/gameplay/gate-travel.md` lists that as the "Stargate witness
+//! visibility" gap it closes.
 
 use tokio::sync::mpsc;
 
 use crate::cell::kismet::{build_on_sequence_args, KISMET_VIEW_EVENT_INVOKER};
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::ring_transport::BSF_MOVEMENT_LOCK;
 use crate::cell::space_manager::{SpaceManager, REGION_FLAG_STARGATE};
-use crate::mercury::method_idx::ON_SEQUENCE;
+use crate::mercury::method_idx::{ON_SEQUENCE, ON_STATE_FIELD_UPDATE};
 
 /// `ESequenceEventType.Stargate_MakeGate` — the gate opens (kawoosh).
 /// `entities/defs/enumerations.xml:821`.
@@ -151,4 +159,57 @@ pub(crate) async fn send_gate_sequence(
         "Sent stargate onSequence"
     );
     Some(seq_id)
+}
+
+/// Set or clear `BSF_MovementLock` on the crossing entity for the
+/// `CROSSING_CINEMATIC_HOLD` window, notifying the owning client on an
+/// actual bit transition. Ref-counted, matching
+/// `ring_transport::wire_helpers::update_state_flag` (kept separate rather
+/// than reused across modules — that helper is `pub(super)` to
+/// `ring_transport`, and duplicating five lines here is cheaper than
+/// widening its visibility for one caller outside that module).
+///
+/// `BSF_MOVEMENT_LOCK` already has other writers (death, the ring
+/// transporter, the `Stun` effect script), so this MUST go through
+/// `CellEntity::set_state_flag`/`unset_state_flag` rather than a raw
+/// `|=`/`&=` — see the doc comment on those methods for why a raw write
+/// desyncs the counter from the bit and leaves it stuck.
+pub(crate) async fn set_crossing_movement_lock(
+    entity_id: u32,
+    set: bool,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let changed = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => {
+            let transitioned = if set {
+                e.set_state_flag(BSF_MOVEMENT_LOCK)
+            } else {
+                e.unset_state_flag(BSF_MOVEMENT_LOCK)
+            };
+            transitioned.then_some(e.state_field)
+        }
+        None => return,
+    };
+    let Some(new_state) = changed else {
+        return;
+    };
+    if let Err(e) = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_STATE_FIELD_UPDATE,
+            args: new_state.to_le_bytes().to_vec(),
+        })
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            set,
+            error = %e,
+            reason = "cell_to_base_send_failed",
+            "gate crossing: movement-lock update could not be enqueued — \
+             the client keeps the stale lock state until the world \
+             transition (or a relog) corrects it"
+        );
+    }
 }

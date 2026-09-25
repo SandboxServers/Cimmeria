@@ -1750,6 +1750,21 @@ See [`findings/stargate-dhd-state-machine.md`](findings/stargate-dhd-state-machi
 | `0x00cf5440` | MemberCallback vfunc_3: **VCommunicator** × onDHDReply | DHD NPC reply — NOT GateTravel |
 | `0x00df7900` | MemberCallback vfunc_3: **VGameProxyPlayer** × onRingTransporterList | Ring transporter destinations |
 
+### Stargate dial/travel timing (NA35 session, 2026-09-25)
+
+See `docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md` for full analysis. Legacy-Python-derived timing claims in D-CA10 are superseded by this session's client-binary-only evidence.
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x005682d0` | DHD/Flash external-interface callback dispatcher | `'d'` case `"dialStargateAddress"`: `strtok_s` loop collects 7 glyphs, fires `Event_World_DialStargateAddress` ONCE on completion — no per-glyph network round trip |
+| `0x005682d0` | (same function) `'r'` case `"runStargateEvent"` | `eventId = atoi(param) + 0x17d4` (6100) — confirms `ESequenceEventType` Stargate base and that the DHD UI can trigger any of the 14 Stargate sequence events (6100–6113) itself, client-side, with no server round trip |
+| `0x0056a010` | Event emitter (`Event_World_StargateEvent` ctor + dispatch) | Constructs `CME::EventSignal::NoSubject`-typed payload from the raw int event id; called from `0x005682d0`'s `runStargateEvent` case and from `0x00d2de90` |
+| `0x00d2de90` | Ref-counted release/cleanup helper | Unconditionally fires `0x17e1` (6113, `Stargate_CrossGate`) as its final act, guarded by a flag at `this+0x11` |
+| `0x00e2c810` | `Event_World_StargateEvent` handler, CrossGate-only branch | Gated on `*param_1 == 0xd` (13, CrossGate's index within the 14-event family); walks level-resident `USeqEvent_Stargate` nodes matching `SourceAddressId`/`TargetAddressId` via `0x00d2d8a0`, calls `0x00d2de90` on the matching node |
+| `0x00e2fbd0` | `Event_NetIn_onStargatePassage` RTTI accessor (vfunc_2-ish "get event type") | `return &Event_NetIn_onStargatePassage::RTTI_Type_Descriptor;` — confirms the subscriber-record layout at `0x019d9000`+ |
+| `0x00e30010` | MemberCallback vfunc_3: VGateTravel × `Event_NetIn_onStargatePassage` | Re-confirms `stargate-dhd-state-machine.md`'s row by independent re-decompilation; vfunc_5 invoke (the actual handler body) NOT located this session — open question |
+| `0x019d9000` | Subscriber-record array (`.data`) | 28-byte stride: `[+0x00]` shared vtable `0x00ccc040`, `[+0x04]` per-event pointer, `[+0x08]`/`[+0x0C]` shared, `[+0x10]` per-event RTTI-accessor thunk, `[+0x14]` vfunc_3 target (matches known addresses e.g. `0x00e30010`, `0x00e30090`), `[+0x18]` shared `0x00429700` |
+
 ---
 
 ## Loot Generation Pipeline (W-content-mech Session 5 — 2026-05-13)

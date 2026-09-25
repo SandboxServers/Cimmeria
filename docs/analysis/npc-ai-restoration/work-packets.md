@@ -462,6 +462,28 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 **Acceptance:** byte-exact wire-format tests (`aggression_wire_tests.rs`) and fan-out tests, each revert-proven; AoI-entry replay tests (`aoi_entry_replays_active_aggression_override`, and the negative `aoi_entry_sends_nothing_for_a_faction_derived_mob`); a surrender-broadcast test (`submit_broadcasts_the_disarm_to_witnesses`); a console wire test (`na13_console_aggression_broadcasts_update_then_cleared`). Full `cimmeria-services` suite green (3,242 tests); `cimmeria-server` logging target-scan guard green (no new custom tracing target introduced).
 
+### NA35
+
+**Status:** Review (branch `npcai/na35-gate-travel-cinematic` pushed, no PR; code shipped once the owner lifted the session's usage restriction). **Scope title:** Stargate dial timing and gate-travel cinematic. **Advisor:** game-archaeology-specialist. **Owner request (2026-09-25):** "Is there a gate travel animation/cinematic we can put up for gate travel before putting up the loading screen for the transition between maps?" Tester Lomiada: "the dialing is quite fast/done when i leave the dhd is supposed do be?"
+
+**Correction applied mid-session:** the coordinator relayed the owner's clarification that the deprecated legacy server never had working gate travel end to end, so `deprecated/python/cell/SGWPlayer.py` is not behavioural evidence — ground truth is the client binary alone. This packet's findings and D-CA20 (`docs/analysis/castle-rebuild/README.md`) are grounded entirely in `SGW.exe` Ghidra evidence, not the legacy Python.
+
+**Findings** (full detail in [`stargate-dial-and-travel-sequences.md`](../../reverse-engineering/findings/stargate-dial-and-travel-sequences.md)):
+
+- The DHD dial UI collects all 7 glyphs client-side and reports the finished address to the server exactly once (`FUN_005682d0`) — there is no wire-level signal for in-progress chevron selection, so server-driven chevron broadcast (6106-6112) is impossible without a client patch, not merely unattested. **Not implemented** — this remains out of scope pending a client patch decision.
+- `GATE_DIAL_DURATION` had zero client-binary support (its only source was the disavowed Python); the client's own DHD window closes on its own timeline as soon as dialling finishes, independent of the server — directly explaining Lomiada's "done when I leave the DHD" report.
+- `Stargate_CrossGate` (6113) is a real, per-gate-instance Kismet trigger (`FUN_00e2c810`/`FUN_00d2de90`); Cimmeria's crossing path raced it against the world-transition teardown with no scheduled gap.
+- `onStargatePassage` (client method 68) was declared (`ON_STARGATE_PASSAGE` constant) with a confirmed real client subscriber but zero production send call sites.
+
+**Implemented** (once the owner lifted the session's usage restriction):
+
+- `GATE_DIAL_DURATION` retimed from 4s to 100ms — the minimum the 100ms cell-tick-drain architecture can express; no confirmed client-binary duration exists to replace it with, so this removes the disavowed number rather than guessing a new one.
+- `onStargatePassage` (68, 4-byte LE `addressId`) now sent to the crossing player only, immediately after `Stargate_CrossGate`.
+- A `PendingCrossing` hold (`CROSSING_CINEMATIC_HOLD`, 1.5s, explicitly provisional) defers the `RESET_ENTITIES` teardown behind a `BSF_MovementLock`-locked wait, drained by a new `crossing_tick` on the existing 100ms cell tick. The lock is released if the deferred travel fails (destination vanished, unrecoverable arrival, closed base channel); the hold itself is cancelled by `destroy_entity`/`disconnect_entity` like the dial timer already was.
+- `crates/services/src/cell/gate_travel/` (`mod.rs`, `sequences.rs`, `tick.rs`) and `crates/services/src/cell/space_manager/gate_dial_state.rs` / `crossing_hold_state.rs`.
+
+**Acceptance:** fake-clock timer tests for both the retimed dial and the new crossing hold (`gate_dial_state` unit tests, each revert-proven — e.g. `dial_opens_almost_immediately_not_after_a_multi_second_hold` asserts `GATE_DIAL_DURATION < 500ms`); byte-exact wire tests for `Stargate_CrossGate`, `onStargatePassage`, and the `onStateFieldUpdate` movement-lock frame (`gate_travel::tests::dial_timer::crossing_an_open_gate_sends_cross_gate_then_onstargatepassage_and_defers_travel`); a hold-then-travel sequence test (`crossing_hold_elapsing_runs_the_deferred_travel`); a disconnect-during-hold test (`disconnect_during_the_crossing_hold_cancels_the_deferred_travel`); and a deferred-travel-failure test proving the movement lock is released, not left stuck (`deferred_travel_failure_clears_the_movement_lock`). Two pre-existing tests that asserted a synchronous `GateTravel` on crossing (`cell::cell_methods::player::world::tests::entering_a_stargate_region_with_an_open_dial_travels`, `cell::gate_travel::tests::arrival::crossing_into_an_unrecoverable_arrival_sends_no_transfer`) were updated to expire and drain the new hold first — without that they would have passed vacuously regardless of the arrival-refusal logic under test. `cimmeria-services` gate-related suite green (187 tests).
+
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:
