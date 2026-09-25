@@ -38,7 +38,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA00
 
-**Status:** Ready. **Scope title:** Telemetry plumbing, the AI state-transition helper, and deploy identity. **Depends:** land or rebase PR #726 first (it rewrites the path-fail messages and the `destroy_space` throttle cleanup). **Advisor:** npc-ai-spawn-advisor, testing-validation-engineer.
+**Status:** Review (branch pushed, d5b9d5f8). **Scope title:** Telemetry plumbing, the AI state-transition helper, and deploy identity. **Depends:** land or rebase PR #726 first (it rewrites the path-fail messages and the `destroy_space` throttle cleanup). **Advisor:** npc-ai-spawn-advisor, testing-validation-engineer.
 
 **Entries:**
 
