@@ -244,7 +244,24 @@ impl ChunkFixture {
         draw_scale: f32,
         mesh_ref: (&str, &str),
     ) -> i32 {
-        let actor_class = self.pkg.class_ref("StaticMeshActor");
+        self.add_mesh_actor_of_class("StaticMeshActor", name, location, draw_scale, mesh_ref)
+    }
+
+    /// Same as [`Self::add_static_mesh_actor`], but with the export's
+    /// class name as a parameter — NA36's `InterpActor` / `KActor` /
+    /// `FracturedStaticMeshActor` fixtures use this to prove
+    /// `staticmesh::collect_static_mesh_instances` walks the whole
+    /// `MESH_ACTOR_CLASSES` family identically, not just the literal
+    /// `StaticMeshActor` class.
+    pub fn add_mesh_actor_of_class(
+        &mut self,
+        class_name: &str,
+        name: &str,
+        location: [f32; 3],
+        draw_scale: f32,
+        mesh_ref: (&str, &str),
+    ) -> i32 {
+        let actor_class = self.pkg.class_ref(class_name);
         let actor = self.pkg.add_export(actor_class, self.level, name);
         let component_class = self.pkg.class_ref("StaticMeshComponent");
         let component = self

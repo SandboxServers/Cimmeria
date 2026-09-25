@@ -262,6 +262,13 @@ impl DecodeStatus {
 /// - `PrefabInstance` — the container is still ignored, but its actors
 ///   are separately exported as `StaticMeshActor` and now resolve
 ///   through `staticmesh::archetype`, so it is no longer a gap.
+/// - `InterpActor` / `KActor` / `FracturedStaticMeshActor` — NA36. All
+///   three derive from `AStaticMeshActor` and share its placement +
+///   `StaticMeshComponent` shape, so
+///   `staticmesh::collect_static_mesh_instances` walks them through
+///   [`staticmesh::MESH_ACTOR_CLASSES`] alongside `StaticMeshActor`
+///   itself. `StaticMeshCollectionActor` is deliberately NOT here — it
+///   owns an array of components, not one, and needs its own walk.
 const DECODE_STATUS: &[(&str, DecodeStatus)] = &[
     ("StaticMeshActor", DecodeStatus::Decoded),
     ("StaticMeshComponent", DecodeStatus::ViaOwner),
@@ -271,6 +278,9 @@ const DECODE_STATUS: &[(&str, DecodeStatus)] = &[
     ("Brush", DecodeStatus::ViaOwner),
     ("BlockingVolume", DecodeStatus::ViaOwner),
     ("PrefabInstance", DecodeStatus::ViaOwner),
+    ("InterpActor", DecodeStatus::Decoded),
+    ("KActor", DecodeStatus::Decoded),
+    ("FracturedStaticMeshActor", DecodeStatus::Decoded),
 ];
 
 /// What the extractor does with `class`.
@@ -304,11 +314,18 @@ pub fn decode_status(class: &str) -> DecodeStatus {
 /// - `BlockingVolume` — invisible collision-only brush; pure navmesh
 ///   input with no render mesh.
 /// - `InterpActor` / `KActor` / `FracturedStaticMeshActor` — movers and
-///   physics props that DO own a `StaticMeshComponent` but are not class
-///   `StaticMeshActor`, so the walker's class filter drops them. Still
-///   genuine gaps.
+///   physics props that own a `StaticMeshComponent` but are not class
+///   `StaticMeshActor`. NA36: `staticmesh::MESH_ACTOR_CLASSES` now
+///   walks all three through the same resolver, so `decode_status`
+///   reports them `Decoded` and the `collision_risk` column below
+///   reads `no`. Kept in this list (rather than dropped, the way
+///   `StaticMeshActor` itself is not listed here) so the per-chunk
+///   export-count column stays visible even though the risk is gone.
 /// - `StaticMeshCollectionActor` — UE3's cooked batching actor; holds
-///   an array of components rather than one. Still a genuine gap.
+///   an array of components rather than one. Still a genuine gap; see
+///   `docs/engine/navmesh-build-pipeline.md` §11 for the NA36 23-map
+///   census of how much geometry this and the other still-skipped
+///   classes account for.
 /// - `PrefabInstance` — the prefab container; its actors resolve
 ///   through the archetype chain, so it is no longer a risk.
 pub const COLLISION_BEARING_CLASSES: &[&str] = &[

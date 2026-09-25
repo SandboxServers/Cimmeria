@@ -723,6 +723,133 @@ ones buy nothing, since no tile of a real map comes near a cap. The seven
 NA28 meshes and their numbers are in
 [data/spaces/README.md](../../data/spaces/README.md).
 
+## 11. Mesh-actor class gap: InterpActor / KActor / FracturedStaticMeshActor (NA36, 2026-09-25)
+
+**The bug.** `staticmesh::collect_static_mesh_instances` (§1.2's walker)
+filtered exports on `class == "StaticMeshActor"` exactly. Three sibling UE3
+classes — `InterpActor` (Matinee-driven movers), `KActor` (rigid-body
+physics props) and `FracturedStaticMeshActor` (destructible meshes) — all
+derive from `AStaticMeshActor` and carry the identical placement +
+`StaticMeshComponent` shape (`Location` / `Rotation` / `DrawScale` /
+`DrawScale3D`, an object reference to a `StaticMeshComponent`, optionally
+gated by `bCollideActors`), but the class-name filter dropped them before
+the `for` loop even visited them — not into a [`SkipReason`], invisibly.
+`coverage::COLLISION_BEARING_CLASSES` had already named all three (plus
+`StaticMeshCollectionActor`) as a documented, un-widened gap; this section
+closes it for the three that turned out to have real content.
+
+**Evidence.** Harset's `SigNoz movement.validation_reject` telemetry
+(`docs/analysis/harset-rebuild/placements/data/harset_lastvalid_probes.txt`)
+carries several thousand accepted real-player positions with no matching
+geometry in the NA26/NA28 extraction; `nav_inspect --probes` against the
+shipped `harset.nav` puts 7 of them `OUT OF TOLERANCE`, five clustered
+10 m above ground at `x[9, 47] z[-91, 59]`. `extract_map`'s class census
+(`--classes`) confirmed `Harset` carries 31 `InterpActor` exports, all
+currently `NotDecoded`. The suspicion that this is the same class of gap
+as `Harset_ShieldTower1`'s known-off-mesh spawn 308 (NA29,
+[world57-population-and-regions.md](../../docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md))
+did not hold up once traced further — see "What this fix did *not* fix"
+below.
+
+**The fix.** `staticmesh::MESH_ACTOR_CLASSES` widens the filter to
+`["StaticMeshActor", "InterpActor", "KActor", "FracturedStaticMeshActor"]`;
+`coverage::DECODE_STATUS` marks all three `Decoded`. Nothing else in the
+resolution chain changes — collision-flag gating (`bCollideActors`, the
+archetype `collides()` check) applies identically regardless of class,
+so a mover explicitly marked non-colliding is still (correctly) skipped.
+`StaticMeshCollectionActor` (an array-of-components shape needing its own
+walk) is deliberately left out — see the 23-map census below.
+
+**23-map census (item 2).** Re-running `extract_map`'s class census over
+every cooked map after the fix:
+
+| Class | Maps carrying it | Total exports | Now decoded |
+|---|---|---|---|
+| `InterpActor` | 15 of 23 (Agnos 2, Beta_Site_Evo_1 94, Castle 14, Castle_CellBlock 53, Dakara_E1 10, Harset 31, Harset_CmdCenter 1, Login_Map 16, Lucia 359, Menfa_Dark 125, Menfa_Light 50, Omega_Site 4, SGC_W1 22, Sewer_Falls 2, Tollana 182) | 965 | yes |
+| `KActor` | 0 | 0 | n/a — no shipped content |
+| `FracturedStaticMeshActor` | 0 | 0 | n/a — no shipped content |
+| `StaticMeshCollectionActor` | 0 | 0 | still `NotDecoded`; nothing to decode |
+
+`InterpActor` is by far the more common of the four risk classes in
+`COLLISION_BEARING_CLASSES`, and the fix benefits all 15 maps uniformly
+the next time each is rebuilt; only Harset's family is rebuilt in this
+packet (see the ownership split in
+[work-packets.md NA36](../../docs/analysis/npc-ai-restoration/work-packets.md)).
+Since neither `KActor` nor `FracturedStaticMeshActor` occurs anywhere in
+the shipped 2009 client content, their inclusion in `MESH_ACTOR_CLASSES`
+is a no-op today — kept because the classes are true `AStaticMeshActor`
+siblings and cost nothing to support, not because they were observed to
+matter.
+
+**Harset rebuild.** `harset.nav`: `nverts` 29,768→29,772, `npolys`
+15,287→15,289, `edges` 42,379→42,385 (31 new `InterpActor` instances,
+mostly collision-disabled or overlapping existing coverage — the net
+change is small; total walkable XZ area moves from 652,905.6 m² to
+652,903.9 m², a normal Recast re-voxelization wobble, not a loss).
+`nav_inspect --probes` against both the 67-row seeded NA26 probe set
+(`probes/Harset.txt`) and the 41-row telemetry-derived
+`harset_lastvalid_probes.txt` gives an **identical** pass/fail set before
+and after (56/67 and 34/41 respectively, same rows failing both times) —
+a strict non-regression, not an improvement, because none of the actual
+`InterpActor` geometry landed under a currently-failing probe.
+`harset.occ` rebuilt from the same fixed extraction; self-check
+(`paged == unpaged`) passes, 210 pages, 3,764,999 bytes (+635 over the
+shipped file). `harset_cmdcenter.nav` (source for both itself and
+`sandbox.nav`) rebuilds **byte-identical** to shipped — its one
+`InterpActor` contributes no measurable geometry — so neither file was
+touched. `harset_market.nav` and `harset_storagerm.nav` carry zero
+instances of any of the four classes and were not rebuilt.
+
+**What this fix did *not* fix.** Two things the packet set out to explain
+turned out to be different problems entirely, confirmed by exhaustive
+`obj_slab` / manual actor-proximity checks against the *fixed* extraction:
+
+- **Five clustered off-mesh telemetry points** (`lv06`, `lv07`, `lv14`,
+  `lv18`, `lv20` — real, frequently-recorded player positions 8-10 m
+  above the only nearby geometry) have **no export of any class** within
+  30 m horizontally at the target height, in any of the chunks covering
+  that area. `obj_slab --at ...,40` (a 40 m vertical half-range) finds
+  only the ground-level plaza floor ~10 m below. This is not an
+  extractor decode gap — nothing decodable is missing an entry, because
+  nothing is there. The leading hypothesis, not confirmed: a genuinely
+  *animated* `InterpActor` (a rising platform) whose cooked pose sits at
+  its resting (ground) height, which a static navmesh bake can never
+  represent at its raised position — exactly the risk the crate's own
+  README already flagged for movers. No `InterpActor` export was found
+  within a useful radius of this cluster to confirm or refute it. Left
+  open for a follow-up with either a live-client `.location` reading at
+  the telemetry coordinates or a Matinee-sequence trace. Two further
+  `nav_inspect` failures against this same probe file (`lv19`, dy
+  +3.30 m; `lv24`, dy +3.42 m) are smaller, at different heights, and
+  were **not** traced further — they may be a different problem
+  entirely and are left for a future packet rather than folded into
+  this hypothesis without evidence.
+- **Spawn 308 (`Harset_ShieldTower1` console, template 243)** is not a
+  missing-class gap either: its `GA-TowTall01` tower prefab **is**
+  present and decoded (a `StaticMeshActor` + `PrefabInstance` sit within
+  3 m horizontally of the seeded XZ, at the seeded height exactly). The
+  problem is that the tower's cooked origin is not its walkable console
+  height — a tall, hillside-mounted compound mesh whose true platform
+  surface needs an in-client `.location` reading to re-pin, exactly as
+  NA29 already concluded. `nav_inspect` confirms `dy=+3.45 m`, unchanged
+  by this fix.
+
+**Seeded-spawn Y audit (item 3).** Cross-referencing every currently
+off-mesh Harset `spawnlist` row
+([B-world57-population-and-regions.md](../../docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md))
+against this fix:
+
+| Spawn | Row | Classification | Action |
+|---|---|---|---|
+| 303, 304, 306, 307, 313 | Jaffa camp, bug baskets, Petbe's search object | Already resolved — made mobile by NA29 against the rebuilt mesh | none |
+| 308 `Harset_ShieldTower1` | Shield tower 1 console | (c) not a decode gap; Y-calibration on a hillside compound mesh | needs a live `.location` reading (NA29's existing recommendation); no seed change with sufficient confidence |
+| 309 `Harset_ShieldTower2` | Shield tower 2 console | Already resolved — repinned to an adjacent terrace by NA29/NA28 | none |
+| 310 `Harset_ShieldTower3` | Shield tower 3 console | Real terrain exists almost exactly at the seeded Y (two overlapping terrain sheets at `y[-31.0,-30.5]` and `y[-29.5,-29.0]`); the 24.61 m navmesh gap is a **connectivity** issue (nearest polygon is a distant, disconnected component), not a wrong seed Y or missing geometry | out of this packet's scope; candidate for NA28-style tiled rebuild follow-up |
+| 311 `Harset_ShieldControls` | Shield controls prop | Already LOW confidence, INFERRED placement; the ledger itself proposes deletion if unconfirmed | no change — owner decision already flagged, not re-litigated here |
+
+No row met the "seed Y wrong, high confidence" bar this packet requires
+before touching `db/resources`; none of the open rows were corrected.
+
 ## Cross-references
 
 - [data/spaces/README.md](../../data/spaces/README.md) — per-world parameters, validation and containment mode

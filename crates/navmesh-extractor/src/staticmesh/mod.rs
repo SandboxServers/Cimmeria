@@ -1,6 +1,8 @@
 //! Phase 1.2 — StaticMesh + StaticMeshActor extraction.
 //!
-//! For each `StaticMeshActor` export in a chunk `.umap`:
+//! For each [`MESH_ACTOR_CLASSES`] export in a chunk `.umap` (the
+//! `StaticMeshActor`-shaped family: `StaticMeshActor` itself, plus
+//! NA36's `InterpActor` / `KActor` / `FracturedStaticMeshActor`):
 //!
 //! 1. Read the actor's tagged properties to recover its transform
 //!    (`Location` / `Rotation` / `DrawScale` / `DrawScale3D`) and the
@@ -358,9 +360,34 @@ fn load_static_mesh(
         .map_err(|e| decode_failed(ExtractError::Other(format!("StaticMesh deserialize: {e}"))))
 }
 
-/// Walk every `StaticMeshActor` in `pkg` and produce one instance per
-/// actor whose `StaticMeshComponent.StaticMesh` reference can be
-/// recovered from the tagged-property stream.
+/// Export classes the walker treats as `StaticMeshActor`-shaped: a
+/// cooked actor whose tagged-property block carries `Location` /
+/// `Rotation` / `DrawScale` / `DrawScale3D` and a `StaticMeshComponent`
+/// object reference, optionally gated by `bCollideActors`.
+///
+/// UE3's `AInterpActor`, `AKActor` and `AFracturedStaticMeshActor` all
+/// derive from `AStaticMeshActor` and add no new placement or mesh-ref
+/// properties of their own (Matinee-driven movers, rigid-body physics
+/// props, and destructible meshes respectively) — so the same resolver
+/// walks them unchanged. NA36 (Harset raised-platform navmesh gap):
+/// `Harset-*` chunks carry 31 `InterpActor` exports with real collision
+/// meshes that a class filter of `StaticMeshActor` alone drops on the
+/// floor entirely (not even into `SkipReason` — the walker's `for`
+/// loop never visits them), leaving zero geometry under platforms built
+/// from movers. `StaticMeshCollectionActor` is a deliberate exclusion:
+/// it owns an *array* of `StaticMeshComponent`s rather than one, so it
+/// needs its own walk and is tracked as a remaining gap in
+/// `coverage::COLLISION_BEARING_CLASSES`.
+pub const MESH_ACTOR_CLASSES: &[&str] = &[
+    "StaticMeshActor",
+    "InterpActor",
+    "KActor",
+    "FracturedStaticMeshActor",
+];
+
+/// Walk every [`MESH_ACTOR_CLASSES`] export in `pkg` and produce one
+/// instance per actor whose `StaticMeshComponent.StaticMesh` reference
+/// can be recovered from the tagged-property stream.
 ///
 /// Actors with a missing or dangling mesh reference are tallied by
 /// reason into [`ActorWalk::skips`]; the sum of `instances.len()` and
@@ -382,7 +409,7 @@ pub fn collect_static_mesh_instances(
     let mut open = archetype::OpenPrefabs::default();
 
     for export in &pkg.exports {
-        if pkg.export_class_name(export) != "StaticMeshActor" {
+        if !MESH_ACTOR_CLASSES.contains(&pkg.export_class_name(export)) {
             continue;
         }
         walk.actors_total += 1;
@@ -511,5 +538,7 @@ pub fn build_chunk_soup(instances: &[(StaticMesh, ActorTransform, String)]) -> T
 
 #[cfg(test)]
 mod archetype_walk_tests;
+#[cfg(test)]
+mod mesh_actor_class_tests;
 #[cfg(test)]
 mod tests;

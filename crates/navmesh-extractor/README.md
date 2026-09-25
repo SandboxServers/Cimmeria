@@ -294,16 +294,32 @@ crate; the NavBuilder-side write-up is
   [castle-navmesh-connectivity.md](../../docs/engine/castle-navmesh-connectivity.md)
   §3. The path stays untested against real non-empty data until a map
   turns up that has some.
-- **Non-`StaticMeshActor` classes that own a `StaticMeshComponent`**
-  are still dropped by the walker's class filter: 14 `InterpActor`s in
-  Castle, which the archetype resolver handles unchanged when pointed
-  at them. 11 are security-camera heads, 1 an antenna, 1 a shelf box —
-  and 1 is `GLB-Global:GLB-RingTransporter00` at BigWorld
-  (466.45, 70.06, 991.55), the only Castle actor that sets
-  `bCollideActors` / `bBlockActors` / `bPathColliding` explicitly. A
-  mover's cooked `Location` is its editor-time pose, not necessarily
-  where it rests at runtime, which is why widening the filter is a
-  judgement call rather than an oversight.
+- **Non-`StaticMeshActor` classes that own a `StaticMeshComponent`** —
+  **NA36 (2026-09-25) widened the walker.** `staticmesh::MESH_ACTOR_CLASSES`
+  now includes `InterpActor`, `KActor` and `FracturedStaticMeshActor`
+  alongside `StaticMeshActor`; the archetype resolver handles them
+  unchanged since they share its placement + `StaticMeshComponent`
+  shape. In Castle this decodes all 14 `InterpActor`s: 11 security-camera
+  heads, 1 antenna, 1 shelf box, and `GLB-Global:GLB-RingTransporter00`
+  at BigWorld (466.45, 70.06, 991.55) — the only Castle actor that sets
+  `bCollideActors` / `bBlockActors` / `bPathColliding` explicitly, and a
+  ring-transport platform players actually stand on, which previously had
+  **zero** collision geometry at all. `KActor` and `FracturedStaticMeshActor`
+  have zero exports across all 23 shipped maps, so today the practical
+  effect is `InterpActor`-only (see the 23-map census in
+  [navmesh-build-pipeline.md §11](../../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)).
+  The judgement call this decision rests on: **a mover's cooked `Location`
+  is its editor-time pose, not necessarily where it rests at runtime** —
+  a genuinely Matinee-animated platform could be represented at the wrong
+  height. NA36's Harset investigation found a real candidate for exactly
+  this failure mode (a cluster of accepted player positions 8-10 m above
+  the nearest decoded geometry, with no actor of any class nearby at the
+  right height) but could not confirm it was caused by an animated
+  `InterpActor` specifically. On balance this is judged worth taking:
+  decoding the cooked pose is correct for every case that is not an
+  active mover (the large majority observed), and the previous behaviour
+  — total invisibility, even for load-bearing static platforms like the
+  ring transporter — was strictly worse.
 - **`Polys` is never read.** BSP collision comes from `UModel`'s node
   tree, so this is believed correct rather than known correct.
 - **Terrain coordinate cross-check** — the height-vs-known-outdoor-point

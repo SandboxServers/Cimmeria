@@ -339,7 +339,17 @@ fn class_census_sorts_by_count_and_marks_collision_risk() {
 /// missing its ground and its interior floors when it is not.
 #[test]
 fn decode_status_tracks_the_phases_that_have_landed() {
-    for class in ["StaticMeshActor", "Terrain", "Model"] {
+    for class in [
+        "StaticMeshActor",
+        "Terrain",
+        "Model",
+        // NA36: InterpActor / KActor / FracturedStaticMeshActor are
+        // StaticMeshActor-shaped and now walked the same way — see
+        // `staticmesh::MESH_ACTOR_CLASSES`.
+        "InterpActor",
+        "KActor",
+        "FracturedStaticMeshActor",
+    ] {
         assert_eq!(decode_status(class), DecodeStatus::Decoded, "{class}");
     }
     for class in [
@@ -353,8 +363,9 @@ fn decode_status_tracks_the_phases_that_have_landed() {
     for class in [
         "Polys",
         "ModelComponent",
-        "InterpActor",
-        "KActor",
+        // Still a genuine gap post-NA36: owns an array of components,
+        // not one, so it needs its own walk.
+        "StaticMeshCollectionActor",
         "SomethingNew",
     ] {
         assert_eq!(decode_status(class), DecodeStatus::NotDecoded, "{class}");
@@ -375,9 +386,11 @@ fn collision_risk_is_the_intersection_not_the_whole_list() {
             "BrushComponent",
             "ModelComponent",
             "Polys",
-            "InterpActor",
-            "KActor",
-            "FracturedStaticMeshActor",
+            // NA36 moved InterpActor / KActor / FracturedStaticMeshActor
+            // out of this list: they are now Decoded, so the
+            // intersection with COLLISION_BEARING_CLASSES no longer
+            // includes them. StaticMeshCollectionActor remains the one
+            // undecoded collision-bearing class.
             "StaticMeshCollectionActor",
         ],
         "the risk set drifted; update the phase table in the README too"

@@ -36,6 +36,16 @@ whole, none of them cropped. For those rows "verts / polys / edges" are
 summed over the tiles and "spans" is the largest tile's, which is what the
 24-bit cap applies to.
 
+`harset.nav` was re-extracted and rebuilt by NA36 on 2026-09-25 with the
+same parameters as NA26, from a fixed extractor that additionally walks
+`InterpActor` / `KActor` / `FracturedStaticMeshActor` exports (see
+[navmesh-build-pipeline.md §11](../../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)).
+`harset_cmdcenter.nav`, `sandbox.nav`, `harset_market.nav` and
+`harset_storagerm.nav` were checked against the same fix and left
+untouched: the first rebuilds byte-identical (its one `InterpActor`
+contributes no geometry) and the other two carry no instances of any of
+the three classes.
+
 "Probes" is `NavMesh::is_point_valid` over the world's seeded `spawnlist`,
 `respawners`, `ring_transport_regions`, `stargates` and `point_set_points`
 rows, leaving out the `(0, 0, 0)` placeholder gates. Many of those rows are
@@ -51,7 +61,7 @@ column as a comparison between meshes, not as a coverage figure.
 | `castle_cellblock.nav` | 0.3 / 1.3 / ±400 | 3,039 / 1,658 / — | — | 17 | 0.18 MB | — | 46/92 | **enforce** |
 | `dakara_e1.nav` | 0.3 / 3.0 / chunk grid, 2,773 tiles | 79,838 / 36,238 / 98,047 | 47 K | 699 | 7.3 MB | 23 s | 3/3 | advisory |
 | `dakara_e1_storyrm.nav` | 0.3 / 1.3 / chunk grid | 239 / 115 / 325 | 0.1 M | 6 | 15 KB | 0.1 s | none seeded | advisory |
-| `harset.nav` | 0.3 / 1.3 / chunk grid | 29,768 / 15,287 / 42,379 | 8.6 M | 372 | 1.9 MB | 9 s | 51/67 | advisory |
+| `harset.nav` | 0.3 / 1.3 / chunk grid | 29,772 / 15,289 / 42,385 | 8.6 M | 372 | 1.9 MB | 9 s | 51/67 | advisory |
 | `harset_cmdcenter.nav`, `sandbox.nav` | 0.3 / 1.3 / chunk grid | 1,130 / 570 / 1,580 | 0.4 M | 14 | 64 KB | 0.6 s | 14/20 | advisory |
 | `harset_market.nav` | 0.3 / 1.3 / chunk grid | 1,352 / 683 / 1,897 | 1.2 M | 29 | 76 KB | 0.8 s | 3/5 | advisory |
 | `harset_storagerm.nav` | 0.3 / 1.3 / chunk grid | 1,195 / 560 / 1,618 | 0.2 M | 16 | 65 KB | 0.5 s | 5/5 | advisory |
@@ -92,9 +102,18 @@ the chunk OBJs adds 5-30 s on the big maps.
   distinct `last_valid` positions the old mesh accepts all 43 and the new one
   37. The six it loses are raised platforms at about y -59 / -61
   (for example (9.5, -58.8, 59.4) and (34.6, -61.3, -70.7)) where
-  `obj_slab` finds no source geometry at all, so an actor class the
-  extractor does not decode is the likely cause. Probes go from 18/67 to
+  `obj_slab` finds no source geometry at all. Probes go from 18/67 to
   51/67; all five ring pads and the Command Center door are now on-mesh.
+  **NA36 (2026-09-25) checked the "an undecoded actor class" hypothesis
+  above and did not confirm it**: `InterpActor` / `KActor` /
+  `FracturedStaticMeshActor` are now decoded
+  ([navmesh-build-pipeline.md §11](../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)),
+  and Harset's 31 `InterpActor` exports all resolve, but none sits within
+  30 m of these five points at the target height — `nav_inspect` reports
+  the identical `OUT OF TOLERANCE` set before and after. The gap remains
+  open; the leading unconfirmed lead is a genuinely *animated* mover
+  whose cooked (resting) pose a static bake cannot place at its raised
+  in-game height.
 - `harset_storagerm.nav` (2012, agent 0.6 / 0.9). Of 24 distinct accepted
   positions the new mesh keeps 16 against the old 23. Three of the seven it
   loses are near-origin login noise (|x|, |z| < 2); the other four sit 1-2 m
