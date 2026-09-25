@@ -118,7 +118,17 @@ pub(crate) struct ResourceCache {
     overridden_elements: Arc<HashMap<u32, Vec<u32>>>,
 }
 
-/// Category ID -> PAK filename mapping (from `resource.cpp`).
+/// Category ID -> PAK filename mapping.
+///
+/// The IDs are the client's registration order, confirmed from
+/// `CookedData_RegisterAllLibCategories` (SGW.exe `0x00420074`): the client
+/// registers **exactly 21** ServerSource categories, numbered 1–21, with
+/// category 21 = `BehaviorEventData` / `CookedBehaviorEvents.pak`. There is
+/// **no** client-side category 0, category 22, or `pet_command` — the
+/// legacy `resource.cpp`/`Def.py` table that reserved `21: pet_command` and
+/// put `behavior_event` at 22 drifted from the client and is not the wire
+/// contract. See `docs/reverse-engineering/findings/cooked-data-pipeline.md`
+/// and `docs/protocol/client-verified-wire-formats.md` §8.
 pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
     (1, "CookedDataKismetSeqEvent.pak"),
     (2, "CookedDataAbilities.pak"),
@@ -140,7 +150,18 @@ pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
     (18, "CookedParadigm.pak"),
     (19, "SpecialWords.pak"),
     (20, "CookedInteractions.pak"),
+    (CATEGORY_BEHAVIOR_EVENTS, "CookedBehaviorEvents.pak"),
 ];
+
+/// Category id for `CookedBehaviorEvents.pak` (see [`CATEGORY_PAKS`]).
+///
+/// The client registers this as `BehaviorEventData` — the 21st and final
+/// `ServerSource` category at `CookedData_RegisterAllLibCategories`
+/// (`SGW.exe` `0x00420074`). The legacy `resource.cpp`/`Def.py` map reserved
+/// 21 for `pet_command` (never implemented client-side) and pushed
+/// `behavior_event` to 22, drifting past the client's contiguous 1–21 enum:
+/// a fragment tagged 22 is silently dropped. Match the client: 21.
+const CATEGORY_BEHAVIOR_EVENTS: u32 = 21;
 
 /// Category id for `CookedDataMissions.pak` (see [`CATEGORY_PAKS`]).
 const CATEGORY_MISSIONS: u32 = 3;

@@ -18,6 +18,13 @@ pub(super) async fn handle_interact(
     if args.len() < 4 {
         return;
     }
+    if !space_mgr
+        .get_entity(entity_id)
+        .is_some_and(|actor| !crate::cell::combat::is_dead_state(actor.state_field))
+    {
+        tracing::debug!(entity_id, "interact: actor missing or dead");
+        return;
+    }
     let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
     tracing::info!(entity_id, target_entity_id, "interact");
 
@@ -274,5 +281,139 @@ pub(super) async fn handle_interact(
         // and returns true, so this path can only be reached when the target is
         // a player or a non-hostile faction — neither of which should trigger
         // combat from an interact request.
+    }
+}
+
+#[cfg(test)]
+mod liveness_tests {
+    use super::*;
+    use crate::cell::combat::BSF_DEAD;
+    use crate::test_support::make_space_manager;
+    use cimmeria_content_engine::{actions::Action, chain::Chain, triggers::Trigger};
+    use cimmeria_entity::cell_entity::{LootItem, NpcInteractionType};
+    use cimmeria_entity::stats::HEALTH;
+
+    #[derive(Clone, Copy, Debug)]
+    enum Route {
+        Hostile,
+        Trainer,
+        Tag,
+        Template,
+        Loot,
+    }
+
+    fn dead_actor_fixture(route: Route) -> (SpaceManager, ChainEngine, u32) {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let actor = mgr.get_entity_mut(1).unwrap();
+        actor.player_id = Some(42);
+        actor.archetype_id = Some(2);
+        actor.set_state_flag(BSF_DEAD);
+        actor.last_interaction_target = Some(99);
+        actor.looting_entity = Some(98);
+        actor.vendor_entity = Some(97);
+        actor.open_dialog_id = Some(96);
+        actor.counters.insert("alive_probe".into(), 7);
+        assert!(actor.stats.get(HEALTH).unwrap().cur > 0);
+
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let npc = mgr.get_entity_mut(npc_id).unwrap();
+        npc.faction = 1;
+        npc.clear_all_state_flags();
+        npc.npc_name = Some("LivenessProbe".into());
+        let mut engine = ChainEngine::new();
+        match route {
+            Route::Hostile => npc.faction = 10,
+            Route::Trainer => {
+                npc.template_id = Some(700);
+                mgr.template_trainer_lists.insert(700, 701);
+            }
+            Route::Loot => {
+                npc.faction = 10;
+                npc.set_state_flag(BSF_DEAD);
+                npc.interaction_type = Some(NpcInteractionType::Loot);
+                npc.loot.push(LootItem {
+                    design_id: None,
+                    quantity: 50,
+                    index: 1,
+                });
+            }
+            Route::Tag | Route::Template => {
+                let trigger = if matches!(route, Route::Tag) {
+                    npc.tag = Some("LivenessProbe".into());
+                    Trigger::OnInteractTag {
+                        entity_tag: "LivenessProbe".into(),
+                    }
+                } else {
+                    Trigger::OnInteractTemplate {
+                        template_name: "LivenessProbe".into(),
+                    }
+                };
+                engine.register_chain(Chain {
+                    id: 700,
+                    name: "interaction liveness probe".into(),
+                    enabled: true,
+                    trigger,
+                    conditions: vec![],
+                    actions: vec![Action::IncrementCounter {
+                        counter_name: "alive_probe".into(),
+                        amount: 1,
+                    }],
+                    action_delays: vec![],
+                    priority: 0,
+                });
+            }
+        }
+        (mgr, engine, npc_id)
+    }
+
+    #[tokio::test]
+    async fn dead_actor_preserves_state_and_emits_nothing_on_every_interact_route() {
+        for route in [
+            Route::Hostile,
+            Route::Trainer,
+            Route::Tag,
+            Route::Template,
+            Route::Loot,
+        ] {
+            let (mut mgr, engine, npc_id) = dead_actor_fixture(route);
+            let (tx, mut rx) = mpsc::channel(16);
+            handle_interact(1, &(npc_id as i32).to_le_bytes(), &tx, &mut mgr, &engine).await;
+            assert!(
+                rx.try_recv().is_err(),
+                "dead actor emitted a message via {route:?}"
+            );
+            let actor = mgr.get_entity(1).unwrap();
+            assert_eq!(actor.last_interaction_target, Some(99), "{route:?}");
+            assert_eq!(actor.looting_entity, Some(98), "{route:?}");
+            assert_eq!(actor.vendor_entity, Some(97), "{route:?}");
+            assert_eq!(actor.open_dialog_id, Some(96), "{route:?}");
+            assert_eq!(actor.counters.get("alive_probe"), Some(&7), "{route:?}");
+            assert!(crate::cell::combat::is_dead_state(actor.state_field));
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_actor_cannot_emit_hostile_target_update() {
+        let (mut mgr, engine, npc_id) = dead_actor_fixture(Route::Hostile);
+        let (tx, mut rx) = mpsc::channel(16);
+        assert!(mgr.get_entity(2).is_none());
+        handle_interact(2, &(npc_id as i32).to_le_bytes(), &tx, &mut mgr, &engine).await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn clearing_dead_state_allows_tag_and_template_interactions_again() {
+        for route in [Route::Tag, Route::Template] {
+            let (mut mgr, engine, npc_id) = dead_actor_fixture(route);
+            mgr.get_entity_mut(1).unwrap().clear_all_state_flags();
+            let (tx, _rx) = mpsc::channel(16);
+            handle_interact(1, &(npc_id as i32).to_le_bytes(), &tx, &mut mgr, &engine).await;
+            let actor = mgr.get_entity(1).unwrap();
+            assert_eq!(actor.last_interaction_target, Some(npc_id), "{route:?}");
+            assert_eq!(actor.counters.get("alive_probe"), Some(&8), "{route:?}");
+        }
     }
 }

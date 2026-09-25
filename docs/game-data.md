@@ -103,7 +103,7 @@ PAK Files (data/cache/)
 Game Client
 ```
 
-This pipeline is **confirmed working in our server**. When a client connects, the server generates cooked data from the database and sends it. The 22 resource categories handled include abilities, items, effects, missions, dialogs, stargates, blueprints, world info, text strings, and more.
+This pipeline is **confirmed working in our server**. When a client connects, the server generates cooked data from the database and sends it. The 21 resource categories handled include abilities, items, effects, missions, dialogs, stargates, blueprints, world info, text strings, and more.
 
 ## Data & Code Status
 
