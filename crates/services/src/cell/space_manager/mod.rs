@@ -21,6 +21,8 @@ pub use queries::PlayerNameLookup;
 
 mod aoi;
 mod client_move;
+mod cover_sight;
+pub use cover_sight::{NpcSight, SightOrigin};
 mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;

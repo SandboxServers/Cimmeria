@@ -66,7 +66,7 @@ mod chase;
 pub(in crate::cell) mod detectors;
 mod dispatch;
 mod fight;
-mod fight_cover;
+pub(in crate::cell::service) mod fight_cover;
 mod fight_target;
 mod follow;
 #[cfg(test)]

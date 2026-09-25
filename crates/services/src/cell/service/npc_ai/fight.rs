@@ -151,12 +151,34 @@ pub(super) async fn npc_ai_fight(
     // A stationary NPC does not treat a same-storey navmesh `Blocked` as a
     // wall: the mesh cannot see over a desk and the NPC cannot walk around
     // one (NA16 / audit S11). A mobile NPC keeps the strict verdict and
-    // paths toward its target instead. An NPC at its cover slot (holding
-    // Cover Stance) fires over the cover whatever the ray says: the prop is
-    // usually a hole in the mesh, so the ray from behind it reads as blocked
-    // by construction (`AttackLosPolicy::InCoverSlot`, NA22). Computed after
-    // the cover step so the arrival tick already sees the stance.
+    // paths toward its target instead. An NPC at its cover slot looks from
+    // the slot's peek point past the prop (the prop is a hole in the mesh, so
+    // its own ray reads as blocked by construction), strictly from there, so
+    // a wall past the cover still stops the shot (`AttackLosPolicy::CoverPeek`,
+    // NA23, D-NA12). Computed after the cover step, which may have just
+    // walked it onto its slot.
     let has_los = space_mgr.attack_line_of_sight(npc_id, target_id, is_stationary);
+    // In cover with no line from the peek point (a wall past the cover, or a
+    // slot with no peek point): hold fire, then give the slot up (NA23).
+    let in_cover = if in_cover && !has_los {
+        match super::fight_cover::blind_in_slot(
+            space_mgr,
+            npc_id,
+            target_id,
+            std::time::Instant::now(),
+        ) {
+            super::fight_cover::BlindInSlot::Hold => {
+                face_target(space_mgr, npc_id, npc_pos, target_pos);
+                return;
+            }
+            super::fight_cover::BlindInSlot::Released => false,
+        }
+    } else {
+        if in_cover {
+            super::fight_cover::clear_blind(space_mgr, npc_id);
+        }
+        in_cover
+    };
 
     // Out of range OR occluded — keep pathfinding so the NPC can reposition
     // to regain line of sight. Treating "in range but blocked" as a stop

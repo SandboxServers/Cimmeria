@@ -8,6 +8,10 @@
 //! (audit C3), an NPC standing at its slot holds still and fires from it,
 //! and the walk to a slot is `chase::walk_to_cover_slot`, not the target
 //! chase (NA15's stop distance and unreachable hold are for targets).
+//! NA23 made the slot's sight real: a pick needs a shot from the slot's peek
+//! point, an NPC with no shot from its slot holds fire and then gives it up
+//! ([`blind_in_slot`]), and a slot given up as flanked, blind or unreachable
+//! cools for `COVER_REPICK_COOLDOWN`.
 
 use std::time::{Duration, Instant};
 
@@ -15,9 +19,10 @@ use cimmeria_common::{EntityId, Vector3};
 use tokio::sync::mpsc;
 
 use crate::cell::cover::{
-    grant_cover_stance, horizontal, maintain_cover_for_npc_traced, release_npc_cover,
-    revoke_cover_stance, CoverDecision, CoverQuery, CoverWeights, NoCoverReason, PickTrace,
-    ReleaseReason, COVER_ARRIVE_RADIUS, MAX_COVER_DISTANCE, SEEK_RETRY,
+    grant_cover_stance, horizontal, maintain_cover_for_npc_checked, release_npc_cover,
+    revoke_cover_stance, CoverDecision, CoverQuery, CoverSlotKey, CoverWeights, NoCoverReason,
+    PickTrace, ReleaseReason, COVER_ARRIVE_RADIUS, COVER_BLIND_GRACE, COVER_REPICK_COOLDOWN,
+    MAX_COVER_DISTANCE, SEEK_RETRY,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -88,7 +93,12 @@ pub(super) async fn route_via_cover(
     }
 
     let now = Instant::now();
-    let (decision, trace) = maintain_cover_for_npc_traced(
+    // A new slot must give the NPC a shot at its target from its peek point
+    // (NA23): cover is a firing position.
+    let sm: &SpaceManager = space_mgr;
+    let has_shot =
+        |node: &crate::cell::cover::CoverNode| sm.slot_has_shot(npc_id, node, target_pos);
+    let (decision, trace) = maintain_cover_for_npc_checked(
         CoverQuery {
             npc_id: EntityId(npc_id as i32),
             npc_pos,
@@ -99,8 +109,9 @@ pub(super) async fn route_via_cover(
             use_cover: true,
             now,
         },
-        &space_mgr.cover,
+        &sm.cover,
         &CoverWeights::default(),
+        &has_shot,
     );
     if let Some(pick) = &trace.pick {
         log_selection(space_mgr, npc_id, pick, now);
@@ -156,6 +167,7 @@ pub(super) async fn route_via_cover(
             // again for a while (the scorer would choose the same slot).
             release_npc_cover(space_mgr, npc_id, "unreachable");
             lock_defer(space_mgr, npc_id, now);
+            cool_slot(space_mgr, npc_id, slot, now);
             report_release(
                 space_mgr,
                 npc_id,
@@ -199,6 +211,85 @@ fn has_arrived(space_mgr: &SpaceManager, npc_id: u32, npc_pos: Vector3, slot: Ve
         .get_entity(npc_id)
         .is_some_and(|e| !e.nav_path.is_empty());
     d <= COVER_SNAP_RADIUS || (d <= COVER_ARRIVE_RADIUS && !route_left)
+}
+
+/// The fight tick's answer for an NPC standing at its slot with no line of
+/// sight to its target from the slot's peek point (NA23).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::cell::service) enum BlindInSlot {
+    /// Still inside [`COVER_BLIND_GRACE`]: hold the slot, face the target,
+    /// do not fire.
+    Hold,
+    /// The grace ran out: the slot and the stance are gone, and the slot is
+    /// cooling. Fight on as an NPC out of cover.
+    Released,
+}
+
+/// An NPC at its slot cannot see its target from the peek point. Before
+/// NA23 the fight tick fired anyway (`in_cover_slot`), and a guard shot the
+/// player through two walls (UAT-1). Now it holds fire for
+/// [`COVER_BLIND_GRACE`], then gives the slot up
+/// (`cover_released_no_shot`) so the chase can find it a line.
+pub(in crate::cell::service) fn blind_in_slot(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    target_id: u32,
+    now: Instant,
+) -> BlindInSlot {
+    let id = EntityId(npc_id as i32);
+    let (since, slot) = {
+        let mut r = match space_mgr.cover.reservations.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        (r.note_blind(id, now), r.slot_for_entity(id))
+    };
+    let Some(slot) = slot else {
+        return BlindInSlot::Released;
+    };
+    if now.duration_since(since) < COVER_BLIND_GRACE {
+        super::note_outcome("cover_no_shot");
+        tracing::debug!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "cover_no_shot",
+            npc_id,
+            target_id,
+            chunk_id = slot.chunk_id,
+            node_id = slot.node_id,
+            blind_ms = now.duration_since(since).as_millis() as u64,
+            "NPC AI: in cover with no line of sight from the peek point, holding fire"
+        );
+        return BlindInSlot::Hold;
+    }
+    {
+        let mut r = match space_mgr.cover.reservations.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        r.release_for_entity(id);
+        r.cool_slot(id, slot, now + COVER_REPICK_COOLDOWN);
+    }
+    revoke_cover_stance(space_mgr, npc_id);
+    report_release(space_mgr, npc_id, target_id, slot, ReleaseReason::NoShot);
+    BlindInSlot::Released
+}
+
+/// The NPC at its slot sees its target again: restart the blind clock.
+pub(super) fn clear_blind(space_mgr: &SpaceManager, npc_id: u32) {
+    let mut r = match space_mgr.cover.reservations.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    r.clear_blind(EntityId(npc_id as i32));
+}
+
+fn cool_slot(space_mgr: &SpaceManager, npc_id: u32, slot: CoverSlotKey, now: Instant) {
+    let mut r = match space_mgr.cover.reservations.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    r.cool_slot(EntityId(npc_id as i32), slot, now + COVER_REPICK_COOLDOWN);
 }
 
 fn lock_defer(space_mgr: &SpaceManager, npc_id: u32, now: Instant) {
@@ -297,6 +388,7 @@ fn report_no_cover(
         reason = reason.label(),
         candidates_scanned = pick.map(|p| p.scanned),
         reserved_skipped = pick.map(|p| p.reserved_skipped),
+        no_shot = pick.map(|p| p.no_shot),
         out_of_reach = pick.map(|p| p.out_of_reach),
         search_radius = MAX_COVER_DISTANCE,
         cover_nodes_loaded = space_mgr.cover.node_count(),

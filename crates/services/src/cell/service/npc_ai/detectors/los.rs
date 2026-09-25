@@ -24,7 +24,9 @@ pub(in crate::cell) const LOS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5)
 const EYE_HEIGHT_USED: f32 = 0.0;
 
 /// Report a non-clear probe, sampled. `a` is the looker (the NPC on every AI
-/// call site), `b` the target.
+/// call site), `b` the target. `origin` says where the ray started: `npc`
+/// (the looker's position, `a_pos`) or `cover_peek` (NA23: `a_pos` is the
+/// peek point of the cover slot the NPC stands at).
 pub(in crate::cell) fn report(
     space_mgr: &SpaceManager,
     a: u32,
@@ -33,6 +35,7 @@ pub(in crate::cell) fn report(
     b_pos: Vector3,
     probe: &LosProbe,
     navmesh_hash: Option<&str>,
+    origin: &'static str,
     now: Instant,
 ) {
     if probe.result == LineOfSight::Clear {
@@ -77,6 +80,7 @@ pub(in crate::cell) fn report(
         dy = b_pos.y - a_pos.y,
         dist = a_pos.distance_to(&b_pos),
         navmesh_hash,
+        origin,
         suppressed,
         "npc_ai.los: line of sight not clear ({result})"
     );
