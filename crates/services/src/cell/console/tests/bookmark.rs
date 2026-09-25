@@ -103,6 +103,29 @@ fn playtest_bug_caps_by_distance_and_always_keeps_the_target() {
     let _ = npc;
 }
 
+/// NA24 (UAT-1 B): every colo entity row read `witness_count=0` and
+/// `caller_witnesses_it=false`, even for a guard fighting the tester, because
+/// the snapshot read the NPC's own `witnesses` set -- which only players have.
+/// After an AoI pass the tester sees the NPC, so both fields must say so.
+/// Revert proof: read `e.witnesses` again and both assertions fail.
+#[test]
+fn playtest_bug_reports_the_players_witnessing_an_npc() {
+    let (mut mgr, gm, npc) = setup();
+    let _ = mgr.compute_aoi_changes();
+    assert!(
+        mgr.get_entity(gm)
+            .unwrap()
+            .witnesses
+            .contains(&mgr.get_entity(npc).unwrap().entity_id),
+        "fixture: the AoI pass puts the NPC in the tester's view"
+    );
+
+    let b = capture(gm, Some(npc), "", &mgr).unwrap();
+    let row = b.entities.iter().find(|e| e.entity_id == npc).unwrap();
+    assert!(row.caller_witnesses_it, "the tester sees this NPC");
+    assert_eq!(row.witness_count, 1, "one player (the tester) sees it");
+}
+
 /// End to end through the dispatcher: header row + one row per entity share a
 /// `bookmark_id`, and the tester gets an acknowledgement.
 #[tokio::test]
