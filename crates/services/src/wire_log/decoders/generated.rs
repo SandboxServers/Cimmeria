@@ -164,12 +164,14 @@ pub(super) fn decode_12(args: &[u8]) -> Option<Value> {
     let iD = c.i32_le()?;
     let type_ = c.i8()?;
     let sourceID = c.i32_le()?;
+    let secondaryId = c.i32_le()?;
     let totalTime = c.f32_le()?;
     let bigWorldTimeComplete = c.f32_le()?;
     Some(json!({
         "ID": iD,
         "Type": type_,
         "SourceID": sourceID,
+        "SecondaryId": secondaryId,
         "TotalTime": totalTime,
         "BigWorldTimeComplete": bigWorldTimeComplete,
     }))

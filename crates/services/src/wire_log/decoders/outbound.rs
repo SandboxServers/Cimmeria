@@ -72,14 +72,16 @@ fn decode_on_sequence(args: &[u8]) -> Option<Value> {
 }
 
 /// Method 12: `onTimerUpdate` — cooldown / channel timer broadcasts.
-/// Wire: `INT32 ID, INT8 Type, INT32 SourceID, FLOAT TotalTime,
-/// FLOAT BigWorldTimeComplete`
+/// Wire: `INT32 ID, INT8 Type, INT32 SourceID, INT32 SecondaryId,
+/// FLOAT TotalTime, FLOAT BigWorldTimeComplete` (21 bytes;
+/// `interfaces/SGWBeing.def`).
 fn decode_on_timer_update(args: &[u8]) -> Option<Value> {
     let mut c = Cursor::new(args);
     Some(json!({
         "id": c.i32_le()?,
         "timer_type": c.i8()?,
         "source_id": c.i32_le()?,
+        "secondary_id": c.i32_le()?,
         "total_time": c.f32_le()?,
         "completion_time": c.f32_le()?,
     }))
@@ -192,6 +194,38 @@ fn decode_on_dialog_display(args: &[u8]) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn on_timer_update_decodes_secondary_id() {
+        // id=597, type=0, source=100, secondary=42, total=5.0, complete=12345.0
+        let args = [
+            0x55, 0x02, 0x00, 0x00, // ID
+            0x00, // Type
+            0x64, 0x00, 0x00, 0x00, // SourceID
+            0x2A, 0x00, 0x00, 0x00, // SecondaryId
+            0x00, 0x00, 0xA0, 0x40, // TotalTime = 5.0
+            0x00, 0xE4, 0x40, 0x46, // BigWorldTimeComplete = 12345.0
+        ];
+        assert_eq!(args.len(), 21, "onTimerUpdate wire layout is 21 bytes");
+        let decoded = decode_on_timer_update(&args).unwrap();
+        assert_eq!(decoded["id"], 597);
+        assert_eq!(decoded["timer_type"], 0);
+        assert_eq!(decoded["source_id"], 100);
+        assert_eq!(decoded["secondary_id"], 42);
+        assert!((decoded["total_time"].as_f64().unwrap() - 5.0).abs() < f64::EPSILON);
+        assert!((decoded["completion_time"].as_f64().unwrap() - 12345.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn on_timer_update_truncated_without_secondary_id_returns_none() {
+        // Legacy 17-byte layout (missing SecondaryId) must not decode cleanly.
+        let args = [
+            0x55, 0x02, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0x40, 0x00,
+            0xE4, 0x40, 0x46,
+        ];
+        assert_eq!(args.len(), 17);
+        assert!(decode_on_timer_update(&args).is_none());
+    }
 
     #[test]
     fn on_state_field_update_decodes_in_combat() {
