@@ -175,13 +175,7 @@ pub(super) async fn handle_destroy_entity(
     // Stage D: flush any pending bandolier ammo writes before tearing
     // down the entity. Logout is a hard boundary — anything still in
     // `bandolier_ammo_dirty` after this is lost.
-    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        if let Some(player_id) = entity.player_id {
-            crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx)
-                .await;
-        }
-    }
-    space_mgr.destroy_entity(entity_id);
+    flush_and_destroy(entity_id, tx, space_mgr).await;
 }
 
 /// Handle `BaseToCellMsg::ConnectEntity`.
@@ -256,13 +250,51 @@ pub(super) async fn handle_disconnect_entity(
     // is gone by the time DestroyEntity arrives next and its flush
     // is a silent no-op — that's why per-slot ammo and the loaded
     // state never persisted across a logoff.
+    flush_and_disconnect(entity_id, tx, space_mgr).await;
+}
+
+/// Flush dirty bandolier ammo, then destroy the entity.
+///
+/// The flush must happen before the entity is removed: once it is gone
+/// `bandolier_ammo_dirty` can no longer be read and the writes are lost.
+/// Extracted so the `DestroyEntity` handler and its regression guard share
+/// one code path — a test that re-implements this order cannot catch a
+/// handler that swaps it.
+pub(in crate::cell::service) async fn flush_and_destroy(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    flush_bandolier_ammo_for_entity(entity_id, tx, space_mgr).await;
+    space_mgr.destroy_entity(entity_id);
+}
+
+/// Flush dirty bandolier ammo, then disconnect the entity.
+///
+/// `SpaceManager::disconnect_entity` internally destroys the entity, so the
+/// flush has to happen first or it becomes a silent no-op and per-slot ammo
+/// never persists across a logoff.
+pub(in crate::cell::service) async fn flush_and_disconnect(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    flush_bandolier_ammo_for_entity(entity_id, tx, space_mgr).await;
+    space_mgr.disconnect_entity(entity_id, tx).await;
+}
+
+/// Flush any dirty bandolier ammo rows for a player-owned entity.
+async fn flush_bandolier_ammo_for_entity(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         if let Some(player_id) = entity.player_id {
             crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx)
                 .await;
         }
     }
-    space_mgr.disconnect_entity(entity_id, tx).await;
 }
 
 /// Queue `CellToBaseMsg::PersistPosition` for a player entity that is about
