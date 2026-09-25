@@ -65,7 +65,9 @@
 //! checked against `data/cache/CookedDataDialogs.pak` on 2026-09-21 for
 //! all three allowlisted dialogs — cooked `<Screens ScreenID>` order and
 //! `<Buttons ButtonType ButtonID Text>` rows match the seed exactly. The
-//! pak is not in git and nothing here depends on it.
+//! pak is a committed binary, but this linter reads only the SQL seeds;
+//! checks against the cooked entries belong with the override tables in
+//! `cimmeria-services`.
 //!
 //! # Layout
 //!
