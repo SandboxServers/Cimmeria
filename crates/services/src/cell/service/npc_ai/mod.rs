@@ -79,6 +79,11 @@ pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 #[cfg(test)]
 pub(super) use ability_select::compute_backup_waypoint_for_test;
 
+// Test-only re-export: `tests/npc_ai/zero_health_guard.rs` drives the
+// admit filter with a synthetic clock to pin its per-NPC warn throttle.
+#[cfg(test)]
+pub(super) use dispatch::{npc_is_incapacitated, ZERO_HEALTH_WARN_MIN_INTERVAL};
+
 // Test-only re-export: GC1b-2's chain-replay suite
 // (`crate::cell::content::chain_replay_tests::gc1_escort`) drives
 // individual follow AI ticks directly rather than the full

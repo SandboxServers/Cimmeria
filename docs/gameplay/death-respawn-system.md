@@ -35,14 +35,16 @@ When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/comb
 
 1. **Resolve target** — `resolve_respawn_target(respawner_id, entity_id, space_mgr)` returns `(world, [x, y, z])`. Priority: explicit respawner_id → first respawner registered for the player's current world → Castle default for `Castle_CellBlock`/unknown → in-place at the player's current position for any other world. Rows sitting exactly at the world origin are skipped at every priority — see [Unauthored respawner rows](#unauthored-respawner-rows).
 2. **`onEndAidWait`** (method 99) — close the Defeat Window first.
-3. **Reset cell-entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), `clear_all_cooldowns`, `update_entity_position` to the spawn point.
+3. **Reset cell-entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), then re-apply the persisted preference bits (`PERSISTED_STATE_FIELD_MASK`, today `BSF_AutoCycling`) that a relog keeps too, `clear_all_cooldowns`, `update_entity_position` to the spawn point.
 4. **`onStatUpdate`** — push the refreshed HEALTH/FOCUS to the HUD.
-5. **`onStateFieldUpdate(0)`** — clears BSF_Dead / BSF_MovementLock / dead-cursor visuals on the owning client.
+5. **`onStateFieldUpdate(preference bits)`** — the post-reset field (0, or just `BSF_AutoCycling`). Applied as an XOR delta on the client, it clears BSF_Dead / BSF_MovementLock / dead-cursor visuals while leaving the preference bit alone.
 6. **`CellToBaseMsg::ReanchorPlayer { entity_id, space_id, position, rotation }`** — BaseApp [`handle_reanchor_player`](../../crates/services/src/base/world_entry/reanchor_player.rs) emits two packets to the client:
    - **Burst** — `BASEMSG_CREATE_BASE_PLAYER` + `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` + `BASEMSG_FORCED_POSITION`. `CREATE_BASE_PLAYER` is the load-bearing piece; it invokes the client's `createBasePlayer` hook (same path as initial login), which destroys the ragdolled pawn actor and instantiates a fresh standing one.
    - **Property replay** (separate bundle, after the client's creation transaction settles) — `BeingAppearance` + `onEntityTint`, drawn from `ConnectedClientState`'s `cached_appearance_args` / `cached_tint_args` (populated during initial world entry in `map_loaded.rs`). Without this the recreated pawn would render blank.
 
    **No `RESET_ENTITIES`, no `onClientMapLoad`, no terrain reload.**
+
+7. **Post-reanchor replay** — everything else the client kept on the player entity the pawn recreate just emptied, queued on the same channel behind the reanchor so it lands after the client's creation transaction: the client-hinted region list (clear + one batch of `addClientHintedGenericRegion`; without it the client sends no region hints for the rest of the session), the `listItems` inventory snapshot, and — via [`player_init::resync_after_pawn_recreate`](../../crates/services/src/cell/service/base_messages/player_init/resync.rs) — `onKnownAbilitiesUpdate` (hotbar), `onActiveSlotUpdate`, the mission journal resend and, when non-zero, the full `state_field` (the client's cached copy resets to 0 with the new entity, so the auto-cycle highlight needs one more broadcast).
 
 The result: ragdoll cleared, pawn standing with full appearance, while every other client-side entity is untouched. Instance preservation comes from never sending `RESET_ENTITIES` — door states / completed encounters / triggered sequences all survive the respawn.
 

@@ -117,6 +117,9 @@ pub(super) async fn handle(
             direction: [other.direction.x, other.direction.y, other.direction.z],
             level: other.level,
             npc_data,
+            player_data: other
+                .is_player
+                .then(|| crate::cell::messages::PlayerAoIData::from_entity(other)),
         };
         if let Err(e) = tx.send(msg).await {
             tracing::warn!(

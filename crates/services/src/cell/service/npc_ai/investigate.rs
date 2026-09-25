@@ -118,12 +118,13 @@ pub(super) async fn npc_ai_investigate(
         // the NPC was dwelling at the POI and got pushed off, the
         // re-arrival should re-stamp from scratch rather than
         // observe `Some(past)` and immediately return to Idle.
-        let path = space_mgr
-            .find_path(npc_id, &npc_pos, &poi_pos)
-            .unwrap_or_default();
-        if path.len() <= 1 {
-            // Previously silent — see `patrol.rs` for the same shape.
-            let reason = super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+        let path = space_mgr.find_path(npc_id, &npc_pos, &poi_pos);
+        if path.as_ref().is_none_or(|p| p.len() <= 1) {
+            // Previously silent — see `patrol.rs` for the same shape,
+            // and for why the `Option` survives until after
+            // classification.
+            let reason =
+                super::path_failure::PathFailReason::classify(space_mgr, npc_id, path.as_deref());
             super::path_failure::report_path_failure(
                 space_mgr,
                 super::path_failure::PathFailure {
@@ -133,11 +134,13 @@ pub(super) async fn npc_ai_investigate(
                     from: npc_pos,
                     to: poi_pos,
                     reason,
+                    fallback: super::path_failure::PathFallback::DirectWaypoint,
                     target_id: None,
                 },
                 std::time::Instant::now(),
             );
         }
+        let path = path.unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.investigate_until = None;
             npc.nav_path.clear();

@@ -69,6 +69,7 @@ docker run ...   # same flags as above
 | \`BASE_PORT\` | \`32832\` | BaseApp UDP |
 | \`CELL_PORT\` | \`50000\` | CellApp UDP |
 | \`ADMIN_PORT\` | \`8443\` | Admin REST API |
+| \`ADMIN_BIND\` | \`0.0.0.0\` | Admin REST API bind. **No auth yet (#439)** — the \`-p 8443\` publish is the exposure control; use \`-p 127.0.0.1:8443:8443\` for operator-only access |
 | \`DB_URL\` | \`host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw\` | Libpq-style (NOT a URL DSN — see operations docs) |
 | \`DEVELOPER_MODE\` | \`true\` | Relaxed auth + multi-login |
 | \`RUST_LOG\` | \`info\` | tracing-subscriber filter |
