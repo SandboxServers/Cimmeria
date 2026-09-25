@@ -2,12 +2,12 @@
 title: "Chat System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-19
 ---
 
 # Chat System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-19
 > **Status**: Spatial chat (say / emote / yell) works. Channel management, moderation, tells, and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server.
 
 ## Overview
@@ -24,7 +24,7 @@ Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `c
 |---------|--------|-------|
 | Spatial channels (say / emote / yell) | DONE | `cell/chat.rs` broadcasts `onPlayerCommunication` to every AoI witness of the speaker |
 | Channel registration on login | DONE | 8 channels pushed at `onClientReady` — see [System Channels](#system-channels) |
-| DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it |
+| DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |
 | GM console passthrough | DONE | A `.`-prefixed say from a GM is routed to the console handler; from a non-GM it falls through as ordinary chat |
 | Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. Channels are auto-joined at login; there is no join/leave state to change |
@@ -41,6 +41,8 @@ Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `c
 | GM shout | NOT IMPL | `hearGMShout` never sent |
 | Localized communication | NOT IMPL | `onLocalizedCommunication` never sent |
 | Channel list | NOT IMPL | `chatList` undispatched |
+
+DND text is capped server-side at 128 Unicode scalar values, not UTF-8 bytes or UTF-16 code units. This is a Cimmeria input policy; no client limit was reverse-engineered. A longer message still turns DND on, so the player sees `/dnd` take effect, but only the first 128 scalars are stored; truncation logs at DEBUG with `reason = "dnd_message_truncated"`, the length and the limit, without the message body. Malformed WSTRING input also preserves the previous state. DND auto-replies remain unimplemented.
 
 ## Entity Definition (Communicator.def)
 
