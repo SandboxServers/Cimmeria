@@ -191,3 +191,4 @@
 - [no-movement-type-wire-and-nav-path-writers.md](no-movement-type-wire-and-nav-path-writers.md) — no movement-type wire exists (witness method 1 = onSequence); every NPC nav_path write goes through `movement_stop` (guard test).
 - [npc-detector-telemetry-traps.md](npc-detector-telemetry-traps.md) — NA02: AI-path statics race across tests (use task_local); release detector state in destroy_entity AND destroy_space.
 - [npc-class-filter-and-dead-target-traps.md](npc-class-filter-and-dead-target-traps.md) — `all_npc_entity_ids` is mob-only (being-class Col Marsh never ticked; `spawn_npc` fixtures hide it); HEALTH alone is not dead.
+- [occluder-sizing-and-los-truth.md](occluder-sizing-and-los-truth.md) — NA27: collision LoS grids blow the budget on outdoor worlds (Agnos 57 MB/288 MB); terrain as heightfield; grazing-ray metric trap.
