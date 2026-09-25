@@ -25,6 +25,7 @@ impl AggroCause {
             Self::Proximity => AiTransitionReason::AutoAggro,
             Self::Damage => AiTransitionReason::ThreatPreempt,
             Self::ContentThreat => AiTransitionReason::Content,
+            Self::Assist => AiTransitionReason::Assist,
         }
     }
 }

@@ -296,6 +296,9 @@ impl SpaceManager {
         // `None` on either means faction-derived / the server default.
         e.aggro.override_level = record.aggression_override;
         e.aggro.radius_override = record.aggro_radius;
+        // Per-template assist radius (`entity_templates.assist_radius`),
+        // NA14. `None` means the server default (10 u).
+        e.aggro.assist_radius_override = record.assist_radius;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

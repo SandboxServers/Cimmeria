@@ -566,6 +566,7 @@ mod tests {
             move_speed,
             leash_distance: None,
             aggro_radius: None,
+            assist_radius: None,
             aggression_override: None,
         }
     }

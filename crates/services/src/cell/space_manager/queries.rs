@@ -233,6 +233,26 @@ impl SpaceManager {
         ids
     }
 
+    /// NPC entity IDs (class_id=0x04, not players) in the same space as
+    /// `entity_id`, excluding `entity_id` itself. Restricted to one space so
+    /// instanced copies of a world never see each other. The NA14 assist
+    /// fan-out's candidate set.
+    pub fn npc_ids_in_space_of(&self, entity_id: u32) -> Vec<u32> {
+        let Some(space) = self
+            .entity_space
+            .get(&entity_id)
+            .and_then(|sid| self.spaces.get(sid))
+        else {
+            return Vec::new();
+        };
+        space
+            .entities
+            .iter()
+            .filter(|(&eid, e)| eid != entity_id && !e.is_player && e.class_id == 0x04)
+            .map(|(&eid, _)| eid)
+            .collect()
+    }
+
     /// Collect all player entity IDs (entries in each space's `players` set)
     /// across all spaces. Returned as a `Vec` so callers can iterate without
     /// holding a borrow on `SpaceManager`.

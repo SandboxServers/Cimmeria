@@ -43,6 +43,9 @@ use crate::cell::space_manager::SpaceManager;
 pub(in crate::cell) enum AiTransitionReason {
     /// Idle auto-aggro seeded threat on a witness (`cause=proximity`).
     AutoAggro,
+    /// A same-faction neighbour engaged nearby and this NPC joined its fight
+    /// (`cause=assist`, NA14 / D-NA04). Never chains.
+    Assist,
     /// Damage preempted Idle / Patrol / Wander / Investigating / Follow.
     ThreatPreempt,
     /// Fighting with nobody left on the threat list.
@@ -97,6 +100,7 @@ impl AiTransitionReason {
     pub(in crate::cell) fn label(self) -> &'static str {
         match self {
             Self::AutoAggro => "auto_aggro",
+            Self::Assist => "assist",
             Self::ThreatPreempt => "threat_preempt",
             Self::ThreatEmpty => "threat_empty",
             Self::LeashOut => "leash_out",
@@ -307,6 +311,7 @@ mod tests {
     fn reason_labels_are_stable_snake_case() {
         assert_eq!(AiTransitionReason::ThreatPreempt.label(), "threat_preempt");
         assert_eq!(AiTransitionReason::AutoAggro.label(), "auto_aggro");
+        assert_eq!(AiTransitionReason::Assist.label(), "assist");
         assert_eq!(AiTransitionReason::LeashArrived.label(), "leash_arrived");
         assert_eq!(AiTransitionReason::TargetLost.label(), "target_lost");
         assert_eq!(

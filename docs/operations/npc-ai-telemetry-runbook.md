@@ -37,7 +37,7 @@ Every view lives in the Logs Explorer under the category `npc-ai`. The exact fil
 
 | Question | Open | What to look for |
 |---|---|---|
-| Which NPCs aggroed, and how? | View **NPC AI — Which NPCs aggroed, and how?**; dashboard panel *Aggro by cause* | Group by `cause` and `tag`. `proximity` is aggro on sight; `damage` means the player hit first; `content_threat` came from a content chain |
+| Which NPCs aggroed, and how? | View **NPC AI — Which NPCs aggroed, and how?**; dashboard panel *Aggro by cause* | Group by `cause` and `tag`. `proximity` is aggro on sight; `damage` means the player hit first; `content_threat` came from a content chain; `assist` means a same-faction neighbour engaged and this NPC joined (NA14) |
 | Why did this guard ignore me? | View **NPC AI — Why did this guard ignore me?** plus `AND npc_id = N`; dashboard panels *Aggro-scan rejections* and *Idle NPCs the AI tick skips* | Each `candidate_rejected` row names a `reason`. **No rows at all** means the NPC was never ticked: it is counted in `npc_ai_idle_unticked` |
 | What happened to this one NPC, in order? | View **NPC AI — Timeline for one NPC** plus `AND npc_id = N` | Read top to bottom: `from` → `to` with `reason`, then leash, path and movement rows |
 | Who is running in place? | View **NPC AI — Who is running in place?**; counter `npc_stale_velocity_total` | `path_state = empty` is a path cleared mid-leg; `stalled` is a path the NPC is not walking |

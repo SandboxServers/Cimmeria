@@ -65,6 +65,7 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         move_speed: 0.6,
         leash_distance: None,
         aggro_radius: None,
+        assist_radius: None,
         aggression_override: None,
     }
 }

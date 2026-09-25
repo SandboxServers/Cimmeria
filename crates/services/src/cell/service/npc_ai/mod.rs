@@ -31,6 +31,9 @@
 //! - [`idle_aggro`] — the Idle auto-aggro scan that seeds Fighting.
 //! - [`aggro_gates`] — that scan's candidate gates (hostility, GM toggle,
 //!   vertical band, radius, line of sight) and reject reasons (NA13).
+//! - [`assist`] — same-room assist: a fresh engagement pulls hostile
+//!   same-faction neighbours onto the same target, without chaining (NA14,
+//!   a marked deviation from legacy).
 //! - [`ability_select`] — ability bucket choice, range resolution,
 //!   and the min-range backup-waypoint geometry.
 //! - [`patrol`] / [`wander`] / [`investigate`] / [`follow`] — the
@@ -58,6 +61,7 @@
 mod ability_select;
 mod aggro_acquired;
 mod aggro_gates;
+mod assist;
 mod chase;
 pub(in crate::cell) mod detectors;
 mod dispatch;
@@ -119,6 +123,8 @@ pub(in crate::cell) async fn npc_ai_tick_for_test(
 // combat, the content executor, the GM console, the respawn tick -- reach
 // it through this re-export.
 pub(in crate::cell) use aggro_acquired::log_aggro_acquired;
+// NA14: `combat::generate_threat` fans a fresh engagement out to neighbours.
+pub(in crate::cell) use assist::recruit_assisters;
 // Stopping and rerouting an NPC: the only writers of `nav_path` outside the
 // movement tick (NA10). Combat and the content executor reach them here.
 pub(in crate::cell) use movement_stop::{
