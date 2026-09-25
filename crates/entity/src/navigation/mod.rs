@@ -21,15 +21,20 @@
 //!   ([`PointVerdict`], [`NavGate`]).
 //! - [`line_of_sight`] — the line-of-sight raycast and its three-state
 //!   result.
+//! - [`path`] — `find_path` and its typed [`PathOutcome`] (which Detour
+//!   stage failed, whether the corridor was partial, how far each end
+//!   snapped).
 //! - this module — the [`NavMesh`] handle and the rest of its query API.
 
 mod fingerprint;
 mod line_of_sight;
 mod load;
+mod path;
 mod verdict;
 mod xrc;
 
-pub use line_of_sight::LineOfSight;
+pub use line_of_sight::{LineOfSight, LosProbe};
+pub use path::{PathOutcome, PathStatus};
 
 use std::ffi::c_void;
 
@@ -436,110 +441,6 @@ impl NavMesh {
         } else {
             Some(height)
         }
-    }
-
-    /// Find a path from `start` to `end` across the navigation mesh.
-    ///
-    /// Returns a sequence of world-space waypoints forming a walkable path,
-    /// or `None` if no path exists. Uses Detour's A* pathfinder followed
-    /// by straight-path simplification.
-    pub fn find_path(&self, start: &Vector3, end: &Vector3) -> Option<Vec<Vector3>> {
-        let start_pos = [start.x, start.y, start.z];
-        let end_pos = [end.x, end.y, end.z];
-
-        // Find start polygon (tight extents — entity should be on a poly)
-        let mut start_ref: u32 = 0;
-        let mut start_pt = [0.0f32; 3];
-        let status = unsafe {
-            detour_ffi::detour_find_nearest_poly(
-                self.query,
-                start_pos.as_ptr(),
-                START_EXTENTS.as_ptr(),
-                &mut start_ref,
-                start_pt.as_mut_ptr(),
-            )
-        };
-        if dt_status_failed(status) || start_ref == 0 {
-            tracing::warn!(?start, "NavMesh::find_path: no start poly for position");
-            return None;
-        }
-
-        // Find end polygon (loose extents — destination may be approximate)
-        let mut end_ref: u32 = 0;
-        let mut end_pt = [0.0f32; 3];
-        let status = unsafe {
-            detour_ffi::detour_find_nearest_poly(
-                self.query,
-                end_pos.as_ptr(),
-                DEST_EXTENTS.as_ptr(),
-                &mut end_ref,
-                end_pt.as_mut_ptr(),
-            )
-        };
-        if dt_status_failed(status) || end_ref == 0 {
-            tracing::warn!(?end, "NavMesh::find_path: no end poly for position");
-            return None;
-        }
-
-        // Find polygon corridor via A*
-        let mut poly_path = vec![0u32; MAX_POLY_PATH as usize];
-        let mut path_count: i32 = 0;
-        let status = unsafe {
-            detour_ffi::detour_find_path(
-                self.query,
-                start_ref,
-                end_ref,
-                start_pt.as_ptr(),
-                end_pt.as_ptr(),
-                poly_path.as_mut_ptr(),
-                &mut path_count,
-                MAX_POLY_PATH,
-            )
-        };
-        if dt_status_failed(status) || path_count == 0 {
-            tracing::debug!(?start, ?end, "NavMesh::find_path: no poly path found");
-            return None;
-        }
-
-        // Convert polygon corridor to straight-line waypoints
-        let mut straight_path = vec![0.0f32; (MAX_STRAIGHT_PATH * 3) as usize];
-        let mut straight_count: i32 = 0;
-        let status = unsafe {
-            detour_ffi::detour_find_straight_path(
-                self.query,
-                start_pt.as_ptr(),
-                end_pt.as_ptr(),
-                poly_path.as_ptr(),
-                path_count,
-                straight_path.as_mut_ptr(),
-                &mut straight_count,
-                MAX_STRAIGHT_PATH,
-            )
-        };
-        if dt_status_failed(status) || straight_count == 0 {
-            tracing::debug!(
-                ?start,
-                ?end,
-                "NavMesh::find_path: straight path failed, returning endpoints"
-            );
-            // Fallback: return direct start→end (Detour found a poly path
-            // but couldn't straighten it — shouldn't happen normally)
-            return Some(vec![
-                Vector3::new(start_pt[0], start_pt[1], start_pt[2]),
-                Vector3::new(end_pt[0], end_pt[1], end_pt[2]),
-            ]);
-        }
-
-        let mut waypoints = Vec::with_capacity(straight_count as usize);
-        for i in 0..straight_count as usize {
-            waypoints.push(Vector3::new(
-                straight_path[i * 3],
-                straight_path[i * 3 + 1],
-                straight_path[i * 3 + 2],
-            ));
-        }
-
-        Some(waypoints)
     }
 }
 

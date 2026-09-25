@@ -44,14 +44,16 @@ pub(super) async fn npc_ai_leash(
     // and velocity in place, so the movement tick walked the NPC from
     // spawn back out along the stale route (NA10, audit S4). The authored
     // spawn facing is restored the way the respawn tick restores it.
-    let (snap_to, spawn_facing) = match space_mgr.get_entity(npc_id) {
+    let (snap_to, spawn_facing, from) = match space_mgr.get_entity(npc_id) {
         Some(npc) => (
             npc.spawn_position
                 .filter(|_| npc.follow_target_id.is_none()),
             npc.spawn_direction,
+            npc.position,
         ),
         None => return,
     };
+    let snapped = snap_to.is_some();
     match snap_to {
         Some(spawn_pos) => super::snap_npc_to(space_mgr, npc_id, spawn_pos, spawn_facing),
         // A follower stays where it is, but it still stops.
@@ -101,6 +103,13 @@ pub(super) async fn npc_ai_leash(
         let state_field = npc.state_field;
         (stat_update, state_field)
     };
+    super::detectors::leash::on_complete(space_mgr, npc_id, from, snapped);
+    super::detectors::threat::check_cleared(
+        space_mgr,
+        npc_id,
+        super::detectors::threat::ThreatClear::LeashComplete,
+        std::time::Instant::now(),
+    );
 
     crate::cell::abilities::send_entity_method(npc_id, 20, stat_update, tx, space_mgr).await;
 

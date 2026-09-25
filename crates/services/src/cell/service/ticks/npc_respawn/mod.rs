@@ -323,6 +323,7 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                         position: [pos.x, pos.y, pos.z],
                         direction: [spawn_dir.x, spawn_dir.y, spawn_dir.z],
                         velocity: [0.0; 3],
+                        npc_moved_since_last: None,
                     })
                     .await;
             }

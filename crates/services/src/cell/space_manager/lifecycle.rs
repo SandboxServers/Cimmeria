@@ -59,6 +59,48 @@ impl SpaceManager {
         self.spaces.insert(space_id, instance);
     }
 
+    /// Emit `cover.coverage event=space_summary` for one space: the cover
+    /// nodes of its world, how many stand on its navmesh, and how many of
+    /// its NPCs would use them. WARN when cover-seeking NPCs have nothing.
+    /// No-op until the cover index has loaded.
+    pub(crate) fn log_cover_coverage(&self, space_id: u32) {
+        if !self.npc_detectors.cover_load_done {
+            return;
+        }
+        let Some(space) = self.spaces.get(&space_id) else {
+            return;
+        };
+        let cover_npcs = space
+            .entities
+            .values()
+            .filter(|e| !e.is_player && e.use_cover && !e.is_stationary)
+            .count();
+        let coverage = super::super::cover::space_coverage(
+            &self.cover,
+            self.world_id_for_world(&space.world_name),
+            space.navmesh.as_ref(),
+            cover_npcs,
+        );
+        super::super::cover::log_space_coverage(
+            space_id,
+            &space.world_name,
+            &coverage,
+            space.navmesh.as_ref().map(|n| n.short_hash()),
+        );
+    }
+
+    /// The cover service has loaded: summarise every space that exists now
+    /// (their NPCs are already spawned). Instanced spaces are summarised
+    /// after their own spawn, in `spawn_instance_npcs_from_records`.
+    pub(crate) fn cover_loaded(&mut self) {
+        self.npc_detectors.cover_load_done = true;
+        let mut ids: Vec<u32> = self.spaces.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            self.log_cover_coverage(id);
+        }
+    }
+
     /// Check if a non-instanced space already exists for a world name.
     ///
     /// Only checks `world_spaces` (non-instanced startup spaces). For instanced
@@ -212,7 +254,12 @@ impl SpaceManager {
                 self.entity_space.remove(&eid);
                 self.movement_telemetry.forget(eid);
                 self.movement_validator.forget(eid);
+                // Missing here until NA02: `destroy_entity` released it,
+                // this path did not.
+                self.zero_health_npc_log.forget(eid);
+                self.npc_detectors.forget(eid);
             }
+            self.npc_detectors.forget_world(&space.world_name);
 
             tracing::info!(
                 space_id,

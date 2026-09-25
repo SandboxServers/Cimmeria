@@ -190,6 +190,7 @@ async fn entity_moved_pre_client_ready_drops_silently_without_buffering() {
             position: [1.0; 3],
             direction: [0.0; 3],
             velocity: [0.5; 3],
+            npc_moved_since_last: None,
         },
         &transport,
         &connected,

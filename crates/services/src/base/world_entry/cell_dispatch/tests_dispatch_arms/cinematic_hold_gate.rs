@@ -126,6 +126,7 @@ async fn left_aoi_buffers_and_entity_moved_drops_during_cinematic_hold() {
             position: [1.0; 3],
             direction: [0.0; 3],
             velocity: [0.5; 3],
+            npc_moved_since_last: None,
         },
         &transport,
         &connected,

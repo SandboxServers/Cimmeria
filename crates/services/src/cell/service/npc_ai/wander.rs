@@ -172,12 +172,28 @@ pub(super) async fn npc_ai_wander(
         spawn
     };
 
-    let path = space_mgr.find_path(npc_id, &npc_pos, &target);
+    let routed = super::path_request::request_path(
+        space_mgr,
+        super::path_request::PathRequest {
+            npc_id,
+            state: "wander",
+            from: npc_pos,
+            to: target,
+            target_id: None,
+            partial_outcome: "wander_partial",
+        },
+        std::time::Instant::now(),
+    );
+    let (path, status) = (routed.waypoints, routed.status);
     if path.as_ref().is_none_or(|p| p.len() <= 1) {
         // Previously silent — see `patrol.rs` for the same shape, and
         // for why the `Option` survives until after classification.
-        let reason =
-            super::path_failure::PathFailReason::classify(space_mgr, npc_id, path.as_deref());
+        let reason = super::path_failure::PathFailReason::classify(
+            space_mgr,
+            npc_id,
+            status,
+            path.as_deref(),
+        );
         super::path_failure::report_path_failure(
             space_mgr,
             super::path_failure::PathFailure {

@@ -40,6 +40,7 @@ const OTEL_FILTER: &str = "info,\
                 mercury.backpressure=warn,\
                 wire.in=info,wire.out=info,\
                 wire.out.avatar_update=debug,\
+                wire.out.forced_position=debug,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 aoi.create_emit=debug,\
                 movement.npc=debug,movement.player=debug,\
@@ -518,6 +519,9 @@ mod tests {
             "aoi.create_emit=debug",
             // NA00 / audit gap T1: DEBUG seams that never reached SigNoz.
             "wire.out.avatar_update=debug",
+            // NA02: every FORCED_POSITION sent. Needs its own directive:
+            // `wire.out=info` would otherwise drop it.
+            "wire.out.forced_position=debug",
             "movement.navmesh=debug",
             "cover=debug",
             "spawner=debug",
@@ -594,6 +598,46 @@ mod tests {
                 "content",
             ],
             "OTEL_FILTER passed the wrong set of targets"
+        );
+    }
+
+    /// NA02: every detector target, at the level it emits, reaches the
+    /// exporter. Most ride a prefix directive (`npc_ai=debug`,
+    /// `cover=debug`, `spawner=debug`, `movement.npc=debug`, `threat=info`);
+    /// `wire.out.forced_position` needs its own. Removing any directive that
+    /// one of these depends on fails here.
+    #[test]
+    fn otel_filter_exports_every_na02_detector_target() {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::{EnvFilter, Layer};
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(TargetLog(seen.clone()).with_filter(EnvFilter::new(OTEL_FILTER)));
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug!(target: "npc_ai.path", "request");
+            tracing::warn!(target: "npc_ai.path_fail", "partial");
+            tracing::debug!(target: "npc_ai.los", "blocked");
+            tracing::info!(target: "npc_ai.leash", "enter");
+            tracing::warn!(target: "npc_ai.leash", "loop");
+            tracing::debug!(target: "npc_ai.leash", "damage_ignored");
+            tracing::debug!(target: "npc_ai.aggro_scan", "candidate_rejected");
+            tracing::debug!(target: "npc_ai.idle", "unticked");
+            tracing::info!(target: "npc_ai.idle_parked", "idle_parked");
+            tracing::warn!(target: "npc_ai", "stuck");
+            tracing::debug!(target: "npc_ai", "no_cover");
+            tracing::warn!(target: "movement.npc", "stale_velocity");
+            tracing::info!(target: "cover.coverage", "space_summary");
+            tracing::debug!(target: "cover.selection", "picked");
+            tracing::warn!(target: "spawner.npc_behaviour", "spawn_off_mesh");
+            tracing::warn!(target: "threat", "cleared_without_exit");
+            tracing::debug!(target: "wire.out.forced_position", "forced");
+        });
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(
+            seen.len(),
+            17,
+            "every NA02 detector row must pass OTEL_FILTER; got {seen:?}"
         );
     }
 }

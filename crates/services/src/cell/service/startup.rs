@@ -264,6 +264,9 @@ impl CellService {
                     "Cover service loaded"
                 );
             }
+            // `cover.coverage event=space_summary` for every space that
+            // exists now, and (from here on) every space created later.
+            space_mgr.cover_loaded();
             match spawner::load_item_containers(pool).await {
                 Ok(map) => {
                     space_mgr.item_containers = map;

@@ -33,6 +33,7 @@
 use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::navigation::PathStatus;
 
 use crate::cell::space_manager::SpaceManager;
 
@@ -53,9 +54,20 @@ pub(super) enum PathFailReason {
     /// this NPC was never going to route. A zone-level content gap, not
     /// a per-NPC one.
     NoMesh,
-    /// There is a mesh and the pathfinder found no route: the NPC or its
-    /// destination is off-mesh, or they are in disconnected components.
+    /// There is a mesh and the pathfinder found no route, for a reason the
+    /// caller could not name. Kept for callers that have no
+    /// [`PathStatus`]; every AI state now reports one of the three below.
     NoPath,
+    /// No polygon within `find_path`'s `±0.5` start box: the NPC is
+    /// hovering, sunk or off the mesh (audit S9).
+    NoStartPoly,
+    /// No polygon within `±3.0` of the destination.
+    NoEndPoly,
+    /// Both ends snapped but A* found no corridor.
+    NoCorridor,
+    /// The corridor stops at the start's mesh island edge (audit S8). The
+    /// caller still walks it, exactly as before NA02.
+    Partial,
     /// A route came back with <= 1 waypoint, which is not actionable
     /// movement. The caller keeps whatever path it already had.
     DegeneratePath,
@@ -66,20 +78,30 @@ impl PathFailReason {
         match self {
             PathFailReason::NoMesh => "no_mesh",
             PathFailReason::NoPath => "no_path",
+            PathFailReason::NoStartPoly => "no_start_poly",
+            PathFailReason::NoEndPoly => "no_end_poly",
+            PathFailReason::NoCorridor => "no_corridor",
+            PathFailReason::Partial => "partial",
             PathFailReason::DegeneratePath => "degenerate_path",
         }
     }
 
-    /// Pick between `no_mesh` and `no_path` from the space's state.
-    /// Callers that got `None` from `find_path` cannot tell the two
-    /// apart themselves, and the distinction is the whole diagnostic
-    /// value: `no_mesh` means "this zone needs a `.nav`", `no_path`
-    /// means "the mesh is there and has a hole or a split".
-    pub(super) fn for_missing_path(space_mgr: &SpaceManager, npc_id: u32) -> Self {
-        if space_mgr.space_has_navmesh(npc_id) {
-            PathFailReason::NoPath
-        } else {
-            PathFailReason::NoMesh
+    /// Why `find_path` returned no waypoints. `status` is the navmesh's
+    /// [`PathStatus`] (`None` when the space has no navmesh, or the NPC is
+    /// not in a space). `no_mesh` means "this zone needs a `.nav`"; the
+    /// stage reasons say where on an existing mesh the query failed.
+    pub(super) fn for_missing_path(
+        space_mgr: &SpaceManager,
+        npc_id: u32,
+        status: Option<PathStatus>,
+    ) -> Self {
+        match status {
+            Some(PathStatus::NoStartPoly) => PathFailReason::NoStartPoly,
+            Some(PathStatus::NoEndPoly) => PathFailReason::NoEndPoly,
+            Some(PathStatus::NoCorridor) => PathFailReason::NoCorridor,
+            Some(PathStatus::Partial) => PathFailReason::Partial,
+            _ if space_mgr.space_has_navmesh(npc_id) => PathFailReason::NoPath,
+            _ => PathFailReason::NoMesh,
         }
     }
 
@@ -96,10 +118,11 @@ impl PathFailReason {
     pub(super) fn classify(
         space_mgr: &SpaceManager,
         npc_id: u32,
+        status: Option<PathStatus>,
         path: Option<&[Vector3]>,
     ) -> Self {
         match path {
-            None => Self::for_missing_path(space_mgr, npc_id),
+            None => Self::for_missing_path(space_mgr, npc_id, status),
             Some(_) => PathFailReason::DegeneratePath,
         }
     }
@@ -124,6 +147,9 @@ pub(super) enum PathFallback {
     /// in place, so it keeps walking a stale route — or stands still, if
     /// it had none.
     PathUnchanged,
+    /// The partial corridor was installed as-is: the NPC walks to the edge
+    /// of its mesh island, stops short of the destination, and repaths.
+    PartialRoute,
 }
 
 impl PathFallback {
@@ -131,6 +157,7 @@ impl PathFallback {
         match self {
             PathFallback::DirectWaypoint => "direct_waypoint",
             PathFallback::PathUnchanged => "path_unchanged",
+            PathFallback::PartialRoute => "partial_route",
         }
     }
 }
@@ -179,6 +206,14 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         target_id,
     } = f;
 
+    // The caller is about to walk the raw destination: remember that for
+    // `npc_off_mesh`'s `last_move_source`.
+    if fallback == PathFallback::DirectWaypoint {
+        space_mgr
+            .npc_detectors
+            .note_move_source(npc_id, super::detectors::MoveSource::Fallback);
+    }
+
     // Immutable lookups first: the throttle below takes `&mut`, and
     // `world_name_for_space` hands back a borrow of `self`.
     let world = space_mgr
@@ -191,19 +226,33 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
 
     // Counted every tick, logged on some of them — the throttle must
     // not deflate the rate an operator alerts on.
-    cimmeria_observability::counter!(
-        "npc_path_fail_total",
-        "world" => world.clone(),
-        "state" => state,
-        "reason" => reason_label,
-    );
+    // A partial route is walked, not failed: it has its own counter and
+    // its own throttle window, so a chase repathing into an island edge
+    // every tick cannot hold back a real `no_start_poly` / `no_corridor`
+    // row for the same NPC (and `npc_path_fail_total` keeps meaning "no
+    // usable route").
+    let partial = reason == PathFailReason::Partial;
+    if partial {
+        cimmeria_observability::counter!(
+            "npc_path_partial_total",
+            "world" => world.clone(),
+            "state" => state,
+        );
+    } else {
+        cimmeria_observability::counter!(
+            "npc_path_fail_total",
+            "world" => world.clone(),
+            "state" => state,
+            "reason" => reason_label,
+        );
+    }
 
     // One kind: every AI state's path failure shares a window, because
     // a stuck NPC does not change state and the row already names which
     // handler was routing.
     let Some(suppressed) = space_mgr.movement_telemetry.npc_path_fail_log.admit(
         npc_id,
-        "path_fail",
+        if partial { "path_partial" } else { "path_fail" },
         now,
         PATH_FAIL_LOG_MIN_INTERVAL,
     ) else {
@@ -224,6 +273,10 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         PathFallback::DirectWaypoint => format!(
             "npc_ai.path_fail: {state} got no usable navmesh route \
              -- falling back to a straight line through geometry toward the destination"
+        ),
+        PathFallback::PartialRoute => format!(
+            "npc_ai.path_fail: {state} got a partial navmesh route -- the destination \
+             is on another mesh island, so the NPC walks to the edge of its own and stops short"
         ),
     };
 

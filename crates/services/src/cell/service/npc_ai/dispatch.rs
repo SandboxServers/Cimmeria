@@ -105,20 +105,23 @@ pub(in crate::cell::service) async fn npc_ai_tick(
     let now = Instant::now();
     let mut npc_ids = space_mgr.all_npc_entity_ids();
     npc_ids.retain(|&eid| !npc_is_incapacitated(space_mgr, eid, now));
-    let npc_snapshot: Vec<(u32, AiState, i32, bool, bool)> = npc_ids
+    let npc_snapshot: Vec<(u32, AiState, bool, bool, bool)> = npc_ids
         .iter()
         .filter_map(|&eid| {
             space_mgr.get_entity(eid).map(|e| {
                 (
                     eid,
                     e.ai_state(),
-                    e.aggression,
+                    // The same predicate `idle_parked` uses to decide an
+                    // Idle NPC will never be ticked, so the two cannot
+                    // disagree.
+                    super::detectors::idle_parked::idle_is_ticked(e),
                     !e.patrol_path.is_empty(),
                     e.wander_radius > 0.0,
                 )
             })
         })
-        .filter(|(_, state, aggression, has_patrol, has_wander)| {
+        .filter(|(_, state, idle_ticked, _, _)| {
             // Admit any state that has a per-tick handler. Idle is
             // admitted when the NPC has a patrol path, a wander
             // radius, or positive aggression so the tick can promote
@@ -132,9 +135,15 @@ pub(in crate::cell::service) async fn npc_ai_tick(
                 || *state == AiState::Despawning
                 || *state == AiState::Submit
                 || *state == AiState::Error
-                || (*state == AiState::Idle && (*aggression > 0 || *has_patrol || *has_wander))
+                || (*state == AiState::Idle && *idle_ticked)
         })
         .collect();
+
+    // Detectors over every NPC, admitted or not: the idle-unticked gauge
+    // counts exactly the NPCs this filter just left out.
+    let admitted: std::collections::HashSet<u32> =
+        npc_snapshot.iter().map(|(id, ..)| *id).collect();
+    super::detectors::sweep::before_tick(space_mgr, &admitted, now);
 
     use tracing::Instrument;
 
@@ -155,8 +164,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
             // stable.
             decision_outcome = tracing::field::Empty,
         );
-        async {
-            super::take_last_outcome();
+        super::with_outcome_slot(async {
             match ai_state {
                 AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr, engine).await,
                 AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
@@ -206,8 +214,10 @@ pub(in crate::cell::service) async fn npc_ai_tick(
                     // here rather than a silent admit / no-op.
                 }
             }
-            log_ai_tick(space_mgr, npc_id, ai_state, super::take_last_outcome());
-        }
+            let outcome = super::take_last_outcome();
+            log_ai_tick(space_mgr, npc_id, ai_state, outcome);
+            super::detectors::sweep::after_handler(space_mgr, npc_id, ai_state, outcome, now);
+        })
         .instrument(ai_span)
         .await;
     }
@@ -332,6 +342,7 @@ fn log_ai_tick(
     let target = space_mgr.get_entity(target_id).map(|t| t.position);
     let dest = e.nav_path.back().copied();
     let next = e.nav_path.front().copied();
+    let [vx, vy, vz] = e.velocity;
     tracing::debug!(
         target: "npc_ai.tick",
         npc_id,
@@ -346,6 +357,12 @@ fn log_ai_tick(
         yaw_rad = e.direction.y,
         yaw_byte = crate::mercury::aoi::pack_angle(e.direction.y),
         last_movement_type = ?e.last_movement_type,
+        // The velocity every witness is sent this tick. The client animates
+        // NPC movement from velocity alone, so non-zero here with an empty
+        // path is an NPC running in place.
+        vx,
+        vy,
+        vz,
         nav_path_len = e.nav_path.len(),
         next_wp = ?next.map(|p| [p.x, p.y, p.z]),
         dest = ?dest.map(|p| [p.x, p.y, p.z]),
@@ -355,7 +372,11 @@ fn log_ai_tick(
         threat_count = e.threat_list.len(),
         target_pos = ?target.map(|p| [p.x, p.y, p.z]),
         dist_to_target = ?target.map(|p| p.distance_to(&e.position)),
-        has_los = target.is_some().then(|| space_mgr.has_line_of_sight(npc_id, target_id)),
+        // Three-state (`clear`, `blocked`, `unknown_off_mesh`): the AI treats
+        // unknown as clear, but a row that says so hides an off-mesh NPC.
+        los = target.is_some().then(|| {
+            super::aggro_acquired::los_label(space_mgr.line_of_sight(npc_id, target_id))
+        }),
         follow_target_id = e.follow_target_id.unwrap_or(0),
         npc_to_spawn = ?e.spawn_position.map(|p| p.distance_to(&e.position)),
         move_speed = e.move_speed,

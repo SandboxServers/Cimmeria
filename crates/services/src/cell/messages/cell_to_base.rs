@@ -23,6 +23,9 @@ pub enum CellToBaseMsg {
         position: [f32; 3],
         direction: [f32; 3],
         velocity: [f32; 3],
+        /// Telemetry only, never on the wire: did this NPC move on the last
+        /// movement tick (`None` for players and one-off relays)?
+        npc_moved_since_last: Option<bool>,
     },
 
     /// A new entity entered a witness's Area of Interest.

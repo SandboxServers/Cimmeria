@@ -237,6 +237,9 @@ impl SpaceManager {
                             position: [other.position.x, other.position.y, other.position.z],
                             direction: [other.direction.x, other.direction.y, other.direction.z],
                             velocity: other.velocity,
+                            npc_moved_since_last: (!other.is_player)
+                                .then(|| self.npc_detectors.moved_last_tick(eid))
+                                .flatten(),
                         });
                     }
                 }

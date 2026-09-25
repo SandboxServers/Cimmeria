@@ -124,6 +124,10 @@ pub(in crate::cell) fn snap_npc_to(
     facing: Option<Vector3>,
 ) {
     space_mgr.update_position_preserving_facing(npc_id, [pos.x, pos.y, pos.z], [0.0; 3]);
+    // NA02 `npc_off_mesh.last_move_source`: the leash is the only snapper.
+    space_mgr
+        .npc_detectors
+        .note_move_source(npc_id, super::detectors::MoveSource::Leash);
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         stop_movement_on(npc);
         if let Some(dir) = facing {

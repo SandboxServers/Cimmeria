@@ -451,6 +451,8 @@ pub(super) async fn apply_damage_to_target(
 }
 
 #[cfg(test)]
+mod aggro_cause_tests;
+#[cfg(test)]
 mod bleed_death_tests;
 #[cfg(test)]
 mod tests;

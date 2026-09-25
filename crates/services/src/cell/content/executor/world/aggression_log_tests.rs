@@ -62,3 +62,33 @@ fn set_aggression_hit_logs_from_and_to_at_info() {
         "a hit must not warn"
     );
 }
+
+/// NA00 review: the content executor's `GenerateThreat` action is the one
+/// real caller of `AggroCause::ContentThreat`. Driving the action (not
+/// `combat::generate_threat` directly) pins that it passes the right cause;
+/// a wrong cause would label every chain-armed guard (chains 1008, 1032) as
+/// `damage` or `proximity`.
+#[tokio::test]
+async fn generate_threat_action_logs_the_content_threat_cause() {
+    let mut mgr = make_space_mgr();
+    mgr.get_entity_mut(101).unwrap().class_id = 0x04;
+    let (tx, _rx) = tokio::sync::mpsc::channel(16);
+    let logs = LogCapture::install();
+
+    generate_threat(Some("Drone".to_string()), 1000, 1, 1008, &tx, &mut mgr).await;
+
+    let all = logs.all();
+    let acquired = all
+        .iter()
+        .find(|c| c.target == "npc_ai.aggro")
+        .expect("the Fighting entry must log npc_ai.aggro");
+    assert!(
+        acquired.has_field("cause", "content_threat"),
+        "{acquired:?}"
+    );
+    let transition = all
+        .iter()
+        .find(|c| c.target == "npc_ai.transition")
+        .expect("and a transition row");
+    assert!(transition.has_field("reason", "content"), "{transition:?}");
+}

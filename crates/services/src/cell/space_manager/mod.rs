@@ -284,6 +284,11 @@ pub struct SpaceManager {
     /// one slot per NPC — see `cell::service::npc_ai::dispatch`. Released in
     /// `destroy_entity`.
     pub(crate) zero_health_npc_log: LogThrottle,
+    /// NPC AI detector state (NA02): stuck / stale / floating / leash-loop
+    /// trackers and their WARN throttles. Reporting only; released in
+    /// `destroy_entity` and `destroy_space`. See
+    /// `cell::service::npc_ai::detectors`.
+    pub(in crate::cell) npc_detectors: super::service::npc_ai::detectors::NpcDetectors,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -383,6 +388,7 @@ impl SpaceManager {
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
+            npc_detectors: Default::default(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),

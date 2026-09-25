@@ -25,6 +25,7 @@
 //!   the `SGWCoverSet.def`'s auto-release-prior semantics.
 
 mod ai_integration;
+mod coverage;
 mod detection;
 mod loader;
 mod reservation;
@@ -37,7 +38,10 @@ mod loader_live_db_tests;
 #[cfg(test)]
 mod tests;
 
-pub use ai_integration::{maintain_cover_for_npc, CoverDecision};
+pub use ai_integration::{
+    maintain_cover_for_npc, maintain_cover_for_npc_traced, CoverDecision, CoverTrace, NoCoverReason,
+};
+pub use coverage::{log_space_coverage, space_coverage, SpaceCoverage, NODE_FLOOR_TOLERANCE};
 pub use detection::{
     run_detection_tick, sets_near, CoverDetectionTable, CoverDetectionTick, DurationCoverEvent,
     EnteredCoverEvent, LeftCoverEvent, COVER_DURATION_MILESTONES_SECS, COVER_PROXIMITY_RADIUS,
@@ -45,7 +49,8 @@ pub use detection::{
 pub use loader::{load_cover_nodes, load_cover_sets, CoverLoadError};
 pub use reservation::{CoverReservations, ReserveError};
 pub use scoring::{
-    is_flanked, pick_best, score_node, CoverWeights, ScoringContext, MAX_COVER_DISTANCE,
+    is_flanked, pick_best, pick_best_traced, score_node, CoverWeights, PickTrace, ScoredCandidate,
+    ScoringContext, MAX_COVER_DISTANCE,
 };
 pub use spatial::CoverIndex;
 pub use types::{Cover, CoverHeight, CoverNode, CoverQuality, CoverSetMeta, CoverSlotKey};

@@ -29,7 +29,11 @@ impl AggroCause {
     }
 }
 
-fn los_label(los: LineOfSight) -> &'static str {
+/// The three-state `los` / `has_los` label on the AI's per-NPC rows
+/// (`clear`, `blocked`, `unknown`). `npc_ai.los` itself uses the longer
+/// `LineOfSight::label` (`unknown_off_mesh`) because it is the row that
+/// explains the unknown.
+pub(super) fn los_label(los: LineOfSight) -> &'static str {
     match los {
         LineOfSight::Clear => "clear",
         LineOfSight::Blocked => "blocked",

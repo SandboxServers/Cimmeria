@@ -79,7 +79,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA02
 
-**Status:** BlockedDependency (NA00, NA01). **Scope title:** Stuck, float, path, LoS and cover detectors. **Advisor:** npc-ai-spawn-advisor, movement-teleport-advisor, aoi-witness-broadcast (for `wire.out`).
+**Status:** Review (branch pushed, e270c296). **Scope title:** Stuck, float, path, LoS and cover detectors. **Advisor:** npc-ai-spawn-advisor, movement-teleport-advisor, aoi-witness-broadcast (for `wire.out`).
 
 **Entries:** telemetry.md §2.1-2.5; `crates/entity/src/detour_ffi.rs:108-114`; `navigation/mod.rs` `find_path`; `path_failure/mod.rs`; `space_manager/spatial.rs` (LoS); `cover/ai_integration.rs`; `fight.rs:363`; `startup.rs:224-243`.
 

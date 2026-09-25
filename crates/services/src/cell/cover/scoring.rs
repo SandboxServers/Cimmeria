@@ -235,29 +235,107 @@ pub fn pick_best(
     weights: &CoverWeights,
     chunk_ally_counts: &std::collections::HashMap<i32, usize>,
 ) -> Option<usize> {
-    // 2-m Y-axis tolerance: cover on a different floor of a multi-
-    // level chunk is unreachable without a pathfinding stair-climb;
-    // exclude it so the scorer doesn't waste cycles on candidates the
-    // navmesh won't be able to path to anyway.
-    let candidate_indices = index.nearby(world_id, &ctx.npc_pos, MAX_COVER_DISTANCE, Some(2.0));
-    let mut best_idx: Option<usize> = None;
-    let mut best_score = f32::NEG_INFINITY;
+    pick_best_traced(
+        index,
+        world_id,
+        reservations,
+        ctx,
+        weights,
+        chunk_ally_counts,
+    )
+    .best
+    .map(|c| c.idx)
+}
+
+/// Vertical tolerance for cover candidates: cover on a different floor of
+/// a multi-level chunk is unreachable without a pathfinding stair-climb.
+const MAX_COVER_Y_DIFF: f32 = 2.0;
+/// How many losing candidates a [`PickTrace`] keeps.
+const PICK_TRACE_RUNNERS_UP: usize = 3;
+
+/// One scored cover candidate, for the `cover.selection` log.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScoredCandidate {
+    pub idx: usize,
+    pub chunk_id: i32,
+    pub node_id: i32,
+    pub score: f32,
+    /// NPC to node: the walk (the `move` term's input).
+    pub move_dist: f32,
+    /// Threat to node (the `distance` term's input).
+    pub threat_dist: f32,
+    /// Held by another NPC, so it never competed.
+    pub reserved: bool,
+}
+
+/// What [`pick_best_traced`] looked at, as well as what it chose.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PickTrace {
+    /// Nodes inside `MAX_COVER_DISTANCE` and the vertical band.
+    pub scanned: usize,
+    /// Of those, how many were already reserved.
+    pub reserved_skipped: usize,
+    pub best: Option<ScoredCandidate>,
+    /// The best-scoring losers (reserved or lower score), best first.
+    pub runners_up: Vec<ScoredCandidate>,
+}
+
+/// [`pick_best`] with its working shown. The choice is identical: the first
+/// unreserved candidate with the strictly highest score, in `nearby` order.
+pub fn pick_best_traced(
+    index: &CoverIndex,
+    world_id: i32,
+    reservations: &CoverReservations,
+    ctx: &ScoringContext,
+    weights: &CoverWeights,
+    chunk_ally_counts: &std::collections::HashMap<i32, usize>,
+) -> PickTrace {
+    let candidate_indices = index.nearby(
+        world_id,
+        &ctx.npc_pos,
+        MAX_COVER_DISTANCE,
+        Some(MAX_COVER_Y_DIFF),
+    );
+    let mut trace = PickTrace {
+        scanned: candidate_indices.len(),
+        ..PickTrace::default()
+    };
+    let mut losers: Vec<ScoredCandidate> = Vec::new();
     for idx in candidate_indices {
         let n = match index.node(idx) {
             Some(n) => n,
             None => continue,
         };
-        if reservations.is_reserved(n.key()) {
+        let allied = chunk_ally_counts.get(&n.chunk_id).copied().unwrap_or(0);
+        let reserved = reservations.is_reserved(n.key());
+        let c = ScoredCandidate {
+            idx,
+            chunk_id: n.chunk_id,
+            node_id: n.node_id,
+            score: score_node(n, ctx, weights, allied),
+            move_dist: n.pos.distance_to(&ctx.npc_pos),
+            threat_dist: n.pos.distance_to(&ctx.threat_pos),
+            reserved,
+        };
+        if reserved {
+            trace.reserved_skipped += 1;
+            losers.push(c);
             continue;
         }
-        let allied = chunk_ally_counts.get(&n.chunk_id).copied().unwrap_or(0);
-        let s = score_node(n, ctx, weights, allied);
-        if s > best_score {
-            best_score = s;
-            best_idx = Some(idx);
+        // Same comparison as the original loop (a NaN score never wins).
+        let best_score = trace.best.map_or(f32::NEG_INFINITY, |b| b.score);
+        if c.score > best_score {
+            if let Some(prev) = trace.best.replace(c) {
+                losers.push(prev);
+            }
+        } else {
+            losers.push(c);
         }
     }
-    best_idx
+    losers.sort_by(|a, b| b.score.total_cmp(&a.score));
+    losers.truncate(PICK_TRACE_RUNNERS_UP);
+    trace.runners_up = losers;
+    trace
 }
 
 #[cfg(test)]

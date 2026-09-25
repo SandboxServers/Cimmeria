@@ -51,6 +51,10 @@ services:
   cimmeria:
     image: ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
     container_name: cimmeria
+    # Stable OTLP `host.name`: the server reports the OS hostname, and a
+    # container's default hostname is its random container ID, which
+    # changes on every watchtower swap.
+    hostname: cimmeria-colo
     restart: unless-stopped
     ports:
       - "13001:13001"        # auth (TCP) — game client login
