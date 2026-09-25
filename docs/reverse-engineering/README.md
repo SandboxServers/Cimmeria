@@ -64,6 +64,8 @@ The dialog UI redesign adds [`dialog-controller-wire-flow.md`](findings/dialog-c
 
 The NPC AI restoration campaign's NA20 packet adds [`cover-world-placement.md`](findings/cover-world-placement.md) — decoding `SGWSpecCoverNode`/`SGWCoverNodeComponent` directly out of the Castle/Castle_CellBlock `.umap` chunks shows 4,024 cover nodes that are already in world space with no owner-transform composition needed, correcting the prefab-pak-transform hypothesis in [`cover-system.md`](findings/cover-system.md) for those two maps and substantially shrinking the scope of the NA21 extractor packet.
 
+Its NA31 packet adds [`being-eye-heights.md`](findings/being-eye-heights.md). The script pawn gives every being one stock UE3 cylinder, so eye heights come from each body set's reference skeletal-mesh bounds instead: 1.81 m for a human male, 2.12 m for a Jaffa male and 0.15 m for a rat. The finding also shows that `ErrorStrings.pak` code 39 (`CONDITION_FEEDBACK_LOS`) is the line-of-sight feedback the client has text for.
+
 See [`findings/README.md`](findings/README.md) for the full per-doc index.
 
 ## Bible relationship

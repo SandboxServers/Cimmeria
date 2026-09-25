@@ -219,6 +219,18 @@ impl CellService {
                     tracing::warn!("Failed to load ability defs: {e}");
                 }
             }
+            // Eye heights for line of sight (NA31). Read at query time, so
+            // the NPCs spawned above pick them up too.
+            match spawner::load_body_set_eye_heights(pool).await {
+                Ok(map) => {
+                    space_mgr.body_set_eye_heights = map;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load body-set eye heights (every being uses the 1.5 m default): {e}"
+                    );
+                }
+            }
             match spawner::load_effect_defs(pool).await {
                 Ok(defs) => {
                     space_mgr.effect_defs = defs;

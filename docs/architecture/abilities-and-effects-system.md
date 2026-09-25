@@ -434,6 +434,26 @@ the GM path `false`, so an admin command cannot mint levels.
 both together; on its own it cannot isolate the AI filter, because the death it
 resolves also stamps `AiState::Dead`.)
 
+### 20. A player's targeted ability needs line of sight at fire time (NA31, D-NA14)
+
+**Decision:** `handle_use_ability` runs `fire_los::refuse_without_line_of_sight` straight
+after the range check. The check covers a player attacker using an ability aimed at another
+entity (`target_type_id` not `TargetSelf` or `TargetGround`) in a world with a
+collision-geometry occluder. When the eye ray and every tolerance ray are blocked, the
+ability is refused with `onErrorCode(0, ability_id, 39)`. The tolerance rays are the target
+one tick back, the shooter one tick ahead, and 0.35 m to each side of the target. The
+refusal comes before the holster queue, the cooldown and the ammo check, so a refused shot
+costs nothing.
+
+**Why these limits:** the navmesh ray reads furniture as walls (NA16), so no occluder, or an
+eye off its grid, never refuses. NPC launches are not re-checked, because the fight tick
+checked them in the same tick. Ground-target and AoE collection are unchanged: they aim at a
+point or a volume, not an entity's eyes. The gameplay rules are in
+[combat-system.md](../gameplay/combat-system.md#fire-time-line-of-sight).
+
+**Reversibility:** High. The gate is one `if` in `handle.rs` and one pre-gate in the
+auto-cycle tick. Removing it fails `a_shot_through_the_hallway_walls_is_refused_with_error_39`.
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:

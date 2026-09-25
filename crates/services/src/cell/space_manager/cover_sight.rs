@@ -161,10 +161,20 @@ impl SpaceManager {
     /// stand point behind the marker.
     pub fn slot_has_shot(&self, npc_id: u32, node: &CoverNode, target_pos: Vector3) -> bool {
         if let Some(occ) = self.occluder_of(npc_id) {
-            let eye = super::DEFAULT_EYE_HEIGHT;
-            return super::occluder_probe(occ, stand_behind(node), eye, target_pos, eye)
-                .result
-                .is_clear_or_unknown();
+            // The NPC's own eye (NA31); the far end is a bare position, so
+            // it takes the default.
+            let eye = self
+                .get_entity(npc_id)
+                .map_or(super::DEFAULT_EYE_HEIGHT, |e| self.eye_height_of(e));
+            return super::occluder_probe(
+                occ,
+                stand_behind(node),
+                eye,
+                target_pos,
+                super::DEFAULT_EYE_HEIGHT,
+            )
+            .result
+            .is_clear_or_unknown();
         }
         let Some(navmesh) = self.navmesh_of(npc_id) else {
             return true;

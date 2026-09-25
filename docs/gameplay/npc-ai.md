@@ -555,16 +555,22 @@ slot whatever the verdict, and a guard shot a player through two walls
 (UAT-1). Where a world ships an occluder, these navmesh rules are replaced
 (NA27, below).
 
-Ability launch (`use_ability/handle.rs`) checks range only. An NPC's line
-of sight is checked by the fight tick in the same tick, just before the
-launch. Players still get no line-of-sight check at fire time.
+Ability launch (`use_ability/handle.rs`) does not re-check an NPC's line
+of sight: the fight tick checks it in the same tick, just before the
+launch. Since NA31, a player's targeted ability is checked at fire time
+against the occluder and refused with `onErrorCode` 39; see
+[combat-system.md](combat-system.md#fire-time-line-of-sight).
 
 ### Rust: collision-geometry line of sight (NA27)
 
 A world that ships `data/spaces/<world>.occ` answers every NPC
-line-of-sight question from its collision geometry, eye to eye at 1.5 m
-(`space_manager/occlusion.rs`, decision D-NA13). The navmesh workarounds
-above do not apply there:
+line-of-sight question from its collision geometry, eye to eye
+(`space_manager/occlusion.rs`, decision D-NA13). Since NA31 each eye is at
+the being's body-set height (`resources.body_sets.eye_height`): 1.81 m for a
+human male, 2.12 m for a Jaffa male, 0.15 m for a rat, and 1.5 m for a
+body set with no measured mesh. See
+[being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md).
+The navmesh workarounds above do not apply there:
 
 | Check | With an occluder |
 |---|---|
@@ -577,7 +583,10 @@ about 1% of truly clear pairs read blocked, mostly rays grazing a wall
 edge. The Find Ambernol drone fires over the med-station desk, and
 `Hallway01_Guard` sees over its counter to 13.6 u. `Hallway02_Guard` does
 not see through the hallway walls. `npc_ai.los` rows say
-`source=occluder` with `eye_height_used = 1.5`. The file is paged: only the
+`source=occluder` with `eye_height_used` and `target_eye_height_used` (the
+two body-set eyes; NA27's measurements were taken at 1.5 m on both ends,
+and NA31 moved the eyes of Jaffa and humans higher, so they see over
+slightly more). The file is paged: only the
 64 m pages near players are unpacked (`npc_ai.occluder event=residency`).
 Details in
 [the NA27 worknote](../analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).
