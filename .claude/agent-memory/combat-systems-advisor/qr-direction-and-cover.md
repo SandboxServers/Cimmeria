@@ -26,10 +26,12 @@ test fail by design.
 
 **Cover units (all client `alias.xml`, ORIGINAL-DATA):** coverDefense -0.01
 QR/pt (235), coverAccuracy +0.01 vs covered target (234), coverQRModifier 1
-QR/pt both sides behind cover (216). NA32 caps penetration at the cover
-(`max(0, def - pen)`) because every attacker-side cover text is penetration.
-Cover Stance = effect 4565 +100 (not ability text +200). With `(1+qr)`, a
-covered guard takes ~5% damage; tune via a `CoverDefense` NVP on 4565.
+QR/pt both sides behind cover (216). Round 1 of NA32 applied them as QR and
+left covered guards ~5% damage ("bullet sponges"); the owner then ruled
+(D-NA15a) cover is a per-node 10-60% damage reduction by material. Now:
+`COVER_RATING` (quality x height) in `combat/damage/cover_damage.rs`, stats
+convert at 10 points = 1% (effects 2004/2005), Cover Stance = effect 4565
++100 = +10 points. Don't reintroduce cover as a QR penalty.
 
 SGW.exe resolves no hits: its only cover string is the `CoverQRModifier` Lua
 label at 0x01956eac. See [[shipped-data-combat-evidence]].

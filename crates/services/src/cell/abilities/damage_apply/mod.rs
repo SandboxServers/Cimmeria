@@ -29,7 +29,8 @@ use super::rng::pseudo_random_seed;
 ///   - Snapshot attacker stats; bail if attacker missing.
 ///   - Read damage NVPs from the ability's effect definitions.
 ///   - Compute QR + roll a hit result for this attacker/target pair, with
-///     the cover shift when either side is in cover (NA32).
+///     the attacker's cover QR, and scale the damage by the defender's cover
+///     reduction (NA32).
 ///   - Apply health/focus damage to the target.
 ///   - Detect death (direct damage).
 ///   - Send `onEffectResults` to the attacker (witnesses pick it up via
@@ -95,15 +96,19 @@ pub(super) async fn apply_damage_to_target(
     // to false when the AbilityDef is missing (unknown ability falls back to
     // a generic melee swing).
     let ability_is_ranged = ability_def.as_ref().map(|d| d.is_ranged).unwrap_or(false);
-    // Cover counts only when it faces the attacker (NA32, `cover_roll`).
-    let qr = cover_roll::qr_with_cover(
+    // Cover (NA32, D-NA15a, `cover_roll`): a damage reduction rated by the
+    // defender's node, only when the node faces the attacker; the
+    // attacker's own `coverQRModifier` behind cover is a QR term.
+    let cover = cover_roll::resolve_cover(
         space_mgr,
         entity_id,
         target_eid,
         &attacker_stats,
         &target.stats,
-        ability_is_ranged,
     );
+    let qr =
+        combat::calculate_qr(&attacker_stats, &target.stats, ability_is_ranged) + cover.attacker_qr;
+    let cover_scale = cover.reduction.damage_scale();
 
     // Seed the beta-distribution sample from this ability invocation.
     // Per-(entity, ability, effect_seq) determinism — a fresh effect_seq per
@@ -179,9 +184,10 @@ pub(super) async fn apply_damage_to_target(
         }
     };
 
-    let (effect_results, _total_health_damage) = combat::calculate_damage(
+    let (effect_results, _total_health_damage) = combat::calculate_damage_scaled(
         &qr_result,
         health_base_damage,
+        cover_scale,
         DT_PHYSICAL,
         HEALTH,
         &attacker_stats,
@@ -190,9 +196,10 @@ pub(super) async fn apply_damage_to_target(
 
     // Apply focus damage if present
     if focus_base_damage > 0 {
-        let _ = combat::calculate_damage(
+        let _ = combat::calculate_damage_scaled(
             &qr_result,
             focus_base_damage,
+            cover_scale,
             DT_PHYSICAL,
             cimmeria_entity::stats::FOCUS,
             &attacker_stats,

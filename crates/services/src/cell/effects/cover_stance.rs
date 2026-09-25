@@ -22,10 +22,11 @@
 //! say "+100". A `CoverDefense` NVP on the effect row overrides it, so the
 //! magnitude is tunable in the seed.
 //!
-//! **What the stat does (NA32).** The QR roll reads `COVER_DEFENSE` at
-//! -0.01 QR per point (client `alias.xml:235`) for a defender that stands
-//! at its cover node facing the attacker, so the stance is -1.0 QR, and
-//! nothing when the NPC is flanked ([`crate::cell::combat::cover_shift`],
+//! **What the stat does (NA32, D-NA15a).** Cover is a damage reduction
+//! rated by the node (10-60%). `COVER_DEFENSE` adds 0.1 percentage points
+//! per point inside that band, so the stance is +10 points, for a defender
+//! at its cover node facing the attacker, and nothing when the NPC is
+//! flanked ([`crate::cell::combat::cover_reduction`],
 //! `abilities/damage_apply/cover_roll.rs`).
 //!
 //! **Pose:** no server-to-client movement-type or pose message exists

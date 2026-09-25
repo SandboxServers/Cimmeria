@@ -83,7 +83,7 @@ The magnitude is 100, from the effect row (D-NA15). The ability's "+200" descrip
 
 **Security:** the effect ids are server constants, never a client field, so this entry point does not widen the reach that [abilities-and-effects-system.md §16](abilities-and-effects-system.md#16-content-initiated-effects-use-a-separate-entry-point-not-handle_use_ability) guards.
 
-**In the hit roll (NA32).** The QR roll reads `COVER_DEFENSE` at -0.01 QR per point, the unit the client's `alias.xml:235` gives it, so the stance is -1.0 QR against a shot the cover faces. The geometry test is the one the AI uses to give a slot up: the defender stands within 1.5 u of its held slot and the attacker is not more than 20 degrees past the node's side-on line (`is_flanked`). A flanked NPC gets nothing, however high its stat. Players hold no slot: a player counts as in cover at the nearest node within 1.5 u horizontally and 2 u vertically. Players get no stance, so this only matters to a player whose `coverDefense` a buff raised. The formula and its evidence are in [combat-system.md](../gameplay/combat-system.md#cover-in-the-qr-roll-na32).
+**In the hit roll (NA32, D-NA15a).** Cover is a damage reduction rated by the node's quality and height (`COVER_RATING`: None 10 / Good 20 / Better 25 / Best 45, then Low -5 / Mid 0 / High +5 / Los +10), clamped to 10-60%. `COVER_DEFENSE` adds 0.1 points per point, so the stance is +10: the typical `Mid`/`Better` guard slot is 35%, a `High`/`Best` wall 60%, a `Low`/`Good` table 15% (25% with the stance). The geometry test is the one the AI uses to give a slot up: the defender stands within 1.5 u of its held slot and the attacker is not more than 20 degrees past the node's side-on line (`is_flanked`). A flanked NPC gets nothing, however high its stat. Players hold no slot: a player counts as in cover at the nearest node within 1.5 u horizontally and 2 u vertically. Players get no stance, so this only matters to a player whose `coverDefense` a buff raised. The formula and its evidence are in [combat-system.md](../gameplay/combat-system.md#cover-as-damage-reduction-na32).
 
 ### 6. No pose message
 
@@ -170,11 +170,11 @@ tables are geometry too, so a guard there sees the room from its slot.
 
 - Guards authored in cover stay there and shoot; guards in the open walk up to 10 u to cover that reaches their target.
 - An NPC holding cover does not chase. A target that retreats past attack range releases the slot and the NPC advances normally.
-- An NPC in its slot is 1.0 QR harder to hit from in front (NA32). A player has to flank it, wait for it to give the slot up, or bring cover accuracy.
+- An NPC in its slot takes 10-60% less damage from in front (NA32, D-NA15a), never more than 60%, so it is not a bullet sponge. Flanking removes it; cover accuracy reduces it.
 - Worlds without extracted cover rows (everything except 12 and 8 today) behave as before: no candidates, `no_cover`.
 
 ## Open questions
 
 1. Does standing at a marker make the client crouch (Q4)? Owner experiment.
-2. ~~Should `COVER_DEFENSE` feed the QR defence roll, and with which magnitude?~~ Answered by D-NA15 (NA32): yes, at -0.01 QR per point, with the effect row's +100.
+2. ~~Should `COVER_DEFENSE` feed the QR defence roll, and with which magnitude?~~ Answered by D-NA15 / D-NA15a (NA32): cover is a node-rated 10-60% damage reduction; the stance's +100 adds 10 points.
 3. `CoverNode.width` is loaded and unused. A wide marker could host more than one NPC.

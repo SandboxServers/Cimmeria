@@ -1,8 +1,9 @@
 //! Whether an entity is in cover against an attacker when a hit resolves
 //! (NA32).
 //!
-//! The QR roll gives cover its bonus only where the geometry says the cover
-//! is between the two ([`crate::cell::combat::cover_shift`]). The test is the
+//! A hit gives cover its damage reduction only where the geometry says the
+//! cover is between the two ([`crate::cell::combat::cover_reduction`], rated
+//! by the node's quality and height). The test is the
 //! one the NPC cover AI already uses to give a slot up: the entity stands at
 //! a cover node, and the other side is not past the node's side-on line by
 //! more than 20 degrees ([`crate::cell::cover::is_flanked`]). One rule for
@@ -83,10 +84,22 @@ impl SpaceManager {
     /// Where `entity_id` stands relative to cover against something at
     /// `other_pos`.
     pub fn cover_standing(&self, entity_id: u32, other_pos: Vector3) -> CoverStanding {
+        self.cover_standing_node(entity_id, other_pos).0
+    }
+
+    /// [`Self::cover_standing`] and the node it was decided on, which carries
+    /// the quality and height the damage reduction is rated from.
+    pub fn cover_standing_node(
+        &self,
+        entity_id: u32,
+        other_pos: Vector3,
+    ) -> (CoverStanding, Option<CoverNode>) {
         match self.cover_node_at(entity_id) {
-            None => CoverStanding::Exposed,
-            Some(node) if is_flanked(node.pos, node.orient, other_pos) => CoverStanding::Flanked,
-            Some(_) => CoverStanding::InCover,
+            None => (CoverStanding::Exposed, None),
+            Some(node) if is_flanked(node.pos, node.orient, other_pos) => {
+                (CoverStanding::Flanked, Some(node))
+            }
+            Some(node) => (CoverStanding::InCover, Some(node)),
         }
     }
 }
