@@ -45,10 +45,14 @@
 //! - [`package_bytes`] — the package writer itself.
 //! - [`terrain_payload`], [`model_payload`], [`static_mesh_payload`] —
 //!   per-class export bodies.
+//! - [`cover_fixtures`] — cover-node actors (`SGWSpecCoverNode`,
+//!   `StaticMeshActor.CoverNodeArray`).
 //! - [`chunk_fixtures`] — composes the above into whole `.umap` chunks
 //!   and a matching [`cimmeria_upk_objects::PackageIndex`].
 
 pub mod chunk_fixtures;
+// Added by NA21: SGWSpecCoverNode / CoverNodeArray actors.
+pub mod cover_fixtures;
 pub mod model_payload;
 pub mod names;
 pub mod package_bytes;
@@ -63,6 +67,7 @@ pub use chunk_fixtures::{
     index_over, mesh_package, scratch_dir, ChunkFixture, Placement, ACTOR_PROPS_OFFSET,
     COMPONENT_PROPS_OFFSET,
 };
+pub use cover_fixtures::{CoverComponentSpec, CoverMarker};
 pub use model_payload::{ModelPayload, NodeSpec, SurfSpec};
 pub use names::NameTable;
 pub use package_bytes::PackageBuilder;
