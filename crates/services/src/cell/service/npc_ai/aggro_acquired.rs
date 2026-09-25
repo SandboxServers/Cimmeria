@@ -87,7 +87,10 @@ pub(in crate::cell) fn log_aggro_acquired(
         npc_to_target,
         dy,
         has_los,
-        aggression = npc.aggression,
+        // Effective `EMobAggressionLevel` toward players (1 = hostile) and
+        // whether it came from an override (NA13).
+        aggression = crate::cell::combat::aggression_toward_players(npc).level(),
+        aggression_override = npc.aggro.override_level.map(|l| l.level()),
         "npc_ai: aggro acquired ({})",
         cause.label(),
     );
@@ -114,7 +117,8 @@ mod tests {
         p.account_id = Some(77);
         mgr.spawn_npc(100, "Agnos", [13.0, 0.0, 14.0], [0.0; 3])
             .unwrap();
-        mgr.get_entity_mut(100).unwrap().aggression = 1;
+        mgr.get_entity_mut(100).unwrap().aggro.override_level =
+            Some(cimmeria_entity::cell_entity::MobAggression::Hostile);
         mgr
     }
 

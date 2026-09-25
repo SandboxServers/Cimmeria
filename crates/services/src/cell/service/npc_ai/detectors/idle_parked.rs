@@ -2,7 +2,7 @@
 //! the AI tick will never visit it again (audit S6 + A1).
 //!
 //! A fight that ends by losing its target sets Idle wherever the NPC stands.
-//! With no aggression, patrol or wander the dispatcher never admits an Idle
+//! With no hostility (NA13), patrol or wander the dispatcher never admits an Idle
 //! NPC, so it stays frozen there even when the player walks back up to it.
 //! After NA12 this should read zero.
 
@@ -15,7 +15,9 @@ pub(in crate::cell) const IDLE_PARKED_MIN_DIST: f32 = 2.0;
 /// filter in `npc_ai::dispatch::npc_ai_tick`; the `idle_parked` guard test
 /// pins the two together.
 pub(in crate::cell) fn idle_is_ticked(npc: &CellEntity) -> bool {
-    npc.aggression > 0 || !npc.patrol_path.is_empty() || npc.wander_radius > 0.0
+    crate::cell::combat::is_hostile_to_players(npc)
+        || !npc.patrol_path.is_empty()
+        || npc.wander_radius > 0.0
 }
 
 /// Called by the transition helper after every real state change.

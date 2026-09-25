@@ -4,8 +4,8 @@
 
 use super::*;
 
-/// `Action::SetAggression { level: 1 }` writes the `aggression` field on
-/// the tagged NPC's `CellEntity` so the AI idle tick can wake it up. Bug
+/// `Action::SetAggression { level: 1 }` writes a HOSTILE override on the
+/// tagged NPC's `CellEntity` so the AI idle tick can wake it up. Bug
 /// shape: the previous implementation stored an unread `"aggression"`
 /// property-bag entry; this guard pins that the canonical field is now
 /// the source of truth.
@@ -17,7 +17,7 @@ async fn set_aggression_level_one_writes_entity_field() {
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
         npc.tag = Some("Drone".to_string());
-        assert_eq!(npc.aggression, 0, "fresh NPC must start passive");
+        assert_eq!(npc.aggro.override_level, None, "fresh NPC has no override");
     }
     // Player triggering the chain — must be co-located so
     // `find_entity_by_tag` resolves "Drone" against the same space.
@@ -44,9 +44,9 @@ async fn set_aggression_level_one_writes_entity_field() {
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
     assert_eq!(
-        mgr.get_entity(101).unwrap().aggression,
-        1,
-        "SetAggression level=1 must write aggression=1 on the target — \
+        mgr.get_entity(101).unwrap().aggro.override_level,
+        Some(cimmeria_entity::cell_entity::MobAggression::Hostile),
+        "SetAggression level=1 must write a HOSTILE override on the target — \
          the AI idle tick reads this field directly, no property-bag lookup",
     );
 }

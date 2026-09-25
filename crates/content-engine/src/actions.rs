@@ -91,10 +91,13 @@ pub enum Action {
     /// gets attacked by it). Mission content must not be able to do that by
     /// accident, so the executor refuses unless the author opts in.
     ///
-    /// `is_stationary` / `aggression` complete the spawn descriptor.
-    /// Neither has an `entity_templates` column — `is_stationary` lives on
-    /// `spawnlist` and aggression is a pure runtime field — so `None` means
-    /// "off" rather than "inherit".
+    /// `is_stationary` / `aggression` complete the spawn descriptor, the
+    /// runtime twins of `spawnlist.is_stationary` /
+    /// `spawnlist.aggression_override`. `is_stationary: None` means off.
+    /// `aggression` is an `EMobAggressionLevel` override (1 hostile ... 5
+    /// default, 0 the pre-NA13 "passive" = neutral); `None` means the
+    /// faction reaction decides, so a faction-10 template is hostile on
+    /// sight unless the action says otherwise.
     ///
     /// There is deliberately **no `respawn_secs`**. A content-scoped spawn
     /// is always one-shot (the respawn tick has no instance-lifetime
@@ -221,7 +224,9 @@ pub enum Action {
         on_victory_chains: Vec<i64>,
     },
 
-    /// Set the aggression level on a tagged NPC.
+    /// Set the aggression override on a tagged NPC (`EMobAggressionLevel`:
+    /// 1 hostile ... 5 default; 0 is the pre-NA13 "passive" and maps to
+    /// neutral). Only hostile aggroes on sight.
     SetAggression { entity_tag: String, level: i32 },
 
     /// Push a tagged NPC into `AiState::Investigating` with the given

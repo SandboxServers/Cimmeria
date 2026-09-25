@@ -63,6 +63,8 @@ fn guard_record(y: f32) -> SpawnRecord {
         ability_ids: vec![],
         respawn_secs: None,
         leash_distance: None,
+        aggro_radius: None,
+        aggression_override: None,
         patrol_path: vec![],
         patrol_point_delay_secs: 2.0,
         wander_radius: 0.0,

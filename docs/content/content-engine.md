@@ -417,7 +417,7 @@ ordered action list.
 | `params.x` / `.y` / `.z` | Mandatory and finite. A missing or `NaN` coordinate drops the action rather than spawning at the world origin |
 | `params.heading` | Optional, defaults to `0.0` |
 | `params.is_stationary` | Optional. No template column exists, so absent means `false`, not "inherit" |
-| `params.aggression` | Optional, same reasoning — absent means `0` |
+| `params.aggression` | Optional `EMobAggressionLevel` override (1 hostile ... 5 default; `0`, the pre-NA13 "passive", is neutral). Absent means the faction reaction decides, so a faction-10 template is hostile on sight (NA13). A value outside 0-5 is ignored with `reason = "invalid_aggression"` |
 | `params.allow_shared` | Optional. `true` opts out of the shared-world refusal below |
 | `params.respawn_secs` | **Not a parameter.** A row that supplies it still loads and still spawns; the loader warns once (`respawn_secs_not_honoured`) — see below |
 

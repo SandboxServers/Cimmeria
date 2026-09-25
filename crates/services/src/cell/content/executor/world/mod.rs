@@ -71,10 +71,13 @@ pub(super) async fn set_interaction_type(
     }
 }
 
-/// `Action::SetAggression` — set the tagged NPC's behavior-aggression
-/// level (`0` = passive, `≥1` = hostile-on-sight). The AI idle tick reads
-/// this directly off the entity (no property-bag lookup) and seeds threat
-/// on opposing-faction witnesses when `aggression > 0`.
+/// `Action::SetAggression` — set the tagged NPC's aggression override
+/// (`EMobAggressionLevel`: 1 hostile ... 5 default; `0`, the pre-NA13
+/// "passive", maps to NEUTRAL — see
+/// [`crate::cell::combat::override_from_content_level`]). The override
+/// beats the faction reaction, so this is how a chain arms a guard seeded
+/// passive (`spawnlist.aggression_override`, NA13) or disarms a hostile
+/// one. The AI's Idle scan acts on HOSTILE only.
 ///
 /// The Python flow uses `setAggression` for the *durable behavior bit*
 /// and a separate `threatGenerated` for the *initial threat seed* — see
@@ -82,12 +85,18 @@ pub(super) async fn set_interaction_type(
 /// 1032 follows the same pattern: this action sets the behavior, then a
 /// `generate_threat` action focuses the NPC on the player who triggered
 /// the chain. Without that explicit seed the drone would aggro on the
-/// next idle tick anyway, but the seed delivers the correct frame
-/// ordering (drone faces the player immediately, not 2s later).
+/// next idle tick anyway (if the player is in range and sight), but the
+/// seed delivers the correct frame ordering.
+///
+/// Python also broadcast `GENERICPROPERTY_MobAggression`; this does not
+/// yet — the client consumes the level through `onAggressionOverrideUpdate`
+/// (SGWMob), whose flat method index is not binary-verified (NA13 open
+/// item, `docs/gameplay/npc-ai.md`).
 ///
 /// A tag that matches nothing is a WARN (`event="set_aggression_tag_miss"`):
 /// a mistyped chain tag leaves a guard passive forever, which on the floor
-/// looks exactly like an aggro bug (audit gap T10).
+/// looks exactly like an aggro bug (audit gap T10). An out-of-range level is
+/// a WARN too (`reason="invalid_level"`) and changes nothing.
 pub(super) fn set_aggression(
     entity_tag: String,
     agg_level: i32,
@@ -95,6 +104,19 @@ pub(super) fn set_aggression(
     chain_id: i64,
     space_mgr: &mut SpaceManager,
 ) {
+    let Some(level) = crate::cell::combat::override_from_content_level(agg_level) else {
+        tracing::warn!(
+            target: "content",
+            event = "set_aggression_invalid_level",
+            reason = "invalid_level",
+            entity_id,
+            tag = %entity_tag,
+            chain_id,
+            agg_level,
+            "Content: set_aggression level is not 0-5 -- the NPC's aggression is unchanged"
+        );
+        return;
+    };
     let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
         tracing::warn!(
             target: "content",
@@ -109,15 +131,15 @@ pub(super) fn set_aggression(
         return;
     };
     if let Some(target) = space_mgr.get_entity_mut(target_id) {
-        let from = std::mem::replace(&mut target.aggression, agg_level);
+        let from = target.aggro.override_level.replace(level);
         tracing::info!(
             target: "content",
             event = "set_aggression",
             entity_id,
             tag = %entity_tag,
             target_id,
-            from,
-            to = agg_level,
+            from = from.map(|l| l.label()).unwrap_or("faction"),
+            to = level.label(),
             chain_id,
             "Content: set aggression"
         );

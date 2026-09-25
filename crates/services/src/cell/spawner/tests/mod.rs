@@ -19,6 +19,7 @@
 //!   `entity_templates` row identically (PR #662 review, finding 3).
 
 mod harset;
+mod live_db_aggression;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_leash_distance;

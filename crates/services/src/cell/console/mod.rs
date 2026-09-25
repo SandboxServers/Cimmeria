@@ -42,6 +42,7 @@
 //! - [`entity`] — live entity authoring (`tag`, `name`, `visible`, …).
 //! - [`give`] — selected-target player grants (`givecash`, `givexp`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
+//! - [`aggro`] — the GM's own proximity-aggro switch (`.aggro on|off`).
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
@@ -62,6 +63,7 @@
 //! `docs/architecture/dev-console-channel.md`; the player-facing command list is
 //! in `docs/commands.md`.
 
+mod aggro;
 mod bookmark;
 mod crafting;
 mod dispatch;

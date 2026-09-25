@@ -84,7 +84,10 @@ pub(crate) struct EntitySnapshot {
     pub move_speed: f32,
     pub is_stationary: bool,
     pub use_cover: bool,
+    /// Effective `EMobAggressionLevel` toward players (1 = hostile, NA13).
     pub aggression: i32,
+    /// The override behind it, `0` when faction-derived.
+    pub aggression_override: i32,
     pub threat_count: usize,
     pub threat_top_id: u32,
     pub threat_top_value: f32,
@@ -224,7 +227,8 @@ fn snapshot_entity(
         move_speed: e.move_speed,
         is_stationary: e.is_stationary,
         use_cover: e.use_cover,
-        aggression: e.aggression,
+        aggression: crate::cell::combat::aggression_toward_players(e).level() as i32,
+        aggression_override: e.aggro.override_level.map_or(0, |l| l.level() as i32),
         threat_count: e.threat_list.len(),
         threat_top_id,
         threat_top_value,
@@ -412,6 +416,7 @@ fn emit_entity(bookmark_id: u64, rank: usize, s: &EntitySnapshot) {
         is_stationary = s.is_stationary,
         use_cover = s.use_cover,
         aggression = s.aggression,
+        aggression_override = s.aggression_override,
         threat_count = s.threat_count,
         threat_top_id = s.threat_top_id,
         threat_top_value = s.threat_top_value,

@@ -49,6 +49,7 @@ pub struct ActiveEffectInstance {
     pub invoker_position_at_register: Option<Vector3>,
 }
 
+mod aggression;
 mod ai_state;
 mod appearance;
 mod bandolier;
@@ -62,6 +63,7 @@ mod system_options;
 mod weapon_action;
 mod witness_aoi;
 
+pub use aggression::{AggroProfile, MobAggression};
 pub use appearance::filter_holstered_weapon;
 pub use entity_struct::CellEntity;
 pub use identity::PlayerIdentity;

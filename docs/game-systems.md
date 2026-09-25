@@ -29,6 +29,8 @@ Damage is calculated as: base damage, modified by the QR roll, multiplied by sta
 
 **Leash and reset (NA12):** an NPC gives up a fight when it is itself more than its leash radius from its spawn (`entity_templates.leash_distance`, default 50 u, with a 5 u hysteresis band), or when its last target dies, disconnects or stays out of its AoI for 5 s. It then walks home on the navmesh, ignoring damage and threat while it does. On arrival it heals to full, faces its spawn heading, clears its cooldowns and ignores players for 5 s. It snaps home only when no route exists or the walk takes more than 20 s. Every player it was fighting leaves combat, so their regen resumes. Details: [npc-ai.md](gameplay/npc-ai.md#leash-and-reset-na12).
 
+**Proximity aggro (NA13):** an Idle NPC that is hostile to players attacks the closest player within 18 u horizontally (`entity_templates.aggro_radius`), within 4 u of its height, and in navmesh line of sight. Hostility is the spawn's aggression override (`spawnlist.aggression_override`, or a chain's `set_aggression`), otherwise the 2009 faction reaction table: faction-10 mobs are hostile, faction 1 and 3 are friendly. The Cellblock mobs a chain arms (the first guard, chain 1008, and the PRU, chain 1032) are seeded neutral so their chain still starts the fight. GMs are aggroed like players unless they type `.aggro off`. Details: [npc-ai.md](gameplay/npc-ai.md#aggression-system).
+
 ### Cover System
 
 SGW has a cover-based combat mechanic with adjustable cover weights and stances. Cover links define where players can take cover in each zone.

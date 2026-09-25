@@ -80,7 +80,8 @@ async fn an_aggressive_npc_going_idle_is_not_parked() {
         Some([0.0; 3]),
         AiState::Fighting,
     );
-    mgr.get_entity_mut(NPC).unwrap().aggression = 1;
+    mgr.get_entity_mut(NPC).unwrap().aggro.override_level =
+        Some(cimmeria_entity::cell_entity::MobAggression::Hostile);
     let logs = LogCapture::install();
     ai_tick(&mut mgr).await;
     assert!(rows(&logs, "npc_ai.idle_parked", "idle_parked").is_empty());
@@ -161,7 +162,8 @@ async fn an_undrained_clear_is_still_reported() {
 async fn the_idle_scan_names_its_rejects() {
     let mut mgr = castle_mgr();
     add_npc(&mut mgr, "Castle", [0.0; 3], Some([0.0; 3]), AiState::Idle);
-    mgr.get_entity_mut(NPC).unwrap().aggression = 1;
+    mgr.get_entity_mut(NPC).unwrap().aggro.override_level =
+        Some(cimmeria_entity::cell_entity::MobAggression::Hostile);
     add_threat_player(&mut mgr, "Castle", [10.0, 0.0, 0.0]);
     {
         let npc = mgr.get_entity_mut(NPC).unwrap();
@@ -174,7 +176,11 @@ async fn the_idle_scan_names_its_rejects() {
     assert_eq!(rejected.len(), 1, "{:#?}", logs.all());
     assert!(rejected[0].has_field("reason", "same_faction"));
     assert!(rejected[0].has_field("player_id", "101"));
-    assert!(rejected[0].has_field("aggro_radius", "unbounded"));
+    assert!(
+        rejected[0].has_field("aggro_radius", "18.0"),
+        "{:?}",
+        rejected[0]
+    );
     assert_eq!(rows(&logs, "npc_ai.aggro_scan", "no_candidates").len(), 1);
     ai_tick(&mut mgr).await; // inside both sample windows
     assert_eq!(

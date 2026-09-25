@@ -73,7 +73,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (6, -289.808014, 65.473999, -113.139, 3.1414969, 12, 17, 'Prisoner_329', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (20, -289.464996, 68.5419998, -154.275986, 3.1414969, 12, 15, 'ArmYourself_NIDGuard', NULL);
+-- Chain-armed spawn (NA13, D-NA01a): seeded NEUTRAL (3) so the guard stays
+-- passive until chain 1008 (enter Castle_CellBlock.Region8) runs
+-- `set_aggression 1` + `generate_threat 1000` on it. Without the override
+-- its faction (10) derives HOSTILE and it would engage before Region8.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, aggression_override) VALUES (20, -289.464996, 68.5419998, -154.275986, 3.1414969, 12, 15, 'ArmYourself_NIDGuard', NULL, 3);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (19, -328.299988, 73.4720001, -210.269989, 1.57079637, 12, 14, 'ArmYourself_FrostBody', NULL);
 
@@ -83,7 +87,10 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (11, -201.25, 56.079998, -131.610001, 1.57079637, 12, 8, 'Preparation_SMG1A', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (10, -220.257004, 66.7440033, -121.375, 4.71238899, 12, 4, 'ArmYourself_PrisonerRetrievalUnit', NULL, true);
+-- Chain-armed spawn (NA13, D-NA01a): seeded NEUTRAL (3) so the drone does not
+-- fire before the Ambernol vial interaction; chain 1032 then runs
+-- `set_aggression 1` + `generate_threat 1000` on it.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, aggression_override) VALUES (10, -220.257004, 66.7440033, -121.375, 4.71238899, 12, 4, 'ArmYourself_PrisonerRetrievalUnit', NULL, true, 3);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (79, -54.8799973, 26.0799999, -163.839996, 1.04607904, 12, 3, 'Cellblock_ArmoryRingSwitch', NULL);
 

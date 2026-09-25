@@ -41,9 +41,7 @@ async fn auto_aggro_broadcasts_appearance_refresh_on_holstered_player() {
     use crate::cell::messages::CellToBaseMsg;
 
     let mut mgr = super::npc_ai::make_aggression_fixture(200_010, 10, 1, [5.0, 0.0, 0.0]);
-    if let Some(npc) = mgr.get_entity_mut(200_010) {
-        npc.aggression = 1;
-    }
+    // Faction 10 is hostile to players on its own (NA13): no override.
     // Pre-stage: player is holstered (post-OOC). The bug shape is
     // specifically "weapon_holstered flips false server-side
     // without telling the client" — to observe it, weapon must be

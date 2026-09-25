@@ -482,18 +482,10 @@ pub struct CellEntity {
     /// Pin this NPC to its spawn position. AI will attack when the target
     /// is in range + LOS but never pathfind. Loaded from `spawnlist.is_stationary`.
     pub is_stationary: bool,
-    /// NPC behavior-aggression level. `0` = passive (only fights back when
-    /// threatened, the default). `≥1` = hostile-on-sight (the AI idle tick
-    /// scans the NPC's witnesses for opposing-faction players and seeds
-    /// threat to wake the NPC up). Set by the `set_aggression` content
-    /// action when a mission chain wants an NPC to start hunting — e.g.,
-    /// chain 1032 flips the Castle_CellBlock prisoner-retrieval drone to
-    /// `1` when the player grabs the Ambernol vial. Persists across kills
-    /// so a stationary drone re-aggros the next player who walks in.
-    ///
-    /// Distinct from any UI-layer aggression-override (nameplate color);
-    /// this field drives combat behavior, not the friend/foe indicator.
-    pub aggression: i32,
+    /// Aggression override and proximity-aggro radius (NA13). The level
+    /// follows `EMobAggressionLevel` (1 = hostile); `None` means the faction
+    /// reaction table decides. See [`super::AggroProfile`].
+    pub aggro: super::AggroProfile,
     /// Last `MobMovementType` broadcast to AoI witnesses via
     /// `setMovementType`. `None` = nothing broadcast yet (initial state)
     /// or last broadcast was a "clear" (entering Idle / Dead /
@@ -568,7 +560,7 @@ pub struct CellEntity {
     pub patrol_point_delay_secs: f32,
     /// Wander radius in world units. `0.0` → NPC doesn't wander.
     /// Positive values opt the NPC into `AiState::Wander` from
-    /// Idle when it has no patrol_path and no positive aggression.
+    /// Idle when it has no patrol_path and is not hostile on sight.
     /// Loaded from `entity_templates.wander_radius`.
     pub wander_radius: f32,
     /// Random-dwell lower bound between successive wander hops,

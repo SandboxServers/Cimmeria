@@ -565,6 +565,8 @@ mod tests {
             follow_max_distance: 5.0,
             move_speed,
             leash_distance: None,
+            aggro_radius: None,
+            aggression_override: None,
         }
     }
 

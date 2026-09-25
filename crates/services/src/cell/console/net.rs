@@ -477,7 +477,9 @@ async fn threaten(
     send_gm_feedback(caller_id, &format!("threaten [{target}] += {amount}"), tx).await;
 }
 
-/// `.aggression <level>` — set the targeted mob's aggression level.
+/// `.aggression <level|clear>` — set the targeted mob's aggression override
+/// (NA13): `1` hostile ... `5` default, `0` passive (NEUTRAL), `clear` back
+/// to the faction reaction. Feedback names the effective level.
 async fn aggression(
     caller_id: u32,
     target_id: Option<u32>,
@@ -488,11 +490,38 @@ async fn aggression(
     let Some(target) = target_id else {
         return;
     };
-    let Some(level) = super::parse_i32(caller_id, args, 0, "aggression", tx).await else {
-        return;
+    let level = if args
+        .first()
+        .is_some_and(|a| a.eq_ignore_ascii_case("clear"))
+    {
+        None
+    } else {
+        let Some(raw) = super::parse_i32(caller_id, args, 0, "aggression", tx).await else {
+            return;
+        };
+        let Some(level) = crate::cell::combat::override_from_content_level(raw) else {
+            send_gm_feedback(
+                caller_id,
+                &format!("aggression: {raw} is not 0-5 or 'clear' -- nothing changed"),
+                tx,
+            )
+            .await;
+            return;
+        };
+        Some(level)
     };
-    if let Some(e) = space_mgr.get_entity_mut(target) {
-        e.aggression = level;
-    }
-    send_gm_feedback(caller_id, &format!("aggression [{target}] = {level}"), tx).await;
+    let effective = space_mgr.get_entity_mut(target).map(|e| {
+        e.aggro.override_level = level;
+        crate::cell::combat::aggression_toward_players(e)
+    });
+    let source = if level.is_some() {
+        "override"
+    } else {
+        "faction"
+    };
+    let line = match effective {
+        Some(eff) => format!("aggression [{target}] = {} ({source})", eff.label()),
+        None => format!("aggression [{target}]: entity gone -- nothing changed"),
+    };
+    send_gm_feedback(caller_id, &line, tx).await;
 }

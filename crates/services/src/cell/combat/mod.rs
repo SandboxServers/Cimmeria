@@ -1,6 +1,9 @@
 //! Combat: damage resolution, dead-state flags, and NPC threat management.
 //!
 //! Submodules:
+//! - [`aggression`]: effective NPC aggression (override, else faction
+//!   reaction), aggro radius and vertical band (NA13).
+//! - [`faction_reaction`]: the 2009 `FACTION_REACTION_TABLE`.
 //! - [`damage`]: QR (Quality Rating) hit/miss/crit and damage pipeline.
 //! - [`damage_credit`]: the seam-level pre-hit health sample every damage
 //!   path queues for the `entity_health_below` content trigger.
@@ -9,13 +12,20 @@
 //! - [`state`]: dead/alive flag bit-packing in `stateField`.
 //! - [`threat`]: NPC aggro state, threat list, leash/attack-range constants.
 
+pub mod aggression;
 pub mod auto_cycle;
 pub mod damage;
 pub mod damage_credit;
+pub mod faction_reaction;
 pub mod health_threshold;
 pub mod state;
 pub mod threat;
 
+pub use aggression::{
+    aggression_toward_players, aggro_radius, effective_aggression, is_hostile_to_players,
+    override_from_content_level, AGGRO_VERTICAL_BAND, DEFAULT_AGGRO_RADIUS,
+    PLAYER_REACTION_FACTION,
+};
 pub use auto_cycle::{
     arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target, is_auto_cycle_target_valid,
 };

@@ -16,7 +16,7 @@ fn looping_guard() -> SpaceManager {
     let mut mgr = castle_mgr();
     add_npc(&mut mgr, "Castle", [0.0; 3], Some([0.0; 3]), AiState::Idle);
     if let Some(npc) = mgr.get_entity_mut(NPC) {
-        npc.aggression = 1;
+        npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Hostile);
         npc.faction = 10;
     }
     mgr.create_entity(PLAYER, "Castle", [60.0, 0.0, 0.0], [0.0; 3])

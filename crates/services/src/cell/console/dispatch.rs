@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    bookmark, crafting, entity, give, mission, net, patrol, placement, query, seed, server, spawn,
-    stats, travel,
+    aggro, bookmark, crafting, entity, give, mission, net, patrol, placement, query, seed, server,
+    spawn, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -248,6 +248,7 @@ pub(crate) async fn exec(
         | "debug_follow" | "threaten" | "aggression" => {
             net::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
         }
+        "aggro" => aggro::toggle(caller_id, args, tx, space_mgr).await,
         // E. crafting
         "allcraft" | "learndiscipline" | "forgetdiscipline" => {
             crafting::dispatch(name, caller_id, args, target_id, tx, space_mgr).await

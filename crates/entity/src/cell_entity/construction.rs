@@ -87,7 +87,7 @@ impl CellEntity {
             nav_path: VecDeque::new(),
             move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
             is_stationary: false,
-            aggression: 0,
+            aggro: super::AggroProfile::default(),
             last_movement_type: None,
             respawn_secs: None,
             respawn_at: None,

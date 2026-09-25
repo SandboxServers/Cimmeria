@@ -310,7 +310,11 @@ async fn mission_accept_spawns_a_tagged_npc_that_entity_dead_tag_can_complete_on
         [-123.625, 1.311, -246.858],
         "position must come from the seeded action params"
     );
-    assert_eq!(npc.aggression, 1, "the seeded aggression param must apply");
+    assert_eq!(
+        npc.aggro.override_level,
+        Some(cimmeria_entity::cell_entity::MobAggression::Hostile),
+        "the seeded aggression param must apply"
+    );
     assert!(
         mgr.spawn_templates[&template_id].respawn_secs.is_some(),
         "fixture precondition: the picked template must opt into respawn, or \

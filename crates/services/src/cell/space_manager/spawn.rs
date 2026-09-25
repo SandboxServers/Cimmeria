@@ -124,7 +124,7 @@ impl SpaceManager {
         heading: f32,
         tag: &str,
         is_stationary: bool,
-        aggression: i32,
+        aggression: Option<cimmeria_entity::cell_entity::MobAggression>,
     ) -> Result<u32, String> {
         let Some(prototype) = self.spawn_templates.get(&template_id) else {
             return Err(format!(
@@ -144,17 +144,17 @@ impl SpaceManager {
         let entity_id = self.allocate_npc_id();
         self.spawn_npc_from_record_into(entity_id, &record, space_id)?;
 
-        // `aggression` has no `SpawnRecord` / `entity_templates` field — it
-        // is a pure runtime `CellEntity` value, the same one
-        // `Action::SetAggression` writes. Set it here rather than making
-        // content author a second action, so the NPC is hostile from the
-        // first AI tick instead of the second.
+        // The action's `aggression` is a per-spawn override, the runtime
+        // twin of `spawnlist.aggression_override` (NA13). `None` leaves the
+        // record's value (templates carry none), i.e. faction-derived. Set
+        // here rather than making content author a second action, so the
+        // NPC's disposition holds from the first AI tick.
         //
         // No ordering hazard: the AI tick runs from the cell message loop
         // on the same task, and this whole function holds `&mut self`.
-        if aggression != 0 {
+        if aggression.is_some() {
             if let Some(e) = self.get_entity_mut(entity_id) {
-                e.aggression = aggression;
+                e.aggro.override_level = aggression;
             }
         }
         Ok(entity_id)
@@ -275,7 +275,7 @@ impl SpaceManager {
         e.patrol_point_delay_secs = record.patrol_point_delay_secs;
         // Wander config: 0.0 radius → no wander. Positive value
         // opts the NPC into AiState::Wander when it reaches Idle
-        // without a patrol path / aggression.
+        // without a patrol path and is not hostile on sight.
         e.wander_radius = record.wander_radius;
         e.wander_min_dwell_secs = record.wander_min_dwell_secs;
         e.wander_max_dwell_secs = record.wander_max_dwell_secs;
@@ -291,6 +291,11 @@ impl SpaceManager {
         // Per-template leash radius (NA12). `None` keeps the server default
         // (`combat::LEASH_DISTANCE`), resolved where the leash is measured.
         e.leash.distance_override = record.leash_distance;
+        // Seeded aggression override (`spawnlist.aggression_override`) and
+        // per-template aggro radius (`entity_templates.aggro_radius`), NA13.
+        // `None` on either means faction-derived / the server default.
+        e.aggro.override_level = record.aggression_override;
+        e.aggro.radius_override = record.aggro_radius;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

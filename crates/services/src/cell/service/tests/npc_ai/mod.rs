@@ -13,8 +13,12 @@
 //!   60 s aggro/leash loop guard.
 //! - [`leash_walk`]    — NA12 on the real `castle_cellblock.nav`: the walk
 //!   home step by step, the reset on arrival, target death, the timeout snap.
-//! - [`aggression`]    — Idle-NPC auto-aggro via the `aggression` field
-//!   (opposing-faction aggro, no-aggro defaults, same-faction skip).
+//! - [`aggression`]    — NA13 Idle proximity aggro on a meshless space:
+//!   faction-derived hostility, override precedence, enum levels, the radius
+//!   and vertical band, dead players and the GM `.aggro off` switch.
+//! - [`aggro_castle`]  — NA13 on the real `castle_cellblock.nav`: a NID
+//!   Guard at 15 u in LoS, 25 u, behind a wall, on another storey, and the
+//!   fail-closed `Unknown` line of sight.
 //! - [`stationary_facing`] — a pinned NPC turns to face its target even
 //!   while holding fire (`stationary_holds`), and keeps its yaw when the
 //!   target has no XZ bearing.
@@ -52,6 +56,7 @@ use cimmeria_entity::stats::HEALTH;
 
 mod ability_range;
 mod aggression;
+mod aggro_castle;
 mod leash_reset;
 mod leash_walk;
 mod melee_reach;

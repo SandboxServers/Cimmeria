@@ -311,6 +311,13 @@ pub struct SpaceManager {
     /// GMs (`entity_id`) who toggled `.autosavespawn` on. A session preference;
     /// informational hook for spawn-authoring. Never persisted.
     pub autosave_spawns: HashSet<u32>,
+    /// Characters (`player_id`, the character DB id) whose GM switched
+    /// proximity aggro off with `.aggro off` (NA13, D-NA02). Keyed by
+    /// character rather than entity so the toggle survives zone changes and
+    /// relogs; lost on a server restart, never persisted. Honoured only
+    /// while the entity still has GM access. Damage and content threat still
+    /// engage a GM; only the Idle auto-aggro scan skips them.
+    pub gm_aggro_off: HashSet<i32>,
     /// In-memory patrol-path authoring buffer: `path_id → [waypoint]`, for
     /// `.path_add`/`.path_show`/`.path_assign`. Holds the waypoints a GM is
     /// authoring this session so `.path_assign` can apply them to an NPC's
@@ -394,6 +401,7 @@ impl SpaceManager {
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),
             autosave_spawns: HashSet::new(),
+            gm_aggro_off: HashSet::new(),
             patrol_authoring: HashMap::new(),
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),

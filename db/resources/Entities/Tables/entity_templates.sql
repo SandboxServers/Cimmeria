@@ -100,6 +100,15 @@ CREATE TABLE entity_templates (
     -- band) gives up the fight and walks home. Set it on templates that
     -- should chase further (bosses) or give up sooner (sentries).
     leash_distance real,
+    -- Proximity-aggro radius in world units (NA13 / D-NA01 / D-NA09),
+    -- horizontal distance from the NPC. NULL → the runtime default
+    -- `cell::combat::DEFAULT_AGGRO_RADIUS` (18). An Idle NPC that is hostile
+    -- to players (its spawn's `aggression_override`, else the faction
+    -- reaction) engages a player inside this radius, within 4 u of its
+    -- height and in navmesh line of sight.
+    aggro_radius real,
+    CONSTRAINT entity_templates_aggro_radius_positive
+        CHECK (aggro_radius IS NULL OR aggro_radius > 0.0),
     CONSTRAINT entity_templates_leash_distance_positive
         CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive
