@@ -11,6 +11,9 @@ All five topic files have been triaged per #264 step 4. Bucket tags below each l
 
 ## Topic files
 
+- [interface-element-length-escape.md](interface-element-length-escape.md) - **[NEW 2026-09-19]** Mercury length fields escalate on value: an all-0xFF sentinel in the inline field plus a 4-byte real length in the body. Ghidra-cited.
+- [message-id-00-direction-split.md](message-id-00-direction-split.md) - **[NEW 2026-09-19]** msg 0x00 is BASEAPP_LOGIN inbound and AUTHENTICATE outbound; REPLY_MESSAGE 0xFF borrows the server AUTHENTICATE (DWORD) descriptor.
+
 - [protocol-comparison.md](protocol-comparison.md) — **[PROMOTE → spec.protocol.mercury-wire-format]** — stock-vs-SGW wire divergences; mostly V5-confirmed, two items flagged for verification before promotion (rotation order, instanceID-vs-spaceID wording).
 - [aoi-entity-introduction.md](aoi-entity-introduction.md) — **[PROMOTE → spec.world.world-entry]** — createOnClient property cascade for NPC AoI entry; V5-confirmed.
 - [cache-stamp-system.md](cache-stamp-system.md) — **[PROMOTE → spec.engine.cooked-data-pipeline + spec.world.world-entry]** — two-system breakdown (entity cache stamps + cooked-data versioning); V5-confirmed.
