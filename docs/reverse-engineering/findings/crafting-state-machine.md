@@ -1,6 +1,7 @@
 # Crafting State Machine
 
 > **Date**: 2026-05-13
+> **Source audit**: 2026-09-19 (Rust and entity definitions; no new binary analysis)
 > **Phase**: V5 Documentation Campaign — W-content-mech Session 5
 > **Confidence**: HIGH (MemberCallback RTTI confirms class names; emitter stubs confirm event names; wire-format fields confirmed from `.def`)
 > **Sources**: Ghidra decompilation of SGW.exe; cross-reference to `crafting-wire-formats.md`
@@ -11,7 +12,7 @@
 
 The crafting system is implemented client-side by `class_SGW::Crafting` (client view class `VCrafting`). This class subscribes to all server-pushed crafting events via the CME EventSignal bus. The server drives state; the client is a pure display consumer. Four NetOut events (Craft, Alloy, Research, ReverseEngineer) plus SpendAppliedSciencePoint and RespecCraft carry player intent. Six NetIn events carry server state updates.
 
-**New finding not in `crafting-wire-formats.md`:** A seventh NetIn event — `onUpdateRacialParadigmLevel` — and a TimerUpdate subscription are present in the VCrafting MemberCallback table. These were not derived from `.def` analysis.
+The VCrafting MemberCallback table also confirms `onUpdateRacialParadigmLevel` and a TimerUpdate subscription. The racial-paradigm argument schema is now recorded in [crafting-wire-formats.md](crafting-wire-formats.md#onupdateracialparadigmlevel--racial-paradigm-level-update); the runtime audit below separates that contract from implemented server behavior.
 
 ---
 
@@ -48,7 +49,7 @@ The `class_SGW::Crafting` (RTTI name from MemberCallback vfunc_3 descriptors) su
 |---|---|---|
 | `Event_NetIn_onUpdateCraftingOptions` | `0x00e45960` | RTTI: `SGW::Crafting` × `Event_NetIn_onUpdateCraftingOptions` |
 | `Event_NetIn_onUpdateKnownCrafts` | `0x00e459e0` | RTTI: `SGW::Crafting` × `Event_NetIn_onUpdateKnownCrafts` |
-| `Event_NetIn_onUpdateRacialParadigmLevel` | `0x00e45a60` | **New** — not in crafting-wire-formats.md; RTTI confirmed |
+| `Event_NetIn_onUpdateRacialParadigmLevel` | `0x00e45a60` | RTTI confirmed; argument schema verified from `SGWPlayer.def` |
 | `Event_NetIn_onUpdateDiscipline` | `0x00e45ae0` | RTTI: `SGW::Crafting` × `Event_NetIn_onUpdateDiscipline` |
 | `Event_NetIn_onDisciplineRespec` | `0x00e45b60` | RTTI: `SGW::Crafting` × `Event_NetIn_onDisciplineRespec` |
 | `Event_Cache_ElementReady<SGW::Blueprint>` | `0x00e45be0` | Cache warming — when blueprint DB entry loads |
@@ -81,7 +82,7 @@ The crafting system is a **request-response** model, not a persistent state mach
 
 ### Craft / Research / Reverse-Engineer / Alloy Flow
 
-```
+```text
 Player UI action
        │
        ▼
@@ -112,7 +113,9 @@ onUpdateCraftingOptions
 
 ### Discipline / Applied Science Point Flow
 
-```
+This describes the client event contract, not an implemented Rust progression path.
+
+```text
 Player clicks "Spend Applied Science Point"
        │
        ▼
@@ -125,12 +128,12 @@ Server validates + processes
 onUpdateDiscipline (disciplineSeqId, expertise)
        │
        ▼ (optional — if racial paradigm changed)
-onUpdateRacialParadigmLevel   [NEW — not previously documented]
+onUpdateRacialParadigmLevel (racialParadigmId: INT32, level: INT8)
 ```
 
 ### Respec Flow
 
-```
+```text
 Player initiates respec
        │
        ▼
@@ -184,15 +187,31 @@ These are CME events fired by VCrafting to the UI layer (not wire events):
 
 ---
 
-## New Finding: onUpdateRacialParadigmLevel
+## onUpdateRacialParadigmLevel: Verified Schema
 
-`Event_NetIn_onUpdateRacialParadigmLevel` is subscribed by `class_SGW::Crafting` (RTTI confirmed at `0x00e45a60`). This event is absent from `crafting-wire-formats.md` and from the known `.def` analysis. It likely carries a racial paradigm level integer — analogous to `onUpdateDiscipline` — and updates a crafting sub-system tied to player race selection. Wire format is unknown; needs a separate investigation of the emitter/constructor for this event class.
+`Event_NetIn_onUpdateRacialParadigmLevel` is subscribed by `class_SGW::Crafting` (binary RTTI at `0x00e45a60`). [SGWPlayer.def](../../../entities/defs/SGWPlayer.def) declares `INT32 aRacialParadigmId` followed by `INT8 aLevel`; the [canonical client dispatch table](../../protocol/client-method-dispatch-table.md) assigns method index **138**. The argument payload is **five bytes**, excluding transport framing.
+
+**Confidence: HIGH for the definition-based schema and method index.** This corrects the earlier “wire format unknown” statement using entity-definition and dispatch-table evidence. No new emitter/constructor decompilation or packet capture was performed. The subscription alone does not establish how the client presents the level or when the server should increase it.
+
+### Rust runtime audit (2026-09-19)
+
+Static review at `beaf79471154a2e558fd7d112115950519a3f530` found a missing progression and synchronization path, not a missing notification after an otherwise implemented level-up:
+
+| Surface | Finding | Source |
+|---|---|---|
+| Method 138 delivery | The constant and wire-log decoder exist; no runtime sending call site was found | [player client methods](../../../crates/services/src/cell/client_methods/player.rs), [generated decoder](../../../crates/services/src/wire_log/decoders/generated.rs) |
+| Level mutation | The state stores levels, but production callers grant expertise or applied science points without changing the paradigm map; `.allcraft` reports incomplete implementation | [CraftingState](../../../crates/entity/src/crafting.rs), [grant handlers](../../../crates/services/src/base/crafting/handlers.rs), [console crafting](../../../crates/services/src/cell/console/crafting.rs) |
+| Persistence and login | Load/save helpers decode and re-encode the map; no login caller of `load_crafting_state` was found | [crafting persistence](../../../crates/services/src/base/crafting/persistence.rs) |
+
+`onPlayerDataLoaded` has no arguments in `SGWPlayer.def`; it does not itself carry paradigm levels. This audit therefore does **not** establish that relogging restores the crafting UI. The legacy [Crafter](../../../deprecated/python/cell/Crafter.py) mutation path calls `onRacialParadigmUpdated`, whose [SGWPlayer](../../../deprecated/python/cell/SGWPlayer.py) implementation emits the update; that is reference intent, not a Rust implementation.
+
+The implementation gap is tracked in [#723](https://github.com/SandboxServers/Cimmeria/issues/723). No live level gain, client UI update, or packet capture was exercised. Those checks remain necessary once progression and initial synchronization are implemented.
 
 ---
 
 ## Contradictions with crafting-wire-formats.md
 
-1. **`onUpdateRacialParadigmLevel`** is not documented in `crafting-wire-formats.md`. Confirmed present by binary RTTI. Must be added.
+1. **Resolved omission:** `onUpdateRacialParadigmLevel` is now documented in `crafting-wire-formats.md` with the definition-verified two-argument schema. Runtime delivery remains unimplemented as recorded above.
 2. **`TimerUpdate` subscription** is not mentioned. VCrafting uses it for induction countdown. Not a new network message — it's the shared system timer event.
 3. **`Cache_ElementReady<SGW::Blueprint>`** subscription is not mentioned. VCrafting waits for blueprint data cache before populating recipe lists.
 4. Wire fields for craft actions (craft recipe ID, item arrays, etc.) are confirmed accurate from `.def` — no contradictions in the base wire format table.
@@ -201,6 +220,6 @@ These are CME events fired by VCrafting to the UI layer (not wire events):
 
 ## Related Documents
 
-- [crafting-wire-formats.md](crafting-wire-formats.md) — wire format tables (extend with `onUpdateRacialParadigmLevel`)
+- [crafting-wire-formats.md](crafting-wire-formats.md) — wire format tables, including `onUpdateRacialParadigmLevel`
 - [cme-event-signal.md](cme-event-signal.md) — CME EventSignal pipeline anatomy
 - [inventory-wire-formats.md](inventory-wire-formats.md) — item ID and InvItem FIXED_DICT layout
