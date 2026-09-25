@@ -240,7 +240,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA20
 
-**Status:** Ready (evidence only, runs in parallel with phase 0). **Scope title:** Where the world-space cover data lives (C1, C2, C6). **Advisor:** game-archaeology-specialist.
+**Status:** Done (evidence only). Finding: [`docs/reverse-engineering/findings/cover-world-placement.md`](../../reverse-engineering/findings/cover-world-placement.md). Go/no-go for NA21: **go, smaller scope than estimated** — Castle/Castle_CellBlock's real cover nodes are `ASGWSpecCoverNode` actors and `StaticMeshActor.CoverNodeArray` groups baked directly into the `.umap` chunks (4,024 nodes total), already in absolute world space with no owner-transform composition needed for either pattern found; no new binary-format decoder is required, only a property walk the existing `crates/upk::extract_actors`/`ACTOR_CLASSES` machinery already supports. Q4 (client pose trigger) remains unresolved — UnrealScript bytecode, not natively recoverable — and does not block NA21. **Scope title:** Where the world-space cover data lives (C1, C2, C6). **Advisor:** game-archaeology-specialist.
 
 **Scope:**
 

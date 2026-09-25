@@ -29,3 +29,7 @@ path = "src/bin/build_package_index.rs"
 [[bin]]
 name = "inspect-export"
 path = "src/bin/inspect_export.rs"
+
+[[bin]]
+name = "query-index"
+path = "src/bin/query_index.rs"
