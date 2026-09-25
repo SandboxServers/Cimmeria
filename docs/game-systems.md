@@ -31,6 +31,8 @@ Damage is calculated as: base damage, modified by the QR roll, multiplied by sta
 
 **Proximity aggro (NA13):** an Idle NPC that is hostile to players attacks the closest player within 18 u horizontally (`entity_templates.aggro_radius`), within 4 u of its height, and in navmesh line of sight. Hostility is the spawn's aggression override (`spawnlist.aggression_override`, or a chain's `set_aggression`), otherwise the 2009 faction reaction table: faction-10 mobs are hostile, faction 1 and 3 are friendly. The Cellblock mobs a chain arms (the first guard, chain 1008, and the PRU, chain 1032) are seeded neutral so their chain still starts the fight. GMs are aggroed like players unless they type `.aggro off`. Details: [npc-ai.md](gameplay/npc-ai.md#aggression-system).
 
+**Same-room assist (NA14):** when an NPC engages from damage or proximity, hostile NPCs of its faction within 10 u of it (`entity_templates.assist_radius`), on its floor and in line of sight, that are Idle, patrolling or wandering, join on the same target. Assist does not chain, and a content chain's threat does not recruit. This is a deliberate deviation from the 2009 server, which had no assist. Details: [npc-ai.md](gameplay/npc-ai.md#same-room-assist-na14-d-na04).
+
 ### Cover System
 
 SGW has a cover-based combat mechanic with adjustable cover weights and stances. Cover links define where players can take cover in each zone.

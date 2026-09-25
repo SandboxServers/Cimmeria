@@ -175,6 +175,32 @@ The closest candidate gets a 1.0 threat seed (`cause=proximity`). During the NA1
 
 If the scan finds nobody, a hostile NPC that also has a patrol path or wander radius falls through to it, so faction-derived hostility does not freeze a patroller. A patrolling or wandering NPC does not scan until it is Idle again.
 
+### Same-room assist (NA14, D-NA04)
+
+**A marked deviation from legacy.** The 2009 server had no assist: a mob only took threat from its own attackers, so shooting one of two guards standing side by side left the other watching. The owner approved same-room assist because that reads as broken AI.
+
+When an NPC enters Fighting from damage (`cause=damage`) or proximity aggro (`cause=proximity`), `combat::generate_threat` calls `npc_ai::recruit_assisters` (`npc_ai/assist.rs`). Every NPC in the victim's space on the victim's server-side faction and within twice its own assist radius is considered, and joins only when every gate passes, in this order:
+
+| Gate | Reject reason |
+|---|---|
+| Alive | `dead` |
+| Idle, patrolling or wandering. Fighting, Leashing, Investigating and Follow NPCs are never pulled | `not_idle` |
+| Itself HOSTILE to players (override, else faction reaction) | `not_hostile` |
+| Not inside its NA12 post-reset window | `post_reset_suppressed` |
+| The target is not a GM with `.aggro off` set | `gm_ignored` |
+| Height difference to the victim `abs(dy) <= 4` u | `out_of_vertical_band` |
+| Horizontal distance to the victim within its own `entity_templates.assist_radius` (NULL: 10 u, `DEFAULT_ASSIST_RADIUS`) | `out_of_radius` |
+| Navmesh line of sight from it to the victim is `Clear` (`Unknown` fails closed where a mesh exists, as for aggro) | `no_los` |
+
+A joining NPC takes a 1.0 threat seed on the victim's target and enters Fighting with `cause=assist` (transition `reason=assist`). Only a live player target recruits.
+
+- **No chaining.** An assister enters Fighting with `cause=assist`, which does not recruit, so a fight never ripples from room to room: in a line of three guards 7 u apart, shooting the first pulls the second but not the third.
+- **Content threat does not recruit.** A chain's `generate_threat` keeps a scripted fight exactly as scripted.
+- **Chain-armed spawns are safe.** Spawns 10 and 20 are seeded NEUTRAL (below), so they fail `not_hostile` and wait for their chain.
+- In Castle Cellblock the MessHall guards (spawns 28 and 29, 7.2 u apart, same room) assist each other; the Hallway guards are 18.6 u or more apart and do not.
+
+Telemetry: the join is `npc_ai.aggro event=acquired cause=assist` (counter `npc_ai_aggro_total{cause="assist"}`), plus a DEBUG `npc_ai.aggro_scan event=assist_joined` that names the `victim_id`. A considered neighbour that was passed over logs `npc_ai.aggro_scan event=assist_rejected` with the `reason` above, sampled per assister and victim.
+
 ### Chain-armed spawns (D-NA01a)
 
 A spawn whose fight a content chain must start carries `aggression_override = 3` (NEUTRAL), and the chain runs `set_aggression 1` plus `generate_threat`:
@@ -188,7 +214,7 @@ No other Castle (world 8) or Harset seed calls `set_aggression`, so no other spa
 
 ### GM switch: `.aggro on|off` (D-NA02)
 
-Mobs aggro onto GMs like any player. `.aggro off` in the GM `.`-console makes the proximity scan skip the caller, `.aggro on` restores it, and `.aggro` alone reports it. It is server-side because the client's ghost or noclip never reaches the server (audit A8). It covers proximity aggro only: damage and content threat still engage a GM. It is keyed by character, survives zone changes and relogs, is lost on a server restart, and is ignored if the character loses GM access.
+Mobs aggro onto GMs like any player. `.aggro off` in the GM `.`-console makes the proximity scan skip the caller, `.aggro on` restores it, and `.aggro` alone reports it. It is server-side because the client's ghost or noclip never reaches the server (audit A8). It covers proximity aggro and assist: damage and content threat still engage a GM, but the mob a GM shoots does not pull its neighbours in (NA14). It is keyed by character, survives zone changes and relogs, is lost on a server restart, and is ignored if the character loses GM access.
 
 ### Wire: not broadcast yet (open item)
 
