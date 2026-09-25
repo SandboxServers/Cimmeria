@@ -54,22 +54,28 @@ async fn dnd_accepts_128_unicode_scalars_without_truncation() {
 }
 
 #[tokio::test]
-async fn dnd_rejects_129_unicode_scalars_preserving_active_and_inactive_state() {
+async fn dnd_truncates_129_unicode_scalars_and_still_activates() {
     for previous in [None, Some("do not disturb".to_string())] {
         for scalar in ["x", "界", "🚀"] {
             let capture = LogCapture::install();
             assert_eq!(
                 update_dnd(previous.clone(), &scalar.repeat(129)).await,
-                previous,
-                "overlong input must neither enable DND nor replace existing text",
+                Some(scalar.repeat(128)),
+                "overlong input must set DND with the text cut to 128 scalars",
             );
             assert!(capture
                 .find_event(
                     Level::DEBUG,
                     "chatSetDNDMessage: message exceeds limit",
-                    "dnd_message_too_long",
+                    "dnd_message_truncated",
                 )
                 .is_some());
         }
     }
+}
+
+#[tokio::test]
+async fn dnd_bound_holds_for_a_very_long_message() {
+    let stored = update_dnd(None, &"y".repeat(10_000)).await;
+    assert_eq!(stored.map(|m| m.chars().count()), Some(128));
 }

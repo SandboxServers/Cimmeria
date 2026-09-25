@@ -150,8 +150,8 @@ pub(super) fn handle_chat_set_afk(addr: SocketAddr) {
 /// `chatSetDNDMessage(WSTRING message)`.
 ///
 /// Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an empty or 1-char
-/// message clears DND; 2–128 Unicode scalar values set it. Longer messages
-/// are refused without changing the existing state.
+/// message clears DND; anything longer sets it. The stored text is truncated
+/// to 128 Unicode scalar values.
 pub(super) fn handle_chat_set_dnd(
     payload: &[u8],
     addr: SocketAddr,
@@ -160,8 +160,10 @@ pub(super) fn handle_chat_set_dnd(
     // chatSetDNDMessage(WSTRING message)
     //
     // Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an
-    // empty or 1-char message clears DND; a valid longer message sets
-    // it. The stored message itself is currently only used as
+    // empty or 1-char message clears DND; anything longer sets
+    // it, stored truncated to MAX_DND_MESSAGE_CHARS so the per-client
+    // state is bounded (#471 CAT-L-02). Truncating rather than
+    // refusing keeps the player's /dnd visibly taking effect. The stored message itself is currently only used as
     // an "is DND active?" signal for the speaker_flags bit —
     // the auto-reply-tell path is future work.
     //
@@ -186,16 +188,21 @@ pub(super) fn handle_chat_set_dnd(
         }
     };
     let message_chars = message.chars().count();
-    if message_chars > MAX_DND_MESSAGE_CHARS {
-        tracing::debug!(
-            %addr,
-            message_chars,
-            limit = MAX_DND_MESSAGE_CHARS,
-            reason = "dnd_message_too_long",
-            "chatSetDNDMessage: message exceeds limit -- existing DND state preserved",
-        );
-        return;
-    }
+    let message = match message.char_indices().nth(MAX_DND_MESSAGE_CHARS) {
+        Some((cut, _)) => {
+            tracing::debug!(
+                %addr,
+                message_chars,
+                limit = MAX_DND_MESSAGE_CHARS,
+                reason = "dnd_message_truncated",
+                "chatSetDNDMessage: message exceeds limit -- stored truncated",
+            );
+            let mut message = message;
+            message.truncate(cut);
+            message
+        }
+        None => message,
+    };
     let mut clients = connected.lock().unwrap();
     if let Some(c) = clients.get_mut(&addr) {
         c.dnd_message = if message_chars > 1 {
