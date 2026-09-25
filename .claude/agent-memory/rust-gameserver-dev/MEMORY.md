@@ -189,3 +189,4 @@
 - [ai-state-private-and-revert-proof-mtime.md](ai-state-private-and-revert-proof-mtime.md) — `ai_state` is private since NA00 (write via `npc_ai::set_ai_state`); copy2-restored files keep old mtimes so cargo reuses a mutated build.
 - [no-movement-type-wire-and-nav-path-writers.md](no-movement-type-wire-and-nav-path-writers.md) — no movement-type wire exists (witness method 1 = onSequence); every NPC nav_path write goes through `movement_stop` (guard test).
 - [npc-detector-telemetry-traps.md](npc-detector-telemetry-traps.md) — NA02: AI-path statics race across tests (use task_local); release detector state in destroy_entity AND destroy_space.
+- [npc-class-filter-and-dead-target-traps.md](npc-class-filter-and-dead-target-traps.md) — `all_npc_entity_ids` is mob-only (being-class Col Marsh never ticked; `spawn_npc` fixtures hide it); HEALTH alone is not dead.
