@@ -34,15 +34,17 @@ Server forces an entity to a specific position. Used for teleports, spawn positi
 | 12 | 4 | float32 | posX | Position X (world coords) |
 | 16 | 4 | float32 | posY | Position Y (height) |
 | 20 | 4 | float32 | posZ | Position Z (world coords) |
-| 24 | 4 | float32 | velX | Velocity X |
-| 28 | 4 | float32 | velY | Velocity Y |
-| 32 | 4 | float32 | velZ | Velocity Z |
+| 24 | 4 | float32 | prevPosX | Previous-position reference X |
+| 28 | 4 | float32 | prevPosY | Previous-position reference Y |
+| 32 | 4 | float32 | prevPosZ | Previous-position reference Z |
 | 36 | 4 | float32 | roll | Roll angle (radians) |
 | 40 | 4 | float32 | pitch | Pitch angle (radians) |
 | 44 | 4 | float32 | yaw | Yaw angle (radians) |
 | 48 | 1 | uint8 | physics | Physics/movement mode |
 
 **Total: 49 bytes**
+
+> **Field-name correction (W-mercury-bible, 2026-05-14):** The 12 bytes at wire offsets 24-35 of `forcedPosition` were originally documented as "velocity Vec3" based on the comment in `client_handler.cpp:407-413`. Ghidra analysis of `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` shows the block is passed as a pointer (`LEA EAX, [ESI+0x18]`) to `PackageAndSendEntityMove` as `pOrientation`, then copied into `pPrevPos` (which aliases the current-position slot at `&(ESI+0xc)`). It is the client's **previous-position reference**, used for delta-encoding the retransmitted `addMove`. The zeros at world entry exist because there is no prior position to delta from, not because the field is velocity.
 
 ### Field Notes
 

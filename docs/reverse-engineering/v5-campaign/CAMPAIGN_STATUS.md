@@ -229,7 +229,7 @@ The 10 NetIn stubs scored 100 in session 1 because they used the correct flat fo
 - **Mercury::Nub constructor fully mapped** — 24 initialization steps documented
 - **InterfaceElement compress/expandLength encoding pair** documented — 1/2/3/4-byte width switch
 - **Channel destructor SEH filter pair** identified and named
-- **MachineGuard UDP port confirmed as `0x4e36` (19510)** — concrete wire-format fact, should propagate to `mercury-protocol-internals.md`
+- **MachineGuard UDP port confirmed as `0x4e36` (20022)** — concrete wire-format fact, propagated to `mercury-protocol-internals.md`
 
 **Phase C2 — UBWNet/UBWConn:** all 7 functions processed. `0x006f0069` logged `skipped_decode_artefact` per plan.
 
