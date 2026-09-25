@@ -256,7 +256,7 @@ Both entityId fields are the same value (the player entity ID).
 
 **Handler**: `ServerConnection_forcedPosition` @ `0x00dd9ee0`
 **Length type**: CONSTANT_LENGTH = 49
-**Purpose**: Authoritatively sets position, velocity, rotation, and physics mode for a client-controlled entity. Cannot be used for non-controlled (ghost) entities. Sent during world entry and when the server needs to teleport the player.
+**Purpose**: Authoritatively sets position, previous-position reference, rotation, and physics mode for a client-controlled entity. Cannot be used for non-controlled (ghost) entities. Sent during world entry and when the server needs to teleport the player.
 
 ### Client Decompilation Analysis
 
@@ -269,9 +269,9 @@ From `ServerConnection_forcedPosition`, the struct is pre-parsed by Mercury (CON
 [ESI+0x0C] = posX        (f32)  — start of position Vec3 (param_4 to addMove)
 [ESI+0x10] = posY        (f32)
 [ESI+0x14] = posZ        (f32)
-[ESI+0x18] = velX        (f32)  — start of velocity Vec3 (param_5 to addMove)
-[ESI+0x1C] = velY        (f32)
-[ESI+0x20] = velZ        (f32)
+[ESI+0x18] = prevPosX    (f32)  — start of previous-position reference Vec3 (pointer-pass to PackageAndSendEntityMove)
+[ESI+0x1C] = prevPosY    (f32)
+[ESI+0x20] = prevPosZ    (f32)
 [ESI+0x24] = rotX        (f32)  — yaw/pitch/roll as full floats
 [ESI+0x28] = rotY        (f32)  — note: NOT swapped here (unlike createCellPlayer)
 [ESI+0x2C] = rotZ        (f32)
@@ -322,15 +322,17 @@ bundle.endMessage();
 | 12 | 4 | f32 | posX | World position X |
 | 16 | 4 | f32 | posY | World position Y |
 | 20 | 4 | f32 | posZ | World position Z |
-| 24 | 4 | f32 | velX | Velocity X (0 during world entry) |
-| 28 | 4 | f32 | velY | Velocity Y (0 during world entry) |
-| 32 | 4 | f32 | velZ | Velocity Z (0 during world entry) |
+| 24 | 4 | f32 | prevPosX | Previous-position reference X (0 during world entry) |
+| 28 | 4 | f32 | prevPosY | Previous-position reference Y (0 during world entry) |
+| 32 | 4 | f32 | prevPosZ | Previous-position reference Z (0 during world entry) |
 | 36 | 4 | f32 | rotX | Rotation X |
 | 40 | 4 | f32 | rotY | Rotation Y — **may be swapped depending on call site** |
 | 44 | 4 | f32 | rotZ | Rotation Z — **may be swapped depending on call site** |
 | 48 | 1 | u8 | flags | Physics mode (0x01 = standard) |
 
 **Total wire size**: 49 bytes (no length prefix, constant-length message)
+
+> **Field-name correction (W-mercury-bible, 2026-05-14):** The 12 bytes at wire offsets 24-35 of `forcedPosition` were originally documented as "velocity Vec3" based on the comment in `client_handler.cpp:407-413`. Ghidra analysis of `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` shows the block is passed as a pointer (`LEA EAX, [ESI+0x18]`) to `PackageAndSendEntityMove` as `pOrientation`, then copied into `pPrevPos` (which aliases the current-position slot at `&(ESI+0xc)`). It is the client's **previous-position reference**, used for delta-encoding the retransmitted `addMove`. The zeros at world entry exist because there is no prior position to delta from, not because the field is velocity.
 
 ### Rotation Swap Note for FORCED_POSITION
 
@@ -541,7 +543,7 @@ The BaseApp asks the CellApp for position data via `sendConnectEntity`. The Cell
 ```
 4. SPACE_VIEWPORT_INFO (0x08) — entityId, entityId, spaceId, viewportId=0
 5. CREATE_CELL_PLAYER (0x06) — spaceId, vehicleId=0, pos(x,y,z), rot(X,Z,Y)
-6. FORCED_POSITION (0x31) — entityId, spaceId, vehicleId=0, pos(x,y,z), vel(0,0,0), rot(X,Z,Y), flags=0x01
+6. FORCED_POSITION (0x31) — entityId, spaceId, vehicleId=0, pos(x,y,z), prevPos(0,0,0), rot(X,Z,Y), flags=0x01
 ```
 
 Messages 4-6 are written to the same bundle and flushed together.
@@ -579,9 +581,9 @@ YY YY YY YY            ; spaceId
 PP PP PP PP             ; posX
 PP PP PP PP             ; posY
 PP PP PP PP             ; posZ
-00 00 00 00             ; velX (0.0)
-00 00 00 00             ; velY (0.0)
-00 00 00 00             ; velZ (0.0)
+00 00 00 00             ; prevPosX (0.0)
+00 00 00 00             ; prevPosY (0.0)
+00 00 00 00             ; prevPosZ (0.0)
 RR RR RR RR            ; rotX
 RR RR RR RR            ; rotZ — SWAPPED
 RR RR RR RR            ; rotY — SWAPPED

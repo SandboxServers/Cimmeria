@@ -401,9 +401,9 @@ Can be sent on the unreliable channel if `unreliable_movement_update = true`.
 | 12 | 4 | float | posX | Position X |
 | 16 | 4 | float | posY | Position Y |
 | 20 | 4 | float | posZ | Position Z |
-| 24 | 4 | float | velX | Velocity X |
-| 28 | 4 | float | velY | Velocity Y |
-| 32 | 4 | float | velZ | Velocity Z |
+| 24 | 4 | float | prevPosX | Previous-position reference X |
+| 28 | 4 | float | prevPosY | Previous-position reference Y |
+| 32 | 4 | float | prevPosZ | Previous-position reference Z |
 | 36 | 4 | float | rotX | Rotation X (pitch) |
 | 40 | 4 | float | rotZ | Rotation Z (roll) -- **NOTE: Z before Y** |
 | 44 | 4 | float | rotY | Rotation Y (yaw) -- **NOTE: Y/Z swapped** |
@@ -430,6 +430,8 @@ bundle << entityId << spaceId << (uint32_t)0 <<
 ```
 
 **Important discrepancy**: The `createCellPlayer` path writes `rotX, rotZ, rotY` (swapped), while the standalone `forcedPosition` path writes `rotation.x, rotation.y, rotation.z` (in order). The client handler reads them at fixed offsets. The `createCellPlayer` path is the one confirmed to match the client's expected order from pcap analysis (Y/Z swapped in wire).
+
+> **Field-name correction (W-mercury-bible, 2026-05-14):** The 12 bytes at wire offsets 24-35 of `forcedPosition` were originally documented as "velocity Vec3" based on the comment in `client_handler.cpp:407-413`. Ghidra analysis of `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` shows the block is passed as a pointer (`LEA EAX, [ESI+0x18]`) to `PackageAndSendEntityMove` as `pOrientation`, then copied into `pPrevPos` (which aliases the current-position slot at `&(ESI+0xc)`). It is the client's **previous-position reference**, used for delta-encoding the retransmitted `addMove`. The zeros at world entry exist because there is no prior position to delta from, not because the field is velocity.
 
 ---
 
@@ -663,7 +665,7 @@ Client -> Server: ENABLE_ENTITIES(0x08)
 Server -> Client: CREATE_BASE_PLAYER(0x05)           entityId, classId=Account, props=0
 Server -> Client: SPACE_VIEWPORT_INFO(0x08)          entityId, entityId, spaceId, viewportId=0
 Server -> Client: CREATE_CELL_PLAYER(0x06)           spaceId, vehicleId=0, pos, rot(X,Z,Y)
-Server -> Client: FORCED_POSITION(0x31)              entityId, spaceId, vehicleId=0, pos, vel=0, rot(X,Z,Y), flags=1
+Server -> Client: FORCED_POSITION(0x31)              entityId, spaceId, vehicleId=0, pos, prevPos=0, rot(X,Z,Y), flags=1
 ```
 
 ### Entity Enter AoI
