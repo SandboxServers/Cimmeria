@@ -215,6 +215,28 @@ All three N are primes for the same reason: a client's packet mix and the
 AoI relay order are periodic, and a composite N can phase-lock the sample
 onto one packet kind or one pair.
 
+**Hand-named targets (round 2).** A `target: "…"` row matches none of the
+module-path file layers, so the file guard cannot see it, and before
+round 2 fourteen of them emitted DEBUG rows that reached neither a file
+nor SigNoz: `abilities` (effect dispatch, pulses, shields), `abilities.sequence`,
+`content.resolve`, `dialog.display`, `mission.step_context`,
+`movement.movement_type`, `movement.position_sample`, `movement.validation`,
+`player.journal`, `trade.atomic_swap`, `console.feedback`, `client.native`,
+`launcher.*` and `cimmeria_discord`. All are now named in `OTEL_FILTER` at
+DEBUG. `launcher.key_dump` is turned `off` beside `launcher=debug`: it
+carries a client session key and must never leave the host. The one
+per-tick-per-entity row among them, `movement.movement_type`
+`outcome = "deduped"` (TRACE, once per NPC per 2 s AI tick), is sampled
+1-in-53 with `sampled_1_in` and `suppressed`. The others are event-driven:
+together a few tens of rows/s in a busy fight (effect pulses and ability
+sequences dominate), near zero when idle.
+`crates/server/src/logging/target_scan_tests.rs` reads the source of every
+crate linked into the server, finds each literal-target event call and
+requires it to reach one index at the level it is emitted; the only
+exemptions are the `off` targets, each listed with its reason. Every crate
+directory must be classified as in- or out-of-process, so a new crate
+cannot skip the scan.
+
 `crates/server/src/logging/parity_tests.rs` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
 representative event at TRACE, DEBUG and INFO: an event the file keeps
@@ -298,7 +320,7 @@ at its real level and asserts all of them pass.
 | `cover.flank_check` | DEBUG | `cell::cover::ai_integration` | Every flank test an NPC in a cover slot runs: slot, node position + orientation, threat position, `flanked`. Silent until an NPC actually holds a slot — check `use_cover` on `spawner.npc_behaviour` first |
 | `console.feedback` | DEBUG | `cell::cell_methods::gm::feedback::send_gm_feedback` | The text every `.`-command sent back to the GM — results and rejection reasons alike (first 400 chars) |
 | `playtest.friction` | WARN | `cell::playtest_friction` | Stuck-player detectors — one event per episode, discriminated by `signal`. Episode counters: `repeat_interact_no_effect` (5 dead-end interacts on one target / 60 s), `repeat_item_use_no_chain` (2 / 120 s), `console_reject_streak` (3 / 120 s), `escort_separated` (escort > 3x `follow_max_distance` for 5 AI ticks), `escort_leader_teleported` (a followed player is about to be teleported — the escort stays behind). Time-based, re-evaluated every 2 s on movement packets (so only while the player is sending movement): `step_stalled` (step unchanged 5 min), `region_dwell_no_hint` (server-side point-in-polygon containment for 6 s with no client hint — the post-respawn Throne Room shape), `death_then_silence` (hinting client sends none for 120 s + 100 u after `callForAid`). Event-driven, fire at the gameplay event whether or not the player is moving: `dialog_displaced` (a dialog replaced < 3 s after display) and `objective_never_completed` (objective still open when a chain force-completes the mission). Raised from behaviour, not from knowing the cause |
-| `movement.movement_type` | DEBUG (`sent`, `cleared`) / TRACE (`deduped`) | `cell::abilities::messaging::broadcast_movement_type` | Every `setMovementType` outcome. The client picks mob animation from this byte, not from velocity, and `cleared` puts **nothing** on the wire — an NPC that translates afterwards renders in its prior pose. Fields: `kind`, `kind_byte`, `prior_kind`, `outcome`, `witness_count` |
+| `movement.movement_type` | DEBUG (`sent`, `cleared`) / TRACE (`deduped`, 1-in-53 with `sampled_1_in` + `suppressed`, `cimmeria-trace`) | `cell::abilities::messaging::broadcast_movement_type` | Every `setMovementType` outcome. The client picks mob animation from this byte, not from velocity, and `cleared` puts **nothing** on the wire — an NPC that translates afterwards renders in its prior pose. Fields: `kind`, `kind_byte`, `prior_kind`, `outcome`, `witness_count` |
 | `wire.out.avatar_update` | DEBUG (1-in-101 over all sends; `sampled_1_in`, `suppressed`) | `firehose::log_entity_moved`, from `base::world_entry::cell_dispatch::aoi::entity_moved` | The SigNoz sample of the `wire.firehose.aoi_position` firehose (NA25). What a witness was actually told about an entity: `witness_id`, `entity_id`, position, velocity, `yaw_rad`, **`yaw_byte`**, `pitch_byte`, `pos_variant`, and (NA02) `npc_moved_since_last` — `false` beside a non-zero velocity is an NPC the client animates as running while it stands still. There is no movement-type field: the client animates NPC movement from velocity alone. UPDATE_AVATAR is unreliable and never reaches `wire.out`, so this is the only record of transmitted position/facing |
 | `content.resolve` | DEBUG | `cimmeria_content_engine::chain::ChainEngine::resolve_event` | A chain whose **trigger matched but a condition failed** — names the first failing condition (`failed_condition`, `failed_condition_index`, `conditions_total`), the `chain_id` / `chain_name`, `trigger_type` and `source_entity`; `reason = "condition_failed"`. Distinguishes "nothing listens for this event" from "a chain listens but its step is not active yet" — the ordering-bug shape. Generic across every content trigger |
 | `cover.detection` | DEBUG | `cell::service::ticks::cover::log_cover_edge` | One row per player cover-set proximity edge (`edge = entered \| left`): position, `crouched`, `nodes_in_set_nearby`, `nearest_node_id` / `nearest_node_dist` / node position, `proximity_radius`. Cover detection is pure proximity and never consults crouch |

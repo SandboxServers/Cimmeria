@@ -59,6 +59,12 @@ Every sample carries `sampled_1_in` and `suppressed` (occurrences since
 the previous sample). The true count over a window is
 `sum(1 + suppressed)`, or roughly `count() * sampled_1_in`.
 
+Every hand-named `target: "…"` the server emits also reaches SigNoz at
+the level it is emitted, enforced by a source scan
+(`crates/server/src/logging/target_scan_tests.rs`). The one exception is
+`launcher.key_dump`, which carries a client session key and stays on the
+host.
+
 Routing is by level plus the target predicate
 `otel::is_network_noise_target` (see
 [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)); the

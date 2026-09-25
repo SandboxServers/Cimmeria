@@ -28,11 +28,11 @@ use super::filters::{
     OTLP_EXCLUDED_TARGETS, WIRE_FIREHOSE_MUTED,
 };
 
-const OTLP_SERVER: &str = "otlp:cimmeria-server";
-const OTLP_NETWORK: &str = "otlp:cimmeria-network";
-const OTLP_TRACE: &str = "otlp:cimmeria-trace";
+pub(super) const OTLP_SERVER: &str = "otlp:cimmeria-server";
+pub(super) const OTLP_NETWORK: &str = "otlp:cimmeria-network";
+pub(super) const OTLP_TRACE: &str = "otlp:cimmeria-trace";
 const SERVER_LOG: &str = "file:server.log";
-const OTLP_LOG_SINKS: [&str; 3] = [OTLP_SERVER, OTLP_NETWORK, OTLP_TRACE];
+pub(super) const OTLP_LOG_SINKS: [&str; 3] = [OTLP_SERVER, OTLP_NETWORK, OTLP_TRACE];
 const LEVELS: [Level; 5] = [
     Level::TRACE,
     Level::DEBUG,
@@ -44,13 +44,13 @@ const LEVELS: [Level; 5] = [
 // ── Harness ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
-struct Hit {
+pub(super) struct Hit {
     sink: String,
     target: String,
     suppressed: Option<u64>,
 }
 
-type Hits = Arc<Mutex<Vec<Hit>>>;
+pub(super) type Hits = Arc<Mutex<Vec<Hit>>>;
 
 struct Recorder {
     sink: String,
@@ -92,7 +92,7 @@ fn recorder(sink: String, hits: &Hits) -> Recorder {
 
 /// Every file sink plus the three OTLP log sinks, with production filters.
 /// `file_layers` is a parameter so the guard's self-test can add a row.
-fn harness(file_layers: &[FileLayer]) -> (Dispatch, Hits) {
+pub(super) fn harness(file_layers: &[FileLayer]) -> (Dispatch, Hits) {
     let hits: Hits = Arc::default();
     let mut layers: Vec<BoxLayer> = Vec::new();
     for l in file_layers {
@@ -150,7 +150,12 @@ fn event_meta(target: &str, level: Level) -> &'static Metadata<'static> {
 /// The sinks that accept one event at `target`/`level`, dispatched the way
 /// the macros do it: `enabled` first (which records each per-layer filter's
 /// verdict), then `event`.
-fn sinks_for(dispatch: &Dispatch, hits: &Hits, target: &str, level: Level) -> BTreeSet<String> {
+pub(super) fn sinks_for(
+    dispatch: &Dispatch,
+    hits: &Hits,
+    target: &str,
+    level: Level,
+) -> BTreeSet<String> {
     hits.lock().unwrap().clear();
     let meta = event_meta(target, level);
     tracing::dispatcher::with_default(dispatch, || {
@@ -299,7 +304,7 @@ fn server_log_targets_reach_an_otlp_index() {
     ];
     let mut violations = Vec::new();
     for target in named.chain(generic) {
-        let excluded = OTLP_EXCLUDED_TARGETS.contains(&target);
+        let excluded = OTLP_EXCLUDED_TARGETS.iter().any(|(t, _)| *t == target);
         for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
             let sinks = sinks_for(&dispatch, &hits, target, lvl);
             if !sinks.contains(SERVER_LOG) {
@@ -326,7 +331,10 @@ fn otlp_exclusions_match_the_off_directives() {
         .filter(|(_, l)| l.eq_ignore_ascii_case("off"))
         .map(|(t, _)| t)
         .collect();
-    let listed: BTreeSet<&str> = OTLP_EXCLUDED_TARGETS.iter().copied().collect();
+    let listed: BTreeSet<&str> = OTLP_EXCLUDED_TARGETS.iter().map(|(t, _)| *t).collect();
+    for (t, reason) in OTLP_EXCLUDED_TARGETS {
+        assert!(reason.len() > 20, "{t}: every exclusion needs its reason");
+    }
     assert_eq!(off, listed);
 }
 
@@ -358,6 +366,16 @@ fn each_level_lands_in_its_index() {
     assert_eq!(otlp("npc_ai.tick", Level::TRACE), [OTLP_TRACE]);
     // Module paths no file keeps at TRACE stay out of the trace index.
     assert!(otlp("cimmeria_services::orchestrator", Level::TRACE).is_empty());
+    // Round 2: `launcher=debug` exports the launcher replays, but the
+    // session-key dump under it stays on the host at every level, the trace
+    // index (where `launcher` is raised to TRACE) included.
+    assert_eq!(otlp("launcher.ingest", Level::DEBUG), [OTLP_SERVER]);
+    for lvl in LEVELS {
+        assert!(
+            otlp("launcher.key_dump", lvl).is_empty(),
+            "key_dump at {lvl}"
+        );
+    }
     // The exporter's own transport never loops back.
     for lvl in LEVELS {
         assert!(otlp("hyper::proto", lvl).is_empty(), "hyper at {lvl}");

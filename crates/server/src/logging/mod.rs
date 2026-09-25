@@ -20,6 +20,8 @@ use crate::otel;
 mod filters;
 #[cfg(test)]
 mod parity_tests;
+#[cfg(test)]
+mod target_scan_tests;
 
 use filters::{
     otel_network_log_filter, otel_server_log_filter, otel_trace_log_filter, server_log_directives,

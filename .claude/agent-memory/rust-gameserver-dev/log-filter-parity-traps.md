@@ -28,12 +28,11 @@ matches none of them. The firehose targets (`wire.firehose.*`) are named
 in `FILE_LAYERS` for that reason; `every_firehose_is_kept_in_full_by_a_file`
 guards it.
 
-**Custom targets absent from `OTEL_FILTER` still lose their DEBUG rows**
-(no file keeps them either, so the parity guard cannot see them). Open as
-of NA25: `movement.movement_type`, `movement.position_sample`,
-`movement.validation` (debug), `abilities`, `abilities.sequence`,
-`dialog.display`, `mission.step_context`, `player.journal`,
-`trade.atomic_swap`, `console.feedback`, `launcher.*`, `client.native`.
+**A new literal `target: "…"` must be named in `OTEL_FILTER` at its
+level** or `logging/target_scan_tests.rs` fails (NA25 round 2 closed the
+14 that were silently dropped). A new crate directory must be added to its
+in-/out-of-process list there. `launcher.key_dump` is deliberately `off`
+(session key); never widen `launcher` past it.
 
 **Bash-tool heredocs drop a backslash-newline.** A python heredoc
 replacing a Rust `"...,\` continuation line joined it to the next line

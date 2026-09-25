@@ -12,18 +12,23 @@
 //! | INFO, DEBUG | `cimmeria-server`, or `cimmeria-network` for [`otel::is_network_noise_target`] scopes | [`OTEL_FILTER`] |
 //! | TRACE | `cimmeria-trace` | [`otel_trace_directives`] |
 //!
-//! Three deliberate exceptions, each pinned by `parity_tests`:
+//! Deliberate exceptions, each pinned by `parity_tests`:
 //!
-//! - **The exporter's own crates** (`hyper`, `h2`, `tonic`, `tower`,
-//!   `reqwest`, `opentelemetry`, `tungstenite`) are `off` in [`OTEL_FILTER`].
-//!   Their INFO rows reach `server.log`, but exporting the exporter's
-//!   transport logs feeds every export back into the next batch. Listed in
-//!   [`OTLP_EXCLUDED_TARGETS`].
+//! - **The `off` targets** in `OTLP_EXCLUDED_TARGETS`, each with its
+//!   reason: the exporter's own crates (`hyper`, `h2`, `tonic`, `tower`,
+//!   `reqwest`, `opentelemetry`, `tungstenite`), whose export would feed
+//!   every batch into the next, and `launcher.key_dump`, which carries a
+//!   client session key.
 //! - **The per-packet firehoses** (`wire.firehose.*`) reach the files in
 //!   full and SigNoz as a counted 1-in-N sample on another target. See
 //!   `cimmeria_services::firehose`.
 //! - Nothing else. A new file layer whose DEBUG rows [`OTEL_FILTER`] does not
 //!   cover fails `every_file_directive_reaches_an_otlp_index`.
+//!
+//! Hand-named `target: "…"` rows match no file layer, so the file guard
+//! cannot see them. `target_scan_tests` reads the source of every in-process
+//! crate instead and requires each literal target to reach one index at the
+//! level it is emitted (round 2 of NA25).
 //!
 //! The TRACE filter is *derived* from [`FILE_LAYERS`] rather than written out,
 //! so a new file layer's TRACE rows are exported without a second edit. DEBUG
@@ -86,28 +91,52 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 auth=info,\
                 world_entry=info,\
                 vendor=info,mail=info,progression=info,inventory=info,mission=info,\
+                abilities=debug,\
+                content.resolve=debug,\
+                dialog.display=debug,\
+                mission.step_context=debug,\
+                movement.movement_type=debug,\
+                movement.position_sample=debug,\
+                movement.validation=debug,\
+                player.journal=debug,\
+                trade.atomic_swap=debug,\
+                console.feedback=debug,\
+                client.native=debug,\
+                launcher=debug,\
+                launcher.key_dump=off,\
+                cimmeria_discord=debug,\
                 sqlx::query=debug,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
 
-/// Targets [`OTEL_FILTER`] turns off although `server.log` keeps their INFO
-/// rows. All of them are the OTLP exporter's own transport (or the admin
-/// WebSocket's): exporting them loops every batch's HTTP/gRPC chatter back
-/// into the next batch.
+/// Every target [`OTEL_FILTER`] turns `off`, with the reason. These are the
+/// only rows the server logs that SigNoz never receives.
 ///
 /// Test-only: nothing routes on it. `parity_tests` checks it equals the `off`
-/// set in [`OTEL_FILTER`] and exempts exactly these from the parity rule.
+/// set in [`OTEL_FILTER`], and exempts exactly these from the file-parity
+/// and source-target guards.
 #[cfg(test)]
-pub(crate) const OTLP_EXCLUDED_TARGETS: &[&str] = &[
-    "tungstenite",
-    "tokio_tungstenite",
-    "hyper",
-    "h2",
-    "tower",
-    "tonic",
-    "reqwest",
-    "opentelemetry",
+pub(crate) const OTLP_EXCLUDED_TARGETS: &[(&str, &str)] = &[
+    ("tungstenite", EXPORTER_TRANSPORT),
+    ("tokio_tungstenite", EXPORTER_TRANSPORT),
+    ("hyper", EXPORTER_TRANSPORT),
+    ("h2", EXPORTER_TRANSPORT),
+    ("tower", EXPORTER_TRANSPORT),
+    ("tonic", EXPORTER_TRANSPORT),
+    ("reqwest", EXPORTER_TRANSPORT),
+    ("opentelemetry", EXPORTER_TRANSPORT),
+    (
+        "launcher.key_dump",
+        "carries the client's session key (`key_b64`); logged at DEBUG only so \
+         the default sinks keep it off disk, and it must not leave the host \
+         through the exporter either",
+    ),
 ];
+
+/// Reason shared by the exporter's own crates in [`OTLP_EXCLUDED_TARGETS`].
+#[cfg(test)]
+const EXPORTER_TRANSPORT: &str = "the OTLP exporter's own transport (or the admin \
+     WebSocket's): exporting it loops every batch's HTTP/gRPC chatter into the next batch";
 
 /// The per-packet wire stream belongs in protocol.log + OTLP at full
 /// fidelity, not in human-facing sinks (console, server.log, admin WS). Mute
@@ -280,6 +309,15 @@ pub(crate) fn otel_trace_directives_for(file_layers: &[FileLayer]) -> String {
     out.push(',');
     out.push_str(firehose::FIREHOSE_TARGET_PREFIX);
     out.push_str("=off");
+    // A child `OTEL_FILTER` turns off (`launcher.key_dump`) stays off here
+    // too, although its parent (`launcher`) was raised to TRACE above.
+    for (target, _) in
+        directive_pairs(OTEL_FILTER).filter(|(_, level)| level.eq_ignore_ascii_case("off"))
+    {
+        out.push(',');
+        out.push_str(target);
+        out.push_str("=off");
+    }
     out
 }
 
