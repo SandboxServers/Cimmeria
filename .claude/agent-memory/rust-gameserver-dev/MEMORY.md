@@ -47,6 +47,8 @@
 
 ## Seed authoring
 
+- [cover-seed-ids-and-orient-convention.md](cover-seed-ids-and-orient-convention.md) — cover seeds come from `cover_extract`; set ids `world*100000+n` are chain keys; cover `orient` is NOT entity yaw; per-world index signatures.
+
 - [entity-template-seed-authoring.md](entity-template-seed-authoring.md) — **read before touching `entity_templates` / `ability_sets` seed rows.** One ability per set (PK is `ability_set_id` alone); `event_set_id = NULL` on an ability means no attack animation; faction 10 is immutable AND gates both the player damage path and the right-click reroute, so talk-then-kill NPCs need two templates; mob level bands live in `texts.sql` moniker names; a template with neither `components` nor `static_mesh` is permanently invisible.
 
 ## Content engine

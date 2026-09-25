@@ -315,7 +315,7 @@ if status == Constants.MISSION_Active:
 
 **Live data-driven shape (step 2144 dual-objective gate, C05, new gameplay requirement)**
 
-Cimmeria deliberately diverges from step 3 above: step 2144 does not advance on the drone's death alone. It requires **both** objective 2482 (kill the drone) and objective 2484 (take cover at the med-station desk, cover_set 1381) before advancing to step 2343 — a requirement the original 2009 script never had (`entity.dead.tag` was its only trigger for this step). Both objectives are `is_optional = false` in `mission_objectives.sql`.
+Cimmeria deliberately diverges from step 3 above: step 2144 does not advance on the drone's death alone. It requires **both** objective 2482 (kill the drone) and objective 2484 (take cover at the med-station desk, cover_set 1200001 — the extracted desk set; it was the hand-authored 1381 until NA21) before advancing to step 2343 — a requirement the original 2009 script never had (`entity.dead.tag` was its only trigger for this step). Both objectives are `is_optional = false` in `mission_objectives.sql`.
 
 Four chains implement the AND-gate, split to route around `cell::missions::complete_objective`'s auto-complete-mission check (completing every required objective through that path ends the mission immediately, skipping step 2343 — the same trap `mission_688.rs`'s chains 1107/1109 document for step 2356):
 
@@ -323,8 +323,8 @@ Four chains implement the AND-gate, split to route around `cell::missions::compl
 |---|---|---|---|
 | 1033 | `entity_dead_tag('ArmYourself_PrisonerRetrievalUnit')` | cover (2484) not completed, kill (2482) not completed | `complete_objective(639, 2482)` |
 | 1131 | `entity_dead_tag('ArmYourself_PrisonerRetrievalUnit')` | cover (2484) already completed | `advance_step(639, 2343)` (implicitly completes 2482) |
-| 1132 | `player_entered_cover(1381)` | kill (2482) not completed, cover (2484) not completed | `complete_objective(639, 2484)`, `play_sequence(10014)` (hide the TakeCoverIndicator) |
-| 1133 | `player_entered_cover(1381)` | kill (2482) already completed | `advance_step(639, 2343)` (implicitly completes 2484), `play_sequence(10014)` |
+| 1132 | `player_entered_cover(1200001)` | kill (2482) not completed, cover (2484) not completed | `complete_objective(639, 2484)`, `play_sequence(10014)` (hide the TakeCoverIndicator) |
+| 1133 | `player_entered_cover(1200001)` | kill (2482) already completed | `advance_step(639, 2343)` (implicitly completes 2484), `play_sequence(10014)` |
 
 Chains 1033/1132 each check their own target objective isn't already completed (not just the other one), so re-entering cover or a repeat death event doesn't resend `play_sequence(10014)` or re-run a no-op completion. Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (search `Mission 639 (C03 addition`). Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_639_cover.rs` (per-chain positive/negative cases for all four chains, plus both full kill/cover orderings end to end).
 

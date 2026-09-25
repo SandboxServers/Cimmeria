@@ -33,6 +33,13 @@ with `^`/`$` anchors over a CRLF file silently does nothing useful.
 Check `file <path>` first; for CRLF sources use the Edit tool or
 PowerShell `[System.IO.File]::ReadAllLines` / `WriteAllLines`.
 
+Two more refusals seen in NA21 (2026-09-25): a `cd <worktree>/<subdir> &&
+python - <<'EOF'` combination, and any loop whose command word comes from a
+variable (`for f in ...; do "$BIN" "$f"`). Inline heredoc Python also broke on a
+`\` just before a closing `'''`. The reliable pattern is to Write the script
+into the scratchpad and run `python <path>` (or `bash <path>`) as its own call,
+with every path absolute inside the script.
+
 ## A test against a rebuilt C++ binary needs an explicit opt-in
 
 **Why:** `tests/navbuilder_axis_roundtrip.rs` gained a case asserting

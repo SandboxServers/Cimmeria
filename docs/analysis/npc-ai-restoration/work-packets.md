@@ -254,7 +254,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA21
 
-**Status:** BlockedEvidence (NA20). **Scope title:** Per-map cover extractor and space-scoped seeds (C1, C2). **Advisor:** game-archaeology-specialist, database-persistence.
+**Status:** Review (branch `npcai/na21-cover-extractor`). `cover_extract` (`crates/navmesh-extractor`) emits world-space cover from the `.umap` chunks: 236 nodes / 58 sets for Castle_CellBlock (world 12), 3,788 / 481 for Castle (world 8). `cover_sets` gained `world_id` (FK to `worlds`) and `cover_nodes` gained `width`. The 9,346 prefab-local `.pak` rows were dropped. Set 1381 was retired, because the extractor reproduces the desk as set 1200001, and chains 1132/1133 were rekeyed. The cell's cover index is partitioned per world. See [cover-extraction.md](../../engine/cover-extraction.md). **Scope title:** Per-map cover extractor and space-scoped seeds (C1, C2). **Advisor:** game-archaeology-specialist, database-persistence.
 
 **Scope:**
 
