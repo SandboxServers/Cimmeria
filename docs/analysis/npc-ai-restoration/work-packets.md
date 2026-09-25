@@ -393,7 +393,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
   - **Paging.** 64 m pages, each compressed. Only the pages within 132 m of a player are resident (`refresh_occluder_residency`, 1 Hz), and a query on a packed page unpacks it on the spot, in 0.2-1 ms.
   - **Trim.** Coverage is the navmesh components that hold a real entry point, plus 15 m. That also clips Omega_Site_CmdCenter's giant triangles.
   - **Integration.** The occluder replaces the navmesh ray for aggro, attack and cover sight (`los_policy=occluder`, `npc_ai.los source=occluder`), and D-NA11 and D-NA12 no longer apply where a world has one.
-  - **Numbers.** The 23 files total {TOTAL} MB. Agnos is 13 MB on disk, 58.6 MB with every page unpacked and 5.9 MB with one player. A query costs 1-4 µs.
+  - **Numbers.** The 23 files total 131.4 MB after NA28's tiled meshes (the seven rebuilt worlds are marked in the data README). Agnos is 30.5 MB on disk, 168.0 MB with every page unpacked and 4.0 MB with one player. A query costs 1-5 µs.
   - **Tests.** They pin the drone at the desk, `Hallway02_Guard` at the wall, `Hallway01_Guard` at all three of Lomiada's spots (it sees her at 13.6 u too), guard-room walls, storeys, the off-area fallback and residency, and each is revert-proven.
 
 ## Suggested order

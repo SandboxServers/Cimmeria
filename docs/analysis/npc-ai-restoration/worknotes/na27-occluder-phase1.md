@@ -162,28 +162,37 @@ Each test was revert-proven by patching the code and running the suite:
 
 | World | Triangles | Trimmed | Entry points on the mesh | Components kept | Untrimmed file (MB) | Untrimmed RAM (MB) | Shipped file (MB) | Pages | RAM, all unpacked (MB) | RAM, one player (MB, pages) | Unpack mean / max (µs) | Query (µs) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Castle_CellBlock | 1.53 M | 1.13 M | 35/36 | 13/17 | 0.3 | 7.2 | 0.3 | 23 | 5.1 | 3.3 (15) | 255 / 726 | 1.70 |
-| Castle | 4.14 M | 2.32 M | 50/51 | 94/549 | 5.3 | 23.9 | 3.2 | 98 | 16.4 | 5.6 (23) | 457 / 1384 | 1.61 |
-| Agnos | 22.27 M | 18.33 M | 1/3 | 588/1538 | 57.3 | 287.6 | 13.0 | 226 | 58.6 | 5.9 (22) | 983 / 2183 | 3.52 |
-| Agnos_Library | 1.57 M | 0.00 M | 0/2 (none; all kept) | 57/57 | 0.9 | 8.4 | 1.0 | 104 | 7.9 | 4.0 (22) | 604 / 3634 | 3.37 |
-| Beta_Site_Evo_1 | 17.98 M | 13.45 M | 7/9 | 300/601 | 13.3 | 67.9 | 5.0 | 253 | 29.7 | 2.3 (22) | 352 / 787 | 2.09 |
-| Dakara_E1 | 13.83 M | 2.23 M | 2/4 | 326/845 | 11.4 | 51.9 | 10.2 | 774 | 48.3 | 4.5 (23) | 1074 / 4990 | 4.08 |
-| Dakara_E1_StoryRm | 0.05 M | 0.00 M | 0/2 (none; all kept) | 6/6 | 0.0 | 0.2 | 0.0 | 9 | 0.2 | - (no entry point) | - | - |
-| Harset | 3.37 M | 0.00 M | 43/45 | 273/372 | 3.7 | 21.6 | 3.8 | 224 | 21.6 | 7.0 (24) | 735 / 2187 | 1.40 |
-| Harset_CmdCenter | 0.23 M | 0.01 M | 13/15 | 7/14 | 0.3 | 2.6 | 0.3 | 12 | 2.5 | 2.5 (11) | 406 / 910 | 1.79 |
-| Harset_Market | 0.33 M | 0.00 M | 1/3 | 15/29 | 0.2 | 1.8 | 0.2 | 36 | 1.8 | 1.7 (22) | 158 / 1175 | 1.99 |
-| Harset_StorageRm | 0.28 M | 0.00 M | 1/3 | 10/16 | 0.3 | 1.7 | 0.3 | 8 | 1.7 | 1.7 (8) | 454 / 1171 | 3.12 |
-| Ihpet_Crater_Dark | 5.20 M | 2.35 M | 2/4 | 155/370 | 3.5 | 26.5 | 2.7 | 104 | 21.0 | 2.2 (19) | 267 / 694 | 1.40 |
-| Ihpet_Crater_Light | 5.20 M | 2.33 M | 2/4 | 159/371 | 3.5 | 26.6 | 2.7 | 105 | 21.1 | 2.2 (19) | 326 / 801 | 2.16 |
-| Lucia | 29.63 M | 19.13 M | 18/26 | 269/568 | 22.9 | 92.6 | 9.8 | 548 | 43.4 | 5.5 (23) | 666 / 1901 | 2.31 |
-| Menfa_Dark | 14.86 M | 0.07 M | 28/31 | 222/629 | 13.4 | 206.8 | 13.2 | 744 | 160.6 | 5.7 (22) | 592 / 1609 | 4.10 |
-| Menfa_Light | 8.54 M | 0.03 M | 0/3 (none; all kept) | 526/526 | 8.9 | 173.0 | 8.7 | 749 | 126.5 | 5.0 (23) | 425 / 954 | 2.21 |
-| Omega_Site | 2.93 M | 1.04 M | 13/15 | 83/247 | 3.4 | 14.5 | 2.9 | 81 | 13.1 | 5.9 (23) | 599 / 1260 | 2.95 |
-| Omega_Site_CmdCenter | 0.48 M | 0.15 M | 2/4 | 5/45 | 48.1 | 681.7 | 0.7 | 20 | 6.4 | 6.2 (16) | 632 / 1383 | 2.76 |
-| SGC | 0.20 M | 0.00 M | 1/3 | 9/21 | 0.2 | 1.5 | 0.2 | 9 | 1.5 | 1.5 (9) | 252 / 1069 | 1.08 |
-| SGC_W1 | 0.55 M | 0.00 M | 23/29 | 30/68 | 0.5 | 4.2 | 0.5 | 37 | 4.2 | 1.4 (9) | 229 / 931 | 1.56 |
-| Sewer_Falls | 2.76 M | 0.00 M | 0/2 (none; all kept) | 139/139 | 2.4 | 17.2 | 2.4 | 224 | 17.2 | 3.6 (22) | 308 / 1253 | 1.92 |
-| Tollana | 19.32 M | 13.09 M | 5/7 | 189/417 | 23.2 | 183.6 | 9.5 | 306 | 74.8 | 2.8 (15) | 394 / 1042 | 2.17 |
-| Tollana_Curia | 0.02 M | 0.00 M | 0/2 (none; all kept) | 1/1 | 0.0 | 0.0 | 0.0 | 9 | 0.0 | - (no entry point) | - | - |
+| Castle_CellBlock | 1.53 M | 1.13 M | 35/35 | 13/17 | 0.3 | 7.2 | 0.3 | 23 | 5.1 | 3.3 (15) | 282 / 819 | 1.80 |
+| Castle | 4.14 M | 2.32 M | 50/50 | 94/549 | 5.3 | 23.9 | 3.2 | 98 | 16.4 | 5.6 (23) | 431 / 941 | 2.08 |
+| Agnos (tiled mesh) | 22.27 M | 9.22 M | 1/1 | 1568/6075 | 57.3 | 287.6 | 30.5 | 1114 | 168.0 | 4.0 (21) | 564 / 1476 | 1.28 |
+| Agnos_Library | 1.57 M | 0.00 M | 0/0 (none; all kept) | 57/57 | 0.9 | 8.4 | 1.0 | 104 | 7.9 | - (no entry point) | - | - |
+| Beta_Site_Evo_1 (tiled mesh) | 17.98 M | 13.17 M | 7/7 | 330/1119 | 13.3 | 67.9 | 5.3 | 272 | 30.8 | 2.3 (22) | 356 / 869 | 2.07 |
+| Dakara_E1 (tiled mesh) | 13.83 M | 1.51 M | 2/2 | 288/699 | 11.4 | 51.9 | 10.6 | 858 | 49.5 | 4.5 (23) | 631 / 2294 | 4.42 |
+| Dakara_E1_StoryRm | 0.05 M | 0.00 M | 0/0 (none; all kept) | 6/6 | 0.0 | 0.2 | 0.0 | 9 | 0.2 | - (no entry point) | - | - |
+| Harset | 3.37 M | 0.00 M | 43/43 | 273/372 | 3.7 | 21.6 | 3.8 | 224 | 21.6 | 7.0 (24) | 647 / 1947 | 1.13 |
+| Harset_CmdCenter | 0.23 M | 0.01 M | 13/13 | 7/14 | 0.3 | 2.6 | 0.3 | 12 | 2.5 | 2.5 (11) | 358 / 775 | 1.23 |
+| Harset_Market | 0.33 M | 0.00 M | 1/1 | 15/29 | 0.2 | 1.8 | 0.2 | 36 | 1.8 | 1.7 (22) | 139 / 1077 | 1.32 |
+| Harset_StorageRm | 0.28 M | 0.00 M | 1/1 | 10/16 | 0.3 | 1.7 | 0.3 | 8 | 1.7 | 1.7 (8) | 443 / 1057 | 2.23 |
+| Ihpet_Crater_Dark | 5.20 M | 2.35 M | 2/2 | 155/370 | 3.5 | 26.5 | 2.7 | 104 | 21.0 | 2.2 (19) | 280 / 695 | 1.74 |
+| Ihpet_Crater_Light | 5.20 M | 2.33 M | 2/2 | 159/371 | 3.5 | 26.6 | 2.7 | 105 | 21.1 | 2.2 (19) | 271 / 688 | 1.47 |
+| Lucia (tiled mesh) | 29.63 M | 8.19 M | 24/24 | 537/1955 | 22.9 | 92.6 | 18.5 | 1267 | 79.4 | 5.5 (23) | 547 / 1415 | 1.85 |
+| Menfa_Dark (tiled mesh) | 14.86 M | 0.07 M | 28/29 | 205/864 | 13.4 | 206.8 | 13.2 | 743 | 161.0 | 5.7 (22) | 765 / 1925 | 5.00 |
+| Menfa_Light (tiled mesh) | 8.54 M | 0.01 M | 0/1 (none; all kept) | 785/785 | 8.9 | 173.0 | 8.8 | 753 | 127.4 | 5.0 (23) | 468 / 1199 | 2.36 |
+| Omega_Site | 2.93 M | 1.04 M | 13/13 | 83/247 | 3.4 | 14.5 | 2.9 | 81 | 13.1 | 5.9 (23) | 519 / 1128 | 2.94 |
+| Omega_Site_CmdCenter | 0.48 M | 0.15 M | 2/2 | 5/45 | 48.1 | 681.7 | 0.7 | 20 | 6.4 | 6.2 (16) | 599 / 1253 | 2.77 |
+| SGC | 0.20 M | 0.00 M | 1/1 | 9/21 | 0.2 | 1.5 | 0.2 | 9 | 1.5 | 1.5 (9) | 283 / 1178 | 1.01 |
+| SGC_W1 | 0.55 M | 0.00 M | 23/27 | 30/68 | 0.5 | 4.2 | 0.5 | 37 | 4.2 | 1.4 (9) | 238 / 958 | 1.69 |
+| Sewer_Falls | 2.76 M | 0.00 M | 0/0 (none; all kept) | 139/139 | 2.4 | 17.2 | 2.4 | 224 | 17.2 | - (no entry point) | - | - |
+| Tollana (tiled mesh) | 19.32 M | 0.00 M | 5/5 | 554/1215 | 23.2 | 183.6 | 23.3 | 1292 | 183.5 | 5.3 (22) | 438 / 1298 | 2.06 |
+| Tollana_Curia | 0.02 M | 0.00 M | 0/0 (none; all kept) | 1/1 | 0.0 | 0.0 | 0.0 | 9 | 0.0 | - (no entry point) | - | - |
 
-The files total 90.6 MB (`data/spaces` total: about 122 MB).
+The files total 131.4 MB (`data/spaces` total: about 209 MB).
+
+### Rebuilt on NA28's tiled meshes
+
+NA28 (#796) replaced seven meshes with whole-map tiled ones (`XRCT`). Agnos, Beta_Site_Evo_1, Lucia and Tollana had been cropped, and Dakara_E1, Menfa_Dark and Menfa_Light coarse. The trim reads a `.nav` of either layout through NA28's `NavFile` and `NavGraph::from_tiled`, so its components are the portal-linked ones the server's Detour mesh has. `the_build_cli_trims_from_a_tiled_navmesh` pins that, and fails if tiled files are read as single meshes.
+
+- **Bigger trim areas, as expected.** The whole-map meshes reach far more terrain. Agnos keeps 1,568 of 6,075 components and grew from 13.0 MB to 30.5 MB on disk (58.6 to 168.0 MB with every page unpacked). Tollana now trims almost nothing (23.3 MB). One player still holds 4.0 MB in Agnos.
+- **Self-check.** Each build now compares the paged file with the unpaged occluder on 5,000 random segments (4,000 up to 30 m, 1,000 up to 300 m across pages) and refuses to write on any mismatch. All 23 passed.
+- **Entry points.** The two chain `move_waypoint` targets used to be written as `*` (every world). They now take the world of the entity they move, looked up by tag in the spawnlist: they belong to Castle and Castle_CellBlock. No world's trim changed, because Agnos's one entry point on its mesh is its own PlayerStart, but the one-player figure for Agnos is now measured there rather than at a Castle coordinate.
+- **The sixteen other worlds are byte-identical** to the phase-2 build: NA28 changed none of their inputs.
