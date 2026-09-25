@@ -117,6 +117,7 @@ Content-level audit of all game data plus the cradle-to-grave reference for the 
 | [interaction-flags.md](content/interaction-flags.md) | `EInteractionNotificationType` bitmask reference for `set_interaction_type` actions | Complete |
 | [dialog-ui-client-contract.md](content/dialog-ui-client-contract.md) | **REFERENCE** — the 2009 dialog window's real behaviour and the authoring rules that follow: window types, drawable button types, close semantics + the two hard rules, lure delivery, one-dialog-at-a-time eviction | Complete |
 | [equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md) | **EXPLANATION** — chain shape for granting weapons via a manual equip step instead of force-equipping into the bandolier (mission 622 / 641 worked examples) | Complete |
+| [consumable-via-onitemuse-pattern.md](content/consumable-via-onitemuse-pattern.md) | **EXPLANATION** — when `item_use` should pair with `remove_item` (consumables) vs omit it (reusable tools); baseline audit + regression lint | Complete |
 | [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, vocabulary, schema, lifecycle, observability, performance | Complete |
 | [extending-the-engine.md](content/extending-the-engine.md) | **HOW-TO** — add a new trigger / condition / action variant | Complete |
 | [proposed-extensions.md](content/proposed-extensions.md) | **ROADMAP** — justified engine extensions tied to recent direction or shipped content | Complete |
