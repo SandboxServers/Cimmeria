@@ -129,7 +129,7 @@ ResultList:  ClientEffectResultList
 ID:                   INT32  -- Effect ID
 Type:                 INT8   -- DurationEffect (timer type enum)
 SourceID:             INT32  -- Entity with effect
-SecondaryId:          INT32  -- Effect instance ID
+SecondaryId:          INT32  -- Effect timer lookup key (the effect ID in Cimmeria)
 TotalTime:            FLOAT  -- Total duration in seconds
 BigWorldTimeComplete: FLOAT  -- Game time when effect expires
 ```

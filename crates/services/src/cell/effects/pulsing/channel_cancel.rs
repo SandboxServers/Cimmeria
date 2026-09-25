@@ -139,6 +139,7 @@ pub async fn cancel_channels_from_attacker(
             effect_id,
             TIMER_DURATION_EFFECT,
             invoker_id as i32,
+            effect_id,
             0.0,
             0.0,
         );
@@ -316,8 +317,14 @@ pub async fn cancel_channels_for_invoker_ability(
                 }
             }
         }
-        let zero_timer =
-            serialize_timer_update(effect_id, TIMER_DURATION_EFFECT, inv_id as i32, 0.0, 0.0);
+        let zero_timer = serialize_timer_update(
+            effect_id,
+            TIMER_DURATION_EFFECT,
+            inv_id as i32,
+            effect_id,
+            0.0,
+            0.0,
+        );
         send_entity_method(target_eid, ON_TIMER_UPDATE, zero_timer, tx, space_mgr).await;
     }
     cancelled_count
