@@ -712,9 +712,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.5"
+version = "1.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "005ec2760ca554fae18df7a11195552ec576cd665632a881bc011d5bb2fd4d80"
+checksum = "a3eb0f42d6c360dc3f8a821f6bf2fdea7f72bfd36b3076eb0e6d1e9e0752fff4"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -3560,14 +3560,14 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "11.0.0"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "881733cbc631fc9e472e24447ce32a64bedf2da498d6d8570b08edc87de71f65"
+checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",
  "js-sys",
- "pem",
+ "pem 3.0.6",
  "serde",
  "serde_json",
  "signature",
@@ -4761,6 +4761,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pem"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
+dependencies = [
+ "base64 0.23.1",
+ "serde_core",
+]
+
+[[package]]
 name = "peniko"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5321,11 +5331,11 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "rcgen"
-version = "0.14.8"
+version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57f6d249aad744e274e682777a50283a225a32705394ee6d5fcc01efa25e4055"
+checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
- "pem",
+ "pem 4.0.0",
  "ring",
  "rustls-pki-types",
  "time",
@@ -6372,9 +6382,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
