@@ -90,6 +90,9 @@ pub(in crate::cell) enum MoveSource {
     Content,
     /// Where it was spawned.
     Spawn,
+    /// Snapped onto the nearest polygon because a path could not start from
+    /// where it stood (NA15).
+    MeshSnap,
 }
 
 impl MoveSource {
@@ -101,6 +104,7 @@ impl MoveSource {
             Self::Backup => "backup",
             Self::Content => "content",
             Self::Spawn => "spawn",
+            Self::MeshSnap => "mesh_snap",
         }
     }
 }

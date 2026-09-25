@@ -69,3 +69,36 @@ fn an_unmeshed_destination_is_no_end_poly() {
     assert_eq!(o.status, PathStatus::NoEndPoly);
     assert!(o.start_snap.is_some() && o.end_snap.is_none());
 }
+
+/// `nearest_point_within` puts a hovering mover back on its floor, and holds
+/// the answer to the requested reach: Detour's closest point may lie outside
+/// the search box. Revert-proof: dropping the vertical hold returns the
+/// hallway floor 4.8 u above a point beside the mess hall wall.
+#[test]
+fn nearest_point_within_recovers_a_hover_and_respects_its_reach() {
+    let mesh = cellblock();
+    let hover = Vector3::new(MESSHALL.x, MESSHALL.y + 2.0, MESSHALL.z);
+    assert!(
+        mesh.start_poly_snap(&hover).is_none(),
+        "fails the start box"
+    );
+    let onto = mesh
+        .nearest_point_within(&hover, 2.0, 4.0)
+        .expect("the floor is 2 u below");
+    assert!((onto.y - 34.6).abs() < 0.1, "{onto:?}");
+    assert!(
+        mesh.start_poly_snap(&onto).is_some(),
+        "a path can start there"
+    );
+
+    assert!(mesh
+        .nearest_point_within(
+            &Vector3::new(MESSHALL.x, MESSHALL.y + 300.0, MESSHALL.z),
+            2.0,
+            4.0
+        )
+        .is_none());
+    let beside_wall = Vector3::new(-126.25, 34.6, -104.59);
+    assert!(mesh.nearest_point_within(&beside_wall, 8.0, 4.0).is_none());
+    assert!(mesh.nearest_point_within(&beside_wall, 8.0, 5.0).is_some());
+}

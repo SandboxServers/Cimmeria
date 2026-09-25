@@ -224,6 +224,24 @@ impl SpaceManager {
         navmesh.find_nearest_poly(pos).map(|(_, p)| p)
     }
 
+    /// The closest navmesh point to `pos` within `radius` horizontally and
+    /// `half_height` vertically, in the space containing `entity_id`. See
+    /// [`cimmeria_entity::navigation::NavMesh::nearest_point_within`].
+    ///
+    /// `None` when no navmesh is loaded or nothing is that close.
+    pub fn nearest_navmesh_point_within(
+        &self,
+        entity_id: u32,
+        pos: &Vector3,
+        radius: f32,
+        half_height: f32,
+    ) -> Option<Vector3> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.nearest_point_within(pos, radius, half_height)
+    }
+
     /// Slide from `from` toward `to` along the walkable surface, stopping at
     /// walls, and return the grounded end point. See
     /// [`cimmeria_entity::navigation::NavMesh::move_along_surface`].

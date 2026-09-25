@@ -15,3 +15,4 @@
 - [npc-leg-boundary-y-sawtooth.md](npc-leg-boundary-y-sawtooth.md) — Measured ~0.15-0.18u Y bob at every path-leg boundary on flat floors; poly-mesh corners vs detail-mesh endpoint
 - [npcs-cannot-turn-in-place.md](npcs-cannot-turn-in-place.md) — 2026-09-18 diagnosis of frozen attacker yaw. RESOLVED by `face_target` in #682 — read for the mechanism and the missing arc-gate question, not as a current defect
 - [leash-is-a-bare-field-write.md](leash-is-a-bare-field-write.md) — npc_ai_leash writes npc.position directly: AoI grid desync, stale velocity the client extrapolates, no re-face
+- [detour-nearest-poly-escapes-its-box.md](detour-nearest-poly-escapes-its-box.md) — Block on sight: findNearestPoly can return a point outside its box (4.8u over a ±4 band); re-check radius and dy

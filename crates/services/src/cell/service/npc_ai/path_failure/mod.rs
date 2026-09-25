@@ -150,6 +150,16 @@ pub(super) enum PathFallback {
     /// The partial corridor was installed as-is: the NPC walks to the edge
     /// of its mesh island, stops short of the destination, and repaths.
     PartialRoute,
+    /// The route came back degenerate, and the stale route was cleared: the
+    /// NPC stands still instead of walking toward where the target used to
+    /// be (NA15).
+    PathCleared,
+    /// The start was off the mesh: the NPC was snapped onto the nearest
+    /// polygon and the route requested again from there (NA15).
+    SnappedToMesh,
+    /// The destination was off the mesh: the NPC routes to the nearest
+    /// on-mesh point to it instead (NA15, audit S14).
+    NearestOnMesh,
 }
 
 impl PathFallback {
@@ -158,6 +168,9 @@ impl PathFallback {
             PathFallback::DirectWaypoint => "direct_waypoint",
             PathFallback::PathUnchanged => "path_unchanged",
             PathFallback::PartialRoute => "partial_route",
+            PathFallback::PathCleared => "path_cleared",
+            PathFallback::SnappedToMesh => "snapped_to_mesh",
+            PathFallback::NearestOnMesh => "nearest_on_mesh",
         }
     }
 }
@@ -277,6 +290,15 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         PathFallback::PartialRoute => format!(
             "npc_ai.path_fail: {state} got a partial navmesh route -- the destination \
              is on another mesh island, so the NPC walks to the edge of its own and stops short"
+        ),
+        PathFallback::PathCleared => format!(
+            "npc_ai.path_fail: {state} got a route with no usable leg -- the stale route              was cleared and the NPC holds where it stands"
+        ),
+        PathFallback::SnappedToMesh => format!(
+            "npc_ai.path_fail: {state} could not start a route from where the NPC stood              -- it was snapped onto the nearest navmesh polygon and the route retried"
+        ),
+        PathFallback::NearestOnMesh => format!(
+            "npc_ai.path_fail: {state}'s destination is off the navmesh -- the NPC routes              to the nearest on-mesh point to it instead"
         ),
     };
 

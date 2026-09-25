@@ -398,6 +398,28 @@ impl NavMesh {
         None
     }
 
+    /// The closest point on the mesh to `pos` that lies within `radius`
+    /// horizontally and `half_height` vertically, or `None`.
+    ///
+    /// For recovering a mover the pathfinder's tight start box rejects (an
+    /// NPC hovering, sunk, or a step off the edge) and for routing toward a
+    /// destination the loose `±3` box misses (a GM standing on unmeshed
+    /// props). The box is searched as Detour does, then the answer is held to
+    /// the horizontal *radius*, so a corner of the box does not stretch the
+    /// reach by `sqrt(2)`.
+    pub fn nearest_point_within(
+        &self,
+        pos: &Vector3,
+        radius: f32,
+        half_height: f32,
+    ) -> Option<Vector3> {
+        let (_, p) = self.find_nearest_poly_with_extents(pos, &[radius, half_height, radius])?;
+        // Detour admits any polygon whose bounds overlap the box, and its
+        // closest point can lie outside the box: hold the answer to it.
+        let (dx, dz) = (p.x - pos.x, p.z - pos.z);
+        (dx * dx + dz * dz <= radius * radius && (p.y - pos.y).abs() <= half_height).then_some(p)
+    }
+
     /// Find the closest valid navmesh position to the given point.
     pub fn get_nearest_point(&self, pos: &Vector3) -> Vector3 {
         self.find_nearest_poly(pos).map(|(_, p)| p).unwrap_or(*pos)
