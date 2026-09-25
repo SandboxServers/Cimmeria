@@ -75,6 +75,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [SGWHomeless full recovery](sgwhomeless-full-recovery.md) — **[PROMOTE → docs/reverse-engineering/findings/atrea-editor.md §SGWHomeless]** — Complete v5 RE: 30 CME subscriptions confirmed, all handler VAs, singleton at `0x01ef23fc` (CORRECTS prior `cme-anomalies-resolved.md`), GLevel ToD/Wind/Weather layout, Ghidra renames applied.
 
+## Stargate dial/travel timing (NA35, 2026-09-25)
+
+- [Stargate dial and travel timing](stargate-dial-travel-timing-na35.md) — **[PROMOTE → spec.gate-travel.dhd-and-stargate]** — deprecated Python is not gate-travel evidence (legacy server never worked end to end); DHD dial is single-shot and server-invisible per-chevron (chevron broadcast needs a client patch); `onStargatePassage` (method 68) declared but never sent; `GATE_DIAL_DURATION` 4s has no binary basis.
+
 ## Recurring RE-table failure modes
 
 - [RTTI table shifts + RVA/VA traps](rtti-table-shift-and-rva-va-traps.md) — one-row shifts in contiguous RTTI tables (blank trailing cell is the tell); Atrea config mixes RVAs with VAs in one column.

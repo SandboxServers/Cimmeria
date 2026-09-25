@@ -64,6 +64,7 @@ This directory contains 72 per-system reverse engineering findings with evidence
 | `right-click-routing-on-corpse.md` | V5 | Right-click routing — why corpses fail to open loot; the corpse-context-menu dispatch diagnosis | HIGH |
 | `spawn-system-mechanics.md` | V5 | Spawn system mechanics — client-binary analysis of spawn sets, regions, and spawnable-entity wiring | HIGH |
 | `stargate-dhd-state-machine.md` | V5 | Stargate DHD state machine — dial-home-device interaction states and gate-activation flow; `onDHDReply` subscriber, declaration, and Rust emission audit | HIGH / MEDIUM |
+| `stargate-dial-and-travel-sequences.md` | NA35 | Dial-to-kawoosh timing and gate-crossing cinematic — confirms the DHD dial is single-shot (no server-visible per-chevron progress), the 4s `GATE_DIAL_DURATION` has no client-binary basis, `onStargatePassage` (client method 68) is declared but never sent, and the `Stargate_CrossGate` teardown race | HIGH (wire-protocol structure) / LOW-OPEN (exact durations) |
 | `stat-scaling-formulas.md` | V5 | Stat scaling & XP progression — recovered stat-scaling and leveling formulas | MEDIUM |
 | `struct-field-layouts.md` | V5 | FIXED_DICT struct field layouts — client-binary anatomy of key FIXED_DICT structures | HIGH |
 | `weapon-ammo-pipeline.md` | V5 | Weapon / ammo pipeline — clip sizes, ammo consumption, and bandolier-slot wiring recovered from the binary | HIGH |

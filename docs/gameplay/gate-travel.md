@@ -8,7 +8,7 @@ last_updated: 2026-09-19
 # Gate Travel System
 
 > **Last updated**: 2026-09-19
-> **Status**: Zone transition and ring transport both work. The two stargate animations the 2009 server emitted (6100, 6113) now fire and fan to witnesses; DHD chevrons and squad travel are still missing.
+> **Status**: Zone transition and ring transport both work. Two of the fourteen `Stargate_*` sequence events (6100, 6113) now fire and fan to witnesses; DHD chevrons and squad travel are still missing. **Evidence-policy correction (NA35, 2026-09-25):** the deprecated legacy server never had working gate travel end to end, so "the 2009 server did/didn't emit event X" is not evidence about the 2009 client's expectations. `docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md` re-grounds the dial-timing and gate-crossing-cinematic questions in the client binary alone; D-CA20 in `docs/analysis/castle-rebuild/README.md` records the correction and supersedes D-CA10's framing without editing it.
 
 ## Overview
 
@@ -60,9 +60,9 @@ The yaw is carried through unchanged even when the position falls back to a resp
 | Ring movement locking | DONE | `BSF_MovementLock` set/unset during transport |
 | Ring cross-world transport | PARTIAL | Same-world works; cross-world path exists but untested |
 | Ring multi-player sync | FIXME | Only the first player in the region gets the Matinee — the sequence drives a shared world prop |
-| Stargate open animation | DONE | `Stargate_MakeGate` (6100) fires 4 s after a successful dial. `Stargate_DestroyGate` (6103) stays unemitted — the 2009 `cancelDialing` never sent it either (D-CA10) |
-| Stargate crossing animation | DONE | `Stargate_CrossGate` (6113) fires on entering the gate volume, before the `GateTravel` teardown |
-| DHD chevron lock animations | NOT IMPL | Events 6106–6112 exist in the DB for every gate; never triggered |
+| Stargate open animation | DONE, timing under review | `Stargate_MakeGate` (6100) fires 4 s after a successful dial. That 4s hold has no client-binary support (D-CA20) — the client's DHD closes on its own timeline as soon as dialling finishes, independent of the server — and should be retimed down; see [the NA35 finding](../reverse-engineering/findings/stargate-dial-and-travel-sequences.md). `Stargate_DestroyGate` (6103) stays unemitted; whether it should be is unresolved, not settled by D-CA10's now-superseded framing |
+| Stargate crossing animation | DONE, teardown race unresolved | `Stargate_CrossGate` (6113) fires on entering the gate volume, before the `GateTravel` teardown, but with no scheduled gap for it to render — the NA35 finding confirms `Stargate_CrossGate` is a real per-gate Kismet trigger and recommends a provisional delay (not yet implemented) |
+| DHD chevron lock animations | NOT IMPL, and not implementable server-side | Events 6106–6112 exist in the DB for every gate. NA35 confirmed the DHD dial UI never reports in-progress glyph selection to the server (`onDialGate` carries only the finished address) — there is no wire-level signal to key a server-driven chevron broadcast on, so this is a client-patch-only feature, not merely an unimplemented one |
 | Stargate witness visibility | DONE | Both gate sequences fan to every witness of the dialer plus the dialer, one `onSequence` each. The 2009 server sent to `self.client` only; this is a deliberate addition |
 | Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined; blocked on the group system |
 | Gate address discovery | DONE | Two grant paths: a committed gate arrival, and the content action `grant_stargate_address` (Harset H55), which is the port of 2009's `Act_StargateAddress` node. The content grant is visible without a relog — it sends client method 66 `updateStargateAddress`. `giveStargateAddressStr` / `removeStargateAddressStr` are defined and unimplemented; there is still no revoke path |
