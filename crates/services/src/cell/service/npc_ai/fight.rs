@@ -8,9 +8,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::ability_select::{
-    ability_ranges, backup_waypoint_on_mesh, choose_npc_ability_within_reach,
-};
+use super::ability_select::{ability_ranges, choose_npc_ability_within_reach};
 use super::fight_target::{select_target, Engagement};
 use super::leash::policy as leash_policy;
 
@@ -120,6 +118,7 @@ pub(super) async fn npc_ai_fight(
     // release on death / leash / surrender goes through
     // `cover::release_npc_cover`.
     let melee_only = super::ability_select::npc_is_melee_only(npc_id, space_mgr);
+    let ranged_only = super::ability_select::npc_is_ranged_only(npc_id, space_mgr);
     let route = super::fight_cover::route_via_cover(
         super::fight_cover::CoverStep {
             npc_id,
@@ -265,42 +264,38 @@ pub(super) async fn npc_ai_fight(
         return;
     }
 
-    // Min-range backup: target is inside the chosen ability's
-    // `min_range`. The ability would refuse to fire (e.g., a sniper at
-    // `min_range = 5`, target at distance 3). Step the NPC back, away from
-    // the target in X and Z and across the navmesh, to `min_range + 1.0`
-    // so the next tick lands it just outside the dead zone and can fire.
+    // Ranged step-back (NA32, D-NA15): a ranged NPC whose target is inside
+    // its comfort range, `max(min_range, 2 u)`, walks back across the
+    // navmesh to 3 u past it, at most once every 3 s. Inside a hard
+    // `min_range` the ability would refuse to fire, so during the cooldown
+    // (or with its back to a wall) the NPC holds instead. See `step_back`.
     //
-    // Stationary NPCs skip the backup — they're pinned in place by
-    // design. A sniper turret with a min-range gap just won't fire on
-    // a close target, same as today. An NPC in cover holds its slot too.
-    if min_range > 0.0 && dist_to_target < min_range && !is_stationary && !in_cover {
-        if let Some(backup) =
-            backup_waypoint_on_mesh(space_mgr, npc_id, npc_pos, target_pos, min_range)
-        {
-            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                super::replace_nav_path_on(npc, [backup]);
-            }
-            space_mgr
-                .npc_detectors
-                .note_move_source(npc_id, super::detectors::MoveSource::Backup);
-            super::note_outcome("min_range_backup");
-            tracing::debug!(
-                target: "npc_ai",
-                event = "decision",
-                decision_outcome = "min_range_backup",
+    // Stationary NPCs are pinned by design: a sniper turret with a
+    // min-range gap just won't fire on a close target. An NPC in cover
+    // holds its slot (NA22); a flanked one has given it up already.
+    if !is_stationary && !in_cover {
+        let step = super::step_back::step_back(
+            space_mgr,
+            super::step_back::StepBackStep {
                 npc_id,
                 target_id,
-                ability_id = chosen_ability,
+                npc_pos,
+                target_pos,
                 dist_to_target,
                 min_range,
-                backup_x = backup.x,
-                backup_y = backup.y,
-                backup_z = backup.z,
-                "NPC AI: target inside min_range — stepping back to fire"
-            );
+                ranged_only,
+                ability_id: chosen_ability,
+            },
+            std::time::Instant::now(),
+        );
+        match step {
+            super::step_back::StepBackOutcome::Stepped => return,
+            super::step_back::StepBackOutcome::Hold => {
+                face_target(space_mgr, npc_id, npc_pos, target_pos);
+                return;
+            }
+            super::step_back::StepBackOutcome::Fire => {}
         }
-        return;
     }
 
     // In range, LOS confirmed, and not too close — stop moving and attack.

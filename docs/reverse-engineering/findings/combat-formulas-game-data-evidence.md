@@ -285,7 +285,9 @@ consumed by debug logging in `cell/abilities/cone_aoe/flag_categories.rs`.
 
 Not implemented at all: crouch terms in QR (python has
 `qr += crouchingAccuracy*0.01` / `qr -= crouchingDefense*0.01`), `tracking`,
-`stabilization`, `coverQRModifier`, `coverAccuracy`/`coverDefense`.
+`stabilization`. (`coverQRModifier`, `coverAccuracy` and `coverDefense` are
+read since NA32 as modifiers of the cover damage reduction, see §2.) NA32 also swapped the beta branches so the mean
+rises with QR; see `docs/gameplay/combat-system.md` "The qrRand distribution".
 DoT pulses bypass the roll entirely — fixed `qr_rand = 0.5`, `qr = 0.0`,
 `RC_HIT` (`cell/effects/pulsing/tick.rs:229-233`). **FAN-GUESS / UNKNOWN.**
 
@@ -381,6 +383,12 @@ in any effect description.
   agrees with them.
 
 ### Current Rust behaviour + provenance
+
+> [!WARNING]
+> Superseded by NA32 (D-NA15a): cover is now a 10-60% damage reduction
+> rated by the node's quality and height, for a defender at a cover node
+> that faces the attacker. See `docs/gameplay/combat-system.md`
+> "Cover as damage reduction". The text below records the state before NA32.
 
 **Cover confers no combat benefit. NOT IMPLEMENTED.** Cover exists only as NPC-AI
 positioning input.

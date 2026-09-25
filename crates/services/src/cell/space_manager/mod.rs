@@ -21,6 +21,8 @@ pub use queries::PlayerNameLookup;
 
 mod aoi;
 mod client_move;
+mod cover_hit;
+pub use cover_hit::{CoverStanding, PLAYER_COVER_MAX_DY};
 mod cover_sight;
 pub use cover_sight::{NpcSight, SightOrigin};
 mod deferred_content_actions;

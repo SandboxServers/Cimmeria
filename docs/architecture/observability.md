@@ -367,6 +367,10 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `chase` | Out of range / LOS — pathfinding toward target |
 | `no_path` | WARN — pathfinder returned no path (typically: zone missing navmesh). Raised from INFO when it moved onto the throttled `npc_ai.path_fail` target; a stuck NPC is a standing condition, and at INFO it was one row per tick forever |
 | `min_range_backup` | Target inside ability `min_range` — stepping back |
+| `step_back` | NA32: a ranged NPC's target is inside its 2 u comfort range — stepping back to 5 u. Carries `comfort_range`, `retreat_distance`, `backup_x/y/z` |
+| `step_back_walking` | NA32: the step-back is still being walked during its 3 s cooldown; the attack arm is skipped so the route is not cut short |
+| `step_back_cooling` | NA32: target inside a hard `min_range` during the cooldown — holding fire |
+| `step_back_cornered` | NA32: the step-back slide gained under 0.5 u (back to a wall) — firing from where it stands, cooldown started |
 | `no_ability` | Every known ability on cooldown / needs ammo |
 | `leashed` | The NPC itself went past its leash radius from spawn (NA12; before NA12 the test was the target's distance), or its target was unreachable (NA15: `trigger=unreachable`, `cause` = `held_unreachable` \| `off_mesh`). The row carries `trigger` (`beyond_band` \| `chase_outward` \| `vertical_cap` \| `unreachable`), `npc_to_spawn` (horizontal, the distance the test uses), `npc_dy_from_spawn`, `target_to_spawn` (the pre-NA12 metric, for comparison) and `leash_distance` |
 | `threat_empty` / `target_lost` | Fight over: the threat list was empty, or its last target died, vanished or stayed out of the NPC's AoI for 5 s. The NPC starts walking home (`npc_ai.leash event=enter`) |

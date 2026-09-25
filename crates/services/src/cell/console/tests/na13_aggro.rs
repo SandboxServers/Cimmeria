@@ -93,3 +93,75 @@ async fn na13_console_aggression_sets_and_clears_the_override() {
     assert_eq!(mgr.get_entity(npc).unwrap().aggro.override_level, None);
     assert!(lines[0].contains("not 0-5"), "{lines:?}");
 }
+
+/// NA33: `.aggression <level>` broadcasts `onAggressionOverrideUpdate` and
+/// `.aggression clear` broadcasts `onAggressionOverrideCleared` to every
+/// witness of the target — the visible half of the command, not just the
+/// server-side field write `na13_console_aggression_sets_and_clears_the_override`
+/// already pins.
+#[tokio::test]
+async fn na13_console_aggression_broadcasts_update_then_cleared() {
+    use crate::mercury::method_idx::{
+        ON_AGGRESSION_OVERRIDE_CLEARED, ON_AGGRESSION_OVERRIDE_UPDATE,
+    };
+    use cimmeria_common::EntityId;
+
+    let (mut mgr, gm, npc) = gm_setup();
+    // A witness distinct from the GM issuing the command, so the fan-out
+    // isn't accidentally validated against the caller's own client.
+    const WITNESS: u32 = 77;
+    mgr.create_entity(WITNESS, "Agnos", [0.0; 3], [0.0; 3])
+        .unwrap();
+    let w = mgr.get_entity_mut(WITNESS).unwrap();
+    w.is_player = true;
+    w.player_id = Some(900);
+    w.witnesses.insert(EntityId(npc as i32));
+    mgr.connect_entity(WITNESS);
+
+    let (tx, mut rx) = mpsc::channel::<CellToBaseMsg>(64);
+    handle_console_command(gm, ".aggression 1", &tx, &mut mgr, &ChainEngine::new()).await;
+
+    let mut wire = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id,
+            method_index,
+            args,
+            ..
+        } = msg
+        {
+            wire.push((witness_id, entity_id, method_index, args));
+        }
+    }
+    assert_eq!(
+        wire,
+        vec![(
+            WITNESS,
+            npc,
+            ON_AGGRESSION_OVERRIDE_UPDATE,
+            vec![MobAggression::Hostile.level()]
+        )],
+        "level=1 must broadcast onAggressionOverrideUpdate(HOSTILE) to the witness"
+    );
+
+    handle_console_command(gm, ".aggression clear", &tx, &mut mgr, &ChainEngine::new()).await;
+    let mut wire = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id,
+            method_index,
+            args,
+            ..
+        } = msg
+        {
+            wire.push((witness_id, entity_id, method_index, args));
+        }
+    }
+    assert_eq!(
+        wire,
+        vec![(WITNESS, npc, ON_AGGRESSION_OVERRIDE_CLEARED, Vec::new())],
+        "clear must broadcast onAggressionOverrideCleared with an empty payload"
+    );
+}

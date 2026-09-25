@@ -8,3 +8,4 @@
 - [ontimerupdate-wire-and-clock.md](ontimerupdate-wire-and-clock.md) — Method 12's 21-byte layout + byte offsets, absolute-BigWorldTimeComplete evidence (python + RE), the SET_GAME_TIME/tickSync clock trap, and all six emit paths
 - [fire-los-and-eye-heights.md](fire-los-and-eye-heights.md) — NA31 player fire LoS (error 39, tolerance rays) + body_sets.eye_height from ref-mesh bounds
 - [navmesh-los-reliability.md](navmesh-los-reliability.md) — navmesh LoS vs collision geometry: 45% false Blocked; PRU desk (S11); rejected heuristics; no fire-time LoS until an occluder exists
+- [qr-direction-and-cover.md](qr-direction-and-cover.md) — python QR beta branches were inverted (NA32 swapped them); cover QR units from alias.xml; test new QR terms on damage
