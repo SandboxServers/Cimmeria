@@ -804,7 +804,7 @@ name = "cimmeria-admin-api"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "cimmeria-commands",
@@ -993,7 +993,7 @@ name = "cimmeria-lab"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "cimmeria-client-launch",
  "png 0.17.16",
  "reqwest 0.13.4",
@@ -1076,7 +1076,7 @@ name = "cimmeria-scene-editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "cimmeria-upk",
  "cimmeria-upk-objects",
  "image",
