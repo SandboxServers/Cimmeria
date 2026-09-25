@@ -1,0 +1,1602 @@
+{
+  "title": "Cimmeria — NPC AI health",
+  "description": "NPC AI restoration campaign (NA03). One screen per play session: how NPCs aggroed, why they changed state, which stuck/float/leash detectors fired per world, the pathfinder status mix, and whether each space has usable cover. Metric panels read the NA00/NA02 counters (names per docs/architecture/observability.md); cover panels are log-based because no cover metric exists. Operator runbook: docs/operations/npc-ai-telemetry-runbook.md.",
+  "tags": [
+    "cimmeria",
+    "npc-ai",
+    "na03"
+  ],
+  "version": "v5",
+  "variables": {},
+  "layout": [
+    {
+      "h": 6,
+      "i": "aggro-by-cause",
+      "w": 6,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "transitions-by-reason",
+      "w": 6,
+      "x": 6,
+      "y": 0
+    },
+    {
+      "h": 7,
+      "i": "detectors-per-world",
+      "w": 8,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 7,
+      "i": "detector-totals",
+      "w": 4,
+      "x": 8,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "path-requests-by-status",
+      "w": 6,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 6,
+      "i": "path-fail-and-partial",
+      "w": 6,
+      "x": 6,
+      "y": 13
+    },
+    {
+      "h": 6,
+      "i": "idle-unticked",
+      "w": 6,
+      "x": 0,
+      "y": 19
+    },
+    {
+      "h": 6,
+      "i": "decisions-by-outcome",
+      "w": 6,
+      "x": 6,
+      "y": 19
+    },
+    {
+      "h": 6,
+      "i": "cover-coverage",
+      "w": 12,
+      "x": 0,
+      "y": 25
+    },
+    {
+      "h": 6,
+      "i": "no-cover-reasons",
+      "w": 6,
+      "x": 0,
+      "y": 31
+    },
+    {
+      "h": 6,
+      "i": "aggro-scan-rejections",
+      "w": 6,
+      "x": 6,
+      "y": 31
+    }
+  ],
+  "widgets": [
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Entries into Fighting per cause (proximity | damage | content_threat; assist arrives with NA14) and world. Populates after a deploy that carries NA00.",
+      "fillSpans": false,
+      "id": "aggro-by-cause",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_ai_aggro_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "cause",
+                  "name": "cause",
+                  "signal": "metrics",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{cause}} / {{world}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Aggro by cause (npc_ai_aggro_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "One per actual AI-state change. Watch leash_out / leash_arrived / threat_empty. Populates after deploy.",
+      "fillSpans": false,
+      "id": "transitions-by-reason",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_ai_transitions_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "reason",
+                  "name": "reason",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{reason}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "AI state transitions by reason (npc_ai_transitions_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "NA02 detector counters (unthrottled, one per episode). Every series should read 0 once NA10-NA12 land: stale_velocity = running in place, ground_deviation = floating or sunk, stuck = chasing without closing, off_mesh, idle_parked, leash loop, cleared_without_exit = player left in combat, spawn_off_mesh. Populates after deploy.",
+      "fillSpans": false,
+      "id": "detectors-per-world",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_stale_velocity_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "stale_velocity / {{world}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_ground_deviation_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "ground_deviation / {{world}}",
+              "orderBy": [],
+              "queryName": "B",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_stuck_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "C",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "stuck / {{world}}",
+              "orderBy": [],
+              "queryName": "C",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_off_mesh_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "D",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "off_mesh / {{world}}",
+              "orderBy": [],
+              "queryName": "D",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_idle_parked_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "E",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "idle_parked / {{world}}",
+              "orderBy": [],
+              "queryName": "E",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_leash_loop_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "F",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "leash_loop / {{world}}",
+              "orderBy": [],
+              "queryName": "F",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_threat_cleared_without_exit_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "G",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "cleared_without_exit / {{world}}",
+              "orderBy": [],
+              "queryName": "G",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_spawn_off_mesh_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "H",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "spawn_off_mesh / {{world}}",
+              "orderBy": [],
+              "queryName": "H",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Stuck / float / leash detectors per world",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Same counters as the graph, summed over the selected time range. A non-zero cell is the first thing to chase in the logs views (NPC AI — Who is running in place / floating / stuck).",
+      "fillSpans": false,
+      "id": "detector-totals",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_stale_velocity_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "stale_velocity",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_ground_deviation_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "ground_deviation",
+              "orderBy": [],
+              "queryName": "B",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_stuck_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "C",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "stuck",
+              "orderBy": [],
+              "queryName": "C",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_off_mesh_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "D",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "off_mesh",
+              "orderBy": [],
+              "queryName": "D",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_idle_parked_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "E",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "idle_parked",
+              "orderBy": [],
+              "queryName": "E",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_leash_loop_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "F",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "leash_loop",
+              "orderBy": [],
+              "queryName": "F",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_threat_cleared_without_exit_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "G",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "cleared_without_exit",
+              "orderBy": [],
+              "queryName": "G",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Detector totals over the range, per world",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "One per AI find_path: ok | partial | no_start_poly | no_end_poly | no_corridor | straighten_failed | no_mesh. A healthy session is almost all ok. Populates after deploy.",
+      "fillSpans": false,
+      "id": "path-requests-by-status",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_path_requests_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "status",
+                  "name": "status",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{status}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Path request status mix (npc_path_requests_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "npc_path_fail_total (routes with no usable path) by reason, and npc_path_partial_total (partial corridor still walked) by AI state.",
+      "fillSpans": false,
+      "id": "path-fail-and-partial",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_path_fail_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "reason",
+                  "name": "reason",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "fail: {{reason}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            },
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_path_partial_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "state",
+                  "name": "state",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "partial: {{state}}",
+              "orderBy": [],
+              "queryName": "B",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Path failures by reason + partial corridors",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Up/down gauge per world. A guard that ignores you and has no npc_ai.aggro_scan rows is one of these. Should fall once NA13 admits hostile Idle NPCs. Populates after deploy.",
+      "fillSpans": false,
+      "id": "idle-unticked",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_ai_idle_unticked",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "avg"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{world}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Idle NPCs the AI tick skips (npc_ai_idle_unticked)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "What each ticked NPC decided (chase, attack_in_place, leashed, no_path, ...). See the decision_outcome enum in docs/architecture/observability.md.",
+      "fillSpans": false,
+      "id": "decisions-by-outcome",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "npc_ai_decisions_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "decision_outcome",
+                  "name": "decision_outcome",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{decision_outcome}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "AI tick decisions by outcome (npc_ai_decisions_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Log-based: no cover metric exists. One space_summary row per space at startup / instance spawn. WARN reason=no_usable_cover means a meshed space has cover-seeking NPCs and no usable node. Castle_CellBlock should read 236 nodes, 211 on the mesh, 58 sets.",
+      "fillSpans": false,
+      "id": "cover-coverage",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "list",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server' AND scope_name = 'cover.coverage'"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "",
+              "orderBy": [
+                {
+                  "columnName": "timestamp",
+                  "order": "desc"
+                }
+              ],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "limit": 100,
+              "offset": 0,
+              "pageSize": 100
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [
+        {
+          "dataType": "",
+          "fieldContext": "log",
+          "fieldDataType": "",
+          "isColumn": true,
+          "isJSON": false,
+          "name": "timestamp",
+          "signal": "logs",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "fieldContext": "log",
+          "fieldDataType": "string",
+          "isColumn": true,
+          "isJSON": false,
+          "name": "severity_text",
+          "signal": "logs",
+          "type": ""
+        },
+        {
+          "dataType": "",
+          "fieldContext": "attribute",
+          "fieldDataType": "",
+          "isColumn": false,
+          "isJSON": false,
+          "name": "space_id",
+          "signal": "logs",
+          "type": "tag"
+        },
+        {
+          "dataType": "",
+          "fieldContext": "attribute",
+          "fieldDataType": "",
+          "isColumn": false,
+          "isJSON": false,
+          "name": "world_id",
+          "signal": "logs",
+          "type": "tag"
+        },
+        {
+          "dataType": "",
+          "fieldContext": "attribute",
+          "fieldDataType": "",
+          "isColumn": false,
+          "isJSON": false,
+          "name": "nodes_in_world",
+          "signal": "logs",
+          "type": "tag"
+        },
+        {
+          "dataType": "",
+          "fieldContext": "attribute",
+          "fieldDataType": "",
+          "isColumn": false,
+          "isJSON": false,
+          "name": "nodes_on_mesh",
+          "signal": "logs",
+          "type": "tag"
+        },
+        {
+          "dataType": "",
+          "fieldContext": "attribute",
+          "fieldDataType": "",
+          "isColumn": false,
+          "isJSON": false,
+          "name": "sets_in_world",
+          "signal": "logs",
+          "type": "tag"
+        },
+        {
+          "dataType": "",
+          "fieldContext": "attribute",
+          "fieldDataType": "",
+          "isColumn": false,
+          "isJSON": false,
+          "name": "cover_npcs",
+          "signal": "logs",
+          "type": "tag"
+        },
+        {
+          "dataType": "",
+          "fieldContext": "attribute",
+          "fieldDataType": "",
+          "isColumn": false,
+          "isJSON": false,
+          "name": "reason",
+          "signal": "logs",
+          "type": "tag"
+        },
+        {
+          "dataType": "string",
+          "fieldContext": "log",
+          "fieldDataType": "string",
+          "isColumn": true,
+          "isJSON": false,
+          "name": "body",
+          "signal": "logs",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Cover coverage per space (cover.coverage log rows)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Log-based. npc_ai rows with decision_outcome = no_cover (sampled 1 / 10 s per NPC, so treat counts as NPC-windows, not ticks), grouped by reason: no_candidate_in_radius | reserve_lost | in_range_no_better_slot | no_world | index_miss.",
+      "fillSpans": false,
+      "id": "no-cover-reasons",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server' AND scope_name = 'npc_ai' AND decision_outcome = 'no_cover'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "reason",
+                  "name": "reason",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "no_cover reasons (log count)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Log-based. npc_ai.aggro_scan candidate_rejected rows (sampled 1 / 10 s per NPC-player pair) grouped by reason. Answers 'why did guards ignore players' in aggregate; drill into one NPC with the NPC AI — Why did this guard ignore me? view.",
+      "fillSpans": false,
+      "id": "aggro-scan-rejections",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server' AND scope_name = 'npc_ai.aggro_scan' AND event = 'candidate_rejected'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "reason",
+                  "name": "reason",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "world",
+                  "name": "world",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Aggro-scan rejections by reason (log count)",
+      "yAxisUnit": "none"
+    }
+  ]
+}

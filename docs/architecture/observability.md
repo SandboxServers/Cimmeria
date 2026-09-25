@@ -272,6 +272,8 @@ at its real level and asserts all of them pass.
 
 Three Logs Explorer views live under the `playtest` category in SigNoz: **Playtest: bookmarks (.bug notes)** — start here, pick a `bookmark_id`; **Playtest: friction (stuck-player detectors)** — every `playtest.friction` and `movement.navmesh` warning; **Playtest: position trail** — `movement.player`, `movement.npc`, `wire.out.avatar_update`, `movement.movement_type` and bookmark rows interleaved with position / waypoint / `yaw_byte` columns, so narrowing the time range to ±30 s around a bookmark shows where everyone was, where they were going, and what the client was sent. Add `AND entity_id = <id>` or `AND npc_id = <id>` to follow one actor.
 
+Nine more views live under the `npc-ai` category (names prefixed **NPC AI —**), one per question an NPC AI playtest raises, beside the **Cimmeria — NPC AI health** dashboard that charts the `npc_*` metrics below. The [NPC AI telemetry runbook](../operations/npc-ai-telemetry-runbook.md) says which one answers which question; [operations/signoz/npc-ai-views.md](../operations/signoz/npc-ai-views.md) holds every filter and the dashboard JSON export for re-import.
+
 #### `npc_ai.decision_outcome` enum
 
 The `npc_ai.decision` event carries a `decision_outcome` field with
@@ -518,6 +520,7 @@ unexpected entity-count spike. SigNoz supports alert rules; none are defined.
 
 - Deployment runbook: [signoz-deployment.md](../operations/signoz-deployment.md)
 - Remote access runbook: [signoz-remote-access.md](../operations/signoz-remote-access.md)
+- NPC AI telemetry runbook (post-session views + dashboard): [npc-ai-telemetry-runbook.md](../operations/npc-ai-telemetry-runbook.md); exported objects in [operations/signoz/](../operations/signoz/npc-ai-views.md)
 - Instrumentation helpers: [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs)
 - OTLP exporter: [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)
 - Launcher ingest endpoint: [`crates/admin-api/src/routes/telemetry/`](../../crates/admin-api/src/routes/telemetry/)
