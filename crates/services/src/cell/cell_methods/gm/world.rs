@@ -104,9 +104,11 @@ pub(super) async fn handle_kill_target(
     tracing::info!(entity_id, target_eid, "gmKillTarget: killing NPC");
     // `attacker_is_player: false` — a GM `.kill` never went through the
     // combat HUD, so there is no reticle on the GM to drop.
-    let killed =
-        crate::cell::abilities::kill_npc_out_of_band(target_eid, entity_id, false, tx, space_mgr)
-            .await;
+    // `grant_xp: false` — an admin command must not mint levels.
+    let killed = crate::cell::abilities::kill_npc_out_of_band(
+        target_eid, entity_id, false, false, tx, space_mgr,
+    )
+    .await;
     if killed {
         send_gm_feedback(
             entity_id,

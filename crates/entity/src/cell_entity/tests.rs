@@ -486,3 +486,28 @@ fn new_entity_defaults_to_holstered_with_no_weapon() {
     assert!(entity.weapon_holstered);
     assert_eq!(entity.appearance_components(), entity.components);
 }
+
+#[test]
+fn is_introducible_gates_players_until_connected_and_initialised() {
+    // NPC / prop: no account, always introducible.
+    let mut entity = make_entity();
+    assert!(entity.is_introducible());
+
+    // Player cell entity straight out of CreateEntity: identity stamped,
+    // client still loading the map.
+    entity.account_id = Some(7);
+    assert!(!entity.is_introducible());
+
+    // ConnectEntity alone is not enough — InitPlayerState hasn't seeded the
+    // archetype (and with it the stats the cascade ships).
+    entity.is_player = true;
+    assert!(!entity.is_introducible());
+
+    // InitPlayerState alone is not enough either.
+    entity.is_player = false;
+    entity.archetype_id = Some(0);
+    assert!(!entity.is_introducible());
+
+    entity.is_player = true;
+    assert!(entity.is_introducible());
+}

@@ -186,6 +186,7 @@ pub async fn effect_pulse_tick(
                 cleared_effect,
                 TIMER_DURATION_EFFECT,
                 invoker as i32,
+                cleared_effect,
                 0.0,
                 0.0,
             );
@@ -245,6 +246,9 @@ async fn dot_kill_credit(
         target_id,
         invoker_id,
         invoker_is_player,
+        // A DoT finishing a mob is a combat kill like any other — the
+        // invoker earns the same XP their direct shot would have.
+        true,
         tx,
         space_mgr,
     )

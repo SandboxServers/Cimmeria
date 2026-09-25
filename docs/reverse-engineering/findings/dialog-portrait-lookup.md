@@ -6,7 +6,7 @@
 **Sources**:
 
 - `FUN_00d26850` — DialogController constructor (CME subscriber registration)
-- `FUN_00d25310` — `Event_NetIn_DialogDisplay` handler
+- `FUN_00d25310` — `Event_Cache_ElementReady<long,CookedKismetEventSetData>` handler (see [Correction](#correction-2026-09-21))
 - `FUN_00d24f10` — core dialog-show function
 - `FUN_00d22c90` — entity slot-pin function
 - `FUN_00c67bd0` — GameEntityManager slot-17 mapping + `Event_UI_UnitMappingChanged` emitter
@@ -18,6 +18,31 @@
 - `docs/reverse-engineering/decompiled/14_standalone_named.c` line ~2797 — CookedDataDialogs.pak load
 - `docs/reverse-engineering/decompiled/09_game_ui_visuals.c` — PortraitManager body
 - `docs/reverse-engineering/address-map.md` — prior finding: `GENERICPROPERTY_DatabaseId=9`
+
+---
+
+## Correction (2026-09-21)
+
+A second read-only Ghidra pass over `DialogController` corrected one label in this
+document and opened a question about another section. Both are recorded in the
+companion finding
+[dialog-controller-wire-flow.md](dialog-controller-wire-flow.md), which traces the
+display path end to end.
+
+1. **`FUN_00d25310` is not the `Event_NetIn_DialogDisplay` handler.** RTTI shows it
+   is registered for `Event_Cache_ElementReady<long,CookedKismetEventSetData>`. The
+   real wire handler is `FUN_00d25900`, and `FUN_00d25310` runs later, once the
+   asynchronous cooked-data load for the dialog resolves. Read the call chain below
+   with that extra hop in mind — everything downstream of `FUN_00d25200` is
+   unaffected, and the portrait analysis stands.
+2. **Track 2 is disputed, not confirmed.** Its open question 3 notes that the dialog
+   Lua was never recovered. It has since been read: `Dialog.lua:42` and
+   `Blurb.lua:19` both set the speaker label from `unitName(Unit.Dialog)` — the
+   GameEntityManager `DialogSpeaker` slot pinned by `FUN_00c67bd0` — with no
+   CookedData `speakers` lookup at display time. If that reading holds, the blank
+   portrait and the player-name fallback are one bug, both downstream of a slot-`0x11`
+   pin that never landed, and Fix 2 below targets the wrong table. Do not act on
+   Track 2 without re-verifying it in a running client.
 
 ---
 
@@ -48,7 +73,8 @@ The portrait is populated by a Lua callback that fires when `Event_UI_UnitMappin
 
 ```
 Event_NetIn_DialogDisplay (wire method 105)
-  └─ FUN_00d25310            [DialogController handler @ 0x00d25310]
+  └─ FUN_00d25900            [true wire handler; see Correction (2026-09-21)]
+  └─ FUN_00d25310            [Event_Cache_ElementReady handler @ 0x00d25310]
        match: param_1[1] == dialog->entityId
        └─ FUN_00d25200       [activate dialog]
             └─ FUN_00d24f10  [core dialog-show @ 0x00d24f10]
@@ -189,7 +215,10 @@ Note: `entity_templates.speaker_id=941` is the server-side column used to popula
 Wire arrives:  Event_NetIn_DialogDisplay (method 105)
                payload: EntityId, DialogID
 
-FUN_00d25310:  matches EntityId → finds AvailableDialog → calls FUN_00d25200
+FUN_00d25900:  true wire handler — see Correction (2026-09-21)
+
+FUN_00d25310:  cache-ready handler; matches EntityId → finds AvailableDialog
+               → calls FUN_00d25200
 
 FUN_00d24f10:  determines player/NPC slot (screen byte 0x28 == 3 ?)
                calls FUN_00d22c90(dialog, 0x1b58) — player slot

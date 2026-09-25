@@ -374,36 +374,107 @@ integration request A).
 doc comment; deleting both restores the pre-H08 behaviour and fails
 `a_dot_cannot_finish_a_surrendered_npc`.
 
-### 19. Cooldown timers carry an absolute `BigWorldTimeComplete` in the shared game-time domain
+### 19. Every death resolves through one function, including an effect script's killing blow
 
-**Decision:** the cooldown-start `onTimerUpdate` (timer type 2,
-`TIMER_ABILITY_COOLDOWN`) emits `BigWorldTimeComplete = game_time_secs() +
-cooldown` — an absolute expiry in the server's game-time domain — instead of
-the previous hardcoded `0.0`. The `gameTime` field of every ongoing
-`BASEMSG_TICK_SYNC` is driven from the same clock
-(`base::game_time::game_time_tick`, tick rate 100, so
-`tick / 100 == seconds`).
+**Decision:** [`abilities::death::resolve_death`](../../crates/services/src/cell/abilities/death/mod.rs)
+is the only place a death happens. It owns the kill-site state mutations, the ordered wire
+burst, the threat drain, the death animation, kill XP, and the player Defeat Window.
+`damage_apply` calls it twice per hit — once for direct damage, once as a sweep after the
+effect scripts have run — and `kill_npc_out_of_band` (GM `.kill`, DoT pulse) is a thin
+NPC-only wrapper over it. A `BSF_DEAD` probe at the top makes it idempotent, so the second
+call costs one lookup when the first already killed.
 
-**Why:** `CooldownManager_HandleOnTimerUpdate` (client side,
-`docs/reverse-engineering/findings/ability-resolution-pipeline.md`)
-classifies a timer as active or expired by comparing its
-`BigWorldTimeComplete` against its own view of the server game time, which
-it derives from `TICK_SYNC`. Cooldown end-state is never pushed by the
-server — the client's clock crossing the absolute expiry *is* the end.
-A `0.0` (or a relative offset) leaves the client with no reachable expiry:
-the bar either never appears or stays "on cooldown" for the rest of the
-session. The two halves are coupled by construction — an absolute expiry
-is only reachable if the tickSync the client anchors to carries the same
-clock the cell emits timers from; both read
-[`base::game_time`](../../crates/services/src/base/game_time.rs).
+**The bug it closes.** Effect scripts write `HEALTH` directly. `RangedPhysicalDamage`'s
+Focus-pierce bleed, `MeleePhysicalDamage`, `RangedEnergyDamage` and `Suppression` all end in
+`stat.update(min, (cur - damage).max(0), max)` with no death check — and they are dispatched
+at the *bottom* of `apply_damage_to_target`, long after its own `target_died` probe. A shot
+whose direct damage left the NPC standing could therefore take it to zero with nothing
+noticing. Playtest 2026-09-19 (Castle Mess Hall): pistol auto attack (ability 579, effect
+641) bled `MessHall_Guard1` to 0 HP. The mission's `entity_dead_tag` fired — the kill-credit
+wrapper reads the health stat, so *it* saw the death — but no death transition ran. The
+guard stayed at 0 HP with `ai_state == Fighting`, hit the player for 86 damage 0.6 s later,
+and only became a corpse 1.5 s on, when the player's next shot re-entered the direct-damage
+arm. Loot, XP, the `BSF_InCombat` clear and the auto-cycle stop were all 1.5 s late; the
+death event and the death transition were credited to different shots.
 
-**Scope limits:** the effect-duration timer (`TIMER_DURATION_EFFECT`)
-starts in `pulsing/register.rs` are still emitted with a relative time
-and the clears (`pulsing/tick.rs`, `pulsing/channel_cancel.rs`) still
-carry all-zero `0.0` — those are a separate surface and deliberately
-untouched here. Reverting the cooldown path to `0.0` fails
-`build_cooldown_timer_args_emits_absolute_expire_time` and the
-`self_target_commit_emits_absolute_cooldown_expire_time` fan-out guard.
+**Why the sweep sits in `damage_apply` and not in the scripts.** A script holds
+`&mut SpaceManager` through a synchronous [`EffectContext`](../../crates/services/src/cell/effects/mod.rs)
+and cannot await the wire burst. Pushing lethality handling into each script would also mean
+every future HEALTH-touching script has to remember it — the same omission that produced
+this bug, re-armed nine times over. The sweep is unconditional rather than gated on "did a
+script run": any post-`calculate_damage` step that zeroes HEALTH should produce a corpse,
+and a target arriving at the end of the function at 0 HP without `BSF_DEAD` is something to
+fail safe on.
+
+**Kill credit is unaffected.** `handle_use_ability_with_kill_credit` and
+`fan_out_cone_effects` both detect deaths by comparing the HEALTH stat before and after the
+whole ability resolution, which already saw effect-driven zeroes — that is why the mission
+event fired on time while the transition did not. The fix moves the transition onto the same
+shot; it adds no second credit window, and the corpse's `BSF_DEAD` still suppresses credit
+on a follow-up shot.
+
+**Defence in depth in the AI tick.** `npc_ai_tick` and `npc_ai_retry_sweep` now drop any NPC
+whose HEALTH is at or below zero, before the `ai_state` filter. `mark_npc_dead` stamping
+`ai_state = Dead` remains the primary mechanism and this filter should be redundant; it is
+not free redundancy, because the playtest symptom was precisely an NPC acting on a state the
+combat layer already considered finished. A zeroed NPC *without* `BSF_DEAD` warns on the way
+out, per [`negative-logging-convention.md`](negative-logging-convention.md).
+
+**Behaviour changes folded in, same class of bug.** `kill_npc_out_of_band` previously ran the
+transition but skipped the death animation and the XP grant, so a DoT kill produced a silent
+corpse worth nothing. Routing it through `resolve_death` fixes both. Because a GM `.kill`
+shares that entry point, `grant_xp` is an explicit parameter — the DoT path passes `true`,
+the GM path `false`, so an admin command cannot mint levels.
+
+**Reversibility:** High. The sweep is one `if` in `damage_apply`; the AI filter is one
+`.filter(...)`. Deleting either fails
+`effect_script_bleed_to_zero_runs_death_transition_in_same_resolution` /
+`zero_health_npc_without_dead_bit_gets_no_ai_turn` respectively.
+(`npc_killed_by_an_effect_bleed_does_not_shoot_back` is the end-to-end cover for
+both together; on its own it cannot isolate the AI filter, because the death it
+resolves also stamps `AiState::Dead`.)
+
+### 20. Timer expiries are absolute on one server-wide game clock
+
+**Decision:** every `onTimerUpdate` start carries `BigWorldTimeComplete = now + duration`,
+where `now` is [`base::game_time::game_time_secs`](../../crates/services/src/base/game_time.rs).
+That covers the ability cooldown (`handle_use_ability`), the weapon-reload cooldown
+(`handle_reload`), the effect-duration start (`pulsing/register.rs`), and the GM `.net_timer`.
+The effect-duration clears still send `0.0`. The clock the client compares against is the
+same counter: the login bundle's `TICK_SYNC.gameTime` and `SET_GAME_TIME`
+(`build_time_sync`) and every heartbeat `TICK_SYNC` all carry `game_time_tick()`.
+
+**Why:** this is the C++ reference server's model, not an inference. `CellManager::ticks()`
+is milliseconds since start divided by `tick_rate`, and `tick_rate` (`100`) is
+*milliseconds per tick*. `ClientHandler::onConnected` writes that one counter into both
+`TICK_SYNC` and `SET_GAME_TIME`, and `ClientHandler::gameTick` keeps sending it. The Python
+`getGameTime()` is `ticks * tick_rate / 1000`, and `AbilityManager.py` sends
+`getGameTime() + cooldown` (and an effect's `completeTime`) as `BigWorldTimeComplete`.
+The client computes the time left as `BigWorldTimeComplete - now`
+(`ability-resolution-pipeline.md`), so the expiry and the client's clock have to be on the
+same counter.
+
+Before this, the three pieces were inconsistent. Login seeded every client at tick `0`, each
+session's heartbeat counted up from its own `0`, and expiries were `0.0` (cooldowns) or the
+bare duration (effects). Because each session's clock also started at `0`, the relative
+effect times only looked right early in a session. All three move together; changing one
+without the others breaks the rest. For example, a global heartbeat with a zero login seed
+makes the client's clock jump.
+
+**Trap:** `tickRate` is milliseconds per tick, not ticks per second. If the counter advanced
+100 times a second while the field still said `100`, the client's clock would run 10 times
+too fast and every absolute expiry would already have passed when it arrived.
+`ticks_to_secs` is the one conversion; `TICK_INTERVAL_MS` and `UPDATE_FREQUENCY_HZ` are the
+only copies of the rate.
+
+**Not verified in the live client.** The wire values match the reference server, but no
+playtest has confirmed cooldown bars or buff icons against a running `SGW.exe`.
+
+**Reversibility:** High. Guards: `time_sync_seeds_client_clock_with_server_ticks`,
+`self_target_commit_emits_absolute_cooldown_expire_time`,
+`handle_reload_timer_expires_on_the_game_clock`,
+`duration_effect_timers_carry_effect_id_and_absolute_expiry`,
+`ticks_convert_at_ms_per_tick`.
 
 ## Cross-cutting follow-ups
 

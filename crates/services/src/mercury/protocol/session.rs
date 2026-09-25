@@ -44,25 +44,31 @@ pub fn build_connect_reply(
 /// Build and encrypt the time-sync bundle packet.
 ///
 /// Packs three constant-length messages into one packet, matching the C++
-/// `ClientHandler::onConnected()` sequence.
-pub fn build_time_sync(key: &[u8; 32], seq_id: u32, version: EncryptionVersion) -> Vec<u8> {
+/// `ClientHandler::onConnected()` sequence. `ticks` is the server-wide game
+/// clock ([`crate::base::game_time::game_time_tick`]) and goes into both
+/// `TICK_SYNC` and `SET_GAME_TIME`, as the C++ writes `CellManager::ticks()`
+/// into both: the client's clock must start on the same counter the
+/// ongoing heartbeat and the absolute `onTimerUpdate` expiries use.
+pub fn build_time_sync(
+    key: &[u8; 32],
+    seq_id: u32,
+    ticks: u32,
+    version: EncryptionVersion,
+) -> Vec<u8> {
+    use crate::base::game_time::{TICK_INTERVAL_MS, UPDATE_FREQUENCY_HZ};
     use cimmeria_mercury::packet::build_outgoing;
-
-    const UPDATE_FREQ: u8 = 10;
-    const TICK_RATE: u32 = 100;
-    const TICKS: u32 = 0;
 
     let mut body = Vec::with_capacity(2 + 9 + 5);
 
     body.push(BASEMSG_UPDATE_FREQUENCY_NOTIFICATION);
-    body.push(UPDATE_FREQ);
+    body.push(UPDATE_FREQUENCY_HZ);
 
     body.push(BASEMSG_TICK_SYNC);
-    body.extend_from_slice(&TICKS.to_le_bytes());
-    body.extend_from_slice(&TICK_RATE.to_le_bytes());
+    body.extend_from_slice(&ticks.to_le_bytes());
+    body.extend_from_slice(&TICK_INTERVAL_MS.to_le_bytes());
 
     body.push(BASEMSG_SET_GAME_TIME);
-    body.extend_from_slice(&TICKS.to_le_bytes());
+    body.extend_from_slice(&ticks.to_le_bytes());
 
     let plaintext = build_outgoing(REPLY_FLAGS, &body, Some(seq_id), &[], None);
     encrypt_packet(&plaintext, key, version)
@@ -110,14 +116,13 @@ pub fn build_ongoing_tick_sync(
     acks: &[u32],
     version: EncryptionVersion,
 ) -> Vec<u8> {
+    use crate::base::game_time::TICK_INTERVAL_MS;
     use cimmeria_mercury::packet::build_outgoing;
-
-    const TICK_RATE: u32 = 100;
 
     let mut body = Vec::with_capacity(9);
     body.push(BASEMSG_TICK_SYNC);
     body.extend_from_slice(&tick.to_le_bytes());
-    body.extend_from_slice(&TICK_RATE.to_le_bytes());
+    body.extend_from_slice(&TICK_INTERVAL_MS.to_le_bytes());
 
     let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);

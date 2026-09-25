@@ -1,86 +1,112 @@
 //! Shared server game-time clock, in the wire tick domain the client
-//! derives from `BASEMSG_TICK_SYNC`.
+//! derives from `BASEMSG_SET_GAME_TIME` / `BASEMSG_TICK_SYNC`.
 //!
-//! The client's "current time" — the value the cooldown handler
-//! (`CooldownManager_HandleOnTimerUpdate`, `0x00ea6af0`) compares
-//! `BigWorldTimeComplete` against — is its view of the server's game
-//! time: `gameTime / tickRate` seconds, re-anchored on every tickSync
-//! it receives. `onTimerUpdate`'s `BigWorldTimeComplete` field must be
-//! an **absolute** expiry in that same domain (`now + duration`), which
-//! is what the Python reference sends (`AbilityManager.py`:
-//! `cooldown = now + abilityCooldown`, `onTimerUpdate(..., cooldown)`).
+//! Mirrors the C++ reference server exactly:
 //!
-//! One boot-stamped monotonic backs both sides of the split:
+//! - `CellManager::ticks()` = milliseconds since service start divided by
+//!   `tick_rate` (`deprecated/cpp/src/baseapp/cell_manager.cpp:198-201`),
+//!   where `tick_rate` is **milliseconds per tick** (`100` in
+//!   `BaseService.config`), so the counter advances 10 times a second.
+//! - The login bundle writes that one server-wide counter into both
+//!   `TICK_SYNC.gameTime` and `SET_GAME_TIME`, and `TICK_SYNC.tickRate`
+//!   carries the same ms-per-tick value
+//!   (`deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp:44-63`).
+//!   The ongoing heartbeat (`ClientHandler::gameTick`) sends the same
+//!   counter, so a client never sees its clock jump between login and the
+//!   first heartbeat.
+//! - `Atrea.getGameTime()` = `ticks * tick_rate / 1000.0` seconds
+//!   (`deprecated/cpp/src/baseapp/entity/base_py_util.cpp:176-181`). The
+//!   Python reference emits `onTimerUpdate.BigWorldTimeComplete` as
+//!   `getGameTime() + duration` (`AbilityManager.py`), i.e. an absolute
+//!   time on this clock.
 //!
-//! - [`game_time_tick`] feeds the `gameTime` field of the ongoing
-//!   `BASEMSG_TICK_SYNC` packets;
-//! - [`game_time_secs`] feeds absolute timer endpoints (`onTimerUpdate`
-//!   `BigWorldTimeComplete`).
-//!
-//! They agree by construction (`tick / TICK_RATE == secs`), which is the
-//! coupling that keeps an absolute expiry **reachable** by the client's
-//! clock for the whole session. An expiry outside the client's reachable
-//! domain — say, an absolute value emitted while tickSync stayed pinned
-//! at a per-session 0 — is classified by the client as never-elapsing,
-//! wedging the cooldown bar "on cooldown" until reconnect.
+//! [`game_time_tick`] feeds the wire tick fields; [`game_time_secs`] feeds
+//! absolute timer endpoints. Both derive from one boot-stamped monotonic,
+//! and `game_time_secs` is computed *from* the tick so the two cannot
+//! disagree.
 
 use std::sync::OnceLock;
 use std::time::Instant;
 
-/// Ticks per second carried in the wire `tickRate` field. The client
-/// converts `gameTime` ticks to seconds by dividing by this.
-pub const TICK_RATE: u32 = 100;
+/// Milliseconds per game tick — the `tickRate` field of `TICK_SYNC`
+/// (C++ `tick_rate` config, `100`).
+pub const TICK_INTERVAL_MS: u32 = 100;
 
-/// Milliseconds per tick, derived from [`TICK_RATE`] so the two can
-/// never drift apart in this file.
-const MILLIS_PER_TICK: u128 = 1000 / TICK_RATE as u128;
+/// `UPDATE_FREQUENCY_NOTIFICATION` payload: ticks per second
+/// (C++ `1000 / tickRate()`).
+pub const UPDATE_FREQUENCY_HZ: u8 = (1000 / TICK_INTERVAL_MS) as u8;
 
 fn boot_instant() -> Instant {
     static BOOT: OnceLock<Instant> = OnceLock::new();
     *BOOT.get_or_init(Instant::now)
 }
 
-/// Server game time in seconds since boot, in the client's tickSync
-/// domain. `f32` to match the wire's `FLOAT BigWorldTimeComplete`.
-pub fn game_time_secs() -> f32 {
-    boot_instant().elapsed().as_secs_f32()
+/// Server game time in wire ticks since boot, for `TICK_SYNC.gameTime` and
+/// `SET_GAME_TIME`. Advances once per [`TICK_INTERVAL_MS`]; a `u32` wraps
+/// after ~13.6 years of uptime.
+pub fn game_time_tick() -> u32 {
+    (boot_instant().elapsed().as_millis() / TICK_INTERVAL_MS as u128) as u32
 }
 
-/// Server game time in wire ticks ([`TICK_RATE`] per second), for the
-/// `gameTime` field of `BASEMSG_TICK_SYNC`. `game_time_tick() as f32 /
-/// TICK_RATE as f32` equals [`game_time_secs`] to within one tick.
-pub fn game_time_tick() -> u32 {
-    (boot_instant().elapsed().as_millis() / MILLIS_PER_TICK) as u32
+/// Convert a wire tick count to seconds on the client's clock
+/// (`ticks * tickRate / 1000`).
+pub fn ticks_to_secs(ticks: u32) -> f32 {
+    (f64::from(ticks) * f64::from(TICK_INTERVAL_MS) / 1000.0) as f32
+}
+
+/// Server game time in seconds, for absolute `onTimerUpdate`
+/// `BigWorldTimeComplete` values. Quantised to the tick, like the C++
+/// `PyUtil_GetGameTime`.
+pub fn game_time_secs() -> f32 {
+    ticks_to_secs(game_time_tick())
+}
+
+/// Test helper: block until the game clock has advanced past zero, so an
+/// absolute expiry (`now + duration`) is distinguishable from a relative
+/// one (`duration`). The clock starts on first use, so in a fresh test
+/// process `now` would otherwise be `0.0`.
+#[cfg(test)]
+pub(crate) fn wait_for_nonzero_game_time() {
+    while game_time_tick() < 2 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The domain-coupling invariant: the tick value we put on the wire
-    /// and the seconds value we put in `BigWorldTimeComplete` must be the
-    /// same clock. A divergence here means an absolute expiry the client's
-    /// clock can never reach (tickSync pinned low) or one already past
-    /// (tickSync racing ahead).
+    /// `tickRate` is milliseconds per tick, not ticks per second: ten
+    /// ticks are one second on the client's clock. Treating `100` as a
+    /// rate would run the client clock 10x fast and every absolute expiry
+    /// would already be in the past when it arrived.
     #[test]
-    fn tick_domain_matches_seconds_domain() {
+    fn ticks_convert_at_ms_per_tick() {
+        assert_eq!(ticks_to_secs(10), 1.0);
+        assert_eq!(ticks_to_secs(36_000), 3600.0);
+        assert_eq!(UPDATE_FREQUENCY_HZ, 10);
+    }
+
+    /// The domain-coupling invariant: the seconds value put in
+    /// `BigWorldTimeComplete` is the tick value put on the wire, converted
+    /// the way the client converts it.
+    #[test]
+    fn seconds_domain_is_derived_from_tick_domain() {
         let tick = game_time_tick();
         let secs = game_time_secs();
-        let domain_seconds = tick as f32 / TICK_RATE as f32;
+        let now_tick = game_time_tick();
         assert!(
-            (domain_seconds - secs).abs() < 0.02,
-            "tick/TICK_RATE and game_time_secs diverged: tick={tick}, domain={domain_seconds}, secs={secs}"
+            secs == ticks_to_secs(tick) || secs == ticks_to_secs(now_tick),
+            "game_time_secs must be ticks_to_secs(game_time_tick()): tick={tick}, secs={secs}"
         );
     }
 
     #[test]
     fn game_time_is_monotonic() {
-        let secs_a = game_time_secs();
         let tick_a = game_time_tick();
+        let secs_a = game_time_secs();
         std::thread::sleep(std::time::Duration::from_millis(5));
-        let secs_b = game_time_secs();
-        let tick_b = game_time_tick();
-        assert!(secs_b >= secs_a, "seconds clock went backwards");
-        assert!(tick_b >= tick_a, "tick clock went backwards");
+        assert!(game_time_tick() >= tick_a, "tick clock went backwards");
+        assert!(game_time_secs() >= secs_a, "seconds clock went backwards");
     }
 }

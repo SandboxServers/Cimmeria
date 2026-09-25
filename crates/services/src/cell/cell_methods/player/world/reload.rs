@@ -213,12 +213,13 @@ pub(crate) async fn handle_reload(
         "Weapon reload started"
     );
 
-    let timer_args = cimmeria_entity::abilities::serialize_timer_update(
+    // Same timer type as an ability cooldown, so the same absolute
+    // `BigWorldTimeComplete` rule applies (#271).
+    let timer_args = cimmeria_entity::abilities::build_cooldown_timer_args(
         ABILITY_RELOAD_WEAPON,
-        cimmeria_entity::abilities::TIMER_ABILITY_COOLDOWN,
         entity_id as i32,
         total_time,
-        0.0,
+        crate::base::game_time::game_time_secs(),
     );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {

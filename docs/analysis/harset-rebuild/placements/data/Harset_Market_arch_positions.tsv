@@ -1,0 +1,15 @@
+chunk	actor	mesh	bw_x	bw_y	bw_z	archetype_path
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	24.640	7.280	20.360	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	48.920	6.760	55.040	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	15.280	7.280	20.360	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-Brazier00	90.096	3.640	39.304	JF-Props.JF-Brazier00_Pf0.JF-Brazier00_Pf0_Arc0.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	24.640	7.280	9.240	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	15.120	7.280	9.240	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	12.320	7.280	38.680	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	34.120	5.920	39.960	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	60.960	5.920	36.640	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	75.394	5.920	50.489	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	48.880	6.560	90.400	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	84.080	5.920	83.040	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	JF-Props:JF-WallTorch01	48.880	6.560	72.920	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Harset_Market-00000000	StaticMeshActor	Em-Props:EM-StandingLight05	47.960	3.480	81.040	Em-Props.EM-StandingLight05_Pf0.EM-StandingLight05_Pf0_Arc0.StaticMeshComponent0

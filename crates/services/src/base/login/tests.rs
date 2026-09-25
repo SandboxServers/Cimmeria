@@ -30,8 +30,8 @@ fn default_config_session_produces_v1_handshake_bytes() {
     let reply_v1 = build_connect_reply(request_id, &ticket, &key, 1, EncryptionVersion::V1);
     assert_eq!(reply_default, reply_v1, "default connect_reply must be v1");
 
-    let sync_default = build_time_sync(&key, 2, selected);
-    let sync_v1 = build_time_sync(&key, 2, EncryptionVersion::V1);
+    let sync_default = build_time_sync(&key, 2, 0, selected);
+    let sync_v1 = build_time_sync(&key, 2, 0, EncryptionVersion::V1);
     assert_eq!(sync_default, sync_v1, "default time_sync must be v1");
 
     // And the v1 frame must NOT start with the v2 version byte — the actual
@@ -210,6 +210,9 @@ fn make_pending_login(account_id: u32, key_byte: u8) -> PendingLogin {
         ticket: "TICKET00000000000001".to_string(),
         // 32-byte key encoded as 64 hex chars, all the same byte.
         session_key: format!("{:02X}", key_byte).repeat(32),
+        // Default to loopback so existing tests that don't exercise the
+        // IP-binding seam still pass their addr == IP check.
+        client_ip: "127.0.0.1".parse().unwrap(),
         created: Instant::now(),
     }
 }
@@ -408,6 +411,9 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         .unwrap()
         .insert(ticket.clone(), pending);
 
+    // The time-sync bundle carries the live game clock; bracket the call so
+    // the expected bytes can be rebuilt for whichever tick it read.
+    let tick_before = crate::base::game_time::game_time_tick();
     handle_login(
         &dyn_transport,
         addr,
@@ -422,6 +428,7 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
     )
     .await
     .expect("Phase 3 handoff");
+    let tick_after = crate::base::game_time::game_time_tick();
 
     // Stop the tick loop before it can append a third packet.
     cancel_session(&connected, addr);
@@ -445,10 +452,15 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         ),
         "phase-3 connect_reply bytes (seq 1)"
     );
-    assert_eq!(
-        sent[1].1,
-        build_time_sync(&key, 2, cimmeria_mercury::encryption::EncryptionVersion::V1),
-        "initial time_sync bytes (seq 2)"
+    assert!(
+        (tick_before..=tick_after).any(|tick| sent[1].1
+            == build_time_sync(
+                &key,
+                2,
+                tick,
+                cimmeria_mercury::encryption::EncryptionVersion::V1
+            )),
+        "initial time_sync bytes (seq 2) must carry the game clock read during login"
     );
 }
 
@@ -590,4 +602,64 @@ async fn second_login_for_same_account_evicts_first_session() {
     drop(map);
 
     cancel_session(&connected, addr_b);
+}
+
+/// **Cross-IP ticket guard (#442).** A Phase-2 ticket issued to IP A and
+/// consumed from IP B at Phase 3 is the replay signature of a harvested
+/// ticket and must log a WARN with `reason = "ticket_ip_mismatch"`. The
+/// ticket is still consumed (warn-only first — see the issue's NAT / IP
+/// roaming caveat), so the assertion is the log event. Reverting the check
+/// in `handle_login` removes the event and trips this guard.
+#[tokio::test]
+async fn login_from_different_ip_logs_ticket_ip_mismatch() {
+    let capture = crate::test_support::LogCapture::install();
+    let transport = make_transport();
+    let addr: SocketAddr = "203.0.113.20:56789".parse().unwrap();
+
+    let pending_logins = Arc::new(Mutex::new(HashMap::new()));
+    let connected = Arc::new(Mutex::new(HashMap::new()));
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    let cell_tx = None;
+
+    // Ticket issued to a different IP (198.51.100.10) than the connecting
+    // Mercury addr above.
+    let mut pending = make_pending_login(0x4420_0002, 0x42);
+    pending.client_ip = "198.51.100.10".parse().unwrap();
+    let ticket = pending.ticket.clone();
+    pending_logins
+        .lock()
+        .unwrap()
+        .insert(ticket.clone(), pending);
+
+    handle_login(
+        &transport,
+        addr,
+        1,
+        &ticket,
+        &pending_logins,
+        &connected,
+        &entity_manager,
+        &cell_tx,
+        &entity_to_addr,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    )
+    .await
+    .expect("Phase 3 with a valid-but-foreign-IP ticket returns Ok and logs");
+
+    let warn = capture
+        .find_event(
+            tracing::Level::WARN,
+            "consumed from a different IP",
+            "ticket_ip_mismatch",
+        )
+        .expect("cross-IP ticket consumption must log reason=ticket_ip_mismatch at WARN");
+    assert_eq!(
+        warn.fields.get("ticket_ip").map(String::as_str),
+        Some("198.51.100.10")
+    );
+    assert_eq!(
+        warn.fields.get("client_ip").map(String::as_str),
+        Some("203.0.113.20")
+    );
 }

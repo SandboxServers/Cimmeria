@@ -1,0 +1,77 @@
+FIRST ENGAGEMENT BY NPC NAME/TAG (per npc instance):
+  Cellblock Guard[ArmYourself_NIDGuard]: {'damage/chain': 27}
+  Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]: {'damage/chain': 15}
+  NID Guard[MessHall_Guard2]: {'damage/chain': 8}
+  NID Guard[MessHall_Guard1]: {'damage/chain': 7}
+  NID Guard[Hallway01_Guard]: {'damage/chain': 5}
+  NID Guard[Hallway02_Guard]: {'damage/chain': 4}
+  NID Guard[Hallway03_Guard]: {'damage/chain': 4}
+  NID Guard[Hallway04_Guard]: {'damage/chain': 4}
+  NID Guard[Hallway05_Guard1]: {'damage/chain': 4}
+  NID Guard[Hallway05_Guard2]: {'damage/chain': 4}
+  NID Guard[Barracks_Guard2]: {'damage/chain': 4}
+  NID Guard[Barracks_Guard1]: {'damage/chain': 4}
+  NID Guard[Barracks_Guard3]: {'damage/chain': 4}
+  NID Guard[Cellblock_ArmoryGuard1]: {'damage/chain': 4}
+  NID Guard - Castle inside[CastleNidGuardXInside]: {'damage/chain': 2}
+  Prisoner retrieval unit - Castle[Castle_PRU5]: {'damage/chain': 2}
+  Prisoner retrieval unit - Castle[Castle_PRU1]: {'damage/chain': 2}
+  NID Guard - Castle inside[Castle_NidGuard17Inside]: {'damage/chain': 2}
+  Castle_Romney[Castle_Romney]: {'damage/chain': 2}
+  NID Guard - Castle outside[Castle_NidGuard12]: {'damage/chain': 1}
+  NID Guard - Castle outside[Castle_NidGuard11]: {'damage/chain': 1}
+  NID Guard - Castle outside[Castle_NidGuard16]: {'damage/chain': 1}
+  NID Guard - Castle outside[Castle_NidGuard2]: {'damage/chain': 1}
+  NID Guard - Castle outside[Castle_nidGuard3]: {'damage/chain': 1}
+  Castle_BravoOfficer[Castle_BravoOfficer1]: {'damage/chain': 1}
+  NID Guard - Castle outside[Castle_NidGuard9]: {'damage/chain': 1}
+  NID Guard - Castle inside[CastleNidGuard18Inside]: {'damage/chain': 1}
+
+AUTO-AGGRO counts by npc:
+  119 (100630, 'Cellblock Guard[ArmYourself_NIDGuard]@65569')
+  95 (100299, 'Cellblock Guard[ArmYourself_NIDGuard]@65558')
+  58 (100271, 'Cellblock Guard[ArmYourself_NIDGuard]@65557')
+  37 (100154, 'Cellblock Guard[ArmYourself_NIDGuard]@65552')
+  15 (100467, 'Cellblock Guard[ArmYourself_NIDGuard]@65564')
+  15 (100574, 'Cellblock Guard[ArmYourself_NIDGuard]@65567')
+  13 (100908, 'Cellblock Guard[ArmYourself_NIDGuard]@65579')
+  10 (100266, 'Cellblock Guard[ArmYourself_NIDGuard]@65556')
+  2 (100516, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65566')
+  1 (100523, 'Cellblock Guard[ArmYourself_NIDGuard]@65566')
+  1 (100182, 'Cellblock Guard[ArmYourself_NIDGuard]@65553')
+  1 (100210, 'Cellblock Guard[ArmYourself_NIDGuard]@65554')
+  1 (100768, 'Cellblock Guard[ArmYourself_NIDGuard]@65574')
+  1 (100378, 'Cellblock Guard[ArmYourself_NIDGuard]@65560')
+
+LEASH counts by npc:
+  120 (100630, 'Cellblock Guard[ArmYourself_NIDGuard]@65569')
+  96 (100299, 'Cellblock Guard[ArmYourself_NIDGuard]@65558')
+  59 (100271, 'Cellblock Guard[ArmYourself_NIDGuard]@65557')
+  16 (100467, 'Cellblock Guard[ArmYourself_NIDGuard]@65564')
+  16 (100574, 'Cellblock Guard[ArmYourself_NIDGuard]@65567')
+  14 (100908, 'Cellblock Guard[ArmYourself_NIDGuard]@65579')
+  13 (100154, 'Cellblock Guard[ArmYourself_NIDGuard]@65552')
+  11 (100266, 'Cellblock Guard[ArmYourself_NIDGuard]@65556')
+  2 (100516, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65566')
+  1 (100523, 'Cellblock Guard[ArmYourself_NIDGuard]@65566')
+  1 (100182, 'Cellblock Guard[ArmYourself_NIDGuard]@65553')
+  1 (100210, 'Cellblock Guard[ArmYourself_NIDGuard]@65554')
+  1 (100768, 'Cellblock Guard[ArmYourself_NIDGuard]@65574')
+  1 (100199, 'NID Guard[Hallway04_Guard]@65553')
+  1 (100378, 'Cellblock Guard[ArmYourself_NIDGuard]@65560')
+
+STATIONARY HOLD counts by npc:
+  27 (100175, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65553')
+  24 (100789, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65575')
+  13 (100124, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65552')
+  13 (100516, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65566')
+  11 (100288, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65560')
+  11 (100152, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65553')
+  7 (100259, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65556')
+  7 (100511, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65565')
+  6 (100236, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65556')
+  6 (100147, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65552')
+  6 (100427, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65562')
+  4 (100572, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65568')
+  3 (100231, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65555')
+  3 (100567, 'Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit]@65567')

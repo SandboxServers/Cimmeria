@@ -26,6 +26,7 @@ pub(crate) mod contact_list;
 pub(crate) mod cooked_data;
 pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
+pub(crate) mod deferred_aoi_lifecycle;
 pub(crate) mod dialog_overrides;
 pub(crate) mod dispatch;
 pub(crate) mod game_time;
@@ -37,6 +38,7 @@ pub(crate) mod login;
 pub(crate) mod mission_overrides;
 pub(crate) mod outbox;
 pub(crate) mod resources;
+pub(crate) mod sequence_overrides;
 mod service;
 pub(crate) mod session_identity;
 pub(crate) mod tick_sync;
@@ -211,9 +213,20 @@ pub(crate) struct ConnectedClientState {
     /// `handle_cancel_movie` flips it to `true` when the client emits a
     /// real cancelMovie so the spam stops short of its full duration.
     pub cinematic_spam_cancel: Arc<AtomicBool>,
+    /// The active first-login cinematic AoI hold, `None` when no hold is
+    /// in force. While set, entity-scoped AoI traffic for this
+    /// witness buffers into [`Self::deferred_aoi_msgs`] instead of reaching a
+    /// client that is playing a fullscreen movie — see [`deferred_aoi`] and
+    /// `world_entry_appearance::cinematic_aoi_hold`.
+    pub cinematic_aoi_hold: Option<world_entry_appearance::CinematicAoiHold>,
     pub player_name: Option<String>,
     pub player_level: Option<i32>,
     pub player_archetype: Option<i32>,
+    /// `sgw_player.alignment` of the character being played (1 = Praxis,
+    /// 2 = SGU). Cached for the player-ghost AoI cascade: another player's
+    /// client needs it for `onAlignmentUpdate`, and only the owning client's
+    /// `mapLoaded` body saw it before.
+    pub player_alignment: Option<i32>,
     pub world_name: Option<String>,
     pub player_xp: Option<u64>,
     pub player_training_points: Option<u32>,

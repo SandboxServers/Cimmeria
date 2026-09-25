@@ -2,7 +2,7 @@
 title: "Gameplay Systems Gap Analysis"
 type: explanation
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-19
 ---
 
 # Gameplay Systems Gap Analysis
@@ -98,7 +98,7 @@ last_updated: 2026-07-25
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Resource loading from DB | CW | -- | base/resources/ | 22 resource categories, 112,626 DB rows |
+| Resource loading from DB | CW | -- | base/resources/ | 21 wire categories (client 1–21), 112,626 DB rows |
 | Client version sync | CW | -- | base/cooked_data.rs | versionInfoRequest() handled |
 | Cooked data (.pak) serving | CW | -- | base/cooked_data.rs | Binary pak files in data/cache/ |
 | Mission PAK overrides | CW | -- | base/mission_overrides.rs | Injects new steps without reshipping pak |
@@ -194,10 +194,12 @@ last_updated: 2026-07-25
 
 - **Confidence**: MEDIUM — **downgraded 2026-07-25.** The witness-list *discipline* is well established, but there is a known-open delivery defect (below) that the 2026-06-20 colo repro did not explain. Do not plan against "AoI is done".
 - **Documentation**: [engine/entity-lod-system.md](engine/entity-lod-system.md), [engine/entity-type-catalog.md](engine/entity-type-catalog.md)
-- **Rust code**: [`crates/entity/src/cell_entity/`](../crates/entity/src/cell_entity/) (bandolier, state_flags, system_options, tests, mod), [`crates/entity/src/world_grid.rs`](../crates/entity/src/world_grid.rs), [`crates/entity/src/space.rs`](../crates/entity/src/space.rs), [`crates/services/src/base/world_entry/cell_dispatch/aoi.rs`](../crates/services/src/base/world_entry/cell_dispatch/aoi.rs) (792)
+- **Rust code**: [`crates/entity/src/cell_entity/`](../crates/entity/src/cell_entity/) (bandolier, state_flags, system_options, tests, mod), [`crates/entity/src/world_grid.rs`](../crates/entity/src/world_grid.rs), [`crates/entity/src/space.rs`](../crates/entity/src/space.rs), [`crates/services/src/base/world_entry/cell_dispatch/aoi.rs`](../crates/services/src/base/world_entry/cell_dispatch/aoi.rs) (619) + [`cell_dispatch/deferred_flush.rs`](../crates/services/src/base/world_entry/cell_dispatch/deferred_flush.rs) + [`base/deferred_aoi_lifecycle.rs`](../crates/services/src/base/deferred_aoi_lifecycle.rs) (enter/leave ordering across a flush), [`base/world_entry_appearance/cinematic_aoi_hold/`](../crates/services/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs)
 - **Recent PRs**: #279 (BeingAppearance recomposite broadcast — design issue still open), #418 (generate_threat refreshes appearance on first-add), #408/#410 (AoI burst migration), **#580 (player combat + death state fanned out to witnesses — closes #232)**, **#582 (`aoi.create_emit` / `aoi.create_send_failed` observability seams)**
 
-> **Open defect — invisible entity until relog.** In Castle Cellblock a GuardBody corpse is not visible to a player until they relog. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the warns never fired), which puts the drop downstream in create + appearance delivery. PR #582 added the `aoi.create_emit` (DEBUG) / `aoi.create_send_failed` (WARN) seams at [`cell_dispatch/aoi.rs:26-27`](../crates/services/src/base/world_entry/cell_dispatch/aoi.rs) to localise it on the next repro. Until that lands, treat entity-introduction delivery as unproven.
+> **Open defect — invisible entity until relog.** In Castle Cellblock a GuardBody corpse (a `class_id 0` static mesh) is not visible to a first-login player until they relog. Two hypotheses are now retired. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the warns never fired). The 2026-09-19 colo repro retired Mercury delivery: the server sent the introduction as reliable packets and logged no `aoi.create_send_failed`, and exactly **one** reliable packet was retransmitted in the session's first 75 s — so the client ACKed every create before its RTO. **The drop is inside the client, after delivery.** That repro also explained why #582's `aoi.create_emit` seam had been silent: the OTLP `EnvFilter` in [`crates/server/src/logging.rs`](../crates/server/src/logging.rs) named only `aoi.entity_enter` / `aoi.entity_leave`, so an unnamed custom target inherited the leading `info` and its DEBUG events never reached SigNoz. Fixed, and pinned by the unit test `otel_filter_exports_the_debug_level_aoi_seams`. The one differential between the failing and succeeding session was the first-login cinematic — played to its natural end vs. Esc'd after 1.5 s — which is **n=1, a lead not a finding**. On that lead, a first-login cinematic AoI hold now buffers entity introductions until the movie ends: [architecture/first-login-cinematic-aoi-hold.md](architecture/first-login-cinematic-aoi-hold.md). **Shipped as an experiment, not validated in game.** Treat entity-introduction *rendering* as unproven.
+
+**Player-to-player introduction — implemented, awaiting two-client validation.** Players in a shared world (Castle, Harset) previously introduced each other with the NPC-shaped cascade: no `BeingAppearance`, no nameplate, placeholder stats, `stateField = 0`. A dedicated `SGWPlayer` ghost cascade now carries the observee's appearance, name, level, alignment and live combat/death state, joined from the cell (live state) and the base session (identity) at emit time, and an `is_introducible` gate keeps a player out of everyone's AoI until its client has finished loading — introduction is one-shot, so introducing early used to strand the witness with a blank. Pinned by wire-format, fan-out byte and negative-log tests plus the 2009 Python reference; **not yet run with two real clients**, so it is `NT`, not `CW`. Design + UAT checklist: [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md). This is a different bug from the invisible-corpse defect above.
 
 - **Path forward**: Close the invisible-entity defect; finish the BeingAppearance fanout-helper consolidation (issue #278, parent of #219/#232/#240/#249/#270 — #232 closed by #580).
 
@@ -206,7 +208,7 @@ last_updated: 2026-07-25
 | Entity creation | CW | -- | entity/manager.rs | From template or dynamic |
 | Entity destruction | CW | -- | entity/manager.rs | Cleanup + witness notification |
 | Grid-based AoI | CW | -- | entity/world_grid.rs | Chunk-based witness management |
-| Witness enter/leave | IM | -- | entity/cell_entity/mod.rs | **Downgraded 2026-07-25.** onEnter/onLeave fire, but entity-introduction delivery to a witness has a known-open drop (invisible GuardBody corpse until relog — see the callout above). #582 instrumentation pending next repro |
+| Witness enter/leave | IM | -- | entity/cell_entity/mod.rs | **Downgraded 2026-07-25.** onEnter/onLeave fire, but a witness can still fail to *render* an entity it was correctly introduced to (invisible GuardBody corpse until relog — see the callout above). The 2026-09-19 repro shows delivery is fine (every create ACKed first try), so the fault is client-side; the first-login cinematic hold ships as the experiment on that, unvalidated. Player-to-player introduction now uses the `SGWPlayer` ghost cascade instead of the NPC one and gates on client load — implemented but **unvalidated with two clients** (see the note above and [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md)) |
 | Property synchronization | CW | -- | entity/properties.rs | Per-distribution-flag write paths |
 | State flag conventions | CW | -- | entity/cell_entity/state_flags.rs | bStateField, BSF_InCombat lifecycle |
 | Bandolier state | CW | -- | entity/cell_entity/bandolier.rs | Slot lifecycle, type_id vs item_id discipline |
@@ -1065,7 +1067,7 @@ The shape of "done" as of this pass: Mercury, observability, and the content eng
 Re-ranked 2026-07-25. Two items from the previous list (NPC navigation states, the trading port) are **done** and have been struck.
 
 1. **Effect-script content coverage** — the framework is CW (PR #420) but the long tail of the 3,217 effect rows still needs scripts. `cell/effects/scripts.rs` is up to 1,648 lines from 869
-2. **AoI invisible-entity defect** — a witness can miss an entity introduction entirely (Castle Cellblock GuardBody corpse). #582 instrumentation is in place; this needs a repro, not more code
+2. **AoI invisible-entity defect** — a witness can be correctly introduced to an entity and still not render it (Castle Cellblock GuardBody corpse). The 2026-09-19 repro put the drop inside the client, after a fully ACKed delivery, and fixed the `OTEL_FILTER` gap that had kept `aoi.create_emit` out of SigNoz. The first-login cinematic hold ships as the experiment on the one remaining lead; this needs an in-game repro to confirm or kill it, not more code
 3. **Mission XP** — `mission.reward_xp` is 0 in all seed rows; chain-side authoring + `Action::GrantXP` wiring needed (the executor still has no `GrantXP` arm)
 4. **Crafting Phase 2** — state and persistence landed (#427); every player-facing verb still logs `UNIMPLEMENTED`
 5. **Multi-zone end-to-end** — only Castle Cellblock is routinely smoked; the other 23 spaces need verification
@@ -1116,7 +1118,7 @@ Re-ranked 2026-07-25. The old #1 (NPC Navigation) and #3 (Trading) are closed; #
 | Rank | System | Impact | Status | Notes |
 |------|--------|--------|--------|-------|
 | 1 | Crafting verbs | HIGH — entire skill tree unplayable | KM | Phase 1 state landed (#427); craft / research / RE / alloy / ASP-spend all log `UNIMPLEMENTED` |
-| 2 | AoI entity-introduction drop | HIGH — entities silently invisible | IM | Known-open; address-gate hypothesis disproved 2026-06-20; #582 seams await a repro |
+| 2 | AoI entity-introduction drop | HIGH — entities silently invisible | IM | Known-open. Address-gate hypothesis disproved 2026-06-20; Mercury delivery retired 2026-09-19 (every create ACKed first try), so the drop is client-side. `aoi.create_emit` now actually exports to SigNoz. First-login cinematic hold shipped as the experiment on the n=1 cinematic lead — unvalidated |
 | 3 | Organizations / guilds | MEDIUM — no persistent social layer | KM | 200 lines of stubs, no schema |
 | 4 | Rate Limiting | MEDIUM — exploitable | KM | No throttle on chat / trade-request / login. Trading shipped without a request cooldown, so this got *worse* |
 | 5 | Speed-hack enforcement | MEDIUM — detection lands, action doesn't | IM | Layer is live but warn-only by design pending tolerance calibration from SigNoz |

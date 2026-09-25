@@ -32,10 +32,26 @@
 //!   the composite primary key that lets a set hold more than one ability at
 //!   all, plus the loader-to-`choose_npc_ability` round-trip over a multi-row
 //!   set.
+//!
+//! Two later modules guard the *placements* built on top of those templates
+//! (packets H12 and H15, placement cluster PL-C):
+//!
+//! - [`cmdcenter_population`]: the world-68 spawn roster -- exact membership,
+//!   nothing hostile, stationary, tagged, and no heading left at 0.
+//! - [`interior_regions`]: the three interior `AreaSet` regions, including an
+//!   on-mesh guard for world 70 against the shipped `harset_storagerm.nav`.
+
+//! - [`world57_placement`]: live-DB guards on the world-57 population and
+//!   named regions placed by pass B (packets H14 and H15) -- tags the merged
+//!   mission chains already dispatch on, the D-H03 no-hostiles rule, the
+//!   recorded on-mesh/off-mesh verdict per row, and the region volumes.
 
 mod ability_sets;
+mod cmdcenter_population;
 mod factions;
+mod interior_regions;
 mod templates;
+mod world57_placement;
 
 use crate::cell::combat::{HOSTILE_FACTION, NPC_DEFAULT_ABILITY};
 use crate::cell::spawner::{load_spawn_templates, load_spawns_from_db};

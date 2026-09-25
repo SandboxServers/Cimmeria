@@ -91,9 +91,7 @@ SGWEntity (0 own, 0 interfaces with client methods)
 
 | Index | Method | Args |
 |-------|--------|------|
-| 12 | `onTimerUpdate` | `INT32 ID, INT8 Type, INT32 SourceID, FLOAT TotalTime, FLOAT BigWorldTimeComplete` |
-
-`BigWorldTimeComplete` is an **absolute** expiry in the server's game-time domain (seconds, `tick / 100` from `TICK_SYNC`), not a relative offset — the client's cooldown handler (`CooldownManager_HandleOnTimerUpdate`) classifies the timer as active or expired by comparing it against its own view of that domain. The cooldown start (type 2, `TIMER_ABILITY_COOLDOWN`) is emitted with `now + duration`; the effect-duration clear is emitted with `0.0` to mean "end now". See [`ability-resolution-pipeline.md`](../reverse-engineering/findings/ability-resolution-pipeline.md).
+| 12 | `onTimerUpdate` | `INT32 ID, INT8 Type, INT32 SourceID, INT32 SecondaryId, FLOAT TotalTime, FLOAT BigWorldTimeComplete` |
 | 13 | `onEffectUserData` | `INT32 InstanceId, ARRAY<WSTRING> UserDataNames, ARRAY<WSTRING> UserDataValues` |
 | 14 | `onEffectResults` | `INT32 SourceID, INT32 AbilityID, INT32 EffectID, INT32 TargetID, UINT8 ResultCode, ClientEffectResultList` |
 | 15 | `onLevelUpdate` | `INT32 Level` |
@@ -101,6 +99,8 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 17 | `onBeingNameUpdate` | `WSTRING BeingName` |
 | 18 | `onTopSpeedUpdate` | `FLOAT TopSpeed` |
 | 19 | `onStateFieldUpdate` | `INT32 bStateField` |
+
+`BigWorldTimeComplete` (method 12) is an **absolute** time on the server game clock, not a relative offset: seconds = `gameTime * tickRate / 1000`, where `gameTime` is the server-wide tick counter the client is seeded with by `SET_GAME_TIME` at login and kept on by `TICK_SYNC`, and `tickRate` is milliseconds per tick (`100`). Starts are emitted as `now + duration` for cooldowns (type 2, ability and weapon reload) and effect durations (type 5), matching `AbilityManager.py`; the effect-duration clear sends `0.0`. See `crates/services/src/base/game_time.rs` and [`ability-resolution-pipeline.md`](../reverse-engineering/findings/ability-resolution-pipeline.md).
 
 ### SGWCombatant (interface) — 6 methods, indices 20–25
 

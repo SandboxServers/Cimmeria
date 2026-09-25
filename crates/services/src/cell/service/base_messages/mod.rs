@@ -27,7 +27,9 @@ mod ability_granted;
 mod bandolier;
 mod gm_spawn;
 mod inventory_events;
-mod lifecycle;
+mod lab_console;
+mod lab_query;
+pub(in crate::cell::service) mod lifecycle;
 mod minigame;
 mod movement;
 pub(crate) mod player_init;
@@ -226,6 +228,36 @@ pub(super) async fn handle_base_message(
         }
 
         BaseToCellMsg::ReloadContentEngine => {}
+
+        BaseToCellMsg::BroadcastToWitnesses {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            crate::cell::abilities::send_entity_method_to_witnesses(
+                entity_id,
+                method_index,
+                args,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::LabConsoleExec {
+            entity_id,
+            line,
+            reply_tx,
+        } => {
+            lab_console::handle_lab_console_exec(entity_id, line, reply_tx, tx, space_mgr, engine)
+                .await;
+        }
+
+        BaseToCellMsg::LabQuery { query, reply_tx } => {
+            // Read-only: pass an immutable borrow so the handler cannot mutate
+            // simulation state.
+            lab_query::handle_lab_query(query, reply_tx, space_mgr);
+        }
 
         BaseToCellMsg::MinigameResult {
             entity_id,
