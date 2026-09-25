@@ -312,7 +312,7 @@ mod liveness_tests {
         actor.last_interaction_target = Some(99);
         actor.looting_entity = Some(98);
         actor.vendor_entity = Some(97);
-        actor.open_dialog_id = Some(96);
+        actor.offer_dialog(96);
         actor.counters.insert("alive_probe".into(), 7);
         assert!(actor.stats.get(HEALTH).unwrap().cur > 0);
 
@@ -389,7 +389,7 @@ mod liveness_tests {
             assert_eq!(actor.last_interaction_target, Some(99), "{route:?}");
             assert_eq!(actor.looting_entity, Some(98), "{route:?}");
             assert_eq!(actor.vendor_entity, Some(97), "{route:?}");
-            assert_eq!(actor.open_dialog_id, Some(96), "{route:?}");
+            assert_eq!(actor.offered_dialogs(), vec![96], "{route:?}");
             assert_eq!(actor.counters.get("alive_probe"), Some(&7), "{route:?}");
             assert!(crate::cell::combat::is_dead_state(actor.state_field));
         }

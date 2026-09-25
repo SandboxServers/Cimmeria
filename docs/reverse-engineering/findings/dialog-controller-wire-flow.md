@@ -130,7 +130,7 @@ Discard closes the old window and — only if the old dialog has zero cooked but
 
 The container at `this+0x30` is a different thing: it holds every delivered dialog, queued or displayed, and is unbounded. Nothing evicts from it except an explicit discard.
 
-**This is a live server-side defect, not a theoretical one.** Display a zero-button dialog A, then display B. The client evicts A and sends `(A, -1)` *after* the server has already re-pinned `open_dialog_id` to B, so `crates/services/src/cell/cell_methods/player/interaction/dialog.rs:36-45` rejects the choice and A's content chain never fires. The original Python server kept a dictionary of displayed dialogs rather than a single pin. Packet DU-08 in the [dialog UI redesign ledger](../../analysis/dialog-ui-redesign/work-packets.md) tracks the fix.
+**This is a live server-side defect, not a theoretical one.** Display a zero-button dialog A, then display B. The client evicts A and sends `(A, -1)` *after* the server has already re-pinned `open_dialog_id` to B, so `crates/services/src/cell/cell_methods/player/interaction/dialog.rs:36-45` rejects the choice and A's content chain never fires. The original Python server kept a dictionary of displayed dialogs rather than a single pin. Packet DU-08 in the [dialog UI redesign ledger](../../analysis/dialog-ui-redesign/work-packets.md) fixed it (#770): the server now keeps a bounded set of offered dialog ids (`crates/entity/src/cell_entity/offered_dialogs.rs`), so the late `(A, -1)` is accepted and fires A's chain.
 
 **Confidence: HIGH.**
 
@@ -245,7 +245,7 @@ A second, larger discrepancy in that document is **not** resolved here. Its Trac
 - **Never send `IsImmediate = 0` for a Blurb or a plain Dialog.** There is no queue for those types and the dialog vanishes with no error anywhere.
 - **A dialog that keys a content chain must be reachable.** Either give it zero buttons, so the close path emits `-1`, or put a button on its final screen. A button that stops short of the final screen soft-locks a player who reads to the end and presses Done.
 - **Button order inside a screen is wire-visible.** Reordering a screen's `<Buttons>` children changes which cooked `ButtonID` a given click sends.
-- **The single `open_dialog_id` pin is too narrow** for a client that holds two active dialogs plus lures, and it currently loses the chain of any zero-button dialog that gets evicted.
+- **The single `open_dialog_id` pin was too narrow** for a client that holds two active dialogs plus lures, and it lost the chain of any zero-button dialog that got evicted. Replaced by the bounded offered-dialog set in DU-08 (#770).
 - **Changing a dialog's `ui_screen_type` between 2, 4 and 5 is documentary** for an immediately displayed dialog. It buys you lure eligibility, nothing visual.
 
 The author-facing version of these rules, with the dialog ids they apply to, is [docs/content/dialog-ui-client-contract.md](../../content/dialog-ui-client-contract.md).
