@@ -6,7 +6,7 @@ use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
+use cimmeria_game::player::{apply_level_ups, max_exp_for_level};
 
 use super::super::super::contact_list::handlers::fanout_contact_event;
 use super::super::super::contact_list::wire::EVENT_GAIN_LEVEL;
@@ -15,17 +15,9 @@ use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witn
 use super::super::super::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
-const LEVEL_XP: [u64; 21] = [
-    0, 100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000, 14_000, 18_000, 25_000,
-    40_000, 60_000, 90_000, 120_000, 180_000, 250_000, 400_000,
-];
-
-// Compile-time guard: LEVEL_XP must cover every level from 1 through MAX_LEVEL,
-// indexed by current-level (1-based), so its length must equal MAX_LEVEL + 1.
-const _: () = assert!(
-    LEVEL_XP.len() == MAX_LEVEL as usize + 1,
-    "LEVEL_XP table length must equal MAX_LEVEL + 1; update LEVEL_XP when MAX_LEVEL changes"
-);
+// The XP table, the cap and the points-per-level all live in
+// `cimmeria_game::player` (`LEVEL_XP`, levels 1-50 plus the level-50
+// display sentinel). This file keeps no copy of them.
 
 const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
 
@@ -93,12 +85,9 @@ pub async fn handle_grant_xp(
         // wire value or a phantom delevel.
         let xp = prev_xp.saturating_add(xp_amount);
 
-        let mut gained = Vec::new();
-        while level < MAX_LEVEL && xp > LEVEL_XP[level as usize] {
-            level += 1;
-            tp += TRAINING_POINTS_PER_LEVEL;
-            gained.push(level);
-        }
+        // Shared with `PlayerState::grant_xp`: stops at MAX_LEVEL (50), one
+        // training point per level gained (v2 economy, D-AT02).
+        let gained = apply_level_ups(&mut level, &mut tp, xp);
 
         (player_id, xp, level, tp, gained, state.player_name.clone())
     };
@@ -238,8 +227,8 @@ pub async fn handle_grant_xp(
     // pair) + 2 (if any level gained) = 1..2N+3 packets where N = number of
     // levels gained. Typical small grant: 1 packet. Worst case (max-level
     // catch-up): 2N+3 packets. Post-bundle: 1 packet (body fits one fragment
-    // for any realistic N — each per-level pair is ~30 B and MAX_LEVEL=20
-    // caps the per-grant level delta, so the body stays well under
+    // for any realistic N — each per-level pair is ~30 B and MAX_LEVEL=50
+    // caps the per-grant level delta at 49, so the body stays well under
     // FRAGMENT_BODY_SIZE = 1300 B). Pinned by
     // `grant_xp_max_level_burst_bundles_to_single_packet`.
     let bundle = build_grant_xp_bundle(
@@ -328,11 +317,9 @@ fn build_grant_xp_bundle(
             entity_id,
             &(lvl as i32).to_le_bytes(),
         );
-        let next_threshold = if lvl >= MAX_LEVEL {
-            LEVEL_XP[MAX_LEVEL as usize] as i32
-        } else {
-            LEVEL_XP[lvl as usize] as i32
-        };
+        // At the cap this is the level-50 display sentinel, not a real
+        // threshold: there is no level 51. Every table value fits i32.
+        let next_threshold = max_exp_for_level(lvl) as i32;
         bundle.append_entity_method(
             method_idx::ON_MAX_EXP_UPDATE,
             IDBASE_SGW_PLAYER,
@@ -626,6 +613,8 @@ pub async fn handle_train_ability(
     }
 }
 
+#[cfg(test)]
+mod level_cap_tests;
 #[cfg(test)]
 mod level_up_fanout_tests;
 #[cfg(test)]

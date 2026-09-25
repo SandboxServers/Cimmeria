@@ -586,30 +586,30 @@ fn grant_xp_single_level_burst_bundles_to_single_packet() {
 }
 
 /// Max-level catch-up burst: simulates a grant that vaults a level-1
-/// character to MAX_LEVEL (19 levels gained). Pre-bundle that was
-/// `1 + 2*19 + 2 = 41` reliable packets — a single content-engine call
-/// would chew up a quarter of the 32-slot reliable TX window before any
-/// other state-change traffic. Post-bundle: 1 packet.
+/// character to MAX_LEVEL (49 levels gained at the level-50 cap). Pre-bundle
+/// that was `1 + 2*49 + 2 = 101` reliable packets — three times the 32-slot
+/// reliable TX window. Post-bundle: 1 packet (~1.2 KB of the 1,300 B
+/// fragment body).
 ///
-/// Pin the upper bound at `num_messages == 41` and assert the body still
+/// Pin the upper bound at `num_messages == 101` and assert the body still
 /// fits one fragment so a regression that bloats per-message wire payloads
 /// past the per-fragment cutoff is caught here.
 #[test]
 fn grant_xp_max_level_burst_bundles_to_single_packet() {
-    use cimmeria_game::player::MAX_LEVEL;
+    use cimmeria_game::player::{LEVEL_XP, MAX_LEVEL};
 
-    let levels_gained: Vec<u32> = (1..=MAX_LEVEL).collect();
+    let levels_gained: Vec<u32> = (2..=MAX_LEVEL).collect();
     assert_eq!(
-        levels_gained.len() as u32,
-        MAX_LEVEL,
-        "test invariant: covers every level transition up to MAX_LEVEL"
+        levels_gained.len(),
+        49,
+        "test invariant: covers every level transition from 1 up to MAX_LEVEL = 50"
     );
 
     let bundle = build_grant_xp_bundle(
         42, // entity_id
         LEVEL_XP[MAX_LEVEL as usize],
         MAX_LEVEL,
-        TRAINING_POINTS_PER_LEVEL * MAX_LEVEL,
+        MAX_LEVEL, // v2 economy: an unspent level-50 character holds 50 points
         &levels_gained,
     );
 
