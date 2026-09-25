@@ -18,6 +18,8 @@ The client does NOT run AI logic. The server drives all state transitions and se
 
 Handler: `BigWorld_onRemoteEntityMove_MovementTypeSwitch` at `0x00deb660` (610 instructions)
 
+> **Corrected 2026-09-25:** `0x00deb660` handles `Event_NetIn_onShowPath`, the GM path visualiser. It is not an NPC animation driver, and no server-to-client movement-type message exists. See [`npc-movement-pathfinding.md` §11](npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver).
+
 | Value | Debug String | AI State | Purpose |
 |-------|-------------|----------|---------|
 | 0 | "Entity: %d is moving to cover" | **CoverAdvance** | Move to cover position |
@@ -71,7 +73,7 @@ GameEntityBase → GameEntity → GameBeing → GameMob
 |---------|----------|---------|
 | `0x00dedf30` | TickUpdate | Per-frame update, timing |
 | `0x00deaaf0` | onPositionUpdate | Position/movement interpolation |
-| `0x00deb660` | MovementTypeSwitch | **7-state AI movement handler** |
+| `0x00deb660` | MovementTypeSwitch | GM `onShowPath` visualiser (corrected 2026-09-25; not an AI movement handler) |
 | `0x00dec040` | PathDestroy | Path cleanup |
 | `0x00df3550` | RegionUpdate | Region/zone change |
 

@@ -90,7 +90,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
   - aggro_scan rejects, using today's reasons only (`same_faction`, `dead`, `not_player`); NA13 adds the rest;
   - idle-unticked gauge, `idle_parked`, leash enter/snap/loop, `threat cleared_without_exit`;
   - `ground_deviation`, `stale_velocity`, `npc_off_mesh`, `stuck`, `spawn_off_mesh`;
-  - `wire.out.movement_type` and `forced_position`, `npc_ai.los blocked`;
+  - `forced_position` and `npc_ai.los blocked` (`wire.out.movement_type` was dropped by NA10: no movement type goes on the wire);
   - `no_cover` reasons, `cover.selection`, `cover.coverage` per space.
 - **No behaviour change.** The detectors must fire on today's bugs; they are the before-picture.
 
@@ -115,7 +115,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA10
 
-**Status:** BlockedDependency (NA00). **Scope title:** Movement stop hygiene: stale velocity and movement type (S1, S2, S13, part of S4). **Advisor:** aoi-witness-broadcast, movement-teleport-advisor.
+**Status:** Review (branch `npcai/na10-stop-hygiene` pushed 2026-09-25). Evidence decision: zero velocity only. The client has no movement-type receiver, and the old `setMovementType` broadcast reached witnesses as a truncated `onSequence`, so NA10 removed it ([findings §11](../../reverse-engineering/findings/npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver)). **Scope title:** Movement stop hygiene: stale velocity and movement type (S1, S2, S13, part of S4). **Advisor:** aoi-witness-broadcast, movement-teleport-advisor.
 
 **Scope:**
 
@@ -158,7 +158,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 **Scope:**
 
 - **Leash metric:** NPC-to-spawn beyond `leash_distance` (default 50; a per-template column may follow), **or** the target lost for a grace period. Horizontal distance with a vertical cap, and hysteresis so an NPC at the boundary does not flicker.
-- **Walk home:** on Leashing, `find_path(npc, spawn)` and walk it with the Leash movement type. First verify 5 vs 2 against the client: [audit §6](audit.md#6-documentation-that-is-wrong).
+- **Walk home:** on Leashing, `find_path(npc, spawn)` and walk it. No movement-type wire exists: the client shows the walk from position and velocity alone (NA10). `MobMovementType::Leash` stays a server-side cache value. Snap and stop through `npc_ai::snap_npc_to` / `stop_movement_on` (NA10) so the grid and velocity stay right.
 - **Evade:** ignore threat and damage while returning, and log `damage_ignored`.
 - **Arrival:** heal to full, restore `spawn_dir`, clear cooldowns, go Idle.
 - **Snap fallback** only when no path exists, as a forced position with facing.
@@ -248,7 +248,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 2. Find which Cellblock and Castle map actors (prefab instances / archetypes) own such components. Count them, and compare against the `SGWCoverNodeComponent`, `SGWSpecCoverNode` and `CoverNode` names in the Cellblock chunks.
 3. Hand-transform one instance to world space. Check it against the geometry, and against `Castle_CellBlock_MedStationDesk` (set 1381, hand-authored in C05) if that desk is one of them.
 4. **Live pose experiment first (cheap):** spawn a test NPC with `use_cover` at the one real world-space node, set 1381 `Castle_CellBlock_MedStationDesk` at about (-234, 66.5, -124.7), with a threat nearby, and watch whether the client crouches. If it does, the pose comes from position plus the node's height and needs no client work. If it does not, the pose needs a claim on the pawn that the server cannot set, which is client-patch territory and needs an owner decision. Also evaluate granting ability 1451 "Cover Stance" on entering cover and revoking it on leaving.
-5. In Ghidra, finish `USGWAnim_BlendByCover` and the `CombatStance`/`bCoverFromTarget` flow. What wire state makes an NPC crouch, peek and fire? Movement type 0 at the node? A stance property? Ability animation?
+5. In Ghidra, finish `USGWAnim_BlendByCover` and the `CombatStance`/`bCoverFromTarget` flow. What wire state makes an NPC crouch, peek and fire? A stance property? Ability animation? (Movement type 0 is ruled out: no server-to-client movement-type message exists, NA10.)
 
 **Output:** a finding under `docs/reverse-engineering/findings/`, and a go/no-go plus data model for NA21.
 
@@ -275,7 +275,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 - `use_cover` from the template (`useCover`); melee and stationary units are off.
 - **Spawn in cover:** reserve the nearest slot within about 1.5 u at spawn, and hold it through combat until flanked, then re-pick.
 - **Seek cover in combat:** prefer the best slot within attack range of the target, not only when out of range. Keep the existing scorer and flank hysteresis.
-- **Pose:** drive whatever NA20 finds (movement type 0 at the node, stance), with peek-and-shoot cadence if the client needs a server cue.
+- **Pose:** drive whatever NA20 finds (a stance, a state flag or an ability animation), with peek-and-shoot cadence if the client needs a server cue. It cannot come from movement type 0: NA10 found that no movement type reaches the client (`0x00deb660` is the GM `onShowPath` visualiser).
 - Release on leash, death and target loss.
 - Write `docs/architecture/cover-system.md`, which `cover/mod.rs` already points to.
 

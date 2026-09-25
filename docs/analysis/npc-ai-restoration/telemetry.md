@@ -11,7 +11,7 @@ After the NA0x telemetry packets, the owner can play one colo session and answer
 - Why is this NPC standing still? Is its velocity stale, is its path empty, is it off the mesh, did its path fail and at which stage, or is it parked Idle?
 - Is this NPC in the air? How far is it from the floor under it right now?
 - Did this NPC consider cover? Which node did it pick, and if none, why not?
-- What did the client actually receive for this NPC (position, velocity, movement type)?
+- What did the client actually receive for this NPC (position and velocity; no movement type exists on the wire, see NA10)?
 
 The telemetry packets ship **before** the behaviour packets, so every behaviour fix can be compared before and after against live data.
 
@@ -58,8 +58,8 @@ Check the SigNoz volume budget before raising `wire.out.avatar_update`: it sampl
 |---|---|---|---|
 | `movement.npc` `event=step` (existing) | DEBUG sampled | Fix `ground_y` to use the storey-aware query from NA01 | add `y_source` (`lerp, clamp, clamp_miss`), `leg_len, leg_dy, ai_state` |
 | `movement.npc` `event=ground_deviation` | WARN, 5 s per NPC | Any step or snap with `abs(y - ground_y) > 0.3` on a meshed world | `ground_y, dy, y_source, leg_len, leg_dy, wp_xyz`. Counter `npc_ground_deviation_total{world,dir}`. It becomes the regression tripwire once NA11 lands. |
-| `npc_ai.tick` (existing) | DEBUG | Add `vx, vy, vz`, `movement_type_sent` (the last value actually put on the wire; the cache reads None after a clear that sent nothing), and three-state `los` (`clear, blocked, unknown`) in place of `has_los` | |
-| `movement.npc` `event=animating_without_path` | WARN, 10 s per NPC | Last sent movement type is not idle-equivalent while `nav_path` is empty for 2 AI ticks | `movement_type_sent, ai_state` |
+| `npc_ai.tick` (existing) | DEBUG | Add `vx, vy, vz` and three-state `los` (`clear, blocked, unknown`) in place of `has_los`. (`movement_type_sent` is dropped: NA10 found that no movement type ever reaches the client, so there is nothing "sent" to report. `last_movement_type` is a server-side cache only.) | |
+| ~~`movement.npc` `event=animating_without_path`~~ | | **Dropped by NA10 (2026-09-25).** It keyed on the last *sent* movement type, but the client has no movement-type receiver. The old send reached witnesses as a truncated `onSequence`, and it has been removed. The client animates from velocity, so a velocity-based version would duplicate `stale_velocity` below. | |
 | `movement.npc` `event=stale_velocity` | WARN, 10 s per NPC | Velocity non-zero while the position has not changed for 3 movement ticks (300 ms) | `velocity, nav_path_len, ai_state, movement_type`. This is the running-in-place detector (S1). |
 | `npc_ai` `event=npc_off_mesh` | WARN, 30 s per NPC | AI tick on a meshed world where `diagnose_point(npc.position)` is invalid | `gate, horizontal_dist, dy, last_move_source` (`path, fallback, leash, backup, content, spawn`) |
 | `npc_ai.path` `event=request` | DEBUG | Every AI `find_path` | `state, from, to, target_is_gm, status` (`ok, partial, no_start_poly, no_end_poly, no_corridor, straighten_failed`), `start_snap_dy, end_snap_dist, n_waypoints, max_leg_dy, end_to_target_dist` |
@@ -72,8 +72,8 @@ Check the SigNoz volume budget before raising `wire.out.avatar_update`: it sampl
 
 | Target / event | Level | Fields |
 |---|---|---|
-| `wire.out.avatar_update` (existing, now exported) | DEBUG, 1 in 100 | add `movement_type` and `npc_moved_since_last` (bool) |
-| `wire.out.movement_type` | DEBUG | Every `setMovementType` broadcast: `npc_id, movement_type, reason` |
+| `wire.out.avatar_update` (existing, now exported) | DEBUG, 1 in 100 | add `npc_moved_since_last` (bool) |
+| ~~`wire.out.movement_type`~~ | | **Dropped by NA10 (2026-09-25):** nothing goes on the wire. Movement-type changes are logged server-side as `movement.movement_type outcome=suppressed\|cleared`. |
 | `wire.out.forced_position` | DEBUG | Every NPC snap sent as a forced position (leash fallback, content move) |
 
 ### 2.4 Line of sight (NA02)
