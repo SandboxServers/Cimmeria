@@ -104,3 +104,19 @@ async fn legacy_p38_net_timer_defaults_secondary_id_to_zero() {
         "omitted totalTime defaults to 1.0"
     );
 }
+
+#[tokio::test]
+async fn legacy_p38_net_timer_type_is_signed_int8() {
+    let (mut mgr, gm, _npc) = setup();
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(64);
+
+    // `Type` is INT8 in `SGWBeing.def`: -1 is a legal value and encodes as
+    // 0xFF; 200 does not fit and must be rejected, not truncated.
+    exec("net_timer", gm, &["7", "-1"], None, &tx, &mut mgr, &engine).await;
+    exec("net_timer", gm, &["7", "200"], None, &tx, &mut mgr, &engine).await;
+
+    let payloads = drain_timer_updates(&mut rx, gm);
+    assert_eq!(payloads.len(), 1, "only the in-range type is sent");
+    assert_eq!(payloads[0][4], 0xFF, "Type -1 encodes as one signed byte");
+}

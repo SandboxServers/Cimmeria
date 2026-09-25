@@ -157,10 +157,11 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
     let Some(ty) = super::parse_i32(caller_id, args, 1, "timer type", tx).await else {
         return;
     };
-    // `Type` is a UINT8 on the wire — reject out-of-range so the byte isn't
-    // silently truncated into a different timer type.
-    let Ok(ty) = u8::try_from(ty) else {
-        send_gm_feedback(caller_id, "net_timer: type must be 0-255.", tx).await;
+    // `Type` is an INT8 on the wire (`interfaces/SGWBeing.def`) — reject
+    // out-of-range so the byte isn't silently truncated into a different
+    // timer type.
+    let Ok(ty) = i8::try_from(ty) else {
+        send_gm_feedback(caller_id, "net_timer: type must be -128..127.", tx).await;
         return;
     };
     let total_time = match args.get(2) {
@@ -177,7 +178,7 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
     };
     let mut buf = Vec::with_capacity(21);
     buf.extend_from_slice(&id.to_le_bytes());
-    buf.push(ty);
+    buf.push(ty as u8);
     buf.extend_from_slice(&(caller_id as i32).to_le_bytes()); // SourceID
     buf.extend_from_slice(&secondary_id.to_le_bytes());
     buf.extend_from_slice(&total_time.to_le_bytes());
