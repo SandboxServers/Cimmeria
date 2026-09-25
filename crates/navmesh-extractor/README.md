@@ -93,6 +93,11 @@ Recast wrapper later if it buys anything.
   much of it Recast would accept as floor, plus a traversal-keyword
   scan over every actor. `geometry.rs` is the area arithmetic, `census.rs`
   the walk, `report.rs` the formatting.
+- `cover/` — world-space cover nodes (`SGWSpecCoverNode` actors and
+  `StaticMeshActor.CoverNodeArray` components): `walk.rs` decodes one
+  package, `grouping.rs` forms cover sets, `sql.rs` renders the seeds.
+  `bin/cover_extract.rs` is the CLI; see
+  [docs/engine/cover-extraction.md](../../docs/engine/cover-extraction.md).
 - `bin/obj_slab.rs` — column / free-run / level-histogram / slope
   queries over the chunk OBJs. `--levels` is the "is there a staircase
   between these two storeys" question.

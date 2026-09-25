@@ -117,11 +117,16 @@ pub enum CoverDecision {
 /// Run one tick of cover maintenance for the given NPC. See module
 /// docs for the decision tree.
 ///
+/// `world_id` is the NPC's `resources.worlds.world_id`; a new slot is only
+/// picked from that world's cover (`None` never picks one). A slot already
+/// held is kept or released on its own merits.
+///
 /// `use_cover` is read from the entity's `CellEntity.use_cover` field.
 /// When false the function short-circuits to `NoCover` immediately.
 pub fn maintain_cover_for_npc(
     npc_id: EntityId,
     npc_pos: Vector3,
+    world_id: Option<i32>,
     threat_pos: Vector3,
     in_range: bool,
     use_cover: bool,
@@ -185,6 +190,12 @@ pub fn maintain_cover_for_npc(
         return CoverDecision::NoCover;
     }
 
+    // Step 3 needs a world to search: cover positions are per world, and
+    // an NPC in a world with no `resources.worlds` id has no cover.
+    let Some(world_id) = world_id else {
+        return CoverDecision::NoCover;
+    };
+
     // Step 3: pick + reserve a new slot under the same guard. Squad-
     // affinity counts walk the reservation table once; pick_best runs
     // immediately after; reserve happens before the guard drops. No
@@ -200,6 +211,7 @@ pub fn maintain_cover_for_npc(
     let ctx = ScoringContext::new(npc_pos, threat_pos);
     let chosen_idx = pick_best(
         &cover.index,
+        world_id,
         &reservations_guard,
         &ctx,
         weights,
@@ -244,10 +256,12 @@ mod ai_integration_tests {
         CoverNode {
             chunk_id,
             node_id,
+            world_id: crate::cell::cover::TEST_WORLD_ID,
             pos: Vector3::new(x, 0.0, z),
             orient,
             height: CoverHeight::Mid,
             quality: CoverQuality::Best,
+            width: 1.0,
             tail: [0; 4],
         }
     }
@@ -258,6 +272,7 @@ mod ai_integration_tests {
         let dec = maintain_cover_for_npc(
             EntityId(1),
             Vector3::zero(),
+            Some(crate::cell::cover::TEST_WORLD_ID),
             Vector3::new(20.0, 0.0, 0.0),
             false,
             false, // use_cover=false
@@ -273,6 +288,7 @@ mod ai_integration_tests {
         let dec = maintain_cover_for_npc(
             EntityId(1),
             Vector3::zero(),
+            Some(crate::cell::cover::TEST_WORLD_ID),
             Vector3::new(3.0, 0.0, 0.0),
             true, // in_range=true
             true,
@@ -288,6 +304,7 @@ mod ai_integration_tests {
         let dec = maintain_cover_for_npc(
             EntityId(1),
             Vector3::zero(),
+            Some(crate::cell::cover::TEST_WORLD_ID),
             Vector3::new(20.0, 0.0, 0.0),
             false,
             true,
@@ -322,6 +339,7 @@ mod ai_integration_tests {
         let dec = maintain_cover_for_npc(
             EntityId(42),
             Vector3::new(5.0, 0.0, 0.0),
+            Some(crate::cell::cover::TEST_WORLD_ID),
             Vector3::new(-20.0, 0.0, 0.0),
             false,
             true,
@@ -377,6 +395,7 @@ mod ai_integration_tests {
         let dec = maintain_cover_for_npc(
             EntityId(2),
             Vector3::zero(),
+            Some(crate::cell::cover::TEST_WORLD_ID),
             Vector3::new(20.0, 0.0, 0.0),
             false,
             true,
@@ -517,6 +536,7 @@ mod ai_integration_tests {
         let dec = maintain_cover_for_npc(
             EntityId(42),
             Vector3::new(5.0, 0.0, 0.0),
+            Some(crate::cell::cover::TEST_WORLD_ID),
             Vector3::new(20.0, 0.0, 0.0),
             false,
             true,

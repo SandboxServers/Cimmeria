@@ -35,8 +35,11 @@ const MISSION: i32 = 639;
 const STEP_VIAL: i32 = 2145;
 const STEP_DEFEND: i32 = 2144;
 const OBJ: i32 = 2484;
-/// The med-station desk.
-const DESK_SET: i32 = 1381;
+/// The med-station desk: `cover_extract`'s first Castle_CellBlock set.
+const DESK_SET: i32 = 1_200_001;
+/// Castle_CellBlock. The fixture's space is named "Castle" but is stamped
+/// with this id; only the match with the desk node's world matters.
+const DESK_WORLD: i32 = 12;
 
 /// `0x7005_3xxx` — this file's block of the reserved test chain-id range.
 const FIRING_CHAIN: i64 = 0x7005_3000;
@@ -47,10 +50,12 @@ fn desk_node() -> CoverNode {
     CoverNode {
         chunk_id: DESK_SET,
         node_id: 0,
+        world_id: DESK_WORLD,
         pos: Vector3::new(0.0, 0.0, 0.0),
         orient: 0.0,
         height: CoverHeight::Low,
         quality: CoverQuality::Good,
+        width: 1.0,
         tail: [0; 4],
     }
 }
@@ -66,6 +71,10 @@ fn make_mgr(pos: [f32; 3]) -> SpaceManager {
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
     )
     .unwrap();
+    mgr.stamp_world_rows(&HashMap::from([(
+        "Castle".to_string(),
+        crate::cell::spawner::WorldRow::enforcing(DESK_WORLD),
+    )]));
     mgr.create_entity(PLAYER_EID, "Castle", pos, [0.0; 3])
         .unwrap();
     if let Some(e) = mgr.get_entity_mut(PLAYER_EID) {
@@ -93,7 +102,11 @@ fn detection_tick(mgr: &mut SpaceManager) -> usize {
     let pos = mgr.get_entity(PLAYER_EID).unwrap().position;
     run_detection_tick(
         &mgr.cover,
-        &[(EntityId(PLAYER_EID as i32), pos)],
+        &[(
+            EntityId(PLAYER_EID as i32),
+            mgr.get_entity_world_id(PLAYER_EID),
+            pos,
+        )],
         &mut mgr.cover_detection,
         Instant::now(),
         COVER_PROXIMITY_RADIUS,

@@ -15,10 +15,10 @@
 //!
 //! terminated by the `None` FName.
 //!
-//! `ByteProperty` is deliberately **not** offered. The reader's
-//! enum-name heuristic ("skip 8 more bytes if the next i32 happens to
-//! be a valid name index") makes the encoding ambiguous, and a fixture
-//! that encodes an ambiguity teaches a test nothing.
+//! `ByteProperty` is the Epic-486 shape: no enum name in the tag, one
+//! value byte. (An earlier reader heuristic that skipped 8 bytes after a
+//! byte tag made this ambiguous; it is gone — see
+//! `cimmeria_upk::properties`' `byte_property_does_not_swallow_the_following_tag`.)
 
 use super::names::NameTable;
 
@@ -70,6 +70,25 @@ impl<'a> PropStream<'a> {
     /// negative import, 0 for none).
     pub fn object(&mut self, name: &str, v: i32) -> &mut Self {
         self.tag(name, "ObjectProperty", 4).i32(v)
+    }
+
+    /// `ByteProperty` — a raw enum ordinal, as SGW cooks
+    /// `CoverHeight`/`CoverQuality`.
+    pub fn byte(&mut self, name: &str, v: u8) -> &mut Self {
+        self.tag(name, "ByteProperty", 1);
+        self.buf.push(v);
+        self
+    }
+
+    /// `ArrayProperty` of object references: `i32 count` then the
+    /// indices, the shape of `StaticMeshActor.CoverNodeArray`.
+    pub fn object_array(&mut self, name: &str, refs: &[i32]) -> &mut Self {
+        self.tag(name, "ArrayProperty", 4 + 4 * refs.len() as i32)
+            .i32(refs.len() as i32);
+        for &r in refs {
+            self.i32(r);
+        }
+        self
     }
 
     /// `StructProperty` of type `Vector`.

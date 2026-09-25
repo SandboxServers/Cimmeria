@@ -716,12 +716,16 @@ VALUES
 -- cure). D-CB05: the flank objectives (2725/2731, C06) are tracked but do
 -- NOT gate here -- only 2482/2484 do, per the decision.
 --
--- Cover-set data: chunk_id 1381 in cover_sets.sql/cover_nodes.sql -- a
--- new, one-off, hand-authored entry for the 7 `SGWSpecCoverNode` actors
--- found at the med-station desk by the C05 UE3 extraction pass (game-
--- archaeology-specialist, 2026-09-18; see
--- docs/analysis/castle-cellblock-rebuild/work-packets.md#c05). These are
--- real world-space coordinates, not a reused prefab template.
+-- Cover-set data: chunk_id 1200001 in cover_sets.sql/cover_nodes.sql --
+-- the 7 `SGWSpecCoverNode` markers at the med-station desk, as emitted by
+-- the `cover_extract` tool (NA21, docs/engine/cover-extraction.md): the
+-- first Castle_CellBlock (world 12) set, from chunk fffefffd. Until NA21
+-- this was the hand-authored set 1381 found by the C05 extraction pass
+-- (docs/analysis/castle-cellblock-rebuild/work-packets.md#c05); the
+-- extractor reproduces the same 7 positions, so 1381 was retired. The set
+-- id is only stable for one client build's extraction -- the live-DB
+-- guard `cover_chain_key_is_the_set_a_player_at_the_desk_is_in`
+-- (chain_replay_tests/mission_639_cover.rs) fails if a re-extract moves it.
 --
 -- AUTO-COMPLETE TRAP (load-bearing -- read before touching this section):
 -- `cell::missions::complete_objective` (progression.rs) auto-calls
@@ -799,7 +803,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1131, 'advance_step', 639, '2343', '{}', 0, 0);
 
 -- Chain 1132 (C05): player takes cover at the med-station desk (cover_set
--- 1381) while the drone is NOT yet dead → mark the cover objective
+-- 1200001) while the drone is NOT yet dead → mark the cover objective
 -- complete and hide the TakeCoverIndicator (sequence 10014, shown by
 -- chain 1032's sequence 10001 when the drone first aggros).
 --
@@ -816,7 +820,7 @@ INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled
 VALUES (1132, '639 - Take cover (kill pending): complete cover objective', 'mission', 639, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1132, 'player_entered_cover', '1381', 'player', false, 0);
+VALUES (1132, 'player_entered_cover', '1200001', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
@@ -837,7 +841,7 @@ INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled
 VALUES (1133, '639 - Take cover (kill already done): advance to 2343', 'mission', 639, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1133, 'player_entered_cover', '1381', 'player', false, 0);
+VALUES (1133, 'player_entered_cover', '1200001', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES

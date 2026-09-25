@@ -1,9 +1,11 @@
 //! Server-driven NPC cover system.
 //!
-//! Loads cover-prefab data from `resources.cover_sets` + `resources.cover_nodes`
-//! (extracted from the SGW client's `covernodes_*.pak` archives via
-//! `tools/ue3_extract_cover_nodes.py`), indexes it spatially, and provides
-//! reservation + scoring primitives for the NPC AI cover-advance behavior.
+//! Loads world-space cover from `resources.cover_sets` + `resources.cover_nodes`
+//! (extracted from the `SGWSpecCoverNode` / `CoverNodeArray` markers baked
+//! into each map's `.umap` chunks by the `cover_extract` binary in
+//! `crates/navmesh-extractor` — `docs/engine/cover-extraction.md`), indexes
+//! it spatially per world, and provides reservation + scoring primitives
+//! for the NPC AI cover-advance behavior.
 //!
 //! See `docs/reverse-engineering/findings/cover-system.md` for the binary
 //! format + wire-surface reverse-engineering that motivated the design.
@@ -15,8 +17,10 @@
 //!   `CoverSlotKey`, `Cover` service handle.
 //! - [`loader`] — PostgreSQL → in-memory `Vec<CoverNode>` load at cell startup.
 //! - [`spatial`] — uniform-grid spatial index over the loaded nodes for fast
-//!   `nearby_nodes(pos, radius)` lookups. Per-process (not per-space — see
-//!   the chunk→space mapping caveat in the ADR).
+//!   `nearby(world_id, pos, radius)` lookups. One index per process,
+//!   partitioned by `resources.worlds.world_id`: a query names a world and
+//!   never sees another world's nodes. Instances of one world share its
+//!   cover (positions are per world, not per space instance).
 //! - [`reservation`] — `reserve_cover_slot` / `release_cover_slot` honoring
 //!   the `SGWCoverSet.def`'s auto-release-prior semantics.
 
@@ -45,3 +49,7 @@ pub use scoring::{
 };
 pub use spatial::CoverIndex;
 pub use types::{Cover, CoverHeight, CoverNode, CoverQuality, CoverSetMeta, CoverSlotKey};
+
+/// World id the cover unit tests place their nodes in (Castle_CellBlock).
+#[cfg(test)]
+pub(crate) const TEST_WORLD_ID: i32 = 12;

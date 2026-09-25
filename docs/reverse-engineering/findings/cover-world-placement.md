@@ -487,6 +487,34 @@ transform composition is needed for either authoring pattern found.
 
 ---
 
+## Resolution (NA21, 2026-09-25)
+
+NA21 built the extractor this finding proposed. It is the `cover_extract`
+binary in `crates/navmesh-extractor`, documented in
+[cover-extraction.md](../../engine/cover-extraction.md). Running it over
+every chunk of both maps settles three of the open questions and corrects
+one count:
+
+- **Pattern mix (open question 2).** Castle has 3,780 Pattern A markers
+  and 8 Pattern B children, so Pattern B is 0.2% of the map, not the 1.5%
+  the one sampled chunk suggested. Castle_CellBlock is 100% Pattern A.
+  The totals match this finding: 236 and 3,788.
+- **Non-absolute Pattern B children (open question 3).** There are none.
+  All 8 have `AbsoluteTranslation = AbsoluteRotation = true`. The
+  extractor still composes a relative child with its owner, and counts
+  it, in case another map has one.
+- **Chunk count.** Castle's cover sits in 32 of 144 chunks, not 31.
+- **Omitted properties (new).** 240 markers omit `CoverHeight` and 11 omit
+  `CoverQuality`. The cooker omits a property equal to the archetype. The
+  census puts the archetype at Low for height and at 3 (QUALITY_None) for
+  quality, since byte 3 is never written. Quality is MEDIUM confidence.
+  Seven Castle markers carry `CoverQuality = 4`, which is outside the
+  enum. See [cover-extraction.md §1](../../engine/cover-extraction.md#1-what-is-extracted).
+- **Set 1381 retired.** The extractor reproduces all 7 desk markers as set
+  1200001. Its node 2 is the bolded Q3 row. Chains 1132/1133 now key on
+  1200001. The hand-authored rows also had the wrong height: the markers
+  are `CoverHeight = 1`, Mid, and 1381 had them as Low.
+
 ## Tooling
 
 - `crates/upk-objects/src/bin/query_index.rs` — new `query-index` binary

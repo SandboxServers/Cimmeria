@@ -2,7 +2,7 @@
 //!
 //! Cover entry is an edge exactly like `enter_region`, and it is lost the same
 //! way. 2026-09-20, Castle_CellBlock mission 639: the Ambernol vial sits
-//! inside the med-station desk's 5 m cover radius (set 1381), so the player
+//! inside the med-station desk's 5 m cover radius (set 1200001), so the player
 //! was in cover 1.4 s *before* picking the vial up activated step 2144. Chains
 //! 1132 / 1133 are gated on that step, saw the edge, failed the gate, and —
 //! because the player never left the radius — never saw another. The player
@@ -71,11 +71,15 @@ pub(super) async fn replay_cover_sets(
         let Some(position) = space_mgr.get_entity(entity_id).map(|e| e.position) else {
             return;
         };
-        let Some((height, quality)) =
-            sets_near(&space_mgr.cover, &position, COVER_PROXIMITY_RADIUS)
-                .get(&cover_set_id)
-                .copied()
-        else {
+        let world_id = space_mgr.get_entity_world_id(entity_id);
+        let Some((height, quality)) = sets_near(
+            &space_mgr.cover,
+            world_id,
+            &position,
+            COVER_PROXIMITY_RADIUS,
+        )
+        .get(&cover_set_id)
+        .copied() else {
             tracing::debug!(
                 entity_id,
                 mission_id,

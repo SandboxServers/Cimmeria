@@ -112,14 +112,14 @@ impl CoverQuality {
 
 /// Identifier for a specific cover slot — globally unique across the process.
 ///
-/// The reservation table is keyed on this. A node currently maps 1:1 to a
-/// slot (the in-memory `CoverNodePrefabData` does not yet model multi-slot
-/// per-node — the on-disk format's `tail` bytes may encode slot data but
-/// remain unconfirmed). The combination `(chunk_id, node_id)` is the
-/// natural key — be aware that `node_id` is sequential per chunk and
-/// stable only for as long as the extractor's input pak ordering stays
-/// the same; do NOT persist this key in saved-game data without also
-/// persisting the `chunk_name` for a re-extract-safe lookup.
+/// The reservation table is keyed on this. A node maps 1:1 to a slot. The
+/// combination `(chunk_id, node_id)` is the natural key: `chunk_id` is the
+/// cover-set id (`world_id * 100000 + n`, so it is also unique across
+/// worlds) and `node_id` is sequential per set. Both are stable only for
+/// one client build's extraction (`cover_extract` numbers them in
+/// chunk-file then export order); do NOT persist this key in saved-game
+/// data without also persisting the set's `chunk_name` for a
+/// re-extract-safe lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CoverSlotKey {
     pub chunk_id: i32,
@@ -133,20 +133,28 @@ impl CoverSlotKey {
 }
 
 /// A single cover node loaded from `resources.cover_nodes`. Position is
-/// in BigWorld meters; `orient` is the node's defensive facing in
-/// radians. The cover is considered to defend against threats whose
-/// vector-from-node falls within ±π/2 of `orient`.
+/// in BigWorld meters, in the coordinate space of world `world_id`;
+/// `orient` is the node's defensive facing in radians, measured from BW
+/// +X toward +Z (facing = `(cos, sin)` in `(x, z)`). The cover is
+/// considered to defend against threats whose vector-from-node falls
+/// within ±π/2 of `orient`.
 #[derive(Debug, Clone)]
 pub struct CoverNode {
     pub chunk_id: i32,
     pub node_id: i32,
+    /// `resources.worlds.world_id` of the node's set. Positions are only
+    /// comparable within one world, so the spatial index is partitioned
+    /// on it.
+    pub world_id: i32,
     pub pos: Vector3,
     pub orient: f32,
     pub height: CoverHeight,
     pub quality: CoverQuality,
-    /// Raw 4-byte tail from the on-disk record. Semantics unconfirmed;
-    /// preserved for future RE. Most-likely candidates: secondary lean
-    /// angle f32, or width+flags packed bytes.
+    /// Marker width in meters (the client's `CoverWidth`). Loaded for
+    /// NA22's slot selection; nothing reads it yet.
+    pub width: f32,
+    /// Legacy 4-byte trailer from the retired `covernodes_*.pak` record
+    /// format. Extracted world-space rows carry zeros.
     pub tail: [u8; 4],
 }
 
@@ -157,10 +165,12 @@ impl CoverNode {
 }
 
 /// Metadata about a cover set (the parent grouping of cover nodes —
-/// one row per chunk in `resources.cover_sets`).
+/// one row in `resources.cover_sets`).
 #[derive(Debug, Clone)]
 pub struct CoverSetMeta {
     pub chunk_id: i32,
+    /// `resources.worlds.world_id` the set is placed in.
+    pub world_id: i32,
     pub chunk_name: String,
     pub primary_author: String,
     pub has_variant: bool,

@@ -1,3 +1,4 @@
+use super::TEST_WORLD_ID;
 use cimmeria_common::{EntityId, Vector3};
 
 use super::reservation::{CoverReservations, ReserveError};
@@ -8,10 +9,12 @@ fn node(chunk_id: i32, node_id: i32, x: f32, z: f32) -> CoverNode {
     CoverNode {
         chunk_id,
         node_id,
+        world_id: TEST_WORLD_ID,
         pos: Vector3::new(x, 0.0, z),
         orient: 0.0,
         height: CoverHeight::Mid,
         quality: CoverQuality::Best,
+        width: 1.0,
         tail: [0; 4],
     }
 }
@@ -93,7 +96,7 @@ fn empty_index_returns_no_hits() {
     let idx = CoverIndex::empty();
     assert_eq!(idx.node_count(), 0);
     assert!(idx
-        .nearby(&Vector3::new(0.0, 0.0, 0.0), 100.0, None)
+        .nearby(TEST_WORLD_ID, &Vector3::new(0.0, 0.0, 0.0), 100.0, None)
         .is_empty());
 }
 
@@ -106,7 +109,7 @@ fn nearby_returns_sorted_by_distance() {
     ];
     let idx = CoverIndex::build(nodes);
 
-    let hits = idx.nearby(&Vector3::new(0.0, 0.0, 0.0), 30.0, None);
+    let hits = idx.nearby(TEST_WORLD_ID, &Vector3::new(0.0, 0.0, 0.0), 30.0, None);
     assert_eq!(hits.len(), 3, "all three nodes are within 30 m");
     assert_eq!(idx.node(hits[0]).unwrap().node_id, 0, "closest first");
     assert_eq!(idx.node(hits[1]).unwrap().node_id, 2);
@@ -121,7 +124,7 @@ fn nearby_excludes_nodes_outside_radius() {
         node(1, 2, 0.0, 8.0),
     ];
     let idx = CoverIndex::build(nodes);
-    let hits = idx.nearby(&Vector3::new(0.0, 0.0, 0.0), 10.0, None);
+    let hits = idx.nearby(TEST_WORLD_ID, &Vector3::new(0.0, 0.0, 0.0), 10.0, None);
     assert_eq!(hits.len(), 2);
     let ids: Vec<_> = hits.iter().map(|i| idx.node(*i).unwrap().node_id).collect();
     assert!(ids.contains(&0));
@@ -138,25 +141,33 @@ fn nearby_y_axis_filter_excludes_different_floors() {
         CoverNode {
             chunk_id: 1,
             node_id: 0,
+            world_id: TEST_WORLD_ID,
             pos: Vector3::new(2.0, 0.0, 2.0),
             orient: 0.0,
             height: CoverHeight::Mid,
             quality: CoverQuality::Best,
+            width: 1.0,
             tail: [0; 4],
         },
         CoverNode {
             chunk_id: 1,
             node_id: 1,
+            world_id: TEST_WORLD_ID,
             pos: Vector3::new(2.0, 10.0, 2.0),
             orient: 0.0,
             height: CoverHeight::Mid,
             quality: CoverQuality::Best,
+            width: 1.0,
             tail: [0; 4],
         },
     ];
     let idx = CoverIndex::build(nodes);
-    assert_eq!(idx.nearby(&Vector3::zero(), 20.0, None).len(), 2);
-    let hits = idx.nearby(&Vector3::zero(), 20.0, Some(2.0));
+    assert_eq!(
+        idx.nearby(TEST_WORLD_ID, &Vector3::zero(), 20.0, None)
+            .len(),
+        2
+    );
+    let hits = idx.nearby(TEST_WORLD_ID, &Vector3::zero(), 20.0, Some(2.0));
     assert_eq!(hits.len(), 1);
     assert_eq!(idx.node(hits[0]).unwrap().node_id, 0);
 }
@@ -229,6 +240,7 @@ fn cover_from_loaded_exposes_sets_and_node_count() {
     let sets = vec![
         CoverSetMeta {
             chunk_id: 1,
+            world_id: TEST_WORLD_ID,
             chunk_name: "set/one".to_string(),
             primary_author: "x".to_string(),
             has_variant: false,
@@ -236,6 +248,7 @@ fn cover_from_loaded_exposes_sets_and_node_count() {
         },
         CoverSetMeta {
             chunk_id: 2,
+            world_id: TEST_WORLD_ID,
             chunk_name: "set/two".to_string(),
             primary_author: "x".to_string(),
             has_variant: true,
@@ -328,11 +341,15 @@ fn spatial_nearby_with_zero_radius_returns_empty() {
     let idx = CoverIndex::build(vec![node(1, 0, 0.0, 0.0), node(1, 1, 0.5, 0.0)]);
     // Radius 0 is a degenerate input; the loop's guard short-circuits
     // to an empty result rather than scanning every cell with `radius_sq = 0`.
-    assert!(idx.nearby(&Vector3::zero(), 0.0, None).is_empty());
+    assert!(idx
+        .nearby(TEST_WORLD_ID, &Vector3::zero(), 0.0, None)
+        .is_empty());
     // Negative radius is the more dangerous degenerate — without the
     // `radius <= 0.0` early-out the `cell_radius` cast would clamp to
     // 0 but the dist comparison would always pass for the origin.
-    assert!(idx.nearby(&Vector3::zero(), -1.0, None).is_empty());
+    assert!(idx
+        .nearby(TEST_WORLD_ID, &Vector3::zero(), -1.0, None)
+        .is_empty());
 }
 
 #[test]
@@ -350,4 +367,37 @@ fn cover_height_meters_are_monotonic() {
     }
     assert!((CoverHeight::Low.meters() - 0.71).abs() < 0.01);
     assert!((CoverHeight::Los.meters() - 2.52).abs() < 0.01);
+}
+
+/// The index is partitioned by world: two worlds with a node at the very
+/// same coordinates each see only their own. Before NA21 the grid was one
+/// global map keyed on (x, z), so a Castle_CellBlock query returned Castle
+/// nodes wherever the two maps overlap -- the regression this pins.
+#[test]
+fn nearby_never_returns_another_worlds_nodes() {
+    let mut cellblock = node(1_200_001, 0, 3.0, 4.0);
+    cellblock.world_id = 12;
+    let mut castle = node(800_001, 0, 3.0, 4.0);
+    castle.world_id = 8;
+    let idx = CoverIndex::build(vec![cellblock, castle]);
+
+    let in_12: Vec<i32> = idx
+        .nearby(12, &Vector3::new(3.0, 0.0, 4.0), 5.0, None)
+        .into_iter()
+        .map(|i| idx.node(i).unwrap().chunk_id)
+        .collect();
+    assert_eq!(in_12, vec![1_200_001]);
+    let in_8: Vec<i32> = idx
+        .nearby(8, &Vector3::new(3.0, 0.0, 4.0), 5.0, None)
+        .into_iter()
+        .map(|i| idx.node(i).unwrap().chunk_id)
+        .collect();
+    assert_eq!(in_8, vec![800_001]);
+    assert!(idx
+        .nearby(57, &Vector3::new(3.0, 0.0, 4.0), 5.0, None)
+        .is_empty());
+    assert_eq!(
+        idx.world_node_counts().into_iter().collect::<Vec<_>>(),
+        vec![(8, 1), (12, 1)]
+    );
 }

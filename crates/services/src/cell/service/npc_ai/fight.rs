@@ -227,6 +227,7 @@ pub(super) async fn npc_ai_fight(
         let decision = maintain_cover_for_npc(
             cimmeria_common::EntityId(npc_id as i32),
             npc_pos,
+            space_mgr.get_entity_world_id(npc_id),
             target_pos,
             in_range,
             true,

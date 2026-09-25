@@ -225,8 +225,11 @@ pub fn score_node(
 /// `chunk_ally_counts` is a `chunk_id → count` map of how many allied NPCs
 /// already hold cover in each chunk; the scorer applies a squad-affinity
 /// penalty per ally. Caller computes this once per scoring pass.
+///
+/// Only nodes in `world_id` are candidates.
 pub fn pick_best(
     index: &CoverIndex,
+    world_id: i32,
     reservations: &CoverReservations,
     ctx: &ScoringContext,
     weights: &CoverWeights,
@@ -236,7 +239,7 @@ pub fn pick_best(
     // level chunk is unreachable without a pathfinding stair-climb;
     // exclude it so the scorer doesn't waste cycles on candidates the
     // navmesh won't be able to path to anyway.
-    let candidate_indices = index.nearby(&ctx.npc_pos, MAX_COVER_DISTANCE, Some(2.0));
+    let candidate_indices = index.nearby(world_id, &ctx.npc_pos, MAX_COVER_DISTANCE, Some(2.0));
     let mut best_idx: Option<usize> = None;
     let mut best_score = f32::NEG_INFINITY;
     for idx in candidate_indices {
@@ -267,10 +270,12 @@ mod scoring_tests {
         CoverNode {
             chunk_id,
             node_id,
+            world_id: crate::cell::cover::TEST_WORLD_ID,
             pos: Vector3::new(x, 0.0, z),
             orient,
             height: CoverHeight::Mid,
             quality: q,
+            width: 1.0,
             tail: [0; 4],
         }
     }
@@ -413,7 +418,15 @@ mod scoring_tests {
         )
         .unwrap();
         let ally_counts = HashMap::new();
-        let pick = pick_best(&idx, &r, &ctx, &weights, &ally_counts).expect("must pick something");
+        let pick = pick_best(
+            &idx,
+            crate::cell::cover::TEST_WORLD_ID,
+            &r,
+            &ctx,
+            &weights,
+            &ally_counts,
+        )
+        .expect("must pick something");
         assert_eq!(
             idx.node(pick).unwrap().node_id,
             1,
@@ -429,6 +442,44 @@ mod scoring_tests {
         let idx = CoverIndex::build(vec![n(1, 0, 100.0, 100.0, 0.0, CoverQuality::Best)]);
         let r = CoverReservations::new();
         let ally_counts = HashMap::new();
-        assert!(pick_best(&idx, &r, &ctx, &weights, &ally_counts).is_none());
+        assert!(pick_best(
+            &idx,
+            crate::cell::cover::TEST_WORLD_ID,
+            &r,
+            &ctx,
+            &weights,
+            &ally_counts
+        )
+        .is_none());
+    }
+
+    /// An NPC never picks a slot from another world, however close its
+    /// coordinates: the scorer's candidate set comes from the per-world
+    /// index.
+    #[test]
+    fn pick_best_never_picks_another_worlds_slot() {
+        let weights = CoverWeights::default();
+        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
+        let idx = CoverIndex::build(vec![n(
+            1,
+            0,
+            5.0,
+            0.0,
+            std::f32::consts::PI,
+            CoverQuality::Best,
+        )]);
+        let r = CoverReservations::new();
+        let ally_counts = HashMap::new();
+        let other_world = crate::cell::cover::TEST_WORLD_ID + 1;
+        assert!(pick_best(&idx, other_world, &r, &ctx, &weights, &ally_counts).is_none());
+        assert!(pick_best(
+            &idx,
+            crate::cell::cover::TEST_WORLD_ID,
+            &r,
+            &ctx,
+            &weights,
+            &ally_counts
+        )
+        .is_some());
     }
 }

@@ -40,6 +40,12 @@ fn make_cover_fixture(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
     )
     .unwrap();
+    // The cover index is per world: stamp the space with the id the
+    // fixture nodes carry, or the NPC's world has no cover at all.
+    mgr.stamp_world_rows(&std::collections::HashMap::from([(
+        "Castle".to_string(),
+        crate::cell::spawner::WorldRow::enforcing(crate::cell::cover::TEST_WORLD_ID),
+    )]));
     mgr.create_entity(200, "Castle", npc_pos, [0.0; 3]).unwrap();
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.is_player = false;
@@ -60,10 +66,12 @@ fn node(chunk_id: i32, node_id: i32, x: f32, z: f32, orient: f32) -> CoverNode {
     CoverNode {
         chunk_id,
         node_id,
+        world_id: crate::cell::cover::TEST_WORLD_ID,
         pos: Vector3::new(x, 0.0, z),
         orient,
         height: CoverHeight::Mid,
         quality: CoverQuality::Best,
+        width: 1.0,
         tail: [0; 4],
     }
 }

@@ -560,6 +560,7 @@ when a build stops fitting.
 - [castle-extraction-measurements.md](castle-extraction-measurements.md) — what the extractor recovers from Castle, per source and per class
 - [navbuilder-recast-limits.md](navbuilder-recast-limits.md) — rebuilding NavBuilder, Recast's four index limits, the Castle parameter table
 - [crates/navmesh-extractor/README.md](../../crates/navmesh-extractor/README.md) — extractor phases and status
+- [cover-extraction.md](cover-extraction.md) — the same crate's `cover_extract` tool: world-space cover nodes from the chunks, using this axis mapping
 - [ue3-package-format.md](ue3-package-format.md) — the `.umap` container this all starts from
 - `deprecated/cpp/src/nav_builder/` — NavBuilder source (`builder.cpp`, `chunk.cpp`, `mesh.cpp`, `mesh_exporter.cpp`)
 - `crates/entity/src/navigation/` — runtime loader (Detour FFI)

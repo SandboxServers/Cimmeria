@@ -235,7 +235,7 @@ impl CellService {
                     tracing::warn!("Failed to load event_set sequences: {e}");
                 }
             }
-            // Cover-system data. Builds the per-process spatial index from
+            // Cover-system data. Builds the per-world spatial index from
             // `resources.cover_sets` + `resources.cover_nodes`. Initialises
             // if either load returns any rows; stays on `Cover::empty()`
             // only when both come back empty (load failure or fresh DB).
@@ -260,6 +260,7 @@ impl CellService {
                 tracing::info!(
                     sets = space_mgr.cover.set_count(),
                     nodes = space_mgr.cover.node_count(),
+                    nodes_per_world = ?space_mgr.cover.index.world_node_counts(),
                     "Cover service loaded"
                 );
             }

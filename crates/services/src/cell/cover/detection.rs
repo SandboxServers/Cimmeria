@@ -145,15 +145,25 @@ impl CoverDetectionTick {
 /// The one containment test for "is a player at `pos` in this cover set":
 /// the detection tick diffs it against the player's last-known sets, and the
 /// step-activation replay re-checks it before re-firing a spent edge.
+///
+/// `world_id` is the player's `resources.worlds.world_id`; only that
+/// world's cover is considered. `None` (a world with no `resources.worlds`
+/// row) has no cover and returns an empty map.
 pub fn sets_near(
     cover: &Cover,
+    world_id: Option<i32>,
     pos: &Vector3,
     proximity_radius: f32,
 ) -> HashMap<i32, (CoverHeight, CoverQuality)> {
+    let Some(world_id) = world_id else {
+        return HashMap::new();
+    };
     // 2-m Y-axis tolerance keeps cover detection on the same floor
     // as the player — 5 m was loose enough to pick up cover on the
     // floor above/below in multi-level chunks.
-    let node_indices = cover.index.nearby(pos, proximity_radius, Some(2.0));
+    let node_indices = cover
+        .index
+        .nearby(world_id, pos, proximity_radius, Some(2.0));
 
     // For each chunk represented in the hits, find the highest-quality
     // node to use as the "representative" for the trigger payload. A
@@ -178,14 +188,18 @@ pub fn sets_near(
     chunk_reps
 }
 
-/// Run one detection tick. `players` is the list of (player_id, position)
-/// pairs currently in the cell — caller computes from the entity table.
+/// Run one detection tick. `players` is the list of
+/// `(player_id, world_id, position)` triples currently in the cell — the
+/// caller computes them from the entity table. `world_id` scopes the
+/// cover query to the player's own world; a player whose world has no id
+/// stays in the list (so their tracked state is not pruned) but is inside
+/// no cover set.
 ///
 /// `now` is passed in for deterministic testing; production callers pass
 /// `Instant::now()`.
 pub fn run_detection_tick(
     cover: &Cover,
-    players: &[(EntityId, Vector3)],
+    players: &[(EntityId, Option<i32>, Vector3)],
     table: &mut CoverDetectionTable,
     now: Instant,
     proximity_radius: f32,
@@ -206,12 +220,12 @@ pub fn run_detection_tick(
     // flatten across `space_mgr.spaces`, so this contract holds — but
     // if you split that tick into per-space, this prune must move into
     // per-space scope too.
-    let active_players: HashSet<EntityId> = players.iter().map(|(eid, _)| *eid).collect();
+    let active_players: HashSet<EntityId> = players.iter().map(|(eid, _, _)| *eid).collect();
     table.players.retain(|eid, _| active_players.contains(eid));
 
-    for (player_id, player_pos) in players {
+    for (player_id, world_id, player_pos) in players {
         // Query nearby cover nodes; fold to set of cover_set_ids (chunk_ids).
-        let chunk_reps = sets_near(cover, player_pos, proximity_radius);
+        let chunk_reps = sets_near(cover, *world_id, player_pos, proximity_radius);
         let current_sets: HashSet<i32> = chunk_reps.keys().copied().collect();
 
         // Diff against the player's prior state.
@@ -292,10 +306,12 @@ mod detection_tests {
         CoverNode {
             chunk_id,
             node_id,
+            world_id: crate::cell::cover::TEST_WORLD_ID,
             pos: Vector3::new(x, 0.0, z),
             orient: 0.0,
             height: CoverHeight::Mid,
             quality: CoverQuality::Best,
+            width: 1.0,
             tail: [0; 4],
         }
     }
@@ -309,7 +325,11 @@ mod detection_tests {
         let cover = cover_with(vec![node(7, 0, 2.0, 0.0)]);
         let mut table = CoverDetectionTable::new();
         let now = Instant::now();
-        let players = vec![(EntityId(10), Vector3::new(0.0, 0.0, 0.0))];
+        let players = vec![(
+            EntityId(10),
+            Some(crate::cell::cover::TEST_WORLD_ID),
+            Vector3::new(0.0, 0.0, 0.0),
+        )];
 
         let tick = run_detection_tick(&cover, &players, &mut table, now, 5.0, &[]);
 
@@ -324,7 +344,11 @@ mod detection_tests {
         let cover = cover_with(vec![node(7, 0, 2.0, 0.0)]);
         let mut table = CoverDetectionTable::new();
         let now = Instant::now();
-        let players = vec![(EntityId(10), Vector3::new(0.0, 0.0, 0.0))];
+        let players = vec![(
+            EntityId(10),
+            Some(crate::cell::cover::TEST_WORLD_ID),
+            Vector3::new(0.0, 0.0, 0.0),
+        )];
 
         let first = run_detection_tick(&cover, &players, &mut table, now, 5.0, &[]);
         assert_eq!(first.entered.len(), 1);
@@ -344,7 +368,11 @@ mod detection_tests {
         // Enter.
         run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -354,7 +382,11 @@ mod detection_tests {
         // Leave (player teleports far away).
         let tick = run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(100.0, 0.0, 100.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(100.0, 0.0, 100.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -370,7 +402,11 @@ mod detection_tests {
         let cover = cover_with(vec![node(7, 0, 2.0, 0.0)]);
         let mut table = CoverDetectionTable::new();
         let mut now = Instant::now();
-        let players = vec![(EntityId(10), Vector3::new(0.0, 0.0, 0.0))];
+        let players = vec![(
+            EntityId(10),
+            Some(crate::cell::cover::TEST_WORLD_ID),
+            Vector3::new(0.0, 0.0, 0.0),
+        )];
 
         // Tick 1: enter; no duration yet.
         run_detection_tick(&cover, &players, &mut table, now, 5.0, &[3, 5]);
@@ -404,7 +440,11 @@ mod detection_tests {
         // Enter, wait 5 s, fire 3-s milestone, leave.
         run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -413,7 +453,11 @@ mod detection_tests {
         now += Duration::from_secs(5);
         let _ = run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -421,7 +465,11 @@ mod detection_tests {
         );
         let _ = run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(100.0, 0.0, 100.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(100.0, 0.0, 100.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -433,7 +481,11 @@ mod detection_tests {
         now += Duration::from_secs(1);
         run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -442,7 +494,11 @@ mod detection_tests {
         now += Duration::from_secs(3);
         let tick = run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -461,7 +517,11 @@ mod detection_tests {
         // Player enters cover.
         run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -503,7 +563,11 @@ mod detection_tests {
         let now = Instant::now();
         run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,
@@ -529,19 +593,23 @@ mod detection_tests {
             CoverNode {
                 chunk_id: 7,
                 node_id: 0,
+                world_id: crate::cell::cover::TEST_WORLD_ID,
                 pos: Vector3::new(2.0, 0.0, 0.0),
                 orient: 0.0,
                 height: CoverHeight::Low,
                 quality: CoverQuality::Best,
+                width: 1.0,
                 tail: [0; 4],
             },
             CoverNode {
                 chunk_id: 7,
                 node_id: 1,
+                world_id: crate::cell::cover::TEST_WORLD_ID,
                 pos: Vector3::new(2.5, 0.0, 0.0),
                 orient: 0.0,
                 height: CoverHeight::High,
                 quality: CoverQuality::Better,
+                width: 1.0,
                 tail: [0; 4],
             },
         ]);
@@ -549,7 +617,11 @@ mod detection_tests {
         let now = Instant::now();
         let tick = run_detection_tick(
             &cover,
-            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &[(
+                EntityId(10),
+                Some(crate::cell::cover::TEST_WORLD_ID),
+                Vector3::new(0.0, 0.0, 0.0),
+            )],
             &mut table,
             now,
             5.0,

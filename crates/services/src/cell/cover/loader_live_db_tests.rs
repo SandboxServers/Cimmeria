@@ -11,8 +11,13 @@
 //!
 //! Sentinel base: `0x7000_1900` (next free slot past
 //! `request_visuals_live_db_tests::TEST_BASE = 0x7000_1800`). All
-//! `chunk_id`s used here are well outside the seed-data range and
-//! cleaned up via `ON DELETE CASCADE` from `cover_sets` → `cover_nodes`.
+//! `chunk_id`s used here are well outside the seed-data range (seeded sets
+//! are `world_id * 100000 + n`) and cleaned up via `ON DELETE CASCADE`
+//! from `cover_sets` → `cover_nodes`.
+//!
+//! The last two tests read the *seeded* cover (NA21): Castle_CellBlock's
+//! extracted sets load scoped to world 12, and the extractor reproduces
+//! the med-station desk node the hand-authored set 1381 used to carry.
 
 use sqlx::PgPool;
 
@@ -31,6 +36,10 @@ const TEST_BASE: i32 = 0x7000_1900;
 const CHUNK_HAPPY: i32 = TEST_BASE + 1;
 const CHUNK_BAD_TAIL: i32 = TEST_BASE + 4;
 const CHUNK_MIXED_HAPPY_AND_BAD: i32 = TEST_BASE + 5;
+
+/// World the sentinel sets are placed in. Any seeded `resources.worlds`
+/// row satisfies the FK; Castle_CellBlock is the one these tests are about.
+const SENTINEL_WORLD: i32 = 12;
 
 /// Delete by exact sentinel only — TESTING.md "Cleanup must `DELETE WHERE
 /// <id> = $sentinel`, not by range".
@@ -53,11 +62,12 @@ async fn cleanup(pool: &PgPool, chunk_ids: &[i32]) {
 async fn insert_cover_set(pool: &PgPool, chunk_id: i32, name: &str) {
     sqlx::query(
         "INSERT INTO resources.cover_sets \
-            (chunk_id, chunk_name, primary_author, has_variant, src_pak) \
-         VALUES ($1, $2, 'test', false, 'test.pak')",
+            (chunk_id, world_id, chunk_name, primary_author, has_variant, src_pak) \
+         VALUES ($1, $3, $2, 'test', false, 'test.pak')",
     )
     .bind(chunk_id)
     .bind(name)
+    .bind(SENTINEL_WORLD)
     .execute(pool)
     .await
     .expect("insert cover_sets");
@@ -76,9 +86,9 @@ async fn insert_cover_node(
 ) {
     sqlx::query(
         "INSERT INTO resources.cover_nodes \
-            (chunk_id, node_id, pos_x, pos_y, pos_z, orient, height, quality, tail) \
+            (chunk_id, node_id, pos_x, pos_y, pos_z, orient, height, quality, width, tail) \
          VALUES ($1, $2, $3, $4, $5, $6, $7::resources.\"ECoverHeight\", \
-                 $8::resources.\"ECoverQuality\", $9)",
+                 $8::resources.\"ECoverQuality\", 0.75, $9)",
     )
     .bind(chunk_id)
     .bind(node_id)
@@ -110,10 +120,10 @@ async fn insert_cover_node(
 async fn insert_cover_node_with_long_tail(pool: &PgPool, chunk_id: i32, node_id: i32) {
     sqlx::query(
         "INSERT INTO resources.cover_nodes \
-            (chunk_id, node_id, pos_x, pos_y, pos_z, orient, height, quality, tail) \
+            (chunk_id, node_id, pos_x, pos_y, pos_z, orient, height, quality, width, tail) \
          VALUES ($1, $2, 0.0, 0.0, 0.0, 0.0, \
                  'HEIGHT_Mid'::resources.\"ECoverHeight\", \
-                 'QUALITY_Best'::resources.\"ECoverQuality\", $3)",
+                 'QUALITY_Best'::resources.\"ECoverQuality\", 1.0, $3)",
     )
     .bind(chunk_id)
     .bind(node_id)
@@ -140,6 +150,7 @@ async fn load_cover_sets_returns_inserted_row_with_correct_fields() {
     // right column to the right struct field. A column swap (e.g.,
     // `primary_author` ↔ `chunk_name`) would corrupt trigger
     // payloads silently otherwise.
+    assert_eq!(row.world_id, SENTINEL_WORLD);
     assert_eq!(row.chunk_name, "test/happy/loader");
     assert_eq!(row.primary_author, "test");
     assert!(!row.has_variant);
@@ -182,6 +193,9 @@ async fn load_cover_nodes_returns_inserted_row_with_correct_enums() {
     assert_eq!(n.height, CoverHeight::High);
     assert_eq!(n.quality, CoverQuality::Better);
     assert_eq!(n.tail, [0xAA, 0xBB, 0xCC, 0xDD]);
+    assert!((n.width - 0.75).abs() < 1e-4);
+    // The world comes from the set row, through the loader's join.
+    assert_eq!(n.world_id, SENTINEL_WORLD);
 
     cleanup(&pool, &[CHUNK_HAPPY]).await;
 }
@@ -245,6 +259,84 @@ async fn load_cover_nodes_skips_bad_row_but_keeps_sibling() {
     assert_eq!(in_chunk[0].node_id, 0);
 
     cleanup(&pool, &[CHUNK_MIXED_HAPPY_AND_BAD]).await;
+}
+
+/// NA21: the seeded Castle_CellBlock cover is world-space and world-scoped.
+///
+/// Every set in Castle_CellBlock's id block (`12 * 100000 + n`) loads with
+/// `world_id = 12`, every node the loader returns for those sets carries
+/// world 12, and the retired prefab-local pak corpus is gone (its rows
+/// were `src_pak = 'covernodes_*.pak'` offsets, not world positions).
+#[tokio::test]
+async fn seeded_cellblock_cover_loads_scoped_to_world_12() {
+    let pool = require_db_or_skip!();
+    let sets = load_cover_sets(&pool).await.expect("load_cover_sets");
+    let nodes = load_cover_nodes(&pool).await.expect("load_cover_nodes");
+
+    let cellblock: Vec<_> = sets
+        .iter()
+        .filter(|s| (1_200_000..1_300_000).contains(&s.chunk_id))
+        .collect();
+    assert!(
+        !cellblock.is_empty(),
+        "the Castle_CellBlock cover seed must load"
+    );
+    assert!(
+        cellblock.iter().all(|s| s.world_id == 12),
+        "every set in world 12's id block must be scoped to world 12"
+    );
+    let cellblock_nodes: Vec<_> = nodes
+        .iter()
+        .filter(|n| (1_200_000..1_300_000).contains(&n.chunk_id))
+        .collect();
+    assert_eq!(
+        cellblock_nodes.len(),
+        236,
+        "NA20 counted 236 SGWSpecCoverNode markers in Castle_CellBlock"
+    );
+    assert!(cellblock_nodes.iter().all(|n| n.world_id == 12));
+    assert!(
+        nodes
+            .iter()
+            .filter(|n| (800_000..900_000).contains(&n.chunk_id))
+            .all(|n| n.world_id == 8),
+        "Castle's nodes must load scoped to world 8"
+    );
+    assert!(
+        !sets.iter().any(|s| s.src_pak.ends_with(".pak")),
+        "the prefab-local covernodes_*.pak rows must stay retired"
+    );
+}
+
+/// NA21: the extractor reproduces the med-station desk.
+///
+/// Set 1381 was a hand-authored copy of the desk's seven markers (C05).
+/// NA20 matched its node 2, `(-234.71, 65.47, -124.71)`, to an extracted
+/// marker within 3 cm. The retirement of 1381 is only safe while the
+/// extracted world-12 cover still has a node there, looked up the way the
+/// cell does (the per-world index).
+#[tokio::test]
+async fn seeded_cellblock_cover_reproduces_the_retired_desk_set() {
+    let pool = require_db_or_skip!();
+    let cover = super::types::Cover::from_loaded(
+        load_cover_sets(&pool).await.expect("load_cover_sets"),
+        load_cover_nodes(&pool).await.expect("load_cover_nodes"),
+    );
+    let old_desk = cimmeria_common::Vector3::new(-234.71, 65.47, -124.71);
+    let hits = cover.index.nearby(12, &old_desk, 2.0, None);
+    assert!(
+        !hits.is_empty(),
+        "no world-12 cover node within 2 m of set 1381's desk position"
+    );
+    let n = cover.index.node(hits[0]).unwrap();
+    assert!(
+        n.pos.distance_to(&old_desk) < 0.1,
+        "nearest node {:?} should be the desk marker itself",
+        n.pos
+    );
+    // The marker's authored height is Mid (CoverHeight = 1, DrawScale3D.z
+    // 1.067); the hand-authored set 1381 had it as Low.
+    assert_eq!(n.height, CoverHeight::Mid);
 }
 
 /// `CoverLoadError::Display` formatting + `Error::source()` return the
