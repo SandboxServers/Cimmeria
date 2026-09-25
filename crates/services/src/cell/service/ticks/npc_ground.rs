@@ -22,30 +22,12 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use super::super::super::space_manager::SpaceManager;
+// One enum for both the step row and NA02's `ground_deviation` detector, so
+// the two can never disagree about what `y_source` means.
+pub(super) use super::super::npc_ai::detectors::movement::YSource;
 
 /// The movement tick's period. `move_speed` is in world units per tick.
 pub(super) const MOVEMENT_TICK_SECS: f32 = 0.1;
-
-/// Where a step's Y came from. Logged as `y_source` on the `movement.npc`
-/// step row.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum YSource {
-    /// The navmesh surface under the step, on the storey nearest the lerp.
-    Clamp,
-    /// The chord lerp, because the space has no navmesh or the mesh has no
-    /// surface within the jump tolerance of the lerped Y.
-    Lerp,
-}
-
-impl YSource {
-    /// Stable snake_case label. Treat as API.
-    pub(super) fn label(self) -> &'static str {
-        match self {
-            Self::Clamp => "clamp",
-            Self::Lerp => "lerp",
-        }
-    }
-}
 
 /// Spaces already reported as meshless, so the DEBUG row fires once per
 /// space id per process rather than once per NPC step.

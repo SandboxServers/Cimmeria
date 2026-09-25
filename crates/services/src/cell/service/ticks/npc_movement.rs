@@ -43,7 +43,7 @@ fn leg_step_index(npc_id: u32, path_len: usize) -> u32 {
 
 static NPC_STEP_LOG_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-use super::super::npc_ai::detectors::movement::{check_ground_step, GroundStep, YSource};
+use super::super::npc_ai::detectors::movement::{check_ground_step, GroundStep};
 
 /// NA02 `ground_deviation`: compare the Y this tick just wrote against the
 /// storey-aware floor under it. Reporting only.
@@ -134,7 +134,8 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
             // Only the first and last corners of a straight path are
             // detail-surface points; intermediate corners are poly-mesh
             // portal vertices, so ground the snap too.
-            let (snap_y, _) = grounded_y(space_mgr, npc_id, next_wp.x, next_wp.y, next_wp.z);
+            let (snap_y, snap_source) =
+                grounded_y(space_mgr, npc_id, next_wp.x, next_wp.y, next_wp.z);
             let vy = grounded_vertical_speed(cur_pos.y, snap_y, speed_per_sec);
 
             // Peek at the NEXT waypoint (index 1) to compute velocity toward it
@@ -173,14 +174,9 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 [0, 0, 0],
                 velocity,
             );
-            check_ground(
-                space_mgr,
-                npc_id,
-                cur_pos,
-                next_wp,
-                next_wp,
-                YSource::Waypoint,
-            );
+            // Compare the Y actually written, not the waypoint's poly-mesh Y.
+            let snapped = cimmeria_common::Vector3::new(next_wp.x, snap_y, next_wp.z);
+            check_ground(space_mgr, npc_id, cur_pos, snapped, next_wp, snap_source);
             let remaining_after = if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.nav_path.pop_front();
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
@@ -267,7 +263,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
 
             space_mgr.update_entity_position(npc_id, [new_x, new_y, new_z], [0, 0, 0], velocity);
             let stepped = cimmeria_common::Vector3::new(new_x, new_y, new_z);
-            check_ground(space_mgr, npc_id, cur_pos, stepped, next_wp, YSource::Lerp);
+            check_ground(space_mgr, npc_id, cur_pos, stepped, next_wp, y_source);
             // Set yaw directly as radians (pack_angle reads direction.y)
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);

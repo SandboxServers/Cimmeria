@@ -60,7 +60,7 @@ fn move_along_surface_stops_at_the_mesh_boundary() {
         mesh.diagnose_point(&end)
     );
     assert!(
-        mesh.find_path(&end, &g).is_some(),
+        mesh.find_path(&end, &g).into_waypoints().is_some(),
         "an NPC left at {end:?} must be able to route again"
     );
 }
