@@ -7,7 +7,14 @@ description = "Headless wire-level test client for the Cimmeria SGW server — d
 
 [dependencies]
 cimmeria-common = { workspace = true }
-cimmeria-mercury = { workspace = true }
+# `test-harness` pulls in the Tier 2 loopback Channel driver
+# (`LoopbackPeer`/`TestClock`/`NetworkPolicy`). Wireclient is itself a
+# testing crate with no production consumers, so it always enables this —
+# `session.rs` reuses `LoopbackPeer` as the client-side Channel state
+# machine (reassembly, ACK piggyback, retransmit bookkeeping) against a
+# REAL BaseApp socket instead of a paired loopback peer. See
+# `docs/architecture/wireclient.md` Phase 1.5.
+cimmeria-mercury = { workspace = true, features = ["test-harness"] }
 
 tokio = { workspace = true }
 bytes = { workspace = true }
@@ -24,7 +31,15 @@ reqwest = { workspace = true }
 hex = "0.4"
 
 [dev-dependencies]
-# Drive the in-process AuthService for the auth-smoke; mirrors the
-# `cimmeria-services::auth::login_smoke` pattern so wireclient covers the
-# client side of the same handshake the server side already pins.
+# Drive the in-process AuthService for the auth-smoke, and the full
+# Orchestrator (auth+base+cell) for the two-client Castle visibility
+# end-to-end test (NA37). Mirrors the `cimmeria-services::auth::login_smoke`
+# pattern so wireclient covers the client side of the same handshake the
+# server side already pins.
 cimmeria-services = { path = "../services" }
+
+# Sentinel account/character rows for the live-DB two-client test --
+# same insert-and-clean-up-by-exact-sentinel convention as
+# `crates/services/src/test_support.rs`'s live-DB guards.
+sqlx = { workspace = true }
+tracing-subscriber = { workspace = true }
