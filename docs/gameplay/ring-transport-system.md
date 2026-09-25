@@ -2,7 +2,7 @@
 title: "Ring Transport System"
 type: reference
 audience: engineers
-last_updated: 2026-09-18
+last_updated: 2026-09-25
 ---
 
 # Ring Transport System
@@ -496,6 +496,16 @@ The ring is gated behind a puzzle minigame — you must hack it before you can u
 
 - Player interacts with `Preparation_RingSwitch` → If mission step 2344 active, opens ring transport for region 2.
 - Subscribes to `teleport::in` at region 3 → Advances mission step 2345 (escaped the cellblock).
+
+### Cellblock → Castle exit (Mission 688) — Cimmeria client-patch route
+
+This is a Cimmeria divergence, not 2009 behaviour. Mission 688 leaves Castle CellBlock through the Armory ring pad, but neither the Armory pad nor its Castle counterpart has a ring Kismet sequence in the cooked maps: the designers placed full ring stations there and never wired them. Today chain 1109 completes 688 with a direct `cross_world_teleport` to Castle `(466.365, 70.397, 991.466)` and bypasses the ring FSM, so there is no ceremony.
+
+The owner approved a client map patch to restore it, as an exception to the no-client-patch rule. The full audit, the phase plan and the in-client test procedure are in [analysis/ring-transport-cellblock-castle/README.md](../analysis/ring-transport-cellblock-castle/README.md). In short:
+
+- **Phase 0 (passed in-client 2026-09-19):** the append-only UPK patcher (`crates/upk/src/patcher/`, #751) cloned a ring station into a CellBlock chunk and the client loaded and rendered it.
+- **Phase 1 (built, awaiting the in-client test):** region 3's Kismet rig is cloned onto the Armory pad (#753). Sequences 10187 (Teleport Out, event 8000) and 10188 (Teleport In, event 8001) point at the cloned rig path and are seeded in `db/resources/Events/Seed/sequences.sql`. Clients resolve sequence ids from their own cooked catalogue, not the database, so [`base/sequence_overrides.rs`](../../crates/services/src/base/sequence_overrides.rs) delivers the two entries per key at login (#755). Never bump the on-disk `CookedDataKismetSeqEvent.pak` version to add a sequence; the README explains the #754 cache-wipe incident.
+- **Phases 2-3 (not started):** clone the rig onto the Castle pad, then route chain 1109 through the ring FSM from region 33.
 
 ### Duel Forfeit
 

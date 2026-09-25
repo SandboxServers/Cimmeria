@@ -222,10 +222,35 @@ pub mod method_idx {
     // methods begin at 26.
     pub const BEING_APPEARANCE: u16 = 26;
 
-    // Communicator interface (27–33)
+    // ── Divergence point: index 27 onward is entity-type-specific ──────────
+    //
+    // SGWPlayer and SGWMob share indices 0–26 (the SGWSpawnableEntity →
+    // SGWBeing prefix above), but flatten differently from 27: SGWPlayer's
+    // own `<Implements>` chain continues with Communicator/OrganizationMember/
+    // etc., while SGWMob's `<Implements>` is just `Lootable` (whose
+    // `<ClientMethods>` block is empty — `entities/defs/interfaces/Lootable.def`)
+    // followed immediately by SGWMob's own 2 methods. The two constant blocks
+    // below therefore reuse the same numeric range (27–33) for two different
+    // entity types — always pair a method index with the right `class_id`
+    // (SGWPlayer = 0x02, SGWMob = 0x04) at the call site.
+
+    // Communicator interface (27–33) — SGWPlayer only
     pub const ON_PLAYER_COMMUNICATION: u16 = 28;
     pub const ON_CHAT_JOINED: u16 = 31;
     pub const ON_CHAT_LEFT: u16 = 32;
+
+    // SGWMob own methods (27–28) — SGWMob only. `entities/defs/SGWMob.def`
+    // `<ClientMethods>` declares `onAggressionOverrideUpdate` then
+    // `onAggressionOverrideCleared`, in that document order, immediately
+    // after the empty `Lootable` interface. Ghidra-confirmed: the client
+    // registers both through `MemberCallback<GameMob, ...>` at 0x00d31cd0
+    // (paired handlers, `Event_NetIn_onAggressionOverrideUpdate` /
+    // `Event_NetIn_onAggressionOverrideCleared`), and the Update handler at
+    // 0x00d31bd0 reads the `aAggressionLevel` INT8 arg and stores it at
+    // `GameMob + 0x16c`. NA33:
+    // docs/reverse-engineering/findings/npc-aggression-broadcast.md.
+    pub const ON_AGGRESSION_OVERRIDE_UPDATE: u16 = 27;
+    pub const ON_AGGRESSION_OVERRIDE_CLEARED: u16 = 28;
 
     // GateTravel interface (65–68)
     pub const SETUP_STARGATE_INFO: u16 = 65;

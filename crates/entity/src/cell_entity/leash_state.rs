@@ -44,6 +44,10 @@ pub struct LeashState {
     /// The leash tick walks it to its end and then snaps home, rather than
     /// replanning from the island edge until the walk timeout.
     pub home_route_partial: bool,
+    /// When a ranged NPC last stepped back from a target inside its comfort
+    /// range (NA32). The next step-back waits out a cooldown from here, so
+    /// a player who follows it cannot make it kite forever.
+    pub step_back_at: Option<Instant>,
 }
 
 /// One chase route: where it was planned toward and where it ends.

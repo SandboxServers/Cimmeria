@@ -72,12 +72,12 @@ pub fn calculate_qr(attacker: &StatList, defender: &StatList, ranged: bool) -> f
     qr
 }
 
-/// Map a QR value to a result code by sampling from the python reference's
-/// two-branch beta distribution. From `AbilityManager.py:181-184`:
+/// Map a QR value to a result code by sampling a two-branch beta
+/// distribution whose mean rises with QR:
 ///
 /// ```text
-/// if qr >= 0: betavariate(α, α + qr * mult)        # β grows -> mean ↓
-/// else:       betavariate(α - qr * mult, α)        # α grows -> mean ↑
+/// if qr >= 0: Beta(α + qr * mult, α)        # α grows -> mean ↑ (more crits)
+/// else:       Beta(α, α - qr * mult)        # β grows -> mean ↓ (more misses)
 /// ```
 ///
 /// The retail damage curve depends on the beta distribution's tails (the
@@ -85,10 +85,22 @@ pub fn calculate_qr(attacker: &StatList, defender: &StatList, ranged: bool) -> f
 /// off-spec at every QR value other than 0 — the prior Rust port took
 /// that shortcut.
 ///
-/// Note the counter-intuitive sign convention preserved from python:
-/// positive QR (attacker stronger) yields LOWER `qr_rand`; the `(1 + qr)`
-/// post-multiply at [`super::pipeline::calculate_damage`] is what
-/// compensates the damage scaling. See the `mean_*` tests below for the
+/// **The branches are the python reference's, swapped (NA32).**
+/// `AbilityManager.py:181-184` wrote `betavariate(α, α + qr * mult)` for
+/// `qr >= 0`, which pulls the mean *down* as the attacker gets stronger: at
+/// QR +1.5 about 45% of rolls land in the Miss/Glancing bands, and the
+/// `(1 + qr)` damage term at [`super::pipeline::calculate_damage`] only just
+/// cancels the lower `qr_rand`, so expected damage is nearly flat in QR.
+/// Every QR-shifting stat was inert on damage and inverted on the result
+/// code. The designers' units say the opposite: `accuracy` "modifies
+/// outgoing ranged and melee QR by +0.01 per point" and `defense` "modifies
+/// incoming ranged and melee QR by -0.01 per point" (client
+/// `alias.xml:204-205`), and "+200 Accuracy" / "+1 QR" are buffs in the
+/// cooked ability text. A buff that makes its owner miss more is not what
+/// they wrote, and cover (a defensive QR shift) showed *more* criticals on a
+/// covered target and the same damage. The thresholds, α, the multiplier and
+/// the `(1 + qr)` term are unchanged, and at QR 0 the distribution is the
+/// same symmetric Beta(1.4, 1.4). See the `mean_*` tests below for the
 /// expected per-QR distribution mean.
 ///
 /// `seed` makes the roll deterministic per (entity, ability, sequence) so
@@ -103,10 +115,10 @@ pub fn calculate_result(qr: f64, seed: u64) -> QrResult {
     use rand_distr::{Beta, Distribution};
 
     let (alpha, beta) = if qr >= 0.0 {
-        (QR_ALPHA_BETA, QR_ALPHA_BETA + qr * QR_MULTIPLIER)
+        (QR_ALPHA_BETA + qr * QR_MULTIPLIER, QR_ALPHA_BETA)
     } else {
-        // qr is negative, so `-qr * mult` is positive; alpha grows.
-        (QR_ALPHA_BETA - qr * QR_MULTIPLIER, QR_ALPHA_BETA)
+        // qr is negative, so `-qr * mult` is positive; beta grows.
+        (QR_ALPHA_BETA, QR_ALPHA_BETA - qr * QR_MULTIPLIER)
     };
     // Both params are ≥ QR_ALPHA_BETA in their respective branches (the
     // perturbed side only ever grows), so Beta::new can't fail unless
@@ -239,15 +251,15 @@ mod tests {
 
     // ── Beta-distribution shape ───────────────────────────────────────
     //
-    // Statistical tests pinning the python-reference two-branch shape:
+    // Statistical tests pinning the two-branch shape:
     //
-    //   if qr >= 0: Beta(α, α + qr*mult)   → β grows → mean drops below 0.5
-    //   else:       Beta(α - qr*mult, α)   → α grows → mean climbs above 0.5
+    //   if qr >= 0: Beta(α + qr*mult, α)   → α grows → mean climbs above 0.5
+    //   else:       Beta(α, α - qr*mult)   → β grows → mean drops below 0.5
     //
-    // Counter-intuitive but preserved on purpose (see `calculate_result`
-    // doc): positive QR pulls the mean DOWN — the `(1 + qr)` post-multiply
-    // in `calculate_damage` is what makes the damage curve increase with
-    // attacker advantage despite the lower sampled value.
+    // The python reference had the branches the other way round; see the
+    // `calculate_result` doc for why they are swapped (NA32). The
+    // `*_band_observance` and `expected_damage_rises_with_qr` tests fail if
+    // they are swapped back.
     //
     // Tolerances are generous (~3%) because we're sampling 10k draws, not
     // computing the analytic CDF — small variance is expected.
@@ -287,35 +299,46 @@ mod tests {
     }
 
     #[test]
-    fn mean_drops_at_positive_qr() {
-        // Per python branch `qr >= 0`: Beta(1.4, 1.4 + 1*2) = Beta(1.4, 3.4),
-        // mean = 1.4/4.8 ≈ 0.292. Note this is *counter-intuitive* — positive
-        // QR (attacker stronger) yields LOWER qr_rand. The (1+qr) post-multiply
-        // in `calculate_damage` is what makes the damage scaling work out;
-        // the threshold logic is the same on both sides of QR=0.
+    fn mean_climbs_at_positive_qr() {
+        // `qr >= 0`: Beta(1.4 + 1*2, 1.4) = Beta(3.4, 1.4), mean =
+        // 3.4/4.8 ≈ 0.708. The attacker is stronger, so it rolls higher.
         let mean = distribution_mean(1.0, 10_000);
         assert!(
-            (mean - 0.292).abs() < 0.03,
-            "mean at QR=+1 should be ~0.29, got {mean}"
+            (mean - 0.708).abs() < 0.03,
+            "mean at QR=+1 should be ~0.71, got {mean}"
         );
     }
 
     #[test]
-    fn mean_climbs_at_negative_qr() {
-        // Per python branch `qr < 0`: Beta(1.4 - (-1)*2, 1.4) = Beta(3.4, 1.4),
-        // mean = 3.4/4.8 ≈ 0.708. Negative QR (defender stronger) yields
-        // HIGHER qr_rand — but `(1+qr)` at calculate_damage time scales the
-        // resulting damage down sharply (and to 0 once qr ≤ -1).
+    fn mean_drops_at_negative_qr() {
+        // `qr < 0`: Beta(1.4, 1.4 + 1*2) = Beta(1.4, 3.4), mean =
+        // 1.4/4.8 ≈ 0.292. The defender is stronger (or in cover), so the
+        // attacker rolls lower.
         let mean = distribution_mean(-1.0, 10_000);
         assert!(
-            (mean - 0.708).abs() < 0.03,
-            "mean at QR=-1 should be ~0.71, got {mean}"
+            (mean - 0.292).abs() < 0.03,
+            "mean at QR=-1 should be ~0.29, got {mean}"
+        );
+    }
+
+    /// The whole point of a QR shift: mean `qr_rand * (1 + qr)`, the part of
+    /// `calculate_damage` that QR moves, rises with QR. Under the python
+    /// branch order it was nearly flat (0.36 at QR 0, 0.43 at QR +1.5, and
+    /// the same at QR +0.5 as at +1.5 for many seeds), which is what made
+    /// cover inert on damage.
+    #[test]
+    fn expected_damage_rises_with_qr() {
+        let scaled = |qr: f64| distribution_mean(qr, 10_000) * (1.0 + qr);
+        let (low, zero, high) = (scaled(-0.5), scaled(0.0), scaled(0.5));
+        assert!(
+            low < zero * 0.6 && high > zero * 1.4,
+            "damage scale must move with QR: -0.5 {low}, 0 {zero}, +0.5 {high}"
         );
     }
 
     #[test]
     fn extreme_qr_does_not_panic() {
-        // Both python formulas only ever GROW one of the beta parameters
+        // Both branches only ever GROW one of the beta parameters
         // away from QR_ALPHA_BETA, so neither side can go non-positive
         // for any finite QR. This test pins that invariant — a future
         // refactor that flipped a sign would surface here.
@@ -336,29 +359,28 @@ mod tests {
     }
 
     #[test]
-    fn negative_qr_increases_crit_band_observance() {
-        // Python: negative qr → higher mean → more crits land in the
-        // crit/double-crit bands at the high end. Pin this so a future
-        // sign-flip in the formula (which would silently invert the
-        // distribution) surfaces here.
+    fn positive_qr_increases_crit_band_observance() {
+        // Positive qr → higher mean → more rolls land in the crit and
+        // double-crit bands. Fails if the branches are swapped back to the
+        // python order (NA32).
         let crit_at_zero = crit_or_better_fraction(0.0, 10_000);
-        let crit_at_neg = crit_or_better_fraction(-1.0, 10_000);
+        let crit_at_pos = crit_or_better_fraction(1.0, 10_000);
         assert!(
-            crit_at_neg > crit_at_zero,
-            "neg QR should crit MORE per python (counter-intuitive); zero={crit_at_zero}, neg={crit_at_neg}"
+            crit_at_pos > crit_at_zero,
+            "pos QR should crit more; zero={crit_at_zero}, pos={crit_at_pos}"
         );
     }
 
     #[test]
-    fn positive_qr_increases_miss_band_observance() {
-        // Python: positive qr → lower mean → more samples land in the
-        // miss/glancing bands at the low end. Same regression-pin as
-        // `negative_qr_increases_crit_band_observance` for the other side.
+    fn negative_qr_increases_miss_band_observance() {
+        // Negative qr (a stronger defender, or one in cover) → lower mean →
+        // more rolls land in the miss band. The other side of
+        // `positive_qr_increases_crit_band_observance`.
         let miss_at_zero = miss_fraction(0.0, 10_000);
-        let miss_at_pos = miss_fraction(1.0, 10_000);
+        let miss_at_neg = miss_fraction(-1.0, 10_000);
         assert!(
-            miss_at_pos > miss_at_zero,
-            "pos QR should miss MORE per python (counter-intuitive); zero={miss_at_zero}, pos={miss_at_pos}"
+            miss_at_neg > miss_at_zero,
+            "neg QR should miss more; zero={miss_at_zero}, neg={miss_at_neg}"
         );
     }
 }

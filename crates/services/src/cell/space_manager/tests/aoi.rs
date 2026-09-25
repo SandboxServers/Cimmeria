@@ -361,3 +361,97 @@ fn aoi_entry_resends_interaction_only_bind_flags() {
         other => panic!("expected WitnessEntityMethod, got {other:?}"),
     }
 }
+
+/// NA33: a late-joining witness must be told an active aggression override
+/// the moment the NPC enters their AoI — mirroring python
+/// `SGWMob.createOnClient`'s conditional `onAggressionOverrideUpdate` send
+/// (`deprecated/python/cell/SGWMob.py:36-41`). Without this replay, a
+/// player who connects (or wanders back into range) after a content chain
+/// armed a guard would see it as passive until the next override change.
+#[test]
+fn aoi_entry_replays_active_aggression_override() {
+    use crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE;
+    use cimmeria_entity::cell_entity::MobAggression;
+
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc(npc_id, "Agnos", [12.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(n) = mgr.get_entity_mut(npc_id) {
+        n.aggro.override_level = Some(MobAggression::Hostile);
+    }
+    mgr.connect_entity(100);
+
+    let events = mgr.compute_aoi_changes();
+
+    let pushes: Vec<&CellToBaseMsg> = events
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                CellToBaseMsg::WitnessEntityMethod { method_index, entity_id, .. }
+                    if *method_index == ON_AGGRESSION_OVERRIDE_UPDATE && *entity_id == npc_id
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        pushes.len(),
+        1,
+        "AoI entry must replay the active override exactly once -- zero \
+         means a newly-arrived witness never learns the NPC is armed"
+    );
+    match pushes[0] {
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            args,
+            entity_is_player,
+            ..
+        } => {
+            assert_eq!(*witness_id, 100, "push goes to the entering player");
+            assert_eq!(
+                *args,
+                vec![MobAggression::Hostile.level()],
+                "payload is a single INT8 byte, the EMobAggressionLevel value"
+            );
+            assert!(!entity_is_player, "the observee is the NPC, not a player");
+        }
+        other => panic!("expected WitnessEntityMethod, got {other:?}"),
+    }
+}
+
+/// The complementary negative path: a mob with no override (faction-derived
+/// only) must send nothing on AoI entry, matching python's
+/// `if self.aggressionOverride is not None:` guard exactly.
+#[test]
+fn aoi_entry_sends_nothing_for_a_faction_derived_mob() {
+    use crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE;
+
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc(npc_id, "Agnos", [12.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    // Fixture sanity: no override set.
+    assert_eq!(mgr.get_entity(npc_id).unwrap().aggro.override_level, None);
+    mgr.connect_entity(100);
+
+    let events = mgr.compute_aoi_changes();
+
+    let pushes = events.iter().any(|e| {
+        matches!(
+            e,
+            CellToBaseMsg::WitnessEntityMethod { method_index, entity_id, .. }
+                if *method_index == ON_AGGRESSION_OVERRIDE_UPDATE && *entity_id == npc_id
+        )
+    });
+    assert!(
+        !pushes,
+        "a faction-derived (no override) mob must not broadcast \
+         onAggressionOverrideUpdate on AoI entry -- legacy `createOnClient` \
+         sends nothing in this case either"
+    );
+}

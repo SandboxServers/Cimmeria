@@ -65,6 +65,60 @@ async fn a_submitted_npc_does_not_re_aggro_on_proximity() {
     assert!(mgr.get_entity(NPC).unwrap().threat_list.is_empty());
 }
 
+/// NA33: the disarm above must reach the client — a witness who saw the
+/// NPC armed (or never learned it was faction-hostile at all) needs the
+/// visible "stood down" signal, or a surrendered NPC still reads as a
+/// threat on the floor. Same wire call `set_aggression`/`.aggression` use;
+/// see `content::executor::world::set_aggression` for why this is
+/// `onAggressionOverrideUpdate` and not legacy python's client-dead
+/// `onEntityProperty(GENERICPROPERTY_MobAggression)`.
+#[tokio::test]
+async fn submit_broadcasts_the_disarm_to_witnesses() {
+    let mut mgr = make_mgr();
+    add_player(&mut mgr, PLAYER_A, 0.0);
+    add_npc(&mut mgr, NPC, 2.0);
+    if let Some(npc) = mgr.get_entity_mut(NPC) {
+        npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Hostile);
+    }
+    // The player has to be a witness before the broadcast has anywhere to go.
+    let _ = mgr.compute_aoi_changes();
+
+    content_sets_submit(&mut mgr, NPC);
+    let (tx, mut rx) = mpsc::channel(64);
+    run_ai_tick(&tx, &mut mgr).await;
+
+    let mut pushes = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id,
+            method_index,
+            args,
+            entity_is_player,
+        } = msg
+        {
+            if method_index == crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE {
+                pushes.push((witness_id, entity_id, args, entity_is_player));
+            }
+        }
+    }
+
+    assert_eq!(
+        pushes.len(),
+        1,
+        "surrender must broadcast onAggressionOverrideUpdate exactly once"
+    );
+    let (witness_id, entity_id, args, entity_is_player) = &pushes[0];
+    assert_eq!(*witness_id, PLAYER_A);
+    assert_eq!(*entity_id, NPC);
+    assert_eq!(
+        args,
+        &vec![cimmeria_entity::cell_entity::MobAggression::Neutral.level()],
+        "payload is the NEUTRAL disarm level, INT8"
+    );
+    assert!(!entity_is_player);
+}
+
 // ── Adjacent cleanup the surrender inherits from the death path ────────
 
 /// A surrendered NPC stops pulsing. Without this the player who just

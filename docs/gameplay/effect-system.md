@@ -2,13 +2,13 @@
 title: "Effect System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-25
 ---
 
 # Effect System
 
-> **Last updated**: 2026-07-25
-> **Status**: Implemented — application, removal, pulsing, stacking, absorption shields, and channel cancellation all work. Two gaps: diminishing returns, and **no effect visuals at all** (no `onSequence` is emitted anywhere in the effect system).
+> **Last updated**: 2026-09-25
+> **Status**: Implemented — application, removal, pulsing, stacking, absorption shields, and channel cancellation all work. Gaps: diminishing returns, the effect-clear flags (none of `EF_ClearOn*` is honoured), and **no effect visuals at all** (no `onSequence` is emitted anywhere in the effect system).
 
 ## Overview
 
@@ -28,12 +28,12 @@ The `EffectInstance` class in `deprecated/python/cell/AbilityManager.py` handles
 | Stat modification (% current) | DONE | `STAT_CurrentPercentage` |
 | Stat modification (% max) | DONE | `STAT_MaxPercentage` |
 | Stat modification (% min-max) | DONE | `STAT_MinMaxPercentage` |
-| Temporary vs permanent changes | DONE | Temporary reverted on removal |
+| Temporary vs permanent changes | NOT IMPL | No permanent/temporary distinction exists in `crates/`. A stat change is reverted only by its script's `on_remove` (AbsorbShield, Stun, RemoveCoverStance); direct HEALTH/FOCUS writes are one-way |
 | QR combat damage | DONE | `qrCombatDamage()` using shared or per-effect QR |
 | Effect scripts | DONE | Dynamic script loading via `cell.effects.<name>` |
 | Kismet sequences (init, pulse, remove, per-QR hit) | NOT IMPL | Nothing under `crates/services/src/cell/effects/` emits `onSequence`. Events 2000–2008 are never sent, so effects have no visual at all — see [cinematic-system.md](cinematic-system.md) |
 | Client result reporting | DONE | `onEffectResults` with stat delta list |
-| Clear on death/damage/rez/bandolier | DONE | `EF_ClearOnDeath`, `EF_ClearOnDamage`, etc. |
+| Clear on death/damage/rez/bandolier | PARTIAL | No `EF_ClearOn*` flag has a Rust constant or check. On death, pulses on a dead target are skipped (the instances stay and age out) and a dying channeller's channels are cancelled (`cell/abilities/death/mod.rs`). Nothing clears effects on damage, revive, or bandolier swap |
 | Effect stacking rules | DONE | Refcounted via `state_flag_counts`; shipped in PR #420 |
 | Absorption shields | DONE | Absorption pool with defined drain ordering; shipped in PR #420 |
 | Channeled effect pulses | DONE | `cell/effects/pulsing/`, including channel cancellation and the `AF_CHANNEL_ALLOWS_MOVEMENT` gate |
@@ -79,12 +79,12 @@ AbilityManager.addEffect(effect, invokerId)
 
 | Flag | Constant | Implemented | Purpose |
 |------|----------|-------------|---------|
-| `EF_ClearOnDeath` | -- | YES | Remove effect on entity death |
-| `EF_ClearOnDamage` | -- | YES | Remove effect when damage received |
-| `EF_ClearOnRez` | -- | YES | Remove effect on revive |
-| `EF_RemoveOnBandolierSlotChange` | -- | YES | Remove on weapon swap |
-| `EF_OnlySendToSelf` | -- | YES | Don't broadcast to witnesses |
-| `EF_DontUseQR` | -- | YES | Skip QR calculation |
+| `EF_ClearOnDeath` | -- | NO | Remove effect on entity death (see the clear row above for the partial death behaviour) |
+| `EF_ClearOnDamage` | -- | NO | Remove effect when damage received |
+| `EF_ClearOnRez` | -- | NO | Remove effect on revive |
+| `EF_RemoveOnBandolierSlotChange` | -- | NO | Remove on weapon swap |
+| `EF_OnlySendToSelf` | -- | NO | Don't broadcast to witnesses |
+| `EF_DontUseQR` | `EF_DONT_USE_QR` (32, `crates/entity/src/abilities/defs.rs`) | NO | Skip QR calculation. The constant is defined but never read |
 | `EF_Beneficial_Effect` | -- | NO | AI: is this hostile? |
 | `EF_Offline_Time_Counts` | -- | NO | Count cooldown while offline |
 | `EF_HasInductionBar` | -- | NO | Show deploy/grenade bar |

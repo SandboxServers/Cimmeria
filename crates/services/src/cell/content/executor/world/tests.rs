@@ -789,9 +789,10 @@ async fn move_waypoint_broadcasts_one_snap_per_witness() {
 /// `set_aggression_level_one_writes_entity_field` in `executor::tests`;
 /// this is the complementary negative path so a regression that
 /// unwrapped `find_entity_by_tag` would crash here.
-#[test]
-fn set_aggression_missing_tag_leaves_unrelated_entities_untouched() {
+#[tokio::test]
+async fn set_aggression_missing_tag_leaves_unrelated_entities_untouched() {
     let mut mgr = make_space_mgr();
+    let (tx, _rx) = mpsc::channel(8);
     // Player exists. NPC with a DIFFERENT tag exists.
     mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
     let p = mgr
@@ -807,7 +808,7 @@ fn set_aggression_missing_tag_leaves_unrelated_entities_untouched() {
     n.tag = Some("NotDrone".to_string());
     assert_eq!(n.aggro.override_level, None, "fixture sanity: no override");
 
-    set_aggression("Drone".to_string(), 1, 1, 1032, &mut mgr);
+    set_aggression("Drone".to_string(), 1, 1, 1032, &tx, &mut mgr).await;
 
     assert_eq!(
         mgr.get_entity(101).unwrap().aggro.override_level,

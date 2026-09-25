@@ -27,7 +27,7 @@ The server handles all combat resolution; the client sends ability requests and 
 | Auto-cycle (auto-attack) | DONE | Loops ability on cooldown expiry; toggle persists across relog via `sgw_player.state_field` (#412 — see [state-field-bits.md](../architecture/state-field-bits.md)) |
 | Effect application / removal | DONE | `EffectInstance` class |
 | Death / revive | DONE | `PLAYER_STATE_Dead` flag, `onDead()` / `onRevived()` |
-| Crouch / cover stance | PARTIAL | State flag set, affects QR, cover sets tracked |
+| Crouch / cover stance | PARTIAL | Cover is a 10-60% damage reduction rated by the node, when it faces the attacker (NA32, see [Cover as damage reduction](#cover-as-damage-reduction-na32)); crouch terms not read yet |
 | Successive shots bonus | STUB | Properties exist, not calculated |
 | Threat / aggro system | NOT IMPL | `threatenedMobs`, `invokeThreatFromAbility` defined |
 | AoE / cone targeting | NOT IMPL | Only `TargetSelf` and `TargetTarget` work |
@@ -164,6 +164,69 @@ baseDamage
 | Hit | `RC_Hit` | qrRand < QR_CRITICAL_HIT |
 | Critical | `RC_Critical` | qrRand < QR_DOUBLE_CRITICAL_HIT |
 | Double Critical | `RC_DoubleCritical` | qrRand >= QR_DOUBLE_CRITICAL_HIT |
+
+### The qrRand distribution (NA32)
+
+`qrRand` is drawn from `Beta(1.4 + 2qr, 1.4)` for `qr >= 0` and `Beta(1.4, 1.4 - 2qr)` for `qr < 0` ([`combat/damage/qr.rs`](../../crates/services/src/cell/combat/damage/qr.rs) `calculate_result`). The mean rises with QR: a stronger attacker crits more and misses less.
+
+> [!NOTE]
+> These are the python reference's branches **swapped**. `AbilityManager.py:181-184` wrote `betavariate(α, α + qr * mult)` for `qr >= 0`, which pulled the mean *down* as QR rose. At QR +1.5 about 45% of rolls fell in the Miss/Glancing bands, and the `(1 + qr)` damage term only just cancelled the lower `qrRand`, so expected damage was nearly flat in QR. Every QR stat (accuracy, defense, cover) was inert on damage and inverted on the result code. The client's own units say the opposite: `accuracy` "modifies outgoing ranged and melee QR by +0.01 per point" and `defense` "modifies incoming ranged and melee QR by -0.01 per point" (`alias.xml:204-205`, [combat-formulas-client-evidence.md](../reverse-engineering/findings/combat-formulas-client-evidence.md)). At QR 0 nothing changes: the distribution is the symmetric `Beta(1.4, 1.4)` either way.
+
+### Cover as damage reduction (NA32)
+
+A defender in cover against its attacker takes a percentage off each hit, rated by the cover node it stands at ([`combat/damage/cover_damage.rs`](../../crates/services/src/cell/combat/damage/cover_damage.rs), applied by [`abilities/damage_apply/cover_roll.rs`](../../crates/services/src/cell/abilities/damage_apply/cover_roll.rs)). The owner's rule (D-NA15a, 2026-09-25): "Cover rating should depend on material. Cement walls are better cover than lunch tables. Not all cover is created equally. It should probably range from 10-60% damage reduction. We don't want npcs in cover to be complete bullet sponges."
+
+```text
+in cover:  final_pct = clamp(base(quality, height) + stance - penetration, 10, 60)
+flanked or not at a node:  final_pct = 0
+damage = ... * (1 + qr) * (1 - final_pct / 100) - armorFactor - absorption
+```
+
+The reduction applies after the `(1 + qr)` term and before armour and shields (`calculate_damage_scaled`). Cover does not touch the QR roll, so the result code is the one the stats give.
+
+**The rating (`COVER_RATING`, one const).** The material signal is what the level designers authored on each node, `CoverQuality` and `CoverHeight` (NA21's extraction). The seed carries no prop mesh name, so there is no mesh-based refinement.
+
+| Quality | Base | | Height | Adjust |
+|---|--:|---|---|--:|
+| None | 10 | | Low | -5 |
+| Good | 20 | | Mid | 0 |
+| Better | 25 | | High | +5 |
+| Best | 45 | | Los | +10 |
+
+The world-12 and world-8 seeds (4,024 nodes):
+
+| Height / quality | World 12 | World 8 | Base % |
+|---|--:|--:|--:|
+| Mid / Better | 130 | 2,238 | 25 |
+| High / Best | 97 | 1,243 | 50 |
+| Low / Good | 7 | 203 | 15 |
+| Mid / Best | | 43 | 45 |
+| Low / Best | | 16 | 40 |
+| High / Better | 2 | 16 | 30 |
+| Mid / None | | 10 | 10 |
+| Low / Better | | 8 | 20 |
+| Low / None | | 6 | 10 (floor) |
+| High / None | | 2 | 15 |
+| Mid / Good, High / Good | | 3 | 20 / 25 |
+
+The 16 guard spawns authored at a node hold 13 `Mid`/`Better` slots and 3 `High`/`Best`. So a typical guard slot is 25%, 35% with Cover Stance; tall best-quality cover is 50%, 60% (the cap) with the stance; waist-high `Low`/`Good` is 15%.
+
+**Modifiers inside the band.** The cover stats keep the client's point scale and convert at the one point-to-percent rate the shipped data states, 10 points = 1 percentage point (effect 2004 "+50 (5%) Mental Resist", effect 2005 "Subtlety -100 (10% increase to threat)"):
+
+| Term | Scale | Evidence |
+|---|---|---|
+| `coverDefense` (defender) | +0.1 points per point: Cover Stance's +100 is +10 | `alias.xml:235`; Cover Stance is effect 4565's +100, not the ability text's +200 (D-NA15) |
+| `coverQRModifier` (defender) | +10 points per point | `alias.xml:216`, 1 QR per point; 1 QR = 100 points (ability 1729 "-1 QR" is effect 4299 "-100 DEF") |
+| `coverAccuracy` (attacker) | -0.1 points per point | `alias.xml:234`; "Cover Penetration" is `coverAccuracy` (ability 1450 -> effect 1741). Penetration only takes cover away: the floor stays at 10 |
+| `coverQRModifier` (attacker behind cover) | +1 QR per point, a QR term | `alias.xml:216`, the attack half of "both attack and defend QR" |
+
+**In cover** means the geometry agrees: the defender stands within 1.5 u of a cover node (its held slot for an NPC, the nearest node on its floor for a player) and the attacker is not more than 20 degrees past the node's side-on line, the same `is_flanked` test that makes an NPC give its slot up. A flanked defender gets 0%, whatever its stat says. Players get the same reduction from the nearest node's rating; they get no Cover Stance.
+
+**Never a bullet sponge.** The cap is 60%, so a covered guard takes at least 40% of every hit, and the test `a_covered_guard_always_takes_at_least_forty_percent` pins it for every rating and the heaviest stat stack. The damage-effect scripts (`RangedPhysicalDamage` and friends) do not go through this path, so their part of a hit is unreduced.
+
+**Tuning.** Change `COVER_RATING` (or the band and scale constants beside it) in `cover_damage.rs`; the unit tests there pin the lunch-table, wall and typical-slot bands.
+
+**Telemetry.** `abilities.qr event=cover_resolved` (DEBUG), written only when one side stands at a cover node: `defender_cover` / `attacker_cover` (`in_cover` \| `flanked` \| `exposed`), `flanked`, `cover_quality`, `cover_height`, `base_pct`, `stance_pct`, `penetration_pct`, `final_pct`, `attacker_cover_qr`.
 
 ## Kill credit (quest objective progression)
 
