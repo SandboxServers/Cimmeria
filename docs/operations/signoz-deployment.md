@@ -13,28 +13,66 @@ Cimmeria-MCP server for LLM-mediated retrieval, see
 ## What gets shipped to SigNoz
 
 Two streams converge into the same ClickHouse-backed store, **split
-across two SigNoz services** so wire-level volume doesn't drown the
-high-signal events in the operator's primary triage view:
+across three SigNoz services** so wire-level and TRACE-level volume
+doesn't drown the high-signal events in the operator's primary triage
+view:
 
 1. **`service.name = cimmeria-server`** — the high-signal index. Auth,
-   content chains, combat, missions, inventory, vendor, abilities.
-   Default operator view. Receives **WARN+ from every scope regardless
-   of routing** — elevated severity always lands here so a real wire
-   problem surfaces without dual-querying.
+   content chains, combat, missions, inventory, vendor, abilities, NPC
+   AI. DEBUG and above. Default operator view. Receives **WARN+ from
+   every scope regardless of routing** — elevated severity always lands
+   here so a real wire problem surfaces without dual-querying.
 2. **`service.name = cimmeria-network`** — the high-noise wire-level
-   index. Every `mercury.packet` event, every bundle decrypt + cell-
-   arms dispatch from `cimmeria_services::base::connect_loop::*`,
-   tick-sync heartbeats. Query this index when chasing wire-level
-   issues; it never drowns the main view at normal severity.
+   index. DEBUG and INFO only: every `mercury.packet` event, every
+   bundle decrypt + cell-arms dispatch from
+   `cimmeria_services::base::connect_loop::*`, tick-sync heartbeats.
+   Query this index when chasing wire-level issues; it never drowns the
+   main view at normal severity.
+3. **`service.name = cimmeria-trace`** — TRACE-level rows only (NA25).
+   Every TRACE row an on-disk `logs/*.log` file keeps, the TRACE rows on
+   any custom target `OTEL_FILTER` names (today that is chiefly
+   `movement.navmesh` `advisory_off_mesh_accepted`, the record of where
+   players walk off an advisory world's mesh), and the 1-in-N samples of
+   the per-packet firehoses (`wire.sampled.*`). Query
+   `service.name = 'cimmeria-trace'` when a question needs the rows that
+   used to exist only in the log files: `Unhandled client message`,
+   `Cell method before world entry -- ignored`, the `UDP_OUT ...` sends,
+   the `AVATAR_UPDATE_EXPLICIT -> CellService` relay, ACK queueing.
 
-Routing is target-based via `otel::is_network_noise_target` (see
-[`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)) composed
-with a severity carve-out in
-[`crates/server/src/logging.rs`'s `init_logging`](../../crates/server/src/logging.rs)
-(the function is at `logging.rs:128`; the carve-out filters are at
-`logging.rs:348-349` and `logging.rs:358-362`).
-The two streams share one OTLP endpoint + collector but two
-`SdkLoggerProvider`s (one per resource).
+No record lands in two indexes: the first two reject TRACE, the third
+accepts only TRACE.
+
+**Parity with the log files.** Whatever a `logs/*.log` file keeps also
+reaches SigNoz, with two exceptions. The exporter's own transport crates
+(`hyper`, `h2`, `tonic`, `tower`, `reqwest`, `opentelemetry`,
+`tungstenite`) are never exported, because exporting them loops every
+batch into the next. And the per-packet firehoses are in the files in
+full but in SigNoz as a counted sample:
+
+| Firehose (files) | Sample in SigNoz | Index | 1-in-N |
+|---|---|---|---|
+| `wire.firehose.decrypt`, `DECRYPT_OK` | `wire.sampled.decrypt`, `DECRYPT_OK (sampled)`, with `hex` | `cimmeria-trace` | 53 |
+| `wire.firehose.udp_in`, `UDP_IN` | `wire.sampled.udp_in`, `UDP_IN (sampled)`, `len` only: no hex, because pre-login datagrams carry the login ticket | `cimmeria-trace` | 53 |
+| `wire.firehose.aoi_position`, `AoI: entity position update` | `wire.out.avatar_update`, `UPDATE_AVATAR sent (sampled)` | `cimmeria-server` | 101 |
+
+Every sample carries `sampled_1_in` and `suppressed` (occurrences since
+the previous sample). The true count over a window is
+`sum(1 + suppressed)`, or roughly `count() * sampled_1_in`.
+
+Every hand-named `target: "…"` the server emits also reaches SigNoz at
+the level it is emitted, enforced by a source scan
+(`crates/server/src/logging/target_scan_tests.rs`). The one exception is
+`launcher.key_dump`, which carries a client session key and stays on the
+host.
+
+Routing is by level plus the target predicate
+`otel::is_network_noise_target` (see
+[`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)); the
+filters and the routing table are in
+[`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs),
+and `crates/server/src/logging/parity_tests.rs` fails the build if a log
+file gains a target SigNoz does not receive. The streams share one OTLP
+endpoint + collector but three `SdkLoggerProvider`s (one per resource).
 
 Schemas:
 
@@ -351,7 +389,7 @@ remain the source of truth for retroactive deep-dives.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | SigNoz UI loads but "no data" | OTLP collector unreachable from `cimmeria-server` | Verify both containers are in the same compose project (default network). `docker compose -f compose.yml ps` should show all 9 services. |
-| `otel-smoke` succeeds but server data missing | Subscriber filter dropped events | Check `init_logging` in [`crates/server/src/logging.rs`](../../crates/server/src/logging.rs) — OTel layer's EnvFilter |
+| `otel-smoke` succeeds but server data missing | Subscriber filter dropped events, or you are querying the wrong index | TRACE rows are only in `service.name = 'cimmeria-trace'`; wire DEBUG/INFO only in `cimmeria-network`. Otherwise check the filters in [`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs) |
 | ClickHouse OOM | Default `max_memory_usage` too low for ingestion burst | Edit the `clickhouse-users` `configs:` block in `compose.yml` (raise `max_memory_usage` in the `default` profile), restart the `clickhouse` container |
 | Tunnel up, browser shows 502 | Frontend not yet ready (~90s cold start) | Wait, then `docker compose -f compose.yml logs frontend` |
 | Server logs say "[otel] Exporter init failed" | Collector address misconfigured | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` and that `:4317` is reachable |

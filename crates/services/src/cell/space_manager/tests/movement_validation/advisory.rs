@@ -423,3 +423,77 @@ fn a_gm_still_moves_freely_in_an_advisory_world() {
         "got {outcome:?}",
     );
 }
+
+/// NA25: `movement.navmesh` `advisory_off_mesh_accepted` is the record of
+/// which parts of an advisory world's mesh players actually walk. Until the
+/// `cimmeria-trace` index existed no layer enabled it, so it never fired;
+/// now it does, on every off-mesh packet, and it must be throttled per
+/// player with the skipped packets counted.
+///
+/// Removing the `advisory_off_mesh_log.admit` gate makes the burst write
+/// five rows and fails the first assertion.
+#[test]
+fn advisory_off_mesh_row_fires_throttled_with_a_suppressed_count() {
+    let Some((mut mgr, _space_id)) = harset_with_player(NavmeshMode::Advisory) else {
+        return;
+    };
+    assert_fixture_controls(&mgr);
+    let capture = crate::test_support::LogCapture::install();
+    let rows = |c: &crate::test_support::LogCaptureGuard| {
+        c.all()
+            .into_iter()
+            .filter(|e| {
+                e.target == "movement.navmesh"
+                    && e.has_field("reason", "advisory_off_mesh_accepted")
+            })
+            .collect::<Vec<_>>()
+    };
+
+    // Five packets in the hole inside one 500 ms window.
+    let t0 = Instant::now();
+    for i in 0..5u64 {
+        let outcome = mgr.apply_client_position_update_at(
+            t0 + std::time::Duration::from_millis(i * 100),
+            100,
+            IN_THE_HOLE,
+            [0, 0, 0],
+            [0.0; 3],
+        );
+        assert!(matches!(outcome, ClientMoveOutcome::Accepted { .. }));
+    }
+    let burst = rows(&capture);
+    assert_eq!(
+        burst.len(),
+        1,
+        "one row per window, not one per packet: {burst:#?}"
+    );
+    assert_eq!(burst[0].level, tracing::Level::TRACE);
+    assert!(burst[0].has_field("suppressed", "0"));
+    assert!(burst[0].has_field("world", "Harset"));
+
+    // Past the window: the next packet writes, accounting for the four.
+    mgr.apply_client_position_update_at(
+        t0 + std::time::Duration::from_millis(1_000),
+        100,
+        IN_THE_HOLE,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    let after = rows(&capture);
+    assert_eq!(after.len(), 2);
+    assert!(
+        after[1].has_field("suppressed", "4"),
+        "the four packets inside the window must be counted: {:#?}",
+        after[1]
+    );
+
+    // An on-mesh packet is not an advisory row at all.
+    mgr.apply_client_position_update_at(
+        t0 + std::time::Duration::from_millis(3_000),
+        100,
+        ON_MESH,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert_eq!(rows(&capture).len(), 2, "on-mesh moves must not log");
+}

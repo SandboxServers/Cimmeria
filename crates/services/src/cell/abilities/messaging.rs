@@ -175,6 +175,13 @@ pub(crate) async fn send_entity_method_to_self_and_witnesses(
     send_entity_method_to_witnesses(entity_id, method_index, args, tx, space_mgr).await
 }
 
+/// 1-in-N for the `movement.movement_type` `deduped` TRACE row, which fires
+/// once per NPC per AI tick. Prime, so the fixed NPC iteration order cannot
+/// phase-lock the sample onto one NPC.
+pub(crate) const MOVEMENT_TYPE_DEDUPED_SAMPLE_EVERY: u64 = 53;
+static MOVEMENT_TYPE_DEDUPED_SAMPLER: crate::firehose::FirehoseSampler =
+    crate::firehose::FirehoseSampler::new(MOVEMENT_TYPE_DEDUPED_SAMPLE_EVERY);
+
 /// Record an NPC's movement type (`EMobMovementType`) in the dedup cache
 /// `last_movement_type`. **Nothing goes on the wire.**
 ///
@@ -225,14 +232,20 @@ pub(crate) async fn broadcast_movement_type(
         .get_entity(entity_id)
         .and_then(|e| e.last_movement_type);
     if last == kind {
-        // Hot path: every AI tick re-asserts the current kind.
-        tracing::trace!(
-            target: "movement.movement_type",
-            entity_id,
-            ?kind,
-            outcome = "deduped",
-            "movement type unchanged"
-        );
+        // Hot path: every AI tick (2 s) re-asserts the current kind, once per
+        // NPC. NA25 exports this target, so the row is sampled 1-in-N with
+        // the skipped count; ~75 rows/s at 150 NPCs becomes ~1.4.
+        if let Some(suppressed) = MOVEMENT_TYPE_DEDUPED_SAMPLER.admit() {
+            tracing::trace!(
+                target: "movement.movement_type",
+                entity_id,
+                ?kind,
+                outcome = "deduped",
+                sampled_1_in = MOVEMENT_TYPE_DEDUPED_SAMPLER.every(),
+                suppressed,
+                "movement type unchanged"
+            );
+        }
         return;
     }
     if let Some(e) = space_mgr.get_entity_mut(entity_id) {

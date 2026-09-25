@@ -147,6 +147,7 @@
 
 - [observability-test-and-throttle-traps.md](observability-test-and-throttle-traps.md) — **read before adding any counter/log test in cell code.** Counter emission is unobservable in tests (no Meter); `create_space_instance`'s nav path is CWD-relative so its log branch needs extraction to be testable; `create_entity` leaves `is_player=false`; the LogThrottle/`suppressed` pattern + its two mandatory guards; the immutable-then-mutable borrow order these helpers force.
 
+- [log-filter-parity-traps.md](log-filter-parity-traps.md) — `EnvFilter::new` silently drops a bad directive; runtime-target filter tests; custom targets leave their log file; source-target scan guard.
 - [tracing-span-fields-not-on-log-records.md](tracing-span-fields-not-on-log-records.md) — **read before any "stamp X onto every log" task.** `opentelemetry-appender-tracing` does NOT flatten ancestor span fields onto log records, so span-only enrichment is invisible in SigNoz Logs; spans don't cross the base↔cell mpsc boundary; `Option<T>` tracing fields are omitted when `None` (never `unwrap_or(0)`); `LogCapture` sees only event-own fields.
 
 ## Navmesh / containment

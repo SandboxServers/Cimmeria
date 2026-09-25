@@ -1,7 +1,7 @@
 # NPC AI Telemetry Plan
 
 > Type: reference and how-to. Audience: packet workers (NA00-NA03) and whoever debugs a live session.
-> Updated: 2026-09-24. Companions: [audit](audit.md) section 5, [work packets](work-packets.md), [instrumentation discipline](../../architecture/instrumentation-discipline.md), [negative-logging convention](../../architecture/negative-logging-convention.md), [movement validation](../../architecture/movement-validation.md) (and `movement-telemetry.md` once PR #726 lands), [observability ADR](../../architecture/observability.md).
+> Updated: 2026-09-25 (NA25). Companions: [audit](audit.md) section 5, [work packets](work-packets.md), [instrumentation discipline](../../architecture/instrumentation-discipline.md), [negative-logging convention](../../architecture/negative-logging-convention.md), [movement validation](../../architecture/movement-validation.md) (and `movement-telemetry.md` once PR #726 lands), [observability ADR](../../architecture/observability.md).
 
 ## Goal
 
@@ -17,7 +17,7 @@ The telemetry packets ship **before** the behaviour packets, so every behaviour 
 
 ## Conventions every new event follows
 
-- Use a dotted `target:` under `npc_ai.*`, `movement.npc`, `cover.*` or `wire.out.*`. **Add each new target to `OTEL_FILTER` in `crates/server/src/logging.rs` at the level it emits, and extend `otel_filter_exports_the_debug_level_aoi_seams` to pin it.** A target left out of the filter inherits `info` and its DEBUG rows never reach SigNoz. That is gap T1, and it has already happened once with `aoi.create_emit`.
+- Use a dotted `target:` under `npc_ai.*`, `movement.npc`, `cover.*` or `wire.out.*`. **Add each new target to `OTEL_FILTER` in `crates/server/src/logging/filters.rs` at the level it emits, and extend `otel_filter_exports_the_debug_level_aoi_seams` to pin it.** A target left out of the filter inherits `info` and its DEBUG rows never reach SigNoz. That is gap T1, and it has already happened once with `aoi.create_emit`.
 - Every NPC row carries `npc_id, tag, template_id, world, space_id`. `world` is the only approved metric label; ids stay fields (instrumentation discipline, rule 4).
 - Rows for a player-visible stuck or wrong state are WARN, throttled per `(npc_id, kind)` with a `suppressed = N` count. An **unthrottled** counter sits beside each one, as the negative-logging convention requires.
 - Transitions are DEBUG with an `event=` field. Steady-state samples are DEBUG and rate-limited.
@@ -31,7 +31,9 @@ The telemetry packets ship **before** the behaviour packets, so every behaviour 
 | Resource attributes `host.name`, `cimmeria.deploy_env` (from `CIMMERIA_DEPLOY_ENV`, already set on the colo) and `service.version` (git SHA baked in at build time) | OTLP resource builder in `crates/server/src/otel*.rs`; env-var table in `crates/server/src/main.rs` | T2 |
 | Log the navmesh fingerprint in the first NPC-AI row per space (already in `movement.navmesh navmesh_loaded`), so a session joins to its mesh | existing | |
 
-Check the SigNoz volume budget before raising `wire.out.avatar_update`: it samples 1 in 100 sends today, which is fine at colo scale.
+Check the SigNoz volume budget before raising `wire.out.avatar_update`: it samples 1 in 101 sends (1 in 100 before NA25), which is fine at colo scale.
+
+**NA25, file parity (2026-09-25).** Owner decision: whatever reaches the `logs/*.log` files also reaches SigNoz. TRACE rows now go to a third SigNoz service, `cimmeria-trace`, whose filter is derived from the file-layer table; DEBUG and above keep their NA00 routing. Two consequences for NPC AI work. First, `movement.navmesh` `advisory_off_mesh_accepted` (TRACE) fires for the first time, throttled to one row per player per 500 ms, and is the record of where players leave an advisory world's mesh. Second, the AoI position firehose stays whole in `world_entry.log` while SigNoz keeps only the `wire.out.avatar_update` sample, which now carries `sampled_1_in` and `suppressed`. A new target must still be named in `OTEL_FILTER` for its DEBUG rows to reach SigNoz; if it also lands in a file, `logging/parity_tests.rs` fails until it is. See [observability ADR](../../architecture/observability.md), "Log indexes and parity with the log files".
 
 ## 2. New and changed events
 

@@ -101,30 +101,21 @@ async fn main() {
     let login_buffer = LoginEventBuffer::new();
 
     // OTLP exporter (optional — requires OTEL_EXPORTER_OTLP_ENDPOINT).
-    // Three layers come back: a trace layer (spans + span events), a
-    // log layer for the high-signal `cimmeria-server` index (auth,
-    // content, combat, missions), and a separate log layer for the
-    // high-noise `cimmeria-network` index (mercury_packet, bundle
-    // decode, cell-arms dispatch, tick-sync heartbeats). The split is
-    // resource-tagged at the OTLP provider level — see
-    // `otel::is_network_noise_target` for the routing predicate. The
-    // guard is bound at this scope so it drops *after* the
-    // orchestrator's stop_all returns, flushing all three in-flight
-    // batches on clean shutdown.
-    let (otel_trace_layer, otel_log_layer, otel_network_log_layer, _otel_guard) = match otel::init()
-    {
-        Some((trace, log, network, guard)) => (Some(trace), Some(log), Some(network), Some(guard)),
-        None => (None, None, None, None),
+    // Four layers come back: spans, plus one log layer per SigNoz log
+    // index — `cimmeria-server` (high-signal), `cimmeria-network` (wire
+    // noise at DEBUG/INFO) and `cimmeria-trace` (every TRACE row the
+    // log files keep, firehoses sampled). The split is resource-tagged
+    // at the OTLP provider level; the routing table is in
+    // `logging/filters.rs`. The guard is bound at this scope so it drops
+    // *after* the orchestrator's stop_all returns, flushing every
+    // in-flight batch on clean shutdown.
+    let (otel_layers, _otel_guard) = match otel::init() {
+        Some((layers, guard)) => (Some(layers), Some(guard)),
+        None => (None, None),
     };
 
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = logging::init_logging(
-        log_tx.clone(),
-        log_buffer.clone(),
-        otel_trace_layer,
-        otel_log_layer,
-        otel_network_log_layer,
-    );
+    let _guards = logging::init_logging(log_tx.clone(), log_buffer.clone(), otel_layers);
 
     tracing::trace!(pid = std::process::id(), "Process spawned");
 

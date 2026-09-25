@@ -4,7 +4,7 @@
 //!
 //! # SigNoz service split
 //!
-//! The OTLP log signal is split across **two** providers, each tagged
+//! The OTLP log signal is split across **three** providers, each tagged
 //! with its own `service.name` resource:
 //!
 //! - **`cimmeria-server`** — the high-signal index. Auth, content
@@ -16,10 +16,13 @@
 //!   dispatch, tick-sync heartbeats. Operators query this index when
 //!   chasing wire-level issues; it never drowns the main view at
 //!   normal severity.
+//! - **`cimmeria-trace`** — every TRACE-level row that reaches an on-disk
+//!   log file, plus the custom-target TRACE rows and the 1-in-N samples of
+//!   the per-packet firehoses (NA25). The other two indexes never receive
+//!   TRACE, so no record is indexed twice.
 //!
-//! Routing is target-based via [`is_network_noise_target`] composed
-//! with a severity carve-out in `crates/server/src/main.rs`. See that
-//! file's `init_logging` for the layer composition.
+//! Routing is by level plus [`is_network_noise_target`]; the filters and the
+//! routing table live in `crates/server/src/logging/filters.rs`.
 //!
 //! # Architecture
 //!
@@ -96,12 +99,22 @@ use opentelemetry_sdk::Resource;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::Registry;
 
-/// Composed return type for [`init`] — the trace layer (spans) and the
-/// log layers (root-level events, split into a high-signal stream and a
-/// high-noise network stream) flow through different SDK paths, so
-/// `main()` adds them all to the layered subscriber when present.
+/// The span layer and one log layer per SigNoz log index. `init_logging`
+/// gives each its own filter.
 pub type OtelTraceLayer = OpenTelemetryLayer<Registry, SdkTracer>;
 pub type OtelLogLayer = OpenTelemetryTracingBridge<SdkLoggerProvider, SdkLogger>;
+
+/// Everything [`init`] hands to `init_logging`.
+pub struct OtelLayers {
+    /// Spans (`tracing::span!`) and the events inside them.
+    pub trace: OtelTraceLayer,
+    /// `service.name = cimmeria-server`.
+    pub server_log: OtelLogLayer,
+    /// `service.name = cimmeria-network`.
+    pub network_log: OtelLogLayer,
+    /// `service.name = cimmeria-trace`.
+    pub trace_log: OtelLogLayer,
+}
 
 /// Default service name for the high-signal index (auth, content,
 /// combat, missions, etc.).
@@ -121,6 +134,11 @@ const DEFAULT_SERVICE_NAME: &str = "cimmeria-server";
 /// dual-querying. See [`is_network_noise_target`] for the routing
 /// predicate.
 const NETWORK_SERVICE_NAME: &str = "cimmeria-network";
+
+/// Service name for the TRACE-level index (NA25). Parity with the on-disk
+/// files: every TRACE row a `logs/*.log` layer keeps is exported here, and
+/// only here. Query `service.name = 'cimmeria-trace'`.
+const TRACE_SERVICE_NAME: &str = "cimmeria-trace";
 
 /// Git commit this binary was built from, or `"unknown"`. Set by
 /// `crates/server/build.rs`.
@@ -183,15 +201,15 @@ pub fn is_network_noise_target(target: &str) -> bool {
         || target.starts_with("cimmeria_mercury::")
 }
 
-/// Initialize the OTLP exporters and return the pair of tracing layers
-/// that ship events through them. Returns `None` (silently) when
+/// Initialize the OTLP exporters and return the tracing layers that ship
+/// events through them. Returns `None` (silently) when
 /// `OTEL_EXPORTER_OTLP_ENDPOINT` is unset — telemetry is opt-in.
 ///
 /// The returned [`OtelGuard`] must be held for the lifetime of the
 /// process — dropping it shuts down both providers, flushing the
 /// in-flight batches to the collector. Without this flush, the last
 /// few seconds of telemetry before a clean shutdown are lost.
-pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)> {
+pub fn init() -> Option<(OtelLayers, OtelGuard)> {
     let endpoint = match env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         Ok(v) if !v.is_empty() => v,
         _ => {
@@ -236,6 +254,13 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     // predicate; the per-layer filter is applied in `main.rs`.
     let network_resource = Resource::builder()
         .with_service_name(NETWORK_SERVICE_NAME)
+        .with_attributes(identity.clone())
+        .build();
+    // TRACE rows get a third service for the same reason: their volume is
+    // an order of magnitude above everything else, and an operator asks for
+    // them explicitly.
+    let trace_resource = Resource::builder()
+        .with_service_name(TRACE_SERVICE_NAME)
         .with_attributes(identity)
         .build();
     // OTEL_RESOURCE_ATTRIBUTES is parsed by `opentelemetry_sdk` itself
@@ -299,77 +324,20 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
 
     let trace_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
-    // ── Log exporter (root-level events) ──────────────────────────────
-    let log_exporter_result = match protocol.as_str() {
-        "http/protobuf" | "http" => opentelemetry_otlp::LogExporter::builder()
-            .with_http()
-            .with_endpoint(&endpoint)
-            .build(),
-        _ => opentelemetry_otlp::LogExporter::builder()
-            .with_tonic()
-            .with_endpoint(&endpoint)
-            .build(),
-    };
-
-    let log_exporter = match log_exporter_result {
-        Ok(e) => e,
-        Err(err) => {
-            // Fail-loud and bail entirely — the bridge layer type isn't
-            // trivially constructable as a no-op, so partial telemetry
-            // (traces only) would require keeping a parallel "log layer
-            // is `Option<...>`" path through the rest of init. Cleaner
-            // to ship full-or-nothing and let the operator fix config.
-            eprintln!("[otel] Log exporter init failed ({err}); telemetry will not ship");
-            return None;
-        }
-    };
-
-    let logger_provider = SdkLoggerProvider::builder()
-        .with_batch_exporter(log_exporter)
-        .with_resource(resource.clone())
-        .build();
+    // ── Log exporters (root-level events), one per SigNoz log index ──
+    //
+    // Same OTLP endpoint, different `service.name` resource, so SigNoz shows
+    // each as its own service. Routing happens in the per-layer filters that
+    // `init_logging` puts on the bridges. Each provider costs one batch
+    // exporter and one channel — small against the volume it isolates.
+    let logger_provider = log_provider(&protocol, &endpoint, resource.clone(), "Log")?;
+    let network_logger_provider =
+        log_provider(&protocol, &endpoint, network_resource, "Network log")?;
+    let trace_logger_provider = log_provider(&protocol, &endpoint, trace_resource, "Trace log")?;
 
     let log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
-
-    // ── Network log exporter (high-noise wire-level events) ───────────
-    //
-    // Same OTLP endpoint, different `service.name` resource. SigNoz
-    // groups by service.name so this stream surfaces as its own
-    // service (`cimmeria-network`) without affecting the main
-    // `cimmeria-server` view. Routing happens via the per-layer
-    // FilterFn applied in `main.rs` — events whose target matches
-    // `is_network_noise_target` go to this bridge; everything else
-    // goes through the `log_layer` above.
-    //
-    // We pay the cost of a second batch exporter + gRPC channel; that
-    // overhead is small compared to the volume of mercury_packet
-    // events we're routing.
-    let network_log_exporter_result = match protocol.as_str() {
-        "http/protobuf" | "http" => opentelemetry_otlp::LogExporter::builder()
-            .with_http()
-            .with_endpoint(&endpoint)
-            .build(),
-        _ => opentelemetry_otlp::LogExporter::builder()
-            .with_tonic()
-            .with_endpoint(&endpoint)
-            .build(),
-    };
-
-    let network_log_exporter = match network_log_exporter_result {
-        Ok(e) => e,
-        Err(err) => {
-            // Same fail-loud rationale as the primary log exporter.
-            eprintln!("[otel] Network log exporter init failed ({err}); telemetry will not ship");
-            return None;
-        }
-    };
-
-    let network_logger_provider = SdkLoggerProvider::builder()
-        .with_batch_exporter(network_log_exporter)
-        .with_resource(network_resource)
-        .build();
-
     let network_log_layer = OpenTelemetryTracingBridge::new(&network_logger_provider);
+    let trace_log_layer = OpenTelemetryTracingBridge::new(&trace_logger_provider);
 
     // ── Metrics exporter (counters + histograms) ──────────────────────
     //
@@ -425,16 +393,57 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)>
     );
 
     Some((
-        trace_layer,
-        log_layer,
-        network_log_layer,
+        OtelLayers {
+            trace: trace_layer,
+            server_log: log_layer,
+            network_log: network_log_layer,
+            trace_log: trace_log_layer,
+        },
         OtelGuard {
             tracer_provider,
             logger_provider,
             network_logger_provider,
+            trace_logger_provider,
             meter_provider,
         },
     ))
+}
+
+/// Build one batch-exporting logger provider for `resource`.
+///
+/// `None` on exporter failure, and [`init`] then ships nothing at all: the
+/// bridge layer has no cheap no-op form, so partial telemetry would need an
+/// `Option` threaded through every layer. Full-or-nothing, loudly — the
+/// operator fixes the config. `eprintln!` because the subscriber is not
+/// installed yet.
+fn log_provider(
+    protocol: &str,
+    endpoint: &str,
+    resource: Resource,
+    label: &str,
+) -> Option<SdkLoggerProvider> {
+    let exporter = match protocol {
+        "http/protobuf" | "http" => opentelemetry_otlp::LogExporter::builder()
+            .with_http()
+            .with_endpoint(endpoint)
+            .build(),
+        _ => opentelemetry_otlp::LogExporter::builder()
+            .with_tonic()
+            .with_endpoint(endpoint)
+            .build(),
+    };
+    match exporter {
+        Ok(e) => Some(
+            SdkLoggerProvider::builder()
+                .with_batch_exporter(e)
+                .with_resource(resource)
+                .build(),
+        ),
+        Err(err) => {
+            eprintln!("[otel] {label} exporter init failed ({err}); telemetry will not ship");
+            None
+        }
+    }
 }
 
 /// RAII guard — when dropped, flushes the in-flight batches to the
@@ -449,6 +458,8 @@ pub struct OtelGuard {
     /// batches must flush before the gRPC channel closes or the last
     /// wire-level packets get dropped on a clean shutdown.
     network_logger_provider: SdkLoggerProvider,
+    /// Third logger provider, for the `cimmeria-trace` index.
+    trace_logger_provider: SdkLoggerProvider,
     /// `None` when the metric exporter failed to construct — traces +
     /// logs still flush on shutdown, metrics path was never wired so
     /// nothing to drain.
@@ -480,6 +491,9 @@ impl Drop for OtelGuard {
         }
         if let Err(e) = self.network_logger_provider.shutdown() {
             eprintln!("[otel] Network logger shutdown flush failed: {e}");
+        }
+        if let Err(e) = self.trace_logger_provider.shutdown() {
+            eprintln!("[otel] Trace logger shutdown flush failed: {e}");
         }
     }
 }

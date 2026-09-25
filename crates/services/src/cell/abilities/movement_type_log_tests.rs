@@ -43,3 +43,31 @@ async fn movement_type_suppressed_and_cleared_are_both_logged() {
     assert!(cleared.has_field("outcome", "cleared"));
     assert!(cleared.has_field("prior_kind", "Some(Follow)"));
 }
+
+/// NA25: the `deduped` TRACE row fires once per NPC per AI tick and now
+/// reaches SigNoz, so it is sampled 1-in-53 with `suppressed`. The sampler
+/// is a process-wide static, so the count is bounded rather than exact.
+/// Removing the sampler writes all 200 rows and fails the bound.
+#[tokio::test]
+async fn deduped_movement_type_row_is_sampled() {
+    let mut mgr = fixture();
+    let (tx, _rx) = mpsc::channel(8);
+    broadcast_movement_type(101, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
+    let logs = LogCapture::install();
+    for _ in 0..200 {
+        broadcast_movement_type(101, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
+    }
+    let rows: Vec<_> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "movement.movement_type" && c.has_field("outcome", "deduped"))
+        .collect();
+    assert!(
+        (3..=5).contains(&rows.len()),
+        "200 deduped calls must write ~200/53 rows, got {}",
+        rows.len()
+    );
+    assert!(rows.iter().all(|c| c.level == Level::TRACE
+        && c.has_field("sampled_1_in", "53")
+        && c.fields.contains_key("suppressed")));
+}

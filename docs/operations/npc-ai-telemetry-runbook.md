@@ -1,7 +1,7 @@
 # NPC AI telemetry runbook
 
 > Type: how-to. Audience: whoever plays a session and then has to explain what the NPCs did (the owner, packet workers, reviewers).
-> Updated: 2026-09-25 (NA03). Companions: [NPC AI views and dashboard export](signoz/npc-ai-views.md) (reference for every object used here), [observability ADR](../architecture/observability.md) (target catalog, field meanings, metric names), [SigNoz deployment](signoz-deployment.md), [SigNoz remote access](signoz-remote-access.md), [NPC AI telemetry plan](../analysis/npc-ai-restoration/telemetry.md) (why each event exists), [work packets](../analysis/npc-ai-restoration/work-packets.md).
+> Updated: 2026-09-25 (NA25). Companions: [NPC AI views and dashboard export](signoz/npc-ai-views.md) (reference for every object used here), [observability ADR](../architecture/observability.md) (target catalog, field meanings, metric names), [SigNoz deployment](signoz-deployment.md), [SigNoz remote access](signoz-remote-access.md), [NPC AI telemetry plan](../analysis/npc-ai-restoration/telemetry.md) (why each event exists), [work packets](../analysis/npc-ai-restoration/work-packets.md).
 
 You use this after a play session to answer "what did that NPC do, and why?" from SigNoz alone, with no debugger and no code reading. Every question has one saved view or one dashboard panel that answers it.
 
@@ -48,7 +48,7 @@ Every view lives in the Logs Explorer under the category `npc-ai`. The exact fil
 | Why no cover in this fight? | View **NPC AI — Why no cover in this fight?** plus `AND npc_id = N`; dashboard panel *no_cover reasons* | `reason` on the `no_cover` rows; `cover.selection` rows show the node that won and the top three losers |
 | Why did the pathfinder fail? | Dashboard panels *Path request status mix* and *Path failures by reason*; then the Timeline view filtered to `scope_name = 'npc_ai.path'` | `no_start_poly` / `no_end_poly` usually mean the NPC or its target is off the mesh; `target_is_gm = true` is a GM standing somewhere the mesh does not cover |
 | Why is this NPC holding fire, or firing with `los=blocked`? | View **NPC AI — Why is this NPC holding fire?** plus `AND npc_id = N` and a short time range | On `npc_ai.tick` rows, `los` is the navmesh verdict and `los_policy` is the rule that acted on it. `los=blocked los_policy=stationary_relaxed` is a stationary NPC firing across furniture the navmesh cuts out, which is expected (D-NA11). `stationary_other_storey` is a stationary NPC holding because the target is more than 4 u above or below it. `in_cover_slot` is a mobile NPC at its cover slot (it holds Cover Stance) firing over the cover, which is expected (NA22). `strict` with `blocked` is a mobile NPC walking toward its target. The sampled `npc_ai.los` rows give the ray endpoints and `hit_xyz` |
-| What did the client see? | View **NPC AI — What did the client see?** plus `AND entity_id = N` | `npc_moved_since_last = false` beside a non-zero `vx` / `vz` is running in place as the client saw it. It is a 1-in-100 sample, so absence proves nothing |
+| What did the client see? | View **NPC AI — What did the client see?** plus `AND entity_id = N` | `npc_moved_since_last = false` beside a non-zero `vx` / `vz` is running in place as the client saw it. It is a 1-in-101 sample (`sampled_1_in`, with `suppressed` sends between samples), so absence proves nothing. Every send is in `logs/world_entry.log` as `AoI: entity position update` if you have the server's disk |
 
 ## Mining a large pull with the helper scripts
 
@@ -61,6 +61,18 @@ A SigNoz MCP result over about 25k tokens lands in a tool-results file instead o
 `aggro.py` and `aggro2.py` were written for the pre-NA00 session in the audit. They match the old unstructured bodies (`auto-aggro`, `preempt`). On an NA00 or later build, use the **Which NPCs aggroed** view or `npc_ai.aggro` rows grouped by `cause` instead. `cond2.py` does not depend on message text and stays current.
 
 When you query through the MCP, always filter on `service.name = 'cimmeria-server'` and never call `signoz_get_field_keys` without a filter.
+
+## Rows that were only in the log files
+
+Since NA25 every row the server writes to `logs/*.log` also reaches SigNoz, so you should not need the server's disk. TRACE-level rows go to their own service: query `service.name = 'cimmeria-trace'`, never the default `cimmeria-server`. That is where to look for:
+
+- `movement.navmesh` rows with `reason = 'advisory_off_mesh_accepted'`: where players walked off the navmesh in an advisory world (Castle, Harset). At most one row per player per 500 ms; `suppressed` counts the packets in between. This is the input for a mesh rebake.
+- The pre-world-entry and dispatch drops: `Cell method before world entry -- ignored`, `Ignoring cell method until mapLoaded arrives`, `Unhandled client message`, `Unhandled Account base method`, `Bundle truncated`, `Dropping EntityMoved while witness is pre-onClientReady`.
+- The wire sends and ACK traffic: the `UDP_OUT ...` rows, `AVATAR_UPDATE_EXPLICIT -> CellService`, `Queueing ACK for client reliable message`, `Piggybacking ACKs on tick_sync`.
+
+Two per-packet rows are sampled, not copied. `DECRYPT_OK` arrives as `scope_name = 'wire.sampled.decrypt'` (1 in 53, with the hex) and `UDP_IN` as `wire.sampled.udp_in` (1 in 53, length only). Each sample carries `sampled_1_in` and `suppressed`; the true count over a window is the sum of `1 + suppressed`. The full stream is still in `logs/base.log`.
+
+Keep the time range short on `cimmeria-trace`: it receives roughly one row per datagram.
 
 ## When a panel or view looks wrong
 

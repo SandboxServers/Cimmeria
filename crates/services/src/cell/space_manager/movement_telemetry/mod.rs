@@ -107,6 +107,18 @@ pub(crate) fn log_navmesh_loaded(space_id: u32, world_name: &str, fp: &NavMeshFi
 /// happens.
 pub(crate) const REJECT_LOG_MIN_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Minimum gap between two `advisory_off_mesh_accepted` rows for the same
+/// player.
+///
+/// That row fires on every accepted off-mesh position packet in an
+/// `advisory` world, and whole quarters of Harset (and much of Castle) have
+/// no mesh at their real floor, so a player up there would write 10 rows/s
+/// for as long as they stay. 500 ms keeps a breadcrumb every ~3 units at
+/// run speed, which is finer than any hole a rebake has to find, for 2
+/// rows/s per off-mesh player. `suppressed` on each row counts the packets
+/// in between.
+pub(crate) const ADVISORY_OFF_MESH_LOG_INTERVAL: Duration = Duration::from_millis(500);
+
 /// Minimum gap between accepted-position samples for one player.
 ///
 /// 5 s is ~720 rows/hour/player, against the ~2,000 rows/hour/player the
@@ -259,6 +271,9 @@ pub(crate) struct MovementTelemetry {
     /// Gates `npc_ai.path_fail` — see
     /// [`crate::cell::service::npc_ai::path_failure`].
     pub(crate) npc_path_fail_log: LogThrottle,
+    /// Gates `movement.navmesh` `advisory_off_mesh_accepted` — see
+    /// [`ADVISORY_OFF_MESH_LOG_INTERVAL`].
+    pub(crate) advisory_off_mesh_log: LogThrottle,
     /// Last accepted-position sample per player.
     position_samples: HashMap<u32, PositionSample>,
 }
@@ -279,12 +294,16 @@ impl MovementTelemetry {
     pub(crate) fn forget(&mut self, entity_id: u32) {
         self.reject_log.forget(entity_id);
         self.npc_path_fail_log.forget(entity_id);
+        self.advisory_off_mesh_log.forget(entity_id);
         self.position_samples.remove(&entity_id);
     }
 
-    /// Test-only: total tracked slots across all three maps.
+    /// Test-only: total tracked slots across every map.
     #[cfg(test)]
     pub(crate) fn tracked(&self) -> usize {
-        self.reject_log.tracked() + self.npc_path_fail_log.tracked() + self.position_samples.len()
+        self.reject_log.tracked()
+            + self.npc_path_fail_log.tracked()
+            + self.advisory_off_mesh_log.tracked()
+            + self.position_samples.len()
     }
 }

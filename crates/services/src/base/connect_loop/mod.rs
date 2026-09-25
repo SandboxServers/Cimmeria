@@ -22,7 +22,6 @@ use cimmeria_mercury::transport::{BidirectionalTransport, Transport};
 use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
 
-use super::helpers::to_hex;
 use super::login::{handle_login, parse_baseapp_login};
 use super::resources::ResourceCache;
 use super::ConnectedClientState;
@@ -64,7 +63,9 @@ pub(crate) async fn run_connect_loop(
     loop {
         match transport.recv_from(&mut buf).await {
             Ok((len, addr)) => {
-                tracing::trace!(%addr, len, hex = %to_hex(&buf[..len]), "UDP_IN");
+                // Full row to base.log, a counted, hex-free sample to
+                // SigNoz (NA25).
+                crate::firehose::log_udp_in(&crate::firehose::UDP_IN_SAMPLER, addr, &buf[..len]);
                 if let Err(e) = handle_datagram(
                     &send_transport,
                     addr,
