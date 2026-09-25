@@ -36,6 +36,26 @@ impl CellEntity {
         &self.witnesses
     }
 
+    /// Whether this entity may be introduced into another player's AoI yet.
+    ///
+    /// NPCs and props always are. A *player's* cell entity is not until its
+    /// session has both connected (`ConnectEntity`, which sets `is_player`)
+    /// and had `InitPlayerState` land (which sets `archetype_id` and seeds
+    /// the archetype stats). The cell entity exists from `CreateEntity`
+    /// onward — the whole time the client is loading the map — and in a
+    /// shared (non-instanced) world every nearby player's AoI tick sees it.
+    /// Introducing it in that window ships it as an NPC-shaped, blank
+    /// entity, and because the witness set is marked on introduction it is
+    /// never re-introduced once the real state exists.
+    ///
+    /// `account_id` is the player discriminator here rather than
+    /// `is_player` precisely because `is_player` is still `false` for the
+    /// window this guards; it is stamped at `CreateEntity` and is `None`
+    /// for every server-spawned entity.
+    pub fn is_introducible(&self) -> bool {
+        self.account_id.is_none() || (self.is_player && self.archetype_id.is_some())
+    }
+
     /// Returns `true` if the given position is within this entity's AoI radius.
     ///
     /// Uses squared distance comparison to avoid a square root.

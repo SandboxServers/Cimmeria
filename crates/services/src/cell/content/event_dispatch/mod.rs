@@ -19,8 +19,8 @@
 //! - [`mission`]     — `fire_mission_accepted`, `fire_mission_completed`,
 //!   `fire_mission_abandoned`
 //! - [`step_activation`] — `fire_step_activation_regions`, the H52 replay of
-//!   `enter_region` for volumes the player already stands in when a step
-//!   activates
+//!   `enter_region` and `player_entered_cover` for volumes and cover sets the
+//!   player already stands in when a step activates
 //!
 //! `fire_chain_by_id` (chain-id-driven dispatch, used by the minigame
 //! victory callback path) doesn't fit the trigger-keyed pattern and stays

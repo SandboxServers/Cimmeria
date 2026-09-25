@@ -619,3 +619,27 @@ async fn kill_then_cover_advances_only_on_the_second_event() {
          kill-then-cover sequence; got {hide_count}"
     );
 }
+
+// ── Step-activation replay eligibility ──────────────────────────────────
+
+/// The vial sits inside set 1381's radius, so the cover enter edge is
+/// routinely spent before step 2144 exists (2026-09-20 colo repro). Both cover
+/// chains then depend on the step-activation cover replay, and that replay
+/// admits mission-gated chains only. A seed edit that drops the `step_status`
+/// / `objective_status` rows would leave the chain resolving fine in every
+/// test above and strand the player on the marker in game.
+#[tokio::test]
+async fn cover_chains_stay_eligible_for_the_step_activation_replay() {
+    let pool = require_db_or_skip!();
+    for id in [1132, 1133] {
+        let chain = load_single_chain_for_test(&pool, id)
+            .await
+            .expect("DB query for the cover chain must succeed")
+            .expect("cover chain must exist in seeded content_chains");
+        assert!(
+            chain.is_mission_gated(),
+            "chain {id} must keep a mission / step / objective condition, or the \
+             step-activation cover replay refuses it as not idempotent"
+        );
+    }
+}

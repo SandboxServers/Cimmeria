@@ -22,6 +22,8 @@
 //! - [`ability_range`] — per-ability min/max range gating, max_range=0
 //!   fallback, min-range backup waypoint, launch-failure retry schedule
 //!   + sweep, missing-def fallback, stationary no-backoff.
+//! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
+//!   killed by an effect script's HEALTH bleed does not shoot back.
 //!
 //! Uses a non-instanced `Castle` fixture rather than the parent
 //! `make_test_space_mgr` (Castle_CellBlock, instanced) so the NPC and
@@ -45,6 +47,7 @@ mod selector;
 mod state_machine;
 mod stationary_facing;
 mod tick_row;
+mod zero_health_guard;
 
 /// Build a non-instanced "Castle" space and seed an NPC at id=200 in
 /// AiState::Fighting with the given spawn position. Returns the

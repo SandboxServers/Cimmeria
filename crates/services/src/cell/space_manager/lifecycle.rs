@@ -188,6 +188,21 @@ impl SpaceManager {
     ///
     /// Only called for instanced spaces when the last player leaves. Removes
     /// all NPC entities, the space instance, and any entity_space entries.
+    ///
+    /// # This is the *other* teardown path
+    ///
+    /// [`SpaceManager::destroy_entity`] is the per-entity teardown and
+    /// releases that entity's per-id side state. Every NPC still resident
+    /// when the last player leaves an instance goes away through **this**
+    /// function instead, without `destroy_entity` ever running for it — so
+    /// any per-id map released only there leaks one slot per NPC per
+    /// instance for the process lifetime, and hands a recycled entity id a
+    /// predecessor's state. `npc_path_fail_log` did exactly that (PR #700
+    /// review): a reused id inherited an open throttle window, silently
+    /// swallowing the first path failure of the new occupant — the one row
+    /// an incident timeline most needs.
+    ///
+    /// Anything added to `destroy_entity`'s release block belongs here too.
     pub(crate) fn destroy_space(&mut self, space_id: u32) {
         if let Some(space) = self.spaces.remove(&space_id) {
             let entity_count = space.entities.len();
@@ -195,6 +210,8 @@ impl SpaceManager {
             // Remove all entity_space entries for entities in this space
             for &eid in space.entities.keys() {
                 self.entity_space.remove(&eid);
+                self.movement_telemetry.forget(eid);
+                self.movement_validator.forget(eid);
             }
 
             tracing::info!(
