@@ -65,7 +65,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA01
 
-**Status:** Ready. **Scope title:** Storey-aware navmesh height query (M4). **Depends:** none (it touches the `entity` crate only). **Advisor:** movement-teleport-advisor.
+**Status:** Review (branch pushed, 8bbfb905). **Scope title:** Storey-aware navmesh height query (M4). **Depends:** none (it touches the `entity` crate only). **Advisor:** movement-teleport-advisor.
 
 **Entries:** `crates/entity/src/navigation/mod.rs:394-434` (`get_height_at`); its callers `npc_movement.rs:211`, `spawner/npcs.rs`, `console/bookmark.rs:171`, and `grep get_navmesh_height`.
 
