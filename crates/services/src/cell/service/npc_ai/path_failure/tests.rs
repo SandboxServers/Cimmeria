@@ -328,7 +328,10 @@ async fn patrol_reports_its_path_failure() {
     mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
-        npc.ai_state = cimmeria_entity::cell_entity::AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(
+            npc,
+            cimmeria_entity::cell_entity::AiState::Patrol,
+        );
         npc.patrol_path = vec![Vector3::new(40.0, 0.0, 40.0), Vector3::new(60.0, 0.0, 60.0)];
         npc.patrol_next_index = 0;
     }
@@ -360,7 +363,10 @@ async fn wander_reports_its_path_failure() {
     mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
-        npc.ai_state = cimmeria_entity::cell_entity::AiState::Wander;
+        crate::cell::service::npc_ai::force_ai_state(
+            npc,
+            cimmeria_entity::cell_entity::AiState::Wander,
+        );
         npc.wander_radius = 20.0;
         npc.spawn_position = Some(Vector3::new(10.0, 0.0, 10.0));
         // `None` means "just arrived" and only stamps a dwell; the
@@ -383,7 +389,10 @@ async fn investigate_reports_its_path_failure() {
     mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
-        npc.ai_state = cimmeria_entity::cell_entity::AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(
+            npc,
+            cimmeria_entity::cell_entity::AiState::Investigating,
+        );
         npc.poi = Some(Vector3::new(40.0, 0.0, 40.0));
         npc.investigate_until = None;
     }

@@ -406,7 +406,10 @@ async fn spawn_does_not_resurrect_a_dead_tagged_entity() {
 
     spawn_default(&mut mgr, actor).await;
     let corpse = npc_with_tag(&mgr, actor).expect("first spawn must succeed");
-    mgr.get_entity_mut(corpse).unwrap().ai_state = AiState::Dead;
+    crate::cell::service::npc_ai::force_ai_state(
+        mgr.get_entity_mut(corpse).unwrap(),
+        AiState::Dead,
+    );
     let after_first = mgr.all_npc_entity_ids().len();
 
     spawn_default(&mut mgr, actor).await;

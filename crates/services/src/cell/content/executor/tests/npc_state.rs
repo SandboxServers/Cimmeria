@@ -237,7 +237,7 @@ async fn set_npc_poi_transitions_target_to_investigating() {
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
     let npc = mgr.get_entity(101).unwrap();
-    assert_eq!(npc.ai_state, AiState::Investigating);
+    assert_eq!(npc.ai_state(), AiState::Investigating);
     assert_eq!(
         npc.poi,
         Some(cimmeria_common::Vector3::new(50.0, 0.0, 60.0)),
@@ -285,7 +285,7 @@ async fn set_follow_target_resolves_target_and_transitions_to_follow() {
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
     let pet = mgr.get_entity(101).unwrap();
-    assert_eq!(pet.ai_state, AiState::Follow);
+    assert_eq!(pet.ai_state(), AiState::Follow);
     assert_eq!(pet.follow_target_id, Some(102));
 }
 
@@ -299,7 +299,7 @@ async fn set_follow_target_none_clears_and_returns_to_idle() {
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
         npc.tag = Some("Pet".to_string());
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(999);
     }
     mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
@@ -326,7 +326,7 @@ async fn set_follow_target_none_clears_and_returns_to_idle() {
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
     let pet = mgr.get_entity(101).unwrap();
-    assert_eq!(pet.ai_state, AiState::Idle);
+    assert_eq!(pet.ai_state(), AiState::Idle);
     assert_eq!(pet.follow_target_id, None);
 }
 
@@ -342,7 +342,7 @@ async fn set_follow_target_unresolvable_tag_clears_follow() {
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
         npc.tag = Some("Pet".to_string());
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(999);
     }
     mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
@@ -370,7 +370,7 @@ async fn set_follow_target_unresolvable_tag_clears_follow() {
 
     let pet = mgr.get_entity(101).unwrap();
     assert_eq!(
-        pet.ai_state,
+        pet.ai_state(),
         AiState::Idle,
         "Unresolvable target_tag must drop to Idle (treated as clear)",
     );
@@ -419,7 +419,7 @@ async fn set_follow_target_use_player_resolves_to_triggering_player() {
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
     let marsh = mgr.get_entity(101).unwrap();
-    assert_eq!(marsh.ai_state, AiState::Follow);
+    assert_eq!(marsh.ai_state(), AiState::Follow);
     assert_eq!(
         marsh.follow_target_id,
         Some(1),
@@ -442,7 +442,7 @@ async fn set_follow_target_use_player_with_non_player_source_leaves_unresolved()
         .unwrap();
     if let Some(npc) = mgr.get_entity_mut(101) {
         npc.tag = Some("Marsh".to_string());
-        npc.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
         npc.follow_target_id = Some(999);
     }
     // Non-player triggering entity (e.g. a cover-node NPC).
@@ -467,7 +467,7 @@ async fn set_follow_target_use_player_with_non_player_source_leaves_unresolved()
 
     let marsh = mgr.get_entity(101).unwrap();
     assert_eq!(
-        marsh.ai_state,
+        marsh.ai_state(),
         AiState::Idle,
         "use_player=true with a non-player source must NOT resolve — \
          follow state drops to Idle same as an unresolvable tag"
@@ -509,7 +509,7 @@ async fn set_npc_ai_state_despawning_flips_state() {
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
     let npc = mgr.get_entity(101).unwrap();
-    assert_eq!(npc.ai_state, AiState::Despawning);
+    assert_eq!(npc.ai_state(), AiState::Despawning);
 }
 
 /// `Action::SetNpcAiState { state: Idle }` on a patrolling NPC drops
@@ -530,7 +530,7 @@ async fn set_npc_ai_state_idle_on_patroller_preserves_patrol_index() {
             Vector3::new(10.0, 0.0, 10.0),
             Vector3::new(0.0, 0.0, 10.0),
         ];
-        npc.ai_state = AiState::Patrol;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
         npc.patrol_next_index = 2;
     }
     mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
@@ -556,7 +556,7 @@ async fn set_npc_ai_state_idle_on_patroller_preserves_patrol_index() {
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
     let npc = mgr.get_entity(101).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(npc.ai_state(), AiState::Idle);
     assert_eq!(
         npc.patrol_next_index, 2,
         "patrol_next_index must persist across SetNpcAiState(Idle) so the AI tick can resume the route",

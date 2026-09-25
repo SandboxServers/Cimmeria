@@ -23,6 +23,7 @@ use tokio::sync::mpsc;
 use super::seed;
 use super::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 
 const POINT_SETS_SEED: &str = "db/resources/Events/Seed/point_sets.sql";
@@ -289,11 +290,12 @@ async fn path_assign(
 
     // Apply in memory: the NPC starts patrolling immediately.
     let spawn_id = space_mgr.get_entity(target).and_then(|e| e.spawn_id);
+    let world = npc_ai::world_label(space_mgr, target);
     if let Some(e) = space_mgr.get_entity_mut(target) {
         e.patrol_path = waypoints;
         e.patrol_point_delay_secs = delay;
         e.patrol_next_index = 0;
-        e.ai_state = AiState::Patrol;
+        npc_ai::set_ai_state_on(e, &world, AiState::Patrol, AiTransitionReason::GmCommand);
     }
 
     // Persist the per-spawn override, keyed on the exact `spawn_id`. A
@@ -344,10 +346,11 @@ async fn path_unassign(
         return;
     };
     let spawn_id = space_mgr.get_entity(target).and_then(|e| e.spawn_id);
+    let world = npc_ai::world_label(space_mgr, target);
     if let Some(e) = space_mgr.get_entity_mut(target) {
         e.patrol_path.clear();
         e.patrol_next_index = 0;
-        e.ai_state = AiState::Idle;
+        npc_ai::set_ai_state_on(e, &world, AiState::Idle, AiTransitionReason::GmCommand);
     }
     if let Some(spawn_id) = spawn_id {
         let sql = format!(

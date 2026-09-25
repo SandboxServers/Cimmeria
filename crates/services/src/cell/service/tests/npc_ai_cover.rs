@@ -44,7 +44,7 @@ fn make_cover_fixture(
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.is_player = false;
         npc.class_id = 0x04;
-        npc.ai_state = AiState::Fighting;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Fighting);
         npc.spawn_position = Some(Vector3::new(npc_spawn[0], npc_spawn[1], npc_spawn[2]));
         npc.use_cover = true;
         if let Some(h) = npc.stats.get_mut(HEALTH) {
@@ -337,7 +337,7 @@ async fn npc_ai_fight_empty_threat_releases_cover_slot() {
     );
     drop(r);
     assert!(matches!(
-        mgr.get_entity(200).unwrap().ai_state,
+        mgr.get_entity(200).unwrap().ai_state(),
         AiState::Idle
     ));
 }
@@ -387,7 +387,7 @@ async fn npc_ai_fight_leash_transition_releases_cover_slot() {
     );
     drop(r);
     assert!(matches!(
-        mgr.get_entity(200).unwrap().ai_state,
+        mgr.get_entity(200).unwrap().ai_state(),
         AiState::Leashing
     ));
 }

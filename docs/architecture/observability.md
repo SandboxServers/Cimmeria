@@ -187,6 +187,17 @@ The unit test `otel_filter_exports_the_debug_level_aoi_seams` now pins
 the DEBUG-level `aoi.*` directives so the next seam you add does not go
 quiet the same way.
 
+Directive targets match by **string prefix**, and the longest matching
+directive wins. `npc_ai=debug` therefore already exports `npc_ai.tick`,
+`npc_ai.transition`, `npc_ai.aggro` and every other `npc_ai.*` target, and
+`cover=debug` covers every `cover.*` target. A more specific directive is
+needed only to raise one child above its parent: `wire.out=info` drops the
+DEBUG `wire.out.avatar_update` sample unless `wire.out.avatar_update=debug`
+sits beside it. NA00 added that directive plus `movement.navmesh=debug`,
+`cover=debug`, `spawner=debug` and `content=info` (audit gap T1), and
+`otel_filter_prefix_matching_exports_npc_ai_children` pins the prefix
+behaviour itself, not just the directive strings.
+
 | `target` | Level | Emitted from | What it counts |
 |---|---|---|---|
 | `mercury.packet` | INFO | `Channel::{send,receive}_packet`, `UnifiedCodec::{encode,decode}` | Every byte in/out of the server |
@@ -214,7 +225,10 @@ quiet the same way.
 | `playtest.bookmark.entity` | INFO | `cell::console::bookmark::emit` | One row per entity within 60 u of the tester at `.bug` time (nearest 32; the selected target always included). Position, velocity, `yaw_rad`, **`yaw_byte` (the facing actually transmitted)**, `wire_facing_vs_caller_deg`, `ground_y` / `y_above_ground`, AI state, nav path, threat, follow target, spawn distance. Join on `bookmark_id` |
 | `player.journal` | DEBUG | `cell::player_journal::note` | **The cross-system order for one player.** Every notable per-player event gets one strictly increasing `seq` and a closed `kind` vocabulary: `world_enter`, `reanchor`, `region_hint`, `cover_edge`, `step_advance`, `mission_complete`, `dialog`, `action_list` (the ordered actions a trigger resolved to, with delays), `deferred_scheduled`, `deferred_fired`, `death`, `respawn`, `kill`, `teleport`. `scope_name = 'player.journal' AND entity_id = N` ordered by `seq` replaces rebuilding order from timestamps across scopes. `.bug` attaches the last 24 entries as `recent_events` |
 | `content.deferred` | INFO | `cell::content::executor::deferred` | A delayed content action firing: `chain_id`, `action_kind`, `delay_ms`, `late_ms`, `scheduled_seq` / `fired_seq`, and **`between`** — everything journaled for that player since it was scheduled. The dialog-replaced-after-0.6-s shape in one row |
-| `npc_ai.tick` | DEBUG | `cell::service::npc_ai::dispatch::log_ai_tick` | One row per ticked NPC per AI tick, emitted after the handler with no silent paths: position, `yaw_rad` + **`yaw_byte`**, `last_movement_type`, `nav_path_len`, `next_wp`, `dest`, `dist_to_dest`, `target_id` + `target_pos` + `dist_to_target`, `has_los`, `follow_target_id`, `dist_to_spawn`, `move_speed`, `navmesh_loaded`, `state_before` / `ai_state`, and the handler's `decision_outcome` (empty = the handler declared none). `fight.rs` outcomes now go through the shared helper, so they reach this row, the span and `npc_ai_decisions_total` |
+| `npc_ai.tick` | DEBUG | `cell::service::npc_ai::dispatch::log_ai_tick` | One row per ticked NPC per AI tick, emitted after the handler with no silent paths: position, `yaw_rad` + **`yaw_byte`**, `last_movement_type`, `nav_path_len`, `next_wp`, `dest`, `dist_to_dest`, `target_id` + `target_pos` + `dist_to_target`, `has_los`, `follow_target_id`, `npc_to_spawn` (renamed from `dist_to_spawn` in NA00), `move_speed`, `navmesh_loaded`, `state_before` / `ai_state`, and the handler's `decision_outcome` (empty = the handler declared none). `fight.rs` outcomes now go through the shared helper, so they reach this row, the span and `npc_ai_decisions_total` |
+| `npc_ai.transition` | DEBUG | `cell::service::npc_ai::transition::set_ai_state_on` | `event = "state_change"`: one row per **actual** AI-state change (a write that leaves the state unchanged logs nothing). `from`, `to` (snake_case `AiState` labels), `reason` (`auto_aggro` \| `threat_preempt` \| `threat_empty` \| `leash_out` \| `leash_arrived` \| `died` \| `respawn` \| `content` \| `gm_command` \| `patrol_start` \| `wander_start` \| `patrol_no_path` \| `wander_no_radius` \| `wander_no_spawn` \| `investigate_no_poi` \| `investigate_done` \| `follow_no_target` \| `follow_target_gone`), plus `npc_id`, `tag`, `template_id`, `world`, `space_id`, `npc_to_spawn`, `threat_count`, `nav_path_len`. `CellEntity::ai_state` is a private field and this helper is its only writer, so the row is a complete per-NPC state timeline. Counter `npc_ai_transitions_total` |
+| `npc_ai.aggro` | INFO | `cell::service::npc_ai::aggro_acquired::log_aggro_acquired`, called from `combat::generate_threat` | `event = "acquired"`: one row per entry into Fighting. `cause` (`proximity` \| `damage` \| `content_threat`; `assist` arrives with NA14), `from`, `target_id`, `player_id` and `account_id` (only when the target is a player), `npc_to_target`, `dy`, three-state `has_los` (`clear` \| `blocked` \| `unknown`), `aggression`, plus the common NPC fields. Replaces the unstructured "NPC aggro: preempt -> Fighting" line. Counter `npc_ai_aggro_total` |
+| `content` | WARN / INFO | `cell::content::executor::world::set_aggression` | `event = "set_aggression_tag_miss"` (WARN, `reason = "tag_not_found"`): the action's tag matched no entity, so the NPC's aggression is unchanged; carries `tag`, `chain_id`, `agg_level`. `event = "set_aggression"` (INFO): the hit, with `from` / `to` aggression. A mistyped chain tag used to be silent and read exactly like an aggro bug |
 | `spawner.npc_behaviour` | DEBUG | `cell::spawner::npcs::log_spawn_behaviour` | Resolved behaviour of each spawned NPC: `aggression`, `use_cover`, `is_stationary`, `move_speed`, `respawn_secs`, follow band, patrol / wander, `on_navmesh`, `ground_y`, `spawn_yaw_rad`, interaction flags, loot table |
 | `player.death` | INFO | `cell::abilities::damage_apply` | First-class player death: identity, `killer` + `killer_name`, `ability_id`, world, position. The adjacent `onBeginAidWait` row now lists `respawner_ids` and its `filter` |
 | `session.start` / `session.end` | INFO | `cell::service::base_messages::player_init`, `base::helpers::destroy_client_entities` | World entry (identity, character, archetype, level, `access_level`, world, mission count) and teardown (`disconnect_reason`, `session_secs`). Client telemetry is ingested by admin-api (`launcher.ingest` / `launcher.bundle`), so liveness is a query: a `session.start` with no `launcher.*` rows for the same window means the tester has no client logs — see the *sessions vs client telemetry* saved view |
@@ -254,7 +268,7 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `no_path` | WARN — pathfinder returned no path (typically: zone missing navmesh). Raised from INFO when it moved onto the throttled `npc_ai.path_fail` target; a stuck NPC is a standing condition, and at INFO it was one row per tick forever |
 | `min_range_backup` | Target inside ability `min_range` — stepping back |
 | `no_ability` | Every known ability on cooldown / needs ammo |
-| `leashed` | Target moved past `LEASH_DISTANCE` from spawn |
+| `leashed` | Target moved past `LEASH_DISTANCE` from spawn. The row carries `target_to_spawn` (the distance the test uses; called `dist_to_spawn` before NA00), `npc_to_spawn` and `leash_distance` |
 | `repath_degenerate` | WARN — chase repath returned ≤1 waypoint; the previous path is left in place, so the NPC may keep walking toward where the target used to be |
 | `hold_no_repath` | Out of range / no LoS, but the existing path still ends within 5 u of the target — no new order this tick (previously silent) |
 | `follow_no_path` | WARN — follow found no navmesh path and fell back to a raw 3-axis straight line (`reason` = `no_mesh` \| `no_path`; `dy` is the air-climb signature) |
@@ -330,17 +344,28 @@ space ids to world names by hand):
 |---|---|---|
 | `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
 | `npc_path_fail_total` | `world` (~24), `state` (5), `reason` (3) | Same discipline: counted every AI tick, logged ≤ 1 / 5 s per NPC |
+| `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (18) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
+| `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
 | `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged |
 
 Never entity ids, positions or mesh hashes as labels — those are
 per-entity and per-build correlators and belong on the log event.
 
-**Resource attribute `deployment.environment`.** Every metric (and
-every span and log) carries this resource attribute, defaulted from
-`CIMMERIA_DEPLOY_ENV` (default `"dev"`). Operators set it in the
-colo's docker-compose to `colo` so SigNoz dashboards can split
-production data from dev-laptop noise. Override via the standard OTel
-`OTEL_RESOURCE_ATTRIBUTES=deployment.environment=...` if needed.
+**Deploy-identity resource attributes.** Every metric, span and log
+(both log indexes) carries four resource attributes, built by
+`identity_attributes` in [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs):
+
+| Attribute | Source |
+|---|---|
+| `deployment.environment` | `CIMMERIA_DEPLOY_ENV` (default `"dev"`; the colo compose file sets `colo`) |
+| `cimmeria.deploy_env` | The same value, under the name the NPC-AI runbook filters on (`cimmeria.deploy_env = 'colo'`) |
+| `host.name` | The OS hostname (inside the container, the container hostname) |
+| `service.version` | The git commit baked in at build time by `crates/server/build.rs`: the `CIMMERIA_GIT_SHA` Docker build arg in the release image (`release-container.yml` passes `github.sha`), `git rev-parse HEAD` in a source build, otherwise `"unknown"` |
+
+Explicit builder attributes win over `OTEL_RESOURCE_ATTRIBUTES` in the
+SDK's resource merge, so these four are authoritative. Before NA00 only
+`deployment.environment` existed, so a colo row could not be tied to a
+host or a build (audit gap T2).
 
 ### Cost on the hot path
 

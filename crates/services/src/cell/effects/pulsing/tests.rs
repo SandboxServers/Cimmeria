@@ -555,7 +555,7 @@ async fn a_dot_cannot_finish_a_surrendered_npc() {
     let (tx, _rx) = mpsc::channel(64);
     register_active_effect(&mut mgr, 2, 1, &effect, Instant::now(), &tx).await;
     if let Some(t) = mgr.get_entity_mut(2) {
-        t.ai_state = AiState::Submit;
+        crate::cell::service::npc_ai::force_ai_state(t, AiState::Submit);
         // 5 HP against a 10-damage pulse: lethal without the floor.
         if let Some(s) = t.stats.get_mut(HEALTH) {
             s.update(0, 5, 100);
@@ -582,7 +582,7 @@ async fn a_dot_cannot_finish_a_surrendered_npc() {
          cadence",
     );
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Submit,
         "and it is still surrendered, not pushed to Dead",
     );
@@ -603,7 +603,7 @@ async fn a_dot_still_finishes_a_fighting_npc() {
     let (tx, _rx) = mpsc::channel(64);
     register_active_effect(&mut mgr, 2, 1, &effect, Instant::now(), &tx).await;
     if let Some(t) = mgr.get_entity_mut(2) {
-        t.ai_state = AiState::Fighting;
+        crate::cell::service::npc_ai::force_ai_state(t, AiState::Fighting);
         if let Some(s) = t.stats.get_mut(HEALTH) {
             s.update(0, 5, 100);
         }

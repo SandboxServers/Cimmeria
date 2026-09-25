@@ -103,7 +103,7 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
         .into_iter()
         .filter(|&eid| {
             space_mgr.get_entity(eid).is_some_and(|e| {
-                e.ai_state == AiState::Dead && e.respawn_at.is_some_and(|t| now >= t)
+                e.ai_state() == AiState::Dead && e.respawn_at.is_some_and(|t| now >= t)
             })
         })
         .collect();
@@ -225,7 +225,12 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             entity.ai_retry_at = None;
             entity.respawn_at = None;
             entity.velocity = [0.0; 3];
-            entity.ai_state = AiState::Idle;
+            crate::cell::service::npc_ai::set_ai_state_on(
+                entity,
+                &world_name,
+                AiState::Idle,
+                crate::cell::service::npc_ai::AiTransitionReason::Respawn,
+            );
 
             // Cooldowns on death are stale by definition — clear so
             // the respawned NPC isn't held back by timers from its

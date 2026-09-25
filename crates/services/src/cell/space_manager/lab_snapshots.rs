@@ -139,7 +139,7 @@ fn snapshot_entity(space: &SpaceInstance, entity: &CellEntity) -> LabEntitySnaps
         name_id: entity.name_id,
         archetype_id: entity.archetype_id,
         access_level: entity.access_level,
-        ai_state: format!("{:?}", entity.ai_state),
+        ai_state: format!("{:?}", entity.ai_state()),
         current_target_id: entity.current_target_id,
         aoi_radius: entity.aoi_radius,
         state_field: entity.state_field,

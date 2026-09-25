@@ -481,7 +481,7 @@ async fn chain_1174_teleport_in_starts_follow_and_routes_a_real_multi_waypoint_p
          after chain 1174 executes"
     );
     assert_eq!(
-        marsh.ai_state,
+        marsh.ai_state(),
         AiState::Follow,
         "Marsh must transition to AiState::Follow after chain 1174 executes"
     );
@@ -585,7 +585,7 @@ async fn chain_1175_mission_686_complete_clears_marsh_follow_target() {
     // covers the start).
     if let Some(m) = mgr.get_entity_mut(MARSH_EID) {
         m.follow_target_id = Some(PLAYER_EID);
-        m.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(m, AiState::Follow);
     }
 
     let (tx, _rx) = mpsc::channel(64);
@@ -598,7 +598,7 @@ async fn chain_1175_mission_686_complete_clears_marsh_follow_target() {
         "Marsh's follow_target_id must be cleared once mission 686 completes"
     );
     assert_eq!(
-        marsh.ai_state,
+        marsh.ai_state(),
         AiState::Idle,
         "Marsh must drop back to AiState::Idle once mission 686 completes"
     );

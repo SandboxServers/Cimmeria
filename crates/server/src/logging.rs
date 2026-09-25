@@ -23,6 +23,15 @@ use crate::otel;
 /// its DEBUG events never reach SigNoz however useful they are.
 /// `aoi.create_emit` was built to localize the invisible-static-NPC drop and
 /// was absent from the 2026-09-19 repro for exactly that reason.
+///
+/// A directive's target matches by **string prefix** (`tracing-subscriber`
+/// compares `meta.target().starts_with(directive_target)`), and the longest
+/// matching directive wins. So `npc_ai=debug` already exports
+/// `npc_ai.transition`, `npc_ai.aggro`, `npc_ai.tick` and `npc_ai.path_fail`,
+/// and `cover=debug` covers every `cover.*` target; but `wire.out=info`
+/// needs the more specific `wire.out.avatar_update=debug` beside it to let
+/// that one DEBUG sample through. `otel_filter_prefix_matching_exports_npc_ai_children`
+/// pins this behaviour, not just the string.
 const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_mercury=debug,\
@@ -30,10 +39,15 @@ const OTEL_FILTER: &str = "info,\
                 mercury.retransmit=info,\
                 mercury.backpressure=warn,\
                 wire.in=info,wire.out=info,\
+                wire.out.avatar_update=debug,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 aoi.create_emit=debug,\
                 movement.npc=debug,movement.player=debug,\
+                movement.navmesh=debug,\
                 npc_ai=debug,\
+                cover=debug,\
+                spawner=debug,\
+                content=info,\
                 threat=info,\
                 auth=info,\
                 world_entry=info,\
@@ -502,6 +516,18 @@ mod tests {
             "aoi.entity_enter=debug",
             "aoi.entity_leave=debug",
             "aoi.create_emit=debug",
+            // NA00 / audit gap T1: DEBUG seams that never reached SigNoz.
+            "wire.out.avatar_update=debug",
+            "movement.navmesh=debug",
+            "cover=debug",
+            "spawner=debug",
+            // Covers `npc_ai.transition`, `npc_ai.aggro` and every other
+            // `npc_ai.*` target by prefix -- see the behavioural test below.
+            "npc_ai=debug",
+            // `content` WARN rows (`set_aggression_tag_miss`) and INFO
+            // rows would pass at the default `info`; named so the target
+            // is explicit and a later global raise cannot drop it.
+            "content=info",
         ] {
             assert!(
                 OTEL_FILTER.split(',').any(|d| d.trim() == directive),
@@ -511,5 +537,63 @@ mod tests {
         OTEL_FILTER
             .parse::<tracing_subscriber::EnvFilter>()
             .expect("OTEL_FILTER must stay a valid EnvFilter directive string");
+    }
+
+    /// Records the target of every event the filter lets through.
+    struct TargetLog(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for TargetLog {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(event.metadata().target().to_string());
+        }
+    }
+
+    /// Behavioural pin for the prefix rule the filter relies on: the new
+    /// `npc_ai.*` targets reach the exporter through `npc_ai=debug` without
+    /// their own directives, the more specific `wire.out.avatar_update`
+    /// beats `wire.out=info`, and a sibling `wire.out.*` DEBUG row is still
+    /// dropped. Fails if `tracing-subscriber` ever switches to exact-target
+    /// matching, or if one of these directives is removed.
+    #[test]
+    fn otel_filter_prefix_matching_exports_npc_ai_children() {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::{EnvFilter, Layer};
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(TargetLog(seen.clone()).with_filter(EnvFilter::new(OTEL_FILTER)));
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug!(target: "npc_ai.transition", "t");
+            tracing::info!(target: "npc_ai.aggro", "a");
+            tracing::debug!(target: "wire.out.avatar_update", "w");
+            tracing::debug!(target: "movement.navmesh", "m");
+            tracing::debug!(target: "cover.selection", "c");
+            tracing::debug!(target: "spawner.npc_behaviour", "s");
+            tracing::warn!(target: "content", "x");
+            // Must be filtered out:
+            tracing::debug!(target: "wire.out.other", "dropped");
+            tracing::debug!(target: "threat", "dropped");
+        });
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(
+            seen,
+            [
+                "npc_ai.transition",
+                "npc_ai.aggro",
+                "wire.out.avatar_update",
+                "movement.navmesh",
+                "cover.selection",
+                "spawner.npc_behaviour",
+                "content",
+            ],
+            "OTEL_FILTER passed the wrong set of targets"
+        );
     }
 }

@@ -1,5 +1,6 @@
 //! `npc_ai_investigate` lifecycle: pathfind to POI, dwell, return to Idle.
 
+use crate::cell::combat::AggroCause;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::AiState;
@@ -37,7 +38,7 @@ async fn investigate_first_tick_routes_toward_poi() {
     let mut mgr = make_castle_mgr();
     spawn_npc_at(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Investigating);
         npc.poi = Some(Vector3::new(10.0, 0.0, 10.0));
         npc.investigate_until = None;
     }
@@ -69,7 +70,7 @@ async fn investigate_arrival_stamps_dwell() {
     let mut mgr = make_castle_mgr();
     spawn_npc_at(&mut mgr, 200, [10.0, 0.0, 10.0]); // at POI
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Investigating);
         npc.poi = Some(Vector3::new(10.0, 0.0, 10.0));
         npc.investigate_until = None;
         npc.nav_path.clear();
@@ -89,7 +90,7 @@ async fn investigate_arrival_stamps_dwell() {
         "Arrival at POI with no existing dwell must stamp a fresh deadline",
     );
     assert_eq!(
-        npc.ai_state,
+        npc.ai_state(),
         AiState::Investigating,
         "Still investigating during the dwell window",
     );
@@ -101,7 +102,7 @@ async fn investigate_with_elapsed_dwell_returns_to_idle() {
     let mut mgr = make_castle_mgr();
     spawn_npc_at(&mut mgr, 200, [10.0, 0.0, 10.0]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Investigating);
         npc.poi = Some(Vector3::new(10.0, 0.0, 10.0));
         npc.investigate_until =
             Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
@@ -117,7 +118,7 @@ async fn investigate_with_elapsed_dwell_returns_to_idle() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(npc.ai_state(), AiState::Idle);
     assert_eq!(npc.poi, None, "POI must clear after dwell");
     assert_eq!(npc.investigate_until, None);
 }
@@ -135,15 +136,15 @@ async fn investigate_preempted_by_threat_clears_nav_keeps_poi() {
         p.is_player = true;
     }
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Investigating);
         npc.poi = Some(Vector3::new(20.0, 0.0, 0.0));
         npc.nav_path.push_back(Vector3::new(10.0, 0.0, 0.0));
     }
 
-    let _ = crate::cell::combat::generate_threat(&mut mgr, 1, 200, 50.0);
+    let _ = crate::cell::combat::generate_threat(&mut mgr, 1, 200, 50.0, AggroCause::Damage);
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Fighting);
+    assert_eq!(npc.ai_state(), AiState::Fighting);
     assert!(npc.nav_path.is_empty(), "Preemption must clear nav_path");
     assert!(npc.poi.is_some(), "POI persists across preemption");
 }
@@ -154,7 +155,7 @@ async fn investigate_with_no_poi_drops_to_idle() {
     let mut mgr = make_castle_mgr();
     spawn_npc_at(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Investigating);
         npc.poi = None;
     }
     let (tx, _rx) = mpsc::channel(16);
@@ -167,7 +168,7 @@ async fn investigate_with_no_poi_drops_to_idle() {
     .await;
 
     let npc = mgr.get_entity(200).unwrap();
-    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(npc.ai_state(), AiState::Idle);
 }
 
 /// **A1 fix pin**: knockback during dwell at the POI must NOT cause
@@ -182,7 +183,7 @@ async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
     spawn_npc_at(&mut mgr, 200, [10.0, 0.0, 10.0]); // start at POI
     let past = std::time::Instant::now() - std::time::Duration::from_secs(60);
     if let Some(npc) = mgr.get_entity_mut(200) {
-        npc.ai_state = AiState::Investigating;
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Investigating);
         npc.poi = Some(Vector3::new(10.0, 0.0, 10.0));
         npc.investigate_until = Some(past);
         npc.nav_path.clear();
@@ -202,7 +203,7 @@ async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
 
     let after_knockback = mgr.get_entity(200).unwrap();
     assert_eq!(
-        after_knockback.ai_state,
+        after_knockback.ai_state(),
         AiState::Investigating,
         "Knockback must not flip the NPC out of Investigating mid-route",
     );
@@ -230,7 +231,7 @@ async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
 
     let after_re_arrival = mgr.get_entity(200).unwrap();
     assert_eq!(
-        after_re_arrival.ai_state,
+        after_re_arrival.ai_state(),
         AiState::Investigating,
         "Re-arrival after knockback must NOT immediately return to Idle",
     );

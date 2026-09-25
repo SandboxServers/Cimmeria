@@ -56,9 +56,12 @@ pub(super) async fn npc_ai_wander(
     // doesn't see a Wander byte for an NPC that's about to leave
     // Wander this same tick.
     if radius <= 0.0 {
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            cimmeria_entity::cell_entity::AiState::Idle,
+            super::AiTransitionReason::WanderNoRadius,
+        );
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     }
@@ -136,9 +139,12 @@ pub(super) async fn npc_ai_wander(
 
     let Some(spawn) = spawn_pos else {
         // No spawn anchor — wander can't pick a destination. Drop to Idle.
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            cimmeria_entity::cell_entity::AiState::Idle,
+            super::AiTransitionReason::WanderNoSpawn,
+        );
         return;
     };
 

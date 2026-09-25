@@ -146,7 +146,7 @@ async fn a_shot_that_crosses_the_threshold_disengages_both_sides() {
         "test fixture: the shot must wound without killing (health = {hp})",
     );
     assert_eq!(
-        mgr.get_entity(NPC).unwrap().ai_state,
+        mgr.get_entity(NPC).unwrap().ai_state(),
         AiState::Submit,
         "the crossing must reach the content engine and run \
          `set_npc_ai_state submit` — a Fighting NPC here means the \
@@ -222,7 +222,7 @@ async fn the_auto_cycle_tick_closes_the_window_before_the_ai_tick_runs() {
     )
     .await;
     assert_eq!(
-        mgr.get_entity(NPC).unwrap().ai_state,
+        mgr.get_entity(NPC).unwrap().ai_state(),
         AiState::Submit,
         "fixture: the crossing must have reached the surrender action",
     );
