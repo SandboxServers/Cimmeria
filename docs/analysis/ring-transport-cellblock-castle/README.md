@@ -1,0 +1,196 @@
+# CellBlock → Castle Ring Transport: Audit and Client-Patch Feasibility
+
+**Date:** 2026-09-19
+**Status:** Feasibility only. No patcher, seed change or client file has been produced.
+**Trigger:** external handoff `01_RING_TRANSPORT_CLAUDE_INSTRUCTIONS.zip` (baseline `f661a97d`), which asks for mission 688's instant `cross_world_teleport` to be replaced with a full Ring Transporter ceremony.
+
+## Summary
+
+The handoff assumes the ceremony can be restored from the server. It cannot. The ring drop, flash and sound are a client-side Matinee inside a Kismet sequence baked into the cooked map, and neither pad has one. The server half is already there: the ring FSM supports cross-world trips, and mission 640 shows the `trigger_transporter` + `teleport_in` chain shape.
+
+What the maps do contain changes the framing. At both pads the original designers placed a complete physical ring station (base platform, console and the top ring) using the exact meshes of the wired rigs. They never instanced the prefab's Kismet. A client patch would finish work the designers started, not invent a ring where none was planned.
+
+A client patch is feasible but it is a tooling project. The repo has no UE3 package writer, and the riskiest steps are rewriting object references inside opaque property blobs and splicing the level's actor list. The recommendation is a gated four-phase plan whose first phase is a cheap go/no-go experiment.
+
+Evidence labels used below: `CONFIRMED` (parsed from the cooked client or read from the binary/docs), `INFERENCE`, `UNRESOLVED`, `PROJECT FINAL` (a deliberate reconstruction, not recovered original content).
+
+## Sources
+
+- Cooked client maps: `..\SGW\Stargate Worlds-QA\Working\SGWGame\CookedPC\Maps\Castle` (146 chunks) and `Maps\Castle_CellBlock` (70 files). The handoff's `02_`/`03_` map zips were hash-compared against this tree: 210 of 210 `.umap` files are byte-identical. `CONFIRMED`
+- Tools: `extract_actors`, `extract_kismet`, `upk_info`, `inspect-export` from `crates/upk` and `crates/upk-objects`. This investigation added `upk_info --imports` / `--names` and fixed `inspect-export --props` for component exports (see [Tool changes](#tool-changes)).
+- Coordinate transform: game `(x, y, z)` = UE `(Y, Z, X) / 100`. Derived from the wired region 1 rig: UE `(-12142.3, -21534.6, 6554.1)` against seeded region 1 `(-215.455, 65.918, -121.4)`. `CONFIRMED`
+- Client behaviour: [cinematic-system.md](../../gameplay/cinematic-system.md), [ring-transport-system.md](../../gameplay/ring-transport-system.md), [cooked-data-pipeline.md](../../reverse-engineering/findings/cooked-data-pipeline.md), [black-market-client-window-patch.md](../../reverse-engineering/findings/black-market-client-window-patch.md), [ue3-package-format.md](../../engine/ue3-package-format.md), plus Ghidra queries against `SGW.exe`.
+
+## Audit findings
+
+### Current server state
+
+| Item | State | Label |
+|---|---|---|
+| Chain 1109 | `interact_tag Cellblock_ArmoryRingSwitch` + `step_status 688/80688 active` → `complete_mission 688`, clear highlight, `cross_world_teleport Castle (466.365, 70.397, 991.466)`. Bypasses the ring FSM. | `CONFIRMED` |
+| Region 33 | World 12, centred on spawn 79 (the console) at `(-54.880, 26.080, -163.840)`, event set 10000, destination `{34}`, `required_mission_id=688`. | `CONFIRMED` |
+| Region 34 | World 8, `(466.365, 70.397, 991.466)`, event set 10000, inbound-only. | `CONFIRMED` |
+| Event set 10000 | Sequences 10015/10016 → `Castle_Cellblock-fffefffd…GLB-RingTransporterBase_TC00_Pf0_Seq_0`. That is region 1's rig, about 160 m from the Armory. Firing it for region 33 or 34 would animate an unseen ring. | `CONFIRMED` |
+| Chain 1109's comment ("nothing to animate on this route") | Correct as to Kismet. Wrong where it calls the platforms "set-decorated geometry": they are real ring stations, see below. | `CONFIRMED` |
+
+### What the maps contain
+
+| Site | Chunk | Ring | Base platform | Console | Kismet |
+|---|---|---|---|---|---|
+| Region 1 (wired) | `Castle_CellBlock-fffefffd` | InterpActors 334–338 → `GLB-Global.GLB-RingTransporter00` (five rings) | StaticMeshActor 1463 → `GLB-RingTransporterBase_TC00`, UE z 6538.1 | StaticMeshActor 1381 → `TC-Props.TC-Ring_Trans_Console00` | Sequence 1169, prefab-instanced |
+| Region 3 (wired) | `Castle_CellBlock-fffeffff` | InterpActors incl. 220/227/228 | StaticMeshActor 1192 | StaticMeshActor 1194 | Sequence 772, **de-prefabbed** |
+| **Armory pad (un-wired)** | `Castle_CellBlock-fffeffff` | InterpActor 226 → `GLB-RingTransporter00` (one ring) | StaticMeshActor 1174 → `GLB-RingTransporterBase_TC00`, UE z 2442 | StaticMeshActor 1178 → `TC-Ring_Trans_Console00` | **none** |
+| **Castle pad (un-wired)** | `Castle-00090004` | InterpActor 77 → `GLB-RingTransporter00` (one ring) | StaticMeshActor 433 → `GLB-RingTransporterBase_TC00`, UE z 6986 | StaticMeshActor 434 → `TC-Ring_Trans_Console00` | **none** |
+
+All rows `CONFIRMED`.
+
+- CellBlock holds exactly three ring sequences (chunks `fffefffd`, `fffefffe`, `fffeffff`), matching regions 1–3 and event sets 10000 / 874 / 875.
+- Castle holds no `SeqEvent_RegionTeleport` and no ring sequence in any of its 146 chunks (zero parse errors). The handoff's raw string scan was unreliable because chunks are LZO-compressed; this result comes from parsed export tables.
+- At both un-wired pads only the top ring of the stack is placed, at `base_z + 20` UU, the same offset as the top ring of the wired rig. The remaining four rings, the emitter and the sequence would have come from instancing the prefab.
+- The source prefab survives cooking: `CookedPC\Packages\GLB-Global.upk` (uncompressed) contains `Prefab` export 3243 `GLB-RingTransporterBase_TC00_Pf0` with its archetype actors and template `Sequence`.
+
+### Region placement
+
+The wired region 1 sits 0.537 m above its base platform origin. Applying the same offset to the un-wired pads:
+
+| Region | Seeded | Pad-derived | Delta |
+|---|---|---|---|
+| 33 | `(-54.880, 26.080, -163.840)` | `(-53.602, 24.957, -166.596)` | about 3.2 m; the seed is on the console, not the pad |
+| 34 | `(466.365, 70.397, 991.466)` | `(466.451, 70.397, 991.552)` | 0.12 m; the in-game HUD pin was accurate |
+
+Pad-derived values are `INFERENCE` from `CONFIRMED` actor positions. Region 33 should move regardless of which option below is chosen.
+
+### How the client plays a ring sequence
+
+- The server sends only an integer sequence id (`onSequence`). The client maps it to a Kismet script name through its cached copy of the `sequences` table (cooked-data category 1), which the server supplies. New sequence rows are therefore a server-side change. `CONFIRMED`
+- The name is then resolved to a live object by the engine. The consuming function was not traced; `UObject::StaticLoadObject` is present at `0x004a8e10`, `[Engine.StartupPackages]` lists no packages, and no `KIS-` literal exists in the binary, so resolution is most likely stock UE3 find-or-load by object path. `INFERENCE`
+- An unresolvable name is probably a silent no-op, as in neighbouring lookup paths. Not verified for this call site. `UNRESOLVED`
+- `USeqEvent_RegionTeleport` (`0x0069fc40`) carries no region or player data. Its filter at `0x006a09e0` fires when `sequenceEventType == teleportDirection + 8000`. All region logic is server-side, so a cloned rig needs no per-region client data. `CONFIRMED`
+- The engine checks only package version on load (`"Package '%s' version mismatch"`). No content hash, signature or server GUID comparison was found. File integrity lives in the launcher's SHA-256 + Ed25519 manifest, which is also the existing channel for shipping client changes. `CONFIRMED`
+
+## Options
+
+| | Option | Delivers the ring animation | Client change | Verdict |
+|---|---|---|---|---|
+| A | Clone a rig into the two cooked chunks | Yes, identical to regions 1–3 | Two modified `.umap` files via launcher overlay | **Recommended**, gated |
+| B | New standalone Kismet package (`KIS-*` style) | No. A standalone sequence cannot bind the pad's level actors, so at best particles and sound on the player | One added `.upk` | Rejected for this goal |
+| C | Runtime patch (Lua or native hook spawns and moves ring actors) | In principle | Per-launch memory patch | Rejected: no documented surface spawns actors or plays a Matinee; all new RE |
+| D | Server-only: route 1109 through the ring FSM with empty map-local event sets | No visuals. Gains movement lock, hide/show, party passengers, timeout release, and mission 688 completing on arrival instead of before the trip | None | Worth doing regardless; it is also phase 3 of option A |
+
+## Option A in detail
+
+### What has to be cloned
+
+Use region 3's rig in `fffeffff` (sequence 772) as the source, not region 1's. It is de-prefabbed: its InterpActors carry explicit `StaticMesh` properties, and it needs no `Prefab`, `PrefabInstance` or archetype imports. That removes the whole prefab-chain import problem (16 imports in the `fffefffd` rig). `CONFIRMED`
+
+For scale, the prefab-instanced `fffefffd` rig closes over 48 exports / 59,752 serial bytes / about 45 imports. The de-prefabbed shape is about 34 exports. Audio is an FMOD event string (`prp_gen/rings/transport`), not an import. `CONFIRMED`
+
+Import cost per target:
+
+| Target | Imports already present | To add |
+|---|---|---|
+| `Castle_CellBlock-fffeffff` (Armory pad) | All of them. Source and target are the same package. | 0 |
+| `Castle-00090004` (Castle pad) | 14, including all three meshes | about 31: the four SGW Kismet classes (they live in `Engine`), `SeqAct_Toggle`, `InterpGroupDirector`, `InterpTrackEvent`, `Emitter`, `ParticleSystemComponent`, `GLB-VFX.Par-ring05` and outers |
+
+Both targets already have a `Main_Sequence.Prefabs` sub-sequence to attach to (`fffeffff` 763/764, `Castle-00090004` 272/273). `CONFIRMED`
+
+One item is easier than expected: `InterpTrackMove.MoveFrame = IMF_RelativeToInitial` with a zero Euler track, so the 3,419-byte position tracks copy verbatim and only the actors' `Location` vectors need rewriting. `CONFIRMED`
+
+### Work items
+
+| # | Item | Risk |
+|---|---|---|
+| 1 | Package writer: serialize header, name, import, export and depends tables plus export data. `crates/upk` is read-only today; `crates/navmesh-extractor/src/test_support/package_bytes.rs` is a test-only skeleton. The `tools/ue3_*.py` round-trip scripts that [ue3-package-format.md](../../engine/ue3-package-format.md) mentions are no longer in the repo. | Medium |
+| 2 | Name-table merge (no-op for the Armory pad). | Low |
+| 3 | Import-table merge with outer chains (no-op for the Armory pad). | Medium |
+| 4 | Export append with object-reference remap. References inside `ArrayProperty` / `StructProperty` blobs (`SequenceObjects`, `InterpGroups`, Kismet `Links`, `LinkedVariables`, `Targets`) are returned as opaque bytes by the current parser. A missed reference is silent corruption. | **High** |
+| 5 | Actor `Location` / `Rotation` rewrite. Reuse the already-placed top ring (exports 226 / 77) as one of the five. | Low |
+| 6 | Level actor-list splice. The list is a post-property binary `TArray` inside the `Level` export; locating it needs a real `ULevel::Serialize` walk, which does not exist yet. | **High** |
+| 7 | `Prefabs.SequenceObjects` splice and `ParentSequence` fix-up. | Low |
+| 8 | Header recompute: every downstream `serial_offset`, depends table, `generations[]`, `total_header_size` (ends at the depends table, a documented trap). | Medium |
+| 9 | Emit uncompressed first; LZO repack only if the client rejects it. All shipped `.upk` packages are uncompressed, but every shipped `.umap` is LZO and an uncompressed map has never been tested. | Medium |
+| 10 | Decode how `SeqEvent_RegionTeleport` and `SeqEvent_Console` bind to the level (originator / `Targets`). Must be understood before costing item 4. | `UNRESOLVED` |
+
+### Phased plan
+
+| Phase | Work | Exit gate |
+|---|---|---|
+| 0 | Writer round-trip. Read `Castle-00090004`, write it back uncompressed with no content change, load it in the client. Also decode item 10 and trace the `onSequence` consumer from `register_NetIn_onSequence @ 0x00d76f40`. | Client loads the rewritten chunk and the pad looks unchanged. **If this fails, stop and ship option D.** |
+| 1 | Same-package clone: region 3's rig onto the Armory pad inside `fffeffff`. Items 2 and 3 are no-ops, isolating the two high-risk items. | A GM-triggered sequence animates the Armory ring in-game. |
+| 2 | Cross-package clone into `Castle-00090004`. | The Castle ring animates in-game. |
+| 3 | Server seed (option D plus sequences): four new `sequences` rows (8000/8001 per pad), two new map-local event sets, regions 33/34 repointed and region 33 re-centred, chain 1109 → `trigger_transporter {"regionId": 33}`, new `teleport_in '34'` chain completing 688 (the mission-640 / chain-1044 shape). Tests per the handoff's list, including "failed trip does not complete 688". | Full flow UAT, plus regions 1→2, 2→3, Omega 14↔17 and Harset regression. |
+| 4 | Distribution: two patched chunks as a launcher overlay zip under the signed manifest. | Unpatched client verified to degrade to option D behaviour, not crash. |
+
+Phase 3 does not depend on phases 0–2 except for the sequence rows, so option D can ship first and the visuals can follow.
+
+Everything produced by phases 1–2 is `PROJECT FINAL`: a reconstruction using original assets and an original sequence, completing a station the designers placed but did not wire. It is not recovered original Kismet.
+
+## Phase 0 status
+
+**2026-09-19: PASSED.** The owner logged in to CellBlock with the `ringpad` chunk installed. The zone loaded normally and the cloned station rendered in the stasis hall, lit and at floor height: base platform with its four pylons, the ring on the pad, and the console beside it. Open question 1 is answered: the client loads an uncompressed `.umap` with its tables rebuilt at the end of the file, new names, imports and exports, and a spliced actor list. Phase 1 is unblocked.
+
+- The append-only patcher is in [`crates/upk/src/patcher/`](../../../crates/upk/src/patcher/) (CLI `upk_patch`); the layout is described in [ue3-package-format.md](../../engine/ue3-package-format.md#writing-packages--the-append-only-patcher). It does not move existing bytes, which removes the bulk-data offset problem and the header-recompute work item (#8) from the plan above.
+- Work item 6 is resolved: the `Level` actor array is `owner ref, count, refs` directly after the (empty) tagged property list, and `WorldInfo` is element 0. No `Level` export inspected holds inline bulk data.
+- A clone across packages works at the file level: the un-wired Armory station (base 1174, ring 226, console 1178 from `Castle_CellBlock-fffeffff`) was cloned into the stasis hall chunk `Castle_CellBlock-fffdfffc` at UE `(-22298, -33098, 7345)`, game `(-330.98, 73.45, -222.98)`, about 6 m from the `Stasis Chamber` respawner. That added 6 exports, 7 imports and 8 names; the other 1,009 exports read back byte-identical.
+- New finding: export `ComponentMap` values are 0-based export indices, not 1-based refs.
+
+Test files live outside `CookedPC` (the engine scans that tree for packages, so backups must not sit inside it):
+
+| Path (under the `SGW` folder next to the client) | Content |
+|---|---|
+| `map-backups/2026-09-19-pre-ring-patch/` | Both map folders, 216 files, with `SHA256SUMS.txt` |
+| `map-backups/phase0-artifacts/A-roundtrip-only-fffdfffc.umap` | Stasis chunk rewritten uncompressed, no content change |
+| `map-backups/phase0-artifacts/B-ringpad-fffdfffc.umap` | Same, plus the cloned ring station |
+| `map-backups/phase0-artifacts/Install-Phase0.ps1` | `original` / `roundtrip` / `ringpad` swap script |
+
+What the in-client test decided (first row was the outcome):
+
+| Result with `ringpad` installed | Meaning | Next |
+|---|---|---|
+| CellBlock loads and the station is visible in the stasis hall | Open question 1 is answered yes; names, imports, exports and the actor-list splice all load | Phase 1 |
+| CellBlock loads, no station | The chunk loads uncompressed but the new actors are not registered or not rendered | Compare against `roundtrip`; inspect the actor-list and component data |
+| Crash or hang entering CellBlock | Install `roundtrip` to split "uncompressed, tables at end" from "new content" | If `roundtrip` also fails, add an LZO recompress step or a conventional table layout |
+
+The cloned actors block movement on the client only. The server has no collision for them, so standing on the pad may trip movement validation; walk around it for this test.
+
+## Phase 1 status
+
+**2026-09-19: built, awaiting the in-client test.** Region 3's wired rig was cloned onto the Armory pad inside `Castle_CellBlock-fffeffff`.
+
+- The rig is 32 Kismet objects under sequence 772, driving five ring `InterpActor`s (218, 219, 220, 227, 228) and an `Emitter` (216) whose particle component owns 20 mesh sub-components. Everything parses as tagged properties; the only native tail is `SeqAct_Interp`'s empty `SavedActorTransforms`.
+- The rig's top ring (220, at base + 20) is mapped onto the ring the designers already placed at the pad (226) instead of being cloned, so the pad does not end up with two rings in one spot. The other four rings and the emitter are cloned.
+- The Armory pad is rotated 90 degrees from region 3's, so placement is an anchor transform from base 1192 to base 1174 that carries the yaw difference.
+- Result: 62 new exports, no new names or imports, level actors 713 to 718. The other 1,762 exports read back byte-identical; the two that changed are the `Level` (actor list) and `Prefabs` (`SequenceObjects`).
+- This answers open question 3: the rig's `SeqEvent_RegionTeleport` nodes have no `Originator` and bind to nothing in the level. Their only variable link, `Source`, points at a `SeqVar_Object` inside the rig. The client reaches a rig purely through the sequence's object path, which is why the clone needs its own name: `Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0`.
+
+Server side, sequences 10187 (Teleport Out, event 8000) and 10188 (Teleport In, 8001) point at that path. **The client resolves a sequence id through its own cooked catalogue (`CookedDataKismetSeqEvent.pak`, category 1), not through the database**, so a seed row alone is invisible to clients. The two entries are delivered by [`sequence_overrides.rs`](../../../crates/services/src/base/sequence_overrides.rs): the server adds them in memory at startup, the category's version changes, and a connecting client gets `InvalidKeys = [10187, 10188]` followed by the two elements. That is the same per-key path that delivers dialog 3996, a brand-new id the shipped PAK never had. Nothing is copied to the client by hand and the on-disk PAK stays the file clients already hold. Region 33 is not repointed yet; that is Phase 3.
+
+> **Never edit the on-disk PAK's `MetaData` version.** The first cut of this work added the entries to the PAK file and bumped its version 7455 to 7456, assuming clients would refetch. They do not. Category 1 had no override list, so the server answered the mismatch with `invalidate_all = true` and pushed nothing; the client emptied its whole sequence table, rewrote `Documents\My Games\Firesky\SGWGame\Cache.en-US\CookedDataKismetSeqEvent.pak` as an empty archive stamped 7456, and no Kismet sequence played at all, region 3's untouched ring included. Having an override list is what keeps the category on the per-key branch. `crates/services/src/base/resources/tests/committed_paks.rs` pins both halves: the file stays at 7455 with no Cimmeria entries, and category 1 carries an override list. A client that was already wiped needs its `Cache.en-US` copy restored from its own `SourceCache.en-us` (`map-backups\Repair-KismetSeqCache.ps1`).
+
+To test: close the client, run `map-backups\phase1-artifacts\Install-Phase1.ps1 rig`, log in to a server that has the sequence overrides, stand at the Armory pad, and run `.net_seq 10187 3` with something targeted. The rings should rise and flash as they do at region 3 with `.net_seq 1951 3`. `Install-Phase1.ps1 original` restores the stock chunk.
+
+| Result | Meaning | Next |
+|---|---|---|
+| Rings animate at the Armory pad | The cloned Kismet resolves by path and drives the cloned actors | Phase 2: clone into `Castle-00090004` (about 31 new imports) |
+| Nothing happens, but `.net_seq 1951 3` animates region 3 | The clone is not reachable: check the path suffix and the `Prefabs` attachment | Inspect with `upk_info` / `inspect-export` |
+| Nothing happens at region 3 either | `.net_seq` is not a valid trigger for map-local ring sequences | Test through the ring FSM instead (walk into region 1) |
+| CellBlock fails to load near the Armory | The rig clone produced something the engine rejects | `Install-Phase1.ps1 original`, then bisect by cloning actors only |
+
+## Open questions
+
+| # | Question | How to close it |
+|---|---|---|
+| 1 | ~~Does the client load an uncompressed `.umap`?~~ | **Yes** (2026-09-19, see [Phase 0 status](#phase-0-status)). |
+| 2 | Which function consumes the resolved script name, and what happens when it fails to resolve? | Decompile forward from the `onSequence` subscriber (data xref `0x019c7f44`). Decides how unpatched clients behave. |
+| 3 | ~~What do `SeqEvent_RegionTeleport` / `SeqEvent_Console` bind to in the level?~~ | **Nothing.** No `Originator`; the rig is reached by the sequence's object path (see [Phase 1 status](#phase-1-status)). |
+| 4 | Exact end of the `ULevel` property block and start of the actor array. | Implement `ULevel::Serialize` for Epic 486. |
+| 5 | Licensee version: [ue3-package-format.md](../../engine/ue3-package-format.md) says 6, `upk_info` reports 8 on these chunks. | Check the header parse against a hex dump; fix whichever is wrong. |
+| 6 | The rigs' designer comment "event switched due to code bug". | Low priority. A clone inherits the shipped workaround unchanged. |
+
+## Tool changes
+
+Made during this investigation, uncommitted in the worktree that holds this document. `cargo fmt` and `cargo clippy` clean.
+
+- `crates/upk/src/package.rs`: `Package::import_full_path()` and `Package::resolve_object_path()`.
+- `crates/upk/src/bin/upk_info.rs`: `--imports`, `--names`; `--exports` now prints ref value, archetype and outer.
+- `crates/upk-objects/src/bin/inspect_export.rs`: `--props` probed offsets `[0, 4, 32]` and kept the first non-empty parse, so component exports (8-byte prefix) yielded one garbage property. It now probes `[0, 4, 8, 12, 32]`, keeps the parse with the most properties, prints resolved object paths, and accepts `--prop-offset N`.

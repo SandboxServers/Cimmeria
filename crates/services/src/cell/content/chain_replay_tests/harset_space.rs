@@ -25,9 +25,11 @@
 //!    each door carries a `world eq <id>` condition (H07) and the test
 //!    proves the same key resolves nothing from the other world or from
 //!    a context with no world at all (the fail-closed case).
-//! 4. **The off-mesh return coordinate**, stated as a biconditional —
-//!    chain 6007 may be enabled only if its arrival is on the mesh — so
-//!    the M0 re-pin is checked rather than requiring a manual edit.
+//! 4. **The off-mesh return coordinate.** Chain 6007 is enabled with an
+//!    arrival the mesh does not cover (placement PL-A-06 measured a real
+//!    floor 0.04 m under it with `obj_slab`), so the guard pins the two
+//!    conditions that make that safe instead: world 57 stays `advisory`
+//!    and keeps an authored respawner row.
 //! 5. **Ping-pong and template-bit invariants** that the seed comments
 //!    assert in prose: neither arrival lands in the opposing door's
 //!    trigger box, and template 3 still carries `INT_RingNetwork` (the
@@ -323,19 +325,23 @@ async fn harset_command_center_door_teleports_only_to_the_command_center() {
     );
 }
 
-/// Chain 6007 is seeded DISABLED, so entering
-/// `Harset_CmdCenter.HarsetTransition` resolves nothing at all.
+/// Chain 6007 is seeded ENABLED (placement PL-A-06), carries the recovered
+/// 2009 coordinate unchanged, and entering
+/// `Harset_CmdCenter.HarsetTransition` resolves exactly its own teleport
+/// back to Harset.
 ///
-/// This is the return half of the T3 trap *and* the enabled-flag guard.
-/// `enabled` is checked at resolve time, so a disabled chain loads into
-/// the engine and never fires; if M0 flips the row to `true` without
-/// replacing the off-mesh coordinate, this test fails and
-/// [`harset_return_coordinate_is_off_mesh`] explains why it must not.
-/// Delete the seed rows and this fails too — zero actions is also what a
-/// missing chain produces, so the companion DB assertion below proves the
-/// row exists and is deliberately off rather than absent.
+/// This is the return half of the T3 trap *and* the enabled-flag guard, and
+/// the structural pins below are the reason it is worth keeping now that the
+/// flag is `true` rather than `false`: H10's version of this test noted that
+/// "disabled" could hide "structurally broken" — a chain whose trigger or
+/// action rows were missing or typo'd resolved nothing for the wrong reason
+/// and every test stayed green. Enabling the chain converts that latent hole
+/// into a live one, so the `event_key`, destination world and coordinate are
+/// all pinned here. The survivability half of the story (off-mesh arrival,
+/// advisory world, respawner row) is in
+/// [`harset_return_arrival_is_offmesh_but_survivable`].
 #[tokio::test]
-async fn harset_return_door_is_disabled_pending_an_m0_pin() {
+async fn harset_return_door_is_enabled_and_structurally_intact() {
     let pool = require_db_or_skip!();
 
     let (enabled,): (bool,) =
@@ -347,26 +353,18 @@ async fn harset_return_door_is_disabled_pending_an_m0_pin() {
                  either unseeded or not `\\ir`'d from db/database.sql",
             );
     assert!(
-        !enabled,
-        "chain 6007 must stay `enabled = false` until M0 pins its arrival \
-         in-game. (0, -67.6, -231) is a coordinate recovered from a prop \
-         transform that nobody has ever stood on: the Harset audit measured \
-         it ~27 units from the nearest mesh vertex, and `is_point_valid` \
-         against harset.nav agrees. Since H53 the validator is no longer the \
-         objection — Harset is `navmesh_mode = 'advisory'`, so an arrival \
-         there is `Unvalidated` and a player who lands on it can walk away \
-         normally. What is still unknown is whether the point is on a floor \
-         at all: it may be inside geometry or above a fall. Only standing on \
-         it clears that, which is the M0 pin",
+        enabled,
+        "chain 6007 must be `enabled = true`. Placement PL-A-06 opened it \
+         after `obj_slab` confirmed a real floor 0.04 m under the recovered \
+         arrival (0, -67.6, -231), 7.41 m clear of point set 2078. If it has \
+         been closed again, chains 6511-6513 and 6528 must close with it — \
+         see `praxis_acceptance_is_enabled_iff_the_return_door_is`",
     );
 
-    // "Disabled" must not be allowed to hide "structurally broken". A
-    // chain row that exists and is off, whose trigger or action rows are
-    // missing or typo'd, satisfies both the assertion above and the
-    // resolve assertion below — it resolves nothing *because it is dead*,
-    // not because it is disabled. Then M0 flips `enabled` to true and the
-    // door still does nothing, with every test green. So pin the rows the
-    // flip will depend on.
+    // Pin the rows the door depends on. A chain row that exists and is
+    // enabled, whose trigger or action rows are missing or typo'd, is a door
+    // that silently does nothing — and the resolve assertion at the end
+    // cannot distinguish "wrong key" from "no chain".
     let (event_key,): (String,) = sqlx::query_as(
         "SELECT event_key FROM resources.content_triggers \
          WHERE chain_id = 6007 AND event_type = 'enter_region'",
@@ -378,7 +376,7 @@ async fn harset_return_door_is_disabled_pending_an_m0_pin() {
         event_key, "Harset_CmdCenter.HarsetTransition",
         "chain 6007's region key must byte-match point_sets row 2079; the \
          resolver compares with case-sensitive string equality, so a typo \
-         here is a door that never fires once M0 enables it",
+         here is a door that never fires",
     );
 
     let (world, x, y, z): (String, f64, f64, f64) = sqlx::query_as(
@@ -399,63 +397,97 @@ async fn harset_return_door_is_disabled_pending_an_m0_pin() {
         (x, y, z),
         (0.0, -67.6, -231.0),
         "chain 6007 must still carry the coordinate recovered from \
-         Harset_CmdCenter.py:15. If M0 re-pinned it, update this \
-         expectation and `harset_return_arrival_is_disabled_while_off_mesh` \
-         together with the `enabled` flip.",
+         Harset_CmdCenter.py:15. Placement PL-A-06 deliberately did NOT move \
+         it — the measured floor and the 7.41 m clearance from point set 2078 \
+         are both properties of this exact point. If it is re-pinned, redo \
+         the obj_slab floor check and the clearance check and update the \
+         ledger row PL-A-06, `harset_return_arrival_is_offmesh_but_survivable` \
+         and this expectation together.",
     );
 
     let engine = build_engine(Some(&pool)).await;
-    // World 68 is the one world the chain's `world eq 68` row admits, so an
-    // empty result here is the `enabled = false` flag and nothing else.
+    // World 68 is the one world the chain's `world eq 68` row admits.
     let resolved = resolve_enter_region(&engine, "Harset_CmdCenter.HarsetTransition", Some(68));
-    assert!(
-        resolved.actions.is_empty(),
-        "a disabled chain must resolve zero actions; got {:?}",
+    // Total count, not a filtered count: `build_engine` loads the whole
+    // database into one engine and `resolve_event` appends every matching
+    // chain's actions into one flat vec, so a filtered count of 1 still
+    // passes when another seed file's chain matched the same key.
+    assert_eq!(
+        resolved.actions.len(),
+        1,
+        "enter_region 'Harset_CmdCenter.HarsetTransition' must resolve \
+         exactly one action (chain 6007) for a player in world 68; got {}. \
+         Actions: {:?}",
+        resolved.actions.len(),
         resolved.actions,
     );
+    assert!(
+        matches!(
+            &resolved.actions[0],
+            (6007, Action::CrossWorldTeleport { world_name, position, .. })
+                if world_name == "Harset" && *position == [0.0f32, -67.6, -231.0]
+        ),
+        "chain 6007 must teleport back to Harset at the coordinate recovered \
+         from Harset_CmdCenter.py:15. Got: {:?}",
+        resolved.actions,
+    );
+
+    // The mirror of 6006's world gate: the return key must resolve nothing
+    // from world 57 or from a dispatch site that never populated the world.
+    for (world, label) in [(Some(57), "world 57"), (None, "no world context")] {
+        let wrong = resolve_enter_region(&engine, "Harset_CmdCenter.HarsetTransition", world);
+        assert!(
+            wrong.actions.is_empty(),
+            "chain 6007 must not resolve for a player with {label}; the \
+             `world eq 68` condition row is missing or evaluated open. \
+             Actions: {:?}",
+            wrong.actions,
+        );
+    }
 }
 
-/// The recovered return coordinate `(0, -67.600, -231)` is off the
-/// `harset.nav` mesh — the fact that keeps chain 6007 shipping disabled.
+/// Chain 6007's arrival is off the `harset.nav` mesh, the chain is enabled
+/// anyway, and the two conditions that make that safe must both hold.
 ///
-/// **Why this still holds after H53.** Harset is now
-/// `navmesh_mode = 'advisory'`, so the mesh no longer gates anything:
-/// `check_arrival` there returns `Unvalidated`, and a player who landed on
-/// this point would not be frozen by the position validator. The guard is
-/// unchanged anyway, because the reason it exists never was the validator.
-/// The coordinate came out of a prop transform in the cooked map; nobody
-/// has stood on it; and off-mesh is the only automated proxy the repo has
-/// for "unverified". A point the mesh does not cover may be a floor the
-/// mesh simply missed — most of Harset is — or it may be inside geometry
-/// or above a drop, and enabling a door onto it without an in-game pin
-/// bets a player's session on which. That is the M0 pin.
+/// **What changed, and why the old biconditional had to go.** H10 shipped
+/// 6007 disabled and this guard asserted `enabled ⟹ on-mesh`, on the
+/// reasoning that off-mesh is the repo's only automated proxy for
+/// "unverified" — the coordinate came out of a prop transform and might be
+/// inside geometry or above a drop. Placement PL-A-06 answered that question
+/// with the cooked map instead of a playtest: `obj_slab` reports an up-facing
+/// floor at y -67.64 in the columns at (0, -231), (±1, -231) and (0, -230),
+/// with 6.5 m of headroom, and the seeded y of -67.600 sits 0.04 m above it.
+/// The point is on a floor. Keeping the old implication would have required
+/// waiting for a *navmesh rebuild*, not a pin: nothing within ~20 m of that
+/// door is on-mesh at the real floor height (the nearest polygon to the
+/// arrival is 28.6 m above it, and 51.7 m above the door threshold), so
+/// there was no on-mesh coordinate to move to.
 ///
-/// The Harset audit measured this point ~27 units off-mesh by vertex
-/// proximity, which is an approximation; this runs the real Detour query
-/// (`is_point_valid`, ±3-unit search extents both phases) against the
-/// shipped mesh and confirms it. Two ring-pad coordinates are checked
-/// alongside as a live control: if the mesh were simply failing to load
-/// or every query were returning false, they would fail too, and the
-/// 6007 verdict would mean nothing.
+/// **The replacement contract**, which is still a biconditional and still
+/// fails on a half-done change: 6007 may be enabled with an off-mesh arrival
+/// **only while** world 57 is `navmesh_mode = 'advisory'` *and* world 57 has
+/// an authored respawner row. Those are the two independent reasons the
+/// off-mesh arrival cannot ghost the player — advisory makes the movement
+/// validator fail open, and the respawner makes even an enforcing world's
+/// recovery land somewhere real instead of returning
+/// `UnrecoverableOffMesh`. Flip world 57 back to `enforce`, or delete
+/// respawner 20, and this test fails before a player finds out.
 ///
-/// **Stated as a biconditional, not as a fixed verdict**, so it survives
-/// M0 without a manual edit: whatever coordinate chain 6007 carries, the
-/// chain may be enabled *only if* that coordinate is on the mesh. Today
-/// the recovered point is off-mesh and the chain is disabled, which
-/// satisfies it. When M0 pins an on-mesh point and flips `enabled`, this
-/// still passes — and if M0 flips `enabled` while leaving an off-mesh
-/// coordinate, or re-pins the coordinate and forgets the flip, it fails.
-/// If M0 instead pins a verified point that the mesh still does not cover
-/// (entirely possible on an advisory world), replace this guard with one
-/// that records the in-game verification rather than relaxing it.
+/// An on-mesh coordinate still satisfies it unconditionally, so a future
+/// navmesh rebuild needs no edit here — only the `!on_mesh` branch is
+/// conditional.
 ///
-/// The coordinate is read from the DB rather than hardcoded, because a
-/// hardcoded literal silently stops describing the seed the moment the
-/// seed changes. No navmesh is asserted for chain 6006's destination:
-/// world 68 has no `.nav` file at all, which is precisely why that door
-/// ships enabled.
+/// The ring-4 pad is checked as a live control: if the mesh failed to load,
+/// or every query returned false, the off-mesh verdict below would be
+/// vacuous.
+///
+/// Everything is read from the DB rather than hardcoded, because a hardcoded
+/// literal silently stops describing the seed the moment the seed changes.
+/// No navmesh is asserted for chain 6006's destination: world 68 has no
+/// `.nav` file at all, which is precisely why that door always shipped
+/// enabled.
 #[tokio::test]
-async fn harset_return_arrival_is_disabled_while_off_mesh() {
+async fn harset_return_arrival_is_offmesh_but_survivable() {
     let pool = require_db_or_skip!();
 
     let (enabled, x, y, z): (bool, f64, f64, f64) = sqlx::query_as(
@@ -490,25 +522,55 @@ async fn harset_return_arrival_is_disabled_while_off_mesh() {
     let on_mesh = mesh.is_point_valid(&arrival);
 
     assert!(
-        !enabled || on_mesh,
-        "chain 6007 is enabled but its arrival {arrival:?} is OFF the \
-         harset.nav mesh. Since H53 that no longer freezes the player — \
-         world 57 is `navmesh_mode = 'advisory'`, so the arrival is \
-         `Unvalidated` and they can walk away from wherever they land. It \
-         does mean nobody has confirmed anything is *there*: the coordinate \
-         came from a prop transform and could be inside geometry or above a \
-         fall. Pin it in-game (M0) or disable the chain.",
+        enabled,
+        "chain 6007 is disabled. Placement PL-A-06 enabled it after \
+         confirming a real floor 0.04 m under the recovered arrival \
+         {arrival:?}; if it has been turned off again, mission 1361's \
+         acceptance trio (6511-6513) and its abandon twin 6528 must be \
+         turned off in the same change or every player who accepts 1361 \
+         soft-sticks at step 4041 with no `fail_objective` arm to recover.",
     );
 
-    // The other direction: an on-mesh coordinate with the chain still
-    // disabled means someone did half the M0 change.
+    if on_mesh {
+        // A navmesh rebuild reached this corner of the map. Nothing to
+        // check — the arrival needs no special dispensation any more. Worth
+        // re-reading the seed comment at 6007 and simplifying it.
+        return;
+    }
+
+    // Off-mesh: both survivability conditions must hold.
+    let (navmesh_mode,): (String,) =
+        sqlx::query_as("SELECT navmesh_mode FROM resources.worlds WHERE world_id = 57")
+            .fetch_one(&pool)
+            .await
+            .expect("world 57 (Harset) must exist in resources.worlds");
+    assert_eq!(
+        navmesh_mode, "advisory",
+        "chain 6007's arrival {arrival:?} is off harset.nav and world 57 is \
+         now `{navmesh_mode}`. Under `enforce` the movement validator stops \
+         failing open, so every position update a returning player sends is \
+         suppressed — the silent `CorrectionSuppressed` freeze H10 disabled \
+         this door to avoid. Either rebuild harset.nav around the Command \
+         Center door (its nearest polygon there is ~29 m above the real \
+         floor), or disable 6007 together with chains 6511-6513 and 6528.",
+    );
+
+    let authored_world_57_respawners: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM resources.respawners \
+         WHERE world_id = 57 AND NOT (pos_x = 0 AND pos_y = 0 AND pos_z = 0)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count world-57 respawners");
     assert!(
-        enabled || !on_mesh,
-        "chain 6007's arrival {arrival:?} is now ON the harset.nav mesh, \
-         but the chain is still disabled. The only reason it shipped \
-         disabled was the off-mesh coordinate, so whatever fixed that \
-         (an M0 pin, or a GH1 navmesh rebuild) should also flip \
-         `enabled` to true and update the seed comment.",
+        authored_world_57_respawners > 0,
+        "chain 6007's arrival {arrival:?} is off harset.nav and world 57 has \
+         no authored respawner row. That is the second half of why the \
+         off-mesh arrival is survivable: `nearest_valid_respawner` skips \
+         `(0,0,0)` placeholders, so with none left an off-mesh arrival in an \
+         enforcing world resolves to `UnrecoverableOffMesh` and the caller \
+         refuses the transfer. Restore respawners row 20 (placement PL-A-02) \
+         rather than deleting it.",
     );
 }
 

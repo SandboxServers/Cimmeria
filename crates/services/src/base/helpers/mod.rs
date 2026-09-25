@@ -847,5 +847,8 @@ pub(crate) async fn send_bundle_to_witness_reliable(
     }
 }
 
+mod witness_broadcast;
+pub(crate) use witness_broadcast::broadcast_to_witnesses;
+
 #[cfg(test)]
 mod tests;

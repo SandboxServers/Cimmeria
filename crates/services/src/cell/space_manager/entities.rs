@@ -196,6 +196,9 @@ impl SpaceManager {
         // silently swallow the *first* reject of a fresh session — the
         // one row an incident timeline most needs.
         self.movement_telemetry.forget(entity_id);
+        // And for the NPC AI's zero-health invariant warning: a respawn on a
+        // recycled id must be able to warn on its first bad tick.
+        self.zero_health_npc_log.forget(entity_id);
         tracing::debug!(
             entity_id,
             account_id = id.account_id,

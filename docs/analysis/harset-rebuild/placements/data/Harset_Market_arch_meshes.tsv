@@ -1,0 +1,4 @@
+mesh	instances	tris_each	tris_total	footprint_m2	walkable_m2	bw_y_min	bw_y_max	sample_bw_x	sample_bw_y	sample_bw_z	archetype_paths
+JF-Props:JF-WallTorch01	12	202	2424	8.398	2.375	5.920	7.280	24.640	7.280	20.360	JF-Props.JF-WallTorch01_Pf0.JF-WallTorch01_Pf0_Arc1.StaticMeshComponent0
+Em-Props:EM-StandingLight05	1	672	672	7.333	3.161	3.480	3.480	47.960	3.480	81.040	Em-Props.EM-StandingLight05_Pf0.EM-StandingLight05_Pf0_Arc0.StaticMeshComponent0
+JF-Props:JF-Brazier00	1	466	466	0.767	0.133	3.640	3.640	90.096	3.640	39.304	JF-Props.JF-Brazier00_Pf0.JF-Brazier00_Pf0_Arc0.StaticMeshComponent0

@@ -28,6 +28,17 @@ pub enum CoverHeight {
 }
 
 impl CoverHeight {
+    /// The `ECoverHeight` spelling chain authors filter on in the `height`
+    /// trigger param.
+    pub fn sql_name(self) -> &'static str {
+        match self {
+            Self::Low => "HEIGHT_Low",
+            Self::Mid => "HEIGHT_Mid",
+            Self::High => "HEIGHT_High",
+            Self::Los => "HEIGHT_LOS",
+        }
+    }
+
     /// Approximate cover height in BigWorld meters.
     pub fn meters(self) -> f32 {
         match self {
@@ -65,6 +76,17 @@ pub enum CoverQuality {
 }
 
 impl CoverQuality {
+    /// The `ECoverQuality` spelling chain authors filter on in the `quality`
+    /// trigger param.
+    pub fn sql_name(self) -> &'static str {
+        match self {
+            Self::Good => "QUALITY_Good",
+            Self::Better => "QUALITY_Better",
+            Self::Best => "QUALITY_Best",
+            Self::None_ => "QUALITY_None",
+        }
+    }
+
     /// Scoring weight contribution for the `aCoverWeight` term.
     /// Returns 1.0 for Best, 0.66 for Better, 0.33 for Good, 0.0 for None.
     pub fn score_factor(self) -> f32 {

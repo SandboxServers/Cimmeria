@@ -115,6 +115,7 @@ pub(super) async fn handle_log_off(
                 c.player_name = None;
                 c.player_level = None;
                 c.player_archetype = None;
+                c.player_alignment = None;
                 c.world_name = None;
                 c.player_xp = None;
                 c.player_training_points = None;
