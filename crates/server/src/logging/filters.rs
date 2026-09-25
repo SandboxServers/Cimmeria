@@ -81,6 +81,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 wire.firehose=debug,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 aoi.create_emit=debug,\
+                aoi.introduce=debug,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
                 npc_ai=debug,\
