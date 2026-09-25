@@ -1,6 +1,6 @@
 # NavBuilder: rebuilding it, and Recast's index limits
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-25 (13-bit span height)
 > **Status**: Verified against `bin64/NavBuilder.exe` (rebuilt from
 > `deprecated/cpp/src/nav_builder/`) on the 144-chunk Castle extraction.
 
@@ -136,6 +136,31 @@ NavBuilder logs the count on every build:
 ```text
 [11:01:49 INFO    ] Heightfield: 13936045 spans over 4458 x 4000 columns (cap 16777215; rcCompactCell::index is 24-bit)
 ```
+
+### A fifth limit: span heights are 13-bit
+
+Found building Tollana (NA26, 2026-09-25). `rcSpan` packs `smin` / `smax`
+into `RC_SPAN_HEIGHT_BITS = 13` bits (`Recast.h:284-297` in v1.6.0), and
+`rasterizeTri` clamps both to `RC_SPAN_MAX_HEIGHT = 8191`
+(`RecastRasterization.cpp:445-446`) with no diagnostic. Every surface more
+than `8191 × ch` above `bmin.y` is flattened onto one ceiling: 1,638 m at the
+default `ch = 0.2`. `bounds=` crops X and Z only, so one deep or tall actor
+anywhere in the map is enough.
+
+Tollana has a prop at y -1728 and its city at y ≈ 0, 10,655 cells apart at
+`ch = 0.2`. The whole-map build at `cs = 0.6` came out as 2,397 verts /
+1,860 polys, every one of them on a flat 5 km² sheet at y -90.2 (exactly
+8,191 cells up), with every spawn off the mesh, and exited 0. NavBuilder now
+checks the extent right after the `Bounds:` line and exits 3:
+
+```text
+[..  FAULT   ] Vertical extent 2131.08 m is 10655 cells at ch=0.20; rcSpan heights are 13-bit (max 8191), so every surface above y=-90.21 would be clamped onto one ceiling. Raise ch.
+```
+
+At `ch = 0.3` the same input is 7,104 cells and builds. Pinned by
+`tests/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`
+(a 2 km-deep sliver under the axis fixture), which fails against a binary
+built before the check.
 
 ### An empty poly mesh is now a failure
 

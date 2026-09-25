@@ -205,6 +205,22 @@ public:
 			config.bmin[0], config.bmin[1], config.bmin[2],
 			config.bmax[0], config.bmax[1], config.bmax[2], config.width, config.height);
 
+		// rcSpan stores smin/smax in 13 bits (Recast.h: RC_SPAN_HEIGHT_BITS),
+		// and rasterization clamps every span to RC_SPAN_MAX_HEIGHT with no
+		// diagnostic. Anything more than 8191 * ch above bmin[1] is flattened
+		// onto that ceiling. Measured on Tollana: one prop at y = -1728 put
+		// the whole city (y ~ 0) past the cap at ch = 0.2, and the build
+		// "succeeded" with a single sheet at y = -90 and nothing else.
+		const float heightCells = (config.bmax[1] - config.bmin[1]) / config.ch;
+		if (heightCells > (float)RC_SPAN_MAX_HEIGHT)
+		{
+			FAULT("Vertical extent %.2f m is %.0f cells at ch=%.2f; rcSpan heights are 13-bit (max %d), so every "
+				"surface above y=%.2f would be clamped onto one ceiling. Raise ch.",
+				config.bmax[1] - config.bmin[1], heightCells, config.ch, RC_SPAN_MAX_HEIGHT,
+				config.bmin[1] + RC_SPAN_MAX_HEIGHT * config.ch);
+			return EXIT_BUILD_FAILED;
+		}
+
 		DEBUG1("Rasterizing triangles ...");
 		LoggingContext ctx;
 		rcHeightfield * heightfield = rcAllocHeightfield();
