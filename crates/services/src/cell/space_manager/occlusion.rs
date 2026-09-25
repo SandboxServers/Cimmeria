@@ -21,9 +21,15 @@
 //!   the prop. The navmesh peek point (D-NA12) is the rule only where no
 //!   occluder exists.
 //!
-//! Both ends of the segment are raised by [`eye_height`]. No per-being-type
-//! eye height has been recovered from the client data, so every entity uses
-//! [`DEFAULT_EYE_HEIGHT`].
+//! Both ends of the segment are raised by the entity's eye height
+//! ([`SpaceManager::eye_height_of`], NA31): its body set's
+//! `resources.body_sets.eye_height`, measured from the reference skeletal
+//! mesh in the cooked client package (a human male 1.81 m, a Jaffa male
+//! 2.12 m, an Asgard 1.25 m, a rat 0.15 m), or [`DEFAULT_EYE_HEIGHT`] for an
+//! entity with no measured body set. The client's own pawn defaults are no
+//! help here: `SGWGamePawn` inherits stock UE3 `BaseEyeHeight` 64 and
+//! `CollisionHeight` 78 for every being. See
+//! `docs/reverse-engineering/findings/being-eye-heights.md`.
 //!
 //! **Paging.** The file is a table of 64 m pages, each compressed. It is
 //! loaded once per world and shared by every instance of it
@@ -45,7 +51,9 @@ use cimmeria_occluder::{PagedOccluder, Sight};
 
 use super::SpaceManager;
 
-/// Eye height above an entity's position (its feet), metres.
+/// Eye height above an entity's position (its feet), metres, for an entity
+/// whose body set has no measured eye height (props, terminals, a body set
+/// with no reference mesh, and every test entity without a body set).
 pub const DEFAULT_EYE_HEIGHT: f32 = 1.5;
 
 /// Pages within this distance (XZ, metres) of a player stay unpacked: the
@@ -53,10 +61,15 @@ pub const DEFAULT_EYE_HEIGHT: f32 = 1.5;
 /// that can see a player has its pages resident.
 pub const RESIDENCY_RADIUS: f32 = 132.0;
 
-/// The eye height of `e`. One value for every being today; see the module
-/// docs.
-pub fn eye_height(_e: &CellEntity) -> f32 {
-    DEFAULT_EYE_HEIGHT
+/// The eye height for `body_set` in `table` (body set to metres), or
+/// [`DEFAULT_EYE_HEIGHT`] when the entity has no body set, the body set has
+/// no row, or the value is not a positive finite number.
+pub fn eye_height_for(body_set: Option<&str>, table: &HashMap<String, f32>) -> f32 {
+    body_set
+        .and_then(|b| table.get(b))
+        .copied()
+        .filter(|h| h.is_finite() && *h > 0.0)
+        .unwrap_or(DEFAULT_EYE_HEIGHT)
 }
 
 /// The occluder's answer for the segment between two eyes, as the
@@ -92,6 +105,12 @@ pub(crate) struct ResidencyGauge {
 }
 
 impl SpaceManager {
+    /// The eye height of `e`, metres above its position: its body set's
+    /// measured value, else [`DEFAULT_EYE_HEIGHT`] (see the module docs).
+    pub fn eye_height_of(&self, e: &CellEntity) -> f32 {
+        eye_height_for(e.body_set.as_deref(), &self.body_set_eye_heights)
+    }
+
     /// The occluder for `world_name` (by the `.nav` file-name rule: lower
     /// case, spaces as underscores), loaded on first use and cached,
     /// including a miss, so an instanced world is read once.

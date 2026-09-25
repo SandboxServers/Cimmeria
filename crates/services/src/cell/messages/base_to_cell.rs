@@ -161,6 +161,11 @@ pub enum BaseToCellMsg {
         /// has no name for a player. `None` only if the base session somehow
         /// reached world entry without a cached name.
         character_name: Option<String>,
+        /// The character's body set (`sgw_player.bodyset`, e.g.
+        /// `BS_JaffaMale.BS_JaffaMale`). Stored on `CellEntity::body_set` so
+        /// line of sight uses the body set's eye height (NA31). `None` when
+        /// the row could not be read; the player then gets the 1.5 m default.
+        body_set: Option<String>,
     },
 
     /// Update one bandolier slot after a runtime item grant.

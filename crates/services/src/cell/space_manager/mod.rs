@@ -32,8 +32,10 @@ mod lab_snapshots;
 mod lifecycle;
 mod movement_telemetry;
 mod navmesh_mode;
+#[cfg(test)]
+pub(crate) mod occluder_fixtures;
 mod occlusion;
-pub use occlusion::{eye_height, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
+pub use occlusion::{eye_height_for, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
 mod queries;
 mod spatial;
 pub use spatial::AttackLosPolicy;
@@ -308,6 +310,10 @@ pub struct SpaceManager {
     /// The residency gauges last reported per world key; see
     /// `SpaceManager::refresh_occluder_residency`.
     pub(crate) occluder_residency: HashMap<String, occlusion::ResidencyGauge>,
+    /// Eye height per body set (`resources.body_sets.eye_height`, NA31),
+    /// keyed by the full body-set name (`BS_HumanMale.BS_HumanMale`).
+    /// Loaded at startup; read through [`SpaceManager::eye_height_of`].
+    pub body_set_eye_heights: HashMap<String, f32>,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -417,6 +423,7 @@ impl SpaceManager {
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
             occluder_residency: HashMap::new(),
+            body_set_eye_heights: HashMap::new(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),

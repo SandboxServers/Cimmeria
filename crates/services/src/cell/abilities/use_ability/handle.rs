@@ -59,8 +59,8 @@ async fn send_state_field(
 /// cooldown/ammo consume took effect — which is also when the target's
 /// damage resolution and wire packets fired). Returns `false` when any
 /// pre-consume guard rejected the call (entity missing/dead, no
-/// ability, on cooldown, reload in flight, no ammo, or out-of-range
-/// for an explicit target). Ground-target AoE callers gate
+/// ability, on cooldown, reload in flight, no ammo, out-of-range, or no
+/// fire-time line of sight for an explicit target). Ground-target AoE callers gate
 /// secondary-target damage on this return value.
 #[tracing::instrument(
     name = "combat.use_ability",
@@ -271,6 +271,23 @@ pub async fn handle_use_ability(
                 args: err_args,
             })
             .await;
+        return false;
+    }
+
+    // Fire-time line of sight, players only (NA31, D-NA14): refused with
+    // onErrorCode 39 when the world's occluder puts a wall between the eyes.
+    // See `fire_los` for where it applies and the tolerance rays.
+    if target_id > 0
+        && super::fire_los::refuse_without_line_of_sight(
+            entity_id,
+            ability_id,
+            target_id as u32,
+            ability_def.as_ref(),
+            tx,
+            space_mgr,
+        )
+        .await
+    {
         return false;
     }
 

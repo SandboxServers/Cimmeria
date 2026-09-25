@@ -83,6 +83,7 @@ mod leash_reset;
 mod leash_walk;
 mod melee_reach;
 mod occluder_los;
+mod occluder_los_eye_heights;
 mod off_mesh_sentry;
 mod path_robustness;
 mod selector;

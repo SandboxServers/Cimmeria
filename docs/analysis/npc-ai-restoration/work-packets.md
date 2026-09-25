@@ -412,6 +412,30 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 **Acceptance:** the new fan-out byte test passes and is revert-proven (reverting the deferred-buffer join in `player_ghost::compose_cascade_body` trips it, matching the existing `player_ghost.rs` guard style). `aoi.introduce` rows appear in SigNoz on the next real two-player session.
 
 **Outstanding:** the owner's report has no matching telemetry and the SpaceManager/base-dispatch level cannot reproduce it. The next real two-client session should watch for `aoi.introduce` (`outcome=deferred_not_ready` with no matching `flushed_on_ready`, or the reverse) and grep for `aoi.player_ghost_incomplete` / `aoi.entered_no_witness_addr` — either would pin a live bug this packet's audit could not find on paper.
+### NA31
+
+**Status:** Review (branch `npcai/na31-fire-los-eye-height` pushed, no PR; ran in parallel with NA32 and NA33). **Scope title:** Player fire-time line of sight and per-being eye heights (D-NA14). **Advisor:** combat-systems-advisor. **Owner approval (2026-09-25):** "work on all still open items".
+
+**Scope:**
+
+- **Fire-time check.** `use_ability/fire_los.rs`: a player ability aimed at another entity, in a world with an occluder, is refused with `onErrorCode(0, ability, 39)` when the eye ray and every tolerance ray are blocked. The tolerance rays are the target one tick back, the shooter one tick ahead, and the target's eye 0.35 m to each side. The check runs straight after the range check, before the holster queue, so a refused shot draws no weapon and starts no cooldown. No occluder, or `Unknown`, never refuses. NPC launches are left alone, because the fight tick checks them in the same tick.
+- **Auto-cycle.** One error when the loop's target goes behind a wall, then armed and silent until the line clears (`AbilityManager::auto_cycle_los_notified`). `ticks/auto_cycle.rs` was already over 700 lines on main, so its tests moved to `auto_cycle_tests.rs`.
+- **Eye heights.** `resources.body_sets.eye_height` is seeded from each body set's reference-mesh bounds in the cooked client, and `BS_JaffaMale` gains a missing row. The cell loads the table at startup. `SpaceManager::eye_height_of` feeds NPC line of sight, cover `slot_has_shot` and the player check. `InitPlayerState` carries the character's `bodyset` to the cell. `npc_ai.los` gains `target_eye_height_used`.
+- **Telemetry.** `abilities` DEBUG `event=los_refused` (source, both eyes, ray, hit, rays tried) and `abilities_los_refused_total{world}`.
+
+**Evidence:** [being-eye-heights.md](../../reverse-engineering/findings/being-eye-heights.md) (error strings, pawn defaults, mesh bounds).
+
+**Acceptance:** each guard fails when its piece is reverted:
+
+- `a_shot_through_the_hallway_walls_is_refused_with_error_39`, on the real `castle_cellblock.occ` at UAT-1's through-the-walls spot, checks the exact bytes `00 07 00 00 00 27 00` and that no cooldown started. `the_refusal_is_logged_with_its_ray` covers the log row. Both fail with the gate removed.
+- `a_clear_shot_over_the_counter_fires` is Lomiada at 13.6 u from `Hallway01_Guard`. `a_world_without_an_occluder_never_refuses` covers no occluder. `an_endpoint_off_the_occluder_grid_is_allowed` fails when `Unknown` refuses.
+- `a_target_running_into_cover_is_hit_where_the_client_still_sees_it`, `a_shooter_stepping_out_of_cover_is_ahead_on_its_own_client`, `a_target_half_behind_the_corner_is_hit_on_its_body_edge` and `the_tolerance_rays_do_not_see_round_a_real_corner` all fail with the tolerance rays removed.
+- `auto_cycle_tick_tells_the_player_once_when_the_target_is_behind_a_wall` fails with the gate removed and with the one-shot notice removed.
+- `a_low_wall_hides_a_rat_but_not_a_jaffa`, `across_the_med_station_desk_a_rat_is_hidden_and_a_human_is_not` (real geometry), `npc_line_of_sight_casts_between_body_set_eyes` and the `InitPlayerState` body-set assertion all fail when eye heights revert to 1.5 m.
+- `occluder_los_eye_heights` re-checks NA27's Castle_CellBlock pins at the seeded eyes: human guards, the floating drone at 3.31 m, and human and Jaffa players. The drone still sees over the desk, `Hallway02_Guard` stays blind, `Hallway01_Guard` sees Lomiada, and walls and storeys still block.
+- Live-DB: `seeded_eye_heights_load_by_body_set`, `every_spawned_being_body_set_has_an_eye_height` and `a_seeded_jaffa_looks_from_its_measured_eye` fail on a seed with no `BS_JaffaMale` row and the human value set back to 1.5.
+
+**UAT:** in Castle_CellBlock, shoot a guard from behind a hallway wall. The client shows its line-of-sight message and fires nothing. Step out, and the shot fires. With auto-attack on, the message appears once and the loop resumes by itself.
 ### NA32
 
 **Status:** Review (branch `npcai/na32-cover-defense-stepback` pushed, no PR). **Scope title:** Cover Stance in the hit roll, and the ranged step-back. **Advisor:** combat-systems-advisor. **Owner approval (2026-09-25):** "Work on all still open items", which covers NA22's unwired stance and the step-back NA15 left for a decision. Recorded as D-NA15.
