@@ -108,7 +108,9 @@ Recast wrapper later if it buys anything.
   plus BSP. `exact.rs` is the exact segment tracer used as ground truth.
   `sweep.rs` samples navmesh point pairs and scores the occluder and a
   navmesh ray against the tracer. `bin/occluder_extract/` is the CLI:
-  `build` writes a `.occ`, `measure` reports size, RAM, build time and
+  `build` writes the shipped paged `.occ`, trimmed to the explorable area
+  (`explorable.rs`: the navmesh components holding an entry point),
+  `measure` reports size, RAM, build time and
   accuracy per cell size, and `probe` prints one segment's verdict.
   Results: [the NA27 worknote](../../docs/analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).
 - `bin/obj_slab.rs` — column / free-run / level-histogram / slope

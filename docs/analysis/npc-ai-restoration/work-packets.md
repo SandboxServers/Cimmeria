@@ -376,19 +376,25 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA27
 
-**Status:** Phase 1 done, **no-go** under the size budget. Nothing is committed under `data/spaces/`, and runtime line of sight is unchanged (branch `npcai/na27-occluder`). **Scope title:** Line of sight from collision geometry ([#784](https://github.com/SandboxServers/Cimmeria/issues/784)). **Advisor:** npc-ai-spawn-advisor.
+**Status:** Review (branch `npcai/na27-occluder` pushed, no PR). Phase 1 was no-go under the first size budget. The owner then raised the budget and asked for paging (2026-09-25, D-NA13), and phase 2 ships an `.occ` for all 23 worlds. **Scope title:** Line of sight from collision geometry ([#784](https://github.com/SandboxServers/Cimmeria/issues/784)). **Advisor:** npc-ai-spawn-advisor.
 
 **Scope:**
 
 - Phase 1: an occluder format (a column grid of solid Y spans with sub-cell rectangles, plus an exact terrain heightfield), built for all 23 maps at 0.25, 0.5 and 1.0 m. Measure size, RAM, build time and accuracy on NA16's sweep.
 - Phase 2, only on a go: load `data/spaces/<world>.occ` beside the `.nav`, and let it replace the navmesh ray for aggro, attack and cover sight.
 
-**Result:** see [worknotes/na27-occluder-phase1.md](worknotes/na27-occluder-phase1.md).
+**Result:** see [worknotes/na27-occluder-phase1.md](worknotes/na27-occluder-phase1.md) (phase 1 and phase 2) and the per-world table in [data/spaces/README.md](../../../data/spaces/README.md#occluders-occ-na27).
 
 - **Accuracy.** At 0.5 m there are no false clears on either sweep. False blocks are 1.24% (Castle_CellBlock) and 1.05% (Castle) of truly clear pairs, and most of them are rays grazing within 0.1 m of a wall edge. The navmesh is wrong on 38% (Castle_CellBlock) and 49% (Castle) of its `Blocked` answers.
 - **Query cost.** 1.9 µs per segment.
 - **Why no-go.** The owner's rule was that the biggest world must fit in about 10 MB on disk and 50 MB of RAM. Agnos needs 57 MB and 288 MB at 0.5 m, and 22 MB and 98 MB at 1.0 m. Fifteen of the 23 worlds fit, including every Castle and Harset world.
-- **What shipped.** `crates/occluder` (format, builder, segment test) and `occluder_extract` (build, measure, probe), with synthetic tests.
+- **What shipped (phase 1).** `crates/occluder` (format, builder, segment test) and `occluder_extract` (build, measure, probe), with synthetic tests.
+- **Phase 2.**
+  - **Paging.** 64 m pages, each compressed. Only the pages within 132 m of a player are resident (`refresh_occluder_residency`, 1 Hz), and a query on a packed page unpacks it on the spot, in 0.2-1 ms.
+  - **Trim.** Coverage is the navmesh components that hold a real entry point, plus 15 m. That also clips Omega_Site_CmdCenter's giant triangles.
+  - **Integration.** The occluder replaces the navmesh ray for aggro, attack and cover sight (`los_policy=occluder`, `npc_ai.los source=occluder`), and D-NA11 and D-NA12 no longer apply where a world has one.
+  - **Numbers.** The 23 files total {TOTAL} MB. Agnos is 13 MB on disk, 58.6 MB with every page unpacked and 5.9 MB with one player. A query costs 1-4 µs.
+  - **Tests.** They pin the drone at the desk, `Hallway02_Guard` at the wall, `Hallway01_Guard` at all three of Lomiada's spots (it sees her at 13.6 u too), guard-room walls, storeys, the off-area fallback and residency, and each is revert-proven.
 
 ## Suggested order
 

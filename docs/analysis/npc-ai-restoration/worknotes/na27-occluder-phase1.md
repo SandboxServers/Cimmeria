@@ -2,7 +2,9 @@
 
 Issue [#784](https://github.com/SandboxServers/Cimmeria/issues/784). Measured 2026-09-25 on the 23 playable client maps (not `Login_Map`).
 
-**Outcome: no-go under the size budget.** The owner's rule was: if the biggest world fits in about 10 MB on disk and 50 MB of RAM, ship every world; if not, stop after phase 1 and commit nothing under `data/spaces/`. The biggest world is Agnos. At the chosen 0.5 m cell it needs 57.3 MB on disk and 288 MB of RAM. Even at 1.0 m it needs 22.4 MB and 98 MB. No `.occ` file is committed, and the server's line of sight is unchanged.
+**Update, phase 2 (same day):** the owner raised the budget and asked for paging. All 23 worlds now ship a trimmed, paged `.occ`; see [Phase 2](#phase-2-paged-trimmed-shipped) below. The rest of this note is the phase-1 record.
+
+**Outcome of phase 1: no-go under the size budget.** The owner's rule was: if the biggest world fits in about 10 MB on disk and 50 MB of RAM, ship every world; if not, stop after phase 1 and commit nothing under `data/spaces/`. The biggest world is Agnos. At the chosen 0.5 m cell it needs 57.3 MB on disk and 288 MB of RAM. Even at 1.0 m it needs 22.4 MB and 98 MB. No `.occ` file is committed, and the server's line of sight is unchanged.
 
 The format, the builder and the `occluder_extract` measurement tool are committed (`crates/occluder`, `crates/navmesh-extractor/src/occluder/`, `bin/occluder_extract`). A later decision can pick them up: a per-world budget, a streaming loader, or a trimmed format.
 
@@ -96,3 +98,92 @@ target/release/occluder_extract measure \
 ```
 
 `--pairs-out` writes every pair with the three verdicts and, for a disagreement, how close the clear segment passes to geometry (`near`, in metres).
+
+## Phase 2: paged, trimmed, shipped
+
+The owner raised the budget on 2026-09-25: "We have tons of disk and ram on the server I'm not worried about it. Distance packing and unpack what's near players. Some of the larger maps are blank terrain for a while outside of the explorable areas." That is decision D-NA13.
+
+### Paging
+
+- **File layout.** The file (magic `CMOP`) is a page table plus one blob per 64 m page. Each blob is a complete single-page `CMOC` occluder over that page's tiles (`cimmeria_occluder::paged`). Loading reads the table and decompresses nothing.
+- **Residency.** `SpaceManager::refresh_occluder_residency` runs at 1 Hz from the cell loop. It unpacks every page within 132 m of a player (the 100 m AoI radius plus a margin) and evicts every other resident page. All instances of a world share one occluder, so the players of every instance count.
+- **Packed pages.** A query that meets a packed page unpacks it synchronously rather than answering `unknown`. That costs a mean of 0.2-1 ms per page, with a worst case of 5 ms (Dakara_E1). A query that far from any player is rare, and the next refresh evicts the page again.
+- **Telemetry.** Each refresh that changes something logs an `npc_ai.occluder event=residency` DEBUG row: pages unpacked and evicted, query-forced unpacks, resident pages and bytes. It also sets the `npc_ai_occluder_resident_pages` and `npc_ai_occluder_resident_bytes` gauges per world.
+- **Correctness.** A paged occluder answers exactly what the unpaged one does. Each page tests only its own stretch of the segment, over a verbatim copy of the unpaged tiles. `paged::tests` pins this over 4,000 random segments crossing page boundaries in all four quadrants.
+
+### Trim to the explorable area
+
+- **Coverage.** It is the navmesh components that hold a real entry point:
+  - seed spawnlist rows, respawners, stargates and their arrival points, and ring transport regions;
+  - chain teleport and `move_waypoint` targets (`tools/occluder_entry_points.py`);
+  - the map's `PlayerStart`, `SGWStargate` and `SGWTeleporter` actors.
+
+  NA29's Harset gate row is one of them.
+- **Growth.** The kept set is grown to any component within 5 m horizontally and 3 m vertically of it, because NavBuilder splits a mesh at doors and stairs a player walks through. The margin past the last polygon is 15 m.
+- **Clipping.** Geometry outside the coverage is not rasterised, and a triangle crossing its edge is clipped to it. That fixed Omega_Site_CmdCenter, whose few giant triangles had filled a 4.7 km grid (682 MB to 6.4 MB).
+- **`Unknown` outside the coverage.** A point outside the coverage reads `Unknown`. Aggro fails closed on it (D-NA08), and the attack check falls back to the navmesh rules.
+
+### Reproducible builds
+
+Two builds of the same map are byte-identical. That took two fixes:
+
+- the extractor walk sorts each chunk's triangles, because the StaticMesh walk iterates hash maps;
+- span merging runs once, on the complete sorted record set. The builder's source hash is order-independent too.
+
+### Server integration
+
+- **Aggro and assist:** occluder verdict, `Unknown` fails closed.
+- **Attack:** `AttackLosPolicy::Occluder` (`los_policy=occluder`), with no stationary relaxation. An `Unknown` takes the navmesh rules.
+- **Cover sight:** from the NPC's own eyes, over the prop.
+- **Log rows:** `npc_ai.los` rows carry `source=occluder|navmesh`, `occluder_hash` and the real `eye_height_used` (1.5).
+- **Loading:** the occluder is loaded next to the `.nav` in `create_space_instance` and cached per world.
+
+The tests in `services::cell::service::tests::npc_ai::occluder_los` use the shipped `castle_cellblock.occ`:
+
+| Case | Result |
+|---|---|
+| Find Ambernol drone to south of the med-station desk (15.2 m) | clear; the stationary drone fires on `los_policy=occluder` |
+| Mobile NPC at the drone's spot | fires over the desk; an occluder `Blocked` is not relaxed for anyone |
+| `Hallway02_Guard` to where it shot the player (UAT-1) | blocked, for aggro and the shot |
+| `Hallway01_Guard` to Lomiada at 5.9, 8.1 and 13.6 u | **clear at all three**, and it aggroes. The navmesh peek point still read the 13.6 u spot as blocked. |
+| Armory to Barracks guard (same floor); MessHall to Barracks (a storey down); MessHall to Hallway01 | blocked |
+| Two points on the far terrain sheet, off the trimmed area | `Unknown`; the NPC stays Idle, and the attack check takes `Strict` |
+
+Each test was revert-proven by patching the code and running the suite:
+
+| Patch | Tests that fail |
+|---|---|
+| Ignore the occluder in `line_of_sight` | 5 |
+| Drop `AttackLosPolicy::Occluder` | 3 |
+| Aggro `Unknown` gated on the navmesh alone | the off-area test |
+| Refresh residency with no players | the residency test |
+
+### Per world
+
+| World | Triangles | Trimmed | Entry points on the mesh | Components kept | Untrimmed file (MB) | Untrimmed RAM (MB) | Shipped file (MB) | Pages | RAM, all unpacked (MB) | RAM, one player (MB, pages) | Unpack mean / max (µs) | Query (µs) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Castle_CellBlock | 1.53 M | 1.13 M | 35/36 | 13/17 | 0.3 | 7.2 | 0.3 | 23 | 5.1 | 3.3 (15) | 255 / 726 | 1.70 |
+| Castle | 4.14 M | 2.32 M | 50/51 | 94/549 | 5.3 | 23.9 | 3.2 | 98 | 16.4 | 5.6 (23) | 457 / 1384 | 1.61 |
+| Agnos | 22.27 M | 18.33 M | 1/3 | 588/1538 | 57.3 | 287.6 | 13.0 | 226 | 58.6 | 5.9 (22) | 983 / 2183 | 3.52 |
+| Agnos_Library | 1.57 M | 0.00 M | 0/2 (none; all kept) | 57/57 | 0.9 | 8.4 | 1.0 | 104 | 7.9 | 4.0 (22) | 604 / 3634 | 3.37 |
+| Beta_Site_Evo_1 | 17.98 M | 13.45 M | 7/9 | 300/601 | 13.3 | 67.9 | 5.0 | 253 | 29.7 | 2.3 (22) | 352 / 787 | 2.09 |
+| Dakara_E1 | 13.83 M | 2.23 M | 2/4 | 326/845 | 11.4 | 51.9 | 10.2 | 774 | 48.3 | 4.5 (23) | 1074 / 4990 | 4.08 |
+| Dakara_E1_StoryRm | 0.05 M | 0.00 M | 0/2 (none; all kept) | 6/6 | 0.0 | 0.2 | 0.0 | 9 | 0.2 | - (no entry point) | - | - |
+| Harset | 3.37 M | 0.00 M | 43/45 | 273/372 | 3.7 | 21.6 | 3.8 | 224 | 21.6 | 7.0 (24) | 735 / 2187 | 1.40 |
+| Harset_CmdCenter | 0.23 M | 0.01 M | 13/15 | 7/14 | 0.3 | 2.6 | 0.3 | 12 | 2.5 | 2.5 (11) | 406 / 910 | 1.79 |
+| Harset_Market | 0.33 M | 0.00 M | 1/3 | 15/29 | 0.2 | 1.8 | 0.2 | 36 | 1.8 | 1.7 (22) | 158 / 1175 | 1.99 |
+| Harset_StorageRm | 0.28 M | 0.00 M | 1/3 | 10/16 | 0.3 | 1.7 | 0.3 | 8 | 1.7 | 1.7 (8) | 454 / 1171 | 3.12 |
+| Ihpet_Crater_Dark | 5.20 M | 2.35 M | 2/4 | 155/370 | 3.5 | 26.5 | 2.7 | 104 | 21.0 | 2.2 (19) | 267 / 694 | 1.40 |
+| Ihpet_Crater_Light | 5.20 M | 2.33 M | 2/4 | 159/371 | 3.5 | 26.6 | 2.7 | 105 | 21.1 | 2.2 (19) | 326 / 801 | 2.16 |
+| Lucia | 29.63 M | 19.13 M | 18/26 | 269/568 | 22.9 | 92.6 | 9.8 | 548 | 43.4 | 5.5 (23) | 666 / 1901 | 2.31 |
+| Menfa_Dark | 14.86 M | 0.07 M | 28/31 | 222/629 | 13.4 | 206.8 | 13.2 | 744 | 160.6 | 5.7 (22) | 592 / 1609 | 4.10 |
+| Menfa_Light | 8.54 M | 0.03 M | 0/3 (none; all kept) | 526/526 | 8.9 | 173.0 | 8.7 | 749 | 126.5 | 5.0 (23) | 425 / 954 | 2.21 |
+| Omega_Site | 2.93 M | 1.04 M | 13/15 | 83/247 | 3.4 | 14.5 | 2.9 | 81 | 13.1 | 5.9 (23) | 599 / 1260 | 2.95 |
+| Omega_Site_CmdCenter | 0.48 M | 0.15 M | 2/4 | 5/45 | 48.1 | 681.7 | 0.7 | 20 | 6.4 | 6.2 (16) | 632 / 1383 | 2.76 |
+| SGC | 0.20 M | 0.00 M | 1/3 | 9/21 | 0.2 | 1.5 | 0.2 | 9 | 1.5 | 1.5 (9) | 252 / 1069 | 1.08 |
+| SGC_W1 | 0.55 M | 0.00 M | 23/29 | 30/68 | 0.5 | 4.2 | 0.5 | 37 | 4.2 | 1.4 (9) | 229 / 931 | 1.56 |
+| Sewer_Falls | 2.76 M | 0.00 M | 0/2 (none; all kept) | 139/139 | 2.4 | 17.2 | 2.4 | 224 | 17.2 | 3.6 (22) | 308 / 1253 | 1.92 |
+| Tollana | 19.32 M | 13.09 M | 5/7 | 189/417 | 23.2 | 183.6 | 9.5 | 306 | 74.8 | 2.8 (15) | 394 / 1042 | 2.17 |
+| Tollana_Curia | 0.02 M | 0.00 M | 0/2 (none; all kept) | 1/1 | 0.0 | 0.0 | 0.0 | 9 | 0.0 | - (no entry point) | - | - |
+
+The files total 90.6 MB (`data/spaces` total: about 122 MB).

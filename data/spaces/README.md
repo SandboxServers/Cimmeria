@@ -171,3 +171,90 @@ build from. `Login_Map` is skipped on purpose.
 `data/spaces` went from 6.7 MB (6 files) to 36.5 MB (24 files) with NA26,
 and to 76.9 MB with NA28's seven tiled meshes (62.2 MB of it). The largest
 file is `beta_site_evo_1.nav` at 13.4 MB; it loads in about 0.1 s.
+
+## Occluders (`*.occ`, NA27)
+
+Each world in this directory also ships a `<world>.occ`, its
+collision-geometry occluder for server-side line of sight
+([#784](https://github.com/SandboxServers/Cimmeria/issues/784), decision
+D-NA13). The file name follows the `.nav` rule: the world name lower-cased,
+with spaces replaced by underscores. A world with no `.occ` keeps the
+navmesh ray, so the file is optional.
+
+### Build
+
+```bash
+python tools/occluder_entry_points.py > entry_points.tsv
+target/release/occluder_extract build \
+  --cooked-root "<CookedPC>" --map <ClientMap> --index <package_index.bin> \
+  --nav data/spaces/<world>.nav --entry-points entry_points.tsv \
+  --out data/spaces/<world>.occ
+```
+
+The inputs are:
+
+- the client map's collision triangles: StaticMesh, BSP and terrain, the
+  same set `extract_map` gives NavBuilder;
+- this directory's `.nav` for the world;
+- the entry points, which come from two places:
+  - the seeds, via `tools/occluder_entry_points.py`: spawnlist rows,
+    respawners, stargates and their arrival points, ring transport regions,
+    and chain `cross_world_teleport` / `move_waypoint` targets;
+  - the map itself: its `PlayerStart`, `SGWStargate` and `SGWTeleporter`
+    actors.
+
+Only the navmesh components that hold an entry point are kept. That set is
+then grown to any component within 5 m horizontally and 3 m vertically (a
+door or stair gap), and the coverage is those components plus a 15 m
+margin. Geometry outside the coverage is not stored. Triangles that cross
+its edge are clipped to it.
+
+Five worlds have no entry point that lands on their mesh, so they keep
+every component. Agnos_Library, Dakara_E1_StoryRm, Sewer_Falls and
+Tollana_Curia have no seed rows and no PlayerStart. Menfa_Light's one
+stargate row sits 190 m below its mesh. (The two `*` chain waypoints are
+tried on every world and belong to the Castle maps.)
+
+The files are 64 m pages, each compressed on its own. The server keeps them
+packed and unpacks only the pages within 132 m of a player
+(`space_manager::occlusion`). Two builds of the same map are byte-identical.
+
+### Size
+
+Built 2026-09-25 against the `.nav` files from NA26 (#794) and the seeds
+after NA29 (#795), at 0.5 m cells. The untrimmed columns are the phase-1
+build: the whole map, unpaged. "One player" is the resident RAM with one
+player standing at the world's first entry point on the grid.
+
+| World | Triangles | Trimmed | Entry points on the mesh | Components kept | Untrimmed file (MB) | Untrimmed RAM (MB) | Shipped file (MB) | Pages | RAM, all unpacked (MB) | RAM, one player (MB, pages) | Unpack mean / max (µs) | Query (µs) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Castle_CellBlock | 1.53 M | 1.13 M | 35/36 | 13/17 | 0.3 | 7.2 | 0.3 | 23 | 5.1 | 3.3 (15) | 255 / 726 | 1.70 |
+| Castle | 4.14 M | 2.32 M | 50/51 | 94/549 | 5.3 | 23.9 | 3.2 | 98 | 16.4 | 5.6 (23) | 457 / 1384 | 1.61 |
+| Agnos | 22.27 M | 18.33 M | 1/3 | 588/1538 | 57.3 | 287.6 | 13.0 | 226 | 58.6 | 5.9 (22) | 983 / 2183 | 3.52 |
+| Agnos_Library | 1.57 M | 0.00 M | 0/2 (none; all kept) | 57/57 | 0.9 | 8.4 | 1.0 | 104 | 7.9 | 4.0 (22) | 604 / 3634 | 3.37 |
+| Beta_Site_Evo_1 | 17.98 M | 13.45 M | 7/9 | 300/601 | 13.3 | 67.9 | 5.0 | 253 | 29.7 | 2.3 (22) | 352 / 787 | 2.09 |
+| Dakara_E1 | 13.83 M | 2.23 M | 2/4 | 326/845 | 11.4 | 51.9 | 10.2 | 774 | 48.3 | 4.5 (23) | 1074 / 4990 | 4.08 |
+| Dakara_E1_StoryRm | 0.05 M | 0.00 M | 0/2 (none; all kept) | 6/6 | 0.0 | 0.2 | 0.0 | 9 | 0.2 | - (no entry point) | - | - |
+| Harset | 3.37 M | 0.00 M | 43/45 | 273/372 | 3.7 | 21.6 | 3.8 | 224 | 21.6 | 7.0 (24) | 735 / 2187 | 1.40 |
+| Harset_CmdCenter | 0.23 M | 0.01 M | 13/15 | 7/14 | 0.3 | 2.6 | 0.3 | 12 | 2.5 | 2.5 (11) | 406 / 910 | 1.79 |
+| Harset_Market | 0.33 M | 0.00 M | 1/3 | 15/29 | 0.2 | 1.8 | 0.2 | 36 | 1.8 | 1.7 (22) | 158 / 1175 | 1.99 |
+| Harset_StorageRm | 0.28 M | 0.00 M | 1/3 | 10/16 | 0.3 | 1.7 | 0.3 | 8 | 1.7 | 1.7 (8) | 454 / 1171 | 3.12 |
+| Ihpet_Crater_Dark | 5.20 M | 2.35 M | 2/4 | 155/370 | 3.5 | 26.5 | 2.7 | 104 | 21.0 | 2.2 (19) | 267 / 694 | 1.40 |
+| Ihpet_Crater_Light | 5.20 M | 2.33 M | 2/4 | 159/371 | 3.5 | 26.6 | 2.7 | 105 | 21.1 | 2.2 (19) | 326 / 801 | 2.16 |
+| Lucia | 29.63 M | 19.13 M | 18/26 | 269/568 | 22.9 | 92.6 | 9.8 | 548 | 43.4 | 5.5 (23) | 666 / 1901 | 2.31 |
+| Menfa_Dark | 14.86 M | 0.07 M | 28/31 | 222/629 | 13.4 | 206.8 | 13.2 | 744 | 160.6 | 5.7 (22) | 592 / 1609 | 4.10 |
+| Menfa_Light | 8.54 M | 0.03 M | 0/3 (none; all kept) | 526/526 | 8.9 | 173.0 | 8.7 | 749 | 126.5 | 5.0 (23) | 425 / 954 | 2.21 |
+| Omega_Site | 2.93 M | 1.04 M | 13/15 | 83/247 | 3.4 | 14.5 | 2.9 | 81 | 13.1 | 5.9 (23) | 599 / 1260 | 2.95 |
+| Omega_Site_CmdCenter | 0.48 M | 0.15 M | 2/4 | 5/45 | 48.1 | 681.7 | 0.7 | 20 | 6.4 | 6.2 (16) | 632 / 1383 | 2.76 |
+| SGC | 0.20 M | 0.00 M | 1/3 | 9/21 | 0.2 | 1.5 | 0.2 | 9 | 1.5 | 1.5 (9) | 252 / 1069 | 1.08 |
+| SGC_W1 | 0.55 M | 0.00 M | 23/29 | 30/68 | 0.5 | 4.2 | 0.5 | 37 | 4.2 | 1.4 (9) | 229 / 931 | 1.56 |
+| Sewer_Falls | 2.76 M | 0.00 M | 0/2 (none; all kept) | 139/139 | 2.4 | 17.2 | 2.4 | 224 | 17.2 | 3.6 (22) | 308 / 1253 | 1.92 |
+| Tollana | 19.32 M | 13.09 M | 5/7 | 189/417 | 23.2 | 183.6 | 9.5 | 306 | 74.8 | 2.8 (15) | 394 / 1042 | 2.17 |
+| Tollana_Curia | 0.02 M | 0.00 M | 0/2 (none; all kept) | 1/1 | 0.0 | 0.0 | 0.0 | 9 | 0.0 | - (no entry point) | - | - |
+
+The `.occ` files total 90.6 MB. Omega_Site_CmdCenter used to fill a
+4.7 km grid from a few enormous triangles; clipping them to the explorable
+area took it from 682 MB to 6.4 MB of RAM. Query cost is the mean of 2,000
+random eye-height segments within 30 m of the player, with warm pages.
+Measurements and the design are in
+[the NA27 worknote](../../docs/analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).
