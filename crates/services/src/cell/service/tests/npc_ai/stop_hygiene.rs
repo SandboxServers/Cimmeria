@@ -214,3 +214,53 @@ async fn aggro_preempt_stops_a_patrolling_npc() {
     assert!(npc.nav_path.is_empty());
     assert_eq!(npc.velocity, [0.0; 3]);
 }
+
+/// NA10 wire guard. The Fighting entry used to send every witness a
+/// `WitnessEntityMethod` with method index 1 and the one-byte payload
+/// `[CombatAdvance]`. On the client, witness method 1 is `onSequence`, so
+/// that was a truncated Kismet-sequence trigger. No movement-type message
+/// exists server-to-client, so nothing may go out. The cache is still
+/// recorded, which is the control that the broadcast path actually ran.
+#[tokio::test]
+async fn fighting_entry_sends_no_one_byte_method_1_to_witnesses() {
+    use cimmeria_entity::cell_entity::MobMovementType;
+
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    seed_default_ability(&mut mgr, 0, 30);
+    add_witness(&mut mgr, [10.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(NPC) {
+        npc.threat_list.insert(PLAYER, 10.0);
+        npc.last_movement_type = None;
+    }
+
+    let (tx, mut rx) = mpsc::channel(256);
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
+
+    assert_eq!(
+        mgr.get_entity(NPC).unwrap().last_movement_type,
+        Some(MobMovementType::CombatAdvance),
+        "control: the Fighting entry recorded its movement type"
+    );
+    let bogus: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::WitnessEntityMethod {
+                    entity_id: NPC,
+                    method_index: 1,
+                    args,
+                    ..
+                } if args.len() == 1
+            )
+        })
+        .collect();
+    assert!(
+        bogus.is_empty(),
+        "a one-byte method-1 witness call is a truncated onSequence: {bogus:?}"
+    );
+}

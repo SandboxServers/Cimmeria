@@ -16,11 +16,9 @@ pub(super) async fn npc_ai_leash(
 ) {
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
-    // The Fighting → Leashing transition site in `npc_ai_fight`
-    // already broadcasts Leash, so this is a no-op in the normal
-    // path — but for completeness (and for the future when leash
-    // becomes a multi-tick walk-back rather than a snap) call it
-    // here too. Dedup'd by `last_movement_type`.
+    // The Fighting → Leashing transition site in `npc_ai_fight` already
+    // records Leash, so this is a no-op in the normal path. Cache only:
+    // nothing reaches the client (NA10, see `broadcast_movement_type`).
     crate::cell::abilities::broadcast_movement_type(
         npc_id,
         Some(MobMovementType::Leash),
@@ -110,9 +108,7 @@ pub(super) async fn npc_ai_leash(
     state_args.extend_from_slice(&state_field.to_le_bytes());
     crate::cell::abilities::send_entity_method(npc_id, 19, state_args, tx, space_mgr).await;
 
-    // Leash complete — clear the cached movement-type so the next
-    // Fighting transition re-broadcasts CombatAdvance. None emits no
-    // wire byte (client keeps its idle pose); only the dedup cache
-    // resets. See `broadcast_movement_type` doc.
+    // Leash complete: clear the cached movement type. The client never saw
+    // it; what shows the NPC standing is the zero velocity the snap wrote.
     crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
 }

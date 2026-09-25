@@ -22,10 +22,9 @@ pub(super) async fn npc_ai_fight(
     use crate::cell::combat;
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
-    // Movement-type broadcast on Fighting entry. Dedup'd against the
-    // cached `last_movement_type` — subsequent Fighting ticks are
-    // no-ops on the wire. See `broadcast_movement_type` doc for
-    // rationale (animation hint, not gameplay-side state).
+    // Record CombatAdvance in the movement-type cache. Nothing goes on the
+    // wire: the client has no movement-type receiver (NA10, see
+    // `broadcast_movement_type`).
     crate::cell::abilities::broadcast_movement_type(
         npc_id,
         Some(MobMovementType::CombatAdvance),
@@ -153,12 +152,8 @@ pub(super) async fn npc_ai_fight(
             space_mgr
                 .cover
                 .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
-            // Broadcast Leash movement-type now rather than wait for
-            // the next AI tick (which would land ~2s later). The leash
-            // handler itself snaps the position instantly, so even
-            // though there's no actual leash-walk yet, the wire
-            // signal lets the client play any leash-specific VFX it
-            // wants for one frame before the corpse snaps home.
+            // Record Leash in the movement-type cache now rather than on the
+            // next AI tick. Cache only: nothing reaches the client (NA10).
             crate::cell::abilities::broadcast_movement_type(
                 npc_id,
                 Some(MobMovementType::Leash),

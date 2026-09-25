@@ -82,8 +82,8 @@ pub fn is_dead_state(state_field: u32) -> bool {
 /// - Stamp `respawn_at = now + respawn_secs` when `respawn_secs.is_some()`;
 ///   leave `respawn_at = None` for one-shot mobs. The respawn tick promotes
 ///   the entity back to `Idle` once the deadline passes.
-/// - Clear `last_movement_type` so the next AI state-entry re-broadcasts
-///   `setMovementType` to witnesses.
+/// - Clear `last_movement_type` so the next AI state entry records its
+///   movement type afresh (a server-side cache; nothing is sent, NA10).
 /// - Clear `nav_path` + zero `velocity` so the corpse stops mid-pathfind.
 ///
 /// **Does not** clear `threat_list` — the death-side wire helper

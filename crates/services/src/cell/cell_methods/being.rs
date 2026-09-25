@@ -69,10 +69,10 @@ pub async fn dispatch(
             // Inbound `setMovementType(UINT8)` — the client (or a peer
             // entity in BigWorld's call-on-ghost model) is telling us
             // an entity has switched movement modes. Store the value on
-            // the entity and fan out to AoI witnesses via the dedup'd
-            // broadcast helper. The helper handles the
-            // "already-cached, skip" case so a re-send of the same byte
-            // doesn't spam the wire.
+            // the entity through the dedup'd helper. Nothing is echoed to
+            // witnesses: no client receiver for a movement type exists, and
+            // method index 1 on the witness side is `onSequence` (NA10; see
+            // `broadcast_movement_type`).
             //
             // The byte is one of `EMobMovementType` (Cover=0,
             // CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5,
@@ -202,13 +202,12 @@ mod tests {
         mgr
     }
 
-    /// Inbound `setMovementType(2)` on an NPC must store `Patrol` on
-    /// the entity and fan the byte out to AoI witnesses. Pin: any
-    /// refactor that drops either the storage or the broadcast will
-    /// fail this — the symptom would be "client never plays patrol
-    /// animation despite server seeing the inbound call".
+    /// Inbound `setMovementType(2)` on an NPC must store `Patrol` on the
+    /// entity and must NOT echo anything to witnesses. The echo used to go
+    /// out as client method 1, which is `onSequence` on the witness side
+    /// (NA10).
     #[tokio::test]
-    async fn set_movement_type_inbound_stores_and_broadcasts() {
+    async fn set_movement_type_inbound_stores_without_a_witness_echo() {
         use crate::cell::messages::CellToBaseMsg;
         use cimmeria_entity::cell_entity::MobMovementType;
 
@@ -225,21 +224,13 @@ mod tests {
             "inbound byte 2 must store MobMovementType::Patrol on the NPC",
         );
 
-        // Witness got exactly one setMovementType packet with the
-        // single-byte Patrol payload.
         let witness_sends: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
-            .filter_map(|m| match m {
-                CellToBaseMsg::WitnessEntityMethod {
-                    entity_id: 50,
-                    method_index,
-                    args,
-                    ..
-                } if method_index == SET_MOVEMENT_TYPE => Some(args),
-                _ => None,
-            })
+            .filter(|m| matches!(m, CellToBaseMsg::WitnessEntityMethod { entity_id: 50, .. }))
             .collect();
-        assert_eq!(witness_sends.len(), 1, "exactly one witness fanout");
-        assert_eq!(witness_sends[0], vec![2u8], "payload pin");
+        assert!(
+            witness_sends.is_empty(),
+            "no witness echo (it would land as a truncated onSequence): {witness_sends:?}"
+        );
     }
 
     /// Unknown EMobMovementType byte (anything outside 0..=6) must NOT
