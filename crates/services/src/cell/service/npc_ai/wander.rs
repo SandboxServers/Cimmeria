@@ -200,13 +200,10 @@ pub(super) async fn npc_ai_wander(
         // `wander_next_at = None` and re-stamp from the arrival
         // branch above.
         npc.wander_next_at = None;
-        npc.nav_path.clear();
         if path.len() > 1 {
-            for wp in path.into_iter().skip(1) {
-                npc.nav_path.push_back(wp);
-            }
+            super::replace_nav_path_on(npc, path.into_iter().skip(1));
         } else {
-            npc.nav_path.push_back(target);
+            super::replace_nav_path_on(npc, [target]);
         }
     }
     // Picked a fresh waypoint and queued the path — the next tick

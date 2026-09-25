@@ -16,6 +16,10 @@
 //!   space_id`), plus `npc_to_spawn`, `threat_count` and `nav_path_len`;
 //! - counter `npc_ai_transitions_total{world, from, to, reason}`.
 //!
+//! A real state change also stops the NPC (clears `nav_path`, zeroes
+//! `velocity`) through [`super::stop_movement_on`]. See
+//! `movement_stop` for why (NA10).
+//!
 //! A write that does not change the state (content re-asserting `idle` on an
 //! idle NPC) still writes but emits nothing: the row means "the state
 //! changed", and a no-op would put a false edge on the timeline.
@@ -167,6 +171,11 @@ pub(in crate::cell) fn set_ai_state_on(
         from.label(),
         to.label(),
     );
+    // A route planned in one state is never valid in the next, and a path
+    // cleared without zeroing velocity makes the client run the NPC in
+    // place (NA10, audit S1). Stopped after the row above, so its
+    // `nav_path_len` shows what was dropped.
+    super::stop_movement_on(npc);
     from
 }
 

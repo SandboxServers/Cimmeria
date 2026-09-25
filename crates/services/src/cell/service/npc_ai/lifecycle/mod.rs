@@ -140,8 +140,7 @@ pub(super) async fn npc_ai_submit(
     // every entity still in view, whether or not it moved. No extra
     // fan-out is needed here, and none of it is conditional on the
     // NPC having a path.
-    npc.nav_path.clear();
-    npc.velocity = [0.0; 3];
+    super::stop_movement_on(npc);
     // Raw clear, not `unset_state_flag`. `BSF_IN_COMBAT` has no
     // ref-counted enter path on the NPC side — nothing ever calls
     // `set_state_flag(BSF_IN_COMBAT)` — so the counter entry does not

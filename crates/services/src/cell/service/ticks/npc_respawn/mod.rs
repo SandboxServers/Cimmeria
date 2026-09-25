@@ -219,12 +219,11 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             // path's clear missed (e.g., death-via-effect-pulse that
             // skipped damage_apply).
             entity.threat_list.clear();
-            entity.nav_path.clear();
+            crate::cell::service::npc_ai::stop_movement_on(entity);
             entity.last_aoe_deaths.clear();
             entity.last_movement_type = None;
             entity.ai_retry_at = None;
             entity.respawn_at = None;
-            entity.velocity = [0.0; 3];
             crate::cell::service::npc_ai::set_ai_state_on(
                 entity,
                 &world_name,

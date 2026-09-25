@@ -159,10 +159,10 @@ pub fn generate_threat(
                 AiState::Fighting,
                 cause.transition_reason(),
             ));
-            // Clear in-flight nav so the fight handler can pathfind
-            // toward the target instead of continuing to a stale
-            // patrol/wander waypoint.
-            target.nav_path.clear();
+            // The transition above has already stopped the NPC: it clears
+            // the in-flight patrol/wander route and zeroes velocity, so the
+            // fight handler paths toward the target from a standstill
+            // (NA10).
         }
         *target.threat_list.entry(attacker_id).or_insert(0.0) += threat_amount;
     }

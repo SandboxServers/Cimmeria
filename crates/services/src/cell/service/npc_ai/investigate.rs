@@ -153,13 +153,10 @@ pub(super) async fn npc_ai_investigate(
         let path = path.unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.investigate_until = None;
-            npc.nav_path.clear();
             if path.len() > 1 {
-                for wp in path.into_iter().skip(1) {
-                    npc.nav_path.push_back(wp);
-                }
+                super::replace_nav_path_on(npc, path.into_iter().skip(1));
             } else {
-                npc.nav_path.push_back(poi_pos);
+                super::replace_nav_path_on(npc, [poi_pos]);
             }
         }
         // Pathfind queued — the next tick will observe nav_empty=false

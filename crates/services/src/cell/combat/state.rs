@@ -121,8 +121,9 @@ pub fn mark_npc_dead(entity: &mut cimmeria_entity::cell_entity::CellEntity, worl
         );
     }
     entity.last_movement_type = None;
-    entity.nav_path.clear();
-    entity.velocity = [0.0; 3];
+    // The Dead transition above already stopped the corpse; this covers a
+    // re-kill of an entity that was already Dead (no state change, no stop).
+    crate::cell::service::npc_ai::stop_movement_on(entity);
 }
 
 #[cfg(test)]

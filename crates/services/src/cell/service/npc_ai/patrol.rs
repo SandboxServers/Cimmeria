@@ -212,16 +212,13 @@ pub(super) async fn npc_ai_patrol(
         let path = path.unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.patrol_dwell_until = None;
-            npc.nav_path.clear();
             if path.len() > 1 {
                 // Skip the first entry (start position). Detour returns
                 // a straight-path that includes both endpoints.
-                for wp in path.into_iter().skip(1) {
-                    npc.nav_path.push_back(wp);
-                }
+                super::replace_nav_path_on(npc, path.into_iter().skip(1));
             } else {
                 // Pathfind failed or returned a single point — direct push.
-                npc.nav_path.push_back(waypoint);
+                super::replace_nav_path_on(npc, [waypoint]);
             }
         }
         // patrol_continue covers both "walking the current waypoint"
