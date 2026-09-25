@@ -67,8 +67,11 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [Castle Cellblock Rebuild](analysis/castle-cellblock-rebuild/README.md) | Audit of the Castle_CellBlock rebuild spreadsheet against the original Python scripts and the live chain seed, proposed decisions, and a bounded packet ledger for the remaining work |
 | [Castle Rebuild](analysis/castle-rebuild/README.md) | Audit of the World 8 Castle rebuild spreadsheet (missions 701-708) against `Castle.py`, the original gate code, the seed and the local client maps; the Cellblock-branch items Castle depends on; proposed decisions and a parallel packet ledger |
 | [Harset Rebuild](analysis/harset-rebuild/README.md) | Audit of the Harset hub rebuild spreadsheet (worlds 57/68/69/70, 36 missions) against the three surviving scripts, the seed, the content engine and the navmesh; the Cellblock-branch and open-PR plumbing Harset depends on; proposed decisions and a parallel packet ledger |
+| [Dialog UI Redesign](analysis/dialog-ui-redesign/work-packets.md) | Client-grounded contract for dialog window types, buttons, close events and lures (CEGUI Lua, Ghidra trace of SGW.exe, cooked PAK census, colo telemetry), plus the parallel packet ledger for the Castle_CellBlock and Castle dialog cleanup, Radio lures and non-modal Marsh barks |
+| [NPC AI Restoration](analysis/npc-ai-restoration/README.md) | Evidence-backed audit of NPC aggro, leash/reset, grounding, stuck movement and cover in Castle_CellBlock and Castle (code, Ghidra, 7 days of colo SigNoz), owner decisions, a telemetry-first plan and a packet ledger |
 | [SGW Handoff Pack v1.2](analysis/sgw-handoff-pack-v1.2/README.md) | External class / skill-tree / combat / world handoff pack, its Phase 0 compatibility and gap report against the live schema, runtime, combat pipeline and world seeds, the five domain audits behind it, and the proposed Phase 1 trainer + learned-abilities patch plan |
 | [Colo Playtest 2026-09-18](analysis/playtests/2026-09-18-colo-castle/README.md) | First external playtest of the Castle_CellBlock + Castle rebuild: Discord conversation aligned with SigNoz telemetry, per-claim verdicts, ranked NPC facing / grounding / pathing / leash / follow root causes, and the telemetry seams needed to make the next session diagnosable from logs |
+| [CellBlock to Castle Ring Transport](analysis/ring-transport-cellblock-castle/README.md) | Audit of mission 688's CellBlock → Castle transfer against the cooked client maps (both pads are placed but un-wired ring stations), and a gated feasibility plan for a client map patch that clones a ring rig into the two chunks |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
@@ -112,6 +115,7 @@ Content-level audit of all game data plus the cradle-to-grave reference for the 
 | [reconstruction-map.md](content/reconstruction-map.md) | What can be rebuilt vs holes vs never-built, priority recommendations | Complete |
 | [external-data-analysis.md](content/external-data-analysis.md) | Analysis of 11 external dev team spreadsheets and text files | Complete |
 | [interaction-flags.md](content/interaction-flags.md) | `EInteractionNotificationType` bitmask reference for `set_interaction_type` actions | Complete |
+| [dialog-ui-client-contract.md](content/dialog-ui-client-contract.md) | **REFERENCE** — the 2009 dialog window's real behaviour and the authoring rules that follow: window types, drawable button types, close semantics + the two hard rules, lure delivery, one-dialog-at-a-time eviction | Complete |
 | [equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md) | **EXPLANATION** — chain shape for granting weapons via a manual equip step instead of force-equipping into the bandolier (mission 622 / 641 worked examples) | Complete |
 | [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, vocabulary, schema, lifecycle, observability, performance | Complete |
 | [extending-the-engine.md](content/extending-the-engine.md) | **HOW-TO** — add a new trigger / condition / action variant | Complete |
@@ -207,7 +211,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 33 documents.
+How the Cimmeria emulator itself is structured. 36 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -226,6 +230,7 @@ How the Cimmeria emulator itself is structured. 33 documents.
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors, relog persistence of `BSF_AutoCycling` | Complete |
 | [gm-cell-method-gating.md](architecture/gm-cell-method-gating.md) | ADR for the server-authoritative GM gate (#475 / CAT-N-03): `access_level` plumbing into `CellEntity`, the dispatch-layer `gm_gate`, how to add the next `gm*` method | Complete |
 | [movement-validation.md](architecture/movement-validation.md) | ADR for server-authoritative position validation (#478 / CAT-B-01,-06,-09): the 4-layer seam (bounds / speed warn-only / teleport / navmesh), dual teleport gate, server-clock dt, authorized-teleport reseed, warn-only spaceId cross-check, tolerances + calibration path | Complete |
+| [movement-telemetry.md](architecture/movement-telemetry.md) | What the position path *reports* (split out of movement-validation.md, PR #700): every hard reject counted and diagnosed through one seam whichever outcome it produced, which `movement.validation` rows carry `world` and the one that cannot, the navmesh containment gate + distances, the `navmesh_hash` mesh fingerprint and its stability contract, the per-entity throttle and the teardown paths that release it, the accepted-position sampler, the advisory-world gap | Complete |
 | [navmesh-containment-modes.md](architecture/navmesh-containment-modes.md) | ADR for the per-world `navmesh_mode` column (H53): why a partial `.nav` fails closed and becomes an invisible wall only non-GM players hit, the `enforce` / `advisory` values and their `enforce` default, the single `enforces_navmesh_containment` predicate, every routed containment gate, the informational consumers that keep the mesh, why the flag is seeded data rather than auto-detected, and the path back to `enforce` | Complete |
 | [gm-cell-method-adapt-plan.md](architecture/gm-cell-method-adapt-plan.md) | Roadmap for the developer-useful ADAPT `gm*` cell methods (#473/#518): the feedback-channel blocker that unlocks the query surface, name→id resolution, the `loadX` hot-reload family, recommended sequencing | Complete |
 | [dev-console-channel.md](architecture/dev-console-channel.md) | ADR for the GM `.`-console (#523): chat-intercept channel for the ~66 dev/authoring commands with no native slash binding, registry dispatch, record→confirm seed-SQL authoring (live write + per-session log + Discord hook), FanMMORPG patrol authoring + schema, per-command status | Complete |
@@ -245,6 +250,8 @@ How the Cimmeria emulator itself is structured. 33 documents.
 | [network-chaos-testing.md](architecture/network-chaos-testing.md) | ADR for the network-chaos apparatus: lossy-socket wrappers, pcap-replay infra, chaos scenarios over the L2 trait | Complete |
 | [wireclient.md](architecture/wireclient.md) | ADR for `cimmeria-wireclient`: headless wire-level test client, `session_trace` JSONL schema, pcap exporter | Complete |
 | [black-market.md](architecture/black-market.md) | ADR for the Black Market / auction house (#571, PR #586 — **unmerged**): cell methods 61–66 in / client methods 90–95 out, the four-state auction lifecycle, DELETE-based item escrow + SQL-guarded cash escrow, the 30 s expiry sweep, the reserved system seller for boot-seed listings, and the shelved client-method binding that forces a runtime patch (#587). Open: guessed `next_min_bid`, unbounded search (CAT-I-05), undecodable `sellerName` | Implemented, unmerged |
+| [player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md) | ADR for player-to-player AoI introduction: the `SGWPlayer` `createOnClient` ghost cascade, the cell/base split of live state vs session identity joined at emit time, the `is_introducible` load-window gate, the `aoi.player_ghost_incomplete` seam, and the two-client UAT that is still outstanding | Implemented, unvalidated |
+| [first-login-cinematic-aoi-hold.md](architecture/first-login-cinematic-aoi-hold.md) | ADR (Accepted — experimental) for the #582 invisible-static-NPC mitigation: why the 2026-09-19 repro puts the drop inside the client *after* a fully ACKed delivery, the cinematic-`CollectGarbage` lead (n=1), what the hold buffers and what it deliberately does not, the `cancelMovie` / 16 s release, and the `OTEL_FILTER` gap that kept `aoi.create_emit` out of SigNoz | Implemented, unvalidated |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 
@@ -442,7 +449,8 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 | [animation-system.md](reverse-engineering/findings/animation-system.md) | — | Animation system: sequence lookup, combat/weapon animation triggers | HIGH |
 | [minigame-architecture.md](reverse-engineering/findings/minigame-architecture.md) | — | Minigame architecture from the client binary: SmartFoxServer session, per-game flow | HIGH |
 | [stargate-dhd-state-machine.md](reverse-engineering/findings/stargate-dhd-state-machine.md) | — | Stargate DHD state machine; `onDHDReply` subscriber, declaration, and Rust emission audit | HIGH / MEDIUM |
-| [dialog-portrait-lookup.md](reverse-engineering/findings/dialog-portrait-lookup.md) | — | Dialog portrait and speaker-name lookup path | HIGH |
+| [dialog-controller-wire-flow.md](reverse-engineering/findings/dialog-controller-wire-flow.md) | — | DialogController display path: the `IsImmediate` display-versus-queue split, two active slots and eviction, the zero-button close sentinel versus the cooked `ButtonID` on a click | HIGH |
+| [dialog-portrait-lookup.md](reverse-engineering/findings/dialog-portrait-lookup.md) | — | Dialog portrait and speaker-name lookup path (one handler label corrected 2026-09-21; the speaker-name track is disputed) | HIGH |
 | [client-instrumentation-hookpoints.md](reverse-engineering/findings/client-instrumentation-hookpoints.md) | — | Client instrumentation hookpoints for from-scratch telemetry | HIGH |
 | [client-wire-emit-suppression.md](reverse-engineering/findings/client-wire-emit-suppression.md) | — | Client-side wire-emit suppression cases (heal-focus, P90 swap) | HIGH |
 | [right-click-routing-on-corpse.md](reverse-engineering/findings/right-click-routing-on-corpse.md) | — | Right-click routing on corpses: why some corpses fail to open the loot window | HIGH |

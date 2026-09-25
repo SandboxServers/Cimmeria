@@ -45,45 +45,36 @@ async fn defeat_burst_does_not_lose_packets_under_tx_window_pressure() {
         all_safety_invariants(&channel);
     }
 
-    // B receives whatever made it on the wire (= up to TX_WINDOW_SIZE).
+    // No wire loss in this scenario, and the harness puts every send
+    // on the wire immediately (deferral only changes which queue
+    // tracks the entry), so the whole burst lands at B. Receiving all
+    // of it up front also guarantees B owes every ack before the
+    // carrier is built — a carrier built after a partial receive
+    // returns a prefix ack (TESTING.md type 10). The promotion path is
+    // pinned by `tx_window_overflow_with_recovery`.
     let received = session
         .b
         .recv_n_bundles(burst_size as usize, Duration::from_secs(2))
         .await;
-    // No wire loss in this scenario — every TX-window-eligible entry
-    // (up to TX_WINDOW_SIZE) lands at B exactly once. Deferred entries
-    // sit in A's unsent_packets and have NOT been put on the wire yet,
-    // so B's expected count is min(burst_size, TX_WINDOW_SIZE).
-    let expected_pre_ack = std::cmp::min(burst_size as usize, crate::consts::TX_WINDOW_SIZE);
     assert_eq!(
         received.len(),
-        expected_pre_ack,
-        "B must receive exactly {expected_pre_ack} bundles pre-ack (TX-window cap; \
-         deferred entries don't go on the wire until acks free slots)"
+        burst_size as usize,
+        "B must receive the whole burst exactly once"
     );
 
-    // Cumulative ack carrier from B drains A's TX window;
-    // deferred entries promote and go out.
+    // Cumulative ack carrier from B drains A's TX window. A's pump
+    // applies the ack before it delivers the carrier.
     session.b.send_bundle(b"ack carrier", false).await.unwrap();
-    let _ = session.a.recv_n_bundles(1, Duration::from_secs(1)).await;
+    let carrier = session.a.recv_n_bundles(1, Duration::from_secs(5)).await;
+    assert_eq!(carrier.len(), 1, "ack carrier must reach A");
 
-    // After the ack drains: TX-window is empty AND every deferred
-    // entry has been promoted + emitted, so B sees the remaining
-    // packets too. For burst_size <= TX_WINDOW_SIZE this is a no-op.
-    let remaining_after_ack = (burst_size as usize).saturating_sub(expected_pre_ack);
-    if remaining_after_ack > 0 {
-        let post = session
-            .b
-            .recv_n_bundles(remaining_after_ack, Duration::from_secs(2))
-            .await;
-        assert_eq!(
-            post.len(),
-            remaining_after_ack,
-            "post-ack: deferred entries must promote and deliver"
-        );
-    }
-
-    // Safety invariants persist after the ack-drain phase.
+    // Safety invariants persist after the ack-drain phase, and the
+    // full cumulative ack leaves nothing tracked.
     let channel = session.a.channel.lock().unwrap();
     all_safety_invariants(&channel);
+    assert_eq!(
+        channel.tx_window.len() + channel.unsent_packets.len(),
+        0,
+        "full cumulative ack must drain the TX window and the deferred queue"
+    );
 }

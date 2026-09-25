@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 64 per-system reverse engineering findings with evidence.
+This directory contains 70 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -36,6 +36,7 @@ This directory contains 64 per-system reverse engineering findings with evidence
 | `architectural-anomalies.md` | V5 (W-anom) | Three CME EventSignal anomalies resolved: BM emitters use Pattern B (not unknown mechanism); GiveInventory NetOut has no client subscriber (server-only signal); SGWHomeless is `class_SGWHomeless`, an in-editor developer tool class | HIGH |
 | `cooked-data-pipeline.md` | V5 (W-cooked) | 21 ServerSource categories (1–21) with binary-confirmed PAK filenames; LibCategory/ServerSource struct layout; 5 CME events per category; onVersionInfo/onCookedDataError handler logic; ZipStorageBase open+MetaData-write path; contradiction with existing pipeline doc category table | HIGH |
 | `mercury-nub-anatomy.md` | V5 | Mercury `Nub` / `BaseNub` / `ChannelInternal` / `Connection` class layouts (22 functions, 4 struct anatomies); two-channel-map design; network thread loop; `Nub::send` 4-phase pipeline; rdtsc inactivity vs our `MAX_RETRIES`; two latent wire gaps (REPLY piggyback XOR-inverted length, ACK batching per 10ms tick) | HIGH |
+| `dialog-controller-wire-flow.md` | 2026-09 (DU-RE) | DialogController display path — `onDialogDisplay` (method 105) wire signature; the `IsImmediate` display-versus-queue split at `FUN_00d25900`/`FUN_00d25200`; `activateAvailableDialog` is local-only; the native `Dialog.*Type`/`Dialog.Button*Type` constants at `0x01b16120`; two active slots and eviction through discard; the zero-button close sentinel (`-1`) versus the cooked `ButtonID` on a click, corroborated by colo telemetry; corrects the `FUN_00d25310` label in `dialog-portrait-lookup.md` | HIGH (display split, constants, slots, button-id) / MEDIUM-LOW for the fenced-off unverified items |
 | `dialog-portrait-lookup.md` | V5 | Dialog portrait + speaker-name lookup — wire EntityId path (not DatabaseId) through LookupEntityListenerEntry → slot 17 → UnitMappingChanged → createCharacterPortrait; CookedData SpeakerID PAK parse at piVar2[7]; empty-name fallback to player name; Prisoner 329 + Col Marsh root-cause diagnoses | HIGH |
 | `client-wire-emit-suppression.md` | V5 | Client-side gates suppressing wire emit — Heal Focus arg-validation drop at `0x00aa2910`; P90 bandolier-swap Lua `getActiveSlotForContainer` no-op gate; in-flight ability queue at `GameEntityManager+0x228`; proposed server-side mitigations (resend `onActiveSlotUpdate` post-`onClientReady`, ensure `AbilityCooldownUpdate` drains the in-flight queue) | HIGH (binary anatomy) / MEDIUM (proposed mitigations need playtest) |
 | `auth-and-crypto-modernization-targets.md` | #434 | Auth login transport (libcurl), client SHA-1 site, anti-debug status, Mercury crypto v2 targets | HIGH |

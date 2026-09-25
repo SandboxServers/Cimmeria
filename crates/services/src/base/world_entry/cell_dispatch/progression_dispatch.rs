@@ -84,6 +84,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
@@ -335,6 +336,7 @@ pub(super) async fn grant_xp(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
 ) {
     handle_grant_xp(
         entity_id,
@@ -344,6 +346,7 @@ pub(super) async fn grant_xp(
         transport,
         connected,
         entity_to_addr,
+        cell_tx,
     )
     .await;
 }

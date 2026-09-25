@@ -461,6 +461,10 @@ pub(super) async fn npc_ai_fight(
                             from: npc_pos,
                             to: nav_target_pos,
                             reason: super::path_failure::PathFailReason::DegeneratePath,
+                            // `nav_path` is deliberately untouched on this
+                            // branch: a one-waypoint repath is not worth
+                            // discarding a route that may still be usable.
+                            fallback: super::path_failure::PathFallback::PathUnchanged,
                             target_id: Some(target_id),
                         },
                         std::time::Instant::now(),
@@ -484,6 +488,14 @@ pub(super) async fn npc_ai_fight(
                         from: npc_pos,
                         to: nav_target_pos,
                         reason,
+                        // Unlike every other state, `fight` does **not**
+                        // enqueue the raw target as a direct waypoint
+                        // here — so the chaser stands still, or keeps
+                        // walking a stale route. The shared message used
+                        // to claim a straight-line fallback for this
+                        // branch, which sent operators looking for a
+                        // wall-clipping NPC that was never moving.
+                        fallback: super::path_failure::PathFallback::PathUnchanged,
                         target_id: Some(target_id),
                     },
                     std::time::Instant::now(),
