@@ -2,7 +2,7 @@
 title: "Spawn System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-25
 ---
 
 # Spawn System
@@ -19,13 +19,22 @@ builds the `(event_set_id, event_id) → sequence_id` lookup). Respawn is handle
 entity template, minimum 3s) and promotes Dead NPCs back to Idle, restoring HP, focus,
 state flags, interaction type, and facing.
 
+Two of those file names invite a misreading ([#62](https://github.com/SandboxServers/Cimmeria/issues/62)).
+`regions.rs` loads GenericRegion trigger volumes (`resources.point_sets` of type
+`AreaSet`) that the client hit-tests and reports, for mission and content triggers.
+`respawners.rs` loads the player respawn points offered in the Defeat Window
+(`resources.respawners`, chosen through `callForAid`). Neither is a `SpawnRegion` or
+`SpawnSet`, and neither does population control: there are no population caps, set
+cooldowns, weighted spawn tables, or region/set activation anywhere in `crates/services`.
+
 **The architecture below is not what was built.** The original design used two
 server-only BigWorld entities (`SGWSpawnRegion`, `SGWSpawnSet`) communicating by
 base-to-base mailbox RPC; both were empty stubs in the Python server, and the Rust
 implementation spawns directly from the cell rather than reconstructing that entity
 pair. The sections that follow document the original design intent — reconstructed
 from property names, method signatures, and DB schema — and are retained because the
-DB schema they describe is still the data source.
+`spawn_sets` and `spawn_points` tables they describe are still in the schema (both are
+empty in the seed; live spawns come from `resources.spawnlist`).
 
 ---
 

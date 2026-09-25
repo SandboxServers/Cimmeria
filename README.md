@@ -9,27 +9,29 @@ Cimmeria reimplements the server infrastructure — authentication, world simula
 
 ## Status
 
-The project tracks **437 features** across 44 systems against the Rust codebase. **57% have code** (248 of 437); **32% are confirmed working** end-to-end with the live client (139 of 437). See the [Gap Analysis](docs/gap-analysis.md) for the full per-system breakdown.
+The project tracks **471 features** across 45 systems against the Rust codebase (re-verified 2026-09-25). **69% have code** (325 of 471); **36% are confirmed working** end-to-end with the live client (169 of 471), and another 58 are merged and waiting for a client test. See the [Gap Analysis](docs/gap-analysis.md) for the full per-system breakdown.
 
 **Tested end-to-end with the game client:**
 - Login and authentication (HTTP SOAP → shard select → Mercury UDP)
 - Mercury reliable UDP transport with AES-256 encryption, per-channel fragment reassembly
-- Game data pipeline (22 resource categories, 112,626 DB rows)
-- World entry, entity spawning, grid-based Area of Interest
+- Game data pipeline (21 resource categories, 112,626 DB rows)
+- Character creation and world entry, entity spawning, grid-based Area of Interest
+- Castle Cellblock and Castle played end to end (2026-09-18 colo playtest): missions, dialogs, NPC combat, loot, ring transport, the Livewire minigame
+- Contact lists and the GM command console
 - Durable Base→Cell content event delivery via persistent outbox
 - One-command build and setup
 
 **Code exists, needs verification:**
-Character creation (8 archetypes, 23 defs) | Inventory | Vendors | Chat | Crafting | Trading
+Vendors | Chat | Trading | NPC AI restoration (September) | Stargate DHD and multi-player gate sync | Harset
 
 **Implemented with known gaps:**
-Combat & abilities | Effects | Missions | NPC AI | Stats & leveling | Stargate travel
+Combat & abilities | Effects | Missions (no cash or item rewards yet) | Spawn population control | Mail (read only) | Stats & leveling | Crafting (state only)
 
 See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Tests & CI
 
-The Rust workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases** across **461 files**, of which **2,691 are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, and the Windows-only client-telemetry cdylib). **224 are live-DB regression guards** (gated by `require_db_or_skip!`, all in `cimmeria-services`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently carries **5,333 `#[test]` / `#[tokio::test]` cases** across **812 files**, of which **4,975 are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, the Windows-only client-telemetry cdylib, and the live research lab). **775 are live-DB regression guards** (gated by `require_db_or_skip!`, 774 in `cimmeria-services`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
@@ -138,6 +140,8 @@ flowchart TD
     %% UPK / navmesh toolchain (independent of the server spine)
     navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
     navmeshExtractor --> upk
+    navmeshExtractor --> occluder
+    services --> occluder
     sceneEditor["scene-editor (tool)"] --> upkObjects
     sceneEditor --> upk
     upkObjects --> upk
@@ -189,6 +193,7 @@ Cimmeria/
 │   ├── upk/                UPK (Unreal Package) file parser
 │   ├── upk-objects/        UPK object type definitions
 │   ├── navmesh-extractor/  UE3 .umap geometry → .obj for NavBuilder
+│   ├── occluder/           Collision-geometry occluders for server-side line of sight
 │   ├── launcher/           egui game launcher + DLL injection (sgw-launcher)
 │   └── client-telemetry/   Windows-only cdylib injected into SGW.exe
 ├── src-tauri/              Tauri desktop GUI wrapping the server (cimmeria-app)
@@ -213,7 +218,7 @@ Cimmeria/
 | `cimmeria-content-engine` | Data-driven mission/effect/dialog runtime |
 | `cimmeria-discord` | Discord notification dispatch (server + colo events) |
 | `cimmeria-observability` | Metrics facade over the OpenTelemetry SDK (OTLP) |
-| `cimmeria-wireclient` | Headless Tier 3 test client (SOAP + Mercury + pcap replay) |
+| `cimmeria-wireclient` | Headless test client: SOAP auth, Mercury phase-3 handshake builders and a JSONL trace loader (no UDP socket or replay engine yet) |
 | `tokio` | Async runtime and networking |
 | `axum` | HTTP/REST for auth and admin API |
 | `sqlx` | PostgreSQL async driver |

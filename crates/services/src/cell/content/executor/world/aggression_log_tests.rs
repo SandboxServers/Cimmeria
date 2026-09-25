@@ -25,12 +25,13 @@ fn make_space_mgr() -> SpaceManager {
 
 /// A tag that matches no entity raises one WARN naming the tag and the
 /// chain. Fails if the miss goes back to being silent.
-#[test]
-fn set_aggression_tag_miss_warns_with_tag_and_chain() {
+#[tokio::test]
+async fn set_aggression_tag_miss_warns_with_tag_and_chain() {
     let mut mgr = make_space_mgr();
+    let (tx, _rx) = tokio::sync::mpsc::channel(8);
     let logs = LogCapture::install();
 
-    set_aggression("Dorne".to_string(), 1, 1, 1032, &mut mgr);
+    set_aggression("Dorne".to_string(), 1, 1, 1032, &tx, &mut mgr).await;
 
     let ev = logs
         .find_event(Level::WARN, "matched no entity", "tag_not_found")
@@ -43,12 +44,13 @@ fn set_aggression_tag_miss_warns_with_tag_and_chain() {
 }
 
 /// The success path is INFO with `from` / `to`, and raises no WARN.
-#[test]
-fn set_aggression_hit_logs_from_and_to_at_info() {
+#[tokio::test]
+async fn set_aggression_hit_logs_from_and_to_at_info() {
     let mut mgr = make_space_mgr();
+    let (tx, _rx) = tokio::sync::mpsc::channel(8);
     let logs = LogCapture::install();
 
-    set_aggression("Drone".to_string(), 2, 1, 1032, &mut mgr);
+    set_aggression("Drone".to_string(), 2, 1, 1032, &tx, &mut mgr).await;
 
     assert_eq!(
         mgr.get_entity(101).unwrap().aggro.override_level,
@@ -99,12 +101,13 @@ async fn generate_threat_action_logs_the_content_threat_cause() {
 /// A level outside 0-5 is refused with a WARN and changes nothing. Fails if
 /// an out-of-range seed value is stored as an override again (pre-NA13 any
 /// `i32` was accepted and anything `> 0` read as hostile).
-#[test]
-fn set_aggression_invalid_level_warns_and_changes_nothing() {
+#[tokio::test]
+async fn set_aggression_invalid_level_warns_and_changes_nothing() {
     let mut mgr = make_space_mgr();
+    let (tx, _rx) = tokio::sync::mpsc::channel(8);
     let logs = LogCapture::install();
 
-    set_aggression("Drone".to_string(), 7, 1, 1032, &mut mgr);
+    set_aggression("Drone".to_string(), 7, 1, 1032, &tx, &mut mgr).await;
 
     let ev = logs
         .find_event(Level::WARN, "is not 0-5", "invalid_level")
@@ -118,12 +121,13 @@ fn set_aggression_invalid_level_warns_and_changes_nothing() {
 
 /// `0` keeps its pre-NA13 meaning (passive): NEUTRAL, which disarms even a
 /// faction-10 NPC. Fails if 0 maps to "no override" (faction-derived).
-#[test]
-fn set_aggression_zero_disarms_with_neutral() {
+#[tokio::test]
+async fn set_aggression_zero_disarms_with_neutral() {
     let mut mgr = make_space_mgr();
     mgr.get_entity_mut(101).unwrap().faction = crate::cell::combat::HOSTILE_FACTION;
+    let (tx, _rx) = tokio::sync::mpsc::channel(8);
 
-    set_aggression("Drone".to_string(), 0, 1, 1032, &mut mgr);
+    set_aggression("Drone".to_string(), 0, 1, 1032, &tx, &mut mgr).await;
 
     let npc = mgr.get_entity(101).unwrap();
     assert_eq!(

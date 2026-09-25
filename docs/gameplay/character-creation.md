@@ -2,7 +2,7 @@
 title: "Character Creation"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-25
 ---
 
 # Character Creation
@@ -246,6 +246,10 @@ CREATE TABLE sgw_player (
 - Character deletion with proper foreign key cascade handling
 - GM player entity creation for elevated-access accounts
 - Resource version sync for client cache across eight resource categories
+
+### In-client verification
+
+The core create-and-enter flow is verified with a real client. The 2026-09-18 colo playtest ([report](../analysis/playtests/2026-09-18-colo-castle/README.md), §3 rows 6:58 PM and 8:04 PM) listed characters (count 1 → 2 → 3), created player 71 (Human Soldier, archetype 1) and player 72 (Jaffa, archetype 8), showed the creation-time boot item in the character-select preview, and entered Castle_CellBlock with both characters. Not yet verified in-client: deletion (the playtest's delete request never reached the server) and what the client displays when a name is rejected (two rejects for a surname with trailing whitespace were logged, but not what the client showed).
 
 ### What is Missing
 

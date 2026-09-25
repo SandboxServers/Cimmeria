@@ -40,6 +40,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Entity-property-sync OQ-1 CLOSED](entity-property-sync-oq1.md) — **[PROMOTE → spec.protocol.entity-property-sync §1.15 OQ-1 + OQ-X + F1 + G39]** — 0x3C/0x3D thresholds are server-side only; client uses UE3 FArchive uint32_t via FNetworkPropertyChange__vfunc_0 @ 0x015652d0. (Earlier sub-claim that 0x00dd0bb0 was misnamed as RemoveEntityListener has been retracted — Ghidra name is correct per audit Appendix E.)
 
+## NPC aggression broadcast (NA33, 2026-09-25)
+
+- [SGWMob aggression ClientMethod indices + legacy wire bug](npc-aggression-broadcast-na33.md) — **[PROMOTE → docs/reverse-engineering/findings/npc-aggression-broadcast.md DONE]** — `onAggressionOverrideUpdate`/`Cleared` = flat indices 27/28 (Lootable has 0 client methods); legacy `setAggression` used a client-dead `onEntityProperty`, only `createOnClient` used the working ClientMethod.
+
 ## Auto-cycle / auto-fire system (2026-05-20)
 
 - [Auto-cycle system findings](auto-cycle-findings.md) — **[PROMOTE → spec.combat.auto-cycle or doc-reference from gameplay/combat-system.md]** — Full wire path confirmed: cell method 83, 2-byte payload, server-driven loop, `BSF_AutoCycling` bit 1, cooldown-expiry re-fire pattern. Implementation gap identified.
