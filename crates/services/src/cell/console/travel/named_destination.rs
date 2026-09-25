@@ -8,7 +8,7 @@
 //! | Command | Subject moved | Destination |
 //! |---|---|---|
 //! | `.goto` | `target or player` | the named player's exact space + position |
-//! | `.summon` | the named player | `target or player`'s space + position |
+//! | `.summon` | the named player | the **caller's** space + position |
 //! | `.gotolocation` | `target or player` | the named world, explicit coordinates |
 //!
 //! Legacy: `deprecated/python/cell/commands/Player.py:298-365`.
@@ -101,17 +101,24 @@ pub(super) async fn goto(
     .await;
 }
 
-/// `.summon <name>` — move a named online player to the selected target's (or
-/// the caller's) position and instance.
+/// `.summon <name>` — move a named online player to the caller's instance and
+/// current position.
 ///
-/// Legacy `summon` (`Player.py:321-341`) is `goto` with the roles swapped:
-/// the *named* player is the one moved, and `entity = target or player` is
-/// only the destination anchor. The anchor may therefore be an NPC — D15's
-/// players-only restriction applies to the entity being *moved*, which here
-/// is always the named player.
+/// **Deliberate departure from legacy.** `Player.py:321-341` anchors on
+/// `entity = target or player`, i.e. the GM's *selection* wins over the GM.
+/// Owner decision 2026-09-20: "summon" means "bring them to me", always. The
+/// legacy rule bit on the colo the same day — the server still held a target
+/// the GM had clicked 19 minutes earlier and long since walked 216 m away
+/// from, so `.summon test` dropped the player on that NPC's spawn point
+/// instead of beside the GM. A selection is therefore ignored outright rather
+/// than merely range-checked: there is no state in which "bring them to my
+/// target" is what a GM typing `.summon` expects.
+///
+/// The anchor is the caller's server-known position — the last position
+/// update the movement layer accepted, at most one client send interval old.
+/// No round-trip to the client is needed to freshen it.
 pub(super) async fn summon(
     caller_id: u32,
-    target: Option<u32>,
     args: &[&str],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -125,7 +132,7 @@ pub(super) async fn summon(
         return;
     };
 
-    let anchor = target.unwrap_or(caller_id);
+    let anchor = caller_id;
     let Some(anchor_space_id) = space_mgr.get_entity_space_id(anchor) else {
         send_gm_feedback(caller_id, "summon: entity not found", tx).await;
         return;

@@ -126,7 +126,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnDialogSetOpen { dialog_set_name }` | Dialog set opened |
 | `OnMissionAccepted { mission_id }` | Mission just accepted or advanced (fired from the executor's combined `Action::AcceptMission \| Action::AdvanceMission` branch after the cell-side state commit; used by chains that highlight quest objects on mission start — e.g. chain 1097 for Aftermath) |
 | `OnMissionAbandoned { mission_id }` | Mission just abandoned, fired **after** the instance is removed so `mission_status <id> eq not_active` already holds. Seed `event_type` = `mission_abandoned`, `event_key` = the mission id; there is no wildcard. Fires from all three abandon paths — the client-callable `abandonMission` cell method (Missionary index 52), the `abandon_mission` chain action, and `gmMissionClear` / `gmMissionAbandon` — and only when a mission was really removed. Used by offer chains that must repaint their giver and clear a stranded dialog-set bind: Harset chains 6308 (1324), 6342 (1326) and 6120 (742) |
-| `OnPlayerEnteredCover { cover_set_id? }` | Player entered proximity of a cover set (`resources.cover_sets`). One event per set; a player can be in several at once. Wildcard (`NULL`) fires for any set |
+| `OnPlayerEnteredCover { cover_set_id? }` | Player entered proximity of a cover set (`resources.cover_sets`). One event per set; a player can be in several at once. Wildcard (`NULL`) fires for any set. Also **replayed by the server** when a mission step activates with the player already in the set — see "Step-activation replay" below |
 | `OnPlayerLeftCover { cover_set_id? }` | Player left a cover set's proximity — the symmetric partner of `OnPlayerEnteredCover` |
 | `OnPlayerInCoverDuration { cover_set_id?, seconds }` | Player has been continuously in a cover set for ≥ `seconds`. Debounced: leaving and re-entering resets the timer. Seed `event_key` convention is `"<seconds>"` or `"<seconds>:<set_id>"` ([loader/trigger.rs:87-100](../../crates/content-engine/src/loader/trigger.rs#L87-L100)) |
 | `OnNpcFlanked { npc_template? }` | An NPC occupying a cover slot was flanked — its top-threat target moved outside the cover's defensive arc (orientation ± π/2) |
@@ -156,7 +156,7 @@ Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](..
 
 This is the trigger-side mirror of the action-side gap catalogued below, and it is the reason `apply_effect`'s one seeded row cannot fire: the row sits on an `effect`-scoped chain whose trigger is one of these.
 
-### Step-activation replay of `enter_region`
+### Step-activation replay of `enter_region` and `player_entered_cover`
 
 `enter_region` is an **edge** event. The client reports a volume crossing once, and a chain gated on a step that is not yet active sees that edge, fails its gate, and never gets another one until the player physically leaves and comes back. The 2026-09-18 Castle playtest lost objective 2484 to this ordering race, and the Harset seed lanes found four more instances of the same shape.
 
@@ -171,7 +171,13 @@ What an author needs to know:
 - **Content chains only.** Ring-transporter forwarding and `REGION_FLAG_STARGATE` passage hang off the same client call but are sequenced by the dispatch arm in `cell_methods::player::world`, *after* `fire_enter_region`. A replay never starts a ring transport and never carries a player through a gate.
 - **Bounded.** A replayed chain can itself advance a step, which activates another step, which replays again. A depth cap plus a per-activation visited set of `(entity, mission, step)` triples stops the recursion; a refusal is a `warn!` naming `replay_depth_exceeded` or `step_already_replayed`, which reads as "this chain is looping".
 
-Cover edges and `player_loaded` are **not** replayed. The cover edge belongs to the Castle Cellblock lane (objective 2484); `player_loaded` keeps the seed-side second-trigger rule; and the abandon case has its own trigger, `mission_abandoned`, rather than a replay.
+**`player_entered_cover` replays too.** It is the same edge from a different source — the 1 Hz cover-detection tick rather than a client hint — and objective 2484 was this form. On 2026-09-20 it reproduced on the colo: the Ambernol vial sits inside the med-station desk's 5 m cover radius (set 1381), so the tick spent the enter edge 1.4 s before picking the vial up activated step 2144, chains 1132 / 1133 failed their step gate, and the player stood on the "take cover" marker with the drone dead and nothing happening. The same step-activation hook now re-fires `player_entered_cover` for each cover set the player is in. Implementation: [`step_activation::cover_replay`](../../crates/services/src/cell/content/event_dispatch/step_activation/cover_replay.rs). Log line: `step-activation cover replay: matched` with the same `reason`, plus a `cover_replay` journal entry. It differs from the region form in one way:
+
+- **It replays from the detection table, not from position.** A set in the table has already had its enter edge; a set the player walked into since the last tick has not, and the tick delivers that one itself with the step already active. Replaying only the table's sets covers exactly the edges that cannot recur and never races the tick into a double fire. Containment is still re-checked against the server-known position before each fire, so a player who walked out since the last tick is not credited.
+
+The mission-gated-only rule, the `world` / `archetype` rule and the recursion bound apply unchanged. `player_left_cover` and the cover-duration milestones are **not** replayed.
+
+`player_loaded` is **not** replayed and keeps the seed-side second-trigger rule; the abandon case has its own trigger, `mission_abandoned`, rather than a replay.
 
 ### The abandon edge
 

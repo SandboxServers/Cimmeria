@@ -1,0 +1,3 @@
+mesh	instances	tris_each	tris_total	footprint_m2	walkable_m2	bw_y_min	bw_y_max	sample_bw_x	sample_bw_y	sample_bw_z	archetype_paths
+GA-Props:GA-Fence03	14	158	2212	65.564	22.231	-0.000	0.000	19.800	0.000	81.920	GA-Props.GA-Fence03_Pf0.GA-Fence03_Pf0_Arc1.StaticMeshComponent0
+GA-Props:GA-Fence00	5	150	750	20.070	6.140	-0.000	0.000	48.040	-0.000	76.950	GA-Props.GA-Fence00_Pf0.GA-Fence00_Pf0_Arc1.StaticMeshComponent0

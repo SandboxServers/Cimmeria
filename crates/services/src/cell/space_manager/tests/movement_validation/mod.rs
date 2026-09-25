@@ -25,6 +25,8 @@
 //!   throttle, and the load-time fingerprint line they join to.
 //! - [`telemetry_sampling`] — the accepted-position sampler (rate,
 //!   minimum distance, players-only, navmesh state).
+//! - [`telemetry_lifecycle`] — release of that per-entity state on every
+//!   teardown path, and the recycled-id window it protects.
 //!
 //! Neither changes a validation decision; they live here because they
 //! need this module's real-navmesh fixture.
@@ -92,5 +94,6 @@ mod kinematics;
 mod navmesh;
 mod onphysics;
 mod recovery;
+mod telemetry_lifecycle;
 mod telemetry_reject;
 mod telemetry_sampling;

@@ -34,7 +34,7 @@ mod tests;
 
 pub use ai_integration::{maintain_cover_for_npc, CoverDecision};
 pub use detection::{
-    run_detection_tick, CoverDetectionTable, CoverDetectionTick, DurationCoverEvent,
+    run_detection_tick, sets_near, CoverDetectionTable, CoverDetectionTick, DurationCoverEvent,
     EnteredCoverEvent, LeftCoverEvent, COVER_DURATION_MILESTONES_SECS, COVER_PROXIMITY_RADIUS,
 };
 pub use loader::{load_cover_nodes, load_cover_sets, CoverLoadError};

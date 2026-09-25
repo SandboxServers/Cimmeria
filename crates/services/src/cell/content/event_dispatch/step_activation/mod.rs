@@ -1,4 +1,4 @@
-//! Step-activation region replay (Harset H52).
+//! Step-activation edge replay (Harset H52).
 //!
 //! `enter_region` is an **edge** event: the client reports a volume crossing
 //! once, and a chain gated on a mission step that is not yet active sees that
@@ -6,6 +6,11 @@
 //! playtest lost objective 2484 to exactly this — the cover edge fired about
 //! one second before the step activated (report finding H9) — and the Harset
 //! seed lanes have since found four more instances of the same shape.
+//!
+//! `player_entered_cover` is the same edge from a different source (the 1 Hz
+//! cover-detection tick rather than a client hint), and H9 itself was that
+//! form. [`cover_replay`] closes it; the rest of this file is the
+//! `enter_region` form and the re-entrancy guard both share.
 //!
 //! This module closes the `enter_region` form in the engine: when a mission
 //! step activates, every client-hinted region of the player's world that
@@ -54,6 +59,8 @@ use crate::cell::spawner::is_point_in_region;
 
 use super::super::executor;
 use super::super::mission_context::{populate_mission_context, populate_world_context};
+
+mod cover_replay;
 
 /// The `reason` field every replay carries, in the log and in the player
 /// journal. Named so an ops query and the worknote can quote the same string.
@@ -114,7 +121,8 @@ impl StepRegionReplayGuard {
 }
 
 /// Re-fire `enter_region` for every client-hinted volume the player is already
-/// standing in, because `step_id` of `mission_id` has just become active.
+/// standing in, and `player_entered_cover` for every cover set they are already
+/// in, because `step_id` of `mission_id` has just become active.
 ///
 /// Called from the sites that own the [`ChainEngine`] and have just activated
 /// a step: the executor's `accept_mission` / `advance_step` arms and the two
@@ -153,6 +161,10 @@ pub(crate) fn fire_step_activation_regions<'a>(
         }
 
         replay_regions(
+            entity_id, player_id, mission_id, step_id, engine, tx, space_mgr,
+        )
+        .await;
+        cover_replay::replay_cover_sets(
             entity_id, player_id, mission_id, step_id, engine, tx, space_mgr,
         )
         .await;
@@ -326,5 +338,7 @@ async fn replay_one(
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
+#[cfg(test)]
+mod cover_replay_tests;
 #[cfg(test)]
 mod tests;
