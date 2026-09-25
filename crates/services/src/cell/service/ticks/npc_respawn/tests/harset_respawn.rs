@@ -83,6 +83,14 @@ const HARSET_CMD_CENTER: &str = "Harset_CmdCenter";
 /// together.
 const HARSET_MOB_RESPAWN_SECS: u32 = 30;
 
+/// World-57 placement rows NA29 made mobile (owner decision 2026-09-25):
+/// on the NA26 `harset.nav` each has a clear agent-radius disc and a full
+/// path to the gate. Mirrors `MOBILE` in
+/// `spawner::tests::harset::world57_placement`, whose
+/// `world57_mobile_placements_can_walk` is the proof; adding a row means
+/// adding it to both, on purpose.
+const NA29_MOBILE_SPAWN_IDS: [i32; 5] = [303, 304, 306, 307, 313];
+
 /// The eight Praxis Jaffa Guards (template 160) flanking the stargate
 /// plaza, and the four Praxis Jaffa Lieutenants (template 159) posted at
 /// the two door pairs (z ≈ -188 and z ≈ -231). All twelve are gate/door
@@ -335,6 +343,7 @@ async fn harset_respawn_delay_is_written_on_the_spawn_row_and_spares_castle() {
 ///
 /// A new mob row that legitimately wants different treatment fails here
 /// and has to argue for it, which is the intended friction.
+/// [`NA29_MOBILE_SPAWN_IDS`] is the first set that did.
 #[tokio::test]
 async fn every_harset_mob_row_carries_respawn_and_stationary_data() {
     let pool = require_db_or_skip!();
@@ -351,11 +360,15 @@ async fn every_harset_mob_row_carries_respawn_and_stationary_data() {
             r.template_name,
             r.template_id,
         );
+        if NA29_MOBILE_SPAWN_IDS.contains(&r.spawn_id) {
+            continue;
+        }
         assert!(
             r.is_stationary,
             "Harset mob spawn {} ({}, template {}) is not stationary — D-H06 holds \
-             every Harset NPC in place until GH1 rebuilds harset.nav, because a chase \
-             across a mesh component boundary freezes the NPC",
+             every Harset NPC in place unless it has been shown to stand and path on \
+             harset.nav, because a chase across a mesh component boundary freezes the \
+             NPC. The rows that have are NA29_MOBILE_SPAWN_IDS",
             r.spawn_id, r.template_name, r.template_id,
         );
     }

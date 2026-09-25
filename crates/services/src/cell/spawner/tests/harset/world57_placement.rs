@@ -31,9 +31,12 @@
 //! **NA26 (2026-09-25) shipped that rebuild.** On it 12 of these 15 rows are
 //! on-mesh, including the whole Jaffa Zone and Petbe's quarters; the three
 //! still off are the shield-tower pair 309/310 and the shield console 311,
-//! all within 1.3 u of the rebuilt surface. The six rows that flipped keep
-//! their `is_stationary` value: whether they should now walk is a content
-//! call recorded in the placement ledger, not something this table decides.
+//! all within 1.3 u of the rebuilt surface.
+//!
+//! **NA29 (owner decision 2026-09-25) made five of the six that flipped
+//! mobile:** 303, 304, 306, 307 and 313 are `is_stationary = false`, and
+//! `world57_mobile_placements_can_walk` pins why that is safe. 308 stays
+//! stationary because it floats 3.44 u above the rebuilt surface.
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::NavMesh;
@@ -191,13 +194,23 @@ fn harset_mesh() -> NavMesh {
     NavMesh::load(path).expect("load data/spaces/harset.nav")
 }
 
-/// Every placed row exists in world 57 with its exact tag and template, is
-/// stationary, and carries a respawn delay.
+/// Rows NA29 made mobile. Every other row in [`PLACED`] stays
+/// `is_stationary`.
 ///
-/// `is_stationary` is not cosmetic here: the Jaffa Zone, the towers and the
-/// palace terrace have no navmesh under them, so a mobile NPC there would
-/// either stand still anyway or chase into a hole. D-H17 wants `respawn_secs`
-/// on every row, including the props (where it can never fire).
+/// Each one is on the NA26 mesh with a clear agent-radius disc and paths to
+/// the gate ([`world57_mobile_placements_can_walk`]). 308 is deliberately
+/// absent: its seeded y is 3.44 u above the rebuilt surface and it passes
+/// `is_point_valid` only on the 4.0 jump tolerance, so a mobile 308 would be
+/// grounded 3.4 u down the first time it paths.
+const MOBILE: [i32; 5] = [303, 304, 306, 307, 313];
+
+/// Every placed row exists in world 57 with its exact tag and template, has
+/// the `is_stationary` value the ledger records, and carries a respawn delay.
+///
+/// `is_stationary` is not cosmetic: a mobile NPC off the mesh either stands
+/// still anyway or chases into a hole. Only the [`MOBILE`] rows have been
+/// shown to stand and path on the NA26 mesh. D-H17 wants `respawn_secs` on
+/// every row, including the props (where it can never fire).
 #[tokio::test]
 async fn world57_placement_rows_are_seeded_with_their_tags_and_templates() {
     let pool = require_db_or_skip!();
@@ -229,10 +242,12 @@ async fn world57_placement_rows_are_seeded_with_their_tags_and_templates() {
             db_world, HARSET,
             "spawn {spawn_id} ({tag}) is not in world 57"
         );
-        assert!(
-            stationary,
-            "spawn {spawn_id} ({tag}) must be is_stationary: world 57's upper quarters have \
-             no navmesh under them, so a mobile NPC there chases into a hole (GH1)"
+        let expected_stationary = !MOBILE.contains(&spawn_id);
+        assert_eq!(
+            stationary, expected_stationary,
+            "spawn {spawn_id} ({tag}) has is_stationary = {stationary}; the ledger records \
+             {expected_stationary}. Only rows proven to stand and path on harset.nav \
+             (MOBILE, NA29) may be mobile — see world57_mobile_placements_can_walk"
         );
         assert!(
             respawn.is_some(),
@@ -424,6 +439,96 @@ async fn world57_placements_match_their_recorded_navmesh_verdict() {
             ),
         }
     }
+}
+
+/// Every [`MOBILE`] row can actually walk on `harset.nav`, and 308 — the one
+/// row that flipped on-mesh but stayed stationary — still has the reason it
+/// stayed.
+///
+/// "On-mesh" is not enough for a mobile NPC. `is_point_valid` accepts a
+/// point 1.2 u from an edge or up to 4.0 u above the surface, and either
+/// one leaves an NPC that snaps or strands on its first path. So each
+/// mobile row must have its whole agent-radius disc on the mesh (13
+/// samples at r = 0.6, the ledger's method) and a full `Ok` path to the
+/// gate row, i.e. be in the hub component rather than a sealed pocket.
+///
+/// The 308 half is a tripwire in the other direction: when someone re-pins
+/// its Y onto the surface, this fails and says 308 can now be made mobile.
+#[tokio::test]
+async fn world57_mobile_placements_can_walk() {
+    use cimmeria_entity::navigation::PathStatus;
+
+    const DISC_RADIUS: f32 = 0.6;
+    const RING: usize = 12;
+
+    let pool = require_db_or_skip!();
+    let mesh = harset_mesh();
+
+    let (gx, gy, gz): (f64, f64, f64) =
+        sqlx::query_as("SELECT x_pos, y_pos, z_pos FROM resources.stargates WHERE stargate_id = 3")
+            .fetch_one(&pool)
+            .await
+            .expect("the Harset gate row must exist");
+    let gate = Vector3::new(gx as f32, gy as f32, gz as f32);
+    assert!(
+        mesh.is_point_valid(&gate),
+        "control: the Harset gate row {gate:?} must be on-mesh — if not, the mesh did \
+         not load or lost the dais, and every path below would fail for that reason"
+    );
+
+    for spawn_id in MOBILE {
+        let (x, y, z): (f32, f32, f32) =
+            sqlx::query_as("SELECT x, y, z FROM resources.spawnlist WHERE spawn_id = $1")
+                .bind(spawn_id)
+                .fetch_one(&pool)
+                .await
+                .expect("the mobile row must exist — see the presence guard");
+        let pos = Vector3::new(x, y, z);
+
+        let mut off = Vec::new();
+        if !mesh.is_point_valid(&pos) {
+            off.push(pos);
+        }
+        for i in 0..RING {
+            let a = i as f32 * std::f32::consts::TAU / RING as f32;
+            let p = Vector3::new(x + DISC_RADIUS * a.cos(), y, z + DISC_RADIUS * a.sin());
+            if !mesh.is_point_valid(&p) {
+                off.push(p);
+            }
+        }
+        assert!(
+            off.is_empty(),
+            "mobile spawn {spawn_id} at {pos:?} has {} of {} disc samples off harset.nav \
+             ({off:?}) — a mobile NPC there strands at the mesh edge. Re-place it or set \
+             it back to is_stationary and drop it from MOBILE",
+            off.len(),
+            RING + 1
+        );
+
+        let path = mesh.find_path(&pos, &gate);
+        assert_eq!(
+            path.status,
+            PathStatus::Ok,
+            "mobile spawn {spawn_id} at {pos:?} cannot path to the gate ({:?}) — it is \
+             not in the hub component, so a mobile NPC there is sealed in a pocket",
+            path.status
+        );
+    }
+
+    let (x, y, z): (f32, f32, f32) =
+        sqlx::query_as("SELECT x, y, z FROM resources.spawnlist WHERE spawn_id = 308")
+            .fetch_one(&pool)
+            .await
+            .expect("spawn 308 must exist");
+    let verdict = mesh.diagnose_point(&Vector3::new(x, y, z));
+    let dy = verdict.dy;
+    assert!(
+        matches!(dy, Some(d) if d > 2.0),
+        "spawn 308 (Harset_ShieldTower1) is now {dy:?} u above harset.nav's surface \
+         (was 3.44 on the NA26 mesh). That was the only reason NA29 kept it stationary: \
+         re-check it the way world57_mobile_placements_can_walk checks the others, and if \
+         it passes, add it to MOBILE and set is_stationary = false"
+    );
 }
 
 /// The eight new named regions load as `AreaSet`s for world `Harset`, reach

@@ -209,17 +209,16 @@ mod tests {
         ///
         /// Scoped to the one seeded row this test owns, deliberately: a
         /// global "every gate is pinned" assertion would pick up any
-        /// sentinel a sibling test leaked into the shared database, and 27
-        /// of the 28 rows are still unpinned.
+        /// sentinel a sibling test leaked into the shared database.
         ///
-        /// The arrival assertion was inverted by placement PL-A-01, which is
-        /// the change H01's version of this test anticipated ("would break
-        /// the moment milestone M0 pins Harset's arrival"). The pin is now
-        /// asserted by value rather than merely present: the whole point of
-        /// the four columns is *which* point they name, and
-        /// `arrival.is_some()` alone would stay green if a seed edit moved
-        /// the pin back onto the un-standable prefab origin. The navmesh
-        /// half of that claim lives in
+        /// The arrival assertion has flipped twice. H01 shipped every gate
+        /// unpinned; placement PL-A-01 pinned Harset's to a plaza point
+        /// because the 2012 `harset.nav` had no polygon on the gate dais;
+        /// NA29 (owner decision 2026-09-25) dropped the pin once the NA26
+        /// mesh put the row itself on-mesh, so Harset arrives on its gate
+        /// row as the 2009 `moveTo(addr.xPos, ...)` did. Asserted as "no pin,
+        /// and `desired_arrival` is the row", so a re-added or partial pin
+        /// fails here. The navmesh half of the claim lives in
         /// `cell::harset_placement_tests` — this one only pins the seed
         /// round-trip through the loader.
         #[tokio::test]
@@ -237,35 +236,23 @@ mod tests {
                 harset.address_origin, 6,
                 "address_origin must come off the row, not be defaulted"
             );
+            assert_eq!(
+                harset.arrival, None,
+                "Harset's gate row carries an arrival pin again — NA29 dropped \
+                 PL-A-01's pin so travellers arrive on the gate row (the 2009 \
+                 behaviour). Re-pinning is a placement decision: record it in \
+                 docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md"
+            );
             // Exact equality: the seed literals are `double precision` that
             // round-trip exactly into `f32`, and no arithmetic touches them
-            // on the way through.
-            const PIN: [f32; 3] = [-5.0, -68.99, 33.0];
+            // on the way through. yaw is compared against the row's own
+            // value because that identity is what `desired_arrival` owes an
+            // unpinned gate.
             assert_eq!(
-                harset.arrival.map(|(pos, _)| pos),
-                Some(PIN),
-                "Harset's arrival pin (placement PL-A-01) did not round-trip — \
-                 either the three arrival_x/y/z values in \
-                 db/resources/Worlds/Seed/stargates.sql changed, or the loader \
-                 dropped the group as partial"
+                harset.desired_arrival(),
+                ([-0.076, -67.274, 38.011], harset.yaw),
+                "an unpinned gate must arrive on its own row, yaw included"
             );
-            // The pin's yaw is asserted against the ROW's yaw rather than
-            // against a literal, because that identity is the authoring
-            // decision: yaw is atan2(dx, dz) with 0 = +Z, the gate row's
-            // 3.141 already faces -Z (away from the gate, down the plaza),
-            // and PL-A-01 deliberately repeats it instead of re-deriving a
-            // facing. Spelling the number here would also mean writing an
-            // approximation of PI that is not PI.
-            assert_eq!(
-                harset.arrival.map(|(_, yaw)| yaw),
-                Some(harset.yaw),
-                "arrival_yaw must repeat the gate row's own yaw — a pin that \
-                 diverges from it is either a re-derived facing (say so in the \
-                 seed comment) or a typo"
-            );
-            // `desired_arrival` must prefer the pin over the row; the row is
-            // the prefab origin 2 m above the plaza dais.
-            assert_eq!(harset.desired_arrival(), (PIN, harset.yaw));
         }
 
         /// `address_origin` goes on the wire as a `UINT8` glyph, and

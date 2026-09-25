@@ -54,24 +54,68 @@ fn v(p: [f32; 3]) -> Vector3 {
     Vector3::new(p[0], p[1], p[2])
 }
 
-/// PL-A-01. The Harset gate's authored arrival pin must be a point the real
-/// `harset.nav` accepts. On the 2012 mesh the *unpinned* gate row was not,
-/// which is the whole reason the four `arrival_*` columns exist; on the NA26
-/// rebuild it is (see the note at the second assertion).
+/// Point set `Harset.Stargate` — the gate's `REGION_FLAG_Stargate` volume.
+const HARSET_STARGATE_SET: i32 = 1001;
+
+/// Samples on the ring of the agent-radius disc check; the centre is the
+/// thirteenth.
+const DISC_SAMPLES: usize = 12;
+
+/// Is the whole disc of `radius` around `c` on the mesh? The centre plus
+/// [`DISC_SAMPLES`] points on the ring, the same 13-sample method the
+/// placement ledger (METHOD.md) uses. A centre that is merely within the
+/// containment tolerance of a mesh edge fails here.
+fn disc_on_mesh(mesh: &NavMesh, c: [f32; 3], radius: f32) -> Result<(), Vec<[f32; 3]>> {
+    let mut off = Vec::new();
+    if !mesh.is_point_valid(&v(c)) {
+        off.push(c);
+    }
+    for i in 0..DISC_SAMPLES {
+        let a = i as f32 * std::f32::consts::TAU / DISC_SAMPLES as f32;
+        let p = [c[0] + radius * a.cos(), c[1], c[2] + radius * a.sin()];
+        if !mesh.is_point_valid(&v(p)) {
+            off.push(p);
+        }
+    }
+    if off.is_empty() {
+        Ok(())
+    } else {
+        Err(off)
+    }
+}
+
+/// PL-A-01 as revised by NA29. The Harset gate carries no arrival pin, so a
+/// traveller arrives on the gate row — what the 2009 server did — and this
+/// pins the three things that make that safe.
 ///
-/// Reading both from the database rather than hard-coding them is what makes
-/// this a regression guard: drop the four `arrival_*` values from
-/// `db/resources/Worlds/Seed/stargates.sql` and `gate.arrival` is `None`,
-/// which fails the `is_some` assertion.
+/// 1. **On the mesh.** The row is the gate prefab's origin, standing on the
+///    dais. The 2012 `harset.nav` had no polygon there (4.60 m away), which
+///    is the only reason PL-A-01 ever pinned a plaza point; the NA26 mesh has
+///    one 0.04 m under it. The whole agent-radius disc must be on-mesh, not
+///    just the centre, so a rebuild that trims the dais to a sliver fails.
+/// 2. **Facing out of the gate.** yaw is atan2(dx, dz) with 0 = +Z; the gate
+///    is at z 38 and the plaza at z 0..20, so the row's facing must be -Z.
+/// 3. **Inert inside the gate volume.** The row is INSIDE point set 1001
+///    `Harset.Stargate` (0.72 m off its axis, radius 2.5), so the client's
+///    first region hint after arrival is an enter on the gate volume. That
+///    is a no-op today for three reasons, two of which are data and are
+///    asserted here: no content chain triggers on the region's tag, and the
+///    region is not a ring pad. The third — the gate dial is per entity, so
+///    an arriving traveller never holds one, whoever else has the gate open
+///    — is behaviour, pinned by
+///    `gate_travel::tests::dial_timer::a_traveller_arriving_while_another_player_holds_an_open_dial_is_not_crossed`.
+///    Author an arrival-side trigger on that volume and this fails, which is
+///    the point: every traveller would fire it on landing.
 ///
-/// Note this asserts on `is_point_valid` directly rather than through
-/// `check_arrival`: world 57 is `navmesh_mode = 'advisory'` (H53), so
-/// `check_arrival` answers `Unvalidated` for *any* coordinate there and could
-/// not tell a good pin from a bad one. Advisory is a runtime policy about
-/// whose word to trust; it is not a licence to pin a coordinate the geometry
-/// rejects.
+/// Why `is_point_valid` and not `check_arrival`: world 57 is
+/// `navmesh_mode = 'advisory'` (H53), so `check_arrival` answers
+/// `Unvalidated` for any coordinate there and could not tell a good arrival
+/// from a bad one.
 #[tokio::test]
-async fn harset_gate_arrival_pin_and_the_gate_row_are_both_on_the_mesh() {
+async fn harset_gate_arrival_is_the_gate_row_on_the_mesh_and_inert_in_the_gate_volume() {
+    use crate::cell::space_manager::REGION_FLAG_STARGATE;
+    use crate::cell::spawner::{is_point_in_region, load_regions_from_db};
+
     let pool = require_db_or_skip!();
     let Some(mesh) = harset_mesh() else { return };
 
@@ -81,49 +125,89 @@ async fn harset_gate_arrival_pin_and_the_gate_row_are_both_on_the_mesh() {
         .expect("stargate_id 3 (Harset) must exist in the seed");
     assert_eq!(gate.world_name, "Harset");
 
-    let (pin, yaw) = gate.desired_arrival();
-    assert!(
-        gate.arrival.is_some(),
-        "gate 3 has no arrival pin — PL-A-01 seeded arrival_x/y/z/yaw on \
-         db/resources/Worlds/Seed/stargates.sql; without them a traveller \
-         lands on the prefab origin 2 m above the plaza dais"
-    );
-    assert!(
-        mesh.is_point_valid(&v(pin)),
-        "gate 3's arrival pin {pin:?} is off harset.nav — re-place it from \
-         docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md \
-         (row PL-A-01) rather than leaving it here"
-    );
-
-    // The tripwire that used to sit here fired as designed. The row the pin
-    // replaces was off the 2012 mesh, which was the only reason the pin
-    // exists; the NA26 rebuild puts it on-mesh (dy 0.04, standing on the gate
-    // dais), so the pin is no longer load-bearing. Whether to set the four
-    // `arrival_*` columns back to NULL (the 2009 behaviour) is PL-A-01's
-    // call, not this test's — see
-    // docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md. Until
-    // then both points must stay on the mesh, so a later mesh that loses the
-    // dais shows up here instead of as travellers landing in a hole.
+    // (1) The arrival is the gate row.
     let row = [gate.x, gate.y, gate.z];
     assert!(
-        mesh.is_point_valid(&v(row)),
-        "the raw gate row {row:?} is off harset.nav again — the NA26 mesh has \
-         it on the gate dais. A rebuild lost the dais; fix the build, and \
-         until then the arrival pin is load-bearing again (PL-A-01)"
+        gate.arrival.is_none(),
+        "gate 3 carries an arrival pin {:?} again — NA29 dropped PL-A-01's pin so \
+         travellers land on the gate row (the 2009 behaviour). A re-pin is a \
+         placement decision: record it in \
+         docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md and \
+         rewrite this guard",
+        gate.arrival
     );
+    let (arrival, yaw) = gate.desired_arrival();
+    assert_eq!(arrival, row, "an unpinned gate must arrive on its own row");
 
-    // The facing is derived, not defaulted. Asserted as a DIRECTION rather
-    // than a number: yaw is atan2(dx, dz) with 0 = +Z, so the unit facing is
-    // (sin yaw, cos yaw), and "away from the gate" means the -Z half. The
-    // gate sits at z 38 and every telemetry point is at z 0..20, so a pin
-    // facing +Z would have the player arrive staring into the event horizon.
-    // Checking the vector also survives a future re-pin that legitimately
-    // rotates the arrival a few degrees.
+    // (1) On the mesh, whole disc.
+    if let Err(off) = disc_on_mesh(&mesh, arrival, 0.6) {
+        panic!(
+            "the Harset gate row {arrival:?} is no longer standable on harset.nav: \
+             {} of {} disc samples at r = 0.6 are off-mesh ({off:?}). The NA26 \
+             mesh has the gate dais; a rebuild lost it. Fix the build, or re-pin \
+             stargates.arrival_* on the plaza (PL-A-01) until it is fixed",
+            off.len(),
+            DISC_SAMPLES + 1
+        );
+    }
+
+    // (2) Facing out of the gate, down the plaza.
     let (facing_x, facing_z) = (yaw.sin(), yaw.cos());
     assert!(
         facing_z < -0.9 && facing_x.abs() < 0.2,
-        "arrival_yaw {yaw} faces ({facing_x:.3}, {facing_z:.3}) — expected \
-         roughly -Z, away from the gate and down the plaza"
+        "gate 3's yaw {yaw} faces ({facing_x:.3}, {facing_z:.3}) — expected \
+         roughly -Z, out of the gate and down the plaza"
+    );
+
+    // (3) The volume the arrival lands in, and that nothing is keyed on it.
+    let regions = load_regions_from_db(&pool).await.expect("load regions");
+    let volume = regions
+        .iter()
+        .find(|r| r.set_id == HARSET_STARGATE_SET)
+        .expect("point set 1001 Harset.Stargate must load as an AreaSet");
+    assert!(
+        volume.flags & REGION_FLAG_STARGATE != 0,
+        "point set 1001 lost REGION_FLAG_Stargate — the gate can no longer be crossed"
+    );
+    // Control, not the claim: the arrival really is inside the volume, so the
+    // two "nothing keyed on it" assertions below are about a region every
+    // traveller enters. If a later edit moves the row out of the volume
+    // they stop being load-bearing, and this says so.
+    assert!(
+        is_point_in_region(&volume.points, arrival),
+        "the Harset gate row {arrival:?} is no longer inside {} — the inertness \
+         checks below guard a volume travellers no longer land in; revisit this \
+         test",
+        volume.name
+    );
+
+    let keyed: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT chain_id, event_type FROM resources.content_triggers \
+         WHERE event_key = $1 ORDER BY chain_id",
+    )
+    .bind(&volume.name)
+    .fetch_all(&pool)
+    .await
+    .expect("query must succeed");
+    assert!(
+        keyed.is_empty(),
+        "content chains trigger on {} (chain, event): {keyed:?}. Every gate \
+         traveller arrives inside that volume, so an enter_region chain there \
+         fires on every arrival to Harset. Key it on a region outside the gate, \
+         or re-pin the arrival out of the volume",
+        volume.name
+    );
+
+    let ring_pads: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM resources.ring_transport_regions WHERE point_set_id = $1",
+    )
+    .bind(HARSET_STARGATE_SET)
+    .fetch_one(&pool)
+    .await
+    .expect("query must succeed");
+    assert_eq!(
+        ring_pads, 0,
+        "point set 1001 is also a ring pad — an arriving traveller would stand on it"
     );
 }
 
@@ -131,12 +215,13 @@ async fn harset_gate_arrival_pin_and_the_gate_row_are_both_on_the_mesh() {
 /// than a raw mesh query.
 ///
 /// `validate_gate_arrival` is what `gate_travel` actually calls, and under
-/// `enforce` it is the layer that would replace a bad pin with a respawner.
-/// Asserting `Validated` (not merely `is_usable`) pins that the pin stands on
-/// its own: a pin that only survives because the fallback caught it is a
-/// re-pin waiting to happen, and `is_usable` cannot tell the two apart.
+/// `enforce` it is the layer that would replace an unstandable arrival with
+/// a respawner. Asserting `Validated` (not merely `is_usable`) pins that the
+/// gate row stands on its own: an arrival that only survives because the
+/// fallback caught it would put every traveller on the respawner instead of
+/// the gate, and `is_usable` cannot tell the two apart.
 #[tokio::test]
-async fn validate_gate_arrival_accepts_the_harset_pin_verbatim() {
+async fn validate_gate_arrival_accepts_the_harset_gate_row_verbatim() {
     use crate::cell::arrival::{test_insert_navmesh_space, validate_gate_arrival, ArrivalSource};
 
     let pool = require_db_or_skip!();
@@ -144,7 +229,7 @@ async fn validate_gate_arrival_accepts_the_harset_pin_verbatim() {
 
     let gates = load_stargates(&pool).await.expect("load_stargates");
     let gate = gates.get(&3).expect("stargate_id 3 (Harset)").clone();
-    let (pin, yaw) = gate.desired_arrival();
+    let (arrival, yaw) = gate.desired_arrival();
 
     // Deliberately NOT stamped advisory. An unstamped world defaults to
     // `NavmeshMode::Enforce`, which is the only mode in which this call can
@@ -158,12 +243,12 @@ async fn validate_gate_arrival_accepts_the_harset_pin_verbatim() {
     assert_eq!(
         out.source,
         ArrivalSource::Validated,
-        "gate 3's arrival resolved as {:?} at {:?} — the pin itself must be \
+        "gate 3's arrival resolved as {:?} at {:?} — the gate row itself must be \
          standable, not rescued by the respawner fallback",
         out.source,
         out.position
     );
-    assert_eq!(out.position, pin);
+    assert_eq!(out.position, arrival);
     assert_eq!(out.yaw, yaw);
     assert!(out.is_usable());
 }

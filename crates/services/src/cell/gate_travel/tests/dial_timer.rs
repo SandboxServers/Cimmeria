@@ -199,6 +199,54 @@ async fn crossing_before_the_gate_opens_does_nothing() {
     );
 }
 
+/// A traveller who lands in the gate volume while ANOTHER player has the
+/// gate open is not crossed.
+///
+/// This is the arrival case: gate travellers arrive on the gate row, which
+/// for Harset is inside the `Harset.Stargate` volume, so their first region
+/// hint is an enter on the gate. If the dial were keyed on the gate or the
+/// world rather than on the dialling entity, a traveller landing while
+/// someone else's wormhole is open would be sent straight through it, to a
+/// destination they never dialled. `SGWPlayer` kept `dialedAddress` and
+/// `gatePassable` on the player, and so does `pending_gate_dials`.
+#[tokio::test]
+async fn a_traveller_arriving_while_another_player_holds_an_open_dial_is_not_crossed() {
+    const ARRIVER: u32 = 2;
+
+    let (mut mgr, mut rx, tx) = armed_dialer().await;
+    expire_the_timer(&mut mgr);
+    gate_dial_tick(&tx, &mut mgr).await;
+    rx.try_recv().expect("the dialer's gate opened");
+    assert!(mgr.gate_dial(DIALER).unwrap().passable);
+
+    // The traveller materialises on the gate row, inside the volume.
+    mgr.create_entity(ARRIVER, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    grant_all_addresses(&mut mgr, ARRIVER);
+    if let Some(e) = mgr.get_entity_mut(ARRIVER) {
+        e.is_player = true;
+        e.player_id = Some(43);
+    }
+    mgr.connect_entity(ARRIVER);
+
+    handle_stargate_region_entered(ARRIVER, &tx, &mut mgr, &engine()).await;
+
+    assert!(
+        rx.try_recv().is_err(),
+        "the arriving traveller was sent a sequence or a GateTravel through \
+         another player's open gate"
+    );
+    assert!(mgr.get_entity(ARRIVER).is_some(), "the traveller stays put");
+    assert!(
+        mgr.gate_dial(ARRIVER).is_none(),
+        "the traveller holds no dial"
+    );
+    let dial = mgr
+        .gate_dial(DIALER)
+        .expect("the dialer's open gate must survive someone else's hint");
+    assert!(dial.passable);
+}
+
 /// The full crossing: `Stargate_CrossGate` goes out BEFORE the
 /// `GateTravel` teardown, and the dial is consumed so a second crossing
 /// can't re-travel.
