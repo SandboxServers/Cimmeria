@@ -420,6 +420,48 @@ None of these are called by the current Python mob AI. The `navControllerID` pro
 
 The practical result is that all mobs are stationary during combat. They rotate to face their target and fire, but do not close distance, retreat to cover, or reposition.
 
+### Rust: line of sight in the fight tick
+
+The Python mob AI never checked line of sight: `classifyHostileAbility`
+says `# TODO: Check distance, LOS`, and `AbilityManager` says
+`# TODO: Do LOS checks on target`. The client still has the feedback codes
+`CONDITION_FEEDBACK_LOS = 39` and `CONDITION_FEEDBACK_NoLOS = 40`, and the
+GM surface has `testLOS`, `onLOSResult` and `toggleCombatLOS`. So the
+shipped server probably did check it.
+
+Cimmeria's only occlusion source is the navmesh raycast
+(`NavMesh::line_of_sight`), which returns `Clear`, `Blocked` or `Unknown`.
+It has no heights for the holes Recast cuts around furniture, so it cannot
+tell a waist-high desk from a wall. Against the extracted Cellblock
+collision geometry, at 1.5 m eye heights on one storey, 45% of its
+`Blocked` verdicts were false and 0.15% of its `Clear` verdicts were
+false.
+
+The fight tick (`npc_ai/fight.rs`) calls
+`SpaceManager::attack_line_of_sight`:
+
+| Attacker | `Clear` | `Unknown` (endpoint off the mesh) | `Blocked` |
+|---|---|---|---|
+| Mobile NPC | fires | fires | paths toward the target |
+| Stationary NPC (`spawnlist.is_stationary`) | fires | fires | fires if the target is within 4 u of its height, otherwise holds (`stationary_holds`) |
+
+A stationary NPC cannot walk around the obstacle, so a false `Blocked`
+would silence it for the whole fight. This is what happened to the Find
+Ambernol drone at the med-station desk (NPC AI restoration NA16, audit
+S11, decision D-NA11). The cost is that a turret that is already fighting
+can shoot through a real wall on its own storey.
+
+The `npc_ai.tick` row carries both the navmesh verdict (`los`) and the rule
+that acted on it (`los_policy`: `strict`, `stationary`,
+`stationary_relaxed` or `stationary_other_storey`). A drone firing across
+the desk logs `los=blocked los_policy=stationary_relaxed`. The collision
+geometry occluder that would replace this rule is tracked in #784.
+
+Ability launch (`use_ability/handle.rs`) checks range only. An NPC's line
+of sight is checked by the fight tick in the same tick, just before the
+launch. Players get no line-of-sight check at fire time until there is an
+occlusion source that can see over furniture.
+
 ---
 
 ## Cover System (Not Implemented)

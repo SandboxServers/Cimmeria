@@ -42,7 +42,7 @@ On 2026-09-25 the colo SigNoz knew three `npc_*` metrics: `npc_ai_decisions_tota
 
 ## Saved Logs Explorer views
 
-All nine live in the Logs Explorer under the category `npc-ai`, tagged `npc-ai`. Each one maps to one question in the [runbook](../npc-ai-telemetry-runbook.md#which-view-answers-which-question). In SigNoz the Rust log `target` is the `scope_name` column.
+All ten live in the Logs Explorer under the category `npc-ai`, tagged `npc-ai`. Each one maps to one question in the [runbook](../npc-ai-telemetry-runbook.md#which-view-answers-which-question). In SigNoz the Rust log `target` is the `scope_name` column.
 
 Every filter below starts with `service.name = 'cimmeria-server' AND`, which is omitted from the table for width.
 
@@ -57,6 +57,9 @@ Every filter below starts with `service.name = 'cimmeria-server' AND`, which is 
 | NPC AI — Does this map have usable cover? (cover.coverage) | `01a0d756-387d-7b4a-96cd-91d63adaba7a` | `scope_name = 'cover.coverage'` | `severity_text, space_id, world_id, nodes_in_world, nodes_on_mesh, sets_in_world, cover_npcs, reason, body` |
 | NPC AI — Why no cover in this fight? (no_cover + cover.selection) | `01a0d756-47c5-774a-bebf-28718c22e672` | `((scope_name = 'npc_ai' AND decision_outcome = 'no_cover') OR scope_name = 'cover.selection')` | `scope_name, event, npc_id, tag, world, reason, candidates_scanned, reserved_skipped, search_radius, cover_nodes_loaded, node_id, score, rank, body` |
 | NPC AI — What did the client see? (add entity_id = N) | `01a0d756-54d3-7435-af97-955f8306f0e4` | `scope_name = 'wire.out.avatar_update'` | `entity_id, witness_id, npc_moved_since_last, x, y, z, vx, vy, vz, yaw_byte, pos_variant, body` |
+| NPC AI — Why is this NPC holding fire? (add npc_id = N) | `01a0d77a-8c08-7d17-9df4-7c950fdeb9bd` | `scope_name IN ('npc_ai.tick', 'npc_ai.los')` | `scope_name, npc_id, tag, ai_state, decision_outcome, los, los_policy, result, dist_to_target, dy, hit_xyz, eye_height_used, body` |
+
+**Why is this NPC holding fire?** was added by NA16 (2026-09-25), which is not in the telemetry plan. It is the only view that carries `npc_ai.tick`, which is one DEBUG row per NPC per AI tick, so always add `AND npc_id = N` and a short time range. `los` is the navmesh verdict, and `los_policy` is the attack rule that acted on it (`strict`, `stationary`, `stationary_relaxed`, `stationary_other_storey`; decision D-NA11). The Timeline view does not list these columns because none of its scopes emit them.
 
 Two of these differ slightly from the query in the telemetry plan:
 

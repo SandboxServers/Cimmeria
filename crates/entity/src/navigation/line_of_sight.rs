@@ -21,6 +21,30 @@
 //! either endpoint cannot be projected, and the caller chooses the policy.
 //! The cell's `SpaceManager::has_line_of_sight` treats unknown as clear,
 //! which is what it already does for a space with no navmesh at all.
+//!
+//! ## `Blocked` is not "a wall" (NPC AI restoration NA16, audit S11/S15)
+//!
+//! A fourth instance of the same bug had both endpoints on the mesh. The
+//! Find Ambernol drone (spawn 10, `castle_cellblock`) held fire at 12-16 m
+//! in 17 of 19 recorded fights. The drone and the player stand on the same
+//! floor (Y 65.6). Between them is the waist-high med-station desk the vial
+//! sits on, whose top is about 1 m above the floor. Recast cuts furniture
+//! out of the walkable surface like any other obstacle, so the desk is a
+//! hole in the mesh. The ray hits the hole's edge and reads `Blocked`,
+//! although a unit at eye height sees straight over it.
+//!
+//! The navmesh has no heights for its holes, so it cannot tell a desk from
+//! a wall. Measured against the extracted collision geometry (1.5 m eye
+//! heights, 4,000 same-storey pairs 4-30 m apart around the Cellblock
+//! guard rooms): 269 of the 601 `Blocked` verdicts (45%) were clear, and
+//! 5 of the 3,399 `Clear` verdicts were blocked. `Clear` is reliable and
+//! `Blocked` is a coin flip. Two navmesh-only heuristics were tried and
+//! rejected: "the walking path is nearly straight", and "the ray only
+//! crosses a small hole you can walk around". Each turned between 16% and
+//! 70% of the real walls transparent, and neither cleared every drone
+//! position. [`LineOfSight::permits_stationary_attack`] is the narrow
+//! policy that shipped. A real occluder needs the collision geometry,
+//! which is a follow-up.
 
 use cimmeria_common::Vector3;
 
@@ -83,7 +107,40 @@ impl LineOfSight {
     pub fn is_clear_or_unknown(self) -> bool {
         !matches!(self, Self::Blocked)
     }
+
+    /// The attack policy for an NPC that is already fighting and **cannot
+    /// move** (`is_stationary`). `dy` is the target's Y minus the NPC's.
+    ///
+    /// `Clear` and `Unknown` permit the shot, as in
+    /// [`Self::is_clear_or_unknown`]. `Blocked` permits it only when the
+    /// target is within [`STATIONARY_ATTACK_VERTICAL_BAND`] of the NPC's
+    /// height. The band is the storey guard, so a turret still does not
+    /// shoot through a floor at the level below.
+    ///
+    /// Why the stationary case differs from a mobile NPC: a mobile NPC that
+    /// reads `Blocked` paths toward its target and gets a clear line within
+    /// a few steps, so a false `Blocked` costs it a short walk. A stationary
+    /// NPC cannot step around a desk, so a false `Blocked` silences it for
+    /// the whole fight. On the same storey, 45% of navmesh `Blocked`
+    /// verdicts are false (see the module docs). The cost of this policy is
+    /// that a turret that is already fighting can shoot through a real wall
+    /// on its own storey. Only a few dozen seeded spawns are stationary.
+    /// Aggro (D-NA08) and mobile NPCs keep the strict verdict.
+    pub fn permits_stationary_attack(self, dy: f32) -> bool {
+        match self {
+            Self::Clear | Self::Unknown => true,
+            // `<=` on a NaN is false, so a non-finite height fails closed.
+            Self::Blocked => dy.abs() <= STATIONARY_ATTACK_VERTICAL_BAND,
+        }
+    }
 }
+
+/// How far above or below a stationary attacker a target can be before a
+/// navmesh `Blocked` is taken at face value. This is D-NA09's proposed
+/// same-floor band (4 u). It is well under the smallest storey gap on the
+/// rebuilt `castle_cellblock` mesh (about 7.9 u, pinned in
+/// `navigation/tests/height.rs`).
+pub const STATIONARY_ATTACK_VERTICAL_BAND: f32 = 4.0;
 
 impl NavMesh {
     /// Line of sight from `start` to `end`, distinguishing "blocked" from

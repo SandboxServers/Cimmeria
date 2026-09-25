@@ -30,6 +30,7 @@ mod movement_telemetry;
 mod navmesh_mode;
 mod queries;
 mod spatial;
+pub use spatial::AttackLosPolicy;
 mod spawn;
 mod xml;
 
