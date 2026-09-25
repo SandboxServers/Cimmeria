@@ -22,9 +22,9 @@ pub mod state;
 pub mod threat;
 
 pub use aggression::{
-    aggression_toward_players, aggro_radius, effective_aggression, is_hostile_to_players,
-    override_from_content_level, AGGRO_VERTICAL_BAND, DEFAULT_AGGRO_RADIUS,
-    PLAYER_REACTION_FACTION,
+    aggression_toward_players, aggro_radius, assist_radius, effective_aggression,
+    is_hostile_to_players, override_from_content_level, AGGRO_VERTICAL_BAND, DEFAULT_AGGRO_RADIUS,
+    DEFAULT_ASSIST_RADIUS, PLAYER_REACTION_FACTION,
 };
 pub use auto_cycle::{
     arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target, is_auto_cycle_target_valid,

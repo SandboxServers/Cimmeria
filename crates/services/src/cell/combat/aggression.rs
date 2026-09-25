@@ -15,6 +15,12 @@ use super::faction_reaction::reaction;
 /// value: the 2009 radius is unrecovered, so this is tuned at UAT.
 pub const DEFAULT_AGGRO_RADIUS: f32 = 18.0;
 
+/// Default assist radius in world units (D-NA04, D-NA09), used when
+/// `entity_templates.assist_radius` is NULL. Horizontal distance from the
+/// assisting NPC to the neighbour that just engaged. A starting value: the
+/// 2009 server had no assist at all, so this is ours to tune at UAT.
+pub const DEFAULT_ASSIST_RADIUS: f32 = 10.0;
+
 /// Largest height difference, in world units, at which the Idle scan still
 /// considers a player to be on the NPC's floor (D-NA09). Cellblock storeys
 /// sit about 5-10 u apart (y 24.7 / 34.6 / 39.6), and the navmesh ray cannot
@@ -72,6 +78,14 @@ pub fn override_from_content_level(level: i32) -> Option<MobAggression> {
 /// [`DEFAULT_AGGRO_RADIUS`].
 pub fn aggro_radius(npc: &CellEntity) -> f32 {
     npc.aggro.radius_override.unwrap_or(DEFAULT_AGGRO_RADIUS)
+}
+
+/// The assist radius of `npc` (NA14): its template value, else
+/// [`DEFAULT_ASSIST_RADIUS`].
+pub fn assist_radius(npc: &CellEntity) -> f32 {
+    npc.aggro
+        .assist_radius_override
+        .unwrap_or(DEFAULT_ASSIST_RADIUS)
 }
 
 #[cfg(test)]
@@ -154,5 +168,18 @@ mod tests {
         assert_eq!(aggro_radius(&npc), 18.0);
         npc.aggro.radius_override = Some(30.0);
         assert_eq!(aggro_radius(&npc), 30.0);
+    }
+
+    #[test]
+    fn assist_radius_defaults_to_10_and_honours_the_template() {
+        let mut npc = CellEntity::new(
+            cimmeria_common::EntityId(1),
+            cimmeria_common::SpaceId(1),
+            cimmeria_common::Vector3::zero(),
+        );
+        assert_eq!(assist_radius(&npc), 10.0);
+        npc.aggro.assist_radius_override = Some(4.0);
+        assert_eq!(assist_radius(&npc), 4.0);
+        assert_eq!(aggro_radius(&npc), 18.0, "the two radii are independent");
     }
 }

@@ -108,6 +108,10 @@ pub struct SpawnRecord {
     /// `entity_templates.aggro_radius` (NA13). `None` (NULL) means the
     /// server default `combat::DEFAULT_AGGRO_RADIUS` (18) applies.
     pub aggro_radius: Option<f32>,
+    /// Per-template assist radius in world units, from
+    /// `entity_templates.assist_radius` (NA14). `None` (NULL) means the
+    /// server default `combat::DEFAULT_ASSIST_RADIUS` (10) applies.
+    pub assist_radius: Option<f32>,
     /// Per-spawn aggression override, from `spawnlist.aggression_override`
     /// (`EMobAggressionLevel`, NA13). `None` (NULL) means the faction
     /// reaction decides. Seeded NEUTRAL on chain-armed spawns so their chain,
@@ -162,7 +166,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                COALESCE(t.move_speed, 0.6) AS move_speed, \
-               t.leash_distance, t.aggro_radius, s.aggression_override, \
+               t.leash_distance, t.aggro_radius, t.assist_radius, s.aggression_override, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -237,6 +241,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             move_speed: r.get::<f32, _>("move_speed"),
             leash_distance: normalize_leash_distance(r.get::<Option<f32>, _>("leash_distance")),
             aggro_radius: normalize_aggro_radius(r.get::<Option<f32>, _>("aggro_radius")),
+            assist_radius: normalize_aggro_radius(r.get::<Option<f32>, _>("assist_radius")),
             aggression_override: normalize_aggression_override(
                 r.get::<Option<i16>, _>("aggression_override"),
             ),
@@ -296,7 +301,7 @@ pub(crate) fn normalize_leash_distance(raw: Option<f32>) -> Option<f32> {
     raw.filter(|d| d.is_finite() && *d > 0.0)
 }
 
-/// Keep a template's `aggro_radius` only when it is a positive, finite
+/// Keep a template's `aggro_radius` (or `assist_radius`, NA14) only when it is a positive, finite
 /// radius; the same belt-and-suspenders as [`normalize_leash_distance`]
 /// behind the DB CHECK. `None` means the server default applies.
 pub(crate) fn normalize_aggro_radius(raw: Option<f32>) -> Option<f32> {
@@ -449,6 +454,7 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         aggression = crate::cell::combat::aggression_toward_players(e).level(),
         aggression_override = ?e.aggro.override_level.map(|l| l.level()),
         aggro_radius = crate::cell::combat::aggro_radius(e),
+        assist_radius = crate::cell::combat::assist_radius(e),
         use_cover = e.use_cover,
         is_stationary = e.is_stationary,
         move_speed = e.move_speed,

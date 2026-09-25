@@ -19,6 +19,11 @@
 //! - [`aggro_castle`]  — NA13 on the real `castle_cellblock.nav`: a NID
 //!   Guard at 15 u in LoS, 25 u, behind a wall, on another storey, and the
 //!   fail-closed `Unknown` line of sight.
+//! - [`assist`]        — NA14 same-room assist on a meshless space: the
+//!   neighbour joins, no chaining, NEUTRAL / busy / other-faction / other
+//!   storey / template radius / GM exclusions, content threat and proximity.
+//! - [`assist_castle`] — NA14 on the real `castle_cellblock.nav`: the
+//!   MessHall pair assists, the Hallway guards 18.6 u apart do not.
 //! - [`stationary_facing`] — a pinned NPC turns to face its target even
 //!   while holding fire (`stationary_holds`), and keeps its yaw when the
 //!   target has no XZ bearing.
@@ -57,6 +62,8 @@ use cimmeria_entity::stats::HEALTH;
 mod ability_range;
 mod aggression;
 mod aggro_castle;
+mod assist;
+mod assist_castle;
 mod leash_reset;
 mod leash_walk;
 mod melee_reach;

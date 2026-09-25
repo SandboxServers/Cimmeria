@@ -107,6 +107,16 @@ CREATE TABLE entity_templates (
     -- reaction) engages a player inside this radius, within 4 u of its
     -- height and in navmesh line of sight.
     aggro_radius real,
+    -- Assist radius in world units (NA14 / D-NA04 / D-NA09), horizontal
+    -- distance from this NPC to a same-faction NPC that has just engaged.
+    -- NULL → the runtime default `cell::combat::DEFAULT_ASSIST_RADIUS` (10).
+    -- A hostile Idle / patrolling / wandering NPC inside this radius of a
+    -- neighbour that enters Fighting from damage or proximity, within 4 u of
+    -- its height and in navmesh line of sight, joins on the same target.
+    -- Assist does not chain. A deviation from legacy, which had no assist.
+    assist_radius real,
+    CONSTRAINT entity_templates_assist_radius_positive
+        CHECK (assist_radius IS NULL OR assist_radius > 0.0),
     CONSTRAINT entity_templates_aggro_radius_positive
         CHECK (aggro_radius IS NULL OR aggro_radius > 0.0),
     CONSTRAINT entity_templates_leash_distance_positive

@@ -6,6 +6,12 @@
 //! `out_of_vertical_band`, `out_of_radius`, `no_los`, plus
 //! `post_reset_suppressed` for the NA12 window. `aggro_radius` is the NPC's
 //! radius in world units (NA02 logged `unbounded` before the gate existed).
+//!
+//! NA14 adds `event=assist_rejected` for a same-faction neighbour the assist
+//! fan-out considered and passed over (reasons `dead`, `not_idle`,
+//! `not_hostile`, `post_reset_suppressed`, `gm_ignored`,
+//! `out_of_vertical_band`, `out_of_radius`, `no_los`), and
+//! `event=assist_joined` for one it pulled in.
 
 use std::time::{Duration, Instant};
 
@@ -33,6 +39,10 @@ pub(in crate::cell) enum ScanReject {
     /// The NPC is inside its post-reset window (NA12); every witness is
     /// passed over until it closes.
     PostResetSuppressed,
+    /// NA14 assist only: the would-be assister is not Idle, patrolling or
+    /// wandering (it is already fighting, walking home, investigating,
+    /// following or dead), so it is not pulled.
+    NotIdle,
 }
 
 impl ScanReject {
@@ -48,6 +58,7 @@ impl ScanReject {
             Self::OutOfRadius => "out_of_radius",
             Self::NoLos => "no_los",
             Self::PostResetSuppressed => "post_reset_suppressed",
+            Self::NotIdle => "not_idle",
         }
     }
 }
@@ -126,4 +137,55 @@ pub(in crate::cell) fn report_scan(
         suppressed,
         "npc_ai.aggro_scan: aggressive Idle NPC found no candidate"
     );
+}
+
+/// Log the NA14 assist fan-out's considered-but-rejected neighbours:
+/// `event=assist_rejected`, one row per `(assister, victim, reason)` per
+/// [`REJECT_SAMPLE_INTERVAL`]. `npc_id` is the would-be assister,
+/// `victim_id` the neighbour that just engaged, `player_id` the target.
+pub(in crate::cell) fn report_assist_rejects(
+    space_mgr: &mut SpaceManager,
+    victim_id: u32,
+    player_id: u32,
+    rejects: &[(u32, ScanReject)],
+    now: Instant,
+) {
+    let Some(victim_pos) = space_mgr.get_entity(victim_id).map(|e| e.position) else {
+        return;
+    };
+    for &(assister_id, reason) in rejects {
+        let Some(suppressed) = space_mgr.npc_detectors.pair_log.admit(
+            assister_id,
+            victim_id,
+            reason.label(),
+            now,
+            REJECT_SAMPLE_INTERVAL,
+        ) else {
+            continue;
+        };
+        let Some(ident) = NpcIdent::of(space_mgr, assister_id) else {
+            continue;
+        };
+        let Some(e) = space_mgr.get_entity(assister_id) else {
+            continue;
+        };
+        tracing::debug!(
+            target: "npc_ai.aggro_scan",
+            event = "assist_rejected",
+            npc_id = assister_id,
+            tag = %ident.tag,
+            template_id = ident.template_id,
+            world = %ident.world,
+            space_id = ident.space_id,
+            reason = reason.label(),
+            victim_id,
+            player_id,
+            ai_state = e.ai_state().label(),
+            npc_to_victim = e.position.distance_to(&victim_pos),
+            dy = victim_pos.y - e.position.y,
+            assist_radius = crate::cell::combat::assist_radius(e),
+            suppressed,
+            "npc_ai.aggro_scan: neighbour not pulled into the fight (assist)"
+        );
+    }
 }
