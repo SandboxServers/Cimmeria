@@ -225,7 +225,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA16
 
-**Status:** BlockedEvidence. **Scope title:** Line of sight source and the stationary PRU (S11, S15). **Advisor:** combat-systems-advisor, movement-teleport-advisor.
+**Status:** Review (branch `npcai/na16-line-of-sight`). The S11 cause is the med-station desk, not eye height. The desk is a navmesh hole between the drone and the vial, and the ray reads `Blocked` over a 1 m desk. A stationary NPC's attack line of sight now ignores a same-storey (4 u band) navmesh `Blocked`. Mobile NPCs and aggro keep the strict verdict. S15: 45% of same-storey `Blocked` verdicts are false against the collision geometry, and the navmesh-only heuristics were rejected on numbers. The collision-geometry occluder is a follow-up (new data artifact). No fire-time line-of-sight check: the fight tick covers NPCs, and a navmesh check would give players false "no line of sight" errors. See audit S11/S15 and [npc-ai.md](../../gameplay/npc-ai.md#rust-line-of-sight-in-the-fight-tick). **Scope title:** Line of sight source and the stationary PRU (S11, S15). **Advisor:** combat-systems-advisor, movement-teleport-advisor.
 
 **Scope:**
 
