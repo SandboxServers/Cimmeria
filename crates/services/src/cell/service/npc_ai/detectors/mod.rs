@@ -114,6 +114,9 @@ pub(super) struct MoveTrack {
     still_ticks: u32,
     /// Whether the position changed on the most recent movement tick.
     moved_last_tick: bool,
+    /// Inside a `ground_deviation` episode (the last checked step was off
+    /// the floor), so the counter counts episodes, not steps.
+    off_ground: bool,
     /// What installed the NPC's current movement.
     source: Option<MoveSource>,
 }
@@ -147,6 +150,9 @@ pub(in crate::cell) struct NpcDetectors {
     /// Last `npc_ai_idle_unticked` value reported per world, so the
     /// up/down counter can be driven by deltas.
     idle_unticked_reported: HashMap<String, i64>,
+    /// `npc_ai.idle event=unticked` sampling, per world: last emit and
+    /// the rows skipped since. Released per world by `destroy_space`.
+    idle_summary_log: HashMap<String, (Instant, u32)>,
     /// Set once the cover service has loaded, so a space created before it
     /// does not report "no cover" from an empty index.
     pub(in crate::cell) cover_load_done: bool,
@@ -189,6 +195,46 @@ impl NpcDetectors {
         self.sample_log.admit(npc_id, kind, now, interval)
     }
 
+    /// Sampling gate for the per-world `npc_ai.idle` summary, same shape
+    /// as [`Self::admit_sample`].
+    pub(in crate::cell) fn admit_world_summary(
+        &mut self,
+        world: &str,
+        now: Instant,
+        interval: Duration,
+    ) -> Option<u32> {
+        match self.idle_summary_log.get_mut(world) {
+            None => {
+                self.idle_summary_log.insert(world.to_string(), (now, 0));
+                Some(0)
+            }
+            Some((last, suppressed)) => {
+                if now.saturating_duration_since(*last) >= interval {
+                    let n = *suppressed;
+                    *last = now;
+                    *suppressed = 0;
+                    Some(n)
+                } else {
+                    *suppressed = suppressed.saturating_add(1);
+                    None
+                }
+            }
+        }
+    }
+
+    /// Release per-world sampling state when a space of `world` is torn
+    /// down. The gauge baseline (`idle_unticked_reported`) is kept: it is
+    /// bounded by the world count and must survive to drive the gauge back
+    /// to zero.
+    pub(in crate::cell) fn forget_world(&mut self, world: &str) {
+        self.idle_summary_log.remove(world);
+    }
+
+    #[cfg(test)]
+    pub(in crate::cell) fn tracks_world_summary(&self, world: &str) -> bool {
+        self.idle_summary_log.contains_key(world)
+    }
+
     /// Record what installed an NPC's current movement.
     pub(in crate::cell) fn note_move_source(&mut self, npc_id: u32, source: MoveSource) {
         self.movement.entry(npc_id).or_default().source = Some(source);
@@ -204,21 +250,48 @@ impl NpcDetectors {
         self.movement.get(&npc_id).map(|m| m.moved_last_tick)
     }
 
-    /// Test-only: per-entity slots for `entity_id` across every map, for the
-    /// teardown leak guard. The two single-key throttles only expose a
-    /// total, so a guard using this must have one entity with state.
+    /// Test-only: slots held for `entity_id`, per map, for the teardown
+    /// leak guard. Adding a per-entity map means adding it here.
     #[cfg(test)]
-    pub(in crate::cell) fn tracked_for(&self, entity_id: u32) -> usize {
-        usize::from(self.movement.contains_key(&entity_id))
-            + usize::from(self.ai.contains_key(&entity_id))
-            + self.pair_log.tracked_for(entity_id)
-            + self
-                .los_log
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .tracked_for(entity_id)
-            + self.warn_log.tracked()
-            + self.sample_log.tracked()
+    pub(in crate::cell) fn slots_for(&self, entity_id: u32) -> [(&'static str, usize); 6] {
+        [
+            (
+                "movement",
+                usize::from(self.movement.contains_key(&entity_id)),
+            ),
+            ("ai", usize::from(self.ai.contains_key(&entity_id))),
+            ("pair_log", self.pair_log.tracked_for(entity_id)),
+            (
+                "los_log",
+                self.los_log
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .tracked_for(entity_id),
+            ),
+            ("warn_log", self.warn_log.tracked_for(entity_id)),
+            ("sample_log", self.sample_log.tracked_for(entity_id)),
+        ]
+    }
+
+    /// Test-only: fill every per-entity map for `npc_id` (paired with
+    /// `other` in the pair throttles), so a teardown guard cannot pass on an
+    /// empty map.
+    #[cfg(test)]
+    pub(in crate::cell) fn fill_all_for_test(&mut self, npc_id: u32, other: u32, now: Instant) {
+        let d = Duration::from_secs(1);
+        self.movement.entry(npc_id).or_default().last_pos = Some(Vector3::new(0.0, 0.0, 0.0));
+        self.ai
+            .entry(npc_id)
+            .or_default()
+            .chase_history
+            .push_back(1.0);
+        self.pair_log.admit(npc_id, other, "test", now, d);
+        self.los_log
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .admit(npc_id, other, "test", now, d);
+        self.warn_log.admit(npc_id, "test", now, d);
+        self.sample_log.admit(npc_id, "test", now, d);
     }
 }
 

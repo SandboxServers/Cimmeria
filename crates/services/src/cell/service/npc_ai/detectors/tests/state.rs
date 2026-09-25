@@ -116,9 +116,7 @@ async fn the_idle_scan_names_its_rejects() {
 /// `find_path`'s start box (S9). Reported once per spawn id.
 #[test]
 fn a_hovering_spawn_is_spawn_off_mesh_once() {
-    let Some((mut mgr, _)) = cellblock_mgr() else {
-        return;
-    };
+    let (mut mgr, _) = cellblock_mgr();
     add_npc(
         &mut mgr,
         "Castle_CellBlock",
@@ -135,6 +133,25 @@ fn a_hovering_spawn_is_spawn_off_mesh_once() {
     assert_eq!(found[0].level, Level::WARN);
     assert!(found[0].has_field("on_navmesh", "true"), "{:?}", found[0]);
     assert!(found[0].has_field("gate", "start_box"));
+}
+
+/// An NPC that never gets a route at all (meshless space, no stale path)
+/// is stuck too: `no_path` counts without a path. Revert-proof: requiring
+/// a non-empty path for `no_path` again leaves no row.
+#[tokio::test]
+async fn a_chaser_that_never_gets_a_path_is_stuck() {
+    let mut mgr = castle_mgr();
+    add_npc(&mut mgr, "Castle", [0.0; 3], None, AiState::Fighting);
+    add_threat_player(&mut mgr, "Castle", [45.0, 0.0, 0.0]);
+    assert!(mgr.get_entity(NPC).unwrap().nav_path.is_empty());
+    let logs = LogCapture::install();
+    for _ in 0..3 {
+        ai_tick(&mut mgr).await;
+    }
+    let found = rows(&logs, "npc_ai", "stuck");
+    assert_eq!(found.len(), 1, "{:#?}", logs.all());
+    assert!(found[0].has_field("decision_outcome", "no_path"));
+    assert!(found[0].has_field("nav_path_len", "0"));
 }
 
 /// Chasing with a stale path and no route: the NPC never closes (the
@@ -161,9 +178,7 @@ async fn a_chase_that_never_closes_is_stuck() {
 /// A blocked line of sight is logged with its ray, sampled per pair.
 #[test]
 fn a_blocked_line_of_sight_is_logged_with_its_ray() {
-    let Some((mut mgr, _)) = cellblock_mgr() else {
-        return;
-    };
+    let (mut mgr, _) = cellblock_mgr();
     add_npc(
         &mut mgr,
         "Castle_CellBlock",
@@ -207,9 +222,13 @@ fn the_aoi_relay_carries_npc_moved_since_last() {
     assert_eq!(moved, vec![Some(false)]);
 }
 
-/// Every per-entity detector slot is released by both teardown paths.
+/// Every per-entity detector map is released by both teardown paths, map
+/// by map, and only for the entity torn down: a bystander id outside the
+/// torn-down space keeps its slots. `destroy_space` also releases the per-world idle
+/// summary throttle.
 #[tokio::test]
 async fn detector_state_is_released_on_destroy_entity_and_destroy_space() {
+    const OTHER: u32 = 300;
     for via_space in [false, true] {
         let mut mgr = castle_mgr();
         add_npc(
@@ -219,19 +238,41 @@ async fn detector_state_is_released_on_destroy_entity_and_destroy_space() {
             Some([0.0; 3]),
             AiState::Fighting,
         );
-        mgr.get_entity_mut(NPC).unwrap().velocity = [6.0, 0.0, 0.0];
-        for _ in 0..5 {
-            movement_tick(&mut mgr);
+        let now = std::time::Instant::now();
+        mgr.npc_detectors.fill_all_for_test(NPC, PLAYER, now);
+        // A bystander id with state of its own, which must survive.
+        mgr.npc_detectors.fill_all_for_test(OTHER, PLAYER + 1, now);
+        mgr.npc_detectors
+            .admit_world_summary("Castle", now, std::time::Duration::from_secs(1));
+        for (map, n) in mgr.npc_detectors.slots_for(NPC) {
+            assert!(n > 0, "precondition: {map} holds a slot for the NPC");
         }
-        assert!(mgr.npc_detectors.tracked_for(NPC) > 0, "precondition");
         if via_space {
             let sid = mgr.get_entity_space_id(NPC).unwrap();
             mgr.destroy_space(sid);
+            assert!(
+                !mgr.npc_detectors.tracks_world_summary("Castle"),
+                "destroy_space releases the per-world summary throttle"
+            );
         } else {
             mgr.destroy_entity(NPC);
         }
+        for (map, n) in mgr.npc_detectors.slots_for(NPC) {
+            assert_eq!(
+                n, 0,
+                "via_space={via_space}: {map} still holds the destroyed NPC -- a \
+                 recycled id would inherit its throttle window"
+            );
+        }
+        for (map, n) in mgr.npc_detectors.slots_for(OTHER) {
+            assert!(n > 0, "via_space={via_space}: {map} dropped a bystander");
+        }
         assert_eq!(
-            mgr.npc_detectors.tracked_for(NPC),
+            mgr.npc_detectors
+                .slots_for(NPC)
+                .iter()
+                .map(|(_, n)| n)
+                .sum::<usize>(),
             0,
             "via_space={via_space}: a recycled id must not inherit a throttle window"
         );

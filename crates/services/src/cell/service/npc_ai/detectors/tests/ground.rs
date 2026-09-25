@@ -12,8 +12,8 @@ const MESSHALL: [f32; 3] = [-96.25, 34.591, -91.59];
 
 /// Put the guard on the mess-hall floor (Y from the storey-aware query)
 /// with one waypoint at `offset` from it.
-fn guard_with_leg(offset: [f32; 3]) -> Option<crate::cell::space_manager::SpaceManager> {
-    let (mut mgr, _) = cellblock_mgr()?;
+fn guard_with_leg(offset: [f32; 3]) -> crate::cell::space_manager::SpaceManager {
+    let (mut mgr, _) = cellblock_mgr();
     add_npc(
         &mut mgr,
         "Castle_CellBlock",
@@ -33,7 +33,7 @@ fn guard_with_leg(offset: [f32; 3]) -> Option<crate::cell::space_manager::SpaceM
         start.y + offset[1],
         start.z + offset[2],
     ));
-    Some(mgr)
+    mgr
 }
 
 /// **Acceptance: ground deviation on a lerped chord.** A leg whose far end
@@ -43,9 +43,7 @@ fn guard_with_leg(offset: [f32; 3]) -> Option<crate::cell::space_manager::SpaceM
 /// call from the lerp branch of `npc_movement_tick` leaves no row.
 #[test]
 fn a_lerped_chord_over_a_flat_floor_is_a_ground_deviation() {
-    let Some(mut mgr) = guard_with_leg([4.0, 4.0, 0.0]) else {
-        return;
-    };
+    let mut mgr = guard_with_leg([4.0, 4.0, 0.0]);
     let logs = LogCapture::install();
     movement_tick(&mut mgr);
     let found = rows(&logs, "movement.npc", "ground_deviation");
@@ -66,9 +64,7 @@ fn a_lerped_chord_over_a_flat_floor_is_a_ground_deviation() {
 /// A leg along the floor stays on it: no row.
 #[test]
 fn a_step_along_the_floor_is_not_a_deviation() {
-    let Some(mut mgr) = guard_with_leg([4.0, 0.0, 0.0]) else {
-        return;
-    };
+    let mut mgr = guard_with_leg([4.0, 0.0, 0.0]);
     let logs = LogCapture::install();
     movement_tick(&mut mgr);
     assert!(

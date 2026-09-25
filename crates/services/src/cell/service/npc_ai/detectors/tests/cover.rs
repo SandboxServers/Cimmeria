@@ -11,8 +11,10 @@ use crate::test_support::LogCapture;
 /// Parse `db/resources/AI/Seed/cover_nodes.sql` into the nodes the loader
 /// builds. Columns: `chunk_id, node_id, pos_x, pos_y, pos_z, orient,
 /// height, quality, width, tail`; set ids are `world_id * 100000 + n`.
-fn seed_nodes() -> Option<Vec<CoverNode>> {
-    let sql = std::fs::read_to_string("../../db/resources/AI/Seed/cover_nodes.sql").ok()?;
+fn seed_nodes() -> Vec<CoverNode> {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../db/resources/AI/Seed/cover_nodes.sql");
+    let sql = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
     let nodes: Vec<CoverNode> = sql
         .lines()
         .map(str::trim)
@@ -41,7 +43,7 @@ fn seed_nodes() -> Option<Vec<CoverNode>> {
             }
         })
         .collect();
-    Some(nodes)
+    nodes
 }
 
 /// Mark the fixture NPC as one that would look for cover.
@@ -66,12 +68,8 @@ fn field_usize(row: &crate::test_support::Captured, k: &str) -> usize {
 /// world had no usable cover (audit C1).
 #[test]
 fn the_cellblock_seed_is_on_the_mesh_and_does_not_warn() {
-    let Some((mut mgr, space_id)) = cellblock_mgr() else {
-        return;
-    };
-    let Some(nodes) = seed_nodes() else {
-        return;
-    };
+    let (mut mgr, space_id) = cellblock_mgr();
+    let nodes = seed_nodes();
     mgr.cover = Cover::from_loaded(Vec::new(), nodes);
     make_cover_npc(&mut mgr, [-96.25, 34.591, -91.59]);
     let logs = LogCapture::install();
@@ -102,9 +100,7 @@ fn the_cellblock_seed_is_on_the_mesh_and_does_not_warn() {
 /// return `false` turns this row INFO.
 #[test]
 fn a_meshed_world_with_cover_npcs_and_no_nodes_warns() {
-    let Some((mut mgr, _)) = cellblock_mgr() else {
-        return;
-    };
+    let (mut mgr, _) = cellblock_mgr();
     let elsewhere = CoverNode {
         chunk_id: 800_001,
         node_id: 0,
@@ -131,9 +127,7 @@ fn a_meshed_world_with_cover_npcs_and_no_nodes_warns() {
 /// No cover-seeking NPC, nothing to warn about.
 #[test]
 fn a_world_without_cover_npcs_does_not_warn() {
-    let Some((mut mgr, _)) = cellblock_mgr() else {
-        return;
-    };
+    let (mut mgr, _) = cellblock_mgr();
     let logs = LogCapture::install();
     mgr.cover_loaded();
     let found = rows(&logs, "cover.coverage", "space_summary");
@@ -172,19 +166,49 @@ async fn an_out_of_range_chase_with_no_cover_says_no_candidate_in_radius() {
 }
 
 #[tokio::test]
-async fn in_range_and_use_cover_false_have_their_own_reasons() {
-    for (use_cover, target_x, reason) in [
-        (true, 5.0, "in_range_no_better_slot"),
-        (false, 45.0, "use_cover_false"),
-    ] {
+async fn in_range_without_a_slot_has_its_own_reason() {
+    let mut mgr = castle_mgr();
+    add_npc(&mut mgr, "Castle", [0.0; 3], None, AiState::Fighting);
+    mgr.get_entity_mut(NPC).unwrap().use_cover = true;
+    add_threat_player(&mut mgr, "Castle", [5.0, 0.0, 0.0]);
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await;
+    let found = no_cover_rows(&logs);
+    assert_eq!(found.len(), 1, "{:#?}", logs.all());
+    assert!(found[0].has_field("reason", "in_range_no_better_slot"));
+}
+
+/// An NPC that does not use cover (or cannot move) never asks, and is not
+/// logged every fight tick: the spawn row already records `use_cover`.
+#[tokio::test]
+async fn an_npc_without_use_cover_logs_no_cover_row() {
+    for (use_cover, stationary) in [(false, false), (true, true)] {
         let mut mgr = castle_mgr();
         add_npc(&mut mgr, "Castle", [0.0; 3], None, AiState::Fighting);
-        mgr.get_entity_mut(NPC).unwrap().use_cover = use_cover;
-        add_threat_player(&mut mgr, "Castle", [target_x, 0.0, 0.0]);
+        {
+            let npc = mgr.get_entity_mut(NPC).unwrap();
+            npc.use_cover = use_cover;
+            npc.is_stationary = stationary;
+        }
+        add_threat_player(&mut mgr, "Castle", [45.0, 0.0, 0.0]);
         let logs = LogCapture::install();
         ai_tick(&mut mgr).await;
-        let found = no_cover_rows(&logs);
-        assert_eq!(found.len(), 1, "{reason}: {:#?}", logs.all());
-        assert!(found[0].has_field("reason", reason), "{:?}", found[0]);
+        assert!(no_cover_rows(&logs).is_empty(), "{:#?}", logs.all());
     }
+}
+
+/// A fight without cover repeats the same answer every tick: one row per
+/// NPC per sample window. Revert-proof: dropping the `admit_sample` gate
+/// in `report_no_cover` logs one row per tick.
+#[tokio::test]
+async fn no_cover_is_sampled_per_npc() {
+    let mut mgr = castle_mgr();
+    add_npc(&mut mgr, "Castle", [0.0; 3], None, AiState::Fighting);
+    mgr.get_entity_mut(NPC).unwrap().use_cover = true;
+    add_threat_player(&mut mgr, "Castle", [45.0, 0.0, 0.0]);
+    let logs = LogCapture::install();
+    for _ in 0..3 {
+        ai_tick(&mut mgr).await;
+    }
+    assert_eq!(no_cover_rows(&logs).len(), 1, "{:#?}", logs.all());
 }

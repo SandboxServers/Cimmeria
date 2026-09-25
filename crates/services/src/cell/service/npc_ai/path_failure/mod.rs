@@ -226,19 +226,33 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
 
     // Counted every tick, logged on some of them — the throttle must
     // not deflate the rate an operator alerts on.
-    cimmeria_observability::counter!(
-        "npc_path_fail_total",
-        "world" => world.clone(),
-        "state" => state,
-        "reason" => reason_label,
-    );
+    // A partial route is walked, not failed: it has its own counter and
+    // its own throttle window, so a chase repathing into an island edge
+    // every tick cannot hold back a real `no_start_poly` / `no_corridor`
+    // row for the same NPC (and `npc_path_fail_total` keeps meaning "no
+    // usable route").
+    let partial = reason == PathFailReason::Partial;
+    if partial {
+        cimmeria_observability::counter!(
+            "npc_path_partial_total",
+            "world" => world.clone(),
+            "state" => state,
+        );
+    } else {
+        cimmeria_observability::counter!(
+            "npc_path_fail_total",
+            "world" => world.clone(),
+            "state" => state,
+            "reason" => reason_label,
+        );
+    }
 
     // One kind: every AI state's path failure shares a window, because
     // a stuck NPC does not change state and the row already names which
     // handler was routing.
     let Some(suppressed) = space_mgr.movement_telemetry.npc_path_fail_log.admit(
         npc_id,
-        "path_fail",
+        if partial { "path_partial" } else { "path_fail" },
         now,
         PATH_FAIL_LOG_MIN_INTERVAL,
     ) else {

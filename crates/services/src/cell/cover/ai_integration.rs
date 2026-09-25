@@ -121,8 +121,7 @@ pub enum CoverDecision {
 pub enum NoCoverReason {
     /// The NPC does not use cover.
     UseCoverFalse,
-    /// A stationary NPC never repositions (decided by the caller).
-    Stationary,
+
     /// Nothing unreserved inside `MAX_COVER_DISTANCE` and the vertical band.
     NoCandidateInRadius,
     /// The chosen slot was taken between pick and reserve.
@@ -141,7 +140,7 @@ impl NoCoverReason {
     pub fn label(self) -> &'static str {
         match self {
             Self::UseCoverFalse => "use_cover_false",
-            Self::Stationary => "stationary",
+
             Self::NoCandidateInRadius => "no_candidate_in_radius",
             Self::ReserveLost => "reserve_lost",
             Self::InRangeNoBetterSlot => "in_range_no_better_slot",

@@ -259,6 +259,7 @@ impl SpaceManager {
                 self.zero_health_npc_log.forget(eid);
                 self.npc_detectors.forget(eid);
             }
+            self.npc_detectors.forget_world(&space.world_name);
 
             tracing::info!(
                 space_id,

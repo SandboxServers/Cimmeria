@@ -33,7 +33,7 @@ pub(in crate::cell) fn before_tick(
     admitted: &HashSet<u32>,
     now: Instant,
 ) {
-    let mut unticked: HashMap<String, (i64, u32)> = HashMap::new();
+    let mut unticked: HashMap<String, i64> = HashMap::new();
     for npc_id in space_mgr.all_npc_entity_ids() {
         let Some(e) = space_mgr.get_entity(npc_id) else {
             continue;
@@ -42,11 +42,9 @@ pub(in crate::cell) fn before_tick(
         if state == AiState::Dead || state == AiState::Spawning {
             continue;
         }
-        let space_id = e.space_id.0 as u32;
         if state == AiState::Idle && !admitted.contains(&npc_id) {
             let world = super::super::world_label(space_mgr, npc_id);
-            let slot = unticked.entry(world).or_insert((0, space_id));
-            slot.0 += 1;
+            *unticked.entry(world).or_insert(0) += 1;
         }
     }
     report_idle_unticked(space_mgr, unticked, now);
@@ -54,7 +52,7 @@ pub(in crate::cell) fn before_tick(
 
 fn report_idle_unticked(
     space_mgr: &mut SpaceManager,
-    unticked: HashMap<String, (i64, u32)>,
+    unticked: HashMap<String, i64>,
     now: Instant,
 ) {
     // Worlds that had unticked NPCs last time and have none now must be
@@ -71,7 +69,7 @@ fn report_idle_unticked(
         }
     }
     for world in worlds {
-        let (count, space_id) = unticked.get(&world).copied().unwrap_or((0, 0));
+        let count = unticked.get(&world).copied().unwrap_or(0);
         let prev = space_mgr
             .npc_detectors
             .idle_unticked_reported
@@ -87,22 +85,19 @@ fn report_idle_unticked(
         if count == 0 {
             continue;
         }
-        if space_mgr
-            .npc_detectors
-            .admit_sample(
-                space_id,
-                "idle_unticked_summary",
-                now,
-                IDLE_SUMMARY_INTERVAL,
-            )
-            .is_some()
+        // Per world (the gauge's label), in its own map: an instanced
+        // world can have several spaces, and a space id is not an NPC id.
+        if let Some(suppressed) =
+            space_mgr
+                .npc_detectors
+                .admit_world_summary(&world, now, IDLE_SUMMARY_INTERVAL)
         {
             tracing::debug!(
                 target: "npc_ai.idle",
                 event = "unticked",
                 world = %world,
-                space_id,
                 idle_unticked = count,
+                suppressed,
                 "npc_ai: Idle NPCs the AI tick never visits (no aggression, patrol \
                  or wander) -- they will not notice a player on their own"
             );
@@ -188,10 +183,13 @@ fn check_stuck(
     let Some(e) = space_mgr.get_entity(npc_id) else {
         return;
     };
+    // `no_path` counts with or without a (stale) path: an NPC that never
+    // got a route is the most stuck of all. The other chasing outcomes need
+    // a path, or the NPC is not trying to close.
     let chasing = state_before == AiState::Fighting
         && e.ai_state() == AiState::Fighting
         && CHASING_OUTCOMES.contains(&outcome)
-        && !e.nav_path.is_empty();
+        && (outcome == "no_path" || !e.nav_path.is_empty());
     let target = e
         .threat_list
         .iter()

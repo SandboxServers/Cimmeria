@@ -64,20 +64,22 @@ pub(in crate::cell) fn after_movement_tick(space_mgr: &mut SpaceManager, now: In
         } else {
             track.still_ticks = 0;
         }
-        if track.still_ticks >= STALE_VELOCITY_TICKS {
+        let still_ticks = track.still_ticks;
+        if still_ticks == STALE_VELOCITY_TICKS {
+            // Counted once per episode (the tick it becomes stale), not
+            // once per tick it stays stale.
+            cimmeria_observability::counter!(
+                "npc_stale_velocity_total",
+                "world" => super::super::world_label(space_mgr, npc_id),
+            );
+        }
+        if still_ticks >= STALE_VELOCITY_TICKS {
             report_stale_velocity(space_mgr, npc_id, now);
         }
     }
 }
 
 fn report_stale_velocity(space_mgr: &mut SpaceManager, npc_id: u32, now: Instant) {
-    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
-        return;
-    };
-    cimmeria_observability::counter!(
-        "npc_stale_velocity_total",
-        "world" => ident.world.clone(),
-    );
     let still_ticks = space_mgr
         .npc_detectors
         .movement
@@ -89,6 +91,9 @@ fn report_stale_velocity(space_mgr: &mut SpaceManager, npc_id: u32, now: Instant
         now,
         STALE_VELOCITY_WARN_INTERVAL,
     ) else {
+        return;
+    };
+    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
         return;
     };
     let Some(e) = space_mgr.get_entity(npc_id) else {
@@ -181,23 +186,36 @@ pub(in crate::cell) fn check_ground_step(
     let dir = match dy {
         Some(d) if d > GROUND_DEVIATION_THRESHOLD => "up",
         Some(d) if d < -GROUND_DEVIATION_THRESHOLD => "down",
-        Some(_) => return,
+        Some(_) => {
+            // Back on the floor: the episode, if any, is over.
+            if let Some(t) = space_mgr.npc_detectors.movement.get_mut(&npc_id) {
+                t.off_ground = false;
+            }
+            return;
+        }
         None => "unknown",
     };
-    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
-        return;
-    };
-    cimmeria_observability::counter!(
-        "npc_ground_deviation_total",
-        "world" => ident.world.clone(),
-        "dir" => dir,
-    );
+    // Counted once per episode (the first deviating step after a grounded
+    // one), not once per 100 ms step of a long floating leg.
+    let track = space_mgr.npc_detectors.movement.entry(npc_id).or_default();
+    let episode_start = !track.off_ground;
+    track.off_ground = true;
+    if episode_start {
+        cimmeria_observability::counter!(
+            "npc_ground_deviation_total",
+            "world" => super::super::world_label(space_mgr, npc_id),
+            "dir" => dir,
+        );
+    }
     let Some(suppressed) = space_mgr.npc_detectors.admit_warn(
         npc_id,
         "ground_deviation",
         now,
         GROUND_DEVIATION_WARN_INTERVAL,
     ) else {
+        return;
+    };
+    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
         return;
     };
     let ai_state = space_mgr

@@ -48,17 +48,18 @@ pub(super) fn castle_mgr() -> SpaceManager {
     mgr
 }
 
-/// The real rebuilt Cellblock mesh, or `None` on a checkout without it.
-pub(super) fn cellblock_nav() -> Option<NavMesh> {
-    let p = Path::new("../../data/spaces/castle_cellblock.nav");
-    p.exists()
-        .then(|| NavMesh::load(p).expect("castle_cellblock.nav loads"))
+/// The real rebuilt Cellblock mesh. `data/spaces/castle_cellblock.nav` is
+/// tracked in git and CI loads it, so a missing file is a failure, not a
+/// skip: a silent skip would pass every mesh-backed guard vacuously.
+pub(super) fn cellblock_nav() -> NavMesh {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/spaces/castle_cellblock.nav");
+    NavMesh::load(&p).unwrap_or_else(|e| panic!("load {}: {e}", p.display()))
 }
 
 /// A non-instanced "Castle_CellBlock" space with the real mesh injected.
 /// Returns the manager and the space id.
-pub(super) fn cellblock_mgr() -> Option<(SpaceManager, u32)> {
-    let mesh = cellblock_nav()?;
+pub(super) fn cellblock_mgr() -> (SpaceManager, u32) {
+    let mesh = cellblock_nav();
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
@@ -69,7 +70,7 @@ pub(super) fn cellblock_mgr() -> Option<(SpaceManager, u32)> {
     mgr.worlds.get_mut("Castle_CellBlock").unwrap().world_id = Some(12);
     let space_id = mgr.space_id_for_world("Castle_CellBlock").unwrap();
     mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(mesh);
-    Some((mgr, space_id))
+    (mgr, space_id)
 }
 
 /// A mob (class 0x04, so the ticks see it) at `pos` in `world`, full HP,

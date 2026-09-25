@@ -21,6 +21,8 @@ use crate::cell::space_manager::SpaceManager;
 
 /// `cover.selection` rows at most once per NPC per this window.
 const SELECTION_SAMPLE_INTERVAL: Duration = Duration::from_secs(10);
+/// `no_cover` rows at most once per NPC per this window.
+const NO_COVER_SAMPLE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// The inputs the cover step needs from the fight handler.
 pub(super) struct CoverStep {
@@ -53,14 +55,11 @@ pub(super) async fn route_via_cover(
         use_cover,
         is_stationary,
     } = step;
-    // The two short-circuits the caller used to take silently.
+    // An NPC that does not use cover, or cannot move, never asks. Not
+    // logged: it would be one row per fight tick for a fact the
+    // `spawner.npc_behaviour` spawn row already records (`use_cover`,
+    // `is_stationary`).
     if !use_cover || is_stationary {
-        let reason = if use_cover {
-            NoCoverReason::Stationary
-        } else {
-            NoCoverReason::UseCoverFalse
-        };
-        report_no_cover(space_mgr, npc_id, target_id, reason, None);
         return target_pos;
     }
 
@@ -153,7 +152,14 @@ pub(super) async fn route_via_cover(
         }
         CoverDecision::NoCover => {
             let reason = trace.no_cover.unwrap_or(NoCoverReason::NoCandidateInRadius);
-            report_no_cover(space_mgr, npc_id, target_id, reason, trace.pick.as_ref());
+            report_no_cover(
+                space_mgr,
+                npc_id,
+                target_id,
+                reason,
+                trace.pick.as_ref(),
+                Instant::now(),
+            );
             target_pos
         }
     }
@@ -164,14 +170,24 @@ pub(super) async fn route_via_cover(
 ///
 /// DEBUG and a log field only: it does not claim the tick's terminal
 /// outcome (the chase / attack branch that follows does), so it goes
-/// through neither `note_outcome` nor the decisions counter.
+/// through neither `note_outcome` nor the decisions counter. Sampled per
+/// NPC ([`NO_COVER_SAMPLE_INTERVAL`]): a fight without cover repeats the
+/// same answer every tick.
 fn report_no_cover(
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
     npc_id: u32,
     target_id: u32,
     reason: NoCoverReason,
     pick: Option<&PickTrace>,
+    now: Instant,
 ) {
+    let Some(suppressed) =
+        space_mgr
+            .npc_detectors
+            .admit_sample(npc_id, "no_cover", now, NO_COVER_SAMPLE_INTERVAL)
+    else {
+        return;
+    };
     tracing::debug!(
         target: "npc_ai",
         event = "decision",
@@ -188,6 +204,7 @@ fn report_no_cover(
         reserved_skipped = pick.map(|p| p.reserved_skipped),
         search_radius = MAX_COVER_DISTANCE,
         cover_nodes_loaded = space_mgr.cover.node_count(),
+        suppressed,
         "NPC AI: no cover this tick ({})",
         reason.label()
     );

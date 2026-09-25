@@ -231,6 +231,15 @@ impl LogThrottle {
     pub(crate) fn tracked(&self) -> usize {
         self.entries.len()
     }
+
+    /// Slots held for one entity. Test-only, for per-entity leak guards.
+    #[cfg(test)]
+    pub(crate) fn tracked_for(&self, entity_id: u32) -> usize {
+        self.entries
+            .keys()
+            .filter(|(id, _)| *id == entity_id)
+            .count()
+    }
 }
 
 /// Where the last accepted sample for a player was taken.

@@ -10,7 +10,7 @@
 //! It returns the same `Option<Vec<Vector3>>` the handlers used before, so
 //! routing behaviour is unchanged (NA02 is detectors only).
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::{PathOutcome, PathStatus};
@@ -48,7 +48,7 @@ pub(super) fn request_path(
 ) -> RoutedPath {
     let outcome = space_mgr.find_path_outcome(req.npc_id, &req.from, &req.to);
     let status = outcome.as_ref().map(|o| o.status);
-    log_request(space_mgr, &req, outcome.as_ref());
+    log_request(space_mgr, &req, outcome.as_ref(), now);
 
     let waypoints = outcome.and_then(PathOutcome::into_waypoints);
     let usable = waypoints.as_ref().is_some_and(|w| w.len() > 1);
@@ -78,8 +78,20 @@ pub(super) fn request_path(
     RoutedPath { waypoints, status }
 }
 
-fn log_request(space_mgr: &SpaceManager, req: &PathRequest, outcome: Option<&PathOutcome>) {
+/// An `ok` route is logged at most once per NPC per this window; every
+/// other status is logged every time. A chasing NPC repaths every tick the
+/// target moves, and the healthy case is not news.
+const OK_REQUEST_SAMPLE_INTERVAL: Duration = Duration::from_secs(10);
+
+fn log_request(
+    space_mgr: &mut SpaceManager,
+    req: &PathRequest,
+    outcome: Option<&PathOutcome>,
+    now: Instant,
+) {
     let status = outcome.map_or("no_mesh", |o| o.status.label());
+    // The counter is unthrottled and needs the world label; everything
+    // else below is only built for a row that will be written.
     let world = super::world_label(space_mgr, req.npc_id);
     cimmeria_observability::counter!(
         "npc_path_requests_total",
@@ -87,6 +99,19 @@ fn log_request(space_mgr: &SpaceManager, req: &PathRequest, outcome: Option<&Pat
         "state" => req.state,
         "status" => status,
     );
+    let suppressed = if outcome.is_some_and(|o| o.status == PathStatus::Ok) {
+        match space_mgr.npc_detectors.admit_sample(
+            req.npc_id,
+            "path_request_ok",
+            now,
+            OK_REQUEST_SAMPLE_INTERVAL,
+        ) {
+            Some(n) => n,
+            None => return,
+        }
+    } else {
+        0
+    };
     let (tag, template_id, space_id) = space_mgr
         .get_entity(req.npc_id)
         .map(|e| {
@@ -129,6 +154,7 @@ fn log_request(space_mgr: &SpaceManager, req: &PathRequest, outcome: Option<&Pat
         max_leg_dy,
         end_to_target_dist,
         end_to_dest_dist = wps.last().map(|end| end.distance_to(&req.to)),
+        suppressed,
         "npc_ai.path: route requested ({status})"
     );
 }

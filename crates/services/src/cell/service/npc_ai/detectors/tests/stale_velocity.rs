@@ -48,6 +48,11 @@ async fn attack_in_place_after_a_chase() -> crate::cell::space_manager::SpaceMan
 /// NA10 landed). After `attack_in_place` the velocity is zeroed, so the
 /// running-in-place detector stays silent. Removing NA10's
 /// `stop_npc_movement` at the attack-in-place site brings the WARN back.
+///
+/// Silence alone proves nothing if the detector is dead: this guard relies
+/// on `stale_velocity_fires_on_a_stalled_path_with_velocity` proving the
+/// detector does fire, and on its own precondition that the velocity is
+/// zeroed.
 #[tokio::test]
 async fn stale_velocity_is_silent_after_an_attack_in_place_stop() {
     let mut mgr = attack_in_place_after_a_chase().await;
@@ -66,6 +71,10 @@ async fn stale_velocity_is_silent_after_an_attack_in_place_stop() {
 /// **Regression guard for NA10, leash.** The snap goes through
 /// `snap_npc_to`, which stops the NPC, so it no longer stands at spawn
 /// broadcasting its old chase velocity.
+///
+/// Like the guard above, a silence-only test: it relies on
+/// `stale_velocity_fires_on_a_stalled_path_with_velocity` for proof that
+/// the detector is alive.
 #[tokio::test]
 async fn stale_velocity_is_silent_after_a_leash_snap() {
     let mut mgr = castle_mgr();
