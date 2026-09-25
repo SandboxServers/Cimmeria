@@ -25,12 +25,16 @@
 //! - [`dispatch`] — the [`npc_ai_tick`] state-machine entry and the
 //!   [`npc_ai_retry_sweep`] fast-retry pass.
 //! - [`fight`] — the Fighting handler.
+//! - [`fight_target`] — the fight's target selection: prune dead, vanished
+//!   and lost targets (draining their combat state) and start the walk home
+//!   when nobody is left.
 //! - [`idle_aggro`] — the Idle auto-aggro scan that seeds Fighting.
 //! - [`ability_select`] — ability bucket choice, range resolution,
 //!   and the min-range backup-waypoint geometry.
 //! - [`patrol`] / [`wander`] / [`investigate`] / [`follow`] — the
 //!   movement-state handlers.
-//! - [`leash`] — leash recovery (snap home + heal).
+//! - [`leash`] — the leash policy (NPC-to-spawn radius with hysteresis),
+//!   the walk home with evade, and the reset on arrival (NA12).
 //! - [`lifecycle`] — the terminal / quiescent states (despawn,
 //!   submit, error).
 //! - [`path_failure`] — the one throttled emitter every state above
@@ -52,6 +56,7 @@ pub(in crate::cell) mod detectors;
 mod dispatch;
 mod fight;
 mod fight_cover;
+mod fight_target;
 mod follow;
 #[cfg(test)]
 mod ground_endpoint_tests;

@@ -16,7 +16,7 @@ NPC mob behavior is driven by a state machine implemented in the Rust cell servi
 
 The Detour-backed navmesh (via `space_mgr.find_path`) handles pathfinding for all movement states. Movement is interpolated at 100 ms cadence by `npc_movement_tick`.
 
-**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/services/src/cell/service/npc_ai/` (state-machine dispatch in `dispatch.rs` plus one module per behavior state — `fight.rs`, `patrol.rs`, `wander.rs`, `follow.rs`, `investigate.rs`, `leash.rs`, `lifecycle.rs`, `ability_select.rs`), `crates/services/src/cell/combat/threat/` (`generate_threat` preemption, `LEASH_DISTANCE` in `aggro.rs`), `crates/services/src/cell/service/ticks/npc_respawn/` (Dead → Idle promotion), `crates/services/src/cell/cover/` (cover selection and reservation). The Python design files referenced in legacy sections (`deprecated/python/cell/SGWMob.py`, `deprecated/python/Atrea/enums.py`) are kept for evidence-of-intent only.
+**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/services/src/cell/service/npc_ai/` (state-machine dispatch in `dispatch.rs` plus one module per behavior state — `fight.rs`, `fight_target.rs`, `patrol.rs`, `wander.rs`, `follow.rs`, `investigate.rs`, `leash/` (policy, walk home, reset), `lifecycle.rs`, `ability_select.rs`), `crates/services/src/cell/combat/threat/` (`generate_threat` preemption and the leash evade, the default `LEASH_DISTANCE` in `aggro.rs`, the player-side drain in `player_combat.rs`), `crates/services/src/cell/service/ticks/npc_respawn/` (Dead → Idle promotion), `crates/services/src/cell/cover/` (cover selection and reservation). The Python design files referenced in legacy sections (`deprecated/python/cell/SGWMob.py`, `deprecated/python/Atrea/enums.py`) are kept for evidence-of-intent only.
 
 ---
 
@@ -32,7 +32,7 @@ Defined in `deprecated/python/Atrea/enums.py` lines 228-239.
 | `AI_STATE_Idle` | 1 | DONE | Waits for threat or AI tick promotion into Patrol / Wander / auto-aggro. |
 | `AI_STATE_Investigating` | 2 | DONE | `npc_ai_investigate` — pathfind to `poi`, dwell 5 s on arrival, return to Idle. Reached via `SetNpcPoi` content action. |
 | `AI_STATE_Fighting` | 3 | DONE | Target selection, ability selection, fire. Per-ability range gating + retry-on-launch-failure (see [#329](https://github.com/SandboxServers/Cimmeria/issues/329)). |
-| `AI_STATE_Leashing` | 4 | DONE | `npc_ai_leash` snaps NPC to spawn + restores HP when target exceeds `LEASH_DISTANCE = 50`. |
+| `AI_STATE_Leashing` | 4 | DONE | The NPC walks home on the navmesh, evading, then heals and resets. Entered when the NPC itself goes past its leash radius or loses its last target. See [Leash and reset](#leash-and-reset-na12). |
 | `AI_STATE_Dead` | 5 | DONE | Set on death via `combat::mark_npc_dead`. `npc_respawn_tick` (1 Hz) promotes back to Idle when `respawn_at` elapses. |
 | `AI_STATE_Despawning` | 6 | DONE | `npc_ai_despawn` removes the entity from the space. Reached via `SetNpcAiState`. |
 | `AI_STATE_Follow` | 7 | DONE | `npc_ai_follow` maintains distance band `[follow_min_distance, follow_max_distance]` to a target. Reached via `SetFollowTarget`. |
@@ -51,9 +51,10 @@ Idle      -->  Patrol      (npc_ai_tick observes patrol_path non-empty)
 Idle      -->  Wander      (npc_ai_tick observes wander_radius > 0 and no patrol_path)
 Idle      -->  Investigating (SetNpcPoi content action)
 Idle      -->  Follow      (SetFollowTarget content action with a valid target)
-Fighting  -->  Idle        (threat list drains)
-Fighting  -->  Leashing    (target exceeds LEASH_DISTANCE from spawn)
-Leashing  -->  Idle        (snap to spawn + HP restore complete)
+Fighting  -->  Leashing    (the NPC is past its leash radius from spawn: leash_out)
+Fighting  -->  Leashing    (last target dead / gone / out of AoI for 5 s: target_lost;
+                            threat list already empty: threat_empty)
+Leashing  -->  Idle        (walked home: leash_arrived; no route or 20 s timeout: leash_snap_fallback)
 Any alive -->  Dead        (HP -> 0; combat::mark_npc_dead)
 Dead      -->  Idle        (npc_respawn_tick promotes; respawn_at elapsed)
 Any alive -->  Despawning / Submit / Error  (SetNpcAiState content action)
@@ -332,6 +333,28 @@ Key properties from `SGWMob.def` (55 total), grouped by subsystem:
 
 ## Unimplemented States: Reconstruction Notes
 
+### Leash and reset (NA12)
+
+Implemented behaviour, decided in D-NA03 (corrected by D-NA10) of the [NPC AI restoration ledger](../analysis/npc-ai-restoration/README.md). Code: `crates/services/src/cell/service/npc_ai/leash/` and `fight_target.rs`.
+
+**When an NPC gives up.** The leash is measured on the NPC's own horizontal distance from its spawn, never on the target's. The radius is `entity_templates.leash_distance`, or 50 u when the column is NULL (the seed sets none yet).
+
+- Beyond the radius plus a 5 u hysteresis band, or more than 20 u above or below its spawn, the NPC always gives up (`trigger` `beyond_band` / `vertical_cap`).
+- Inside the band it keeps fighting a target it can already hit. It gives up only if it would have to chase further from home (`chase_outward`).
+- A target that dies, disconnects, or stays beyond the NPC's AoI radius for 5 s is dropped. When nobody is left, the NPC goes home (`target_lost`).
+
+The old metric was spawn-to-target in 3D. A player standing 49.9 u from the Cellblock Guard's spawn bounded every chase, and an aggressive NPC standing at its spawn leashed every 6 s against a player 60 u away (audit S3, S5).
+
+**On giving up.** The NPC is removed from every player that lists it in `threatened_mobs`, so `BSF_InCombat` clears, the player is sent `onStateFieldUpdate` and regen resumes. Its threat list is cleared, cover is released, and `find_path(npc, spawn)` installs the route home.
+
+**Walking home.** The movement tick walks the route. The client sees the walk from position and velocity only, because no server-to-client movement-type message exists (D-NA10). While Leashing the NPC evades: `generate_threat` refuses it, so damage adds no threat and does not put the attacker into combat (`npc_ai.leash event=damage_ignored`, DEBUG).
+
+**Arrival.** Within 1.5 u of spawn with its route finished, the NPC heals to full, faces its authored spawn heading, clears its cooldowns and goes Idle. For 5 s afterwards the Idle auto-aggro scan ignores players.
+
+**Snap fallback.** When no route can be planned, or the walk takes longer than 20 s, the NPC snaps to spawn through the grid-updating writer and resets the same way (`reason=leash_snap_fallback`). A follower (`follow_target_id` set) is reset where it stands and is not moved.
+
+**Telemetry.** The leash reports through NA02's detectors (`npc_ai::detectors::leash`): `npc_ai.leash event=enter` (reason, trigger, `nav_path_len`, `npc_to_spawn`), `event=arrived` / `event=snap_fallback` (`arrival`, `walk_secs`, `snap_dist`), `event=loop` (should stay silent) and `event=damage_ignored`. The leash itself adds `event=replan` and `event=player_combat_exit`. NA02's `threat event=cleared_without_exit` and `npc_ai.idle_parked` should stay silent through a leash; tests pin both. The fight's `decision_outcome=leashed` row carries `trigger`, `npc_to_spawn` and `target_to_spawn`.
+
 ### Investigating (State 2)
 
 A mob heard a noise or detected suspicious movement but has not confirmed a threat. It should navigate to `POI`, look around for a set duration, and return to `Home` if nothing is found.
@@ -438,11 +461,11 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Top-threat targeting | DONE | Linear scan with dead-entity pruning |
 | Ability classification | DONE | Type/targeting/cooldown/ammo checks |
 | Ammo management | DONE | Load on spawn, consume per shot, auto-reload |
-| Combat exit | DONE | Threat empty -> Idle |
+| Combat exit | DONE | Threat empty -> Leashing (walk home) -> Idle, with the player-side combat drain. Python went Idle in place; NA12 diverges on purpose because Rust NPCs move (D-NA03). |
 | Loot on death | DONE | Loot table referenced, no tap check |
 | Aggression override | DONE | With client broadcast and timer revert |
 | lookAt() rotation | DONE | Mob faces target during combat |
-| Leashing state | DONE | `npc_ai_leash` snaps NPC to spawn + restores HP on `Fighting → Leashing` transition when target exceeds `LEASH_DISTANCE = 50`. |
+| Leashing state | DONE | NA12: NPC-to-spawn leash radius with hysteresis and a per-template `leash_distance`, walk home with evade, heal / facing / cooldown reset on arrival, snap only as a fallback, player combat drained, 5 s re-aggro suppression. See [Leash and reset](#leash-and-reset-na12). |
 | Proactive aggro detection | DONE | `aggression > 0` → `npc_ai_idle_auto_aggro` scans witnesses every 2 s, seeds 1.0 threat on the closest opposing-faction player. Set via `set_aggression` content action. |
 | Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |
 | Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |

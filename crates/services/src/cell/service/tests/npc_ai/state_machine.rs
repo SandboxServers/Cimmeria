@@ -10,32 +10,28 @@ use cimmeria_entity::cell_entity::AiState;
 use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
-/// Fighting NPC with an empty threat list resets to Idle. The
-/// regression guard for the early-return that re-enables this NPC
-/// to be re-aggrod by the next attacker.
+/// Fighting NPC with an empty threat list goes home through Leashing
+/// (NA12: a fight that ends no longer parks the NPC where it stands), and
+/// an NPC already at its spawn arrives on the next tick and is Idle again,
+/// so the next attacker can re-aggro it.
 #[tokio::test]
-async fn npc_ai_fighting_with_empty_threat_resets_to_idle() {
+async fn npc_ai_fighting_with_empty_threat_leashes_then_idles_at_spawn() {
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(
-        &tx,
-        &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
-    )
-    .await;
-    assert!(matches!(
-        mgr.get_entity(200).unwrap().ai_state(),
-        AiState::Idle
-    ));
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    assert_eq!(mgr.get_entity(200).unwrap().ai_state(), AiState::Leashing);
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    assert_eq!(mgr.get_entity(200).unwrap().ai_state(), AiState::Idle);
 }
 
-/// Target sitting past `LEASH_DISTANCE` (50.0) from the NPC's spawn
-/// triggers AiState::Leashing and clears the threat list. Pin the
-/// transition so a refactor that drops the leash branch can't
-/// silently let mobs path across the whole zone.
+/// An NPC standing past `LEASH_DISTANCE` (50.0) plus the hysteresis band
+/// from its own spawn triggers AiState::Leashing and clears the threat
+/// list. Pin the transition so a refactor that drops the leash branch
+/// can't silently let mobs path across the whole zone.
 #[tokio::test]
-async fn npc_ai_target_beyond_leash_distance_triggers_leashing() {
-    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+async fn npc_ai_npc_beyond_leash_distance_triggers_leashing() {
+    let mut mgr = make_ai_fixture([0.0; 3], [60.0, 0.0, 0.0]);
     // Target player at distance 100 from spawn (LEASH_DISTANCE=50).
     mgr.create_entity(100, "Castle", [100.0, 0.0, 0.0], [0.0; 3])
         .unwrap();

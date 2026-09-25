@@ -33,11 +33,12 @@ use crate::cell::space_manager::SpaceManager;
 /// Why an NPC's AI state changed. Enumerated, never free text: the label is
 /// a metric label and a SigNoz group-by key.
 ///
-/// `target_dead` from the telemetry plan is deliberately absent. The fight
-/// handler does not change state when its target dies — it drops the target
-/// from the threat list and the *next* tick finds the list empty — so that
-/// edge is logged as [`AiTransitionReason::ThreatEmpty`]. Changing that would
-/// be a behaviour change, which NA00 does not make.
+/// `target_dead` from the telemetry plan is folded into
+/// [`AiTransitionReason::TargetLost`]: since NA12 a target that dies,
+/// disconnects or stays beyond the NPC's AoI for the grace period sends the
+/// NPC home under that one reason. [`AiTransitionReason::ThreatEmpty`] is
+/// what is left: the threat list was already empty when the fight tick ran
+/// (content or the GM console cleared it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::cell) enum AiTransitionReason {
     /// Idle auto-aggro seeded threat on a witness (`cause=proximity`).
@@ -46,10 +47,17 @@ pub(in crate::cell) enum AiTransitionReason {
     ThreatPreempt,
     /// Fighting with nobody left on the threat list.
     ThreatEmpty,
-    /// The top-threat target left the leash radius around spawn.
+    /// The NPC itself went past its leash radius around spawn (NA12: the
+    /// NPC's distance, not the target's).
     LeashOut,
-    /// Leash recovery finished. Today that is an instant snap home.
+    /// The last target died, disconnected, or stayed out of the NPC's AoI
+    /// for the grace period; the NPC walks home.
+    TargetLost,
+    /// The walk home reached spawn.
     LeashArrived,
+    /// The walk home could not be planned, or took longer than the timeout,
+    /// so the NPC was snapped to spawn instead.
+    LeashSnapFallback,
     /// The NPC died (`combat::mark_npc_dead`).
     Died,
     /// The respawn tick revived a corpse.
@@ -88,7 +96,9 @@ impl AiTransitionReason {
             Self::ThreatPreempt => "threat_preempt",
             Self::ThreatEmpty => "threat_empty",
             Self::LeashOut => "leash_out",
+            Self::TargetLost => "target_lost",
             Self::LeashArrived => "leash_arrived",
+            Self::LeashSnapFallback => "leash_snap_fallback",
             Self::Died => "died",
             Self::Respawn => "respawn",
             Self::Content => "content",
@@ -289,6 +299,11 @@ mod tests {
         assert_eq!(AiTransitionReason::ThreatPreempt.label(), "threat_preempt");
         assert_eq!(AiTransitionReason::AutoAggro.label(), "auto_aggro");
         assert_eq!(AiTransitionReason::LeashArrived.label(), "leash_arrived");
+        assert_eq!(AiTransitionReason::TargetLost.label(), "target_lost");
+        assert_eq!(
+            AiTransitionReason::LeashSnapFallback.label(),
+            "leash_snap_fallback"
+        );
         assert_eq!(AiState::Investigating.label(), "investigating");
     }
 
