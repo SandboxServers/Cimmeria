@@ -76,13 +76,24 @@
 -- follow-up chain (dialog_choice, minigame victory, deferred drain)
 -- display an NPC-speaker dialog — see docs/content/content-engine.md §4.
 --
--- GAP 3 — dialog 2576's "Take Missions" button covers only 3 of its 5
--- screens (dialog_screen_buttons rows 2240-2242 → screens 96821/96822/
--- 96823; screens 96824/96825 have none). A player who reads to the last
--- screen gets no button and raises no dialog_choice, so the turn-in
--- (1237/1238/1239) silently does not fire. Same class as the dialog 5861
--- Accept-button gap already filed under D-CA13 (audit.md:38). Per the
--- packet scope this is FILED, not fixed — do not edit dialog data here.
+-- GAP 3 (RESOLVED by packet DU-02b, 2026-09-21) — dialog 2576's "Take
+-- Missions" button covered only 3 of its 5 screens (dialog_screen_buttons
+-- rows 2240-2242 → screens 96821/96822/96823; screens 96824/96825 had
+-- none). A player who read to the last screen got no button and raised no
+-- dialog_choice, so the turn-in (1237/1238/1239) silently did not fire.
+-- Closing a dialog that has ANY button sends nothing, so Done was not a
+-- fallback.
+--
+-- Fixed by moving the single "Take Missions" row onto the final screen
+-- 96825, in BOTH records: the cooked entry the client renders (row 2576
+-- of CASTLE_DIALOG_PATCHES in
+-- crates/services/src/base/dialog_overrides/patches_castle.rs) and this
+-- tree's dialog_screen_buttons.sql. The two are held in step by
+-- base/dialog_overrides/patch_seed_agreement_castle.rs and by the
+-- content-engine dialog_button_linter. The same packet closed the 5861
+-- Accept gap filed under D-CA13. No chain row in this file changed:
+-- dialog_choice matches on dialog id alone, so where the button sits
+-- cannot change what 1237/1238/1239 resolve.
 --
 -- ============================================================
 -- Engine facts these chains rely on (verified against this tree)
@@ -185,11 +196,17 @@ VALUES (1202, 'display_dialog', 2573, NULL, '{}', 0, 0);
 
 -- Chain 1203 [NEW CONTENT, D-CA13] — Jaffa branch of the same interact.
 -- Dialog 5861 is original data (dialogs.sql:9925) with no dialog_set_map
--- row of its own, so it is displayed directly rather than bound. Its
--- Accept button is present on screens 96782-96786 and absent on
--- 96787-96789 (audit.md:38) — filed, not fixed. The accept itself rides
--- on `dialog_choice 5861` (chain 1205), which fires regardless of the
--- Accept affordance, so the missing buttons are cosmetic here.
+-- row of its own, so it is displayed directly rather than bound.
+--
+-- Its Accept button used to sit on screens 96782-96786 with none on
+-- 96787-96789 (audit.md:38, D-CA13), which was NOT cosmetic: closing a
+-- dialog that has any button sends nothing at all, so a Jaffa who read to
+-- the last screen had no way to raise `dialog_choice 5861` and mission 701
+-- was unacceptable for that player. Packet DU-02b moved the single Accept
+-- row onto the final screen 96789 in both the seed and the cooked-entry
+-- patch table. An earlier revision of this comment claimed the choice
+-- "fires regardless of the Accept affordance" — that is wrong, and it is
+-- the reasoning that would justify scattering buttons again.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1203, '701 - Gerschon interact (Jaffa): offer dialog 5861', 'mission', 701, true, 0);
 
@@ -451,7 +468,7 @@ VALUES
 -- an explicitly NULL speaker — whereas this chain fires off an
 -- `interact_tag`, so `fire_interact_tag` stamps `target_entity_id` and
 -- the executor resolves Copplemann as 2576's wire EntityId. Dialog 2576
--- is NOT a monologue (screens 96821/96823/96825 carry speaker 1110,
+-- is NOT a monologue (screens 96821 and 96823 carry speaker 1110,
 -- Copplemann), so binding her is very likely the intended render and the
 -- Python's None looks like the same shortcut it takes for 2575. Flagged
 -- because it is a real difference in what reaches the client and nobody

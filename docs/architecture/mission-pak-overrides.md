@@ -211,7 +211,7 @@ Field naming follows [docs/architecture/negative-logging-convention.md](negative
 
 4. Add the row to the zone's `patch_seed_agreement_<zone>.rs` guards, which check the plan against the seed and run it against the committed `data/cache/CookedDataDialogs.pak`. The patcher keeps the original entry when a plan cannot apply, so without that guard a typo'd dialog or screen id leaves no failing test.
 
-The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). A patch plan participates in the metadata bump, so editing one re-invalidates that entry on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
+The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). The Castle table carries three `OnlyOn` rows (DU-02b: 2573, 5861 and 2576 keep one button, on their final screen, so the mission 701 briefings fire their chains when read to the end). A patch plan participates in the metadata bump, so editing one re-invalidates that entry on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
 
 ## Adding a new override
 

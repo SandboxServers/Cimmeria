@@ -27,8 +27,8 @@
 //! the dialog has buttons, so nothing goes on the wire — and the chain
 //! keyed on that dialog never fires. Nothing errors anywhere; from the
 //! server's side the interaction simply never happened. Dialogs 3999,
-//! 5861 and 2576 ship in exactly that shape today and are carried in
-//! `rules::R1_ALLOWLIST` until DU-02a and DU-02b fix them.
+//! 5861 and 2576 shipped in exactly that shape; DU-02a and DU-02b fixed
+//! them, and `rules::R1_ALLOWLIST` is now empty.
 //!
 //! # The four rules
 //!
@@ -252,8 +252,8 @@ fn every_insert_row_in_the_dialog_seeds_is_parsed() {
     }
 }
 
-/// The three allowlisted dialogs must still ship the exact broken layout
-/// the allowlist records.
+/// Every still-allowlisted dialog must ship the exact broken layout the
+/// allowlist records.
 ///
 /// Pinning the layout, not merely "it violates R1", keeps the allowlist
 /// honest in both directions. If DU-02a strips 3999's buttons or DU-02b
@@ -267,10 +267,11 @@ fn allowlisted_dialogs_still_ship_the_soft_locking_layout() {
 
     // (dialog, screens, screens carrying buttons, final screen)
     //
-    // 3999's row is gone: DU-02a stripped every button from it, so its
-    // R1_ALLOWLIST entry went with it and there is no longer a soft-locking
-    // layout to pin.
-    let expected: [(i32, usize, usize, i32); 2] = [(5861, 8, 5, 96789), (2576, 5, 3, 96825)];
+    // Empty: DU-02a stripped every button from 3999, and DU-02b moved
+    // 5861's and 2576's single surviving button onto the final screen, so
+    // no soft-locking layout is left to pin. A new allowlist entry must
+    // add its row here.
+    let expected: [(i32, usize, usize, i32); 0] = [];
     for (dialog, screens, with_buttons, final_screen) in expected {
         assert_eq!(
             seed.screens_in_order(dialog).len(),
