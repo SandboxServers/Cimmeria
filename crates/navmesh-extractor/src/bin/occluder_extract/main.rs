@@ -108,12 +108,7 @@ fn probe(rest: &[String]) -> Result<u8, String> {
     let eye = f.f32_or("eye", 1.5)?;
     let (a, b) = (f.point("from")?, f.point("to")?);
     let (ea, eb) = ([a[0], a[1] + eye, a[2]], [b[0], b[1] + eye, b[2]]);
-    let columns: Vec<(
-        &str,
-        [f32; 3],
-        Vec<(cimmeria_occluder::LayerKind, f32, f32)>,
-    )>;
-    if bytes.starts_with(&cimmeria_occluder::paged::PAGED_MAGIC) {
+    let columns = if bytes.starts_with(&cimmeria_occluder::paged::PAGED_MAGIC) {
         let occ = PagedOccluder::from_bytes(bytes).map_err(|e| e.to_string())?;
         println!(
             "{} [{}]: {:?}",
@@ -121,10 +116,10 @@ fn probe(rest: &[String]) -> Result<u8, String> {
             occ.short_hash(),
             occ.sight(ea, eb)
         );
-        columns = vec![
+        vec![
             ("from", a, occ.column(a[0], a[2])),
             ("to", b, occ.column(b[0], b[2])),
-        ];
+        ]
     } else {
         let occ = cimmeria_occluder::format::decode(&bytes).map_err(|e| e.to_string())?;
         println!(
@@ -133,11 +128,11 @@ fn probe(rest: &[String]) -> Result<u8, String> {
             occ.short_hash(),
             occ.sight(ea, eb)
         );
-        columns = vec![
+        vec![
             ("from", a, occ.column(a[0], a[2])),
             ("to", b, occ.column(b[0], b[2])),
-        ];
-    }
+        ]
+    };
     for (name, p, col) in columns {
         println!("  column under {name} {p:?}:");
         for (kind, lo, hi) in col {
