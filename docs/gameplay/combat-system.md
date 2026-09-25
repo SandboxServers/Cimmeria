@@ -139,6 +139,33 @@ If the check passes, the server decrements via `set_slot_ammo(active_slot, ammo 
 
 Full server-authoritative ammo model, reload flow, persistence cadence, and client UI subscription chain: [weapon-ammo-reload.md](weapon-ammo-reload.md).
 
+## Fire-Time Line of Sight
+
+The server refuses a player's targeted ability when a wall stands between the player's eyes and the target's (NA31, decision D-NA14). The check is `refuse_without_line_of_sight` in [`use_ability/fire_los.rs`](../../crates/services/src/cell/abilities/use_ability/fire_los.rs), and it runs straight after the range check. The Python reference never checked (`AbilityManager`: `# TODO: Do LOS checks on target`). The client ships the feedback text, so the original server probably did.
+
+**When it applies.** Every condition must hold:
+
+- the attacker is a player;
+- the ability is aimed at another entity (`target_type_id` is not `TargetSelf` 1 or `TargetGround` 3);
+- the world ships a collision-geometry occluder (`data/spaces/<world>.occ`, NA27). All 23 client worlds ship one.
+
+The check does not apply without an occluder, or when an eye is off the occluder's grid (`Unknown`). The navmesh ray reads furniture as walls, so it never refuses a shot. NPC attacks are not re-checked here: the fight tick runs `attack_line_of_sight` in the same tick, just before it fires.
+
+**The rays.** A shot is allowed when any of these rays is clear, tried in this order:
+
+| Ray | From | To | Why |
+|---|---|---|---|
+| Eye | the player's eye | the target's eye | The line itself. |
+| Target lagged | the player's eye | the target's eye one tick (0.1 s) back along its velocity | The client draws an NPC where the server last put it. |
+| Shooter lead | the player's eye one tick ahead along its velocity | the target's eye | The client moves its own avatar before the server hears about it. |
+| Body edge (2 rays) | the player's eye | the target's eye moved 0.35 m to each side | A shot is aimed at a body, not a point. |
+
+The extra rays also absorb the occluder's own error: rays that graze within 0.1 m of a wall edge, about 1% of truly clear pairs. None of them sees past a corner by more than a body width or one tick of movement. Eye heights come from the being's body set (`resources.body_sets.eye_height`, [being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md)).
+
+**The refusal.** The player gets `onErrorCode` with `SystemID 0`, `InstanceID` = the ability id, and `ErrorCodeID 39` (`CONDITION_FEEDBACK_LOS`). The client's text for it is "You do not have Line of Sight to your target"; it is the only line-of-sight code with authored text, since `NoLOS` (40) has only its moniker. The refused shot consumes no cooldown or ammo and draws no weapon. It logs one `abilities` DEBUG row, `event=los_refused`, with the source, both eye heights, the ray endpoints and the hit point. It also counts `abilities_los_refused_total{world}`.
+
+**Auto-cycle.** When the loop's target goes behind a wall, the next loop shot is refused with error 39, once. The loop then stays armed and silent until the line clears (`AbilityManager::auto_cycle_los_notified`). It works like the out-of-range skip, so a player who steps out of cover resumes firing without pressing anything.
+
 ## Damage Pipeline
 
 The damage calculation in `DamageCalc.calculateDamage()` follows this pipeline:

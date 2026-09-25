@@ -26,6 +26,7 @@ mod live_db_aggression;
 mod live_db_assist;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
+mod live_db_eye_heights;
 mod live_db_leash_distance;
 mod live_db_loaders;
 mod live_db_use_cover;

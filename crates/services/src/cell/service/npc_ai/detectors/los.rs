@@ -27,8 +27,12 @@ pub(in crate::cell) enum LosSource<'a> {
     /// or the floor between storeys (S15).
     Navmesh(&'a str),
     /// The collision-geometry occluder (NA27), with its short hash and the
-    /// eye height added to the looker.
-    Occluder { hash: &'a str, eye_height: f32 },
+    /// eye heights added to the looker and the target (per body set, NA31).
+    Occluder {
+        hash: &'a str,
+        eye_height: f32,
+        target_eye_height: f32,
+    },
 }
 
 impl LosSource<'_> {
@@ -43,6 +47,15 @@ impl LosSource<'_> {
         match self {
             Self::Navmesh(_) => 0.0,
             Self::Occluder { eye_height, .. } => eye_height,
+        }
+    }
+
+    fn target_eye_height(self) -> f32 {
+        match self {
+            Self::Navmesh(_) => 0.0,
+            Self::Occluder {
+                target_eye_height, ..
+            } => target_eye_height,
         }
     }
 }
@@ -98,6 +111,7 @@ pub(in crate::cell) fn report(
         from_xyz = ?[a_pos.x, a_pos.y, a_pos.z],
         to_xyz = ?[b_pos.x, b_pos.y, b_pos.z],
         eye_height_used = source.eye_height(),
+        target_eye_height_used = source.target_eye_height(),
         source = source.label(),
         ray_from = ?probe.from,
         ray_to = ?probe.to,

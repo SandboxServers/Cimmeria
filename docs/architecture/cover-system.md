@@ -137,7 +137,7 @@ Of the 236 markers, 150 peek over their prop (median 1.6 u), 17 round it and 69 
 ### 10. The occluder replaces the peek point (NA27, D-NA13)
 
 In a world that ships `data/spaces/<world>.occ`, an NPC at a cover slot
-looks from its own eyes (1.5 m) over the prop, and the peek point is not
+looks from its own eyes (1.5 m; per body set since NA31, decision 11) over the prop, and the peek point is not
 used. `SpaceManager::npc_line_of_sight`, `npc_sight_origin` and
 `slot_has_shot` all take the occluder first. The cover prop is solid
 geometry below eye height, so it no longer blocks the NPC hiding behind
@@ -147,6 +147,19 @@ occluder. On Castle_CellBlock, `Hallway01_Guard` sees Lomiada at 13.6 u
 over its counter, a spot the peek point still read as blocked.
 `Hallway02_Guard` stays blind through the hallway walls. The mess-hall
 tables are geometry too, so a guard there sees the room from its slot.
+
+### 11. Eyes per body set, and players are checked too (NA31, D-NA14)
+
+Since NA31 the eyes in decision 10 are the being's own
+(`resources.body_sets.eye_height`, measured from the reference mesh). A
+Jaffa guard looks from 2.12 m and a human from 1.81 m, where both used to
+look from 1.5 m. `slot_has_shot` raises the NPC's end by its own eye and the
+threat position's end by 1.5 m. No crouch is modelled (decision 6), so a
+standing guard's eyes clear High cover (1.524 m, `ECoverHeight`), and a
+player can see it over High cover too. A player's shot now meets the same
+occluder: a guard behind LOS-height cover or a wall cannot be hit, and the
+player sees "You do not have Line of Sight to your target"
+([combat-system.md](../gameplay/combat-system.md#fire-time-line-of-sight)).
 
 ## Telemetry
 
