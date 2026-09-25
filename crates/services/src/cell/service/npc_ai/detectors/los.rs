@@ -3,8 +3,9 @@
 //!
 //! One DEBUG row per `(entity_a, entity_b)` pair per [`LOS_SAMPLE_INTERVAL`],
 //! with the raw endpoints, the points the ray was actually cast between, the
-//! eye height added (none — the navmesh ray runs along the floor), and where
-//! it stopped. This replaces the unsampled `movement.navmesh
+//! eye height added, and where it stopped. `source` says what answered:
+//! `occluder` (the world's collision-geometry `.occ`, NA27: eye to eye) or
+//! `navmesh` (the Detour ray along the floor, no eye height). This replaces the unsampled `movement.navmesh
 //! reason=los_unknown_off_mesh` debug line, which fired on every query with
 //! an off-mesh endpoint once NA00 exported `movement.navmesh`.
 
@@ -17,11 +18,34 @@ use crate::cell::space_manager::SpaceManager;
 
 pub(in crate::cell) const LOS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
-/// Eye height the line-of-sight query adds to each endpoint. Zero today:
-/// `NavMesh::line_of_sight` projects both entities onto the walkable surface
-/// and ray-casts along it, which is why it cannot see ceilings or the floor
-/// between storeys (S15). Logged so a query can prove it.
-const EYE_HEIGHT_USED: f32 = 0.0;
+/// What answered a line-of-sight query.
+#[derive(Debug, Clone, Copy)]
+pub(in crate::cell) enum LosSource<'a> {
+    /// The navmesh ray, with the mesh's short hash. It adds no eye height:
+    /// `NavMesh::line_of_sight` projects both entities onto the walkable
+    /// surface and ray-casts along it, which is why it cannot see ceilings
+    /// or the floor between storeys (S15).
+    Navmesh(&'a str),
+    /// The collision-geometry occluder (NA27), with its short hash and the
+    /// eye height added to the looker.
+    Occluder { hash: &'a str, eye_height: f32 },
+}
+
+impl LosSource<'_> {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Navmesh(_) => "navmesh",
+            Self::Occluder { .. } => "occluder",
+        }
+    }
+
+    fn eye_height(self) -> f32 {
+        match self {
+            Self::Navmesh(_) => 0.0,
+            Self::Occluder { eye_height, .. } => eye_height,
+        }
+    }
+}
 
 /// Report a non-clear probe, sampled. `a` is the looker (the NPC on every AI
 /// call site), `b` the target. `origin` says where the ray started: `npc`
@@ -34,7 +58,7 @@ pub(in crate::cell) fn report(
     a_pos: Vector3,
     b_pos: Vector3,
     probe: &LosProbe,
-    navmesh_hash: Option<&str>,
+    source: LosSource<'_>,
     origin: &'static str,
     now: Instant,
 ) {
@@ -73,13 +97,21 @@ pub(in crate::cell) fn report(
         result,
         from_xyz = ?[a_pos.x, a_pos.y, a_pos.z],
         to_xyz = ?[b_pos.x, b_pos.y, b_pos.z],
-        eye_height_used = EYE_HEIGHT_USED,
+        eye_height_used = source.eye_height(),
+        source = source.label(),
         ray_from = ?probe.from,
         ray_to = ?probe.to,
         hit_xyz = ?probe.hit,
         dy = b_pos.y - a_pos.y,
         dist = a_pos.distance_to(&b_pos),
-        navmesh_hash,
+        navmesh_hash = match source {
+            LosSource::Navmesh(h) => Some(h),
+            LosSource::Occluder { .. } => None,
+        },
+        occluder_hash = match source {
+            LosSource::Occluder { hash, .. } => Some(hash),
+            LosSource::Navmesh(_) => None,
+        },
         origin,
         suppressed,
         "npc_ai.los: line of sight not clear ({result})"

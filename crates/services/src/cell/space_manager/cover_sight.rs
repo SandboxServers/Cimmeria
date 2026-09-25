@@ -83,8 +83,12 @@ impl SpaceManager {
         (horizontal(&node.pos, &npc.position) <= COVER_ARRIVE_RADIUS).then(|| node.clone())
     }
 
-    /// Where `npc_id` looks from: see [`SightOrigin`].
+    /// Where `npc_id` looks from: see [`SightOrigin`]. Always its own eyes
+    /// in a space with an occluder (NA27), which sees over the prop.
     pub fn npc_sight_origin(&self, npc_id: u32) -> SightOrigin {
+        if self.space_has_occluder(npc_id) {
+            return SightOrigin::Npc;
+        }
         let (Some(navmesh), Some(node), Some(npc)) = (
             self.navmesh_of(npc_id),
             self.npc_cover_node(npc_id),
@@ -102,14 +106,28 @@ impl SpaceManager {
     /// ([`sight_from_slot`]) when it stands at one, otherwise from itself
     /// ([`Self::line_of_sight`]). A non-clear answer is reported through the
     /// sampled `npc_ai.los` row with the origin it used.
+    ///
+    /// In a space with an occluder (NA27) the NPC always looks from its own
+    /// eyes: the collision geometry sees over the cover prop, which is the
+    /// hole the peek point exists to step past.
     pub fn npc_line_of_sight(&self, npc_id: u32, target_id: u32) -> NpcSight {
+        if self.space_has_occluder(npc_id) {
+            return self.line_of_sight(npc_id, target_id).into();
+        }
+        self.npc_navmesh_sight(npc_id, target_id)
+    }
+
+    /// [`Self::npc_line_of_sight`] from the navmesh alone (the cover peek
+    /// point, else the NPC's own ray), whether or not the space has an
+    /// occluder. The attack check's fallback for an occluder `Unknown`.
+    pub(crate) fn npc_navmesh_sight(&self, npc_id: u32, target_id: u32) -> NpcSight {
         let (Some(navmesh), Some(node), Some(npc), Some(target)) = (
             self.navmesh_of(npc_id),
             self.npc_cover_node(npc_id),
             self.get_entity(npc_id),
             self.get_entity(target_id),
         ) else {
-            return self.line_of_sight(npc_id, target_id).into();
+            return self.navmesh_line_of_sight(npc_id, target_id).into();
         };
         let sight = sight_from_slot(navmesh, &node, npc.position, target.position);
         let origin = match sight.peek {
@@ -123,7 +141,7 @@ impl SpaceManager {
             sight.from,
             target.position,
             &sight.probe,
-            Some(navmesh.short_hash()),
+            crate::cell::service::npc_ai::detectors::los::LosSource::Navmesh(navmesh.short_hash()),
             origin.label(),
             std::time::Instant::now(),
         );
@@ -138,7 +156,16 @@ impl SpaceManager {
     /// cover pick's shot check: a slot is a firing position (D-NA05), so one
     /// it cannot see its target from is not taken. `true` in a space with no
     /// navmesh, where there is nothing to check.
+    ///
+    /// With an occluder (NA27) the shot is the eye-to-eye segment from the
+    /// stand point behind the marker.
     pub fn slot_has_shot(&self, npc_id: u32, node: &CoverNode, target_pos: Vector3) -> bool {
+        if let Some(occ) = self.occluder_of(npc_id) {
+            let eye = super::DEFAULT_EYE_HEIGHT;
+            return super::occluder_probe(occ, stand_behind(node), eye, target_pos, eye)
+                .result
+                .is_clear_or_unknown();
+        }
         let Some(navmesh) = self.navmesh_of(npc_id) else {
             return true;
         };

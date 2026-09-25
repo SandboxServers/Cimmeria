@@ -34,6 +34,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "lab-mcp",
     "mercury",
     "observability",
+    "occluder",
     "server",
     "services",
 ];

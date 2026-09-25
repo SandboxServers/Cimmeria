@@ -30,6 +30,8 @@ mod lab_snapshots;
 mod lifecycle;
 mod movement_telemetry;
 mod navmesh_mode;
+mod occlusion;
+pub use occlusion::{eye_height, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
 mod queries;
 mod spatial;
 pub use spatial::AttackLosPolicy;
@@ -128,6 +130,10 @@ pub struct SpaceInstance {
     pub players: HashSet<u32>,
     /// Navigation mesh for this space (if loaded).
     pub navmesh: Option<NavMesh>,
+    /// Collision-geometry occluder (NA27), shared by every instance of the
+    /// world. When present it is the line-of-sight source instead of the
+    /// navmesh ray; see `space_manager::occlusion`.
+    pub occluder: Option<std::sync::Arc<cimmeria_occluder::PagedOccluder>>,
 }
 
 /// Manages spaces and cell entities for one CellApp.
@@ -294,6 +300,12 @@ pub struct SpaceManager {
     /// `destroy_entity` and `destroy_space`. See
     /// `cell::service::npc_ai::detectors`.
     pub(in crate::cell) npc_detectors: super::service::npc_ai::detectors::NpcDetectors,
+    /// Loaded occluders by world file key (`castle_cellblock`), misses
+    /// included; see `SpaceManager::occluder_for_world`.
+    pub(crate) occluders: HashMap<String, Option<std::sync::Arc<cimmeria_occluder::PagedOccluder>>>,
+    /// The residency gauges last reported per world key; see
+    /// `SpaceManager::refresh_occluder_residency`.
+    pub(crate) occluder_residency: HashMap<String, occlusion::ResidencyGauge>,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -401,6 +413,8 @@ impl SpaceManager {
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
             npc_detectors: Default::default(),
+            occluders: HashMap::new(),
+            occluder_residency: HashMap::new(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),

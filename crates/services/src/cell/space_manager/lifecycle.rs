@@ -47,6 +47,8 @@ impl SpaceManager {
                 None
             }
         };
+        // Optional: absent keeps the navmesh ray as the line-of-sight source.
+        let occluder = self.occluder_for_world(world_name);
         let instance = SpaceInstance {
             space_id,
             world_name: world_name.to_string(),
@@ -54,6 +56,7 @@ impl SpaceManager {
             entities: HashMap::new(),
             players: HashSet::new(),
             navmesh,
+            occluder,
         };
         tracing::debug!(space_id, world = %world_name, "Created space instance");
         self.spaces.insert(space_id, instance);

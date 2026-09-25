@@ -168,6 +168,10 @@ pub(super) async fn run_cell_loop(
                     // OnPlayerInCoverDuration on transitions. Short-
                     // circuits when no cover data was loaded at startup.
                     super::ticks::cover_detection_tick(tx, &mut space_mgr, &engine).await;
+                    // Occluder paging (NA27) — also 1 Hz. Unpacks the
+                    // line-of-sight pages near each player and drops the
+                    // rest; a world with no `.occ` has nothing to do.
+                    space_mgr.refresh_occluder_residency();
                 }
 
                 // Channel-interrupt-on-movement sweep — BEFORE the
