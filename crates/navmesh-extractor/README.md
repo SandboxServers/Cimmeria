@@ -63,6 +63,8 @@ Recast wrapper later if it buys anything.
   probe uses, so the probe runs against the artifact NavBuilder
   consumes.
 - `nav_roundtrip.rs` — Phase 0 XRC `.nav` reader / writer pair.
+- `nav_tiled.rs` — the tiled `XRCT` `.nav` reader / writer, and
+  `NavFile`, which reads either layout.
 - `transform.rs` — actor-to-world `ActorTransform` math
   (`Location` + UE3 `Rotator` + `DrawScale` + `DrawScale3D`).
 - `staticmesh/` — Phase 1.2 walker. `mod.rs` enumerates
@@ -75,8 +77,10 @@ Recast wrapper later if it buys anything.
 - `bsp/` — Phase 1.4. `mod.rs` classifies and places every `Model`
   export and emits its collision triangles; `hull_cap.rs` holds the
   buried-outer-skin filter and the `TerrainCeiling` it needs.
-- `nav_components.rs` — `.nav` connectivity: flood fill, per-component
+- `nav_components/` — `.nav` connectivity: flood fill, per-component
   stats, and `locate_within`, the tolerance-first probe resolver.
+  `tiled.rs` builds the same graph from a tiled file, linking tile
+  portals with Detour's own test.
 - `coverage/` — per-chunk extraction accounting: skip reasons,
   per-source triangle tallies, archetype/prefab counts, export-class
   census with a per-class `DecodeStatus`, TSV emitters.

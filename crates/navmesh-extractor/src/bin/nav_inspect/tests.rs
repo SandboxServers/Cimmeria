@@ -1,4 +1,6 @@
 use super::*;
+use cimmeria_navmesh_extractor::nav_roundtrip::XrcNav;
+use cimmeria_navmesh_extractor::nav_tiled::{XrcTile, XrcTiledNav};
 
 fn argv(s: &[&str]) -> Vec<String> {
     s.iter().map(|x| x.to_string()).collect()
@@ -48,8 +50,66 @@ fn islands(n: u16, spacing: u16, height: u16) -> XrcNav {
 fn run_to_string(nav: &XrcNav, args: &Args) -> (u8, String, Vec<String>) {
     let mut out: Vec<u8> = Vec::new();
     let mut diag = Vec::new();
-    let code = run(&mut out, nav, args, &mut diag).expect("writing to a Vec cannot fail");
+    let code = run(&mut out, &NavFile::Single(nav.clone()), args, &mut diag)
+        .expect("writing to a Vec cannot fail");
     (code, String::from_utf8(out).unwrap(), diag)
+}
+
+/// Two tiles of one quad each, side by side along X: `islands(1, ..)`'s
+/// quad per tile, shifted by the tile width, with the shared edge a Recast
+/// portal when `linked`. The quad's edge 1 is its max-X side and edge 3
+/// its min-X side.
+fn two_tiles(linked: bool) -> NavFile {
+    let tile = |x: i32| {
+        let mut mesh = islands(1, 1, 0);
+        mesh.bmin = [x as f32, 0.0, 0.0];
+        if linked {
+            mesh.polys[4 + if x == 0 { 1 } else { 3 }] = if x == 0 { 0x8002 } else { 0x8000 };
+        }
+        XrcTile {
+            tile_x: x,
+            tile_y: 0,
+            mesh,
+        }
+    };
+    NavFile::Tiled(XrcTiledNav {
+        agent_height: 0.6,
+        agent_climb: 0.9,
+        agent_radius: 0.6,
+        orig: [0.0; 3],
+        tile_width: 1.0,
+        tile_height: 1.0,
+        max_tile_polys: 1,
+        tiles: vec![tile(0), tile(1)],
+    })
+}
+
+fn run_file(file: &NavFile, args: &Args) -> (u8, String) {
+    let mut out: Vec<u8> = Vec::new();
+    let mut diag = Vec::new();
+    let code = run(&mut out, file, args, &mut diag).unwrap();
+    (code, String::from_utf8(out).unwrap())
+}
+
+#[test]
+fn a_tiled_file_reports_one_component_across_linked_tiles() {
+    let args = parse_args_from(&argv(&[
+        "t.nav",
+        "--probe",
+        "west=0.5,0,0.5",
+        "--probe",
+        "east=1.5,0,0.5",
+    ]))
+    .unwrap();
+    let (code, text) = run_file(&two_tiles(true), &args);
+    assert_eq!(code, 0, "{text}");
+    assert!(text.contains("tiled: tiles=2"), "{text}");
+    assert!(text.contains("components  1 "), "{text}");
+
+    // Same probes, portal markers removed: the tiles are islands and the
+    // probe gate says so.
+    let (code, text) = run_file(&two_tiles(false), &args);
+    assert_eq!(code, EXIT_PROBES_DISCONNECTED, "{text}");
 }
 
 #[test]

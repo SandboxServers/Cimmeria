@@ -38,7 +38,8 @@
 
 pub mod gaps;
 #[cfg(test)]
-mod test_mesh;
+pub(crate) mod test_mesh;
+mod tiled;
 
 pub use gaps::{Approach, BoundaryEdge, GapGraph};
 
@@ -60,6 +61,11 @@ pub struct NavPoly {
     /// Per-edge neighbour polygon index. `edge i` joins `verts[i]` to
     /// `verts[(i + 1) % n]`. `None` == boundary edge or tile portal.
     pub neighbours: Vec<Option<u32>>,
+    /// Polygons in *other* tiles this one is linked to across a tile
+    /// portal (tiled `.nav` only; see [`NavGraph::from_tiled`]). Portal edges keep `None`
+    /// in [`Self::neighbours`] because one portal edge can link to several
+    /// polygons on the other side.
+    pub portal_links: Vec<u32>,
     pub area: u8,
     pub flags: u16,
     pub region: u16,
@@ -150,6 +156,7 @@ impl NavGraph {
             polys.push(NavPoly {
                 verts: indices,
                 neighbours,
+                portal_links: Vec::new(),
                 area: nav.areas[p],
                 flags: nav.flags[p],
                 region: nav.regs[p],
@@ -206,10 +213,12 @@ impl NavGraph {
             stack.push(seed as u32);
             while let Some(cur) = stack.pop() {
                 // Collect first to keep the borrow of `self.polys` short.
-                let neighbours: Vec<u32> = self.polys[cur as usize]
+                let poly = &self.polys[cur as usize];
+                let neighbours: Vec<u32> = poly
                     .neighbours
                     .iter()
                     .flatten()
+                    .chain(poly.portal_links.iter())
                     .copied()
                     .collect();
                 for nei in neighbours {

@@ -38,7 +38,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use cimmeria_navmesh_extractor::nav_components::{ComponentStat, GapGraph, NavGraph};
-use cimmeria_navmesh_extractor::nav_roundtrip::XrcNav;
+use cimmeria_navmesh_extractor::nav_tiled::NavFile;
 
 const EXIT_USAGE: u8 = 1;
 const EXIT_PROBE_OUT_OF_TOLERANCE: u8 = 2;
@@ -335,25 +335,51 @@ fn report_pair(
 /// stderr lines into `diag` rather than printing them, is what lets the tests
 /// assert on the whole behaviour without a process boundary or a captured
 /// stdout.
-fn run(out: &mut impl Write, nav: &XrcNav, args: &Args, diag: &mut Vec<String>) -> io::Result<u8> {
-    let graph = NavGraph::from_nav(nav);
+fn run(
+    out: &mut impl Write,
+    file: &NavFile,
+    args: &Args,
+    diag: &mut Vec<String>,
+) -> io::Result<u8> {
+    let graph = match file {
+        NavFile::Single(nav) => NavGraph::from_nav(nav),
+        NavFile::Tiled(nav) => NavGraph::from_tiled(nav),
+    };
     let stats = graph.component_stats();
 
     writeln!(out, "file        {}", args.path.display())?;
+    match file {
+        NavFile::Single(nav) => writeln!(
+            out,
+            "header      nverts={} npolys={} nvp={} cs={} ch={} border={}",
+            nav.nverts, nav.npolys, nav.nvp, nav.cs, nav.ch, nav.border_size
+        )?,
+        NavFile::Tiled(nav) => {
+            let (nverts, npolys) = nav.totals();
+            writeln!(
+                out,
+                "header      tiled: tiles={} ({} x {} m) nverts={} npolys={} max_tile_polys={} cs={} ch={}",
+                nav.tiles.len(),
+                nav.tile_width,
+                nav.tile_height,
+                nverts,
+                npolys,
+                nav.max_tile_polys,
+                graph.cs,
+                graph.ch
+            )?
+        }
+    }
+    let [agent_height, agent_climb, agent_radius] = file.agent();
     writeln!(
         out,
-        "header      nverts={} npolys={} nvp={} cs={} ch={} border={}",
-        nav.nverts, nav.npolys, nav.nvp, nav.cs, nav.ch, nav.border_size
+        "agent       height={agent_height} climb={agent_climb} radius={agent_radius}"
     )?;
-    writeln!(
-        out,
-        "agent       height={} climb={} radius={}",
-        nav.agent_height, nav.agent_climb, nav.agent_radius
-    )?;
+    let (bmin, bmax) = (graph.bmin, graph.bmax);
     writeln!(
         out,
         "bounds      x[{:.2}, {:.2}]  y[{:.2}, {:.2}]  z[{:.2}, {:.2}]",
-        nav.bmin[0], nav.bmax[0], nav.bmin[1], nav.bmax[1], nav.bmin[2], nav.bmax[2]
+        bmin[0], bmax[0], bmin[1], bmax[1], bmin[2], bmax[2]
     )?;
     let total_area: f64 = stats.iter().map(|s| s.area_xz).sum();
     writeln!(
@@ -506,7 +532,7 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_USAGE);
         }
     };
-    let nav = match XrcNav::read(&mut std::io::Cursor::new(&bytes)) {
+    let nav = match NavFile::from_bytes(&bytes) {
         Ok(n) => n,
         Err(e) => {
             eprintln!("nav_inspect: {}: {e}", args.path.display());

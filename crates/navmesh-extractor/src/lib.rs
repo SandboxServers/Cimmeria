@@ -38,6 +38,7 @@ pub mod floor_probe;
 pub mod geometry;
 pub mod nav_components;
 pub mod nav_roundtrip;
+pub mod nav_tiled;
 pub mod obj;
 pub mod obj_slab;
 pub mod staticmesh;

@@ -4,10 +4,13 @@
 //! NavBuilder), converts them into Detour navmesh tiles, and delegates all
 //! pathfinding and spatial queries to the real Detour C++ library.
 //!
-//! The XRC format stores a single-tile Recast polygon mesh with detail
-//! triangulation. We parse the binary format, pass the raw arrays through
-//! `dtCreateNavMeshData` via our C wrapper, then init a `dtNavMesh` and
-//! `dtNavMeshQuery` for runtime queries.
+//! The XRC format stores Recast polygon meshes with detail triangulation:
+//! one for the whole map, or — the tiled `XRCT` layout, for maps too big
+//! for one `rcPolyMesh` — one per tile. We parse the binary format, pass
+//! each mesh's raw arrays through `dtCreateNavMeshData` via our C wrapper,
+//! add the tile(s) to one `dtNavMesh`, and init a `dtNavMeshQuery` for
+//! runtime queries. Detour links neighbouring tiles itself, so every query
+//! below works across tile borders unchanged.
 //!
 //! Reference: `src/cellapp/entity/navigation.cpp` (C++ server implementation)
 //! Reference: `tools/SceneEditor/src/commands/navmesh.rs` (XRC parser)
@@ -15,7 +18,11 @@
 //! Module layout:
 //!
 //! - [`xrc`] — XRC binary-reader helpers and the header sanity caps.
-//! - [`load`] — `NavMesh::load`: parse + Detour tile construction.
+//! - [`load`] — `NavMesh::load`: layout detection, the single-mesh parse,
+//!   Detour mesh construction.
+//! - [`load_tiled`] — the tiled `XRCT` layout.
+//! - [`poly_block`] — one poly-mesh block, shared by both layouts, and its
+//!   conversion to a Detour tile.
 //! - [`fingerprint`] — which mesh this is ([`NavMeshFingerprint`]).
 //! - [`verdict`] — why a containment test said what it said
 //!   ([`PointVerdict`], [`NavGate`]).
@@ -31,7 +38,9 @@
 mod fingerprint;
 mod line_of_sight;
 mod load;
+mod load_tiled;
 mod path;
+mod poly_block;
 mod surface;
 mod verdict;
 mod xrc;
