@@ -579,10 +579,11 @@ mod tests {
     /// trip on `OffMesh` and `audit_ring_pads` reports one at startup, so
     /// routing this one function fixes all three call sites at once.
     ///
-    /// The Command-Center return coordinate is the fixture on purpose: it
-    /// is a real authored point (chain 6007) that the mesh does not cover,
-    /// and under `enforce` Harset has no seeded respawner to recover to,
-    /// which is what turned an off-mesh arrival there into a silent freeze.
+    /// The fixture is a real authored point the mesh does not accept. It
+    /// used to be chain 6007's Command-Center return coordinate, which the
+    /// 2012 mesh did not cover and which froze arrivals there before H53;
+    /// the NA26 rebuild covers that door, so the fixture is now spawn 310's
+    /// row, which the rebuilt mesh still refuses.
     #[test]
     fn an_advisory_destination_is_unvalidated_not_off_mesh() {
         let path = std::path::Path::new("../../data/spaces/harset.nav");
@@ -599,10 +600,13 @@ mod tests {
             mesh.is_point_valid(&Vector3::new(-25.641, -67.828, 15.249)),
             "control: ring pad 4 must read on-mesh or the mesh did not load",
         );
-        let door = [0.0_f32, -67.6, -231.0];
+        // Spawn 310 (`Harset_ShieldTower3`), an authored placement. The
+        // Command-Center return point this test used to pin is on the NA26
+        // rebuild; this row still sits 1.29 u under the rebuilt surface.
+        let door = [-3.0_f32, -30.72, 285.5];
         assert!(
             !mesh.is_point_valid(&Vector3::new(door[0], door[1], door[2])),
-            "control: the Command Center return point must read off-mesh -- \
+            "control: spawn 310's authored coordinate must read off-mesh -- \
              it is the fixture the two verdicts below differ on",
         );
 

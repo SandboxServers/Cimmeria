@@ -328,6 +328,20 @@ The drone's `stationary_relaxed` shot is still pinned by NA16's `stationary_los.
 - **Off-mesh spawn (finding 7).** The spawnlist seed for `Castle_BravoOfficer3` moves it onto the floor.
 - **Tick volume (finding 8).** `npc_ai/dispatch.rs` samples the tick row for unwitnessed Idle NPCs.
 
+### NA26
+
+**Status:** Review (branch `npcai/na26-navmesh-all-worlds` pushed, no PR; ran as a parallel worker to NA27). **Scope title:** Rebuild the navmesh for every world. **Advisor:** movement-teleport-advisor. **Owner request (2026-09-25):** "make sure we update all the worlds navmeshes too", server-authoritative, no client patch.
+
+**Scope:**
+
+- **Build.** Every `entities/spaces.xml` world has a `data/spaces/*.nav` from the cooked client maps: 18 new files (17 maps plus `sandbox.nav`, a copy of `harset_cmdcenter.nav` because SandBox plays on that map) and four replaced 2012 meshes (`harset`, `harset_storagerm`, `sgc_w1`, `agnos`). `castle.nav` and `castle_cellblock.nav` were rebuilt, measured and kept: the rebuild changed nothing measurable. Parameters, sizes, components and validation per world are in `data/spaces/README.md`; the method is `docs/engine/navmesh-build-pipeline.md` §9.
+- **Caps.** A single-tile XRC mesh cannot hold the big exteriors at `cs=0.3`. Dakara_E1 and both Menfa maps ship whole at `cs=0.6`; Agnos, Lucia, Tollana and Beta_Site_Evo_1 ship cropped. A tiled Detour mesh is the follow-up.
+- **NavBuilder.** A fifth unchecked Recast limit (13-bit span heights) flattened Tollana onto one sheet at y -90. NavBuilder now exits 3 on it, pinned by `a_vertical_extent_past_the_13_bit_span_height_is_refused`.
+- **Containment.** Every NA26 world is seeded `navmesh_mode = 'advisory'` (21 rows); Castle_CellBlock is the one meshed world left on `enforce`. The live-DB guard `only_the_documented_worlds_are_seeded_advisory` pins the list.
+- **Tests.** The Harset fixtures (`line_of_sight_tests`, `off_mesh_sentry`, `advisory.rs`, `arrival.rs`, `harset_placement_tests`, `world57_placement`, `interior_regions`) re-derived on the new meshes, same bug shapes.
+
+**Acceptance:** entity, navmesh-extractor and services suites green, live-DB suite green on the reloaded seed; the telemetry comparison in `data/spaces/README.md`. **Owner decisions left open:** whether PL-A-01's Harset arrival pin should be dropped now that the gate row is on-mesh, and whether the six Harset rows that moved onto the mesh (303, 304, 306, 307, 308, 313) should stop being `is_stationary`.
+
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:

@@ -483,9 +483,13 @@ async fn harset_return_door_is_enabled_and_structurally_intact() {
 ///
 /// Everything is read from the DB rather than hardcoded, because a hardcoded
 /// literal silently stops describing the seed the moment the seed changes.
-/// No navmesh is asserted for chain 6006's destination: world 68 has no
+/// No navmesh is asserted for chain 6006's destination: world 68 had no
 /// `.nav` file at all, which is precisely why that door always shipped
-/// enabled.
+/// enabled. NA26 gave it one (`harset_cmdcenter.nav`) and seeded it
+/// advisory, so that door still cannot be refused on mesh grounds.
+///
+/// Since NA26 the rebuilt `harset.nav` covers the Command Center door, so
+/// today this test takes the `on_mesh` early return.
 #[tokio::test]
 async fn harset_return_arrival_is_offmesh_but_survivable() {
     let pool = require_db_or_skip!();

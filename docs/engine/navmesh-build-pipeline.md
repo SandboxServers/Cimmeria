@@ -1,6 +1,6 @@
 # Navmesh Build Pipeline (UE3 → OBJ → NavBuilder → `.nav`)
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-25 (§9, every world)
 > **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5 and §6 (gap finding and classification) measured on the 144-chunk Castle extraction the same day; the builder reference moved to [navbuilder-recast-limits.md](navbuilder-recast-limits.md) and the Castle connectivity analysis to [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md).
 
 How a cooked UE3 map becomes a `data/spaces/<space>.nav` that
@@ -554,8 +554,74 @@ vertices, adjacency edges, region ids, and the 24-bit compact-heightfield
 span index), the measured Castle (World 8) parameter table, and what to do
 when a build stops fitting.
 
+## 9. Every world (NA26, 2026-09-25)
+
+All 23 client maps the server creates spaces for (every `entities/spaces.xml`
+world except `SandBox`, which loads a copy of `harset_cmdcenter.nav`) were
+extracted and built with this pipeline. The per-map parameters, sizes,
+component counts, probe results and the old-vs-new telemetry comparison are
+in the provenance table in [data/spaces/README.md](../../data/spaces/README.md);
+that table is the reference, this section is the method.
+
+**Extraction.** `extract_map <cooked-root> <Map> <out>/chunks <index>` per map,
+with the shared `PackageIndex` cache. The biggest map (Lucia, 891 chunks,
+29.6 M triangles, 3.1 GB of OBJ) takes 38 s; all 23 together about 15 GB of
+scratch OBJ. Never commit it.
+
+**Parameters.** The agent is the Castle one for every map
+(`partition=watershed agentHeight=1.8 agentClimb=0.6`, radius 0.6).
+`bounds=` is always passed: at least the chunk grid plus 20 m, because a
+stray skybox or backdrop actor otherwise stretches the heightfield (the
+unclipped Omega_Site_CmdCenter build was 16,347 × 16,347 columns for a
+500 × 300 m map). Then the first rung of this ladder that fits every cap
+([navbuilder-recast-limits.md](navbuilder-recast-limits.md)):
+
+| Rung | `cs` | `minRegionSize` | `maxSimplificationError` |
+|---|---|---|---|
+| 1 | 0.3 | 24 | 1.3 |
+| 2 | 0.3 | 24 | 2.5 |
+| 3 | 0.45 | 16 | 2.5 |
+| 4 | 0.6 | 12 | 2.5 |
+| 5 | 0.6 | 12 | 3.0 |
+| 6 | 0.75 | 10 | 3.0 |
+| 7 | 0.9 | 8 | 3.5 |
+
+`minRegionSize` is a cell count, so it shrinks as `cs` grows to keep the
+smallest kept region near 52 m². Where no rung fits the whole map (Agnos,
+Lucia, Tollana), or only the coarsest does (Beta_Site_Evo_1), the build is
+cropped to the window with the most seeded content and chunk geometry and
+the ladder is re-run on the crop.
+
+**Results.** Every interior and the mid-sized exteriors fit at `cs=0.3`.
+Dakara_E1 and both Menfa maps fit whole only at `cs=0.6`, where a doorway
+narrower than about 2 m can close. The four cropped maps have no mesh
+outside their crop.
+
+**Validation.** Each mesh is probed with the server's own
+`NavMesh::is_point_valid` over the world's seeded spawn, respawner, ring,
+gate and point-set rows, and every replaced mesh is scored against the old
+one on the real player positions in SigNoz's `movement.validation_reject`
+rows (`last_valid_*` as accepted positions, `client_*` as rejected ones,
+round-number teleport points dropped). The `movement.position_sample` rows
+are DEBUG and were not exported, so the accepted set is small.
+
+**A fifth unchecked Recast limit.** `rcSpan` stores heights in 13 bits
+(`RC_SPAN_HEIGHT_BITS`), and rasterization clamps every span to 8,191 cells
+above `bmin.y` without a diagnostic. At `ch=0.2` that is 1,638 m of vertical
+extent. Tollana has one prop at y -1728, so the whole city was clamped onto
+one ceiling and the build "succeeded" with a single 5 km² sheet at y -90.
+NavBuilder now exits 3 when `(bmax.y - bmin.y) / ch > 8191`
+(`tests/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`);
+raise `ch` (Tollana ships at `ch=0.3`). `bounds=` does not crop Y.
+
+**Follow-up.** The maps that do not fit whole need a tiled Detour mesh: a
+multi-tile `.nav` format, a tiled NavBuilder mode, and a loader in
+`crates/entity/src/navigation/load.rs` that adds one tile per section. None
+of that exists today; the XRC format holds one `rcPolyMesh`.
+
 ## Cross-references
 
+- [data/spaces/README.md](../../data/spaces/README.md) — per-world parameters, validation and containment mode
 - [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md) — where Castle's probes land, the mirrored-instance fix, and what is still split
 - [castle-extraction-measurements.md](castle-extraction-measurements.md) — what the extractor recovers from Castle, per source and per class
 - [navbuilder-recast-limits.md](navbuilder-recast-limits.md) — rebuilding NavBuilder, Recast's four index limits, the Castle parameter table

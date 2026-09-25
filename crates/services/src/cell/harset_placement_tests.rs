@@ -32,6 +32,11 @@ fn harset_mesh() -> Option<NavMesh> {
     load_mesh("../../data/spaces/harset.nav")
 }
 
+/// `data/spaces/harset_market.nav` (world 69), first built by NA26.
+fn market_mesh() -> Option<NavMesh> {
+    load_mesh("../../data/spaces/harset_market.nav")
+}
+
 /// `data/spaces/harset_storagerm.nav` (world 70).
 fn storage_mesh() -> Option<NavMesh> {
     load_mesh("../../data/spaces/harset_storagerm.nav")
@@ -50,14 +55,14 @@ fn v(p: [f32; 3]) -> Vector3 {
 }
 
 /// PL-A-01. The Harset gate's authored arrival pin must be a point the real
-/// `harset.nav` accepts, and the *unpinned* gate row must not be — that
-/// second half is the whole reason the four `arrival_*` columns exist.
+/// `harset.nav` accepts. On the 2012 mesh the *unpinned* gate row was not,
+/// which is the whole reason the four `arrival_*` columns exist; on the NA26
+/// rebuild it is (see the note at the second assertion).
 ///
 /// Reading both from the database rather than hard-coding them is what makes
 /// this a regression guard: drop the four `arrival_*` values from
-/// `db/resources/Worlds/Seed/stargates.sql` and `desired_arrival()` falls
-/// back to the gate row, which fails the first assertion with the control
-/// assertion still green.
+/// `db/resources/Worlds/Seed/stargates.sql` and `gate.arrival` is `None`,
+/// which fails the `is_some` assertion.
 ///
 /// Note this asserts on `is_point_valid` directly rather than through
 /// `check_arrival`: world 57 is `navmesh_mode = 'advisory'` (H53), so
@@ -66,7 +71,7 @@ fn v(p: [f32; 3]) -> Vector3 {
 /// whose word to trust; it is not a licence to pin a coordinate the geometry
 /// rejects.
 #[tokio::test]
-async fn harset_gate_arrival_pin_is_on_the_mesh_and_the_gate_row_is_not() {
+async fn harset_gate_arrival_pin_and_the_gate_row_are_both_on_the_mesh() {
     let pool = require_db_or_skip!();
     let Some(mesh) = harset_mesh() else { return };
 
@@ -90,23 +95,21 @@ async fn harset_gate_arrival_pin_is_on_the_mesh_and_the_gate_row_is_not() {
          (row PL-A-01) rather than leaving it here"
     );
 
-    // Control, and a deliberate tripwire. The row the pin replaces must be
-    // off-mesh, because that is the *only* reason the pin exists: probed
-    // against the Castle-nav session's rebuilt Harset meshes (374 components
-    // instead of 1,939, humanoid agent 1.8/0.6) this same row reads on-mesh
-    // with dy -0.04 — standing on the gate dais. So a rebuilt
-    // `data/spaces/harset.nav` most likely makes the pin unnecessary rather
-    // than wrong, and the right response to this assertion firing is to
-    // consider setting the four `arrival_*` columns back to NULL (the 2009
-    // behaviour), not to hunt for a new offset.
+    // The tripwire that used to sit here fired as designed. The row the pin
+    // replaces was off the 2012 mesh, which was the only reason the pin
+    // exists; the NA26 rebuild puts it on-mesh (dy 0.04, standing on the gate
+    // dais), so the pin is no longer load-bearing. Whether to set the four
+    // `arrival_*` columns back to NULL (the 2009 behaviour) is PL-A-01's
+    // call, not this test's — see
+    // docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md. Until
+    // then both points must stay on the mesh, so a later mesh that loses the
+    // dais shows up here instead of as travellers landing in a hole.
     let row = [gate.x, gate.y, gate.z];
     assert!(
-        !mesh.is_point_valid(&v(row)),
-        "the raw gate row {row:?} now reads on-mesh — harset.nav has been \
-         rebuilt under this pin. Re-read PL-A-01 in \
-         docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md: the \
-         pin is a workaround for the old mesh and dropping it may now be \
-         correct"
+        mesh.is_point_valid(&v(row)),
+        "the raw gate row {row:?} is off harset.nav again — the NA26 mesh has \
+         it on the gate dais. A rebuild lost the dais; fix the build, and \
+         until then the arrival pin is load-bearing again (PL-A-01)"
     );
 
     // The facing is derived, not defaulted. Asserted as a DIRECTION rather
@@ -220,38 +223,42 @@ async fn the_three_harset_respawners_exist_and_stand_on_real_ground() {
         let p = find(23);
         assert!(
             mesh.is_point_valid(&v(p)),
-            "respawner 23 {p:?} is off harset_storagerm.nav — world 70 is \
-             left at the default `enforce`, so an off-mesh row is filtered \
-             out and the world has no recovery target"
+            "respawner 23 {p:?} is off harset_storagerm.nav — it is world \
+             70's only recovery target, and an off-mesh row is filtered out \
+             the day the world goes back to `enforce`"
         );
     }
-    // Row 22 (world 69 Harset_Market) has no navmesh to check against —
-    // there is no `harset_market.nav`. Its floor evidence is obj_slab only
-    // and the seed comment says so. Deliberately unasserted rather than
-    // asserted against a mesh that does not exist.
+    // Row 22 (world 69 Harset_Market) was placed from obj_slab alone, before
+    // world 69 had a mesh. NA26 built `harset_market.nav`, which confirms it.
+    if let Some(mesh) = market_mesh() {
+        let p = find(22);
+        assert!(
+            mesh.is_point_valid(&v(p)),
+            "respawner 22 {p:?} is off harset_market.nav — it is world 69's \
+             only recovery target"
+        );
+    }
 }
 
-/// PL-A-05, a **characterization** guard, not a regression guard: it pins the
-/// finding that four of Harset's five ring pads have no navmesh at the height
-/// they actually sit at, and that `navmesh_mode = 'advisory'` is the only
-/// thing keeping those four rings alive.
+/// PL-A-05, a **characterization** guard, not a regression guard: it pins
+/// which of Harset's five ring pads the shipped mesh covers at the height
+/// they actually sit at.
 ///
-/// The pad rows themselves are correct and are deliberately NOT changed, and
-/// two independent sources now say so. `obj_slab` finds an up-facing
-/// ring-platform surface within 0.04 m of every one of the five authored `y`
-/// values (a disc ~1.1 m above the surrounding floor); and probed against the
-/// Castle-nav session's rebuilt Harset meshes (374 components instead of
-/// 1,939, humanoid agent 1.8/0.6) **all five pads are on-mesh within 0.13 m,
-/// in one component**. What is missing is mesh, not ground — the shipped
-/// `harset.nav`'s nearest polygon to pads 5/6/7/8 is 9 to 238 m away
-/// vertically, in one case on a different storey entirely.
+/// The pad rows themselves are correct and are deliberately NOT changed.
+/// `obj_slab` finds an up-facing ring-platform surface within 0.04 m of every
+/// one of the five authored `y` values (a disc ~1.1 m above the surrounding
+/// floor). The 2012 `harset.nav` covered only pad 4 — its nearest polygon to
+/// pads 5/6/7/8 was 9 to 238 m away vertically — so `navmesh_mode =
+/// 'advisory'` was the only thing keeping those four rings alive. The NA26
+/// rebuild (humanoid agent 1.8/0.6, 372 components) puts **all five** on the
+/// mesh, as the rebuilt meshes probed for PL-A-05 predicted.
 ///
-/// Consequence, and the reason this is worth a test: the day someone flips
-/// world 57 to `enforce` without rebuilding the mesh, `runtime::tick` starts
-/// aborting every trip to those four pads and `audit_ring_pads` starts
-/// reporting them at boot. This test fails first and says so.
+/// Why it is still worth a test: if a future mesh loses a pad again and
+/// someone flips world 57 to `enforce`, `runtime::tick` aborts every trip to
+/// that pad and `audit_ring_pads` reports it at boot. This test fails first
+/// and names the pad.
 #[tokio::test]
-async fn four_of_the_five_harset_ring_pads_survive_only_because_world_57_is_advisory() {
+async fn all_five_harset_ring_pads_are_on_the_mesh_and_advisory_refuses_none() {
     use crate::cell::arrival::{check_arrival, test_insert_navmesh_space, ArrivalCheck};
     use crate::cell::ring_transport::load_ring_regions;
 
@@ -287,15 +294,14 @@ async fn four_of_the_five_harset_ring_pads_survive_only_because_world_57_is_advi
     }
     assert_eq!(
         (on_mesh.as_slice(), off_mesh.as_slice()),
-        ([4].as_slice(), [5, 6, 7, 8].as_slice()),
-        "the Harset ring-pad mesh coverage has changed. If harset.nav was \
-         rebuilt this is good news and the expected answer is all five \
-         on-mesh: that is what the rebuilt mse13/mse25 meshes already give \
-         (within 0.13 m, one component). Update this expectation from row \
-         PL-A-05 in \
+        ([4, 5, 6, 7, 8].as_slice(), [].as_slice()),
+        "the Harset ring-pad mesh coverage has changed: the NA26 harset.nav \
+         covers all five pads. If harset.nav was rebuilt, the new mesh has lost \
+         a pad — fix the build (docs/engine/navmesh-build-pipeline.md) rather \
+         than this expectation, and record it at row PL-A-05 in \
          docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md. If a \
          pad ROW was edited instead, revert it — all five rows sit within \
-         0.04 m of their authored ring platform and the mesh is what is wrong."
+         0.04 m of their authored ring platform."
     );
 
     // And today: world 57 is advisory, so none of them is refused and

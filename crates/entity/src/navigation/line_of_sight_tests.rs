@@ -1,9 +1,13 @@
 //! [`NavMesh::line_of_sight`] against the shipped `harset.nav`.
 //!
-//! The coordinates are real `spawnlist` rows. `harset.nav` is fragmented:
-//! most of the stationary Harset sentries stand further than the projection
-//! box from any polygon, which the strict [`NavMesh::raycast`] reports as
-//! "blocked" against every possible target.
+//! The coordinates are real Harset positions: a `spawnlist` row for the
+//! meshed pair, and a player position the server rejected for the uncovered
+//! one. The 2012 `harset.nav` was so fragmented that 9 of the 13 stationary
+//! Harset sentries stood further than the projection box from any polygon,
+//! which the strict [`NavMesh::raycast`] reports as "blocked" against every
+//! possible target. The NA26 rebuild covers every one of those sentries, so
+//! the uncovered endpoint below is a rooftop position a player reached that
+//! the rebuilt mesh still has nothing within 3 u of.
 
 use cimmeria_common::Vector3;
 
@@ -17,17 +21,18 @@ fn harset() -> Option<NavMesh> {
     Some(NavMesh::load(path).expect("load data/spaces/harset.nav"))
 }
 
-/// Spawn 232 (template 159, a stationary gate sentry) and a player standing
-/// 8 units in front of it (heading 0 = +Z).
-const SENTRY_232: [f32; 3] = [4.695_996, -58.654_087, -188.246_61];
-const IN_FRONT_OF_232: [f32; 3] = [4.695_996, -58.654_087, -180.246_61];
+/// A Harset client position `movement.validation_reject` recorded 41 times
+/// (SigNoz, September 2026), and the point 8 units +Z of it. The rebuilt
+/// `harset.nav` has no polygon within `DEST_EXTENTS` of either, so neither
+/// can be projected.
+const UNCOVERED: [f32; 3] = [-148.3, -28.3, 4.8];
+const IN_FRONT_OF_UNCOVERED: [f32; 3] = [-148.3, -28.3, 12.8];
 
-/// Spawn 225 (template 160) is ON the mesh, and so is the point 8 units in
-/// front of it (heading 1.546 rad, roughly +X), yet the ray between them hits
-/// a mesh boundary. Both endpoints have data, so this one is a real
-/// `Blocked`.
-const SENTRY_225: [f32; 3] = [-18.7497, -68.9228, 19.3561];
-const IN_FRONT_OF_225: [f32; 3] = [-10.7521, -68.9228, 19.5532];
+/// Spawn 224 (`FirstBug`) is ON the mesh, and so is the point 8 units +X of
+/// it, yet the ray between them hits a mesh boundary. Both endpoints have
+/// data, so this one is a real `Blocked`.
+const SPAWN_224: [f32; 3] = [-176.697_68, -41.254, 125.271_32];
+const EAST_OF_224: [f32; 3] = [-168.697_68, -41.254, 125.271_32];
 
 fn v(p: [f32; 3]) -> Vector3 {
     Vector3::new(p[0], p[1], p[2])
@@ -36,7 +41,7 @@ fn v(p: [f32; 3]) -> Vector3 {
 /// The bug shape: an endpoint with no mesh under it is "unknown", and the
 /// combat policy treats unknown as clear. Reverting `line_of_sight` to the
 /// strict raycast turns this `Unknown` into a `Blocked`, which is what kept
-/// 9 of the 13 Harset sentries from ever firing.
+/// 9 of the 13 Harset sentries from ever firing on the 2012 mesh.
 #[test]
 fn a_sentry_the_mesh_does_not_cover_is_unknown_not_blocked() {
     let Some(mesh) = harset() else { return };
@@ -56,11 +61,12 @@ fn a_sentry_the_mesh_does_not_cover_is_unknown_not_blocked() {
     );
 
     assert!(
-        !mesh.is_point_valid(&v(SENTRY_232)),
-        "precondition: spawn 232 is off harset.nav. If a regenerated mesh now \
-         covers it, move this test to a coordinate that is still uncovered"
+        !mesh.is_point_valid(&v(UNCOVERED)) && mesh.find_nearest_poly(&v(UNCOVERED)).is_none(),
+        "precondition: the rejected rooftop position has no polygon within the \
+         projection box of harset.nav. If a regenerated mesh now covers it, move \
+         this test to a coordinate that is still uncovered"
     );
-    let los = mesh.line_of_sight(&v(SENTRY_232), &v(IN_FRONT_OF_232));
+    let los = mesh.line_of_sight(&v(UNCOVERED), &v(IN_FRONT_OF_UNCOVERED));
     assert_eq!(
         los,
         LineOfSight::Unknown,
@@ -71,7 +77,7 @@ fn a_sentry_the_mesh_does_not_cover_is_unknown_not_blocked() {
         "combat policy: unknown counts as clear"
     );
     assert!(
-        !mesh.raycast(&v(SENTRY_232), &v(IN_FRONT_OF_232)),
+        !mesh.raycast(&v(UNCOVERED), &v(IN_FRONT_OF_UNCOVERED)),
         "the strict raycast keeps its old contract (off-mesh start = false); \
          callers that need the distinction use line_of_sight"
     );
@@ -79,16 +85,15 @@ fn a_sentry_the_mesh_does_not_cover_is_unknown_not_blocked() {
 
 /// The other half: `Unknown` must not swallow a real obstruction. With both
 /// endpoints on the mesh a boundary hit is still `Blocked`, so a mobile NPC
-/// keeps holding fire behind a wall. Spawn 225 is itself stationary, and
-/// since NA16 a stationary attacker fires through a same-storey `Blocked`
-/// (see `line_of_sight_policy_tests`). This verdict is what aggro and
-/// mobile NPCs still act on.
+/// keeps holding fire behind a wall. Since NA16 a stationary attacker fires
+/// through a same-storey `Blocked` (see `line_of_sight_policy_tests`). This
+/// verdict is what aggro and mobile NPCs still act on.
 #[test]
 fn a_boundary_between_two_meshed_points_is_still_blocked() {
     let Some(mesh) = harset() else { return };
-    assert!(mesh.is_point_valid(&v(SENTRY_225)) && mesh.is_point_valid(&v(IN_FRONT_OF_225)));
+    assert!(mesh.is_point_valid(&v(SPAWN_224)) && mesh.is_point_valid(&v(EAST_OF_224)));
 
-    let los = mesh.line_of_sight(&v(SENTRY_225), &v(IN_FRONT_OF_225));
+    let los = mesh.line_of_sight(&v(SPAWN_224), &v(EAST_OF_224));
     assert_eq!(los, LineOfSight::Blocked);
     assert!(!los.is_clear_or_unknown());
 }

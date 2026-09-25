@@ -309,17 +309,19 @@ async fn the_storage_region_matches_where_real_players_actually_stood() {
 /// interior where "this is a real floor" can be tested instead of asserted
 /// from the chunk OBJ. The probes are the box centre and its four edge
 /// midpoints; the *corners* are deliberately not probed, because the mesh is
-/// inset from the walls by the 0.6 m agent radius and each corner resolves to
-/// the -1.2 m under-layer rather than to the floor.
+/// inset from the walls by the 0.6 m agent radius (on the 2012 mesh each
+/// corner resolved to the -1.2 m under-layer rather than to the floor).
 ///
 /// **`is_point_valid` alone is not enough here, and the control below proves
-/// it.** `harset_storagerm.nav` has 104 components, three of which overlap this
-/// footprint in Y: the pen-grid floor (314 polygons, 3055.7 m2, x[16.1,87.5]
-/// z[34.1,99.2] at y 0.2-1.2), a disconnected duplicate 1.4 m beneath it, and
-/// an 82,249 m2 outdoor terrain sheet at y 0.2-0.4 spanning x/z[-99,199]. A
-/// region dragged clean off the building therefore still answers "on-mesh" at
-/// y 0.3 — it just answers from the terrain. Pathing from the centre to every
-/// edge is what pins the region to *one* island.
+/// it.** The 2012 `harset_storagerm.nav` had 104 components, three of which
+/// overlapped this footprint in Y: the pen-grid floor, a disconnected
+/// duplicate 1.4 m beneath it, and an 82,249 m2 outdoor terrain sheet at y
+/// 0.2-0.4. The NA26 rebuild (humanoid agent, 16 components) has neither the
+/// duplicate nor the sheet, but it still has walkable floor at the Storage
+/// floor's Y that is not the Storage floor: the strip north of the room's
+/// wall (z ~102). A region dragged off the room would still answer "on-mesh"
+/// there. Pathing from the centre to every edge is what pins the region to
+/// *one* island.
 ///
 /// Note that `find_path(...).is_some()` is **not** that test:
 /// `dtNavMeshQuery::findPath` returns a *partial* corridor to the closest
@@ -371,13 +373,15 @@ async fn the_storage_region_sits_on_the_shipped_world_70_navmesh() {
         .fold(f32::INFINITY, f32::min);
 
     let (cx, cz) = ((x_lo + x_hi) / 2.0, (z_lo + z_hi) / 2.0);
-    // Edge midpoints pulled 1 m inside the box, clear of the mesh's inset.
+    // Edge midpoints pulled 2 m inside the box, clear of the mesh's inset.
+    // At 1 m the north midpoint lands on the erosion ring around a pen
+    // divider on the NA26 mesh, 1.26 m from the nearest polygon.
     let probes: [(&str, f32, f32); 5] = [
         ("centre", cx, cz),
-        ("west edge", x_lo + 1.0, cz),
-        ("east edge", x_hi - 1.0, cz),
-        ("south edge", cx, z_lo + 1.0),
-        ("north edge", cx, z_hi - 1.0),
+        ("west edge", x_lo + 2.0, cz),
+        ("east edge", x_hi - 2.0, cz),
+        ("south edge", cx, z_lo + 2.0),
+        ("north edge", cx, z_hi - 2.0),
     ];
 
     let centre = Vector3::new(cx, floor_y, cz);
@@ -402,21 +406,21 @@ async fn the_storage_region_sits_on_the_shipped_world_70_navmesh() {
         );
     }
 
-    // Control: the terrain sheet answers `is_point_valid` at the same Y as the
-    // Storage floor, 100 m outside the building. If this ever starts pathing
-    // from the centre, the connectivity assertions above have stopped
-    // discriminating and this test is no longer guarding anything.
-    let outdoors = Vector3::new(150.0, floor_y, 150.0);
+    // Control: the strip north of the room's wall answers `is_point_valid` at
+    // the same Y as the Storage floor. If this ever starts pathing from the
+    // centre, the connectivity assertions above have stopped discriminating
+    // and this test is no longer guarding anything.
+    let outdoors = Vector3::new(25.5, floor_y, 102.0);
     assert!(
         mesh.is_point_valid(&outdoors),
-        "control: {outdoors:?} must read on-mesh (it is on the outdoor terrain \
-         sheet) -- that is the false positive the path checks exist to catch",
+        "control: {outdoors:?} must read on-mesh (it is on the strip north of \
+         the Storage wall) -- that is the false positive the path checks exist \
+         to catch",
     );
     assert!(
         !path_reaches(&mesh, &centre, &outdoors),
-        "control: {outdoors:?} is outside the building and must NOT be \
-         reachable from the Storage floor; if it is, the two components have \
-         been joined and the assertions above no longer pin the region to the \
-         pen grid",
+        "control: {outdoors:?} is outside the room and must NOT be reachable \
+         from the Storage floor; if it is, the two components have been joined \
+         and the assertions above no longer pin the region to the pen grid",
     );
 }

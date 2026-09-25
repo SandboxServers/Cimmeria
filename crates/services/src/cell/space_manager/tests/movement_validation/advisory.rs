@@ -2,10 +2,12 @@
 //! real `harset.nav`.
 //!
 //! `harset.nav` is the reason the mode exists, so these run on it rather
-//! than on a synthetic mesh: the defect is not "a mesh can have a hole", it
-//! is "the shipped Harset mesh has a hole across the only walk to the
+//! than on a synthetic mesh: the defect was not "a mesh can have a hole", it
+//! was "the shipped Harset mesh has a hole across the only walk to the
 //! Command Center door, and an ordinary player is snapped back at it while
-//! a GM (warn-only) walks through and never reports it".
+//! a GM (warn-only) walks through and never reports it". NA26 rebuilt the
+//! mesh and closed that hole; the fixture step below is a real reject the
+//! rebuilt mesh still refuses.
 //!
 //! Every test self-skips when the fixture is absent, per the repo's
 //! navmesh-test pattern, and every test carries the control assertions that
@@ -27,16 +29,20 @@ use crate::cell::spawner::WorldRow;
 /// `resources.worlds.world_id` for Harset.
 const HARSET_WORLD_ID: i32 = 57;
 
-/// On the plaza floor, 2 units inside the last covered row of the walk
-/// toward the Command Center. Measured 2026-09-19 on a 2-unit grid: at
-/// Y -68 the mesh covers X -24..0 down to Z -198 and nothing from Z -200
-/// to Z -228.
-const ON_MESH: [f32; 3] = [-4.0, -68.0, -196.0];
+/// A real Harset step the server rejected (`movement.validation_reject`,
+/// SigNoz, September 2026): this is the reject's `last_valid_*`.
+///
+/// The 2012 mesh's measured hole (Z -200..-228 on the walk to the Command
+/// Center) is gone from the NA26 rebuild, so the fixture is the one real
+/// reject in the telemetry whose `last_valid` the rebuilt mesh accepts and
+/// whose client position it still refuses.
+const ON_MESH: [f32; 3] = [217.605_07, -41.871_696, 3.657_742];
 
-/// Eight units further along the same walk, inside the hole. A single
-/// ordinary walking step — well under `TELEPORT_JUMP_UNITS` — so nothing
-/// but layer 4 can object to it.
-const IN_THE_HOLE: [f32; 3] = [-4.0, -68.0, -204.0];
+/// That reject's client position: 2.3 units west and 0.4 down, a single
+/// ordinary walking step (well under `TELEPORT_JUMP_UNITS`), so nothing but
+/// layer 4 can object to it. The rebuilt mesh's surface above it is 1.26 u
+/// higher, which `is_point_valid` refuses as below the surface.
+const IN_THE_HOLE: [f32; 3] = [215.322_94, -42.290_7, 3.796_946];
 
 /// Ring region 4's pad row, a coordinate the shipped seed already stands a
 /// player on. The live control that the mesh loaded and answers `true` for

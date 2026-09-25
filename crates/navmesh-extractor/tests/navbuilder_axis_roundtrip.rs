@@ -523,3 +523,83 @@ fn default_parameters_derive_the_same_cell_counts_as_the_reference_builder() {
         );
     }
 }
+
+/// `rcSpan` heights are 13-bit, and rasterization clamps every span to
+/// `RC_SPAN_MAX_HEIGHT` (8191 cells) above `bmin.y` without a word. One
+/// triangle 2 km below the floor makes the floor 2,050 m / 0.2 m = 10,250
+/// cells up, so at the default `ch` it would be flattened onto the ceiling
+/// and the build would still "succeed". NavBuilder must refuse that with
+/// exit 3; at `ch=0.3` (6,834 cells) the same input must build, with the
+/// floor where it was authored.
+///
+/// The shape is real: Tollana has one prop at y = -1728, and the whole-map
+/// build came out as a single sheet at y = -90 with the city missing.
+#[test]
+fn a_vertical_extent_past_the_13_bit_span_height_is_refused() {
+    let exe = navbuilder_path();
+    if !exe.exists() || std::env::var_os("CIMMERIA_NAVBUILDER_FROM_TREE").is_none() {
+        eprintln!(
+            "SKIPPED a_vertical_extent_past_the_13_bit_span_height_is_refused — needs a \
+             NavBuilder built from this tree: rebuild with tools/build-navbuilder.ps1 and set \
+             CIMMERIA_NAVBUILDER_FROM_TREE=1."
+        );
+        return;
+    }
+    let dir = unique_tempdir("cimmeria-navspanheight");
+    let chunk_dir = dir.join("chunks");
+    std::fs::create_dir_all(&chunk_dir).unwrap();
+    let mut soup = fixture_soup(raw_ue3);
+    // A 1 m sliver 2 km under the fixture: UE3 Z -195,000 cm -> BW y -1950.
+    let deep = -195_000.0;
+    let sliver = floor_quad(UX0, UY0, UX0 + 100.0, UY0 + 100.0, deep, deep);
+    for t in sliver {
+        soup.push(t);
+    }
+    write_obj(&chunk_dir.join(format!("{CHUNK_ID:08x}o.obj")), &soup, true);
+    let out = dir.join("out.nav");
+
+    let run = |params: &[&str]| -> (i32, String) {
+        let _ = std::fs::remove_file(&out);
+        let o = Command::new(&exe)
+            .arg("chunked")
+            .arg(&chunk_dir)
+            .arg(&out)
+            .arg("nav")
+            .args(params)
+            .output()
+            .expect("spawn NavBuilder");
+        let log = format!(
+            "{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        );
+        (o.status.code().expect("no signal on Windows"), log)
+    };
+
+    let (code, log) = run(&[]);
+    assert_eq!(
+        code, EXIT_BUILD_FAILED,
+        "a 2,000 m vertical extent at ch=0.2 must be refused, not clamped:\n{log}"
+    );
+    assert!(
+        log.contains("13-bit"),
+        "the refusal must name the span-height limit:\n{log}"
+    );
+    assert!(
+        !out.exists(),
+        "a refused build must not leave a .nav behind"
+    );
+
+    let (code, log) = run(&["ch=0.3"]);
+    assert_eq!(code, 0, "the same input must build at ch=0.3:\n{log}");
+    let bytes = std::fs::read(&out).expect("read nav");
+    let nav = XrcNav::read(&mut std::io::Cursor::new(&bytes)).expect("parse nav");
+    let top = (0..nav.nverts as usize)
+        .map(|i| nav.bmin[1] + f32::from(nav.verts[i * 3 + 1]) * nav.ch)
+        .fold(f32::MIN, f32::max);
+    assert!(
+        (top - 53.0).abs() < 1.0,
+        "the ramp top must stay at its authored y = 53, got {top}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

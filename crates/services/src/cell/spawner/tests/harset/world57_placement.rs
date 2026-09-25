@@ -16,30 +16,24 @@
 //!   ledger says it is, in both directions.
 //!
 //! **Why the navmesh guard is not a plain "every spawn is on-mesh" assertion.**
-//! H14's acceptance line asks for `is_point_valid` on every world-57 spawn. That
-//! cannot be satisfied and is not the right bar: the shipped `harset.nav` does
-//! not cover the hub's upper quarters at the floor height the *geometry* has. A
-//! ring probe around every named Jaffa Zone landmark found no on-mesh point
-//! within 12 m at y = -41.3, and the two AUTHORED rows in that quarter — Petbe
-//! (spawn 223) and `FirstBug` (spawn 224) — are off-mesh for the same reason.
-//! World 57 runs `navmesh_mode = 'advisory'` (H53), so off-mesh costs NPC
-//! pathing, not the player's session. So the guard is a biconditional over an
-//! explicit exception table: a row the ledger calls on-mesh must be on-mesh,
-//! and a row the ledger calls off-mesh must still be off-mesh. The second half
-//! is the one that earns its keep — when GH1 rebuilds the mesh and a quarter
-//! becomes walkable, this fails and forces the ledger row (and the
-//! `is_stationary` decision that rests on it) to be revisited rather than
+//! H14's acceptance line asks for `is_point_valid` on every world-57 spawn. The
+//! 2012 `harset.nav` could not satisfy it: it did not cover the hub's upper
+//! quarters at the floor height the *geometry* has, and nine of these rows
+//! were off it. World 57 runs `navmesh_mode = 'advisory'` (H53), so off-mesh
+//! costs NPC pathing, not the player's session. So the guard is a
+//! biconditional over an explicit exception table: a row the ledger calls
+//! on-mesh must be on-mesh, and a row the ledger calls off-mesh must still be
+//! off-mesh. The second half is the one that earns its keep — when a rebuilt
+//! mesh makes a quarter walkable, this fails and forces the ledger row (and
+//! the `is_stationary` decision that rests on it) to be revisited rather than
 //! silently going stale.
 //!
-//! **A rebuilt mesh exists and is deliberately not asserted here.** The
-//! Castle-nav session produced a Harset rebuild with 374 components instead
-//! of 1,939, on which 14 of these 15 rows are on-mesh and on one component
-//! together with the gate, the plaza exit and the ring pads. It is used in
-//! the ledger as a *reachability* second opinion only: it loses 12 positions
-//! real players stood on, and `data/spaces` is what ships. Two coordinates
-//! were moved because of it (`SecondBug` by 1 m, and shield tower 2's console
-//! off a pad the rebuild says is an island), but both are still `Mesh::Off`
-//! against the shipped mesh, which is the only mesh this table describes.
+//! **NA26 (2026-09-25) shipped that rebuild.** On it 12 of these 15 rows are
+//! on-mesh, including the whole Jaffa Zone and Petbe's quarters; the three
+//! still off are the shield-tower pair 309/310 and the shield console 311,
+//! all within 1.3 u of the rebuilt surface. The six rows that flipped keep
+//! their `is_stationary` value: whether they should now walk is a content
+//! call recorded in the placement ledger, not something this table decides.
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::NavMesh;
@@ -68,11 +62,11 @@ const REGION_BLOCK: (i32, i32) = (2100, 2149);
 /// `harset.nav`?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mesh {
-    /// On the mesh. Every one of these is on the hub component (187) or on
-    /// component 1441, which the ledger records per row.
+    /// On the mesh.
     On,
-    /// Off the mesh, deliberately: placed on the true geometry floor from
-    /// `obj_slab` in a quarter `harset.nav` does not model.
+    /// Off the mesh: placed on the geometry floor from `obj_slab`, and the
+    /// NA26 mesh's surface there is 1.2-1.3 u higher (309, 310) or 1.3 u to
+    /// the side (311), which `is_point_valid` refuses.
     Off,
 }
 
@@ -87,17 +81,17 @@ const PLACED: [(i32, &str, i32, Mesh); 15] = [
     (300, "Harset_Hansen", 212, Mesh::On),
     (301, "Harset_Jacobs", 213, Mesh::On),
     (302, "Harset_Lorak", 201, Mesh::On),
-    (303, "Harset_FormerRaJaffa", 204, Mesh::Off),
-    (304, "Harset_FormerRaJaffa2", 204, Mesh::Off),
+    (303, "Harset_FormerRaJaffa", 204, Mesh::On),
+    (304, "Harset_FormerRaJaffa2", 204, Mesh::On),
     (305, "Harset_SuspiciousJaffa", 205, Mesh::On),
-    (306, "SecondBug", 164, Mesh::Off),
-    (307, "ThirdBug", 164, Mesh::Off),
-    (308, "Harset_ShieldTower1", 243, Mesh::Off),
+    (306, "SecondBug", 164, Mesh::On),
+    (307, "ThirdBug", 164, Mesh::On),
+    (308, "Harset_ShieldTower1", 243, Mesh::On),
     (309, "Harset_ShieldTower2", 243, Mesh::Off),
     (310, "Harset_ShieldTower3", 243, Mesh::Off),
     (311, "Harset_ShieldControls", 248, Mesh::Off),
     (312, "Harset_BankAnchor", 248, Mesh::On),
-    (313, "Harset_PetbeQuarters", 244, Mesh::Off),
+    (313, "Harset_PetbeQuarters", 244, Mesh::On),
     (314, "Harset_StorageLotaur", 219, Mesh::On),
 ];
 
