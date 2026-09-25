@@ -35,16 +35,27 @@ pub(super) async fn npc_ai_idle_auto_aggro(
     // in the NPC's AoI. That's exactly the candidate set the Python `Atrea`
     // engine scans — restricted to players because NPCs don't aggro on
     // other NPCs from idle.
+    use super::detectors::aggro_scan::ScanReject;
     let witnesses = space_mgr.get_witnesses_of(npc_id);
+    let witness_count = witnesses.len();
+    // Rejects are collected rather than logged inline: the log needs `&mut`
+    // for its throttle, and the scan holds `&` borrows of the witnesses.
+    let mut rejects: Vec<(u32, ScanReject)> = Vec::new();
     let target = witnesses
         .into_iter()
         .filter_map(|pid| {
             let p = space_mgr.get_entity(pid)?;
-            if !p.is_player || p.faction == npc_faction {
+            if !p.is_player {
+                rejects.push((pid, ScanReject::NotPlayer));
+                return None;
+            }
+            if p.faction == npc_faction {
+                rejects.push((pid, ScanReject::SameFaction));
                 return None;
             }
             // Skip dead players (BSF_DEAD in state_field — bit 0).
             if combat::is_dead_state(p.state_field) {
+                rejects.push((pid, ScanReject::Dead));
                 return None;
             }
             let dist = npc_pos.distance_to(&p.position);
@@ -52,6 +63,14 @@ pub(super) async fn npc_ai_idle_auto_aggro(
         })
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(pid, _)| pid);
+    super::detectors::aggro_scan::report_scan(
+        space_mgr,
+        npc_id,
+        witness_count,
+        &rejects,
+        target.is_some(),
+        std::time::Instant::now(),
+    );
 
     if let Some(player_id) = target {
         tracing::info!(

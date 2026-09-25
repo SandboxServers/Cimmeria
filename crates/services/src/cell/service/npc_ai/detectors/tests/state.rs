@@ -1,0 +1,239 @@
+//! `idle_parked`, `cleared_without_exit`, aggro-scan rejects,
+//! `spawn_off_mesh`, `stuck`, `npc_ai.los`, the avatar-update flag, and
+//! detector-state teardown.
+
+use cimmeria_common::Vector3;
+use cimmeria_entity::cell_entity::AiState;
+use tracing::Level;
+
+use super::{
+    add_npc, add_threat_player, ai_tick, castle_mgr, cellblock_mgr, movement_tick, rows, NPC,
+    PLAYER,
+};
+use crate::cell::messages::CellToBaseMsg;
+use crate::test_support::LogCapture;
+
+const MESSHALL: [f32; 3] = [-96.25, 34.591, -91.59];
+
+/// A fight that loses its target parks the NPC where it stands, and the AI
+/// never visits it again (S6 + A1).
+#[tokio::test]
+async fn a_fight_that_ends_away_from_spawn_is_idle_parked() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [20.0, 0.0, 0.0],
+        Some([0.0; 3]),
+        AiState::Fighting,
+    );
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await; // empty threat list -> Idle
+    let found = rows(&logs, "npc_ai.idle_parked", "idle_parked");
+    assert_eq!(found.len(), 1, "{:#?}", logs.all());
+    assert_eq!(found[0].level, Level::INFO);
+    assert!(
+        found[0].has_field("reason", "threat_empty"),
+        "{:?}",
+        found[0]
+    );
+    assert!(found[0].has_field("npc_to_spawn", "20.0"));
+}
+
+/// An aggressive NPC is still ticked when Idle, so it is not parked.
+#[tokio::test]
+async fn an_aggressive_npc_going_idle_is_not_parked() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [20.0, 0.0, 0.0],
+        Some([0.0; 3]),
+        AiState::Fighting,
+    );
+    mgr.get_entity_mut(NPC).unwrap().aggression = 1;
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await;
+    assert!(rows(&logs, "npc_ai.idle_parked", "idle_parked").is_empty());
+}
+
+/// The leash drops the NPC's threat without draining the player's
+/// `threatened_mobs` (S7): the player stays in combat.
+#[tokio::test]
+async fn a_leash_that_leaves_the_player_in_combat_is_reported() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [0.0; 3],
+        Some([0.0; 3]),
+        AiState::Fighting,
+    );
+    add_threat_player(&mut mgr, "Castle", [60.0, 0.0, 0.0]);
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .threatened_mobs
+        .insert(NPC);
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await; // Fighting -> Leashing, threat cleared
+    let found = rows(&logs, "threat", "cleared_without_exit");
+    assert_eq!(found.len(), 1, "{:#?}", logs.all());
+    assert_eq!(found[0].level, Level::WARN);
+    assert!(found[0].has_field("reason", "leash_out"), "{:?}", found[0]);
+    assert!(found[0].has_field("player_id", "101"));
+    ai_tick(&mut mgr).await; // leash completes: same pair, throttled
+    assert_eq!(rows(&logs, "threat", "cleared_without_exit").len(), 1);
+}
+
+/// Today's only scan rejects are named, per pair; nobody qualifying says so.
+#[tokio::test]
+async fn the_idle_scan_names_its_rejects() {
+    let mut mgr = castle_mgr();
+    add_npc(&mut mgr, "Castle", [0.0; 3], Some([0.0; 3]), AiState::Idle);
+    mgr.get_entity_mut(NPC).unwrap().aggression = 1;
+    add_threat_player(&mut mgr, "Castle", [10.0, 0.0, 0.0]);
+    {
+        let npc = mgr.get_entity_mut(NPC).unwrap();
+        npc.threat_list.clear();
+        npc.faction = 0; // same as the player
+    }
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await;
+    let rejected = rows(&logs, "npc_ai.aggro_scan", "candidate_rejected");
+    assert_eq!(rejected.len(), 1, "{:#?}", logs.all());
+    assert!(rejected[0].has_field("reason", "same_faction"));
+    assert!(rejected[0].has_field("player_id", "101"));
+    assert!(rejected[0].has_field("aggro_radius", "unbounded"));
+    assert_eq!(rows(&logs, "npc_ai.aggro_scan", "no_candidates").len(), 1);
+    ai_tick(&mut mgr).await; // inside both sample windows
+    assert_eq!(
+        rows(&logs, "npc_ai.aggro_scan", "candidate_rejected").len(),
+        1
+    );
+}
+
+/// A spawn hovering 2 units over its floor passes `is_point_valid` but not
+/// `find_path`'s start box (S9). Reported once per spawn id.
+#[test]
+fn a_hovering_spawn_is_spawn_off_mesh_once() {
+    let Some((mut mgr, _)) = cellblock_mgr() else {
+        return;
+    };
+    add_npc(
+        &mut mgr,
+        "Castle_CellBlock",
+        [MESSHALL[0], MESSHALL[1] + 2.0, MESSHALL[2]],
+        None,
+        AiState::Idle,
+    );
+    mgr.get_entity_mut(NPC).unwrap().spawn_id = Some(29);
+    let logs = LogCapture::install();
+    crate::cell::service::npc_ai::detectors::spawn::check_spawn(&mut mgr, NPC);
+    crate::cell::service::npc_ai::detectors::spawn::check_spawn(&mut mgr, NPC);
+    let found = rows(&logs, "spawner.npc_behaviour", "spawn_off_mesh");
+    assert_eq!(found.len(), 1, "{:#?}", logs.all());
+    assert_eq!(found[0].level, Level::WARN);
+    assert!(found[0].has_field("on_navmesh", "true"), "{:?}", found[0]);
+    assert!(found[0].has_field("gate", "start_box"));
+}
+
+/// Chasing with a stale path and no route: the NPC never closes (the
+/// `no_path` branch enqueues nothing). Three AI ticks without progress.
+#[tokio::test]
+async fn a_chase_that_never_closes_is_stuck() {
+    let mut mgr = castle_mgr();
+    add_npc(&mut mgr, "Castle", [0.0; 3], None, AiState::Fighting);
+    add_threat_player(&mut mgr, "Castle", [45.0, 0.0, 0.0]);
+    mgr.get_entity_mut(NPC)
+        .unwrap()
+        .nav_path
+        .push_back(Vector3::new(-20.0, 0.0, 0.0));
+    let logs = LogCapture::install();
+    for _ in 0..3 {
+        ai_tick(&mut mgr).await;
+    }
+    let found = rows(&logs, "npc_ai", "stuck");
+    assert_eq!(found.len(), 1, "{:#?}", logs.all());
+    assert_eq!(found[0].level, Level::WARN);
+    assert!(found[0].has_field("target_id", "101"));
+}
+
+/// A blocked line of sight is logged with its ray, sampled per pair.
+#[test]
+fn a_blocked_line_of_sight_is_logged_with_its_ray() {
+    let Some((mut mgr, _)) = cellblock_mgr() else {
+        return;
+    };
+    add_npc(
+        &mut mgr,
+        "Castle_CellBlock",
+        MESSHALL,
+        None,
+        AiState::Fighting,
+    );
+    add_threat_player(&mut mgr, "Castle_CellBlock", [-400.0, 0.2, -400.0]);
+    let logs = LogCapture::install();
+    let los = mgr.line_of_sight(NPC, PLAYER);
+    let _ = mgr.line_of_sight(NPC, PLAYER);
+    assert_ne!(los, cimmeria_entity::navigation::LineOfSight::Clear);
+    let found = rows(&logs, "npc_ai.los", "blocked");
+    assert_eq!(found.len(), 1, "sampled per pair: {found:#?}");
+    assert!(found[0].has_field("result", los.label()));
+    assert!(found[0].has_field("eye_height_used", "0.0"));
+}
+
+/// The AoI relay says whether the NPC it is sending a velocity for actually
+/// moved: `Some(false)` with a non-zero velocity is running in place.
+#[test]
+fn the_aoi_relay_carries_npc_moved_since_last() {
+    let mut mgr = castle_mgr();
+    add_npc(&mut mgr, "Castle", [0.0; 3], None, AiState::Fighting);
+    add_threat_player(&mut mgr, "Castle", [5.0, 0.0, 0.0]);
+    mgr.get_entity_mut(NPC).unwrap().velocity = [6.0, 0.0, 0.0];
+    movement_tick(&mut mgr);
+    movement_tick(&mut mgr);
+    let moved: Vec<Option<bool>> = mgr
+        .compute_aoi_changes()
+        .into_iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::EntityMoved {
+                entity_id,
+                npc_moved_since_last,
+                ..
+            } if entity_id == NPC => Some(npc_moved_since_last),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(moved, vec![Some(false)]);
+}
+
+/// Every per-entity detector slot is released by both teardown paths.
+#[tokio::test]
+async fn detector_state_is_released_on_destroy_entity_and_destroy_space() {
+    for via_space in [false, true] {
+        let mut mgr = castle_mgr();
+        add_npc(
+            &mut mgr,
+            "Castle",
+            [20.0, 0.0, 0.0],
+            Some([0.0; 3]),
+            AiState::Fighting,
+        );
+        mgr.get_entity_mut(NPC).unwrap().velocity = [6.0, 0.0, 0.0];
+        for _ in 0..5 {
+            movement_tick(&mut mgr);
+        }
+        assert!(mgr.npc_detectors.tracked_for(NPC) > 0, "precondition");
+        if via_space {
+            let sid = mgr.get_entity_space_id(NPC).unwrap();
+            mgr.destroy_space(sid);
+        } else {
+            mgr.destroy_entity(NPC);
+        }
+        assert_eq!(
+            mgr.npc_detectors.tracked_for(NPC),
+            0,
+            "via_space={via_space}: a recycled id must not inherit a throttle window"
+        );
+    }
+}

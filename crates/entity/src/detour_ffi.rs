@@ -107,8 +107,22 @@ extern "C" {
 /// Detour status flag: operation failed.
 pub const DT_FAILURE: u32 = 1 << 31;
 
+/// Detour status detail flag: the query did not reach the end location and
+/// returned its best guess (`DetourStatus.h`). `findPath` sets it when the
+/// goal polygon is on another mesh island; the corridor then ends at the
+/// polygon nearest the goal on the start's island.
+pub const DT_PARTIAL_RESULT: u32 = 1 << 6;
+
 /// Check if a dtStatus indicates failure.
 #[inline]
 pub fn dt_status_failed(status: u32) -> bool {
     status & DT_FAILURE != 0
+}
+
+/// Check if a dtStatus carries [`DT_PARTIAL_RESULT`]. A partial result is a
+/// *success* (`dt_status_failed` is false), which is why checking only the
+/// failure bit accepted island-edge paths silently (audit S8).
+#[inline]
+pub fn dt_status_partial(status: u32) -> bool {
+    status & DT_PARTIAL_RESULT != 0
 }

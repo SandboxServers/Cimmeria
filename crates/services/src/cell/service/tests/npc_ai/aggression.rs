@@ -80,3 +80,37 @@ async fn aggression_skips_same_faction_witnesses() {
     assert_eq!(npc.ai_state(), AiState::Idle, "same faction must not aggro");
     assert!(npc.threat_list.is_empty());
 }
+
+/// NA00 review: the Idle scan is the one real caller of
+/// `AggroCause::Proximity`. Driven through the dispatcher, its entry into
+/// Fighting must say `cause=proximity` on the aggro row and
+/// `reason=auto_aggro` on the transition row.
+#[tokio::test]
+async fn idle_auto_aggro_logs_the_proximity_cause() {
+    let mut mgr = make_aggression_fixture(200_001, 10, 1, [5.0, 0.0, 0.0]);
+    mgr.get_entity_mut(200_001).unwrap().aggression = 1;
+    let (tx, _rx) = mpsc::channel(16);
+    let logs = crate::test_support::LogCapture::install();
+
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
+
+    let all = logs.all();
+    let acquired = all
+        .iter()
+        .find(|c| c.target == "npc_ai.aggro")
+        .expect("auto-aggro must log npc_ai.aggro");
+    assert!(acquired.has_field("cause", "proximity"), "{acquired:?}");
+    let transition = all
+        .iter()
+        .find(|c| c.target == "npc_ai.transition" && c.has_field("to", "fighting"))
+        .expect("and an Idle -> Fighting transition");
+    assert!(
+        transition.has_field("reason", "auto_aggro"),
+        "{transition:?}"
+    );
+}

@@ -128,6 +128,11 @@ pub(super) async fn run_cell_loop(
 
                 // NPC movement runs every AoI tick (100ms) for smooth pathing
                 super::ticks::npc_movement_tick(&mut space_mgr);
+                // NA02 detectors over every NPC (running in place, ...).
+                super::npc_ai::detectors::movement::after_movement_tick(
+                    &mut space_mgr,
+                    std::time::Instant::now(),
+                );
 
                 // NPC AI runs every 20th AoI tick (2 seconds at 100ms intervals)
                 if aoi_tick_counter.is_multiple_of(20) {

@@ -186,14 +186,30 @@ pub(super) async fn npc_ai_patrol(
         // to a `Vec` first makes "the pathfinder declined" and "the
         // pathfinder answered with one unusable waypoint" indis-
         // tinguishable, and they are different findings.
-        let path = space_mgr.find_path(npc_id, &npc_pos, &waypoint);
+        let routed = super::path_request::request_path(
+            space_mgr,
+            super::path_request::PathRequest {
+                npc_id,
+                state: "patrol",
+                from: npc_pos,
+                to: waypoint,
+                target_id: None,
+                partial_outcome: "patrol_partial",
+            },
+            std::time::Instant::now(),
+        );
+        let (path, status) = (routed.waypoints, routed.status);
         if path.as_ref().is_none_or(|p| p.len() <= 1) {
             // Previously silent. The `else` arm below pushes the raw
             // waypoint and the NPC walks to it through whatever
             // geometry is in the way, with no log at any level — the
             // 2026-09-18 Castle "NPCs cut through walls" shape.
-            let reason =
-                super::path_failure::PathFailReason::classify(space_mgr, npc_id, path.as_deref());
+            let reason = super::path_failure::PathFailReason::classify(
+                space_mgr,
+                npc_id,
+                status,
+                path.as_deref(),
+            );
             super::path_failure::report_path_failure(
                 space_mgr,
                 super::path_failure::PathFailure {

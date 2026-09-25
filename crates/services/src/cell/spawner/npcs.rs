@@ -372,7 +372,10 @@ pub fn spawn_instance_npcs_from_records(
 /// like that" is one query instead of a seed read: an `aggression` of 0 means
 /// it will never notice a player on its own; `use_cover = false` means the
 /// loaded cover nodes are irrelevant to it; `respawn_secs = None` is one-shot.
-fn log_spawn_behaviour(space_mgr: &SpaceManager, npc_id: u32) {
+fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
+    // NA02: a spawn that passes `is_point_valid` below but fails
+    // `find_path`'s tight start box (audit S9) — WARN, once per spawn id.
+    crate::cell::service::npc_ai::detectors::spawn::check_spawn(space_mgr, npc_id);
     let Some(e) = space_mgr.get_entity(npc_id) else {
         return;
     };

@@ -42,6 +42,28 @@ fn leg_step_index(npc_id: u32, path_len: usize) -> u32 {
 
 static NPC_STEP_LOG_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
+use super::super::npc_ai::detectors::movement::{check_ground_step, GroundStep, YSource};
+
+/// NA02 `ground_deviation`: compare the Y this tick just wrote against the
+/// storey-aware floor under it. Reporting only.
+fn check_ground(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    from: cimmeria_common::Vector3,
+    pos: cimmeria_common::Vector3,
+    wp: cimmeria_common::Vector3,
+    y_source: YSource,
+) {
+    let step = GroundStep {
+        npc_id,
+        pos,
+        wp,
+        from,
+        y_source,
+    };
+    check_ground_step(space_mgr, step, std::time::Instant::now());
+}
+
 /// Scale an NPC's template `move_speed` (world units per 100ms tick) by its
 /// `movementSpeedMod` stat.
 ///
@@ -147,6 +169,14 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 [0, 0, 0],
                 velocity,
             );
+            check_ground(
+                space_mgr,
+                npc_id,
+                cur_pos,
+                next_wp,
+                next_wp,
+                YSource::Waypoint,
+            );
             let remaining_after = if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.nav_path.pop_front();
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
@@ -229,6 +259,8 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
             }
 
             space_mgr.update_entity_position(npc_id, [new_x, new_y, new_z], [0, 0, 0], velocity);
+            let stepped = cimmeria_common::Vector3::new(new_x, new_y, new_z);
+            check_ground(space_mgr, npc_id, cur_pos, stepped, next_wp, YSource::Lerp);
             // Set yaw directly as radians (pack_angle reads direction.y)
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);

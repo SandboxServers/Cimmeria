@@ -150,7 +150,7 @@ fn path_reaches(
     to: &cimmeria_common::Vector3,
 ) -> bool {
     const ARRIVAL_TOLERANCE_M: f32 = 2.0;
-    let Some(path) = mesh.find_path(from, to) else {
+    let Some(path) = mesh.find_path(from, to).into_waypoints() else {
         return false;
     };
     let Some(last) = path.last() else {

@@ -87,6 +87,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             position,
             direction,
             velocity,
+            npc_moved_since_last,
         } => {
             entity_moved(
                 witness_id,
@@ -94,6 +95,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 position,
                 direction,
                 velocity,
+                npc_moved_since_last,
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
@@ -311,6 +313,7 @@ pub(super) async fn entity_moved(
     position: [f32; 3],
     direction: [f32; 3],
     velocity: [f32; 3],
+    npc_moved_since_last: Option<bool>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -344,6 +347,7 @@ pub(super) async fn entity_moved(
         position,
         direction,
         velocity,
+        npc_moved_since_last,
         transport,
         connected,
         entity_to_addr,

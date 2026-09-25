@@ -176,6 +176,7 @@ pub(in crate::cell) fn set_ai_state_on(
     // place (NA10, audit S1). Stopped after the row above, so its
     // `nav_path_len` shows what was dropped.
     super::stop_movement_on(npc);
+    super::detectors::idle_parked::check(npc, world, from, reason_label);
     from
 }
 
@@ -354,6 +355,82 @@ mod tests {
             offenders.is_empty(),
             "raw AI-state writes outside the transition helper — route them through \
              `npc_ai::set_ai_state` / `set_ai_state_on` so the transition is logged:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// NA00 review: `force_ai_state` is the one other caller of the raw
+    /// writer allowed in this file, and it is only safe because it is
+    /// test-only. Losing the `#[cfg(test)]` directly above it would hand
+    /// production code an unlogged state write that the scan above allows
+    /// (it whitelists this whole file).
+    #[test]
+    fn force_ai_state_stays_test_only() {
+        let src = include_str!("transition.rs");
+        let lines: Vec<&str> = src.lines().collect();
+        let at = lines
+            .iter()
+            .position(|l| l.contains("fn force_ai_state("))
+            .expect("force_ai_state is defined in transition.rs");
+        assert_eq!(
+            lines[at - 1].trim(),
+            "#[cfg(test)]",
+            "`#[cfg(test)]` must sit directly above `fn force_ai_state`"
+        );
+    }
+
+    /// NA00 review: inside the entity crate the field is reachable without
+    /// the setter (privacy is per module tree), so a raw `ai_state =` write
+    /// anywhere under `cell_entity/` other than `ai_state.rs` — the setter's
+    /// home — bypasses the transition row. Flag any.
+    #[test]
+    fn no_raw_ai_state_assignment_in_the_entity_crate() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("crates/ dir")
+            .join("entity/src/cell_entity");
+        let mut offenders = Vec::new();
+        let mut scanned = 0usize;
+        let mut stack = vec![dir];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for entry in rd.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs")
+                    || path.file_name().is_some_and(|n| n == "ai_state.rs")
+                {
+                    continue;
+                }
+                scanned += 1;
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                for (i, line) in text.lines().enumerate() {
+                    let code = line.split("//").next().unwrap_or("");
+                    // `ai_state =` but not `ai_state ==`.
+                    if let Some(p) = code.find("ai_state =") {
+                        if !code[p..].starts_with("ai_state ==") {
+                            offenders.push(format!(
+                                "{}:{}: {}",
+                                path.display(),
+                                i + 1,
+                                line.trim()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(scanned > 5, "scan found only {scanned} files; wrong root?");
+        assert!(
+            offenders.is_empty(),
+            "raw `ai_state =` writes in cell_entity outside ai_state.rs:\n{}",
             offenders.join("\n")
         );
     }

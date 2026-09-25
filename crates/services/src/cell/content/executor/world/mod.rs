@@ -594,6 +594,10 @@ pub(super) async fn move_waypoint(
     let space_id = t.space_id.0 as u32;
     let direction = [t.direction.x, t.direction.y, t.direction.z];
     space_mgr.update_position_preserving_facing(target_id, destination, [0.0; 3]);
+    space_mgr.npc_detectors.note_move_source(
+        target_id,
+        crate::cell::service::npc_ai::detectors::MoveSource::Content,
+    );
     // Authorized server move: reseed the movement-validator clock for
     // the moved entity (harmless for NPC targets — they never pass
     // through the client-position validator).
@@ -617,6 +621,7 @@ pub(super) async fn move_waypoint(
                 position: destination,
                 direction,
                 velocity: [0.0; 3],
+                npc_moved_since_last: None,
             })
             .await
         {

@@ -11,6 +11,7 @@
 mod diagnose;
 mod fingerprint_and_size_cap;
 mod height;
+mod path_outcome;
 
 use super::*;
 
@@ -193,7 +194,7 @@ fn load_and_pathfind_castle_cellblock() {
     // Guard patrol: find path between two known-good positions
     let start = Vector3::new(-289.465, 68.542, -154.276);
     let end = Vector3::new(-280.0, 68.0, -150.0);
-    let path_result = mesh.find_path(&start, &end);
+    let path_result = mesh.find_path(&start, &end).into_waypoints();
     assert!(
         path_result.is_some(),
         "Should find path between nearby points on navmesh"

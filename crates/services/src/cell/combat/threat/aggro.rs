@@ -149,6 +149,19 @@ pub fn generate_threat(
     };
     // Resolved before the `&mut` borrow below; only needed on entry.
     let world = preemptable.then(|| npc_ai::world_label(space_mgr, target_id));
+    // Threat on a leashing NPC accrues below and is then discarded by the
+    // leash handler (audit S12). Say so.
+    if space_mgr
+        .get_entity(target_id)
+        .is_some_and(|t| t.ai_state() == AiState::Leashing)
+    {
+        npc_ai::detectors::leash::on_damage_while_leashing(
+            space_mgr,
+            target_id,
+            attacker_id,
+            threat_amount,
+        );
+    }
 
     let mut entered_from = None;
     if let Some(target) = space_mgr.get_entity_mut(target_id) {

@@ -18,6 +18,7 @@
 use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::navigation::PathStatus;
 use tokio::sync::mpsc;
 
 use super::{report_path_failure, PathFailReason, PathFailure, PathFallback};
@@ -109,7 +110,7 @@ fn reason_distinguishes_a_missing_mesh_from_a_missing_route() {
     mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     assert_eq!(
-        PathFailReason::for_missing_path(&mgr, 101),
+        PathFailReason::for_missing_path(&mgr, 101, None),
         PathFailReason::NoMesh,
         "Agnos has no navmesh loaded"
     );
@@ -122,7 +123,7 @@ fn reason_distinguishes_a_missing_mesh_from_a_missing_route() {
     let space_id = mgr.get_entity_space_id(101).unwrap();
     mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(navmesh);
     assert_eq!(
-        PathFailReason::for_missing_path(&mgr, 101),
+        PathFailReason::for_missing_path(&mgr, 101, None),
         PathFailReason::NoPath,
         "with a mesh loaded, a failed route is a hole in the mesh, not a \
          missing mesh — reporting no_mesh here would send an operator to \
@@ -224,17 +225,48 @@ fn classify_separates_a_missing_path_from_a_degenerate_one() {
         .unwrap();
 
     assert_eq!(
-        PathFailReason::classify(&mgr, 101, None),
+        PathFailReason::classify(&mgr, 101, None, None),
         PathFailReason::NoMesh,
         "a meshless space declining to route is a zone-level content gap"
     );
     let one = [Vector3::new(0.0, 0.0, 0.0)];
     assert_eq!(
-        PathFailReason::classify(&mgr, 101, Some(&one)),
+        PathFailReason::classify(&mgr, 101, Some(PathStatus::Ok), Some(&one)),
         PathFailReason::DegeneratePath,
         "a pathfinder that answered with one waypoint did not fail to \
          find the mesh — it found it and returned something unwalkable"
     );
+}
+
+/// NA02: a failed route names the Detour stage that declined, instead of
+/// collapsing all three into `no_path` (audit T6).
+#[test]
+fn a_missing_route_names_the_detour_stage_that_failed() {
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    for (status, reason, label) in [
+        (
+            PathStatus::NoStartPoly,
+            PathFailReason::NoStartPoly,
+            "no_start_poly",
+        ),
+        (
+            PathStatus::NoEndPoly,
+            PathFailReason::NoEndPoly,
+            "no_end_poly",
+        ),
+        (
+            PathStatus::NoCorridor,
+            PathFailReason::NoCorridor,
+            "no_corridor",
+        ),
+        (PathStatus::Partial, PathFailReason::Partial, "partial"),
+    ] {
+        let got = PathFailReason::classify(&mgr, 101, Some(status), None);
+        assert_eq!(got, reason, "{status:?}");
+        assert_eq!(got.label(), label);
+    }
 }
 
 /// **The throttle guard.** These fire per AI tick; a stuck NPC is a

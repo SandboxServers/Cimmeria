@@ -96,6 +96,32 @@ pub(super) async fn handle_teleport_player(
     // `teleport_bundles_forced_position_and_player_teleport_to_single_packet`.
     let bundle = build_teleport_bundle(entity_id, space_id, position, prev_pos);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+    // Every FORCED_POSITION the server sends goes through here, and today
+    // they are all player snaps: no NPC snap (the leash included) is sent as
+    // a forced position — witnesses learn of it from the next AoI
+    // `EntityMoved`. A row here for an NPC would mean that changed.
+    tracing::debug!(
+        target: "wire.out.forced_position",
+        entity_id,
+        account_id,
+        space_id,
+        x = position[0],
+        y = position[1],
+        z = position[2],
+        prev_x = prev_pos[0],
+        prev_y = prev_pos[1],
+        prev_z = prev_pos[2],
+        snap_dist = {
+            let d = [
+                position[0] - prev_pos[0],
+                position[1] - prev_pos[1],
+                position[2] - prev_pos[2],
+            ];
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        },
+        reason = "teleport_player",
+        "wire.out: FORCED_POSITION sent to the owning client"
+    );
 
     // 3. Persist. Mirrors gate_travel's fail-closed on missing active_player_id.
     if let Some(pool) = db_pool {

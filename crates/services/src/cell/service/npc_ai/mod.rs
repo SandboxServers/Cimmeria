@@ -39,11 +39,19 @@
 //!   its cause-to-transition-reason mapping.
 //! - [`transition`] — `set_ai_state`, the single writer of `ai_state`,
 //!   which emits `npc_ai.transition` and `npc_ai_transitions_total`.
+//! - [`fight_cover`] — the Fighting handler's cover step, including the
+//!   `no_cover` reasons and the `cover.selection` sample.
+//! - [`path_request`] — every AI `find_path`, logged as `npc_ai.path
+//!   event=request` with its typed outcome.
+//! - [`detectors`] — NA02's stuck / stale / floating / leash-loop / LoS /
+//!   off-mesh rows. Reporting only; they change no decision.
 
 mod ability_select;
 mod aggro_acquired;
+pub(in crate::cell) mod detectors;
 mod dispatch;
 mod fight;
+mod fight_cover;
 mod follow;
 mod idle_aggro;
 mod investigate;
@@ -51,6 +59,7 @@ mod leash;
 mod lifecycle;
 mod movement_stop;
 mod path_failure;
+mod path_request;
 mod patrol;
 mod transition;
 mod wander;
@@ -144,23 +153,34 @@ pub(super) fn record_decision_outcome(outcome: &'static str) {
     );
 }
 
-/// The terminal outcome of the handler that just ran, for the per-tick
-/// `npc_ai.tick` row. The AI tick runs NPCs strictly one after another on the
-/// cell task, so one slot is enough; `dispatch` clears it before each handler.
-static LAST_OUTCOME: std::sync::Mutex<&'static str> = std::sync::Mutex::new("");
+tokio::task_local! {
+    /// The terminal outcome of the handler that just ran, for the per-tick
+    /// `npc_ai.tick` row and the `stuck` detector. Scoped per NPC turn by
+    /// [`with_outcome_slot`].
+    ///
+    /// Task-local rather than a process-wide static: the static was shared
+    /// by every concurrently running test, so one test's dispatcher could
+    /// clear or read another's outcome (the `tick_row` guard failed
+    /// intermittently once NA02 added more AI-tick tests). A task-local
+    /// follows the future across worker threads, so production — one cell
+    /// task, NPCs strictly in sequence — sees exactly what it did before.
+    static LAST_OUTCOME: std::cell::Cell<&'static str>;
+}
 
 fn set_last_outcome(outcome: &'static str) {
-    *LAST_OUTCOME
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = outcome;
+    // Outside a slot (the retry sweep, tests calling a handler directly)
+    // there is nobody to read it: dropping it is what the old static's
+    // "cleared before the next handler" amounted to.
+    let _ = LAST_OUTCOME.try_with(|c| c.set(outcome));
 }
 
 pub(super) fn take_last_outcome() -> &'static str {
-    std::mem::take(
-        &mut *LAST_OUTCOME
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner),
-    )
+    LAST_OUTCOME.try_with(|c| c.replace("")).unwrap_or("")
+}
+
+/// Run one NPC's AI turn with its own outcome slot.
+pub(super) async fn with_outcome_slot<F: std::future::Future>(f: F) -> F::Output {
+    LAST_OUTCOME.scope(std::cell::Cell::new(""), f).await
 }
 
 /// `fight.rs` writes `decision_outcome` as an inline log field, so its

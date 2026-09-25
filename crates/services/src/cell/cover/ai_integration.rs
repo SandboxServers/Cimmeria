@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use super::reservation::CoverReservations;
-use super::scoring::{is_flanked, pick_best, CoverWeights, ScoringContext};
+use super::scoring::{is_flanked, pick_best_traced, CoverWeights, PickTrace, ScoringContext};
 use super::types::{Cover, CoverSlotKey};
 
 /// Attempt to reserve `slot` for `npc_id` on a held reservation guard,
@@ -114,6 +114,52 @@ pub enum CoverDecision {
     NoCover,
 }
 
+/// Why [`maintain_cover_for_npc`] returned [`CoverDecision::NoCover`]. The
+/// `npc_ai decision_outcome=no_cover` row's `reason` (audit C7: this branch
+/// used to be a silent `NoCover => {}`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoCoverReason {
+    /// The NPC does not use cover.
+    UseCoverFalse,
+    /// A stationary NPC never repositions (decided by the caller).
+    Stationary,
+    /// Nothing unreserved inside `MAX_COVER_DISTANCE` and the vertical band.
+    NoCandidateInRadius,
+    /// The chosen slot was taken between pick and reserve.
+    ReserveLost,
+    /// The target is in range and the NPC holds no slot: cover is only
+    /// sought out of range today (audit C3).
+    InRangeNoBetterSlot,
+    /// The NPC's world has no `resources.worlds` id, so it has no cover.
+    NoWorld,
+    /// The picked index did not resolve to a node (defensive; unreachable
+    /// while the index is immutable).
+    IndexMiss,
+}
+
+impl NoCoverReason {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::UseCoverFalse => "use_cover_false",
+            Self::Stationary => "stationary",
+            Self::NoCandidateInRadius => "no_candidate_in_radius",
+            Self::ReserveLost => "reserve_lost",
+            Self::InRangeNoBetterSlot => "in_range_no_better_slot",
+            Self::NoWorld => "no_world",
+            Self::IndexMiss => "index_miss",
+        }
+    }
+}
+
+/// The working behind one [`maintain_cover_for_npc_traced`] decision.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CoverTrace {
+    /// Set exactly when the decision is `NoCover`.
+    pub no_cover: Option<NoCoverReason>,
+    /// The scoring pass, when one ran.
+    pub pick: Option<PickTrace>,
+}
+
 /// Run one tick of cover maintenance for the given NPC. See module
 /// docs for the decision tree.
 ///
@@ -133,8 +179,36 @@ pub fn maintain_cover_for_npc(
     cover: &Cover,
     weights: &CoverWeights,
 ) -> CoverDecision {
+    maintain_cover_for_npc_traced(
+        npc_id, npc_pos, world_id, threat_pos, in_range, use_cover, cover, weights,
+    )
+    .0
+}
+
+/// [`maintain_cover_for_npc`] plus why: the no-cover reason and the
+/// scoring pass. The decision is the same.
+pub fn maintain_cover_for_npc_traced(
+    npc_id: EntityId,
+    npc_pos: Vector3,
+    world_id: Option<i32>,
+    threat_pos: Vector3,
+    in_range: bool,
+    use_cover: bool,
+    cover: &Cover,
+    weights: &CoverWeights,
+) -> (CoverDecision, CoverTrace) {
+    let no_cover = |reason, pick| {
+        (
+            CoverDecision::NoCover,
+            CoverTrace {
+                no_cover: Some(reason),
+                pick,
+            },
+        )
+    };
+    let decided = |d| (d, CoverTrace::default());
     if !use_cover {
-        return CoverDecision::NoCover;
+        return no_cover(NoCoverReason::UseCoverFalse, None);
     }
 
     // Hold the reservations lock for the entire pick+reserve sequence.
@@ -170,30 +244,30 @@ pub fn maintain_cover_for_npc(
             if flanked {
                 // Release and let the caller re-evaluate next tick.
                 reservations_guard.release_for_entity(npc_id);
-                return CoverDecision::Released { prior_slot: slot };
+                return decided(CoverDecision::Released { prior_slot: slot });
             }
-            return CoverDecision::StayInCover {
+            return decided(CoverDecision::StayInCover {
                 slot,
                 pos: node.pos,
-            };
+            });
         }
         // Stale reservation — slot index gone. The spatial index is
         // immutable post-startup; this branch defends against the
         // pathological case where a future feature removes nodes at
         // runtime (none today).
         reservations_guard.release_for_entity(npc_id);
-        return CoverDecision::Released { prior_slot: slot };
+        return decided(CoverDecision::Released { prior_slot: slot });
     }
 
     // Step 2: target in range and no current cover → no need for cover.
     if in_range {
-        return CoverDecision::NoCover;
+        return no_cover(NoCoverReason::InRangeNoBetterSlot, None);
     }
 
     // Step 3 needs a world to search: cover positions are per world, and
     // an NPC in a world with no `resources.worlds` id has no cover.
     let Some(world_id) = world_id else {
-        return CoverDecision::NoCover;
+        return no_cover(NoCoverReason::NoWorld, None);
     };
 
     // Step 3: pick + reserve a new slot under the same guard. Squad-
@@ -209,7 +283,7 @@ pub fn maintain_cover_for_npc(
     }
 
     let ctx = ScoringContext::new(npc_pos, threat_pos);
-    let chosen_idx = pick_best(
+    let pick = pick_best_traced(
         &cover.index,
         world_id,
         &reservations_guard,
@@ -217,13 +291,13 @@ pub fn maintain_cover_for_npc(
         weights,
         &ally_counts,
     );
-    let chosen_idx = match chosen_idx {
-        Some(i) => i,
-        None => return CoverDecision::NoCover,
+    let chosen_idx = match pick.best {
+        Some(c) => c.idx,
+        None => return no_cover(NoCoverReason::NoCandidateInRadius, Some(pick)),
     };
     let node = match cover.index.node(chosen_idx) {
         Some(n) => n,
-        None => return CoverDecision::NoCover,
+        None => return no_cover(NoCoverReason::IndexMiss, Some(pick)),
     };
     let slot = node.key();
 
@@ -234,13 +308,19 @@ pub fn maintain_cover_for_npc(
     // the single-guard invariant still surfaces the race via the
     // `cover.reservation` target.
     if try_reserve_or_warn(&mut reservations_guard, npc_id, slot).is_err() {
-        return CoverDecision::NoCover;
+        return no_cover(NoCoverReason::ReserveLost, Some(pick));
     }
 
-    CoverDecision::MoveToCover {
-        slot,
-        pos: node.pos,
-    }
+    (
+        CoverDecision::MoveToCover {
+            slot,
+            pos: node.pos,
+        },
+        CoverTrace {
+            no_cover: None,
+            pick: Some(pick),
+        },
+    )
 }
 
 #[cfg(test)]

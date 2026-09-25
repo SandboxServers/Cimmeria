@@ -42,7 +42,39 @@ pub enum LineOfSight {
     Unknown,
 }
 
+/// A line-of-sight answer with the endpoints it was computed between.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LosProbe {
+    pub result: LineOfSight,
+    /// The start as projected onto the mesh; `None` when it could not be.
+    pub from: Option<[f32; 3]>,
+    /// The end as projected onto the mesh; `None` when it could not be.
+    pub to: Option<[f32; 3]>,
+    /// Where a blocked ray stopped. `None` unless `result` is `Blocked`.
+    pub hit: Option<[f32; 3]>,
+}
+
+impl LosProbe {
+    fn unknown(from: Option<[f32; 3]>, to: Option<[f32; 3]>) -> Self {
+        Self {
+            result: LineOfSight::Unknown,
+            from,
+            to,
+            hit: None,
+        }
+    }
+}
+
 impl LineOfSight {
+    /// Stable label for logs: `clear`, `blocked`, `unknown_off_mesh`.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Blocked => "blocked",
+            Self::Unknown => "unknown_off_mesh",
+        }
+    }
+
     /// The policy for combat and targeting: only a positive "blocked" denies
     /// line of sight. "Unknown" counts as clear, matching a space that has no
     /// navmesh loaded. Denying on unknown makes any NPC standing off the mesh
@@ -64,16 +96,39 @@ impl NavMesh {
     /// points, so a flyer hovering over the floor or a player on an unmeshed
     /// crate still gets a real answer.
     pub fn line_of_sight(&self, start: &Vector3, end: &Vector3) -> LineOfSight {
+        self.line_of_sight_probe(start, end).result
+    }
+
+    /// [`Self::line_of_sight`] plus the geometry that decided it: the
+    /// projected endpoints the ray was actually cast between and, when
+    /// blocked, where it stopped. This is the evidence a `npc_ai.los` row
+    /// needs (audit T9). No eye height is added to either endpoint: the ray
+    /// runs along the walkable surface between the two projected points.
+    pub fn line_of_sight_probe(&self, start: &Vector3, end: &Vector3) -> LosProbe {
         let Some((start_ref, projected_start)) = self.project_start(start) else {
-            return LineOfSight::Unknown;
+            return LosProbe::unknown(None, None);
         };
         let Some((_, projected_end)) = self.project_to_polygon(end, &DEST_EXTENTS) else {
-            return LineOfSight::Unknown;
+            return LosProbe::unknown(Some(projected_start), None);
         };
-        if self.ray_reaches(start_ref, &projected_start, &projected_end) {
-            LineOfSight::Clear
-        } else {
-            LineOfSight::Blocked
+        let (reached, t) = self.ray_cast_t(start_ref, &projected_start, &projected_end);
+        let hit = (!reached).then(|| {
+            let t = t.clamp(0.0, 1.0);
+            [
+                projected_start[0] + (projected_end[0] - projected_start[0]) * t,
+                projected_start[1] + (projected_end[1] - projected_start[1]) * t,
+                projected_start[2] + (projected_end[2] - projected_start[2]) * t,
+            ]
+        });
+        LosProbe {
+            result: if reached {
+                LineOfSight::Clear
+            } else {
+                LineOfSight::Blocked
+            },
+            from: Some(projected_start),
+            to: Some(projected_end),
+            hit,
         }
     }
 
@@ -123,6 +178,11 @@ impl NavMesh {
     /// `true` when Detour's raycast travels from `start` (on `start_ref`) to
     /// `end` without hitting a mesh boundary.
     fn ray_reaches(&self, start_ref: u32, start: &[f32; 3], end: &[f32; 3]) -> bool {
+        self.ray_cast_t(start_ref, start, end).0
+    }
+
+    /// The raycast plus Detour's hit parameter `t` along `start -> end`.
+    fn ray_cast_t(&self, start_ref: u32, start: &[f32; 3], end: &[f32; 3]) -> (bool, f32) {
         let mut hit_normal = [0.0f32; 3];
         let mut t: f32 = 0.0;
         let result = unsafe {
@@ -136,7 +196,7 @@ impl NavMesh {
             )
         };
         // result == 1 means the ray reached `end` unblocked.
-        result == 1
+        (result == 1, t)
     }
 
     /// Find a polygon containing or near `pos`; return its ref and the

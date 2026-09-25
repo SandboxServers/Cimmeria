@@ -71,6 +71,12 @@ pub(super) async fn npc_ai_fight(
                 npc.threat_list.clear();
                 tracing::debug!(npc_id, "NPC AI: no threat targets, resetting to Idle");
             }
+            super::detectors::threat::check_cleared(
+                space_mgr,
+                npc_id,
+                super::detectors::threat::ThreatClear::ThreatEmpty,
+                std::time::Instant::now(),
+            );
             // Release any cover slot the NPC was holding — combat ended.
             // `release_for_entity` is idempotent; the call is cheap when
             // the NPC wasn't in cover.
@@ -148,6 +154,21 @@ pub(super) async fn npc_ai_fight(
                     "NPC AI: target too far from spawn, leashing"
                 );
             }
+            let now = std::time::Instant::now();
+            super::detectors::leash::on_enter(
+                space_mgr,
+                npc_id,
+                target_id,
+                target_pos,
+                combat::LEASH_DISTANCE,
+                now,
+            );
+            super::detectors::threat::check_cleared(
+                space_mgr,
+                npc_id,
+                super::detectors::threat::ThreatClear::LeashOut,
+                now,
+            );
             // Release any cover slot held — leash is a combat-end transition.
             space_mgr
                 .cover
@@ -221,98 +242,22 @@ pub(super) async fn npc_ai_fight(
     // Reservation state is owned by the cover module; the function is
     // a pure decision against an atomic snapshot. Release on death /
     // leash / idle is handled elsewhere in this file.
-    let mut nav_target_pos = target_pos;
-    if use_cover && !is_stationary {
-        use crate::cell::cover::{maintain_cover_for_npc, CoverDecision, CoverWeights};
-        let decision = maintain_cover_for_npc(
-            cimmeria_common::EntityId(npc_id as i32),
+    let nav_target_pos = super::fight_cover::route_via_cover(
+        super::fight_cover::CoverStep {
+            npc_id,
+            target_id,
             npc_pos,
-            space_mgr.get_entity_world_id(npc_id),
+            world_id: space_mgr.get_entity_world_id(npc_id),
             target_pos,
             in_range,
-            true,
-            &space_mgr.cover,
-            &CoverWeights::default(),
-        );
-        match decision {
-            CoverDecision::StayInCover { pos, slot } => {
-                nav_target_pos = pos;
-                super::note_outcome("stay_in_cover");
-                tracing::debug!(
-                    target: "npc_ai",
-                    event = "decision",
-                    decision_outcome = "stay_in_cover",
-                    npc_id,
-                    target_id,
-                    chunk_id = slot.chunk_id,
-                    node_id = slot.node_id,
-                    "NPC AI: holding cover slot"
-                );
-            }
-            CoverDecision::MoveToCover { pos, slot } => {
-                nav_target_pos = pos;
-                super::note_outcome("move_to_cover");
-                tracing::info!(
-                    target: "npc_ai",
-                    event = "decision",
-                    decision_outcome = "move_to_cover",
-                    npc_id,
-                    target_id,
-                    chunk_id = slot.chunk_id,
-                    node_id = slot.node_id,
-                    "NPC AI: picked cover slot"
-                );
-            }
-            CoverDecision::Released { prior_slot } => {
-                super::note_outcome("cover_released_flanked");
-                tracing::info!(
-                    target: "npc_ai",
-                    event = "decision",
-                    decision_outcome = "cover_released_flanked",
-                    npc_id,
-                    target_id,
-                    chunk_id = prior_slot.chunk_id,
-                    node_id = prior_slot.node_id,
-                    "NPC AI: released flanked cover slot, re-evaluating next tick"
-                );
-                // Stop walking toward the now-released cover slot. Without
-                // this the NPC walks toward the abandoned slot for one
-                // more movement tick before the re-pick lands next AI
-                // tick. Velocity is zeroed with the path so the client
-                // does not keep running it in place (NA10).
-                super::stop_npc_movement(space_mgr, npc_id, super::StopReason::CoverReleased);
-                // Fire the OnNpcFlanked content trigger so chain
-                // authors can hook narrative reactions (the AI itself
-                // already repositions; this is just the affordance).
-                let npc_template = space_mgr
-                    .get_entity(npc_id)
-                    .and_then(|e| e.npc_name.clone())
-                    .unwrap_or_default();
-                crate::cell::content::fire_npc_flanked(
-                    npc_id,
-                    target_id,
-                    &npc_template,
-                    engine,
-                    tx,
-                    space_mgr,
-                )
-                .await;
-                // Player-perspective twin: mission-scoped chains (flank
-                // objectives, C06) need the flanking player as the action
-                // target. No-ops when the threat isn't a player.
-                crate::cell::content::fire_player_flanked_npc(
-                    npc_id,
-                    target_id,
-                    &npc_template,
-                    engine,
-                    tx,
-                    space_mgr,
-                )
-                .await;
-            }
-            CoverDecision::NoCover => {}
-        }
-    }
+            use_cover,
+            is_stationary,
+        },
+        tx,
+        space_mgr,
+        engine,
+    )
+    .await;
 
     // Out of range OR occluded — keep pathfinding so the NPC can reposition
     // to regain line of sight. Treating "in range but blocked" as a stop
@@ -376,7 +321,19 @@ pub(super) async fn npc_ai_fight(
         };
 
         if needs_repath {
-            if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &nav_target_pos) {
+            let routed = super::path_request::request_path(
+                space_mgr,
+                super::path_request::PathRequest {
+                    npc_id,
+                    state: "fight",
+                    from: npc_pos,
+                    to: nav_target_pos,
+                    target_id: Some(target_id),
+                    partial_outcome: "chase_partial",
+                },
+                std::time::Instant::now(),
+            );
+            if let Some(path) = routed.waypoints {
                 if path.len() > 1 {
                     let waypoints: std::collections::VecDeque<_> =
                         path.into_iter().skip(1).collect();
@@ -427,8 +384,11 @@ pub(super) async fn npc_ai_fight(
                 // `groupBy=decision_outcome` across the npc_ai target and
                 // pivot per zone via the span's space_id attribute.
                 super::note_outcome("no_path");
-                let reason =
-                    super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+                let reason = super::path_failure::PathFailReason::for_missing_path(
+                    space_mgr,
+                    npc_id,
+                    routed.status,
+                );
                 super::path_failure::report_path_failure(
                     space_mgr,
                     super::path_failure::PathFailure {
@@ -482,6 +442,9 @@ pub(super) async fn npc_ai_fight(
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 super::replace_nav_path_on(npc, [backup]);
             }
+            space_mgr
+                .npc_detectors
+                .note_move_source(npc_id, super::detectors::MoveSource::Backup);
             super::note_outcome("min_range_backup");
             tracing::debug!(
                 target: "npc_ai",

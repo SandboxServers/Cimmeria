@@ -132,7 +132,19 @@ pub(super) async fn npc_ai_follow(
     // `patrol.rs`: `None` (the pathfinder declined) and
     // `Some(one_waypoint)` (it answered with something unwalkable) are
     // different findings and get different `reason` tokens.
-    let routing = space_mgr.find_path(npc_id, &npc_pos, &dest);
+    let request = super::path_request::request_path(
+        space_mgr,
+        super::path_request::PathRequest {
+            npc_id,
+            state: "follow",
+            from: npc_pos,
+            to: dest,
+            target_id: Some(target_id),
+            partial_outcome: "follow_partial",
+        },
+        std::time::Instant::now(),
+    );
+    let (routing, status) = (request.waypoints, request.status);
     let routed = routing.as_ref().is_some_and(|p| p.len() > 1);
     // Unrouted: keep the follower on its OWN height. The raw lerp copied the
     // leader's Y, so a jumping or upstairs leader dragged the escort into the
@@ -148,8 +160,12 @@ pub(super) async fn npc_ai_follow(
         // the follower through the air and through geometry.
         // Resolved before the call: `report_path_failure` takes `&mut`
         // and this classifier takes `&`.
-        let reason =
-            super::path_failure::PathFailReason::classify(space_mgr, npc_id, routing.as_deref());
+        let reason = super::path_failure::PathFailReason::classify(
+            space_mgr,
+            npc_id,
+            status,
+            routing.as_deref(),
+        );
         super::path_failure::report_path_failure(
             space_mgr,
             super::path_failure::PathFailure {

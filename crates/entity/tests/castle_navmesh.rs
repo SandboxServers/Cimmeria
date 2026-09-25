@@ -88,6 +88,7 @@ fn the_704_escort_route_is_routable() {
     let to = v(COMMS_ROOM.0, COMMS_ROOM.1, COMMS_ROOM.2);
     let path = mesh
         .find_path(&from, &to)
+        .into_waypoints()
         .expect("cell -> comms room must be one connected region");
     assert!(
         path.len() > 2,
@@ -113,6 +114,7 @@ fn the_gate_room_reaches_the_bravo_bunker() {
     let to = v(BUNKER_MUELBACH.0, BUNKER_MUELBACH.1, BUNKER_MUELBACH.2);
     let path = mesh
         .find_path(&from, &to)
+        .into_waypoints()
         .expect("gate room -> bunker must be one connected region");
     let end = path.last().unwrap();
     assert!(

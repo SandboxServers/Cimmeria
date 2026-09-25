@@ -8,7 +8,7 @@
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::PointVerdict;
 
-use cimmeria_entity::navigation::LineOfSight;
+use cimmeria_entity::navigation::{LineOfSight, PathOutcome};
 
 use super::SpaceManager;
 
@@ -27,10 +27,12 @@ impl SpaceManager {
     /// [`LineOfSight::Unknown`] covers every case where the navmesh cannot
     /// answer: no space, no navmesh loaded, an entity missing from the space,
     /// or an endpoint further from the mesh than the projection box reaches.
-    /// The last case is logged at debug, because on a meshed world it means a
-    /// spawn or a player is standing somewhere the mesh does not cover (9 of
-    /// the 13 stationary Harset mobs against `harset.nav`), and that used to
-    /// read as "blocked" and silence the NPC for good.
+    /// Every answer that is not clear is reported through the sampled
+    /// `npc_ai.los` row (one per pair per 5 s), with the ray endpoints: an
+    /// unknown on a meshed world means a spawn or a player is standing
+    /// somewhere the mesh does not cover (9 of the 13 stationary Harset mobs
+    /// against `harset.nav`), and that used to read as "blocked" and silence
+    /// the NPC for good.
     pub fn line_of_sight(&self, entity_a: u32, entity_b: u32) -> LineOfSight {
         let Some(space) = self
             .entity_space
@@ -46,19 +48,18 @@ impl SpaceManager {
         else {
             return LineOfSight::Unknown;
         };
-        let los = navmesh.line_of_sight(&a.position, &b.position);
-        if los == LineOfSight::Unknown {
-            tracing::debug!(
-                target: "movement.navmesh",
-                reason = "los_unknown_off_mesh",
-                entity_a,
-                entity_b,
-                a_on_mesh = navmesh.is_point_valid(&a.position),
-                b_on_mesh = navmesh.is_point_valid(&b.position),
-                "line of sight: an endpoint is outside navmesh coverage -- treated as clear"
-            );
-        }
-        los
+        let probe = navmesh.line_of_sight_probe(&a.position, &b.position);
+        crate::cell::service::npc_ai::detectors::los::report(
+            self,
+            entity_a,
+            entity_b,
+            a.position,
+            b.position,
+            &probe,
+            Some(navmesh.short_hash()),
+            std::time::Instant::now(),
+        );
+        probe.result
     }
 
     /// Whether the space containing `entity_id` has a navmesh loaded.
@@ -75,16 +76,31 @@ impl SpaceManager {
 
     /// Find a path between two positions within the space containing `entity_id`.
     /// Returns waypoints or `None` if no path exists or no navmesh is loaded.
+    /// A partial corridor is returned as a path, as it always was — use
+    /// [`Self::find_path_outcome`] to see which it was.
     pub fn find_path(
         &self,
         entity_id: u32,
         start: &Vector3,
         end: &Vector3,
     ) -> Option<Vec<Vector3>> {
+        self.find_path_outcome(entity_id, start, end)?
+            .into_waypoints()
+    }
+
+    /// The typed result of a path query: which Detour stage decided, whether
+    /// the corridor was partial, and how far each end snapped. `None` when
+    /// the entity is in no space or the space has no navmesh.
+    pub fn find_path_outcome(
+        &self,
+        entity_id: u32,
+        start: &Vector3,
+        end: &Vector3,
+    ) -> Option<PathOutcome> {
         let space_id = self.entity_space.get(&entity_id)?;
         let space = self.spaces.get(space_id)?;
         let navmesh = space.navmesh.as_ref()?;
-        navmesh.find_path(start, end)
+        Some(navmesh.find_path(start, end))
     }
 
     /// Check if a position is on walkable navmesh in the space containing `entity_id`.
