@@ -44,6 +44,49 @@ pub struct NpcAoIData {
     pub components: Vec<String>,
 }
 
+/// Live cell-side state of a **player** included in AoI enter events.
+///
+/// The player-ghost half of the `createOnClient()` cascade that only the
+/// cell knows: the values `SGWBeing.createOnClient()` /
+/// `SGWPlayer.createOnClient()` read off the live entity
+/// (`deprecated/python/cell/SGWBeing.py:499-514`, `SGWPlayer.py:575-581`).
+/// The identity half — name, level, archetype, alignment, `BeingAppearance`
+/// and tint args — lives on the base session and is joined in at emit time
+/// (`base::world_entry::cell_dispatch::player_ghost`), because the base owns
+/// the appearance cache that holster / equip / bandolier changes keep fresh.
+///
+/// Only populated for player entities; NPCs carry [`NpcAoIData`] instead.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PlayerAoIData {
+    /// `CellEntity::state_field` — a player who is dead, crouched or in
+    /// combat when they enter view must be introduced that way.
+    pub state_field: u32,
+    /// Currently selected target entity id, `0` for none (`onTargetUpdate`).
+    pub target_id: i32,
+    /// `StatList::serialize_public()` — the witness-visible stat subset,
+    /// already in `onStatUpdate` wire form. Python's `sendStats` sends a
+    /// non-owning mailbox `publicStats` only, never the full list.
+    pub stat_update: Vec<u8>,
+    /// `StatList::serialize_public_base()` for `onStatBaseUpdate`.
+    pub stat_base_update: Vec<u8>,
+    /// Ammo type of the active bandolier item, `0` when the slot is empty
+    /// (`onEntityProperty(GENERICPROPERTY_AmmoTypeId, …)`).
+    pub ammo_type_id: i32,
+}
+
+impl PlayerAoIData {
+    /// Snapshot the witness-visible live state of a player cell entity.
+    pub fn from_entity(entity: &cimmeria_entity::cell_entity::CellEntity) -> Self {
+        Self {
+            state_field: entity.state_field,
+            target_id: entity.current_target_id.unwrap_or(0),
+            stat_update: entity.stats.serialize_public(),
+            stat_base_update: entity.stats.serialize_public_base(),
+            ammo_type_id: entity.active_ammo_type(),
+        }
+    }
+}
+
 /// A saved mission loaded from the database for re-login.
 #[derive(Debug, Clone)]
 pub struct SavedMission {

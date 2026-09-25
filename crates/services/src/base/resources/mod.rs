@@ -156,6 +156,12 @@ const CATEGORY_ITEMS: u32 = 4;
 /// pushed via the cooked-data invalidation handshake.
 const CATEGORY_DIALOGS: u32 = 5;
 
+/// Category id for `CookedDataKismetSeqEvent.pak` (see [`CATEGORY_PAKS`]).
+/// `onSequence` carries a sequence id; the client resolves it to a Kismet
+/// script path from this catalogue, so a sequence the shipped PAK lacks must
+/// be pushed via the cooked-data invalidation handshake.
+const CATEGORY_KISMET_SEQUENCES: u32 = 1;
+
 /// Compute the deterministic metadata bump for a set of overrides.
 ///
 /// The bump is hashed from every field that affects what the client sees:
@@ -222,6 +228,22 @@ fn compute_dialog_metadata_bump(overrides: &[super::dialog_overrides::DialogOver
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }
 
+/// Companion bump for the Kismet sequences category. Hashes every field the
+/// client sees, so identical override content gives an identical version
+/// across server starts and any edit changes it.
+fn compute_sequence_metadata_bump(
+    overrides: &[super::sequence_overrides::SequenceOverride],
+) -> u32 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for ov in overrides {
+        ov.sequence_id.hash(&mut hasher);
+        ov.event_id.hash(&mut hasher);
+        ov.kismet_script_name.hash(&mut hasher);
+    }
+    ((hasher.finish() as u32) & 0xFFFF) | 0x1
+}
+
 impl ResourceCache {
     /// Load all PAK files from the given directory and apply Cimmeria
     /// overrides (mission XML for new "Equip the …" steps).
@@ -275,6 +297,9 @@ impl ResourceCache {
         // category id and can't clobber another's invalid-keys list.
         let dialog_overridden = Self::apply_dialog_overrides(&mut categories);
         overridden_elements.extend(dialog_overridden);
+        // Kismet sequences category (1) — disjoint from the others.
+        let sequence_overridden = Self::apply_sequence_overrides(&mut categories);
+        overridden_elements.extend(sequence_overridden);
 
         Ok(Self {
             categories: Arc::new(categories),
@@ -519,6 +544,61 @@ impl ResourceCache {
     }
 
     /// Load a single PAK file (ZIP archive) into a CategoryData.
+    /// Add Cimmeria's Kismet sequences to the freshly-loaded
+    /// `CookedDataKismetSeqEvent` category and bump its metadata so a client's
+    /// next `versionInfoRequest` takes the per-key handshake.
+    ///
+    /// This is also what keeps category 1 off the destructive path: with no
+    /// override list, a version mismatch answers `invalidate_all = true` and
+    /// pushes nothing, and the client empties its whole sequence table.
+    fn apply_sequence_overrides(
+        categories: &mut HashMap<u32, CategoryData>,
+    ) -> HashMap<u32, Vec<u32>> {
+        use super::sequence_overrides::{generate_sequence_xml, SEQUENCE_OVERRIDES};
+
+        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
+        if SEQUENCE_OVERRIDES.is_empty() {
+            return overridden;
+        }
+
+        let Some(sequences) = categories.get_mut(&CATEGORY_KISMET_SEQUENCES) else {
+            tracing::warn!(
+                category = CATEGORY_KISMET_SEQUENCES,
+                "CookedDataKismetSeqEvent not loaded; skipping sequence overrides"
+            );
+            return overridden;
+        };
+
+        let mut applied: Vec<u32> = Vec::with_capacity(SEQUENCE_OVERRIDES.len());
+        for ov in SEQUENCE_OVERRIDES {
+            let was_present = sequences.elements.contains_key(&ov.sequence_id);
+            sequences
+                .elements
+                .insert(ov.sequence_id, generate_sequence_xml(ov));
+            applied.push(ov.sequence_id);
+            tracing::info!(
+                sequence_id = ov.sequence_id,
+                event_id = ov.event_id,
+                replaced_existing = was_present,
+                "Applied Cimmeria Kismet sequence override",
+            );
+        }
+
+        let bump = compute_sequence_metadata_bump(SEQUENCE_OVERRIDES);
+        sequences.metadata = sequences.metadata.wrapping_add(bump);
+        applied.sort_unstable();
+        tracing::info!(
+            category = CATEGORY_KISMET_SEQUENCES,
+            count = applied.len(),
+            bump,
+            bumped_metadata = sequences.metadata,
+            "Cimmeria Kismet sequence overrides applied; metadata bumped",
+        );
+        overridden.insert(CATEGORY_KISMET_SEQUENCES, applied);
+
+        overridden
+    }
+
     fn load_pak(pak_path: &str) -> Result<CategoryData, String> {
         let file =
             std::fs::File::open(pak_path).map_err(|e| format!("Failed to open {pak_path}: {e}"))?;

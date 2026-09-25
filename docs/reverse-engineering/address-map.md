@@ -395,6 +395,32 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 | `0x019db3ac` | vtable | MemberCallback<SGW::Crafting, Event_NetIn_TimerUpdate> |
 | `0x019aad4c` | vtable | MemberCallback<GameEntityManager, Event_NetIn_TimerUpdate> |
 
+### Dialog System — DialogController Display Path (DU-RE, 2026-09-21)
+
+Full trace in [findings/dialog-controller-wire-flow.md](findings/dialog-controller-wire-flow.md).
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x00d25900` | `FUN_00d25900` | True `Event_NetIn_DialogDisplay` handler (client method 105); reads 5 named Mercury fields; always inserts into `AllAvailableDialogs` and requests the cooked-data load |
+| `0x00d26e60` | `FUN_00d26e60` | `MemberCallback<DialogController, Event_NetIn_DialogDisplay>` ctor |
+| `0x00d25310` | `FUN_00d25310` | `Event_Cache_ElementReady<long,CookedKismetEventSetData>` handler — **not** the wire handler; corrects the label in `dialog-portrait-lookup.md` |
+| `0x00d25200` | `FUN_00d25200` | Available-versus-Display dispatcher; branches on the `IsImmediate` handoff slot at `DialogController+0x44` |
+| `0x00d24f10` | `FUN_00d24f10` | Display core: slot pick on the screen-type byte, eviction via discard, portrait pins `0x1b58`/`0x1bbc`, emits `Event_UI_DialogDisplay` |
+| `0x00d27a80` | `FUN_00d27a80` | Emits `Event_UI_DialogAvailable` (via `TypedEmitInfo` ctor `FUN_00d26aa0`) |
+| `0x00d27b80` | `FUN_00d27b80` | Emits `Event_UI_DialogDisplay` (via `TypedEmitInfo` ctor `FUN_00d26b70`) |
+| `0x00d249c0` | `FUN_00d249c0` | Discard: sends `dialogButtonChoice(id, 0xFFFFFFFF)` iff the dialog has zero cooked buttons; also the `0x1c20 + type` and `0x1b59` pin calls |
+| `0x00ad86c0` | `FUN_00ad86c0` | `discardAvailableDialog` Lua binding implementation |
+| `0x00d288c0` | `FUN_00d288c0` | `AllAvailableDialogs` insert at `DialogController+0x30`, keyed by `DialogID` |
+| `0x00d25160` | `FUN_00d25160` | `activateAvailableDialog` core — local promotion only, no network send |
+| `0x00aa5870` | `FUN_00aa5870` | `activateAvailableDialog` Lua-arg shim → `FUN_00ad8670` → `FUN_00d25160` |
+| `0x00aa5d70` | `FUN_00aa5d70` | `selectActiveDialogChoice` Lua-arg shim → `FUN_00ad8690` → `FUN_00d24e70` |
+| `0x00d24e70` | `FUN_00d24e70` | Resolves the active dialog from the slot pair; converts the 1-based Lua button id to 0-based |
+| `0x00d24860` | `FUN_00d24860` | `Event_NetOut_DialogButtonChoice` send site; indexes the screen's cooked `Buttons` array by position and sends the `ButtonID` at that position |
+| `0x00aa5970` | `FUN_00aa5970` | `getActiveDialogMissionFlags` getter → `FUN_00adcba0`; no caller in the Dialog Lua module |
+| `0x01b16120` | data | Static int table behind the `Dialog` constants: types Blurb 1, Dialog 2, Tutorial 3, Radio 4, Realization 5 (`+0x00`..`+0x10`); buttons MoreInfo 1, Accept 2, Decline 3, Generic1-3 = 4/5/6 (`+0x14`..`+0x28`) |
+| `0x00aa5eb0`–`0x00aa6090` | getters | The eleven `Dialog.*Type` / `Dialog.Button*Type` property getters over `0x01b16120` |
+| `0x01b23bdc`–`0x01b23cfc` | strings | Cooked dialog attribute names: `KismetEventSetID`, `DialogFlags`, `ScreenID`, `SpeakerID`, `Buttons`, `ButtonID`, `ButtonType` |
+
 ### CRT Import IAT Slots (for allocator replacement)
 | IAT Address | Function | DLL |
 |-------------|----------|-----|

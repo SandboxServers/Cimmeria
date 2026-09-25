@@ -82,18 +82,17 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (8, 12, 'Stasis Chamber', -334.231, 73.472, -228.026);
 
--- ── Harset (packet H10) ────────────────────────────────────────────────
+-- ── Harset (packets H10, PL-A) ─────────────────────────────────────────
 -- Ids 20-23 are reserved for the Harset rebuild campaign
 -- (docs/analysis/harset-rebuild/work-packets.md "Worker Input And
--- Ownership"). Only row 21 is seeded here.
+-- Ownership"). All four are now seeded.
 --
--- Rows 20 (world 57 Harset), 22 (69 Harset_Market) and 23
--- (70 Harset_StorageRm) are DELIBERATELY ABSENT: no coordinate for them
--- exists in any recovered script or seed, and the campaign forbids
--- inventing one. They are seeded after the M0 in-client placement
--- session pins them. Castle CA00's zero-coordinate guard in
--- `resolve_respawn_target` is what keeps the absence honest — a (0,0,0)
--- placeholder would be silently "valid" and is worse than no row.
+-- Rows 20, 22 and 23 are PLACED FROM MAP DATA, not walked in-client —
+-- the owner stopped waiting for the M0 session and asked for labelled
+-- estimates instead (docs/analysis/harset-rebuild/placements/METHOD.md).
+-- Each row's evidence and confidence is in the ledger at
+-- placements/A-arrival-and-travel.md (PL-A-02, PL-A-03, PL-A-04);
+-- correct them there and here in one edit after a playtest.
 --
 -- Row 21: world 68 Harset_CmdCenter. The coordinate is the Command
 -- Center door's arrival point, recovered from
@@ -109,4 +108,67 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 --     here is NOT standing in the return-door trigger box and is not
 --     instantly teleported back to Harset.
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (21, 68, 'Command Center Respawn', 0, 0.355, -20);
+
+-- PLACEMENT PL-A-02, provisional until a playtest.
+-- Row 20: world 57 Harset. The gate plaza, 3 m west of the gate arrival pin
+-- (stargates.stargate_id = 3) so a hub death returns the player to the same
+-- place a traveller arrives. Evidence: MAP-GEOMETRY + MAP-LANDMARK.
+--   * (-8.0, 34.0) is interior to navmesh component 187 — the 24,770 m^2 hub
+--     component — and so is every sample on the 0.6 m and 1.2 m rings around
+--     it (37/37). That matters more here than for the gate pin: this row is
+--     also the recovery candidate `nearest_valid_respawner` hands an off-mesh
+--     world-57 arrival, so a row that the mesh rejects is no recovery at all.
+--   * y -68.99 is the topmost up-facing surface obj_slab reports in the
+--     column at (-8.0, 34.0); a lower floor sheet sits at -69.31.
+--   * Clear of point set 1001 'Harset.Stargate' (2.5 m cylinder at
+--     (-0.372, -67.364, 37.353)) by 8.33 m and of point set 2078
+--     'Harset.CommandCenterTransition' (z -238..-244) by the length of the
+--     zone, so respawning triggers neither volume.
+-- NOT placed at the zone's busiest point: (1.0, -68.92, 2.9) — the plaza
+-- gateway between the two GA-GuardPost00 props — carries 6,049 of the 28,988
+-- reject rows that quote a real accepted position, the largest of the 38
+-- distinct ones, with four more clean anchors within 5 m. (It survives the
+-- synthetic-point filter: only (0,0,0) and (1,1,1) are excluded for Harset,
+-- so the round x = 1.00 is a coincidence.) It is in navmesh component 1028,
+-- one of the 1,939 fragments the H53 defect leaves behind, so it would not
+-- serve as an arrival-recovery candidate and nothing could path to it. On the
+-- rebuilt mse13 mesh that whole cluster joins the hub component, so this is
+-- the obvious re-pin the day harset.nav is rebuilt.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (20, 57, 'Harset Gate Plaza Respawn', -8, -68.989999999999995, 34);
+
+-- PLACEMENT PL-A-03, provisional until a playtest.
+-- Row 22: world 69 Harset_Market. Evidence: MAP-GEOMETRY + MAP-LANDMARK,
+-- floor only — **world 69 has no navmesh file at all**, so no on-mesh or
+-- reachability check was possible and none is claimed.
+--   * y 3.61 is the interior floor of the market building: obj_slab reports it
+--     as the topmost up-facing surface in the columns at (48, 78), (47, 77)
+--     and (49, 79), on a 16 m^2 / 34-triangle patch spanning x[46, 50]
+--     z[76, 80], with nothing overhead. The same 3.61 floor reads across
+--     x 12..96, z 6..96 wherever the roof sheet (y 17.3-19.2) does not
+--     obscure the column.
+--   * 3.0 m from the authored `EM-StandingLight05` floor lamp at
+--     (47.96, 3.48, 81.04) — a floor-standing prop, so its base height
+--     independently corroborates the 3.61 floor, and a lit spot is a walkable
+--     one.
+-- The doors between the hub and this world are not seeded yet (H14), so this
+-- row is not positioned relative to an entrance; re-pin it near the door once
+-- the door exists.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (22, 69, 'Harset Market Respawn', 48, 3.6099999999999999, 78);
+
+-- PLACEMENT PL-A-04, provisional until a playtest.
+-- Row 23: world 70 Harset_StorageRm. Evidence: MAP-GEOMETRY, with an on-mesh
+-- check — world 70 *does* have a navmesh (`data/spaces/harset_storagerm.nav`)
+-- and, unlike world 57, it is left at the default `enforce` mode, so a row the
+-- mesh rejects would be filtered straight back out by
+-- `nearest_valid_respawner`.
+--   * (50.0, 44.0) is interior to component 36 of harset_storagerm.nav —
+--     3,055 m^2 / 314 polys at y 0.2..1.2, x[16.1, 87.5] z[34.1, 99.2], which
+--     is the storage room's own floor rather than the 82,249 m^2 ground sheet
+--     (component 0) that spans the whole map.
+--   * y 0.00 exactly: obj_slab's column at (50, 44) reports the up-facing
+--     floor at 0.00, and all nineteen authored GA-Fence00/GA-Fence03 props in
+--     this map sit at y 0.000, so the fences and the floor agree.
+--   * z 44 is inside the fence-free band: every fence prop has z >= 51.2, so
+--     the row is not inside the crate maze that fills the south half.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (23, 70, 'Harset Storage Room Respawn', 50, 0, 44);
 

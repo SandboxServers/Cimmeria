@@ -1,8 +1,10 @@
-//! `.summon <name>` — move a named player to the caller-or-selection.
+//! `.summon <name>` — bring a named player to the caller.
 //!
-//! Legacy `deprecated/python/cell/commands/Player.py:321-341`. Same move as
-//! `.goto` with the roles swapped: the *named* player is the subject, and
-//! `entity = target or player` is only the destination anchor.
+//! Legacy `deprecated/python/cell/commands/Player.py:321-341` is `.goto` with
+//! the roles swapped, anchored on `entity = target or player`. The anchor rule
+//! is the one deliberate departure (owner decision 2026-09-20): the caller is
+//! always the anchor and a selection is ignored — see `summon`'s doc comment.
+//! Everything else, wording included, is still legacy's.
 
 use super::*;
 
@@ -21,19 +23,19 @@ async fn legacy_p46_summon_unknown_name_reports_not_available() {
     assert_no_move(&t);
 }
 
-/// The named player is pulled into the **anchor's exact instance**, not the
-/// default instance of the anchor's world — the mirror of `.goto`'s
+/// The named player is pulled into the **caller's exact instance**, not the
+/// default instance of the caller's world — the mirror of `.goto`'s
 /// instance-exactness criterion, and the case a GM running an instanced
 /// dungeon actually hits.
 #[tokio::test]
-async fn legacy_p46_summon_pulls_the_player_into_the_anchors_exact_instance() {
-    let (mut mgr, gm, _npc) = setup_worlds();
+async fn p46_summon_pulls_the_player_into_the_callers_exact_instance() {
+    let (mut mgr, _gm, _npc) = setup_worlds();
     let instance_a = spawn_named_player(&mut mgr, 50, INSTANCED, [11.0, 0.0, 12.0], "Ana");
     let instance_b = spawn_named_player(&mut mgr, 51, INSTANCED, [30.0, 0.0, 40.0], "Bob");
     assert_ne!(instance_a, instance_b);
 
-    // Anchor = the selected player Ana, in instance A. Subject = Bob.
-    let t = run("summon", gm, &["Bob"], Some(50), &mut mgr).await;
+    // Caller = Ana, in instance A. Subject = Bob.
+    let t = run("summon", 50, &["Bob"], None, &mut mgr).await;
 
     assert_eq!(
         t.only_gate_travel(),
@@ -43,7 +45,7 @@ async fn legacy_p46_summon_pulls_the_player_into_the_anchors_exact_instance() {
             Some(instance_a),
             [11.0, 0.0, 12.0]
         ),
-        "Bob must be transferred into Ana's exact instance, at Ana's position"
+        "Bob must be transferred into the caller's exact instance, at her position"
     );
     assert_eq!(
         mgr.get_entity_space_id(51),
@@ -53,7 +55,7 @@ async fn legacy_p46_summon_pulls_the_player_into_the_anchors_exact_instance() {
     assert_eq!(
         mgr.get_entity_space_id(50),
         Some(instance_a),
-        "the anchor must not move"
+        "the caller must not move"
     );
     assert!(
         t.has_line("Summoning player <Bob>"),
@@ -62,10 +64,10 @@ async fn legacy_p46_summon_pulls_the_player_into_the_anchors_exact_instance() {
     );
 }
 
-/// No selection: the anchor falls back to the caller (`entity = target or
-/// player`), and the caller itself is never the entity that moves.
+/// The caller is the anchor, and the caller itself is never the entity that
+/// moves.
 #[tokio::test]
-async fn legacy_p46_summon_falls_back_to_the_caller_as_anchor() {
+async fn p46_summon_brings_the_player_to_the_caller() {
     let (mut mgr, gm, _npc) = setup_worlds();
     let caller_pos = position_of(&mgr, gm);
     let caller_space = mgr.get_entity_space_id(gm).unwrap();
@@ -116,26 +118,54 @@ async fn legacy_p46_summon_same_space_snaps_the_named_player() {
     assert!(t.has_line("Summoning player <Bob>"));
 }
 
-/// The anchor may be an NPC — D15's players-only rule constrains the entity
-/// being *moved*, which for `.summon` is always the named player. Refusing
-/// here would be over-applying the restriction.
+/// The 2026-09-20 colo repro. The GM still had an NPC selected — clicked 19
+/// minutes earlier and 216 m behind them — and legacy's `target or player`
+/// anchor dropped the summoned player on that NPC instead of beside the GM.
+/// Reverting `summon` to `target.unwrap_or(caller_id)` lands Bob on the NPC's
+/// position and fails the first assertion.
 #[tokio::test]
-async fn legacy_p46_summon_accepts_an_npc_anchor() {
+async fn p46_summon_ignores_a_selected_npc() {
     let (mut mgr, gm, npc) = setup_worlds();
-    let npc_pos = position_of(&mgr, npc);
-    let npc_space = mgr.get_entity_space_id(npc).unwrap();
+    let caller_pos = position_of(&mgr, gm);
+    let caller_space = mgr.get_entity_space_id(gm).unwrap();
+    assert_ne!(
+        position_of(&mgr, npc),
+        caller_pos,
+        "fixture: the selection must stand somewhere the caller is not"
+    );
     spawn_named_player(&mut mgr, 50, CASTLE, [30.0, 0.0, 30.0], "Bob");
 
     let t = run("summon", gm, &["Bob"], Some(npc), &mut mgr).await;
 
     assert_eq!(
         t.only_gate_travel(),
-        &(50, AGNOS.to_string(), Some(npc_space), npc_pos),
-        "the player must be transferred to the NPC anchor's space and position"
+        &(50, AGNOS.to_string(), Some(caller_space), caller_pos),
+        "the player must come to the caller, not to the caller's selection"
     );
-    assert!(
-        !t.mentions("not a player"),
-        "the anchor's kind must not trip D15's subject check; got {:?}",
-        t.feedback
+}
+
+/// Same rule for a selected **player** in another instance: a GM who has a
+/// party member targeted and summons a third player gets them at their own
+/// feet, not inside the party member's instance.
+#[tokio::test]
+async fn p46_summon_ignores_a_selected_player_in_another_instance() {
+    let (mut mgr, gm, _npc) = setup_worlds();
+    let caller_pos = position_of(&mgr, gm);
+    let caller_space = mgr.get_entity_space_id(gm).unwrap();
+    let anas_instance = spawn_named_player(&mut mgr, 50, INSTANCED, [11.0, 0.0, 12.0], "Ana");
+    spawn_named_player(&mut mgr, 51, CASTLE, [30.0, 0.0, 30.0], "Bob");
+    assert_ne!(anas_instance, caller_space);
+
+    let t = run("summon", gm, &["Bob"], Some(50), &mut mgr).await;
+
+    assert_eq!(
+        t.only_gate_travel(),
+        &(51, AGNOS.to_string(), Some(caller_space), caller_pos),
+        "Bob must land beside the caller, not in the selected player's instance"
+    );
+    assert_eq!(
+        mgr.get_entity_space_id(50),
+        Some(anas_instance),
+        "the selected player is not part of the command and must not move"
     );
 }

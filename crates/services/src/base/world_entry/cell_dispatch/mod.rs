@@ -39,15 +39,18 @@ mod aoi;
 mod aoi_dispatch;
 mod bandolier;
 mod contact_list_dispatch;
+mod deferred_flush;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod minigame;
+mod player_ghost;
+mod position;
 mod progression_dispatch;
 mod state_field;
 mod system_options;
 mod vendor_dispatch;
 
-pub(crate) use aoi::flush_deferred_aoi;
+pub(crate) use deferred_flush::{flush_deferred_aoi, flush_deferred_self_methods};
 
 #[cfg(test)]
 mod tests;
@@ -155,6 +158,7 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::ActiveSlotUpdate { .. }
         | CellToBaseMsg::SystemOptionsUpdate { .. }
         | CellToBaseMsg::StateFieldUpdate { .. }
+        | CellToBaseMsg::PersistPosition { .. }
         | CellToBaseMsg::RefreshAppearance { .. }
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,
     }
