@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 70 per-system reverse engineering findings with evidence.
+This directory contains 71 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -76,6 +76,7 @@ This directory contains 70 per-system reverse engineering findings with evidence
 | `bsp-model-polys-serialize.md` | #46 (castle.nav) | `UModel`/`UPolys`/`FBspNode`/`FBspSurf`/`FPoly` binary serialize layout, byte-exact validated against real `Castle-000a0002.umap` exports; resolves "is `Polys` stripped in cooked packages?" (no); Rust decoder recipe for `crates/upk-objects` | HIGH (wire layout) / MEDIUM (a few unidentified trailing fields) |
 | `castle-bsp-geometry-location.md` | #46 (castle.nav) | Which Castle packages actually hold collidable BSP — only 16 of 144 chunks carry world geometry, every `Brush`-owned `Model` is a 108-byte stub, persistent-map packages carry none; split out of `bsp-model-polys-serialize.md` | HIGH (measured over all 144 chunks) |
 | `terrain-serialize-real-data-validation.md` | #46 (castle.nav) | `ATerrain::Serialize` recipe validated against `Castle-000a0002.umap` (522 KB sample, different map from the original `Castle_CellBlock` validation); records the flat-byte-skip property-walk bug; split out of `bsp-model-polys-serialize.md` | HIGH |
+| `cover-world-placement.md` | NA20 (npc-ai-restoration) | Cover node world-space placement — `SGWSpecCoverNode`/`SGWCoverNodeComponent` decoded directly from Castle/Castle_CellBlock `.umap` chunks (4,024 nodes, already world-space, no transform needed), corrects the prefab-pak-transform hypothesis, cross-validated against `castle_cellblock.nav` and the hand-authored MedStationDesk seed row; go/no-go and data model for NA21 | HIGH (placement, counts) / MEDIUM (relation to the separate prefab-pak pipeline) |
 
 ## Finding Format
 
