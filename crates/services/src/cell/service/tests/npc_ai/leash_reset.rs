@@ -247,7 +247,7 @@ async fn leashing_npc_evades_threat_and_logs_it() {
 async fn reaggro_is_suppressed_just_after_a_reset() {
     let mut mgr = make_aggression_fixture(NPC, 10, PLAYER, [10.0, 0.0, 0.0]);
     if let Some(npc) = mgr.get_entity_mut(NPC) {
-        npc.aggression = 1;
+        npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Hostile);
         npc.leash.reaggro_suppressed_until = Some(Instant::now() + Duration::from_secs(5));
     }
     ai_tick(&mut mgr).await;
@@ -274,7 +274,10 @@ async fn reaggro_is_suppressed_just_after_a_reset() {
 async fn aggro_leash_loop_is_gone_over_sixty_seconds() {
     let mut mgr = make_aggression_fixture(NPC, 10, PLAYER, [60.0, 0.0, 0.0]);
     seed_default_ability(&mut mgr, 0, 30);
-    mgr.get_entity_mut(NPC).unwrap().aggression = 1;
+    // Faction 10 is hostile on its own (NA13). The 60 u player is outside
+    // the 18 u default aggro radius, which on its own would stop the loop;
+    // widen it to the AoI so this still tests the leash, as before NA13.
+    mgr.get_entity_mut(NPC).unwrap().aggro.radius_override = Some(100.0);
     let logs = LogCapture::install();
 
     for _ in 0..30 {

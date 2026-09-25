@@ -27,9 +27,9 @@
 -- likely as floor (and `unstuck` is still unimplemented). Nearest authored
 -- actor is the Castle_DHD prop (spawnlist 2, 806.27/55.10/517.24) at ~7.6
 -- units; every NPC is >= 7.8 away. Proximity to the faction-1 Jaffa is safe
--- as seeded: NPC auto-aggro requires `aggression > 0`, which no seeded
--- template sets (it is only raised by the `set_aggression` content action or
--- the GM console).
+-- as seeded: since NA13 an NPC aggroes on sight only when it is HOSTILE to
+-- players (its spawn's `aggression_override`, else the faction reaction
+-- table), and faction 1 reacts FRIENDLY to players (faction 3).
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (1, 8, 'Checkpoint Alpha Respawn', 800, 55.2099991, 513);
 
 -- RECONSTRUCTION, provisional until in-client UAT.

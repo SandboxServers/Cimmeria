@@ -69,7 +69,7 @@ pub struct SpawnRecord {
     pub patrol_point_delay_secs: f32,
     /// Wander radius in world units. `0.0` → no wander. Positive
     /// values opt the NPC into `AiState::Wander` from Idle (when
-    /// it has no patrol_path and no positive aggression).
+    /// it has no patrol_path and is not hostile on sight).
     pub wander_radius: f32,
     /// Lower bound of the random dwell duration drawn between
     /// successive wander hops, in seconds. Defaults to `3.0` when
@@ -104,6 +104,16 @@ pub struct SpawnRecord {
     /// SQL so the runtime can tell "the template chose 50" from "the template
     /// said nothing" in its logs.
     pub leash_distance: Option<f32>,
+    /// Per-template proximity-aggro radius in world units, from
+    /// `entity_templates.aggro_radius` (NA13). `None` (NULL) means the
+    /// server default `combat::DEFAULT_AGGRO_RADIUS` (18) applies.
+    pub aggro_radius: Option<f32>,
+    /// Per-spawn aggression override, from `spawnlist.aggression_override`
+    /// (`EMobAggressionLevel`, NA13). `None` (NULL) means the faction
+    /// reaction decides. Seeded NEUTRAL on chain-armed spawns so their chain,
+    /// not proximity, starts the fight. Always `None` on a template
+    /// prototype: it is a placement property, like `is_stationary`.
+    pub aggression_override: Option<cimmeria_entity::cell_entity::MobAggression>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -152,7 +162,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                COALESCE(t.move_speed, 0.6) AS move_speed, \
-               t.leash_distance, \
+               t.leash_distance, t.aggro_radius, s.aggression_override, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -226,6 +236,10 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             follow_max_distance: r.get::<f32, _>("follow_max_distance"),
             move_speed: r.get::<f32, _>("move_speed"),
             leash_distance: normalize_leash_distance(r.get::<Option<f32>, _>("leash_distance")),
+            aggro_radius: normalize_aggro_radius(r.get::<Option<f32>, _>("aggro_radius")),
+            aggression_override: normalize_aggression_override(
+                r.get::<Option<i16>, _>("aggression_override"),
+            ),
         })
         .collect();
 
@@ -280,6 +294,22 @@ pub(crate) async fn load_patrol_points(
 /// default by returning `None`.
 pub(crate) fn normalize_leash_distance(raw: Option<f32>) -> Option<f32> {
     raw.filter(|d| d.is_finite() && *d > 0.0)
+}
+
+/// Keep a template's `aggro_radius` only when it is a positive, finite
+/// radius; the same belt-and-suspenders as [`normalize_leash_distance`]
+/// behind the DB CHECK. `None` means the server default applies.
+pub(crate) fn normalize_aggro_radius(raw: Option<f32>) -> Option<f32> {
+    raw.filter(|d| d.is_finite() && *d > 0.0)
+}
+
+/// A seeded `spawnlist.aggression_override` as an `EMobAggressionLevel`.
+/// The DB CHECK already limits it to 1-5; anything else is dropped (the
+/// faction reaction then decides) rather than read as hostile.
+pub(crate) fn normalize_aggression_override(
+    raw: Option<i16>,
+) -> Option<cimmeria_entity::cell_entity::MobAggression> {
+    raw.and_then(|v| cimmeria_entity::cell_entity::MobAggression::from_level(v as i32))
 }
 
 /// Downgrade a raw `respawn_secs` value from the DB to the runtime's
@@ -388,8 +418,8 @@ pub fn spawn_instance_npcs_from_records(
 }
 
 /// The resolved behaviour of a freshly spawned NPC, so "why does this NPC act
-/// like that" is one query instead of a seed read: an `aggression` of 0 means
-/// it will never notice a player on its own; `use_cover = false` means the
+/// like that" is one query instead of a seed read: an `aggression` other than
+/// 1 (HOSTILE) means it will never notice a player on its own; `use_cover = false` means the
 /// loaded cover nodes are irrelevant to it; `respawn_secs = None` is one-shot.
 fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
     // NA02: a spawn that passes `is_point_valid` below but fails
@@ -414,7 +444,11 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         ground_y = ?space_mgr.get_navmesh_height(npc_id, e.position.x, e.position.y, e.position.z),
         level = e.level,
         faction = e.faction,
-        aggression = e.aggression,
+        // Effective level toward players (1 = hostile, NA13), whether it is
+        // an override, and the radius the Idle scan uses.
+        aggression = crate::cell::combat::aggression_toward_players(e).level(),
+        aggression_override = ?e.aggro.override_level.map(|l| l.level()),
+        aggro_radius = crate::cell::combat::aggro_radius(e),
         use_cover = e.use_cover,
         is_stationary = e.is_stationary,
         move_speed = e.move_speed,

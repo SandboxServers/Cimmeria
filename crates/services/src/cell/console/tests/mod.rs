@@ -17,6 +17,8 @@ mod bookmark;
 #[cfg(test)]
 mod gm_audit_identity;
 #[cfg(test)]
+mod na13_aggro;
+#[cfg(test)]
 mod p02;
 #[cfg(test)]
 mod p03;

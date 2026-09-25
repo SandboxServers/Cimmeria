@@ -93,6 +93,13 @@ pub(super) const SPECS: &[Spec] = &[
         1,
         1,
         Target::Mob,
-        "Set the aggression level of the targeted mob",
+        "Set the targeted mob's aggression override (1 hostile..5, 0 passive, 'clear')",
+    ),
+    spec(
+        "aggro",
+        0,
+        1,
+        Target::None,
+        "Mobs notice you: '.aggro off' / '.aggro on' (no arg shows it)",
     ),
 ];

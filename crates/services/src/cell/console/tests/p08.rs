@@ -126,6 +126,8 @@ fn record_from_request(
         follow_max_distance: 5.0,
         move_speed: 0.6,
         leash_distance: None,
+        aggro_radius: None,
+        aggression_override: None,
     }
 }
 

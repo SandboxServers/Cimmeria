@@ -13,10 +13,10 @@ use crate::cell::combat::AggroCause;
 /// fought must be disarmed, and must stay disarmed after something else
 /// flips it back to Idle.
 ///
-/// Two reverts fail this. Dropping `npc.aggression = 0` fails the final
+/// Two reverts fail this. Dropping the NEUTRAL override fails the final
 /// assertion: the Idle flip re-admits the NPC to the aggression branch of
 /// the AI tick and it seeds threat on the player standing next to it.
-/// Dropping the `aggression > 0` term from the cleanup probe fails it for
+/// Dropping the hostility term from the cleanup probe fails it for
 /// a subtler reason — this NPC never fought, so `last_movement_type` is
 /// `None` and `threat_list` is empty, and the handler early-outs before
 /// reaching the disarm at all.
@@ -26,7 +26,7 @@ async fn a_submitted_npc_does_not_re_aggro_on_proximity() {
     add_player(&mut mgr, PLAYER_A, 0.0);
     add_npc(&mut mgr, NPC, 2.0);
     if let Some(npc) = mgr.get_entity_mut(NPC) {
-        npc.aggression = 3;
+        npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Hostile);
     }
     // The player has to be a witness for the idle-auto-aggro scan to see
     // them at all.
@@ -38,7 +38,11 @@ async fn a_submitted_npc_does_not_re_aggro_on_proximity() {
 
     let npc = mgr.get_entity(NPC).unwrap();
     assert_eq!(npc.ai_state(), AiState::Submit, "the surrender holds");
-    assert_eq!(npc.aggression, 0, "and the NPC is disarmed");
+    assert_eq!(
+        npc.aggro.override_level,
+        Some(cimmeria_entity::cell_entity::MobAggression::Neutral),
+        "and the NPC is disarmed"
+    );
     assert!(
         mgr.get_entity(PLAYER_A).unwrap().threatened_mobs.is_empty(),
         "standing next to a surrendered NPC must not start a fight",

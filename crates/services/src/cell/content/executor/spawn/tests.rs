@@ -95,6 +95,8 @@ pub(in crate::cell::content::executor) fn template(faction: i32) -> SpawnRecord 
         follow_max_distance: 5.0,
         move_speed: 0.6,
         leash_distance: None,
+        aggro_radius: None,
+        aggression_override: None,
     }
 }
 
@@ -312,9 +314,10 @@ async fn spawn_applies_aggression_and_stationary_overrides() {
         .get_entity(npc_with_tag(&mgr, actor).expect("spawn must succeed"))
         .unwrap();
     assert_eq!(
-        npc.aggression, 1,
-        "aggression has no SpawnRecord field, so a regression that only \
-         clones the prototype would leave this 0 and the mission NPC passive"
+        npc.aggro.override_level,
+        Some(cimmeria_entity::cell_entity::MobAggression::Hostile),
+        "the action's aggression is not on the template prototype, so a \
+         regression that only clones the prototype would leave no override"
     );
     assert!(npc.is_stationary);
 }
@@ -443,7 +446,7 @@ async fn spawn_from_a_non_player_actor_is_refused() {
             0.0,
             "SomeOtherTag",
             false,
-            0,
+            None,
         )
         .expect("fixture NPC must spawn");
     let before = mgr.all_npc_entity_ids().len();

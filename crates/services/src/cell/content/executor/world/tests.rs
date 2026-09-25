@@ -805,13 +805,13 @@ fn set_aggression_missing_tag_leaves_unrelated_entities_untouched() {
         .get_entity_mut(101)
         .expect("npc entity must exist immediately after create_entity");
     n.tag = Some("NotDrone".to_string());
-    assert_eq!(n.aggression, 0, "fixture sanity: NPC starts passive");
+    assert_eq!(n.aggro.override_level, None, "fixture sanity: no override");
 
     set_aggression("Drone".to_string(), 1, 1, 1032, &mut mgr);
 
     assert_eq!(
-        mgr.get_entity(101).unwrap().aggression,
-        0,
+        mgr.get_entity(101).unwrap().aggro.override_level,
+        None,
         "missing-tag path must not touch any entity's aggression — \
          a regression that fell through to mutating an arbitrary entity \
          would trip here"

@@ -561,7 +561,7 @@ restart, never written to the DB):**
 | Search | `.searchitem` `.searchmission` `.searchtemplate` `.players` | ✅ Yes |
 | Stat readouts | `.primarystats` `.speedstats` `.armorstats` `.qrstats` `.absorbstats` `.stealthstats` | ✅ Yes |
 | Entity authoring | `.tag` `.name` `.alignment` `.nameid` `.staticmesh` `.bodyset` `.eventset` `.interactiontype` `.lookat` `.visible` `.setcombatant` `.unsetcombatant` `.addcomponent` `.delcomponent` `.adddialog` `.removedialog` `.dynamicupdate` | 🚧 In-memory (pair with `.savespawn`) |
-| Net / AI debug | `.net_seq` `.net_seqto` `.net_seqfrom` `.net_timer` `.net_mapinfo` `.net_speak` `.net_dialog` `.net_challenge` `.debug_velocity` `.debug_controller` `.debug_follow` `.threaten` `.aggression` | ✅ Yes |
+| Net / AI debug | `.net_seq` `.net_seqto` `.net_seqfrom` `.net_timer` `.net_mapinfo` `.net_speak` `.net_dialog` `.net_challenge` `.debug_velocity` `.debug_controller` `.debug_follow` `.threaten` `.aggression` `.aggro` | ✅ Yes. `.aggro off` stops idle mobs noticing you, `.aggro on` restores it, and `.aggro` alone shows it. `.aggression <1-5|0|clear>` sets the selected mob's aggression override (1 hostile, 3 neutral; 0 means passive; `clear` goes back to its faction) |
 | Crafting | `.learndiscipline` `.forgetdiscipline` `.allcraft` | 🚧 Partly |
 | Mission gaps | `.missionfail` `.missionrewards` | ✅ / 🚧 (preview) |
 | Spawn authoring | `.savespawn` `.delspawn` `.autosavespawn` `.respawnall` `.spawnrandom` | ✅ Yes — `.savespawn`/`.delspawn` **write the DB** (commit seed) |

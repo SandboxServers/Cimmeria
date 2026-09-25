@@ -103,6 +103,8 @@ fn spawn_npc_from_record_sets_template_fields() {
         follow_max_distance: 5.0,
         move_speed: 0.6,
         leash_distance: None,
+        aggro_radius: None,
+        aggression_override: None,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();

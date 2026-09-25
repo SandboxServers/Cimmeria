@@ -477,6 +477,12 @@ VALUES (1007, 'add_dialog_set', 5230, NULL, '{"slot": 21, "mission_id": 622}', 0
 -- shares the ArmYourself_NIDGuard spawn with the Arm Yourself pistol
 -- area and using this slot keeps the new chain out of the 1112-1120
 -- range work-packets.md reserves for a later packet (C03).
+--
+-- NA13: `level` is an `EMobAggressionLevel`, so 1 is HOSTILE (it meant
+-- "aggressive" before and still does). The guard's faction (10) would make
+-- it hostile on sight on its own; spawnlist row 20 seeds
+-- `aggression_override = 3` (NEUTRAL) so this chain, not proximity, still
+-- starts the fight.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1008, 'Region8 entry: aggro ArmYourself_NIDGuard (restored from purged auto-export, B3 fix)', 'space', 8, true, 0);
 
@@ -866,7 +872,8 @@ VALUES (1032, 'step_status', 639, '2145', 'eq', 'active', 0);
 -- Canonical Python ordering from FindAmbernol.py:21-35 + :151-159:
 --   1. add_item 19          (inventory.pickedUpItem)
 --   2. destroy_entity vial  (destroyCellEntity)
---   3. set_aggression 1     (drone.setAggression — durable behavior bit)
+--   3. set_aggression 1     (drone.setAggression — HOSTILE; spawnlist row 10
+--                            seeds NEUTRAL so the drone waits for this, NA13)
 --   4. generate_threat 1000 (drone.threatGenerated — focuses drone on this player)
 --   5. display_dialog 2297  (Net'an reaction VO)
 --   6. play_sequence 10001  (cinematic / door / etc.)

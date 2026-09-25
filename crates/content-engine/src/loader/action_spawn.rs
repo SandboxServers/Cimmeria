@@ -102,10 +102,8 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
 
             // Per-spawn descriptor fields. Parsed as `Option` so the
             // executor can tell "the author said no" from "the author said
-            // nothing". Neither has an `entity_templates` column —
-            // `is_stationary` lives on `spawnlist` and aggression is a pure
-            // runtime `CellEntity` field — so `None` means "off", never
-            // "inherit".
+            // nothing". Both are `spawnlist` columns, not template ones.
+            // `aggression: None` means "derive from faction" (NA13).
             let is_stationary = params.get("is_stationary").and_then(|v| v.as_bool());
             let aggression = params
                 .get("aggression")

@@ -139,20 +139,37 @@ pub(super) async fn spawn_entity(
     // rather than this executor warning on every fire (PR #662 review,
     // finding 5 — see `content_engine::loader::action_spawn`).
 
-    let agg = aggression.unwrap_or(0);
-    // Players are never assigned a faction (`CellEntity::new` sets 0 and no
-    // world-entry path writes it), and `npc_ai_idle_auto_aggro` skips any
-    // candidate whose faction equals the NPC's. A hostile template with
-    // faction 0 therefore never aggros, silently. Surface it at spawn time
-    // so the content author sees it next to the row that caused it.
-    if agg > 0 && template_faction == 0 {
+    // The action's `aggression` is a per-spawn override (NA13): `1..=5`
+    // are `EMobAggressionLevel`, `0` is the pre-NA13 "passive" (NEUTRAL),
+    // absent means the faction reaction decides. An out-of-range value is
+    // dropped with a WARN (faction-derived) rather than read as hostile.
+    let agg = match aggression {
+        None => None,
+        Some(v) => match crate::cell::combat::override_from_content_level(v) {
+            Some(level) => Some(level),
+            None => {
+                tracing::warn!(
+                    entity_id, template_id, %tag, chain_id, aggression = v,
+                    reason = "invalid_aggression",
+                    "spawn_entity: aggression is not 0-5 -- ignored, the faction reaction decides"
+                );
+                None
+            }
+        },
+    };
+    // Players react as faction 3 on the wire, so a HOSTILE override is what
+    // the Idle scan checks; but it also skips a candidate whose *server*
+    // faction equals the NPC's, and players are server faction 0. A hostile
+    // spawn with a faction-0 template therefore never aggros, silently.
+    // Surface it at spawn time next to the row that caused it.
+    if agg.is_some_and(|l| l.is_hostile()) && template_faction == 0 {
         tracing::warn!(
             entity_id, template_id, %tag, chain_id,
             reason = "aggressive_spawn_faction_zero",
-            "spawn_entity: aggression > 0 on a template whose faction is 0 (or \
-             NULL) -- auto-aggro compares NPC faction against the player's, and \
-             players are always faction 0, so this NPC will never attack. Give \
-             the entity_templates row a non-zero faction."
+            "spawn_entity: hostile aggression on a template whose faction is 0 (or \
+             NULL) -- auto-aggro skips a player on the NPC's own server faction, and \
+             players are always server faction 0, so this NPC will never attack. \
+             Give the entity_templates row a non-zero faction."
         );
     }
 
@@ -176,7 +193,8 @@ pub(super) async fn spawn_entity(
             // inserts (spatial grid *and* `space.entities`).
             tracing::info!(
                 entity_id, npc_entity_id, template_id, %tag, %world_name,
-                space_id, ?position, heading, aggression = agg,
+                space_id, ?position, heading,
+                aggression = ?agg.map(|l| l.level()),
                 is_stationary = is_stationary.unwrap_or(false), chain_id,
                 "Content: spawned mission entity"
             );

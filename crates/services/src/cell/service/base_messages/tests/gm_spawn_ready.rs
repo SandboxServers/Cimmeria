@@ -43,6 +43,8 @@ fn gm_record(template_id: i32, pos: [f32; 3]) -> spawner::SpawnRecord {
         follow_max_distance: 5.0,
         move_speed: 0.6,
         leash_distance: None,
+        aggro_radius: None,
+        aggression_override: None,
     }
 }
 

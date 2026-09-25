@@ -39,7 +39,7 @@ fn set_aggression_tag_miss_warns_with_tag_and_chain() {
     assert!(ev.has_field("event", "set_aggression_tag_miss"), "{ev:?}");
     assert!(ev.has_field("tag", "Dorne"), "{ev:?}");
     assert!(ev.has_field("chain_id", "1032"), "{ev:?}");
-    assert_eq!(mgr.get_entity(101).unwrap().aggression, 0);
+    assert_eq!(mgr.get_entity(101).unwrap().aggro.override_level, None);
 }
 
 /// The success path is INFO with `from` / `to`, and raises no WARN.
@@ -50,13 +50,16 @@ fn set_aggression_hit_logs_from_and_to_at_info() {
 
     set_aggression("Drone".to_string(), 2, 1, 1032, &mut mgr);
 
-    assert_eq!(mgr.get_entity(101).unwrap().aggression, 2);
+    assert_eq!(
+        mgr.get_entity(101).unwrap().aggro.override_level,
+        Some(cimmeria_entity::cell_entity::MobAggression::Suspicious)
+    );
     let ev = logs
         .find_message(Level::INFO, "Content: set aggression")
         .expect("a hit must log at INFO");
     assert!(ev.has_field("event", "set_aggression"), "{ev:?}");
-    assert!(ev.has_field("from", "0"), "{ev:?}");
-    assert!(ev.has_field("to", "2"), "{ev:?}");
+    assert!(ev.has_field("from", "faction"), "{ev:?}");
+    assert!(ev.has_field("to", "suspicious"), "{ev:?}");
     assert!(
         logs.all().iter().all(|c| c.level != Level::WARN),
         "a hit must not warn"
@@ -91,4 +94,41 @@ async fn generate_threat_action_logs_the_content_threat_cause() {
         .find(|c| c.target == "npc_ai.transition")
         .expect("and a transition row");
     assert!(transition.has_field("reason", "content"), "{transition:?}");
+}
+
+/// A level outside 0-5 is refused with a WARN and changes nothing. Fails if
+/// an out-of-range seed value is stored as an override again (pre-NA13 any
+/// `i32` was accepted and anything `> 0` read as hostile).
+#[test]
+fn set_aggression_invalid_level_warns_and_changes_nothing() {
+    let mut mgr = make_space_mgr();
+    let logs = LogCapture::install();
+
+    set_aggression("Drone".to_string(), 7, 1, 1032, &mut mgr);
+
+    let ev = logs
+        .find_event(Level::WARN, "is not 0-5", "invalid_level")
+        .expect("an invalid level must WARN with reason=invalid_level");
+    assert!(
+        ev.has_field("event", "set_aggression_invalid_level"),
+        "{ev:?}"
+    );
+    assert_eq!(mgr.get_entity(101).unwrap().aggro.override_level, None);
+}
+
+/// `0` keeps its pre-NA13 meaning (passive): NEUTRAL, which disarms even a
+/// faction-10 NPC. Fails if 0 maps to "no override" (faction-derived).
+#[test]
+fn set_aggression_zero_disarms_with_neutral() {
+    let mut mgr = make_space_mgr();
+    mgr.get_entity_mut(101).unwrap().faction = crate::cell::combat::HOSTILE_FACTION;
+
+    set_aggression("Drone".to_string(), 0, 1, 1032, &mut mgr);
+
+    let npc = mgr.get_entity(101).unwrap();
+    assert_eq!(
+        npc.aggro.override_level,
+        Some(cimmeria_entity::cell_entity::MobAggression::Neutral)
+    );
+    assert!(!crate::cell::combat::is_hostile_to_players(npc));
 }

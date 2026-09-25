@@ -29,6 +29,8 @@
 //!   and lost targets (draining their combat state) and start the walk home
 //!   when nobody is left.
 //! - [`idle_aggro`] — the Idle auto-aggro scan that seeds Fighting.
+//! - [`aggro_gates`] — that scan's candidate gates (hostility, GM toggle,
+//!   vertical band, radius, line of sight) and reject reasons (NA13).
 //! - [`ability_select`] — ability bucket choice, range resolution,
 //!   and the min-range backup-waypoint geometry.
 //! - [`patrol`] / [`wander`] / [`investigate`] / [`follow`] — the
@@ -52,6 +54,7 @@
 
 mod ability_select;
 mod aggro_acquired;
+mod aggro_gates;
 pub(in crate::cell) mod detectors;
 mod dispatch;
 mod fight;
@@ -96,6 +99,16 @@ mod wander;
 #[cfg(test)]
 pub(in crate::cell) use ability_select::{choose_npc_ability, choose_npc_ability_within_reach};
 pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
+// The NA13 chain-replay guards (`content::chain_replay_tests`) run the
+// real AI tick against spawns loaded from the seed.
+#[cfg(test)]
+pub(in crate::cell) async fn npc_ai_tick_for_test(
+    tx: &tokio::sync::mpsc::Sender<crate::cell::messages::CellToBaseMsg>,
+    space_mgr: &mut crate::cell::space_manager::SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
+) {
+    dispatch::npc_ai_tick(tx, space_mgr, engine).await;
+}
 
 // The AI-state transition helper is the only way to change `ai_state`
 // (the field is private in the entity crate). Callers across `cell` --

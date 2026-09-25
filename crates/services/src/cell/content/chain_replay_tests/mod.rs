@@ -66,6 +66,7 @@ mod mission_708;
 mod mission_742;
 mod mission_abandoned;
 mod mission_relog_persistence;
+mod na13_chain_armed_aggro;
 mod npc_bark;
 mod region8_guard_aggro;
 mod region_transition_accepts;

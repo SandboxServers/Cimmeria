@@ -91,7 +91,9 @@ pub(super) async fn npc_ai_submit(
     // list is exactly "somebody engaged since the last cleanup", and the
     // sweeps below run again for them.
     let needs_cleanup = space_mgr.get_entity(npc_id).is_some_and(|e| {
-        e.last_movement_type.is_some() || !e.threat_list.is_empty() || e.aggression > 0
+        e.last_movement_type.is_some()
+            || !e.threat_list.is_empty()
+            || combat::is_hostile_to_players(e)
     });
     if !needs_cleanup {
         // Not silent, and not `submit_init` either: a parked NPC would
@@ -155,31 +157,26 @@ pub(super) async fn npc_ai_submit(
     npc.ai_retry_at = None;
 
     // Disarm, not a marker. The durable "this NPC surrendered" fact is
-    // `ai_state == Submit`; `aggression` is the separate switch that
-    // makes an *idle* NPC seed threat on a passing player unprompted,
-    // and while the NPC sits in Submit nothing reads it at all. It is
-    // zeroed here for the paths that can push a submitted NPC back to
-    // Idle behind our back — a content `set_npc_ai_state idle`, a
-    // `set_follow_target` that resolves to nothing, the GM console, and
-    // the respawn tick after somebody kills the NPC anyway. Without
-    // this, any of them hands back a hostile-on-sight mob.
+    // `ai_state == Submit`; aggression is the separate switch that makes an
+    // *idle* NPC seed threat on a passing player unprompted, and while the
+    // NPC sits in Submit nothing reads it at all. It is pinned to NEUTRAL
+    // here for the paths that can push a submitted NPC back to Idle behind
+    // our back — a content `set_npc_ai_state idle`, a `set_follow_target`
+    // that resolves to nothing, the GM console, and the respawn tick after
+    // somebody kills the NPC anyway. Without this, any of them hands back a
+    // hostile-on-sight mob.
     //
-    // Pure runtime state: no template column, no `spawnlist` column, no
-    // persistence, and the respawn tick never re-seeds it — so the clear
-    // cannot leak to the database, and equally cannot be silently
-    // undone. Note the name collides with python's `EMobAggressionLevel`
-    // (`SGWMob.def` `Aggression`, INT8), which runs the *opposite* way
-    // (low = hostile, 3 = neutral) and is a CELL_PUBLIC wire property.
-    // These are unrelated fields.
+    // An explicit NEUTRAL override, not `None`: since NA13 `None` means
+    // "derive from faction", and a faction-10 NPC derives HOSTILE. Pure
+    // runtime state: no persistence, and the respawn tick never re-seeds
+    // it, so the clear cannot leak to the database or be silently undone.
     //
     // Deliberately NOT a faction flip. `faction` is what gates whether a
     // player may target the NPC with an offensive ability at all, so
     // flipping it off the hostile sentinel would make the surrendered
-    // NPC unattackable — and it doubles as the NPC-versus-NPC aggro
-    // filter, so the flip would also read this NPC as an ally to every
-    // other mob's idle scan. Explicit attacks stay legal; only the
-    // automatic paths shut off.
-    npc.aggression = 0;
+    // NPC unattackable. Explicit attacks stay legal; only the automatic
+    // paths shut off.
+    npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Neutral);
 
     // Any channel the NPC was running dies with its willingness to
     // fight — otherwise a surrendered NPC keeps pulsing its debuff onto

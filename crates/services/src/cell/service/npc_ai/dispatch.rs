@@ -88,10 +88,12 @@ pub(in crate::cell::service) fn npc_is_incapacitated(
 pub(in crate::cell::service) const ZERO_HEALTH_WARN_MIN_INTERVAL: Duration =
     Duration::from_secs(60);
 
-/// NPC AI tick — drives Fighting, Leashing, and Idle-with-aggression
-/// NPCs. The `Idle` filter on `aggression > 0` is what makes the
-/// `set_aggression` content action actually trigger combat — without it
-/// the action would be a behavior bit nothing read. See
+/// NPC AI tick — drives Fighting, Leashing, and hostile Idle NPCs. An
+/// Idle NPC is admitted when it is hostile to players (NA13: its
+/// aggression override, else the faction reaction — see
+/// [`crate::cell::combat::is_hostile_to_players`]), has a patrol path, or
+/// has a wander radius. Hostility is what makes both faction-10 mobs and
+/// the `set_aggression` content action trigger combat; see
 /// [`crate::cell::content::executor::world::set_aggression`].
 pub(in crate::cell::service) async fn npc_ai_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -124,7 +126,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
         .filter(|(_, state, idle_ticked, _, _)| {
             // Admit any state that has a per-tick handler. Idle is
             // admitted when the NPC has a patrol path, a wander
-            // radius, or positive aggression so the tick can promote
+            // radius, or is hostile to players, so the tick can promote
             // it into the matching behavior state.
             *state == AiState::Fighting
                 || *state == AiState::Leashing
@@ -176,20 +178,20 @@ pub(in crate::cell::service) async fn npc_ai_tick(
                 AiState::Submit => npc_ai_submit(npc_id, tx, space_mgr).await,
                 AiState::Error => npc_ai_error(npc_id, tx, space_mgr).await,
                 AiState::Idle => {
-                    // Priority order: aggression > patrol > wander.
-                    // Aggro-driven idle has priority because an
-                    // aggressive guard standing on a waypoint should
-                    // still seed threat on a passing player rather
-                    // than stride past them. Patrol beats wander
-                    // because explicit waypoint authoring is more
-                    // intentional than a wander radius.
-                    let aggression = space_mgr
+                    // Priority order: proximity aggro > patrol > wander.
+                    // A hostile NPC scans first so a guard standing on a
+                    // waypoint seeds threat on a passing player rather
+                    // than striding past; when nobody qualifies it falls
+                    // through, so faction-derived hostility (NA13) does
+                    // not freeze a hostile patroller or wanderer. Patrol
+                    // beats wander because explicit waypoint authoring is
+                    // more intentional than a wander radius.
+                    let hostile = space_mgr
                         .get_entity(npc_id)
-                        .map(|e| e.aggression)
-                        .unwrap_or(0);
-                    if aggression > 0 {
-                        npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
-                    } else if has_patrol {
+                        .is_some_and(crate::cell::combat::is_hostile_to_players);
+                    let engaged = hostile && npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
+                    // Engaged means Fighting now; the next tick runs it.
+                    if !engaged && has_patrol {
                         super::set_ai_state(
                             space_mgr,
                             npc_id,
@@ -197,7 +199,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
                             super::AiTransitionReason::PatrolStart,
                         );
                         npc_ai_patrol(npc_id, tx, space_mgr).await;
-                    } else if has_wander {
+                    } else if !engaged && has_wander {
                         super::set_ai_state(
                             space_mgr,
                             npc_id,

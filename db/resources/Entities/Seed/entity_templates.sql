@@ -513,9 +513,12 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- (cell/cell_methods/player/interaction/interact.rs:44-46). Nothing in the
 -- content executor can change an entity's faction at runtime. So an NPC that is
 -- talked to in one mission and killed in another needs TWO templates; see 216/222
--- (Grogan), 217/223 (Dawson) and 163/221 (Petbe). Faction 10 alone does not make
--- a mob attack on sight -- the AI tick admits an Idle NPC only when
--- `aggression > 0` -- so the chain's `set_aggression` still starts every fight.
+-- (Grogan), 217/223 (Dawson) and 163/221 (Petbe). Since NA13 faction 10 DOES
+-- make a mob attack on sight (the faction reaction table reads it HOSTILE to
+-- players, within its aggro radius and line of sight). A mob a chain must
+-- start instead needs `aggression_override = 3` on its spawn row (or the
+-- `spawn_entity` action's `"aggression": 3`) and a `set_aggression 1`
+-- in the chain.
 --
 -- `loot_table_id` is NULL on every row (spec L-01: no invented loot).
 -- Vendor and trainer list columns are NULL on every row: GH2 owns them.
@@ -548,8 +551,9 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   Consequence for H21: right-click on an alive faction-10 NPC is rerouted
 --   to auto-attack (interaction/interact.rs:44-46), so Mala'c's challenge
 --   dialog must be chain-driven (`add_dialog_set` / `display_dialog`), never
---   right-click. Aggression stays 0 at spawn; the chain's `set_aggression`
---   starts the fight.
+--   right-click. NA13: faction 10 is hostile on sight, so the H21 spawn must
+--   carry a NEUTRAL override (`"aggression": 3`) for the chain's
+--   `set_aggression` to be what starts the fight.
 -- INFERRED: components cloned from template 159 (Praxis Jaffa Lieuternant);
 --   no art assignment for Mala'c survives.
 -- `is_stationary` is a spawnlist column, not a template column -- H21 sets it

@@ -43,7 +43,7 @@ Defined in `deprecated/python/Atrea/enums.py` lines 228-239.
 
 ### State Transitions
 
-`generate_threat` preempts any non-Dead non-Fighting state to Fighting (with per-state scratch preserved so the post-fight return can re-evaluate). Idle promotion priority is **aggression > patrol > wander**.
+`generate_threat` preempts any non-Dead non-Fighting state to Fighting (with per-state scratch preserved so the post-fight return can re-evaluate). Idle promotion priority is **proximity aggro > patrol > wander**: a hostile NPC scans first and falls through when nobody qualifies (NA13).
 
 ```
 Idle      -->  Fighting    (generate_threat fires + NPC was Idle / Patrol / Wander / Investigating / Follow)
@@ -135,19 +135,64 @@ Declared on `SGWMob` but contain no logic: `addDirectToThreatList`, `addBuffToTh
 
 ### Aggression Levels
 
-| Level | Value | Meaning |
+`EMobAggressionLevel` (`entities/defs/enumerations.xml`). Low is hostile.
+
+| Level | Value | Meaning in the Rust server |
 |-------|-------|---------|
-| `HOSTILE` | 1 | Attacks on sight (proactive aggro — NOT IMPLEMENTED) |
-| `SUSPICIOUS` | 2 | Heightened alertness |
-| `NEUTRAL` | 3 | Default — ignores players |
-| `FRIENDLY` | 4 | Will not attack |
-| `DEFAULT` | 5 | Falls back to faction/template default |
+| `HOSTILE` | 1 | Attacks on sight: the only level the Idle proximity scan acts on |
+| `SUSPICIOUS` | 2 | Not aggressive on sight |
+| `NEUTRAL` | 3 | Fights back only when attacked |
+| `FRIENDLY` | 4 | Not aggressive on sight |
+| `DEFAULT` | 5 | Not aggressive on sight (python compared the stored level against NEUTRAL) |
 
-The default value in `SGWMob.def` is 3 (Neutral). Mobs do not proactively detect or aggro players at any aggression level — they only enter combat when damage is received.
+### Effective aggression (NA13, D-NA01)
 
-### Per-Instance Override
+An NPC's aggression toward players is its **override** when one is set, otherwise the **faction reaction** of the player's faction toward the NPC's faction. This is python's `SGWPlayer.getAggressionLevel`.
 
-The `aggressionOverride` property stores a per-instance aggression level that takes precedence over the template default. The client is notified of changes via the `onAggressionOverrideUpdate` client method.
+- **Override.** `CellEntity::aggro.override_level` (python `aggressionOverride`). It is seeded from `spawnlist.aggression_override` (1-5, CHECK-constrained) and changed at runtime by the `set_aggression` content action, the `spawn_entity` action's `aggression` parameter, the GM `.aggression` command, and the surrender path (NEUTRAL). Content levels keep their pre-NA13 numbers: `1` was "aggressive" and is HOSTILE; `0` was "passive" and maps to NEUTRAL.
+- **Faction reaction.** `FACTION_REACTION_TABLE` (44 x 44) in `enumerations.xml`, identical to `deprecated/python/Atrea/enums.py`, is ported as a constant table in `crates/services/src/cell/combat/faction_reaction.rs`. A unit test re-parses the XML so the two cannot drift. It is a code constant rather than a seed table because it is engine data the client ships, not per-zone content, and the scan reads it every tick. Players react as faction **3** (`Praxis`), the faction every client is told on world entry (`mercury::aoi::PLAYER_FACTION`). A player's server-side `CellEntity::faction` stays 0, which the `faction == 10` damage and right-click gates rely on.
+
+In the seeds, faction 10 (`Straegis`: the NID guards and PRUs) reads HOSTILE, factions 1 and 3 read FRIENDLY, and NULL or 0 reads NEUTRAL.
+
+### Proximity aggro scan
+
+`npc_ai_tick` admits an Idle NPC when it is hostile to players, has a patrol path, or has a wander radius. A hostile Idle NPC runs `npc_ai_idle_auto_aggro` every AI tick (about 2 s) over its AoI witnesses. A witness becomes a candidate only when every gate in `npc_ai/aggro_gates.rs` passes, in this order:
+
+| Gate | Reject reason |
+|---|---|
+| Is a player | `not_player` |
+| Alive | `dead` |
+| Not on the NPC's server-side faction | `same_faction` |
+| The NPC's effective aggression toward it is HOSTILE | `not_hostile` |
+| Not a GM with `.aggro off` set | `gm_ignored` |
+| Height difference `abs(dy) <= 4` u (`AGGRO_VERTICAL_BAND`) | `out_of_vertical_band` |
+| Horizontal distance within `entity_templates.aggro_radius` (NULL: 18 u, `DEFAULT_AGGRO_RADIUS`) | `out_of_radius` |
+| Navmesh line of sight is `Clear` | `no_los` |
+
+The closest candidate gets a 1.0 threat seed (`cause=proximity`). During the NA12 post-reset window every witness is rejected with `post_reset_suppressed`. Rejects are logged as `npc_ai.aggro_scan event=candidate_rejected` with the `reason` above, sampled per NPC and player (NA02).
+
+**Line of sight fails closed for aggro (D-NA08).** An `Unknown` answer, meaning an endpoint the navmesh does not cover, rejects the candidate. The attack check in the fight keeps failing open, so an NPC already fighting does not stop shooting over a mesh hole. A space with no navmesh has nothing to check and passes; there the vertical band is the only storey guard. The navmesh ray cannot see floors or ceilings (audit S15), so the band is also what stops a guard under a ramp from seeing a player on it.
+
+If the scan finds nobody, a hostile NPC that also has a patrol path or wander radius falls through to it, so faction-derived hostility does not freeze a patroller. A patrolling or wandering NPC does not scan until it is Idle again.
+
+### Chain-armed spawns (D-NA01a)
+
+A spawn whose fight a content chain must start carries `aggression_override = 3` (NEUTRAL), and the chain runs `set_aggression 1` plus `generate_threat`:
+
+| Spawn | Tag | Chain |
+|---|---|---|
+| 20 | `ArmYourself_NIDGuard` | 1008 (enter `Castle_CellBlock.Region8`) |
+| 10 | `ArmYourself_PrisonerRetrievalUnit` | 1032 (Ambernol vial interaction) |
+
+No other Castle (world 8) or Harset seed calls `set_aggression`, so no other spawn needs the override. Every other faction-10 spawn now aggroes on sight within its radius: the Cellblock and Castle NID guards and PRUs, `Castle_Romney`, `Castle_Muelbach`, the Castle Bravo officers, and the SGC_W1 Ba'al Jaffa.
+
+### GM switch: `.aggro on|off` (D-NA02)
+
+Mobs aggro onto GMs like any player. `.aggro off` in the GM `.`-console makes the proximity scan skip the caller, `.aggro on` restores it, and `.aggro` alone reports it. It is server-side because the client's ghost or noclip never reaches the server (audit A8). It covers proximity aggro only: damage and content threat still engage a GM. It is keyed by character, survives zone changes and relogs, is lost on a server restart, and is ignored if the character loses GM access.
+
+### Wire: not broadcast yet (open item)
+
+Python's `setAggression` sent `onEntityProperty(GENERICPROPERTY_MobAggression = 6, level)` to the owner and witnesses, and `createOnClient` also sent `onAggressionOverrideUpdate(level)`. The Rust server sends neither. The client handler at `0x00d31bd0`, which stores the INT8 at `GameMob + 0x16c`, is registered through `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` and reads the argument `aAggressionLevel`. It is therefore the `onAggressionOverrideUpdate` handler, not an `onEntityProperty` consumer. That method is an SGWMob client method (flat index 27 by the flattening rule, because `Lootable` has no client methods), and the index is not binary-verified. No client handler for `onEntityProperty` type 6 was located. Until one of those is confirmed, aggression stays server-side. It is a display value only: the client derives friend or foe from the faction it is sent.
 
 ### Timed Overrides
 
@@ -156,7 +201,7 @@ def overrideAggression(self, level, entityBase, seconds):
     # Sets aggressionOverride, schedules revert after `seconds`
 ```
 
-This allows scripted events to temporarily change a mob's stance (e.g., a friendly NPC turned hostile during a mission encounter) and automatically revert afterward.
+This let scripted events change a mob's stance for a while (for example, a friendly NPC turned hostile during a mission encounter) and revert it afterwards. Not ported.
 
 ---
 
@@ -463,10 +508,10 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Ammo management | DONE | Load on spawn, consume per shot, auto-reload |
 | Combat exit | DONE | Threat empty -> Leashing (walk home) -> Idle, with the player-side combat drain. Python went Idle in place; NA12 diverges on purpose because Rust NPCs move (D-NA03). |
 | Loot on death | DONE | Loot table referenced, no tap check |
-| Aggression override | DONE | With client broadcast and timer revert |
+| Aggression override | PARTIAL | NA13: override (seed `spawnlist.aggression_override`, content, console), else the faction reaction. No client broadcast yet and no timed revert; see [Wire: not broadcast yet](#wire-not-broadcast-yet-open-item). |
 | lookAt() rotation | DONE | Mob faces target during combat |
 | Leashing state | DONE | NA12: NPC-to-spawn leash radius with hysteresis and a per-template `leash_distance`, walk home with evade, heal / facing / cooldown reset on arrival, snap only as a fallback, player combat drained, 5 s re-aggro suppression. See [Leash and reset](#leash-and-reset-na12). |
-| Proactive aggro detection | DONE | `aggression > 0` → `npc_ai_idle_auto_aggro` scans witnesses every 2 s, seeds 1.0 threat on the closest opposing-faction player. Set via `set_aggression` content action. |
+| Proactive aggro detection | DONE | NA13: hostile Idle NPCs (override, else faction reaction) scan witnesses every 2 s through the radius (18 u default, `entity_templates.aggro_radius`), vertical band (4 u), fail-closed LoS and GM-switch gates, and seed 1.0 threat on the closest. See [Proximity aggro scan](#proximity-aggro-scan). |
 | Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |
 | Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |
 | Three-bucket ability selection | DONE | `choose_npc_ability` partitions known abilities into usable / cooling / needs-ammo and picks the first off-cooldown ID. See [#342](https://github.com/SandboxServers/Cimmeria/issues/342). |

@@ -82,7 +82,7 @@ GameEntityBase → GameEntity → GameBeing → GameMob
 ## Aggro/Threat System
 
 ### Aggression Level (GameMob)
-- Handler: `GameMob_onAggressionLevelUpdate` at `0x00d31bd0`
+- Handler: `GameMob_onAggressionLevelUpdate` at `0x00d31bd0`. NA13 (2026-09-25): this is the `Event_NetIn_onAggressionOverrideUpdate` callback (registered by `0x00d31cd0` next to the `onAggressionOverrideCleared` one, RTTI `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>`), reading that method's `aAggressionLevel` INT8. It is not fed by `onEntityProperty(GENERICPROPERTY_MobAggression = 6)`; no client consumer of property type 6 was located
 - Property: `aAggressionLevel` (int8) stored at `GameMob + 0x16c`
 - UI class: `UIAggressionLevel` (RTTI `0x01de972c`)
 - Override: `aggressionOverrides` property, `onAggressionOverrideUpdate`/`Cleared` events
