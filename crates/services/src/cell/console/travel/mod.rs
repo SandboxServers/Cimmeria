@@ -277,7 +277,7 @@ pub(super) async fn dispatch(
 ) {
     match name {
         "goto" => named_destination::goto(caller_id, target, args, tx, space_mgr).await,
-        "summon" => named_destination::summon(caller_id, target, args, tx, space_mgr).await,
+        "summon" => named_destination::summon(caller_id, args, tx, space_mgr).await,
         "gotolocation" => {
             named_destination::goto_location(caller_id, target, args, tx, space_mgr).await
         }

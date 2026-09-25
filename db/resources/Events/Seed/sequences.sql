@@ -3948,6 +3948,16 @@ INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10185,
 
 INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10186, 6113, 'Dakara_E1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq');
 
+-- Mission 688 Armory ring (region 33). The sequence is a clone of region 3's rig,
+-- patched into the client chunk Castle_CellBlock-fffeffff by `upk_patch`; an
+-- unpatched client has no such object. Clients resolve sequence ids from their cooked
+-- catalogue, not this table: keep in sync with SEQUENCE_OVERRIDES in
+-- crates/services/src/base/sequence_overrides.rs, which pushes the entries to clients.
+-- See docs/analysis/ring-transport-cellblock-castle/README.md.
+INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10187, 8000, 'Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0');
+
+INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10188, 8001, 'Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0');
+
 INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (2031, 8000, 'Lucia-fff8fffe.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq');
 
 --

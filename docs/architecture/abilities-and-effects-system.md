@@ -374,6 +374,66 @@ integration request A).
 doc comment; deleting both restores the pre-H08 behaviour and fails
 `a_dot_cannot_finish_a_surrendered_npc`.
 
+### 19. Every death resolves through one function, including an effect script's killing blow
+
+**Decision:** [`abilities::death::resolve_death`](../../crates/services/src/cell/abilities/death/mod.rs)
+is the only place a death happens. It owns the kill-site state mutations, the ordered wire
+burst, the threat drain, the death animation, kill XP, and the player Defeat Window.
+`damage_apply` calls it twice per hit — once for direct damage, once as a sweep after the
+effect scripts have run — and `kill_npc_out_of_band` (GM `.kill`, DoT pulse) is a thin
+NPC-only wrapper over it. A `BSF_DEAD` probe at the top makes it idempotent, so the second
+call costs one lookup when the first already killed.
+
+**The bug it closes.** Effect scripts write `HEALTH` directly. `RangedPhysicalDamage`'s
+Focus-pierce bleed, `MeleePhysicalDamage`, `RangedEnergyDamage` and `Suppression` all end in
+`stat.update(min, (cur - damage).max(0), max)` with no death check — and they are dispatched
+at the *bottom* of `apply_damage_to_target`, long after its own `target_died` probe. A shot
+whose direct damage left the NPC standing could therefore take it to zero with nothing
+noticing. Playtest 2026-09-19 (Castle Mess Hall): pistol auto attack (ability 579, effect
+641) bled `MessHall_Guard1` to 0 HP. The mission's `entity_dead_tag` fired — the kill-credit
+wrapper reads the health stat, so *it* saw the death — but no death transition ran. The
+guard stayed at 0 HP with `ai_state == Fighting`, hit the player for 86 damage 0.6 s later,
+and only became a corpse 1.5 s on, when the player's next shot re-entered the direct-damage
+arm. Loot, XP, the `BSF_InCombat` clear and the auto-cycle stop were all 1.5 s late; the
+death event and the death transition were credited to different shots.
+
+**Why the sweep sits in `damage_apply` and not in the scripts.** A script holds
+`&mut SpaceManager` through a synchronous [`EffectContext`](../../crates/services/src/cell/effects/mod.rs)
+and cannot await the wire burst. Pushing lethality handling into each script would also mean
+every future HEALTH-touching script has to remember it — the same omission that produced
+this bug, re-armed nine times over. The sweep is unconditional rather than gated on "did a
+script run": any post-`calculate_damage` step that zeroes HEALTH should produce a corpse,
+and a target arriving at the end of the function at 0 HP without `BSF_DEAD` is something to
+fail safe on.
+
+**Kill credit is unaffected.** `handle_use_ability_with_kill_credit` and
+`fan_out_cone_effects` both detect deaths by comparing the HEALTH stat before and after the
+whole ability resolution, which already saw effect-driven zeroes — that is why the mission
+event fired on time while the transition did not. The fix moves the transition onto the same
+shot; it adds no second credit window, and the corpse's `BSF_DEAD` still suppresses credit
+on a follow-up shot.
+
+**Defence in depth in the AI tick.** `npc_ai_tick` and `npc_ai_retry_sweep` now drop any NPC
+whose HEALTH is at or below zero, before the `ai_state` filter. `mark_npc_dead` stamping
+`ai_state = Dead` remains the primary mechanism and this filter should be redundant; it is
+not free redundancy, because the playtest symptom was precisely an NPC acting on a state the
+combat layer already considered finished. A zeroed NPC *without* `BSF_DEAD` warns on the way
+out, per [`negative-logging-convention.md`](negative-logging-convention.md).
+
+**Behaviour changes folded in, same class of bug.** `kill_npc_out_of_band` previously ran the
+transition but skipped the death animation and the XP grant, so a DoT kill produced a silent
+corpse worth nothing. Routing it through `resolve_death` fixes both. Because a GM `.kill`
+shares that entry point, `grant_xp` is an explicit parameter — the DoT path passes `true`,
+the GM path `false`, so an admin command cannot mint levels.
+
+**Reversibility:** High. The sweep is one `if` in `damage_apply`; the AI filter is one
+`.filter(...)`. Deleting either fails
+`effect_script_bleed_to_zero_runs_death_transition_in_same_resolution` /
+`zero_health_npc_without_dead_bit_gets_no_ai_turn` respectively.
+(`npc_killed_by_an_effect_bleed_does_not_shoot_back` is the end-to-end cover for
+both together; on its own it cannot isolate the AI filter, because the death it
+resolves also stamps `AiState::Dead`.)
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:

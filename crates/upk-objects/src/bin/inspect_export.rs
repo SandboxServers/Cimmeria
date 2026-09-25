@@ -1,6 +1,6 @@
 //! Inspect the raw serial data of a specific export in a package.
 //!
-//! Usage: inspect-export <file.upk> <export_index> [--hex] [--props]
+//! Usage: inspect-export <file.upk> <export_index> [--hex] [--props] [--prop-offset N]
 //!
 //! Useful for reverse-engineering object formats by examining raw bytes and
 //! tagged properties.
@@ -8,10 +8,24 @@
 use cimmeria_upk::Package;
 use std::env;
 
+/// Candidate byte offsets where an export's tagged-property block can start.
+///
+/// The prefix ahead of the property block is class-kind dependent, not version
+/// dependent: Actor subclasses carry a ~32-byte prefix, StaticMesh 4, and
+/// ActorComponent subclasses 8 (UComponent::Serialize writes TemplateOwnerClass
+/// as an i32 plus a 4-byte pad before the script properties). Probing a fixed
+/// list and taking the FIRST non-empty parse mis-reads components, because a
+/// garbage parse at offset 0 happens to resolve one bogus FName pair (the
+/// notorious "TabName") and then stops. Score instead: the correct offset is
+/// the one that yields the most properties.
+const PROP_OFFSET_CANDIDATES: [usize; 5] = [0, 4, 8, 12, 32];
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        eprintln!("Usage: inspect-export <file.upk> <export_index> [--hex] [--props]");
+        eprintln!(
+            "Usage: inspect-export <file.upk> <export_index> [--hex] [--props] [--prop-offset N]"
+        );
         std::process::exit(1);
     }
 
@@ -19,6 +33,10 @@ fn main() {
     let idx: usize = args[2].parse().expect("export_index must be a number");
     let show_hex = args.contains(&"--hex".to_string());
     let show_props = args.contains(&"--props".to_string());
+    let forced_prop_offset: Option<usize> = args
+        .windows(2)
+        .find(|w| w[0] == "--prop-offset")
+        .and_then(|w| w[1].parse().ok());
 
     let pkg = Package::open(file).expect("Failed to open package");
 
@@ -118,102 +136,117 @@ fn main() {
     }
 
     if show_props {
-        // Try parsing tagged properties at common offsets.
-        // Offset 0 is typical for non-Actor objects.
-        // Offset 4 may occur if there's a NetIndex prefix.
-        // Offset 32 is used by some Actor subclasses.
-        for &offset in &[0usize, 4, 32] {
-            if offset >= data.len() {
-                continue;
-            }
-            let (props, end_offset) =
-                cimmeria_upk::parse_tagged_properties_with_end(&data, offset, &pkg.names);
-            if !props.is_empty() {
+        let best = best_prop_offset(&data, &pkg, forced_prop_offset);
+
+        match best {
+            Some((offset, props, end_offset)) => {
                 println!(
                     "\n--- Properties (offset {}, end at {}) ---",
                     offset, end_offset
                 );
                 for p in &props {
                     let type_str = prop_type_name(&p.value);
-                    println!("  {} ({}) = {:?}", p.name, type_str, p.value);
+                    // Object refs are useless as bare integers — resolve them so
+                    // e.g. StaticMeshComponent.StaticMesh names the actual asset.
+                    if let cimmeria_upk::PropValue::Object(r) = p.value {
+                        println!(
+                            "  {} ({}) = {} -> {}",
+                            p.name,
+                            type_str,
+                            r,
+                            pkg.resolve_object_path(r)
+                        );
+                    } else {
+                        println!("  {} ({}) = {:?}", p.name, type_str, p.value);
+                    }
                 }
+                let remaining = data.len().saturating_sub(end_offset);
                 println!(
                     "\n--- Post-property binary (offset 0x{:X}, {} bytes remaining) ---",
-                    end_offset,
-                    data.len().saturating_sub(end_offset)
+                    end_offset, remaining
                 );
-                break;
-            }
-        }
-    }
 
-    // Also dump post-property binary if --props was used
-    if show_props && show_hex {
-        // Find post-property binary offset
-        for &offset in &[0usize, 4, 32] {
-            if offset >= data.len() {
-                continue;
-            }
-            let (props, end_offset) =
-                cimmeria_upk::parse_tagged_properties_with_end(&data, offset, &pkg.names);
-            if !props.is_empty() {
-                let remaining = data.len().saturating_sub(end_offset);
-                let dump_len = remaining.min(256);
-                println!(
-                    "\n--- Post-property hex (offset 0x{:X}, first {} of {} bytes) ---",
-                    end_offset, dump_len, remaining
-                );
-                for (i, chunk) in data[end_offset..end_offset + dump_len]
-                    .chunks(16)
-                    .enumerate()
-                {
-                    print!("{:04x}: ", end_offset + i * 16);
-                    for b in chunk {
-                        print!("{:02x} ", b);
-                    }
-                    for _ in chunk.len()..16 {
-                        print!("   ");
-                    }
-                    print!(" |");
-                    for b in chunk {
-                        let c = if *b >= 0x20 && *b < 0x7f {
-                            *b as char
-                        } else {
-                            '.'
-                        };
-                        print!("{}", c);
-                    }
-                    println!("|");
+                if show_hex && remaining > 0 {
+                    let dump_len = remaining.min(256);
+                    println!(
+                        "\n--- Post-property hex (offset 0x{:X}, first {} of {} bytes) ---",
+                        end_offset, dump_len, remaining
+                    );
+                    hex_dump(&data[end_offset..end_offset + dump_len], end_offset);
                 }
-                break;
             }
+            None => println!("\n--- Properties: no candidate offset parsed cleanly ---"),
         }
     }
 
     if show_hex {
         let dump_len = data.len().min(512);
         println!("\n--- Hex dump (first {} bytes) ---", dump_len);
-        for (i, chunk) in data[..dump_len].chunks(16).enumerate() {
-            print!("{:04x}: ", i * 16);
-            for b in chunk {
-                print!("{:02x} ", b);
-            }
-            // Pad short lines
-            for _ in chunk.len()..16 {
-                print!("   ");
-            }
-            // ASCII representation
-            print!(" |");
-            for b in chunk {
-                let c = if *b >= 0x20 && *b < 0x7f {
-                    *b as char
-                } else {
-                    '.'
-                };
-                print!("{}", c);
-            }
-            println!("|");
+        hex_dump(&data[..dump_len], 0);
+    }
+}
+
+/// Pick the tagged-property start offset for this export.
+///
+/// With `--prop-offset` the caller wins outright. Otherwise probe
+/// [`PROP_OFFSET_CANDIDATES`] and keep the parse that produced the most
+/// properties — a wrong offset typically yields 0 or 1 garbage property before
+/// the FName validation in the parser bails out.
+fn best_prop_offset(
+    data: &[u8],
+    pkg: &Package,
+    forced: Option<usize>,
+) -> Option<(usize, Vec<cimmeria_upk::TaggedProperty>, usize)> {
+    let candidates: Vec<usize> = match forced {
+        Some(o) => vec![o],
+        None => PROP_OFFSET_CANDIDATES.to_vec(),
+    };
+
+    let mut best: Option<(usize, Vec<cimmeria_upk::TaggedProperty>, usize)> = None;
+    for offset in candidates {
+        if offset >= data.len() {
+            continue;
         }
+        let (props, end_offset) =
+            cimmeria_upk::parse_tagged_properties_with_end(data, offset, &pkg.names);
+        if forced.is_some() {
+            return Some((offset, props, end_offset));
+        }
+        if props.is_empty() {
+            continue;
+        }
+        let better = match &best {
+            Some((_, best_props, _)) => props.len() > best_props.len(),
+            None => true,
+        };
+        if better {
+            best = Some((offset, props, end_offset));
+        }
+    }
+    best
+}
+
+fn hex_dump(bytes: &[u8], base: usize) {
+    for (i, chunk) in bytes.chunks(16).enumerate() {
+        print!("{:04x}: ", base + i * 16);
+        for b in chunk {
+            print!("{:02x} ", b);
+        }
+        // Pad short lines
+        for _ in chunk.len()..16 {
+            print!("   ");
+        }
+        // ASCII representation
+        print!(" |");
+        for b in chunk {
+            let c = if *b >= 0x20 && *b < 0x7f {
+                *b as char
+            } else {
+                '.'
+            };
+            print!("{}", c);
+        }
+        println!("|");
     }
 }
 
