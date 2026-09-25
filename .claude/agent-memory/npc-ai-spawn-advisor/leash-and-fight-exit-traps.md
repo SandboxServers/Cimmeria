@@ -7,6 +7,11 @@ metadata:
 
 Verified 2026-09-24 against main b0b594e9 (Cellblock aggro/stuck audit).
 
+> **Partly STALE after NA12 (branch `npcai/na12-leash-reset`, 2026-09-25):** fight exits now go Leashing (walk
+> home) and drain player `threatened_mobs`; the leash measures NPC->spawn; Leashing evades (`generate_threat`
+> refuses it). NA10 already fixed stale velocity / nav_path / grid. See [[leash-reset-na12]]. The nav-extent,
+> DT_PARTIAL_RESULT, aggression-semantics and GM bullets below still stand.
+
 - **Fight exits park the NPC in place.** `npc_ai/fight.rs:126-176` (threat empty / target dead / gone) -> Idle with no
   home return and no `nav_path` clear; leash (`fight.rs:179-216` + `leash.rs:48`) raw-writes spawn but also keeps
   `nav_path`, so the movement tick (which runs for ANY state with a path) walks it back out. Then Idle + aggression 0
