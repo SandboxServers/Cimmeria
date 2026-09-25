@@ -266,11 +266,11 @@ fn allowlisted_dialogs_still_ship_the_soft_locking_layout() {
     let seed = load_dialog_seed(&workspace_root());
 
     // (dialog, screens, screens carrying buttons, final screen)
-    let expected: [(i32, usize, usize, i32); 3] = [
-        (3999, 9, 7, 96260),
-        (5861, 8, 5, 96789),
-        (2576, 5, 3, 96825),
-    ];
+    //
+    // 3999's row is gone: DU-02a stripped every button from it, so its
+    // R1_ALLOWLIST entry went with it and there is no longer a soft-locking
+    // layout to pin.
+    let expected: [(i32, usize, usize, i32); 2] = [(5861, 8, 5, 96789), (2576, 5, 3, 96825)];
     for (dialog, screens, with_buttons, final_screen) in expected {
         assert_eq!(
             seed.screens_in_order(dialog).len(),
@@ -357,6 +357,16 @@ fn the_chain_scan_finds_the_dialogs_it_is_supposed_to_lint() {
 /// The `DialogWin` half — the other thirty-two — is checked separately
 /// here so that a regression narrowing R3 back to Blurbs fails loudly
 /// rather than going green on a suite that never looked at a Dialog.
+///
+/// The button-count floors are 1, not the populations DU-L measured
+/// (7 Blurb rows, 53 `DialogWin` rows, 19 Generic1). Wave 1 exists to
+/// delete most of those: DU-02a stripped 45 rows off twelve Cellblock
+/// dialogs and DU-02b reduces three Castle dialogs to one button each, so
+/// the end state carries 2 Blurb rows, 3 `DialogWin` rows and 1 Generic1.
+/// A floor of 1 still catches the failure these guards were written for —
+/// a scan that returns nothing, leaving R3's inner loop unexecuted — while
+/// the dialog-COUNT floors below keep their original values and remain the
+/// real check that the reference scan still finds all thirty-seven.
 fn assert_r3_has_subjects(seed: &DialogSeed, refs: &ChainRefs) {
     let referenced = refs.referenced();
     let buttons_across = |dialogs: &[i32]| -> usize {
@@ -383,10 +393,10 @@ fn assert_r3_has_subjects(seed: &DialogSeed, refs: &ChainRefs) {
          set; got {blurbs:?}"
     );
     assert!(
-        buttons_across(&blurbs) >= 5,
-        "the referenced Blurbs carry only {n} button rows between them — R3's Blurb half \
-         is inspecting nothing",
-        n = buttons_across(&blurbs),
+        buttons_across(&blurbs) >= 1,
+        "the referenced Blurbs carry no button rows at all — R3's Blurb half is \
+         inspecting nothing. 2298 is the last referenced Blurb still carrying buttons \
+         after DU-02a; if its rows went too, this rule has no live subject left",
     );
 
     let dialog_windows: Vec<i32> = referenced
@@ -401,14 +411,15 @@ fn assert_r3_has_subjects(seed: &DialogSeed, refs: &ChainRefs) {
         n = dialog_windows.len(),
     );
     assert!(
-        buttons_across(&dialog_windows) >= 30,
-        "the referenced DialogWin dialogs carry only {n} button rows between them",
-        n = buttons_across(&dialog_windows),
+        buttons_across(&dialog_windows) >= 1,
+        "the referenced DialogWin dialogs carry no button rows at all — R3's DialogWin \
+         half is inspecting nothing",
     );
     // Generic1 (type 4) is legal on DialogWin and illegal on BlurbWin.
-    // 2576's "Take Missions" and 3999's "Receive Item" are both type 4,
-    // so a rule that applied the Blurb set everywhere would flag them —
-    // this pins that the per-window table is really per-window.
+    // 2576's "Take Missions" is type 4, so a rule that applied the Blurb
+    // set everywhere would flag it — this pins that the per-window table
+    // is really per-window. 3999's seven "Receive Item" buttons used to
+    // be the bulk of this count; DU-02a stripped them.
     let generic_buttons = dialog_windows
         .iter()
         .flat_map(|d| seed.screens_in_order(*d))
@@ -416,9 +427,10 @@ fn assert_r3_has_subjects(seed: &DialogSeed, refs: &ChainRefs) {
         .filter(|b| b.button_type == 4)
         .count();
     assert!(
-        generic_buttons >= 10,
-        "only {generic_buttons} Generic1 (type 4) buttons on referenced DialogWin dialogs \
-         — they are legal there and illegal on a Blurb, so this is what proves the table \
-         is applied per window type"
+        generic_buttons >= 1,
+        "no Generic1 (type 4) buttons on any referenced DialogWin dialog — they are legal \
+         there and illegal on a Blurb, so this is what proves the table is applied per \
+         window type. 2576's Take Missions is the last one; DU-02b keeps it, moved onto \
+         the final screen"
     );
 }
