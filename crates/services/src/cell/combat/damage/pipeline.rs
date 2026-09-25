@@ -38,6 +38,31 @@ pub fn calculate_damage(
     attacker: &StatList,
     defender: &mut StatList,
 ) -> (Vec<ClientEffectResult>, i32) {
+    calculate_damage_scaled(
+        qr_result,
+        base_damage,
+        1.0,
+        damage_type,
+        stat_id,
+        attacker,
+        defender,
+    )
+}
+
+/// [`calculate_damage`] with the pre-armour damage multiplied by `scale`:
+/// the cover reduction's `1 - final_pct / 100` (NA32,
+/// [`super::cover_damage`]). It applies after the `(1 + qr)` term and before
+/// the armour factor and absorption, so cover is a share of the hit, and
+/// armour and shields still subtract from what gets through.
+pub fn calculate_damage_scaled(
+    qr_result: &QrResult,
+    base_damage: i32,
+    scale: f64,
+    damage_type: i8,
+    stat_id: i32,
+    attacker: &StatList,
+    defender: &mut StatList,
+) -> (Vec<ClientEffectResult>, i32) {
     let mut results = Vec::new();
 
     // Base damage * qrRand * QR_DAMAGE_MULTIPLIER
@@ -60,7 +85,7 @@ pub fn calculate_damage(
 
     // Pipeline up to absorption
     let res_damage = raw * damage_bonus * (1.0 - stat_resist);
-    let qr_damage = (res_damage * (1.0 + qr_result.qr)).round() as i32;
+    let qr_damage = (res_damage * (1.0 + qr_result.qr) * scale).round() as i32;
     let af_damage = (qr_damage - af_mitigation).max(0);
 
     // Absorption shield: drain the matching ABSORB_*
