@@ -14,6 +14,8 @@
 //!   today's seed.
 //! - [`state`] — `idle_parked`, `cleared_without_exit`, the aggro-scan
 //!   rejects, `spawn_off_mesh`, `stuck`, `npc_ai.los`, and teardown.
+//! - [`off_mesh`] — `npc_off_mesh` warns once for an NPC parked off the mesh
+//!   since spawn, then samples at DEBUG (NA24).
 
 use std::path::Path;
 
@@ -28,6 +30,7 @@ use crate::test_support::{Captured, LogCaptureGuard};
 mod cover;
 mod ground;
 mod leash;
+mod off_mesh;
 mod path;
 mod stale_velocity;
 mod state;

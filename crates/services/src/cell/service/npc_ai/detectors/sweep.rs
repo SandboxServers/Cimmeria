@@ -137,11 +137,32 @@ fn check_off_mesh(space_mgr: &mut SpaceManager, npc_id: u32, now: Instant) {
         "world" => ident.world.clone(),
         "gate" => gate,
     );
-    let Some(suppressed) =
+    // An NPC that has sat where it spawned since it spawned is one fact, not
+    // a recurring one: nothing about it changes until it moves (NA24, UAT-1
+    // D -- Castle_BravoOfficer3 wrote 402 WARNs into an empty Castle). One
+    // WARN per NPC, then the same row at DEBUG on the 30 s window. As soon as
+    // anything moves it the source is no longer `Spawn` and the WARN cadence
+    // is back.
+    let parked_since_spawn =
+        space_mgr.npc_detectors.move_source(npc_id) == Some(super::MoveSource::Spawn);
+    let admitted = if parked_since_spawn {
+        space_mgr
+            .npc_detectors
+            .admit_warn(npc_id, "npc_off_mesh_parked", now, Duration::MAX)
+            .map(|s| (true, s))
+            .or_else(|| {
+                space_mgr
+                    .npc_detectors
+                    .admit_sample(npc_id, "npc_off_mesh", now, OFF_MESH_WARN_INTERVAL)
+                    .map(|s| (false, s))
+            })
+    } else {
         space_mgr
             .npc_detectors
             .admit_warn(npc_id, "npc_off_mesh", now, OFF_MESH_WARN_INTERVAL)
-    else {
+            .map(|s| (true, s))
+    };
+    let Some((warn, suppressed)) = admitted else {
         return;
     };
     let last_move_source = space_mgr
@@ -151,26 +172,34 @@ fn check_off_mesh(space_mgr: &mut SpaceManager, npc_id: u32, now: Instant) {
     let ai_state = space_mgr
         .get_entity(npc_id)
         .map_or("unknown", |e| e.ai_state().label());
-    tracing::warn!(
-        target: "npc_ai",
-        event = "npc_off_mesh",
-        npc_id,
-        tag = %ident.tag,
-        template_id = ident.template_id,
-        world = %ident.world,
-        space_id = ident.space_id,
-        gate,
-        horizontal_dist = verdict.horizontal_dist,
-        dy = verdict.dy,
-        x = pos.x,
-        y = pos.y,
-        z = pos.z,
-        last_move_source,
-        ai_state,
-        suppressed,
-        "npc_ai: ticked NPC is outside navmesh coverage -- its paths start from \
-         nowhere and its line of sight reads unknown"
-    );
+    macro_rules! off_mesh_row {
+        ($level:ident) => {
+            tracing::$level!(
+                target: "npc_ai",
+                event = "npc_off_mesh",
+                npc_id,
+                tag = %ident.tag,
+                template_id = ident.template_id,
+                world = %ident.world,
+                space_id = ident.space_id,
+                gate,
+                horizontal_dist = verdict.horizontal_dist,
+                dy = verdict.dy,
+                x = pos.x,
+                y = pos.y,
+                z = pos.z,
+                last_move_source,
+                ai_state,
+                suppressed,
+                "npc_ai: ticked NPC is outside navmesh coverage -- its paths start from                  nowhere and its line of sight reads unknown"
+            )
+        };
+    }
+    if warn {
+        off_mesh_row!(warn);
+    } else {
+        off_mesh_row!(debug);
+    }
 }
 
 fn check_stuck(
