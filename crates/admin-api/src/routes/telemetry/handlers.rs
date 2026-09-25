@@ -11,7 +11,7 @@ use flate2::read::GzDecoder;
 
 use cimmeria_services::orchestrator::Orchestrator;
 
-use crate::routes::dev_session::{decode_token, AuthError, TokenClaims};
+use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
 
 use super::dto::{BundleResponse, ChunkResponse, ClientNativeEvent, IngestError, TelemetryEvent};
 use super::{
@@ -275,6 +275,14 @@ pub(super) fn verify_bearer(headers: &HeaderMap) -> Result<TokenClaims, IngestEr
         return Err(IngestError::Auth(AuthError::Expired {
             exp: claims.exp,
             now,
+        }));
+    }
+    // The scope is the only thing that keeps a minted token from
+    // being a general-purpose credential, so it has to be checked
+    // here rather than assumed from the mint path.
+    if !claims.has_scope(SCOPE_TELEMETRY_WRITE) {
+        return Err(IngestError::Auth(AuthError::MissingScope {
+            wanted: SCOPE_TELEMETRY_WRITE,
         }));
     }
     Ok(claims)

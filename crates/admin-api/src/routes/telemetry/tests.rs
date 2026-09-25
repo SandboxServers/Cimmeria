@@ -193,3 +193,53 @@ fn verify_bearer_accepts_token_minted_by_dev_session() {
         None => std::env::remove_var("CIMMERIA_TELEMETRY_HMAC_SECRET"),
     }
 }
+
+/// The scope is what keeps a minted token from being a
+/// general-purpose credential, so ingest has to enforce it rather
+/// than trust the mint path to have set it. A validly-signed,
+/// unexpired token whose scope was narrowed or emptied must be
+/// refused.
+#[test]
+fn verify_bearer_rejects_a_token_without_the_telemetry_write_scope() {
+    use crate::routes::dev_session::{encode_token, env_lock, AuthError, TokenClaims};
+
+    let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
+    let prev = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
+    std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", "a".repeat(128));
+
+    let secret = vec![0xaau8; 64];
+    let now = chrono::Utc::now().timestamp();
+    let mut outcomes = Vec::new();
+    for scope in [vec![], vec!["telemetry.read".to_string()]] {
+        let claims = TokenClaims {
+            iss: "cimmeria-server".into(),
+            sub: "install-1".into(),
+            sid: "session-1".into(),
+            iat: now,
+            exp: now + 3600,
+            scope,
+        };
+        let token = encode_token(&claims, &secret).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        );
+        outcomes.push(verify_bearer(&headers));
+    }
+
+    match prev {
+        Some(v) => std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", v),
+        None => std::env::remove_var("CIMMERIA_TELEMETRY_HMAC_SECRET"),
+    }
+
+    for outcome in outcomes {
+        match outcome {
+            Err(IngestError::Auth(AuthError::MissingScope { wanted })) => {
+                assert_eq!(wanted, "telemetry.write");
+            }
+            Ok(c) => panic!("a token scoped {:?} must not be accepted", c.scope),
+            Err(other) => panic!("expected MissingScope, got {other:?}"),
+        }
+    }
+}
