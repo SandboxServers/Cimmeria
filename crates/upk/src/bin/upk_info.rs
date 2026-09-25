@@ -1,6 +1,6 @@
 //! CLI tool to dump UE3 package information.
 //!
-//! Usage: upk-info <file.upk|file.umap> [--classes] [--exports N]
+//! Usage: upk-info <file.upk|file.umap> [--classes] [--exports N] [--imports] [--names]
 
 use cimmeria_upk::Package;
 use std::collections::HashMap;
@@ -10,12 +10,16 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: upk-info <file.upk|file.umap> [--classes] [--exports N]");
+        eprintln!(
+            "Usage: upk-info <file.upk|file.umap> [--classes] [--exports N] [--imports] [--names]"
+        );
         process::exit(1);
     }
 
     let filepath = &args[1];
     let show_classes = args.contains(&"--classes".to_string());
+    let show_imports = args.contains(&"--imports".to_string());
+    let show_names = args.contains(&"--names".to_string());
     let export_limit: usize = args
         .windows(2)
         .find(|w| w[0] == "--exports")
@@ -77,14 +81,48 @@ fn main() {
         println!();
     }
 
+    if show_imports {
+        println!("--- Imports ({}) ---", pkg.imports.len());
+        for (i, import) in pkg.imports.iter().enumerate() {
+            // ObjectProperty values reference imports as a negated 1-based index;
+            // print it alongside so hex-dumped refs can be looked up directly.
+            println!(
+                "  [{:4}] (ref {:5}) {:<28} {}",
+                i,
+                -(i as i32) - 1,
+                format!("{}.{}", import.class_package, import.class_name),
+                pkg.import_full_path(import)
+            );
+        }
+        println!();
+    }
+
+    if show_names {
+        println!("--- Names ({}) ---", pkg.names.len());
+        for (i, name) in pkg.names.iter().enumerate() {
+            println!("  [{:4}] 0x{:016X}  {}", i, name.flags, name.name);
+        }
+        println!();
+    }
+
     if export_limit > 0 {
         println!("--- Exports (first {}) ---", export_limit);
         for (i, export) in pkg.exports.iter().enumerate().take(export_limit) {
             let cls = pkg.export_class_name(export);
             let path = pkg.export_full_path(export);
+            // Archetype matters for prefab instances: a cooked component instance
+            // often carries no StaticMesh property of its own and inherits it from
+            // the archetype, so the ref has to be printed to follow the chain.
             println!(
-                "  [{:4}] {:<30} {} ({}b @ 0x{:08X})",
-                i, cls, path, export.serial_size, export.serial_offset
+                "  [{:4}] (ref {:5}) {:<30} {} ({}b @ 0x{:08X}) archetype={} outer={}",
+                i,
+                i as i32 + 1,
+                cls,
+                path,
+                export.serial_size,
+                export.serial_offset,
+                export.archetype,
+                export.package_index
             );
         }
         println!();

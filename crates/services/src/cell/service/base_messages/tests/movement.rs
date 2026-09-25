@@ -235,6 +235,12 @@ async fn entity_move_space_mismatch_warns_but_still_applies() {
         event.fields.contains_key("claimed_space_id"),
         "space-mismatch warn must carry claimed_space_id; got {event:#?}"
     );
+    assert!(
+        event.fields.contains_key("world"),
+        "every `movement.validation` row whose space id resolves carries \
+         `world` — here the *server's* binding, since the claimed id is by \
+         definition not one this process can resolve; got {event:#?}"
+    );
 }
 
 /// Wire-format byte contract: the snap-back path's `TeleportPlayer`

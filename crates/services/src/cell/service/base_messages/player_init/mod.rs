@@ -10,6 +10,10 @@ use crate::cell::content;
 use crate::cell::messages::{CellToBaseMsg, SavedMission};
 use crate::cell::space_manager::SpaceManager;
 
+mod resync;
+
+pub(crate) use resync::resync_after_pawn_recreate;
+
 pub(crate) mod mission_restore;
 
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
@@ -295,34 +299,10 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // resend lands — the cached value gets the correct write and the
     // Lua gate stops misfiring.
     //
-    // Wire format mirrors `bandolier.rs:449-451` and `map_loaded.rs:354`:
-    // bag_id (i32 LE) + (slot_id + 1) (i32 LE, 1-indexed wire) = 8 bytes.
-    {
-        const CONTAINER_BANDOLIER: i32 = 3;
-        let active_slot = space_mgr
-            .get_entity(entity_id)
-            .map(|e| e.active_bandolier_slot)
-            .unwrap_or(0);
-        let mut args = Vec::with_capacity(8);
-        args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
-        args.extend_from_slice(&(active_slot + 1).to_le_bytes());
-        crate::cell::abilities::send_entity_method(
-            entity_id,
-            crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE,
-            args,
-            tx,
-            space_mgr,
-        )
-        .await;
-        tracing::info!(
-            target: "bandolier.resend",
-            entity_id,
-            active_slot,
-            "Re-sent onActiveSlotUpdate post-onClientReady (defensive resync \
-             against client bag-list init race — see \
-             docs/reverse-engineering/findings/client-wire-emit-suppression.md)"
-        );
-    }
+    // Wire format lives in `resync::send_active_slot_resend`, shared with the
+    // post-respawn resync (the reanchor's pawn recreate wipes the cached slot
+    // the same way an uninitialized bag list does).
+    resync::send_active_slot_resend(entity_id, tx, space_mgr).await;
 
     // Send addClientHintedGenericRegion for each client-hinted region in
     // this world. Matches Python Space.playerEntered() → queryRegions():

@@ -36,6 +36,8 @@ This is **not** a production hosting story. The image is a self-contained demo (
 - A user in the `docker` group (or sudo every command).
 - Ports `13001/tcp`, `32832/udp`, `50000/udp`, `8081/tcp`, `8443/tcp`, and `30000/tcp` (minigame SmartFoxServer) reachable from your players — these are the ports [`docker/compose.yml`](../../docker/compose.yml) publishes.
 
+> **Warning — `8443` is the unauthenticated Admin API, published to players.** The admin API has no authentication (issue #439: server stop, content rewrite, and credential streaming via `/ws/logs` are all reachable without a token). Until the JWT middleware lands, remove `8443` from the compose `ports:` list (or publish it as `127.0.0.1:8443:8443` for loopback-only operator access) — in a container the publish is the exposure control, not `ADMIN_BIND` (the image binds `0.0.0.0` inside its own network namespace, because a published port cannot reach an in-container loopback bind). Narrowing or removing the publish also cuts off launcher telemetry ingest (`/api/auth/dev-session`, `/api/telemetry/*`) from other hosts, which shares this listener. Operators needing remote admin access should tunnel (SSH / Cloudflare Tunnel) instead of opening the port.
+
 ## One-time setup
 
 1. Drop [`docker/compose.yml`](../../docker/compose.yml) onto the box (any path — `/opt/cimmeria/compose.yml` is a reasonable convention). The file is self-contained: it includes the cimmeria server, watchtower auto-update, and the full vendored SigNoz observability stack with all its config files inlined. No companion files needed.

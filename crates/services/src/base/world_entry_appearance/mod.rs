@@ -11,6 +11,8 @@
 //!   finalization handler.
 //! - [`cinematic`] — `onPlayMovie` dispatch + the post-cinematic
 //!   appearance-recovery spam guard and the `cancelMovie` handler.
+//! - [`cinematic_aoi_hold`] — keeps entity introductions off the wire while
+//!   the first-login movie plays.
 //!
 //! Re-exported here so every existing `crate::base::world_entry_appearance::*`
 //! import path stays valid.
@@ -23,8 +25,10 @@
 
 mod builders;
 mod cinematic;
+mod cinematic_aoi_hold;
 mod client_ready;
 
 pub(crate) use builders::{build_appearance_args, build_tint_args};
 pub(crate) use cinematic::handle_cancel_movie;
+pub(crate) use cinematic_aoi_hold::CinematicAoiHold;
 pub(crate) use client_ready::handle_on_client_ready;

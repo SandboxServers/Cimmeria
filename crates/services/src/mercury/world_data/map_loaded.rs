@@ -213,7 +213,7 @@ fn build_map_loaded_body_inner(
     // 7. onKismetEventSetUpdate(INT32) — default 1025
     append_method!(
         method_idx::ON_KISMET_EVENT_SET_UPDATE,
-        &1025i32.to_le_bytes()
+        &crate::mercury::aoi::PLAYER_KISMET_EVENT_SET_ID.to_le_bytes()
     );
 
     // 8. sendStats: onStatUpdate + onStatBaseUpdate
@@ -263,7 +263,10 @@ fn build_map_loaded_body_inner(
     append_method!(method_idx::ON_ALIGNMENT_UPDATE, &[data.alignment as u8]);
 
     // 11. onFactionUpdate(INT8) — hardcoded 3 (from setupPlayer)
-    append_method!(method_idx::ON_FACTION_UPDATE, &[3u8]);
+    append_method!(
+        method_idx::ON_FACTION_UPDATE,
+        &[crate::mercury::aoi::PLAYER_FACTION]
+    );
 
     // 12. onAbilityTreeInfo(ARRAY<ARRAY<INT32>>) — 3 ability tree branches
     //     Extended encoding (method_index 141 >= 128)

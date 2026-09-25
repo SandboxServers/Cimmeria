@@ -93,7 +93,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (86, -61.348999, 34.5909996, -69.0319977, 0, 12, 24, 'Hallway04_Guard', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (222, 61.9690399, 1.77149999, 77.1715775, 3.11704898, 68, 43, NULL, NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (222, 61.9690399, 1.77149999, 77.1715775, 3.11704898, 68, 43, 'CmdCenter_Anat', NULL, true, 30);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (224, -176.697678, -41.2540016, 125.271324, 5.93957376, 57, 164, 'FirstBug', NULL);
 
@@ -521,10 +521,319 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (246, 271.7, 55.2, 855.0, 0, 8, 173, 'Castle_CommsTerminal', NULL);
 
 --
+-- Command Center population (packet H12, placement cluster PL-C).
+--
+-- RECONSTRUCTION, no in-client walk. Every coordinate below is a map-data
+-- estimate labelled with its evidence class and confidence in
+-- `docs/analysis/harset-rebuild/placements/C-interiors-68-69-70.md`; the owner
+-- corrects them in one pass after a playtest. Method:
+-- `placements/METHOD.md`.
+--
+-- Floor heights are `obj_slab` levels over the extracted
+-- `Harset_CmdCenter` chunk OBJ, cross-checked against three AUTHORED
+-- anchors in the same map, which is what makes them better than guesses:
+--
+--   * spawn 222 (Anat) at y 1.77149999 sits on the `obj_slab` 1.70 dais
+--     (x[56.5,69.5] z[69.5,83.0]) -- 7 cm above it;
+--   * point set 2079 (`Harset_CmdCenter.HarsetTransition`) carries
+--     y = 0.320000291, which is the entry-hall floor level exactly;
+--   * respawner 21 (`Command Center Respawn`, (0, 0.355, -20)) sits on the
+--     same 0.32 floor, 3.5 cm above it.
+--
+-- Spawn Y is therefore `floor + 0.05` throughout: both authored anchors sit
+-- 3.5-7 cm above their floor, and erring high is safe (`is_point_valid`
+-- allows +4.0 up, only -1.2 down) while erring low risks clipping.
+--
+-- Headings are derived, never 0. The convention is fixed by the existing
+-- Harset rows: heading = atan2(dx, dz), i.e. 0 = +Z and pi/2 = +X. Proof in
+-- the seed itself -- lieutenants 235 (x -4.44, heading pi/2) and 236
+-- (x +4.33, heading 3pi/2) face each other across the z=-231 threshold, and
+-- plaza guards 225/234 (x -18.7, heading ~pi/2) face inward while 228/231
+-- (x +18.6, heading ~3pi/2) do the same from the other side. Anat's
+-- 3.11704898 (~pi) then means she faces -Z, down the stair at x[60,66]
+-- z[62,70] that is the only way onto her dais: "face the way a visitor
+-- arrives", which is the Castle lesson this packet must not repeat.
+--
+-- All rows are `is_stationary = true`. World 68 has no navmesh at all, so an
+-- NPC that tried to path would hit the `no_path` branch and freeze
+-- (decision D-H06, same reasoning as the plaza sentries). Every row is
+-- non-hostile by template (faction 1 or 3, never 10) per D-H03/D-H04: 68 is
+-- a shared council room and nothing here is ever a kill target.
+-- `respawn_secs = 30` on every row for consistency with the 14 existing
+-- Harset rows (D-H17); none of these can die today, so it is future-proofing
+-- rather than live behaviour.
+--
+-- Rooms referenced below, all from `obj_slab` on the chunk OBJ:
+--   entry hall   x[-13.1, 10.6]  z[-37.6,  15]  floor  0.32  (arrival + 2079)
+--   cross hall   x[  -90,   55]  z[   17,  32]  floor  0.32
+--   north hall   x[  -32,   30]  z[   32,  92]  terraced 0.3 -> 1.90 platform
+--   lab wing     x[ 27.5,   69]  z[  -31,  11]  floor  0.32
+--   ops room     x[  -56,  -28]  z[  -30,  12]  floor -0.64, centre dais 0.00
+--   Anat's dais  x[ 56.5, 69.5]  z[ 69.5,  83]  floor  1.70
+--
+
+-- Ba'al at the head of the north hall. MAP-GEOMETRY/INFERRED, MEDIUM: the
+-- arrival point (0, 0.355, -20), the entry hall, the cross hall and the
+-- terraced north hall all share the x~0 axis, so the processional route of
+-- the building ends on the 1.90 platform at z[76,92] -- the one place a
+-- Goa'uld lord holds court. The competing reading is "beside Anat on her
+-- dais"; if the playtest prefers it, use (65.0, 1.75, 77.17) with the same
+-- heading and nothing else changes.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (340, 2.0, 1.95, 88.0, 3.14159274, 68, 42, 'CmdCenter_Baal', NULL, true, 30);
+
+-- Anat's Royal Guard, on her dais at her right hand, facing the stair she
+-- faces. MAP-GEOMETRY + AUTHORED-adjacency, MEDIUM-HIGH: "near Anat" is the
+-- only spec text (harset-tags.md) and spawn 222 pins where that is. 3.5 m
+-- from her, clear of the 3.8-high dais columns at x 59 and x 67, z 80.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (341, 58.5, 1.75, 77.0, 3.14159274, 68, 209, 'CmdCenter_RoyalGuard', NULL, true, 30);
+
+-- Anat's symbiote tank (1353, 741), on her dais at her left hand, 4 m from
+-- her and reachable from the stair. MAP-GEOMETRY + SPEC-DESCRIPTIVE, MEDIUM:
+-- the template is literally named "Anat's Symbiote Tank", so the dais is
+-- where it belongs; the exact metre is not evidenced. Deliberately NOT
+-- placed on one of the six map `GA-PuzzleStation00` actors -- template 245
+-- draws that same mesh, and co-locating would z-fight the map's own copy.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (342, 66.0, 1.75, 77.0, 3.14159274, 68, 245, 'CmdCenter_SymbioteTank', NULL, true, 30);
+
+-- Moh'katan in the entry hall, 13 m up the corridor from the arrival point
+-- and facing it. MAP-GEOMETRY + INFERRED, MEDIUM: he offers 1324 "Present
+-- Yourself", the Jaffa faction-entry mission, so he is the first NPC a new
+-- arrival must find; the entry hall is the only room every arrival crosses.
+-- Offset to x -5 so he does not stand in the corridor's centre line.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (343, -5.0, 0.37, -8.0, 2.74680114, 68, 54, 'CmdCenter_Mohkatan', NULL, true, 30);
+
+-- Col Marsh, west side of the ops room's central briefing dais, facing it.
+-- MAP-LANDMARK + MAP-GEOMETRY, MEDIUM: the room at x[-56,-28] z[-30,12] has
+-- a sunken -0.64 floor, eight `GA-Monitor01` wall banks mounted on both side
+-- walls (x -27.0/-27.2 and -57.3/-57.4 at z -3.7 and -14.9), a raised 0.00
+-- central dais at x[-46,-38] z[-30,-4] with a 0.30 console ridge along its
+-- south half, and a gated entrance (two `GA-Fence01` at x -45.3/-38.3, z 4,
+-- with four TriggerVolumes on them). That is a war room, and Marsh is the
+-- ranking Tau'ri officer on Harset. Which of the three officers stands
+-- where inside it is not evidenced.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (344, -49.5, -0.59, -14.0, 1.57079637, 68, 10, 'CmdCenter_Marsh', NULL, true, 30);
+
+-- Capt Copplemann, east side of the same dais, facing it -- Marsh's mirror.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (345, -35.5, -0.59, -14.0, 4.71238899, 68, 48, 'CmdCenter_Copplemann', NULL, true, 30);
+
+-- Blackstock inside the ops room's gated entrance, facing the dais.
+-- INFERRED, LOW: the spec says "office" and no room in the map is an office
+-- -- there is no small enclosed space with a desk asset anywhere in the
+-- decoded geometry. Placed with the other two Tau'ri officers because he is
+-- 1374's report target and the ops room is the only Tau'ri-coded room; the
+-- "office" claim is recorded as unresolved, not silently satisfied. Also
+-- note H14 may instead want `Harset_Blackstock` (same template 214) in world
+-- 57 -- one of the two must be dropped, and the coordinator picks.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (346, -50.0, -0.59, 6.0, 2.76109171, 68, 214, 'CmdCenter_Blackstock', NULL, true, 30);
+
+-- Nerus in the lab, 2.4 m in front of the console row and facing the wing's
+-- west doorway (the way a visitor enters). MAP-LANDMARK + MAP-GEOMETRY,
+-- MEDIUM-HIGH on the room, MEDIUM on the metre: the east wing holds the
+-- map's only laboratory signature -- four `GA-PuzzleStation00` consoles in a
+-- row at (32.12 / 33.95 / 35.68 / 37.43, 0.32, -27.88), three
+-- `GA-WaterTower00` tanks at (48.48, -25.36), (63.36, -14.60) and
+-- (63.36, -0.40), and 26 `GA-Viewscreens00` in banks along its walls -- and
+-- the packet says "Nerus 53 (lab)". This is the same room the H15 point set
+-- `Harset_CmdCenter.Lab` (2120) covers, so a 1241 Lab scan and Nerus agree
+-- by construction.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (347, 34.8, 0.37, -25.5, 0.18962985, 68, 53, 'CmdCenter_Nerus', NULL, true, 30);
+
+-- Opheltes at the foot of the north hall's terraced ramp, facing back down
+-- toward the cross hall. INFERRED, LOW: nothing in any chain, mission row or
+-- spec line says where Opheltes stands -- the tag registry lists him with no
+-- note. Placed on the first terrace of the processional route so he is
+-- findable at all rather than left unseeded, since the row is cheap and a
+-- wrong-but-reachable NPC is correctable in one edit; a wrong-but-sealed one
+-- is the Romney mistake. Clear of the z[32,36] pillars at x -18/-22.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (348, -10.0, 0.45, 36.0, 3.14159274, 68, 215, 'CmdCenter_Opheltes', NULL, true, 30);
+
+-- Athena on the north hall's 1.90 platform, off the centre line, facing the
+-- ramp. INFERRED, LOW on the metre. Not in the H12 scope list but required
+-- by packet H32 (mission 1363 step 4047 talks to five shared-hub NPCs and
+-- "Athena 44 needs a spawn (H12)"), and `CmdCenter_Athena` is already in the
+-- tag registry, so the row is added here rather than leaving H32 blocked on
+-- a second placement pass. Flag it to the coordinator if 1363 wants her
+-- elsewhere.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (349, -18.0, 1.95, 84.0, 2.49809170, 68, 44, 'CmdCenter_Athena', NULL, true, 30);
+
+-- NOT SEEDED HERE, on purpose (see the `## No idea` section of the cluster
+-- file): the sarcophagus and the lab consoles named in the H12 scope. Both
+-- lack an `entity_templates` row (H11 seeded 240-248 and neither is among
+-- them), the audit records them as "asset strings only, no actor", and the
+-- map already draws four consoles in the lab, so an invented prop template
+-- would double a mesh that is already on screen. Nothing in any written
+-- chain interacts with either.
+
+-- PLACEMENT PASS B (packet H14, world 57 Harset hub exterior).
+-- Ledger: docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md
+-- Method: docs/analysis/harset-rebuild/placements/METHOD.md
+--
+-- Every coordinate below is a GUESS with a recorded evidence class and
+-- confidence, not a pin. The ledger row (id PL-B-nn) carries the evidence,
+-- the checks run, how to verify it in-client and how to correct it. Correct
+-- these rows; do not re-derive them.
+--
+-- ONE FACT THAT SHAPES THE WHOLE BLOCK. `data/spaces/harset.nav` does not
+-- cover the hub's upper quarters at their real floor height. A ring probe
+-- around every named Jaffa Zone landmark (the tent rows, the barracks, the
+-- high-wall arch, both fountains, the military tent, `FirstBug` itself)
+-- found NO on-mesh point within 12 m at the floor y the geometry actually
+-- has (-41.3, from `obj_slab`); the nearest mesh polygons sit 7-11 m above
+-- or below it. The two AUTHORED rows in that quarter -- Petbe (spawn 223)
+-- and `FirstBug` (spawn 224) -- are themselves off-mesh for the same
+-- reason, so "off-mesh" here is a statement about the navmesh, not about
+-- the placement. World 57 is `navmesh_mode = 'advisory'` (H53), so an
+-- off-mesh spawn is not rubber-banded; it does mean NPC pathing there is
+-- dead, which is why every row below is `is_stationary = true`.
+-- Consequence: rows on the stargate plaza are placed on-mesh on the hub
+-- component (187); rows in the Jaffa Zone, at the shield towers and on the
+-- palace terrace are placed on the TRUE GEOMETRY FLOOR from `obj_slab` and
+-- recorded as off-mesh. See GH1.
+--
+-- SECOND OPINION: the REBUILT mesh (Castle-nav session, humanoid agent,
+-- 374 components instead of 1,939) covers this ground and is used here only
+-- to answer "could a player walk to this spot", never to validate a row --
+-- the tests load the shipped `data/spaces/harset.nav`, which is unchanged.
+-- On the rebuilt mesh 14 of these 15 rows are on-mesh and all 14 are on ONE
+-- component (11) together with the gate, the plaza exit, all four reachable
+-- ring pads, Petbe (223) and `FirstBug` (224). Two rows were moved after
+-- that check rather than left where the first pass put them:
+--   * `SecondBug` (306) z 117.5 -> 118.5: it sat 1.40 m outside the
+--     containment gate at the mesh edge.
+--   * `Harset_ShieldTower2` (309) moved off the tower's -31.1 pad up to the
+--     -28.25 terrace. The rebuilt mesh puts that pad on component 280 -- an
+--     ISLAND, not connected to the plaza -- which is the Castle "Romney in
+--     a sealed wing" failure exactly. The terrace beside it is component 11
+--     and is the floor `obj_slab` gives 272 m^2 at y[-28.5, -28.0].
+-- The remaining outlier is `Harset_ShieldTower1` (308), whose hillside Y is
+-- already flagged LOW.
+--
+-- `heading` is atan2(dx, dz) radians, 0 = +Z (cell/service/npc_ai/fight.rs
+-- line 633). Every value below is derived from an approach direction or
+-- from the landmark the entity faces -- never left at 0, which is the
+-- Castle lesson (reconstructed rows all faced walls).
+--
+
+-- PL-B-01 / PL-B-02: Hansen and Jacobs. Spec observation "left of the gate,
+-- walking outward". Left of the gate is -X (arriving through the gate at
+-- z=38 the player walks outward toward -Z, past the two `GA-GuardPost00`
+-- prefabs at z=3.5, and left of that heading is -X). Placed just outside
+-- the authored plaza guard line (spawns 225/234 at x=-18.6) at the same
+-- floor y those rows use, so they read as a pair standing off the walkway.
+-- They face the gate (the way a visitor arrives) rather than outward: the
+-- 2009 walk cannot be reproduced until GH1 gives world 57 patrol paths.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (300, -24.0, -68.9227982, 14.0, 0.7836, 57, 212, 'Harset_Hansen', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (301, -26.5, -68.9227982, 18.5, 0.935, 57, 213, 'Harset_Jacobs', NULL, true, 30);
+
+-- PL-B-03: Lo'rak in the bazaar. Two merchant clusters exist in world 57:
+-- the lower-level one at y=-60 (x 100-126, z 51-94) and the merchant street
+-- that runs south out of the stargate plaza at y=-69.2 (`GA-MerchantTent00`
+-- through `03`, x 19-46, z -13 to -105). Lo'rak is placed in the second,
+-- because it is the one on the hub navmesh component (187) and therefore
+-- the one a player reaches on foot from the gate. Faces back up the street
+-- toward the plaza exit at (0, 4) -- the direction a customer arrives from.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (302, 22.0, -68.9, -30.0, 5.709, 57, 201, 'Harset_Lorak', NULL, true, 30);
+
+-- PL-B-04 / PL-B-05: the two 1326 Lan'toc Jaffa (chains 6335 and 6336 in
+-- harset_jaffa_chains.sql expect exactly these tags). Two individuals of
+-- template 204 because the accept/reject outcome belongs to the NPC and the
+-- engine has no way to pick between two dialogs on one tag (H22).
+-- Placed in the Jaffa Zone's west tent row, between the `JF-Tent03` row at
+-- x=-154.5 and `GA-Barracks01` at (-198.1, 84.4), 5 m apart so they read as
+-- two men standing in the camp street rather than one entity. Both face the
+-- `HarsetRingLeft` pad at (-194.5, -40.2, 81.3), which is how a player
+-- arrives in this quarter.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (303, -160.0, -41.28, 84.0, 4.6335, 57, 204, 'Harset_FormerRaJaffa', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (304, -160.0, -41.28, 89.0, 4.4921, 57, 204, 'Harset_FormerRaJaffa2', NULL, true, 30);
+
+-- PL-B-06: the Suspicious Jaffa (1371 / 1322 arrest target). The one
+-- Jaffa Zone placement in this block that IS on-mesh: the shipped mesh has
+-- a rectangular fragment (component 853, x -163 to -158, z -30 to -21) that
+-- coincides with a tent floor at y=-42.1, and `obj_slab` confirms the real
+-- floor there too (100 m^2 at y[-42, -41]). A man lurking inside a tent in
+-- the south camp is also what the name suggests. Faces the south camp's
+-- fountain (`TOL-FluidPlaneCircle_Flat00` at -176.6, -41.0, -5.0), i.e.
+-- diagonally out of the tent toward the camp's open ground.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (305, -159.0, -41.28, -26.0, 5.5862, 57, 205, 'Harset_SuspiciousJaffa', NULL, true, 30);
+
+-- PL-B-07 / PL-B-08: `SecondBug` and `ThirdBug`, the other two 742 baskets.
+-- The AREA is authored, not guessed: step 2504 is literally "Hide the
+-- listening devices in the Jaffa area in Harset", and the existing
+-- `FirstBug` (spawn 224) sits in the north Jaffa camp at (-176.7, -41.25,
+-- 125.3). Both new baskets go in the same camp so the player does not cross
+-- the map three times: one beside `JF-Tent01`/`JF-Tent03` at x=-185, one
+-- beside the `JF-Tent03` row at x=-147. `obj_slab` confirms the floor at
+-- y[-42, -41] in both columns. Each faces the tent it belongs to.
+-- `respawn_secs` is set for consistency with D-H17; a prop never dies, so
+-- it never fires.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (306, -186.0, -41.28, 118.5, 2.8993, 57, 164, 'SecondBug', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (307, -147.0, -41.28, 104.5, 3.6932, 57, 164, 'ThirdBug', NULL, true, 30);
+
+-- PL-B-09 / PL-B-10 / PL-B-11: the three shield towers (1240 "examine 3
+-- Shield Towers"). Strong landmark evidence: the map contains exactly three
+-- `GA-Tow*` instances and the mission wants exactly three towers --
+-- `GA-TowTall01` (-226.0, -41.4, 37.7), `GA-TowMed00` (-166.1, -31.1,
+-- 234.8), `GA-TowShort01` (0.0, -30.7, 288.8). Template 243 is a console
+-- mesh (`GA-PuzzleStation00`), not the tower itself, so each row is the
+-- examinable console set 3-4 m off its tower's pivot and facing it. Y is
+-- the tower prefab's own origin height in each case, which `obj_slab`
+-- confirms as a real surface; tower 1 is the weakest of the three because
+-- its column is a hillside with no flat level at all (0.0 m^2 flat<=5deg).
+-- Tower 2's console is the exception: it stands on the -28.25 terrace rather
+-- than on the tower's own -31.1 pad, because the rebuilt mesh says that pad
+-- is an unreachable island. Its heading still faces the tower pivot.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (308, -223.0, -41.36, 37.72, 4.7124, 57, 243, 'Harset_ShieldTower1', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (309, -168.0, -28.25, 233.5, 1.2094, 57, 243, 'Harset_ShieldTower2', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (310, -3.0, -30.72, 285.5, 0.7378, 57, 243, 'Harset_ShieldTower3', NULL, true, 30);
+
+-- PL-B-12: Shield Controls (1374 objective 4087). No landmark names it, so
+-- this is reasoned from neighbouring evidence and is the lowest-confidence
+-- row in the block. `GA-Props:GA-Viewscreens00` is the map's ONLY Goa'uld
+-- control-panel prop -- one instance, at (-88.3, -28.9, 213.9) -- and the
+-- shield towers are Goa'uld (`GA-`) tech, so the Goa'uld screen bank is the
+-- best candidate for the Goa'uld shield console. `obj_slab` finds a real
+-- constructed floor there (128 m^2 at y[-31.0, -30.5], 502 tris), which is
+-- the Y used; the prop stands 1.7 m west of the screens and faces them.
+-- The competing reading is that the controls are inside the Command Center
+-- (world 68) -- if the in-client pass finds nothing here, that is where to
+-- look next, and this row should be deleted rather than moved.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (311, -90.0, -30.7, 213.9, 1.5557, 57, 248, 'Harset_ShieldControls', NULL, true, 30);
+
+-- PL-B-13 / PL-B-14: the Bank (1374 objective 4088, 1352) and its banker.
+-- `GA-Props:GA-Bank00` has five instances and three of them sit on top of a
+-- `CA-Arch:CA-Courtyard_Str00`, which is why the name alone is weak
+-- evidence. The tie-break is geometry: of the five, only the Jaffa-Zone
+-- courtyard pair at (-187.9 / -184.5, -41.4, 162.3) is ON the navmesh
+-- (component 1441, dy -0.13 m), and `obj_slab` gives it a 180 m^2 floor at
+-- y[-42, -41]. A walkable courtyard is what a bank needs; the other four
+-- instances are 5-68 m off any mesh. Storage Lo'taur (template 219, the
+-- banker per the tag registry and audit defect 15) stands 2.5 m off the
+-- anchor, facing the courtyard centre.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (312, -184.5, -41.28, 162.27, 4.7492, 57, 248, 'Harset_BankAnchor', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (314, -186.0, -41.28, 160.0, 0.5814, 57, 219, 'Harset_StorageLotaur', NULL, true, 30);
+
+-- PL-B-15: Petbe's quarters exterior search object (1244 step 3619, 1243
+-- objective anchor). Two candidate sites, neither decisive:
+--   (a) the terrace at (-165, -28.2, 233) carrying the map's only two
+--       `HP-Props:HP-Brazier00` instances -- a unique art family appears
+--       exactly once in a map when it belongs to one named place -- reached
+--       by the `HarsetRingLeftTop` ring pad 7 m away at y=-27.0, with a
+--       272 m^2 floor at y[-28.5, -28.0] from `obj_slab`;
+--   (b) beside Petbe's own authored spawn 223 at (-165.5, -41.3, 99.4).
+-- (a) is seeded: a ring pad implies a destination that matters, and where
+-- a Goa'uld stands on duty is not where he sleeps. If the in-client pass
+-- finds no building on that terrace, move this row to (b).
+-- Note the shield-tower-2 console (spawn 309) stands on the same terrace;
+-- a tower in the palace forecourt is coherent, and the two regions
+-- deliberately overlap.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (313, -160.5, -28.25, 232.6, 5.0039, 57, 244, 'Harset_PetbeQuarters', NULL, true, 30);
+
+--
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 246, true);
+
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 349, true);
 
