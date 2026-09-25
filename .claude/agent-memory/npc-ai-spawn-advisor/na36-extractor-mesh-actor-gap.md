@@ -1,6 +1,6 @@
 ---
 name: na36-extractor-mesh-actor-gap
-description: NA36 widened navmesh-extractor's StaticMeshActor filter to InterpActor/KActor/FracturedStaticMeshActor; did NOT close the Harset raised-platform gap or spawn 308
+description: NA36 widened navmesh-extractor's StaticMeshActor filter to KActor/FracturedStaticMeshActor (unconditional) and InterpActor (opt-in, off by default); did NOT close the Harset raised-platform gap or spawn 308
 metadata:
   type: project
 ---
@@ -9,8 +9,26 @@ NA36 (2026-09-25, branch `npcai/na36-extractor-gaps`) fixed a real bug in
 `crates/navmesh-extractor`: the static-mesh walker only accepted class
 `StaticMeshActor` exactly, silently dropping `InterpActor` / `KActor` /
 `FracturedStaticMeshActor` exports (all `AStaticMeshActor` siblings with
-identical shape) before the walk even visited them. `staticmesh::MESH_ACTOR_CLASSES`
-now covers all four; `harset.nav`/`harset.occ` were rebuilt.
+identical shape) before the walk even visited them.
+`staticmesh::MESH_ACTOR_CLASSES` now covers `KActor`/
+`FracturedStaticMeshActor` unconditionally (zero shipped instances of
+either, so this is currently a no-op safety net). **`InterpActor` is
+opt-in, off by default** (`OPT_IN_MESH_ACTOR_CLASSES`,
+`ExtractOptions::include_interp_actors`) — a same-day follow-up walked
+back the first pass's unconditional inclusion after a review flagged
+that `InterpActor` is disproportionately doors/gates/lifts/elevators in
+this content (confirmed: 34 of 754 resolved InterpActors across 23 maps
+are literal doors, another 15 are a Stargate's rotating chevron
+mechanism), and a mover's cooked pose can be its usually-closed
+design-time state rather than its runtime one — baking that into a
+`.nav`/`.occ` risks sealing a doorway or blocking sight through an open
+one. `harset.nav`/`harset.occ` ship built **with** the flag on — Harset's
+31 InterpActors were checked by hand and are all static dressing (mostly
+`GLB-RingTransporter00` ring-transport platforms), none a door. The
+other 14 InterpActor-carrying maps (Agnos, Beta_Site_Evo_1, Castle,
+Castle_CellBlock, Dakara_E1, Login_Map, Lucia, Menfa_Dark, Menfa_Light,
+Omega_Site, SGC_W1, Sewer_Falls, Tollana) default off until each gets the
+same per-instance check.
 
 **Why this matters for future spawn-placement work:** the fix did NOT
 resolve either piece of evidence it was framed around. The five clustered
