@@ -253,7 +253,7 @@ impl SpaceManager {
         // validation resumes cleanly (no stale `last_valid`) once physics
         // is restored.
         if movement_unrestricted {
-            return self.accept(entity_id, position, direction, velocity);
+            return self.accept(now, entity_id, position, direction, velocity);
         }
 
         // Layer 1 — bounds (also the Z-axis floor-clip / NaN / infinity gate).
@@ -289,12 +289,19 @@ impl SpaceManager {
                 // the audit trail for a privileged player standing somewhere an
                 // ordinary player is snapped back from.
                 let id = self.player_identity(entity_id);
+                // `world`, like every other `movement.validation` row
+                // whose space id resolves: a dashboard filtered by world
+                // must not silently drop the GM allowance rows, which
+                // are the audit trail for a privileged player standing
+                // where an ordinary one is snapped back from.
+                let world = self.world_name_for_space(space_id).unwrap_or("unknown");
                 tracing::warn!(
                     target: "movement.validation",
                     entity_id,
                     account_id = id.account_id,
                     player_id = id.player_id,
                     space_id,
+                    world = %world,
                     client_x = position[0],
                     client_y = position[1],
                     client_z = position[2],
@@ -360,12 +367,14 @@ impl SpaceManager {
             // tolerance-calibration pipeline can compute the legitimate
             // p99.9 before the speed layer is ever promoted to snap-back.
             let id = self.player_identity(entity_id);
+            let world = self.world_name_for_space(space_id).unwrap_or("unknown");
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
                 space_id,
+                world = %world,
                 client_x = position[0],
                 client_y = position[1],
                 client_z = position[2],
@@ -384,12 +393,20 @@ impl SpaceManager {
             );
         }
 
-        self.accept(entity_id, position, direction, velocity)
+        self.accept(now, entity_id, position, direction, velocity)
     }
 
     /// Write an accepted client position and clear the correction budget.
+    ///
+    /// `now` is the caller's server processing instant, threaded through
+    /// rather than re-read: the sampler below stamps its window with it,
+    /// so reading `Instant::now()` here would both record a sample at a
+    /// slightly different time than the packet was processed at and put
+    /// the 5 s window out of reach of the time-injected
+    /// [`SpaceManager::apply_client_position_update_at`] tests.
     fn accept(
         &mut self,
+        now: Instant,
         entity_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
@@ -402,7 +419,7 @@ impl SpaceManager {
         // counterpart to the reject log: without it we know where players
         // are stopped and nothing about where they successfully walk,
         // which is what finds a navmesh hole before somebody falls in.
-        self.sample_accepted_position_at(entity_id, position, Instant::now());
+        self.sample_accepted_position_at(entity_id, position, now);
         ClientMoveOutcome::Accepted { position }
     }
 

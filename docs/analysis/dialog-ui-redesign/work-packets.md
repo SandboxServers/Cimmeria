@@ -18,7 +18,7 @@ Every packet is bound by these facts. Each was read from the client, not inferre
 | F4 | `Dialog.DialogType`, `Dialog.RadioType` and `Dialog.RealizationType` all register the same window (`DialogWin`) and the same init function. A type change from 2 to 4 or 5 has no visual effect on a displayed dialog. | `Dialog/Dialog.lua:71-73` |
 | F5 | Type 0 (`DUIST_None`) is registered to the Blurb window under a "TEMP HACK" comment. It is a modal, single-screen Blurb. The Dialog module has no bark or subtitle path. | `Dialog/Blurb.lua:35-38` |
 | F6 | Next, Previous and Done are client chrome on `DialogWin`. Next shows when more screens remain or Accept is visible. Decline shows automatically whenever Accept shows. | `Dialog/Dialog.lua:13-45`, `Dialog/Dialog.layout` |
-| F7 | `DialogWin` renders only Accept (type 2) and Generic1-3 (type 4 and up). `BlurbWin` renders only More Info (type 1) and Accept (type 2), has no Next, and has a title-bar close control. | `Dialog/Dialog.lua:3-8`, `Dialog/Blurb.lua:3-6`, `Dialog/Blurb.layout:8` |
+| F7 | `DialogWin` renders only Accept (type 2) and Generic1-3 (type 4 and up). `BlurbWin` renders only More Info (type 1) and Accept (type 2) and has no Next. All three windows (Dialog, Blurb, Tutorial) have a title-bar close control. A cooked button the window cannot draw is invisible but still counts for F8, so it silently suppresses the close event. The Blurb's Decline button appears inert: `Blurb.lua` subscribes its click on the window, not the button. | `Dialog/Dialog.lua:3-8`, `Dialog/Blurb.lua:3-6`, `Dialog/Blurb.layout:8` |
 | F8 | Closing a dialog that has ZERO buttons sends `dialogButtonChoice(dialogId, -1)`. Closing a dialog that has ANY button sends nothing. Clicking a button sends its cooked `ButtonID` (F14) and closes. | `FUN_00d249c0` in SGW.exe (re-read 2026-09-21), [m706-708 worknote](../castle-rebuild/worknotes/m706-708.md) fact 1 |
 | F9 | `dialog_choice` chains match on dialog id only. There is no authorable `button_id` condition, so Accept and More Info cannot be told apart today. | `crates/content-engine/src/triggers/matching.rs:139-140`, `castle_701_chains.sql:92-95` |
 | F10 | `IsImmediate` alone decides display versus queue, for every screen type. `1` opens the window. `0` raises `DialogAvailable`, and Lua only has lure queues for Radio (radio icon), Realization (idea icon) and Tutorial. A Blurb or Dialog type sent with `IsImmediate=0` silently vanishes. Opening a lure is local only; the server is told nothing. Cimmeria always sends `1`, as the legacy Python did. | `FUN_00d25900`, `FUN_00d25200`, `FUN_00d25160` in SGW.exe; `Dialog/PushMission.lua:3-4`, `Dialog/DialogSetup.lua:93-151`; `deprecated/python/cell/SGWPlayer.py:718` |
@@ -94,7 +94,7 @@ None of the six Radio dialogs is the key of a `dialog_choice` chain, so a player
 
 ```text
 Wave 0 (all parallel, no dependencies)
-  DU-RE   native display path            DONE 2026-09-21; findings doc owed under DU-DOC
+  DU-RE   native display path            DONE 2026-09-21
   DU-08   offered-dialog set (F13)       rust-gameserver-dev           worktree
   DU-00   in-client type probe           coordinator + owner UAT       throwaway branch
   DU-01   override patch engine          rust-gameserver-dev           worktree
@@ -123,7 +123,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-RE
 
-**Status:** Review (trace complete 2026-09-21; results in Native Findings; findings doc not yet written). **Scope title:** native dialog display path. **Agent:** game-archaeology-specialist, read-only Ghidra.
+**Status:** Done (2026-09-21; finding at [dialog-controller-wire-flow.md](../../reverse-engineering/findings/dialog-controller-wire-flow.md), indexed from both RE READMEs). **Scope title:** native dialog display path. **Agent:** game-archaeology-specialist, read-only Ghidra.
 **Scope:** in `DialogController`'s `Event_NetIn_DialogDisplay` handler, what `IsImmediate`, `MissionFlags` and `aMissionId` do; whether screen type influences queue versus display; what `activateAvailableDialog` does natively and whether it tells the server; the numeric values of the Lua `Dialog.*Type` and `Dialog.Button*Type` constants; what the per-type id `0x1c20 + type` in `FUN_00d249c0` is; how many dialogs can be active at once; whether the cooked parser is attribute-order independent and accepts types 4 and 5; what raises `Event_UI_SplashMessageReceived`.
 **Acceptance:** findings doc under `docs/reverse-engineering/findings/` with addresses and confidence, indexed from both READMEs; the Native Findings section above filled in.
 
@@ -145,7 +145,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 **Status:** Ready. **Scope title:** dialog button linter. **Agent:** testing-validation-engineer.
 **Entries:** `crates/content-engine/tests/interact_tag_linter.rs` (precedent), `db/resources/Dialogs/Seed/dialog_screen_buttons.sql`, `dialog_screens.sql`, the four `castle_*_chains.sql` files.
-**Scope:** a seed-parsing test, no DB, enforcing the two hard rules in Client Contract for every dialog id that keys a `dialog_choice` chain in the Castle and Cellblock seed files. Carry an explicit allowlist for 3999, 5861 and 2576 that DU-02a and DU-02b must empty. Add a second check: a Blurb (`DUIST_DefaultBlurb`) may only carry button types 1 and 2 (F7).
+**Scope:** a seed-parsing test, no DB, enforcing the two hard rules in Client Contract for every dialog id that keys a `dialog_choice` chain in the Castle and Cellblock seed files. Carry an explicit allowlist for 3999, 5861 and 2576 that DU-02a and DU-02b must empty. Add a second check, which is a correctness rule and not style (F7: an undrawable button still suppresses the close event): a Blurb may only carry button types 1 and 2; a Dialog, Radio or Realization window may only carry types 2, 4, 5 and 6; a chain-keyed dialog may not be a Tutorial or `DUIST_None` type.
 **Acceptance:** linter fails when a button row is added to 5003; fails when 2576's final-screen button is removed after DU-02b; the allowlist is empty at the end of Wave 1.
 **Note:** the linter reads the seed, the client reads the override. DU-02a/b keep the two in sync by hand, as `dialog_overrides.rs` step 1 already requires, and add one test per zone asserting every `DialogPatch` agrees with the seed rows.
 
@@ -197,7 +197,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 **Status:** BlockedDecision (D-DU2). **Scope title:** `button_id` condition and the 2572 offer flow. **Agents:** rust-gameserver-dev, mission-systems-advisor.
 **Scope:** add an authorable `button_id` condition (`matching.rs:139`, `conditions.rs`, loader), noting F8's `-1` for close. Then wire Gerschon's Human offer as Blurb 2572: Accept accepts 701, More Info displays 2573, whose final-screen Accept (DU-02b) accepts 701. Mission 701 must not be acceptable twice.
-**Acceptance:** condition unit tests including `-1`; replay tests for Accept, More Info then Accept, More Info then Decline, and a second interaction after accept. **Note:** the condition compares against the cooked `ButtonID` (F14): 8 Accept, 9 More Info, -1 close.
+**Acceptance:** condition unit tests including `-1`; replay tests for Accept, More Info then Accept, and a second interaction after accept. Decline and X on a dialog that has buttons send nothing (F8), so "More Info then Decline" is specified as: no wire event, no chain fires, and Gerschon can be asked again. **Note:** the condition compares against the cooked `ButtonID` (F14): 8 Accept, 9 More Info, -1 close.
 
 ### DU-07
 
@@ -207,7 +207,7 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 ### DU-DOC
 
-**Status:** Ready (draft), finalise in Wave 3. **Agent:** documentation-writer.
+**Status:** Draft pass Integrated 2026-09-21 (finding, client contract, portrait-lookup correction, indexes; worknote [worknotes/dudoc.md](worknotes/dudoc.md)); finalise in Wave 3. **Agent:** documentation-writer.
 **Scope:** RE finding `docs/reverse-engineering/findings/dialog-controller-wire-flow.md` built from the Native Findings table, with the correction to `dialog-portrait-lookup.md` and both README index rows; new reference doc `docs/content/dialog-ui-client-contract.md` carrying the Client Contract table and hard rules; update `docs/architecture/mission-pak-overrides.md` for patch mode; add the two hard rules to `.github/instructions/content-chains.instructions.md`; document `npc_bark` and any new condition in `docs/content/content-engine.md` and `docs/guides/extend-the-content-engine.md`; index entries in `docs/readme.md` (including a row for this ledger) and `docs/content/README.md`. Docs are CRLF.
 
 ### DU-UAT
@@ -218,6 +218,10 @@ Parallel implementation workers run with `isolation: "worktree"`. File ownership
 
 | Id | Question | Default if unanswered |
 |---|---|---|
-| D-DU1 | Blurbs 2305, 4000, 2308, 2518 appear after the mission is already accepted. Keep Accept as an acknowledgement button, or strip to X-close only? More Info on 4000 and 2308 is a dead button either way. | Keep Accept, strip More Info. |
+| D-DU1 | Blurbs 2305, 4000, 2308, 2518 appear after the mission is already accepted. Keep Accept as an acknowledgement button, or strip to X-close only? More Info on 4000 and 2308 is a dead button either way. Note: whenever Accept shows, the client also shows a Decline button that appears to do nothing on a Blurb (F7), which argues for stripping. | Keep Accept, strip More Info. |
 | D-DU2 | Is the Blurb 2572 offer flow wanted now? It needs a new engine condition and changes how mission 701 is offered to Humans. | Defer; ship DU-02b without it. |
 | D-DU3 | Radio lure means the player can ignore a transmission. Acceptable for all six, or should 2584 stay immediate because it carries the throne-room briefing? | Lure for all but 2584. |
+
+## Follow-ups Outside This Campaign
+
+- `docs/reverse-engineering/findings/dialog-portrait-lookup.md` Track 2 (speaker-name fallback) is contradicted by the recovered dialog Lua and is marked disputed in place. Nobody should act on its "Fix 2" (editing the speakers table for dialog 4001) until a follow-up trace settles it. See [worknotes/dudoc.md](worknotes/dudoc.md) discrepancy 2.

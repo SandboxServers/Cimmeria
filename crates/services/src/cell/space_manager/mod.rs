@@ -33,7 +33,9 @@ mod spatial;
 mod spawn;
 mod xml;
 
-pub(crate) use movement_telemetry::{LogThrottle, MovementTelemetry, RejectReport};
+pub(crate) use movement_telemetry::{
+    HardReject, LogThrottle, MovementTelemetry, RecoveryReport, RejectReport, SuppressionReport,
+};
 
 #[cfg(test)]
 mod tests;

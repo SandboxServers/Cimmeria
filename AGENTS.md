@@ -35,6 +35,7 @@ This applies especially to:
 
 - REPL-style logic UAT supplements browser/manual UAT; it does not replace visual verification.
 - If a feature cannot be meaningfully exercised in the JS REPL, state that clearly and explain why.
+- In user-facing agent updates, final reports, issue comments, and PR bodies, reference files from the project root (for example, `docs/guides/...`). Do not expose absolute host filesystem paths unless the user explicitly asks for one.
 
 ## PR process — tests and docs
 

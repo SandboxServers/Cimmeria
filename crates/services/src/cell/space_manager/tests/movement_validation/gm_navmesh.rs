@@ -164,4 +164,10 @@ fn gm_off_navmesh_bypass_warning_names_the_account() {
         "the bypass is a privileged-action audit line and must name the \
          account; entity_id alone is a recycled per-space slot; got {event:#?}"
     );
+    assert!(
+        event.has_field("world", "Castle_CellBlock"),
+        "every `movement.validation` row whose space id resolves carries \
+         `world` — a dashboard filtered by world must not silently drop \
+         the GM allowance rows; got {event:#?}"
+    );
 }
