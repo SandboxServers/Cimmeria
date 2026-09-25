@@ -1,8 +1,11 @@
 # Gate Travel Wire Formats
 
 > **Date**: 2026-03-01
+> **Last updated**: 2026-09-19 (`onDHDReply` static audit only)
+> **Type**: Reference
+> **Audience**: Engineers implementing gate-travel messages
 > **Phase**: 3 — Missing Systems RE
-> **Confidence**: HIGH (derived from `.def` files + `alias.xml` + universal RPC dispatcher architecture)
+> **Confidence**: HIGH for the existing gate-travel findings; MEDIUM for the declaration-derived `onDHDReply` signature (binary payload and live-client UI unverified)
 > **Sources**: `GateTravel.def`, `alias.xml`, Ghidra decompilation of universal RPC dispatcher (`0x00c6fc40`)
 
 ---
@@ -35,6 +38,18 @@ Player activates a DHD to dial a gate address.
 ## Server → Client Messages
 
 Server→client messages are ClientMethods. The server sends a method ID + serialized args.
+
+### `onDHDReply` — DHD Feedback (Declared)
+
+Declared directly in [SGWPlayer.def](../../../entities/defs/SGWPlayer.def), `ClientMethods/onDHDReply`, rather than the GateTravel interface [DEF SGWPlayer.def:onDHDReply]. The [canonical client dispatch table](../../protocol/client-method-dispatch-table.md) assigns **method 100**. The declaration comment says "Give the client feedback on attempted DHD use."
+
+| Argument | Declared Type | Evidence |
+|---|---|---|
+| `aMessage` | `WSTRING` | The method's only `<Arg>` in `SGWPlayer.def` |
+
+**Confidence: MEDIUM for the payload signature.** This is declaration evidence, not a binary-verified byte layout. No method-specific length prefix, payload offset, or total wire size is established by this audit. The recorded MemberCallback RTTI associates `Event_NetIn_onDHDReply` with VCommunicator [SGW 0x00cf5440]; `onDisplayDHD` has a separate VGateTravel subscriber [SGW 0x00e2fd90]. Neither observation proves that an NPC entity ID selects the handler or that text appears in a particular chat/dialog widget.
+
+**Rust status (2026-09-19):** `ON_DHD_REPLY = 100` is declared, and wire-log `decode_100` reads `aMessage` with `wstring()`, but no production Rust emitter was found. See the [DHD declaration and call-site audit](stargate-dhd-state-machine.md#ondhdreply-declaration-and-rust-audit) for source links and verification limits. A decoder and a constant alone do not implement feedback on attempted DHD use.
 
 ### `setupStargateInfo` — Initialize Gate Address Lists
 
