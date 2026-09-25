@@ -35,7 +35,9 @@
 //!   same-faction neighbours onto the same target, without chaining (NA14,
 //!   a marked deviation from legacy).
 //! - [`ability_select`] — ability bucket choice, range resolution,
-//!   and the min-range backup-waypoint geometry.
+//!   and the step-back waypoint geometry.
+//! - [`step_back`] — the ranged step-back: comfort range, hysteresis and
+//!   cooldown (NA32, D-NA15).
 //! - [`patrol`] / [`wander`] / [`investigate`] / [`follow`] — the
 //!   movement-state handlers.
 //! - [`leash`] — the leash policy (NPC-to-spawn radius with hysteresis),
@@ -79,6 +81,7 @@ mod movement_stop;
 mod path_failure;
 mod path_request;
 mod patrol;
+mod step_back;
 mod transition;
 mod wander;
 

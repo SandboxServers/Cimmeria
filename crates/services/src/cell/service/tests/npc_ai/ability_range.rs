@@ -39,8 +39,10 @@ async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
     // list. The NPC has NO ability_defs loaded at all, so
     // `handle_use_ability` will reject the call ("ability missing")
     // and return false — exactly the rejection shape the WARN guards.
+    // The player stands 4 u off, outside the 2 u comfort range a ranged NPC
+    // steps back from (NA32), so the NPC fires rather than stepping.
     let mut mgr = make_ai_fixture([0.0; 3], [10.0, 0.0, 0.0]);
-    mgr.create_entity(100, "Castle", [11.0, 0.0, 0.0], [0.0; 3])
+    mgr.create_entity(100, "Castle", [14.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
         p.is_player = true;
@@ -287,9 +289,9 @@ async fn npc_ai_fight_schedules_retry_on_handle_use_ability_failure() {
     // empty known_abilities + missing ability_defs → choose_npc_ability
     // returns NPC_DEFAULT_ABILITY via the empty-bucket fallback, then
     // handle_use_ability rejects on the has_ability check and returns
-    // false.
+    // false. 4 u off: outside the ranged step-back's comfort range (NA32).
     let mut mgr = make_ai_fixture([0.0; 3], [10.0, 0.0, 0.0]);
-    mgr.create_entity(100, "Castle", [11.0, 0.0, 0.0], [0.0; 3])
+    mgr.create_entity(100, "Castle", [14.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
         p.is_player = true;
