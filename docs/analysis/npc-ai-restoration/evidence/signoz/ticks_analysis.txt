@@ -1,0 +1,47 @@
+2753 2026-09-19T12:59:31.741416043Z 2026-09-21T16:52:23.343118264Z
+[(('Idle', ''), 1083), (('Fighting', 'attack_in_place'), 574), (('Fighting', ''), 412), (('Leashing', 'leashed'), 353), (('Fighting', 'chase'), 120), (('Fighting', 'stationary_holds'), 113), (('Follow', 'follow_band'), 51), (('Fighting', 'hold_no_repath'), 26), (('Fighting', 'no_ability'), 16), (('Fighting', 'repath_degenerate'), 4), (('Fighting', 'no_path'), 1)]
+[('Cellblock Guard', 2203), ('NID Guard', 276), ('Prisoner retrieval unit', 164), ('Castle_Zuritska', 51), ('NID Guard - Castle inside', 49), ('Prisoner retrieval unit - Castle', 8), ('Castle_Romney', 2)]
+
+STUCK RUNS (>=3 consecutive non-attack Fighting ticks, NPC xz unchanged): 19
+ 09-19T13:00:29..13:00:41 n=7 npc=100124 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 7}) d_tgt=Some(14.650704)->Some(12.356904) los=Counter({'False': 7}) nav_len=Counter({0: 7})
+ 09-20T11:53:51..11:54:01 n=6 npc=100147 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 6}) d_tgt=Some(15.744032)->Some(12.344989) los=Counter({'False': 6}) nav_len=Counter({0: 6})
+ 09-19T19:03:45..19:03:55 n=6 npc=100236 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 6}) d_tgt=Some(13.805874)->Some(12.459555) los=Counter({'False': 6}) nav_len=Counter({0: 6})
+ 09-19T20:58:57..20:59:07 n=6 npc=100516 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 6}) d_tgt=Some(14.388066)->Some(38.250607) los=Counter({'False': 6}) nav_len=Counter({0: 6})
+ 09-19T20:59:19..20:59:33 n=8 npc=100516 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 7, '': 1}) d_tgt=Some(51.638565)->Some(13.697404) los=Counter({'False': 8}) nav_len=Counter({0: 8})
+ 09-19T21:28:45..21:28:51 n=4 npc=100572 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 4}) d_tgt=Some(12.501059)->Some(12.3050785) los=Counter({'False': 4}) nav_len=Counter({0: 4})
+ 09-19T22:32:33..20:18:37 n=16 npc=100175 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 16}) d_tgt=Some(16.493227)->Some(12.604189) los=Counter({'False': 16}) nav_len=Counter({0: 16})
+ 09-21T00:33:43..00:34:03 n=11 npc=100175 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 11}) d_tgt=Some(15.299587)->Some(13.2755) los=Counter({'False': 11}) nav_len=Counter({0: 11})
+ 09-21T00:37:23..00:37:27 n=3 npc=100192 NID Guard[Hallway05_Guard1] pos=(-90.6,24.8,-42.7) spawn_d=Some(9.611856) outcomes=Counter({'repath_degenerate': 3}) d_tgt=Some(0.70250344)->Some(0.70250344) los=Counter({'False': 3}) nav_len=Counter({0: 3})
+ 09-19T23:08:27..23:17:29 n=7 npc=100259 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 7}) d_tgt=Some(14.368917)->Some(13.089278) los=Counter({'False': 7}) nav_len=Counter({0: 7})
+ 09-20T00:41:33..00:41:39 n=4 npc=100768 Cellblock Guard[ArmYourself_NIDGuard] pos=(-294.8,69.5,-164.4) spawn_d=Some(11.454684) outcomes=Counter({'': 4}) d_tgt=None->None los=Counter({'None': 4}) nav_len=Counter({0: 4})
+ 09-20T00:42:17..00:42:25 n=5 npc=100761 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'': 5}) d_tgt=None->None los=Counter({'None': 5}) nav_len=Counter({0: 5})
+ 09-20T00:51:27..00:52:09 n=22 npc=100789 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 22}) d_tgt=Some(15.736293)->Some(16.17783) los=Counter({'False': 22}) nav_len=Counter({0: 22})
+ 09-20T00:52:13..00:52:17 n=3 npc=100789 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 2, 'no_ability': 1}) d_tgt=Some(10.982172)->Some(11.838074) los=Counter({'False': 2, 'True': 1}) nav_len=Counter({0: 3})
+ 09-20T03:45:31..03:45:35 n=3 npc=100908 Cellblock Guard[ArmYourself_NIDGuard] pos=(-289.5,68.5,-154.3) spawn_d=Some(0.0) outcomes=Counter({'': 1, 'no_path': 1, 'chase': 1}) d_tgt=Some(54.956593)->Some(17.433792) los=Counter({'True': 2, 'False': 1}) nav_len=Counter({0: 2, 2: 1})
+ 09-20T23:11:03..23:11:07 n=3 npc=100231 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 3}) d_tgt=Some(12.753755)->Some(12.753755) los=Counter({'False': 3}) nav_len=Counter({0: 3})
+ 09-21T15:59:17..15:59:27 n=6 npc=100427 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 6}) d_tgt=Some(14.2105465)->Some(12.295894) los=Counter({'False': 6}) nav_len=Counter({0: 6})
+ 09-21T16:09:33..16:09:45 n=7 npc=100511 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 7}) d_tgt=Some(12.337972)->Some(12.337972) los=Counter({'False': 7}) nav_len=Counter({0: 7})
+ 09-21T16:14:35..16:14:39 n=3 npc=100567 Prisoner retrieval unit[ArmYourself_PrisonerRetrievalUnit] pos=(-220.3,66.7,-121.4) spawn_d=Some(0.0) outcomes=Counter({'stationary_holds': 3}) d_tgt=Some(14.590909)->Some(12.271141) los=Counter({'False': 3}) nav_len=Counter({0: 3})
+
+FIGHT TICKS with NPC y above target y by >2 or NPC y far from both spawn & target:
+ 09-20T03:43:41 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.02 dy=13.52 out= next_wp=None dest=None
+ 09-20T03:43:47 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.02 dy=13.52 out= next_wp=None dest=None
+ 09-20T03:43:53 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.02 dy=13.52 out= next_wp=None dest=None
+ 09-20T03:43:59 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.02 dy=13.52 out= next_wp=None dest=None
+ 09-20T03:44:05 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.02 dy=13.52 out= next_wp=None dest=None
+ 09-20T03:44:11 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.02 dy=13.52 out= next_wp=None dest=None
+ 09-20T03:44:17 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.02 dy=13.52 out= next_wp=None dest=None
+ 09-20T03:46:11 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=49.37 dy=19.17 out= next_wp=None dest=None
+ 09-20T03:46:19 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=55.46 dy=13.08 out= next_wp=None dest=None
+ 09-20T03:46:25 npc=100908 ArmYourself_NIDGuard y=68.54 tgt_y=54.28 dy=14.26 out= next_wp=None dest=None
+ 09-21T16:14:03 npc=100574 ArmYourself_NIDGuard y=68.60 tgt_y=65.47 dy=3.13 out=chase next_wp=Some([-292.1667, 65.6, -124.11172]) dest=Some([-292.1667, 65.6, -124.11172])
+ 09-21T16:14:35 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=65.47 dy=3.07 out= next_wp=None dest=None
+ 09-21T16:14:41 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=65.47 dy=3.07 out= next_wp=None dest=None
+ 09-21T16:14:47 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=65.92 dy=2.62 out= next_wp=None dest=None
+ 09-21T16:14:53 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=65.92 dy=2.62 out= next_wp=None dest=None
+ 09-21T16:14:59 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=65.92 dy=2.62 out= next_wp=None dest=None
+ 09-21T16:15:05 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=55.26 dy=13.28 out= next_wp=None dest=None
+ 09-21T16:15:11 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=54.75 dy=13.79 out= next_wp=None dest=None
+ 09-21T16:15:31 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=55.26 dy=13.28 out= next_wp=None dest=None
+ 09-21T16:15:37 npc=100574 ArmYourself_NIDGuard y=68.54 tgt_y=55.26 dy=13.28 out= next_wp=None dest=None
+ 09-21T16:16:47 npc=100574 ArmYourself_NIDGuard y=69.58 tgt_y=61.50 dy=8.09 out=attack_in_place next_wp=None dest=None
