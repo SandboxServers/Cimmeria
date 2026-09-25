@@ -45,6 +45,9 @@
 //!   its cause-to-transition-reason mapping.
 //! - [`transition`] — `set_ai_state`, the single writer of `ai_state`,
 //!   which emits `npc_ai.transition` and `npc_ai_transitions_total`.
+//! - [`chase`] — the Fighting handler's chase: the stop distance, the
+//!   repath threshold, the hold and give-up at a route that cannot reach the
+//!   target, and the off-mesh start and target recovery (NA15).
 //! - [`fight_cover`] — the Fighting handler's cover step, including the
 //!   `no_cover` reasons and the `cover.selection` sample.
 //! - [`path_request`] — every AI `find_path`, logged as `npc_ai.path
@@ -55,6 +58,7 @@
 mod ability_select;
 mod aggro_acquired;
 mod aggro_gates;
+mod chase;
 pub(in crate::cell) mod detectors;
 mod dispatch;
 mod fight;

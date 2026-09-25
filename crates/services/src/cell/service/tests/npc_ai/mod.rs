@@ -26,6 +26,10 @@
 //!   cuts out (real `castle_cellblock.nav`, NA16); a mobile one paths round it.
 //! - [`off_mesh_sentry`] — a sentry outside navmesh coverage still has line
 //!   of sight (real `harset.nav`), so it does not hold fire forever.
+//! - [`path_robustness`] — NA15 on the real `castle_cellblock.nav`: the
+//!   partial route to another island (hold, then give up), the partial route
+//!   home, the off-mesh start snap, the degenerate repath, the stop distance,
+//!   the ramp repath and the off-mesh target.
 //! - [`selector`]      — `choose_npc_ability` three-bucket selection
 //!   (cooldown skip, all-cooling, empty-bucket fallback, ammo-bearing).
 //! - [`melee_reach`]   — the reach filter H09 added on top of that
@@ -61,6 +65,7 @@ mod leash_reset;
 mod leash_walk;
 mod melee_reach;
 mod off_mesh_sentry;
+mod path_robustness;
 mod selector;
 mod state_machine;
 mod stationary_facing;

@@ -67,7 +67,7 @@ pub use aggression::{AggroProfile, MobAggression};
 pub use appearance::filter_holstered_weapon;
 pub use entity_struct::CellEntity;
 pub use identity::PlayerIdentity;
-pub use leash_state::LeashState;
+pub use leash_state::{ChaseRoute, LeashState};
 pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use system_options::SystemOptions;
 

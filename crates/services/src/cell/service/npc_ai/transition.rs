@@ -53,6 +53,10 @@ pub(in crate::cell) enum AiTransitionReason {
     /// The last target died, disconnected, or stayed out of the NPC's AoI
     /// for the grace period; the NPC walks home.
     TargetLost,
+    /// The NPC stood at the end of a route that cannot reach its target
+    /// (another mesh island, an off-mesh target) for the grace period, or
+    /// could not get onto the mesh at all; it walks home (NA15).
+    Unreachable,
     /// The walk home reached spawn.
     LeashArrived,
     /// The walk home could not be planned, or took longer than the timeout,
@@ -97,6 +101,7 @@ impl AiTransitionReason {
             Self::ThreatEmpty => "threat_empty",
             Self::LeashOut => "leash_out",
             Self::TargetLost => "target_lost",
+            Self::Unreachable => "unreachable",
             Self::LeashArrived => "leash_arrived",
             Self::LeashSnapFallback => "leash_snap_fallback",
             Self::Died => "died",
@@ -186,6 +191,10 @@ pub(in crate::cell) fn set_ai_state_on(
     // place (NA10, audit S1). Stopped after the row above, so its
     // `nav_path_len` shows what was dropped.
     super::stop_movement_on(npc);
+    // The chase's route record and unreachable timer belong to one fight: a
+    // later fight must not inherit a hold that is already most of the way
+    // to giving up (NA15).
+    npc.leash.clear_chase();
     super::detectors::idle_parked::check(npc, world, from, reason_label);
     from
 }

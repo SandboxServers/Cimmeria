@@ -210,128 +210,25 @@ pub(super) async fn npc_ai_fight(
                 return;
             }
         }
-        let needs_repath = {
-            let npc = space_mgr.get_entity(npc_id);
-            match npc {
-                Some(e) if !e.nav_path.is_empty() => {
-                    // Check if nav target moved far from the last waypoint.
-                    // Uses `nav_target_pos` (may be a cover-slot override)
-                    // so cover-routed paths don't repath every tick.
-                    let last_wp = match e.nav_path.back() {
-                        Some(wp) => *wp,
-                        None => return,
-                    };
-                    last_wp.distance_to(&nav_target_pos) > 5.0
-                }
-                _ => true, // No path — need one
-            }
-        };
-
-        if needs_repath {
-            let routed = super::path_request::request_path(
-                space_mgr,
-                super::path_request::PathRequest {
-                    npc_id,
-                    state: "fight",
-                    from: npc_pos,
-                    to: nav_target_pos,
-                    target_id: Some(target_id),
-                    partial_outcome: "chase_partial",
-                },
-                std::time::Instant::now(),
-            );
-            if let Some(path) = routed.waypoints {
-                if path.len() > 1 {
-                    let waypoints: std::collections::VecDeque<_> =
-                        path.into_iter().skip(1).collect();
-                    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                        super::replace_nav_path_on(npc, waypoints);
-                    }
-                    super::note_outcome("chase");
-                    tracing::debug!(
-                        target: "npc_ai",
-                        event = "decision",
-                        decision_outcome = "chase",
-                        npc_id,
-                        target_id,
-                        in_range,
-                        has_los,
-                        dist_to_target,
-                        "NPC AI: pathfinding toward target"
-                    );
-                } else {
-                    super::note_outcome("repath_degenerate");
-                    // Shared emitter — `in_range` / `has_los` /
-                    // `dist_to_target` are already on the per-tick
-                    // `npc_ai.tick` row for this same NPC, so dropping
-                    // them here loses nothing and buys one query shape
-                    // across all five AI states.
-                    super::path_failure::report_path_failure(
-                        space_mgr,
-                        super::path_failure::PathFailure {
-                            npc_id,
-                            state: "fight",
-                            decision_outcome: "repath_degenerate",
-                            from: npc_pos,
-                            to: nav_target_pos,
-                            reason: super::path_failure::PathFailReason::DegeneratePath,
-                            // `nav_path` is deliberately untouched on this
-                            // branch: a one-waypoint repath is not worth
-                            // discarding a route that may still be usable.
-                            fallback: super::path_failure::PathFallback::PathUnchanged,
-                            target_id: Some(target_id),
-                        },
-                        std::time::Instant::now(),
-                    );
-                }
-            } else {
-                // No-path is the diagnostic signal for "navmesh missing in
-                // this zone" — see issue #407. The parent `npc_ai.decision`
-                // span already carries `space_id`, so SigNoz can group
-                // `groupBy=decision_outcome` across the npc_ai target and
-                // pivot per zone via the span's space_id attribute.
-                super::note_outcome("no_path");
-                let reason = super::path_failure::PathFailReason::for_missing_path(
-                    space_mgr,
-                    npc_id,
-                    routed.status,
-                );
-                super::path_failure::report_path_failure(
-                    space_mgr,
-                    super::path_failure::PathFailure {
-                        npc_id,
-                        state: "fight",
-                        decision_outcome: "no_path",
-                        from: npc_pos,
-                        to: nav_target_pos,
-                        reason,
-                        // Unlike every other state, `fight` does **not**
-                        // enqueue the raw target as a direct waypoint
-                        // here — so the chaser stands still, or keeps
-                        // walking a stale route. The shared message used
-                        // to claim a straight-line fallback for this
-                        // branch, which sent operators looking for a
-                        // wall-clipping NPC that was never moving.
-                        fallback: super::path_failure::PathFallback::PathUnchanged,
-                        target_id: Some(target_id),
-                    },
-                    std::time::Instant::now(),
-                );
-            }
-        } else {
-            super::note_outcome("hold_no_repath");
-            tracing::debug!(
-                target: "npc_ai",
-                event = "decision",
-                decision_outcome = "hold_no_repath",
+        // Route toward the target, pulled up short of it; hold at the end of
+        // a route that cannot reach it; recover an off-mesh start or target
+        // (NA15, see `chase`).
+        super::chase::chase(
+            super::chase::ChaseStep {
                 npc_id,
                 target_id,
+                npc_pos,
+                target_pos,
+                nav_target_pos,
+                stop_distance: super::chase::policy::stop_distance(min_range, max_range),
                 in_range,
                 has_los,
                 dist_to_target,
-                "NPC AI: out of range/LoS but existing path still ends near the target -- no new order this tick"
-            );
-        }
+            },
+            tx,
+            space_mgr,
+        )
+        .await;
         return;
     }
 
@@ -388,6 +285,11 @@ pub(super) async fn npc_ai_fight(
     // already sends direction with every position update.
     super::stop_npc_movement(space_mgr, npc_id, super::StopReason::AttackInPlace);
     face_target(space_mgr, npc_id, npc_pos, target_pos);
+    // It can hit its target: whatever chase came before, the target is not
+    // unreachable (NA15).
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.leash.clear_chase();
+    }
 
     // `chosen_ability` may still be `None` here when every known ability
     // is on cooldown — hold fire and let the next tick re-evaluate.

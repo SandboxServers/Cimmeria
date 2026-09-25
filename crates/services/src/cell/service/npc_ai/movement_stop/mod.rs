@@ -37,6 +37,7 @@
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::CellEntity;
 
+use super::detectors::MoveSource;
 use crate::cell::space_manager::SpaceManager;
 
 /// Why an NPC was stopped. Enumerated because it is a SigNoz group-by key on
@@ -47,6 +48,11 @@ pub(in crate::cell) enum StopReason {
     AttackInPlace,
     /// The NPC's cover slot was flanked and released.
     CoverReleased,
+    /// At the end of a route that cannot reach the target: hold (NA15).
+    HoldUnreachable,
+    /// A repath came back with no usable leg: the stale route is dropped
+    /// rather than walked toward where the target used to be (NA15).
+    RepathDegenerate,
 }
 
 impl StopReason {
@@ -55,6 +61,8 @@ impl StopReason {
         match self {
             Self::AttackInPlace => "attack_in_place",
             Self::CoverReleased => "cover_released",
+            Self::HoldUnreachable => "hold_unreachable",
+            Self::RepathDegenerate => "repath_degenerate",
         }
     }
 }
@@ -123,11 +131,21 @@ pub(in crate::cell) fn snap_npc_to(
     pos: Vector3,
     facing: Option<Vector3>,
 ) {
+    snap_npc_from(space_mgr, npc_id, pos, facing, MoveSource::Leash);
+}
+
+/// [`snap_npc_to`] with the mover named for NA02's
+/// `npc_off_mesh.last_move_source`: the leash snaps home, the chase snaps an
+/// off-mesh NPC onto the nearest polygon (NA15).
+pub(in crate::cell) fn snap_npc_from(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    pos: Vector3,
+    facing: Option<Vector3>,
+    source: MoveSource,
+) {
     space_mgr.update_position_preserving_facing(npc_id, [pos.x, pos.y, pos.z], [0.0; 3]);
-    // NA02 `npc_off_mesh.last_move_source`: the leash is the only snapper.
-    space_mgr
-        .npc_detectors
-        .note_move_source(npc_id, super::detectors::MoveSource::Leash);
+    space_mgr.npc_detectors.note_move_source(npc_id, source);
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         stop_movement_on(npc);
         if let Some(dir) = facing {

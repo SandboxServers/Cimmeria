@@ -77,6 +77,11 @@ pub(in crate::cell::service::npc_ai) async fn drop_threat_target(
 /// waypoints installed, `0` when no route exists (no navmesh, no start or end
 /// polygon, or a one-point path), in which case the NPC's route is left empty
 /// and the leash tick snaps it home.
+///
+/// A partial route (spawn is on another mesh island) is installed and marked
+/// in `leash.home_route_partial`: the leash tick walks it to its end and then
+/// snaps home, instead of replanning from the island edge into the same dead
+/// end until the walk timeout (NA15).
 pub(in crate::cell::service::npc_ai) fn plan_home_path(
     space_mgr: &mut SpaceManager,
     npc_id: u32,
@@ -100,6 +105,7 @@ pub(in crate::cell::service::npc_ai) fn plan_home_path(
         },
         Instant::now(),
     );
+    let partial = routed.status == Some(cimmeria_entity::navigation::PathStatus::Partial);
     let Some(path) = routed.waypoints else {
         return 0;
     };
@@ -110,6 +116,7 @@ pub(in crate::cell::service::npc_ai) fn plan_home_path(
     let n = waypoints.len();
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         super::super::replace_nav_path_on(npc, waypoints);
+        npc.leash.home_route_partial = partial;
     }
     n
 }
@@ -196,6 +203,7 @@ pub(in crate::cell::service::npc_ai) async fn begin_leash(
         npc.ai_retry_at = None;
         npc.leash.target_lost_since = None;
         npc.leash.walk_started_at = Some(Instant::now());
+        npc.leash.home_route_partial = false;
         (
             npc.position,
             npc.spawn_position
@@ -206,7 +214,7 @@ pub(in crate::cell::service::npc_ai) async fn begin_leash(
     let now = Instant::now();
     // NA02's S7 detector: after the drain above this must find nobody.
     let clear = match reason {
-        R::LeashOut => ThreatClear::LeashOut,
+        R::LeashOut | R::Unreachable => ThreatClear::LeashOut,
         R::TargetLost => ThreatClear::TargetLost,
         _ => ThreatClear::ThreatEmpty,
     };

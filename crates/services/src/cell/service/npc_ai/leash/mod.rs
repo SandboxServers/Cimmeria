@@ -36,6 +36,9 @@ enum Arrival {
     SnapNoPath,
     /// The walk took longer than [`LEASH_WALK_TIMEOUT`]: snapped.
     SnapTimeout,
+    /// Spawn is on another mesh island: the NPC walked the partial route to
+    /// its end, then snapped (NA15).
+    SnapPartialRoute,
     /// A follower, or an NPC with no spawn point: reset where it stands.
     InPlace,
 }
@@ -46,12 +49,16 @@ impl Arrival {
             Self::Walked => "walked",
             Self::SnapNoPath => "snap_no_path",
             Self::SnapTimeout => "snap_timeout",
+            Self::SnapPartialRoute => "snap_partial_route",
             Self::InPlace => "in_place",
         }
     }
 
     fn is_snap(self) -> bool {
-        matches!(self, Self::SnapNoPath | Self::SnapTimeout)
+        matches!(
+            self,
+            Self::SnapNoPath | Self::SnapTimeout | Self::SnapPartialRoute
+        )
     }
 }
 
@@ -76,6 +83,7 @@ pub(super) async fn npc_ai_leash(
         .filter(|_| npc.follow_target_id.is_none());
     let route_end = npc.nav_path.back().copied();
     let started = npc.leash.walk_started_at;
+    let home_route_partial = npc.leash.home_route_partial;
 
     let Some(spawn) = home else {
         arrive(npc_id, Arrival::InPlace, tx, space_mgr).await;
@@ -102,11 +110,20 @@ pub(super) async fn npc_ai_leash(
         arrive(npc_id, Arrival::SnapTimeout, tx, space_mgr).await;
         return;
     }
-    // Only a route that ends at home is a walk home. Anything else (none at
-    // all, or a chase route left behind by a Leashing entry that skipped the
-    // transition's stop) is replanned from where the NPC stands.
-    let heading_home =
-        route_end.is_some_and(|end| horizontal_distance(&end, &spawn) <= LEASH_ARRIVE_RADIUS * 2.0);
+    // The end of a partial route home: spawn is on another mesh island, and
+    // replanning from here would only find the same island edge again until
+    // the walk timeout. Snap now (NA15).
+    if route_end.is_none() && home_route_partial {
+        arrive(npc_id, Arrival::SnapPartialRoute, tx, space_mgr).await;
+        return;
+    }
+    // Only a route that ends at home (or the partial route planned toward
+    // it) is a walk home. Anything else (none at all, or a chase route left
+    // behind by a Leashing entry that skipped the transition's stop) is
+    // replanned from where the NPC stands.
+    let heading_home = home_route_partial && route_end.is_some()
+        || route_end
+            .is_some_and(|end| horizontal_distance(&end, &spawn) <= LEASH_ARRIVE_RADIUS * 2.0);
     if heading_home {
         super::note_outcome("leash_walking");
         return;
@@ -189,6 +206,7 @@ async fn arrive(
         npc.ai_retry_at = None;
         npc.leash.walk_started_at = None;
         npc.leash.target_lost_since = None;
+        npc.leash.home_route_partial = false;
         npc.leash.reaggro_suppressed_until = Some(now + REAGGRO_SUPPRESSION);
 
         // No state-flag unsetting: a leashing NPC is alive, so BSF_DEAD and
