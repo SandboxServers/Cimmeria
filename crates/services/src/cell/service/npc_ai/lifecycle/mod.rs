@@ -188,9 +188,7 @@ pub(super) async fn npc_ai_submit(
     // it was holding when it surrendered would be reserved forever — the
     // same leak `apply_death_transition` releases for a corpse.
     // Idempotent: a no-op for an NPC that was never in cover.
-    space_mgr
-        .cover
-        .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
+    crate::cell::cover::release_npc_cover(space_mgr, npc_id, "submit");
 
     // Turn to face whoever the NPC surrendered to. Without this the yaw
     // freezes wherever the last translation left it — an NPC that broke

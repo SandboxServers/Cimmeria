@@ -129,6 +129,7 @@ fn record_from_request(
         aggro_radius: None,
         assist_radius: None,
         aggression_override: None,
+        use_cover: None,
     }
 }
 

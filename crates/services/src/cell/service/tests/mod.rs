@@ -19,6 +19,8 @@ mod bandolier;
 mod npc_ai;
 mod npc_ai_auto_aggro;
 mod npc_ai_cover;
+mod npc_ai_cover_behaviour;
+mod npc_ai_cover_seed;
 mod npc_ai_follow;
 mod npc_ai_investigate;
 mod npc_ai_patrol;

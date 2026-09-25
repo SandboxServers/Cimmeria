@@ -53,6 +53,8 @@ pub(in crate::cell) enum StopReason {
     /// A repath came back with no usable leg: the stale route is dropped
     /// rather than walked toward where the target used to be (NA15).
     RepathDegenerate,
+    /// The NPC reached its reserved cover slot and holds it (NA22).
+    InCover,
 }
 
 impl StopReason {
@@ -63,6 +65,7 @@ impl StopReason {
             Self::CoverReleased => "cover_released",
             Self::HoldUnreachable => "hold_unreachable",
             Self::RepathDegenerate => "repath_degenerate",
+            Self::InCover => "in_cover",
         }
     }
 }

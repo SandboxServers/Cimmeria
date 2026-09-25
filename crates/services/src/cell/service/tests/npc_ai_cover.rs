@@ -28,7 +28,7 @@ use crate::cell::space_manager::SpaceManager;
 /// Castle fixture (non-instanced, same as `npc_ai.rs`'s `make_ai_fixture`)
 /// with cover-system data pre-seeded into `space_mgr.cover`. NPC at id
 /// 200 in AiState::Fighting with `use_cover = true`.
-fn make_cover_fixture(
+pub(super) fn make_cover_fixture(
     npc_spawn: [f32; 3],
     npc_pos: [f32; 3],
     cover_nodes: Vec<CoverNode>,
@@ -62,7 +62,7 @@ fn make_cover_fixture(
     mgr
 }
 
-fn node(chunk_id: i32, node_id: i32, x: f32, z: f32, orient: f32) -> CoverNode {
+pub(super) fn node(chunk_id: i32, node_id: i32, x: f32, z: f32, orient: f32) -> CoverNode {
     CoverNode {
         chunk_id,
         node_id,
@@ -87,8 +87,9 @@ async fn npc_ai_fight_reserves_cover_slot_when_out_of_range_and_use_cover_on() {
     let mut mgr = make_cover_fixture(
         [0.0; 3],
         [0.0; 3],
-        // Cover slot 4m away from NPC, between NPC and target.
-        vec![node(50, 0, 4.0, 0.0, 0.0)],
+        // Cover slot 14 u from the NPC, 26 u from the target: inside the
+        // attack range from the slot (NA22: cover is a firing position).
+        vec![node(50, 0, 14.0, 0.0, 0.0)],
     );
     mgr.create_entity(100, "Castle", [40.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
@@ -129,7 +130,7 @@ async fn npc_ai_fight_reserves_cover_slot_when_out_of_range_and_use_cover_on() {
 /// but break the carve-out for legacy NPCs.
 #[tokio::test]
 async fn npc_ai_fight_does_not_reserve_cover_when_use_cover_false() {
-    let mut mgr = make_cover_fixture([0.0; 3], [0.0; 3], vec![node(50, 0, 4.0, 0.0, 0.0)]);
+    let mut mgr = make_cover_fixture([0.0; 3], [0.0; 3], vec![node(50, 0, 14.0, 0.0, 0.0)]);
     mgr.create_entity(100, "Castle", [40.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
@@ -166,7 +167,7 @@ async fn npc_ai_fight_does_not_reserve_cover_when_use_cover_false() {
 /// `use_cover && !is_stationary`. Turrets don't move to cover.
 #[tokio::test]
 async fn npc_ai_fight_stationary_does_not_reserve_cover() {
-    let mut mgr = make_cover_fixture([0.0; 3], [0.0; 3], vec![node(50, 0, 4.0, 0.0, 0.0)]);
+    let mut mgr = make_cover_fixture([0.0; 3], [0.0; 3], vec![node(50, 0, 14.0, 0.0, 0.0)]);
     mgr.create_entity(100, "Castle", [40.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
@@ -219,7 +220,7 @@ async fn npc_ai_fight_preserves_reservation_when_not_flanked() {
         .reserve_for_entity(EntityId(200), CoverSlotKey::new(50, 0))
         .unwrap();
     // Threat in the defended half-plane (+X).
-    mgr.create_entity(100, "Castle", [40.0, 0.0, 0.0], [0.0; 3])
+    mgr.create_entity(100, "Castle", [30.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
         p.is_player = true;

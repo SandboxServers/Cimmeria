@@ -98,6 +98,7 @@ pub(in crate::cell::content::executor) fn template(faction: i32) -> SpawnRecord 
         aggro_radius: None,
         assist_radius: None,
         aggression_override: None,
+        use_cover: None,
     }
 }
 

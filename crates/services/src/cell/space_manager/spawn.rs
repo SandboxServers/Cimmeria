@@ -227,12 +227,12 @@ impl SpaceManager {
         e.direction = dir;
         e.class_id = super::super::spawner::class_id_for_class(&record.class);
         e.is_player = false;
-        // Default-on cover use for spawned NPCs: the cover scorer + AI
-        // tick respect `use_cover`, and existing mob templates don't
-        // (yet) carry a DB-driven override. Per-template tuning is a
-        // follow-up once the `entity_templates.use_cover` column lands;
-        // for v1 every NPC opts in.
-        e.use_cover = true;
+        // Cover use from the template (NA22, audit C5): the
+        // `entity_templates.use_cover` column, or the default rule when it
+        // is NULL. Melee-only NPCs are excluded at fight time, where the
+        // ability defs are known (the startup population spawns before
+        // they load).
+        e.use_cover = resolve_use_cover(record);
         e.level = record.level.unwrap_or(1) as u32;
         e.npc_name = Some(record.template_name.clone());
 
@@ -333,6 +333,27 @@ impl SpaceManager {
         space.entities.insert(entity_id, e);
         self.entity_space.insert(entity_id, space_id);
 
+        // An NPC authored standing at a cover marker spawns holding it
+        // (NA22, audit C4). A no-op for the startup population, which
+        // spawns before cover loads; `cover_loaded` sweeps it instead.
+        crate::cell::cover::hold_spawn_cover(self, entity_id, "spawn");
+
         Ok(space_id)
     }
+}
+
+/// Whether a spawned NPC takes cover (NA22). The template's
+/// `entity_templates.use_cover` decides; NULL means "a hostile NPC does"
+/// (`faction = HOSTILE_FACTION`, the only faction a player can fight). A
+/// stationary NPC or a prop (`static_mesh`) never does, whatever the
+/// column says: it cannot walk to a slot. `SGWMob.def` `useCover` is an
+/// `INT8` defaulting to 0 on the client, but no template data for it
+/// shipped, so the default rule stands in for the missing per-mob values.
+pub(crate) fn resolve_use_cover(record: &super::super::spawner::SpawnRecord) -> bool {
+    if record.is_stationary || record.static_mesh.is_some() {
+        return false;
+    }
+    record
+        .use_cover
+        .unwrap_or(record.faction == Some(i32::from(super::super::combat::HOSTILE_FACTION)))
 }

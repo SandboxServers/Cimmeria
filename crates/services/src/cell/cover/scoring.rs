@@ -17,8 +17,12 @@
 //!
 //! - **Flank check** (`is_flanked`): half-plane test — is the threat outside
 //!   the cover's defensive arc (`orient ± π/2`)? Cheap, gates re-picking.
-//! - **Squad-affinity penalty**: discourages multiple NPCs from piling into
-//!   the same chunk when alternatives exist.
+//! - **Squad-affinity penalty**: discourages multiple NPCs from piling onto
+//!   the same obstacle when alternatives exist. It counts allies holding a
+//!   slot within [`SQUAD_AFFINITY_RADIUS`] of the candidate, not allies in
+//!   the same set: NA21's transitive grouping makes some sets very large
+//!   (105 nodes across a 17 x 14 m Castle courtyard), and a per-set count
+//!   would penalise every node in the courtyard for one ally (NA22).
 //!
 //! All sub-scores are normalised to `[0.0, 1.0]` so the final score has a
 //! predictable range. Higher = better. The caller picks the highest-scoring
@@ -43,7 +47,7 @@ pub struct CoverWeights {
     pub cross_path: f32,
     pub cover: f32,
     /// Squad-affinity penalty multiplier — applied per allied NPC already
-    /// holding cover in the same chunk.
+    /// holding a slot within [`SQUAD_AFFINITY_RADIUS`] of the candidate.
     pub squad_affinity_penalty_per_ally: f32,
 }
 
@@ -67,6 +71,12 @@ impl Default for CoverWeights {
 /// radius used by the NPC AI cover-search.
 pub const MAX_COVER_DISTANCE: f32 = 30.0;
 
+/// Horizontal radius (m) inside which another NPC's held slot counts
+/// against a candidate for squad affinity. Two metres is "the same side of
+/// the same desk": the extracted slots along one obstacle sit about a
+/// metre apart.
+pub const SQUAD_AFFINITY_RADIUS: f32 = 2.0;
+
 /// Inputs to a scoring pass — passed by reference to avoid copies.
 #[derive(Debug, Clone, Copy)]
 pub struct ScoringContext {
@@ -74,6 +84,14 @@ pub struct ScoringContext {
     pub npc_pos: Vector3,
     /// Top-threat target's current world position.
     pub threat_pos: Vector3,
+    /// A candidate further than this from the threat is not considered: the
+    /// NPC could not shoot from it (NA22: cover is a firing position).
+    /// `INFINITY` by default.
+    pub max_threat_dist: f32,
+    /// A candidate further than this from the NPC is not considered.
+    /// Defaults to [`MAX_COVER_DISTANCE`]; an NPC that already has a shot
+    /// only takes a short walk to cover.
+    pub max_move_dist: f32,
 }
 
 impl ScoringContext {
@@ -81,8 +99,31 @@ impl ScoringContext {
         Self {
             npc_pos,
             threat_pos,
+            max_threat_dist: f32::INFINITY,
+            max_move_dist: MAX_COVER_DISTANCE,
         }
     }
+
+    /// Restrict candidates to those within `max_threat_dist` of the threat
+    /// and `max_move_dist` of the NPC.
+    pub fn with_limits(mut self, max_threat_dist: f32, max_move_dist: f32) -> Self {
+        self.max_threat_dist = max_threat_dist;
+        self.max_move_dist = max_move_dist.min(MAX_COVER_DISTANCE);
+        self
+    }
+}
+
+/// How many of `ally_slots` sit within [`SQUAD_AFFINITY_RADIUS`] of `pos`,
+/// horizontally.
+pub fn allies_near(pos: Vector3, ally_slots: &[Vector3]) -> usize {
+    let r2 = SQUAD_AFFINITY_RADIUS * SQUAD_AFFINITY_RADIUS;
+    ally_slots
+        .iter()
+        .filter(|a| {
+            let (dx, dz) = (a.x - pos.x, a.z - pos.z);
+            dx * dx + dz * dz <= r2
+        })
+        .count()
 }
 
 /// Hysteresis margin (BW meter² in dot-product space) used by the
@@ -122,16 +163,16 @@ pub fn is_flanked(cover_pos: Vector3, cover_orient: f32, threat_pos: Vector3) ->
 }
 
 /// Score a single candidate cover node. Returns a final score in roughly
-/// `[-N, 1+N]` (where N is the number of squad allies in the same chunk,
+/// `[-N, 1+N]` (where N is the number of squad allies near the node,
 /// times the squad-affinity penalty). Higher is better.
 ///
-/// `allied_in_chunk` is the count of squad-allied NPCs currently holding
-/// cover in this node's chunk; the caller computes it once per chunk.
+/// `allied_near` is the count of other NPCs holding a slot within
+/// [`SQUAD_AFFINITY_RADIUS`] of this node ([`allies_near`]).
 pub fn score_node(
     node: &CoverNode,
     ctx: &ScoringContext,
     weights: &CoverWeights,
-    allied_in_chunk: usize,
+    allied_near: usize,
 ) -> f32 {
     // Distance from NPC to cover (the "I have to walk here" cost).
     let move_dist = node.pos.distance_to(&ctx.npc_pos);
@@ -211,8 +252,8 @@ pub fn score_node(
         + weights.cover * quality_score;
 
     // Subtract squad-affinity penalty.
-    if allied_in_chunk > 0 {
-        score -= weights.squad_affinity_penalty_per_ally * allied_in_chunk as f32;
+    if allied_near > 0 {
+        score -= weights.squad_affinity_penalty_per_ally * allied_near as f32;
     }
 
     score
@@ -222,29 +263,23 @@ pub fn score_node(
 /// NPC's position. Returns the chosen node's index in the index's `all_nodes`
 /// slice, or `None` if no viable candidate exists.
 ///
-/// `chunk_ally_counts` is a `chunk_id → count` map of how many allied NPCs
-/// already hold cover in each chunk; the scorer applies a squad-affinity
-/// penalty per ally. Caller computes this once per scoring pass.
+/// `ally_slots` are the positions of the slots other NPCs hold; the scorer
+/// applies a squad-affinity penalty per ally near each candidate
+/// ([`allies_near`]).
 ///
-/// Only nodes in `world_id` are candidates.
+/// Only nodes in `world_id` are candidates, and only those inside the
+/// context's `max_threat_dist` / `max_move_dist` limits.
 pub fn pick_best(
     index: &CoverIndex,
     world_id: i32,
     reservations: &CoverReservations,
     ctx: &ScoringContext,
     weights: &CoverWeights,
-    chunk_ally_counts: &std::collections::HashMap<i32, usize>,
+    ally_slots: &[Vector3],
 ) -> Option<usize> {
-    pick_best_traced(
-        index,
-        world_id,
-        reservations,
-        ctx,
-        weights,
-        chunk_ally_counts,
-    )
-    .best
-    .map(|c| c.idx)
+    pick_best_traced(index, world_id, reservations, ctx, weights, ally_slots)
+        .best
+        .map(|c| c.idx)
 }
 
 /// Vertical tolerance for cover candidates: cover on a different floor of
@@ -273,6 +308,9 @@ pub struct ScoredCandidate {
 pub struct PickTrace {
     /// Nodes inside `MAX_COVER_DISTANCE` and the vertical band.
     pub scanned: usize,
+    /// Of those, how many were outside the context's reach limits (too far
+    /// from the threat to shoot from, or too long a walk).
+    pub out_of_reach: usize,
     /// Of those, how many were already reserved.
     pub reserved_skipped: usize,
     pub best: Option<ScoredCandidate>,
@@ -288,12 +326,12 @@ pub fn pick_best_traced(
     reservations: &CoverReservations,
     ctx: &ScoringContext,
     weights: &CoverWeights,
-    chunk_ally_counts: &std::collections::HashMap<i32, usize>,
+    ally_slots: &[Vector3],
 ) -> PickTrace {
     let candidate_indices = index.nearby(
         world_id,
         &ctx.npc_pos,
-        MAX_COVER_DISTANCE,
+        ctx.max_move_dist.min(MAX_COVER_DISTANCE),
         Some(MAX_COVER_Y_DIFF),
     );
     let mut trace = PickTrace {
@@ -306,15 +344,26 @@ pub fn pick_best_traced(
             Some(n) => n,
             None => continue,
         };
-        let allied = chunk_ally_counts.get(&n.chunk_id).copied().unwrap_or(0);
+        let move_dist = n.pos.distance_to(&ctx.npc_pos);
+        let threat_dist = n.pos.distance_to(&ctx.threat_pos);
+        // A slot already flanked by the threat would be released on the
+        // next tick's flank test: never pick one (NA22).
+        if threat_dist > ctx.max_threat_dist
+            || move_dist > ctx.max_move_dist
+            || is_flanked(n.pos, n.orient, ctx.threat_pos)
+        {
+            trace.out_of_reach += 1;
+            continue;
+        }
+        let allied = allies_near(n.pos, ally_slots);
         let reserved = reservations.is_reserved(n.key());
         let c = ScoredCandidate {
             idx,
             chunk_id: n.chunk_id,
             node_id: n.node_id,
             score: score_node(n, ctx, weights, allied),
-            move_dist: n.pos.distance_to(&ctx.npc_pos),
-            threat_dist: n.pos.distance_to(&ctx.threat_pos),
+            move_dist,
+            threat_dist,
             reserved,
         };
         if reserved {
@@ -342,7 +391,6 @@ pub fn pick_best_traced(
 mod scoring_tests {
     use super::*;
     use crate::cell::cover::types::{CoverHeight, CoverQuality};
-    use std::collections::HashMap;
 
     fn n(chunk_id: i32, node_id: i32, x: f32, z: f32, orient: f32, q: CoverQuality) -> CoverNode {
         CoverNode {
@@ -472,7 +520,10 @@ mod scoring_tests {
         let s_solo = score_node(&node, &ctx, &weights, 0);
         let s_one_ally = score_node(&node, &ctx, &weights, 1);
         let s_two_allies = score_node(&node, &ctx, &weights, 2);
-        assert!(s_solo > s_one_ally, "ally in same chunk must penalise");
+        assert!(
+            s_solo > s_one_ally,
+            "an ally at the same obstacle must penalise"
+        );
         assert!(
             s_one_ally > s_two_allies,
             "second ally must penalise further"
@@ -484,8 +535,8 @@ mod scoring_tests {
         let weights = CoverWeights::default();
         let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
         let nodes = vec![
-            n(1, 0, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Best),
-            n(1, 1, 6.0, 0.0, std::f32::consts::PI, CoverQuality::Best),
+            n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best),
+            n(1, 1, 6.0, 0.0, 0.0, CoverQuality::Best),
         ];
         let idx = CoverIndex::build(nodes);
         let mut r = CoverReservations::new();
@@ -495,7 +546,7 @@ mod scoring_tests {
             super::super::types::CoverSlotKey::new(1, 0),
         )
         .unwrap();
-        let ally_counts = HashMap::new();
+        let ally_counts: Vec<Vector3> = Vec::new();
         let pick = pick_best(
             &idx,
             crate::cell::cover::TEST_WORLD_ID,
@@ -519,7 +570,7 @@ mod scoring_tests {
         // Only node is 100m away — outside MAX_COVER_DISTANCE.
         let idx = CoverIndex::build(vec![n(1, 0, 100.0, 100.0, 0.0, CoverQuality::Best)]);
         let r = CoverReservations::new();
-        let ally_counts = HashMap::new();
+        let ally_counts: Vec<Vector3> = Vec::new();
         assert!(pick_best(
             &idx,
             crate::cell::cover::TEST_WORLD_ID,
@@ -538,16 +589,9 @@ mod scoring_tests {
     fn pick_best_never_picks_another_worlds_slot() {
         let weights = CoverWeights::default();
         let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
-        let idx = CoverIndex::build(vec![n(
-            1,
-            0,
-            5.0,
-            0.0,
-            std::f32::consts::PI,
-            CoverQuality::Best,
-        )]);
+        let idx = CoverIndex::build(vec![n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best)]);
         let r = CoverReservations::new();
-        let ally_counts = HashMap::new();
+        let ally_counts: Vec<Vector3> = Vec::new();
         let other_world = crate::cell::cover::TEST_WORLD_ID + 1;
         assert!(pick_best(&idx, other_world, &r, &ctx, &weights, &ally_counts).is_none());
         assert!(pick_best(
@@ -559,5 +603,62 @@ mod scoring_tests {
             &ally_counts
         )
         .is_some());
+    }
+
+    /// A slot the threat already flanks is never picked: the next tick's
+    /// flank test would release it, and the NPC would loop pick/release.
+    #[test]
+    fn pick_best_skips_a_slot_the_threat_already_flanks() {
+        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
+        // Faces -X: the threat at +X is behind it.
+        let idx = CoverIndex::build(vec![n(
+            1,
+            0,
+            5.0,
+            0.0,
+            std::f32::consts::PI,
+            CoverQuality::Best,
+        )]);
+        let trace = pick_best_traced(
+            &idx,
+            crate::cell::cover::TEST_WORLD_ID,
+            &CoverReservations::new(),
+            &ctx,
+            &CoverWeights::default(),
+            &[],
+        );
+        assert!(trace.best.is_none());
+        assert_eq!(trace.out_of_reach, 1);
+    }
+
+    #[test]
+    fn with_limits_excludes_slots_out_of_reach() {
+        let idx = CoverIndex::build(vec![
+            n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best), // 15 u from the threat
+            n(1, 1, -5.0, 0.0, 0.0, CoverQuality::Best), // 25 u from the threat
+        ]);
+        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0))
+            .with_limits(20.0, 30.0);
+        let pick = pick_best(
+            &idx,
+            crate::cell::cover::TEST_WORLD_ID,
+            &CoverReservations::new(),
+            &ctx,
+            &CoverWeights::default(),
+            &[],
+        )
+        .expect("the near slot reaches");
+        assert_eq!(idx.node(pick).unwrap().node_id, 0);
+    }
+
+    #[test]
+    fn allies_near_counts_only_within_the_radius() {
+        let pos = Vector3::zero();
+        let allies = [
+            Vector3::new(1.0, 0.0, 1.0),
+            Vector3::new(0.0, 5.0, SQUAD_AFFINITY_RADIUS), // on the edge; height ignored
+            Vector3::new(SQUAD_AFFINITY_RADIUS + 0.5, 0.0, 0.0),
+        ];
+        assert_eq!(allies_near(pos, &allies), 2);
     }
 }

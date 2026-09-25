@@ -216,6 +216,9 @@ async fn arrive(
         (stat_update, npc.state_field)
     };
 
+    // Back at spawn: an NPC authored in cover takes its slot again (NA22).
+    crate::cell::cover::hold_spawn_cover(space_mgr, npc_id, "leash_home");
+
     let outcome = if how.is_snap() {
         "leash_snap_fallback"
     } else {

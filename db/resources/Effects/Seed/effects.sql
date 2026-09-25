@@ -2959,7 +2959,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1741, 1450, 0, 'Single Target
 +100 CoverAccuracy', 0, 524305, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1742, 1451, 0, 'Remove Stance Moniker', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Remove Stance', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1742, 1451, 0, 'Remove Stance Moniker', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Remove Stance', 0, NULL, 'RemoveCoverStance');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1743, 1452, 0, 'Single Target
 +200 CoverDefense: 15 seconds', 0, 21, 'set:CoreWidgets image:IconMissing', 1, 15, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, NULL);
@@ -6104,7 +6104,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Remove Engaged State', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Conversation Mini-Game Start', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4565, 1451, 0, 'Single Target
-+100 CoverDefense', 0, 85, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, NULL);
++100 CoverDefense', 0, 85, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Buff', 0, NULL, 'CoverStance');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4566, 1180, 0, 'Single Target
 Fear: 20 Seconds', 0, 76, 'set:CoreWidgets image:IconMissing', 20, 1, NULL, NULL, 'TCM_Single', true, false, 'Induce Panic: Alien Fear', 0, NULL, NULL);

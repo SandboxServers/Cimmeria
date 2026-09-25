@@ -46,6 +46,7 @@ fn gm_record(template_id: i32, pos: [f32; 3]) -> spawner::SpawnRecord {
         aggro_radius: None,
         assist_radius: None,
         aggression_override: None,
+        use_cover: None,
     }
 }
 

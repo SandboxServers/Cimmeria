@@ -87,6 +87,14 @@ impl SpaceManager {
         is_stationary: bool,
         los: LineOfSight,
     ) -> AttackLosPolicy {
+        // An NPC standing at its cover slot (it holds Cover Stance, granted
+        // on arrival) fires over the cover: the prop is usually a navmesh
+        // hole, so the ray from behind it reads as blocked by construction
+        // (NA22, docs/architecture/cover-system.md §4). Stationary NPCs never
+        // take cover, so the rules below are untouched for them.
+        if !is_stationary && self.npc_in_cover_slot(npc_id) {
+            return AttackLosPolicy::InCoverSlot;
+        }
         if !is_stationary {
             return AttackLosPolicy::Strict(los.is_clear_or_unknown());
         }
@@ -103,6 +111,17 @@ impl SpaceManager {
         } else {
             AttackLosPolicy::StationaryOtherStorey
         }
+    }
+
+    /// Whether `npc_id` stands at its reserved cover slot: it holds Cover
+    /// Stance, which the cover step grants on arrival and every release
+    /// revokes.
+    pub fn npc_in_cover_slot(&self, npc_id: u32) -> bool {
+        let r = match self.cover.reservations.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        r.in_stance(cimmeria_common::EntityId(npc_id as i32))
     }
 
     /// Whether the space containing `entity_id` has a navmesh loaded.
@@ -276,6 +295,8 @@ pub enum AttackLosPolicy {
     /// A stationary NPC whose navmesh verdict was `Blocked` with the target
     /// outside the same-floor band: holds.
     StationaryOtherStorey,
+    /// A mobile NPC at its cover slot: fires whatever the verdict (NA22).
+    InCoverSlot,
 }
 
 impl AttackLosPolicy {
@@ -283,7 +304,7 @@ impl AttackLosPolicy {
     pub fn permits(self) -> bool {
         match self {
             Self::Strict(ok) => ok,
-            Self::Stationary | Self::StationaryRelaxed => true,
+            Self::Stationary | Self::StationaryRelaxed | Self::InCoverSlot => true,
             Self::StationaryOtherStorey => false,
         }
     }
@@ -295,6 +316,7 @@ impl AttackLosPolicy {
             Self::Stationary => "stationary",
             Self::StationaryRelaxed => "stationary_relaxed",
             Self::StationaryOtherStorey => "stationary_other_storey",
+            Self::InCoverSlot => "in_cover_slot",
         }
     }
 }

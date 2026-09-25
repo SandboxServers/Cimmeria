@@ -17,8 +17,13 @@
 //!     mesh, so a GM on unmeshed props does not freeze every chaser;
 //!   - clears the stale route when a repath comes back **degenerate**;
 //!   - stops [`policy::stop_distance`] short of the target, never inside it.
+//! - [`cover_slot`] is the leg to a cover slot (NA22). None of the target
+//!   rules above apply to it: the NPC stands on the slot, and a slot it
+//!   cannot reach is given up by the cover step rather than held.
 
+mod cover_slot;
 pub(in crate::cell::service) mod policy;
+pub(super) use cover_slot::walk_to_cover_slot;
 #[cfg(test)]
 mod tests;
 
@@ -42,7 +47,9 @@ pub(super) struct ChaseStep {
     pub target_id: u32,
     pub npc_pos: Vector3,
     pub target_pos: Vector3,
-    /// The target, or the cover slot `fight_cover` chose instead.
+    /// The target, or another routed-as-given goal. Since NA22 the fight
+    /// handler always passes the target here: the walk to a cover slot is
+    /// [`walk_to_cover_slot`].
     pub nav_target_pos: Vector3,
     /// See [`policy::stop_distance`].
     pub stop_distance: f32,

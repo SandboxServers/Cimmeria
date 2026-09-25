@@ -72,6 +72,22 @@ pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager)
         .find(|&id| !npc.abilities.is_on_cooldown(id))
 }
 
+/// Whether every ability the NPC knows is a melee swing (`is_ranged =
+/// false` on a known def). Such an NPC never takes cover (NA22): a cover
+/// slot is a firing position. An ability with no def counts as ranged, the
+/// same way [`effective_max_range`] resolves it, and an NPC with no known
+/// abilities fires the ranged `NPC_DEFAULT_ABILITY`.
+pub(super) fn npc_is_melee_only(npc_id: u32, space_mgr: &SpaceManager) -> bool {
+    let Some(npc) = space_mgr.get_entity(npc_id) else {
+        return false;
+    };
+    let ids = npc.abilities.known_ability_ids();
+    !ids.is_empty()
+        && ids
+            .iter()
+            .all(|id| space_mgr.ability_defs.get(id).is_some_and(|d| !d.is_ranged))
+}
+
 /// [`choose_npc_ability`] with a reach filter: prefer the lowest-id
 /// off-cooldown ability that can actually be used at `target_dist`, and
 /// fall back to the unfiltered pick when none can.
