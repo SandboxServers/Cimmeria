@@ -480,6 +480,58 @@ async fn pulse_tick_removes_instance_when_remaining_hits_zero() {
     );
 }
 
+/// **#721 SecondaryId guard.** The client's `EffectSet_HandleOnTimerUpdate`
+/// (`0x00e09160`) finds the active-effect entry by `SecondaryId`, and the
+/// original server sent `instance.effect.id` there
+/// (`AbilityManager.py::updateEffectTimer`). Both the start timer from
+/// `register_active_effect` and the zero clear from the pulse tick must
+/// carry the effect id at bytes 9..13; a `0` there leaves the clear unable
+/// to find the icon the start created.
+#[tokio::test]
+async fn duration_effect_timers_carry_effect_id_as_secondary_id() {
+    let mut mgr = make_mgr();
+    let mut effect = make_dot_effect(2, 1.0, 10);
+    effect.effect_id = 8889;
+    mgr.effect_defs.insert(effect.effect_id, effect.clone());
+    let (tx, mut rx) = mpsc::channel(64);
+    // Target the player (entity 1) so the timer is a direct
+    // `EntityMethodCall` to its own client.
+    register_active_effect(&mut mgr, 1, 2, &effect, Instant::now(), &tx).await;
+    if let Some(t) = mgr.get_entity_mut(1) {
+        if let Some(inst) = t.active_effects.first_mut() {
+            inst.next_pulse_at = Instant::now() - Duration::from_secs(2);
+            inst.remaining_pulses = 1;
+        }
+    }
+    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+    assert!(mgr.get_entity(1).unwrap().active_effects.is_empty());
+
+    let mut timers = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let crate::cell::messages::CellToBaseMsg::EntityMethodCall {
+            entity_id: 1,
+            method_index,
+            args,
+        } = msg
+        {
+            if method_index == crate::cell::client_methods::being::ON_TIMER_UPDATE {
+                timers.push(args);
+            }
+        }
+    }
+    assert_eq!(timers.len(), 2, "one start timer and one clear timer");
+    for args in &timers {
+        assert_eq!(args.len(), 21);
+        assert_eq!(&args[0..4], &8889i32.to_le_bytes(), "ID");
+        assert_eq!(
+            &args[9..13],
+            &8889i32.to_le_bytes(),
+            "SecondaryId must be the effect id, not 0"
+        );
+    }
+    assert_eq!(&timers[1][13..21], &[0u8; 8], "the clear zeroes both times");
+}
+
 /// **Harset H08 surrender guard.** A damage-over-time effect the player
 /// applied *before* the NPC surrendered must not finish it once it has.
 ///

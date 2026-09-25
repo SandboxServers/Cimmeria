@@ -171,7 +171,7 @@ fn snapshot_entity(
     let bearing = dx.atan2(dz);
     let yaw_rad = e.direction.y;
     let yaw_byte = pack_angle(yaw_rad);
-    let ground_y = space_mgr.get_navmesh_height(eid, e.position.x, e.position.z);
+    let ground_y = space_mgr.get_navmesh_height(eid, e.position.x, e.position.y, e.position.z);
     let (threat_top_id, threat_top_value) = e
         .threat_list
         .iter()

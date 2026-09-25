@@ -56,11 +56,12 @@ pub(in crate::cell::service) fn npc_is_incapacitated(
     if crate::cell::combat::is_dead_state(e.state_field) {
         return true;
     }
-    let Some(suppressed) =
-        space_mgr
-            .zero_health_npc_log
-            .admit(npc_id, now, ZERO_HEALTH_WARN_MIN_INTERVAL)
-    else {
+    let Some(suppressed) = space_mgr.zero_health_npc_log.admit(
+        npc_id,
+        "zero_health",
+        now,
+        ZERO_HEALTH_WARN_MIN_INTERVAL,
+    ) else {
         return true;
     };
     // Re-borrowed: `admit` above needed `&mut`.

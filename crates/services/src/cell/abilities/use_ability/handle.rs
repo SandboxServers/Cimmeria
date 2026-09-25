@@ -472,6 +472,7 @@ pub async fn handle_use_ability(
         ability_id,
         TIMER_ABILITY_COOLDOWN,
         entity_id as i32,
+        0,
         cooldown_secs,
         0.0, // TODO: bigWorldTimeComplete = gameTime + cooldown
     );

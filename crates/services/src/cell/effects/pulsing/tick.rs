@@ -186,6 +186,7 @@ pub async fn effect_pulse_tick(
                 cleared_effect,
                 TIMER_DURATION_EFFECT,
                 invoker as i32,
+                cleared_effect,
                 0.0,
                 0.0,
             );

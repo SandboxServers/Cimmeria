@@ -2,20 +2,27 @@
 //! once, at space creation, to turn a file into a [`NavMesh`].
 //!
 //! Split out of `navigation/mod.rs`, which keeps the runtime query API.
-//! Pure code move apart from the fingerprint: `load` now reads the file
-//! into memory in one shot (rather than streaming it through a
-//! `BufReader`) so the raw bytes can be hashed and sized for
-//! [`NavMeshFingerprint`] before they are parsed.
+//!
+//! The parse streams: it reads through a [`HashingReader`] wrapped
+//! around a `BufReader`, so every header count reaches
+//! [`check_count`] after ~60 bytes have been read and long before the
+//! allocation it would drive, while the [`NavMeshFingerprint`]'s hash
+//! still covers every byte of the file. An earlier revision read the
+//! whole file with `std::fs::read` to get bytes to hash; that put a
+//! whole-file allocation *ahead* of the hostile-header caps, so a
+//! corrupt or sparse deployment asset became a startup OOM instead of a
+//! rejected file (PR #700 review).
 
-use std::io::{Cursor, Read as IoRead};
+use std::fs::File;
+use std::io::{BufReader, Read as IoRead};
 use std::path::Path;
 
 use crate::detour_ffi;
 
-use super::fingerprint::NavMeshFingerprint;
+use super::fingerprint::{AgentParams, HashingReader, NavMeshFingerprint};
 use super::xrc::{
-    check_count, checked_alloc_size, read_f32, read_u16, read_u32, read_u8, MAX_DETAIL_NMESHES,
-    MAX_DETAIL_NTRIS, MAX_DETAIL_NVERTS, MAX_NPOLYS, MAX_NVERTS, MAX_NVP,
+    check_count, check_file_size, checked_alloc_size, read_f32, read_u16, read_u32, read_u8,
+    MAX_DETAIL_NMESHES, MAX_DETAIL_NTRIS, MAX_DETAIL_NVERTS, MAX_NPOLYS, MAX_NVERTS, MAX_NVP,
 };
 use super::NavMesh;
 
@@ -26,26 +33,33 @@ impl NavMesh {
     /// a query object. Follows the exact pipeline from the C++ reference
     /// implementation in `navigation.cpp`.
     ///
-    /// The whole file is read into memory first. `.nav` assets are a few
-    /// hundred KB (Castle Cellblock is the largest shipped mesh), this
-    /// runs once per space at startup, and the parse immediately allocates
-    /// several vectors of comparable size anyway — so the extra copy costs
-    /// nothing measurable and buys the byte-exact
-    /// [`NavMeshFingerprint`] that ties a player session to the mesh it
-    /// ran on.
+    /// Rejection is ordered by how little it costs to decide:
+    ///
+    /// 1. The `metadata` length against [`check_file_size`] — no bytes
+    ///    read, the file is not even opened.
+    /// 2. Each header count against its `MAX_*` cap, ~60 bytes in, before
+    ///    the `Vec` it sizes exists.
+    /// 3. Short reads, from any truncated section.
+    ///
+    /// The [`NavMeshFingerprint`] falls out of the same single pass: the
+    /// reader hashes what it hands to the parser and
+    /// [`HashingReader::finish`] drains and hashes the rest, so the value
+    /// is byte-for-byte what hashing the whole file would give.
     pub fn load(path: &Path) -> cimmeria_common::Result<Self> {
         let name = path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let bytes = std::fs::read(path)?;
-        let mut r = Cursor::new(bytes.as_slice());
+        check_file_size(std::fs::metadata(path)?.len())?;
+        let mut r = HashingReader::new(BufReader::new(File::open(path)?));
 
         // ── Section 1: Agent parameters ─────────────────────────────────
-        let agent_height = read_f32(&mut r)?;
-        let agent_climb = read_f32(&mut r)?;
-        let agent_radius = read_f32(&mut r)?;
+        let agent = AgentParams {
+            height: read_f32(&mut r)?,
+            climb: read_f32(&mut r)?,
+            radius: read_f32(&mut r)?,
+        };
 
         // ── Section 2: Mesh metadata ────────────────────────────────────
         //
@@ -155,6 +169,11 @@ impl NavMesh {
         let mut detail_tris = vec![0u8; detail_tris_len];
         r.read_exact(&mut detail_tris)?;
 
+        // Nothing else is parsed out of the file; drain whatever is left
+        // so the fingerprint covers trailing bytes too, and close the
+        // reader before the FFI block below.
+        let (content_hash, file_bytes) = r.finish()?;
+
         // ── Build Detour navmesh tile ───────────────────────────────────
         // This mirrors the C++ navigation.cpp lines 109-138 exactly:
         // populate dtNavMeshCreateParams and call dtCreateNavMeshData.
@@ -174,9 +193,9 @@ impl NavMesh {
                 bmax.as_ptr(),
                 cs,
                 ch,
-                agent_height,
-                agent_radius,
-                agent_climb,
+                agent.height,
+                agent.radius,
+                agent.climb,
                 detail_meshes.as_ptr(),
                 detail_nmeshes as i32,
                 detail_verts.as_ptr(),
@@ -220,15 +239,8 @@ impl NavMesh {
             )));
         }
 
-        let fingerprint = NavMeshFingerprint::new(
-            path,
-            &bytes,
-            nverts,
-            npolys,
-            agent_height,
-            agent_climb,
-            agent_radius,
-        );
+        let fingerprint =
+            NavMeshFingerprint::new(path, file_bytes, content_hash, nverts, npolys, agent);
 
         tracing::info!(
             name = %name,
@@ -238,9 +250,9 @@ impl NavMesh {
             detail_nmeshes,
             detail_nverts,
             detail_ntris,
-            agent_height,
-            agent_climb,
-            agent_radius,
+            agent_height = agent.height,
+            agent_climb = agent.climb,
+            agent_radius = agent.radius,
             file_bytes = fingerprint.file_bytes,
             navmesh_hash = %fingerprint.content_hash,
             navmesh_short_hash = %fingerprint.short_hash,
@@ -252,8 +264,8 @@ impl NavMesh {
             mesh: mesh_handle,
             name,
             fingerprint,
-            agent_height,
-            agent_radius,
+            agent_height: agent.height,
+            agent_radius: agent.radius,
             bmin,
             bmax,
         })
