@@ -22,12 +22,14 @@ Handler: `BigWorld_onRemoteEntityMove_MovementTypeSwitch` at `0x00deb660` (610 i
 |-------|-------------|----------|---------|
 | 0 | "Entity: %d is moving to cover" | **CoverAdvance** | Move to cover position |
 | 1 | "Entity: %d is making a combat advance" | **CombatAdvance** | Advance toward target in combat |
-| 2 | "Entity: %d is leashing" | **Leash/Return** | Return to spawn point |
-| 3 | "Entity: %d is patroling" | **Patrol** | Follow patrol waypoints |
-| 4 | "Entity: %d is following" | **Follow** | Follow another entity |
-| 5 | "Entity: %d is wandering" | **Wander** | Random movement in area |
+| 2 | "Entity: %d is patroling" | **Patrol** | Follow patrol waypoints |
+| 3 | "Entity: %d is following" | **Follow** | Follow another entity |
+| 4 | "Entity: %d is wandering" | **Wander** | Random movement in area |
+| 5 | "Entity: %d is leashing" | **Leash/Return** | Return to spawn point |
 | 6 | "Entity: %d is avoiding" | **Avoid** | Avoid danger/AoE |
 | >6 | "Entity: %d is performing unknown movement" | **Unknown** | Fallback |
+
+> **Correction (2026-09-24):** an earlier revision listed Leash as 2 and Patrol, Follow and Wander as 3-5. The jump table at `0x00dec018` sends case 5 to `0x00debad0`, which pushes "is leashing" (`0x019d2d2c`), and case 2 to `0x00debb04`, which pushes the patrol string (`0x019d2d5c`). This matches `EMobMovementType` in `entities/defs/enumerations.xml`. Full case map: [npc-movement-pathfinding.md §3](npc-movement-pathfinding.md#3-ai-movement-state-machine).
 
 Each case parses from the server event:
 - `aPath` — waypoint data (list of positions)
