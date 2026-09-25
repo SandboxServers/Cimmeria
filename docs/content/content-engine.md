@@ -233,7 +233,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `add_dialog` | `AddDialog` | 10 |
 | `add_dialog_set` | `AddDialogSet` | 6 |
 | `remove_dialog_set` | `RemoveDialogSet` | 2 |
-| `npc_bark` | `NpcBark` | 0 |
+| `npc_bark` | `NpcBark` | 3 |
 | `add_item` | `GrantItem` | 14 |
 | `remove_item` | `RemoveItem` | 2 |
 | `grant_xp` | `GrantXP` | 0 |
