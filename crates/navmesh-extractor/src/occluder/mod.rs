@@ -82,9 +82,16 @@ impl WalkStats {
 /// Walk every chunk of `map_dir` and call `visit` with its triangles.
 ///
 /// `index = None` is the extractor's degraded mode: terrain and BSP only.
+/// `include_interp_actors` — default `false`, opt-in — is the same knob
+/// `ExtractOptions` uses for the `.nav` side: doors, gates, lifts and
+/// elevators are disproportionately `InterpActor` in this content, and
+/// baking one's cooked (usually closed) pose into an `.occ` can block
+/// line of sight through an opening a player can actually see and shoot
+/// through. See `staticmesh::MESH_ACTOR_CLASSES`'s doc.
 pub fn for_each_chunk(
     map_dir: &Path,
     index: Option<&PackageIndex>,
+    include_interp_actors: bool,
     mut visit: impl FnMut(&ChunkTriangles),
 ) -> crate::Result<WalkStats> {
     let mut stats = WalkStats::default();
@@ -94,8 +101,12 @@ pub fn for_each_chunk(
     for chunk_path in chunks {
         let id = chunk_id::ChunkId::from_umap_path(&chunk_path)?;
         let pkg = cimmeria_upk::Package::open(&chunk_path)?;
-        let mut extraction =
-            staticmesh::extract_chunk_from_package(&pkg, index, &mut archetype_cache);
+        let mut extraction = staticmesh::extract_chunk_from_package(
+            &pkg,
+            index,
+            &mut archetype_cache,
+            include_interp_actors,
+        );
         let sm_end = extraction.soup.triangle_count();
         let terrain_stats = terrain::collect_terrain_triangles(&pkg, &mut extraction.soup);
         let terrain_end = extraction.soup.triangle_count();

@@ -66,6 +66,20 @@ impl Flags {
         }
     }
 
+    /// `true` or `false`, literally — no `1`/`0`/`yes`/`no` aliases, so a
+    /// typo is a hard error rather than a silent default.
+    pub fn bool_or(&self, key: &str, default: bool) -> Result<bool, String> {
+        match self.opt(key) {
+            None => Ok(default),
+            Some("true") => Ok(true),
+            Some("false") => Ok(false),
+            Some(v) => Err(format!(
+                "{}: --{key} wants true or false, got {v:?}",
+                self.mode
+            )),
+        }
+    }
+
     /// A number, or `none` for `None`.
     pub fn opt_f32_or(&self, key: &str, default: Option<f32>) -> Result<Option<f32>, String> {
         match self.opt(key) {
@@ -141,5 +155,32 @@ mod tests {
         assert_eq!(f.build_params().unwrap().terrain_pitch, None);
         let f = Flags::parse("m", &s(&[]), &["terrain-pitch"]).unwrap();
         assert_eq!(f.build_params().unwrap().terrain_pitch, Some(1.0));
+    }
+
+    /// NA36 follow-up: `--include-interp-actors` defaults off, takes an
+    /// explicit `true`/`false` (this parser's flags always take a
+    /// value), and a typo'd value is a hard error rather than a silent
+    /// default — the whole point of gating InterpActor is that a
+    /// forgotten or mistyped flag must not silently bake doors closed.
+    #[test]
+    fn include_interp_actors_defaults_off_and_rejects_a_typo() {
+        let f = Flags::parse("m", &s(&[]), &["include-interp-actors"]).unwrap();
+        assert!(!f.bool_or("include-interp-actors", false).unwrap());
+
+        let f = Flags::parse(
+            "m",
+            &s(&["--include-interp-actors", "true"]),
+            &["include-interp-actors"],
+        )
+        .unwrap();
+        assert!(f.bool_or("include-interp-actors", false).unwrap());
+
+        let f = Flags::parse(
+            "m",
+            &s(&["--include-interp-actors", "yes"]),
+            &["include-interp-actors"],
+        )
+        .unwrap();
+        assert!(f.bool_or("include-interp-actors", false).is_err());
     }
 }

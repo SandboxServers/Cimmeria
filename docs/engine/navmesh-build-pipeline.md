@@ -723,6 +723,214 @@ ones buy nothing, since no tile of a real map comes near a cap. The seven
 NA28 meshes and their numbers are in
 [data/spaces/README.md](../../data/spaces/README.md).
 
+## 11. Mesh-actor class gap: InterpActor / KActor / FracturedStaticMeshActor (NA36, 2026-09-25)
+
+**The bug.** `staticmesh::collect_static_mesh_instances` (§1.2's walker)
+filtered exports on `class == "StaticMeshActor"` exactly. Three sibling UE3
+classes — `InterpActor` (Matinee-driven movers), `KActor` (rigid-body
+physics props) and `FracturedStaticMeshActor` (destructible meshes) — all
+derive from `AStaticMeshActor` and carry the identical placement +
+`StaticMeshComponent` shape (`Location` / `Rotation` / `DrawScale` /
+`DrawScale3D`, an object reference to a `StaticMeshComponent`, optionally
+gated by `bCollideActors`), but the class-name filter dropped them before
+the `for` loop even visited them — not into a [`SkipReason`], invisibly.
+`coverage::COLLISION_BEARING_CLASSES` had already named all three (plus
+`StaticMeshCollectionActor`) as a documented, un-widened gap; this section
+closes it for the three that turned out to have real content.
+
+**Evidence.** Harset's `SigNoz movement.validation_reject` telemetry
+(`docs/analysis/harset-rebuild/placements/data/harset_lastvalid_probes.txt`)
+carries several thousand accepted real-player positions with no matching
+geometry in the NA26/NA28 extraction; `nav_inspect --probes` against the
+shipped `harset.nav` puts 7 of them `OUT OF TOLERANCE`, five clustered
+10 m above ground at `x[9, 47] z[-91, 59]`. `extract_map`'s class census
+(`--classes`) confirmed `Harset` carries 31 `InterpActor` exports, all
+currently `NotDecoded`. The suspicion that this is the same class of gap
+as `Harset_ShieldTower1`'s known-off-mesh spawn 308 (NA29,
+[world57-population-and-regions.md](../../docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md))
+did not hold up once traced further — see "What this fix did *not* fix"
+below.
+
+**The fix, first pass.** `staticmesh::MESH_ACTOR_CLASSES` widened the
+filter to `["StaticMeshActor", "InterpActor", "KActor",
+"FracturedStaticMeshActor"]`, unconditionally; `coverage::DECODE_STATUS`
+marked all three `Decoded`. Nothing else in the resolution chain
+changed — collision-flag gating (`bCollideActors`, the archetype
+`collides()` check) applies identically regardless of class, so a mover
+explicitly marked non-colliding is still (correctly) skipped.
+`StaticMeshCollectionActor` (an array-of-components shape needing its
+own walk) was left out — see the 23-map census below.
+
+**The fix, follow-up: `InterpActor` is opt-in.** A same-day review
+raised the concern this section exists to record: `InterpActor` is
+UE3's Matinee-driven-mover class, and Castle's connectivity notes had
+already flagged its un-extracted doors as `InterpActor`s. A mover's
+cooked `Location`/pose is its design-time *resting* state — usually
+closed for a door — not necessarily where a player experiences it at
+runtime. Unconditionally baking every `InterpActor`'s cooked pose into
+every map's `.nav`/`.occ` risks sealing a doorway shut or blocking line
+of sight through an opening a player can actually see and shoot
+through, the first time one of the other 14 `InterpActor`-carrying maps
+gets rebuilt. `KActor` and `FracturedStaticMeshActor` are unaffected —
+zero shipped instances of either, and neither carries the same
+door/mover connotation as a class.
+
+`staticmesh::MESH_ACTOR_CLASSES` was narrowed back to
+`["StaticMeshActor", "KActor", "FracturedStaticMeshActor"]`
+(unconditional), and `staticmesh::OPT_IN_MESH_ACTOR_CLASSES` (currently
+just `["InterpActor"]`) is walked only when the caller passes
+`ExtractOptions::include_interp_actors: true` (the `.nav` side) or the
+equivalent to `occluder::for_each_chunk` (the `.occ` side) — both
+default `false`. `coverage::decode_status(class, include_interp_actors)`
+now takes the run's flag as a parameter rather than reading a static
+table for `InterpActor`, so `extract_map`'s coverage report correctly
+flags `InterpActor` as an undecoded risk whenever a run does not opt in
+— the whole point is that a future rebuild that forgets the flag is
+warned, not silently told "no risk". CLI flags:
+`extract_map extract --include-interp-actors` (bare, no value) and
+`occluder_extract build --include-interp-actors true` (this tool's
+flags always take an explicit value).
+
+**23-map census (item 2).** Re-running `extract_map`'s class census over
+every cooked map after the fix:
+
+| Class | Maps carrying it | Total exports | Decode status |
+|---|---|---|---|
+| `InterpActor` | 15 of 23 (Agnos 2, Beta_Site_Evo_1 94, Castle 14, Castle_CellBlock 53, Dakara_E1 10, Harset 31, Harset_CmdCenter 1, Login_Map 16, Lucia 359, Menfa_Dark 125, Menfa_Light 50, Omega_Site 4, SGC_W1 22, Sewer_Falls 2, Tollana 182) | 965 | opt-in, off by default |
+| `KActor` | 0 | 0 | n/a — no shipped content, but unconditionally decoded |
+| `FracturedStaticMeshActor` | 0 | 0 | n/a — no shipped content, but unconditionally decoded |
+| `StaticMeshCollectionActor` | 0 | 0 | still `NotDecoded`; nothing to decode |
+
+Since neither `KActor` nor `FracturedStaticMeshActor` occurs anywhere in
+the shipped 2009 client content, their inclusion in `MESH_ACTOR_CLASSES`
+is a no-op today — kept because the classes are true `AStaticMeshActor`
+siblings and cost nothing to support, not because they were observed to
+matter.
+
+**What the 965 `InterpActor`s actually are (item 3, optional).** Of the
+965 exports, 754 resolve a mesh reference successfully (the other 211
+are collision-disabled or otherwise unresolvable, and contribute no
+geometry with the flag on or off). Classifying the 754 by resolved mesh
+name (a scratch tool diffed the walker's output with the flag on vs
+off, per-chunk, across all 23 maps — not part of the shipped tool
+surface):
+
+| Mesh name | Count | Category |
+|---|---:|---|
+| `GLB-RingTransporter00` | 332 | Ring-transport platform — players stand on it; static-shaped despite the class |
+| `HT-StreetLamp00` | 180 | Decorative street lamp |
+| `EM-SecurityCam01_Top` | 124 | Security camera head — **ambiguous**: the mount is static, the head plausibly rotates |
+| `HB-StreetLamp00` | 29 | Decorative street lamp |
+| `HB-Humvee_02` | 19 | Parked vehicle prop |
+| `SGC_Door03` | 12 | **Door** |
+| `EM-Door_Prison00` | 10 | **Door** |
+| `SGC_small_door_00` | 10 | **Door** |
+| `GLB-Stargate_Chevron00` | 7 | **Stargate rotating chevron mechanism** |
+| `GLB-Stargate_Chevron_Light00` | 7 | **Stargate rotating chevron mechanism** |
+| `EM-Antenna00` | 6 | Decorative antenna |
+| `HT-FloatingLight01` | 6 | Decorative floating light |
+| `HB-Humvee_01` | 3 | Parked vehicle prop |
+| `HB-StreetLamp01` | 2 | Decorative street lamp |
+| `LUS-FanRotor00` | 2 | **Rotating fan blade** |
+| `CA-CastleEntrance_Door00` | 1 | **Door** |
+| `CA-CastleEntrance_Door01` | 1 | **Door** |
+| `EM-ShelfBox10` | 1 | Decorative prop |
+| `GLB-Stargate_Spinner00` | 1 | **Stargate rotating mechanism** |
+| `LUS-MetalBox00` | 1 | Decorative prop |
+
+Rolled up: **579 (77%)** are load-bearing static-shaped props (ring
+transporters, lamps, antennas, parked vehicles) with no plausible reason
+to move at runtime; **51 (7%)** are literal doors or a Stargate's
+rotating chevron/spinner mechanism — the exact risk this follow-up
+exists to gate; **124 (16%)** are security-camera heads, genuinely
+ambiguous. So the concern that motivated making `InterpActor` opt-in is
+real (doors are present, confirmed by name) but is a small minority of
+the class's shipped population — most `InterpActor`s in this content are
+static-shaped dressing that happened to be authored with the mover
+class. A future packet enabling `InterpActor` map-by-map should treat
+the door/Stargate-mechanism 51 as needing individual exclusion or manual
+verification, and can likely trust the ring-transporter/lamp/vehicle 579
+categorically.
+
+**Which maps ship built with the flag.** Only Harset's family was
+rebuilt by this packet:
+
+| Map / file | `--include-interp-actors` | Why |
+|---|---|---|
+| `harset.nav` / `harset.occ` | **on** | 31 `InterpActor`s checked by hand (NA36) — all console platforms and static dressing, none named as a door or mechanism in the classification table above |
+| `harset_cmdcenter.nav` (+ `sandbox.nav`) | on, but moot | Its one `InterpActor` contributes no measurable geometry either way — the file rebuilds byte-identical |
+| `harset_market.nav`, `harset_storagerm.nav` | n/a | Zero `InterpActor` exports |
+| All other 22 maps | **not rebuilt by this packet; default off if/when they are** | Not individually checked. Castle, Castle_CellBlock, Beta_Site_Evo_1, Lucia, Menfa_Dark, Menfa_Light, Login_Map, SGC_W1, Tollana, Dakara_E1, Agnos, Sewer_Falls and Omega_Site all carry `InterpActor` exports (see the census table above) and must not be rebuilt with the flag on until someone reviews their specific instances the way NA36 did for Harset |
+
+**Harset rebuild.** `harset.nav`: `nverts` 29,768→29,772, `npolys`
+15,287→15,289, `edges` 42,379→42,385 (31 new `InterpActor` instances,
+mostly collision-disabled or overlapping existing coverage — the net
+change is small; total walkable XZ area moves from 652,905.6 m² to
+652,903.9 m², a normal Recast re-voxelization wobble, not a loss).
+`nav_inspect --probes` against both the 67-row seeded NA26 probe set
+(`probes/Harset.txt`) and the 41-row telemetry-derived
+`harset_lastvalid_probes.txt` gives an **identical** pass/fail set before
+and after (56/67 and 34/41 respectively, same rows failing both times) —
+a strict non-regression, not an improvement, because none of the actual
+`InterpActor` geometry landed under a currently-failing probe.
+`harset.occ` rebuilt from the same fixed extraction; self-check
+(`paged == unpaged`) passes, 210 pages, 3,764,999 bytes (+635 over the
+shipped file). `harset_cmdcenter.nav` (source for both itself and
+`sandbox.nav`) rebuilds **byte-identical** to shipped — its one
+`InterpActor` contributes no measurable geometry — so neither file was
+touched. `harset_market.nav` and `harset_storagerm.nav` carry zero
+instances of any of the four classes and were not rebuilt.
+
+**What this fix did *not* fix.** Two things the packet set out to explain
+turned out to be different problems entirely, confirmed by exhaustive
+`obj_slab` / manual actor-proximity checks against the *fixed* extraction:
+
+- **Five clustered off-mesh telemetry points** (`lv06`, `lv07`, `lv14`,
+  `lv18`, `lv20` — real, frequently-recorded player positions 8-10 m
+  above the only nearby geometry) have **no export of any class** within
+  30 m horizontally at the target height, in any of the chunks covering
+  that area. `obj_slab --at ...,40` (a 40 m vertical half-range) finds
+  only the ground-level plaza floor ~10 m below. This is not an
+  extractor decode gap — nothing decodable is missing an entry, because
+  nothing is there. The leading hypothesis, not confirmed: a genuinely
+  *animated* `InterpActor` (a rising platform) whose cooked pose sits at
+  its resting (ground) height, which a static navmesh bake can never
+  represent at its raised position — exactly the risk the crate's own
+  README already flagged for movers. No `InterpActor` export was found
+  within a useful radius of this cluster to confirm or refute it. Left
+  open for a follow-up with either a live-client `.location` reading at
+  the telemetry coordinates or a Matinee-sequence trace. Two further
+  `nav_inspect` failures against this same probe file (`lv19`, dy
+  +3.30 m; `lv24`, dy +3.42 m) are smaller, at different heights, and
+  were **not** traced further — they may be a different problem
+  entirely and are left for a future packet rather than folded into
+  this hypothesis without evidence.
+- **Spawn 308 (`Harset_ShieldTower1` console, template 243)** is not a
+  missing-class gap either: its `GA-TowTall01` tower prefab **is**
+  present and decoded (a `StaticMeshActor` + `PrefabInstance` sit within
+  3 m horizontally of the seeded XZ, at the seeded height exactly). The
+  problem is that the tower's cooked origin is not its walkable console
+  height — a tall, hillside-mounted compound mesh whose true platform
+  surface needs an in-client `.location` reading to re-pin, exactly as
+  NA29 already concluded. `nav_inspect` confirms `dy=+3.45 m`, unchanged
+  by this fix.
+
+**Seeded-spawn Y audit (item 3).** Cross-referencing every currently
+off-mesh Harset `spawnlist` row
+([B-world57-population-and-regions.md](../../docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md))
+against this fix:
+
+| Spawn | Row | Classification | Action |
+|---|---|---|---|
+| 303, 304, 306, 307, 313 | Jaffa camp, bug baskets, Petbe's search object | Already resolved — made mobile by NA29 against the rebuilt mesh | none |
+| 308 `Harset_ShieldTower1` | Shield tower 1 console | (c) not a decode gap; Y-calibration on a hillside compound mesh | needs a live `.location` reading (NA29's existing recommendation); no seed change with sufficient confidence |
+| 309 `Harset_ShieldTower2` | Shield tower 2 console | Already resolved — repinned to an adjacent terrace by NA29/NA28 | none |
+| 310 `Harset_ShieldTower3` | Shield tower 3 console | Real terrain exists almost exactly at the seeded Y (two overlapping terrain sheets at `y[-31.0,-30.5]` and `y[-29.5,-29.0]`); the 24.61 m navmesh gap is a **connectivity** issue (nearest polygon is a distant, disconnected component), not a wrong seed Y or missing geometry | out of this packet's scope; candidate for NA28-style tiled rebuild follow-up |
+| 311 `Harset_ShieldControls` | Shield controls prop | Already LOW confidence, INFERRED placement; the ledger itself proposes deletion if unconfirmed | no change — owner decision already flagged, not re-litigated here |
+
+No row met the "seed Y wrong, high confidence" bar this packet requires
+before touching `db/resources`; none of the open rows were corrected.
+
 ## Cross-references
 
 - [data/spaces/README.md](../../data/spaces/README.md) — per-world parameters, validation and containment mode

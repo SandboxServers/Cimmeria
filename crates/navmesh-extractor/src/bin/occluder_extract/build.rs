@@ -30,12 +30,20 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
         "entry-points",
         "page",
         "report",
+        "include-interp-actors",
     ];
     allowed.extend(super::BUILD_KNOBS);
     let f = Flags::parse("build", rest, &allowed)?;
     let cooked = f.path("cooked-root")?;
     let map = f.req("map")?.to_string();
     let out = f.path("out")?;
+    // Off by default: doors/gates/lifts/elevators are disproportionately
+    // InterpActor in this content, and baking one's cooked (usually
+    // closed) pose into the shipped .occ can block sight through an
+    // opening a player can actually see through. See
+    // staticmesh::MESH_ACTOR_CLASSES's doc and
+    // docs/engine/navmesh-build-pipeline.md §11.
+    let include_interp_actors = f.bool_or("include-interp-actors", false)?;
     let index = super::load_index(&f.path("index")?)?;
     let page = f.f32_or("page", cimmeria_occluder::DEFAULT_PAGE_SIZE)?;
     let world_key = out
@@ -93,7 +101,7 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
     }
 
     let label = format!(
-        "{map} cell={} terrain_pitch={:?} margin={:?} merge_gap={} y_step={} page={page} explorable={}/{}",
+        "{map} cell={} terrain_pitch={:?} margin={:?} merge_gap={} y_step={} page={page} explorable={}/{} interp_actors={include_interp_actors}",
         params.cell, params.terrain_pitch, params.margin, params.merge_gap, params.y_step, kept, total
     );
     let mut builder = OccluderBuilder::new(params, label).map_err(|e| e.to_string())?;
@@ -102,7 +110,7 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
             builder.add_coverage_triangle(t);
         }
     }
-    let stats = for_each_chunk(&map_dir, Some(&index), |c| {
+    let stats = for_each_chunk(&map_dir, Some(&index), include_interp_actors, |c| {
         for t in &c.geometry {
             builder.add_triangle(t, Source::Geometry);
         }

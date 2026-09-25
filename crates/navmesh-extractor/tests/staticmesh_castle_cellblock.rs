@@ -102,7 +102,7 @@ fn castle_cellblock_walks_static_mesh_actors() {
         // Index-less on purpose: this test measures the *direct*
         // component path, so archetype stubs must stay skips rather
         // than resolving through their prefab packages.
-        let walk = collect_static_mesh_instances(&pkg, None, &mut ArchetypeCache::default());
+        let walk = collect_static_mesh_instances(&pkg, None, &mut ArchetypeCache::default(), false);
         // `collect_static_mesh_instances` now returns an `ActorWalk` so
         // the coverage report can see *why* the rest were skipped; the
         // resolvable-instance count this test asserts on is unchanged.
@@ -222,7 +222,7 @@ fn castle_cellblock_with_index_produces_triangles() {
         return;
     }
 
-    let result = extract_chunk(&chunk, Some(&index)).expect("extract_chunk");
+    let result = extract_chunk(&chunk, Some(&index), false).expect("extract_chunk");
     eprintln!(
         "Castle_CellBlock fffefffd: actors_total={} resolved={} unresolved={} triangles={}",
         result.actors_total,
@@ -266,7 +266,7 @@ fn castle_cellblock_extract_chunk_without_index_emits_no_geometry() {
     let chunks = enumerate_chunks(&dir).expect("enumerate_chunks");
     let chunk = chunks.first().expect("at least one chunk");
 
-    let result = extract_chunk(chunk, None).expect("extract_chunk");
+    let result = extract_chunk(chunk, None, false).expect("extract_chunk");
     assert_eq!(
         result.soup.triangle_count(),
         0,

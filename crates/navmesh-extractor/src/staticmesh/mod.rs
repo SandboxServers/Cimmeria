@@ -1,6 +1,9 @@
 //! Phase 1.2 — StaticMesh + StaticMeshActor extraction.
 //!
-//! For each `StaticMeshActor` export in a chunk `.umap`:
+//! For each [`MESH_ACTOR_CLASSES`] export in a chunk `.umap` (the
+//! `StaticMeshActor`-shaped family: `StaticMeshActor` itself, plus
+//! NA36's `KActor` / `FracturedStaticMeshActor`, and `InterpActor` when
+//! opted in — see [`is_mesh_actor_class`]):
 //!
 //! 1. Read the actor's tagged properties to recover its transform
 //!    (`Location` / `Rotation` / `DrawScale` / `DrawScale3D`) and the
@@ -147,11 +150,21 @@ pub struct ChunkExtraction {
 /// `index` may be `None`, in which case the extractor logs how many
 /// actors it would have processed and returns an empty soup. This is the
 /// degraded mode used in CI when the cooked asset bundle isn't on the
-/// runner.
-pub fn extract_chunk(chunk_path: &Path, index: Option<&PackageIndex>) -> Result<ChunkExtraction> {
+/// runner. `include_interp_actors` — see [`MESH_ACTOR_CLASSES`]'s doc —
+/// is opt-in, default off.
+pub fn extract_chunk(
+    chunk_path: &Path,
+    index: Option<&PackageIndex>,
+    include_interp_actors: bool,
+) -> Result<ChunkExtraction> {
     let pkg = Package::open(chunk_path)?;
     let mut cache = ArchetypeCache::default();
-    Ok(extract_chunk_from_package(&pkg, index, &mut cache))
+    Ok(extract_chunk_from_package(
+        &pkg,
+        index,
+        &mut cache,
+        include_interp_actors,
+    ))
 }
 
 /// [`extract_chunk`] against an already-open package.
@@ -169,8 +182,9 @@ pub fn extract_chunk_from_package(
     pkg: &Package,
     index: Option<&PackageIndex>,
     cache: &mut ArchetypeCache,
+    include_interp_actors: bool,
 ) -> ChunkExtraction {
-    let walk = collect_static_mesh_instances(pkg, index, cache);
+    let walk = collect_static_mesh_instances(pkg, index, cache, include_interp_actors);
 
     let mut result = ChunkExtraction {
         actors_total: walk.actors_total as usize,
@@ -358,9 +372,62 @@ fn load_static_mesh(
         .map_err(|e| decode_failed(ExtractError::Other(format!("StaticMesh deserialize: {e}"))))
 }
 
-/// Walk every `StaticMeshActor` in `pkg` and produce one instance per
-/// actor whose `StaticMeshComponent.StaticMesh` reference can be
-/// recovered from the tagged-property stream.
+/// Export classes the walker treats as `StaticMeshActor`-shaped: a
+/// cooked actor whose tagged-property block carries `Location` /
+/// `Rotation` / `DrawScale` / `DrawScale3D` and a `StaticMeshComponent`
+/// object reference, optionally gated by `bCollideActors`.
+///
+/// UE3's `AInterpActor`, `AKActor` and `AFracturedStaticMeshActor` all
+/// derive from `AStaticMeshActor` and add no new placement or mesh-ref
+/// properties of their own (Matinee-driven movers, rigid-body physics
+/// props, and destructible meshes respectively) — so the same resolver
+/// walks them unchanged. NA36 (Harset raised-platform navmesh gap):
+/// `Harset-*` chunks carry 31 `InterpActor` exports with real collision
+/// meshes that a class filter of `StaticMeshActor` alone drops on the
+/// floor entirely (not even into `SkipReason` — the walker's `for`
+/// loop never visits them), leaving zero geometry under platforms built
+/// from movers. `StaticMeshCollectionActor` is a deliberate exclusion:
+/// it owns an *array* of `StaticMeshComponent`s rather than one, so it
+/// needs its own walk and is tracked as a remaining gap in
+/// `coverage::COLLISION_BEARING_CLASSES`.
+///
+/// **`InterpActor` is gated behind `include_interp_actors` — opt-in,
+/// default off.** `KActor` and `FracturedStaticMeshActor` are always
+/// walked: nothing in the shipped 2009 content actually moves them
+/// (zero exports across all 23 cooked maps, per NA36's census), and
+/// they are otherwise ordinary static props. `InterpActor` is
+/// different in kind: it is UE3's Matinee-driven-mover class, and in
+/// this content it is disproportionately doors, gates, lifts and
+/// elevators (Castle's connectivity notes already flagged its un-baked
+/// doors as InterpActors). A door's cooked `Location`/pose is its
+/// *design-time resting state* — usually closed — not necessarily
+/// where a player experiences it at runtime. Baking a closed door into
+/// `.nav` seals the doorway; baking it into `.occ` blocks line of
+/// sight through an opening a player can actually see and shoot
+/// through. Harset's 31 `InterpActor`s were checked by hand (NA36) and
+/// judged safe to include — mostly console platforms and other static
+/// dressing, not doors — but that was a per-map judgement call, not a
+/// blanket one. See `docs/engine/navmesh-build-pipeline.md` §11 for
+/// which maps were built with the flag on.
+pub const MESH_ACTOR_CLASSES: &[&str] = &["StaticMeshActor", "KActor", "FracturedStaticMeshActor"];
+
+/// Class walked only when the caller opts in — see [`MESH_ACTOR_CLASSES`]'s
+/// doc for why `InterpActor` is not unconditional.
+pub const OPT_IN_MESH_ACTOR_CLASSES: &[&str] = &["InterpActor"];
+
+/// Is `class` one the walker treats as `StaticMeshActor`-shaped for this
+/// run? `include_interp_actors` gates [`OPT_IN_MESH_ACTOR_CLASSES`]; the
+/// classes in [`MESH_ACTOR_CLASSES`] are unconditional.
+pub fn is_mesh_actor_class(class: &str, include_interp_actors: bool) -> bool {
+    MESH_ACTOR_CLASSES.contains(&class)
+        || (include_interp_actors && OPT_IN_MESH_ACTOR_CLASSES.contains(&class))
+}
+
+/// Walk every [`MESH_ACTOR_CLASSES`] export in `pkg` — plus
+/// [`OPT_IN_MESH_ACTOR_CLASSES`] when `include_interp_actors` is `true`
+/// — and produce one instance per actor whose
+/// `StaticMeshComponent.StaticMesh` reference can be recovered from the
+/// tagged-property stream.
 ///
 /// Actors with a missing or dangling mesh reference are tallied by
 /// reason into [`ActorWalk::skips`]; the sum of `instances.len()` and
@@ -373,6 +440,7 @@ pub fn collect_static_mesh_instances(
     pkg: &Package,
     index: Option<&PackageIndex>,
     cache: &mut ArchetypeCache,
+    include_interp_actors: bool,
 ) -> ActorWalk {
     let mut walk = ActorWalk::default();
     // Prefab packages opened for *this* chunk only. Dropped on return,
@@ -382,7 +450,7 @@ pub fn collect_static_mesh_instances(
     let mut open = archetype::OpenPrefabs::default();
 
     for export in &pkg.exports {
-        if pkg.export_class_name(export) != "StaticMeshActor" {
+        if !is_mesh_actor_class(pkg.export_class_name(export), include_interp_actors) {
             continue;
         }
         walk.actors_total += 1;
@@ -511,5 +579,7 @@ pub fn build_chunk_soup(instances: &[(StaticMesh, ActorTransform, String)]) -> T
 
 #[cfg(test)]
 mod archetype_walk_tests;
+#[cfg(test)]
+mod mesh_actor_class_tests;
 #[cfg(test)]
 mod tests;

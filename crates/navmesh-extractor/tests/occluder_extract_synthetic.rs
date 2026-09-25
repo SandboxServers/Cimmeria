@@ -64,7 +64,7 @@ fn the_walk_sees_the_same_triangles_as_extract_map() {
     .unwrap();
     let totals = report.totals();
     let mut seen = (0usize, 0usize);
-    let stats = for_each_chunk(&map, Some(&index), |c| {
+    let stats = for_each_chunk(&map, Some(&index), false, |c| {
         seen.0 += c.geometry.len();
         seen.1 += c.terrain.len();
     })
@@ -89,7 +89,7 @@ fn the_walk_emits_bigworld_metres_y_up() {
     let index = index_over(&root);
     let mut geometry = Vec::new();
     let mut terrain = Vec::new();
-    for_each_chunk(&root.join("Maps").join("Synth"), Some(&index), |c| {
+    for_each_chunk(&root.join("Maps").join("Synth"), Some(&index), false, |c| {
         geometry.extend_from_slice(&c.geometry);
         terrain.extend_from_slice(&c.terrain);
     })
@@ -113,7 +113,7 @@ fn an_occluder_built_from_the_walk_blocks_at_the_ceiling_and_keeps_terrain_exact
     let root = cooked_root("occ-build");
     let index = index_over(&root);
     let mut b = OccluderBuilder::new(BuildParams::default(), "Synth").unwrap();
-    for_each_chunk(&root.join("Maps").join("Synth"), Some(&index), |c| {
+    for_each_chunk(&root.join("Maps").join("Synth"), Some(&index), false, |c| {
         for t in &c.geometry {
             b.add_triangle(t, Source::Geometry);
         }
