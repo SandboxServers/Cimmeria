@@ -55,6 +55,7 @@ mod bandolier;
 mod construction;
 mod entity_struct;
 mod identity;
+mod offered_dialogs;
 mod state_flags;
 mod system_options;
 mod weapon_action;
@@ -63,6 +64,7 @@ mod witness_aoi;
 pub use appearance::filter_holstered_weapon;
 pub use entity_struct::CellEntity;
 pub use identity::PlayerIdentity;
+pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use system_options::SystemOptions;
 
 #[cfg(test)]
