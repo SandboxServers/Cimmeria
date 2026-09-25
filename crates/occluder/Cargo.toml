@@ -1,0 +1,15 @@
+[package]
+name = "cimmeria-occluder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Per-space collision-geometry occluder (column grid of solid Y spans) for server-side line of sight"
+
+# Shared by the build-time `occluder_extract` tool (crates/navmesh-extractor)
+# and the runtime loader (re-exported from cimmeria-entity::navigation), so
+# the writer and the reader are the same code and the format cannot drift.
+# Deliberately free of engine dependencies: the extractor must not pull in
+# the Detour FFI build, and the runtime must not pull in the UE3 parser.
+[dependencies]
+flate2 = { workspace = true }
+thiserror = { workspace = true }

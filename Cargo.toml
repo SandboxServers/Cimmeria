@@ -27,6 +27,7 @@ members = [
     "crates/upk",
     "crates/upk-objects",
     "crates/navmesh-extractor",
+    "crates/occluder",
     "crates/wireclient",
     "crates/discord",
     "crates/client-telemetry",
@@ -187,6 +188,7 @@ cimmeria-server = { path = "crates/server" }
 cimmeria-upk = { path = "crates/upk" }
 cimmeria-upk-objects = { path = "crates/upk-objects" }
 cimmeria-navmesh-extractor = { path = "crates/navmesh-extractor" }
+cimmeria-occluder = { path = "crates/occluder" }
 cimmeria-wireclient = { path = "crates/wireclient" }
 cimmeria-discord = { path = "crates/discord" }
 cimmeria-client-telemetry = { path = "crates/client-telemetry" }

@@ -8,6 +8,7 @@ description = "Extracts UE3 .umap collision geometry to OBJ for the C++ NavBuild
 [dependencies]
 cimmeria-upk = { workspace = true }
 cimmeria-upk-objects = { workspace = true }
+cimmeria-occluder = { workspace = true }
 byteorder = "1"
 thiserror = { workspace = true }
 tracing = { workspace = true }
