@@ -93,6 +93,9 @@ Check the SigNoz volume budget before raising `wire.out.avatar_update`: it sampl
 
 ## 3. Live-session runbook
 
+> [!NOTE]
+> The operator version of this section is [docs/operations/npc-ai-telemetry-runbook.md](../../operations/npc-ai-telemetry-runbook.md) (NA03). Use it after a play session: it maps each question below to a saved view and a dashboard panel. The table here stays as the design record the views were built from.
+
 Run these in SigNoz (logs explorer, `service.name = 'cimmeria-server'`, and `cimmeria.deploy_env = 'colo'` once NA00 lands) after a play session. Start from a `.bug <note>` bookmark: its `playtest.bookmark.entity` rows give the NPC ids near the player at that moment.
 
 | Question | Query |
@@ -109,11 +112,4 @@ Run these in SigNoz (logs explorer, `service.name = 'cimmeria-server'`, and `cim
 
 The helper scripts in [evidence/signoz/](evidence/signoz/) condense SigNoz JSON pulls into one line per event. SigNoz MCP results over about 25k tokens land in a tool-results file. Run the scripts over that file; do not read it raw.
 
-NA03 turns the table above into saved views and one "NPC AI health" dashboard with these panels:
-
-- aggro by cause;
-- transitions per reason;
-- `stale_velocity`, `ground_deviation`, `stuck`, `idle_parked` and leash-loop counts per world;
-- path status mix;
-- cover coverage per space;
-- `no_cover` reasons.
+**As built (NA03):** each row above is a Logs Explorer view named `NPC AI — <question>` under the `npc-ai` category, and the **Cimmeria — NPC AI health** dashboard carries the planned panels (aggro by cause, transitions per reason, the detector counters per world, the path status mix, cover coverage per space, `no_cover` reasons) plus idle-unticked, AI decisions by outcome and aggro-scan rejections. Two views differ from the table: the timeline also includes `npc_ai.path_fail`, and the client view does not filter on `npc_moved_since_last` until a build that emits it has run. Filters, ids and the dashboard JSON export: [operations/signoz/npc-ai-views.md](../../operations/signoz/npc-ai-views.md).

@@ -102,7 +102,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA03
 
-**Status:** BlockedDependency (NA02). **Scope title:** SigNoz saved views, the NPC AI health dashboard and the runbook. **Advisor:** documentation-writer.
+**Status:** Review (branch `npcai/na03-signoz-dashboard` pushed 2026-09-25). The dashboard **Cimmeria — NPC AI health** (id `01a0d755-9145-7eed-aedf-29d0efa28e1e`) and nine `NPC AI —` log views exist in the colo SigNoz under the owner's campaign authorization; exports in [operations/signoz/](../../operations/signoz/npc-ai-views.md); runbook [operations/npc-ai-telemetry-runbook.md](../../operations/npc-ai-telemetry-runbook.md). The acceptance render waits on a colo deploy with NA00/NA02: today only `npc_ai_decisions_total`, `npc_path_fail_total` and `npc_respawns_total` have data. **Scope title:** SigNoz saved views, the NPC AI health dashboard and the runbook. **Advisor:** documentation-writer.
 
 **Scope:**
 
