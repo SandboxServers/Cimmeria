@@ -7,3 +7,7 @@ frontend/package-lock.json text eol=lf
 # byte-for-byte and `\r` in the interpreter line is a hard syntax error.
 docker/** text eol=lf
 .github/workflows/*.yml text eol=lf
+
+# Paged collision-geometry occluders (NA27): compressed binary, never
+# line-ending converted or diffed.
+data/spaces/*.occ binary
