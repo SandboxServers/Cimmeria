@@ -61,6 +61,7 @@ fn two_quads(linked: bool) -> NavGraph {
         NavPoly {
             verts: vec![0, 1, 2, 3],
             neighbours: vec![None, linked.then_some(1), None, None],
+            portal_links: vec![],
             area: 63,
             flags: 1,
             region: 0,
@@ -68,6 +69,7 @@ fn two_quads(linked: bool) -> NavGraph {
         NavPoly {
             verts: vec![1, 4, 5, 2],
             neighbours: vec![None, None, None, linked.then_some(0)],
+            portal_links: vec![],
             area: 63,
             flags: 1,
             region: 0,
@@ -107,6 +109,16 @@ fn the_navmesh_ray_crosses_a_shared_edge_and_stops_at_a_boundary() {
     assert_eq!(
         nav_ray(&split, 0, [2.0, 0.0, 5.0], [18.0, 0.0, 6.0]),
         NavRay::Blocked
+    );
+    // The same two quads as neighbouring tiles of a tiled mesh: the shared
+    // edge is a portal (`None` in `neighbours`, linked in `portal_links`).
+    let mut tiled = two_quads(false);
+    tiled.polys[0].portal_links = vec![1];
+    tiled.polys[1].portal_links = vec![0];
+    assert_eq!(
+        nav_ray(&tiled, 0, [2.0, 0.0, 5.0], [18.0, 0.0, 6.0]),
+        NavRay::Clear,
+        "a tile portal is not a wall"
     );
 }
 

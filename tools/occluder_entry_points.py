@@ -7,9 +7,11 @@ TSV row per place a player or NPC can actually be put:
     world<TAB>source<TAB>x<TAB>y<TAB>z
 
 `world` is the `data/spaces/<world>.nav` key (the world name lower-cased,
-spaces as underscores), or `*` for a point whose world the seed does not
-name (a chain's `move_waypoint`); the extractor keeps a `*` point for every
-world whose navmesh it lands on.
+spaces as underscores). A chain's `move_waypoint` names no world, so it
+takes the world of the entity it moves (its `target_key` tag, looked up in
+the spawnlist); a waypoint whose tag is not seeded is dropped. It is never
+written as a wildcard: tried on every world, one Castle_CellBlock waypoint
+landed on Agnos's mesh and seeded Agnos's whole trim.
 
 Sources: spawnlist rows, respawners, stargates (the gate and its arrival
 point), ring transport regions, and content-chain `cross_world_teleport`
@@ -110,8 +112,11 @@ def main():
             return
         out.append((world, source, x, y, z))
 
+    tag_world = {}
     for _, r in inserts(root / "Worlds/Seed/spawnlist.sql"):
         w = worlds.get(r.get("world_id"))
+        if w and r.get("tag") not in (None, "NULL"):
+            tag_world.setdefault(r["tag"], w)
         if w:
             emit(w, "spawnlist:" + r.get("tag", ""), num(r["x"]), num(r["y"]), num(r["z"]))
     for _, r in inserts(root / "Worlds/Seed/respawners.sql"):
@@ -143,8 +148,11 @@ def main():
                     emit(w, "chain_teleport:" + f.stem, num(params.get("x")), num(params.get("y")), num(params.get("z")))
             elif kind == "move_waypoint" and "destination" in params:
                 xyz = [num(v) for v in str(params["destination"]).split(",")]
-                if len(xyz) == 3:
-                    emit("*", "chain_move:" + f.stem, *xyz)
+                w = tag_world.get(r.get("target_key") or "")
+                if len(xyz) == 3 and w:
+                    emit(w, "chain_move:" + f.stem, *xyz)
+                elif len(xyz) == 3:
+                    print(f"dropped move_waypoint for unseeded tag {r.get('target_key')!r} in {f.name}", file=sys.stderr)
     w = sys.stdout
     w.write("world\tsource\tx\ty\tz\n")
     for world, source, x, y, z in out:

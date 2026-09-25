@@ -62,6 +62,13 @@ impl Heightfield {
         (self.tiles_x * TILE as u32, self.tiles_z * TILE as u32)
     }
 
+    /// World-space XZ rectangle `(min, max)` the heightfield spans.
+    pub fn bounds(&self) -> ([f32; 2], [f32; 2]) {
+        let w = self.tiles_x as f32 * TILE as f32 * self.pitch;
+        let d = self.tiles_z as f32 * TILE as f32 * self.pitch;
+        (self.origin, [self.origin[0] + w, self.origin[1] + d])
+    }
+
     /// Tiles holding terrain.
     pub fn stored_tiles(&self) -> usize {
         self.base.len()

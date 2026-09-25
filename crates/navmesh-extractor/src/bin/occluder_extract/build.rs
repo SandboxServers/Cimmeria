@@ -5,8 +5,6 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
-use cimmeria_navmesh_extractor::nav_components::NavGraph;
-use cimmeria_navmesh_extractor::nav_roundtrip::XrcNav;
 use cimmeria_navmesh_extractor::occluder::explorable::{
     component_triangles, explorable_components, grow_components, map_entry_actors,
     read_entry_points,
@@ -20,7 +18,7 @@ use crate::args::Flags;
 /// AoI radius (100) plus a margin. The cell uses the same number.
 pub(crate) const RESIDENCY_RADIUS: f32 = 132.0;
 
-const REPORT_HEADER: &str = "world\tmap\ttriangles\ttrimmed_triangles\tentry_points\tentry_located\tcomponents_kept\tcomponents_total\tfallback_all_components\tpages\tfile_bytes\tfull_ram_bytes\tone_player_pages\tone_player_ram_bytes\tone_player_at\tbuild_secs\tunpack_us_mean\tunpack_us_max\tquery_us_mean";
+const REPORT_HEADER: &str = "world\tmap\ttriangles\ttrimmed_triangles\tentry_points\tentry_located\tcomponents_kept\tcomponents_total\tfallback_all_components\tpages\tfile_bytes\tfull_ram_bytes\tone_player_pages\tone_player_ram_bytes\tone_player_at\tbuild_secs\tunpack_us_mean\tunpack_us_max\tquery_us_mean\tequiv_segments";
 
 pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
     let mut allowed = vec![
@@ -59,8 +57,7 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
         if f.opt("margin").is_none() {
             params.margin = Some(15.0);
         }
-        let mut file = std::fs::File::open(nav).map_err(|e| format!("{nav}: {e}"))?;
-        let graph = NavGraph::from_nav(&XrcNav::read(&mut file).map_err(|e| e.to_string())?);
+        let graph = super::load_nav_graph(Path::new(nav))?;
         if let Some(tsv) = f.opt("entry-points") {
             entry.extend(read_entry_points(Path::new(tsv), &world_key).map_err(|e| e.to_string())?);
         }
@@ -123,7 +120,20 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
         }
     };
     let bytes = encode_paged(&occ, page).map_err(|e| e.to_string())?;
+    // Self-check before writing: the paged file must answer exactly what the
+    // in-memory occluder does. The pages are re-decoded from the bytes, so
+    // this covers the split and the file format both.
+    let checked = PagedOccluder::from_bytes(bytes.clone()).map_err(|e| e.to_string())?;
+    let (compared, mismatches) = paged_equivalence(&occ, &checked, &entry);
+    drop(checked);
     drop(occ);
+    if mismatches > 0 {
+        eprintln!(
+            "occluder_extract: {map}: the paged file disagrees with the occluder on {mismatches} of {compared} segments; not written"
+        );
+        return Ok(2);
+    }
+    eprintln!("{map}: paged == unpaged on {compared} segments");
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -185,7 +195,7 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
         0.0
     };
     let row = format!(
-        "{world_key}\t{map}\t{}\t{trimmed}\t{}\t{located}\t{kept}\t{total}\t{fallback}\t{}\t{}\t{full}\t{}\t{}\t{}\t{build_secs:.1}\t{unpack_mean:.0}\t{}\t{query_us:.2}",
+        "{world_key}\t{map}\t{}\t{trimmed}\t{}\t{located}\t{kept}\t{total}\t{fallback}\t{}\t{}\t{full}\t{}\t{}\t{}\t{build_secs:.1}\t{unpack_mean:.0}\t{}\t{query_us:.2}\t{compared}",
         stats.triangles(),
         entry.len(),
         st.pages,
@@ -216,4 +226,78 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
         writeln!(file, "{row}").map_err(|e| e.to_string())?;
     }
     Ok(0)
+}
+
+/// Compare `occ` and its paged encoding on 5,000 random segments: 4,000
+/// short ones (up to 30 m) round the entry points and random points of the
+/// covered area, 1,000 long ones (up to 300 m) across several pages. A
+/// segment counts as the same verdict when both say blocked (the layer
+/// that reports it may differ), or both say the same other thing.
+/// Returns `(segments compared, mismatches)`.
+fn paged_equivalence(
+    occ: &cimmeria_occluder::Occluder,
+    paged: &PagedOccluder,
+    entry: &[cimmeria_navmesh_extractor::occluder::explorable::EntryPoint],
+) -> (usize, usize) {
+    use cimmeria_occluder::Sight;
+    let mut seed = 0x0e9u64;
+    let mut rnd = move || {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 40) as f32 / (1u64 << 24) as f32
+    };
+    // Anchor points: the entry points on the grid, else the layer bounds.
+    let mut anchors: Vec<[f32; 3]> = entry
+        .iter()
+        .map(|e| e.pos)
+        .filter(|p| occ.covers(p[0], p[2]))
+        .collect();
+    let bounds = occ
+        .layers()
+        .first()
+        .map(|l| l.bounds())
+        .or_else(|| occ.heightfield().map(|h| h.bounds()));
+    let Some((lo, hi)) = bounds else {
+        return (0, 0);
+    };
+    let (mut compared, mut bad) = (0usize, 0usize);
+    let mut tries = 0usize;
+    while compared < 5000 && tries < 200_000 {
+        tries += 1;
+        let a = if !anchors.is_empty() && rnd() < 0.5 {
+            anchors[(rnd() * anchors.len() as f32) as usize % anchors.len()]
+        } else {
+            let x = lo[0] + rnd() * (hi[0] - lo[0]);
+            let z = lo[1] + rnd() * (hi[1] - lo[1]);
+            let y = occ
+                .column(x, z)
+                .iter()
+                .map(|c| c.2)
+                .fold(f32::NAN, f32::max);
+            if !y.is_finite() {
+                continue;
+            }
+            [x, y, z]
+        };
+        if anchors.len() < 64 {
+            anchors.push(a);
+        }
+        let reach = if compared < 4000 { 30.0 } else { 300.0 };
+        let ang = rnd() * std::f32::consts::TAU;
+        let len = rnd() * reach;
+        let b = [
+            a[0] + ang.cos() * len,
+            a[1] + rnd() * 6.0 - 3.0,
+            a[2] + ang.sin() * len,
+        ];
+        let (a, b) = ([a[0], a[1] + 1.5, a[2]], [b[0], b[1] + 1.5, b[2]]);
+        let same = match (occ.sight(a, b), paged.sight(a, b)) {
+            (Sight::Blocked { .. }, Sight::Blocked { .. }) => true,
+            (u, p) => u == p,
+        };
+        compared += 1;
+        bad += usize::from(!same);
+    }
+    (compared, bad)
 }

@@ -6,7 +6,6 @@ use std::io::Write;
 use std::time::Instant;
 
 use cimmeria_navmesh_extractor::nav_components::NavGraph;
-use cimmeria_navmesh_extractor::nav_roundtrip::XrcNav;
 use cimmeria_navmesh_extractor::occluder::exact::ExactScene;
 use cimmeria_navmesh_extractor::occluder::sweep::{self, Confusion, SweepParams};
 use cimmeria_navmesh_extractor::occluder::{for_each_chunk, BwTriangle};
@@ -68,9 +67,7 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
     let sweep_ctx = match f.opt("nav") {
         None => None,
         Some(nav_path) => {
-            let mut file = std::fs::File::open(nav_path).map_err(|e| format!("{nav_path}: {e}"))?;
-            let nav = XrcNav::read(&mut file).map_err(|e| format!("{nav_path}: {e}"))?;
-            let graph = NavGraph::from_nav(&nav);
+            let graph = super::load_nav_graph(std::path::Path::new(nav_path))?;
             let params = SweepParams {
                 pairs: f.usize_or("pairs", 4000)?,
                 seed: f.usize_or("seed", 0x4e41_3237)? as u64,

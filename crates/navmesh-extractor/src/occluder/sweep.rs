@@ -204,19 +204,54 @@ pub fn nav_ray(graph: &NavGraph, start: u32, a: [f32; 3], b: [f32; 3]) -> NavRay
         if s >= 1.0 {
             return NavRay::Clear;
         }
-        let Some(next) = p.neighbours[e] else {
-            return NavRay::Blocked;
+        let via_portal = p.neighbours[e].is_none();
+        let next = match p.neighbours[e] {
+            Some(n) => n as usize,
+            // A tiled mesh's tile edge: the link is in `portal_links`, and
+            // one portal edge can meet several polygons on the far side,
+            // so take the one the ray enters.
+            None => {
+                let probe = [a[0] + dx * (s + 1e-4), 0.0, a[2] + dz * (s + 1e-4)];
+                match p
+                    .portal_links
+                    .iter()
+                    .map(|&i| i as usize)
+                    .find(|&i| contains_xz(graph, i, probe))
+                {
+                    Some(n) => n,
+                    None => return NavRay::Blocked,
+                }
+            }
         };
-        let next = next as usize;
-        // The edge index on the far side that leads back here.
+        // The edge index on the far side that leads back here (none across
+        // a portal: the walk then excludes no edge, and the entry edge is
+        // behind `t_cur` anyway).
         came_from = graph.polys[next]
             .neighbours
             .iter()
             .position(|&nb| nb == Some(poly as u32));
         poly = next;
-        t_cur = s;
+        // Across a portal the far polygon names no edge back to this one,
+        // so step just past the crossing or its own copy of the edge would
+        // be picked as the exit.
+        t_cur = if via_portal { s + 1e-4 } else { s };
     }
     NavRay::Blocked
+}
+
+/// Whether polygon `poly`'s XZ footprint holds `p` (either winding).
+fn contains_xz(graph: &NavGraph, poly: usize, p: [f32; 3]) -> bool {
+    let v = &graph.polys[poly].verts;
+    let n = v.len();
+    let (mut pos, mut neg) = (false, false);
+    for i in 0..n {
+        let a = graph.verts[v[i] as usize];
+        let b = graph.verts[v[(i + 1) % n] as usize];
+        let c = (b[0] - a[0]) * (p[2] - a[2]) - (b[2] - a[2]) * (p[0] - a[0]);
+        pos |= c > 1e-6;
+        neg |= c < -1e-6;
+    }
+    !(pos && neg)
 }
 
 /// One pair's three verdicts.

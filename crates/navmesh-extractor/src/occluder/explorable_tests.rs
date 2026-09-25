@@ -28,6 +28,7 @@ fn islands() -> NavGraph {
         polys.push(NavPoly {
             verts: (base..base + 4).collect(),
             neighbours: vec![None; 4],
+            portal_links: vec![],
             area: 63,
             flags: 1,
             region: 0,

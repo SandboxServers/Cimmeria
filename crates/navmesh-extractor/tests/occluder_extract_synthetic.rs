@@ -284,6 +284,75 @@ fn the_build_cli_trims_to_the_components_holding_an_entry_point() {
     assert!(col("trimmed_triangles").parse::<u64>().unwrap() >= 2);
 }
 
+/// NA28's tiled `.nav` (`XRCT`) is read too: the same origin quad as a
+/// one-tile tiled mesh, and the same trim.
+#[test]
+fn the_build_cli_trims_from_a_tiled_navmesh() {
+    use cimmeria_navmesh_extractor::nav_tiled::{XrcTile, XrcTiledNav};
+    let root = cooked_root("occ-cli-trim-tiled");
+    let out = scratch_dir("occ-cli-trim-tiled-out");
+    let index_path = out.join("index.bin");
+    index_over(&root).save(&index_path).unwrap();
+    let single = out.join("single.nav");
+    write_origin_nav(&single);
+    let mesh = XrcNav::read(&mut std::fs::File::open(&single).unwrap()).unwrap();
+    let tiled = XrcTiledNav {
+        agent_height: mesh.agent_height,
+        agent_climb: mesh.agent_climb,
+        agent_radius: mesh.agent_radius,
+        orig: [0.0, 0.0, 0.0],
+        tile_width: 2.0,
+        tile_height: 2.0,
+        max_tile_polys: 1,
+        tiles: vec![XrcTile {
+            tile_x: 0,
+            tile_y: 0,
+            mesh,
+        }],
+    };
+    let nav = out.join("synth.nav");
+    tiled
+        .write(&mut std::fs::File::create(&nav).unwrap())
+        .unwrap();
+    assert_eq!(&std::fs::read(&nav).unwrap()[..4], b"XRCT");
+    let entry = out.join("entry.tsv");
+    std::fs::write(
+        &entry,
+        "world\tsource\tx\ty\tz\nsynth\tspawnlist:test\t1.0\t0.0\t1.0\n",
+    )
+    .unwrap();
+    let occ_path = out.join("synth.occ");
+    let result = run(&[
+        "build",
+        "--cooked-root",
+        root.to_str().unwrap(),
+        "--map",
+        "Synth",
+        "--index",
+        index_path.to_str().unwrap(),
+        "--out",
+        occ_path.to_str().unwrap(),
+        "--nav",
+        nav.to_str().unwrap(),
+        "--entry-points",
+        entry.to_str().unwrap(),
+        "--margin",
+        "2",
+    ]);
+    assert_eq!(
+        result.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let occ = PagedOccluder::load(&occ_path).unwrap();
+    assert!(occ.covers(1.0, 1.0));
+    assert!(
+        !occ.covers(0.5, 30.5),
+        "trimmed as from the single-mesh file"
+    );
+}
+
 #[test]
 fn the_cli_refuses_unknown_flags_and_a_missing_index() {
     let out = run(&["build", "--map", "Synth", "--not-a-flag", "x"]);

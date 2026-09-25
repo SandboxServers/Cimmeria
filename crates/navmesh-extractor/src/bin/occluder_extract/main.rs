@@ -82,12 +82,26 @@ pub(crate) fn load_index(path: &Path) -> Result<PackageIndex, String> {
     })
 }
 
+/// Read a `.nav` of either layout (single-mesh `XRC`, or NA28's tiled
+/// `XRCT`) into one graph. For a tiled file the tile-portal edges are
+/// linked the way Detour links them, so its components are the server's.
+pub(crate) fn load_nav_graph(
+    nav: &Path,
+) -> Result<cimmeria_navmesh_extractor::nav_components::NavGraph, String> {
+    use cimmeria_navmesh_extractor::nav_components::NavGraph;
+    use cimmeria_navmesh_extractor::nav_tiled::NavFile;
+    let bytes = std::fs::read(nav).map_err(|e| format!("{}: {e}", nav.display()))?;
+    Ok(
+        match NavFile::from_bytes(&bytes).map_err(|e| format!("{}: {e}", nav.display()))? {
+            NavFile::Single(n) => NavGraph::from_nav(&n),
+            NavFile::Tiled(t) => NavGraph::from_tiled(&t),
+        },
+    )
+}
+
 /// Feed a `.nav`'s polygons to `b` as its coverage mask.
 pub(crate) fn add_nav_coverage(b: &mut OccluderBuilder, nav: &Path) -> Result<(), String> {
-    use cimmeria_navmesh_extractor::nav_components::NavGraph;
-    use cimmeria_navmesh_extractor::nav_roundtrip::XrcNav;
-    let mut file = std::fs::File::open(nav).map_err(|e| format!("{}: {e}", nav.display()))?;
-    let graph = NavGraph::from_nav(&XrcNav::read(&mut file).map_err(|e| e.to_string())?);
+    let graph = load_nav_graph(nav)?;
     for poly in &graph.polys {
         let v: Vec<[f32; 3]> = poly
             .verts
