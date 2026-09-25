@@ -420,7 +420,7 @@ async fn fire_pulse(
     // it). Only the killing blow from a self-repeating source is
     // refused.
     if let Some(target) = space_mgr.get_entity_mut(target_id) {
-        if !target.is_player && target.ai_state == AiState::Submit {
+        if !target.is_player && target.ai_state() == AiState::Submit {
             if let Some(stat) = target.stats.get_mut(HEALTH) {
                 if stat.cur <= 0 {
                     stat.update(stat.min, 1, stat.max);

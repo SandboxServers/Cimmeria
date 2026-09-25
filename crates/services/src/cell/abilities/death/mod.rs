@@ -317,6 +317,9 @@ pub(super) async fn resolve_death(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // Resolved before the `&mut` borrow: `mark_npc_dead` labels its
+    // `npc_ai.transition` row with it.
+    let world = crate::cell::service::npc_ai::world_label(space_mgr, target_eid);
     let (target_state, target_is_player) = {
         let target = match space_mgr.get_entity_mut(target_eid) {
             Some(t) => t,
@@ -370,7 +373,7 @@ pub(super) async fn resolve_death(
             // `BSF_IN_COMBAT` clear stays here as a raw bit op (see
             // python `SGWMob.py:292`) — `mark_npc_dead` deliberately
             // stays out of the combat-state-machine concerns.
-            crate::cell::combat::mark_npc_dead(target);
+            crate::cell::combat::mark_npc_dead(target, &world);
             target.state_field &= !crate::cell::combat::BSF_IN_COMBAT;
         }
         (target.state_field, target.is_player)

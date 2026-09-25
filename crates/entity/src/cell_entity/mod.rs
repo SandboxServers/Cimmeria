@@ -49,6 +49,7 @@ pub struct ActiveEffectInstance {
     pub invoker_position_at_register: Option<Vector3>,
 }
 
+mod ai_state;
 mod appearance;
 mod bandolier;
 mod construction;

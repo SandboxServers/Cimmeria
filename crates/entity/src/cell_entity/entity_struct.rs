@@ -435,7 +435,13 @@ pub struct CellEntity {
     /// the runtime (`Idle`, `Fighting`, `Leashing`, `Dead`). The other
     /// variants are entry points for future content hooks and AI tick
     /// extensions.
-    pub ai_state: AiState,
+    ///
+    /// Private on purpose: read it with [`CellEntity::ai_state`]. Every
+    /// write must go through the services-side transition helper
+    /// (`cell::service::npc_ai::transition::set_ai_state`), which emits the
+    /// `npc_ai.transition` row and counter; a raw field write would leave a
+    /// hole in the per-NPC state timeline (audit gap T8).
+    pub(super) ai_state: AiState,
     /// Threat list: entity_id → accumulated threat value.
     pub threat_list: HashMap<u32, f32>,
     /// Position where this NPC was spawned (for leashing).

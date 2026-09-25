@@ -6,6 +6,7 @@
 //! is what un-highlights the client's button promptly.
 
 use super::*;
+use crate::cell::combat::AggroCause;
 
 // ── The auto-cycle stop (H04 worknote request C) ───────────────────────
 
@@ -20,7 +21,7 @@ async fn submit_stops_the_attackers_auto_fire_loop() {
     add_player(&mut mgr, PLAYER_A, 0.0);
     add_npc(&mut mgr, NPC, 5.0);
 
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
     arm_loop_at(&mut mgr, PLAYER_A, NPC);
 
     content_sets_submit(&mut mgr, NPC);
@@ -54,7 +55,7 @@ async fn submit_leaves_a_loop_aimed_at_another_mob_alone() {
     add_npc(&mut mgr, NPC, 5.0);
     add_npc(&mut mgr, NPC + 1, 8.0);
 
-    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0);
+    let _ = generate_threat(&mut mgr, PLAYER_A, NPC, 50.0, AggroCause::Damage);
     arm_loop_at(&mut mgr, PLAYER_A, NPC + 1);
 
     content_sets_submit(&mut mgr, NPC);

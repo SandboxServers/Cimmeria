@@ -87,9 +87,12 @@ pub(super) async fn npc_ai_patrol(
     // doesn't see a Patrol byte for an NPC that's about to leave
     // the state. The drop also broadcasts None to clear the cache.
     if path_empty {
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
-        }
+        super::set_ai_state(
+            space_mgr,
+            npc_id,
+            cimmeria_entity::cell_entity::AiState::Idle,
+            super::AiTransitionReason::PatrolNoPath,
+        );
         // decision_outcome left empty — empty-path is a transition
         // out of Patrol, not a Patrol outcome. The next AI tick's
         // Idle branch will record its own outcome.

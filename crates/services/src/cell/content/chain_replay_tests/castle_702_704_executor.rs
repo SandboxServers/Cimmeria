@@ -69,7 +69,7 @@ fn stage_zuritska(mgr: &mut SpaceManager, position: [f32; 3], following: bool) {
     z.tag = Some("Castle_Zuritska_Cell".to_string());
     if following {
         z.follow_target_id = Some(PLAYER_EID);
-        z.ai_state = AiState::Follow;
+        crate::cell::service::npc_ai::force_ai_state(z, AiState::Follow);
         z.nav_path
             .push_back(cimmeria_common::Vector3::new(9.0, 0.0, 9.0));
     }
@@ -153,7 +153,7 @@ async fn chain_1263_makes_zuritska_follow_the_rescuing_player() {
          entity id — this is 704 step 2405's escort",
     );
     assert_eq!(
-        zuritska.ai_state,
+        zuritska.ai_state(),
         AiState::Follow,
         "a resolved follow target must also transition the actor into Follow",
     );
@@ -201,7 +201,7 @@ async fn chain_1291_clears_the_escort_follow() {
         "arriving in the Communications Room must END the escort",
     );
     assert_eq!(
-        zuritska.ai_state,
+        zuritska.ai_state(),
         AiState::Idle,
         "a cleared follow must drop the actor back to Idle",
     );
@@ -392,5 +392,5 @@ async fn chain_1263_refuses_to_follow_a_non_player_trigger_entity() {
         "an unresolved `use_player` must clear the follow, not leave the \
          previous target in place",
     );
-    assert_eq!(zuritska.ai_state, AiState::Idle);
+    assert_eq!(zuritska.ai_state(), AiState::Idle);
 }

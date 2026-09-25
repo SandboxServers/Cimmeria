@@ -17,6 +17,7 @@ use super::send_gm_feedback;
 use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
 use crate::cell::interactions;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::{ON_PLAYER_COMMUNICATION, ON_SEQUENCE};
 
@@ -418,14 +419,15 @@ async fn debug_follow(
     let Some(target) = target_id else {
         return;
     };
+    let world = npc_ai::world_label(space_mgr, target);
     let now_following = if let Some(e) = space_mgr.get_entity_mut(target) {
         if e.follow_target_id == Some(caller_id) {
             e.follow_target_id = None;
-            e.ai_state = AiState::Idle;
+            npc_ai::set_ai_state_on(e, &world, AiState::Idle, AiTransitionReason::GmCommand);
             false
         } else {
             e.follow_target_id = Some(caller_id);
-            e.ai_state = AiState::Follow;
+            npc_ai::set_ai_state_on(e, &world, AiState::Follow, AiTransitionReason::GmCommand);
             true
         }
     } else {

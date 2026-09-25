@@ -211,7 +211,7 @@ fn snapshot_entity(
         health_max: health.map_or(0, |s| s.max),
         state_field: e.state_field,
         interaction_type_flags: e.interaction_type_flags,
-        ai_state: format!("{:?}", e.ai_state),
+        ai_state: format!("{:?}", e.ai_state()),
         last_movement_type: e
             .last_movement_type
             .map_or_else(|| "None".to_string(), |m| format!("{m:?}")),

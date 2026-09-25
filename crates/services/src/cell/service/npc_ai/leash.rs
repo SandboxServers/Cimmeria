@@ -29,6 +29,7 @@ pub(super) async fn npc_ai_leash(
     )
     .await;
 
+    let world = super::world_label(space_mgr, npc_id);
     let (stat_update, state_field) = {
         let npc = match space_mgr.get_entity_mut(npc_id) {
             Some(e) => e,
@@ -54,7 +55,13 @@ pub(super) async fn npc_ai_leash(
             health.set_current(health.max);
         }
 
-        npc.ai_state = AiState::Idle;
+        // Today's leash is an instant snap, so "arrived" is immediate.
+        super::set_ai_state_on(
+            npc,
+            &world,
+            AiState::Idle,
+            super::AiTransitionReason::LeashArrived,
+        );
         npc.threat_list.clear();
         npc.abilities.clear_all_cooldowns();
 
