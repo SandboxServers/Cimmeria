@@ -91,7 +91,7 @@ SGWEntity (0 own, 0 interfaces with client methods)
 
 | Index | Method | Args |
 |-------|--------|------|
-| 12 | `onTimerUpdate` | `INT32 ID, INT8 Type, INT32 SourceID, FLOAT TotalTime, FLOAT BigWorldTimeComplete` |
+| 12 | `onTimerUpdate` | `INT32 ID, INT8 Type, INT32 SourceID, INT32 SecondaryId, FLOAT TotalTime, FLOAT BigWorldTimeComplete` |
 | 13 | `onEffectUserData` | `INT32 InstanceId, ARRAY<WSTRING> UserDataNames, ARRAY<WSTRING> UserDataValues` |
 | 14 | `onEffectResults` | `INT32 SourceID, INT32 AbilityID, INT32 EffectID, INT32 TargetID, UINT8 ResultCode, ClientEffectResultList` |
 | 15 | `onLevelUpdate` | `INT32 Level` |
