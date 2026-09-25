@@ -72,6 +72,18 @@ The owner plays on the colo, as GM with `.aggro off` unset once NA13 lands, usin
 | UAT-2 | NA13, NA14 | Each room's guards engage when you enter, and not through walls or floors. Both MessHall guards join. The PRU waits for the vial. | `npc_ai.aggro cause=proximity/assist` per room tag; `aggro_scan` rejects named. |
 | UAT-3 | NA21, NA22 (+NA15, NA16) | Guards use room cover, and ones placed in cover stay there. The drone fires at range. | `cover.coverage` > 0 for worlds 12 and 8; `stay_in_cover` and `move_to_cover` decisions; `stuck` about 0. |
 
+## Implementation session record (2026-09-24 to 2026-09-25)
+
+The owner authorized an autonomous run on 2026-09-24: "autonomously work on these work packets and merge PRs when they are ready until you are done with the work packets from this plan", then post `/release` on the last PR. The PROPOSED rows D-NA06 to D-NA09 were adopted at their recommended defaults. D-NA10 and D-NA11 were added from evidence found during the run.
+
+- **Merged:** every packet, via PRs #774 to #789 plus the close-out PR. PR #726 (navmesh logging review) was fixed and merged first.
+- **Process:**
+  - One isolated worktree per worker (Agent `isolation: "worktree"`), with per-worktree test databases and the shared cargo lane.
+  - Squash-merge after green CI.
+  - An independent `testing-validation-engineer` review on the two foundation PRs, #776 and #781.
+  - A coordinator trial-merge plus test run whenever a PR's CI predated the latest `main`. This caught one semantic conflict: NA12's `SpawnRecord.leash_distance` against NA11's test fixture.
+- **Not done:** UAT-0, the separate before-picture session (see D-NA06). Every in-client check is listed in [handoffs/session-resume.md](handoffs/session-resume.md).
+
 ## Where confidence is low
 
 - How the client renders a stationary NPC that still has non-zero velocity. The code path is confirmed; the rendering is inferred. The `wire.out.avatar_update` export in NA00 settles it.
