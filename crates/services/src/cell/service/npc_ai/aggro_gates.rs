@@ -14,7 +14,9 @@
 //! 8. the navmesh sees it (`no_los`). `Unknown` (an endpoint off the mesh)
 //!    fails **closed** here, unlike the attack check (D-NA08). A space with no
 //!    navmesh at all has nothing to check and passes; the vertical band is the
-//!    only storey guard there.
+//!    only storey guard there. An NPC standing at a cover slot looks from the
+//!    slot's peek point past the prop (NA23, D-NA12; see
+//!    `SpaceManager::npc_line_of_sight`).
 //!
 //! Gates 6-8 are [`same_room`], which the NA14 assist fan-out
 //! (`super::assist`) reuses between a would-be assister and the neighbour
@@ -91,7 +93,12 @@ pub(in crate::cell) fn same_room(
         return Err(AggroReject::OutOfRadius);
     }
     let npc_id = npc.entity_id.0 as u32;
-    match space_mgr.line_of_sight(npc_id, other.entity_id.0 as u32) {
+    // From the cover peek point when the NPC stands at a cover slot (NA23,
+    // D-NA12): its own ray hits the prop it hides behind.
+    match space_mgr
+        .npc_line_of_sight(npc_id, other.entity_id.0 as u32)
+        .los
+    {
         LineOfSight::Clear => {}
         LineOfSight::Blocked => return Err(AggroReject::NoLos),
         LineOfSight::Unknown if space_mgr.space_has_navmesh(npc_id) => {

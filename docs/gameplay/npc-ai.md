@@ -173,6 +173,8 @@ The closest candidate gets a 1.0 threat seed (`cause=proximity`). During the NA1
 
 **Line of sight fails closed for aggro (D-NA08).** An `Unknown` answer, meaning an endpoint the navmesh does not cover, rejects the candidate. The attack check in the fight keeps failing open, so an NPC already fighting does not stop shooting over a mesh hole. A space with no navmesh has nothing to check and passes; there the vertical band is the only storey guard. The navmesh ray cannot see floors or ceilings (audit S15), so the band is also what stops a guard under a ramp from seeing a player on it.
 
+**A guard in cover looks from its peek point (NA23, D-NA12).** An NPC standing at the cover slot it holds, which a guard authored in cover does from spawn, casts the ray from the slot's peek point past its prop, and sees the candidate when that ray or its own is clear. Its own ray alone hits the prop, a navmesh hole, within half a metre: at UAT-1 `Hallway01_Guard` rejected a player 8.1 u in front of its counter as `no_los`. The assist check uses the same rule. See [architecture/cover-system.md decision 9](../architecture/cover-system.md#9-the-peek-point-na23-d-na12).
+
 If the scan finds nobody, a hostile NPC that also has a patrol path or wander radius falls through to it, so faction-derived hostility does not freeze a patroller. A patrolling or wandering NPC does not scan until it is Idle again.
 
 ### Same-room assist (NA14, D-NA04)
@@ -531,6 +533,7 @@ The fight tick (`npc_ai/fight.rs`) calls
 | Attacker | `Clear` | `Unknown` (endpoint off the mesh) | `Blocked` |
 |---|---|---|---|
 | Mobile NPC | fires | fires | paths toward the target |
+| Mobile NPC at its cover slot (NA23) | fires | fires | the verdict is from the slot's peek point past the prop, or the NPC's own ray if that one is clear; `Blocked` holds fire (`cover_no_shot`) and gives the slot up after 3 s |
 | Stationary NPC (`spawnlist.is_stationary`) | fires | fires | fires if the target is within 4 u of its height, otherwise holds (`stationary_holds`) |
 
 A stationary NPC cannot walk around the obstacle, so a false `Blocked`
@@ -541,11 +544,14 @@ can shoot through a real wall on its own storey.
 
 The `npc_ai.tick` row carries both the navmesh verdict (`los`) and the rule
 that acted on it (`los_policy`: `strict`, `stationary`,
-`stationary_relaxed`, `stationary_other_storey`, or `in_cover_slot` for a
-mobile NPC standing at its cover slot, NA22). A drone firing across
-the desk logs `los=blocked los_policy=stationary_relaxed`; a guard firing
-over its cover logs `los=blocked los_policy=in_cover_slot`. The collision
-geometry occluder that would replace this rule is tracked in #784.
+`stationary_relaxed`, `stationary_other_storey`, or `cover_peek` for a
+mobile NPC standing at its cover slot, NA23). A drone firing across
+the desk logs `los=blocked los_policy=stationary_relaxed`; a guard in cover
+fires on `los=clear los_policy=cover_peek` and holds on
+`los=blocked los_policy=cover_peek`. NA22's `in_cover_slot` fired from a
+slot whatever the verdict, and a guard shot a player through two walls
+(UAT-1). The collision geometry occluder that would replace these rules is
+tracked in #784.
 
 Ability launch (`use_ability/handle.rs`) checks range only. An NPC's line
 of sight is checked by the fight tick in the same tick, just before the
@@ -568,7 +574,8 @@ The Python reference implemented none of this. The Rust server does (NA22); the 
 - **Spawned in cover:** an NPC authored within 1.5 u of a cover marker spawns holding that slot and keeps it while its target is in front of the cover and in range.
 - **Seeking cover:** in a fight, an NPC takes the best free slot that reaches its target (within attack range less 2 u), whether or not it already has a shot. With a shot it walks at most 10 u, and after a seek that finds nothing it waits 4 s before looking again.
 - **In cover:** on reaching the slot the NPC stops with zero velocity, gains Cover Stance (ability 1451, +100 `COVER_DEFENSE`), and fires from the slot without chasing.
-- **Leaving:** the slot and the stance go when the target flanks the cover or leaves attack range, and on leash, death or surrender.
+- **Sight from cover (NA23):** an NPC at its slot looks from the slot's peek point past its prop, for aggro, assist and the shot alike. A wall past the cover still blocks. With no line it holds fire, and after 3 s gives the slot up. A slot is only picked if the NPC would have a shot from it.
+- **Leaving:** the slot and the stance go when the target flanks the cover (20 degrees past side-on, NA23) or leaves attack range, after 3 s with no shot, and on leash, death or surrender. A slot left as flanked, blind or unreachable is not re-taken by the same NPC for 6 s.
 - **Pose:** there is no server-to-client pose message. Whether the client crouches an NPC standing at a marker is an open owner experiment.
 
 `CombatStance` is still set but not acted upon.

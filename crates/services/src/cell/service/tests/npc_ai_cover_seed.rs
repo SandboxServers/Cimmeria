@@ -26,9 +26,9 @@ use crate::cell::cover::{
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::SpawnRecord;
 
-const NPC: u32 = 200;
-const PLAYER: u32 = 101;
-const WORLD: &str = "Castle_CellBlock";
+pub(super) const NPC: u32 = 200;
+pub(super) const PLAYER: u32 = 101;
+pub(super) const WORLD: &str = "Castle_CellBlock";
 const WORLD_ID: i32 = 12;
 /// `MessHall_Guard1` (`spawnlist.sql` spawn 29).
 const MESS_HALL_GUARD1: [f32; 3] = [-96.25, 34.591, -91.59];
@@ -76,15 +76,15 @@ fn seed_nodes() -> Vec<CoverNode> {
     nodes
 }
 
-struct Seeded {
-    mgr: SpaceManager,
-    nodes: Vec<CoverNode>,
-    navmesh_snap: Box<dyn Fn([f32; 3]) -> Vector3>,
+pub(super) struct Seeded {
+    pub(super) mgr: SpaceManager,
+    pub(super) nodes: Vec<CoverNode>,
+    pub(super) navmesh_snap: Box<dyn Fn([f32; 3]) -> Vector3>,
 }
 
 /// A non-instanced Castle_CellBlock space with the real navmesh and the
 /// real world-12 cover, stamped as world 12.
-fn seeded() -> Option<Seeded> {
+pub(super) fn seeded() -> Option<Seeded> {
     let nav = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
     if !nav.exists() {
         return None;
@@ -118,13 +118,13 @@ fn seeded() -> Option<Seeded> {
     })
 }
 
-fn node_pos(nodes: &[CoverNode], key: CoverSlotKey) -> &CoverNode {
+pub(super) fn node_pos(nodes: &[CoverNode], key: CoverSlotKey) -> &CoverNode {
     nodes.iter().find(|n| n.key() == key).expect("seeded node")
 }
 
 /// The spawnlist row for `MessHall_Guard1`, with template 24's combat data
 /// (faction 10, `use_cover = true`, ability set 3).
-fn mess_hall_guard() -> SpawnRecord {
+pub(super) fn mess_hall_guard() -> SpawnRecord {
     SpawnRecord {
         spawn_id: 29,
         world_name: WORLD.to_string(),
@@ -180,7 +180,7 @@ fn along_facing(s: &Seeded, dist: f32) -> Vector3 {
     ])
 }
 
-fn engage(mgr: &mut SpaceManager, player_pos: Vector3) {
+pub(super) fn engage(mgr: &mut SpaceManager, player_pos: Vector3) {
     mgr.create_entity(
         PLAYER,
         WORLD,
@@ -199,7 +199,7 @@ fn engage(mgr: &mut SpaceManager, player_pos: Vector3) {
     npc.threat_list.insert(PLAYER, 10.0);
 }
 
-fn held(mgr: &SpaceManager) -> Option<CoverSlotKey> {
+pub(super) fn held(mgr: &SpaceManager) -> Option<CoverSlotKey> {
     mgr.cover
         .reservations
         .lock()
@@ -207,7 +207,7 @@ fn held(mgr: &SpaceManager) -> Option<CoverSlotKey> {
         .slot_for_entity(EntityId(NPC as i32))
 }
 
-async fn ai_tick(mgr: &mut SpaceManager) {
+pub(super) async fn ai_tick(mgr: &mut SpaceManager) {
     let (tx, _rx) = mpsc::channel(4096);
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
@@ -292,7 +292,11 @@ async fn npc_under_fire_walks_to_a_slot_in_range_and_stops_there() {
         npc.move_speed = 0.6;
         npc.spawn_position = Some(start);
     }
-    let player = along_facing(&s, 12.0);
+    // Since NA23 a slot is only picked if the NPC would have a navmesh line
+    // to its target from it. The mess-hall tables block most lines across
+    // the room, so the player stands where the free slot 1200053/0 sees it
+    // over its table (60 degrees off the slot's facing, 10 u).
+    let player = (s.navmesh_snap)([-90.03, 34.6, -90.33]);
     assert!(
         start.distance_to(&player) < 28.0,
         "fixture: player in range"

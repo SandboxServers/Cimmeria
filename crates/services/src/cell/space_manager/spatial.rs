@@ -10,6 +10,7 @@ use cimmeria_entity::navigation::PointVerdict;
 
 use cimmeria_entity::navigation::{LineOfSight, PathOutcome};
 
+use super::cover_sight::NpcSight;
 use super::SpaceManager;
 
 impl SpaceManager {
@@ -57,6 +58,7 @@ impl SpaceManager {
             b.position,
             &probe,
             Some(navmesh.short_hash()),
+            "npc",
             std::time::Instant::now(),
         );
         probe.result
@@ -70,30 +72,33 @@ impl SpaceManager {
     /// on the NPC's own storey does not stop it firing, because the mesh
     /// cannot see over furniture and the NPC cannot walk around it (NA16,
     /// audit S11: the Find Ambernol drone and the med-station desk;
-    /// decision D-NA11).
+    /// decision D-NA11). A mobile NPC at its cover slot looks from the
+    /// slot's peek point (NA23, D-NA12; [`Self::npc_line_of_sight`]).
     pub fn attack_line_of_sight(&self, npc_id: u32, target_id: u32, is_stationary: bool) -> bool {
-        let los = self.line_of_sight(npc_id, target_id);
-        self.attack_los_policy(npc_id, target_id, is_stationary, los)
+        let sight = self.npc_line_of_sight(npc_id, target_id);
+        self.attack_los_policy(npc_id, target_id, is_stationary, sight)
             .permits()
     }
 
     /// Which attack line-of-sight rule applies to an already-computed
-    /// navmesh verdict. Pure: it runs no ray, so the `npc_ai.tick` row can
-    /// label the verdict it already has without a second sampled probe.
+    /// verdict. Pure: it runs no ray, so the `npc_ai.tick` row can label the
+    /// verdict it already has without a second sampled probe. A bare
+    /// [`LineOfSight`] is a verdict from the NPC's own position.
     pub fn attack_los_policy(
         &self,
         npc_id: u32,
         target_id: u32,
         is_stationary: bool,
-        los: LineOfSight,
+        sight: impl Into<NpcSight>,
     ) -> AttackLosPolicy {
-        // An NPC standing at its cover slot (it holds Cover Stance, granted
-        // on arrival) fires over the cover: the prop is usually a navmesh
-        // hole, so the ray from behind it reads as blocked by construction
-        // (NA22, docs/architecture/cover-system.md §4). Stationary NPCs never
-        // take cover, so the rules below are untouched for them.
-        if !is_stationary && self.npc_in_cover_slot(npc_id) {
-            return AttackLosPolicy::InCoverSlot;
+        let NpcSight { los, origin } = sight.into();
+        // An NPC standing at its cover slot looked from the slot's peek
+        // point, past the prop: the verdict is strict from there, so a wall
+        // beyond the cover still stops the shot (NA23, D-NA12). NA22 skipped
+        // the check here, and a guard in cover shot a player through two
+        // walls (UAT-1). Stationary NPCs never take cover.
+        if !is_stationary && origin.from_cover() {
+            return AttackLosPolicy::CoverPeek(los.is_clear_or_unknown());
         }
         if !is_stationary {
             return AttackLosPolicy::Strict(los.is_clear_or_unknown());
@@ -111,17 +116,6 @@ impl SpaceManager {
         } else {
             AttackLosPolicy::StationaryOtherStorey
         }
-    }
-
-    /// Whether `npc_id` stands at its reserved cover slot: it holds Cover
-    /// Stance, which the cover step grants on arrival and every release
-    /// revokes.
-    pub fn npc_in_cover_slot(&self, npc_id: u32) -> bool {
-        let r = match self.cover.reservations.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        r.in_stance(cimmeria_common::EntityId(npc_id as i32))
     }
 
     /// Whether the space containing `entity_id` has a navmesh loaded.
@@ -295,16 +289,19 @@ pub enum AttackLosPolicy {
     /// A stationary NPC whose navmesh verdict was `Blocked` with the target
     /// outside the same-floor band: holds.
     StationaryOtherStorey,
-    /// A mobile NPC at its cover slot: fires whatever the verdict (NA22).
-    InCoverSlot,
+    /// A mobile NPC at its cover slot, whose ray started at the slot's peek
+    /// point past the prop (NA23, D-NA12). Strict from there: carries
+    /// whether it permits the shot. `los=blocked` with it is a wall past the
+    /// cover, or a slot with no peek point on the mesh.
+    CoverPeek(bool),
 }
 
 impl AttackLosPolicy {
     /// Whether this rule lets the NPC fire.
     pub fn permits(self) -> bool {
         match self {
-            Self::Strict(ok) => ok,
-            Self::Stationary | Self::StationaryRelaxed | Self::InCoverSlot => true,
+            Self::Strict(ok) | Self::CoverPeek(ok) => ok,
+            Self::Stationary | Self::StationaryRelaxed => true,
             Self::StationaryOtherStorey => false,
         }
     }
@@ -316,7 +313,7 @@ impl AttackLosPolicy {
             Self::Stationary => "stationary",
             Self::StationaryRelaxed => "stationary_relaxed",
             Self::StationaryOtherStorey => "stationary_other_storey",
-            Self::InCoverSlot => "in_cover_slot",
+            Self::CoverPeek(_) => "cover_peek",
         }
     }
 }

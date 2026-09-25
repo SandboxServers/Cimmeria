@@ -26,6 +26,7 @@
 //!   the `SGWCoverSet.def`'s auto-release-prior semantics, plus the per-NPC
 //!   stance and seek-deferral state that lives with a reservation.
 //! - [`ai_integration`] — the per-tick hold / release / seek decision.
+//! - [`peek`] — the peek point an NPC at a cover slot looks from (NA23).
 //! - [`stance`] — spawn hold, Cover Stance grant/revoke, and the one release
 //!   every combat-end path calls.
 
@@ -35,8 +36,11 @@ mod ai_integration_tests;
 mod coverage;
 mod detection;
 mod loader;
+mod peek;
 mod reservation;
 mod scoring;
+#[cfg(test)]
+mod scoring_tests;
 mod spatial;
 mod stance;
 mod types;
@@ -48,9 +52,9 @@ mod tests;
 
 pub(crate) use ai_integration::horizontal;
 pub use ai_integration::{
-    maintain_cover_for_npc, maintain_cover_for_npc_traced, CoverDecision, CoverQuery, CoverTrace,
-    NoCoverReason, ReleaseReason, COVER_ARRIVE_RADIUS, IN_RANGE_MAX_MOVE, PICK_RANGE_MARGIN,
-    SEEK_RETRY,
+    maintain_cover_for_npc, maintain_cover_for_npc_checked, maintain_cover_for_npc_traced,
+    CoverDecision, CoverQuery, CoverTrace, NoCoverReason, ReleaseReason, COVER_ARRIVE_RADIUS,
+    COVER_BLIND_GRACE, COVER_REPICK_COOLDOWN, IN_RANGE_MAX_MOVE, PICK_RANGE_MARGIN, SEEK_RETRY,
 };
 pub use coverage::{log_space_coverage, space_coverage, SpaceCoverage, NODE_FLOOR_TOLERANCE};
 pub use detection::{
@@ -58,10 +62,16 @@ pub use detection::{
     EnteredCoverEvent, LeftCoverEvent, COVER_DURATION_MILESTONES_SECS, COVER_PROXIMITY_RADIUS,
 };
 pub use loader::{load_cover_nodes, load_cover_sets, CoverLoadError};
+pub use peek::{
+    find_peek, find_peek_point, sight_from_slot, stand_behind, Peek, PeekKind, SlotSight,
+    PEEK_FORWARD_MAX, PEEK_FORWARD_MIN, PEEK_FORWARD_STEP, PEEK_LATERAL_MARGIN, PEEK_MAX_WALK,
+    PEEK_MIN_CLEARANCE, PEEK_SNAP_HALF_HEIGHT, PEEK_SNAP_RADIUS,
+};
 pub use reservation::{CoverReservations, ReserveError};
 pub use scoring::{
-    allies_near, is_flanked, pick_best, pick_best_traced, score_node, CoverWeights, PickTrace,
-    ScoredCandidate, ScoringContext, MAX_COVER_DISTANCE, SQUAD_AFFINITY_RADIUS,
+    allies_near, defends_for_pick, is_flanked, pick_best, pick_best_filtered, pick_best_traced,
+    score_node, CoverWeights, PickTrace, ScoredCandidate, ScoringContext, FLANK_PICK_DOT,
+    FLANK_RELEASE_DOT, MAX_COVER_DISTANCE, SQUAD_AFFINITY_RADIUS,
 };
 pub use spatial::CoverIndex;
 pub use stance::{

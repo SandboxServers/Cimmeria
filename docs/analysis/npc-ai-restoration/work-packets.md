@@ -291,6 +291,43 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 **Acceptance:** markdownlint clean; the index entries stay in sync.
 
+## Phase 4: UAT-1 follow-ups
+
+UAT-1 ran on the colo on 2026-09-25 against build `059d6038`. Every finding, with its evidence, is in [worknotes/uat-1.md](worknotes/uat-1.md). The owner approved the follow-up work the same day ("do the follow up work"). NA23 and NA24 ran in parallel with disjoint files; NA23 touched `npc_ai/dispatch.rs` only for the tick row's line-of-sight source.
+
+### NA23
+
+**Status:** Review (branch `npcai/na23-cover-los` pushed; code commit 3cb044fd, rebased on NA24 #791). **Scope title:** Cover-aware line of sight and flank churn (UAT-1 findings 1-3, D-NA12). **Advisor:** npc-ai-spawn-advisor.
+
+**Scope:**
+
+- **Peek origin.** `cover::find_peek` gives a cover slot a peek point on the navmesh: over the prop along the node's facing (0.5-3.5 u, with 1 u of clear floor ahead), else round either end of the marker (a walk of at most 6 u). `SpaceManager::npc_line_of_sight` uses it for an NPC standing within 1.5 u of the slot it holds. The NPC sees a target when the peek ray or its own ray is clear.
+- **One rule for aggro and attack.** The Idle aggro scan, the assist check, the attack check and the `npc_ai.tick` row share that rule. `AttackLosPolicy::InCoverSlot` (no check at all) becomes `CoverPeek` (strict from the peek point, `los_policy=cover_peek`).
+- **Holding fire.** An NPC with no shot from its slot holds fire (`cover_no_shot`) and gives the slot up after 3 s (`cover_released_no_shot`). A new pick needs a shot from the slot.
+- **Flank churn.** A held slot is released 20 degrees past side-on (NA22 used 5), and a slot is picked only with the threat in front of side-on. A slot given up as flanked, blind or unreachable cannot be picked again by the same NPC for 6 s. A flanked NPC with a line from where it stands fires in place.
+
+**Acceptance:** tests on `castle_cellblock.nav` and the world-12 cover seed at the UAT-1 positions, each revert-proven:
+
+- `Hallway01_Guard` aggroes the player 8.1 u in front of its counter;
+- `Hallway02_Guard` holds fire at the spot where it killed the player through the walls;
+- the mess-hall strafe that flanked `MessHall_Guard2` keeps its slot;
+- a flanked guard fires in place and does not re-pick its slot;
+- no slot is picked that has no shot.
+
+The drone's `stationary_relaxed` shot is still pinned by NA16's `stationary_los.rs`. UAT: Hallway01 engages on sight from its counter; no guard fires through a wall (`los_policy=cover_peek` rows read `los=clear` whenever the NPC fires).
+
+### NA24
+
+**Status:** UATPending (merged 2026-09-25, PR #791 73486cb2; ran as a parallel worker to NA23). **Scope title:** UAT-1 findings 4-8. **Advisor:** npc-ai-spawn-advisor, items-systems-advisor.
+
+**Scope:**
+
+- **Dead player (finding 4).** The dead gate on item use: the cell `inventory` methods and the base `world_entry` inventory use. `npc_ai/fight_target.rs` `select_target` treats a `BSF_DEAD` target as dead. `abilities/death` purges a dying player from every threat list.
+- **Bookmarks (finding 5).** Real witness fields in `console/bookmark.rs`.
+- **Being-class followers (finding 6).** NPC admission in `space_manager/queries.rs` ticks Col Marsh's Follow.
+- **Off-mesh spawn (finding 7).** The spawnlist seed for `Castle_BravoOfficer3` moves it onto the floor.
+- **Tick volume (finding 8).** `npc_ai/dispatch.rs` samples the tick row for unwitnessed Idle NPCs.
+
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:

@@ -385,7 +385,7 @@ fn log_ai_tick(
     let dest = e.nav_path.back().copied();
     let next = e.nav_path.front().copied();
     let [vx, vy, vz] = e.velocity;
-    let los = target.map(|_| space_mgr.line_of_sight(npc_id, target_id));
+    let los = target.map(|_| space_mgr.npc_line_of_sight(npc_id, target_id));
     tracing::debug!(
         target: "npc_ai.tick",
         npc_id,
@@ -417,7 +417,7 @@ fn log_ai_tick(
         dist_to_target = ?target.map(|p| p.distance_to(&e.position)),
         // Three-state (`clear`, `blocked`, `unknown_off_mesh`): the AI treats
         // unknown as clear, but a row that says so hides an off-mesh NPC.
-        los = los.map(super::aggro_acquired::los_label),
+        los = los.map(|s| super::aggro_acquired::los_label(s.los)),
         // Which attack rule applied to that verdict (NA16, D-NA11). A
         // stationary NPC fires across a same-floor navmesh `blocked`
         // (`stationary_relaxed`), so `los=blocked` alone does not mean it

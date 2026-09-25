@@ -389,37 +389,42 @@ async fn cover_rows_name_the_new_branches() {
     );
 }
 
-/// NA16's attack LoS policy names the cover rule: an NPC at its slot (it
-/// holds Cover Stance) fires across a navmesh `Blocked` under
-/// `los_policy=in_cover_slot`, and loses the exemption when it leaves the
-/// slot. A stationary NPC keeps NA16's own rules.
-#[tokio::test]
-async fn attack_los_policy_exempts_an_npc_at_its_cover_slot() {
-    use crate::cell::space_manager::AttackLosPolicy;
+/// NA16's attack LoS policy names the cover rule. An NPC at its slot looks
+/// from the slot's peek point and is held to that verdict
+/// (`los_policy=cover_peek`, NA23): a `Blocked` from the peek point holds
+/// fire. NA22's `in_cover_slot` fired whatever the verdict, and a guard shot
+/// the player through two walls (UAT-1). A stationary NPC keeps NA16's own
+/// rules, and a verdict from the NPC's own position is `strict`.
+#[test]
+fn attack_los_policy_holds_an_npc_in_cover_to_its_peek_verdict() {
+    use crate::cell::space_manager::{AttackLosPolicy, NpcSight, SightOrigin};
     use cimmeria_entity::navigation::LineOfSight;
 
-    let mut mgr = npc_in_slot();
+    let mgr = npc_in_slot();
+    let from_peek = |los| NpcSight {
+        los,
+        origin: SightOrigin::CoverPeek(Vector3::new(5.0, 0.0, 0.0)),
+    };
+    let blocked = mgr.attack_los_policy(NPC, PLAYER, false, from_peek(LineOfSight::Blocked));
+    assert_eq!(blocked, AttackLosPolicy::CoverPeek(false));
+    assert!(!blocked.permits(), "a wall past the cover stops the shot");
+    assert_eq!(blocked.label(), "cover_peek");
+    assert!(mgr
+        .attack_los_policy(NPC, PLAYER, false, from_peek(LineOfSight::Clear))
+        .permits());
+    let no_peek = NpcSight {
+        los: LineOfSight::Blocked,
+        origin: SightOrigin::CoverNoPeek,
+    };
+    assert!(!mgr.attack_los_policy(NPC, PLAYER, false, no_peek).permits());
     assert_eq!(
         mgr.attack_los_policy(NPC, PLAYER, false, LineOfSight::Blocked),
         AttackLosPolicy::Strict(false),
-        "not yet at the slot"
+        "a verdict from the NPC itself"
     );
-    ai_tick(&mut mgr).await; // arrives, takes the stance
-    let policy = mgr.attack_los_policy(NPC, PLAYER, false, LineOfSight::Blocked);
-    assert_eq!(policy, AttackLosPolicy::InCoverSlot);
-    assert!(policy.permits());
-    assert_eq!(policy.label(), "in_cover_slot");
     assert_eq!(
         mgr.attack_los_policy(NPC, PLAYER, true, LineOfSight::Blocked),
         AttackLosPolicy::StationaryRelaxed,
         "the stationary rule is unchanged"
-    );
-
-    move_player(&mut mgr, [-15.0, 0.0, 0.0]); // flanks the slot
-    ai_tick(&mut mgr).await;
-    assert_eq!(
-        mgr.attack_los_policy(NPC, PLAYER, false, LineOfSight::Blocked),
-        AttackLosPolicy::Strict(false),
-        "the exemption goes with the slot"
     );
 }
