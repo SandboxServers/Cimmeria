@@ -286,19 +286,26 @@ fn grid_hash(bytes: &[u8]) -> u64 {
 }
 
 #[test]
-fn a_build_is_deterministic() {
-    let a = format::encode(&build(&room(), BuildParams::default()));
+fn a_build_is_byte_identical_whatever_the_triangle_order() {
+    // The extractor's triangle order changes from run to run; the shipped
+    // file must not. A scene big enough to cross the incremental dedup
+    // threshold (1,024 records a tile) many times, shuffled.
     let mut tris = room();
-    tris.reverse();
-    // Same triangles, other order: the grid agrees; only the source hash,
-    // which is order-sensitive by design, may differ.
-    let b = build(&tris, BuildParams::default());
-    let a = format::decode(&a).unwrap();
-    assert_eq!(a.layers(), b.layers());
-    assert_eq!(
-        format::encode(&build(&room(), BuildParams::default())),
-        format::encode(&a)
-    );
+    let mut rng = Lcg(0xde7e);
+    for _ in 0..6000 {
+        let (x, z) = (rng.f(1.0, 38.0), rng.f(1.0, 38.0));
+        let ang = rng.f(0.0, std::f32::consts::TAU);
+        let (ex, ez) = (x + ang.cos() * 3.0, z + ang.sin() * 3.0);
+        tris.push([[x, 0.0, z], [ex, 0.0, ez], [ex, 3.0, ez]]);
+    }
+    let a = format::encode(&build(&tris, BuildParams::default()));
+    for _ in 0..3 {
+        for i in (1..tris.len()).rev() {
+            let j = (rng.f(0.0, 1.0) * (i + 1) as f32) as usize % (i + 1);
+            tris.swap(i, j);
+        }
+        assert_eq!(format::encode(&build(&tris, BuildParams::default())), a);
+    }
 }
 
 #[test]
@@ -529,4 +536,46 @@ fn a_ray_past_the_end_of_a_wall_is_clear_within_its_cell() {
     let occ = build(&t, BuildParams::default());
     assert_eq!(occ.sight([5.0, EYE, 10.2], [15.0, EYE, 10.2]), Sight::Clear);
     assert!(blocked(occ.sight([5.0, EYE, 9.9], [15.0, EYE, 9.9])));
+}
+
+/// External (navmesh) coverage clips a giant triangle to the covered tiles
+/// instead of rasterising its whole bounding box (the Omega_Site_CmdCenter
+/// blow-up: 0.48 M triangles filled a 4.7 km grid), and drops geometry that
+/// lies wholly outside it.
+#[test]
+fn external_coverage_clips_giant_triangles_and_drops_far_geometry() {
+    let params = BuildParams {
+        margin: Some(5.0),
+        ..BuildParams::default()
+    };
+    let mut b = OccluderBuilder::new(params, "clip").unwrap();
+    // The walkable area: a 10 x 10 m room at the origin.
+    for t in floor(0.0, 0.0, 10.0, 10.0, 0.0) {
+        b.add_coverage_triangle(&t);
+    }
+    // A vertical sheet 4 km long through the room, and a box 1 km away.
+    b.add_triangle(
+        &[[5.0, 0.0, -2000.0], [5.0, 3.0, -2000.0], [5.0, 0.0, 2000.0]],
+        Source::Geometry,
+    );
+    for t in cuboid([1000.0, 0.0, 1000.0], [1002.0, 2.0, 1002.0]) {
+        b.add_triangle(&t, Source::Geometry);
+    }
+    assert_eq!(b.trimmed_count(), 12, "the far box is dropped whole");
+    let occ = b.finish().unwrap();
+    let l = &occ.layers()[0];
+    let (dx, dz) = l.dims();
+    assert!(
+        dx <= 64 && dz <= 64,
+        "clipped to the room plus margin: {dx} x {dz}"
+    );
+    assert!(
+        blocked(occ.sight([2.0, EYE, 5.0], [8.0, EYE, 5.0])),
+        "the sheet still blocks in the room"
+    );
+    assert_eq!(occ.sight([2.0, EYE, 5.0], [2.0, EYE, 9.0]), Sight::Clear);
+    assert_eq!(
+        occ.sight([2.0, EYE, 5.0], [1001.0, EYE, 1001.0]),
+        Sight::OffGrid
+    );
 }

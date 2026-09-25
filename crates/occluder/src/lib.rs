@@ -21,6 +21,7 @@ pub mod build;
 pub mod format;
 mod grid;
 mod heightfield;
+pub mod paged;
 mod query;
 pub mod raster;
 
@@ -28,6 +29,7 @@ pub use build::{BuildError, BuildParams, OccluderBuilder, Source};
 pub use format::{OccluderError, MAGIC, VERSION};
 pub use grid::{Layer, LayerKind, Occluder, TILE};
 pub use heightfield::Heightfield;
+pub use paged::{encode_paged, PageStats, PagedOccluder, Residency, DEFAULT_PAGE_SIZE};
 pub use query::Sight;
 pub use raster::Triangle;
 

@@ -12,15 +12,15 @@
 //! wall keeps its outer `margin` on both sides, which is all a ray between
 //! two standing points ever reaches.
 
-use std::collections::{HashMap, HashSet};
+mod spans;
+
+use std::collections::HashSet;
 
 use crate::format;
-use crate::grid::{
-    Layer, LayerKind, Occluder, Span, SubRect, TileHead, SLOT_EMPTY, SLOT_UNCOVERED, SUB, TILE,
-    TILE_CELLS, TILE_SHIFT, VARIABLE,
-};
+use crate::grid::{LayerKind, Occluder, TILE};
 use crate::heightfield::HeightfieldAcc;
-use crate::raster::{clip_to_cell, is_floor_like, Triangle};
+use crate::raster::{is_floor_like, Triangle};
+use spans::{finish_layer, LayerAcc, Rec};
 
 /// Where a triangle came from. Terrain can go to its own, coarser layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,188 +79,6 @@ pub enum BuildError {
     YRangeTooLarge(i64),
 }
 
-/// Quantised heights are packed with this bias so a signed quantum fits an
-/// unsigned 20-bit field (+-52 km at 0.1 m).
-const Q_BIAS: i64 = 1 << 19;
-const Q_MAX: i64 = Q_BIAS - 1;
-/// The most spans one cell may hold (the per-cell count is a byte on disk).
-const MAX_SPANS_PER_CELL: usize = 254;
-/// Two overlapping spans merge when the union box adds at most a
-/// `1 / MERGE_PHANTOM_SHARE` share of its own volume as solid space that
-/// neither had. Coplanar wall triangles and stacked pieces of one wall
-/// merge; a floor under the whole cell and a wall along its edge do not.
-const MERGE_PHANTOM_SHARE: u64 = 50;
-
-/// One accumulated span: Y quanta (unbiased) and its sub-cell rectangle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Rec {
-    cell: u64,
-    lo: i64,
-    hi: i64,
-    rect: SubRect,
-}
-
-impl Rec {
-    /// `cell << 56 | (lo + bias) << 36 | (hi + bias) << 16 | rect`, so a
-    /// sort orders by cell, then lo.
-    fn pack(self) -> u64 {
-        (self.cell << 56)
-            | (((self.lo + Q_BIAS) as u64) << 36)
-            | (((self.hi + Q_BIAS) as u64) << 16)
-            | self.rect.pack() as u64
-    }
-
-    fn unpack(r: u64) -> Self {
-        Self {
-            cell: r >> 56,
-            lo: ((r >> 36) & 0xF_FFFF) as i64 - Q_BIAS,
-            hi: ((r >> 16) & 0xF_FFFF) as i64 - Q_BIAS,
-            rect: SubRect::unpack((r & 0xFFFF) as u16),
-        }
-    }
-
-    fn volume(&self) -> u64 {
-        self.rect.area() as u64 * (self.hi - self.lo + 1) as u64
-    }
-
-    /// `self` grown to take in `o`, when that stays within
-    /// [`MERGE_PHANTOM_SHARE`]; `None` otherwise, or when the two do not
-    /// meet in Y (within `gap`).
-    fn merged(&self, o: &Self, gap: i64) -> Option<Self> {
-        if o.lo > self.hi + gap || self.lo > o.hi + gap {
-            return None;
-        }
-        let u = Self {
-            cell: self.cell,
-            lo: self.lo.min(o.lo),
-            hi: self.hi.max(o.hi),
-            rect: self.rect.union(o.rect),
-        };
-        let phantom = u.volume().saturating_sub(self.volume() + o.volume());
-        (phantom * MERGE_PHANTOM_SHARE <= u.volume()).then_some(u)
-    }
-}
-
-#[derive(Default)]
-struct TileAcc {
-    /// Packed [`Rec`]s.
-    recs: Vec<u64>,
-    /// Length after the last compaction.
-    clean: usize,
-}
-
-impl TileAcc {
-    fn push(&mut self, rec: Rec, gap: i64) {
-        self.recs.push(rec.pack());
-        if self.recs.len() > 2 * self.clean + 1024 {
-            self.compact(gap);
-        }
-    }
-
-    /// Sort and merge the records in place.
-    fn compact(&mut self, gap: i64) {
-        self.recs.sort_unstable();
-        let mut out: Vec<u64> = Vec::with_capacity(self.recs.len() / 2 + 1);
-        let mut cell: Vec<Rec> = Vec::new();
-        for &packed in &self.recs {
-            let r = Rec::unpack(packed);
-            if cell.first().is_some_and(|c| c.cell != r.cell) {
-                flush_cell(&mut cell, &mut out);
-            }
-            merge_into(&mut cell, r, gap);
-        }
-        flush_cell(&mut cell, &mut out);
-        self.clean = out.len();
-        self.recs = out;
-    }
-}
-
-fn flush_cell(cell: &mut Vec<Rec>, out: &mut Vec<u64>) {
-    cell.sort_unstable_by_key(|r| (r.lo, r.hi, r.rect.pack()));
-    out.extend(cell.drain(..).map(Rec::pack));
-}
-
-/// Add `r` to one cell's span list, merging it into a span it may join,
-/// and then whatever the grown span can join in turn.
-fn merge_into(cell: &mut Vec<Rec>, r: Rec, gap: i64) {
-    let mut cur = r;
-    loop {
-        let found = cell
-            .iter()
-            .enumerate()
-            .find_map(|(i, s)| s.merged(&cur, gap).map(|m| (i, m)));
-        let Some((i, m)) = found else {
-            cell.push(cur);
-            return;
-        };
-        cell.swap_remove(i);
-        cur = m;
-    }
-}
-
-struct LayerAcc {
-    kind: LayerKind,
-    cell: f32,
-    tiles: HashMap<(i64, i64), TileAcc>,
-}
-
-impl LayerAcc {
-    fn new(kind: LayerKind, cell: f32) -> Self {
-        Self {
-            kind,
-            cell,
-            tiles: HashMap::new(),
-        }
-    }
-
-    fn rasterise(&mut self, tri: &Triangle, y_step: f32, gap: i64) {
-        let (mut x0, mut x1, mut z0, mut z1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
-        for v in tri {
-            x0 = x0.min(v[0]);
-            x1 = x1.max(v[0]);
-            z0 = z0.min(v[2]);
-            z1 = z1.max(v[2]);
-        }
-        let c = self.cell;
-        let sub = c / SUB as f32;
-        let (cx0, cx1) = ((x0 / c).floor() as i64, (x1 / c).floor() as i64);
-        let (cz0, cz1) = ((z0 / c).floor() as i64, (z1 / c).floor() as i64);
-        // Sub-cell index of a coordinate inside the cell starting at `base`,
-        // clamped; min and max both round down, so the rectangle (which
-        // runs to the far edge of its last sub-cell) rounds outwards.
-        let idx =
-            |v: f32, base: f32| ((v - base) / sub).floor().clamp(0.0, (SUB - 1) as f32) as u16;
-        for cz in cz0..=cz1 {
-            let (zl, zh) = (cz as f32 * c, (cz + 1) as f32 * c);
-            for cx in cx0..=cx1 {
-                let (xl, xh) = (cx as f32 * c, (cx + 1) as f32 * c);
-                let Some(clip) = clip_to_cell(tri, xl, xh, zl, zh) else {
-                    continue;
-                };
-                let lo = ((clip.y.0 / y_step).floor() as i64).clamp(-Q_MAX, Q_MAX);
-                let hi = ((clip.y.1 / y_step).ceil() as i64).clamp(-Q_MAX, Q_MAX);
-                let rect = SubRect {
-                    x0: idx(clip.x.0, xl),
-                    x1: idx(clip.x.1, xl),
-                    z0: idx(clip.z.0, zl),
-                    z1: idx(clip.z.1, zl),
-                };
-                let tile = (cx >> TILE_SHIFT, cz >> TILE_SHIFT);
-                let local = ((cz & 15) * TILE as i64 + (cx & 15)) as u64;
-                self.tiles.entry(tile).or_default().push(
-                    Rec {
-                        cell: local,
-                        lo,
-                        hi,
-                        rect,
-                    },
-                    gap,
-                );
-            }
-        }
-    }
-}
-
 /// Accumulates triangles; see the module docs.
 pub struct OccluderBuilder {
     params: BuildParams,
@@ -274,6 +92,12 @@ pub struct OccluderBuilder {
     /// Coverage comes from [`Self::add_coverage_triangle`] (a navmesh)
     /// rather than from floor-like collision triangles.
     external_coverage: bool,
+    /// With external coverage, the covered tiles of the geometry layer and
+    /// the terrain heightfield, fixed at the first collision triangle:
+    /// nothing outside them is rasterised.
+    clip: Option<(HashSet<(i64, i64)>, HashSet<(i64, i64)>)>,
+    /// Collision triangles that fell wholly outside the external coverage.
+    trimmed: u64,
     block: f32,
     hash: u64,
     triangles: u64,
@@ -304,11 +128,15 @@ impl OccluderBuilder {
         Ok(Self {
             terrain: params.terrain_pitch.map(HeightfieldAcc::new),
             terrain_fallback: 0,
-            block: params.margin.unwrap_or(0.0).max(1.0),
+            // Coverage is marked in blocks no coarser than 4 m, then grown by
+            // the margin; a wide margin must not coarsen the mask with it.
+            block: params.margin.unwrap_or(0.0).clamp(1.0, 4.0),
             params,
             layers,
             floor_blocks: HashSet::new(),
             external_coverage: false,
+            clip: None,
+            trimmed: 0,
             hash: 0xcbf2_9ce4_8422_2325,
             triangles: 0,
             label: label.into(),
@@ -326,6 +154,14 @@ impl OccluderBuilder {
         self.terrain_fallback
     }
 
+    /// Collision triangles dropped because they lie wholly outside the
+    /// external coverage (a terrain patch or a whole mesh far from any
+    /// explorable area). A triangle straddling the edge is clipped, and not
+    /// counted.
+    pub fn trimmed_count(&self) -> u64 {
+        self.trimmed
+    }
+
     /// Add one triangle, in BigWorld metres. Non-finite triangles are
     /// dropped.
     pub fn add_triangle(&mut self, tri: &Triangle, source: Source) {
@@ -333,29 +169,54 @@ impl OccluderBuilder {
             return;
         }
         self.triangles += 1;
+        // Order-independent: the extractor's triangle order is not stable
+        // from run to run (hash-map walks in the StaticMesh extraction), and
+        // two builds of the same map must agree byte for byte.
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ source as u64;
         for v in tri.iter().flatten() {
             for b in v.to_bits().to_le_bytes() {
-                self.hash ^= b as u64;
-                self.hash = self.hash.wrapping_mul(0x0000_0100_0000_01b3);
+                h ^= b as u64;
+                h = h.wrapping_mul(0x0000_0100_0000_01b3);
             }
         }
-        self.hash ^= source as u64;
+        self.hash = self.hash.wrapping_add(h ^ (h >> 29));
         if self.params.margin.is_some()
             && !self.external_coverage
             && is_floor_like(tri, self.params.max_floor_slope_deg)
         {
             self.mark_floor(tri);
         }
+        if self.external_coverage && self.params.margin.is_some() && self.clip.is_none() {
+            let geo = self.covered_tiles(self.params.cell, std::iter::empty());
+            let ter = self
+                .params
+                .terrain_pitch
+                .map(|p| self.covered_tiles(p, std::iter::empty()))
+                .unwrap_or_default();
+            self.clip = Some((geo, ter));
+        }
         if source == Source::Terrain {
             if let Some(hf) = &mut self.terrain {
+                if let Some((_, ter)) = &self.clip {
+                    if !touches_tiles(tri, hf.pitch() * TILE as f32, ter) {
+                        self.trimmed += 1;
+                        return;
+                    }
+                }
                 if hf.add(tri) {
                     return;
                 }
                 self.terrain_fallback += 1;
             }
         }
-        let gap = (self.params.merge_gap / self.params.y_step).round() as i64;
-        self.layers[0].rasterise(tri, self.params.y_step, gap);
+        if let Some((geo, _)) = &self.clip {
+            if !touches_tiles(tri, self.params.cell * TILE as f32, geo) {
+                self.trimmed += 1;
+                return;
+            }
+        }
+        let allowed = self.clip.as_ref().map(|(g, _)| g);
+        self.layers[0].rasterise(tri, self.params.y_step, allowed);
     }
 
     /// Take the coverage mask from walkable polygons (a navmesh, fan
@@ -370,6 +231,8 @@ impl OccluderBuilder {
             return;
         }
         self.external_coverage = true;
+        // Coverage added after geometry would not clip what came before.
+        debug_assert!(self.clip.is_none(), "add coverage before triangles");
         if self.params.margin.is_some() {
             self.mark_floor(tri);
         }
@@ -485,101 +348,22 @@ impl OccluderBuilder {
     }
 }
 
-/// Lay one layer's covered tiles out as a [`Layer`]. `None` when nothing is
-/// covered.
-fn finish_layer(acc: LayerAcc, covered: HashSet<(i64, i64)>, qmin: i64) -> Option<Layer> {
-    let (mut tx0, mut tx1, mut tz0, mut tz1) = (i64::MAX, i64::MIN, i64::MAX, i64::MIN);
-    for &(tx, tz) in &covered {
-        tx0 = tx0.min(tx);
-        tx1 = tx1.max(tx);
-        tz0 = tz0.min(tz);
-        tz1 = tz1.max(tz);
+/// Whether the XZ bounding box of `tri` meets any tile (edge `tile_w`) of
+/// `tiles`.
+fn touches_tiles(tri: &Triangle, tile_w: f32, tiles: &HashSet<(i64, i64)>) -> bool {
+    let (mut x0, mut x1, mut z0, mut z1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+    for v in tri {
+        x0 = x0.min(v[0]);
+        x1 = x1.max(v[0]);
+        z0 = z0.min(v[2]);
+        z1 = z1.max(v[2]);
     }
-    if tx0 > tx1 {
-        return None;
+    let (ax, bx) = ((x0 / tile_w).floor() as i64, (x1 / tile_w).floor() as i64);
+    let (az, bz) = ((z0 / tile_w).floor() as i64, (z1 / tile_w).floor() as i64);
+    if ((bx - ax + 1) * (bz - az + 1)) as usize > tiles.len() {
+        return tiles
+            .iter()
+            .any(|&(tx, tz)| (ax..=bx).contains(&tx) && (az..=bz).contains(&tz));
     }
-    let tiles_x = (tx1 - tx0 + 1) as u32;
-    let tiles_z = (tz1 - tz0 + 1) as u32;
-    let mut slots = vec![SLOT_UNCOVERED; tiles_x as usize * tiles_z as usize];
-    let mut heads = Vec::new();
-    let mut cell_end = Vec::new();
-    let mut spans: Vec<Span> = Vec::new();
-    let mut tiles = acc.tiles;
-    for tz in tz0..=tz1 {
-        for tx in tx0..=tx1 {
-            if !covered.contains(&(tx, tz)) {
-                continue;
-            }
-            let slot = ((tz - tz0) * tiles_x as i64 + (tx - tx0)) as usize;
-            let recs = tiles.remove(&(tx, tz)).map(|a| a.recs).unwrap_or_default();
-            if recs.is_empty() {
-                slots[slot] = SLOT_EMPTY;
-                continue;
-            }
-            let mut per_cell: Vec<Vec<Span>> = vec![Vec::new(); TILE_CELLS];
-            for r in recs {
-                let r = Rec::unpack(r);
-                per_cell[r.cell as usize].push(Span {
-                    lo: (r.lo - qmin) as u16,
-                    hi: (r.hi - qmin) as u16,
-                    rect: r.rect.pack(),
-                });
-            }
-            for c in &mut per_cell {
-                cap_spans(c);
-            }
-            let first = per_cell[0].len();
-            let uniform = per_cell.iter().all(|c| c.len() == first);
-            let span_base = spans.len() as u32;
-            let mut head = TileHead {
-                span_base,
-                uniform: if uniform { first as u8 } else { VARIABLE },
-                ends: 0,
-            };
-            if !uniform {
-                head.ends = cell_end.len() as u32;
-            }
-            let mut end = 0u16;
-            for c in &per_cell {
-                spans.extend_from_slice(c);
-                end += c.len() as u16;
-                if !uniform {
-                    cell_end.push(end);
-                }
-            }
-            slots[slot] = heads.len() as u32;
-            heads.push(head);
-        }
-    }
-    Some(Layer {
-        kind: acc.kind,
-        cell: acc.cell,
-        origin: [
-            (tx0 * TILE as i64) as f32 * acc.cell,
-            (tz0 * TILE as i64) as f32 * acc.cell,
-        ],
-        tiles_x,
-        tiles_z,
-        slots,
-        heads,
-        cell_end,
-        spans,
-    })
-}
-
-/// Merge the closest neighbours (by `lo`) until the cell fits the on-disk
-/// count byte. Merging can only grow solid space.
-fn cap_spans(c: &mut Vec<Span>) {
-    while c.len() > MAX_SPANS_PER_CELL {
-        let i = (0..c.len() - 1)
-            .min_by_key(|&i| c[i + 1].lo.saturating_sub(c[i].hi))
-            .unwrap_or(0);
-        let next = c.remove(i + 1);
-        let r = SubRect::unpack(c[i].rect).union(SubRect::unpack(next.rect));
-        c[i] = Span {
-            lo: c[i].lo.min(next.lo),
-            hi: c[i].hi.max(next.hi),
-            rect: r.pack(),
-        };
-    }
+    (az..=bz).any(|tz| (ax..=bx).any(|tx| tiles.contains(&(tx, tz))))
 }

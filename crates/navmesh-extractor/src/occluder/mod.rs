@@ -8,6 +8,8 @@
 //!   triangles to a callback, already in **BigWorld metres** and split by
 //!   source (terrain vs. StaticMesh + BSP), without writing an OBJ.
 //! - [`exact`] is the ground truth: an exact segment-vs-triangle tracer.
+//! - [`explorable`] finds the navmesh components a real entry point lands
+//!   on, which the shipped build trims its coverage to.
 //! - [`sweep`] samples point pairs on a `.nav`, and scores the occluder
 //!   (and the navmesh ray) against the tracer.
 //!
@@ -20,8 +22,11 @@
 //! same triangle count.
 
 pub mod exact;
+pub mod explorable;
 pub mod sweep;
 
+#[cfg(test)]
+mod explorable_tests;
 #[cfg(test)]
 mod tests;
 
@@ -84,7 +89,9 @@ pub fn for_each_chunk(
 ) -> crate::Result<WalkStats> {
     let mut stats = WalkStats::default();
     let mut archetype_cache = staticmesh::ArchetypeCache::default();
-    for chunk_path in umap::enumerate_chunks(map_dir)? {
+    let mut chunks = umap::enumerate_chunks(map_dir)?;
+    chunks.sort();
+    for chunk_path in chunks {
         let id = chunk_id::ChunkId::from_umap_path(&chunk_path)?;
         let pkg = cimmeria_upk::Package::open(&chunk_path)?;
         let mut extraction =
@@ -126,6 +133,13 @@ pub fn for_each_chunk(
                 .iter()
                 .map(tri_to_bw),
         );
+        // The StaticMesh walk's order is not stable between runs (hash-map
+        // iteration), and a first-come rule in the terrain heightfield makes
+        // the build order-sensitive. Sorting each chunk makes every build of
+        // a map byte-identical.
+        let key = |t: &BwTriangle| t.map(|v| v.map(f32::to_bits));
+        chunk.geometry.sort_unstable_by_key(key);
+        chunk.terrain.sort_unstable_by_key(key);
         visit(&chunk);
     }
     Ok(stats)

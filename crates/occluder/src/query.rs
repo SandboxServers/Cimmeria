@@ -65,42 +65,45 @@ impl Occluder {
         if !self.covers(from[0], from[2]) || !self.covers(to[0], to[2]) {
             return Sight::OffGrid;
         }
-        let clearance = clearance.max(0.0);
-        for layer in &self.layers {
-            if let Some(at) = self.first_hit(layer, from, to, clearance) {
-                return Sight::Blocked {
-                    at,
-                    layer: layer.kind,
-                };
-            }
+        let len = ((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt();
+        let s = if len > 1e-4 {
+            clearance.max(0.0) / len
+        } else {
+            0.0
+        };
+        if 2.0 * s >= 1.0 {
+            return Sight::Clear;
         }
-        if let Some(hf) = &self.heightfield {
-            let len = ((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt();
-            let s = if len > 1e-4 { clearance / len } else { 0.0 };
-            if 2.0 * s < 1.0 {
-                if let Some(at) = hf.first_hit(from, to, s, 1.0 - s) {
-                    return Sight::Blocked {
-                        at,
-                        layer: LayerKind::Terrain,
-                    };
-                }
-            }
+        match self.hit_between(from, to, s, 1.0 - s) {
+            Some((at, layer)) => Sight::Blocked { at, layer },
+            None => Sight::Clear,
         }
-        Sight::Clear
     }
 
-    fn first_hit(&self, l: &Layer, a: [f32; 3], b: [f32; 3], clearance: f32) -> Option<[f32; 3]> {
+    /// Where the segment `a -> b`, restricted to parameters `[t0, t1]`,
+    /// first meets solid geometry, and which layer. No coverage check: a
+    /// part of the segment outside this occluder's cells sees nothing. The
+    /// paged occluder runs each page over its own stretch of the segment.
+    pub(crate) fn hit_between(
+        &self,
+        a: [f32; 3],
+        b: [f32; 3],
+        t0: f32,
+        t1: f32,
+    ) -> Option<([f32; 3], LayerKind)> {
+        for layer in &self.layers {
+            if let Some(at) = self.first_hit(layer, a, b, t0, t1) {
+                return Some((at, layer.kind));
+            }
+        }
+        let hf = self.heightfield.as_ref()?;
+        hf.first_hit(a, b, t0, t1)
+            .map(|at| (at, LayerKind::Terrain))
+    }
+
+    fn first_hit(&self, l: &Layer, a: [f32; 3], b: [f32; 3], t0: f32, t1: f32) -> Option<[f32; 3]> {
         let (dx, dy, dz) = (b[0] - a[0], b[1] - a[1], b[2] - a[2]);
         let len = (dx * dx + dz * dz).sqrt();
-        let (t0, t1) = if len > 1e-4 {
-            let s = clearance / len;
-            if 2.0 * s >= 1.0 {
-                return None;
-            }
-            (s, 1.0 - s)
-        } else {
-            (0.0, 1.0)
-        };
         let at = |t: f32| [a[0] + dx * t, a[1] + dy * t, a[2] + dz * t];
         let sub = l.cell / SUB as f32;
         let hits = |cx: i64, cz: i64, ta: f32, tb: f32| -> bool {
