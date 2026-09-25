@@ -2,13 +2,13 @@
 title: "Inventory System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-25
 ---
 
 # Inventory System
 
-> **Last updated**: 2026-07-25
-> **Status**: Implemented, including the full vendor stack. Remaining gaps are stat recalculation on equip and the organization vault.
+> **Last updated**: 2026-09-25
+> **Status**: Implemented, including the full vendor stack in code. The vendor stack has **never been tested in a client on working code** (see [Vendor caveat](#vendor-caveat)). Remaining gaps are stat recalculation on equip and the organization vault.
 
 ## Overview
 
@@ -27,7 +27,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Database persistence | DONE | Load/save per character, `sgw_inventory` / `sgw_inventory_base` tables |
 | Client sync (flush) | DONE | Batched updates: bags, items, removals, cash |
 | Item use | DONE | Fires the item's ability binding and the `ItemUsed` chain trigger |
-| Store open/close | DONE | `base/world_entry/methods/vendor/store.rs` |
+| Store open/close | DONE (no client test) | `base/world_entry/methods/vendor/store.rs`. `onStoreOpen` / `onStoreUpdate` go out on SGWPlayer indices 109/110 since #609; see [Vendor caveat](#vendor-caveat) |
 | Store buy/sell | DONE | `vendor/purchase/`, `vendor/sell/` |
 | Buyback | DONE | `vendor/buyback/` |
 | Item repair (vendor) | DONE | `vendor/repair.rs` plus the paid-repair variant |
@@ -36,6 +36,12 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
 | Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined; blocked on the organization system |
+
+### Vendor caveat
+
+The vendor rows above (store open/close through vendor bag allowlist) are server-side DONE, not client-verified. Until #609 (2026-07-26) the store payload went out on SGWPlayer indices 80/81, which are the Missionary `onMissionUpdate` / `onStepUpdate` methods, so the store window could never open and earlier manual vendor testing is void. No client has tested a vendor since #609. Coverage is live-DB tests plus the server-side PL/pgSQL smoke [`tools/vendor_store_smoke.sql`](../../tools/vendor_store_smoke.sql).
+
+No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE") is the only vendor template, and Harset packet H13 removed its only spawn row, so `.spawn 25` is the only way to reach a store. Only two test item lists are seeded. Status detail: [gap-analysis.md §15](../gap-analysis.md#15-stores--vendors----nt).
 
 ## Entity Definition (SGWInventoryManager.def)
 

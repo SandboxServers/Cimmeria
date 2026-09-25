@@ -2,7 +2,7 @@
 title: "Progression System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-25
 ---
 
 # Progression System
@@ -83,11 +83,11 @@ Behavior:
 
 | Source | Status | Notes |
 |--------|--------|-------|
-| Mission completion | Implemented | `self.giveExperience(mission.rewardXp)` called in mission handler |
-| Mob kills | Not implemented | No `giveExperience` call in combat or death handlers |
+| Mission completion | Not implemented | Completing a mission grants no XP: nothing reads `reward_xp`, which is 0 in every seeded mission row (#310). A content chain can grant XP explicitly with the `GrantXP` action (#618, `cell/content/executor/mod.rs`) |
+| Mob kills | Implemented | `grant_kill_xp` in `cell/abilities/death/side_effects.rs` awards `kill_xp()` = 10 × mob level to the killer through the Cell→Base pipeline. Seen in the client in the 2026-09-18 colo playtest (47 kill-XP grants) |
 | Minigames | Not implemented | No XP reward hook in minigame completion |
 
-Mob XP is the most significant gap. In a complete implementation, `SGWMob.onDead()` would calculate XP based on mob level and an `isWorthXP` flag, then distribute it to the tapped player or squad.
+Mission XP is now the larger gap: it is blocked on a reward formula and the mission-reward dispatch (#310), not on the `GrantXP` executor arm, which shipped in #618. Kill XP is a flat 10 × mob level to the killer; the 2009 design's `isWorthXP` flag and squad distribution are not implemented.
 
 ### Database Schema
 
@@ -328,8 +328,8 @@ def consumeAppliedSciencePoints(self, points):
 |---------|--------|
 | XP accumulation | Implemented |
 | Level-up loop (multi-level) | Implemented |
-| Mission XP rewards | Implemented |
-| Mob kill XP rewards | Not implemented |
+| Mission XP rewards | Not implemented (`reward_xp` is 0 in data and unread; chains can use `GrantXP`, #618; no cash or item reward dispatch, #310) |
+| Mob kill XP rewards | Implemented (10 × mob level to the killer) |
 | Minigame XP rewards | Not implemented |
 | Archetype base stats on create | Implemented |
 | Stat scaling per level (health, focus) | Not implemented |
@@ -370,7 +370,7 @@ Grant ASP at defined level thresholds (e.g., every 5 levels). The original desig
 
 **4. XP from mob kills**
 
-In `SGWMob.onDead()`, calculate XP based on mob level and an `isWorthXP` flag, then call `giveExperience()` on the tapped entity. XP should be distributed to squad members if the tapping entity is in a group.
+The flat 10 × mob level grant to the killer is implemented. Still missing: the `isWorthXP` flag, and distribution to squad members when the tapping entity is in a group.
 
 **5. Balanced XP curve**
 
