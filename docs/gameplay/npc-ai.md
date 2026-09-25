@@ -400,6 +400,22 @@ The old metric was spawn-to-target in 3D. A player standing 49.9 u from the Cell
 
 **Telemetry.** The leash reports through NA02's detectors (`npc_ai::detectors::leash`): `npc_ai.leash event=enter` (reason, trigger, `nav_path_len`, `npc_to_spawn`), `event=arrived` / `event=snap_fallback` (`arrival`, `walk_secs`, `snap_dist`), `event=loop` (should stay silent) and `event=damage_ignored`. The leash itself adds `event=replan` and `event=player_combat_exit`. NA02's `threat event=cleared_without_exit` and `npc_ai.idle_parked` should stay silent through a leash; tests pin both. The fight's `decision_outcome=leashed` row carries `trigger`, `npc_to_spawn` and `target_to_spawn`.
 
+### Chase and unreachable targets (NA15)
+
+Code: `crates/services/src/cell/service/npc_ai/chase/`. The Fighting handler hands a mobile NPC that is out of range or out of line of sight to the chase step.
+
+**Stop distance.** A chase routes to the target moved `max(ability min_range, 1.0 u)` toward the NPC, capped at the ability's `max_range`. The walk ends short of the target, never inside it. Before NA15 a guard walked to the player's own point and stood 0.35-0.7 u from it (audit S10). A cover slot chosen by the cover step is routed as given.
+
+**Repath.** The NPC keeps its route while the goal stays within 5 u horizontally and 1.5 u vertically of the goal the route was planned for (`decision_outcome=hold_no_repath`). A player walking down a ramp toward the NPC changes level quickly and gets a new route. The old test was 5 u in 3D against the last waypoint.
+
+**Unreachable target.** When the target is on another mesh island, Detour returns a partial route. The NPC walks it to the island edge and then holds there, facing the target with zero velocity, and does not request a new route until the target moves (`decision_outcome=hold_unreachable`). After 8 s of holding it gives up and walks home (`npc_ai.transition reason=unreachable`, `decision_outcome=leashed trigger=unreachable`). A route that reaches the target, or an attack, resets the timer. A partial route *home* is walked to its end, and then the NPC snaps to spawn (`npc_ai.leash arrival=snap_partial_route`).
+
+**Off-mesh start.** When the pathfinder cannot start from where the NPC stands (`no_start_poly`: hovering, sunk or a step off the mesh), the NPC is snapped onto the nearest polygon within 2 u horizontally and Â±4 u vertically, and the route is requested once more (`npc_ai.path event=off_mesh_snap`, `npc_ai.path_fail fallback=snapped_to_mesh`). With no polygon that close it goes home, and the leash tick snaps it to spawn.
+
+**Off-mesh target.** A target the destination box cannot place (`no_end_poly`, typically a GM standing on unmeshed props, audit S14) is replaced by the nearest on-mesh point within 8 u horizontally and Â±4 u vertically (`fallback=nearest_on_mesh`). The route cannot reach the target, so the NPC holds at its end if it still cannot hit from there.
+
+**Degenerate repath.** A route that comes back as a single point clears the stale route (`fallback=path_cleared`), and the NPC holds.
+
 ### Investigating (State 2)
 
 A mob heard a noise or detected suspicious movement but has not confirmed a threat. It should navigate to `POI`, look around for a set duration, and return to `Home` if nothing is found.
@@ -553,6 +569,7 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Aggression override | PARTIAL | NA13: override (seed `spawnlist.aggression_override`, content, console), else the faction reaction. No client broadcast yet and no timed revert; see [Wire: not broadcast yet](#wire-not-broadcast-yet-open-item). |
 | lookAt() rotation | DONE | Mob faces target during combat |
 | Leashing state | DONE | NA12: NPC-to-spawn leash radius with hysteresis and a per-template `leash_distance`, walk home with evade, heal / facing / cooldown reset on arrival, snap only as a fallback, player combat drained, 5 s re-aggro suppression. See [Leash and reset](#leash-and-reset-na12). |
+| Chase path robustness | DONE | NA15: stop distance, level-aware repath, hold then give up at a partial route, partial route home, off-mesh start and target recovery, degenerate repath clears the route. See [Chase and unreachable targets](#chase-and-unreachable-targets-na15). |
 | Proactive aggro detection | DONE | NA13: hostile Idle NPCs (override, else faction reaction) scan witnesses every 2 s through the radius (18 u default, `entity_templates.aggro_radius`), vertical band (4 u), fail-closed LoS and GM-switch gates, and seed 1.0 threat on the closest. See [Proximity aggro scan](#proximity-aggro-scan). |
 | Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |
 | Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |

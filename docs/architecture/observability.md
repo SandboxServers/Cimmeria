@@ -287,13 +287,14 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `no_path` | WARN — pathfinder returned no path (typically: zone missing navmesh). Raised from INFO when it moved onto the throttled `npc_ai.path_fail` target; a stuck NPC is a standing condition, and at INFO it was one row per tick forever |
 | `min_range_backup` | Target inside ability `min_range` — stepping back |
 | `no_ability` | Every known ability on cooldown / needs ammo |
-| `leashed` | The NPC itself went past its leash radius from spawn (NA12; before NA12 the test was the target's distance). The row carries `trigger` (`beyond_band` \| `chase_outward` \| `vertical_cap`), `npc_to_spawn` (horizontal, the distance the test uses), `npc_dy_from_spawn`, `target_to_spawn` (the pre-NA12 metric, for comparison) and `leash_distance` |
+| `leashed` | The NPC itself went past its leash radius from spawn (NA12; before NA12 the test was the target's distance), or its target was unreachable (NA15: `trigger=unreachable`, `cause` = `held_unreachable` \| `off_mesh`). The row carries `trigger` (`beyond_band` \| `chase_outward` \| `vertical_cap` \| `unreachable`), `npc_to_spawn` (horizontal, the distance the test uses), `npc_dy_from_spawn`, `target_to_spawn` (the pre-NA12 metric, for comparison) and `leash_distance` |
 | `threat_empty` / `target_lost` | Fight over: the threat list was empty, or its last target died, vanished or stayed out of the NPC's AoI for 5 s. The NPC starts walking home (`npc_ai.leash event=enter`) |
 | `leash_walking` / `leash_replan` | Leashing tick: walking the route home / planned a fresh route (none, or a stale one) |
 | `leash_arrived` / `leash_snap_fallback` | Leash finished: walked home, or snapped because no route existed or the walk passed 20 s |
 | `reaggro_suppressed` | Idle auto-aggro skipped: inside the 5 s window after a leash reset |
-| `repath_degenerate` | WARN — chase repath returned ≤1 waypoint; the previous path is left in place, so the NPC may keep walking toward where the target used to be |
-| `hold_no_repath` | Out of range / no LoS, but the existing path still ends within 5 u of the target — no new order this tick (previously silent) |
+| `repath_degenerate` | WARN — chase repath returned ≤1 waypoint; since NA15 the stale path is cleared (`fallback=path_cleared`) and the NPC holds |
+| `hold_no_repath` | Out of range / no LoS, but the route is still good for where the target is (NA15: the goal moved at most 5 u horizontally and 1.5 u vertically since the route was planned) — no new order this tick (previously silent) |
+| `hold_unreachable` | NA15 — at the end of a route that cannot reach the target (partial corridor, off-mesh target, degenerate repath): standing still with zero velocity, no new route until the target moves; gives up after 8 s (`leashed trigger=unreachable`) |
 | `follow_no_path` | WARN — follow found no navmesh path and fell back to a raw 3-axis straight line (`reason` = `no_mesh` \| `no_path`; `dy` is the air-climb signature) |
 | `follow_target_lost` | WARN — follow target no longer resolves; follow is cleared and the escort idles until a chain re-arms it |
 | `follow_dropped_no_target` | Follow state with no follow target — dropped to Idle |

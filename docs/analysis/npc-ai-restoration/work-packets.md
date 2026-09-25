@@ -211,7 +211,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA15
 
-**Status:** BlockedDependency (NA02, NA11). **Scope title:** Path robustness (S8-S10). **Advisor:** movement-teleport-advisor.
+**Status:** Review (branch `npcai/na15-path-robustness` pushed 2026-09-25, on main after NA12 #785). The chase moved out of `fight.rs` into `npc_ai/chase/`. A partial route is walked to its end, then the NPC holds with zero velocity and no new route requests, and walks home after 8 s (`reason=unreachable`). A partial route home walks to its end and snaps (`arrival=snap_partial_route`) instead of waiting out the 20 s timeout. An off-mesh start is snapped onto the nearest polygon within 2 u / ±4 u and retried once, or the NPC goes home. A degenerate repath clears the stale route. Chases stop `max(min_range, 1.0)` short of the target. The repath test is 5 u horizontal or 1.5 u vertical. An off-mesh target (S14) is routed to the nearest on-mesh point within 8 u / ±4 u. Tick tests: `service/tests/npc_ai/path_robustness.rs`, each revert-proven. **Scope title:** Path robustness (S8-S10, S14). **Advisor:** movement-teleport-advisor.
 
 **Scope:**
 
