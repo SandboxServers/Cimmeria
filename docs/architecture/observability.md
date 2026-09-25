@@ -166,6 +166,63 @@ the downstream "show me packets" query has a single stable shape to
 filter on (`target = "mercury.packet"`), regardless of which seam
 emitted the event.
 
+### Log indexes and parity with the log files
+
+Owner decision (2026-09-25, NA25): whatever the server writes to
+`logs/*.log` must also be available in SigNoz. The OTLP log signal is
+split across three providers, each its own SigNoz service, and every
+record lands in exactly one of them:
+
+| Level | `service.name` | Filter |
+|---|---|---|
+| ERROR, WARN | `cimmeria-server` | `OTEL_FILTER` |
+| INFO, DEBUG | `cimmeria-server`, or `cimmeria-network` for the scopes `otel::is_network_noise_target` names | `OTEL_FILTER` |
+| TRACE | `cimmeria-trace` | derived, see below |
+
+`OTEL_FILTER` stays hand-written, because it is also the span filter and
+because putting a new scope's DEBUG rows in the primary view is a
+decision. The TRACE filter is **derived** from the file-layer table
+(`FILE_LAYERS` in
+[`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs)):
+every target a file keeps at TRACE, plus every custom (non-module-path)
+target `OTEL_FILTER` names, plus the `wire.sampled.*` firehose samples.
+Module-path blankets are not raised, so `cimmeria_services=debug` does
+not become `cimmeria_services=trace`, and a module no file keeps at
+TRACE (the orchestrator lifecycle rows, for one) stays out.
+
+Two exceptions to parity, both pinned:
+
+- **The exporter's own transport** (`hyper`, `h2`, `tonic`, `tower`,
+  `reqwest`, `opentelemetry`, `tungstenite`) is `off` in `OTEL_FILTER`.
+  `server.log` keeps its INFO rows; exporting them would loop every
+  batch's gRPC chatter into the next batch.
+- **The per-packet firehoses.** Three TRACE rows fire once per datagram
+  or once per (witness, entity) pair per 100 ms tick. Each keeps its
+  message text but moves to a `wire.firehose.*` target, which its file
+  names explicitly and every OTLP filter turns off. Every N-th
+  occurrence also emits a sampled row on a different, exported target,
+  carrying `sampled_1_in = N` and `suppressed` (occurrences since the
+  previous sample), so `sum(1 + suppressed)` recovers the true count.
+  The emitters and N live in `cimmeria_services::firehose`.
+
+| Firehose (file) | Sample | Index | N | Why this N |
+|---|---|---|---|---|
+| `wire.firehose.decrypt` `DECRYPT_OK` (`base.log`) | `wire.sampled.decrypt`, with `hex` | `cimmeria-trace` | 53 | ~6 packets/s idle, ~20 moving: one hex sample every 2.5–9 s per client |
+| `wire.firehose.udp_in` `UDP_IN` (`base.log`) | `wire.sampled.udp_in`, `len` only | `cimmeria-trace` | 53 | Same stream as `DECRYPT_OK`. No hex: pre-login datagrams carry the `baseAppLogin` ticket |
+| `wire.firehose.aoi_position` `AoI: entity position update` (`world_entry.log`) | `wire.out.avatar_update` (the NA00 row) | `cimmeria-server` | 101 | Was 100. A shared counter samples only pairs at multiples of `gcd(N, pairs per tick)`, so at exactly 50 pairs per tick 100 always hit the same pair; a prime covers every pair below 101 |
+
+All three N are primes for the same reason: a client's packet mix and the
+AoI relay order are periodic, and a composite N can phase-lock the sample
+onto one packet kind or one pair.
+
+`crates/server/src/logging/parity_tests.rs` builds the production filters
+on recording layers and, for every directive of every file layer, fires a
+representative event at TRACE, DEBUG and INFO: an event the file keeps
+must reach exactly one OTLP index, or, for a firehose, none, with its
+sample reaching one. It also checks `server.log`'s targets, that no
+target at any level reaches two indexes, and that the guard itself
+catches a file layer added without `OTEL_FILTER` coverage.
+
 ### Stable target catalog
 
 Every event with a stable `target:` is a queryable surface in SigNoz —
@@ -177,7 +234,7 @@ to crate-rename churn) and **named for the question they answer**.
 A new target is only cheap to *emit*. For it to **reach SigNoz** you
 also have to name it in `OTEL_FILTER`, the `EnvFilter` directive string
 shared by the OTLP trace and log layers in
-[`crates/server/src/logging.rs`](../../crates/server/src/logging.rs). A
+[`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs). A
 custom target that is not listed there inherits the leading `info`, so
 every DEBUG event it emits is dropped before the exporter sees it. That
 is what happened to `aoi.create_emit`: the seam was built to localise the
@@ -242,7 +299,7 @@ at its real level and asserts all of them pass.
 | `console.feedback` | DEBUG | `cell::cell_methods::gm::feedback::send_gm_feedback` | The text every `.`-command sent back to the GM — results and rejection reasons alike (first 400 chars) |
 | `playtest.friction` | WARN | `cell::playtest_friction` | Stuck-player detectors — one event per episode, discriminated by `signal`. Episode counters: `repeat_interact_no_effect` (5 dead-end interacts on one target / 60 s), `repeat_item_use_no_chain` (2 / 120 s), `console_reject_streak` (3 / 120 s), `escort_separated` (escort > 3x `follow_max_distance` for 5 AI ticks), `escort_leader_teleported` (a followed player is about to be teleported — the escort stays behind). Time-based, re-evaluated every 2 s on movement packets (so only while the player is sending movement): `step_stalled` (step unchanged 5 min), `region_dwell_no_hint` (server-side point-in-polygon containment for 6 s with no client hint — the post-respawn Throne Room shape), `death_then_silence` (hinting client sends none for 120 s + 100 u after `callForAid`). Event-driven, fire at the gameplay event whether or not the player is moving: `dialog_displaced` (a dialog replaced < 3 s after display) and `objective_never_completed` (objective still open when a chain force-completes the mission). Raised from behaviour, not from knowing the cause |
 | `movement.movement_type` | DEBUG (`sent`, `cleared`) / TRACE (`deduped`) | `cell::abilities::messaging::broadcast_movement_type` | Every `setMovementType` outcome. The client picks mob animation from this byte, not from velocity, and `cleared` puts **nothing** on the wire — an NPC that translates afterwards renders in its prior pose. Fields: `kind`, `kind_byte`, `prior_kind`, `outcome`, `witness_count` |
-| `wire.out.avatar_update` | DEBUG (1-in-100 over all sends) | `base::world_entry::cell_dispatch::aoi::entity_moved` | What a witness was actually told about an entity: `witness_id`, `entity_id`, position, velocity, `yaw_rad`, **`yaw_byte`**, `pitch_byte`, `pos_variant`, and (NA02) `npc_moved_since_last` — `false` beside a non-zero velocity is an NPC the client animates as running while it stands still. There is no movement-type field: the client animates NPC movement from velocity alone. UPDATE_AVATAR is unreliable and never reaches `wire.out`, so this is the only record of transmitted position/facing |
+| `wire.out.avatar_update` | DEBUG (1-in-101 over all sends; `sampled_1_in`, `suppressed`) | `firehose::log_entity_moved`, from `base::world_entry::cell_dispatch::aoi::entity_moved` | The SigNoz sample of the `wire.firehose.aoi_position` firehose (NA25). What a witness was actually told about an entity: `witness_id`, `entity_id`, position, velocity, `yaw_rad`, **`yaw_byte`**, `pitch_byte`, `pos_variant`, and (NA02) `npc_moved_since_last` — `false` beside a non-zero velocity is an NPC the client animates as running while it stands still. There is no movement-type field: the client animates NPC movement from velocity alone. UPDATE_AVATAR is unreliable and never reaches `wire.out`, so this is the only record of transmitted position/facing |
 | `content.resolve` | DEBUG | `cimmeria_content_engine::chain::ChainEngine::resolve_event` | A chain whose **trigger matched but a condition failed** — names the first failing condition (`failed_condition`, `failed_condition_index`, `conditions_total`), the `chain_id` / `chain_name`, `trigger_type` and `source_entity`; `reason = "condition_failed"`. Distinguishes "nothing listens for this event" from "a chain listens but its step is not active yet" — the ordering-bug shape. Generic across every content trigger |
 | `cover.detection` | DEBUG | `cell::service::ticks::cover::log_cover_edge` | One row per player cover-set proximity edge (`edge = entered \| left`): position, `crouched`, `nodes_in_set_nearby`, `nearest_node_id` / `nearest_node_dist` / node position, `proximity_radius`. Cover detection is pure proximity and never consults crouch |
 | `mission.step_context` | DEBUG | `cell::missions::progression::advance_step` | State that is **already true** when a mission step activates: `regions_inside`, `cover_sets`, `crouched`, `in_combat`, position. Region and cover triggers are edge events, so anything listed here will not re-fire for the new step |
@@ -264,7 +321,7 @@ at its real level and asserts all of them pass.
 | `cover.selection` | DEBUG, ≤ 1 / 10 s per NPC | `cell::service::npc_ai::fight_cover` | NA02. `event = "picked"`: the best free node's `chunk_id`, `node_id`, `score`, `move_dist`, `threat_dist`, `scanned`. `event = "rejected"`: the top 3 losers with `rank` and `reason` (`reserved` \| `lower_score`) |
 | `wire.out.forced_position` | DEBUG | `base::world_entry::teleport::handle_teleport_player` | NA02. Every `FORCED_POSITION` sent: position, previous position, `snap_dist`, `reason`. All are player snaps today — no NPC snap (the leash included) is sent as a forced position; witnesses learn of it from the next AoI `EntityMoved` |
 | `movement.navmesh` | INFO | `cell::space_manager::navmesh_mode::log_navmesh_summary` | `reason = "navmesh_mode_summary"`: one line at startup per resident space that **has** a mesh — `space_id`, `world_name`, `navmesh_mode` (`enforce` \| `advisory`), `poly_count`, `spawn_rows`, `spawn_rows_off_mesh`. A high `spawn_rows_off_mesh` on an `enforce` world is an invisible-wall report waiting to happen: the mesh loaded, but it does not describe the map players walk, and the holes are hard gates for everyone except GMs. INFO rather than WARN because an advisory world is expected to have a high count — the actionable signal is the number moving. See [navmesh-containment-modes.md](navmesh-containment-modes.md) |
-| `movement.navmesh` | TRACE (level-gated) | `cell::space_manager::client_move` | `reason = "advisory_off_mesh_accepted"`: an off-mesh position an `advisory` world accepted — `entity_id`, `space_id`, `client_x` / `client_y` / `client_z`. Guarded by `tracing::enabled!` **before** the Detour query, so it costs nothing until the level is on. This is the real player traffic a mesh rebake needs (which parts of the world people actually walk through), as opposed to a static grid probe |
+| `movement.navmesh` | TRACE (level-gated), ≤ 1 / 500 ms per player | `cell::space_manager::client_move` | `reason = "advisory_off_mesh_accepted"`: an off-mesh position an `advisory` world accepted — `entity_id`, `space_id`, `world`, `client_x` / `client_y` / `client_z`, `suppressed`. Guarded by `tracing::enabled!` **before** the Detour query. No layer enabled it before NA25, so it never fired; the `cimmeria-trace` index now does whenever OTLP is on, so it is throttled per player (`ADVISORY_OFF_MESH_LOG_INTERVAL`, a breadcrumb every ~3 units at run speed). This is the real player traffic a mesh rebake needs (which parts of the world people actually walk through), as opposed to a static grid probe |
 | `movement.navmesh` | WARN | `cell::space_manager::navmesh_mode::mode_from_db_value` | `reason = "navmesh_mode_unrecognised"`: `resources.worlds.navmesh_mode` held a value this build does not know (`world_name`, `raw_value`). Falls back to `enforce` — containment stays on |
 | `navmesh.load` | ERROR | `entity::navigation::check_count` | Hostile `.nav` header rejected — space loads navmesh-less |
 
@@ -414,6 +471,23 @@ Sampling is `always_on` by default — Mercury packet rate is the
 analytical surface we care about, sampling defeats the purpose. If
 volume becomes an issue, the lever is `OTEL_TRACES_SAMPLER` (set per
 deployment via the compose env var), not source code changes.
+
+The exception is the log firehoses (see "Log indexes and parity with the
+log files" above). Those are sampled in source, because the question
+asked of them is "what did this packet look like", which a counted
+sample answers, and a 1:1 export would outweigh every other row in the
+trace index. Estimated volume with five active players: ~75 inbound
+packets/s give ~1.4 `DECRYPT_OK` and ~1.4 `UDP_IN` samples/s. The AoI
+relay (~10 Hz per witness–entity pair, ~1,200/s at 3 players watching 40
+NPCs) sends ~12 samples/s to `cimmeria-server`, as it has since NA00.
+The remaining per-packet TRACE rows are **not** sampled: `encrypt` /
+`decrypt` in `cimmeria_mercury` (one per outbound and per inbound
+datagram), ACK queueing, `EntityMove` and
+`AVATAR_UPDATE_EXPLICIT -> CellService` (one per player movement
+packet). They are a few fields each and arrive at about the rate of
+`mercury.packet`, which `cimmeria-network` already receives unsampled —
+roughly one `cimmeria-trace` row per datagram. If that proves too much,
+move them behind `cimmeria_services::firehose` the same way.
 
 ### Timestamps — server-receive vs. client-generate
 

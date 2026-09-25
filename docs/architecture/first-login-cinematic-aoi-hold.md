@@ -64,7 +64,7 @@ on:
    drop is *inside the client, after delivery*.
 3. **The seam built to localise it was invisible.** The `aoi.create_emit`
    DEBUG event added by #582 never reached SigNoz, because the OTLP
-   `EnvFilter` in [`crates/server/src/logging.rs`](../../crates/server/src/logging.rs)
+   `EnvFilter` in `crates/server/src/logging.rs` (now [`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs))
    named only `aoi.entity_enter=debug,aoi.entity_leave=debug`, and an unnamed
    custom target inherits the leading `info`.
 
@@ -187,7 +187,7 @@ address moved.
   `token`, `hold_ms`; `event = "hold_released"` with `reason`
   (`cancel_movie` | `timeout`), `flushed`, `held_ms`.
 - **`aoi.create_emit`** (DEBUG) now actually exports. `OTEL_FILTER` is a named
-  constant in `logging.rs` and includes `aoi.create_emit=debug`, pinned by the
+  constant in `logging/filters.rs` and includes `aoi.create_emit=debug`, pinned by the
   unit test `otel_filter_exports_the_debug_level_aoi_seams`. This is worth
   more than the hold itself: whatever the next repro shows, the per-entity
   emit seam will be in it.
