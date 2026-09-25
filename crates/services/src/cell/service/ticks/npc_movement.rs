@@ -207,8 +207,9 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                 .is_multiple_of(NPC_STEP_LOG_SAMPLE);
             if leg_step <= NPC_LEG_HEAD_STEPS || sampled {
-                // Only queried for logged steps. `None` = no navmesh here.
-                let ground_y = space_mgr.get_navmesh_height(npc_id, new_x, new_z);
+                // Only queried for logged steps. `None` = no navmesh, or
+                // no surface within jump height of `new_y` (floating).
+                let ground_y = space_mgr.get_navmesh_height(npc_id, new_x, new_y, new_z);
                 tracing::debug!(
                     target: "movement.npc",
                     event = "step",
