@@ -78,6 +78,7 @@ mod dead_player_drop;
 mod leash_reset;
 mod leash_walk;
 mod melee_reach;
+mod occluder_los;
 mod off_mesh_sentry;
 mod path_robustness;
 mod selector;

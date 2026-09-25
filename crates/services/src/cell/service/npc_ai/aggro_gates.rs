@@ -11,11 +11,13 @@
 //! 5. it is not a GM with `.aggro off` set (`gm_ignored`);
 //! 6. it is on the NPC's floor, `|dy| <= 4` (`out_of_vertical_band`);
 //! 7. it is inside the NPC's aggro radius, horizontally (`out_of_radius`);
-//! 8. the navmesh sees it (`no_los`). `Unknown` (an endpoint off the mesh)
-//!    fails **closed** here, unlike the attack check (D-NA08). A space with no
-//!    navmesh at all has nothing to check and passes; the vertical band is the
-//!    only storey guard there. An NPC standing at a cover slot looks from the
-//!    slot's peek point past the prop (NA23, D-NA12; see
+//! 8. it is in line of sight (`no_los`): the world's collision-geometry
+//!    occluder when it ships one (NA27, D-NA13), else the navmesh ray.
+//!    `Unknown` (an endpoint off the occluder's grid, or off the mesh) fails
+//!    **closed** here, unlike the attack check (D-NA08). A space with neither
+//!    source has nothing to check and passes; the vertical band is the only
+//!    storey guard there. Without an occluder, an NPC standing at a cover
+//!    slot looks from the slot's peek point past the prop (NA23, D-NA12; see
 //!    `SpaceManager::npc_line_of_sight`).
 //!
 //! Gates 6-8 are [`same_room`], which the NA14 assist fan-out
@@ -101,7 +103,7 @@ pub(in crate::cell) fn same_room(
     {
         LineOfSight::Clear => {}
         LineOfSight::Blocked => return Err(AggroReject::NoLos),
-        LineOfSight::Unknown if space_mgr.space_has_navmesh(npc_id) => {
+        LineOfSight::Unknown if space_mgr.space_has_line_of_sight_source(npc_id) => {
             return Err(AggroReject::NoLos)
         }
         LineOfSight::Unknown => {}

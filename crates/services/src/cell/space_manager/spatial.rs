@@ -34,7 +34,12 @@ impl SpaceManager {
     /// somewhere the mesh does not cover (9 of the 13 stationary Harset mobs
     /// against `harset.nav`), and that used to read as "blocked" and silence
     /// the NPC for good.
+    ///
+    /// Where the space has an occluder (NA27) the answer comes from it,
+    /// eye to eye ([`super::eye_height`]), and `Unknown` means an endpoint
+    /// off the occluder's grid.
     pub fn line_of_sight(&self, entity_a: u32, entity_b: u32) -> LineOfSight {
+        use crate::cell::service::npc_ai::detectors::los::{self, LosSource};
         let Some(space) = self
             .entity_space
             .get(&entity_a)
@@ -42,22 +47,60 @@ impl SpaceManager {
         else {
             return LineOfSight::Unknown;
         };
-        let Some(navmesh) = &space.navmesh else {
+        let (Some(a), Some(b)) = (space.entities.get(&entity_a), space.entities.get(&entity_b))
+        else {
+            return LineOfSight::Unknown;
+        };
+        if let Some(occ) = &space.occluder {
+            let (ea, eb) = (super::eye_height(a), super::eye_height(b));
+            let probe = super::occluder_probe(occ, a.position, ea, b.position, eb);
+            los::report(
+                self,
+                entity_a,
+                entity_b,
+                a.position,
+                b.position,
+                &probe,
+                LosSource::Occluder {
+                    hash: occ.short_hash(),
+                    eye_height: ea,
+                },
+                "npc",
+                std::time::Instant::now(),
+            );
+            return probe.result;
+        }
+        self.navmesh_line_of_sight(entity_a, entity_b)
+    }
+
+    /// [`Self::line_of_sight`] from the navmesh ray alone, whether or not
+    /// the space has an occluder. The attack check's fallback when the
+    /// occluder answers `Unknown` (an endpoint outside its trimmed area).
+    pub fn navmesh_line_of_sight(&self, entity_a: u32, entity_b: u32) -> LineOfSight {
+        use crate::cell::service::npc_ai::detectors::los::{self, LosSource};
+        let Some(space) = self
+            .entity_space
+            .get(&entity_a)
+            .and_then(|sid| self.spaces.get(sid))
+        else {
             return LineOfSight::Unknown;
         };
         let (Some(a), Some(b)) = (space.entities.get(&entity_a), space.entities.get(&entity_b))
         else {
             return LineOfSight::Unknown;
         };
+        let Some(navmesh) = &space.navmesh else {
+            return LineOfSight::Unknown;
+        };
         let probe = navmesh.line_of_sight_probe(&a.position, &b.position);
-        crate::cell::service::npc_ai::detectors::los::report(
+        los::report(
             self,
             entity_a,
             entity_b,
             a.position,
             b.position,
             &probe,
-            Some(navmesh.short_hash()),
+            LosSource::Navmesh(navmesh.short_hash()),
             "npc",
             std::time::Instant::now(),
         );
@@ -74,8 +117,19 @@ impl SpaceManager {
     /// audit S11: the Find Ambernol drone and the med-station desk;
     /// decision D-NA11). A mobile NPC at its cover slot looks from the
     /// slot's peek point (NA23, D-NA12; [`Self::npc_line_of_sight`]).
+    ///
+    /// In a space with an occluder (NA27, D-NA13) none of that applies: the
+    /// occluder's eye-to-eye verdict decides ([`AttackLosPolicy::Occluder`]).
+    /// Only when it answers `Unknown` (an endpoint outside the area it was
+    /// trimmed to) do the navmesh rules above decide instead.
     pub fn attack_line_of_sight(&self, npc_id: u32, target_id: u32, is_stationary: bool) -> bool {
-        let sight = self.npc_line_of_sight(npc_id, target_id);
+        let mut sight = self.npc_line_of_sight(npc_id, target_id);
+        if sight.los == LineOfSight::Unknown && self.space_has_occluder(npc_id) {
+            sight = self.npc_navmesh_sight(npc_id, target_id);
+            return self
+                .navmesh_attack_los_policy(npc_id, target_id, is_stationary, sight)
+                .permits();
+        }
         self.attack_los_policy(npc_id, target_id, is_stationary, sight)
             .permits()
     }
@@ -91,7 +145,28 @@ impl SpaceManager {
         is_stationary: bool,
         sight: impl Into<NpcSight>,
     ) -> AttackLosPolicy {
-        let NpcSight { los, origin } = sight.into();
+        let sight = sight.into();
+        // Collision geometry sees over furniture and cover props, so none of
+        // the navmesh workarounds applies: no stationary relaxation (D-NA11
+        // is retired where an occluder exists) and no peek point. An
+        // `Unknown` (off the occluder's grid) takes the navmesh rules.
+        if sight.los != LineOfSight::Unknown && self.space_has_occluder(npc_id) {
+            return AttackLosPolicy::Occluder(sight.los == LineOfSight::Clear);
+        }
+        self.navmesh_attack_los_policy(npc_id, target_id, is_stationary, sight)
+    }
+
+    /// The navmesh attack rules (NA16 / NA23): strict for a mobile NPC, the
+    /// peek-point verdict for one in cover, the same-storey relaxation for a
+    /// stationary one.
+    fn navmesh_attack_los_policy(
+        &self,
+        npc_id: u32,
+        target_id: u32,
+        is_stationary: bool,
+        sight: NpcSight,
+    ) -> AttackLosPolicy {
+        let NpcSight { los, origin } = sight;
         // An NPC standing at its cover slot looked from the slot's peek
         // point, past the prop: the verdict is strict from there, so a wall
         // beyond the cover still stops the shot (NA23, D-NA12). NA22 skipped
@@ -294,13 +369,17 @@ pub enum AttackLosPolicy {
     /// whether it permits the shot. `los=blocked` with it is a wall past the
     /// cover, or a slot with no peek point on the mesh.
     CoverPeek(bool),
+    /// The space has a collision-geometry occluder (NA27, D-NA13): its
+    /// eye-to-eye verdict as is, for mobile, stationary and in-cover NPCs
+    /// alike. Carries whether it permits the shot.
+    Occluder(bool),
 }
 
 impl AttackLosPolicy {
     /// Whether this rule lets the NPC fire.
     pub fn permits(self) -> bool {
         match self {
-            Self::Strict(ok) | Self::CoverPeek(ok) => ok,
+            Self::Strict(ok) | Self::CoverPeek(ok) | Self::Occluder(ok) => ok,
             Self::Stationary | Self::StationaryRelaxed => true,
             Self::StationaryOtherStorey => false,
         }
@@ -314,6 +393,7 @@ impl AttackLosPolicy {
             Self::StationaryRelaxed => "stationary_relaxed",
             Self::StationaryOtherStorey => "stationary_other_storey",
             Self::CoverPeek(_) => "cover_peek",
+            Self::Occluder(_) => "occluder",
         }
     }
 }

@@ -132,7 +132,21 @@ Of the 236 markers, 150 peek over their prop (median 1.6 u), 17 round it and 69 
 
 **Why not the stationary rule?** D-NA11 lets a stationary NPC fire across any same-floor `Blocked`, which would have let the hallway guard keep shooting through walls. The peek point removes only the one obstacle the NPC is known to be behind.
 
-**Known cost.** The mess-hall tables are navmesh holes too, so from its slot a mess-hall guard sees little of the room. It holds fire from cover for 3 s, then leaves the slot and closes in. The collision-geometry occluder (#784) is the real fix for furniture.
+**Known cost.** The mess-hall tables are navmesh holes too, so from its slot a mess-hall guard sees little of the room. It holds fire from cover for 3 s, then leaves the slot and closes in. The collision-geometry occluder is the fix for furniture; see decision 10.
+
+### 10. The occluder replaces the peek point (NA27, D-NA13)
+
+In a world that ships `data/spaces/<world>.occ`, an NPC at a cover slot
+looks from its own eyes (1.5 m) over the prop, and the peek point is not
+used. `SpaceManager::npc_line_of_sight`, `npc_sight_origin` and
+`slot_has_shot` all take the occluder first. The cover prop is solid
+geometry below eye height, so it no longer blocks the NPC hiding behind
+it, and every wall past it still blocks. The shot is `los_policy=occluder`,
+not `cover_peek`. Decision 9 is the rule only for a world with no
+occluder. On Castle_CellBlock, `Hallway01_Guard` sees Lomiada at 13.6 u
+over its counter, a spot the peek point still read as blocked.
+`Hallway02_Guard` stays blind through the hallway walls. The mess-hall
+tables are geometry too, so a guard there sees the room from its slot.
 
 ## Telemetry
 
@@ -148,7 +162,8 @@ Of the 236 markers, 150 peek over their prop (median 1.6 u), 17 round it and 69 
 | `movement.npc event=stop reason=in_cover` | the arrival stop |
 | `npc_ai.tick los_policy=cover_peek` | an NPC at its slot, whose line was checked from the slot's peek point (NA23); `in_cover_slot` on builds before NA23 |
 | `npc_ai decision_outcome=cover_no_shot` (DEBUG) | at its slot with no line from the peek point, holding fire; carries `blind_ms` |
-| `npc_ai.los origin=cover_peek` / `cover_no_peek` | a non-clear ray from an NPC at a slot, with the peek point as `from_xyz` |
+| `npc_ai.los origin=cover_peek` / `cover_no_peek` | a non-clear ray from an NPC at a slot, with the peek point as `from_xyz` (worlds with no occluder) |
+| `npc_ai.tick los_policy=occluder`, `npc_ai.los source=occluder` | the verdict came from the world's occluder, eye to eye (NA27), cover slot or not |
 | `npc_ai.path_fail reason=partial decision_outcome=cover_partial` | a partial route to a slot |
 
 ## Consequences

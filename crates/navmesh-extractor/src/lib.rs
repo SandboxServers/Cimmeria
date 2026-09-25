@@ -41,6 +41,7 @@ pub mod nav_roundtrip;
 pub mod nav_tiled;
 pub mod obj;
 pub mod obj_slab;
+pub mod occluder;
 pub mod staticmesh;
 pub mod terrain;
 /// Synthetic UE3 package fixtures. Behind `test-support` so nothing

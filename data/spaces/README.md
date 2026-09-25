@@ -171,3 +171,92 @@ build from. `Login_Map` is skipped on purpose.
 `data/spaces` went from 6.7 MB (6 files) to 36.5 MB (24 files) with NA26,
 and to 76.9 MB with NA28's seven tiled meshes (62.2 MB of it). The largest
 file is `beta_site_evo_1.nav` at 13.4 MB; it loads in about 0.1 s.
+
+## Occluders (`*.occ`, NA27)
+
+Each world in this directory also ships a `<world>.occ`, its
+collision-geometry occluder for server-side line of sight
+([#784](https://github.com/SandboxServers/Cimmeria/issues/784), decision
+D-NA13). The file name follows the `.nav` rule: the world name lower-cased,
+with spaces replaced by underscores. A world with no `.occ` keeps the
+navmesh ray, so the file is optional.
+
+### Build
+
+```bash
+python tools/occluder_entry_points.py > entry_points.tsv
+target/release/occluder_extract build \
+  --cooked-root "<CookedPC>" --map <ClientMap> --index <package_index.bin> \
+  --nav data/spaces/<world>.nav --entry-points entry_points.tsv \
+  --out data/spaces/<world>.occ
+```
+
+The inputs are:
+
+- the client map's collision triangles: StaticMesh, BSP and terrain, the
+  same set `extract_map` gives NavBuilder;
+- this directory's `.nav` for the world;
+- the entry points, which come from two places:
+  - the seeds, via `tools/occluder_entry_points.py`: spawnlist rows,
+    respawners, stargates and their arrival points, ring transport regions,
+    and chain `cross_world_teleport` / `move_waypoint` targets;
+  - the map itself: its `PlayerStart`, `SGWStargate` and `SGWTeleporter`
+    actors.
+
+Only the navmesh components that hold an entry point are kept. That set is
+then grown to any component within 5 m horizontally and 3 m vertically (a
+door or stair gap), and the coverage is those components plus a 15 m
+margin. Geometry outside the coverage is not stored. Triangles that cross
+its edge are clipped to it.
+
+Five worlds have no entry point that lands on their mesh, so they keep
+every component. Agnos_Library, Dakara_E1_StoryRm, Sewer_Falls and
+Tollana_Curia have no seed rows and no PlayerStart. Menfa_Light's one
+stargate row sits 190 m below its mesh. A chain `move_waypoint` names no
+world, so it takes the world of the entity it moves (its tag, looked up in
+the spawnlist).
+
+The files are 64 m pages, each compressed on its own. The server keeps them
+packed and unpacks only the pages within 132 m of a player
+(`space_manager::occlusion`). Two builds of the same map are byte-identical.
+
+### Size
+
+Built 2026-09-25 against the `.nav` files from NA26 (#794) and NA28 (#796;
+the seven marked "tiled mesh" read the whole-map tiled `XRCT` meshes) and
+the seeds after NA29 (#795), at 0.5 m cells. The untrimmed columns are the phase-1
+build: the whole map, unpaged. "One player" is the resident RAM with one
+player standing at the world's first entry point on the grid.
+
+| World | Triangles | Trimmed | Entry points on the mesh | Components kept | Untrimmed file (MB) | Untrimmed RAM (MB) | Shipped file (MB) | Pages | RAM, all unpacked (MB) | RAM, one player (MB, pages) | Unpack mean / max (µs) | Query (µs) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Castle_CellBlock | 1.53 M | 1.13 M | 35/35 | 13/17 | 0.3 | 7.2 | 0.3 | 23 | 5.1 | 3.3 (15) | 282 / 819 | 1.80 |
+| Castle | 4.14 M | 2.32 M | 50/50 | 94/549 | 5.3 | 23.9 | 3.2 | 98 | 16.4 | 5.6 (23) | 431 / 941 | 2.08 |
+| Agnos (tiled mesh) | 22.27 M | 9.22 M | 1/1 | 1568/6075 | 57.3 | 287.6 | 30.5 | 1114 | 168.0 | 4.0 (21) | 564 / 1476 | 1.28 |
+| Agnos_Library | 1.57 M | 0.00 M | 0/0 (none; all kept) | 57/57 | 0.9 | 8.4 | 1.0 | 104 | 7.9 | - (no entry point) | - | - |
+| Beta_Site_Evo_1 (tiled mesh) | 17.98 M | 13.17 M | 7/7 | 330/1119 | 13.3 | 67.9 | 5.3 | 272 | 30.8 | 2.3 (22) | 356 / 869 | 2.07 |
+| Dakara_E1 (tiled mesh) | 13.83 M | 1.51 M | 2/2 | 288/699 | 11.4 | 51.9 | 10.6 | 858 | 49.5 | 4.5 (23) | 631 / 2294 | 4.42 |
+| Dakara_E1_StoryRm | 0.05 M | 0.00 M | 0/0 (none; all kept) | 6/6 | 0.0 | 0.2 | 0.0 | 9 | 0.2 | - (no entry point) | - | - |
+| Harset | 3.37 M | 0.00 M | 43/43 | 273/372 | 3.7 | 21.6 | 3.8 | 224 | 21.6 | 7.0 (24) | 647 / 1947 | 1.13 |
+| Harset_CmdCenter | 0.23 M | 0.01 M | 13/13 | 7/14 | 0.3 | 2.6 | 0.3 | 12 | 2.5 | 2.5 (11) | 358 / 775 | 1.23 |
+| Harset_Market | 0.33 M | 0.00 M | 1/1 | 15/29 | 0.2 | 1.8 | 0.2 | 36 | 1.8 | 1.7 (22) | 139 / 1077 | 1.32 |
+| Harset_StorageRm | 0.28 M | 0.00 M | 1/1 | 10/16 | 0.3 | 1.7 | 0.3 | 8 | 1.7 | 1.7 (8) | 443 / 1057 | 2.23 |
+| Ihpet_Crater_Dark | 5.20 M | 2.35 M | 2/2 | 155/370 | 3.5 | 26.5 | 2.7 | 104 | 21.0 | 2.2 (19) | 280 / 695 | 1.74 |
+| Ihpet_Crater_Light | 5.20 M | 2.33 M | 2/2 | 159/371 | 3.5 | 26.6 | 2.7 | 105 | 21.1 | 2.2 (19) | 271 / 688 | 1.47 |
+| Lucia (tiled mesh) | 29.63 M | 8.19 M | 24/24 | 537/1955 | 22.9 | 92.6 | 18.5 | 1267 | 79.4 | 5.5 (23) | 547 / 1415 | 1.85 |
+| Menfa_Dark (tiled mesh) | 14.86 M | 0.07 M | 28/29 | 205/864 | 13.4 | 206.8 | 13.2 | 743 | 161.0 | 5.7 (22) | 765 / 1925 | 5.00 |
+| Menfa_Light (tiled mesh) | 8.54 M | 0.01 M | 0/1 (none; all kept) | 785/785 | 8.9 | 173.0 | 8.8 | 753 | 127.4 | 5.0 (23) | 468 / 1199 | 2.36 |
+| Omega_Site | 2.93 M | 1.04 M | 13/13 | 83/247 | 3.4 | 14.5 | 2.9 | 81 | 13.1 | 5.9 (23) | 519 / 1128 | 2.94 |
+| Omega_Site_CmdCenter | 0.48 M | 0.15 M | 2/2 | 5/45 | 48.1 | 681.7 | 0.7 | 20 | 6.4 | 6.2 (16) | 599 / 1253 | 2.77 |
+| SGC | 0.20 M | 0.00 M | 1/1 | 9/21 | 0.2 | 1.5 | 0.2 | 9 | 1.5 | 1.5 (9) | 283 / 1178 | 1.01 |
+| SGC_W1 | 0.55 M | 0.00 M | 23/27 | 30/68 | 0.5 | 4.2 | 0.5 | 37 | 4.2 | 1.4 (9) | 238 / 958 | 1.69 |
+| Sewer_Falls | 2.76 M | 0.00 M | 0/0 (none; all kept) | 139/139 | 2.4 | 17.2 | 2.4 | 224 | 17.2 | - (no entry point) | - | - |
+| Tollana (tiled mesh) | 19.32 M | 0.00 M | 5/5 | 554/1215 | 23.2 | 183.6 | 23.3 | 1292 | 183.5 | 5.3 (22) | 438 / 1298 | 2.06 |
+| Tollana_Curia | 0.02 M | 0.00 M | 0/0 (none; all kept) | 1/1 | 0.0 | 0.0 | 0.0 | 9 | 0.0 | - (no entry point) | - | - |
+
+The `.occ` files total 131.4 MB, and `data/spaces` about 209 MB. Omega_Site_CmdCenter used to fill a
+4.7 km grid from a few enormous triangles; clipping them to the explorable
+area took it from 682 MB to 6.4 MB of RAM. Query cost is the mean of 2,000
+random eye-height segments within 30 m of the player, with warm pages.
+Measurements and the design are in
+[the NA27 worknote](../../docs/analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).

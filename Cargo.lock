@@ -1055,6 +1055,7 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "cimmeria-navmesh-extractor",
+ "cimmeria-occluder",
  "cimmeria-upk",
  "cimmeria-upk-objects",
  "thiserror 2.0.20",
@@ -1069,6 +1070,14 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "tokio",
+]
+
+[[package]]
+name = "cimmeria-occluder"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -1133,6 +1142,7 @@ dependencies = [
  "cimmeria-game",
  "cimmeria-mercury",
  "cimmeria-observability",
+ "cimmeria-occluder",
  "proptest",
  "quick-xml 0.41.0",
  "rand 0.10.2",

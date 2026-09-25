@@ -365,6 +365,7 @@ pub(crate) fn test_insert_navmesh_space(
             entities: std::collections::HashMap::new(),
             players: std::collections::HashSet::new(),
             navmesh: Some(navmesh),
+            occluder: None,
         },
     );
     space_mgr
