@@ -16,6 +16,10 @@ pub mod cover;
 pub mod dispatch;
 pub mod effects;
 pub mod gate_travel;
+/// Seed-vs-navmesh guards for the Harset coordinates placed from map data
+/// (`docs/analysis/harset-rebuild/placements/`). Test-only.
+#[cfg(test)]
+mod harset_placement_tests;
 pub mod interactions;
 pub(crate) mod kismet;
 pub mod mail;

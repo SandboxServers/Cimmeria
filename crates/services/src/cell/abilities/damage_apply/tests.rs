@@ -18,7 +18,7 @@ use cimmeria_entity::abilities::EffectDef;
 /// `send_entity_method` addressed to the NPC resolves to "no
 /// witnesses, drop the message" and the wire-side assertions
 /// silently fail.
-fn make_mgr_player_vs_npc() -> SpaceManager {
+pub(super) fn make_mgr_player_vs_npc() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
@@ -44,7 +44,7 @@ fn make_mgr_player_vs_npc() -> SpaceManager {
     mgr
 }
 
-fn make_ability(id: i32, effect_ids: Vec<i32>) -> AbilityDef {
+pub(super) fn make_ability(id: i32, effect_ids: Vec<i32>) -> AbilityDef {
     AbilityDef {
         ability_id: id,
         name: "test".to_string(),
@@ -78,7 +78,7 @@ fn make_effect(id: i32, health_damage: i32) -> EffectDef {
     }
 }
 
-fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<CellToBaseMsg> {
+pub(super) fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<CellToBaseMsg> {
     let mut out = Vec::new();
     while let Ok(m) = rx.try_recv() {
         out.push(m);
@@ -86,7 +86,7 @@ fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<CellToBaseMsg> {
     out
 }
 
-fn has_method(msgs: &[CellToBaseMsg], target: u32, method: u16) -> bool {
+pub(super) fn has_method(msgs: &[CellToBaseMsg], target: u32, method: u16) -> bool {
     msgs.iter().any(|m| match m {
         CellToBaseMsg::EntityMethodCall {
             entity_id,

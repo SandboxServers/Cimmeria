@@ -266,6 +266,20 @@ pub enum BaseToCellMsg {
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
     ReloadContentEngine,
 
+    /// Fan a base-built entity-method call on `entity_id` out to every player
+    /// currently witnessing it (never to `entity_id`'s own client).
+    ///
+    /// For state the base owns but other players render: the
+    /// `BeingAppearance` rebuilt on equip / holster / bandolier change, the
+    /// level bumped by an XP grant. The cell owns the witness sets, so the
+    /// base sends the finished args here and the cell re-emits one
+    /// `CellToBaseMsg::WitnessEntityMethod` per observer.
+    BroadcastToWitnesses {
+        entity_id: u32,
+        method_index: u16,
+        args: Vec<u8>,
+    },
+
     /// Run a GM `.`-console line on behalf of `entity_id` and return the
     /// captured feedback output instead of sending it to the player as chat.
     ///

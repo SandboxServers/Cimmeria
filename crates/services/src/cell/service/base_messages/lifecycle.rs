@@ -238,6 +238,13 @@ pub(super) async fn handle_disconnect_entity(
     // disconnect mid-trade has to notify the surviving partner.
     crate::cell::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr)
         .await;
+    // Persist the last known world + position BEFORE the teardown below
+    // removes the entity. This is the only write of `sgw_player.pos_*` on
+    // the way out of a session: gate travel and the GM teleport write their
+    // destination, nothing else does, so without this a returning character
+    // spawns at the last gate arrival or the creation point rather than
+    // where they logged out. Players only — NPCs have no row to update.
+    persist_last_position(entity_id, tx, space_mgr).await;
     // Flush dirty bandolier ammo BEFORE space_mgr.disconnect_entity,
     // which internally calls destroy_entity. Without this, the entity
     // is gone by the time DestroyEntity arrives next and its flush
@@ -287,5 +294,49 @@ async fn flush_bandolier_ammo_for_entity(
             crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx)
                 .await;
         }
+    }
+}
+
+/// Queue `CellToBaseMsg::PersistPosition` for a player entity that is about
+/// to be torn down. No-op for NPCs and for entities that never received
+/// their `player_id` (a session that dropped before character select).
+async fn persist_last_position(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let Some(entity) = space_mgr.get_entity(entity_id) else {
+        return;
+    };
+    let (true, Some(player_id)) = (entity.is_player, entity.player_id) else {
+        return;
+    };
+    let Some(world_name) = space_mgr.get_entity_world_name(entity_id) else {
+        tracing::warn!(
+            entity_id,
+            player_id,
+            reason = "entity_has_no_space",
+            "DisconnectEntity: player entity is in no space — last position not persisted"
+        );
+        return;
+    };
+    let position = [entity.position.x, entity.position.y, entity.position.z];
+    if let Err(e) = tx
+        .send(CellToBaseMsg::PersistPosition {
+            player_id,
+            world_name: world_name.clone(),
+            position,
+        })
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            player_id,
+            world = %world_name,
+            ?position,
+            error = %e,
+            "DisconnectEntity: PersistPosition send failed — the next login will use \
+             the previously stored position"
+        );
     }
 }

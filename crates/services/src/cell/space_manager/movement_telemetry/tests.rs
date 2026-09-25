@@ -11,13 +11,18 @@ use super::*;
 
 const WINDOW: Duration = Duration::from_secs(1);
 
+/// These pin the arithmetic, not the key: one kind throughout, so a
+/// window is per entity exactly as it was before `kind` joined the
+/// key. The per-kind split has its own guard below.
+const KIND: &str = "reject";
+
 /// The first occurrence for an entity always emits, immediately. A
 /// throttle that made the first one wait would delay the single most
 /// useful row — the one that says a problem started.
 #[test]
 fn the_first_occurrence_emits_with_nothing_suppressed() {
     let mut t = LogThrottle::default();
-    assert_eq!(t.admit(1, Instant::now(), WINDOW), Some(0));
+    assert_eq!(t.admit(1, KIND, Instant::now(), WINDOW), Some(0));
 }
 
 /// Occurrences inside the window are counted, not written, and the next
@@ -27,23 +32,23 @@ fn suppressed_count_is_exact_across_the_window() {
     let mut t = LogThrottle::default();
     let t0 = Instant::now();
 
-    assert_eq!(t.admit(1, t0, WINDOW), Some(0));
+    assert_eq!(t.admit(1, KIND, t0, WINDOW), Some(0));
     for i in 1..=7 {
         assert_eq!(
-            t.admit(1, t0 + Duration::from_millis(i * 10), WINDOW),
+            t.admit(1, KIND, t0 + Duration::from_millis(i * 10), WINDOW),
             None,
             "occurrence {i} is inside the window and must not emit"
         );
     }
     assert_eq!(
-        t.admit(1, t0 + Duration::from_secs(2), WINDOW),
+        t.admit(1, KIND, t0 + Duration::from_secs(2), WINDOW),
         Some(7),
         "the next emitted row must account for all seven elided \
          occurrences — an off-by-one here misreports the magnitude of a \
          stuck-entity episode, which is the number an operator triages on"
     );
     assert_eq!(
-        t.admit(1, t0 + Duration::from_secs(4), WINDOW),
+        t.admit(1, KIND, t0 + Duration::from_secs(4), WINDOW),
         Some(0),
         "the counter resets after each emission; it is a per-gap count, \
          not a running total"
@@ -57,9 +62,12 @@ fn suppressed_count_is_exact_across_the_window() {
 fn exactly_one_interval_later_emits() {
     let mut t = LogThrottle::default();
     let t0 = Instant::now();
-    assert_eq!(t.admit(1, t0, WINDOW), Some(0));
-    assert_eq!(t.admit(1, t0 + Duration::from_millis(999), WINDOW), None);
-    assert_eq!(t.admit(1, t0 + WINDOW, WINDOW), Some(1));
+    assert_eq!(t.admit(1, KIND, t0, WINDOW), Some(0));
+    assert_eq!(
+        t.admit(1, KIND, t0 + Duration::from_millis(999), WINDOW),
+        None
+    );
+    assert_eq!(t.admit(1, KIND, t0 + WINDOW, WINDOW), Some(1));
 }
 
 /// Entities are independent. Without this, one spamming client hides
@@ -69,10 +77,10 @@ fn exactly_one_interval_later_emits() {
 fn entities_do_not_share_a_window() {
     let mut t = LogThrottle::default();
     let t0 = Instant::now();
-    assert_eq!(t.admit(1, t0, WINDOW), Some(0));
-    assert_eq!(t.admit(1, t0, WINDOW), None);
+    assert_eq!(t.admit(1, KIND, t0, WINDOW), Some(0));
+    assert_eq!(t.admit(1, KIND, t0, WINDOW), None);
     assert_eq!(
-        t.admit(2, t0, WINDOW),
+        t.admit(2, KIND, t0, WINDOW),
         Some(0),
         "a second entity's first occurrence must emit regardless of the \
          first entity's open window"
@@ -85,14 +93,14 @@ fn entities_do_not_share_a_window() {
 fn forget_releases_the_slot_and_resets_the_window() {
     let mut t = LogThrottle::default();
     let t0 = Instant::now();
-    t.admit(1, t0, WINDOW);
-    t.admit(1, t0, WINDOW);
+    t.admit(1, KIND, t0, WINDOW);
+    t.admit(1, KIND, t0, WINDOW);
     assert_eq!(t.tracked(), 1);
 
     t.forget(1);
     assert_eq!(t.tracked(), 0, "state must not outlive the entity");
     assert_eq!(
-        t.admit(1, t0, WINDOW),
+        t.admit(1, KIND, t0, WINDOW),
         Some(0),
         "a reused entity id must emit its first occurrence rather than \
          inherit the previous occupant's open window and suppression count"
@@ -106,9 +114,9 @@ fn forget_releases_the_slot_and_resets_the_window() {
 fn a_rewound_clock_suppresses_rather_than_panicking() {
     let mut t = LogThrottle::default();
     let t0 = Instant::now() + Duration::from_secs(10);
-    assert_eq!(t.admit(1, t0, WINDOW), Some(0));
+    assert_eq!(t.admit(1, KIND, t0, WINDOW), Some(0));
     assert_eq!(
-        t.admit(1, t0 - Duration::from_secs(5), WINDOW),
+        t.admit(1, KIND, t0 - Duration::from_secs(5), WINDOW),
         None,
         "a sample from before the last emission reads as zero elapsed, so \
          it suppresses — the safe direction"
@@ -141,6 +149,36 @@ fn position_sample_budget_matches_the_documented_rate() {
     assert_eq!(REJECT_LOG_MIN_INTERVAL, Duration::from_secs(1));
 }
 
+/// Kinds are independent windows on the same entity, and `forget`
+/// still releases all of them.
+///
+/// This is what keeps a *transition* visible: the row that says an
+/// entity moved from being corrected to no longer being corrected must
+/// not wait out the window its own predecessor opened.
+#[test]
+fn kinds_do_not_share_a_window_but_are_forgotten_together() {
+    let mut t = LogThrottle::default();
+    let t0 = Instant::now();
+
+    assert_eq!(t.admit(1, "reject", t0, WINDOW), Some(0));
+    assert_eq!(t.admit(1, "reject", t0, WINDOW), None);
+    assert_eq!(
+        t.admit(1, "suppressed", t0, WINDOW),
+        Some(0),
+        "a different kind on the same entity must emit its first \
+         occurrence — that occurrence is the state change"
+    );
+    assert_eq!(t.tracked(), 2, "one slot per (entity, kind)");
+
+    t.forget(1);
+    assert_eq!(
+        t.tracked(),
+        0,
+        "forget must drop every kind for the entity, not just one — a \
+         partial release is the leak the composite key could reintroduce"
+    );
+}
+
 /// `MovementTelemetry::forget` must clear **every** map it owns. A new
 /// per-entity field added without a matching line in `forget` is the
 /// leak this pins.
@@ -148,8 +186,8 @@ fn position_sample_budget_matches_the_documented_rate() {
 fn movement_telemetry_forget_clears_every_map() {
     let mut mt = MovementTelemetry::default();
     let now = Instant::now();
-    mt.reject_log.admit(42, now, WINDOW);
-    mt.npc_path_fail_log.admit(42, now, WINDOW);
+    mt.reject_log.admit(42, KIND, now, WINDOW);
+    mt.npc_path_fail_log.admit(42, KIND, now, WINDOW);
     mt.position_samples.insert(
         42,
         PositionSample {

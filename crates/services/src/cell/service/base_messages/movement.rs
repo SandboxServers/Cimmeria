@@ -12,7 +12,9 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::movement_validation::MovementReject;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::{ClientMoveOutcome, RejectReport, SpaceManager};
+use crate::cell::space_manager::{
+    ClientMoveOutcome, HardReject, RecoveryReport, RejectReport, SpaceManager, SuppressionReport,
+};
 
 /// Stable metric/log label for a movement reject reason. Kept low-
 /// cardinality (one token per layer) so the `movement_validation_rejects_total`
@@ -62,6 +64,15 @@ pub(super) async fn handle_entity_move(
     if let Some(actual_space_id) = space_mgr.get_entity_space_id(entity_id) {
         if claimed_space_id != 0 && actual_space_id != claimed_space_id {
             let id = space_mgr.player_identity(entity_id);
+            // `world` on this row too: the server-side binding is known
+            // here, so a `movement.validation` dashboard filtered by
+            // world must not silently drop space-mismatch rows. It
+            // names the world the server believes the player is in —
+            // the claimed id is by definition not a binding this
+            // process can resolve.
+            let world = space_mgr
+                .world_name_for_space(actual_space_id)
+                .unwrap_or("unknown");
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
@@ -69,6 +80,7 @@ pub(super) async fn handle_entity_move(
                 player_id = id.player_id,
                 claimed_space_id,
                 actual_space_id,
+                world = %world,
                 reason = "space_mismatch",
                 "movement.space_mismatch: client claims a different space than \
                  the server binding (warn-only — write uses the server binding)"
@@ -134,10 +146,11 @@ pub(super) async fn handle_entity_move(
             // needs the world name, the navmesh gate diagnosis and the
             // per-entity throttle, all of which live on the
             // `SpaceManager`. See
-            // `cell::space_manager::movement_telemetry` for why the
-            // throttle exists (one stuck entity produced 71% of three
-            // days' reject volume) and why the counter is incremented
-            // even for suppressed rows.
+            // `cell::space_manager::movement_telemetry::reject` for why
+            // the throttle exists (one stuck entity produced 71% of
+            // three days' reject volume), why the counter is
+            // incremented even for suppressed rows, and why all three
+            // hard-reject outcomes below go through the same seam.
             //
             // `reason` still carries the validation layer that fired
             // (`bounds` | `navmesh` | `teleport`); `bounds_min`/
@@ -149,11 +162,7 @@ pub(super) async fn handle_entity_move(
             // accepted path never pays for the lookup at all.
             let id = space_mgr.report_movement_reject(
                 RejectReport {
-                    entity_id,
-                    space_id,
-                    reason,
-                    reason_label: movement_reject_label(reason),
-                    position,
+                    common: hard_reject(entity_id, space_id, reason, position),
                     last_valid,
                     bounds: &bounds,
                 },
@@ -175,41 +184,13 @@ pub(super) async fn handle_entity_move(
             recovered_to,
             space_id,
         } => {
-            // The rubber-band loop this branch exists to break: the
-            // entity's own authoritative position was not somewhere the
-            // validator would accept, so snapping the client back to it
-            // guaranteed the next packet would be rejected too. The
-            // relocation has already been written cell-side; all that is
-            // left is to tell the owning client where it now is.
-            let reason_label = movement_reject_label(reason);
-            let id = space_mgr.player_identity(entity_id);
-            // `world` on every `movement.validation` row, not just the
-            // reject: an operator filtering the target by world should
-            // not silently lose the recovery and suppression rows.
-            let world = space_mgr
-                .world_name_for_space(space_id)
-                .unwrap_or("unknown");
-            tracing::warn!(
-                target: "movement.validation",
-                entity_id,
-                account_id = id.account_id,
-                player_id = id.player_id,
-                space_id,
-                world = %world,
-                from_x = from[0],
-                from_y = from[1],
-                from_z = from[2],
-                recovered_x = recovered_to[0],
-                recovered_y = recovered_to[1],
-                recovered_z = recovered_to[2],
-                reason = reason_label,
-                "movement.validation_recovered: the entity's own position was not a \
-                 usable snap-back target — relocated to the nearest safe point \
-                 instead of re-issuing the correction"
-            );
-            cimmeria_observability::counter!(
-                "movement_validation_recoveries_total",
-                "reason" => reason_label,
+            let id = space_mgr.report_movement_recovered(
+                RecoveryReport {
+                    common: hard_reject(entity_id, space_id, reason, position),
+                    from,
+                    recovered_to,
+                },
+                Instant::now(),
             );
             send_snap_back(entity_id, space_id, recovered_to, id, tx).await;
         }
@@ -219,37 +200,36 @@ pub(super) async fn handle_entity_move(
             space_id,
             strikes,
         } => {
-            // Deliberately emits no `FORCED_POSITION`. Re-sending one is
-            // exactly what produced the loop, and there is nowhere better
-            // to send the client to. The cell entity is untouched and
-            // authoritative for AoI, so witnesses still see the truth; the
-            // offending client stays desynced until it sends a position
-            // the validator accepts, which clears the budget.
-            let id = space_mgr.player_identity(entity_id);
-            let world = space_mgr
-                .world_name_for_space(space_id)
-                .unwrap_or("unknown");
-            tracing::error!(
-                target: "movement.validation",
-                entity_id,
-                account_id = id.account_id,
-                player_id = id.player_id,
-                space_id,
-                world = %world,
-                from_x = from[0],
-                from_y = from[1],
-                from_z = from[2],
-                strikes,
-                reason = movement_reject_label(reason),
-                "movement.correction_suppressed: correction budget exhausted with no \
-                 safe position to recover to — no further FORCED_POSITION will be \
-                 sent for this entity until it reports an acceptable position"
-            );
-            cimmeria_observability::counter!(
-                "movement_validation_corrections_suppressed_total",
-                "reason" => movement_reject_label(reason),
+            // No `send_snap_back` — that is the whole point of this
+            // outcome. Everything else about it is reported exactly as
+            // the other two hard rejects are.
+            space_mgr.report_correction_suppressed(
+                SuppressionReport {
+                    common: hard_reject(entity_id, space_id, reason, position),
+                    from,
+                    strikes,
+                },
+                Instant::now(),
             );
         }
+    }
+}
+
+/// The reject facts every outcome shares. One constructor so a new
+/// outcome cannot be wired up with a different `reason_label` mapping or
+/// a different idea of which point the diagnosis describes.
+fn hard_reject(
+    entity_id: u32,
+    space_id: u32,
+    reason: MovementReject,
+    position: [f32; 3],
+) -> HardReject {
+    HardReject {
+        entity_id,
+        space_id,
+        reason,
+        reason_label: movement_reject_label(reason),
+        position,
     }
 }
 
