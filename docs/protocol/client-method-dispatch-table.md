@@ -2,12 +2,12 @@
 title: "SGWPlayer Client Method Dispatch Table (Server → Client)"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-25
 ---
 
 # SGWPlayer Client Method Dispatch Table (Server → Client)
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-25 — added the SGWMob table (NA33)
 > **Verified**: 2026-07-25 — all 157 index/name pairs re-derived from
 > `entities/defs/` by replaying the BigWorld flattening rule, and diffed
 > against both this table and the constants in
@@ -317,6 +317,54 @@ The boundary at 61 is computed by the engine from the total method count:
 `numSubSlots = ceil((157 - 63) / 255) = 1`, `begSubSlot = 62 - numSubSlots = 61`.
 
 ---
+
+## SGWMob Client Method Dispatch Table
+
+> **Added**: 2026-09-25 (NA33). **Entity type**: SGWMob (`class_id = 0x04`).
+> **Total methods**: 29 (indices 0-28), all under any plausible idbase (62),
+> so every method uses **direct** wire encoding: `msg_id = 0x80 + index`.
+> Full evidence trail: [`docs/reverse-engineering/findings/npc-aggression-broadcast.md`](../reverse-engineering/findings/npc-aggression-broadcast.md).
+
+SGWMob's inheritance chain is `SGWEntity → SGWSpawnableEntity → SGWBeing →
+SGWMob`, with `SGWMob` implementing `Lootable`:
+
+```
+SGWSpawnableEntity (12 own methods)
+  └─ SGWBeing (1 own method)
+       ├─ Implements: SGWBeing-interface (8), SGWAbilityManager (0), SGWCombatant (6)
+       └─ SGWMob (2 own methods)
+            └─ Implements: Lootable (0 client methods — entities/defs/interfaces/Lootable.def
+                            has an empty <ClientMethods/> block)
+```
+
+Indices 0-26 are **identical** to the SGWPlayer table above (see the
+"SGWSpawnableEntity own", "SGWBeing (interface)", "SGWCombatant (interface)"
+and "SGWBeing (entity own)" sections — same tables apply verbatim, since
+that prefix is a property of the shared ancestor classes, not the leaf
+entity). SGWMob's own methods begin at index 27, immediately after the
+shared prefix, because `Lootable` contributes no client methods:
+
+| Index | Method | Args |
+|-------|--------|------|
+| 0-11 | *(SGWSpawnableEntity own — see SGWPlayer table above)* | — |
+| 12-19 | *(SGWBeing interface — see SGWPlayer table above)* | — |
+| 20-25 | *(SGWCombatant interface — see SGWPlayer table above)* | — |
+| 26 | *(SGWBeing own: `BeingAppearance` — see SGWPlayer table above)* | — |
+| 27 | `onAggressionOverrideUpdate` | `INT8 aAggressionLevel` |
+| 28 | `onAggressionOverrideCleared` | *(none)* |
+
+**Do not reuse the SGWPlayer method_idx constants for SGWMob traffic past
+index 26** — from 27 the two entity types diverge (SGWPlayer continues into
+`Communicator`/`OrganizationMember`/etc.), and the numeric ranges collide
+(SGWPlayer's `Communicator` interface is also indices 27-33). Always pair a
+method index with the correct entity's `class_id` at the call site; see
+`crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE`/
+`ON_AGGRESSION_OVERRIDE_CLEARED` in `crates/services/src/mercury/mod.rs`.
+
+Ghidra evidence: the client registers both handlers as a pair through
+`MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` /
+`...Cleared` at `0x00d31cd0`; the Update handler at `0x00d31bd0` reads the
+`aAggressionLevel` INT8 argument and stores it at `GameMob + 0x16c`.
 
 ## Derivation
 

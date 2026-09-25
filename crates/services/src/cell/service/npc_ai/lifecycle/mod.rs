@@ -178,6 +178,20 @@ pub(super) async fn npc_ai_submit(
     // paths shut off.
     npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Neutral);
 
+    // Tell every witness (NA33): a surrendered NPC visibly stops being a
+    // threat. Same wire call `set_aggression`/`.aggression` use — see
+    // `content::executor::world::set_aggression` for why this is
+    // `onAggressionOverrideUpdate`, not legacy python's client-dead
+    // `onEntityProperty(GENERICPROPERTY_MobAggression)`.
+    crate::cell::abilities::send_entity_method_to_witnesses(
+        npc_id,
+        crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE,
+        vec![cimmeria_entity::cell_entity::MobAggression::Neutral.level()],
+        tx,
+        space_mgr,
+    )
+    .await;
+
     // Any channel the NPC was running dies with its willingness to
     // fight — otherwise a surrendered NPC keeps pulsing its debuff onto
     // the player who just accepted the surrender. `None` cancels all of

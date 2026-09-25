@@ -18,6 +18,8 @@ use crate::cell::space_manager::SpaceManager;
 #[cfg(test)]
 mod aggression_log_tests;
 #[cfg(test)]
+mod aggression_wire_tests;
+#[cfg(test)]
 mod tests;
 
 /// `Action::SetInteractionType` — flip an interaction-type bit on the
@@ -88,20 +90,32 @@ pub(super) async fn set_interaction_type(
 /// next idle tick anyway (if the player is in range and sight), but the
 /// seed delivers the correct frame ordering.
 ///
-/// Python also broadcast `GENERICPROPERTY_MobAggression`; this does not
-/// yet — the client consumes the level through `onAggressionOverrideUpdate`
-/// (SGWMob), whose flat method index is not binary-verified (NA13 open
-/// item, `docs/gameplay/npc-ai.md`).
+/// Python's `setAggression` (`deprecated/python/cell/SGWMob.py:53-60`)
+/// broadcast `GENERICPROPERTY_MobAggression` (`onEntityProperty` type 6) to
+/// the owner and witnesses instead of the `onAggressionOverrideUpdate`
+/// ClientMethod. NA13 found no client consumer of `onEntityProperty` type 6
+/// for `GameMob` — legacy's runtime aggression *change* was invisible on
+/// the client; only `createOnClient`'s conditional
+/// `onAggressionOverrideUpdate` (sent once, at spawn, only when an override
+/// was already seeded) ever reached the player. NA33 (2026-09-25) verified
+/// the ClientMethod index (flat 27 for SGWMob — `Lootable` contributes no
+/// client methods, so SGWMob's own two begin right after the shared 0-26
+/// `SGWBeing` prefix; see `docs/reverse-engineering/findings/npc-aggression-broadcast.md`)
+/// and its handler is live (`GameMob + 0x16c`, Ghidra `0x00d31bd0`). This
+/// broadcasts `onAggressionOverrideUpdate` instead of the dead property —
+/// same client-visible intent `createOnClient` had, finished for the
+/// runtime-change path python never wired it for, no client patch needed.
 ///
 /// A tag that matches nothing is a WARN (`event="set_aggression_tag_miss"`):
 /// a mistyped chain tag leaves a guard passive forever, which on the floor
 /// looks exactly like an aggro bug (audit gap T10). An out-of-range level is
 /// a WARN too (`reason="invalid_level"`) and changes nothing.
-pub(super) fn set_aggression(
+pub(super) async fn set_aggression(
     entity_tag: String,
     agg_level: i32,
     entity_id: u32,
     chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
     let Some(level) = crate::cell::combat::override_from_content_level(agg_level) else {
@@ -130,8 +144,12 @@ pub(super) fn set_aggression(
         );
         return;
     };
-    if let Some(target) = space_mgr.get_entity_mut(target_id) {
-        let from = target.aggro.override_level.replace(level);
+    let from = if let Some(target) = space_mgr.get_entity_mut(target_id) {
+        Some(target.aggro.override_level.replace(level))
+    } else {
+        None
+    };
+    if let Some(from) = from {
         tracing::info!(
             target: "content",
             event = "set_aggression",
@@ -143,6 +161,14 @@ pub(super) fn set_aggression(
             chain_id,
             "Content: set aggression"
         );
+        crate::cell::abilities::send_entity_method_to_witnesses(
+            target_id,
+            crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE,
+            vec![level.level()],
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 }
 

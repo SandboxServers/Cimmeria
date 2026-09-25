@@ -2,12 +2,12 @@
 title: "NPC AI System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-25
 ---
 
 # NPC AI System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-25
 > **Status**: All 12 Atrea AI states are now wired in the Rust runtime. Behavior states (Patrol, Wander, Investigating, Follow) are driven by `npc_ai_tick`; terminal states (Despawning, Submit, Error) are reachable via the `SetNpcAiState` content action. Implementation status detail is in the [summary table](#implementation-status-summary) at the bottom; the historical "Python design" sections below are kept for reference but no longer reflect the runtime.
 
 ## Overview
@@ -218,9 +218,16 @@ No other Castle (world 8) or Harset seed calls `set_aggression`, so no other spa
 
 Mobs aggro onto GMs like any player. `.aggro off` in the GM `.`-console makes the proximity scan skip the caller, `.aggro on` restores it, and `.aggro` alone reports it. It is server-side because the client's ghost or noclip never reaches the server (audit A8). It covers proximity aggro and assist: damage and content threat still engage a GM, but the mob a GM shoots does not pull its neighbours in (NA14). It is keyed by character, survives zone changes and relogs, is lost on a server restart, and is ignored if the character loses GM access.
 
-### Wire: not broadcast yet (open item)
+### Wire: broadcast to witnesses (NA33, D-NA16)
 
-Python's `setAggression` sent `onEntityProperty(GENERICPROPERTY_MobAggression = 6, level)` to the owner and witnesses, and `createOnClient` also sent `onAggressionOverrideUpdate(level)`. The Rust server sends neither. The client handler at `0x00d31bd0`, which stores the INT8 at `GameMob + 0x16c`, is registered through `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` and reads the argument `aAggressionLevel`. It is therefore the `onAggressionOverrideUpdate` handler, not an `onEntityProperty` consumer. That method is an SGWMob client method (flat index 27 by the flattening rule, because `Lootable` has no client methods), and the index is not binary-verified. No client handler for `onEntityProperty` type 6 was located. Until one of those is confirmed, aggression stays server-side. It is a display value only: the client derives friend or foe from the faction it is sent.
+Python's `setAggression` sent `onEntityProperty(GENERICPROPERTY_MobAggression = 6, level)` to the owner and witnesses, but no client handler for property type 6 was ever found — that call was dead on arrival in 2009. `createOnClient` separately sent `onAggressionOverrideUpdate(level)`, once, only when an override was already set at spawn/reconnect time, to the ClientMethod the client handler at `0x00d31bd0` actually reads (stores the INT8 `aAggressionLevel` at `GameMob + 0x16c`; registered through `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>`, paired with an `onAggressionOverrideCleared` handler `0x00d31cd0` never called from legacy python at all).
+
+NA33 confirmed the SGWMob flat index (27 for Update, 28 for Cleared — `Lootable` contributes no client methods, so SGWMob's own two begin right after the shared SGWSpawnableEntity/SGWBeing 0-26 prefix) and wired the server to use the ClientMethod, not the dead property, on every path:
+
+- **Runtime change** (content `set_aggression` action, GM `.aggression` command, the surrender/`npc_ai_submit` disarm): broadcasts `onAggressionOverrideUpdate(level)` to every witness, or `onAggressionOverrideCleared` when the override is cleared. This is a deliberate divergence from legacy's literal wire call — see [findings/npc-aggression-broadcast.md](../reverse-engineering/findings/npc-aggression-broadcast.md) for why finishing `createOnClient`'s intent (not `setAggression`'s dead one) is correct and needs no client patch.
+- **AoI entry**: replays `onAggressionOverrideUpdate` to a newly-arrived witness when an override is active, mirroring `createOnClient`'s conditional send exactly (a faction-derived, no-override mob still sends nothing).
+
+It remains a display value only: the client derives friend or foe from the faction it is sent, and the aggression level's exact on-screen effect (nameplate color, reticle color, or an interaction verb — `UIAggressionLevel` is registered as a Lua-scriptable enum type alongside `UIArchetype`/`TargetType`/etc.) was not directly observed, since no client Lua source is present in this tree.
 
 ### Timed Overrides
 
@@ -635,7 +642,7 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Ammo management | DONE | Load on spawn, consume per shot, auto-reload |
 | Combat exit | DONE | Threat empty -> Leashing (walk home) -> Idle, with the player-side combat drain. Python went Idle in place; NA12 diverges on purpose because Rust NPCs move (D-NA03). |
 | Loot on death | DONE | Loot table referenced, no tap check |
-| Aggression override | PARTIAL | NA13: override (seed `spawnlist.aggression_override`, content, console), else the faction reaction. No client broadcast yet and no timed revert; see [Wire: not broadcast yet](#wire-not-broadcast-yet-open-item). |
+| Aggression override | DONE (broadcast; timed revert still unported) | NA13: override (seed `spawnlist.aggression_override`, content, console), else the faction reaction. NA33: broadcast to witnesses on change and replayed on AoI entry. No timed revert (`overrideAggression`'s scheduled-revert helper, not ported); see [Wire: broadcast to witnesses](#wire-broadcast-to-witnesses-na33-d-na16). |
 | lookAt() rotation | DONE | Mob faces target during combat |
 | Leashing state | DONE | NA12: NPC-to-spawn leash radius with hysteresis and a per-template `leash_distance`, walk home with evade, heal / facing / cooldown reset on arrival, snap only as a fallback, player combat drained, 5 s re-aggro suppression. See [Leash and reset](#leash-and-reset-na12). |
 | Chase path robustness | DONE | NA15: stop distance, level-aware repath, hold then give up at a partial route, partial route home, off-mesh start and target recovery, degenerate repath clears the route. See [Chase and unreachable targets](#chase-and-unreachable-targets-na15). |

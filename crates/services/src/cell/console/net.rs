@@ -15,7 +15,9 @@ use cimmeria_entity::cell_entity::AiState;
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
+use crate::cell::abilities::{
+    send_entity_method_to_self_and_witnesses, send_entity_method_to_witnesses,
+};
 use crate::cell::interactions;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::service::npc_ai::{self, AiTransitionReason};
@@ -480,6 +482,12 @@ async fn threaten(
 /// `.aggression <level|clear>` — set the targeted mob's aggression override
 /// (NA13): `1` hostile ... `5` default, `0` passive (NEUTRAL), `clear` back
 /// to the faction reaction. Feedback names the effective level.
+///
+/// Broadcasts the change to every witness (NA33): `onAggressionOverrideUpdate`
+/// for a set level, `onAggressionOverrideCleared` for `clear` — see
+/// [`crate::cell::content::executor::world::set_aggression`] for why this
+/// uses the ClientMethod rather than legacy python's `setAggression`
+/// wire call.
 async fn aggression(
     caller_id: u32,
     target_id: Option<u32>,
@@ -514,6 +522,19 @@ async fn aggression(
         e.aggro.override_level = level;
         crate::cell::combat::aggression_toward_players(e)
     });
+    if effective.is_some() {
+        let (method_index, args) = match level {
+            Some(l) => (
+                crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE,
+                vec![l.level()],
+            ),
+            None => (
+                crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_CLEARED,
+                Vec::new(),
+            ),
+        };
+        send_entity_method_to_witnesses(target, method_index, args, tx, space_mgr).await;
+    }
     let source = if level.is_some() {
         "override"
     } else {

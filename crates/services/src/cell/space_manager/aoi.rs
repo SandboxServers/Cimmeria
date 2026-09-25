@@ -158,6 +158,30 @@ impl SpaceManager {
                             player_data,
                         });
 
+                        // ── createOnClient: replay an active aggression override ──
+                        //
+                        // Python `SGWMob.createOnClient` only sent
+                        // `onAggressionOverrideUpdate` when `aggressionOverride is
+                        // not None` (`deprecated/python/cell/SGWMob.py:36-41`) — a
+                        // faction-derived (no-override) mob sends nothing, matching
+                        // legacy exactly. Without this replay, a late joiner (or a
+                        // player who was already out of range) never learns an NPC
+                        // was armed/disarmed before they arrived; the AoI-enter path
+                        // is the only place a brand-new witness gets it. NA33:
+                        // docs/reverse-engineering/findings/npc-aggression-broadcast.md.
+                        if !other.is_player {
+                            if let Some(level) = other.aggro.override_level {
+                                events.push(CellToBaseMsg::WitnessEntityMethod {
+                                    witness_id: player_id,
+                                    entity_id: eid,
+                                    method_index:
+                                        crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE,
+                                    args: vec![level.level()],
+                                    entity_is_player: false,
+                                });
+                            }
+                        }
+
                         // ── dynamicUpdate: standalone InteractionType update ──
                         //
                         // In the C++ server, createOnClient() sends InteractionType
