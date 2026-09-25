@@ -76,7 +76,7 @@ Chapter cross-references use `chapter_id`. `→ N/A (no chapter yet)` means the 
 
 **universal RPC dispatcher** — The single function at `ghidra://SGW.exe@0x00c6fc40` through which every NetOut entity-method call routes. Looks up the method ID via `EntityDescription_FindMethodIdByName` and serializes arguments into a Mercury bundle. → `spec.engine.universal-rpc-dispatcher`.
 
-**cooked data** — The PAK-packaged content artifacts the client loads at runtime: items, abilities, effects, missions, animations, etc. 21 categories (not 22 — `behavior_event` shifts the count depending on which doc you read; see bug [#267](https://github.com/SandboxServers/Cimmeria/issues/267)). Subscribed in a 5-event pattern per `LibCategory`. → `spec.engine.cooked-data-pipeline`.
+**cooked data** — The PAK-packaged content artifacts the client loads at runtime: items, abilities, effects, missions, animations, etc. 21 categories, numbered 1–21 per `CookedData_RegisterAllLibCategories` (the legacy `behavior_event`=22 / `pet_command`=21 split was a server-side drift, resolved — see [#267](https://github.com/SandboxServers/Cimmeria/issues/267)). Subscribed in a 5-event pattern per `LibCategory`. → `spec.engine.cooked-data-pipeline`.
 
 **PAK** — A ZIP-format archive containing cooked data. Versioned via `MetaData` keys that persist across PAK swaps. Cimmeria's mission overrides patch the canonical PAKs by injecting per-key invalidations. → `spec.engine.cooked-data-pipeline`.
 

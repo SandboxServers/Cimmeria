@@ -129,12 +129,18 @@ impl SpaceManager {
         Some(space.navmesh.as_ref()?.short_hash())
     }
 
-    /// Sample the navmesh surface height at (x, z) in the space containing `entity_id`.
-    /// Returns `None` if no navmesh is loaded or the point is off-mesh.
-    pub fn get_navmesh_height(&self, entity_id: u32, x: f32, z: f32) -> Option<f32> {
+    /// Sample the navmesh surface height under `(x, z)` on the storey nearest
+    /// `y_ref`, in the space containing `entity_id`.
+    ///
+    /// Returns `None` if no navmesh is loaded, or if no walkable surface lies
+    /// within the jump tolerance of `y_ref` — see
+    /// [`cimmeria_entity::navigation::NavMesh::get_height_near`]. A `None`
+    /// for a loaded mesh can mean the entity is floating, not that it is
+    /// off-mesh.
+    pub fn get_navmesh_height(&self, entity_id: u32, x: f32, y_ref: f32, z: f32) -> Option<f32> {
         let space_id = self.entity_space.get(&entity_id)?;
         let space = self.spaces.get(space_id)?;
         let navmesh = space.navmesh.as_ref()?;
-        navmesh.get_height_at(x, z)
+        navmesh.get_height_near(x, y_ref, z)
     }
 }

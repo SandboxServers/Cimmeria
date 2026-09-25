@@ -73,6 +73,18 @@ pub struct ServerConfig {
     /// Default: 8443
     pub admin_port: u16,
 
+    /// Administrative API bind address.
+    ///
+    /// Loopback by default. The admin API currently has **no
+    /// authentication** (JWT middleware is still TODO — issue #439), so a
+    /// non-loopback bind exposes unauthenticated admin control (server
+    /// stop, content rewrite, log/credential streaming via `/ws/logs`) to
+    /// every host that can route to the port. Only readdress this default
+    /// together with the JWT work, and only when the network path is
+    /// trusted.
+    /// Default: `127.0.0.1`
+    pub admin_bind: String,
+
     /// PostgreSQL connection string.
     /// Default matches the test credentials in the existing config files.
     pub db_connection_string: String,
@@ -141,6 +153,7 @@ impl Default for ServerConfig {
             cell_host: "0.0.0.0".to_string(),
             cell_port: 50000,
             admin_port: 8443,
+            admin_bind: "127.0.0.1".to_string(),
             db_connection_string:
                 "host=localhost port=5433 user=w-testing password=w-testing dbname=sgw".to_string(),
             protocol_digest: "58AFA196AD3AC4F65CADD99BFF23B799".to_string(),
@@ -207,6 +220,18 @@ mod tests {
         assert_eq!(config.base_port, 32832);
         assert_eq!(config.cell_port, 50000);
         assert_eq!(config.admin_port, 8443);
+    }
+
+    /// The security-relevant default: the unauthenticated admin API
+    /// must stay on loopback. Reverting this to `0.0.0.0` reopens issue
+    /// #439 (unauthenticated admin reachable from any networked host).
+    #[test]
+    fn default_config_binds_admin_api_to_loopback() {
+        let config = ServerConfig::default();
+        assert_eq!(
+            config.admin_bind, "127.0.0.1",
+            "admin_bind must default to loopback while the admin API has no auth"
+        );
     }
 
     #[test]
