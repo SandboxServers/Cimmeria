@@ -87,7 +87,7 @@ fn effective_move_speed(base: f32, stats: &StatList) -> f32 {
 pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
     // Collect NPCs that have active paths
     let moving_npcs: Vec<u32> = space_mgr
-        .all_npc_entity_ids()
+        .ai_driven_npc_entity_ids()
         .iter()
         .filter(|&&eid| {
             space_mgr
@@ -534,10 +534,10 @@ mod tests {
             template_id: 10,
             template_name: "Test Escort".to_string(),
             // Must be "mob" (class_id 0x04) -- `npc_movement_tick` sources
-            // its candidate set from `all_npc_entity_ids`, which filters on
-            // `class_id == 0x04` specifically (SGWMob), not merely
-            // `!is_player`. "being" (0x01) would silently exclude this
-            // fixture from the tick and both assertions would read 0.0.
+            // its candidate set from `ai_driven_npc_entity_ids`, which admits
+            // a "being" (0x01) only in a behaviour state such as Follow
+            // (NA24). This fixture stays Idle, so a being would be excluded
+            // from the tick and both assertions would read 0.0.
             class: "mob".to_string(),
             static_mesh: None,
             body_set: "GLB_Components.WorldObject_Small".to_string(),

@@ -233,6 +233,50 @@ impl SpaceManager {
         ids
     }
 
+    /// The NPCs the AI and movement ticks drive: every SGWMob (class 0x04),
+    /// plus any SGWBeing (class 0x01) that content has put in a
+    /// non-combat behaviour state (NA24, UAT-1 C).
+    ///
+    /// Col Marsh (template 10) is a `being`, so `set_follow` put him in
+    /// `Follow` and nothing ever ticked him: the mob-only
+    /// [`Self::all_npc_entity_ids`] left him out of both the AI tick and the
+    /// movement tick. Most `being` templates are props (crates, consoles,
+    /// corpses, elevator buttons) that sit in `Idle` with no route, and stay
+    /// excluded. `Fighting` and `Leashing` are deliberately not admitted for
+    /// a being: `generate_threat` moves any shot NPC into `Fighting`, and a
+    /// prop must never get a fight pass (it would fire the default ability).
+    // TODO: a following being pulled into `Fighting` by damage freezes there,
+    // as it did before NA24; it needs a combat-capable class to fight back.
+    pub fn ai_driven_npc_entity_ids(&self) -> Vec<u32> {
+        use cimmeria_entity::cell_entity::AiState;
+        let mut ids = Vec::new();
+        for space in self.spaces.values() {
+            for e in space.entities.values() {
+                if e.is_player {
+                    continue;
+                }
+                let admitted = match e.class_id {
+                    0x04 => true,
+                    0x01 => matches!(
+                        e.ai_state(),
+                        AiState::Follow
+                            | AiState::Patrol
+                            | AiState::Wander
+                            | AiState::Investigating
+                            | AiState::Despawning
+                            | AiState::Submit
+                            | AiState::Error
+                    ),
+                    _ => false,
+                };
+                if admitted {
+                    ids.push(e.entity_id.0 as u32);
+                }
+            }
+        }
+        ids
+    }
+
     /// NPC entity IDs (class_id=0x04, not players) in the same space as
     /// `entity_id`, excluding `entity_id` itself. Restricted to one space so
     /// instanced copies of a world never see each other. The NA14 assist

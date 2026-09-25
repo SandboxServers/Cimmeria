@@ -413,6 +413,11 @@ pub(super) async fn resolve_death(
 
     if target_is_player {
         side_effects::send_begin_aid_wait(target_eid, attacker_id, ability_id, tx, space_mgr).await;
+        // Every NPC fighting the corpse lets go now, not on its next AI pass
+        // (NA24, UAT-1 A). Last, so the drop's BSF_InCombat clear lands after
+        // the dead-state broadcast above instead of racing it.
+        crate::cell::service::npc_ai::purge_dead_player_from_threat(target_eid, tx, space_mgr)
+            .await;
     }
 
     true
@@ -453,6 +458,19 @@ pub(crate) async fn kill_npc_out_of_band(
         space_mgr,
     )
     .await
+}
+
+/// Test shim: the NPC-AI suite (`service::tests::npc_ai::dead_player_drop`)
+/// kills a *player* through the real resolver, which `kill_npc_out_of_band`
+/// refuses by design.
+#[cfg(test)]
+pub(crate) async fn resolve_death_for_test(
+    target_eid: u32,
+    attacker_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    resolve_death(target_eid, attacker_id, None, false, false, tx, space_mgr).await
 }
 
 mod side_effects;

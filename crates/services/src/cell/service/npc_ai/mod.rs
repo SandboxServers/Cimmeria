@@ -123,6 +123,9 @@ pub(in crate::cell) async fn npc_ai_tick_for_test(
 // combat, the content executor, the GM console, the respawn tick -- reach
 // it through this re-export.
 pub(in crate::cell) use aggro_acquired::log_aggro_acquired;
+// NA24: `abilities::death::resolve_death` purges a dead player from every
+// NPC's threat list at the moment of death.
+pub(in crate::cell) use fight_target::purge_dead_player_from_threat;
 // NA14: `combat::generate_threat` fans a fresh engagement out to neighbours.
 pub(in crate::cell) use assist::recruit_assisters;
 // Stopping and rerouting an NPC: the only writers of `nav_path` outside the

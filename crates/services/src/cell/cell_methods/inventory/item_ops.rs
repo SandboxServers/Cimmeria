@@ -155,6 +155,10 @@ pub(super) async fn handle_use_item(
         let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
         tracing::info!(entity_id, item_id, target_id, "useItem");
 
+        if refuse_while_dead(entity_id, item_id, tx, space_mgr).await {
+            return;
+        }
+
         if let Some(player_id) = resolve_player_id(entity_id, "useItem", space_mgr) {
             if let Err(e) = tx
                 .send(CellToBaseMsg::UseInventoryItem {
@@ -174,6 +178,52 @@ pub(super) async fn handle_use_item(
     } else {
         tracing::warn!(entity_id, args_len = args.len(), "useItem: truncated args");
     }
+}
+
+/// `ERRORCODE_SYSTEM_Ability` — the only `EErrorCodeSystem` token.
+const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
+/// `CONDITION_FEEDBACK_NotLiving` (`entities/defs/enumerations.xml`).
+const CONDITION_FEEDBACK_NOT_LIVING: u16 = 14;
+
+/// A dead player cannot use an item (NA24, UAT-1 A): a medkit used during the
+/// Defeat Window healed the corpse to full HEALTH, and the NPC that had just
+/// killed it read the healed HEALTH as "alive" and kept the corpse as its
+/// target through the respawn. Refused with the legacy `@mustBeAlive` reply,
+/// `onErrorCode(ERRORCODE_SYSTEM_Ability, 0, CONDITION_FEEDBACK_NotLiving)`
+/// (`SGWBeing.py:19`, applied to `SGWPlayer.useItem`), so the press is not
+/// silent. Returns `true` when refused.
+async fn refuse_while_dead(
+    entity_id: u32,
+    item_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> bool {
+    let dead = space_mgr
+        .get_entity(entity_id)
+        .is_some_and(|e| crate::cell::combat::is_dead_state(e.state_field));
+    if !dead {
+        return false;
+    }
+    tracing::info!(
+        entity_id,
+        item_id,
+        "useItem refused: player is dead (onErrorCode NotLiving)"
+    );
+    let mut err = Vec::with_capacity(7);
+    err.push(ERRORCODE_SYSTEM_ABILITY);
+    err.extend_from_slice(&0i32.to_le_bytes());
+    err.extend_from_slice(&CONDITION_FEEDBACK_NOT_LIVING.to_le_bytes());
+    if let Err(e) = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: crate::cell::client_methods::player::ON_ERROR_CODE,
+            args: err,
+        })
+        .await
+    {
+        tracing::warn!(entity_id, error = %e, "useItem: NotLiving feedback send failed");
+    }
+    true
 }
 
 pub(super) async fn handle_repair_item_request(entity_id: u32, args: &[u8]) {

@@ -105,7 +105,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
     // while calling handle_use_ability (which needs &mut SpaceManager).
     let now = Instant::now();
-    let mut npc_ids = space_mgr.all_npc_entity_ids();
+    let mut npc_ids = space_mgr.ai_driven_npc_entity_ids();
     npc_ids.retain(|&eid| !npc_is_incapacitated(space_mgr, eid, now));
     let npc_snapshot: Vec<(u32, AiState, bool, bool, bool)> = npc_ids
         .iter()
