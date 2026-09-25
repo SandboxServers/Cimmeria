@@ -15,3 +15,4 @@
 - [leash-and-fight-exit-traps.md](leash-and-fight-exit-traps.md) — fight->Idle/leash keep nav_path + player threat; Idle agg-0 never ticked; find_path 0.5 start box vs on_navmesh; partial paths silent
 - [leash-reset-na12.md](leash-reset-na12.md) — NA12 leash: NPC->spawn metric, 5 u band, walk home + evade, 5 s re-aggro window; Instant-based clocks hide loops in tests
 - [faction-derived-aggro-na13.md](faction-derived-aggro-na13.md) — NA13: faction 10 aggroes on sight (players react as faction 3); chain-armed spawns need aggression_override=3; wire is onAggressionOverrideUpdate
+- [assist-aggro-na14.md](assist-aggro-na14.md) — NA14 assist hooks generate_threat; shot faction-10 NPCs now pull neighbours <10 u, so test bystanders need a NEUTRAL pin
