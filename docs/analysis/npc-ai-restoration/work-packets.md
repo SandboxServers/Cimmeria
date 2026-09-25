@@ -396,6 +396,22 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
   - **Numbers.** The 23 files total 131.4 MB after NA28's tiled meshes (the seven rebuilt worlds are marked in the data README). Agnos is 30.5 MB on disk, 168.0 MB with every page unpacked and 4.0 MB with one player. A query costs 1-5 µs.
   - **Tests.** They pin the drone at the desk, `Hallway02_Guard` at the wall, `Hallway01_Guard` at all three of Lomiada's spots (it sees her at 13.6 u too), guard-room walls, storeys, the off-area fallback and residency, and each is revert-proven.
 
+## Phase 5: shared-world player visibility
+
+### NA34
+
+**Status:** Review (branch `npcai/na34-player-visibility` pushed, no PR). **Scope title:** Two players in a shared world (Castle, Harset) not reliably seeing each other. **Advisor:** aoi-witness-broadcast. **Owner report (2026-09-25):** "multiple players on the same map like castle can't reliably see each other... I think it's the first player on the map can see the second but the second can't see the first? Just a guess."
+
+**Scope:**
+
+- **SigNoz evidence.** 30 days of `cimmeria-server`/`cimmeria-trace` logs show every player-to-player `aoi.entity_enter` pair after PR #737 (2026-09-19) landing bidirectionally and `is_player=true` on both legs, with zero `aoi.player_ghost_incomplete`, `aoi.entered_no_witness_addr` or `aoi.create_send_failed` occurrences in that window. The one asymmetric, `is_player=false` pair found (space 65544, 2026-09-17) predates #737 and is Root Cause 2 from [player-ghost-aoi-cascade.md](../../architecture/player-ghost-aoi-cascade.md) firing on the pre-fix build, not a live regression. No telemetry exists for the owner's 2026-09-25 report itself — the dev SigNoz overlay has no player-to-player AoI activity after 2026-09-21.
+- **Code audit.** `SpaceManager::compute_aoi_changes` (`cell/space_manager/aoi.rs`) iterates every player in `space.players` symmetrically every 100 ms tick; `CellEntity::is_introducible()` and the `entity_to_addr` identity-stamp-at-`CreateEntity` path (`cell/service/base_messages/lifecycle.rs`) are both synchronous with no `.await` gap that could race the AoI tick. No server-side bug was found that reproduces a *permanent* one-direction failure on current `main`.
+- **New regression test.** `base::world_entry::cell_dispatch::tests_dispatch_arms::two_player_visibility::both_arrival_directions_deliver_the_observee_identity` drives two real `ConnectedClientState` sessions sharing one `connected`/`entity_to_addr` map — A already ready, B mid-load — through both `EnteredAoI` directions in the same tick, then flushes B's deferred buffer on its `onClientReady`. It asserts each witness's wire cascade decodes to the *other* player's real identity (name, level, archetype, appearance), not the bare NPC-shaped cascade. This is the "arrival order B" case [Known gaps](../../architecture/player-ghost-aoi-cascade.md#known-gaps) flagged as never validated end to end; it currently **passes** on `main`, narrowing (without disproving) a live server-side bug.
+- **Observability.** Two new DEBUG rows at `target: "aoi.introduce"` (`aoi_dispatch.rs`'s buffering branch and `deferred_flush.rs`'s flush branch), each carrying `witness_id`, `entity_id`, `is_player`, `outcome` (`deferred_not_ready` / `flushed_on_ready`). A SigNoz query on `(witness_id, entity_id)` now shows the full hold duration for one introduction — the exact pair this investigation needed and didn't have.
+
+**Acceptance:** the new fan-out byte test passes and is revert-proven (reverting the deferred-buffer join in `player_ghost::compose_cascade_body` trips it, matching the existing `player_ghost.rs` guard style). `aoi.introduce` rows appear in SigNoz on the next real two-player session.
+
+**Outstanding:** the owner's report has no matching telemetry and the SpaceManager/base-dispatch level cannot reproduce it. The next real two-client session should watch for `aoi.introduce` (`outcome=deferred_not_ready` with no matching `flushed_on_ready`, or the reverse) and grep for `aoi.player_ghost_incomplete` / `aoi.entered_no_witness_addr` — either would pin a live bug this packet's audit could not find on paper.
 ## Suggested order
 
 NA00, NA01 and NA20 in parallel. Then:

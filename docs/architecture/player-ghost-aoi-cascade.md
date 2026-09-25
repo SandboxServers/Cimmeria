@@ -1,6 +1,6 @@
 # Player-ghost AoI cascade
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-25 (NA34 two-order regression test + `aoi.introduce` observability)
 > **Audience**: Engineers touching AoI introduction, the `createOnClient`
 > cascade, `ConnectedClientState`, or anything that decides what one player
 > sees of another
@@ -295,6 +295,8 @@ Two new negative-log targets, following
 
 | `aoi.witness_broadcast_failed` | WARN | `cell_channel_closed` | `broadcast_to_witnesses` could not reach the cell loop (Pattern A, a formerly silent send). Carries `entity_id` and `method_index`. Other players keep the stale view of the entity until it re-enters their AoI |
 
+| `aoi.introduce` | DEBUG | n/a (`outcome` field) | Per-(witness, observee) introduction-lifecycle trace, added for NA34. `outcome=deferred_not_ready` fires in `aoi_dispatch::entered_aoi` when the witness is pre-`onClientReady` and the introduction is buffered; `outcome=flushed_on_ready` fires in `deferred_flush::dispatch_segment` when that same buffered entry is replayed. A SigNoz query on `(witness_id, entity_id)` pairs the two rows and shows the full hold duration for one introduction — the pair the 2026-09-25 shared-world-visibility investigation needed and did not have |
+
 The two `aoi.player_ghost_incomplete` rows carry `witness_id` and `entity_id`, so a single query names both
 ends of a failed introduction. The row is catalogued in
 [observability.md](observability.md) alongside `aoi.create_emit` and
@@ -310,15 +312,29 @@ ends of a failed introduction. The row is catalogued in
 | `cell::service::base_messages::tests::broadcast_to_witnesses::fans_out_to_witnessing_players_only`, `inventory::appearance::tests::refresh_player_appearance_asks_the_cell_to_fan_out_to_witnesses`, `base::helpers::witness_broadcast::tests::*` | The post-introduction fan-out. Three players in one shared space: the rebuilt `BeingAppearance` reaches the player standing next to the observee, not the observee's own client and not the player across the map, and is flagged `entity_is_player` so it encodes on the SGWPlayer idbase. The base side asserts the broadcast carries exactly the bytes it cached. The closed-channel WARN and the silent no-cell-service case are both pinned |
 | `progression::level_up_fanout_tests::*` (live-DB) | The level-up fan-out. A grant that crosses several boundaries hands the cell exactly one `onLevelUpdate` carrying the level that was persisted; a grant that crosses none sends nothing, so ordinary kill XP does not spam every witness. Live-DB because the level is only computed on the persisted-grant path |
 | `cell_entity::tests::is_introducible_gates_players_until_connected_and_initialised` | The predicate itself, across all four states: NPC, created-only, connected-not-initialised, fully initialised |
+| `base::world_entry::cell_dispatch::tests_dispatch_arms::two_player_visibility::both_arrival_directions_deliver_the_observee_identity` | NA34. The end-to-end gap the other rows leave open: TWO real sessions sharing one `connected`/`entity_to_addr` map, A already ready and B mid-load, driven through both `EnteredAoI` directions in the same tick and then B's deferred-buffer flush. Asserts each witness's wire cascade decodes to the OTHER player's real identity, never the bare cascade, in both the standalone path (A observing B) and the buffered-then-flushed path (B observing A). Revert-proven: forcing `compose_cascade_body`'s ghost branch to fall through to the bare cascade fails it on both directions |
 
 ## Known gaps
 
-- **Not validated with two real game clients.** Everything above is pinned
-  by unit, wire-format, fan-out byte and negative-log tests plus the legacy
-  Python reference. Nobody has stood two accounts next to each other in
-  Castle or Harset yet. That is the outstanding step — see the checklist
-  below. Until it passes, treat player-to-player visibility as `NT`, not
-  `CW`.
+- **Not validated with two real game clients** (owner report, 2026-09-25:
+  players in a shared world "can't reliably see each other"). NA34
+  investigated this report: 30 days of SigNoz evidence show every
+  player-to-player `aoi.entity_enter` pair after this cascade landed
+  (2026-09-19) introducing bidirectionally with `is_player=true` on both
+  legs, zero `aoi.player_ghost_incomplete` / `aoi.entered_no_witness_addr` /
+  `aoi.create_send_failed` occurrences, and no telemetry at all covering the
+  window the report describes. A new fan-out byte test
+  (`two_player_visibility::both_arrival_directions_deliver_the_observee_identity`,
+  see Test coverage) drives the exact "arrival order B" gap the checklist
+  below flags — A already ready, B mid-load, both introduction directions in
+  one tick, then B's deferred-buffer flush — and it passes on `main`. None
+  of this proves the report wrong: it narrows the search to either a
+  client-side symptom or a server-side interaction NA34 could not
+  reconstruct from available telemetry or reproduce at the SpaceManager /
+  base-dispatch level. The two new `aoi.introduce` DEBUG rows (see
+  Observability) are aimed at the next real two-client session having the
+  evidence this one didn't. Until a live two-client UAT passes, treat
+  player-to-player visibility as `NT`, not `CW`.
 - **GMs are introduced as plain players.** `connect_entity` stamps
   `class_id = 0x02` (`SGWPlayer`) for every player
   ([`cell/space_manager/entities.rs:337`](../../crates/services/src/cell/space_manager/entities.rs)),

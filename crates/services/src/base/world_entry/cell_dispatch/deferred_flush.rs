@@ -246,6 +246,18 @@ async fn dispatch_segment(
                 npc_data,
                 player_data,
             } => {
+                // NA34 observability: pairs with the `deferred_not_ready`
+                // row `aoi_dispatch::entered_aoi` logged when this entry was
+                // first buffered — a query on (witness_id, entity_id) shows
+                // the full hold duration for one introduction.
+                tracing::debug!(
+                    target: "aoi.introduce",
+                    witness_id,
+                    entity_id,
+                    is_player = player_data.is_some(),
+                    outcome = "flushed_on_ready",
+                    "AoI introduce: witness now ready, flushing buffered entity introduction"
+                );
                 phase1.append_raw_message(&compose_create_entity_base_body(
                     entity_id, class_id, position, direction,
                 ));
