@@ -188,7 +188,14 @@ async fn broadcast_to_witnesses(
 /// - SpeakerFlags: UINT8
 /// - Channel: UINT8
 /// - Text: WSTRING (u32 char_count + N×2B UTF-16LE)
-fn serialize_on_player_communication(
+///
+/// `pub(crate)` so the `npc_bark` content action
+/// ([`crate::cell::content::executor`]) speaks through the same builder
+/// the chat broadcaster does. A bark is the only non-modal text route
+/// the client actually honours, so it must be byte-identical to the
+/// chat path that is known to render — a second copy of this serializer
+/// is a second place for that to drift.
+pub(crate) fn serialize_on_player_communication(
     speaker: &str,
     speaker_flags: u8,
     channel: u8,

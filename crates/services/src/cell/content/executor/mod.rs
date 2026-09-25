@@ -3,6 +3,7 @@
 //!
 //! Each match arm forwards to a per-family handler in a sibling module:
 //!
+//! - [`bark`]      — `NpcBark`, the non-modal companion line (client method 28)
 //! - [`mission`]   — accept/advance/complete/abandon, advance step, complete objective
 //! - [`inventory`] — grant/remove items, bandolier seeding
 //! - [`dialog`]    — display, add/remove dialog set, add dialog
@@ -33,6 +34,7 @@ use cimmeria_content_engine::chain::ResolvedActions;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+mod bark;
 mod counter;
 mod deferred;
 mod dialog;
@@ -427,6 +429,16 @@ async fn execute_one(
                 chain_id,
                 "Content: system message (stub — correct wire format TBD)"
             );
+        }
+        Action::NpcBark {
+            screen_id,
+            speaker,
+            channel,
+        } => {
+            bark::npc_bark(
+                screen_id, &speaker, channel, entity_id, chain_id, tx, space_mgr,
+            )
+            .await;
         }
         Action::AbandonMission { mission_id } => {
             mission::abandon(
