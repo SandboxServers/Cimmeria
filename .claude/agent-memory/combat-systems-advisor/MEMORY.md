@@ -7,3 +7,4 @@
 - [combat-exit-tail-parity.md](combat-exit-tail-parity.md) — What a live-NPC combat exit (submit/leash) must copy from apply_death_transition vs. what's death-only; tick cadences; aggression non-persistence; QR-miss still generates threat
 - [ontimerupdate-wire-and-clock.md](ontimerupdate-wire-and-clock.md) — Method 12's 21-byte layout + byte offsets, absolute-BigWorldTimeComplete evidence (python + RE), the SET_GAME_TIME/tickSync clock trap, and all six emit paths
 - [navmesh-los-reliability.md](navmesh-los-reliability.md) — navmesh LoS vs collision geometry: 45% false Blocked; PRU desk (S11); rejected heuristics; no fire-time LoS until an occluder exists
+- [qr-direction-and-cover.md](qr-direction-and-cover.md) — python QR beta branches were inverted (NA32 swapped them); cover QR units from alias.xml; test new QR terms on damage

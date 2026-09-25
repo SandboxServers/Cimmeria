@@ -5,12 +5,13 @@
 //! (entity, ability, sequence) triple always produces the same beta sample.
 //!
 //! Returns a `u64` seed (rather than a uniform `f64`) because the QR
-//! sampler now draws from a two-branch Beta distribution
-//! (`AbilityManager.py:181-184`):
+//! sampler now draws from a two-branch Beta distribution (the branches of
+//! `AbilityManager.py:181-184`, swapped so the mean rises with QR, NA32;
+//! see `combat::calculate_result`):
 //!
 //! ```text
-//! if qr >= 0: betavariate(α, α + qr * mult)
-//! else:       betavariate(α - qr * mult, α)
+//! if qr >= 0: Beta(α + qr * mult, α)
+//! else:       Beta(α, α - qr * mult)
 //! ```
 //!
 //! Beta sampling internally consumes multiple uniform draws, so the

@@ -28,7 +28,8 @@ use super::rng::pseudo_random_seed;
 /// Performs:
 ///   - Snapshot attacker stats; bail if attacker missing.
 ///   - Read damage NVPs from the ability's effect definitions.
-///   - Compute QR + roll a hit result for this attacker/target pair.
+///   - Compute QR + roll a hit result for this attacker/target pair, with
+///     the cover shift when either side is in cover (NA32).
 ///   - Apply health/focus damage to the target.
 ///   - Detect death (direct damage).
 ///   - Send `onEffectResults` to the attacker (witnesses pick it up via
@@ -94,7 +95,15 @@ pub(super) async fn apply_damage_to_target(
     // to false when the AbilityDef is missing (unknown ability falls back to
     // a generic melee swing).
     let ability_is_ranged = ability_def.as_ref().map(|d| d.is_ranged).unwrap_or(false);
-    let qr = combat::calculate_qr(&attacker_stats, &target.stats, ability_is_ranged);
+    // Cover counts only when it faces the attacker (NA32, `cover_roll`).
+    let qr = cover_roll::qr_with_cover(
+        space_mgr,
+        entity_id,
+        target_eid,
+        &attacker_stats,
+        &target.stats,
+        ability_is_ranged,
+    );
 
     // Seed the beta-distribution sample from this ability invocation.
     // Per-(entity, ability, effect_seq) determinism — a fresh effect_seq per
@@ -450,9 +459,13 @@ pub(super) async fn apply_damage_to_target(
     }
 }
 
+mod cover_roll;
+
 #[cfg(test)]
 mod aggro_cause_tests;
 #[cfg(test)]
 mod bleed_death_tests;
+#[cfg(test)]
+mod cover_tests;
 #[cfg(test)]
 mod tests;
