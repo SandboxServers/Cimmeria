@@ -1,8 +1,8 @@
 # NPC Cover System
 
-**Status:** Accepted (NA22, 2026-09-25). Implements D-NA05 of the [NPC AI restoration](../analysis/npc-ai-restoration/README.md) within the limit D-NA10 sets.
+**Status:** Accepted (NA22, 2026-09-25; amended by NA23, 2026-09-25, decision D-NA12). Implements D-NA05 of the [NPC AI restoration](../analysis/npc-ai-restoration/README.md) within the limit D-NA10 sets.
 
-**Code:** [`crates/services/src/cell/cover/`](../../crates/services/src/cell/cover/) (decision, reservation, scoring, stance), [`npc_ai/fight_cover.rs`](../../crates/services/src/cell/service/npc_ai/fight_cover.rs) (the fight tick's cover step), [`effects/cover_stance.rs`](../../crates/services/src/cell/effects/cover_stance.rs) (the Cover Stance scripts).
+**Code:** [`crates/services/src/cell/cover/`](../../crates/services/src/cell/cover/) (decision, reservation, scoring, stance, peek point), [`space_manager/cover_sight.rs`](../../crates/services/src/cell/space_manager/cover_sight.rs) (an NPC's line of sight from its slot), [`npc_ai/fight_cover.rs`](../../crates/services/src/cell/service/npc_ai/fight_cover.rs) (the fight tick's cover step), [`effects/cover_stance.rs`](../../crates/services/src/cell/effects/cover_stance.rs) (the Cover Stance scripts).
 
 **Evidence:** [findings/cover-world-placement.md](../reverse-engineering/findings/cover-world-placement.md) (where the markers are, Q4 pose, Q5 Cover Stance), [findings/cover-system.md](../reverse-engineering/findings/cover-system.md) (wire surface, scorer weights), [engine/cover-extraction.md](../engine/cover-extraction.md) (how the seed is produced), [audit rows C1-C7](../analysis/npc-ai-restoration/audit.md).
 
@@ -37,7 +37,9 @@ The cover step runs on every fight tick for a mobile NPC with `use_cover`, wheth
 - An NPC that already has a shot only takes a short walk: `IN_RANGE_MAX_MOVE` (10 u).
 - When an in-range seek finds nothing, the NPC does not look again for `SEEK_RETRY` (4 s). The deferral lives with the reservation table and is cleared on release.
 - A held slot is kept until it is flanked or out of range. There is no "better slot" re-evaluation, so an NPC in cover never hops.
-- The flank test keeps its 5 degree hysteresis (`FLANK_HYSTERESIS_DOT`), and the scorer now skips a candidate the threat already flanks, which would otherwise be picked and released on alternate ticks.
+- The flank test is a hysteresis band (NA23). A held slot is released as flanked only once the threat is 20 degrees past side-on (`FLANK_RELEASE_DOT`, normalised dot below -0.342). A free slot is picked only with the threat in front of side-on (`FLANK_PICK_DOT`, dot at least 0). NA22's 5 degree band flipped on a strafe in the tight Cellblock mess hall: UAT-1's three `cover_released_flanked` rows were all 10-12 degrees past side-on.
+- A slot given up as flanked, blind (decision 4) or unreachable cannot be picked again by the same NPC for `COVER_REPICK_COOLDOWN` (6 s). UAT-1's NPC 100160 re-picked the slot it had been flanked out of 6 s later.
+- A pick must give the NPC a shot at its target from the slot (`SpaceManager::slot_has_shot`, decision 9); candidates that fail are counted as `no_shot` on the `no_cover` row.
 
 ### 3. Spawned in cover holds it
 
@@ -58,7 +60,11 @@ An NPC has arrived when it is within 0.5 u of the slot, or within `COVER_ARRIVE_
 - grants Cover Stance (decision 5);
 - skips the chase block and the min-range backup, and fires.
 
-The navmesh line of sight does not gate a shot from a slot. A cover prop is usually a hole in the navmesh, so a ray from behind it reads as blocked by construction; an NPC at a Low or Mid marker fires over the cover. This is a rule of NA16's attack line-of-sight policy: `SpaceManager::attack_los_policy` returns `AttackLosPolicy::InCoverSlot` for a mobile NPC that holds Cover Stance, and the `npc_ai.tick` row logs it as `los_policy=in_cover_slot`. The fight tick computes line of sight after the cover step, so the arrival tick already sees the stance. NA16's stationary rules are unchanged.
+A shot from a slot is checked from the slot's peek point (decision 9), strictly: `SpaceManager::attack_los_policy` returns `AttackLosPolicy::CoverPeek`, logged as `los_policy=cover_peek`. The fight tick computes line of sight after the cover step, so the arrival tick already looks from the slot. NA16's stationary rules are unchanged.
+
+With no line from its slot the NPC holds fire (`decision_outcome=cover_no_shot`), faces its target and keeps the slot for `COVER_BLIND_GRACE` (3 s), then gives it up (`cover_released_no_shot`) and fights as a mobile NPC out of cover.
+
+*Superseded (NA22):* the navmesh line of sight did not gate a shot from a slot at all (`AttackLosPolicy::InCoverSlot`, `los_policy=in_cover_slot`), on the reasoning that the prop is a navmesh hole. UAT-1 found every `in_cover_slot` row read `los=blocked`, and `Hallway02_Guard` shot the player through two walls at 23.5 u.
 
 The walk to a slot is `chase::walk_to_cover_slot` (`npc_ai/chase/cover_slot.rs`), not NA15's target chase: a slot is a place to stand, so there is no stop-distance offset, no hold-then-walk-home at a dead end and no target snap. NA15's rules still apply to every target chase. A route that fails on a meshed world releases the slot (`ReleaseReason::Unreachable`) and defers the next seek. A space with no navmesh gets the slot as a direct waypoint.
 
@@ -102,19 +108,47 @@ Seeded values: `true` for the ranged guards (Cellblock 15 and 24; Castle 146, 14
 
 NA21 groups markers transitively, which makes some sets very large (105 nodes across a 17 x 14 m Castle courtyard). A per-set ally count penalised the whole courtyard for one ally. The penalty now counts other NPCs holding a slot within `SQUAD_AFFINITY_RADIUS` (2 u) of the candidate. Reservation was already per slot.
 
+### 9. The peek point (NA23, D-NA12)
+
+An NPC at a cover slot looks from the slot's **peek point**: the first navmesh point where its shot clears the prop. `cover::find_peek` searches from the node:
+
+1. **Over the prop**, along the node's facing (toward the defended side): 0.5 to 3.5 u out in 0.25 u steps. A sample counts when a polygon lies within 0.3 u of it and a navmesh ray along the facing runs at least 1 u from it before hitting anything. Every seeded height (`Low`, `Mid`, `High`) is fired over; a `Los` marker (none are seeded) only peeks round.
+2. **Round either end** of the marker: 0.6 u past `width / 2`, level with the node and then 0.5 u forward. The same on-mesh and clearance tests apply, and the NPC must be able to walk there in at most 6 u.
+
+An NPC standing within `COVER_ARRIVE_RADIUS` of the slot it holds sees a target when the ray from the peek point or its own ray is clear (`cover::sight_from_slot`, `SpaceManager::npc_line_of_sight`). Neither adds a shot through a wall: the peek point is past the prop, and a clear ray from the NPC crosses nothing. A slot with no peek point sees only what the NPC's own ray sees.
+
+One rule serves every check an NPC makes: the Idle aggro scan and the assist check (`npc_ai::aggro_gates::same_room`), the attack check (decision 4), the pick's shot check (decision 2) and the `npc_ai.tick` row. The slot is reserved from spawn (decision 3), so an Idle guard authored in cover looks from its peek point too; before NA23 its own prop blocked every ray and it never aggroed (UAT-1: `Hallway01_Guard` rejected the player `no_los` at 8.1 u, its ray stopping 0.34-0.42 u out).
+
+**Measured** on `castle_cellblock.nav` and the world-12 seed:
+
+| Guard | Peek point |
+|---|---|
+| `Hallway01_Guard` | 1.08 u over its counter (1200037/3; the walk round the counter is 9.4 u, which is why an over-the-prop peek is not walked) |
+| `Hallway02_Guard` | 1.30 u over its marker (1200034/0) |
+| `MessHall_Guard2` | 3.36 u over its mess table (1200053/0) |
+| `MessHall_Guard1` | 3.46 u over its mess table (1200046/0) |
+
+Of the 236 markers, 150 peek over their prop (median 1.6 u), 17 round it and 69 not at all. Every over-the-prop peek has a full navmesh route from behind its marker, so none lands on another mesh island.
+
+**Why not the stationary rule?** D-NA11 lets a stationary NPC fire across any same-floor `Blocked`, which would have let the hallway guard keep shooting through walls. The peek point removes only the one obstacle the NPC is known to be behind.
+
+**Known cost.** The mess-hall tables are navmesh holes too, so from its slot a mess-hall guard sees little of the room. It holds fire from cover for 3 s, then leaves the slot and closes in. The collision-geometry occluder (#784) is the real fix for furniture.
+
 ## Telemetry
 
 | Row | When |
 |---|---|
 | `npc_ai decision_outcome=move_to_cover` (INFO) | a slot was picked; carries `in_range`, `arrived` |
 | `npc_ai decision_outcome=stay_in_cover` (DEBUG) | holding a slot; the terminal outcome while walking to it |
-| `npc_ai decision_outcome=cover_released_flanked` / `_out_of_range` / `_unreachable` / `_stale` (INFO) | a slot was given up |
+| `npc_ai decision_outcome=cover_released_flanked` / `_out_of_range` / `_unreachable` / `_no_shot` / `_stale` (INFO) | a slot was given up |
 | `npc_ai decision_outcome=no_cover` (DEBUG, sampled) | `reason` adds `seek_cooldown`; `out_of_reach` counts candidates rejected by range, walk or flank |
 | `npc_ai decision_outcome=attack_in_place` | carries `in_cover` |
 | `cover.hold event=spawn_reserved` (INFO) / `event=startup_summary` / `event=released` (DEBUG) | the spawn hold and every release through `release_npc_cover` |
 | `cover.stance event=granted` / `revoked` (DEBUG); `event=effect_missing` (WARN) | Cover Stance; the WARN means the seed lost the effect row or its `script_name` |
 | `movement.npc event=stop reason=in_cover` | the arrival stop |
-| `npc_ai.tick los_policy=in_cover_slot` | an NPC at its slot, whose shot the navmesh verdict does not gate |
+| `npc_ai.tick los_policy=cover_peek` | an NPC at its slot, whose line was checked from the slot's peek point (NA23); `in_cover_slot` on builds before NA23 |
+| `npc_ai decision_outcome=cover_no_shot` (DEBUG) | at its slot with no line from the peek point, holding fire; carries `blind_ms` |
+| `npc_ai.los origin=cover_peek` / `cover_no_peek` | a non-clear ray from an NPC at a slot, with the peek point as `from_xyz` |
 | `npc_ai.path_fail reason=partial decision_outcome=cover_partial` | a partial route to a slot |
 
 ## Consequences
