@@ -7,8 +7,9 @@
 //!
 //! 1. If the NPC holds a slot:
 //!    - **Flank test** via [`is_flanked`]. The threat has moved outside
-//!      the cover's defensive arc → release ([`ReleaseReason::Flanked`]);
-//!      the NPC re-picks next tick.
+//!      the cover's defensive arc (20 degrees past side-on) → release
+//!      ([`ReleaseReason::Flanked`]); the NPC re-picks next tick, but not
+//!      that slot for [`COVER_REPICK_COOLDOWN`] (NA23).
 //!    - **Reach test.** The target is no longer inside the attack range
 //!      from the slot → release ([`ReleaseReason::OutOfRange`]). Measured
 //!      from the NPC itself once it stands at the slot (the distance the
@@ -21,8 +22,11 @@
 //!    target is in range right now (audit C3: it used to look only when
 //!    out of range). An NPC that already has a shot takes a short walk
 //!    ([`IN_RANGE_MAX_MOVE`]) and, when it finds nothing, does not look
-//!    again for [`SEEK_RETRY`] — the seek hysteresis. On success the slot
-//!    is reserved and the decision is [`CoverDecision::MoveToCover`].
+//!    again for [`SEEK_RETRY`] — the seek hysteresis. A candidate must
+//!    clearly defend (threat in front of side-on) and, through
+//!    [`maintain_cover_for_npc_checked`], give the NPC a shot at its target
+//!    (NA23). On success the slot is reserved and the decision is
+//!    [`CoverDecision::MoveToCover`].
 //! 3. Otherwise [`CoverDecision::NoCover`], with a [`NoCoverReason`].
 //!
 //! This function does not mutate the NPC's `nav_path`, velocity or Cover
@@ -37,8 +41,8 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::reservation::CoverReservations;
-use super::scoring::{is_flanked, pick_best_traced, CoverWeights, PickTrace, ScoringContext};
-use super::types::{Cover, CoverSlotKey};
+use super::scoring::{is_flanked, pick_best_filtered, CoverWeights, PickTrace, ScoringContext};
+use super::types::{Cover, CoverNode, CoverSlotKey};
 
 /// A slot must sit at least this far inside the attack range from the
 /// target to be picked. With the reach test releasing only past the range
@@ -55,6 +59,15 @@ pub const SEEK_RETRY: Duration = Duration::from_secs(4);
 /// to walk) the fight tick treats it as arrived. Also the spawn-hold
 /// radius: an NPC authored within this of a node spawns holding it.
 pub const COVER_ARRIVE_RADIUS: f32 = 1.5;
+/// A slot an NPC gave up as flanked or blind cannot be picked again by the
+/// same NPC for this long (NA23). UAT-1's NPC 100160 re-picked the slot it
+/// had been flanked out of 6 s later; with the cooldown it takes another
+/// slot or fights from where it stands.
+pub const COVER_REPICK_COOLDOWN: Duration = Duration::from_secs(6);
+/// An NPC at its slot with no line of sight to its target from the slot's
+/// peek point holds fire this long, then gives the slot up
+/// (`cover_released_no_shot`) and fights normally (NA23).
+pub const COVER_BLIND_GRACE: Duration = Duration::from_secs(3);
 
 /// Attempt to reserve `slot` for `npc_id` on a held reservation guard,
 /// emitting a `warn!` per docs/architecture/negative-logging-convention.md
@@ -129,6 +142,10 @@ pub enum ReleaseReason {
     /// The reservation named a node the index does not hold (defensive;
     /// unreachable while the index is immutable).
     Stale,
+    /// The NPC stood at the slot for [`COVER_BLIND_GRACE`] without a line
+    /// of sight to its target from the slot's peek point (set by the
+    /// caller, NA23).
+    NoShot,
 }
 
 impl ReleaseReason {
@@ -139,6 +156,7 @@ impl ReleaseReason {
             Self::OutOfRange => "cover_released_out_of_range",
             Self::Unreachable => "cover_released_unreachable",
             Self::Stale => "cover_released_stale",
+            Self::NoShot => "cover_released_no_shot",
         }
     }
 }
@@ -257,6 +275,18 @@ pub fn maintain_cover_for_npc_traced(
     cover: &Cover,
     weights: &CoverWeights,
 ) -> (CoverDecision, CoverTrace) {
+    maintain_cover_for_npc_checked(q, cover, weights, &|_| true)
+}
+
+/// [`maintain_cover_for_npc_traced`] with a shot check on the pick: a new
+/// slot is only taken when `has_shot` says the NPC could see its target
+/// from it (NA23). The fight tick passes `SpaceManager::slot_has_shot`.
+pub fn maintain_cover_for_npc_checked(
+    q: CoverQuery,
+    cover: &Cover,
+    weights: &CoverWeights,
+    has_shot: &dyn Fn(&CoverNode) -> bool,
+) -> (CoverDecision, CoverTrace) {
     let no_cover = |reason, pick| {
         (
             CoverDecision::NoCover,
@@ -323,8 +353,13 @@ pub fn maintain_cover_for_npc_traced(
             None
         };
         if let Some(reason) = reason {
-            // Release and let the caller re-evaluate next tick.
+            // Release and let the caller re-evaluate next tick. A flanked
+            // slot is not picked again for a while (NA23): the threat that
+            // flanked it is usually still strafing past its edge.
             reservations_guard.release_for_entity(npc_id);
+            if reason == ReleaseReason::Flanked {
+                reservations_guard.cool_slot(npc_id, slot, q.now + COVER_REPICK_COOLDOWN);
+            }
             return decided(CoverDecision::Released {
                 prior_slot: slot,
                 reason,
@@ -361,15 +396,18 @@ pub fn maintain_cover_for_npc_traced(
     } else {
         super::MAX_COVER_DISTANCE
     };
+    let cooling = reservations_guard.cooling_slot(npc_id, q.now);
     let ctx = ScoringContext::new(q.npc_pos, q.threat_pos)
-        .with_limits((q.attack_range - PICK_RANGE_MARGIN).max(0.0), max_move);
-    let pick = pick_best_traced(
+        .with_limits((q.attack_range - PICK_RANGE_MARGIN).max(0.0), max_move)
+        .excluding(cooling);
+    let pick = pick_best_filtered(
         &cover.index,
         world_id,
         &reservations_guard,
         &ctx,
         weights,
         &ally_slots,
+        has_shot,
     );
     let chosen_idx = match pick.best {
         Some(c) => c.idx,

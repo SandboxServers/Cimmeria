@@ -19,6 +19,17 @@
 //!   found its slot unreachable) does not look again before this instant.
 //!   This is the seek hysteresis: an NPC that already has a shot re-checks
 //!   cover every few seconds, not every tick.
+//!
+//! And two more from NA23:
+//!
+//! - **`blind_since`**: the NPC stands at its slot and has had no line of
+//!   sight to its target from the slot's peek point since this instant. It
+//!   gives the slot up after a grace period (`cover_released_no_shot`).
+//!   Dropped with the reservation.
+//! - **`slot_cooldown`**: the slot this NPC last gave up as flanked or blind,
+//!   and until when it may not pick it again. Outlives the reservation on
+//!   purpose: it is what stops the MessHall release-and-re-pick churn
+//!   (UAT-1).
 
 use cimmeria_common::EntityId;
 use std::collections::{HashMap, HashSet};
@@ -37,6 +48,8 @@ pub struct CoverReservations {
     entity_to_slot: HashMap<EntityId, CoverSlotKey>,
     in_stance: HashSet<EntityId>,
     seek_after: HashMap<EntityId, Instant>,
+    blind_since: HashMap<EntityId, Instant>,
+    slot_cooldown: HashMap<EntityId, (CoverSlotKey, Instant)>,
 }
 
 impl CoverReservations {
@@ -76,6 +89,7 @@ impl CoverReservations {
         // number of slot moves per NPC over the process lifetime.
         if let Some(prior_slot) = self.entity_to_slot.remove(&entity_id) {
             self.slot_to_entity.remove(&prior_slot);
+            self.blind_since.remove(&entity_id);
             cimmeria_observability::counter!(
                 "cover_reservation_state",
                 "state" => "released",
@@ -94,6 +108,7 @@ impl CoverReservations {
     pub fn release_slot(&mut self, slot: CoverSlotKey) -> bool {
         if let Some(entity_id) = self.slot_to_entity.remove(&slot) {
             self.entity_to_slot.remove(&entity_id);
+            self.blind_since.remove(&entity_id);
             cimmeria_observability::counter!(
                 "cover_reservation_state",
                 "state" => "released",
@@ -107,6 +122,7 @@ impl CoverReservations {
     pub fn release_for_entity(&mut self, entity_id: EntityId) -> Option<CoverSlotKey> {
         let slot = self.entity_to_slot.remove(&entity_id)?;
         self.slot_to_entity.remove(&slot);
+        self.blind_since.remove(&entity_id);
         cimmeria_observability::counter!(
             "cover_reservation_state",
             "state" => "released",
@@ -168,9 +184,41 @@ impl CoverReservations {
         }
     }
 
-    /// Drop the seek deferral (death, leash, surrender: the next fight
-    /// starts fresh).
+    /// Drop the seek deferral and the slot cooldown (death, leash,
+    /// surrender: the next fight starts fresh).
     pub fn clear_seek(&mut self, entity_id: EntityId) {
         self.seek_after.remove(&entity_id);
+        self.slot_cooldown.remove(&entity_id);
+    }
+
+    /// Record that `entity_id` has no shot from its slot at `now`, and
+    /// return since when it has had none. Only meaningful while it holds a
+    /// slot; every release forgets it.
+    pub fn note_blind(&mut self, entity_id: EntityId, now: Instant) -> Instant {
+        *self.blind_since.entry(entity_id).or_insert(now)
+    }
+
+    /// `entity_id` has a shot from its slot again.
+    pub fn clear_blind(&mut self, entity_id: EntityId) {
+        self.blind_since.remove(&entity_id);
+    }
+
+    /// `entity_id` may not pick `slot` again before `until`. One slot per
+    /// NPC: a newer cooldown replaces the older one.
+    pub fn cool_slot(&mut self, entity_id: EntityId, slot: CoverSlotKey, until: Instant) {
+        self.slot_cooldown.insert(entity_id, (slot, until));
+    }
+
+    /// The slot `entity_id` may not pick at `now`, if any. An expired
+    /// cooldown is dropped here.
+    pub fn cooling_slot(&mut self, entity_id: EntityId, now: Instant) -> Option<CoverSlotKey> {
+        match self.slot_cooldown.get(&entity_id) {
+            Some(&(slot, until)) if now < until => Some(slot),
+            Some(_) => {
+                self.slot_cooldown.remove(&entity_id);
+                None
+            }
+            None => None,
+        }
     }
 }

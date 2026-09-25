@@ -344,3 +344,67 @@ fn try_reserve_no_warn_on_idempotent_reserve_by_same_holder() {
         "idempotent re-reserve must NOT emit the race-lost warn"
     );
 }
+
+/// NA23: a pick must give the NPC a shot. When the best-scoring slot fails
+/// the shot check the next one is taken, and when every slot fails there is
+/// no pick. Pass `|_| true` (NA22) and the blind best slot is taken.
+#[test]
+fn pick_skips_a_slot_with_no_shot() {
+    let blind = CoverSlotKey::new(1, 0);
+    // Slot (1,0) is the closer, better-scoring one.
+    let cover = cover_with(vec![n(1, 0, 4.0, 0.0, 0.0), n(1, 1, 8.0, 3.0, 0.0)]);
+    let query = q(1, Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
+    let (dec, trace) = maintain_cover_for_npc_checked(
+        query,
+        &cover,
+        &CoverWeights::default(),
+        &|node: &CoverNode| node.key() != blind,
+    );
+    assert!(
+        matches!(dec, CoverDecision::MoveToCover { slot, .. } if slot == CoverSlotKey::new(1, 1)),
+        "{dec:?}"
+    );
+    assert_eq!(trace.pick.map(|p| p.no_shot), Some(1));
+
+    let cover = cover_with(vec![n(1, 0, 4.0, 0.0, 0.0)]);
+    let (dec, _) =
+        maintain_cover_for_npc_checked(query, &cover, &CoverWeights::default(), &|_| false);
+    assert_eq!(dec, CoverDecision::NoCover);
+}
+
+/// NA23: a slot released as flanked cools for `COVER_REPICK_COOLDOWN`. The
+/// same NPC does not re-pick it while the cooldown runs, even with the
+/// threat back in front of it, and may again once it has run out.
+#[test]
+fn flanked_slot_is_not_re_picked_during_the_cooldown() {
+    let slot = CoverSlotKey::new(1, 0);
+    let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
+    reserve(&cover, 42, slot);
+    let at_slot = Vector3::new(5.0, 0.0, 0.0);
+    let t0 = Instant::now();
+    let flank = CoverQuery {
+        now: t0,
+        ..q(42, at_slot, Vector3::new(-20.0, 0.0, 0.0))
+    };
+    assert!(matches!(
+        decide(flank, &cover),
+        CoverDecision::Released {
+            reason: ReleaseReason::Flanked,
+            ..
+        }
+    ));
+    let front = |now| CoverQuery {
+        now,
+        in_range: false, // no seek deferral in play
+        ..q(42, at_slot, Vector3::new(20.0, 0.0, 0.0))
+    };
+    assert_eq!(
+        decide(front(t0 + Duration::from_secs(1)), &cover),
+        CoverDecision::NoCover,
+        "cooling"
+    );
+    assert!(matches!(
+        decide(front(t0 + COVER_REPICK_COOLDOWN + Duration::from_millis(1)), &cover),
+        CoverDecision::MoveToCover { slot: s, .. } if s == slot
+    ));
+}

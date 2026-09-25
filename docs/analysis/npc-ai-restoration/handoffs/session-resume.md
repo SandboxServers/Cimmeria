@@ -20,7 +20,7 @@ The owner authorized an autonomous run on 2026-09-24: work the packets, merge wh
 | NA10 | #779 | **Running in place is fixed.** Stopped NPCs now broadcast zero velocity. The malformed `onSequence` that stood in for a "movement type" is no longer sent. |
 | NA11 | #783 | **NPCs stay on the floor**, including on ramps and stairs, and when backing up. |
 | NA12 | #785 | **Leash is measured on the NPC's own distance from spawn.** NPCs walk home, evade while returning and heal on arrival. A lost target also sends them home. The player's combat state clears. The 6 s aggro/leash loop is gone. |
-| NA13 | #787 | **Faction-10 NPCs aggro on sight** within 18 u, on the same floor, with line of sight. Chain-armed spawns 20 and 10 wait for their chains. GMs can use `.aggro off`. |
+| NA13 | #787 | **Faction-10 NPCs aggro on sight** within 18 u, on the same floor, with line of sight. Chain-armed spawns 20 and 10 wait for their chains. GMs can use `.aggro off`. UAT-1 found this held only for guards in the open: a guard spawned in cover looked from behind its prop and never saw anyone ([worknotes/uat-1.md](../worknotes/uat-1.md) finding 1). With NA23 it looks from the slot's peek point, and the row holds for guards in cover too. |
 | NA14 | #789 | **Same-room assist.** The MessHall guards join each other. |
 | NA15 | #788 | NPCs hold at mesh-island edges and then go home. They snap back onto the mesh, stop at least 1 u from their target, and can reach GMs standing off the mesh. |
 | NA16 | #786 | **The drone fires across the vial desk.** Stationary NPCs ignore a navmesh "blocked" within their own floor band (D-NA11). |
@@ -28,6 +28,8 @@ The owner authorized an autonomous run on 2026-09-24: work the packets, merge wh
 | NA21 | #780 | Nothing on its own. Cover seeds are now real world-space nodes per world: 236 for Cellblock, 3,788 for Castle. |
 | NA22 | the close-out PR | **NPCs use cover.** They spawn holding it, seek a covered firing position in range and fire from it, and get Cover Stance on arrival. |
 | NA30 | #775 | Nothing. Doc corrections: OnGround sentinel -13000.0, Leash = 5. |
+| NA24 | #791 | UAT-1 findings 4-8. A dead player drops out of every threat list and cannot use items. `.bug` bookmarks list real witnesses. Col Marsh's follow ticks. `Castle_BravoOfficer3` stands on the mesh. An empty server writes far fewer tick rows. |
+| NA23 | branch `npcai/na23-cover-los` | UAT-1 findings 1-3 (D-NA12). **Guards in cover see and shoot from a peek point past their prop,** so they aggro from cover and no longer shoot through walls. A mess-hall strafe no longer flips them out of cover, and a flanked guard does not re-take the same slot for 6 s. |
 
 ## Owner UAT checklist (colo, after `/release` deploys)
 
@@ -51,7 +53,7 @@ Play as GM with `.aggro on` (the default). Use `.bug <note>` at every oddity. Th
    - **Pose experiment:** does the model crouch at the slot with no extra message? See `findings/cover-world-placement.md` Q4. Confirm on the server side with `cover.stance event=granted`.
 6. **Telemetry.**
    - The dashboard fills in.
-   - `cimmeria.deploy_env = 'colo'` appears on rows.
+   - `cimmeria.deploy_env = 'colo'` appears on rows. At UAT-1 it still read `dev`, because Watchtower does not re-apply the compose file; see the [runbook](../../../operations/npc-ai-telemetry-runbook.md#before-you-start).
    - `stale_velocity`, `ground_deviation`, `leash loop`, `idle_parked` and `cleared_without_exit` all read about 0.
 
 UAT-0, the planned before-picture session (D-NA06), was not run: the behaviour fixes shipped in the same release as the telemetry. The pre-fix baseline is the 2026-09-18 to 09-21 colo SigNoz data in [evidence/signoz-npc-mining.md](../evidence/signoz-npc-mining.md).

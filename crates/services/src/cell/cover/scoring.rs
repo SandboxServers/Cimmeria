@@ -15,8 +15,10 @@
 //!
 //! Plus two Cimmeria additions on top of the six base terms:
 //!
-//! - **Flank check** (`is_flanked`): half-plane test — is the threat outside
-//!   the cover's defensive arc (`orient ± π/2`)? Cheap, gates re-picking.
+//! - **Flank check** (`is_flanked`, `defends_for_pick`): half-plane test —
+//!   is the threat outside the cover's defensive arc (`orient ± π/2`)? A held
+//!   slot is released 20 degrees past side-on, a free one is only picked in
+//!   front of side-on (NA23's hysteresis band).
 //! - **Squad-affinity penalty**: discourages multiple NPCs from piling onto
 //!   the same obstacle when alternatives exist. It counts allies holding a
 //!   slot within [`SQUAD_AFFINITY_RADIUS`] of the candidate, not allies in
@@ -32,7 +34,7 @@ use cimmeria_common::Vector3;
 
 use super::reservation::CoverReservations;
 use super::spatial::CoverIndex;
-use super::types::CoverNode;
+use super::types::{CoverNode, CoverSlotKey};
 
 /// Tunable weights. Defaults match the V5 RE recommendation. Wired
 /// initially as compile-time constants; can be swapped to a runtime
@@ -92,6 +94,9 @@ pub struct ScoringContext {
     /// Defaults to [`MAX_COVER_DISTANCE`]; an NPC that already has a shot
     /// only takes a short walk to cover.
     pub max_move_dist: f32,
+    /// A slot this NPC may not pick (NA23: the one it just gave up as
+    /// flanked or blind, while its cooldown runs).
+    pub excluded: Option<CoverSlotKey>,
 }
 
 impl ScoringContext {
@@ -101,7 +106,14 @@ impl ScoringContext {
             threat_pos,
             max_threat_dist: f32::INFINITY,
             max_move_dist: MAX_COVER_DISTANCE,
+            excluded: None,
         }
+    }
+
+    /// Never pick `slot`.
+    pub fn excluding(mut self, slot: Option<CoverSlotKey>) -> Self {
+        self.excluded = slot;
+        self
     }
 
     /// Restrict candidates to those within `max_threat_dist` of the threat
@@ -126,40 +138,48 @@ pub fn allies_near(pos: Vector3, ally_slots: &[Vector3]) -> usize {
         .count()
 }
 
-/// Hysteresis margin (BW meter² in dot-product space) used by the
-/// flank test to avoid tick-to-tick oscillation when the threat sits
-/// near the cover's defensive half-plane boundary. At ~5° off the
-/// perpendicular boundary the test still returns "defended", which
-/// prevents the release→re-pick→release cycle a strict `dot <= 0.0`
-/// check would produce on a perpendicular-moving threat.
-const FLANK_HYSTERESIS_DOT: f32 = 0.0872; // sin(5°) — empirical small dead zone
+/// The flank test's release threshold: an NPC holding a slot gives it up
+/// as flanked only once the threat is more than 20 degrees behind the
+/// cover's side-on line (normalised dot below `-sin 20°`), i.e. more than
+/// 110 degrees off the node's facing.
+///
+/// NA22 used 5 degrees (`-0.0872`). In the tight Castle_CellBlock mess hall
+/// that flipped on a strafe: UAT-1's three `cover_released_flanked` rows
+/// (NPCs 100160 and 100161, 12:14:06-12:14:12) all had the threat 100-102
+/// degrees off the facing (dot -0.17 to -0.20), a couple of metres of
+/// sidestep from "in front" (dot +0.17). 20 degrees holds every one of them.
+pub const FLANK_RELEASE_DOT: f32 = -0.342; // -sin(20°)
 
-/// Half-plane flank test. Returns `true` if `threat_pos` is clearly
-/// OUTSIDE the cover's defensive arc (more than ±π/2 + 5° hysteresis
-/// off `orient`), i.e. the cover is no longer protecting against this
-/// threat.
+/// The pick threshold: a slot is only picked when the threat is in front of
+/// the cover's side-on line (dot at least 0). With [`FLANK_RELEASE_DOT`] this
+/// is a 20 degree hysteresis band: a slot is taken only when it clearly
+/// defends and given up only when it clearly no longer does, so a strafing
+/// threat cannot flip an NPC between the two.
+pub const FLANK_PICK_DOT: f32 = 0.0;
+
+/// Normalised horizontal dot of the node's facing with the direction to the
+/// threat: +1 straight ahead, 0 side-on, -1 straight behind. The hysteresis
+/// is angular, not distance-dependent.
+fn facing_dot(cover_pos: Vector3, cover_orient: f32, threat_pos: Vector3) -> f32 {
+    let (dx, dz) = (threat_pos.x - cover_pos.x, threat_pos.z - cover_pos.z);
+    let len = (dx * dx + dz * dz).sqrt().max(1e-3);
+    (dx * cover_orient.cos() + dz * cover_orient.sin()) / len
+}
+
+/// Half-plane flank test for a slot an NPC already holds. Returns `true`
+/// when `threat_pos` is clearly outside the cover's defensive arc: more
+/// than 20 degrees past side-on ([`FLANK_RELEASE_DOT`]).
 ///
 /// The cover's `orient` faces outward from the wall. The defended
-/// half-plane is the half-space "in front of" the cover. The 5°
-/// hysteresis (`FLANK_HYSTERESIS_DOT`) keeps the NPC in cover when the
-/// threat is right at the perpendicular — without it, a threat moving
-/// exactly along the cover-orient axis would oscillate the NPC between
-/// `Released` and `MoveToCover` every tick.
+/// half-plane is the half-space "in front of" the cover.
 pub fn is_flanked(cover_pos: Vector3, cover_orient: f32, threat_pos: Vector3) -> bool {
-    let to_threat = Vector3::new(threat_pos.x - cover_pos.x, 0.0, threat_pos.z - cover_pos.z);
-    // Normalise the threat direction so the hysteresis is angular, not
-    // distance-dependent. Otherwise a threat at 1 m and at 100 m would
-    // need different dot thresholds for the same angle.
-    let to_threat_len = (to_threat.x * to_threat.x + to_threat.z * to_threat.z)
-        .sqrt()
-        .max(1e-3);
-    let face_x = cover_orient.cos();
-    let face_z = cover_orient.sin();
-    let dot = (to_threat.x * face_x + to_threat.z * face_z) / to_threat_len;
-    // `dot ∈ [-1, 1]` after normalisation. Threat ahead = +1, threat
-    // behind = -1, threat perpendicular = 0. Flanked when dot drops
-    // clearly below 0 (with hysteresis).
-    dot < -FLANK_HYSTERESIS_DOT
+    facing_dot(cover_pos, cover_orient, threat_pos) < FLANK_RELEASE_DOT
+}
+
+/// Whether a free slot defends against `threat_pos` well enough to pick:
+/// the threat is in front of the side-on line ([`FLANK_PICK_DOT`]).
+pub fn defends_for_pick(cover_pos: Vector3, cover_orient: f32, threat_pos: Vector3) -> bool {
+    facing_dot(cover_pos, cover_orient, threat_pos) >= FLANK_PICK_DOT
 }
 
 /// Score a single candidate cover node. Returns a final score in roughly
@@ -313,6 +333,9 @@ pub struct PickTrace {
     pub out_of_reach: usize,
     /// Of those, how many were already reserved.
     pub reserved_skipped: usize,
+    /// Free candidates that scored higher than the winner but were passed
+    /// over because the NPC would have no shot from them (NA23).
+    pub no_shot: usize,
     pub best: Option<ScoredCandidate>,
     /// The best-scoring losers (reserved or lower score), best first.
     pub runners_up: Vec<ScoredCandidate>,
@@ -328,6 +351,31 @@ pub fn pick_best_traced(
     weights: &CoverWeights,
     ally_slots: &[Vector3],
 ) -> PickTrace {
+    pick_best_filtered(
+        index,
+        world_id,
+        reservations,
+        ctx,
+        weights,
+        ally_slots,
+        &|_| true,
+    )
+}
+
+/// [`pick_best_traced`], but the winner must also pass `accept`: the best
+/// unreserved candidate that does, in score order. `accept` runs lazily, best
+/// first, and stops at the first pass; each rejection counts in
+/// [`PickTrace::no_shot`]. The fight tick passes the slot shot check (NA23:
+/// a slot the NPC could not see its target from is not a firing position).
+pub fn pick_best_filtered(
+    index: &CoverIndex,
+    world_id: i32,
+    reservations: &CoverReservations,
+    ctx: &ScoringContext,
+    weights: &CoverWeights,
+    ally_slots: &[Vector3],
+    accept: &dyn Fn(&CoverNode) -> bool,
+) -> PickTrace {
     let candidate_indices = index.nearby(
         world_id,
         &ctx.npc_pos,
@@ -338,7 +386,7 @@ pub fn pick_best_traced(
         scanned: candidate_indices.len(),
         ..PickTrace::default()
     };
-    let mut losers: Vec<ScoredCandidate> = Vec::new();
+    let mut scored: Vec<ScoredCandidate> = Vec::new();
     for idx in candidate_indices {
         let n = match index.node(idx) {
             Some(n) => n,
@@ -346,11 +394,13 @@ pub fn pick_best_traced(
         };
         let move_dist = n.pos.distance_to(&ctx.npc_pos);
         let threat_dist = n.pos.distance_to(&ctx.threat_pos);
-        // A slot already flanked by the threat would be released on the
-        // next tick's flank test: never pick one (NA22).
+        // A slot must clearly defend to be picked (NA23: the pick side of
+        // the flank hysteresis band), and the slot this NPC just gave up as
+        // flanked or blind waits out its cooldown.
         if threat_dist > ctx.max_threat_dist
             || move_dist > ctx.max_move_dist
-            || is_flanked(n.pos, n.orient, ctx.threat_pos)
+            || !defends_for_pick(n.pos, n.orient, ctx.threat_pos)
+            || ctx.excluded == Some(n.key())
         {
             trace.out_of_reach += 1;
             continue;
@@ -368,297 +418,34 @@ pub fn pick_best_traced(
         };
         if reserved {
             trace.reserved_skipped += 1;
-            losers.push(c);
-            continue;
         }
-        // Same comparison as the original loop (a NaN score never wins).
-        let best_score = trace.best.map_or(f32::NEG_INFINITY, |b| b.score);
-        if c.score > best_score {
-            if let Some(prev) = trace.best.replace(c) {
-                losers.push(prev);
-            }
-        } else {
-            losers.push(c);
-        }
+        scored.push(c);
     }
+    // Best first. The sort is stable, so equal scores keep `nearby` order and
+    // the first of them wins, as the original strictly-greater loop chose. A
+    // NaN score never wins.
+    let mut pool: Vec<ScoredCandidate> = scored
+        .iter()
+        .filter(|c| !c.reserved && !c.score.is_nan())
+        .copied()
+        .collect();
+    pool.sort_by(|a, b| b.score.total_cmp(&a.score));
+    for c in pool {
+        let Some(n) = index.node(c.idx) else {
+            continue;
+        };
+        if accept(n) {
+            trace.best = Some(c);
+            break;
+        }
+        trace.no_shot += 1;
+    }
+    let mut losers: Vec<ScoredCandidate> = scored
+        .into_iter()
+        .filter(|c| trace.best.is_none_or(|b| b.idx != c.idx))
+        .collect();
     losers.sort_by(|a, b| b.score.total_cmp(&a.score));
     losers.truncate(PICK_TRACE_RUNNERS_UP);
     trace.runners_up = losers;
     trace
-}
-
-#[cfg(test)]
-mod scoring_tests {
-    use super::*;
-    use crate::cell::cover::types::{CoverHeight, CoverQuality};
-
-    fn n(chunk_id: i32, node_id: i32, x: f32, z: f32, orient: f32, q: CoverQuality) -> CoverNode {
-        CoverNode {
-            chunk_id,
-            node_id,
-            world_id: crate::cell::cover::TEST_WORLD_ID,
-            pos: Vector3::new(x, 0.0, z),
-            orient,
-            height: CoverHeight::Mid,
-            quality: q,
-            width: 1.0,
-            tail: [0; 4],
-        }
-    }
-
-    #[test]
-    fn is_flanked_detects_threat_behind_cover() {
-        // Cover at origin facing +X (orient=0 → (cos 0, sin 0) = (1, 0)).
-        // Threat at +X is in the defended arc; threat at -X is flanking.
-        let cover_pos = Vector3::zero();
-        assert!(
-            !is_flanked(cover_pos, 0.0, Vector3::new(5.0, 0.0, 0.0)),
-            "threat at +X (in front of cover) is NOT flanked"
-        );
-        assert!(
-            is_flanked(cover_pos, 0.0, Vector3::new(-5.0, 0.0, 0.0)),
-            "threat at -X (behind cover) IS flanked"
-        );
-    }
-
-    #[test]
-    fn is_flanked_perpendicular_stays_in_cover_hysteresis() {
-        // Threat exactly perpendicular to cover orient — dot product = 0.
-        // Strict `dot <= 0.0` would say "flanked" and trigger re-pick.
-        // With the 5° hysteresis (FLANK_HYSTERESIS_DOT ≈ 0.0872), a
-        // perpendicular threat stays inside the defensive arc — no
-        // tick-to-tick oscillation. Threat must move clearly behind
-        // the cover to flip the test.
-        let cover_pos = Vector3::zero();
-        assert!(
-            !is_flanked(cover_pos, 0.0, Vector3::new(0.0, 0.0, 5.0)),
-            "perpendicular threat must stay in defensive arc (hysteresis)"
-        );
-    }
-
-    #[test]
-    fn is_flanked_does_not_oscillate_within_hysteresis() {
-        // Threat very slightly behind the perpendicular boundary
-        // (~3° behind). Without hysteresis a strict `<= 0.0` check
-        // would flip at this exact angle every tick. With 5° hysteresis
-        // the NPC keeps the slot until the threat is clearly flanking.
-        let cover_pos = Vector3::zero();
-        let theta = -89.0f32.to_radians(); // 1° past perpendicular into back half-plane
-        let threat = Vector3::new(5.0 * theta.cos(), 0.0, 5.0 * theta.sin());
-        assert!(
-            !is_flanked(cover_pos, 0.0, threat),
-            "1° past perpendicular must NOT flip (within 5° hysteresis)"
-        );
-        // 10° past perpendicular (clearly flanked) flips.
-        let theta_clear = -100.0f32.to_radians();
-        let threat_clear = Vector3::new(5.0 * theta_clear.cos(), 0.0, 5.0 * theta_clear.sin());
-        assert!(
-            is_flanked(cover_pos, 0.0, threat_clear),
-            "10° past perpendicular must flip — clear flank"
-        );
-    }
-
-    #[test]
-    fn score_prefers_better_quality_at_equal_geometry() {
-        let weights = CoverWeights::default();
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(10.0, 0.0, 0.0));
-        // Two nodes at identical positions + orient, differing only in quality.
-        let best = n(1, 0, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Best);
-        let good = n(1, 1, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Good);
-        let s_best = score_node(&best, &ctx, &weights, 0);
-        let s_good = score_node(&good, &ctx, &weights, 0);
-        assert!(
-            s_best > s_good,
-            "Best quality must outscore Good at equal geometry"
-        );
-    }
-
-    #[test]
-    fn score_prefers_closer_cover_at_equal_quality() {
-        let weights = CoverWeights::default();
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
-        // Same quality, same orient (both facing the threat at +X). The
-        // 'close' node is close to the NPC AND at tactical engagement
-        // range from the threat; the 'far' node is near the threat which
-        // means low dist_score AND low move_score (long walk through
-        // open ground). Closer-to-NPC wins on both axes.
-        let close = n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best);
-        let far = n(1, 1, 18.0, 0.0, 0.0, CoverQuality::Best);
-        let s_close = score_node(&close, &ctx, &weights, 0);
-        let s_far = score_node(&far, &ctx, &weights, 0);
-        assert!(
-            s_close > s_far,
-            "Closer cover at tactical range must outscore far cover near the threat"
-        );
-    }
-
-    #[test]
-    fn score_prefers_cover_facing_toward_threat() {
-        // `orient` is the direction the NPC faces while in cover — the
-        // wall is BEHIND the NPC's facing direction. So a cover whose
-        // orient points TOWARD the threat puts the wall between the NPC
-        // and the threat (good); a cover whose orient points AWAY from
-        // the threat has the NPC showing their back to the threat (bad).
-        let weights = CoverWeights::default();
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(10.0, 0.0, 0.0));
-        // Both at the same position; differ only in orient direction.
-        let facing_threat = n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best); // orient=0 → faces +X = toward threat
-        let facing_away = n(1, 1, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Best); // orient=π → faces -X = away from threat
-        let s_facing = score_node(&facing_threat, &ctx, &weights, 0);
-        let s_away = score_node(&facing_away, &ctx, &weights, 0);
-        assert!(
-            s_facing > s_away,
-            "Cover facing TOWARD the threat (wall behind NPC) must outscore cover facing AWAY (NPC's back exposed)"
-        );
-    }
-
-    #[test]
-    fn squad_affinity_penalises_clustered_chunks() {
-        let weights = CoverWeights::default();
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(10.0, 0.0, 0.0));
-        let node = n(1, 0, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Best);
-        let s_solo = score_node(&node, &ctx, &weights, 0);
-        let s_one_ally = score_node(&node, &ctx, &weights, 1);
-        let s_two_allies = score_node(&node, &ctx, &weights, 2);
-        assert!(
-            s_solo > s_one_ally,
-            "an ally at the same obstacle must penalise"
-        );
-        assert!(
-            s_one_ally > s_two_allies,
-            "second ally must penalise further"
-        );
-    }
-
-    #[test]
-    fn pick_best_skips_reserved_slots() {
-        let weights = CoverWeights::default();
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
-        let nodes = vec![
-            n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best),
-            n(1, 1, 6.0, 0.0, 0.0, CoverQuality::Best),
-        ];
-        let idx = CoverIndex::build(nodes);
-        let mut r = CoverReservations::new();
-        // Pin one of the two reserved by some other entity.
-        r.reserve_for_entity(
-            cimmeria_common::EntityId(99),
-            super::super::types::CoverSlotKey::new(1, 0),
-        )
-        .unwrap();
-        let ally_counts: Vec<Vector3> = Vec::new();
-        let pick = pick_best(
-            &idx,
-            crate::cell::cover::TEST_WORLD_ID,
-            &r,
-            &ctx,
-            &weights,
-            &ally_counts,
-        )
-        .expect("must pick something");
-        assert_eq!(
-            idx.node(pick).unwrap().node_id,
-            1,
-            "must pick the unreserved sibling"
-        );
-    }
-
-    #[test]
-    fn pick_best_returns_none_when_no_candidates_within_radius() {
-        let weights = CoverWeights::default();
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(10.0, 0.0, 0.0));
-        // Only node is 100m away — outside MAX_COVER_DISTANCE.
-        let idx = CoverIndex::build(vec![n(1, 0, 100.0, 100.0, 0.0, CoverQuality::Best)]);
-        let r = CoverReservations::new();
-        let ally_counts: Vec<Vector3> = Vec::new();
-        assert!(pick_best(
-            &idx,
-            crate::cell::cover::TEST_WORLD_ID,
-            &r,
-            &ctx,
-            &weights,
-            &ally_counts
-        )
-        .is_none());
-    }
-
-    /// An NPC never picks a slot from another world, however close its
-    /// coordinates: the scorer's candidate set comes from the per-world
-    /// index.
-    #[test]
-    fn pick_best_never_picks_another_worlds_slot() {
-        let weights = CoverWeights::default();
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
-        let idx = CoverIndex::build(vec![n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best)]);
-        let r = CoverReservations::new();
-        let ally_counts: Vec<Vector3> = Vec::new();
-        let other_world = crate::cell::cover::TEST_WORLD_ID + 1;
-        assert!(pick_best(&idx, other_world, &r, &ctx, &weights, &ally_counts).is_none());
-        assert!(pick_best(
-            &idx,
-            crate::cell::cover::TEST_WORLD_ID,
-            &r,
-            &ctx,
-            &weights,
-            &ally_counts
-        )
-        .is_some());
-    }
-
-    /// A slot the threat already flanks is never picked: the next tick's
-    /// flank test would release it, and the NPC would loop pick/release.
-    #[test]
-    fn pick_best_skips_a_slot_the_threat_already_flanks() {
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0));
-        // Faces -X: the threat at +X is behind it.
-        let idx = CoverIndex::build(vec![n(
-            1,
-            0,
-            5.0,
-            0.0,
-            std::f32::consts::PI,
-            CoverQuality::Best,
-        )]);
-        let trace = pick_best_traced(
-            &idx,
-            crate::cell::cover::TEST_WORLD_ID,
-            &CoverReservations::new(),
-            &ctx,
-            &CoverWeights::default(),
-            &[],
-        );
-        assert!(trace.best.is_none());
-        assert_eq!(trace.out_of_reach, 1);
-    }
-
-    #[test]
-    fn with_limits_excludes_slots_out_of_reach() {
-        let idx = CoverIndex::build(vec![
-            n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best), // 15 u from the threat
-            n(1, 1, -5.0, 0.0, 0.0, CoverQuality::Best), // 25 u from the threat
-        ]);
-        let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(20.0, 0.0, 0.0))
-            .with_limits(20.0, 30.0);
-        let pick = pick_best(
-            &idx,
-            crate::cell::cover::TEST_WORLD_ID,
-            &CoverReservations::new(),
-            &ctx,
-            &CoverWeights::default(),
-            &[],
-        )
-        .expect("the near slot reaches");
-        assert_eq!(idx.node(pick).unwrap().node_id, 0);
-    }
-
-    #[test]
-    fn allies_near_counts_only_within_the_radius() {
-        let pos = Vector3::zero();
-        let allies = [
-            Vector3::new(1.0, 0.0, 1.0),
-            Vector3::new(0.0, 5.0, SQUAD_AFFINITY_RADIUS), // on the edge; height ignored
-            Vector3::new(SQUAD_AFFINITY_RADIUS + 0.5, 0.0, 0.0),
-        ];
-        assert_eq!(allies_near(pos, &allies), 2);
-    }
 }

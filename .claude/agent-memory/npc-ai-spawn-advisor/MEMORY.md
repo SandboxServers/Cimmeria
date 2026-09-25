@@ -17,3 +17,4 @@
 - [faction-derived-aggro-na13.md](faction-derived-aggro-na13.md) — NA13: faction 10 aggroes on sight (players react as faction 3); chain-armed spawns need aggression_override=3; wire is onAggressionOverrideUpdate
 - [assist-aggro-na14.md](assist-aggro-na14.md) — NA14 assist hooks generate_threat; shot faction-10 NPCs now pull neighbours <10 u, so test bystanders need a NEUTRAL pin
 - [cover-behaviour-na22.md](cover-behaviour-na22.md) — startup spawns precede cover/world ids (sweep in cover_loaded); guards authored at markers; LoS from a slot reads blocked
+- [cover-peek-los-na23.md](cover-peek-los-na23.md) — NA23: NPC at a slot looks from a peek point past its prop; over-prop peeks not walk-checked; mess tables stay blind
