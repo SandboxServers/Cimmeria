@@ -10,8 +10,13 @@
 | `SGW_All_Classes_Progression_EMULATOR_FINAL_v2_LEVEL50.xlsx` | The owner's EMULATOR FINAL v2 workbook, received 2026-09-25. SHA-256 `ad9af21448794ca1eea2bae609016b5b55ad12f2bedec542c5f3b84cf1b21dba`. | **Canonical.** Tree content, progression rules (sheet `13_Progression_Rules`), the level 1-50 table (sheet `15_Emulator_Level_1_50`) and emulator decisions (sheet `16_Emulator_Decisions`). |
 | `final-v1-implementation-handoff.md` | The FINAL v1 Claude handoff that came with the first zip (`SGW_ABILITY_TREES_CLAUDE_HANDOFF_FINAL_V1`). | Superseded wherever the v2 workbook's rules sheets differ. Still the source of the AT-01 to AT-06 packet shape and the import-safety checklist (its §5). |
 | `final-v1-manifest.json` | The v1 manifest (workbook SHA `c7884096…`). | Historical. |
+| `trainer_server_export.json` | Sheet `12_Trainer_Server_Export` of the v2 workbook as pretty JSON: 439 rows in archetype, `tree_index`, `node_order` order, with the workbook SHA-256 in its `source` block. | **Generated** by [`tools/ability_trees/generate_seed.py`](../../../../tools/ability_trees/README.md). A review copy for diffs; the workbook stays canonical. |
 
 The v1 zip's CSV and JSON exports are not committed. AT-05 extracts the node table from sheet `12_Trainer_Server_Export` of the v2 workbook, so the seed is generated from the canonical file, not from a hand-kept copy.
+
+## Generator
+
+[`tools/ability_trees/generate_seed.py`](../../../../tools/ability_trees/README.md) verifies the workbook's SHA-256, runs the v1 handoff §5 import checks plus the campaign's own (30 or fewer nodes per branch, the starter-collision check with 1646 as the D-AT09 exception), and writes `trainer_server_export.json`, `db/resources/Archetypes/Seed/archetype_ability_tree.sql` and `db/resources/Abilities/Seed/trainer_abilities.sql`. `--check` regenerates in memory and exits 1 if a committed file drifted; `--from-json` runs without openpyxl. The reserve pool (sheet `11_Reserve_Review`) is not seeded.
 
 ## v1 to v2 delta
 
