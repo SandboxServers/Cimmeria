@@ -22,7 +22,7 @@ use std::time::Instant;
 /// Sentinel base for player_ids used by live-DB grant_cash tests. Stays
 /// well below i32::MAX (sgw_player.player_id is `integer`). Per-test
 /// offsets keep concurrent runs from colliding on the same rows.
-const TEST_PLAYER_BASE: i32 = 0x7000_0100;
+pub(super) const TEST_PLAYER_BASE: i32 = 0x7000_0100;
 
 /// Build a fully-connected `ConnectedClientState` (real session key + channel,
 /// so `send_to_witness_reliable`/`send_gm_feedback_to_client` actually route
@@ -30,7 +30,7 @@ const TEST_PLAYER_BASE: i32 = 0x7000_0100;
 /// `connected` entry). `active_player_id` seeds `handle_grant_xp`'s
 /// `state.active_player_id` read when this session is the XP recipient; pass
 /// `None` for a session that's only acting as the GM-feedback recipient.
-fn make_connected_state(active_player_id: Option<i32>) -> ConnectedClientState {
+pub(super) fn make_connected_state(active_player_id: Option<i32>) -> ConnectedClientState {
     ConnectedClientState {
         enc: MercuryEncryption::from_session_key([0u8; 32]),
         key: [0u8; 32],
@@ -60,9 +60,11 @@ fn make_connected_state(active_player_id: Option<i32>) -> ConnectedClientState {
         weapon_holstered: true,
         cancelled: Arc::new(AtomicBool::new(false)),
         cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
+        cinematic_aoi_hold: None,
         player_name: None,
         player_level: Some(1),
         player_archetype: None,
+        player_alignment: None,
         world_name: None,
         player_xp: Some(0),
         player_training_points: Some(0),
@@ -76,14 +78,14 @@ fn make_connected_state(active_player_id: Option<i32>) -> ConnectedClientState {
 
 /// Cleanup by deleting the account row — sgw_player rows cascade off it
 /// via the `ON DELETE CASCADE` on `sgw_player_account_id_fkey`.
-async fn cleanup(pool: &sqlx::PgPool, account_id: i32) {
+pub(super) async fn cleanup(pool: &sqlx::PgPool, account_id: i32) {
     let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
         .bind(account_id)
         .execute(pool)
         .await;
 }
 
-async fn insert_test_account(pool: &sqlx::PgPool, account_id: i32) {
+pub(super) async fn insert_test_account(pool: &sqlx::PgPool, account_id: i32) {
     sqlx::query(
         "INSERT INTO account (account_id, account_name, password) \
          VALUES ($1, $2, '')",
@@ -99,7 +101,12 @@ async fn insert_test_account(pool: &sqlx::PgPool, account_id: i32) {
 /// and CHECK constraints (level/alignment/gender/etc. ranges) plus the
 /// FKs (account_id, world_location). Only columns relevant to the
 /// grant_cash assertions need test-specific values.
-async fn insert_test_player(pool: &sqlx::PgPool, account_id: i32, player_id: i32, naquadah: i32) {
+pub(super) async fn insert_test_player(
+    pool: &sqlx::PgPool,
+    account_id: i32,
+    player_id: i32,
+    naquadah: i32,
+) {
     sqlx::query(
         "INSERT INTO sgw_player (\
             account_id, player_id, level, alignment, archetype, gender, \
@@ -403,6 +410,7 @@ async fn legacy_p05_grant_xp_feedback_goes_to_caller_not_target() {
         &transport,
         &connected,
         &entity_to_addr,
+        &None,
     )
     .await;
 
@@ -463,6 +471,7 @@ async fn legacy_p05_grant_xp_with_no_db_pool_drops_grant_silently() {
         &transport,
         &connected,
         &entity_to_addr,
+        &None,
     )
     .await;
 
@@ -512,6 +521,7 @@ async fn legacy_p05_grant_xp_with_no_active_player_id_drops_grant_silently() {
         &transport,
         &connected,
         &entity_to_addr,
+        &None,
     )
     .await;
 

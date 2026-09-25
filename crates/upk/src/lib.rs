@@ -25,6 +25,7 @@ pub mod imports;
 pub mod names;
 pub mod objects;
 pub mod package;
+pub mod patcher;
 pub mod properties;
 pub mod reader;
 

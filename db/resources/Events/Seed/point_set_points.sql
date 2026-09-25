@@ -334,5 +334,88 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2411, 786.0, 55.2, 511.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2412, 811.0, 63.5, 511.0, 0, 0, 0);
 
-SELECT pg_catalog.setval('point_set_points_point_id_seq', 2412, true);
+-- Interior named regions (packet H15, placement cluster PL-C). Corner order
+-- and the single elevated corner follow 2078/2079/2085: (xmax,zmin),
+-- (xmax,zmax), (xmin,zmax), then (xmin,zmin) carrying the ceiling Y.
+
+-- 2120 Harset_CmdCenter.Lab -- east wing, floor 0.32, ceiling 10.02.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2120, 2540, 69.0, 0.32, -31.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2120, 2541, 69.0, 0.32, 11.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2120, 2542, 27.5, 0.32, 11.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2120, 2543, 27.5, 10.02, -31.0, 0, 0, 0);
+
+-- 2121 Harset_Market.Marketplace -- trading floor, floor 3.60, ceiling 13.60.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2121, 2544, 100.0, 3.6, 30.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2121, 2545, 100.0, 3.6, 100.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2121, 2546, 30.0, 3.6, 100.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2121, 2547, 30.0, 13.6, 30.0, 0, 0, 0);
+
+-- 2122 Harset_StorageRm.Storage -- pen grid, floor 0.30, ceiling 4.00. The
+-- footprint is x[19.0,84.0] z[38.0,97.0]: not component 36's raw bounding box
+-- (x[16.1,87.5] z[34.1,99.2]) but the sub-rectangle where EVERY metre of it
+-- resolves to component 36, found by walking the mesh a metre at a time. The
+-- discarded margin is where the query snaps to a neighbour instead -- the
+-- -1.2 m under-layers 35/54/55 along all four walls, component 6 (the upper
+-- wing) below the south end, 84 at two spots on the z=98 line, and the
+-- outdoor terrain sheet 0 beyond x 15. All 19 pen gates (x 19.3-83.1,
+-- z 51.2-96.7) are still inside. The corners themselves still land on an
+-- under-layer because the mesh is inset by its 0.6 m agent radius, which is
+-- why the on-mesh guard probes one metre inside each edge, not the corners.
+--
+-- The 3.70 m of headroom is the one number here fixed by TELEMETRY rather than
+-- by geometry, and it is deliberately far below the room's 15-17 roof. World 70
+-- has 20 distinct server-accepted player positions (see
+-- `placements/C-interiors-68-69-70.md`); inside this footprint they fall into
+-- four vertical bands -- seven on the pen floor at y 1.25-1.58, one under it at
+-- y -1.68 (the -1.2 under-layer), one on the upper arrival deck at y 7.06 where
+-- it overhangs to z 43.4, and five on interior gantries and catwalks at
+-- y 7.7-17.7 (obj_slab puts decks at 8-9, 11-13 and a roof sheet at 15-17).
+-- `is_point_in_region` widens the box 1.5 m on every axis including Y, so a
+-- 4.00 ceiling accepts y up to 5.50: all seven floor positions with 3.9 m to
+-- spare, and none of the other thirteen. A taller box would make a player who
+-- is still on the arrival deck "in Storage" before descending, which destroys
+-- the edge-crossing property the footprint was trimmed for. No mission step
+-- takes place on a catwalk.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2122, 2548, 84.0, 0.3, 38.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2122, 2549, 84.0, 0.3, 97.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2122, 2550, 19.0, 0.3, 97.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2122, 2551, 19.0, 4.0, 38.0, 0, 0, 0);
+
+
+-- PLACEMENT PASS B (packet H15, world 57). Four corners per BoundingBox in
+-- ring order, three at the floor and the fourth raised to the ceiling --
+-- `is_point_in_region` takes the AABB over all four, so the raised corner
+-- is what gives the volume its height. One point per Cylinder.
+
+-- 2100 Harset.JaffaZone: floor -42.0, ceiling -30.0 (+12).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2500, -208.0, -42.0, -70.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2501, -208.0, -42.0, 140.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2502, -128.0, -42.0, 140.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2503, -128.0, -30.0, -70.0, 0, 0, 0);
+
+-- 2101 Harset.OpCoreZone: floor -42.0, ceiling -30.0 (+12).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2504, 126.0, -42.0, -64.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2505, 126.0, -42.0, 164.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2506, 256.0, -42.0, 164.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2507, 256.0, -30.0, -64.0, 0, 0, 0);
+
+-- 2102 Harset.Bank: floor -42.0, ceiling -34.0 (+8).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2508, -195.0, -42.0, 155.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2509, -195.0, -42.0, 170.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2510, -178.0, -42.0, 170.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2511, -178.0, -34.0, 155.0, 0, 0, 0);
+
+-- 2103 Harset.PetbeQuarters: floor -29.0, ceiling -21.0 (+8).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2512, -176.0, -29.0, 222.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2513, -176.0, -29.0, 246.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2514, -154.0, -29.0, 246.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2515, -154.0, -21.0, 222.0, 0, 0, 0);
+
+-- 2104-2107: cylinder centres, each on its landmark's prefab origin.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2104, 2516, -88.3400002, -30.7000008, 213.925003, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2105, 2517, -226.039993, -41.3600006, 37.7199974, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2106, 2518, -166.117996, -31.1299992, 234.796997, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2107, 2519, 0.0, -30.7199993, 288.799988, 0, 0, 0);
+
+SELECT pg_catalog.setval('point_set_points_point_id_seq', 2551, true);
 

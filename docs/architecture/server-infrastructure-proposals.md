@@ -117,6 +117,13 @@ inventory persist; a gate left open does not, nor does a door, an elevator
 button, a destroyed object, or the fact that a space event already fired.
 Entities respawn in their template default state every boot.
 
+(Player position is persisted at three points: gate travel and the GM
+teleport write their destination, and the `DisconnectEntity` arm hands the
+cell's live position to the base as `CellToBaseMsg::PersistPosition` on
+logout, disconnect and inactivity reap. Before the logout write existed a
+returning character spawned at the last gate arrival or the creation
+point, never where they logged out.)
+
 There is no world-state table in `db/` and no code path that writes one.
 
 ### The proposal
