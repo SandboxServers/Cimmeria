@@ -10,6 +10,7 @@ mod aoi;
 mod auto_cycle;
 mod cover;
 pub(crate) mod holster;
+mod npc_ground;
 mod npc_movement;
 mod npc_respawn;
 mod pending_holster;

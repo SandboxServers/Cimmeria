@@ -24,12 +24,15 @@
 //! - [`path`] — `find_path` and its typed [`PathOutcome`] (which Detour
 //!   stage failed, whether the corridor was partial, how far each end
 //!   snapped).
+//! - [`surface`] — `move_along_surface`, a wall-respecting slide that ends
+//!   on the floor.
 //! - this module — the [`NavMesh`] handle and the rest of its query API.
 
 mod fingerprint;
 mod line_of_sight;
 mod load;
 mod path;
+mod surface;
 mod verdict;
 mod xrc;
 

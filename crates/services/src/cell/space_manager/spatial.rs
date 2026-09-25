@@ -159,4 +159,42 @@ impl SpaceManager {
         let navmesh = space.navmesh.as_ref()?;
         navmesh.get_height_near(x, y_ref, z)
     }
+
+    /// `pos` moved onto the nearest navmesh polygon within Detour's
+    /// destination box (±3 on every axis), in the space containing
+    /// `entity_id`.
+    ///
+    /// For endpoints that come from content or seeds rather than from the
+    /// pathfinder: patrol waypoints, investigate POIs, wander candidates. A
+    /// raw endpoint an NPC can never stand on keeps the "arrived?" check
+    /// false forever, and a straight-line fallback toward it leaves the NPC
+    /// hovering or buried at the end. The ±3 box stays under half the
+    /// smallest storey gap on a shipped mesh (~7.9 u on `castle_cellblock`),
+    /// so it cannot move a point onto another floor.
+    ///
+    /// `None` when no navmesh is loaded or no polygon is in the box; callers
+    /// keep the raw point then.
+    pub fn snap_to_navmesh(&self, entity_id: u32, pos: &Vector3) -> Option<Vector3> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.find_nearest_poly(pos).map(|(_, p)| p)
+    }
+
+    /// Slide from `from` toward `to` along the walkable surface, stopping at
+    /// walls, and return the grounded end point. See
+    /// [`cimmeria_entity::navigation::NavMesh::move_along_surface`].
+    ///
+    /// `None` when no navmesh is loaded or `from` is not on it.
+    pub fn move_along_navmesh(
+        &self,
+        entity_id: u32,
+        from: &Vector3,
+        to: &Vector3,
+    ) -> Option<Vector3> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.move_along_surface(from, to)
+    }
 }

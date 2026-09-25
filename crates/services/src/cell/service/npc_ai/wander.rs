@@ -171,6 +171,9 @@ pub(super) async fn npc_ai_wander(
     } else {
         spawn
     };
+    // The candidate carries the spawn's Y, which is only right on flat
+    // ground; the no-route fallback below walks straight to it (audit M5).
+    let target = space_mgr.snap_to_navmesh(npc_id, &target).unwrap_or(target);
 
     let routed = super::path_request::request_path(
         space_mgr,

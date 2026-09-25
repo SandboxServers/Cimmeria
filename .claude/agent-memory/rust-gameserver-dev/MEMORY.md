@@ -153,6 +153,7 @@
 
 - [harset-nav-does-not-cover-upper-quarters.md](harset-nav-does-not-cover-upper-quarters.md) - harset.nav covers only the plaza (component 187); the Jaffa Zone, OP-CORE, towers and palace terrace have NO mesh at their real floor, so "is_point_valid on every spawn" cannot pass there.
 - [navmesh-containment-modes.md](navmesh-containment-modes.md) - **read before any code that rejects a position/arrival/ring trip for being off-mesh.** Per-world `navmesh_mode` names (`enforces_navmesh_containment`, `load_world_rows`, `stamp_world_rows` - the old `*_world_ids` names are gone); the shared `TEST_SPACES_XML` fixture pins space counts and ids so adding a world breaks 4 tests; `get_nearest_point` returns its input on a miss; harset.nav's two floors and the Z -200..-228 hole.
+- [npc-ground-clamp-and-detour-traps.md](npc-ground-clamp-and-detour-traps.md) — NA11: Cellblock floor-then-ramp fixture leg; `moveAlongSurface` result is unprojected and can sit on a BV-missed outer edge; `cc` build.rs never rebuilt `detour_wrapper.cpp`.
 - [obj-slab-and-nav-inspect-probe-traps.md](obj-slab-and-nav-inspect-probe-traps.md) — **read before deriving a coordinate from map data.** obj_slab's chunk pre-filter makes a `--column` contradict itself; the topmost up-facing surface in a roofed room is the ROOF; nav_inspect's `h` is Y-biased.
 
 ## AoI / entity lifecycle

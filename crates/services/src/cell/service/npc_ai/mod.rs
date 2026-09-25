@@ -53,6 +53,8 @@ mod dispatch;
 mod fight;
 mod fight_cover;
 mod follow;
+#[cfg(test)]
+mod ground_endpoint_tests;
 mod idle_aggro;
 mod investigate;
 mod leash;

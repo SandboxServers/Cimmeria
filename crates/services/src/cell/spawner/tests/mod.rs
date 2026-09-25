@@ -19,5 +19,6 @@ mod harset;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_loaders;
+mod spawn_grounding;
 mod spawn_records;
 mod template_prototype_parity;

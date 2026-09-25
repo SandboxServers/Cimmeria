@@ -170,41 +170,65 @@ pub(super) fn ability_ranges(
     (max_range, min_range)
 }
 
-/// Step back along the target→NPC vector to a point at distance
-/// `min_range + 1.0` from the target. Returns `None` if the NPC and
-/// target are co-located (degenerate vector — can't normalize).
+/// Step back from the target, horizontally, to a point `min_range + 1.0`
+/// from it in X and Z, at the NPC's own height. Returns `None` when the
+/// target is straight above or below the NPC (no horizontal direction to
+/// back away along).
 ///
 /// The +1.0 margin keeps the next tick's range check from oscillating
 /// at exactly `min_range`; without it floating-point jitter would push
-/// the NPC back inside the dead zone every other tick.
+/// the NPC back inside the dead zone every other tick. A horizontal
+/// distance of `min_range + 1.0` is at least that in 3D, so the margin
+/// holds whatever the height difference.
 ///
-/// # Vertical-axis caveat
+/// # Why horizontal
 ///
-/// The returned waypoint preserves the NPC's Y-axis offset from the
-/// target — if the NPC is uphill of the target, the backup point is
-/// also uphill. This can yield a Y that the navmesh would reject (in
-/// mid-air over a ledge, or under the floor). The waypoint is fed
-/// into the same path-follower as `find_path` output, which clamps
-/// invalid Y via the navmesh on consume. Callers that bypass that
-/// path-follower must clamp themselves.
+/// This used to extrapolate the full 3D target→NPC vector, keeping its
+/// vertical component. A player standing 5 u above the NPC put the backup
+/// point under the floor, and one below put it in the air (audit M5).
+/// Nothing re-grounded it: the waypoint went straight into `nav_path`.
+/// The point returned here is still raw; the fight handler goes through
+/// [`backup_waypoint_on_mesh`], which slides it across the navmesh.
 pub(super) fn compute_backup_waypoint(
     npc_pos: cimmeria_common::Vector3,
     target_pos: cimmeria_common::Vector3,
     min_range: f32,
 ) -> Option<cimmeria_common::Vector3> {
     let dx = npc_pos.x - target_pos.x;
-    let dy = npc_pos.y - target_pos.y;
     let dz = npc_pos.z - target_pos.z;
-    let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+    let dist = (dx * dx + dz * dz).sqrt();
     if dist < f32::EPSILON {
         return None;
     }
     let scale = (min_range + 1.0) / dist;
     Some(cimmeria_common::Vector3::new(
         target_pos.x + dx * scale,
-        target_pos.y + dy * scale,
+        npc_pos.y,
         target_pos.z + dz * scale,
     ))
+}
+
+/// The min-range backup waypoint, on the walkable surface.
+///
+/// [`compute_backup_waypoint`] picks the direction; the navmesh then slides
+/// the NPC from where it stands toward that point with Detour's
+/// `moveAlongSurface`. The slide stops at a wall or ledge instead of
+/// passing through it, and the result sits on the floor of the storey the
+/// NPC is on. Without a navmesh, or with the NPC off it, the raw point is
+/// used, which is still at the NPC's own height.
+pub(super) fn backup_waypoint_on_mesh(
+    space_mgr: &SpaceManager,
+    npc_id: u32,
+    npc_pos: cimmeria_common::Vector3,
+    target_pos: cimmeria_common::Vector3,
+    min_range: f32,
+) -> Option<cimmeria_common::Vector3> {
+    let raw = compute_backup_waypoint(npc_pos, target_pos, min_range)?;
+    Some(
+        space_mgr
+            .move_along_navmesh(npc_id, &npc_pos, &raw)
+            .unwrap_or(raw),
+    )
 }
 
 /// Test-only re-export of the private `compute_backup_waypoint` so

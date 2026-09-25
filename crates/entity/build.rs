@@ -1,4 +1,10 @@
 fn main() {
+    // `cc` prints `rerun-if-env-changed` lines, and any `rerun-if-*` line
+    // replaces cargo's default "rerun when a package file changes". Without
+    // these, an edit to the wrapper is silently not compiled into the next
+    // build.
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=detour_wrapper.cpp");
     cc::Build::new()
         .cpp(true)
         .include("../../external/recast/Detour/Include")

@@ -131,20 +131,25 @@ fn report_stale_velocity(space_mgr: &mut SpaceManager, npc_id: u32, now: Instant
     );
 }
 
-/// How the movement tick arrived at the Y it just wrote.
+/// How the movement tick arrived at the Y it just wrote, on a mid-leg step
+/// or a waypoint snap alike. Logged as `y_source` on the `step` row and on
+/// `ground_deviation`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::cell) enum YSource {
-    /// Linear interpolation along the leg toward the next waypoint.
+    /// The navmesh floor under the step, on the storey nearest the lerp
+    /// (NA11). A `ground_deviation` with this source is a clamp bug.
+    Clamp,
+    /// The chord lerp: the space has no navmesh, or no floor lies within
+    /// the jump band of the lerped Y.
     Lerp,
-    /// Snapped onto a waypoint.
-    Waypoint,
 }
 
 impl YSource {
-    fn label(self) -> &'static str {
+    /// Stable snake_case label. Treat as API.
+    pub(in crate::cell) fn label(self) -> &'static str {
         match self {
+            Self::Clamp => "clamp",
             Self::Lerp => "lerp",
-            Self::Waypoint => "waypoint",
         }
     }
 }
@@ -243,7 +248,7 @@ pub(in crate::cell) fn check_ground_step(
         wp_z = wp.z,
         ai_state,
         suppressed,
-        "movement.npc: NPC is off the floor under it -- Y was lerped along a \
-         leg whose 2D path does not follow the surface"
+        "movement.npc: NPC is off the floor under it -- y_source says whether the \
+         ground clamp or the lerp fallback set its Y"
     );
 }

@@ -1,6 +1,7 @@
 use cimmeria_entity::stats::StatList;
 
 use super::super::super::space_manager::SpaceManager;
+use super::npc_ground::{grounded_vertical_speed, grounded_y, YSource, MOVEMENT_TICK_SECS};
 
 /// 1-in-N sampling rate for in-between NPC movement steps. State
 /// transitions (waypoint consumed, path complete) are always logged
@@ -42,7 +43,7 @@ fn leg_step_index(npc_id: u32, path_len: usize) -> u32 {
 
 static NPC_STEP_LOG_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-use super::super::npc_ai::detectors::movement::{check_ground_step, GroundStep, YSource};
+use super::super::npc_ai::detectors::movement::{check_ground_step, GroundStep};
 
 /// NA02 `ground_deviation`: compare the Y this tick just wrote against the
 /// storey-aware floor under it. Reporting only.
@@ -118,15 +119,24 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
         let dx = next_wp.x - cur_pos.x;
         let dy = next_wp.y - cur_pos.y;
         let dz = next_wp.z - cur_pos.z;
-        let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+        // Step budget is horizontal. Y now follows the floor rather than the
+        // chord, so the chord's dy is not distance the NPC walks, and on a
+        // floor-then-ramp leg it used to eat budget over the flat part and
+        // slow the NPC for no visible reason. A waypoint straight overhead
+        // (a corner on the next storey up) reads as arrived and snaps.
+        let dist = (dx * dx + dz * dz).sqrt();
 
         // Speed in world units per second (tick is 100ms = 0.1s)
-        let speed_per_sec = move_speed * 10.0;
+        let speed_per_sec = move_speed / MOVEMENT_TICK_SECS;
 
         if dist <= move_speed {
-            // Reached (or overshot) the waypoint — snap to it and consume
-            // Waypoint Y comes from Detour's findStraightPath (already on navmesh surface)
-            let snap_y = next_wp.y;
+            // Reached (or overshot) the waypoint — snap to it and consume.
+            // Only the first and last corners of a straight path are
+            // detail-surface points; intermediate corners are poly-mesh
+            // portal vertices, so ground the snap too.
+            let (snap_y, snap_source) =
+                grounded_y(space_mgr, npc_id, next_wp.x, next_wp.y, next_wp.z);
+            let vy = grounded_vertical_speed(cur_pos.y, snap_y, speed_per_sec);
 
             // Peek at the NEXT waypoint (index 1) to compute velocity toward it
             let next_next_wp = if path_len > 1 {
@@ -141,15 +151,10 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 // Still more waypoints — compute velocity toward the next one
                 let ndx = nn.x - next_wp.x;
                 let ndz = nn.z - next_wp.z;
-                let ndy = nn.y - next_wp.y;
-                let nd = (ndx * ndx + ndy * ndy + ndz * ndz).sqrt();
+                let nd = (ndx * ndx + ndz * ndz).sqrt();
                 if nd > 0.001 {
                     (
-                        [
-                            ndx / nd * speed_per_sec,
-                            ndy / nd * speed_per_sec,
-                            ndz / nd * speed_per_sec,
-                        ],
+                        [ndx / nd * speed_per_sec, vy, ndz / nd * speed_per_sec],
                         ndx.atan2(ndz),
                     )
                 } else {
@@ -169,14 +174,9 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 [0, 0, 0],
                 velocity,
             );
-            check_ground(
-                space_mgr,
-                npc_id,
-                cur_pos,
-                next_wp,
-                next_wp,
-                YSource::Waypoint,
-            );
+            // Compare the Y actually written, not the waypoint's poly-mesh Y.
+            let snapped = cimmeria_common::Vector3::new(next_wp.x, snap_y, next_wp.z);
+            check_ground(space_mgr, npc_id, cur_pos, snapped, next_wp, snap_source);
             let remaining_after = if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.nav_path.pop_front();
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
@@ -207,19 +207,22 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
             let new_x = cur_pos.x + dx * t;
             let new_z = cur_pos.z + dz * t;
 
-            // Linearly interpolate Y between current position and waypoint.
-            // Waypoints from Detour's findStraightPath are on the navmesh surface,
-            // so linear interpolation between them stays close to the floor.
-            let new_y = cur_pos.y + dy * t;
+            // The chord lerp does NOT stay near the floor: Detour corners
+            // are XZ turns only, so a floor-then-ramp leg is one segment
+            // and its lerp floats over the flat part (audit M1). The lerp
+            // only picks the storey; the floor under the step is the Y.
+            let lerp_y = cur_pos.y + dy * t;
+            let (new_y, y_source) = grounded_y(space_mgr, npc_id, new_x, lerp_y, new_z);
 
             // Face the direction of movement (yaw = atan2(dx, dz) in radians)
             // Direction is [pitch, yaw, roll] — only yaw matters for facing
             let yaw = dx.atan2(dz);
 
-            // Velocity = direction * speed_per_sec
+            // Horizontal speed along the leg; vertical from the grounded
+            // rise, so the client's filter does not extrapolate the chord.
             let velocity = [
                 dx / dist * speed_per_sec,
-                dy / dist * speed_per_sec,
+                grounded_vertical_speed(cur_pos.y, new_y, speed_per_sec),
                 dz / dist * speed_per_sec,
             ];
 
@@ -237,9 +240,8 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                 .is_multiple_of(NPC_STEP_LOG_SAMPLE);
             if leg_step <= NPC_LEG_HEAD_STEPS || sampled {
-                // Only queried for logged steps. `None` = no navmesh, or
-                // no surface within jump height of `new_y` (floating).
-                let ground_y = space_mgr.get_navmesh_height(npc_id, new_x, new_y, new_z);
+                // The clamp's own reading; `None` = the step kept the lerp.
+                let ground_y = (y_source == YSource::Clamp).then_some(new_y);
                 tracing::debug!(
                     target: "movement.npc",
                     event = "step",
@@ -251,7 +253,8 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                     yaw_rad = yaw,
                     yaw_byte = crate::mercury::aoi::pack_angle(yaw),
                     leg_step,
-                    y_source = "lerp",
+                    y_source = y_source.label(),
+                    lerp_y,
                     ?ground_y,
                     y_offset_from_ground = ?ground_y.map(|g| new_y - g),
                     "NPC movement step (sampled)"
@@ -260,7 +263,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
 
             space_mgr.update_entity_position(npc_id, [new_x, new_y, new_z], [0, 0, 0], velocity);
             let stepped = cimmeria_common::Vector3::new(new_x, new_y, new_z);
-            check_ground(space_mgr, npc_id, cur_pos, stepped, next_wp, YSource::Lerp);
+            check_ground(space_mgr, npc_id, cur_pos, stepped, next_wp, y_source);
             // Set yaw directly as radians (pack_angle reads direction.y)
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);

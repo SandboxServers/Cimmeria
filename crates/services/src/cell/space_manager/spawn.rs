@@ -160,6 +160,58 @@ impl SpaceManager {
         Ok(entity_id)
     }
 
+    /// The seeded spawn point, with its Y moved onto the navmesh floor when
+    /// the seed is close enough to it (NA11, audit S9).
+    ///
+    /// Seeded Y is often a model origin a little above or below the floor.
+    /// The pathfinder looks up an NPC's start polygon in a ±0.5 box, so a
+    /// guard seeded 0.6 u over a flat floor could never route, and every
+    /// leash and respawn put it back on the same bad point. Snapping here,
+    /// and storing the result as `spawn_position`, fixes all three at once:
+    /// the leash, the respawn tick and wander all read `spawn_position`.
+    ///
+    /// "Close enough" is the `is_point_valid` band (up to 4 u above the
+    /// floor, or `2 * agent_radius` below it). A seed outside the band is
+    /// kept as authored: it is either on geometry the mesh does not cover
+    /// or a data error, and moving it several units would hide which.
+    ///
+    /// Props (a `static_mesh`) and stationary NPCs keep their authored Y.
+    /// They never path, and a height above the mesh is often deliberate: a
+    /// console on a desk, a turret on a platform.
+    fn grounded_spawn_position(
+        &self,
+        space_id: u32,
+        record: &super::super::spawner::SpawnRecord,
+    ) -> Vector3 {
+        let seeded = Vector3::new(record.x, record.y, record.z);
+        if record.static_mesh.is_some() || record.is_stationary {
+            return seeded;
+        }
+        let Some(navmesh) = self.spaces.get(&space_id).and_then(|s| s.navmesh.as_ref()) else {
+            return seeded;
+        };
+        if !navmesh.is_point_valid(&seeded) {
+            return seeded;
+        }
+        match navmesh.get_height_near(seeded.x, seeded.y, seeded.z) {
+            Some(floor) => {
+                if (floor - seeded.y).abs() > 0.01 {
+                    tracing::debug!(
+                        target: "spawner.npc_behaviour",
+                        event = "spawn_grounded",
+                        spawn_id = record.spawn_id,
+                        template_id = record.template_id,
+                        seeded_y = seeded.y,
+                        floor_y = floor,
+                        "NPC spawn Y moved onto the navmesh floor"
+                    );
+                }
+                Vector3::new(seeded.x, floor, seeded.z)
+            }
+            None => seeded,
+        }
+    }
+
     /// Internal: spawn an NPC from a record into a given space_id.
     fn spawn_npc_from_record_into(
         &mut self,
@@ -167,7 +219,7 @@ impl SpaceManager {
         record: &super::super::spawner::SpawnRecord,
         space_id: u32,
     ) -> Result<u32, String> {
-        let pos = Vector3::new(record.x, record.y, record.z);
+        let pos = self.grounded_spawn_position(space_id, record);
         // heading is yaw (rotation.y), x and z rotation are 0
         let dir = Vector3::new(0.0, record.heading, 0.0);
 

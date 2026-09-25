@@ -131,7 +131,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA11
 
-**Status:** BlockedDependency (NA01, NA10). **Scope title:** Server-side ground clamp and safe fallbacks (M1-M3, M5). **Advisor:** movement-teleport-advisor.
+**Status:** Review (branch `npcai/na11-ground-clamp`, on main after NA10 #779). Per-step and per-arrival ground clamp on the storey nearest the lerp, grounded `vy`, horizontal step budget; backup via `moveAlongSurface`; patrol, investigate and wander endpoints snapped; spawn Y grounded inside the `is_point_valid` band. `DT_STRAIGHTPATH_ALL_CROSSINGS` measured and not adopted: over 60 random Cellblock routes the clamp alone leaves 0 of 34,412 ticks more than 0.3 u off the floor (old lerp: 234, worst 4.7 u under), and crossings only add arrival snaps (3.5% slower). **Scope title:** Server-side ground clamp and safe fallbacks (M1-M3, M5). **Advisor:** movement-teleport-advisor.
 
 **Scope:**
 
