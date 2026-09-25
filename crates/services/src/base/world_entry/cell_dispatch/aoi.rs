@@ -9,19 +9,18 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_NPC_DEFAULT, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 
-use crate::cell::messages::NpcAoIData;
+use crate::cell::messages::{NpcAoIData, PlayerAoIData};
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
     build_entity_invisible, build_entity_leave, build_entity_method_packet,
-    compose_create_entity_base_body, compose_create_entity_cascade_body,
+    build_player_ghost_cascade,
 };
 
-use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
 use super::super::super::helpers::{
-    send_bundle_to_witness_reliable, send_to_witness, send_to_witness_reliable, BundleSendOutcome,
-    WitnessSendOutcome,
+    send_bundle_to_witness_reliable, send_to_witness, send_to_witness_reliable, WitnessSendOutcome,
 };
 use super::super::super::ConnectedClientState;
+use super::player_ghost;
 
 /// Emit the success-side (`aoi.create_emit`, DEBUG) or failure-side
 /// (`aoi.create_send_failed`, WARN) observability seam for one packet of
@@ -79,229 +78,6 @@ fn log_create_emit(
     }
 }
 
-/// Bundle-path analogue of [`log_create_emit`] — emits the success
-/// (`aoi.create_emit`, DEBUG) or failure (`aoi.create_send_failed`, WARN)
-/// seam for the pre-onClientReady bundled introduction in
-/// [`flush_deferred_aoi`]. `entered` is the NPC count folded into the
-/// bundle; `phase` distinguishes the phase-1 (`"create_base"`) and
-/// phase-2 (`"cascade"`) bundles. Per-entity ids aren't available here —
-/// the bundle carries N entities — so the seam reports the aggregate
-/// count instead.
-fn log_bundle_emit(
-    witness_id: u32,
-    entered: usize,
-    phase: &'static str,
-    outcome: BundleSendOutcome,
-) {
-    match outcome {
-        BundleSendOutcome::Sent {
-            base_seq,
-            packets,
-            bytes,
-            ..
-        } => {
-            tracing::debug!(
-                target: "aoi.create_emit",
-                event = "create_emit",
-                witness_id,
-                entered,
-                phase,
-                addr_resolved = true,
-                bytes,
-                seq = base_seq,
-                packets,
-                "AoI create emit: {phase} bundle ({entered} NPC) delivered to witness"
-            );
-        }
-        // Empty bundle is a benign no-op (the caller already gates on
-        // `is_empty()`), so it never reaches here in practice; treat it as
-        // non-failure to avoid a spurious WARN if that gate ever changes.
-        BundleSendOutcome::Empty => {}
-        failed => {
-            tracing::warn!(
-                target: "aoi.create_send_failed",
-                event = "create_send_failed",
-                witness_id,
-                entered,
-                phase,
-                addr_resolved = failed.addr_resolved(),
-                reason = failed.failure_reason().unwrap_or("unknown"),
-                "AoI create emit: {phase} bundle ({entered} NPC) NOT delivered to witness -- \
-                 entities may be invisible until relog"
-            );
-        }
-    }
-}
-
-/// Drain a session's deferred-AoI buffer and dispatch each held message
-/// through the normal AoI handlers.
-///
-/// Called from `handle_on_client_ready` once the client signals it's
-/// ready to receive entity-state traffic. `witness_id` is the player's
-/// own entity_id (the buffer's owner — used as the AoI witness for the
-/// re-dispatched `EnteredAoI` / `LeftAoI` events). `EntityMethodCall`
-/// entries carry their own target entity_id.
-///
-/// # Bundle batching
-///
-/// `EnteredAoI` is the burst-shape failure mode — a Castle_CellBlock
-/// instance with 28 NPCs would pre-bundle emit 56 reliable packets
-/// (2 per NPC: CREATE_ENTITY/UPDATE_AVATAR pair, then cascade).
-/// Instead this function bundles into TWO logical client frames:
-///
-/// - **Phase-1 bundle**: every NPC's `CREATE_ENTITY + UPDATE_AVATAR`
-///   body. Safe to combine cross-entity: CREATE_ENTITY(A) puts entity A
-///   in transaction for the bundle, but CREATE_ENTITY(B) targets a
-///   different entity and is unaffected.
-/// - **Phase-2 bundle**: every NPC's `createOnClient()` property cascade
-///   body. Safe to combine cross-entity for the same reason. Critically
-///   sent as a SEPARATE bundle from phase-1 — same-entity messages
-///   after CREATE_ENTITY in the same bundle hit the client's
-///   HOLD-FOR-TRANSACTION path and are silently dropped (see the
-///   `cimmeria_mercury::channel_bundle` module doc and the deliberate
-///   two-bundle split in `base/world_entry/map_loaded.rs`).
-///
-/// For 28 NPCs: phase-1 ≈ 28×37 = 1 KB (1 fragment under
-/// `FRAGMENT_BODY_SIZE`=1300); phase-2 ≈ 28×442 = 12 KB (10 fragments
-/// at 1300 bytes each) ≈ **~11 reliable packets total**, down from 56.
-/// The regression guard at
-/// [`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`]
-/// pins this at `≤15` to leave headroom for cascade-payload growth.
-/// The deferred-send queue still backstops the case where bundle
-/// finalize emits more than the remaining TX-window capacity.
-///
-/// `LeftAoI` and `EntityMethodCall` stay on the per-message
-/// `send_to_witness_reliable` path. They preserve their **encounter
-/// order** in the buffer relative to each other so the cell's intended
-/// sequencing survives the flush — an `EntityMethodCall(X)` followed by
-/// `LeftAoI(X)` must NOT be reordered to `LeftAoI(X)` then
-/// `EntityMethodCall(X)`, or the method targets a destroyed entity.
-/// Both classes flush **after** the two bundles to guarantee any
-/// `LeftAoI(X)` runs after the matching `EnteredAoI(X)`'s cascade.
-pub(crate) async fn flush_deferred_aoi(
-    witness_id: u32,
-    addr: SocketAddr,
-    transport: &Arc<dyn Transport>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
-    let buffered = deferred_aoi::drain_deferred(connected, addr);
-    if buffered.is_empty() {
-        return;
-    }
-    tracing::info!(
-        %addr,
-        witness_id,
-        count = buffered.len(),
-        "Flushing deferred-AoI buffer after onClientReady"
-    );
-
-    // Pre-aggregate EnteredAoI events into two cross-entity bundles.
-    // Tracked separately so phase-1 emits before phase-2 (the client must
-    // process each NPC's CREATE_ENTITY transaction before its cascade).
-    let mut phase1 = ChannelBundle::new(true);
-    let mut phase2 = ChannelBundle::new(true);
-    let mut entered_count = 0usize;
-
-    // Per-message tail — LeftAoI / EntityMethodCall keep their existing
-    // one-packet-each shape and MUST preserve encounter order relative to
-    // each other (a buffered EntityMethodCall(X) followed by LeftAoI(X)
-    // would otherwise reorder to LeftAoI(X) then EntityMethodCall(X) and
-    // the method would target a destroyed entity). Single enum + push in
-    // iteration order is what holds this invariant.
-    enum TailMsg {
-        LeftAoI(u32),
-        EntityMethodCall(u32, u16, Vec<u8>),
-    }
-    let mut tail: Vec<TailMsg> = Vec::new();
-
-    for msg in buffered {
-        match msg {
-            DeferredAoiMsg::EnteredAoI {
-                entity_id,
-                class_id,
-                position,
-                direction,
-                level,
-                npc_data,
-            } => {
-                phase1.append_raw_message(&compose_create_entity_base_body(
-                    entity_id, class_id, position, direction,
-                ));
-                phase2.append_raw_message(&compose_create_entity_cascade_body(
-                    entity_id,
-                    class_id,
-                    level,
-                    npc_data.as_ref(),
-                ));
-                entered_count += 1;
-            }
-            DeferredAoiMsg::LeftAoI { entity_id } => tail.push(TailMsg::LeftAoI(entity_id)),
-            DeferredAoiMsg::EntityMethodCall {
-                entity_id,
-                method_index,
-                args,
-            } => tail.push(TailMsg::EntityMethodCall(entity_id, method_index, args)),
-        }
-    }
-
-    if !phase1.is_empty() {
-        tracing::debug!(
-            witness_id,
-            entered = entered_count,
-            phase1_bytes = phase1.body_len(),
-            phase1_packets = phase1.estimated_packet_count(),
-            "AoI flush: phase-1 bundle (CREATE_ENTITY + UPDATE_AVATAR per NPC)"
-        );
-        let outcome = send_bundle_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
-            witness_id,
-            phase1,
-        )
-        .await;
-        log_bundle_emit(witness_id, entered_count, "create_base", outcome);
-    }
-    if !phase2.is_empty() {
-        tracing::debug!(
-            witness_id,
-            entered = entered_count,
-            phase2_bytes = phase2.body_len(),
-            phase2_packets = phase2.estimated_packet_count(),
-            "AoI flush: phase-2 bundle (createOnClient() cascade per NPC)"
-        );
-        let outcome = send_bundle_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
-            witness_id,
-            phase2,
-        )
-        .await;
-        log_bundle_emit(witness_id, entered_count, "cascade", outcome);
-    }
-
-    for msg in tail {
-        match msg {
-            TailMsg::LeftAoI(entity_id) => {
-                left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
-            }
-            TailMsg::EntityMethodCall(entity_id, method_index, args) => {
-                entity_method_call(
-                    entity_id,
-                    method_index,
-                    args,
-                    transport,
-                    connected,
-                    entity_to_addr,
-                )
-                .await;
-            }
-        }
-    }
-}
-
 /// `CellToBaseMsg::EnteredAoI` — entity entered a witness's range.
 /// Emits CREATE_ENTITY + UPDATE_AVATAR (phase 1, BaseApp immediate) followed
 /// by the createOnClient() property cascade (phase 2, CellApp round-trip).
@@ -313,6 +89,7 @@ pub(super) async fn entered_aoi(
     direction: [f32; 3],
     level: u32,
     npc_data: Option<NpcAoIData>,
+    player_data: Option<PlayerAoIData>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -322,8 +99,15 @@ pub(super) async fn entered_aoi(
         entity_id,
         class_id,
         level,
+        is_player = player_data.is_some(),
         "AoI: entity entered witness range"
     );
+    // A player observee's cascade needs the identity half that lives on its
+    // base session (name, appearance, ...). Resolved before the sends so no
+    // `connected` lock is held across them.
+    let ghost_identity = player_data.as_ref().and_then(|_| {
+        player_ghost::resolve_identity(connected, entity_to_addr, witness_id, entity_id)
+    });
     // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE.
     // NPC spawn into player AoI; loss = NPC permanently invisible.
     let base_outcome = send_to_witness_reliable(
@@ -345,8 +129,16 @@ pub(super) async fn entered_aoi(
         connected,
         entity_to_addr,
         witness_id,
-        |key, version, seq, acks| {
-            build_create_entity_cascade(
+        |key, version, seq, acks| match (&player_data, &ghost_identity) {
+            (Some(live), Some(identity)) => build_player_ghost_cascade(
+                key,
+                seq,
+                acks,
+                entity_id,
+                &identity.cascade(live),
+                version,
+            ),
+            _ => build_create_entity_cascade(
                 key,
                 seq,
                 acks,
@@ -355,7 +147,7 @@ pub(super) async fn entered_aoi(
                 level,
                 npc_data.as_ref(),
                 version,
-            )
+            ),
         },
     )
     .await;
@@ -725,6 +517,7 @@ mod tests {
             [0.0, 0.0, 0.0],
             1, // level
             None,
+            None,
             &dyn_transport,
             &connected,
             &entity_to_addr,
@@ -796,6 +589,7 @@ mod tests {
             [0.0, 0.0, 0.0],
             [0.0, 0.0, 0.0],
             1,
+            None,
             None,
             &dyn_transport,
             &connected,

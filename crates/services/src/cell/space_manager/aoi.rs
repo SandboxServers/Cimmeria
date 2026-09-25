@@ -85,6 +85,15 @@ impl SpaceManager {
                 }
                 // Exact distance check
                 if let Some(other) = space.entities.get(&cid) {
+                    // A player's cell entity exists from `CreateEntity`, long
+                    // before its client has loaded the map. Keep it out of
+                    // everyone's AoI until it can be introduced as a player —
+                    // see `CellEntity::is_introducible`. Skipping (rather
+                    // than introducing a placeholder) matters because the
+                    // witness set below is what makes introduction one-shot.
+                    if !other.is_introducible() {
+                        continue;
+                    }
                     let dist_sq = player_pos.distance_squared_to(&other.position);
                     if dist_sq <= aoi_radius * aoi_radius {
                         current_aoi.insert(cid);
@@ -134,6 +143,9 @@ impl SpaceManager {
                         } else {
                             None
                         };
+                        let player_data = other
+                            .is_player
+                            .then(|| super::super::messages::PlayerAoIData::from_entity(other));
                         events.push(CellToBaseMsg::EnteredAoI {
                             witness_id: player_id,
                             entity_id: eid,
@@ -143,6 +155,7 @@ impl SpaceManager {
                             direction: [other.direction.x, other.direction.y, other.direction.z],
                             level: other.level,
                             npc_data,
+                            player_data,
                         });
 
                         // ── dynamicUpdate: standalone InteractionType update ──
