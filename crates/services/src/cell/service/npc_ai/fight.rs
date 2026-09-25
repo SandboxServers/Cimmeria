@@ -11,6 +11,8 @@ use crate::cell::space_manager::SpaceManager;
 use super::ability_select::{
     ability_ranges, backup_waypoint_on_mesh, choose_npc_ability_within_reach,
 };
+use super::fight_target::{select_target, Engagement};
+use super::leash::policy as leash_policy;
 
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
 pub(super) async fn npc_ai_fight(
@@ -20,7 +22,7 @@ pub(super) async fn npc_ai_fight(
     engine: &cimmeria_content_engine::chain::ChainEngine,
 ) {
     use crate::cell::combat;
-    use cimmeria_entity::cell_entity::{AiState, MobMovementType};
+    use cimmeria_entity::cell_entity::MobMovementType;
 
     // Record CombatAdvance in the movement-type cache. Nothing goes on the
     // wire: the client has no movement-type receiver (NA10, see
@@ -33,155 +35,37 @@ pub(super) async fn npc_ai_fight(
     )
     .await;
 
-    // Read NPC state (immutable borrow)
-    let (top_target, spawn_pos, npc_pos, is_stationary, use_cover) = {
-        let npc = match space_mgr.get_entity(npc_id) {
-            Some(e) => e,
-            None => return,
-        };
-
-        // Find highest-threat target
-        let top = npc
-            .threat_list
-            .iter()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(&eid, _)| eid);
-
-        (
-            top,
-            npc.spawn_position,
-            npc.position,
-            npc.is_stationary,
-            npc.use_cover,
-        )
+    // Who to fight, or why to stop (target-selection seam, NA12). A dead,
+    // vanished or lost target is pruned there, with its combat state drained;
+    // an empty list starts the walk home.
+    let Some(Engagement {
+        target_id,
+        target_pos,
+        spawn_pos,
+        npc_pos,
+        is_stationary,
+        use_cover,
+        leash_distance,
+    }) = select_target(npc_id, tx, space_mgr).await
+    else {
+        return;
     };
 
-    let target_id = match top_target {
-        Some(tid) => tid,
-        None => {
-            // No threat targets left — reset to idle
-            let world = super::world_label(space_mgr, npc_id);
-            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                super::set_ai_state_on(
-                    npc,
-                    &world,
-                    AiState::Idle,
-                    super::AiTransitionReason::ThreatEmpty,
-                );
-                npc.threat_list.clear();
-                tracing::debug!(npc_id, "NPC AI: no threat targets, resetting to Idle");
-            }
-            super::detectors::threat::check_cleared(
-                space_mgr,
-                npc_id,
-                super::detectors::threat::ThreatClear::ThreatEmpty,
-                std::time::Instant::now(),
-            );
-            // Release any cover slot the NPC was holding — combat ended.
-            // `release_for_entity` is idempotent; the call is cheap when
-            // the NPC wasn't in cover.
-            space_mgr
-                .cover
-                .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
-            // Clear cached movement-type so the next Fighting entry
-            // re-broadcasts. None means "no wire emission, just drop
-            // the dedup cache" per `broadcast_movement_type` doc.
-            crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
-            return;
-        }
-    };
-
-    // Check if target still exists and is alive
-    let target_pos = match space_mgr.get_entity(target_id) {
-        Some(t) => {
-            // Don't attack dead targets
-            let is_dead = t
-                .stats
-                .get(cimmeria_entity::stats::HEALTH)
-                .is_none_or(|s| s.cur <= 0);
-            if is_dead {
-                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                    npc.threat_list.remove(&target_id);
-                    tracing::debug!(
-                        npc_id,
-                        target = target_id,
-                        "NPC AI: target is dead, removing from threat"
-                    );
-                }
-                return;
-            }
-            t.position
-        }
-        None => {
-            // Target gone (disconnected), remove from threat and re-evaluate
-            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                npc.threat_list.remove(&target_id);
-            }
-            return;
-        }
-    };
-
-    // Leash check: if target is too far from NPC's spawn point, disengage.
-    // The test is spawn->TARGET, not spawn->NPC: the NPC gives up when the
-    // player has left its territory, wherever the NPC itself stands.
+    // Hard leash: the NPC itself is beyond the hysteresis band around its
+    // spawn, or too far above or below it. Measured on the NPC, never on the
+    // target (audit S3): a player 49.9 u from spawn no longer leashes an NPC
+    // standing at its spawn.
     if let Some(spawn) = spawn_pos {
-        let target_to_spawn = spawn.distance_to(&target_pos);
-        if target_to_spawn > combat::LEASH_DISTANCE {
-            let world = super::world_label(space_mgr, npc_id);
-            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                // Logged before the threat list is cleared so the
-                // transition row's `threat_count` shows what was dropped.
-                super::set_ai_state_on(
-                    npc,
-                    &world,
-                    AiState::Leashing,
-                    super::AiTransitionReason::LeashOut,
-                );
-                npc.threat_list.clear();
-                super::note_outcome("leashed");
-                // Distances are named by their endpoints (T7). This row
-                // used to call spawn->target `dist_to_spawn` while the tick
-                // row used that name for NPC->spawn.
-                tracing::info!(
-                    target: "npc_ai",
-                    event = "decision",
-                    decision_outcome = "leashed",
-                    npc_id,
-                    target_id,
-                    target_to_spawn,
-                    npc_to_spawn = spawn.distance_to(&npc_pos),
-                    leash_distance = combat::LEASH_DISTANCE,
-                    "NPC AI: target too far from spawn, leashing"
-                );
-            }
-            let now = std::time::Instant::now();
-            super::detectors::leash::on_enter(
-                space_mgr,
-                npc_id,
-                target_id,
+        if let Some(trigger) =
+            leash_policy::leash_trigger(&npc_pos, &spawn, &target_pos, leash_distance, false)
+        {
+            let at = super::leash::LeashOutAt {
+                spawn,
+                npc_pos,
                 target_pos,
-                combat::LEASH_DISTANCE,
-                now,
-            );
-            super::detectors::threat::check_cleared(
-                space_mgr,
-                npc_id,
-                super::detectors::threat::ThreatClear::LeashOut,
-                now,
-            );
-            // Release any cover slot held — leash is a combat-end transition.
-            space_mgr
-                .cover
-                .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
-            // Record Leash in the movement-type cache now rather than on the
-            // next AI tick. Cache only: nothing reaches the client (NA10).
-            crate::cell::abilities::broadcast_movement_type(
-                npc_id,
-                Some(MobMovementType::Leash),
-                tx,
-                space_mgr,
-            )
-            .await;
+                leash_distance,
+            };
+            super::leash::leash_out(npc_id, target_id, trigger, at, tx, space_mgr).await;
             return;
         }
     }
@@ -266,8 +150,9 @@ pub(super) async fn npc_ai_fight(
     //
     // Stationary NPCs (turrets, fixed defenders) skip pathfinding entirely:
     // they hold position and only fire when the target enters range + LOS.
-    // The leash check above still resets them if the target wanders past
-    // LEASH_DISTANCE.
+    // A pinned NPC never leaves its spawn, so the NPC-distance leash never
+    // fires for it; it disengages when its target is lost instead (dead,
+    // gone, or out of its AoI for the grace period, see `fight_target`).
     if !in_range || !has_los {
         if is_stationary {
             // Stationary NPC out of range OR with no LoS — silently
@@ -302,6 +187,24 @@ pub(super) async fn npc_ai_fight(
                  verify position is on the navmesh and target is reachable"
             );
             return;
+        }
+        // Soft leash (hysteresis band): about to chase, already past the
+        // leash radius, and the target is further from home than the NPC.
+        // Inside the band an NPC that can hit its target keeps fighting;
+        // only a chase that would drag it further out gives up.
+        if let Some(spawn) = spawn_pos {
+            if let Some(trigger) =
+                leash_policy::leash_trigger(&npc_pos, &spawn, &target_pos, leash_distance, true)
+            {
+                let at = super::leash::LeashOutAt {
+                    spawn,
+                    npc_pos,
+                    target_pos,
+                    leash_distance,
+                };
+                super::leash::leash_out(npc_id, target_id, trigger, at, tx, space_mgr).await;
+                return;
+            }
         }
         let needs_repath = {
             let npc = space_mgr.get_entity(npc_id);

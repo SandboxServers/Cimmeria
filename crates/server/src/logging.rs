@@ -27,8 +27,9 @@ use crate::otel;
 /// A directive's target matches by **string prefix** (`tracing-subscriber`
 /// compares `meta.target().starts_with(directive_target)`), and the longest
 /// matching directive wins. So `npc_ai=debug` already exports
-/// `npc_ai.transition`, `npc_ai.aggro`, `npc_ai.tick` and `npc_ai.path_fail`,
-/// and `cover=debug` covers every `cover.*` target; but `wire.out=info`
+/// `npc_ai.transition`, `npc_ai.aggro`, `npc_ai.leash`, `npc_ai.tick` and
+/// `npc_ai.path_fail`, and `cover=debug` covers every `cover.*` target; but
+/// `wire.out=info`
 /// needs the more specific `wire.out.avatar_update=debug` beside it to let
 /// that one DEBUG sample through. `otel_filter_prefix_matching_exports_npc_ai_children`
 /// pins this behaviour, not just the string.
@@ -576,6 +577,7 @@ mod tests {
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug!(target: "npc_ai.transition", "t");
             tracing::info!(target: "npc_ai.aggro", "a");
+            tracing::debug!(target: "npc_ai.leash", "l");
             tracing::debug!(target: "wire.out.avatar_update", "w");
             tracing::debug!(target: "movement.navmesh", "m");
             tracing::debug!(target: "cover.selection", "c");
@@ -591,6 +593,7 @@ mod tests {
             [
                 "npc_ai.transition",
                 "npc_ai.aggro",
+                "npc_ai.leash",
                 "wire.out.avatar_update",
                 "movement.navmesh",
                 "cover.selection",

@@ -27,6 +27,8 @@ Damage is calculated as: base damage, modified by the QR roll, multiplied by sta
 
 **Server:** Confirmed working in-game — players fight enemies, deal and receive damage, and kill NPCs in Castle Cellblock. The QR formulas, 5 damage types, and armor/absorption/mitigation math are implemented in `crates/services/src/cell/combat/` and `cell/abilities/`. Channeled abilities, cone AoE, pulsing DoT/HoT, absorption shields, stun/suppression, and threat/aggro all work. **Known gap:** no combat *visuals* — nothing under `cell/effects/` emits `onSequence`, so hit, crit, pulse, and effect-application VFX never play (see [cinematic-system.md](gameplay/cinematic-system.md)).
 
+**Leash and reset (NA12):** an NPC gives up a fight when it is itself more than its leash radius from its spawn (`entity_templates.leash_distance`, default 50 u, with a 5 u hysteresis band), or when its last target dies, disconnects or stays out of its AoI for 5 s. It then walks home on the navmesh, ignoring damage and threat while it does. On arrival it heals to full, faces its spawn heading, clears its cooldowns and ignores players for 5 s. It snaps home only when no route exists or the walk takes more than 20 s. Every player it was fighting leaves combat, so their regen resumes. Details: [npc-ai.md](gameplay/npc-ai.md#leash-and-reset-na12).
+
 ### Cover System
 
 SGW has a cover-based combat mechanic with adjustable cover weights and stances. Cover links define where players can take cover in each zone.

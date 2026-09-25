@@ -26,10 +26,19 @@ pub(super) async fn npc_ai_idle_auto_aggro(
 ) {
     use crate::cell::combat;
 
-    let (npc_pos, npc_faction) = match space_mgr.get_entity(npc_id) {
-        Some(e) => (e.position, e.faction),
+    let (npc_pos, npc_faction, suppressed_until) = match space_mgr.get_entity(npc_id) {
+        Some(e) => (e.position, e.faction, e.leash.reaggro_suppressed_until),
         None => return,
     };
+
+    // Post-reset window (NA12): an NPC that just walked home and reset
+    // ignores players for a few seconds. Without it an aggressive NPC
+    // re-aggroed on the same player the tick after its reset, which is half
+    // of the aggro/leash loop (audit S5).
+    if suppressed_until.is_some_and(|t| std::time::Instant::now() < t) {
+        super::record_decision_outcome("reaggro_suppressed");
+        return;
+    }
 
     // Witnesses-of-NPC = players currently rendering this NPC, i.e. players
     // in the NPC's AoI. That's exactly the candidate set the Python `Atrea`

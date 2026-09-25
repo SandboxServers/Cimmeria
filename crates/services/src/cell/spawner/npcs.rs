@@ -98,6 +98,12 @@ pub struct SpawnRecord {
     /// Templates that need to keep pace (escort/companion NPCs) set
     /// this column explicitly; see `entity_templates.move_speed`.
     pub move_speed: f32,
+    /// Per-template leash radius in world units, from
+    /// `entity_templates.leash_distance`. `None` (the column is NULL) means
+    /// the server default `combat::LEASH_DISTANCE` applies. Not COALESCEd in
+    /// SQL so the runtime can tell "the template chose 50" from "the template
+    /// said nothing" in its logs.
+    pub leash_distance: Option<f32>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -146,6 +152,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                COALESCE(t.move_speed, 0.6) AS move_speed, \
+               t.leash_distance, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -218,6 +225,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             follow_min_distance: r.get::<f32, _>("follow_min_distance"),
             follow_max_distance: r.get::<f32, _>("follow_max_distance"),
             move_speed: r.get::<f32, _>("move_speed"),
+            leash_distance: normalize_leash_distance(r.get::<Option<f32>, _>("leash_distance")),
         })
         .collect();
 
@@ -263,6 +271,15 @@ pub(crate) async fn load_patrol_points(
             .push(cimmeria_common::Vector3::new(x, y, z));
     }
     Ok(out)
+}
+
+/// Keep a template's `leash_distance` only when it is a positive, finite
+/// radius. The DB CHECK already rejects `<= 0`; this is the runtime's
+/// belt-and-suspenders against a hand-edited row, the same shape as
+/// [`normalize_respawn_secs`]. Anything else falls back to the server
+/// default by returning `None`.
+pub(crate) fn normalize_leash_distance(raw: Option<f32>) -> Option<f32> {
+    raw.filter(|d| d.is_finite() && *d > 0.0)
 }
 
 /// Downgrade a raw `respawn_secs` value from the DB to the runtime's

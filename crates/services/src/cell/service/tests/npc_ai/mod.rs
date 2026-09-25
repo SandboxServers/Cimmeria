@@ -3,9 +3,16 @@
 //! Split into per-concern submodules when the original `npc_ai.rs`
 //! crossed the 700-line hard cap from `CLAUDE.md`:
 //!
-//! - [`state_machine`] — Fighting → Idle / Leashing, dead-target prune,
-//!   stationary no-pathfind, leash snap-to-spawn / heal / cooldown clear,
-//!   top-threat selection, NaN-threat safety, leash witness fan-out.
+//! - [`state_machine`] — Fighting → Leashing (empty threat, NPC past the
+//!   leash radius), dead-target prune, stationary no-pathfind, leash
+//!   snap-to-spawn / heal / cooldown clear, top-threat selection, NaN-threat
+//!   safety, leash witness fan-out.
+//! - [`leash_reset`]   — NA12 on meshless spaces: the NPC-distance leash
+//!   metric and template override, the player-combat drain and regen, the
+//!   lost target, the snap fallback, the evade, the re-aggro window and the
+//!   60 s aggro/leash loop guard.
+//! - [`leash_walk`]    — NA12 on the real `castle_cellblock.nav`: the walk
+//!   home step by step, the reset on arrival, target death, the timeout snap.
 //! - [`aggression`]    — Idle-NPC auto-aggro via the `aggression` field
 //!   (opposing-faction aggro, no-aggro defaults, same-faction skip).
 //! - [`stationary_facing`] — a pinned NPC turns to face its target even
@@ -43,6 +50,8 @@ use cimmeria_entity::stats::HEALTH;
 
 mod ability_range;
 mod aggression;
+mod leash_reset;
+mod leash_walk;
 mod melee_reach;
 mod off_mesh_sentry;
 mod selector;

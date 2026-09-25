@@ -155,6 +155,46 @@ pub fn clear_dead_npc_from_all_player_threat(
         .collect()
 }
 
+/// Drop a living NPC that is giving up its fight (leash, lost target, reset)
+/// from every player that still lists it. Returns `(player_id,
+/// new_state_field)` for each player whose `BSF_IN_COMBAT` just cleared, for
+/// the caller to send.
+///
+/// Wider than [`clear_dead_npc_from_all_player_threat`] on purpose: that one
+/// walks the NPC's `threat_list`, but a target the fight handler already
+/// pruned (it died, or went out of range) is no longer on the list and can
+/// still carry the NPC in `threatened_mobs`. Missing it leaves the player
+/// in combat, with no regen and no out-of-combat holster (audit S7). So this
+/// takes the threat-list players **and** every player whose set names the
+/// NPC.
+///
+/// Does not clear the NPC's `threat_list`; the caller does, after this runs.
+#[tracing::instrument(name = "threat.drain_npc", level = "trace", skip_all, fields(npc_id))]
+pub fn drain_npc_from_player_combat(
+    space_mgr: &mut crate::cell::space_manager::SpaceManager,
+    npc_id: u32,
+) -> Vec<(u32, u32)> {
+    let mut players: Vec<u32> = space_mgr
+        .get_entity(npc_id)
+        .map(|n| n.threat_list.keys().copied().collect())
+        .unwrap_or_default();
+    for pid in space_mgr.all_player_entity_ids() {
+        if space_mgr
+            .get_entity(pid)
+            .is_some_and(|p| p.threatened_mobs.contains(&npc_id))
+            && !players.contains(&pid)
+        {
+            players.push(pid);
+        }
+    }
+    players
+        .into_iter()
+        .filter_map(|player_id| {
+            exit_player_combat(space_mgr, player_id, npc_id).map(|state| (player_id, state))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

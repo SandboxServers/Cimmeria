@@ -18,5 +18,6 @@ pub use aggro::{
     NPC_MELEE_RANGE, OOC_HOLSTER_DELAY,
 };
 pub use player_combat::{
-    clear_dead_npc_from_all_player_threat, enter_player_combat, exit_player_combat,
+    clear_dead_npc_from_all_player_threat, drain_npc_from_player_combat, enter_player_combat,
+    exit_player_combat,
 };

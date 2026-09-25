@@ -94,6 +94,7 @@ pub(in crate::cell::content::executor) fn template(faction: i32) -> SpawnRecord 
         follow_min_distance: 2.0,
         follow_max_distance: 5.0,
         move_speed: 0.6,
+        leash_distance: None,
     }
 }
 

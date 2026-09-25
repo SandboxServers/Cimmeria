@@ -20,8 +20,8 @@ use crate::missions::MissionManager;
 use crate::stats::StatList;
 
 use super::{
-    ActiveEffectInstance, AiState, BandolierItem, LootItem, MobMovementType, NpcInteractionType,
-    SystemOptions,
+    ActiveEffectInstance, AiState, BandolierItem, LeashState, LootItem, MobMovementType,
+    NpcInteractionType, SystemOptions,
 };
 
 /// The cell-side half of a game entity.
@@ -454,6 +454,9 @@ pub struct CellEntity {
     /// and without this snapshot the respawn would lose the original
     /// heading.
     pub spawn_direction: Option<Vector3>,
+    /// Leash radius override, walk-home timer, lost-target timer and the
+    /// post-reset re-aggro window (NA12). See [`LeashState`].
+    pub leash: LeashState,
     /// Ticks until next AI action (count-down from ai tick interval).
     pub ai_cooldown_ticks: u32,
     /// Deadline for the next AI fight tick on this NPC, in service-local

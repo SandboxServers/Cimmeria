@@ -83,6 +83,7 @@ macro_rules! entity_template_select {
                     COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
                     COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                     COALESCE(t.move_speed, 0.6) AS move_speed, \
+                    t.leash_distance, \
                     t.respawn_secs, \
                     COALESCE( \
                       (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -252,5 +253,8 @@ pub(crate) fn build_prototype(
         follow_min_distance: row.try_get::<f32, _>("follow_min_distance")?,
         follow_max_distance: row.try_get::<f32, _>("follow_max_distance")?,
         move_speed: row.try_get::<f32, _>("move_speed")?,
+        leash_distance: super::npcs::normalize_leash_distance(
+            row.try_get::<Option<f32>, _>("leash_distance")?,
+        ),
     })
 }

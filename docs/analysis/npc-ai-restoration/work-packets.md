@@ -153,7 +153,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA12
 
-**Status:** BlockedDependency (NA10); BlockedDecision until D-NA03 is recorded (it is, 2026-09-24). **Scope title:** Leash, evade and reset rework (S3-S7, S12). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
+**Status:** Review (branch `npcai/na12-leash-reset` pushed 2026-09-25, feature commit d68b04d3, rebased on main after NA02/#781; wired into the NA02 leash, threat and idle_parked detectors). NPC-to-spawn horizontal leash with a 5 u band and 20 u vertical cap, `entity_templates.leash_distance` (nullable, default 50), lost target (dead / gone / out of AoI 5 s), walk home with evade, reset on arrival, snap fallback (no route or 20 s), player combat drain, 5 s re-aggro window. **Scope title:** Leash, evade and reset rework (S3-S7, S12). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
 
 **Scope:**
 

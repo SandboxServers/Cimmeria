@@ -11,6 +11,9 @@
 //! - [`live_db_castle_seed`]: live-DB guards for Castle (World 8) *seed content*
 //!   that loads fine and is nonetheless wrong — actors outside the box that is
 //!   meant to contain them, missing display names, missing respawn timers.
+//! - [`live_db_leash_distance`]: live-DB guards that
+//!   `entity_templates.leash_distance` (NA12) loads without a COALESCE,
+//!   reaches the spawned NPC, and rejects `0`.
 //! - [`template_prototype_parity`]: live-DB guard that the cell's startup
 //!   template cache and the base-side GM spawn handler map an
 //!   `entity_templates` row identically (PR #662 review, finding 3).
@@ -18,6 +21,7 @@
 mod harset;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
+mod live_db_leash_distance;
 mod live_db_loaders;
 mod spawn_grounding;
 mod spawn_records;
