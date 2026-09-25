@@ -49,6 +49,7 @@ pub async fn handle_grant_xp(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
 ) {
     let addr = {
         let map = entity_to_addr.lock().unwrap();
@@ -249,6 +250,24 @@ pub async fn handle_grant_xp(
         &levels_gained,
     );
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+
+    // The bundle above reaches only the levelling player's own client —
+    // `send_bundle_to_witness_reliable` is single-recipient despite its name.
+    // The 2009 server fanned the new level out to everyone watching too
+    // (`SGWBeing.setLevel`, `SGWBeing.py:684-685`); without this, nearby
+    // players keep showing the level this player was introduced with until
+    // it leaves and re-enters their AoI. One send with the FINAL level, even
+    // on a multi-level catch-up grant: witnesses render a level, not the
+    // per-level training-point ceremony the owning client gets.
+    if !levels_gained.is_empty() {
+        super::super::super::helpers::broadcast_to_witnesses(
+            cell_tx,
+            entity_id,
+            crate::mercury::method_idx::ON_LEVEL_UPDATE,
+            (new_level as i32).to_le_bytes().to_vec(),
+        )
+        .await;
+    }
 
     // Definitive GM feedback (only for GM-sourced grants — mob-kill XP leaves
     // `gm_feedback_to` `None`). Sent to the CALLER (`gm_id`), which is not
@@ -607,5 +626,7 @@ pub async fn handle_train_ability(
     }
 }
 
+#[cfg(test)]
+mod level_up_fanout_tests;
 #[cfg(test)]
 mod tests;

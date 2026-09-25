@@ -20,7 +20,7 @@ fires `Event_UI_AbilityCooldown` transitions. Channeled abilities are cancelled 
 
 ## Phase 1 — Call Trace: Button Press to Network Emit
 
-```
+```text
 [Lua UI action bar click]
     ↓ "useAbility(abilityId)" Lua call
     ↓ FUN_00aa2910  (Lua wrapper thunk)
@@ -48,6 +48,7 @@ fires `Event_UI_AbilityCooldown` transitions. Channeled abilities are cancelled 
 ```
 
 Wire formats confirmed in `findings/combat-wire-formats.md`:
+
 - `useAbility`: 9 bytes — `[1B methodIdx][4B abilityId][4B targetId]`
 - `useAbilityOnGroundTarget`: 17 bytes — `[1B methodIdx][4B abilityId][4B X][4B Y][4B Z]`
 
@@ -87,6 +88,25 @@ EffectIds array serialized at param_4+4 via `FUN_015d3e60`.
 engine that had separate data loading and runtime-cache paths. The PAK offsets are serialization order;
 the runtime offsets are memory layout after initialization.
 
+### Cimmeria implementation audit (2026-09-19)
+
+These two layouts describe the client binary's `AbilityType`; they are not a Rust memory layout that
+Cimmeria maps or reads by offset. Cimmeria has two separate ability-data paths:
+
+- `crates/services/src/base/resources/mod.rs` loads category 2 (`CookedDataAbilities.pak`) as
+  `elementId -> raw XML bytes`. `crates/services/src/base/cooked_data.rs` sends those bytes through the existing cooked-data
+  resource-fragment protocol so the client can populate its own PAK/runtime structures.
+- `crates/entity/src/abilities/defs.rs` defines Cimmeria's named-field `AbilityDef`. The startup loader
+  `crates/services/src/cell/spawner/abilities.rs::load_ability_defs` selects named columns from
+  `resources.abilities` and constructs `AbilityDef`; `SpaceManager::ability_defs` then supplies that
+  value to server-side ability handlers. Effect target-collection data is loaded separately into the
+  named-field `EffectDef` from `resources.effects`.
+
+The audit found no Cimmeria code that treats a PAK buffer as an `AbilityType` struct, reads the client
+offsets above, or uses the runtime offsets to access server data. The PAK and runtime tables remain
+client-binary evidence. If a future server path consumes `CookedDataAbilities` for gameplay, it must
+translate the XML attributes into named Rust fields rather than reuse either offset table.
+
 ### ETargetCollectionMethod (TCM) Enum Values
 
 | Value | Name         | Evidence |
@@ -111,7 +131,8 @@ Source confirmed: `Src\CombatQueue.cpp` lines 0x2b–0x54.
 **Subscriber**: `Event_NetIn_onEffectResults`
 
 **Wire format** (21 + 7×N bytes):
-```
+
+```text
 [4B SourceID][4B TargetID][4B AbilityID][4B EffectID][1B ResultCode]
   × N entries:
   [1B StatID][4B Delta (float)][1B DamageCode][1B StatResultCode]
@@ -148,12 +169,13 @@ the local player or local target. This reduces UI processing for out-of-range co
 | +0x0c  | TotalTime                | float | Baked into def; NOT from timer event |
 | +0x18  | isChanneled              | bool  | Key signal for cast-bar cancel UI |
 | +0x28  | Target_Collection_Method | int   | TCM enum |
-| +0x2c  | TCM_Param1               | float |
-| +0x30  | TCM_Param2               | float |
+| +0x2c  | TCM_Param1               | float | |
+| +0x30  | TCM_Param2               | float | |
 
 ### EffectType_GetLuaEffectInfo (0x00aec290)
 
 Lua-callable. Returns a table with:
+
 - `Name`, `Description`, `IconLoc` — from wstring accessors `FUN_00d2d010/030/050`
 - `TargetCollectionMethod` — from `FUN_00d2d140` (low 16 bits → float)
 - `Beneficial` (bool), `Hidden` (bool)
@@ -172,7 +194,7 @@ Lua-callable. Returns a table with:
 
 This is the **only** client path for cancelling a channeled ability mid-cast.
 
-```
+```text
 Lua: cancelEffect(effectId)       → CME event with EffectId + Response=0
 Lua: acceptEffect(effectId)       → CME event with EffectId + Response=1
      ↓
@@ -226,6 +248,7 @@ tracks entity arrival/spawn timers for other entities in the world (AoI system).
 
 **Subscriber count correction**: Eight subscribers to `Event_NetIn_TimerUpdate` (not five as previously
 documented). The four previously undocumented subscribers are:
+
 - `GameProxyPlayer` → type 14, handler `SGWBeing_onBigWorldTimeComplete` (0x00dec9e0)
 - `DialogController` → type 6, handler `FUN_00d26380` (0x00d26380)
 - `SGW::Crafting` → type 16, handler `FUN_00e47800` (0x00e47800)
@@ -238,6 +261,7 @@ documented). The four previously undocumented subscribers are:
 **Fields read**: `SourceID` (int), `Type` (byte), `ID` (int), `TotalTime` (float), `BigWorldTimeComplete` (float).
 
 **Calls**:
+
 - `FUN_00ea6120` — resolves time range from sorted cooldown interval tree
 - `FUN_00c6d1c0` — time utility
 - `FUN_00ea62b0` — updates cooldown state; **fires `Event_UI_AbilityCooldown`** when state transitions
@@ -271,11 +295,13 @@ Final: `FUN_00d16dd0(this, uVar2)` fires mission timer callback (likely triggers
 Constructor wrapper: `FUN_00d27460` (0x00d27460). MemberCallback ctor: `FUN_00d26ee0` (0x00d26ee0).
 
 **Fields read**:
+
 - Field name string from `0x019bb218` → "Type" byte
 - Field name string from `0x019bb220` → `SecondaryId` (uint) — links to NPC interaction slot
 - `"BigWorldTimeComplete"` (float) — absolute server time when interaction window expires
 
 **Logic**:
+
 1. If `BigWorldTimeComplete <= 0.0` (expired): emits `Event_UI_InteractionTimer` with remaining=0,
    clears `this+0x48` (active interaction ID).
 2. If `BigWorldTimeComplete > 0` and SecondaryId > 0: stores SecondaryId to `this+0x48`,
@@ -293,10 +319,12 @@ Constructor wrapper: `FUN_00d27460` (0x00d27460). MemberCallback ctor: `FUN_00d2
 Wrapper: `FUN_00dfb2a0` (GameProxyPlayer path) / `FUN_00dfaaf0` (SGWMob path).
 
 **Fields read**:
+
 - `"BigWorldTimeComplete"` (double) — absolute BW server time when interval ends
 - `"SourceID"` (uint) — entity ID the timer belongs to
 
 **Logic**:
+
 1. Computes `delta = (float)(BigWorldTimeComplete - currentBWTime)`.
 2. Clamps delta to 0.0f if negative.
 3. `scalable_malloc(4)` → stores delta as a float.
@@ -312,11 +340,13 @@ are driven by BigWorld server time rather than entity-specific cooldown logic.
 `FUN_00e460e0` (0x00e460e0). MemberCallback ctor: `FUN_00e45c70` (0x00e45c70).
 
 **Fields read**:
+
 - `"SourceID"` (uint) — crafting job entity ID
 - `"TotalTime"` (uint) — total crafting duration
 - `"BigWorldTimeComplete"` (double) — absolute server time when crafting completes
 
 **Logic**:
+
 1. Reads all three fields.
 2. Computes `remaining = (float)(BigWorldTimeComplete - currentBWTime)`.
 3. Allocates 12-byte struct: `[SourceID (4B), remaining_float (4B), TotalTime (4B)]`.
@@ -333,12 +363,14 @@ constructor takes 3 data params (not 2) and stores them at `this+4`, `this+8`, `
 Allocated object is 0x10 bytes (vs 0x0C for other subscribers).
 
 **Fields read**:
+
 - Field name from `0x019aa7dc` → "Type" byte (gated on `== 1`)
 - `"SourceID"` (uint stored as float) — BigWorld entity ID for the spawning entity
 - Field from `0x019aa7f0` → "ID" (uint) — entity type or template ID
 - `"BigWorldTimeComplete"` (double) — absolute time when entity becomes available
 
 **Logic**:
+
 1. Calls `FUN_00c6d1c0(this+0x9C, SourceID, ...)` — time utility for AoI scheduling.
 2. Looks up entity template by ID in `CacheLibrary` (`FUN_00ae6b50`).
 3. If template NOT found: calls `FUN_00d2b020(this+200, ID)` and

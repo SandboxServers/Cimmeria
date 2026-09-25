@@ -29,7 +29,7 @@ mod gm_spawn;
 mod inventory_events;
 mod lab_console;
 mod lab_query;
-mod lifecycle;
+pub(in crate::cell::service) mod lifecycle;
 mod minigame;
 mod movement;
 pub(crate) mod player_init;
@@ -228,6 +228,21 @@ pub(super) async fn handle_base_message(
         }
 
         BaseToCellMsg::ReloadContentEngine => {}
+
+        BaseToCellMsg::BroadcastToWitnesses {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            crate::cell::abilities::send_entity_method_to_witnesses(
+                entity_id,
+                method_index,
+                args,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
 
         BaseToCellMsg::LabConsoleExec {
             entity_id,

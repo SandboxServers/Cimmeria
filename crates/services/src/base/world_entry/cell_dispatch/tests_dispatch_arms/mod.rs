@@ -26,6 +26,8 @@
 //!
 //! - [`aoi_defer_gate`]    — `EnteredAoI` / `LeftAoI` / `EntityMoved` /
 //!   `EntityMethodCall` / `EntityMethodCallBatch` pre/post-ready behavior.
+//! - [`cinematic_hold_gate`] — the same arms, plus `WitnessEntityMethod` /
+//!   `EntityInvisible`, under the first-login cinematic AoI hold.
 //! - [`fallible_handlers`] — `GateTravel` / `ReanchorPlayer` error-log
 //!   seams.
 //! - [`passthrough`]       — `SpaceData` / `MissionUpdate` / `MailRequest`
@@ -41,6 +43,7 @@ use crate::base::PendingClientReadyInfo;
 use crate::test_support::test_default_connected_client_state;
 
 mod aoi_defer_gate;
+mod cinematic_hold_gate;
 mod fallible_handlers;
 mod gm_grant_arms;
 mod passthrough;

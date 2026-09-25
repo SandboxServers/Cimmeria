@@ -10,7 +10,38 @@ use crate::cell::content;
 use crate::cell::messages::{CellToBaseMsg, SavedMission};
 use crate::cell::space_manager::SpaceManager;
 
+mod resync;
+
+pub(crate) use resync::resync_after_pawn_recreate;
+
 pub(crate) mod mission_restore;
+
+/// Seed each populated bandolier slot's `AmmoSlot{N}` stat from its persisted
+/// `current_ammo` / `clip_size`.
+///
+/// The default stat tuple is `(0,0,0)`, and `set_slot_ammo` clamps via the
+/// stat bounds — without this seed, every later refill/decrement would
+/// silently pin to 0. Clearing dirty avoids a duplicate stat send (the
+/// initial mapLoaded uses `serialize_all()`).
+///
+/// Extracted so the production `InitPlayerState` path and its regression
+/// guard exercise the same code.
+pub(in crate::cell::service) fn seed_bandolier_ammo_stats(
+    entity: &mut cimmeria_entity::cell_entity::CellEntity,
+) {
+    let slot_seed: Vec<(i32, i32, i32)> = entity
+        .bandolier_items
+        .iter()
+        .map(|(&slot, item)| (slot, item.current_ammo, item.clip_size))
+        .collect();
+    for (slot_id, current, clip) in slot_seed {
+        let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
+        if let Some(stat) = entity.stats.get_mut(stat_id) {
+            stat.update(0, current, clip);
+            stat.clear_dirty();
+        }
+    }
+}
 
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
 /// bandolier items, and fires the content-engine `player_loaded` trigger.
@@ -149,23 +180,8 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         );
 
         // Stage B: Seed each populated bandolier slot's AmmoSlot{N} stat
-        // from its persisted current_ammo / clip_size. The default stat
-        // tuple is (0,0,0), and `set_slot_ammo` clamps via the stat
-        // bounds — without this seed, every later refill/decrement
-        // would silently pin to 0. Clearing dirty avoids a duplicate
-        // stat send (the initial mapLoaded uses serialize_all()).
-        let slot_seed: Vec<(i32, i32, i32)> = entity
-            .bandolier_items
-            .iter()
-            .map(|(&slot, item)| (slot, item.current_ammo, item.clip_size))
-            .collect();
-        for (slot_id, current, clip) in slot_seed {
-            let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
-            if let Some(stat) = entity.stats.get_mut(stat_id) {
-                stat.update(0, current, clip);
-                stat.clear_dirty();
-            }
-        }
+        // from its persisted current_ammo / clip_size.
+        seed_bandolier_ammo_stats(entity);
 
         // Restore saved missions BEFORE content engine fires, so that
         // chain conditions correctly see existing mission state and
@@ -295,34 +311,10 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // resend lands — the cached value gets the correct write and the
     // Lua gate stops misfiring.
     //
-    // Wire format mirrors `bandolier.rs:449-451` and `map_loaded.rs:354`:
-    // bag_id (i32 LE) + (slot_id + 1) (i32 LE, 1-indexed wire) = 8 bytes.
-    {
-        const CONTAINER_BANDOLIER: i32 = 3;
-        let active_slot = space_mgr
-            .get_entity(entity_id)
-            .map(|e| e.active_bandolier_slot)
-            .unwrap_or(0);
-        let mut args = Vec::with_capacity(8);
-        args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
-        args.extend_from_slice(&(active_slot + 1).to_le_bytes());
-        crate::cell::abilities::send_entity_method(
-            entity_id,
-            crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE,
-            args,
-            tx,
-            space_mgr,
-        )
-        .await;
-        tracing::info!(
-            target: "bandolier.resend",
-            entity_id,
-            active_slot,
-            "Re-sent onActiveSlotUpdate post-onClientReady (defensive resync \
-             against client bag-list init race — see \
-             docs/reverse-engineering/findings/client-wire-emit-suppression.md)"
-        );
-    }
+    // Wire format lives in `resync::send_active_slot_resend`, shared with the
+    // post-respawn resync (the reanchor's pawn recreate wipes the cached slot
+    // the same way an uninitialized bag list does).
+    resync::send_active_slot_resend(entity_id, tx, space_mgr).await;
 
     // Send addClientHintedGenericRegion for each client-hinted region in
     // this world. Matches Python Space.playerEntered() → queryRegions():

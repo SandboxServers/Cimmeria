@@ -22,7 +22,7 @@ use super::super::methods::{
     handle_remove_inventory_item_by_type, handle_repair_inventory_item,
     handle_repair_inventory_items, handle_use_inventory_item, send_full_inventory_resync,
 };
-use super::{bandolier, state_field, system_options, DispatchCtx};
+use super::{bandolier, position, state_field, system_options, DispatchCtx};
 
 /// Route the inventory / bandolier / persisted-options family of
 /// `CellToBaseMsg`.
@@ -194,6 +194,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
@@ -206,6 +207,11 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             player_id,
             state_field,
         } => state_field_update(player_id, state_field, ctx.db_pool).await,
+        CellToBaseMsg::PersistPosition {
+            player_id,
+            world_name,
+            position: pos,
+        } => position::persist_position(player_id, &world_name, pos, ctx.db_pool).await,
         CellToBaseMsg::RefreshAppearance {
             entity_id,
             player_id,
@@ -219,6 +225,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
@@ -469,6 +476,7 @@ pub(super) async fn active_slot_update(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
 ) {
     bandolier::active_slot_update(
         entity_id,
@@ -478,6 +486,7 @@ pub(super) async fn active_slot_update(
         transport,
         connected,
         entity_to_addr,
+        cell_tx,
     )
     .await;
 }
@@ -511,6 +520,7 @@ pub(super) async fn refresh_appearance(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
 ) {
     bandolier::refresh_appearance(
         entity_id,
@@ -520,6 +530,7 @@ pub(super) async fn refresh_appearance(
         transport,
         connected,
         entity_to_addr,
+        cell_tx,
     )
     .await;
 }

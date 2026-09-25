@@ -4,6 +4,8 @@
 
 use super::make_test_space_mgr;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::service::base_messages::lifecycle::{flush_and_destroy, flush_and_disconnect};
+use crate::cell::service::base_messages::player_init::seed_bandolier_ammo_stats;
 use cimmeria_entity::cell_entity::BandolierItem;
 use cimmeria_entity::stats::{AMMO_SLOT_1, AMMO_SLOT_2, AMMO_SLOT_3};
 use tokio::sync::mpsc;
@@ -13,9 +15,9 @@ use tokio::sync::mpsc;
 /// slots at the default (0,0,0), and clear dirty flags so the initial
 /// mapLoaded `serialize_all()` is the sole carrier.
 ///
-/// Calling the full handle_base_message branch would require a ChainEngine
-/// with content tables loaded; the seeding logic is purely synchronous
-/// mutation of the entity, so we exercise it in isolation here.
+/// The full `handle_base_message` branch needs a ChainEngine with content
+/// tables loaded; the seeding helper it calls is synchronous mutation of the
+/// entity, so we exercise that helper directly here.
 #[tokio::test]
 async fn init_player_state_seeds_ammo_stats() {
     let mut mgr = make_test_space_mgr();
@@ -56,18 +58,9 @@ async fn init_player_state_seeds_ammo_stats() {
         entity.active_bandolier_slot = 0;
         entity.bandolier_items = bandolier_items.into_iter().collect();
 
-        let slot_seed: Vec<(i32, i32, i32)> = entity
-            .bandolier_items
-            .iter()
-            .map(|(&slot, item)| (slot, item.current_ammo, item.clip_size))
-            .collect();
-        for (slot_id, current, clip) in slot_seed {
-            let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
-            if let Some(stat) = entity.stats.get_mut(stat_id) {
-                stat.update(0, current, clip);
-                stat.clear_dirty();
-            }
-        }
+        // Exercise the production seeding helper the InitPlayerState handler
+        // calls, so a change to that loop fails this guard.
+        seed_bandolier_ammo_stats(entity);
     }
 
     let entity = mgr.get_entity(1).unwrap();
@@ -139,16 +132,9 @@ async fn logout_flushes_all_dirty_bandolier_slots() {
 
     let (tx, mut rx) = mpsc::channel(16);
 
-    // Mirror handle_base_message's DestroyEntity branch: flush, then destroy.
-    if let Some(entity) = mgr.get_entity_mut(1) {
-        if let Some(player_id) = entity.player_id {
-            crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo(
-                entity, player_id, &tx,
-            )
-            .await;
-        }
-    }
-    mgr.destroy_entity(1);
+    // Exercise the production DestroyEntity teardown helper: flush, then
+    // destroy.
+    flush_and_destroy(1, &tx, &mut mgr).await;
 
     // Collect the two BandolierAmmoUpdate messages (HashSet drain order is
     // unspecified, so build a slot_id → (item_id, current_ammo, type) map).
@@ -218,18 +204,10 @@ async fn disconnect_entity_flushes_dirty_ammo_before_destroy() {
 
     let (tx, mut rx) = mpsc::channel(16);
 
-    // Mirror handle_base_message's DisconnectEntity branch verbatim:
-    // flush bandolier ammo BEFORE space_mgr.disconnect_entity (which
-    // internally destroys the entity).
-    if let Some(entity) = mgr.get_entity_mut(1) {
-        if let Some(player_id) = entity.player_id {
-            crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo(
-                entity, player_id, &tx,
-            )
-            .await;
-        }
-    }
-    mgr.disconnect_entity(1, &tx).await;
+    // Exercise the production DisconnectEntity teardown helper: flush
+    // bandolier ammo BEFORE space_mgr.disconnect_entity (which internally
+    // destroys the entity).
+    flush_and_disconnect(1, &tx, &mut mgr).await;
 
     // The first message must be the BandolierAmmoUpdate (the regression
     // was that flushing AFTER disconnect_entity silently dropped it).
