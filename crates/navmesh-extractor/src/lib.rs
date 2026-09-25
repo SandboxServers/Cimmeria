@@ -181,6 +181,18 @@ pub struct ExtractOptions<'a> {
     /// Implied by `skip_terrain`: without terrain there is no evidence
     /// that anything is buried, so nothing is dropped either way.
     pub keep_hull_caps: bool,
+    /// Walk `InterpActor` exports as `StaticMeshActor`-shaped geometry.
+    /// Default `false` — opt-in. `KActor` and `FracturedStaticMeshActor`
+    /// are always walked regardless of this flag; see
+    /// [`staticmesh::MESH_ACTOR_CLASSES`]'s doc for why `InterpActor` is
+    /// the one gated: in this content it is disproportionately doors,
+    /// gates, lifts and elevators, and a mover's cooked pose is its
+    /// design-time resting state (usually closed), not necessarily
+    /// where a player experiences it at runtime. Baking a closed door
+    /// into a `.nav` seals the doorway. See
+    /// `docs/engine/navmesh-build-pipeline.md` §11 for which maps were
+    /// built with this on.
+    pub include_interp_actors: bool,
 }
 
 /// Collapse `.` and `..` textually. No filesystem access, so it cannot
@@ -282,6 +294,7 @@ pub fn extract_map_with_report(
         skip_terrain,
         skip_bsp,
         keep_hull_caps,
+        include_interp_actors,
     } = opts;
     let mut terrain_totals = terrain::TerrainStats::default();
     let (mut bsp_models_failed, mut bsp_triangles) = (0usize, 0usize);
@@ -341,6 +354,7 @@ pub fn extract_map_with_report(
     let mut report = MapCoverage {
         map_name,
         chunks_filtered_out: enumerated - chunks.len(),
+        include_interp_actors,
         ..Default::default()
     };
 
@@ -374,8 +388,12 @@ pub fn extract_map_with_report(
         let exports_total = pkg.exports.len() as u64;
 
         // Phase 1.2: StaticMesh extraction.
-        let mut extraction =
-            staticmesh::extract_chunk_from_package(&pkg, index, &mut archetype_cache);
+        let mut extraction = staticmesh::extract_chunk_from_package(
+            &pkg,
+            index,
+            &mut archetype_cache,
+            include_interp_actors,
+        );
         // Tag the soup with a group so NavBuilder can debug-print which
         // chunk a triangle came from. `Chunk_*` keeps it distinct from
         // the reserved `Terrain_*` prefix NavBuilder skips.

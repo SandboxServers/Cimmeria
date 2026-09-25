@@ -32,6 +32,7 @@ fn walk(scene: &Scene) -> crate::staticmesh::ActorWalk {
         &scene.chunk,
         Some(&scene.index),
         &mut ArchetypeCache::default(),
+        false,
     )
 }
 
@@ -387,7 +388,7 @@ fn without_an_index_a_stub_stays_an_archetype_stub_skip() {
     let path = chunk.write(&dir, "Fix", 0x000a_000b);
 
     let pkg = Package::open(&path).expect("open chunk");
-    let walk = collect_static_mesh_instances(&pkg, None, &mut ArchetypeCache::default());
+    let walk = collect_static_mesh_instances(&pkg, None, &mut ArchetypeCache::default(), false);
     assert_eq!(walk.skips.get(SkipReason::ArchetypeStubComponent), 1);
     assert!(walk.instances.is_empty());
 }
@@ -413,7 +414,7 @@ fn the_cache_turns_repeated_archetype_paths_into_one_resolution() {
     let pkg = Package::open(&path).expect("open chunk");
     let index = index_over(&dir);
     let mut cache = ArchetypeCache::default();
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut cache);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut cache, false);
     assert_eq!(walk.instances.len(), 5);
     // Two distinct paths (the actor's and the component's), resolved
     // once each; the other eight lookups are hits.
@@ -443,7 +444,8 @@ fn a_package_local_static_mesh_export_is_decoded_from_the_chunk() {
 
     let pkg = Package::open(&path).expect("open chunk");
     let index = index_over(&dir);
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    let walk =
+        collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default(), false);
     assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
     assert_eq!(
         walk.instances[0].mesh_ref,
@@ -456,6 +458,7 @@ fn a_package_local_static_mesh_export_is_decoded_from_the_chunk() {
         &pkg,
         Some(&index),
         &mut ArchetypeCache::default(),
+        false,
     );
     assert_eq!(extraction.actors_resolved, 1, "{:?}", extraction.skips);
     assert_eq!(extraction.triangles_emitted, 1);
@@ -473,8 +476,12 @@ fn a_package_local_mesh_resolves_without_any_package_index() {
     let path = chunk.write(&dir, "Fix", 0x000a_0021);
 
     let pkg = Package::open(&path).expect("open chunk");
-    let extraction =
-        crate::staticmesh::extract_chunk_from_package(&pkg, None, &mut ArchetypeCache::default());
+    let extraction = crate::staticmesh::extract_chunk_from_package(
+        &pkg,
+        None,
+        &mut ArchetypeCache::default(),
+        false,
+    );
     assert_eq!(extraction.actors_resolved, 1, "{:?}", extraction.skips);
     assert_eq!(extraction.triangles_emitted, 1);
     assert_eq!(extraction.skips.get(SkipReason::NoPackageIndex), 0);
@@ -494,7 +501,8 @@ fn a_two_hop_same_package_archetype_chain_reaches_the_parents_mesh() {
 
     let pkg = Package::open(&path).expect("open chunk");
     let index = index_over(&dir);
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    let walk =
+        collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default(), false);
     assert_eq!(
         walk.skips.get(SkipReason::ArchetypeNoMesh),
         0,
@@ -520,7 +528,8 @@ fn a_one_hop_local_archetype_still_resolves() {
 
     let pkg = Package::open(&path).expect("open chunk");
     let index = index_over(&dir);
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    let walk =
+        collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default(), false);
     assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
     assert_eq!(
         walk.instances[0].mesh_ref,
@@ -561,7 +570,8 @@ fn an_unreadable_actor_archetype_skips_the_actor_even_when_the_mesh_resolves() {
 
     let pkg = Package::open(&path).expect("open chunk");
     let index = index_over(&dir);
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    let walk =
+        collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default(), false);
 
     assert_eq!(walk.actors_total, 1);
     assert!(
@@ -593,7 +603,8 @@ fn a_readable_actor_archetype_still_emits() {
 
     let pkg = Package::open(&path).expect("open chunk");
     let index = index_over(&dir);
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default());
+    let walk =
+        collect_static_mesh_instances(&pkg, Some(&index), &mut ArchetypeCache::default(), false);
     assert_eq!(walk.instances.len(), 1);
     assert_eq!(walk.skips.get(SkipReason::ActorArchetypeUnreadable), 0);
 }

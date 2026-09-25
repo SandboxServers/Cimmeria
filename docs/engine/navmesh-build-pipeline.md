@@ -751,35 +751,116 @@ as `Harset_ShieldTower1`'s known-off-mesh spawn 308 (NA29,
 did not hold up once traced further — see "What this fix did *not* fix"
 below.
 
-**The fix.** `staticmesh::MESH_ACTOR_CLASSES` widens the filter to
-`["StaticMeshActor", "InterpActor", "KActor", "FracturedStaticMeshActor"]`;
-`coverage::DECODE_STATUS` marks all three `Decoded`. Nothing else in the
-resolution chain changes — collision-flag gating (`bCollideActors`, the
-archetype `collides()` check) applies identically regardless of class,
-so a mover explicitly marked non-colliding is still (correctly) skipped.
-`StaticMeshCollectionActor` (an array-of-components shape needing its own
-walk) is deliberately left out — see the 23-map census below.
+**The fix, first pass.** `staticmesh::MESH_ACTOR_CLASSES` widened the
+filter to `["StaticMeshActor", "InterpActor", "KActor",
+"FracturedStaticMeshActor"]`, unconditionally; `coverage::DECODE_STATUS`
+marked all three `Decoded`. Nothing else in the resolution chain
+changed — collision-flag gating (`bCollideActors`, the archetype
+`collides()` check) applies identically regardless of class, so a mover
+explicitly marked non-colliding is still (correctly) skipped.
+`StaticMeshCollectionActor` (an array-of-components shape needing its
+own walk) was left out — see the 23-map census below.
+
+**The fix, follow-up: `InterpActor` is opt-in.** A same-day review
+raised the concern this section exists to record: `InterpActor` is
+UE3's Matinee-driven-mover class, and Castle's connectivity notes had
+already flagged its un-extracted doors as `InterpActor`s. A mover's
+cooked `Location`/pose is its design-time *resting* state — usually
+closed for a door — not necessarily where a player experiences it at
+runtime. Unconditionally baking every `InterpActor`'s cooked pose into
+every map's `.nav`/`.occ` risks sealing a doorway shut or blocking line
+of sight through an opening a player can actually see and shoot
+through, the first time one of the other 14 `InterpActor`-carrying maps
+gets rebuilt. `KActor` and `FracturedStaticMeshActor` are unaffected —
+zero shipped instances of either, and neither carries the same
+door/mover connotation as a class.
+
+`staticmesh::MESH_ACTOR_CLASSES` was narrowed back to
+`["StaticMeshActor", "KActor", "FracturedStaticMeshActor"]`
+(unconditional), and `staticmesh::OPT_IN_MESH_ACTOR_CLASSES` (currently
+just `["InterpActor"]`) is walked only when the caller passes
+`ExtractOptions::include_interp_actors: true` (the `.nav` side) or the
+equivalent to `occluder::for_each_chunk` (the `.occ` side) — both
+default `false`. `coverage::decode_status(class, include_interp_actors)`
+now takes the run's flag as a parameter rather than reading a static
+table for `InterpActor`, so `extract_map`'s coverage report correctly
+flags `InterpActor` as an undecoded risk whenever a run does not opt in
+— the whole point is that a future rebuild that forgets the flag is
+warned, not silently told "no risk". CLI flags:
+`extract_map extract --include-interp-actors` (bare, no value) and
+`occluder_extract build --include-interp-actors true` (this tool's
+flags always take an explicit value).
 
 **23-map census (item 2).** Re-running `extract_map`'s class census over
 every cooked map after the fix:
 
-| Class | Maps carrying it | Total exports | Now decoded |
+| Class | Maps carrying it | Total exports | Decode status |
 |---|---|---|---|
-| `InterpActor` | 15 of 23 (Agnos 2, Beta_Site_Evo_1 94, Castle 14, Castle_CellBlock 53, Dakara_E1 10, Harset 31, Harset_CmdCenter 1, Login_Map 16, Lucia 359, Menfa_Dark 125, Menfa_Light 50, Omega_Site 4, SGC_W1 22, Sewer_Falls 2, Tollana 182) | 965 | yes |
-| `KActor` | 0 | 0 | n/a — no shipped content |
-| `FracturedStaticMeshActor` | 0 | 0 | n/a — no shipped content |
+| `InterpActor` | 15 of 23 (Agnos 2, Beta_Site_Evo_1 94, Castle 14, Castle_CellBlock 53, Dakara_E1 10, Harset 31, Harset_CmdCenter 1, Login_Map 16, Lucia 359, Menfa_Dark 125, Menfa_Light 50, Omega_Site 4, SGC_W1 22, Sewer_Falls 2, Tollana 182) | 965 | opt-in, off by default |
+| `KActor` | 0 | 0 | n/a — no shipped content, but unconditionally decoded |
+| `FracturedStaticMeshActor` | 0 | 0 | n/a — no shipped content, but unconditionally decoded |
 | `StaticMeshCollectionActor` | 0 | 0 | still `NotDecoded`; nothing to decode |
 
-`InterpActor` is by far the more common of the four risk classes in
-`COLLISION_BEARING_CLASSES`, and the fix benefits all 15 maps uniformly
-the next time each is rebuilt; only Harset's family is rebuilt in this
-packet (see the ownership split in
-[work-packets.md NA36](../../docs/analysis/npc-ai-restoration/work-packets.md)).
 Since neither `KActor` nor `FracturedStaticMeshActor` occurs anywhere in
 the shipped 2009 client content, their inclusion in `MESH_ACTOR_CLASSES`
 is a no-op today — kept because the classes are true `AStaticMeshActor`
 siblings and cost nothing to support, not because they were observed to
 matter.
+
+**What the 965 `InterpActor`s actually are (item 3, optional).** Of the
+965 exports, 754 resolve a mesh reference successfully (the other 211
+are collision-disabled or otherwise unresolvable, and contribute no
+geometry with the flag on or off). Classifying the 754 by resolved mesh
+name (a scratch tool diffed the walker's output with the flag on vs
+off, per-chunk, across all 23 maps — not part of the shipped tool
+surface):
+
+| Mesh name | Count | Category |
+|---|---:|---|
+| `GLB-RingTransporter00` | 332 | Ring-transport platform — players stand on it; static-shaped despite the class |
+| `HT-StreetLamp00` | 180 | Decorative street lamp |
+| `EM-SecurityCam01_Top` | 124 | Security camera head — **ambiguous**: the mount is static, the head plausibly rotates |
+| `HB-StreetLamp00` | 29 | Decorative street lamp |
+| `HB-Humvee_02` | 19 | Parked vehicle prop |
+| `SGC_Door03` | 12 | **Door** |
+| `EM-Door_Prison00` | 10 | **Door** |
+| `SGC_small_door_00` | 10 | **Door** |
+| `GLB-Stargate_Chevron00` | 7 | **Stargate rotating chevron mechanism** |
+| `GLB-Stargate_Chevron_Light00` | 7 | **Stargate rotating chevron mechanism** |
+| `EM-Antenna00` | 6 | Decorative antenna |
+| `HT-FloatingLight01` | 6 | Decorative floating light |
+| `HB-Humvee_01` | 3 | Parked vehicle prop |
+| `HB-StreetLamp01` | 2 | Decorative street lamp |
+| `LUS-FanRotor00` | 2 | **Rotating fan blade** |
+| `CA-CastleEntrance_Door00` | 1 | **Door** |
+| `CA-CastleEntrance_Door01` | 1 | **Door** |
+| `EM-ShelfBox10` | 1 | Decorative prop |
+| `GLB-Stargate_Spinner00` | 1 | **Stargate rotating mechanism** |
+| `LUS-MetalBox00` | 1 | Decorative prop |
+
+Rolled up: **579 (77%)** are load-bearing static-shaped props (ring
+transporters, lamps, antennas, parked vehicles) with no plausible reason
+to move at runtime; **51 (7%)** are literal doors or a Stargate's
+rotating chevron/spinner mechanism — the exact risk this follow-up
+exists to gate; **124 (16%)** are security-camera heads, genuinely
+ambiguous. So the concern that motivated making `InterpActor` opt-in is
+real (doors are present, confirmed by name) but is a small minority of
+the class's shipped population — most `InterpActor`s in this content are
+static-shaped dressing that happened to be authored with the mover
+class. A future packet enabling `InterpActor` map-by-map should treat
+the door/Stargate-mechanism 51 as needing individual exclusion or manual
+verification, and can likely trust the ring-transporter/lamp/vehicle 579
+categorically.
+
+**Which maps ship built with the flag.** Only Harset's family was
+rebuilt by this packet:
+
+| Map / file | `--include-interp-actors` | Why |
+|---|---|---|
+| `harset.nav` / `harset.occ` | **on** | 31 `InterpActor`s checked by hand (NA36) — all console platforms and static dressing, none named as a door or mechanism in the classification table above |
+| `harset_cmdcenter.nav` (+ `sandbox.nav`) | on, but moot | Its one `InterpActor` contributes no measurable geometry either way — the file rebuilds byte-identical |
+| `harset_market.nav`, `harset_storagerm.nav` | n/a | Zero `InterpActor` exports |
+| All other 22 maps | **not rebuilt by this packet; default off if/when they are** | Not individually checked. Castle, Castle_CellBlock, Beta_Site_Evo_1, Lucia, Menfa_Dark, Menfa_Light, Login_Map, SGC_W1, Tollana, Dakara_E1, Agnos, Sewer_Falls and Omega_Site all carry `InterpActor` exports (see the census table above) and must not be rebuilt with the flag on until someone reviews their specific instances the way NA36 did for Harset |
 
 **Harset rebuild.** `harset.nav`: `nverts` 29,768→29,772, `npolys`
 15,287→15,289, `edges` 42,379→42,385 (31 new `InterpActor` instances,

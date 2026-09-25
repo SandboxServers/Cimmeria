@@ -29,6 +29,7 @@ pub(crate) fn run(args: ExtractArgs) -> Result<(), Box<dyn std::error::Error>> {
             index: Some(&index),
             chunk_filter: args.chunk_filter.as_deref(),
             combined_obj: args.combined.as_deref(),
+            include_interp_actors: args.include_interp_actors,
             ..Default::default()
         },
     )?;
@@ -107,13 +108,15 @@ fn summary(report: &MapCoverage, report_path: &Path, classes_path: &Path) -> Str
     let _ = writeln!(
         o,
         // "mesh actors" = staticmesh::MESH_ACTOR_CLASSES (StaticMeshActor,
-        // InterpActor, KActor, FracturedStaticMeshActor as of NA36), not
-        // just the literal StaticMeshActor class.
-        "exports: {}   mesh actors: {}   resolved: {} ({:.1}%)",
+        // KActor, FracturedStaticMeshActor as of NA36, always; plus
+        // InterpActor when --include-interp-actors opted in), not just
+        // the literal StaticMeshActor class.
+        "exports: {}   mesh actors: {}   resolved: {} ({:.1}%)   interp-actors-included: {}",
         t.exports_total,
         t.actors_total,
         t.actors_resolved,
-        pct(t.actors_resolved, t.actors_total)
+        pct(t.actors_resolved, t.actors_total),
+        report.include_interp_actors,
     );
     let _ = writeln!(
         o,
@@ -171,18 +174,34 @@ fn summary(report: &MapCoverage, report_path: &Path, classes_path: &Path) -> Str
     // NA36: this used to print every COLLISION_BEARING_CLASSES entry
     // with a nonzero count, regardless of decode status — which made
     // Terrain/Model-style "read as owner" classes and (post-NA36)
-    // InterpActor/KActor/FracturedStaticMeshActor read as gaps even
-    // though decode_status() already says they are not. Filter to the
-    // classes the header actually claims: undecoded ones.
+    // KActor/FracturedStaticMeshActor read as gaps even though
+    // decode_status() already says they are not. Filter to the classes
+    // the header actually claims: undecoded ones. `include_interp_actors`
+    // is threaded through so InterpActor correctly shows as a gap
+    // whenever this run did not opt in (the default) — the whole point
+    // of the flag is that a future rebuild that forgets it still gets
+    // warned, not silently told "no risk".
     let _ = writeln!(o, "\nundecoded classes present (exports across the map):");
     for class in COLLISION_BEARING_CLASSES {
-        if decode_status(class) != DecodeStatus::NotDecoded {
+        if decode_status(class, report.include_interp_actors) != DecodeStatus::NotDecoded {
             continue;
         }
         let n = t.class_count(class);
         if n > 0 {
             let _ = writeln!(o, "  {class:<34} {n:>8}");
         }
+    }
+    if !report.include_interp_actors && t.class_count("InterpActor") > 0 {
+        let _ = writeln!(
+            o,
+            "\nNOTE: {} InterpActor export(s) present but NOT walked \
+             (opt-in, off by default — pass --include-interp-actors). \
+             In this content InterpActor is disproportionately doors, \
+             gates, lifts and elevators; see \
+             docs/engine/navmesh-build-pipeline.md §11 before turning it \
+             on for a map you have not checked by hand.",
+            t.class_count("InterpActor")
+        );
     }
 
     let ranked = report.ranked_by_triangles();

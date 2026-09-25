@@ -45,7 +45,7 @@ independently-justified fix: 31 actors in Harset alone (965 across 15 of
 
 ## The fix
 
-`staticmesh::MESH_ACTOR_CLASSES` (`crates/navmesh-extractor/src/staticmesh/mod.rs`):
+First pass, `staticmesh::MESH_ACTOR_CLASSES` (`crates/navmesh-extractor/src/staticmesh/mod.rs`):
 
 ```rust
 pub const MESH_ACTOR_CLASSES: &[&str] = &[
@@ -64,20 +64,50 @@ class-agnostic already — they read tagged properties, not the export's
 class name. A mover explicitly marked non-colliding is still (correctly)
 skipped, unchanged from before.
 
-`coverage::DECODE_STATUS` gained three rows marking `InterpActor`,
-`KActor` and `FracturedStaticMeshActor` `Decoded`, which flips their
-`collision_risk` column to `no` in the class-census TSV and removes them
-from `extract_map`'s "undecoded classes present" summary — that summary
-loop was also fixed to filter on `decode_status(class) == NotDecoded`
-rather than printing every `COLLISION_BEARING_CLASSES` entry with a
-nonzero count regardless of status (a latent inaccuracy the Decoded rows
-exposed: it would otherwise have kept reporting `Terrain`/`Model`, both
-long since decoded, as "undecoded" too).
+**Same-day follow-up: `InterpActor` walked back to opt-in.** A review
+raised the exact risk this class already carried a documented warning
+for: `InterpActor` is UE3's Matinee-driven-mover class, Castle's
+connectivity notes had already flagged its un-extracted doors as
+`InterpActor`s, and a mover's cooked pose is its design-time (often
+closed) resting state, not necessarily its runtime one. Unconditionally
+walking it risks sealing a doorway into a `.nav` or blocking sight
+through an open one in a `.occ` the first time one of the other 14
+`InterpActor`-carrying maps gets rebuilt. The final shape:
+
+```rust
+pub const MESH_ACTOR_CLASSES: &[&str] = &["StaticMeshActor", "KActor", "FracturedStaticMeshActor"];
+pub const OPT_IN_MESH_ACTOR_CLASSES: &[&str] = &["InterpActor"];
+```
+
+`is_mesh_actor_class(class, include_interp_actors)` is the combined
+predicate the walker now uses. `include_interp_actors` threads through
+`ExtractOptions` (the `.nav` side, `extract_map --include-interp-actors`
+— a bare flag, no value, default off) and `occluder::for_each_chunk`
+(the `.occ` side, `occluder_extract build --include-interp-actors true`
+— this tool's flags always take a value). `coverage::decode_status`
+gained the same parameter: `InterpActor`'s row is no longer a static
+table entry but a live check against the run's flag, so a rebuild that
+forgets to opt in correctly sees `InterpActor` flagged as an undecoded
+risk again in its own coverage report, rather than being told "no risk"
+because the code merely *can* decode it. `KActor` and
+`FracturedStaticMeshActor` are unaffected by the follow-up — both stay
+unconditional, since neither carries the door/mover connotation as a
+class and both have zero shipped instances anyway.
+
+`coverage::DECODE_STATUS` gained two rows marking `KActor` and
+`FracturedStaticMeshActor` `Decoded`, flipping their `collision_risk`
+column to `no`. `extract_map`'s "undecoded classes present" summary loop
+was also fixed to filter on `decode_status(class, include_interp_actors)
+== NotDecoded` rather than printing every `COLLISION_BEARING_CLASSES`
+entry with a nonzero count regardless of status (a latent inaccuracy the
+first pass's `Decoded` rows exposed: it would otherwise have kept
+reporting `Terrain`/`Model`, both long since decoded, as "undecoded"
+too).
 
 `StaticMeshCollectionActor` — UE3's cooked batching actor, holding an
 *array* of `StaticMeshComponent`s rather than one — is deliberately not
-in `MESH_ACTOR_CLASSES`. It needs its own walk. The 23-map census below
-found zero exports of it anywhere, so there is nothing to decode yet.
+in either list. It needs its own walk. The 23-map census below found
+zero exports of it anywhere, so there is nothing to decode yet.
 
 ## 23-map class census (item 2)
 
@@ -85,28 +115,68 @@ Re-ran `extract_map --classes` over every map under `CookedPC/Maps`
 (23 directories, matching `entities/spaces.xml` plus `Login_Map`) with the
 fixed binary:
 
-| Class | Maps carrying it (exports) | Total | Decoded now |
+| Class | Maps carrying it (exports) | Total | Decode status |
 |---|---|---:|---|
-| `InterpActor` | Agnos (2), Beta_Site_Evo_1 (94), Castle (14), Castle_CellBlock (53), Dakara_E1 (10), Harset (31), Harset_CmdCenter (1), Login_Map (16), Lucia (359), Menfa_Dark (125), Menfa_Light (50), Omega_Site (4), SGC_W1 (22), Sewer_Falls (2), Tollana (182) | 965 | yes |
-| `KActor` | none | 0 | n/a |
-| `FracturedStaticMeshActor` | none | 0 | n/a |
+| `InterpActor` | Agnos (2), Beta_Site_Evo_1 (94), Castle (14), Castle_CellBlock (53), Dakara_E1 (10), Harset (31), Harset_CmdCenter (1), Login_Map (16), Lucia (359), Menfa_Dark (125), Menfa_Light (50), Omega_Site (4), SGC_W1 (22), Sewer_Falls (2), Tollana (182) | 965 | opt-in, off by default |
+| `KActor` | none | 0 | n/a — unconditionally decoded |
+| `FracturedStaticMeshActor` | none | 0 | n/a — unconditionally decoded |
 | `StaticMeshCollectionActor` | none | 0 | still `NotDecoded` — nothing to decode |
 
 `InterpActor` is the only one of the three widened classes with any
 shipped content — `KActor` and `FracturedStaticMeshActor` cost nothing
 today but are correct to support (they are true `AStaticMeshActor`
 siblings, and either could gain content in a future re-cook or a map this
-tree hasn't sampled). The fix benefits all 15 `InterpActor`-carrying maps
-uniformly the next time each is rebuilt; only Harset's family is rebuilt
-in this packet (packet ownership is `data/spaces/harset*.nav/.occ` only —
-see [work-packets.md NA36](../work-packets.md)).
+tree hasn't sampled). Only Harset's family is rebuilt in this packet
+(packet ownership is `data/spaces/harset*.nav/.occ` only — see
+[work-packets.md NA36](../work-packets.md)); the other 14
+`InterpActor`-carrying maps default off until each is individually
+checked the way Harset was.
 
-Concrete validation from Castle (not rebuilt by this packet, but confirms
-the fix does something real): 14 `InterpActor`s decode there, 11 security
-camera heads, 1 antenna, 1 shelf box, and
-`GLB-Global:GLB-RingTransporter00` at BigWorld (466.45, 70.06, 991.55) —
-the map's ring-transport platform, which previously had **zero** collision
-geometry despite being something players stand on.
+**What the 965 `InterpActor`s actually are (item 3).** 754 of the 965
+resolve a mesh reference (the rest are collision-disabled or otherwise
+unresolvable, and produce no geometry either way). A scratch tool
+(`examples/classify_interp_actors.rs`, deleted before this branch's
+final commit — not shipped) diffed the walker's output with the flag on
+vs off, per chunk, across all 23 maps, and classified the result by
+resolved mesh name:
+
+| Mesh name | Count | Category |
+|---|---:|---|
+| `GLB-RingTransporter00` | 332 | Ring-transport platform, static-shaped |
+| `HT-StreetLamp00` | 180 | Decorative lamp |
+| `EM-SecurityCam01_Top` | 124 | Security camera head — ambiguous |
+| `HB-StreetLamp00` | 29 | Decorative lamp |
+| `HB-Humvee_02` | 19 | Parked vehicle |
+| `SGC_Door03` | 12 | **Door** |
+| `EM-Door_Prison00` | 10 | **Door** |
+| `SGC_small_door_00` | 10 | **Door** |
+| `GLB-Stargate_Chevron00` | 7 | **Stargate rotating mechanism** |
+| `GLB-Stargate_Chevron_Light00` | 7 | **Stargate rotating mechanism** |
+| `EM-Antenna00` | 6 | Decorative antenna |
+| `HT-FloatingLight01` | 6 | Decorative light |
+| `HB-Humvee_01` | 3 | Parked vehicle |
+| `HB-StreetLamp01` | 2 | Decorative lamp |
+| `LUS-FanRotor00` | 2 | **Rotating fan blade** |
+| `CA-CastleEntrance_Door00` | 1 | **Door** |
+| `CA-CastleEntrance_Door01` | 1 | **Door** |
+| `EM-ShelfBox10` | 1 | Decorative prop |
+| `GLB-Stargate_Spinner00` | 1 | **Stargate rotating mechanism** |
+| `LUS-MetalBox00` | 1 | Decorative prop |
+
+Rolled up: 77% (579) are load-bearing static-shaped props with no
+plausible runtime motion, 7% (51) are literal doors or a Stargate's
+rotating chevron/spinner mechanism — the exact risk the opt-in exists
+for — and 16% (124) are security-camera heads (ambiguous: the mount is
+static, the head plausibly rotates). The concern that motivated gating
+`InterpActor` is real, confirmed by name, but a minority of the class's
+shipped population. Concrete validation from Castle (not rebuilt by this
+packet): its 14 `InterpActor`s are 11 `EM-SecurityCam01_Top` heads, 1
+`EM-Antenna00`, 1 shelf box, and `GLB-RingTransporter00` at BigWorld
+(466.45, 70.06, 991.55) — Castle's own ring-transport platform, which
+previously had **zero** collision geometry despite being something
+players stand on. A future packet enabling `InterpActor` per-map should
+trust the ring-transporter/lamp/vehicle majority and individually review
+or exclude the door/Stargate-mechanism minority.
 
 ## What this did not fix
 
@@ -199,7 +269,10 @@ Params from the original NA26 build log
 the `L1` rows): `partition=watershed agentHeight=1.8 agentClimb=0.6
 agentRadius=0.6 ch=0.2 cs=0.3 minRegionSize=24 maxSimplificationError=1.3`,
 `bounds=-420,-520,420,420` for Harset and `bounds=-120,-120,220,120` for
-Harset_CmdCenter, via the promoted `bin64/NavBuilder.exe`.
+Harset_CmdCenter, via the promoted `bin64/NavBuilder.exe`. Both built
+**with `--include-interp-actors` on** — the whole point of this table is
+the 31/1 `InterpActor`s Harset's own family carries, checked by hand
+(see the classification above) and none a door.
 
 | File | Before | After | Verdict |
 |---|---|---|---|
@@ -220,24 +293,37 @@ failing probe.
 
 ## Tests
 
-`crates/navmesh-extractor/src/staticmesh/mesh_actor_class_tests.rs` (new,
-7 tests, package-backed synthetic fixtures, no cooked client tree):
-`InterpActor`/`KActor`/`FracturedStaticMeshActor` each resolve a mesh
-reference identically to `StaticMeshActor`; a class outside the family
-(`Pawn`) is still fully ignored; `MESH_ACTOR_CLASSES`'s exact contents are
-pinned; `StaticMeshCollectionActor` is pinned as NOT yet in the family.
-`interp_actor_is_not_silently_invisible_to_the_walker` is the direct
-regression guard — it fails if the class filter reverts to an exact
-`"StaticMeshActor"` string compare.
+`crates/navmesh-extractor/src/staticmesh/mesh_actor_class_tests.rs`
+(package-backed synthetic fixtures, no cooked client tree):
+`KActor`/`FracturedStaticMeshActor` each resolve a mesh reference
+identically to `StaticMeshActor` regardless of `include_interp_actors`;
+`InterpActor` is completely invisible (not even into a `SkipReason`)
+with the flag off and resolves identically to the others with it on; a
+class outside the family (`Pawn`) is still fully ignored either way;
+`MESH_ACTOR_CLASSES` / `OPT_IN_MESH_ACTOR_CLASSES` / `is_mesh_actor_class`
+are pinned directly; `StaticMeshCollectionActor` is pinned as NOT in
+either list. `crates/navmesh-extractor/src/bin/extract_map/args.rs` gained
+a bare-boolean-flag test for `--include-interp-actors` (default off,
+value-less, rejects a repeat and a value after it);
+`crates/navmesh-extractor/src/bin/occluder_extract/args.rs` gained one for
+its `--include-interp-actors true|false` equivalent (this parser's flags
+always take a value; a typo like `yes` is a hard error, not a silent
+default). `interp_actor_is_invisible_by_default` is the direct
+regression guard for the opt-in shape — it fails if the class filter
+reverts to walking `InterpActor` unconditionally (the exact shape of the
+first NA36 pass, and of the original pre-NA36 bug in the other
+direction).
 
-`coverage::tests::decode_status_tracks_the_phases_that_have_landed` and
-`collision_risk_is_the_intersection_not_the_whole_list` updated for the
-new `Decoded` rows (both pinned tests, not new).
+`coverage::tests::decode_status_tracks_the_phases_that_have_landed`,
+`collision_risk_is_the_intersection_not_the_whole_list` and a new
+`interp_actor_decode_status_follows_the_run_flag_not_a_static_table`
+cover the `decode_status(class, include_interp_actors)` signature change
+directly.
 
 Full suites run against the rebuilt `harset.nav`/`harset.occ`:
-`cimmeria-navmesh-extractor` 420/420, `cimmeria-entity` (folded into the
-same nextest run, 738/738 combined), `cimmeria-services` 3,274/3,275 (1
-live-DB self-skip, no `DATABASE_URL`), `cimmeria-server` 30/30. Targeted
+`cimmeria-navmesh-extractor` 424/424, `cimmeria-entity` (folded into the
+same nextest run), `cimmeria-services` 3,274/3,275 (1 live-DB self-skip,
+no `DATABASE_URL`), `cimmeria-server` 30/30. Targeted
 Harset-family tests checked explicitly:
 `cell::harset_placement_tests::*`, `cell::spawner::tests::harset::*`
 (including `world57_placement::world57_mobile_placements_can_walk` and

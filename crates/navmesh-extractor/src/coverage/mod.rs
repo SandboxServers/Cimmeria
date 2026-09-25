@@ -1,11 +1,12 @@
 //! Extraction-coverage accounting — "how much of this map did we
 //! actually recover, and what did we leave on the floor?"
 //!
-//! Three walkers feed the soup: `StaticMeshActor` (Phase 1.2,
-//! including prefab archetypes), `Terrain` (1.3) and BSP `Model`
-//! (1.4). Classes outside that set — `Polys`, `ModelComponent`,
-//! `InterpActor`, `KActor`, `FracturedStaticMeshActor`,
-//! `StaticMeshCollectionActor` — are still silently ignored. Before
+//! Three walkers feed the soup: `StaticMeshActor` (Phase 1.2, including
+//! prefab archetypes and — NA36 — the `KActor`/`FracturedStaticMeshActor`
+//! siblings, unconditionally, plus `InterpActor` when opted in),
+//! `Terrain` (1.3) and BSP `Model` (1.4). Classes outside that set —
+//! `Polys`, `ModelComponent`, `StaticMeshCollectionActor`, and
+//! `InterpActor` when not opted in — are still silently ignored. Before
 //! deciding whether a given map's navmesh is worth building, you need
 //! the numbers: how many actors resolved, why the rest didn't, how the
 //! triangles split by source, and how much collision-bearing geometry
@@ -262,13 +263,18 @@ impl DecodeStatus {
 /// - `PrefabInstance` — the container is still ignored, but its actors
 ///   are separately exported as `StaticMeshActor` and now resolve
 ///   through `staticmesh::archetype`, so it is no longer a gap.
-/// - `InterpActor` / `KActor` / `FracturedStaticMeshActor` — NA36. All
-///   three derive from `AStaticMeshActor` and share its placement +
-///   `StaticMeshComponent` shape, so
-///   `staticmesh::collect_static_mesh_instances` walks them through
-///   [`staticmesh::MESH_ACTOR_CLASSES`] alongside `StaticMeshActor`
-///   itself. `StaticMeshCollectionActor` is deliberately NOT here — it
-///   owns an array of components, not one, and needs its own walk.
+/// - `KActor` / `FracturedStaticMeshActor` — NA36. Both derive from
+///   `AStaticMeshActor` and share its placement + `StaticMeshComponent`
+///   shape, so `staticmesh::collect_static_mesh_instances` walks them
+///   through [`staticmesh::MESH_ACTOR_CLASSES`] alongside
+///   `StaticMeshActor` itself, unconditionally.
+/// - `InterpActor` — NA36, but **opt-in**: see [`decode_status`]'s doc.
+///   Not listed in this table; handled as a special case.
+/// - `PrefabInstance` — the container is still ignored, but its actors
+///   are separately exported as `StaticMeshActor` and now resolve
+///   through `staticmesh::archetype`, so it is no longer a gap.
+///   `StaticMeshCollectionActor` is deliberately NOT here — it owns an
+///   array of components, not one, and needs its own walk.
 const DECODE_STATUS: &[(&str, DecodeStatus)] = &[
     ("StaticMeshActor", DecodeStatus::Decoded),
     ("StaticMeshComponent", DecodeStatus::ViaOwner),
@@ -278,13 +284,32 @@ const DECODE_STATUS: &[(&str, DecodeStatus)] = &[
     ("Brush", DecodeStatus::ViaOwner),
     ("BlockingVolume", DecodeStatus::ViaOwner),
     ("PrefabInstance", DecodeStatus::ViaOwner),
-    ("InterpActor", DecodeStatus::Decoded),
     ("KActor", DecodeStatus::Decoded),
     ("FracturedStaticMeshActor", DecodeStatus::Decoded),
 ];
 
-/// What the extractor does with `class`.
-pub fn decode_status(class: &str) -> DecodeStatus {
+/// What the extractor does with `class`, **for this run**.
+///
+/// `InterpActor` is a special case, not a table lookup: NA36 made it
+/// opt-in (`ExtractOptions::include_interp_actors`, default off) because
+/// in this content it is disproportionately doors, gates, lifts and
+/// elevators, and baking a mover's cooked (usually closed) pose into a
+/// `.nav`/`.occ` risks sealing a doorway or blocking sight through one
+/// that is actually open at runtime — see
+/// `staticmesh::MESH_ACTOR_CLASSES`'s doc. So `decode_status` answers
+/// "was InterpActor actually walked this run", not "can the code walk
+/// it" — pass the same `include_interp_actors` the extraction itself
+/// used ([`MapCoverage::include_interp_actors`] carries it for a report
+/// already produced). Every other class is a straight table lookup and
+/// ignores the argument.
+pub fn decode_status(class: &str, include_interp_actors: bool) -> DecodeStatus {
+    if class == "InterpActor" {
+        return if include_interp_actors {
+            DecodeStatus::Decoded
+        } else {
+            DecodeStatus::NotDecoded
+        };
+    }
     DECODE_STATUS
         .iter()
         .find(|(c, _)| *c == class)
@@ -316,11 +341,17 @@ pub fn decode_status(class: &str) -> DecodeStatus {
 /// - `InterpActor` / `KActor` / `FracturedStaticMeshActor` — movers and
 ///   physics props that own a `StaticMeshComponent` but are not class
 ///   `StaticMeshActor`. NA36: `staticmesh::MESH_ACTOR_CLASSES` now
-///   walks all three through the same resolver, so `decode_status`
-///   reports them `Decoded` and the `collision_risk` column below
-///   reads `no`. Kept in this list (rather than dropped, the way
+///   walks `KActor` and `FracturedStaticMeshActor` through the same
+///   resolver unconditionally, so `decode_status` reports them
+///   `Decoded` and `collision_risk` reads `no`. `InterpActor` is
+///   **opt-in** (default off — doors, gates, lifts and elevators are
+///   disproportionately this class, and a mover's cooked pose is not
+///   necessarily its runtime one), so `decode_status`'s `collision_risk`
+///   for it tracks whether *this run* passed
+///   `ExtractOptions::include_interp_actors`, not just "can the code
+///   decode it". Kept in this list (rather than dropped, the way
 ///   `StaticMeshActor` itself is not listed here) so the per-chunk
-///   export-count column stays visible even though the risk is gone.
+///   export-count column stays visible regardless.
 /// - `StaticMeshCollectionActor` — UE3's cooked batching actor; holds
 ///   an array of components rather than one. Still a genuine gap; see
 ///   `docs/engine/navmesh-build-pipeline.md` §11 for the NA36 23-map
@@ -507,6 +538,12 @@ pub struct MapCoverage {
     pub elapsed_secs: f64,
     /// Size of the combined map-level OBJ, 0 if none was written.
     pub combined_obj_bytes: u64,
+    /// Whether this run walked `InterpActor` exports as geometry
+    /// (`ExtractOptions::include_interp_actors`). Carried onto the
+    /// report so [`Self::write_class_census_into`] can answer "was
+    /// InterpActor actually decoded this run", not just "can the code
+    /// decode it" — see [`decode_status`]'s doc.
+    pub include_interp_actors: bool,
 }
 
 impl MapCoverage {
@@ -638,7 +675,7 @@ impl MapCoverage {
 
         writeln!(w, "class\texports\tchunks_present\tdecoded\tcollision_risk")?;
         for (class, exports, chunks_present) in rows {
-            let status = decode_status(class);
+            let status = decode_status(class, self.include_interp_actors);
             // A risk is a class that could carry collision AND that
             // nothing reads — not merely "is not StaticMeshActor".
             // `ViaOwner` counts as read: the geometry reaches the soup,

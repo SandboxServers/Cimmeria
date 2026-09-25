@@ -38,13 +38,22 @@ summed over the tiles and "spans" is the largest tile's, which is what the
 
 `harset.nav` was re-extracted and rebuilt by NA36 on 2026-09-25 with the
 same parameters as NA26, from a fixed extractor that additionally walks
-`InterpActor` / `KActor` / `FracturedStaticMeshActor` exports (see
+`KActor` / `FracturedStaticMeshActor` exports unconditionally, and
+`InterpActor` exports when `--include-interp-actors` is passed (opt-in,
+default off — `InterpActor` is disproportionately doors, gates, lifts
+and elevators in this content, and a mover's cooked pose can be its
+usually-closed design-time state rather than its runtime one; see
 [navmesh-build-pipeline.md §11](../../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)).
-`harset_cmdcenter.nav`, `sandbox.nav`, `harset_market.nav` and
-`harset_storagerm.nav` were checked against the same fix and left
-untouched: the first rebuilds byte-identical (its one `InterpActor`
-contributes no geometry) and the other two carry no instances of any of
-the three classes.
+Harset's 31 `InterpActor` exports were checked by hand and are all
+console platforms and other static dressing, none a door, so `harset.nav`
+ships built **with** the flag on. `harset_cmdcenter.nav`, `sandbox.nav`,
+`harset_market.nav` and `harset_storagerm.nav` were checked against the
+same fix and left untouched: the first rebuilds byte-identical regardless
+of the flag (its one `InterpActor` contributes no geometry either way)
+and the other two carry no instances of any of the three classes. No
+other map has been rebuilt with `InterpActor` walked yet — the flag
+defaults off, and each of the other 14 `InterpActor`-carrying maps needs
+the same per-instance check before it is turned on for them.
 
 "Probes" is `NavMesh::is_point_valid` over the world's seeded `spawnlist`,
 `respawners`, `ring_transport_regions`, `stargates` and `point_set_points`
@@ -105,9 +114,10 @@ the chunk OBJs adds 5-30 s on the big maps.
   `obj_slab` finds no source geometry at all. Probes go from 18/67 to
   51/67; all five ring pads and the Command Center door are now on-mesh.
   **NA36 (2026-09-25) checked the "an undecoded actor class" hypothesis
-  above and did not confirm it**: `InterpActor` / `KActor` /
-  `FracturedStaticMeshActor` are now decoded
-  ([navmesh-build-pipeline.md §11](../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)),
+  above and did not confirm it**: `KActor` / `FracturedStaticMeshActor`
+  are now decoded unconditionally, and `InterpActor` is decoded for
+  Harset specifically (opt-in elsewhere, see below and
+  [navmesh-build-pipeline.md §11](../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)),
   and Harset's 31 `InterpActor` exports all resolve, but none sits within
   30 m of these five points at the target height — `nav_inspect` reports
   the identical `OUT OF TOLERANCE` set before and after. The gap remains

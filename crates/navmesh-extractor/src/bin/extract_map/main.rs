@@ -8,7 +8,7 @@
 //!
 //! extract_map extract --cooked-root <DIR> --map <NAME> --out <DIR> --index <CACHE>
 //!                     [--chunk-filter <SUBSTR>] [--report <TSV>] [--classes <TSV>]
-//!                     [--combined <OBJ>]
+//!                     [--combined <OBJ>] [--include-interp-actors]
 //!
 //! extract_map probe   --obj-dir <DIR> [--mapping all|<LABEL>[,<LABEL>…]]
 //!                     [--points <TSV>] [--report <TSV>] [--detail <TSV>]
@@ -47,6 +47,7 @@ USAGE:
   extract_map <cooked-root> <map-name> <out-dir> <index-path>      (shorthand)
   extract_map extract --cooked-root <DIR> --map <NAME> --out <DIR> --index <CACHE>
                       [--chunk-filter <SUBSTR>] [--report <TSV>] [--classes <TSV>]
+                      [--combined <OBJ>] [--include-interp-actors]
   extract_map probe   --obj-dir <DIR> [--mapping all|<LABEL>[,<LABEL>...]]
                       [--points <TSV>] [--report <TSV>] [--detail <TSV>]
                       [--below <F>] [--above <F>] [--neighbourhood <F>]
@@ -63,6 +64,19 @@ extract:
                         it MUST NOT be inside --out: NavBuilder chunked mode
                         globs *.obj and dies (exit 0, no output) on a file
                         whose stem is not <hex8>o.
+  --include-interp-actors
+                        Walk InterpActor exports as geometry too. Off by
+                        default: in this content InterpActor is
+                        disproportionately doors, gates, lifts and elevators,
+                        and a mover's cooked pose is its usually-closed
+                        design-time state, not necessarily its runtime one.
+                        Baking one into a .nav/.occ can seal a doorway or
+                        block sight through an opening a player can actually
+                        use. KActor and FracturedStaticMeshActor are always
+                        walked (zero shipped instances, but static-shaped).
+                        See docs/engine/navmesh-build-pipeline.md §11 before
+                        turning this on for a map you have not checked by
+                        hand.
 
 probe:
   --obj-dir <DIR>       Directory of <chunkid>o.obj files (an extract --out).

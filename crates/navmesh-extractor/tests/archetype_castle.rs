@@ -123,7 +123,7 @@ fn castle_000a0002_archetype_stubs_all_reach_a_verdict() {
     };
     let pkg = cimmeria_upk::Package::open(&chunk).expect("open chunk");
     let mut cache = ArchetypeCache::default();
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut cache);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut cache, false);
 
     eprintln!(
         "000a0002: {} actors, {} instances, skips {:?}",
@@ -195,7 +195,7 @@ fn castle_000a0002_archetype_resolution_emits_triangles() {
     let Some((chunk, index)) = setup("castle_000a0002_archetype_resolution_emits_triangles") else {
         return;
     };
-    let extraction = extract_chunk(&chunk, Some(&index)).expect("extract_chunk");
+    let extraction = extract_chunk(&chunk, Some(&index), false).expect("extract_chunk");
     eprintln!(
         "000a0002: resolved={} via_archetype={} tris={} via_archetype_tris={} prefab_pkgs={}",
         extraction.actors_resolved,
@@ -242,7 +242,7 @@ fn castle_000a0002_non_colliding_actors_are_suppressed() {
     };
     let pkg = cimmeria_upk::Package::open(&chunk).expect("open chunk");
     let mut cache = ArchetypeCache::default();
-    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut cache);
+    let walk = collect_static_mesh_instances(&pkg, Some(&index), &mut cache, false);
 
     let suppressed = walk.skips.get(SkipReason::CollisionDisabled);
     eprintln!("000a0002: {suppressed} actors suppressed by bCollideActors = false");

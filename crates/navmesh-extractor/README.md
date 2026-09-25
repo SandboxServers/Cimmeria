@@ -295,31 +295,35 @@ crate; the NavBuilder-side write-up is
   §3. The path stays untested against real non-empty data until a map
   turns up that has some.
 - **Non-`StaticMeshActor` classes that own a `StaticMeshComponent`** —
-  **NA36 (2026-09-25) widened the walker.** `staticmesh::MESH_ACTOR_CLASSES`
-  now includes `InterpActor`, `KActor` and `FracturedStaticMeshActor`
-  alongside `StaticMeshActor`; the archetype resolver handles them
-  unchanged since they share its placement + `StaticMeshComponent`
-  shape. In Castle this decodes all 14 `InterpActor`s: 11 security-camera
-  heads, 1 antenna, 1 shelf box, and `GLB-Global:GLB-RingTransporter00`
-  at BigWorld (466.45, 70.06, 991.55) — the only Castle actor that sets
-  `bCollideActors` / `bBlockActors` / `bPathColliding` explicitly, and a
-  ring-transport platform players actually stand on, which previously had
-  **zero** collision geometry at all. `KActor` and `FracturedStaticMeshActor`
-  have zero exports across all 23 shipped maps, so today the practical
-  effect is `InterpActor`-only (see the 23-map census in
+  **NA36 (2026-09-25) widened the walker, and then made the risky part
+  opt-in.** `staticmesh::MESH_ACTOR_CLASSES` now includes `KActor` and
+  `FracturedStaticMeshActor` alongside `StaticMeshActor`,
+  unconditionally — both have zero exports across all 23 shipped maps
+  today, but are true `AStaticMeshActor` siblings and cost nothing to
+  support. `InterpActor` is different: `OPT_IN_MESH_ACTOR_CLASSES`
+  gates it behind `ExtractOptions::include_interp_actors` /
+  `--include-interp-actors`, **default off**. The first NA36 pass
+  walked `InterpActor` unconditionally and a same-day follow-up walked
+  it back after a reviewer pointed out the failure mode: **a mover's
+  cooked `Location` is its editor-time pose, not necessarily where it
+  rests at runtime** — a closed door baked into a `.nav` seals the
+  doorway, and baked into a `.occ` blocks sight through an opening a
+  player can actually see through. A 23-map classification of every
+  resolved `InterpActor`'s mesh name
+  (`docs/engine/navmesh-build-pipeline.md` §11) found the risk is real
+  but a minority: 754 `InterpActor`s resolve a mesh across all 23 maps,
+  of which ~51 (7%) are literal doors or a Stargate's rotating chevron
+  mechanism, ~124 (16%) are security-camera heads (ambiguous — the
+  mount is static, only the head plausibly rotates), and the remaining
+  ~579 (77%) are load-bearing static-shaped props: 332
+  `GLB-RingTransporter00` ring-transport platforms alone (players stand
+  on these; Castle's own instance previously had **zero** collision
+  geometry at all), plus streetlamps, floating lights, antennas and
+  parked vehicles. Harset's 31 `InterpActor`s were checked by hand and
+  are all in the safe category, so `harset.nav`/`harset.occ` ship built
+  with the flag on; every other map defaults to off until someone does
+  the same per-map check (see the flag-usage table in
   [navmesh-build-pipeline.md §11](../../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)).
-  The judgement call this decision rests on: **a mover's cooked `Location`
-  is its editor-time pose, not necessarily where it rests at runtime** —
-  a genuinely Matinee-animated platform could be represented at the wrong
-  height. NA36's Harset investigation found a real candidate for exactly
-  this failure mode (a cluster of accepted player positions 8-10 m above
-  the nearest decoded geometry, with no actor of any class nearby at the
-  right height) but could not confirm it was caused by an animated
-  `InterpActor` specifically. On balance this is judged worth taking:
-  decoding the cooked pose is correct for every case that is not an
-  active mover (the large majority observed), and the previous behaviour
-  — total invisibility, even for load-bearing static platforms like the
-  ring transporter — was strictly worse.
 - **`Polys` is never read.** BSP collision comes from `UModel`'s node
   tree, so this is believed correct rather than known correct.
 - **Terrain coordinate cross-check** — the height-vs-known-outdoor-point

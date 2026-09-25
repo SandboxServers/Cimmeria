@@ -343,14 +343,23 @@ fn decode_status_tracks_the_phases_that_have_landed() {
         "StaticMeshActor",
         "Terrain",
         "Model",
-        // NA36: InterpActor / KActor / FracturedStaticMeshActor are
-        // StaticMeshActor-shaped and now walked the same way — see
-        // `staticmesh::MESH_ACTOR_CLASSES`.
-        "InterpActor",
+        // NA36: KActor / FracturedStaticMeshActor are StaticMeshActor-
+        // shaped and now walked the same way, unconditionally — see
+        // `staticmesh::MESH_ACTOR_CLASSES`. InterpActor is opt-in;
+        // covered separately below.
         "KActor",
         "FracturedStaticMeshActor",
     ] {
-        assert_eq!(decode_status(class), DecodeStatus::Decoded, "{class}");
+        assert_eq!(
+            decode_status(class, false),
+            DecodeStatus::Decoded,
+            "{class}"
+        );
+        assert_eq!(
+            decode_status(class, true),
+            DecodeStatus::Decoded,
+            "{class} (unaffected by include_interp_actors)"
+        );
     }
     for class in [
         "StaticMeshComponent",
@@ -358,7 +367,11 @@ fn decode_status_tracks_the_phases_that_have_landed() {
         "Brush",
         "BlockingVolume",
     ] {
-        assert_eq!(decode_status(class), DecodeStatus::ViaOwner, "{class}");
+        assert_eq!(
+            decode_status(class, false),
+            DecodeStatus::ViaOwner,
+            "{class}"
+        );
     }
     for class in [
         "Polys",
@@ -368,17 +381,33 @@ fn decode_status_tracks_the_phases_that_have_landed() {
         "StaticMeshCollectionActor",
         "SomethingNew",
     ] {
-        assert_eq!(decode_status(class), DecodeStatus::NotDecoded, "{class}");
+        assert_eq!(
+            decode_status(class, false),
+            DecodeStatus::NotDecoded,
+            "{class}"
+        );
     }
 }
 
-/// Only classes that are BOTH collision-bearing AND unread are risks.
+/// InterpActor's decode status tracks the run, not a static table —
+/// this is the whole point of making it opt-in.
+#[test]
+fn interp_actor_decode_status_follows_the_run_flag_not_a_static_table() {
+    assert_eq!(
+        decode_status("InterpActor", false),
+        DecodeStatus::NotDecoded
+    );
+    assert_eq!(decode_status("InterpActor", true), DecodeStatus::Decoded);
+}
+
+/// Only classes that are BOTH collision-bearing AND unread are risks,
+/// with the run's `include_interp_actors` flag off (the default).
 #[test]
 fn collision_risk_is_the_intersection_not_the_whole_list() {
     let risky: Vec<&str> = COLLISION_BEARING_CLASSES
         .iter()
         .copied()
-        .filter(|c| decode_status(c) == DecodeStatus::NotDecoded)
+        .filter(|c| decode_status(c, false) == DecodeStatus::NotDecoded)
         .collect();
     assert_eq!(
         risky,
@@ -386,11 +415,15 @@ fn collision_risk_is_the_intersection_not_the_whole_list() {
             "BrushComponent",
             "ModelComponent",
             "Polys",
-            // NA36 moved InterpActor / KActor / FracturedStaticMeshActor
-            // out of this list: they are now Decoded, so the
+            // NA36 moved KActor / FracturedStaticMeshActor out of this
+            // list unconditionally: they are always Decoded, so the
             // intersection with COLLISION_BEARING_CLASSES no longer
-            // includes them. StaticMeshCollectionActor remains the one
-            // undecoded collision-bearing class.
+            // includes them. InterpActor is back in this list by
+            // default (opt-in, off) — a future map's rebuild that
+            // forgets the flag still sees it flagged as a risk here.
+            // StaticMeshCollectionActor remains the one class with no
+            // implementation at all.
+            "InterpActor",
             "StaticMeshCollectionActor",
         ],
         "the risk set drifted; update the phase table in the README too"
