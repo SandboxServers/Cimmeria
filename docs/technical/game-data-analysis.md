@@ -127,7 +127,8 @@ PAK Files (ZIP archives via DefMgr.makePaks())
 C++ ResourceManager -> serves to client on demand
 ```
 
-22 resource categories handled:
+The client enumerates 21 wire categories (1–21); the DB hosts 22 resource types including body-/component-level rows beyond the wire enum:
+
 Abilities, Items, Effects, Missions, Dialogs, InteractionSets, Interactions, Blueprints, CharCreation, Containers, Stargates, Disciplines, Paradigms, Sciences, WorldInfo, ErrorStrings, TextStrings, SpecialWords, KismetSequences, KismetSetEvents, BodySets, BodyComponentVisuals
 
 ## 5. Entity Definitions (`entities/`)
