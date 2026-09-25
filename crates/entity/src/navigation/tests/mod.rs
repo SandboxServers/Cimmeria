@@ -12,6 +12,7 @@ mod diagnose;
 mod fingerprint_and_size_cap;
 mod height;
 mod path_outcome;
+mod surface;
 
 use super::*;
 
