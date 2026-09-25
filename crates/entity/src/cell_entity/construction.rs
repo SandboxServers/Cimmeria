@@ -81,6 +81,7 @@ impl CellEntity {
             threat_list: HashMap::new(),
             spawn_position: None,
             spawn_direction: None,
+            leash: super::LeashState::default(),
             ai_cooldown_ticks: 0,
             ai_retry_at: None,
             nav_path: VecDeque::new(),

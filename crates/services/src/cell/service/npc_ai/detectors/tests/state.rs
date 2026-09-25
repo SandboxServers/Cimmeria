@@ -15,10 +15,11 @@ use crate::test_support::LogCapture;
 
 const MESSHALL: [f32; 3] = [-96.25, 34.591, -91.59];
 
-/// A fight that loses its target parks the NPC where it stands, and the AI
-/// never visits it again (S6 + A1).
+/// NA12 (S6): a fight that ends away from spawn sends the NPC home, so it is
+/// never `idle_parked`. Before NA12 the first tick set Idle where the NPC
+/// stood and this row fired with `reason=threat_empty`.
 #[tokio::test]
-async fn a_fight_that_ends_away_from_spawn_is_idle_parked() {
+async fn a_fight_that_ends_away_from_spawn_goes_home_and_is_not_parked() {
     let mut mgr = castle_mgr();
     add_npc(
         &mut mgr,
@@ -28,12 +29,40 @@ async fn a_fight_that_ends_away_from_spawn_is_idle_parked() {
         AiState::Fighting,
     );
     let logs = LogCapture::install();
-    ai_tick(&mut mgr).await; // empty threat list -> Idle
+    ai_tick(&mut mgr).await; // empty threat list -> Leashing
+    ai_tick(&mut mgr).await; // no route in a meshless space: snap home, Idle
+    assert!(
+        rows(&logs, "npc_ai.idle_parked", "idle_parked").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+    let npc = mgr.get_entity(NPC).unwrap();
+    assert_eq!(npc.ai_state(), AiState::Idle);
+    assert_eq!(npc.position, Vector3::new(0.0, 0.0, 0.0));
+}
+
+/// The one reset that still parks by design: a follower is reset where it
+/// stands (it must not be yanked away from the player it escorts), so it
+/// goes Idle away from spawn and the detector says so.
+#[tokio::test]
+async fn a_follower_reset_in_place_is_idle_parked() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [20.0, 0.0, 0.0],
+        Some([0.0; 3]),
+        AiState::Fighting,
+    );
+    mgr.get_entity_mut(NPC).unwrap().follow_target_id = Some(999);
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await; // -> Leashing
+    ai_tick(&mut mgr).await; // follower: reset in place, Idle
     let found = rows(&logs, "npc_ai.idle_parked", "idle_parked");
     assert_eq!(found.len(), 1, "{:#?}", logs.all());
     assert_eq!(found[0].level, Level::INFO);
     assert!(
-        found[0].has_field("reason", "threat_empty"),
+        found[0].has_field("reason", "leash_arrived"),
         "{:?}",
         found[0]
     );
@@ -57,10 +86,45 @@ async fn an_aggressive_npc_going_idle_is_not_parked() {
     assert!(rows(&logs, "npc_ai.idle_parked", "idle_parked").is_empty());
 }
 
-/// The leash drops the NPC's threat without draining the player's
-/// `threatened_mobs` (S7): the player stays in combat.
+/// NA12 (S7): the leash drains the player before it clears the NPC's
+/// threat, so `cleared_without_exit` stays silent through the whole leash
+/// (entry and arrival) and the player leaves combat. Removing the drain in
+/// `leash::begin_leash` brings the WARN back with `reason=leash_out`.
 #[tokio::test]
-async fn a_leash_that_leaves_the_player_in_combat_is_reported() {
+async fn a_leash_drains_the_player_so_cleared_without_exit_stays_silent() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [60.0, 0.0, 0.0],
+        Some([0.0; 3]),
+        AiState::Fighting,
+    );
+    add_threat_player(&mut mgr, "Castle", [70.0, 0.0, 0.0]);
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .threatened_mobs
+        .insert(NPC);
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await; // Fighting -> Leashing, player drained
+    assert_eq!(
+        mgr.get_entity(NPC).unwrap().ai_state(),
+        AiState::Leashing,
+        "control: the leash fired"
+    );
+    ai_tick(&mut mgr).await; // leash completes
+    assert!(
+        rows(&logs, "threat", "cleared_without_exit").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+    assert!(mgr.get_entity(PLAYER).unwrap().threatened_mobs.is_empty());
+}
+
+/// The detector itself still fires on a clear that skipped the drain (a new
+/// clear path added without one), with the reason it was given.
+#[tokio::test]
+async fn an_undrained_clear_is_still_reported() {
     let mut mgr = castle_mgr();
     add_npc(
         &mut mgr,
@@ -69,20 +133,27 @@ async fn a_leash_that_leaves_the_player_in_combat_is_reported() {
         Some([0.0; 3]),
         AiState::Fighting,
     );
-    add_threat_player(&mut mgr, "Castle", [60.0, 0.0, 0.0]);
+    add_threat_player(&mut mgr, "Castle", [10.0, 0.0, 0.0]);
     mgr.get_entity_mut(PLAYER)
         .unwrap()
         .threatened_mobs
         .insert(NPC);
     let logs = LogCapture::install();
-    ai_tick(&mut mgr).await; // Fighting -> Leashing, threat cleared
+    crate::cell::service::npc_ai::detectors::threat::check_cleared(
+        &mut mgr,
+        NPC,
+        crate::cell::service::npc_ai::detectors::threat::ThreatClear::TargetLost,
+        std::time::Instant::now(),
+    );
     let found = rows(&logs, "threat", "cleared_without_exit");
     assert_eq!(found.len(), 1, "{:#?}", logs.all());
     assert_eq!(found[0].level, Level::WARN);
-    assert!(found[0].has_field("reason", "leash_out"), "{:?}", found[0]);
+    assert!(
+        found[0].has_field("reason", "target_lost"),
+        "{:?}",
+        found[0]
+    );
     assert!(found[0].has_field("player_id", "101"));
-    ai_tick(&mut mgr).await; // leash completes: same pair, throttled
-    assert_eq!(rows(&logs, "threat", "cleared_without_exit").len(), 1);
 }
 
 /// Today's only scan rejects are named, per pair; nobody qualifying says so.

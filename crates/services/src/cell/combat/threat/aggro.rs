@@ -35,8 +35,13 @@ impl AggroCause {
     }
 }
 
-/// Leash distance in world units — if an NPC's target moves further than this
-/// from the NPC's spawn position, the NPC resets and walks home.
+/// Default leash radius in world units, used when the NPC's template does not
+/// set `entity_templates.leash_distance`. It is measured from the **NPC's own**
+/// position to its spawn point, horizontally, not from the target (NA12,
+/// D-NA03): the old target-to-spawn test fired on a player standing 49.9 u
+/// from spawn and bounded how far any NPC would chase. The hysteresis band,
+/// vertical cap and the other leash policy numbers live in
+/// `cell::service::npc_ai::leash::policy`.
 pub const LEASH_DISTANCE: f32 = 50.0;
 
 /// Maximum attack range in world units for NPC ranged attacks.
@@ -135,9 +140,26 @@ pub fn generate_threat(
     // Per-state scratch (patrol index, wander deadline, POI, follow
     // target) persists on the entity so the post-Leashing return-to-Idle
     // path can resume the pre-fight behavior from where it left off.
+    //
+    // Leashing is deliberately absent, and more than that: an NPC walking
+    // home **evades** (NA12, D-NA03). It takes no threat and does not put
+    // the attacker into combat, so a player cannot pull it back out of the
+    // reset, and cannot pin themselves in combat by shooting a mob that has
+    // already given up. Before NA12 the threat accrued here and the leash
+    // then discarded it, while the player kept `BSF_InCombat` (audit S12).
     let preemptable = match space_mgr.get_entity(target_id) {
         None => return None,
         Some(target) if target.is_player => return None,
+        Some(target) if target.ai_state() == AiState::Leashing => {
+            // NA02's `damage_ignored` row is the one trace of the evade.
+            npc_ai::detectors::leash::on_damage_while_leashing(
+                space_mgr,
+                target_id,
+                attacker_id,
+                threat_amount,
+            );
+            return None;
+        }
         Some(target) => matches!(
             target.ai_state(),
             AiState::Idle
@@ -149,19 +171,6 @@ pub fn generate_threat(
     };
     // Resolved before the `&mut` borrow below; only needed on entry.
     let world = preemptable.then(|| npc_ai::world_label(space_mgr, target_id));
-    // Threat on a leashing NPC accrues below and is then discarded by the
-    // leash handler (audit S12). Say so.
-    if space_mgr
-        .get_entity(target_id)
-        .is_some_and(|t| t.ai_state() == AiState::Leashing)
-    {
-        npc_ai::detectors::leash::on_damage_while_leashing(
-            space_mgr,
-            target_id,
-            attacker_id,
-            threat_amount,
-        );
-    }
 
     let mut entered_from = None;
     if let Some(target) = space_mgr.get_entity_mut(target_id) {

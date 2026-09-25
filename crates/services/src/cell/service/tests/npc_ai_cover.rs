@@ -326,7 +326,8 @@ async fn npc_ai_fight_empty_threat_releases_cover_slot() {
         .unwrap()
         .reserve_for_entity(EntityId(200), CoverSlotKey::new(50, 0))
         .unwrap();
-    // No threat targets — fight branch resets to Idle and must release.
+    // No threat targets — the fight ends (NA12: the NPC starts home) and
+    // must release.
 
     let (tx, _rx) = mpsc::channel(16);
     crate::cell::service::npc_ai::npc_ai_tick(
@@ -346,7 +347,7 @@ async fn npc_ai_fight_empty_threat_releases_cover_slot() {
     drop(r);
     assert!(matches!(
         mgr.get_entity(200).unwrap().ai_state(),
-        AiState::Idle
+        AiState::Leashing
     ));
 }
 
@@ -356,7 +357,8 @@ async fn npc_ai_fight_empty_threat_releases_cover_slot() {
 /// paths are separate.
 #[tokio::test]
 async fn npc_ai_fight_leash_transition_releases_cover_slot() {
-    let mut mgr = make_cover_fixture([0.0; 3], [4.0, 0.0, 0.0], vec![node(50, 0, 4.0, 0.0, 0.0)]);
+    // NA12: the leash measures the NPC, so it stands past the band.
+    let mut mgr = make_cover_fixture([0.0; 3], [60.0, 0.0, 0.0], vec![node(50, 0, 4.0, 0.0, 0.0)]);
     mgr.cover
         .reservations
         .lock()

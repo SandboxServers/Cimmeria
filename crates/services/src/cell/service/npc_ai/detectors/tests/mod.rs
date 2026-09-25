@@ -4,7 +4,8 @@
 //!
 //! - [`stale_velocity`] — running in place after `attack_in_place` and after
 //!   a leash snap, the throttle, and the moving-NPC negative.
-//! - [`leash`] — `enter`, `snap_fallback` and the aggro/leash `loop`.
+//! - [`leash`] — `enter`, `snap_fallback`, the aggro/leash `loop`, and that
+//!   the S5 guard no longer leashes (NA12).
 //! - [`ground`] — `ground_deviation` on a lerped chord over the real
 //!   `castle_cellblock.nav`.
 //! - [`path`] — `npc_ai.path` rows and the partial path across two mesh

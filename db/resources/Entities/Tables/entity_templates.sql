@@ -93,6 +93,15 @@ CREATE TABLE entity_templates (
     -- Set this column on templates that need to keep pace with (or
     -- catch up to) a player, e.g. escort/companion NPCs.
     move_speed real,
+    -- Leash radius in world units, measured from the NPC's own position to
+    -- its spawn point (horizontal distance; NA12 / D-NA03 / D-NA09).
+    -- NULL → the runtime default `cell::combat::LEASH_DISTANCE` (50).
+    -- An NPC more than this far from spawn (plus a 5-unit hysteresis
+    -- band) gives up the fight and walks home. Set it on templates that
+    -- should chase further (bosses) or give up sooner (sentries).
+    leash_distance real,
+    CONSTRAINT entity_templates_leash_distance_positive
+        CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive
         CHECK (move_speed IS NULL OR move_speed > 0.0),
     CONSTRAINT entity_templates_respawn_secs_min_3

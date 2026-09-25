@@ -561,6 +561,7 @@ mod tests {
             follow_min_distance: 2.0,
             follow_max_distance: 5.0,
             move_speed,
+            leash_distance: None,
         }
     }
 

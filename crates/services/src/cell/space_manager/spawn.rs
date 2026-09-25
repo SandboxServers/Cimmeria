@@ -236,6 +236,9 @@ impl SpaceManager {
         // opt into a faster (or slower) pace, e.g. escort NPCs that
         // need to keep up with a following player (GC1b-0).
         e.move_speed = record.move_speed;
+        // Per-template leash radius (NA12). `None` keeps the server default
+        // (`combat::LEASH_DISTANCE`), resolved where the leash is measured.
+        e.leash.distance_override = record.leash_distance;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

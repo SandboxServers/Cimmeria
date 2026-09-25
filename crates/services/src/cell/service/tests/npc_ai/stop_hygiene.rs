@@ -172,11 +172,12 @@ async fn leash_snap_updates_the_grid_drops_the_route_and_restores_facing() {
 /// next movement ticks walked.
 #[tokio::test]
 async fn leash_out_transition_stops_the_npc() {
-    let mut mgr = make_ai_fixture([0.0; 3], [20.0, 0.0, 0.0]);
-    add_witness(&mut mgr, [90.0, 0.0, 0.0]); // 90 u from spawn: past the leash
+    // NA12: the leash measures the NPC, so the NPC stands past the band.
+    let mut mgr = make_ai_fixture([0.0; 3], [60.0, 0.0, 0.0]);
+    add_witness(&mut mgr, [90.0, 0.0, 0.0]);
     if let Some(npc) = mgr.get_entity_mut(NPC) {
         npc.threat_list.insert(PLAYER, 10.0);
-        npc.nav_path = VecDeque::from([Vector3::new(30.0, 0.0, 0.0)]);
+        npc.nav_path = VecDeque::from([Vector3::new(70.0, 0.0, 0.0)]);
         npc.velocity = CHASE_VELOCITY;
     }
 

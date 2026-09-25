@@ -1,9 +1,11 @@
 //! `threat event=cleared_without_exit`: an NPC dropped its whole threat list
 //! while a player still lists it in `threatened_mobs` (audit S7).
 //!
-//! Neither the leash nor a lost target calls `exit_player_combat`, so the
-//! player keeps `BSF_InCombat`, cannot regenerate and cannot holster until
-//! something else drains the set. After NA12 this should read zero.
+//! Before NA12 neither the leash nor a lost target called
+//! `exit_player_combat`, so the player kept `BSF_InCombat`, could not
+//! regenerate and could not holster. NA12 drains every player before each
+//! clear, so this should read zero; a row now means a new clear path that
+//! skipped the drain.
 
 use std::time::{Duration, Instant};
 
@@ -17,8 +19,10 @@ const CLEARED_WITHOUT_EXIT_WARN_INTERVAL: Duration = Duration::from_secs(30);
 pub(in crate::cell) enum ThreatClear {
     /// Fighting with nobody left on the list.
     ThreatEmpty,
-    /// The target left the leash radius.
+    /// The NPC went past its leash radius (NA12: its own distance).
     LeashOut,
+    /// The last target died, vanished or was lost (NA12).
+    TargetLost,
     /// Leash recovery finished.
     LeashComplete,
 }
@@ -28,6 +32,7 @@ impl ThreatClear {
         match self {
             Self::ThreatEmpty => "threat_empty",
             Self::LeashOut => "leash_out",
+            Self::TargetLost => "target_lost",
             Self::LeashComplete => "leash_complete",
         }
     }

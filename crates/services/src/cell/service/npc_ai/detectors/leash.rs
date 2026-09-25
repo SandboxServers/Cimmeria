@@ -1,12 +1,12 @@
 //! `npc_ai.leash`: `event=enter`, `event=snap_fallback` / `event=arrived`,
 //! `event=loop` and `event=damage_ignored`.
 //!
-//! The leash is today an instant snap (audit S4) and, for an aggressive NPC,
-//! half of a 6-second aggro/leash loop (S5: NPC 100630 leashed 120 times in
-//! 12 minutes without moving). `loop` counts leash entries per NPC in a
-//! sliding window; it does not check whether the target came back into range
-//! in between, because the loop never lets it — the NPC leashes on the tick
-//! after it aggroes.
+//! Before NA12 the leash was an instant snap (audit S4) and, for an
+//! aggressive NPC, half of a 6-second aggro/leash loop (S5: NPC 100630
+//! leashed 120 times in 12 minutes without moving). NA12 walks the NPC home
+//! and measures the leash on the NPC itself; these rows are how that is
+//! checked in play. `loop` counts leash entries per NPC in a sliding window
+//! and should read zero after NA12.
 
 use std::time::{Duration, Instant};
 
@@ -20,16 +20,37 @@ pub(in crate::cell) const LEASH_LOOP_COUNT: usize = 3;
 pub(in crate::cell) const LEASH_LOOP_WINDOW: Duration = Duration::from_secs(60);
 const LEASH_LOOP_WARN_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Fighting -> Leashing, called right after the transition. The target is
-/// passed in because the threat list is already cleared by then.
+/// Why and how an NPC entered Leashing, for the `enter` row.
+pub(in crate::cell) struct LeashEntry {
+    /// The target the NPC gave up on, when there was one (a leash on the
+    /// NPC's own distance has one; a lost last target does not).
+    pub target: Option<(u32, Vector3)>,
+    pub leash_distance: f32,
+    /// The transition reason label (`leash_out`, `target_lost`,
+    /// `threat_empty`).
+    pub reason: &'static str,
+    /// What fired it (`beyond_band`, `chase_outward`, `vertical_cap`,
+    /// `target_dead`, `target_gone`, `target_out_of_aoi`, `threat_empty`).
+    pub trigger: &'static str,
+}
+
+/// Fighting -> Leashing, called once the route home is installed, so
+/// `nav_path_len` is the walk (0 = no route: the snap fallback follows).
+/// The target is passed in because the threat list is already cleared.
 pub(in crate::cell) fn on_enter(
     space_mgr: &mut SpaceManager,
     npc_id: u32,
-    target_id: u32,
-    target_pos: Vector3,
-    leash_distance: f32,
+    entry: LeashEntry,
     now: Instant,
 ) {
+    let LeashEntry {
+        target,
+        leash_distance,
+        reason,
+        trigger,
+    } = entry;
+    let target_id = target.map_or(0, |(id, _)| id);
+    let target_pos = target.map(|(_, p)| p);
     let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
         return;
     };
@@ -48,17 +69,20 @@ pub(in crate::cell) fn on_enter(
         world = %ident.world,
         space_id = ident.space_id,
         target_id,
-        npc_to_spawn = spawn.map(|s| s.distance_to(&npc_pos)),
-        target_to_spawn = spawn.map(|s| s.distance_to(&target_pos)),
+        reason,
+        trigger,
+        // Horizontal: the distance the NA12 leash measures.
+        npc_to_spawn = spawn.map(|s| horizontal(&npc_pos, &s)),
+        target_to_spawn = spawn.zip(target_pos).map(|(s, t)| s.distance_to(&t)),
         leash_distance,
         npc_x = npc_pos.x,
         npc_y = npc_pos.y,
         npc_z = npc_pos.z,
-        target_x = target_pos.x,
-        target_y = target_pos.y,
-        target_z = target_pos.z,
+        target_x = target_pos.map(|t| t.x),
+        target_y = target_pos.map(|t| t.y),
+        target_z = target_pos.map(|t| t.z),
         nav_path_len,
-        "npc_ai.leash: target left the leash radius around spawn"
+        "npc_ai.leash: NPC gave up its fight and is heading home"
     );
 
     let track = space_mgr.npc_detectors.ai.entry(npc_id).or_default();
@@ -93,20 +117,38 @@ pub(in crate::cell) fn on_enter(
         target_id,
         leash_count,
         window_secs = LEASH_LOOP_WINDOW.as_secs(),
-        target_to_spawn = spawn.map(|s| s.distance_to(&target_pos)),
+        target_to_spawn = spawn.zip(target_pos).map(|(s, t)| s.distance_to(&t)),
         suppressed,
-        "npc_ai.leash: NPC is looping aggro -> leash -> snap home -> aggro"
+        "npc_ai.leash: NPC is looping aggro -> leash -> home -> aggro"
     );
 }
 
-/// Leash recovery ran. `from` is where the NPC stood before it; `snapped`
-/// is false for a follower, which the leash leaves in place.
-pub(in crate::cell) fn on_complete(
-    space_mgr: &mut SpaceManager,
-    npc_id: u32,
-    from: Vector3,
-    snapped: bool,
-) {
+fn horizontal(a: &Vector3, b: &Vector3) -> f32 {
+    ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
+}
+
+/// How a leash ended, for the `arrived` / `snap_fallback` row.
+pub(in crate::cell) struct LeashEnd {
+    /// Where the NPC stood just before the reset (before the snap, if any).
+    pub from: Vector3,
+    /// `walked` | `in_place` (follower or no spawn) | `snap_no_path` |
+    /// `snap_timeout`.
+    pub arrival: &'static str,
+    /// The NPC was teleported to spawn (the fallback).
+    pub snapped: bool,
+    /// Seconds since the walk started; `None` when no walk clock was set.
+    pub walk_secs: Option<f32>,
+}
+
+/// Leash recovery ran: `event=arrived` for a walk (or an in-place reset),
+/// `event=snap_fallback` for a snap.
+pub(in crate::cell) fn on_complete(space_mgr: &mut SpaceManager, npc_id: u32, end: LeashEnd) {
+    let LeashEnd {
+        from,
+        arrival,
+        snapped,
+        walk_secs,
+    } = end;
     let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
         return;
     };
@@ -134,9 +176,9 @@ pub(in crate::cell) fn on_complete(
         to_y = to.y,
         to_z = to.z,
         snap_dist = from.distance_to(&to),
-        // Today's leash never walks: it is an instant snap.
-        walk_secs = 0.0f32,
-        path_ok = false,
+        arrival,
+        walk_secs,
+        path_ok = arrival == "walked",
         spawn_on_mesh,
         // Since NA10 the snap goes through `snap_npc_to`, which stops the
         // NPC: this must read 0. Non-zero is the pre-NA10 bug (audit S4),
@@ -147,8 +189,9 @@ pub(in crate::cell) fn on_complete(
     );
 }
 
-/// Damage landed on an NPC that is Leashing. The threat is accrued and then
-/// discarded by the leash handler (audit S12).
+/// Damage landed on an NPC that is Leashing. Since NA12 the NPC evades:
+/// `generate_threat` refuses the threat and the attacker does not enter
+/// combat (audit S12). This row is the only trace.
 pub(in crate::cell) fn on_damage_while_leashing(
     space_mgr: &SpaceManager,
     npc_id: u32,
@@ -168,6 +211,6 @@ pub(in crate::cell) fn on_damage_while_leashing(
         space_id = ident.space_id,
         attacker_id,
         amount,
-        "npc_ai.leash: threat while leashing is discarded when the leash completes"
+        "npc_ai.leash: NPC is walking home (evading): threat ignored"
     );
 }
