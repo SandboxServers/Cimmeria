@@ -33,7 +33,7 @@ cimmeria-client-launch = { path = "../client-launch" }
 uuid = { version = "1", features = ["v4"] }
 
 # Screenshot: PNG encode + base64 for the MCP image content block.
-png = "0.17"
+png = "0.18"
 base64 = "0.23"
 
 # HTTP client for `lab_timeline`: the supervisor is an MCP *client* of
