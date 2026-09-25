@@ -542,7 +542,7 @@ This is the highest-risk scenario in the guide. **Read the [Known risks](#known-
 
 **Server evidence:** `logs\content.log`, `fire_teleport_in: matched` `region_id=3`, then `Content: move waypoint` (DEBUG, `entity_tag=Preparation_ColMarsh`, `destination=-91.689003,45.1879997,-161.533005`, `chain_id=1173`) and `Content: set follow target` (`use_player=true`, `chain_id=1174`). For the invisibility risk, grep `logs\server.log` for `aoi.create_send_failed` — fields `witness_id`, `entity_id`, `phase` (`create_base` or `cascade`) and `reason` (`entity_to_addr_miss` / `client_disconnected` / `send_error`). If Marsh is invisible and that warning never fires, the drop is downstream of those seams and is worth a fresh note on issue #582.
 
-### T30 — Marsh's combat barks (DU-07)
+### T32 — Marsh's combat barks (DU-07)
 
 **Packets:** DU-07 (needs DU-03's `npc_bark` action). **Chains:** 1176, 1177, 1178.
 
@@ -965,7 +965,7 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 | T27 — Marsh's pre-departure line (GC1a) | | |
 | T28 — Marsh rings + follows topside (GC1b) | | |
 | T29 — Flank objectives 2725 / 2731 (C06, PR #671) | | |
-| T30 — Marsh's combat barks (DU-07) | | |
+| T32 — Marsh's combat barks (DU-07) | | |
 | T14 — Mess Hall (681) | | |
 | T15 — Hallway chain (682-686) | | |
 | T16 / T17 — Straegis scene (C08b + GC1a) | | |
@@ -992,7 +992,7 @@ These are expected absences. Do not file them as bugs from this pass.
 - **`system_message` does not render** — the executor arm is a stub with the wire format unresolved (issue #268). Chain 1013's message 5040 on Region2 entry will not appear.
 - **No ring ceremony on the Cellblock → Castle exit.** Deliberate: neither platform has a wired ring prefab, so chain 1109 does a direct cross-world teleport. Prerelease known issue.
 - **Straegis scene is camera-only.** No rift creature, no blood decal, no data disc — none has a recovered actor, event id, template or item id.
-- **No escort restore across relog.** Marsh's ring-hop reposition and follow state are not restored on login (T28). Documented gap awaiting a coordinator decision. It has one extra symptom now that [T30](#t30--marshs-combat-barks-du-07)'s barks exist: after such a relog the barks still fire correctly, but they are attributed to a Marsh who is back in the Preparation room. The lines are right; his position is the known gap.
+- **No escort restore across relog.** Marsh's ring-hop reposition and follow state are not restored on login (T28). Documented gap awaiting a coordinator decision. It has one extra symptom now that [T32](#t32--marshs-combat-barks-du-07)'s barks exist: after such a relog the barks still fire correctly, but they are attributed to a Marsh who is back in the Preparation room. The lines are right; his position is the known gap.
 - **Screen 96353, "Crouch down when you're in cover!", is not authored.** The only trigger that means "the player is in cover" needs a cover set placed in world space, and the sole world-space-correct set in the game is the tutorial med-station desk (C05's hand-seeded 1381). Nothing exists for the Mess Hall or Hallway05. This is deferred, not abandoned: hand-seeding a Mess Hall cover set the way C05 seeded 1381 would make this line *and* C06's flank objectives reachable together.
 - **Dialog 5019 is still never displayed.** DU-07 delivers three of its screens as barks; the dialog itself stays excluded because its last three screens are out-of-scope "Future Self" content.
 - **Symbiote Loss (ability 1926 / effect 2480) is out of scope.** Never wired in the shipped build; the ability has a placeholder name. Jaffa players will not lose a symbiote.
