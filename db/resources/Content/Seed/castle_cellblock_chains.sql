@@ -2229,6 +2229,13 @@ VALUES (1152, 'display_dialog', 4000, NULL, '{}', 0, 0);
 -- progress as of this packet. Re-add chain 1153 with this exact shape
 -- once GC1's escort chains land -- do not reuse chain_id 1153 for
 -- anything else in the interim.
+--
+-- DU-02a stripped 2308's Accept and More Info buttons (it was the only one
+-- of the four post-accept blurbs with no display chain, so the strip is a
+-- no-op today). When 1153 is re-added, 2308 will be closeable with the X
+-- and that close WILL emit dialogButtonChoice(2308, -1) — harmless while
+-- nothing keys it, but it means 2308 is now a usable `dialog_choice` key
+-- if the GC1 author wants one.
 
 -- Chain 1154: mission 688 accepted (via chain 1105, auto-accept on 687
 -- complete) → display blurb 2518.
@@ -2444,6 +2451,15 @@ VALUES (1171, 'display_dialog', 2309, NULL, '{}', 0, 0);
 -- here 5859 would pop up at essentially the same instant chain 1161's
 -- Matinee starts (found in review, 2026-09-18). `delay_ms` 10600 reads
 -- 5859 after 2516 (10100 + a ~500ms read gap) instead of racing it.
+-- DU-02a follow-up: 2516 and 5859 are now both button-less, so the ~500ms
+-- read gap has a visible cost. A player who has not closed 2516 by the
+-- time 5859 arrives has it evicted by the client (one non-tutorial dialog
+-- slot), and the eviction emits dialogButtonChoice(2516, -1) into a server
+-- that has already re-pinned to 5859 — which logs a rejection warn!. No
+-- chain keys 2516, so nothing is lost, but the warn is a forgery/replay
+-- signal and this makes it fire on every run of the scene. Packet DU-08
+-- removes it by replacing the single open-dialog pin with a set; widen
+-- this delay instead if DU-08 is dropped.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1172, 'GC1a - Straegis scene: post-death "find a way out without Marsh" blurb', 'mission', 686, true, 0);
 

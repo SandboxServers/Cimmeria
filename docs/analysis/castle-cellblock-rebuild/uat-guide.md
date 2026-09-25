@@ -810,6 +810,95 @@ This is not a separate playthrough — it is the discipline of logging out and b
 
 ---
 
+## Milestone M5 — Dialog chrome (DU-02a)
+
+### T30 — Twelve dialogs lose their redundant buttons
+
+**Packet:** DU-02a. **Chains:** 1019, 1053, 1054, 1058, 1059, 1151, 1152, 1154, 1161, 1171, 1172.
+
+The 2009 client decides whether a closed dialog reports anything by counting its
+buttons: zero buttons means the close sends `dialogButtonChoice(id, -1)`, any button
+means the close sends nothing at all. Twelve Cellblock dialogs shipped one navigation
+button repeated across most of their screens, which bought nothing and suppressed that
+close event. All twelve now carry none, so every one of them is closed with the title-bar
+**X**, with **Done** on the last screen, or with **Decline** — and all three do the same
+thing.
+
+There is **no new button to press anywhere in this scenario**. What you are checking is
+that the absence of one breaks nothing, and that 3999 stops being a dead end.
+
+**Preconditions:** a character that can reach mission 641's second briefing. Run the
+3999 half as Tau'ri and the 5023 half as Jaffa.
+
+**Steps and expected:**
+
+| # | Do this | Expect |
+|---|---|---|
+| 1 | Reach step 3563, right-click Col. Marsh, and **page all the way to the last screen** of dialog 3999 (Tau'ri) or 5023 (Jaffa), then press **Done**. | Step advances to **3564** "Use the Terminal to open the remaining Stasis Pods.", Marsh's indicator clears and the Preparation terminal gains the Livewire wrench cursor. On 3999 this is the fix: before DU-02a the last two screens had no button and Done did nothing, so a player who read to the end was stuck. |
+| 2 | Start mission 641's first briefing (4001 Tau'ri / 5022 Jaffa) and close it on **screen one** with the **X**. | Mission **641** is accepted exactly as if you had paged to the end — same as clicking Accept used to do, because that Accept was on screen one as well. The P90 locker lights up and Marsh's indicator clears. |
+| 3 | Same for dialog **2299** (mission 638's Human "agree to escape") — close it on screen one with the X. | Dialog 2298 shows, mission **639** is accepted and **638** completes. |
+| 4 | Let blurbs **2305** (after 640), **4000** (after 641) and **2518** (after 688) appear, and look at the button row. | **No Accept, no Decline, no More Info.** Only the title-bar X. Closing one does nothing else — none of the three is keyed to a chain. |
+| 5 | Reach the Straegis aftermath and let dialogs **2516** and **5859** appear. | Same: no buttons. These two have their own scenario, [T31](#t31--the-straegis-aftermath-and-the-first-eviction-close), because 5859 evicts 2516 half a second after it opens. |
+| 6 | Reach the pre-ring-travel beat and close dialog **2309**. | Same. |
+
+**Must NOT happen:**
+
+- Any of the twelve still showing an Accept, Decline, More Info or "Receive Item" button.
+  If one does, the startup patch did not reach the client — check `logs\server.log` for
+  `Applied Cimmeria dialog patch` and for a `dialog patch skipped` warning naming the id.
+- Mission 641 or 639 being accepted **twice**, or step 3564 advancing twice, from closing
+  the same dialog again.
+- An item arriving when you finish 3999 or 5023. The old "Receive Item" label never
+  granted anything: the SMG comes from the locker (chain 1055), which you have already
+  picked up and equipped before either dialog can open.
+
+### T31 — The Straegis aftermath, and the first eviction close
+
+**Packet:** DU-02a. **Chains:** 1161, 1172.
+
+Run this straight after T16 / T17. Chain 1161 plays the Straegis Matinee and shows
+narration **2516** about ten seconds in; chain 1172 shows the "Without Marsh" blurb
+**5859** half a second after that. Both are now button-less.
+
+**Steps:**
+
+1. Let Marsh be taken and watch the scene through without touching anything.
+2. Watch the two dialogs arrive.
+3. Close whatever is still on screen.
+4. Grep `logs\content.log` for `fire_dialog_choice`.
+
+**Expected:**
+
+- Narration **2516** appears, then the **"Find a way out of the Cellblock. Without
+  Marsh."** blurb **5859** replaces it. Neither shows Accept, Decline or More Info.
+- **No unexpected chain fires.** The only `fire_dialog_choice` lines should be
+  `no chains matched` at debug. Nothing is keyed on 2516 or 5859 — verified against every
+  `dialog_choice` trigger in `db/resources/Content/Seed/`, all eleven files.
+- Mission **680** is active and the quest log reads "Find a way out of the Castle!"
+
+**Must NOT happen:** any mission accepted, completed or advanced by closing either dialog.
+
+**Expected warning, not a failure.** Because the client holds one dialog at a time, 5859
+**evicts** 2516. Now that 2516 has no button, that eviction sends `(2516, -1)` — the first
+shipped eviction close. The server has already re-pinned to 5859, so it rejects that choice
+with a `warn!` in `logs\server.log`. It is correct behaviour on today's code and it costs
+nothing: no chain keys 2516. Packet DU-08 replaces the single open-dialog pin with a set
+and the warning goes away. Record it if you see it; do not file it.
+
+**Pre-existing timing defect, for the owner, not a DU-02a bug.** 2516 is fifty words of
+narration and you get about **half a second** of it before 5859 takes the screen. You
+cannot read it. That was already true before this packet — the eviction happens either
+way, it was simply silent — so nothing here made it worse, and no change in this packet can
+make it better. The fix is a larger `delay_ms` on chain 1172, or dropping 2516 and letting
+5859 stand alone. **If you want to read 2516, that is a content decision someone has to
+make.** Note on this row whether you saw any of 2516 at all.
+
+**Server evidence:** `logs\content.log`. For step 1, grep `fire_dialog_choice: matched`
+and confirm `dialog_id=3999 button_id=-1` (or `5023`) followed by the step advance. A
+`button_id` of 70 means the client is still drawing the old button.
+
+---
+
 ## Results
 
 Fill this in as you go. "Blocked" means you could not reach the scenario.
@@ -841,6 +930,10 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 | T20 — Armory + blurb 2518 (C07) | | |
 | T21 / T22 — Castle arrival, 1360 intact | | |
 | T23 — Relog safety sweep | | |
+| T30 — 3999 read to the end, then Done (DU-02a) | | |
+| T30 — 4001 / 2299 closed with X on screen one | | |
+| T30 — the five blurbs show no buttons at all | | |
+| T31 — Straegis aftermath, 2516 then 5859, no chain fires | | |
 
 ## Known limitations / not validated
 

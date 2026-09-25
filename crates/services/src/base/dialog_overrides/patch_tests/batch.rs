@@ -256,31 +256,39 @@ fn a_patch_composes_on_top_of_a_generated_override() {
 
 // ── The shipped tables ──────────────────────────────────────────────────
 
-/// DU-01 ships both zone tables EMPTY; DU-02a and DU-02b fill them.
-/// Delete this assertion in whichever packet adds the first row.
+/// The shipped tables touch only the dialogs they name: every id reported
+/// as applied is a row in a zone table, and every entry no row names comes
+/// out byte-identical. Guards against a table that silently rewrites every
+/// entry it walks. Holds whether the tables are empty (DU-01) or filled
+/// (DU-02a / DU-02b), so neither Wave 1 packet needs to edit this file.
 #[test]
-fn shipped_patch_tables_are_empty_until_wave_1() {
-    assert!(
-        no_patches_registered(),
-        "DU-01 ships no rows; if you just added one, delete this test",
-    );
-}
-
-/// The shipped tables apply as a true no-op: no element is touched and no
-/// id is reported. Guards against a table that silently rewrites every
-/// entry it walks.
-#[test]
-fn shipped_patch_tables_apply_as_a_no_op() {
+fn shipped_patch_tables_touch_only_the_dialogs_they_name() {
     let mut elements = elements_with(&[(2576, QA_2576), (3999, QA_3999), (2572, QA_2572)]);
     let before = elements.clone();
+    let named: Vec<u32> = DIALOG_PATCH_TABLES
+        .iter()
+        .copied()
+        .flatten()
+        .map(|patch| patch.dialog_id)
+        .collect();
 
     let applied = apply_dialog_patches(&mut elements, DIALOG_PATCH_TABLES);
 
-    assert!(
-        applied.is_empty(),
-        "empty tables must report nothing applied"
-    );
-    assert_eq!(elements, before, "empty tables must not touch any entry");
+    for id in &applied {
+        assert!(
+            named.contains(id),
+            "dialog {id} was reported applied but no table row names it",
+        );
+    }
+    for (id, bytes) in &before {
+        if !named.contains(id) {
+            assert_eq!(
+                elements.get(id),
+                Some(bytes),
+                "dialog {id} is not named by any row and must be untouched",
+            );
+        }
+    }
 }
 
 /// No dialog id may appear in more than one zone table, and no table may
