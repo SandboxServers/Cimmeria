@@ -1,7 +1,14 @@
-//! Uniform-grid spatial index over loaded cover nodes.
+//! Uniform-grid spatial index over loaded cover nodes, partitioned by
+//! world.
 //!
-//! 9,346 nodes across the corpus is small enough that a fancier structure
-//! (KD-tree, R-tree) buys little; the grid is simpler and faster to build.
+//! Every node belongs to one `resources.worlds` row and its position is
+//! only meaningful there: Castle (8) and Castle_CellBlock (12) overlap in
+//! BigWorld coordinates, so a single unscoped grid would hand a Cellblock
+//! player the cover of whatever Castle courtyard shares their x/z. The
+//! grid key therefore carries the world id, and every query names one.
+//!
+//! ~4,000 nodes is small enough that a fancier structure (KD-tree,
+//! R-tree) buys little; the grid is simpler and faster to build.
 
 use cimmeria_common::Vector3;
 use std::collections::HashMap;
@@ -14,13 +21,15 @@ const GRID_CELL: f32 = 16.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct CellCoord {
+    world_id: i32,
     x: i32,
     z: i32,
 }
 
 impl CellCoord {
-    fn from_pos(pos: &Vector3) -> Self {
+    fn from_pos(world_id: i32, pos: &Vector3) -> Self {
         Self {
+            world_id,
             x: (pos.x / GRID_CELL).floor() as i32,
             z: (pos.z / GRID_CELL).floor() as i32,
         }
@@ -44,13 +53,24 @@ impl CoverIndex {
     pub fn build(nodes: Vec<CoverNode>) -> Self {
         let mut grid: HashMap<CellCoord, Vec<usize>> = HashMap::new();
         for (i, n) in nodes.iter().enumerate() {
-            grid.entry(CellCoord::from_pos(&n.pos)).or_default().push(i);
+            grid.entry(CellCoord::from_pos(n.world_id, &n.pos))
+                .or_default()
+                .push(i);
         }
         Self { nodes, grid }
     }
 
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Node count per world, for the startup log.
+    pub fn world_node_counts(&self) -> std::collections::BTreeMap<i32, usize> {
+        let mut counts = std::collections::BTreeMap::new();
+        for n in &self.nodes {
+            *counts.entry(n.world_id).or_insert(0) += 1;
+        }
+        counts
     }
 
     pub fn node(&self, idx: usize) -> Option<&CoverNode> {
@@ -69,20 +89,28 @@ impl CoverIndex {
             .find(|n| n.chunk_id == key.chunk_id && n.node_id == key.node_id)
     }
 
-    /// Returns node indices sorted by ascending distance. `max_y_diff`
-    /// filters cover on different floors of a multi-level chunk.
-    pub fn nearby(&self, pos: &Vector3, radius: f32, max_y_diff: Option<f32>) -> Vec<usize> {
+    /// Nodes in `world_id` sorted by ascending distance from `pos`.
+    /// `max_y_diff` filters cover on different floors of a multi-level
+    /// chunk. Never returns a node from another world.
+    pub fn nearby(
+        &self,
+        world_id: i32,
+        pos: &Vector3,
+        radius: f32,
+        max_y_diff: Option<f32>,
+    ) -> Vec<usize> {
         let mut hits: Vec<(usize, f32)> = Vec::new();
         if radius <= 0.0 {
             return Vec::new();
         }
         let radius_sq = radius * radius;
         let cell_radius = (radius / GRID_CELL).ceil() as i32;
-        let center = CellCoord::from_pos(pos);
+        let center = CellCoord::from_pos(world_id, pos);
 
         for dx in -cell_radius..=cell_radius {
             for dz in -cell_radius..=cell_radius {
                 let cell = CellCoord {
+                    world_id,
                     x: center.x + dx,
                     z: center.z + dz,
                 };

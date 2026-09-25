@@ -45,17 +45,19 @@ pub(in crate::cell::service) async fn cover_detection_tick(
         return;
     }
 
-    // Collect (entity_id, position) for every player across every space.
-    // EntityId + Vector3 are Copy — cheap to clone into a Vec so we can
-    // drop the immutable borrow before the fire_* dispatch loop (which
-    // needs &mut space_mgr).
-    let players: Vec<(EntityId, cimmeria_common::Vector3)> = space_mgr
+    // Collect (entity_id, world_id, position) for every player across every
+    // space. All Copy — cheap to clone into a Vec so we can drop the
+    // immutable borrow before the fire_* dispatch loop (which needs
+    // &mut space_mgr). The world id scopes each player's cover query to
+    // their own world's nodes.
+    let players: Vec<(EntityId, Option<i32>, cimmeria_common::Vector3)> = space_mgr
         .spaces
         .values()
         .flat_map(|space| {
-            space.players.iter().filter_map(|&eid| {
+            let world_id = space_mgr.world_id_for_world(&space.world_name);
+            space.players.iter().filter_map(move |&eid| {
                 let entity = space.entities.get(&eid)?;
-                Some((EntityId(eid as i32), entity.position))
+                Some((EntityId(eid as i32), world_id, entity.position))
             })
         })
         .collect();
@@ -158,13 +160,18 @@ fn log_cover_edge(space_mgr: &SpaceManager, edge: &'static str, player_id: u32, 
     let crouched = e.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0;
     let mut nodes_in_set = 0usize;
     let mut nearest: Option<(i32, f32, cimmeria_common::Vector3)> = None;
+    let world_id = space_mgr.get_entity_world_id(player_id);
     // Wider than the detection radius so a `left` edge still finds the node
     // the player just walked away from.
-    for idx in space_mgr
-        .cover
-        .index
-        .nearby(&pos, COVER_PROXIMITY_RADIUS * 3.0, None)
-    {
+    let hits = world_id
+        .map(|w| {
+            space_mgr
+                .cover
+                .index
+                .nearby(w, &pos, COVER_PROXIMITY_RADIUS * 3.0, None)
+        })
+        .unwrap_or_default();
+    for idx in hits {
         let Some(n) = space_mgr.cover.index.node(idx) else {
             continue;
         };
@@ -217,10 +224,12 @@ mod tests {
         CoverNode {
             chunk_id,
             node_id: 0,
+            world_id: crate::cell::cover::TEST_WORLD_ID,
             pos: Vector3::new(x, 0.0, z),
             orient: 0.0,
             height: CoverHeight::Mid,
             quality: CoverQuality::Best,
+            width: 1.0,
             tail: [0; 4],
         }
     }
@@ -228,6 +237,16 @@ mod tests {
     /// Castle space + one connected player at origin. The cover handle
     /// the caller passes in determines the data the tick scans.
     fn make_castle_with_player(cover: Cover) -> crate::cell::space_manager::SpaceManager {
+        make_castle_with_player_in_world(cover, crate::cell::cover::TEST_WORLD_ID)
+    }
+
+    /// As [`make_castle_with_player`], with the "Castle" space stamped as
+    /// `world_id`. The id is arbitrary; what matters is whether it matches
+    /// the cover nodes' world.
+    fn make_castle_with_player_in_world(
+        cover: Cover,
+        world_id: i32,
+    ) -> crate::cell::space_manager::SpaceManager {
         let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -235,6 +254,10 @@ mod tests {
             r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
         )
         .unwrap();
+        mgr.stamp_world_rows(&std::collections::HashMap::from([(
+            "Castle".to_string(),
+            crate::cell::spawner::WorldRow::enforcing(world_id),
+        )]));
         mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
             p.is_player = true;
@@ -328,6 +351,47 @@ mod tests {
         );
         // Tracked baseline must reflect the entry.
         assert_eq!(mgr.cover_detection.tracked_player_count(), 1);
+    }
+
+    /// Per-world scoping, end to end: a player standing exactly on a node
+    /// that belongs to a *different* world is in no cover. Before NA21 the
+    /// index was one global grid, so Castle's nodes answered Cellblock
+    /// queries (the two maps overlap in BigWorld coordinates).
+    #[tokio::test]
+    async fn cover_detection_tick_ignores_another_worlds_nodes() {
+        let cover = Cover::from_loaded(Vec::new(), vec![node(123, 0.0, 0.0)]);
+        let mut mgr =
+            make_castle_with_player_in_world(cover, crate::cell::cover::TEST_WORLD_ID + 1);
+
+        let mut engine = cimmeria_content_engine::chain::ChainEngine::new();
+        engine.register_chain(Chain {
+            action_delays: Vec::new(),
+            id: 0x7000_2702,
+            name: "tick: any cover entered, cross-world".to_string(),
+            enabled: true,
+            trigger: Trigger::OnPlayerEnteredCover { cover_set_id: None },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "cross_world".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        cover_detection_tick(&tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            mgr.get_entity(1).unwrap().counters.get("cross_world"),
+            None,
+            "a node in world {} must not put a player in world {} in cover",
+            crate::cell::cover::TEST_WORLD_ID,
+            crate::cell::cover::TEST_WORLD_ID + 1
+        );
+        assert!(mgr
+            .cover_detection
+            .current_sets(EntityId(1), Instant::now())
+            .is_empty());
     }
 
     /// The take-cover race shape: the cover edge fires while the consuming

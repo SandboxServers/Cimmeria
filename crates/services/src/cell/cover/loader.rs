@@ -5,6 +5,9 @@
 //! is preserved for trigger payloads (the `chunk_name` is human-readable
 //! and useful for chain-author debugging).
 //!
+//! Every node carries its set's `world_id`, joined from `cover_sets`; that
+//! is what partitions the spatial index per world.
+//!
 //! Edge cases the loader treats as soft failures (logged, skipped, not
 //! propagated):
 //! - Unknown `height` enum value (DB schema drift) — skipped.
@@ -57,7 +60,7 @@ impl From<sqlx::Error> for CoverLoadError {
 /// Load every `cover_sets` row. Sorted by `chunk_id` for stable ordering.
 pub async fn load_cover_sets(pool: &PgPool) -> Result<Vec<CoverSetMeta>, CoverLoadError> {
     let rows = sqlx::query(
-        "SELECT chunk_id, chunk_name, primary_author, has_variant, src_pak \
+        "SELECT chunk_id, world_id, chunk_name, primary_author, has_variant, src_pak \
          FROM resources.cover_sets \
          ORDER BY chunk_id",
     )
@@ -68,6 +71,7 @@ pub async fn load_cover_sets(pool: &PgPool) -> Result<Vec<CoverSetMeta>, CoverLo
     for r in &rows {
         sets.push(CoverSetMeta {
             chunk_id: r.get("chunk_id"),
+            world_id: r.get("world_id"),
             chunk_name: r.get("chunk_name"),
             primary_author: r.get("primary_author"),
             has_variant: r.get("has_variant"),
@@ -89,11 +93,17 @@ pub async fn load_cover_nodes(pool: &PgPool) -> Result<Vec<CoverNode>, CoverLoad
     // The `height` and `quality` columns come back from sqlx as strings
     // (the SQL enum's textual form) — we then map to the Rust enums via
     // `CoverHeight::from_sql_name` / `CoverQuality::from_sql_name`.
+    //
+    // The world comes from the node's set. An inner join: a node with no
+    // set row has no world to be indexed in, and `cover_nodes_chunk_id_fkey`
+    // keeps the seed from ever producing one.
     let rows = sqlx::query(
-        "SELECT chunk_id, node_id, pos_x, pos_y, pos_z, orient, \
-                height::text AS height_text, quality::text AS quality_text, tail \
-         FROM resources.cover_nodes \
-         ORDER BY chunk_id, node_id",
+        "SELECT n.chunk_id, n.node_id, s.world_id, n.pos_x, n.pos_y, n.pos_z, n.orient, \
+                n.height::text AS height_text, n.quality::text AS quality_text, \
+                n.width, n.tail \
+         FROM resources.cover_nodes n \
+         JOIN resources.cover_sets s ON s.chunk_id = n.chunk_id \
+         ORDER BY n.chunk_id, n.node_id",
     )
     .fetch_all(pool)
     .await?;
@@ -105,10 +115,12 @@ pub async fn load_cover_nodes(pool: &PgPool) -> Result<Vec<CoverNode>, CoverLoad
     for r in &rows {
         let chunk_id: i32 = r.get("chunk_id");
         let node_id: i32 = r.get("node_id");
+        let world_id: i32 = r.get("world_id");
         let pos_x: f32 = r.get("pos_x");
         let pos_y: f32 = r.get("pos_y");
         let pos_z: f32 = r.get("pos_z");
         let orient: f32 = r.get("orient");
+        let width: f32 = r.get("width");
         let height_text: &str = r.get("height_text");
         let quality_text: &str = r.get("quality_text");
         let tail_bytes: &[u8] = r.get("tail");
@@ -155,10 +167,12 @@ pub async fn load_cover_nodes(pool: &PgPool) -> Result<Vec<CoverNode>, CoverLoad
         nodes.push(CoverNode {
             chunk_id,
             node_id,
+            world_id,
             pos: Vector3::new(pos_x, pos_y, pos_z),
             orient,
             height,
             quality,
+            width,
             tail,
         });
     }

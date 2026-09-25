@@ -30,6 +30,11 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use super::super::engine_loader::load_single_chain_for_test;
 use crate::test_support::require_db_or_skip;
 
+/// The med-station desk's cover set: the first Castle_CellBlock set the
+/// `cover_extract` tool emits (`world_id * 100000 + 1`). Chains 1132/1133
+/// key on it. Was the hand-authored set 1381 until NA21.
+const DESK_SET: i64 = 1_200_001;
+
 /// Loads all four cover/kill chains into one engine — used by the
 /// sequence-level tests that need to prove only ONE of the four ever
 /// resolves for a given event, not just that the targeted chain resolves
@@ -305,7 +310,7 @@ async fn chain_1132_completes_cover_objective_when_kill_pending() {
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
 
-    let (ctx, event) = cover_entered_event(1381, "active", "active");
+    let (ctx, event) = cover_entered_event(DESK_SET, "active", "active");
     let resolved = engine.resolve_event(&event, &ctx);
     let actions: Vec<&Action> = resolved
         .actions
@@ -354,7 +359,7 @@ async fn chain_1132_does_not_fire_when_kill_already_done() {
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
 
-    let (ctx, event) = cover_entered_event(1381, "active", "completed");
+    let (ctx, event) = cover_entered_event(DESK_SET, "active", "completed");
     let resolved = engine.resolve_event(&event, &ctx);
     let n = resolved
         .actions
@@ -386,7 +391,7 @@ async fn chain_1132_does_not_refire_on_cover_reentry_once_already_completed() {
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
 
-    let (mut ctx, mut event) = cover_entered_event(1381, "active", "active");
+    let (mut ctx, mut event) = cover_entered_event(DESK_SET, "active", "active");
     ctx.set_param(
         "mission_639_obj_2484_status".to_string(),
         serde_json::json!("completed"),
@@ -428,7 +433,7 @@ async fn chain_1132_does_not_fire_for_a_different_cover_set() {
         .count();
     assert_eq!(
         n, 0,
-        "chain 1132 must only match cover_set_id 1381 (the med-station desk), \
+        "chain 1132 must only match the med-station desk cover set, \
          not an unrelated cover set; got {n} actions"
     );
 }
@@ -446,7 +451,7 @@ async fn chain_1133_advances_step_when_cover_is_second() {
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
 
-    let (ctx, event) = cover_entered_event(1381, "active", "completed");
+    let (ctx, event) = cover_entered_event(DESK_SET, "active", "completed");
     let resolved = engine.resolve_event(&event, &ctx);
     let actions: Vec<&Action> = resolved
         .actions
@@ -491,7 +496,7 @@ async fn chain_1133_does_not_fire_when_kill_still_pending() {
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
 
-    let (ctx, event) = cover_entered_event(1381, "active", "active");
+    let (ctx, event) = cover_entered_event(DESK_SET, "active", "active");
     let resolved = engine.resolve_event(&event, &ctx);
     let n = resolved
         .actions
@@ -517,7 +522,7 @@ async fn cover_then_kill_advances_only_on_the_second_event() {
     let engine = load_all_four(&pool).await;
 
     // Step 1: player takes cover. Kill not yet done.
-    let (ctx1, event1) = cover_entered_event(1381, "active", "active");
+    let (ctx1, event1) = cover_entered_event(DESK_SET, "active", "active");
     let resolved1 = engine.resolve_event(&event1, &ctx1);
     let fired1: Vec<i64> = resolved1
         .actions
@@ -586,7 +591,7 @@ async fn kill_then_cover_advances_only_on_the_second_event() {
     );
 
     // Step 2: player takes cover. Kill is now complete.
-    let (ctx2, event2) = cover_entered_event(1381, "active", "completed");
+    let (ctx2, event2) = cover_entered_event(DESK_SET, "active", "completed");
     let resolved2 = engine.resolve_event(&event2, &ctx2);
     let fired2: Vec<i64> = resolved2
         .actions
@@ -622,7 +627,7 @@ async fn kill_then_cover_advances_only_on_the_second_event() {
 
 // ── Step-activation replay eligibility ──────────────────────────────────
 
-/// The vial sits inside set 1381's radius, so the cover enter edge is
+/// The vial sits inside the desk set's radius, so the cover enter edge is
 /// routinely spent before step 2144 exists (2026-09-20 colo repro). Both cover
 /// chains then depend on the step-activation cover replay, and that replay
 /// admits mission-gated chains only. A seed edit that drops the `step_status`
@@ -642,4 +647,53 @@ async fn cover_chains_stay_eligible_for_the_step_activation_replay() {
              step-activation cover replay refuses it as not idempotent"
         );
     }
+}
+
+// ── The desk set is where the extracted cover says it is ───────────────
+
+/// Chains 1132/1133 key on a cover-set id, and the id is only as good as
+/// the seed that assigns it. A re-extract that renumbers the Castle_CellBlock
+/// sets, or a cover seed that loses its world scope, leaves both chains
+/// resolving perfectly in every test above while no player can ever enter
+/// the set in game. So load the seeded cover the way the cell does and ask
+/// the production containment test (`sets_near`) what a player standing at
+/// the desk is in: it must be the chains' key, and only in world 12.
+#[tokio::test]
+async fn cover_chain_key_is_the_set_a_player_at_the_desk_is_in() {
+    use crate::cell::cover::{
+        load_cover_nodes, load_cover_sets, sets_near, Cover, COVER_PROXIMITY_RADIUS,
+    };
+    use cimmeria_common::Vector3;
+
+    let pool = require_db_or_skip!();
+    let keys: Vec<String> = sqlx::query_scalar(
+        "SELECT event_key FROM resources.content_triggers \
+         WHERE chain_id IN (1132, 1133) ORDER BY chain_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("content_triggers query");
+    assert_eq!(
+        keys,
+        vec![DESK_SET.to_string(), DESK_SET.to_string()],
+        "both cover chains must key on the desk set"
+    );
+
+    let cover = Cover::from_loaded(
+        load_cover_sets(&pool).await.expect("load cover sets"),
+        load_cover_nodes(&pool).await.expect("load cover nodes"),
+    );
+    // NA20's confirmed desk marker, on the navmesh (dy -0.13 m).
+    let desk = Vector3::new(-234.71, 65.47, -124.71);
+    let in_cellblock = sets_near(&cover, Some(12), &desk, COVER_PROXIMITY_RADIUS);
+    assert!(
+        in_cellblock.contains_key(&(DESK_SET as i32)),
+        "a player at the desk must be in set {DESK_SET}; got {:?}",
+        in_cellblock.keys().collect::<Vec<_>>()
+    );
+    let in_castle = sets_near(&cover, Some(8), &desk, COVER_PROXIMITY_RADIUS);
+    assert!(
+        !in_castle.contains_key(&(DESK_SET as i32)),
+        "the same coordinates in Castle (world 8) must not reach the Cellblock desk"
+    );
 }
