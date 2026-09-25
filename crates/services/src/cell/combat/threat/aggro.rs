@@ -12,8 +12,8 @@ use crate::cell::service::npc_ai;
 /// `cause` on the `npc_ai.aggro event=acquired` row. Enumerated; the label
 /// is a metric label.
 ///
-/// `assist` (a neighbour pulling the NPC in) is reserved for NA14 and is
-/// deliberately not a variant until something produces it.
+/// Only [`Self::Proximity`] and [`Self::Damage`] recruit assisters
+/// ([`Self::recruits_assist`]); an assisting NPC never recruits further.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AggroCause {
     /// The Idle auto-aggro scan picked a witness.
@@ -22,6 +22,24 @@ pub enum AggroCause {
     Damage,
     /// A content chain's `generate_threat` action.
     ContentThreat,
+    /// A same-faction neighbour within the assist radius engaged this
+    /// target, and this NPC joined (NA14, D-NA04). A deliberate deviation
+    /// from legacy: the 2009 server had no assist.
+    Assist,
+}
+
+impl AggroCause {
+    /// Whether an NPC entering Fighting for this cause pulls its
+    /// same-faction neighbours in (NA14).
+    ///
+    /// Damage and proximity do. Assist does not, which is the whole
+    /// no-chaining rule: an assister never recruits a further NPC, so a
+    /// fight cannot ripple room to room. A content chain's
+    /// `generate_threat` does not either: a scripted fight stays exactly as
+    /// scripted (chain 1032 aims the PRU at one player, not the corridor).
+    pub fn recruits_assist(self) -> bool {
+        matches!(self, Self::Proximity | Self::Damage)
+    }
 }
 
 impl AggroCause {
@@ -31,6 +49,7 @@ impl AggroCause {
             Self::Proximity => "proximity",
             Self::Damage => "damage",
             Self::ContentThreat => "content_threat",
+            Self::Assist => "assist",
         }
     }
 }
@@ -195,7 +214,19 @@ pub fn generate_threat(
         npc_ai::log_aggro_acquired(space_mgr, target_id, attacker_id, from, cause);
     }
 
-    super::player_combat::enter_player_combat(space_mgr, attacker_id, target_id)
+    let entered_combat =
+        super::player_combat::enter_player_combat(space_mgr, attacker_id, target_id);
+
+    // Same-room assist (NA14, D-NA04): a fresh engagement from damage or
+    // proximity pulls hostile same-faction neighbours onto the same target.
+    // Runs after the victim's own `enter_player_combat`, so the player is
+    // already in combat and the assisters' own calls return `None`: the
+    // caller's one `onStateFieldUpdate` stays the victim's.
+    if entered_from.is_some() && cause.recruits_assist() {
+        npc_ai::recruit_assisters(space_mgr, target_id, attacker_id);
+    }
+
+    entered_combat
 }
 
 #[cfg(test)]

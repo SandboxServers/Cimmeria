@@ -16,6 +16,10 @@
 //!    navmesh at all has nothing to check and passes; the vertical band is the
 //!    only storey guard there.
 //!
+//! Gates 6-8 are [`same_room`], which the NA14 assist fan-out
+//! (`super::assist`) reuses between a would-be assister and the neighbour
+//! that just engaged.
+//!
 //! The reasons are [`super::detectors::aggro_scan::ScanReject`], the
 //! `reason` values of `npc_ai.aggro_scan event=candidate_rejected` (NA02's
 //! throttled reporter). Treat them as API.
@@ -65,17 +69,29 @@ pub(in crate::cell) fn evaluate_candidate(
     if gm_ignores_aggro(space_mgr, p) {
         return Err(AggroReject::GmIgnored);
     }
-    if (p.position.y - npc.position.y).abs() > combat::AGGRO_VERTICAL_BAND {
+    same_room(space_mgr, npc, p, combat::aggro_radius(npc))
+}
+
+/// The geometric half of the gates, shared by the Idle scan and the NA14
+/// assist fan-out: `other` is on `npc`'s floor (`|dy| <= 4`), within
+/// `radius` horizontally, and in navmesh line of sight from `npc`, with
+/// `Unknown` failing closed where a mesh exists (D-NA08). `Ok` carries the
+/// horizontal distance.
+pub(in crate::cell) fn same_room(
+    space_mgr: &SpaceManager,
+    npc: &CellEntity,
+    other: &CellEntity,
+    radius: f32,
+) -> Result<f32, AggroReject> {
+    if (other.position.y - npc.position.y).abs() > combat::AGGRO_VERTICAL_BAND {
         return Err(AggroReject::OutOfVerticalBand);
     }
-    let dx = p.position.x - npc.position.x;
-    let dz = p.position.z - npc.position.z;
-    let dist = (dx * dx + dz * dz).sqrt();
-    if dist > combat::aggro_radius(npc) {
+    let dist = horizontal_distance(npc, other);
+    if dist > radius {
         return Err(AggroReject::OutOfRadius);
     }
     let npc_id = npc.entity_id.0 as u32;
-    match space_mgr.line_of_sight(npc_id, pid) {
+    match space_mgr.line_of_sight(npc_id, other.entity_id.0 as u32) {
         LineOfSight::Clear => {}
         LineOfSight::Blocked => return Err(AggroReject::NoLos),
         LineOfSight::Unknown if space_mgr.space_has_navmesh(npc_id) => {
@@ -84,4 +100,11 @@ pub(in crate::cell) fn evaluate_candidate(
         LineOfSight::Unknown => {}
     }
     Ok(dist)
+}
+
+/// Horizontal (XZ) distance between two entities; the radius metric.
+pub(in crate::cell) fn horizontal_distance(a: &CellEntity, b: &CellEntity) -> f32 {
+    let dx = b.position.x - a.position.x;
+    let dz = b.position.z - a.position.z;
+    (dx * dx + dz * dz).sqrt()
 }

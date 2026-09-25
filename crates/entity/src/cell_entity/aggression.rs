@@ -83,6 +83,11 @@ pub struct AggroProfile {
     /// `entity_templates.aggro_radius`. `None` means the server default
     /// (`cell::combat::DEFAULT_AGGRO_RADIUS`, 18 u) applies.
     pub radius_override: Option<f32>,
+    /// Per-template assist radius in world units, from
+    /// `entity_templates.assist_radius` (NA14): how far a same-faction
+    /// neighbour's engagement reaches this NPC. `None` means the server
+    /// default (`cell::combat::DEFAULT_ASSIST_RADIUS`, 10 u) applies.
+    pub assist_radius_override: Option<f32>,
 }
 
 #[cfg(test)]

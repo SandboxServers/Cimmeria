@@ -20,6 +20,7 @@
 
 mod harset;
 mod live_db_aggression;
+mod live_db_assist;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
 mod live_db_leash_distance;

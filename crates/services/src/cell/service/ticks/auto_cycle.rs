@@ -440,6 +440,14 @@ mod tests {
         if let Some(npc) = mgr.get_entity_mut(75) {
             npc.faction = crate::cell::combat::HOSTILE_FACTION;
         }
+        // NPC 50 stands 2 u from 75 on the same faction, so NA14's same-room
+        // assist would pull it onto player 1 the moment 75 engages. Pin it
+        // NEUTRAL so threat on 50 can only come from a mis-aimed re-fire,
+        // which is what this test guards (the damage gate reads faction, not
+        // aggression, so a re-fire at 50 still lands).
+        if let Some(npc) = mgr.get_entity_mut(50) {
+            npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Neutral);
+        }
         if let Some(p) = mgr.get_entity_mut(1) {
             p.current_target_id = Some(75);
             p.position = Vector3::new(0.0, 0.0, 0.0);

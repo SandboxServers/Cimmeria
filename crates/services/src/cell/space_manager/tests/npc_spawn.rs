@@ -104,6 +104,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         move_speed: 0.6,
         leash_distance: None,
         aggro_radius: None,
+        assist_radius: None,
         aggression_override: None,
     };
 

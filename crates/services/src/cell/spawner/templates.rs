@@ -83,7 +83,7 @@ macro_rules! entity_template_select {
                     COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
                     COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                     COALESCE(t.move_speed, 0.6) AS move_speed, \
-                    t.leash_distance, t.aggro_radius, \
+                    t.leash_distance, t.aggro_radius, t.assist_radius, \
                     t.respawn_secs, \
                     COALESCE( \
                       (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -258,6 +258,9 @@ pub(crate) fn build_prototype(
         ),
         aggro_radius: super::npcs::normalize_aggro_radius(
             row.try_get::<Option<f32>, _>("aggro_radius")?,
+        ),
+        assist_radius: super::npcs::normalize_aggro_radius(
+            row.try_get::<Option<f32>, _>("assist_radius")?,
         ),
         // A placement property (`spawnlist`), never a template one: a
         // content spawn sets it through the action's `aggression` param.
