@@ -61,9 +61,10 @@ pub use handlers::{
     mint, refresh, DevSessionRequest, DevSessionResponse, RefreshRequest, TOKEN_TTL_SECONDS,
 };
 pub use token::{
-    decode_token, encode_token, load_secret, AuthError, TokenClaims, MIN_SECRET_BYTES,
-    SCOPE_TELEMETRY_WRITE,
+    decode_token, encode_token, AuthError, TokenClaims, MIN_SECRET_BYTES, SCOPE_TELEMETRY_WRITE,
 };
+
+pub(crate) use token::load_secret;
 
 #[cfg(test)]
 pub use token::env_lock;

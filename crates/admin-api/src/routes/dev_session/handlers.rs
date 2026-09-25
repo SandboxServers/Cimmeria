@@ -41,6 +41,9 @@ const DEFAULT_MINT_PER_INSTALL: u32 = 30;
 /// The launcher refreshes once per token lifetime, but retries on
 /// transport errors; generous enough that only a loop trips it.
 const DEFAULT_REFRESH_PER_IP: u32 = 480;
+/// Refresh calls per address whose token fails signature or payload
+/// checks. A working launcher never sends one, so this is tight.
+const DEFAULT_REFRESH_BAD_PER_IP: u32 = 30;
 /// Ceiling on how long one minted session can be extended by
 /// chained refreshes. Well past any real play session, so the
 /// launcher only meets it after a token has leaked or a process has
@@ -80,6 +83,7 @@ pub struct QuotaPolicy {
     pub mint_per_ip: u32,
     pub mint_per_install: u32,
     pub refresh_per_ip: u32,
+    pub refresh_bad_per_ip: u32,
     pub max_session_secs: i64,
 }
 
@@ -99,6 +103,10 @@ impl QuotaPolicy {
                 "CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP",
                 DEFAULT_REFRESH_PER_IP,
             ),
+            refresh_bad_per_ip: env_u32(
+                "CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP",
+                DEFAULT_REFRESH_BAD_PER_IP,
+            ),
             max_session_secs: env_i64(
                 "CIMMERIA_TELEMETRY_MAX_SESSION_SECS",
                 DEFAULT_MAX_SESSION_SECS,
@@ -113,6 +121,7 @@ pub struct Tables {
     pub mint_ip: WindowTable,
     pub mint_install: WindowTable,
     pub refresh_ip: WindowTable,
+    pub refresh_bad: WindowTable,
 }
 
 impl Tables {
@@ -121,6 +130,7 @@ impl Tables {
             mint_ip: WindowTable::new(),
             mint_install: WindowTable::new(),
             refresh_ip: WindowTable::new(),
+            refresh_bad: WindowTable::new(),
         }
     }
 }
@@ -252,6 +262,26 @@ pub(super) fn refresh_inner(
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
+    // Verify before charging the refresh quota. Charging first let
+    // anyone who shares an egress address with real launchers (a
+    // tunnel, an office NAT) burn the shared bucket with junk tokens
+    // and lock every launcher out of refresh. Junk is counted on its
+    // own, tighter table instead, which never touches the valid-token
+    // allowance. The HMAC check is cheap and the body is capped.
+    let secret = load_secret()?;
+    let claims = match super::token::decode_token(token, &secret) {
+        Ok(claims) => claims,
+        Err(e) => {
+            tables.refresh_bad.check_and_record(
+                ip_key(peer_ip),
+                policy.refresh_bad_per_ip,
+                policy.window,
+                "refresh/bad_token",
+                now,
+            )?;
+            return Err(e);
+        }
+    };
     tables.refresh_ip.check_and_record(
         ip_key(peer_ip),
         policy.refresh_per_ip,
@@ -259,8 +289,6 @@ pub(super) fn refresh_inner(
         "refresh/ip",
         now,
     )?;
-    let secret = load_secret()?;
-    let claims = super::token::decode_token(token, &secret)?;
     // `iat` is the original mint time and is deliberately NOT reset
     // below, so a chain of refreshes is bounded rather than able to
     // extend one minted session forever. The launcher tracks its own

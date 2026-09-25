@@ -142,7 +142,7 @@ impl IntoResponse for AuthError {
 /// telemetry ingest endpoints (which verify tokens minted here) reuse
 /// the same parsing rules — drift between mint and verify would cause
 /// every launcher upload to fail validation.
-pub fn load_secret() -> Result<Vec<u8>, AuthError> {
+pub(crate) fn load_secret() -> Result<Vec<u8>, AuthError> {
     let raw =
         std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").map_err(|_| AuthError::SecretMissing)?;
     let raw_trimmed = raw.trim();

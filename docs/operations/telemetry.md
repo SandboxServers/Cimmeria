@@ -136,7 +136,8 @@ that header and falls back to launching without telemetry.
 | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | The window everything below is counted over. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints per `install_id` per window. |
-| `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes per peer address per window. |
+| `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token per peer address per window. Charged only after the token verifies. |
+| `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window. A separate counter, so junk tokens cannot spend the valid-token allowance. |
 | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | How long one minted session may be extended by chained refreshes. Not a quota: `0` (or a negative value) does **not** disable the cap, it refuses every refresh. |
 
 Setting a quota to `0` disables that counter. A value that does not
@@ -150,6 +151,13 @@ would let any caller pick its own quota key), so behind a Cloudflare
 Tunnel or an office NAT every launcher shares one bucket. The default
 of 120/hour covers a small team; a larger one, or a CI fleet, needs
 more.
+
+Behind a shared address the mint quota is also a denial-of-service
+lever: mint takes no credential, so anyone who can reach the port can
+spend the shared bucket and refuse every launcher behind it for the
+rest of the window. Raise the limit there, or set it to `0`. Refresh
+is not exposed the same way, because it charges its main counter only
+after the token verifies.
 
 ### Symptoms and what to change
 

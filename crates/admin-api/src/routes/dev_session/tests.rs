@@ -64,6 +64,7 @@ fn policy(mint_per_ip: u32, mint_per_install: u32, refresh_per_ip: u32) -> Quota
         mint_per_ip,
         mint_per_install,
         refresh_per_ip,
+        refresh_bad_per_ip: 3,
         max_session_secs: 24 * 60 * 60,
     }
 }
@@ -427,6 +428,45 @@ fn refresh_refuses_an_expired_token() {
     .unwrap_err();
     assert!(matches!(err, AuthError::Expired { .. }));
     assert_eq!(status(err), axum::http::StatusCode::UNAUTHORIZED);
+}
+
+// Junk tokens from a shared address must not spend the valid-token
+// refresh allowance: before the fix, refresh charged the per-IP quota
+// ahead of signature verification, so 480 `{"token":"x"}` calls locked
+// every real launcher behind the same NAT out of refresh.
+#[test]
+fn junk_tokens_do_not_spend_the_refresh_allowance() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let p = policy(10, 10, 2);
+    let shared = ip("198.51.100.20");
+    let now = Instant::now();
+    for _ in 0..2 {
+        let err = refresh_inner(&t, &p, shared, "x", now, NOW_UNIX).unwrap_err();
+        assert!(matches!(err, AuthError::BadPayload(_)), "got {err:?}");
+    }
+    let token = token_minted_at(NOW_UNIX, NOW_UNIX + TOKEN_TTL_SECONDS);
+    refresh_inner(&t, &p, shared, &token, now, NOW_UNIX)
+        .expect("a real launcher behind the same address can still refresh");
+}
+
+// Junk tokens are rate-limited on their own tighter counter.
+#[test]
+fn junk_tokens_are_quota_limited_on_their_own_counter() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let p = policy(10, 10, 100); // refresh_bad_per_ip = 3
+    let peer = ip("198.51.100.21");
+    let now = Instant::now();
+    for _ in 0..3 {
+        let err = refresh_inner(&t, &p, peer, "x", now, NOW_UNIX).unwrap_err();
+        assert!(!matches!(err, AuthError::QuotaExceeded(_)));
+    }
+    let err = refresh_inner(&t, &p, peer, "x", now, NOW_UNIX).unwrap_err();
+    match err {
+        AuthError::QuotaExceeded(q) => assert_eq!(q.scope, "refresh/bad_token"),
+        other => panic!("expected the bad-token quota, got {other:?}"),
+    }
 }
 
 // Refresh is quota-limited on its own counter, so a token holder

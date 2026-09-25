@@ -57,7 +57,7 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking child.wait()` — game-exit signal without burning an async worker. |
 | `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
 | `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
-| `crates/admin-api/src/routes/dev_session.rs` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify). |
+| `crates/admin-api/src/routes/dev_session/` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify), quota tables. |
 | `crates/admin-api/src/routes/telemetry/` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` so the OTLP layer ships it to SigNoz. |
 
 ## Session lifecycle
@@ -131,7 +131,10 @@ than assumed from the mint path, so narrowing what a token may do
 stays a one-line change on the server.
 
 **Quotas.** Mint and refresh are counted per peer address, and mint
-additionally per `install_id`, over a fixed window. Over quota
+additionally per `install_id`, over a fixed window. Refresh verifies
+the token before charging its counter, and counts tokens that fail
+verification on a separate, tighter counter, so junk sent from an
+address shared with real launchers cannot lock them out. Over quota
 returns 429 with a `Retry-After` the launcher's back-off path already
 honours. Defaults and env-var names are in
 [telemetry.md](../operations/telemetry.md#mint-and-refresh-quotas).

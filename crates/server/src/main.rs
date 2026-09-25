@@ -30,7 +30,8 @@
 //! | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | Fixed window the dev-session mint/refresh quotas below are counted over. |
 //! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints allowed per peer address per window on `/api/auth/dev-session`; over quota returns 429 + `Retry-After`. `0` disables. Note that a whole team behind one NAT or reverse proxy shares one bucket — raise it there. |
 //! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints allowed per `install_id` per window. A speed bump for a launcher stuck relaunching, not a boundary: `install_id` is caller-supplied. `0` disables. |
-//! | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Calls allowed per peer address per window on `/api/auth/dev-session/refresh`. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token allowed per peer address per window on `/api/auth/dev-session/refresh`. Charged only after the token verifies. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window; over it returns 429. Kept apart from the valid-token counter so junk cannot lock launchers out. `0` disables. |
 //! | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | Longest a single minted session may be extended by chained refreshes, measured from the original mint. Past it, refresh returns 401 and the launcher mints a fresh session. |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP collector endpoint (e.g. `http://otel-collector:4317`). Unset ⇒ OTLP exporter disabled; logs and Mercury packet events never leave the process via OTLP. See [docs/operations/signoz-deployment.md](../../../docs/operations/signoz-deployment.md). |
 //! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` (default) or `http/protobuf`. |
