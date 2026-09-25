@@ -85,8 +85,8 @@ mod live_db_tests {
     use super::*;
     use crate::test_support::require_db_or_skip;
 
-    /// Harset (57) is seeded advisory, and SGC_W1 (58) — a
-    /// world with a mesh nobody has reported holes in — is not.
+    /// Harset (57) is seeded advisory, and Castle_CellBlock (12) — the one
+    /// world whose mesh players have walked under containment — is not.
     ///
     /// Asserted as a pair on purpose. "Harset is advisory" alone passes
     /// just as well if the loader hardcoded advisory for everything, which
@@ -109,29 +109,39 @@ mod live_db_tests {
              every non-GM player back at the boundary (H53)",
         );
 
-        let sgc = rows
-            .get("SGC_W1")
-            .expect("resources.worlds must carry world 58 'SGC_W1'");
-        assert_eq!(sgc.world_id, 58);
+        let cellblock = rows
+            .get("Castle_CellBlock")
+            .expect("resources.worlds must carry world 12 'Castle_CellBlock'");
+        assert_eq!(cellblock.world_id, 12);
         assert_eq!(
-            sgc.navmesh_mode,
+            cellblock.navmesh_mode,
             NavmeshMode::Enforce,
             "a world nobody demoted must load 'enforce' — advisory is opt-in \
              per world, never the default",
         );
     }
 
-    /// The column's default does the work for the ~180 rows the seed never
-    /// mentions it on: exactly two rows in the whole table are advisory,
-    /// each with its evidence in the seed comment. A seed edit that widened
-    /// the demotion would show up here as a changed list.
+    /// The column's default does the work for every row the seed never
+    /// mentions it on. The advisory rows are exactly the worlds whose
+    /// `data/spaces/*.nav` nobody has walked under containment, each with
+    /// its evidence in the seed comment. A seed edit that widened the
+    /// demotion would show up here as a changed list.
     ///
-    /// - `Harset` (57): `harset.nav` has a 30-unit hole across the only walk
-    ///   to the Command Center door.
+    /// - `Harset` (57): the 2012 `harset.nav` had a 30-unit hole across the
+    ///   only walk to the Command Center door (H53). NA26 rebuilt it; the
+    ///   rebuild covers the route but has not been walked yet.
     /// - `Castle` (8): `castle.nav` is new (rebuilt from the client maps
     ///   2026-09-19) and its exterior and interior are still separate
     ///   regions, so it ships as pathing / line-of-sight / height
     ///   information until an in-client walk proves its coverage.
+    /// - The other 21 (NA26, 2026-09-25): every world that got its first
+    ///   mesh, or a rebuilt one, from the cooked client maps. A new mesh
+    ///   must not start snapping players back before anyone has walked it.
+    ///   `SandBox` (2) is in the list because its client map is
+    ///   Harset_CmdCenter and it loads a copy of that mesh.
+    ///
+    /// `Castle_CellBlock` (12) is the one meshed world left on `enforce`:
+    /// its mesh was rebuilt on 2026-09-19 and has been walked since.
     #[tokio::test]
     async fn only_the_documented_worlds_are_seeded_advisory() {
         let pool = require_db_or_skip!();
@@ -145,7 +155,31 @@ mod live_db_tests {
         advisory.sort_unstable();
         assert_eq!(
             advisory,
-            ["Castle", "Harset"],
+            [
+                "Agnos",
+                "Agnos_Library",
+                "Beta_Site_Evo_1",
+                "Castle",
+                "Dakara_E1",
+                "Dakara_E1_StoryRm",
+                "Harset",
+                "Harset_CmdCenter",
+                "Harset_Market",
+                "Harset_StorageRm",
+                "Ihpet_Crater_Dark",
+                "Ihpet_Crater_Light",
+                "Lucia",
+                "Menfa_Dark",
+                "Menfa_Light",
+                "Omega_Site",
+                "Omega_Site_CmdCenter",
+                "SGC",
+                "SGC_W1",
+                "SandBox",
+                "Sewer_Falls",
+                "Tollana",
+                "Tollana_Curia",
+            ],
             "advisory is a per-world escape hatch for a known-bad mesh, not a \
              default; every other world's containment gate must stay on",
         );

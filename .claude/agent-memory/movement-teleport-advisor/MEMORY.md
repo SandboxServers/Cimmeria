@@ -16,3 +16,4 @@
 - [npcs-cannot-turn-in-place.md](npcs-cannot-turn-in-place.md) — 2026-09-18 diagnosis of frozen attacker yaw. RESOLVED by `face_target` in #682 — read for the mechanism and the missing arc-gate question, not as a current defect
 - [leash-is-a-bare-field-write.md](leash-is-a-bare-field-write.md) — npc_ai_leash writes npc.position directly: AoI grid desync, stale velocity the client extrapolates, no re-face
 - [detour-nearest-poly-escapes-its-box.md](detour-nearest-poly-escapes-its-box.md) — Block on sight: findNearestPoly can return a point outside its box (4.8u over a ±4 band); re-check radius and dy
+- [na26-all-worlds-navmesh.md](na26-all-worlds-navmesh.md) — Every spaces.xml world has a .nav, all advisory but Cellblock; no reject telemetry; 4 cropped maps; 13-bit span trap

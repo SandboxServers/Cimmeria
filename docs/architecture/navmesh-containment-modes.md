@@ -1,6 +1,6 @@
 # Navmesh Containment Modes (per-world `advisory` navmesh)
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-25 (NA26: every meshed world but Castle_CellBlock is advisory)
 > **Audience**: Engineers touching movement validation, arrivals, ring transport, or world seeding
 > **Type**: ADR (explanation) + reference for the one predicate
 > **Owner**: Movement / space management
@@ -80,10 +80,12 @@ Table definition in
 [`db/resources/Worlds/Tables/worlds.sql`](../../db/resources/Worlds/Tables/worlds.sql),
 seeded in
 [`db/resources/Worlds/Seed/worlds.sql`](../../db/resources/Worlds/Seed/worlds.sql).
-Two rows name the column; every other world relies on the default:
+23 rows name the column; every other world relies on the default:
 
 - **Harset** (`world_id` 57) — the worked example below: measured holes on a
-  route players must take.
+  route players must take. NA26 (2026-09-25) rebuilt `harset.nav` and the
+  Command Center route is now covered, but the rebuild has not been walked,
+  so the row stays advisory.
 - **Castle** (`world_id` 8) — a different reason. Castle had no navmesh at
   all until `data/spaces/castle.nav` was rebuilt from the cooked client maps
   (2026-09-19), so there is no history of players walking it under
@@ -94,6 +96,35 @@ Two rows name the column; every other world relies on the default:
   NPCs get pathing, line of sight and ground height immediately, and is
   promoted to `enforce` only after an in-client walk shows no coverage
   gaps.
+- **The 21 NA26 worlds** (2026-09-25) — Castle's reason, applied to every
+  other world in `entities/spaces.xml`. NA26 built or rebuilt a `.nav` for
+  each from the cooked client maps, and a mesh nobody has walked under
+  containment must not start snapping players back on day one:
+  Agnos (10), Agnos_Library (20), Beta_Site_Evo_1 (23), Dakara_E1 (61),
+  Dakara_E1_StoryRm (62), Harset_CmdCenter (68), Harset_Market (69),
+  Harset_StorageRm (70), Ihpet_Crater_Dark (72), Ihpet_Crater_Light (73),
+  Lucia (15), Menfa_Dark (77), Menfa_Light (78), Omega_Site (18),
+  Omega_Site_CmdCenter (80), SGC (86), SGC_W1 (58), Sewer_Falls (50),
+  Tollana (19), Tollana_Curia (88), and SandBox (2), which loads a copy of
+  `harset_cmdcenter.nav`. Three of them had a 2012 mesh that was
+  `enforce`: SGC_W1 and Agnos had no player telemetry to run the old-vs-new
+  regression check against, and Harset_StorageRm failed it (the rebuild
+  accepts 16 of the 24 real positions the 2012 mesh accepted). Four of the
+  big exteriors (Agnos, Lucia, Tollana, Beta_Site_Evo_1) are also cropped to
+  fit Recast's caps and have no mesh outside the crop. Per-world evidence:
+  [data/spaces/README.md](../../data/spaces/README.md).
+
+**Castle_CellBlock** (`world_id` 12) is the one meshed world left on
+`enforce`. Its mesh was rebuilt on 2026-09-19 and has been walked under
+containment since; NA26's rebuild of it changed nothing measurable and was
+not shipped.
+
+A consequence worth knowing before promoting any of them: advisory worlds
+emit no `movement.validation_reject` rows for the navmesh gate (the "Known
+gap" in [movement-telemetry.md](movement-telemetry.md)), so after NA26 those
+rows come from Castle_CellBlock alone. The evidence for promoting a world is
+the TRACE-level `advisory_off_mesh_accepted` stream, which has to be switched
+on for the session that gathers it.
 
 There is deliberately **no migration script** — this repo edits the table
 definition and the seed directly.
@@ -241,8 +272,15 @@ The evidence pattern that justifies it, either one:
 
 - To work around a single bad authored coordinate. Re-pin the coordinate
   instead — one wrong spawn point is not a mesh problem.
-- For a world whose mesh is merely *unverified*. "Nobody has probed it" is
-  not evidence of holes, and `advisory` gives up a real gate.
+- For a world whose mesh is merely *unverified* but has been walked under
+  containment. "Nobody has probed it" is not evidence of holes, and
+  `advisory` gives up a real gate.
+
+**Do seed it for a new mesh.** A world that gets its first mesh, or a
+rebuilt one nobody has walked yet, starts `advisory` (Castle, and every
+NA26 world). The old state of such a world was "no containment at all", so
+advisory loses nothing, and an unwalked mesh's holes are unknown. Promote it
+with the steps below once play shows the coverage holds.
 
 ## Getting back to `enforce`
 
@@ -302,18 +340,21 @@ against the real `harset.nav` (self-skipping on a fixture-less checkout):
 - `a_gm_still_moves_freely_in_an_advisory_world`
 - `the_startup_summary_counts_off_mesh_spawn_rows` — pins that the boot line
   names the mode and counts only this world's rows, one on the mesh and one
-  in the measured hole
+  off it
 
 Every one of those asserts its fixture controls before its verdict: ring pad
 4 at `(-25.641, -67.828, 15.249)` reads on-mesh (so the mesh loaded), the
 start point reads on-mesh, and the target point reads off-mesh. Without the
 first, a mesh that failed to load would make the advisory half vacuously
-green.
+green. Since NA26 the step is a real reject from SigNoz, `(217.61, -41.87,
+3.66)` to `(215.32, -42.29, 3.80)`, because the rebuilt mesh closed the
+measured Command Center hole the tests used to walk into.
 
 Two live-DB guards in
 [`crates/services/src/cell/spawner/worlds.rs`](../../crates/services/src/cell/spawner/worlds.rs)
 pin the seed itself: `harset_loads_advisory_and_a_meshed_neighbour_loads_enforce`
-and `exactly_one_world_is_seeded_advisory`. The second is a list comparison,
+(the enforcing neighbour is Castle_CellBlock since NA26)
+and `only_the_documented_worlds_are_seeded_advisory`. The second is a list comparison,
 not a count, on purpose — a count would not catch a loader bug that demoted
 every world.
 
