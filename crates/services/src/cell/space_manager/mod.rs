@@ -12,6 +12,7 @@ use cimmeria_entity::navigation::NavMesh;
 use cimmeria_entity::space::Space;
 
 pub use client_move::ClientMoveOutcome;
+pub(crate) use crossing_hold_state::PendingCrossing;
 pub(crate) use deferred_content_actions::PendingContentAction;
 pub use entities::DespawnOutcome;
 pub(crate) use gate_dial_state::PendingGateDial;
@@ -21,8 +22,11 @@ pub use queries::PlayerNameLookup;
 
 mod aoi;
 mod client_move;
+mod cover_hit;
+pub use cover_hit::{CoverStanding, PLAYER_COVER_MAX_DY};
 mod cover_sight;
 pub use cover_sight::{NpcSight, SightOrigin};
+mod crossing_hold_state;
 mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
@@ -30,8 +34,10 @@ mod lab_snapshots;
 mod lifecycle;
 mod movement_telemetry;
 mod navmesh_mode;
+#[cfg(test)]
+pub(crate) mod occluder_fixtures;
 mod occlusion;
-pub use occlusion::{eye_height, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
+pub use occlusion::{eye_height_for, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
 mod queries;
 mod spatial;
 pub use spatial::AttackLosPolicy;
@@ -306,6 +312,10 @@ pub struct SpaceManager {
     /// The residency gauges last reported per world key; see
     /// `SpaceManager::refresh_occluder_residency`.
     pub(crate) occluder_residency: HashMap<String, occlusion::ResidencyGauge>,
+    /// Eye height per body set (`resources.body_sets.eye_height`, NA31),
+    /// keyed by the full body-set name (`BS_HumanMale.BS_HumanMale`).
+    /// Loaded at startup; read through [`SpaceManager::eye_height_of`].
+    pub body_set_eye_heights: HashMap<String, f32>,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -362,6 +372,16 @@ pub struct SpaceManager {
     /// space never gets a late `Stargate_MakeGate`. See
     /// `gate_dial_state` for the state machine.
     pub(crate) pending_gate_dials: HashMap<u32, PendingGateDial>,
+    /// In-flight post-crossing holds, keyed by the crossing player. Armed by
+    /// `cell::gate_travel::on_stargate_passage` right after
+    /// `Stargate_CrossGate`/`onStargatePassage` are sent, drained (and the
+    /// deferred `perform_gate_travel` run) by
+    /// `cell::gate_travel::tick::crossing_tick` on the 100ms cell tick.
+    /// Scrubbed by `destroy_entity` / `disconnect_entity` so a crossing
+    /// player who leaves mid-hold never gets a deferred travel run against
+    /// a dead session. See `crossing_hold_state` for the state machine
+    /// (NA35).
+    pub(crate) pending_crossings: HashMap<u32, PendingCrossing>,
     /// Re-entrancy bound for the H52 step-activation region replay. A
     /// replayed `enter_region` chain can advance another step, which replays
     /// again; this caps the depth and remembers which `(entity, mission,
@@ -415,6 +435,7 @@ impl SpaceManager {
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
             occluder_residency: HashMap::new(),
+            body_set_eye_heights: HashMap::new(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),
@@ -425,6 +446,7 @@ impl SpaceManager {
             pending_health_below: Vec::new(),
             step_region_replay: super::content::StepRegionReplayGuard::default(),
             pending_gate_dials: HashMap::new(),
+            pending_crossings: HashMap::new(),
         }
     }
 }

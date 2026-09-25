@@ -1,28 +1,67 @@
-//! Per-player stargate dial state — the Rust shape of `SGWPlayer`'s
+//! Per-player stargate dial state — originally modelled on `SGWPlayer`'s
 //! `dialedAddress` / `dialingStargate` / `gatePassable` / `gateDialTimer`
 //! quartet (`deprecated/python/cell/SGWPlayer.py:52-55, 2078-2129`).
 //!
-//! The 2009 server armed a 4-second `Atrea.addTimer` in `beginDialing`,
-//! sent `onSequence(Stargate_MakeGate)` when it expired, and only let
-//! `stargatePassed()` travel while `gatePassable` was true. We keep the
-//! same state machine, but the deadline is drained by the existing 100 ms
-//! cell tick rather than a spawned `tokio::time::sleep` task — same
-//! reasoning as C08a's `deferred_content_actions`: a spawned task has no
-//! route to `&mut SpaceManager` (owned exclusively by the single-threaded
-//! cell message loop), so it would need a new channel and message variant
-//! just to re-enter. A map keyed by entity id, drained on a tick that is
+//! **The deprecated Python is not a behavioural reference.** The owner
+//! confirmed (2026-09-25, NA35) that the legacy server never had working
+//! gate travel end to end, so "the 2009 *server* did X" carries no
+//! authority — it only ever proved what one unfinished reference
+//! implementation happened to do, not what the 2009 *client* expects.
+//! Ground truth for this file's timing is the client binary and its
+//! Kismet rigs; see
+//! `docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md`
+//! for the evidence and `docs/analysis/castle-rebuild/README.md`'s D-CA20
+//! for the decision record. D-CA10 predates that correction and is left
+//! unedited; D-CA20 supersedes its framing.
+//!
+//! The dial deadline is drained by the existing 100 ms cell tick rather
+//! than a spawned `tokio::time::sleep` task — same reasoning as C08a's
+//! `deferred_content_actions`: a spawned task has no route to
+//! `&mut SpaceManager` (owned exclusively by the single-threaded cell
+//! message loop), so it would need a new channel and message variant just
+//! to re-enter. A map keyed by entity id, drained on a tick that is
 //! already running, needs none of that — and it inherits the
 //! `destroy_entity` / `disconnect_entity` cleanup choke points for free,
 //! which is exactly the "cancel the pending open if the dialer leaves the
 //! space" requirement.
+//!
+//! The sibling post-crossing hold (`CROSSING_CINEMATIC_HOLD` /
+//! `PendingCrossing`) lives in [`super::crossing_hold_state`] — a distinct
+//! state machine with no calls into this one, split out once both existed
+//! (NA35) to keep each file under the project's line-count soft cap.
 
 use std::time::{Duration, Instant};
 
 use super::SpaceManager;
 
 /// How long the gate takes to open after a successful dial.
-/// `SGWPlayer.beginDialing`: `Atrea.addTimer(now + 4.0, ...)`.
-pub(crate) const GATE_DIAL_DURATION: Duration = Duration::from_secs(4);
+///
+/// **Corrected 2026-09-25 (NA35).** Previously `Duration::from_secs(4)`,
+/// sourced only from the disavowed `deprecated/python` reference
+/// (`SGWPlayer.beginDialing`: `Atrea.addTimer(now + 4.0, ...)`) — evidence
+/// for what one never-finished server did, not for what the client
+/// expects. The client binary has no matching constant. Its DHD dialling
+/// UI collects every glyph and calls `Event_World_DialStargateAddress`
+/// exactly once, only after the full address is entered
+/// (`FUN_005682d0` case `'d'` "dialStargateAddress",
+/// `ghidra://SGW.exe@0x005682d0`), and the DHD window closes on the
+/// client's own timeline at that point, independent of any server round
+/// trip. By the time a real `onDialGate` even reaches the server, the
+/// player has already left the DHD screen — matching tester Lomiada's
+/// report that "the dialing is quite fast/done when I leave the DHD."
+/// Standing them in front of a visibly inert gate for four more seconds
+/// was the bug, not a deliberate pace.
+///
+/// There is no confirmed client-side duration to replace it with either —
+/// extracting the `Stargate_MakeGate` Kismet rig's own vortex-formation
+/// Matinee length would need a live client capture or a cooked-package
+/// Kismet/Matinee parse; `crates/upk-objects` has no Matinee/`SeqAct_Interp`
+/// reader today (only model/terrain/texture2d), so this pass did not
+/// extract one. This constant is therefore the minimum the tick-drain
+/// architecture can express: the gate opens on the next 100 ms cell tick
+/// after a successful dial, not after an invented multi-second wait.
+/// Retime it once a real duration is measured.
+pub(crate) const GATE_DIAL_DURATION: Duration = Duration::from_millis(100);
 
 /// One armed dial. Exists only between `onDialGate` and either the
 /// crossing, a re-dial, a cancel, or the entity leaving its space.
@@ -92,7 +131,7 @@ impl SpaceManager {
         self.pending_gate_dials.get(&entity_id)
     }
 
-    /// Mark every dial whose 4 s timer has elapsed as passable and return
+    /// Mark every dial whose timer has elapsed as passable and return
     /// them, paired with the dialing entity. Dials already marked
     /// passable are NOT returned again — `Stargate_MakeGate` fires once
     /// per dial, as in `gateDialTimerExpired` (which clears
@@ -129,9 +168,36 @@ mod tests {
 
         assert!(
             m.take_opened_gate_dials(Instant::now()).is_empty(),
-            "a 4s dial must not open immediately"
+            "a dial must not open before its own deadline, however short"
         );
         assert!(!m.gate_dial(1).unwrap().passable);
+    }
+
+    /// Regression guard for the 2026-09-25 (NA35) correction: the previous
+    /// `GATE_DIAL_DURATION` of 4 seconds was sourced only from the
+    /// disavowed `deprecated/python` reference and left players staring at
+    /// an inert gate long after their own client-side DHD UI had already
+    /// closed (tester Lomiada, "the dialing is quite fast/done when I
+    /// leave the DHD"). This must open well under a second — fails if the
+    /// constant regresses back toward multi-second territory.
+    #[test]
+    fn dial_opens_almost_immediately_not_after_a_multi_second_hold() {
+        let mut m = mgr();
+        m.begin_gate_dial(1, 2, "Castle".to_string(), Some(10011));
+
+        assert!(
+            GATE_DIAL_DURATION < Duration::from_millis(500),
+            "GATE_DIAL_DURATION has no client-binary support for a \
+             multi-second hold — see the doc comment on the constant"
+        );
+
+        let soon = Instant::now() + Duration::from_millis(500);
+        let opened = m.take_opened_gate_dials(soon);
+        assert_eq!(
+            opened.len(),
+            1,
+            "the gate must open within half a second of a successful dial"
+        );
     }
 
     #[test]
@@ -177,7 +243,7 @@ mod tests {
         assert_eq!(dial.target_world_name, "Harset");
         assert!(
             !dial.passable,
-            "a re-dial restarts the 4s timer — the previously-open gate \
+            "a re-dial restarts the dial timer — the previously-open gate \
              must not stay crossable"
         );
     }

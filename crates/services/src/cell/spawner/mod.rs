@@ -10,6 +10,7 @@
 //! - `dialogs` — dialog set map cache.
 //! - `npcs` — `SpawnRecord`, class-id mapping, DB-driven NPC population.
 //! - `respawners` — defeat-window respawn locations.
+//! - `eye_heights` — per-body-set eye heights for line of sight (NA31).
 //! - `stargates` — gate destination cache.
 //! - `worlds` — world name → `world_id` map (the DB-only half of `spaces.xml`).
 //! - `regions` — generic region (AreaSet) loading.
@@ -24,6 +25,7 @@
 
 mod abilities;
 mod dialogs;
+mod eye_heights;
 mod loot;
 mod missions;
 mod npcs;
@@ -47,6 +49,7 @@ pub use abilities::{
 pub use dialogs::{
     load_dialog_screen_text, load_dialog_set_maps, load_monologue_dialog_ids, DialogSetMapEntry,
 };
+pub use eye_heights::load_body_set_eye_heights;
 pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTableEntry, WeaponDef};
 pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, MissionObjectiveDef};
 pub use npcs::{

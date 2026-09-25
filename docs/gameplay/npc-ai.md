@@ -442,6 +442,8 @@ Code: `crates/services/src/cell/service/npc_ai/chase/`. The Fighting handler han
 
 **Stop distance.** A chase routes to the target moved `max(ability min_range, 1.0 u)` toward the NPC, capped at the ability's `max_range`. The walk ends short of the target, never inside it. Before NA15 a guard walked to the player's own point and stood 0.35-0.7 u from it (audit S10). A cover slot chosen by the cover step is routed as given.
 
+**Ranged step-back (NA32, D-NA15).** Code: `npc_ai/step_back.rs`. A mobile NPC attacking in place, not holding a cover slot, whose chosen ability has a `min_range` or whose abilities are all ranged, steps back when its target is closer than its comfort range, `max(min_range, 2 u)`. It walks straight away from the target, horizontally, to the comfort range plus 3 u (5 u for a guard with no `min_range`), slid along the navmesh so a wall or ledge stops it. It steps at most once every 3 s. During the cooldown it fires from where it is, and inside a hard `min_range`, where the ability cannot fire, it holds and faces the target (`decision_outcome=step_back_cooling`). A step still being walked is not cut short by the attack arm (`step_back_walking`). A slide that gains under 0.5 u (its back to a wall) is not taken (`step_back_cornered`), and the cooldown starts anyway. Melee NPCs, NPCs with a melee swing in their set, stationary NPCs and NPCs in cover never step back; a flanked NPC has given its slot up and steps back like any other. The outcome is `step_back`, or `min_range_backup` inside a hard `min_range` (the pre-NA32 label). Before NA32 only a hard `min_range` stepped back, and every seeded NPC ability has `min_range = 0`, so a player could stand in a guard's face. The chase stop distance is unchanged.
+
 **Repath.** The NPC keeps its route while the goal stays within 5 u horizontally and 1.5 u vertically of the goal the route was planned for (`decision_outcome=hold_no_repath`). A player walking down a ramp toward the NPC changes level quickly and gets a new route. The old test was 5 u in 3D against the last waypoint.
 
 **Unreachable target.** When the target is on another mesh island, Detour returns a partial route. The NPC walks it to the island edge and then holds there, facing the target with zero velocity, and does not request a new route until the target moves (`decision_outcome=hold_unreachable`). After 8 s of holding it gives up and walks home (`npc_ai.transition reason=unreachable`, `decision_outcome=leashed trigger=unreachable`). A route that reaches the target, or an attack, resets the timer. A partial route *home* is walked to its end, and then the NPC snaps to spawn (`npc_ai.leash arrival=snap_partial_route`).
@@ -562,16 +564,22 @@ slot whatever the verdict, and a guard shot a player through two walls
 (UAT-1). Where a world ships an occluder, these navmesh rules are replaced
 (NA27, below).
 
-Ability launch (`use_ability/handle.rs`) checks range only. An NPC's line
-of sight is checked by the fight tick in the same tick, just before the
-launch. Players still get no line-of-sight check at fire time.
+Ability launch (`use_ability/handle.rs`) does not re-check an NPC's line
+of sight: the fight tick checks it in the same tick, just before the
+launch. Since NA31, a player's targeted ability is checked at fire time
+against the occluder and refused with `onErrorCode` 39; see
+[combat-system.md](combat-system.md#fire-time-line-of-sight).
 
 ### Rust: collision-geometry line of sight (NA27)
 
 A world that ships `data/spaces/<world>.occ` answers every NPC
-line-of-sight question from its collision geometry, eye to eye at 1.5 m
-(`space_manager/occlusion.rs`, decision D-NA13). The navmesh workarounds
-above do not apply there:
+line-of-sight question from its collision geometry, eye to eye
+(`space_manager/occlusion.rs`, decision D-NA13). Since NA31 each eye is at
+the being's body-set height (`resources.body_sets.eye_height`): 1.81 m for a
+human male, 2.12 m for a Jaffa male, 0.15 m for a rat, and 1.5 m for a
+body set with no measured mesh. See
+[being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md).
+The navmesh workarounds above do not apply there:
 
 | Check | With an occluder |
 |---|---|
@@ -584,7 +592,10 @@ about 1% of truly clear pairs read blocked, mostly rays grazing a wall
 edge. The Find Ambernol drone fires over the med-station desk, and
 `Hallway01_Guard` sees over its counter to 13.6 u. `Hallway02_Guard` does
 not see through the hallway walls. `npc_ai.los` rows say
-`source=occluder` with `eye_height_used = 1.5`. The file is paged: only the
+`source=occluder` with `eye_height_used` and `target_eye_height_used` (the
+two body-set eyes; NA27's measurements were taken at 1.5 m on both ends,
+and NA31 moved the eyes of Jaffa and humans higher, so they see over
+slightly more). The file is paged: only the
 64 m pages near players are unpacked (`npc_ai.occluder event=residency`).
 Details in
 [the NA27 worknote](../analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md).
@@ -604,7 +615,7 @@ The Python reference implemented none of this. The Rust server does (NA22); the 
 - **Who:** `entity_templates.use_cover`, or a hostile (`faction = 10`) NPC when it is NULL. Stationary NPCs, props and melee-only NPCs never take cover.
 - **Spawned in cover:** an NPC authored within 1.5 u of a cover marker spawns holding that slot and keeps it while its target is in front of the cover and in range.
 - **Seeking cover:** in a fight, an NPC takes the best free slot that reaches its target (within attack range less 2 u), whether or not it already has a shot. With a shot it walks at most 10 u, and after a seek that finds nothing it waits 4 s before looking again.
-- **In cover:** on reaching the slot the NPC stops with zero velocity, gains Cover Stance (ability 1451, +100 `COVER_DEFENSE`), and fires from the slot without chasing.
+- **In cover:** on reaching the slot the NPC stops with zero velocity, gains Cover Stance (ability 1451, +100 `COVER_DEFENSE`), and fires from the slot without chasing. In its slot it takes 10-60% less damage (25% for the typical slot, 35% with the stance) from shots the cover faces, and nothing off a flanking shot (NA32, D-NA15a, [combat-system.md](combat-system.md#cover-as-damage-reduction-na32)). An NPC holding its slot does not step back from a close target.
 - **Sight from cover (NA23):** an NPC at its slot looks from the slot's peek point past its prop, for aggro, assist and the shot alike. A wall past the cover still blocks. With no line it holds fire, and after 3 s gives the slot up. A slot is only picked if the NPC would have a shot from it.
 - **Leaving:** the slot and the stance go when the target flanks the cover (20 degrees past side-on, NA23) or leaves attack range, after 3 s with no shot, and on leash, death or surrender. A slot left as flanked, blind or unreachable is not re-taken by the same NPC for 6 s.
 - **Pose:** there is no server-to-client pose message. Whether the client crouches an NPC standing at a marker is an open owner experiment.

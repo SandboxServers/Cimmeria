@@ -15,15 +15,19 @@
 //! the NPC leaves the slot, leashes or dies ([`crate::cell::cover::stance`]).
 //!
 //! The magnitude is 100, from effect 4565's own description. The ability's
-//! "+200" is not used: the effect row is the thing that applies, and the
-//! difference is unexplained (NA20 Q5). A `CoverDefense` NVP on the effect
-//! row overrides it.
+//! "+200" is not used (D-NA15): the effect row is the thing that applies,
+//! and the ability tooltips disagree with their own effects elsewhere too
+//! (1452 "Duck and Cover" says "+100 Crouching Defense", its only effect
+//! 1743 says "+200 CoverDefense"). Effects 1746, 1747, 2003 and 4565 all
+//! say "+100". A `CoverDefense` NVP on the effect row overrides it, so the
+//! magnitude is tunable in the seed.
 //!
-//! **What the stat does today: nothing in combat.** `COVER_DEFENSE`
-//! (stat 67) is not read by the hit/defence resolution yet, so the stance
-//! is visible on the NPC (`.stats` in the GM console) but does not change
-//! a fight. Wiring cover defence into the QR roll belongs to the combat
-//! pipeline, not to cover.
+//! **What the stat does (NA32, D-NA15a).** Cover is a damage reduction
+//! rated by the node (10-60%). `COVER_DEFENSE` adds 0.1 percentage points
+//! per point inside that band, so the stance is +10 points, for a defender
+//! at its cover node facing the attacker, and nothing when the NPC is
+//! flanked ([`crate::cell::combat::cover_reduction`],
+//! `abilities/damage_apply/cover_roll.rs`).
 //!
 //! **Pose:** no server-to-client movement-type or pose message exists
 //! (D-NA10). Whether the client crouches an NPC that stands at a cover

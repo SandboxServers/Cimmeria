@@ -44,6 +44,10 @@
 //! - [`ability_range`] — per-ability min/max range gating, max_range=0
 //!   fallback, min-range backup waypoint, launch-failure retry schedule
 //!   + sweep, missing-def fallback, stationary no-backoff.
+//! - [`step_back`]     — NA32: a ranged NPC steps back from a target inside
+//!   its 2 u comfort range (not melee, stationary or in cover; flanked
+//!   yes), the 3 s cooldown, the dead-zone hold, and the landing and the
+//!   cornered case on the real `castle_cellblock.nav`.
 //! - [`stop_hygiene`]  — NA10: a stopped NPC is broadcast with zero
 //!   velocity, and the leash snap keeps the spatial grid in sync.
 //! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
@@ -79,12 +83,14 @@ mod leash_reset;
 mod leash_walk;
 mod melee_reach;
 mod occluder_los;
+mod occluder_los_eye_heights;
 mod off_mesh_sentry;
 mod path_robustness;
 mod selector;
 mod state_machine;
 mod stationary_facing;
 mod stationary_los;
+mod step_back;
 mod stop_hygiene;
 mod tick_row;
 mod zero_health_guard;

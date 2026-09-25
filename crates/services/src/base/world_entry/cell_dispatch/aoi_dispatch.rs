@@ -216,6 +216,22 @@ pub(super) async fn entered_aoi(
         .and_then(|m| m.get(&witness_id).copied());
     if let Some(addr) = witness_addr {
         if deferred_aoi::should_hold_entity_traffic(connected, addr) {
+            // NA34 observability: the introduction lifecycle has a "sent"
+            // seam (`aoi.create_emit`) and a "flushed" seam (this target,
+            // fired again from `deferred_flush::dispatch_segment`), but the
+            // buffering decision itself was silent — a witness stuck
+            // pre-`onClientReady` for an unusually long time left no trace
+            // of WHICH entities were queued and for how long. Per
+            // (witness, observee) so a SigNoz query can pair this row with
+            // its later `flushed_on_ready` row by (witness_id, entity_id).
+            tracing::debug!(
+                target: "aoi.introduce",
+                witness_id,
+                entity_id,
+                is_player = player_data.is_some(),
+                outcome = "deferred_not_ready",
+                "AoI introduce: witness pre-onClientReady, buffering entity introduction"
+            );
             deferred_aoi::push_deferred(
                 connected,
                 addr,

@@ -48,6 +48,7 @@ mod fallible_handlers;
 mod gm_grant_arms;
 mod passthrough;
 mod stargate_fanout;
+mod two_player_visibility;
 mod witness_broadcast;
 
 /// Empty maps shared by routing tests that don't need a session installed.

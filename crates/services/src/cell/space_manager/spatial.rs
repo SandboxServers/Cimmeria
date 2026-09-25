@@ -52,7 +52,7 @@ impl SpaceManager {
             return LineOfSight::Unknown;
         };
         if let Some(occ) = &space.occluder {
-            let (ea, eb) = (super::eye_height(a), super::eye_height(b));
+            let (ea, eb) = (self.eye_height_of(a), self.eye_height_of(b));
             let probe = super::occluder_probe(occ, a.position, ea, b.position, eb);
             los::report(
                 self,
@@ -64,6 +64,7 @@ impl SpaceManager {
                 LosSource::Occluder {
                     hash: occ.short_hash(),
                     eye_height: ea,
+                    target_eye_height: eb,
                 },
                 "npc",
                 std::time::Instant::now(),

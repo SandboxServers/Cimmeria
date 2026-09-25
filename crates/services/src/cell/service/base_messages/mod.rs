@@ -148,6 +148,7 @@ pub(super) async fn handle_base_message(
             access_level,
             known_stargates,
             character_name,
+            body_set,
         } => {
             // Cache the display name on the cell entity so cell-side seams (GM
             // `.`-console audit, mission/death/respawn Discord emits) can
@@ -175,6 +176,12 @@ pub(super) async fn handle_base_message(
                 // freshly-learned list — overwrites the pre-travel snapshot
                 // instead of leaving the old one in place.
                 entity.known_stargates = known_stargates;
+                // Body set, for the line-of-sight eye height (NA31). Only NPC
+                // AoI data reads `body_set` on the wire side, so setting it on
+                // a player changes no packet.
+                if body_set.is_some() {
+                    entity.body_set = body_set;
+                }
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently

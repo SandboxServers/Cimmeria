@@ -149,6 +149,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
             access_level: 0,
             known_stargates: vec![3, 41],
             character_name: Some("Daniel".into()),
+            body_set: Some("BS_JaffaMale.BS_JaffaMale".into()),
         },
         &tx,
         &mut mgr,
@@ -178,6 +179,16 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
         vec![3, 41],
         "InitPlayerState must carry the address book onto the cell entity",
     );
+    // NA31: the body set drives the player's line-of-sight eye height.
+    mgr.body_set_eye_heights
+        .insert("BS_JaffaMale.BS_JaffaMale".into(), 2.12);
+    let player = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        player.body_set.as_deref(),
+        Some("BS_JaffaMale.BS_JaffaMale"),
+        "InitPlayerState must carry the body set onto the cell entity",
+    );
+    assert_eq!(mgr.eye_height_of(player), 2.12);
     assert_eq!(
         mgr.get_entity(1).unwrap().account_id,
         Some(6),

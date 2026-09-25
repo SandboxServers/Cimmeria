@@ -158,6 +158,16 @@ async fn entering_a_stargate_region_with_an_open_dial_travels() {
 
     assert!(dispatch(1, TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await);
 
+    // NA35: the crossing no longer emits `GateTravel` synchronously — it
+    // arms a `CROSSING_CINEMATIC_HOLD` (movement-locked) and defers to
+    // `crossing_tick`. Expire and drain the hold to reach the actual
+    // transition, mirroring `crate::cell::gate_travel::tests::dial_timer`.
+    mgr.pending_crossings
+        .get_mut(&1)
+        .expect("a crossing hold must be armed")
+        .travel_at = std::time::Instant::now() - std::time::Duration::from_millis(1);
+    crate::cell::gate_travel::crossing_tick(&tx, &mut mgr).await;
+
     let mut travelled = None;
     while let Ok(msg) = rx.try_recv() {
         if let CellToBaseMsg::GateTravel {
@@ -172,7 +182,8 @@ async fn entering_a_stargate_region_with_an_open_dial_travels() {
     assert_eq!(
         travelled,
         Some((1, "Harset".to_string())),
-        "entering the gate volume with an open dial must emit GateTravel"
+        "entering the gate volume with an open dial must emit GateTravel \
+         once the crossing hold elapses"
     );
     assert!(mgr.get_entity(1).is_none(), "cell entity torn down");
 }

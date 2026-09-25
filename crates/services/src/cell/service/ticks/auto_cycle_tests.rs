@@ -1,0 +1,571 @@
+//! Tests for `auto_cycle_tick` (split out of `auto_cycle.rs` to keep it
+//! under the 700-line cap).
+
+use super::*;
+use cimmeria_entity::abilities::AbilityDef;
+
+/// Empty chain engine for tests that don't exercise content chains.
+/// The kill-credit hook is a no-op when the resolved-action list is
+/// empty, so these tests don't need real chain content loaded.
+fn empty_engine() -> ChainEngine {
+    ChainEngine::new()
+}
+
+/// Shared fixture: one connected armed player and one target NPC,
+/// both in the same Castle space. Ability 7 is a 30-unit ranged
+/// ability with no ammo requirement — focuses the tests on loop
+/// semantics, not ammo.
+fn make_auto_cycle_mgr() -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.spawn_npc(50, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    // Hostile so the #444 player-attacker target-validity gate lets
+    // the auto-cycle re-fire reach this NPC.
+    if let Some(npc) = mgr.get_entity_mut(50) {
+        npc.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(100);
+        p.abilities.add_ability(7);
+        p.abilities.auto_cycle = true;
+        p.abilities.auto_cycle_ability_id = Some(7);
+        // Phase 2: the tick reads `current_target_id` (live) as
+        // the re-fire target — the cursor selection from
+        // `setTargetID`.
+        p.current_target_id = Some(50);
+        p.weapon_holstered = false;
+    }
+    mgr.connect_entity(1);
+    let _ = mgr.compute_aoi_changes();
+    mgr.ability_defs.insert(
+        7,
+        AbilityDef {
+            ability_id: 7,
+            name: "test".to_string(),
+            cooldown: 0.5,
+            warmup: 0.0,
+            flags: 0,
+            is_ranged: false,
+            min_range: 0,
+            max_range: 30,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            required_ammo: 0,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
+    mgr
+}
+
+/// With the cooldown clear and a live target, the tick re-fires
+/// the stashed ability via `handle_use_ability` — which starts a
+/// fresh cooldown. Pin: dropping the re-fire branch silently
+/// breaks the loop.
+#[tokio::test]
+async fn auto_cycle_tick_refires_when_cooldown_clear() {
+    let mut mgr = make_auto_cycle_mgr();
+    assert!(!mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    assert!(
+        mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+        "tick must re-invoke handle_use_ability when cooldown is clear"
+    );
+}
+
+/// With the cooldown in flight, the tick must NOT re-fire. The
+/// cooldown gate is the rate limiter — without it the tick would
+/// fire every 100 ms regardless of ability cooldown, turning a
+/// 2-second-cooldown weapon into a 10-Hz autocannon.
+#[tokio::test]
+async fn auto_cycle_tick_skips_when_on_cooldown() {
+    let mut mgr = make_auto_cycle_mgr();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities
+            .start_ability_cooldown(7, std::time::Duration::from_secs(60));
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    assert!(
+        rx.try_recv().is_err(),
+        "tick must not emit anything when stashed ability is on cooldown"
+    );
+}
+
+/// **Lomiada's 2026-06-04 18:16:08 burst regression.** When the
+/// player's weapon is mid-draw (`pending_attack_at = Some`), the
+/// auto-cycle tick MUST skip without re-invoking
+/// `handle_use_ability`. The handler's mid-draw gate would
+/// otherwise reject with `"weapon attack already queued
+/// (mid-draw), ignoring input"` on every 100 ms tick — observed
+/// 8 rejections in <1 s when the OOC re-holster timer fired
+/// mid-combat and the next press re-drew the weapon.
+///
+/// Reverting the `pending_attack_at.is_some()` skip in the
+/// eligibility filter trips this: the tick fires
+/// `handle_use_ability`, the mid-draw gate rejects it, but the
+/// cooldown timer also gets started by the call's commit-side
+/// effects (no — the gate fires BEFORE the cooldown stamp). So
+/// the cleanest pin is to assert that nothing was sent on the
+/// channel — same shape as the cooldown-skip test above.
+#[tokio::test]
+async fn auto_cycle_tick_skips_during_weapon_draw_window() {
+    let mut mgr = make_auto_cycle_mgr();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        // Mid-draw: pending_attack_at set well into the future so
+        // pending_attack_tick doesn't race with us. The tick must
+        // skip without invoking handle_use_ability.
+        p.pending_attack_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    assert!(
+        rx.try_recv().is_err(),
+        "tick must not emit anything when weapon is mid-draw — \
+         the mid-draw gate inside handle_use_ability would have \
+         rejected with a DEBUG line per 100 ms tick (8 rejections \
+         in <1 s on lomiada's 2026-06-04 18:16:08 burst pre-fix)",
+    );
+    // Loop stays armed — the pending_attack_tick will fire the
+    // deferred attack when the draw window elapses, then auto-
+    // cycle resumes.
+    let p = mgr.get_entity(1).unwrap();
+    assert!(
+        p.abilities.auto_cycle,
+        "mid-draw skip must NOT clear the loop — same correctness \
+         discipline as the cooldown skip",
+    );
+    assert!(
+        !p.abilities.is_on_cooldown(7),
+        "no useAbility invocation → no cooldown stamped",
+    );
+}
+
+/// When the stashed target has died, the tick clears the loop and
+/// broadcasts onStateFieldUpdate so the client un-highlights the
+/// button. Secondary safety net — the primary stop is the
+/// death-transition sweep — for targets that died without going
+/// through `apply_death_transition` (despawned by space cleanup).
+#[tokio::test]
+async fn auto_cycle_tick_clears_loop_when_target_dead() {
+    use crate::cell::combat::{BSF_AUTO_CYCLING, BSF_DEAD};
+    let mut mgr = make_auto_cycle_mgr();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.set_state_flag(BSF_AUTO_CYCLING);
+    }
+    if let Some(t) = mgr.get_entity_mut(50) {
+        t.set_state_flag(BSF_DEAD);
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let p = mgr.get_entity(1).unwrap();
+    assert!(!p.abilities.auto_cycle, "loop must be cleared");
+    assert_eq!(
+        p.state_field & BSF_AUTO_CYCLING,
+        0,
+        "BSF_AUTO_CYCLING must be cleared so the client un-highlights the button",
+    );
+
+    let mut saw_broadcast = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id: 1,
+            method_index,
+            ..
+        } = msg
+        {
+            if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                saw_broadcast = true;
+            }
+        }
+    }
+    assert!(
+        saw_broadcast,
+        "tick must broadcast onStateFieldUpdate when it clears the loop"
+    );
+}
+
+/// When the live target despawned entirely (no longer in the
+/// space manager), the tick treats it as gone and clears the
+/// loop. Same defensive sweep as the dead-target branch.
+#[tokio::test]
+async fn auto_cycle_tick_clears_loop_when_target_missing() {
+    use crate::cell::combat::BSF_AUTO_CYCLING;
+    let mut mgr = make_auto_cycle_mgr();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.set_state_flag(BSF_AUTO_CYCLING);
+        p.current_target_id = Some(99999);
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let p = mgr.get_entity(1).unwrap();
+    assert!(!p.abilities.auto_cycle);
+    assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+}
+
+/// Phase 2 live-target switch: player armed loop at NPC 50 then
+/// switched cursor to NPC 75 mid-loop. The tick must re-fire at
+/// 75, not 50.
+///
+/// Verification: after the tick, NPC 75 (LIVE target) should have
+/// player 1 on its `threat_list` from the `generate_threat` call
+/// inside `damage_apply`. NPC 50 (original) should NOT.
+#[tokio::test]
+async fn auto_cycle_tick_refires_at_live_current_target() {
+    use cimmeria_common::Vector3;
+    let mut mgr = make_auto_cycle_mgr();
+    mgr.spawn_npc(75, "Castle", [3.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    // Hostile so the #444 player-attacker gate lets the re-fire reach
+    // the switched-to live target.
+    if let Some(npc) = mgr.get_entity_mut(75) {
+        npc.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
+    // NPC 50 stands 2 u from 75 on the same faction, so NA14's same-room
+    // assist would pull it onto player 1 the moment 75 engages. Pin it
+    // NEUTRAL so threat on 50 can only come from a mis-aimed re-fire,
+    // which is what this test guards (the damage gate reads faction, not
+    // aggression, so a re-fire at 50 still lands).
+    if let Some(npc) = mgr.get_entity_mut(50) {
+        npc.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Neutral);
+    }
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.current_target_id = Some(75);
+        p.position = Vector3::new(0.0, 0.0, 0.0);
+    }
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let npc_b = mgr.get_entity(75).expect("NPC 75 should still exist");
+    assert!(
+        npc_b.threat_list.contains_key(&1),
+        "tick must re-fire at LIVE current_target (75) — threat_list should contain player 1"
+    );
+
+    let npc_a = mgr.get_entity(50).expect("NPC 50 should still exist");
+    assert!(
+        !npc_a.threat_list.contains_key(&1),
+        "tick must NOT re-fire at the original target (50) once the player has switched cursor"
+    );
+}
+
+/// Regression: target dies/deselects DURING the cooldown window
+/// must still clear the loop. The cooldown gate is a re-fire
+/// rate limiter, NOT a hold against the clear path.
+#[tokio::test]
+async fn auto_cycle_tick_clears_dead_target_even_while_on_cooldown() {
+    use crate::cell::combat::{BSF_AUTO_CYCLING, BSF_DEAD};
+    let mut mgr = make_auto_cycle_mgr();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.set_state_flag(BSF_AUTO_CYCLING);
+        p.abilities
+            .start_ability_cooldown(7, std::time::Duration::from_secs(60));
+    }
+    if let Some(t) = mgr.get_entity_mut(50) {
+        t.set_state_flag(BSF_DEAD);
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let p = mgr.get_entity(1).unwrap();
+    assert!(
+        !p.abilities.auto_cycle,
+        "dead target must clear the loop even while ability is on cooldown",
+    );
+    assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+}
+
+/// Target deselect (`current_target_id == None`) clears the loop.
+/// Player pressed escape / right-clicked empty space.
+#[tokio::test]
+async fn auto_cycle_tick_clears_loop_when_target_deselected() {
+    use crate::cell::combat::BSF_AUTO_CYCLING;
+    let mut mgr = make_auto_cycle_mgr();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.set_state_flag(BSF_AUTO_CYCLING);
+        p.current_target_id = None;
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let p = mgr.get_entity(1).unwrap();
+    assert!(
+        !p.abilities.auto_cycle,
+        "target deselect must clear the auto-cycle loop"
+    );
+    assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+}
+
+/// Tick is a no-op for players whose `auto_cycle == false`, even
+/// when stale stash data lingers. The eligibility filter must
+/// gate on `auto_cycle`, not on the presence of a stashed
+/// ability id.
+#[tokio::test]
+async fn auto_cycle_tick_skips_when_flag_not_armed() {
+    let mut mgr = make_auto_cycle_mgr();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities.auto_cycle = false;
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    assert!(!mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
+    assert!(rx.try_recv().is_err());
+}
+
+/// Regression: out-of-range targets must be skipped silently — no
+/// `handle_use_ability` invocation, no `onErrorCode` packet, no
+/// cooldown started. The loop stays armed so walking back into
+/// range resumes firing on the next tick.
+///
+/// Bug shape: without the pre-gate, every out-of-range tick
+/// invokes `handle_use_ability` → fails range → emits
+/// `onErrorCode(OutsideWeaponRange)`. At a 0.5s cooldown that's
+/// one error packet every ~600 ms while out of range — flooding
+/// the wire and the client's error UI.
+#[tokio::test]
+async fn auto_cycle_tick_skips_out_of_range_silently() {
+    use cimmeria_common::Vector3;
+    let mut mgr = make_auto_cycle_mgr();
+    // Move the target far beyond ability 7's 30-unit max_range
+    // (without despawning it, so the "missing target" branch
+    // doesn't trip).
+    if let Some(t) = mgr.get_entity_mut(50) {
+        t.position = Vector3::new(500.0, 0.0, 0.0);
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let p = mgr.get_entity(1).unwrap();
+    assert!(
+        p.abilities.auto_cycle,
+        "out-of-range must NOT clear the loop — player may walk back into range",
+    );
+    assert!(
+        !p.abilities.is_on_cooldown(7),
+        "out-of-range must not commit the fire (no cooldown started)",
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "out-of-range tick must be wire-silent — no onErrorCode, no onTimerUpdate",
+    );
+}
+
+/// NA31: a target that goes behind a wall gets one no-line-of-sight
+/// `onErrorCode` (39), then the loop waits silently, still armed, and fires
+/// again the moment the line clears. The notice re-arms once it has fired.
+///
+/// Bug shapes: without the gate the loop spams an error every cooldown
+/// (the refused shot starts no cooldown, so every 100 ms tick); without the
+/// one-shot notice the player gets no feedback at all.
+#[tokio::test]
+async fn auto_cycle_tick_tells_the_player_once_when_the_target_is_behind_a_wall() {
+    use cimmeria_common::Vector3;
+    let mut mgr = make_auto_cycle_mgr();
+    let sid = mgr.get_entity_space_id(1).unwrap();
+    mgr.spaces.get_mut(&sid).unwrap().occluder =
+        Some(crate::cell::space_manager::occluder_fixtures::corner());
+    mgr.get_entity_mut(1).unwrap().position = Vector3::new(5.0, 0.0, 10.0);
+    mgr.get_entity_mut(50).unwrap().position = Vector3::new(21.0, 0.0, 18.0);
+    let los_errors = |msgs: &[CellToBaseMsg]| {
+        msgs.iter()
+            .filter(|m| {
+                matches!(m, CellToBaseMsg::EntityMethodCall { entity_id: 1, method_index, args }
+                    if *method_index == crate::mercury::method_idx::ON_ERROR_CODE
+                        && args[5..] == [39, 0])
+            })
+            .count()
+    };
+    let drain = |rx: &mut mpsc::Receiver<CellToBaseMsg>| {
+        let mut v = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            v.push(m);
+        }
+        v
+    };
+    let (tx, mut rx) = mpsc::channel(256);
+
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+    assert_eq!(
+        los_errors(&drain(&mut rx)),
+        1,
+        "one notice on the first blocked tick"
+    );
+    for _ in 0..5 {
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+    }
+    assert!(drain(&mut rx).is_empty(), "then silent while blocked");
+    let p = mgr.get_entity(1).unwrap();
+    assert!(p.abilities.auto_cycle, "the loop stays armed");
+    assert!(!p.abilities.is_on_cooldown(7), "no refused shot commits");
+
+    // The target steps out from behind the wall: the loop fires.
+    mgr.get_entity_mut(50).unwrap().position = Vector3::new(21.0, 0.0, 25.0);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+    assert!(mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
+    assert_eq!(los_errors(&drain(&mut rx)), 0);
+
+    // Back behind it, cooldown over: a fresh notice.
+    mgr.get_entity_mut(50).unwrap().position = Vector3::new(21.0, 0.0, 18.0);
+    mgr.get_entity_mut(1)
+        .unwrap()
+        .abilities
+        .clear_all_cooldowns();
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+    assert_eq!(los_errors(&drain(&mut rx)), 1);
+}
+
+/// **Regression guard: auto-cycle kills must credit quest
+/// objectives.** Auto-cycle kills against a quest-tagged NPC must
+/// fire the content-engine `EntityDeath` event so KillCount-style
+/// mission objectives advance, exactly the way a manual right-
+/// click kill does.
+///
+/// Bug shape this catches: the tick used to call bare
+/// `handle_use_ability`, bypassing the kill-credit wrapper that
+/// the cell-method `USE_ABILITY` dispatch site wired around manual
+/// fires. Reverting the tick to `handle_use_ability` (instead of
+/// `handle_use_ability_with_kill_credit`) leaves the counter at
+/// `None` and fails this assertion.
+///
+/// Pinned via an end-to-end signal: register a chain that
+/// increments a counter on `EntityDeath(entity_tag=QuestTargetDrone)`
+/// and assert the counter incremented on the killer entity after
+/// the tick fires. This proves the full path — tick →
+/// `handle_use_ability_with_kill_credit` →
+/// `apply_damage_to_target` (kill detected) →
+/// `fire_entity_death` → chain engine resolve + execute.
+#[tokio::test]
+async fn auto_cycle_tick_credits_quest_kill_on_tagged_npc_death() {
+    use cimmeria_content_engine::actions::Action;
+    use cimmeria_content_engine::chain::Chain;
+    use cimmeria_content_engine::triggers::Trigger;
+    use cimmeria_entity::abilities::EffectDef;
+    use cimmeria_entity::stats::HEALTH;
+
+    const QUEST_TAG: &str = "QuestTargetDrone";
+    const COUNTER_NAME: &str = "drone_kills";
+
+    let mut mgr = make_auto_cycle_mgr();
+
+    // Give the ability a lethal effect so the tick's re-fire
+    // actually kills the NPC. `apply_damage_to_target` reads
+    // `HealthDamage` from the ability's effect NVPs; 9999 mirrors
+    // the lethal-fixture pattern in damage_apply/tests.rs.
+    let mut params = std::collections::HashMap::new();
+    params.insert("HealthDamage".to_string(), "9999".to_string());
+    mgr.effect_defs.insert(
+        100,
+        EffectDef {
+            effect_id: 100,
+            ability_id: 7,
+            delay: 0,
+            effect_sequence: 0,
+            event_set_id: None,
+            script_name: None,
+            params,
+            ..Default::default()
+        },
+    );
+    if let Some(ability) = mgr.ability_defs.get_mut(&7) {
+        ability.effect_ids = vec![100];
+    }
+
+    // Tag the NPC and seed it at 1 HP so the first re-fire kills
+    // it. Without the tag, `fire_entity_death` has no `entity_tag`
+    // to match against the chain trigger — the assertion would
+    // pass even with the bug present.
+    if let Some(npc) = mgr.get_entity_mut(50) {
+        npc.tag = Some(QUEST_TAG.to_string());
+        if let Some(stat) = npc.stats.get_mut(HEALTH) {
+            stat.update(0, 1, 100);
+            stat.clear_dirty();
+        }
+    }
+
+    // Register a minimal chain that increments a counter on the
+    // tagged death. The chain's resolved actions feed directly to
+    // the executor (no DB lookup); the counter lands on the
+    // killer entity's `counters` map per the `IncrementCounter`
+    // handler at executor/counter.rs.
+    let mut engine = ChainEngine::new();
+    engine.register_chain(Chain {
+        action_delays: Vec::new(),
+        id: 999_999,
+        name: "test: drone kill counter".to_string(),
+        enabled: true,
+        trigger: Trigger::OnEntityDeath {
+            entity_type: None,
+            entity_tag: Some(QUEST_TAG.to_string()),
+        },
+        conditions: vec![],
+        actions: vec![Action::IncrementCounter {
+            counter_name: COUNTER_NAME.to_string(),
+            amount: 1,
+        }],
+        priority: 0,
+    });
+
+    // Sanity: counter unset before the kill so the post-tick
+    // assertion is genuinely measuring the increment, not a stale
+    // value.
+    assert!(
+        !mgr.get_entity(1)
+            .unwrap()
+            .counters
+            .contains_key(COUNTER_NAME),
+        "test invariant: counter must start unset",
+    );
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &engine).await;
+
+    // Primary assertion: the kill credit landed. Reverting the
+    // tick to call `handle_use_ability` directly (the pre-fix
+    // shape) leaves this at None — the chain never resolves
+    // because `fire_entity_death` is never called.
+    assert_eq!(
+        mgr.get_entity(1).unwrap().counters.get(COUNTER_NAME),
+        Some(&1),
+        "auto-cycle kill of a quest-tagged NPC must increment the kill counter \
+         via fire_entity_death — bypassing the kill-credit wrapper \
+         (calling bare handle_use_ability from the tick) leaves this counter at None",
+    );
+
+    // Sanity: the NPC actually died (proves we exercised the kill
+    // path, not a chain that fires on non-lethal hits). The
+    // counter assertion above only fires if both (a) the kill
+    // happened AND (b) fire_entity_death ran; this second check
+    // disambiguates a future regression where the kill path
+    // broke but the counter assertion happened to pass via some
+    // other code path.
+    let target = mgr.get_entity(50).unwrap();
+    assert!(
+        crate::cell::combat::is_dead_state(target.state_field),
+        "test fixture: target must be dead after the lethal re-fire",
+    );
+}
