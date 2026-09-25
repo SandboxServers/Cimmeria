@@ -413,6 +413,7 @@ Implemented behaviour, decided in D-NA03 (corrected by D-NA10) of the [NPC AI re
 - Beyond the radius plus a 5 u hysteresis band, or more than 20 u above or below its spawn, the NPC always gives up (`trigger` `beyond_band` / `vertical_cap`).
 - Inside the band it keeps fighting a target it can already hit. It gives up only if it would have to chase further from home (`chase_outward`).
 - A target that dies, disconnects, or stays beyond the NPC's AoI radius for 5 s is dropped. When nobody is left, the NPC goes home (`target_lost`).
+- A player who dies leaves every NPC's threat list at the moment of death (`abilities::death::resolve_death` → `purge_dead_player_from_threat`), and a target carrying `BSF_DEAD` counts as dead whatever its HEALTH reads. A dead player cannot `useItem` (answered with `onErrorCode(0, 0, CONDITION_FEEDBACK_NotLiving)`, the legacy `@mustBeAlive` reply), so a medkit in the Defeat Window can no longer revive the killer's interest (NA24).
 
 The old metric was spawn-to-target in 3D. A player standing 49.9 u from the Cellblock Guard's spawn bounded every chase, and an aggressive NPC standing at its spawn leashed every 6 s against a player 60 u away (audit S3, S5).
 
@@ -618,7 +619,7 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Investigating state | DONE | `npc_ai_investigate` handler routes the NPC to a content-set `poi`, dwells 5s (`INVESTIGATE_DWELL_SECS`), returns to Idle. Reached via the `SetNpcPoi` content action; the `onNoise` cell-method hook for in-game audio is deferred. |
 | Patrol state | DONE | `npc_ai_patrol` walks the loop from `entity_templates.patrol_path_id` → `point_set_points`. Dwells `patrol_point_delay` at each waypoint. Threat preemption preserves `patrol_next_index` so the post-fight return resumes the route. |
 | Wander state | DONE | `npc_ai_wander` samples a random point within `wander_radius` of `spawn_position`, validates against the navmesh, dwells a random duration in `[wander_min_dwell_secs, wander_max_dwell_secs]`. Off-mesh candidates fall back to `spawn_position`. |
-| Follow state | DONE | `npc_ai_follow` maintains a distance band `[follow_min_distance, follow_max_distance]` to the target. Out of band → pathfind toward target; below min → hold (no back-away). Reached via the `SetFollowTarget` content action. |
+| Follow state | DONE | `npc_ai_follow` maintains a distance band `[follow_min_distance, follow_max_distance]` to the target. Out of band → pathfind toward target; below min → hold (no back-away). Reached via the `SetFollowTarget` content action. A `being`-class follower (Col Marsh, template 10) is ticked too: `ai_driven_npc_entity_ids` admits a `being` in Follow / Patrol / Wander / Investigating / Despawning / Submit / Error, never in Idle (props) or Fighting (NA24). |
 | Submit state | DONE | `npc_ai_submit` clears combat state (threat_list, BSF_IN_COMBAT, movement-type cache) and holds. Reached via the `SetNpcAiState` content action. |
 | Error state | DONE | `npc_ai_error` is a quiescent diagnostic state — handler is a no-op per tick. Reached via the `SetNpcAiState` content action or the `enterErrorAIState` slash command. |
 | Despawning state | DONE | `npc_ai_despawn` removes the entity from the space on entry; AoI fires the leave events to witnesses. Reached via the `SetNpcAiState` content action. |

@@ -123,3 +123,41 @@ fn the_gate_room_reaches_the_bravo_bunker() {
         end.distance_to(&to)
     );
 }
+
+/// Every seeded Castle (world 8) spawn stands on the mesh: `is_point_valid`
+/// (what the `npc_off_mesh` detector asks) and `find_path`'s tight start box
+/// both accept it. NA24 (UAT-1 D): `Castle_BravoOfficer3` at (970, 26, 478)
+/// sat 1.57 u outside the walkable edge and logged an off-mesh WARN every
+/// 30 s for as long as the zone was up. Revert proof: put the old row back
+/// and this names spawn 244.
+#[test]
+fn every_castle_spawn_is_on_the_mesh() {
+    let Some(mesh) = castle_nav() else { return };
+    let sql = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../db/resources/Worlds/Seed/spawnlist.sql"),
+    )
+    .expect("spawnlist seed");
+    let mut checked = 0;
+    let mut off = Vec::new();
+    for line in sql
+        .lines()
+        .filter(|l| l.starts_with("INSERT INTO spawnlist"))
+    {
+        // Every spawnlist INSERT leads with
+        // `spawn_id, x, y, z, heading, world_id, template_id, tag`.
+        let vals = line.split("VALUES (").nth(1).expect("VALUES list");
+        let f: Vec<&str> = vals.split(", ").collect();
+        if f[5].trim() != "8" {
+            continue;
+        }
+        let num = |i: usize| f[i].trim().parse::<f32>().expect("numeric column");
+        let p = v(num(1), num(2), num(3));
+        checked += 1;
+        if !mesh.is_point_valid(&p) || mesh.start_poly_snap(&p).is_none() {
+            off.push(format!("spawn {} {} at {p:?}", f[0], f[7]));
+        }
+    }
+    assert!(checked > 30, "parsed only {checked} world-8 spawns");
+    assert!(off.is_empty(), "off castle.nav: {off:#?}");
+}

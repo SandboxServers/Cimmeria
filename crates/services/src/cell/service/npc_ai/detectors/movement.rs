@@ -43,7 +43,7 @@ const GROUND_DEVIATION_WARN_INTERVAL: Duration = Duration::from_secs(5);
 /// NPC — the movement tick itself only visits NPCs with a path, and the
 /// stale-velocity case is precisely an NPC whose path was cleared.
 pub(in crate::cell) fn after_movement_tick(space_mgr: &mut SpaceManager, now: Instant) {
-    for npc_id in space_mgr.all_npc_entity_ids() {
+    for npc_id in space_mgr.ai_driven_npc_entity_ids() {
         let Some(e) = space_mgr.get_entity(npc_id) else {
             continue;
         };

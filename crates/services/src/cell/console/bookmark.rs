@@ -211,8 +211,12 @@ fn snapshot_entity(
         y_above_ground: ground_y.map(|g| e.position.y - g),
         on_navmesh: space_mgr.is_position_valid(eid, &e.position),
         has_los_to_caller: space_mgr.has_line_of_sight(eid, caller_eid),
-        caller_witnesses_it: e.witnesses.contains(&caller.entity_id),
-        witness_count: e.witnesses.len(),
+        // `witnesses` is the set of entities a *player* sees (only players
+        // get one), so reading it off an NPC always gave 0 / false (NA24,
+        // UAT-1 B). Ask the caller's own set, and count the players that
+        // have this entity in theirs -- the same query the fan-out uses.
+        caller_witnesses_it: caller.witnesses.contains(&e.entity_id),
+        witness_count: space_mgr.get_witnesses_of(eid).len(),
         health_cur: health.map_or(0, |s| s.cur),
         health_max: health.map_or(0, |s| s.max),
         state_field: e.state_field,

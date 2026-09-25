@@ -48,6 +48,11 @@
 //!   velocity, and the leash snap keeps the spatial grid in sync.
 //! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
 //!   killed by an effect script's HEALTH bleed does not shoot back.
+//! - [`dead_player_drop`] — NA24: a killed player leaves every threat list at
+//!   death, a healed corpse still counts as dead, and the respawned player is
+//!   not re-acquired by the retry sweep.
+//! - [`being_follower`] — NA24: a `being`-class follower (Col Marsh) is
+//!   ticked and walks; an Idle or Fighting being (a prop) is not.
 //!
 //! Uses a non-instanced `Castle` fixture rather than the parent
 //! `make_test_space_mgr` (Castle_CellBlock, instanced) so the NPC and
@@ -68,6 +73,8 @@ mod aggression;
 mod aggro_castle;
 mod assist;
 mod assist_castle;
+mod being_follower;
+mod dead_player_drop;
 mod leash_reset;
 mod leash_walk;
 mod melee_reach;

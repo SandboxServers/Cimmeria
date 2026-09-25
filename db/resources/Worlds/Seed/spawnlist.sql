@@ -504,7 +504,10 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- respawn_secs=120, same reasoning as Castle_Romney above.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (242, 955.0, 25.0, 475.0, 0, 8, 171, 'Castle_BravoOfficer1', NULL, 120);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (243, 965.0, 25.0, 485.0, 0, 8, 171, 'Castle_BravoOfficer2', NULL, 120);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (244, 970.0, 26.0, 478.0, 0, 8, 171, 'Castle_BravoOfficer3', NULL, 120);
+-- NA24 (UAT-1 D): officer 3 moved from (970, 26, 478), which sits 1.57 u outside castle.nav's
+-- walkable edge (a Humvee footprint), to the nearest interior floor point; it wrote an
+-- npc_off_mesh WARN every 30 s with nobody in Castle. Guarded by crates/entity/tests/castle_navmesh.rs.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (244, 968.0, 25.2, 477.0, 0, 8, 171, 'Castle_BravoOfficer3', NULL, 120);
 
 -- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- LOW confidence on the
 -- position, this is the weakest coordinate in the packet): objective 2794 ("(Option #1)

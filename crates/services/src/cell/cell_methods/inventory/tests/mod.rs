@@ -1,7 +1,7 @@
 //! Behaviour tests for the inventory cell-method dispatch surface,
 //! grouped by tested message: slot-swap, ammo-change, active-slot
 //! change (wire/choreography in `active_slot_change`, ability-side
-//! effects in `active_slot_abilities`), and move-item.
+//! effects in `active_slot_abilities`), move-item, and use-item.
 
 use cimmeria_entity::abilities::AbilityDef;
 
@@ -12,6 +12,7 @@ mod active_slot_change;
 mod ammo_change;
 mod move_item;
 mod slot_swap;
+mod use_item;
 
 fn make_test_space_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);

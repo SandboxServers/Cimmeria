@@ -95,10 +95,14 @@ pub(super) async fn select_target(
 
         let dropped = match space_mgr.get_entity(target_id) {
             None => Dropped::Gone,
+            // `BSF_DEAD` as well as HEALTH (NA24, UAT-1 A): a player corpse
+            // healed during the Defeat Window reads as alive by HEALTH alone,
+            // and the guard kept it as its target through the respawn.
             Some(t)
-                if t.stats
-                    .get(cimmeria_entity::stats::HEALTH)
-                    .is_none_or(|s| s.cur <= 0) =>
+                if crate::cell::combat::is_dead_state(t.state_field)
+                    || t.stats
+                        .get(cimmeria_entity::stats::HEALTH)
+                        .is_none_or(|s| s.cur <= 0) =>
             {
                 Dropped::Dead
             }
@@ -147,5 +151,67 @@ pub(super) async fn select_target(
         }
         super::leash::drop_threat_target(npc_id, target_id, tx, space_mgr).await;
         last_drop = Some(dropped);
+    }
+}
+
+/// Take a player who just died off every NPC's threat list, at the moment of
+/// death (NA24, UAT-1 A).
+///
+/// Before this the drop waited for each NPC's next fight pass, up to two
+/// seconds later, and was decided by reading the target's HEALTH. A dead
+/// player who used a medkit in that window read as alive, the pass kept it,
+/// the attack was refused (the target is dead), the 500 ms retry sweep kept
+/// the NPC `Fighting`, and after the respawn the NPC chased the living player
+/// across the floor. Purging here leaves nothing for a later pass — natural
+/// tick or retry sweep — to re-acquire; only a fresh aggro scan can engage the
+/// respawned player again, and that scan refuses dead candidates.
+///
+/// Each drop goes through [`super::leash::drop_threat_target`], so the corpse
+/// leaves the NPC's combat set exactly as a pruned target does. An NPC whose
+/// list runs dry starts its walk home now, with the same `target_dead`
+/// trigger [`select_target`] would have written.
+pub(in crate::cell) async fn purge_dead_player_from_threat(
+    player_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+
+    let holders: Vec<u32> = space_mgr
+        .all_entity_ids()
+        .into_iter()
+        .filter(|&eid| {
+            space_mgr
+                .get_entity(eid)
+                .is_some_and(|e| !e.is_player && e.threat_list.contains_key(&player_id))
+        })
+        .collect();
+    for npc_id in holders {
+        tracing::debug!(
+            target: "npc_ai",
+            event = "target_dropped",
+            npc_id,
+            target_id = player_id,
+            why = Dropped::Dead.label(),
+            "NPC AI: dropping threat target (target died)"
+        );
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.leash.target_lost_since = None;
+        }
+        super::leash::drop_threat_target(npc_id, player_id, tx, space_mgr).await;
+        let give_up = space_mgr
+            .get_entity(npc_id)
+            .is_some_and(|n| n.threat_list.is_empty() && n.ai_state() == AiState::Fighting);
+        if give_up {
+            super::leash::begin_leash(
+                npc_id,
+                super::AiTransitionReason::TargetLost,
+                Dropped::Dead.label(),
+                None,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
     }
 }
