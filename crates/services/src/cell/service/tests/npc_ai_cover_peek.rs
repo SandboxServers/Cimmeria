@@ -85,7 +85,12 @@ fn hallway02_guard() -> SpawnRecord {
 }
 
 fn mess_hall_guard2() -> SpawnRecord {
-    guard(28, "MessHall_Guard2", [-95.89, 34.591, -98.808], 2.094_267_4)
+    guard(
+        28,
+        "MessHall_Guard2",
+        [-95.89, 34.591, -98.808],
+        2.094_267_4,
+    )
 }
 
 /// A live player at `pos`, in the NPC's AoI, without touching the NPC.
