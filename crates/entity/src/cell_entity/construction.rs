@@ -13,7 +13,7 @@ use crate::abilities::AbilityManager;
 use crate::missions::MissionManager;
 use crate::stats::StatList;
 
-use super::{AiState, CellEntity, SystemOptions};
+use super::{AiState, CellEntity, SystemOptions, TreeProgress};
 
 impl CellEntity {
     /// Create a new cell entity at the given position in the given space.
@@ -123,6 +123,7 @@ impl CellEntity {
             destination_ring_id: None,
             counters: HashMap::new(),
             system_options: SystemOptions::default(),
+            tree_progress: TreeProgress::default(),
         }
     }
 }

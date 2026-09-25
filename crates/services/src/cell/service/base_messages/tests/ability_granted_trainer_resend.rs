@@ -15,8 +15,8 @@
 //! `trainable` flag from current state.
 
 use super::*;
+use crate::ability_tree::{AbilityTreeCatalog, TreeNode};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::spawner::ArchetypeAbilityTreeEntry;
 
 /// Seed: trainer offers two abilities — 597 (lvl 1, no prereqs) and 598
 /// (lvl 1, prereq = [597]). At t=0 the player knows nothing. 597 is
@@ -55,23 +55,11 @@ async fn ability_granted_resends_trainer_open_with_unlocked_prereq() {
 
     // Trainer list: 597 (lvl 1, no prereqs) + 598 (lvl 1, prereq=[597]).
     mgr.trainer_abilities.insert((1, 2), vec![597, 598]);
-    mgr.archetype_ability_trees.insert(
-        2,
-        vec![
-            ArchetypeAbilityTreeEntry {
-                ability_id: 597,
-                tree_index: 1,
-                level: 1,
-                prerequisite_abilities: vec![],
-            },
-            ArchetypeAbilityTreeEntry {
-                ability_id: 598,
-                tree_index: 1,
-                level: 1,
-                prerequisite_abilities: vec![597],
-            },
-        ],
-    );
+    crate::test_support::seed_ability_defs(&mut mgr, &[597, 598]);
+    mgr.ability_tree_catalog = AbilityTreeCatalog::from_nodes([
+        TreeNode::with_defaults(2, 1, 597, 1, vec![]),
+        TreeNode::with_defaults(2, 1, 598, 1, vec![597]),
+    ]);
 
     let (tx, mut rx) = mpsc::channel(32);
     let engine = ChainEngine::new();
@@ -263,23 +251,11 @@ async fn ability_granted_resends_even_when_not_a_prereq() {
 
     // Trainer offers 597 + 646, both lvl 1, neither a prereq of the other.
     mgr.trainer_abilities.insert((1, 2), vec![597, 646]);
-    mgr.archetype_ability_trees.insert(
-        2,
-        vec![
-            ArchetypeAbilityTreeEntry {
-                ability_id: 597,
-                tree_index: 1,
-                level: 1,
-                prerequisite_abilities: vec![],
-            },
-            ArchetypeAbilityTreeEntry {
-                ability_id: 646,
-                tree_index: 1,
-                level: 1,
-                prerequisite_abilities: vec![],
-            },
-        ],
-    );
+    crate::test_support::seed_ability_defs(&mut mgr, &[597, 646]);
+    mgr.ability_tree_catalog = AbilityTreeCatalog::from_nodes([
+        TreeNode::with_defaults(2, 1, 597, 1, vec![]),
+        TreeNode::with_defaults(2, 1, 646, 1, vec![]),
+    ]);
 
     let (tx, mut rx) = mpsc::channel(32);
     let engine = ChainEngine::new();

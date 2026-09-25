@@ -132,6 +132,14 @@ AbilityManager.useAbility()
 
 The warmup deadline gates **magazine refill timing**: a 100 ms `reload_completion_tick` checks `reload_complete_at` and calls `refill_active_slot()` (sets `current_ammo = clip_size`) when the deadline elapses. The fire-path does not promote pending refills — it only reads the current ammo. See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full sequence.
 
+## Ability Trees and Training
+
+Each archetype's training tree is `resources.archetype_ability_tree`. The cell loads it once at startup into `AbilityTreeCatalog` (`crates/services/src/ability_tree/`), joined to `resources.abilities.training_cost`. Beyond the original six columns, each node carries `required_branch_points` (default 0), `skill_point_cost` (default 1), `is_branch_root`, `is_capstone`, `branch_name` and `project_status`. The table is keyed on `(archetype, tree_index, ability_index)` and unique on `(archetype, ability_id)`; one ability can sit in several archetypes' trees.
+
+Whether a player may train a node is decided in one place, `evaluate_train`. The trainer window's `trainable` byte (`onTrainerOpen`) and the `trainAbility` purchase gate both call it, so a node the window enables is always a node the server accepts. Its gates run in order: the ability exists, the player is a loaded character, the ability is not already known (a silent no-op), it is in the player's archetype tree, and the player meets its level and prerequisites. Gate families live one per file under `ability_tree/gates/`.
+
+`sgw_player.trained_abilities` (trainer purchases only) and `sgw_player.tree_points_spent` (archetype-wide spend) are loaded onto the cell entity as `CellEntity::tree_progress` at world entry. Nothing reads or writes them yet.
+
 ## Data References
 
 - **Ability definitions**: 1,886 in `db/resources/Abilities/Seed/abilities.sql`

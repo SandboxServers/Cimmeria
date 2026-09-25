@@ -228,7 +228,7 @@ pub(crate) async fn handle_on_client_ready(
         bandolier_items,
         system_options,
         state_field,
-        known_stargates,
+        (known_stargates, tree_progress),
         body_set,
     ) = if let Some(pool) = db_pool {
         #[derive(sqlx::FromRow)]
@@ -238,13 +238,15 @@ pub(crate) async fn handle_on_client_ready(
             reload_on_activate: bool,
             state_field: i32,
             known_stargates: Vec<i32>,
+            trained_abilities: Vec<i32>,
+            tree_points_spent: i32,
             // The character's body set, for its line-of-sight eye height
             // on the cell (NA31).
             bodyset: Option<String>,
         }
         let row: Option<PlayerInitRow> = match sqlx::query_as::<_, PlayerInitRow>(
             "SELECT bandolier_slot, auto_reload, reload_on_activate, state_field, \
-                    known_stargates, bodyset \
+                    known_stargates, trained_abilities, tree_points_spent, bodyset \
                  FROM sgw_player WHERE player_id = $1",
         )
         .bind(pending.player_id)
@@ -271,7 +273,13 @@ pub(crate) async fn handle_on_client_ready(
                 // schema's non-negative CHECK), so the lossless cast
                 // back to the in-memory u32 bitmask is safe.
                 r.state_field as u32,
-                r.known_stargates,
+                (
+                    r.known_stargates,
+                    cimmeria_entity::cell_entity::TreeProgress {
+                        trained_abilities: r.trained_abilities,
+                        tree_points_spent: r.tree_points_spent,
+                    },
+                ),
                 r.bodyset,
             ),
             None => {
@@ -290,7 +298,7 @@ pub(crate) async fn handle_on_client_ready(
                     0,
                     cimmeria_entity::cell_entity::SystemOptions::default(),
                     0,
-                    Vec::new(),
+                    (Vec::new(), Default::default()),
                     None,
                 )
             }
@@ -309,7 +317,7 @@ pub(crate) async fn handle_on_client_ready(
             Vec::new(),
             cimmeria_entity::cell_entity::SystemOptions::default(),
             0,
-            Vec::new(),
+            (Vec::new(), Default::default()),
             None,
         )
     };
@@ -355,6 +363,7 @@ pub(crate) async fn handle_on_client_ready(
                 state_field,
                 access_level,
                 known_stargates,
+                tree_progress,
                 character_name: player_name.clone(),
                 body_set,
             })

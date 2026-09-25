@@ -21,7 +21,7 @@ use crate::stats::StatList;
 
 use super::{
     ActiveEffectInstance, AiState, BandolierItem, LeashState, LootItem, MobMovementType,
-    NpcInteractionType, SystemOptions,
+    NpcInteractionType, SystemOptions, TreeProgress,
 };
 
 /// The cell-side half of a game entity.
@@ -736,4 +736,8 @@ pub struct CellEntity {
     /// new server-synced options is mechanical — see
     /// [`SystemOptions::apply`].
     pub system_options: SystemOptions,
+
+    /// Ability-tree provenance (`sgw_player.trained_abilities`,
+    /// `tree_points_spent`), stamped by `InitPlayerState`.
+    pub tree_progress: TreeProgress,
 }

@@ -82,6 +82,15 @@ ALTER TABLE ONLY archetype_ability_tree
     ADD CONSTRAINT archetype_ability_tree_pkey PRIMARY KEY (archetype, tree_index, ability_index);
 
 --
+-- Name: archetype_ability_tree_archetype_ability_id_key; Type: CONSTRAINT; Schema: resources; Owner: -
+-- One node per ability per archetype. Deliberately NOT unique on
+-- ability_id alone: some abilities appear in more than one archetype's tree.
+--
+
+ALTER TABLE ONLY archetype_ability_tree
+    ADD CONSTRAINT archetype_ability_tree_archetype_ability_id_key UNIQUE (archetype, ability_id);
+
+--
 -- TOC entry 2926 (class 2606 OID 63201)
 -- Name: archetypes_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace: 
 --

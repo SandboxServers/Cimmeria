@@ -148,6 +148,10 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
             state_field: 0,
             access_level: 0,
             known_stargates: vec![3, 41],
+            tree_progress: cimmeria_entity::cell_entity::TreeProgress {
+                trained_abilities: vec![597, 646],
+                tree_points_spent: 2,
+            },
             character_name: Some("Daniel".into()),
             body_set: Some("BS_JaffaMale.BS_JaffaMale".into()),
         },
@@ -189,6 +193,14 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
         "InitPlayerState must carry the body set onto the cell entity",
     );
     assert_eq!(mgr.eye_height_of(player), 2.12);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().tree_progress,
+        cimmeria_entity::cell_entity::TreeProgress {
+            trained_abilities: vec![597, 646],
+            tree_points_spent: 2,
+        },
+        "InitPlayerState must carry the ability-tree provenance onto the cell entity",
+    );
     assert_eq!(
         mgr.get_entity(1).unwrap().account_id,
         Some(6),

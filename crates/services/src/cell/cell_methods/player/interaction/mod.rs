@@ -273,7 +273,7 @@ mod tests {
     /// and returns `None` without sending a duplicate frame.
     #[tokio::test]
     async fn trainer_interact_emits_exactly_one_on_trainer_open() {
-        use crate::cell::spawner::ArchetypeAbilityTreeEntry;
+        use crate::ability_tree::{AbilityTreeCatalog, TreeNode};
 
         let mut mgr = make_space_manager();
 
@@ -300,15 +300,9 @@ mod tests {
         }
         mgr.template_trainer_lists.insert(25, 1);
         mgr.trainer_abilities.insert((1, 2), vec![597]);
-        mgr.archetype_ability_trees.insert(
-            2,
-            vec![ArchetypeAbilityTreeEntry {
-                ability_id: 597,
-                tree_index: 1,
-                level: 1,
-                prerequisite_abilities: vec![],
-            }],
-        );
+        crate::test_support::seed_ability_defs(&mut mgr, &[597]);
+        mgr.ability_tree_catalog =
+            AbilityTreeCatalog::from_nodes([TreeNode::with_defaults(2, 1, 597, 1, vec![])]);
 
         let (tx, mut rx) = mpsc::channel(16);
         let engine = cimmeria_content_engine::chain::ChainEngine::new();
