@@ -69,6 +69,60 @@ pub(super) const MAX_DETAIL_NVERTS: u32 = 10_000_000;
 /// Upper bound on `detail_ntris`. Castle Cellblock: 3102.
 pub(super) const MAX_DETAIL_NTRIS: u32 = 10_000_000;
 
+/// Byte size of every fixed-width field in an XRC header, summed:
+/// 3 × f32 agent params, 4 × u32 counts, 2 × f32 grid config, 6 × f32
+/// bounds, 3 × u32 detail counts.
+const FIXED_HEADER_BYTES: u64 = 12 + 16 + 8 + 24 + 12;
+
+/// Largest `.nav` file [`super::NavMesh::load`] will open at all.
+///
+/// **Derived, not picked**: this is the exact on-disk size of a file
+/// whose every header count sits at its cap above, so it is the largest
+/// file the loader could legitimately parse to completion. Anything
+/// bigger is malformed by construction, and rejecting it on the
+/// `metadata` length — before the file is opened, let alone read —
+/// bounds the loader's cost on a corrupt or sparse deployment asset.
+///
+/// For scale, the largest shipped mesh (`castle.nav`, September 2026) is
+/// 3.4 MB, roughly 0.8% of this. The cap is loose on purpose: its job is
+/// to stop a pathological file, and the per-section [`check_count`] caps
+/// — which now run after ~60 bytes have been read, not after the whole
+/// file has been buffered — are what bound the actual allocations.
+pub(super) const MAX_NAV_FILE_BYTES: u64 = FIXED_HEADER_BYTES
+    + MAX_NVERTS as u64 * 3 * 2
+    + MAX_NPOLYS as u64 * MAX_NVP as u64 * 2 * 2
+    + MAX_NPOLYS as u64 * 2 // regs
+    + MAX_NPOLYS as u64 * 2 // flags
+    + MAX_NPOLYS as u64 // areas
+    + MAX_DETAIL_NMESHES as u64 * 4 * 4
+    + MAX_DETAIL_NVERTS as u64 * 3 * 4
+    + MAX_DETAIL_NTRIS as u64 * 4;
+
+/// Reject a `.nav` whose on-disk size exceeds [`MAX_NAV_FILE_BYTES`].
+///
+/// Same error shape and same `navmesh.load` negative log as
+/// [`check_count`], with `field = "file_bytes"`, so an operator sees one
+/// rejection vocabulary whether the file is too big or its header counts
+/// are.
+pub(super) fn check_file_size(len: u64) -> cimmeria_common::Result<u64> {
+    if len > MAX_NAV_FILE_BYTES {
+        tracing::error!(
+            target: "navmesh.load",
+            field = "file_bytes",
+            value = len,
+            max = MAX_NAV_FILE_BYTES,
+            reason = "file_too_large",
+            "rejected oversized .nav file without reading it -- space will be navmesh-less"
+        );
+        return Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
+            field: "file_bytes",
+            value: len,
+            reason: "exceeds the maximum size the XRC header caps allow",
+        });
+    }
+    Ok(len)
+}
+
 /// Validate a header count against its documented maximum and return the
 /// value on success. Used by [`super::NavMesh::load`] to reject hostile
 /// inputs before they reach a multiplication that could overflow into a

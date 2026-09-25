@@ -168,7 +168,15 @@ pub(crate) async fn handle_respawn(
     // Hard-reset state flags + their refcounts. A raw `state_field = 0`
     // would clear the bits but leave stale counters, which the next
     // ref-counted unset would interpret as still-positive.
+    //
+    // The persisted preference bits (`BSF_AutoCycling`) survive the reset:
+    // they are a player setting, not combat state, and a relog keeps them
+    // too. `BSF_AutoCycling` is a single-source flag that bypasses the
+    // ref-counted helpers, so the raw `|=` is the same write
+    // `InitPlayerState` uses to restore it.
+    let preference_bits = entity.state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK;
     entity.clear_all_state_flags();
+    entity.state_field |= preference_bits;
     entity.abilities.clear_all_cooldowns();
 
     // Re-establish the BSF_IN_COMBAT ↔ threatened_mobs invariant. The
@@ -211,12 +219,15 @@ pub(crate) async fn handle_respawn(
         .await;
     }
 
-    // Clear `state_field` on the owning client (lifts BSF_Dead /
-    // BSF_MovementLock / dead-cursor visuals).
+    // Drop the combat bits on the owning client (lifts BSF_Dead /
+    // BSF_MovementLock / dead-cursor visuals). The value is the entity's
+    // post-reset field — 0, or just the preserved preference bits — and the
+    // client applies it as an XOR delta against its cached copy, so the
+    // dead bits clear either way while `BSF_AutoCycling` stays untouched.
     crate::cell::abilities::send_entity_method(
         entity_id,
         crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-        0u32.to_le_bytes().to_vec(),
+        preference_bits.to_le_bytes().to_vec(),
         tx,
         space_mgr,
     )
@@ -308,6 +319,16 @@ pub(crate) async fn handle_respawn(
              (NPC respawn? this branch should be player-only)"
         );
     }
+
+    // The same pawn recreate that empties the inventory and the region list
+    // also empties the hotbar, the cached active bandolier slot, the mission
+    // journal and the client's cached `state_field`. Replay them the way
+    // `InitPlayerState` does on login, queued behind the reanchor on the
+    // same channel so they land after the client's creation transaction.
+    crate::cell::service::base_messages::player_init::resync_after_pawn_recreate(
+        entity_id, tx, space_mgr,
+    )
+    .await;
 }
 
 /// A respawner row sitting exactly at the world origin is an unauthored

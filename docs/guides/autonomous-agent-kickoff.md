@@ -205,7 +205,9 @@ Live-DB tests use a container you create per worktree and remove when done:
 docker run -d --name cimmeria-pg-N -e POSTGRES_USER=w-testing -e POSTGRES_PASSWORD=w-testing \
   -e POSTGRES_DB=sgw -p 127.0.0.1::5432 postgres:17.9
 until docker exec cimmeria-pg-N pg_isready -U w-testing -q; do sleep 1; done
-docker exec -i cimmeria-pg-N psql -q -U w-testing -d sgw < db/database.sql
+docker cp db cimmeria-pg-N:/dbload
+docker exec cimmeria-pg-N psql -q -U w-testing -d sgw -v ON_ERROR_STOP=1 -f /dbload/database.sql
+test "$(docker exec cimmeria-pg-N psql -q -U w-testing -d sgw -tAc "select count(*) from information_schema.tables where table_schema='resources';")" -gt 0
 export DATABASE_URL="postgres://w-testing:w-testing@127.0.0.1:$(docker port cimmeria-pg-N 5432/tcp | head -1 | awk -F: '{print $NF}')/sgw"
 # when finished with the issue:
 docker rm -f cimmeria-pg-N

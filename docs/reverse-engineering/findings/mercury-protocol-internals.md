@@ -312,7 +312,9 @@ Session 5b completed the full reverse engineering of the BigWorld Mercury networ
 
 #### MachineGuard Protocol (machine discovery over UDP)
 
-The BigWorld `MachineGuard` system enables process/machine discovery via broadcast UDP. All 13 message types are now fully documented:
+The BigWorld `MachineGuard` system enables process/machine discovery via broadcast UDP on port **`0x4E36` (decimal 20022)**, confirmed via `htons(0x4e36)` in `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0`. All 13 message types are now fully documented:
+
+> **Decimal-conversion correction (W-mercury-bible, 2026-05-14):** Earlier versions of this section paired the hex `0x4E36` with the decimal `19510`. That decimal is wrong — `0x4E36` is `20022` in decimal. Confirmed via `htons(0x4e36)` call at `ghidra://SGW.exe@0x015898c0` (only hit for the `36 4E 00 00` immediate in the entire binary). The corrected port is **20022**.
 
 | Type byte | Class | Address range |
 |-----------|-------|---------------|

@@ -24,7 +24,7 @@ pub(super) const SPECS: &[Spec] = &[
         1,
         1,
         Target::None,
-        "Move a named online player to the target's (or your) position/instance",
+        "Bring a named online player to your position/instance (your selection is ignored)",
     ),
     spec(
         "gotolocation",

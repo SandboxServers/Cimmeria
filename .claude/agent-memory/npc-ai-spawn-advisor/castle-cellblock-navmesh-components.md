@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> **STALE 2026-09-24:** #694 (2026-09-19) replaced this mesh with a rebuild from the client maps — 3,039 verts / 1,658 polys / **17 components** (`data/spaces/README.md`). The poly/component table below is for the OLD 2013 mesh; re-measure before relying on it.
+
 `data/spaces/castle_cellblock.nav` (2778 verts, 1479 polys, bmin `[-400,-500,-400]`,
 bmax `[400,500.6,400]`, cs 0.3, ch 0.2) flood-fills into **50 disconnected
 components**. Measured 2026-09-17 by parsing the XRC header + poly neighbor
