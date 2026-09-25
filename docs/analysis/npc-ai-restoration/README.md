@@ -44,6 +44,7 @@ The owner answered the design questions on 2026-09-24. Rows marked PROPOSED are 
 | D-NA07 | PROPOSED | **Ground NPCs server-side** (per-tick storey-aware height). Keep avatar-update variant 0x10. Do not use 0x18. | Binary evidence M6. Needs no client patch. |
 | D-NA08 | PROPOSED | **Aggro line of sight fails closed on `Unknown`**, while attack line of sight keeps failing open. | An off-mesh ray should not pull a mob through a wall, but a mob already fighting should not stop shooting because of a mesh hole. |
 | D-NA09 | PROPOSED | Default radii: aggro 18 u, assist 10 u, leash 50 u NPC-to-spawn with 5 u of hysteresis, vertical band 4 u. Each becomes an `entity_templates` column with these defaults, tuned at UAT. | These are starting values; the originals are unrecovered. |
+| D-NA10 | APPROVED (coordinator, 2026-09-25, under the owner's autonomous-run authorization) | **Correction to D-NA03 and D-NA05: there is no server-to-client movement-type message.** The walk home is shown by position and velocity alone, and the cover pose cannot come from movement type 0. The old `broadcast_movement_type` sent a truncated `onSequence` (witness method 1) and is now suppressed (NA10). 0x00deb660 is the GM `onShowPath` visualiser. | Ghidra evidence in NA10, [findings/npc-movement-pathfinding.md §11](../../reverse-engineering/findings/npc-movement-pathfinding.md). |
 
 ## Coordinator launch prompt
 
