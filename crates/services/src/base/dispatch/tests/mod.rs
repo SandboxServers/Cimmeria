@@ -7,5 +7,6 @@
 //! - [`chat_speaker_flags`]: `speaker_flags` GM/DND assembly, `CHAT_SET_DND`
 //!   set/clear/malformed handling, per-character DND reset, and `CHAT_SET_AFK`.
 
+mod chat_dnd_limit;
 mod chat_speaker_flags;
 mod routing_logging;

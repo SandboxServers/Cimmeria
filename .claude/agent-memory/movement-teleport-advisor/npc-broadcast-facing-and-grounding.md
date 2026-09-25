@@ -1,6 +1,6 @@
 ---
 name: npc-broadcast-facing-and-grounding
-description: Block on sight — pack_angle saturates negative yaw to due north, and we only ever send the FullPos avatar variant so the client never floor-snaps NPCs
+description: NPC broadcast facing/grounding notes — pack_angle north-snap fixed in #677; the "send OnGround 0x18 to ground NPCs" idea is WRONG (corrected 2026-09-24), 0x18 keeps the client's current height
 metadata:
   type: reference
 ---
@@ -11,6 +11,15 @@ metadata:
 > on `main`: `BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR = 0x10` is the only variant sent, so the
 > client never grounds NPCs. Defect 3 (movement type not broadcast on path start/stop) was not
 > re-verified. Line numbers are as of 2026-09-18.
+>
+> **Correction 2026-09-24 (NPC AI audit M4 and M6).** Defect 2's conclusion is **wrong**. OnGround
+> (`0x18`) does not ground anything: `FUN_00ddb830` writes `DAT_019d1a44` = **-13000.0f** (bytes
+> `00 20 4b c6`, not FLT_MAX) into Y, and `BW_client_entity_manager_6` (`0x00dd1859`) replaces a
+> sentinel component with the actor's **current client Location**. There is no ray-cast and no height
+> map. Sending `0x18` would pin every NPC at its creation height. Keep `0x10` and ground NPCs on the
+> server. Also, `get_navmesh_height` is not ground truth before NA01 (PR #774): it searched around
+> world Y = 0 and returned the wrong storey on multi-level meshes. Evidence:
+> `docs/analysis/npc-ai-restoration/evidence/npc-ground-audit.md` §B. The text below is kept as history.
 
 Three independent defects in the NPC position broadcast, all confirmed 2026-09-18 from the colo
 playtest. They compose into the long-standing "NPCs face the wrong way, walk up the air, moonwalk"

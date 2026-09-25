@@ -33,7 +33,7 @@
 //! duplicated rather than shared, because a small duplicate is cheaper
 //! than a merge conflict between two parallel branches. The shared,
 //! table-agnostic guards (no dialog claimed twice, no dialog both
-//! regenerated and patched) stay in `patch_tests.rs`.
+//! regenerated and patched) stay in `patch_tests/`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

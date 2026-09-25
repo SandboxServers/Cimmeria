@@ -29,7 +29,7 @@ mod gm_spawn;
 mod inventory_events;
 mod lab_console;
 mod lab_query;
-mod lifecycle;
+pub(in crate::cell::service) mod lifecycle;
 mod minigame;
 mod movement;
 pub(crate) mod player_init;

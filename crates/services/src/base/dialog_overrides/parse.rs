@@ -31,7 +31,10 @@
 //! Anything else returns `None`, and the caller keeps the canonical entry
 //! untouched rather than shipping a half-understood rewrite: a missing or
 //! malformed root, an unknown element, a missing required attribute, a
-//! non-numeric id, a `<Buttons>` outside a `<Screens>`, or non-UTF-8 bytes.
+//! non-numeric id, a `<Buttons>` outside a `<Screens>`, anything nested
+//! inside a `<Buttons>`, a `<Screens>` that is not a direct child of the
+//! root, an unmatched close tag, anything after the root closes,
+//! non-whitespace character data, or non-UTF-8 bytes.
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
@@ -45,13 +48,31 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
     let mut reader = Reader::from_str(text);
 
     let mut dialog: Option<CookedDialog> = None;
+    // Set by `</COOKED_DIALOG>`; nothing may follow the root.
+    let mut root_closed = false;
     // `Some` between `<Screens …>` and `</Screens>`; buttons land in it.
     let mut open_screen: Option<CookedScreen> = None;
+    // Between `<Buttons …>` and `</Buttons>`. A button has no children, so
+    // anything opened inside it is a hierarchy the client never ships.
+    let mut in_button = false;
 
     loop {
-        match reader.read_event() {
+        let event = reader.read_event().ok()?;
+        // Only whitespace, the declaration and comments may follow the
+        // root, and nothing may sit inside a button.
+        let structural = matches!(event, Event::Start(_) | Event::Empty(_) | Event::End(_));
+        if structural
+            && in_button
+            && !matches!(&event, Event::End(e) if e.name().as_ref() == b"Buttons")
+        {
+            return None;
+        }
+        if structural && root_closed {
+            return None;
+        }
+        match event {
             // ── Elements with a body ────────────────────────────────
-            Ok(Event::Start(e)) => match e.name().as_ref() {
+            Event::Start(e) => match e.name().as_ref() {
                 b"COOKED_DIALOG" => {
                     if dialog.is_some() {
                         return None; // second root
@@ -59,8 +80,9 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
                     dialog = Some(parse_root(&e)?);
                 }
                 b"Screens" => {
-                    if open_screen.is_some() {
-                        return None; // nested <Screens>
+                    // Directly under the root, never nested.
+                    if dialog.is_none() || open_screen.is_some() {
+                        return None;
                     }
                     open_screen = Some(parse_screen(&e)?);
                 }
@@ -68,12 +90,13 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
                     // `?` on `None` here is the "button outside a screen"
                     // rejection.
                     open_screen.as_mut()?.buttons.push(parse_button(&e)?);
+                    in_button = true;
                 }
                 _ => return None, // unknown element — refuse to guess
             },
 
             // ── Self-closing elements ───────────────────────────────
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
+            Event::Empty(e) => match e.name().as_ref() {
                 b"Screens" => {
                     if open_screen.is_some() {
                         return None;
@@ -89,27 +112,43 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
                 _ => return None,
             },
 
-            Ok(Event::End(e)) => match e.name().as_ref() {
+            Event::End(e) => match e.name().as_ref() {
                 b"Screens" => {
                     // `None` means a `</Screens>` with nothing open.
                     let screen = open_screen.take()?;
                     dialog.as_mut()?.screens.push(screen);
                 }
-                b"Buttons" | b"COOKED_DIALOG" => {}
+                b"Buttons" => {
+                    if !in_button {
+                        return None;
+                    }
+                    in_button = false;
+                }
+                b"COOKED_DIALOG" => {
+                    if dialog.is_none() || open_screen.is_some() {
+                        return None;
+                    }
+                    root_closed = true;
+                }
                 _ => return None,
             },
 
             // Whitespace between elements (the QA newline after the XML
-            // declaration) and the declaration itself are not content.
-            Ok(Event::Text(_)) | Ok(Event::Decl(_)) | Ok(Event::Comment(_)) => {}
-            Ok(Event::Eof) => break,
-            Ok(_) => return None,
-            Err(_) => return None,
+            // declaration) is not content; any other character data is a
+            // shape the emitter could not reproduce, so refuse it.
+            Event::Text(t) => {
+                if !t.iter().all(u8::is_ascii_whitespace) {
+                    return None;
+                }
+            }
+            Event::Decl(_) | Event::Comment(_) => {}
+            Event::Eof => break,
+            _ => return None,
         }
     }
 
-    if open_screen.is_some() {
-        return None; // unterminated <Screens>
+    if open_screen.is_some() || !root_closed {
+        return None; // unterminated <Screens> or root
     }
     dialog
 }
@@ -367,6 +406,30 @@ mod tests {
                 "unknown child element",
                 "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"1\" KismetEventSetID=\"0\" \
                  UIScreenType=\"2\"><Mystery/></COOKED_DIALOG>",
+            ),
+            (
+                "Buttons nested inside Buttons",
+                "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"1\" KismetEventSetID=\"0\"                  UIScreenType=\"2\"><Screens SpeakerID=\"0\" ScreenID=\"1\" Text=\"a\">                 <Buttons ButtonType=\"2\" ButtonID=\"8\" Text=\"A\">                 <Buttons ButtonType=\"2\" ButtonID=\"9\" Text=\"B\"></Buttons>                 </Buttons></Screens></COOKED_DIALOG>",
+            ),
+            (
+                "Screens nested inside Buttons",
+                "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"1\" KismetEventSetID=\"0\"                  UIScreenType=\"2\"><Screens SpeakerID=\"0\" ScreenID=\"1\" Text=\"a\">                 <Buttons ButtonType=\"2\" ButtonID=\"8\" Text=\"A\">                 <Screens SpeakerID=\"0\" ScreenID=\"2\" Text=\"b\"/>                 </Buttons></Screens></COOKED_DIALOG>",
+            ),
+            (
+                "stray </Buttons> with none open",
+                "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"1\" KismetEventSetID=\"0\"                  UIScreenType=\"2\"><Screens SpeakerID=\"0\" ScreenID=\"1\" Text=\"a\">                 <Buttons ButtonType=\"2\" ButtonID=\"8\" Text=\"A\"/></Buttons>                 </Screens></COOKED_DIALOG>",
+            ),
+            (
+                "non-whitespace character data inside a screen",
+                "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"1\" KismetEventSetID=\"0\"                  UIScreenType=\"2\"><Screens SpeakerID=\"0\" ScreenID=\"1\" Text=\"a\">                 stray body text</Screens></COOKED_DIALOG>",
+            ),
+            (
+                "element after the root closed",
+                "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"1\" KismetEventSetID=\"0\"                  UIScreenType=\"2\"></COOKED_DIALOG><Screens SpeakerID=\"0\" Text=\"a\"/>",
+            ),
+            (
+                "unterminated root",
+                "<COOKED_DIALOG DialogFlags=\"0\" DialogID=\"1\" KismetEventSetID=\"0\"                  UIScreenType=\"2\"><Screens SpeakerID=\"0\" ScreenID=\"1\" Text=\"a\">                 </Screens>",
             ),
             (
                 "unterminated Screens",

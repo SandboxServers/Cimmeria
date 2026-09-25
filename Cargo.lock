@@ -712,9 +712,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.5"
+version = "1.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "005ec2760ca554fae18df7a11195552ec576cd665632a881bc011d5bb2fd4d80"
+checksum = "a3eb0f42d6c360dc3f8a821f6bf2fdea7f72bfd36b3076eb0e6d1e9e0752fff4"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -804,7 +804,7 @@ name = "cimmeria-admin-api"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "cimmeria-commands",
@@ -828,7 +828,7 @@ dependencies = [
  "utoipa",
  "utoipa-swagger-ui",
  "uuid",
- "zip",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -993,9 +993,9 @@ name = "cimmeria-lab"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "cimmeria-client-launch",
- "png 0.17.16",
+ "png 0.18.1",
  "reqwest 0.13.4",
  "rmcp",
  "serde",
@@ -1076,7 +1076,7 @@ name = "cimmeria-scene-editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "cimmeria-upk",
  "cimmeria-upk-objects",
  "image",
@@ -1151,7 +1151,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
- "zip",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -1284,12 +1284,6 @@ checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
 ]
-
-[[package]]
-name = "const-oid"
-version = "0.9.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "const-oid"
@@ -1534,14 +1528,14 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "curve25519-dalek"
-version = "4.1.3"
+version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
+checksum = "b5eed333089e2e1c1ac8c6c0398e5e2497b4c9926ca6d0365ed1e099afa5bc23"
 dependencies = [
  "cfg-if",
- "cpufeatures 0.2.17",
+ "cpufeatures 0.3.0",
  "curve25519-dalek-derive",
- "digest 0.10.7",
+ "digest 0.11.3",
  "fiat-crypto",
  "rustc_version",
  "subtle",
@@ -1664,11 +1658,11 @@ checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
 
 [[package]]
 name = "der"
-version = "0.7.10"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
+checksum = "a878c850e9e421b20262e9b41f9c860e4785fa07541c266b62ff9d1ef998a80a"
 dependencies = [
- "const-oid 0.9.6",
+ "const-oid",
  "zeroize",
 ]
 
@@ -1757,7 +1751,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer 0.12.0",
- "const-oid 0.10.2",
+ "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
 ]
@@ -1943,24 +1937,25 @@ dependencies = [
 
 [[package]]
 name = "ed25519"
-version = "2.2.3"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
+checksum = "29fcf32e6c73d1079f83ab4d782de2d81620346a5f38c6237a86a22f8368980a"
 dependencies = [
  "pkcs8",
- "signature",
+ "signature 3.0.0",
 ]
 
 [[package]]
 name = "ed25519-dalek"
-version = "2.2.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
+checksum = "6ebaa1a2bf1290ab3bfe5a7b771d050ebffab2711c19a81691c683a5144a25de"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
  "serde",
- "sha2 0.10.9",
+ "sha2 0.11.0",
+ "signature 3.0.0",
  "subtle",
  "zeroize",
 ]
@@ -2254,9 +2249,9 @@ checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
 name = "fiat-crypto"
-version = "0.2.9"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
 name = "field-offset"
@@ -3560,17 +3555,17 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "11.0.0"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "881733cbc631fc9e472e24447ce32a64bedf2da498d6d8570b08edc87de71f65"
+checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",
  "js-sys",
- "pem",
+ "pem 3.0.6",
  "serde",
  "serde_json",
- "signature",
+ "signature 2.2.0",
  "simple_asn1",
  "zeroize",
 ]
@@ -4761,6 +4756,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pem"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
+dependencies = [
+ "base64 0.23.1",
+ "serde_core",
+]
+
+[[package]]
 name = "peniko"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4860,9 +4865,9 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pkcs8"
-version = "0.10.2"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
+checksum = "451913da69c775a56034ea8d9003d27ee8948e12443eae7c038ba100a4f21cb7"
 dependencies = [
  "der",
  "spki",
@@ -5321,11 +5326,11 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "rcgen"
-version = "0.14.8"
+version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57f6d249aad744e274e682777a50283a225a32705394ee6d5fcc01efa25e4055"
+checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
- "pem",
+ "pem 4.0.0",
  "ring",
  "rustls-pki-types",
  "time",
@@ -6143,7 +6148,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "winres",
  "wiremock",
- "zip",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -6223,6 +6228,12 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "rand_core 0.6.4",
 ]
+
+[[package]]
+name = "signature"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28d567dcbaf0049cb8ac2608a76cd95ff9e4412e1899d389ee400918ca7537f5"
 
 [[package]]
 name = "simd-adler32"
@@ -6372,9 +6383,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -6439,9 +6450,9 @@ dependencies = [
 
 [[package]]
 name = "spki"
-version = "0.7.3"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
+checksum = "1d9efca8738c78ee9484207732f728b1ef517bbb1833d6fc0879ca898a522f6f"
 dependencies = [
  "base64ct",
  "der",
@@ -7703,6 +7714,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-path"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7923,7 +7940,7 @@ dependencies = [
  "serde_json",
  "url",
  "utoipa",
- "zip",
+ "zip 3.0.0",
 ]
 
 [[package]]
@@ -9514,6 +9531,20 @@ dependencies = [
  "flate2",
  "indexmap 2.14.0",
  "memchr",
+ "zopfli",
+]
+
+[[package]]
+name = "zip"
+version = "8.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap 2.14.0",
+ "memchr",
+ "typed-path",
  "zopfli",
 ]
 

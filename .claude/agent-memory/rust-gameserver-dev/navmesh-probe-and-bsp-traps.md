@@ -60,3 +60,17 @@ build moved the mesh from 45,115 verts / 21,799 polys to 45,200 /
 21,801 — 85 vertices *more*. A huge flat sheet is a handful of polygons;
 deleting it lets the geometry underneath contour separately. Do not
 reach for geometry filtering to fix a Recast budget overflow.
+
+## castle_cellblock's smallest storey gap is ~7.9, not 12
+
+A 2-unit grid sweep (NA01, 2026-09-24: per XZ, step Y through the mesh
+with a `[0.01, 0.6, 0.01]` `findNearestPoly` box and keep hits whose
+closest point equals the query XZ) found the tightest stacked column at
+(-194, -156): floors 55.54 and 63.40. 3 columns in the 6-8 bin, 630 in
+8-10. So a `±4` height-search box (`NavMesh::get_height_near`) reaches
+the other storey once the reference Y is >3.9 off its floor; Detour then
+still picks the nearer one, which is the right answer.
+
+**How to apply:** any per-storey Y window (NA11's ground clamp, spawn
+snap) must stay below ~3.9 half-height on this mesh, or be re-probed.
+Reuse the sweep above; it runs in ~3 s in a debug test.

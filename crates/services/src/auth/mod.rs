@@ -28,6 +28,7 @@ pub use service::AuthService;
 pub use tls::{TlsCertStore, TlsError, TlsListener};
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -119,6 +120,10 @@ pub struct PendingLogin {
     pub ticket: String,
     /// 64-char uppercase hex session key (32-byte AES-256 key).
     pub session_key: String,
+    /// Source IP the Phase-2 shard selection came from. Cross-checked at
+    /// Phase 3: a ticket consumed from a different IP is logged as a
+    /// possible stolen-session replay (issue #442).
+    pub client_ip: IpAddr,
     /// When this ticket was created (for expiration).
     pub created: Instant,
 }
@@ -138,7 +143,29 @@ struct SessionRecord {
     account_id: u32,
     access_level: u32,
     account_name: String,
+    /// Source IP the Phase-1 login came from. Cross-checked at Phase 2: a
+    /// SID consumed from a different IP is logged as a possible
+    /// stolen-session replay (issue #442).
+    client_ip: IpAddr,
     created: Instant,
+}
+
+/// Compare two client IPs for cross-phase session binding, normalising the
+/// IPv4-mapped-IPv6 form (`::ffff:127.0.0.1`) to plain IPv4 so a
+/// dual-stack listener does not false-positive on the same physical client
+/// (issue #442 caveat).
+pub(crate) fn client_ips_match(a: IpAddr, b: IpAddr) -> bool {
+    normalize_ip(a) == normalize_ip(b)
+}
+
+fn normalize_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6
+            .to_ipv4_mapped()
+            .map(IpAddr::V4)
+            .unwrap_or(IpAddr::V6(v6)),
+        _ => ip,
+    }
 }
 
 /// Request-extension marker inserted only by the TLS listener's middleware.
@@ -160,4 +187,44 @@ struct HandlerState {
     db: Option<Arc<PgPool>>,
     login_tx: Option<broadcast::Sender<LoginEvent>>,
     login_buffer: Option<LoginEventBuffer>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::client_ips_match;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn same_ipv4_matches() {
+        let a: IpAddr = Ipv4Addr::new(203, 0, 113, 20).into();
+        let b: IpAddr = Ipv4Addr::new(203, 0, 113, 20).into();
+        assert!(client_ips_match(a, b));
+    }
+
+    #[test]
+    fn ipv4_mapped_ipv6_normalises_to_ipv4() {
+        // A dual-stack listener reports an IPv4 peer as the mapped form
+        // `::ffff:203.0.113.20`. Comparing it against the bare IPv4 must
+        // NOT false-positive (issue #442 caveat).
+        let plain: IpAddr = Ipv4Addr::new(203, 0, 113, 20).into();
+        let mapped: IpAddr = Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xcb00, 0x7114).into();
+        assert!(client_ips_match(plain, mapped));
+        assert!(client_ips_match(mapped, plain));
+    }
+
+    #[test]
+    fn distinct_ips_do_not_match() {
+        let a: IpAddr = Ipv4Addr::new(203, 0, 113, 20).into();
+        let b: IpAddr = Ipv4Addr::new(198, 51, 100, 10).into();
+        assert!(!client_ips_match(a, b));
+    }
+
+    #[test]
+    fn ipv6_vs_ipv4_mapped_ipv6_do_not_match() {
+        // A genuine IPv6 address (e.g. 2001:db8::1) must not match a
+        // mapped IPv4 literal even though both are v6-typed on the wire.
+        let v6: IpAddr = "2001:db8::1".parse().unwrap();
+        let mapped: IpAddr = Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xcb00, 0x7114).into();
+        assert!(!client_ips_match(v6, mapped));
+    }
 }

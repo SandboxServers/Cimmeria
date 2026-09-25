@@ -398,6 +398,32 @@ Ensure the `SourceID` field is always populated with the entity's BigWorld entit
 `onTimerUpdate` timer types 0–3. An empty or zero `SourceID` will cause the cooldown handler to silently
 discard the update.
 
+> **Verified in Cimmeria**: 2026-09-19 (audit tracked by issue #272)
+>
+> Every cooldown-type `onTimerUpdate` emit path that exists in `crates/services` today populates
+> `SourceID` with the source entity's BigWorld entity ID, so the client's `SourceID == local entityId`
+> gate passes for player-self cooldowns.
+>
+> | Emit path | `Type` | `SourceID` passed | Routing | Client outcome |
+> |---|---|---|---|---|
+> | `cell/abilities/use_ability/handle.rs` `handle_use_ability` | `TIMER_ABILITY_COOLDOWN` (2) | the ability user's `entity_id` | `send_entity_method` — player to own client, NPC to AoI witnesses | player-self: passes; NPC: discarded on the witness client by design (the cooldown bar is local-player-only) |
+> | `cell/cell_methods/player/world/reload.rs` `handle_reload` | `TIMER_ABILITY_COOLDOWN` (2) | the reloading player's `entity_id` | direct `EntityMethodCall` to the player's own base | passes |
+> | `cell/console/net.rs` `.net_timer` (GM command) | caller-supplied | the caller's entity ID | direct to caller | passes |
+>
+> - No sender exists for `TIMER_ABILITY_WARMUP` (1) or `TIMER_CATEGORY_COOLDOWN` (8) today, so no
+>   further cooldown-type path is in scope. The type-8 absence is a parity gap, not just an absence:
+>   `AbilityManager.py` sends a second `onTimerUpdate` per `monikerId` with `CategoryCooldown`, and its
+>   `TotalTime` is `abilityCooldown + abilityWarmup`, not the cooldown alone.
+> - `cell/service/base_messages/player_init/mod.rs` deliberately wipes all cooldowns on world entry and
+>   sends no per-ability timers, so login has nothing to verify.
+> - Original-server parity: `deprecated/python/cell/AbilityManager.py` sends `AbilityCooldown` (2) and
+>   `CategoryCooldown` (8) with `ent.entityId` as `SourceID` — the semantics Cimmeria implements.
+> - The `.net_timer` GM command used to hand-roll a 17-byte buffer without `SecondaryId`; #734 (#719)
+>   restored the 21-byte `SGWBeing.def` layout. `SourceID` was in the right slot either way.
+> - **Scope**: this note verifies the `SourceID` *field value* only. The per-type semantic labels in
+>   the timer-type table above are inferred (the binary handler has no type-based early return); they
+>   are not re-verified here.
+
 ### Issue — ConfirmEffect must use "aEffectId" and "aAccepted" field names
 
 The binary at `0x00c8c820` sets exactly two fields: `"aEffectId"` (int) and `"aAccepted"` (bool).

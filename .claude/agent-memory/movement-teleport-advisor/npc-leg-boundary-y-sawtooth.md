@@ -9,6 +9,13 @@ metadata:
 > `get_navmesh_height` has zero production callers is no longer true: #680 calls it from
 > `ticks/npc_movement.rs`. Whether that removes the measured 0.15–0.18u per-leg bob has not been
 > re-measured against telemetry. The poly-mesh vs detail-mesh explanation stands.
+>
+> **Correction 2026-09-24 (NPC AI audit M4 and M6).** `get_navmesh_height` is **not** usable ground
+> truth before NA01 (PR #774). `NavMesh::get_height_at` centred its Detour search at world Y = 0 with
+> ±500 extents, so on multi-storey meshes it returned the wrong storey (397 of 855 colo samples read
+> whole-storey offsets). Use the storey-aware query from #774. The "cheaper fix on the wire" bullet
+> below is also wrong: OnGround keeps the client's current height and never ray-casts
+> (see [[npc-broadcast-facing-and-grounding]]).
 
 **Measured 2026-09-18 from colo `movement.npc` telemetry.** Across every NPC in the session, Detour
 `findStraightPath` returns **intermediate** corners on a 0.1-grid (X, Z **and Y**) while the **final**
