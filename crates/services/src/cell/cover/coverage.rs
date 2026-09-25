@@ -1,183 +1,133 @@
-//! `cover.coverage event=space_summary`: does this space have any cover an
-//! NPC could stand on?
+//! `cover.coverage event=space_summary`: can the NPCs in this space use any
+//! cover at all?
 //!
-//! The cover index is one global, unscoped set of nodes. Today's seed is
-//! per-prefab template data in prefab-local coordinates, not level
-//! placements (audit C1), so the nodes land wherever their local offsets
-//! happen to point. One line per space at load says whether an NPC there
-//! can use any of them.
+//! One line per space, once the space has its NPCs and the cover index has
+//! loaded: the startup spaces after `SpaceManager::cover_loaded`, and each
+//! instanced space after `spawn_instance_npcs_from_records`. It reads the
+//! world-scoped index (NA21): the nodes of the space's world, how many of
+//! them stand on the space's navmesh, and how many NPCs there would use
+//! cover.
 //!
-//! "On mesh" is the pathfinder's own test: a node counts only if
-//! `find_path` could start a route from it (the `±0.5` start box).
+//! "On the mesh" is `NavMesh::get_height_near` searched around the node's
+//! own Y (so a node reads the storey it is on, not the one nearest world
+//! `Y = 0`), with the node within [`NODE_FLOOR_TOLERANCE`] of that floor.
 //!
-//! # Why "zero on mesh" is not enough
-//!
-//! The telemetry plan asked for a WARN when no node is on the mesh. Against
-//! today's seed that never fires on Castle_CellBlock: the seed's Y column
-//! is a *horizontal* UE3 axis, and the rebuilt mesh has a ground plane at
-//! `y ≈ 0.2` under the whole ±400 square, so about 3,000 of the ~7,000
-//! nodes in bounds land on it by coincidence. None is cover anyone can use.
-//!
-//! What does identify the C1 seed shape is where each set sits. A set is
-//! one prefab's nodes. In prefab-local coordinates every set straddles the
-//! origin — its centroid is within its own extent of `(0, 0, 0)` — because
-//! the prefab is authored around its pivot. Placed in a level, a prefab's
-//! nodes are wherever the prefab was placed, and only one standing on the
-//! map's centre would do that. When most of a space's sets straddle the
-//! origin the index is not in world space, and the row says so
-//! (`reason = prefab_local_coordinates`).
-
-use std::collections::HashMap;
-
-use cimmeria_common::Vector3;
+//! WARN when a meshed space has cover-eligible NPCs (`use_cover`, not
+//! stationary) and not one usable node: those NPCs will return
+//! `no_cover reason=no_candidate_in_radius` on every fight tick. Before
+//! NA21 that was every world (audit C1: the seed was prefab-local); after
+//! it, only the worlds with no extracted cover.
 
 use cimmeria_entity::navigation::NavMesh;
 
 use super::Cover;
 
+/// How far a node may sit from the floor under it and still count as on
+/// the mesh. Cover markers are authored at or just above the floor.
+pub const NODE_FLOOR_TOLERANCE: f32 = 1.0;
+
 /// The per-space coverage numbers.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SpaceCoverage {
-    /// Every node in the (global) index.
-    pub nodes_total: usize,
-    /// Nodes whose X/Z fall inside the space's X/Z bounds.
-    pub nodes_in_bounds: usize,
-    /// Of those, nodes `find_path` could start from. `None` with no navmesh.
+    /// `resources.worlds.world_id` of the space, if stamped.
+    pub world_id: Option<i32>,
+    /// Nodes in the index for this world.
+    pub nodes_in_world: usize,
+    /// Of those, nodes on the space's navmesh. `None` with no navmesh.
     pub nodes_on_mesh: Option<usize>,
-    /// Distinct cover sets (chunks) with at least one node in bounds.
-    pub sets_in_bounds: usize,
-    /// Of those, sets whose node centroid lies within the set's own extent
-    /// of the world origin: the prefab-local signature (see module docs).
-    pub sets_origin_centred: usize,
-}
-
-/// Why a space has no usable cover.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CoverageGap {
-    /// No node sits where `find_path` could start (or none is in bounds, on
-    /// a meshless space).
-    NoCoverOnMesh,
-    /// Most sets in bounds straddle the world origin: the index holds
-    /// prefab-local offsets, not level placements (audit C1).
-    PrefabLocalCoordinates,
-}
-
-impl CoverageGap {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::NoCoverOnMesh => "no_cover_on_mesh",
-            Self::PrefabLocalCoordinates => "prefab_local_coordinates",
-        }
-    }
+    /// Distinct cover sets with a node in this world.
+    pub sets_in_world: usize,
+    /// NPCs in the space that would look for cover (`use_cover`, mobile).
+    pub cover_npcs: usize,
 }
 
 impl SpaceCoverage {
-    /// `None` when an NPC in this space can use cover; otherwise why not.
-    pub fn gap(&self) -> Option<CoverageGap> {
-        if self.nodes_on_mesh.unwrap_or(self.nodes_in_bounds) == 0 {
-            return Some(CoverageGap::NoCoverOnMesh);
-        }
-        // More than half: a real level can have a prefab or two on its
-        // centre, not most of them.
-        if self.sets_origin_centred * 2 > self.sets_in_bounds {
-            return Some(CoverageGap::PrefabLocalCoordinates);
-        }
-        None
+    /// Nodes an NPC here could actually use.
+    pub fn usable_nodes(&self) -> usize {
+        self.nodes_on_mesh.unwrap_or(self.nodes_in_world)
+    }
+
+    /// A meshed space whose cover-seeking NPCs have nothing to take.
+    pub fn warns(&self) -> bool {
+        self.nodes_on_mesh.is_some() && self.cover_npcs > 0 && self.usable_nodes() == 0
     }
 }
 
-/// Count `cover`'s nodes against one space. `bounds` is
-/// `(min_x, max_x, min_z, max_z)` — `spaces.xml`'s `MinY`/`MaxY` are the
-/// horizontal Z axis.
+/// Count `cover`'s nodes for one world. `cover_npcs` is supplied by the
+/// caller, which owns the entity table.
 pub fn space_coverage(
     cover: &Cover,
-    bounds: (f32, f32, f32, f32),
+    world_id: Option<i32>,
     navmesh: Option<&NavMesh>,
+    cover_npcs: usize,
 ) -> SpaceCoverage {
-    let (min_x, max_x, min_z, max_z) = bounds;
     let mut out = SpaceCoverage {
-        nodes_total: cover.node_count(),
+        world_id,
         nodes_on_mesh: navmesh.map(|_| 0),
+        cover_npcs,
         ..SpaceCoverage::default()
     };
+    let Some(world_id) = world_id else {
+        return out;
+    };
     let mut sets = std::collections::HashSet::new();
-    for node in cover.index.all_nodes() {
-        let p = node.pos;
-        if !(min_x..=max_x).contains(&p.x) || !(min_z..=max_z).contains(&p.z) {
-            continue;
-        }
-        out.nodes_in_bounds += 1;
+    for node in cover
+        .index
+        .all_nodes()
+        .iter()
+        .filter(|n| n.world_id == world_id)
+    {
+        out.nodes_in_world += 1;
         sets.insert(node.chunk_id);
         if let (Some(mesh), Some(n)) = (navmesh, out.nodes_on_mesh.as_mut()) {
-            if mesh.start_poly_snap(&p).is_some() {
+            let p = node.pos;
+            if mesh
+                .get_height_near(p.x, p.y, p.z)
+                .is_some_and(|h| (p.y - h).abs() <= NODE_FLOOR_TOLERANCE)
+            {
                 *n += 1;
             }
         }
     }
-    out.sets_in_bounds = sets.len();
-    let origin_centred = origin_centred_sets(cover);
-    out.sets_origin_centred = sets.iter().filter(|c| origin_centred.contains(c)).count();
+    out.sets_in_world = sets.len();
     out
 }
 
-/// Chunk ids whose node centroid is within the set's own extent (the
-/// furthest node from the centroid, at least 1 unit) of the world origin.
-fn origin_centred_sets(cover: &Cover) -> std::collections::HashSet<i32> {
-    let mut by_set: HashMap<i32, Vec<Vector3>> = HashMap::new();
-    for n in cover.index.all_nodes() {
-        by_set.entry(n.chunk_id).or_default().push(n.pos);
-    }
-    by_set
-        .into_iter()
-        .filter(|(_, pts)| {
-            let k = pts.len() as f32;
-            let c = pts.iter().fold(Vector3::new(0.0, 0.0, 0.0), |a, p| {
-                Vector3::new(a.x + p.x / k, a.y + p.y / k, a.z + p.z / k)
-            });
-            let extent = pts.iter().map(|p| p.distance_to(&c)).fold(1.0f32, f32::max);
-            c.distance_to(&Vector3::new(0.0, 0.0, 0.0)) <= extent
-        })
-        .map(|(id, _)| id)
-        .collect()
-}
-
-/// Emit the summary row: INFO, or WARN when no NPC in the space can use
-/// cover.
+/// Emit the summary row: INFO, or WARN when [`SpaceCoverage::warns`].
 pub fn log_space_coverage(
     space_id: u32,
     world: &str,
     c: &SpaceCoverage,
     navmesh_hash: Option<&str>,
 ) {
-    let Some(gap) = c.gap() else {
+    if c.warns() {
+        tracing::warn!(
+            target: "cover.coverage",
+            event = "space_summary",
+            space_id,
+            world,
+            world_id = c.world_id,
+            nodes_in_world = c.nodes_in_world,
+            nodes_on_mesh = c.nodes_on_mesh,
+            sets_in_world = c.sets_in_world,
+            cover_npcs = c.cover_npcs,
+            navmesh_hash,
+            reason = "no_usable_cover",
+            "cover.coverage: NPCs here use cover but no cover node in this world is on its navmesh"
+        );
+    } else {
         tracing::info!(
             target: "cover.coverage",
             event = "space_summary",
             space_id,
             world,
-            nodes_total = c.nodes_total,
-            nodes_in_bounds = c.nodes_in_bounds,
+            world_id = c.world_id,
+            nodes_in_world = c.nodes_in_world,
             nodes_on_mesh = c.nodes_on_mesh,
-            sets_in_bounds = c.sets_in_bounds,
-            sets_origin_centred = c.sets_origin_centred,
+            sets_in_world = c.sets_in_world,
+            cover_npcs = c.cover_npcs,
             navmesh_hash,
-            "cover.coverage: cover nodes available in this space"
+            "cover.coverage: cover available to this space"
         );
-        return;
-    };
-    tracing::warn!(
-        target: "cover.coverage",
-        event = "space_summary",
-        space_id,
-        world,
-        nodes_total = c.nodes_total,
-        nodes_in_bounds = c.nodes_in_bounds,
-        nodes_on_mesh = c.nodes_on_mesh,
-        sets_in_bounds = c.sets_in_bounds,
-        sets_origin_centred = c.sets_origin_centred,
-        navmesh_hash,
-        reason = gap.label(),
-        "cover.coverage: NPCs in this space have no usable cover ({})",
-        gap.label()
-    );
+    }
 }

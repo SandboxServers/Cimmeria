@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
 
-use super::{MoveSource, NpcIdent};
+use super::NpcIdent;
 use crate::cell::space_manager::SpaceManager;
 
 /// Leash entries inside [`LEASH_LOOP_WINDOW`] that make a loop.
@@ -119,11 +119,6 @@ pub(in crate::cell) fn on_complete(
         .spawn_position
         .and_then(|s| space_mgr.diagnose_point(npc_id, &s))
         .map(|v| v.valid);
-    if snapped {
-        space_mgr
-            .npc_detectors
-            .note_move_source(npc_id, MoveSource::Leash);
-    }
     tracing::info!(
         target: "npc_ai.leash",
         event = if snapped { "snap_fallback" } else { "arrived" },
@@ -143,8 +138,9 @@ pub(in crate::cell) fn on_complete(
         walk_secs = 0.0f32,
         path_ok = false,
         spawn_on_mesh,
-        // The leash does not clear the chase path (audit S4): a non-zero
-        // value here is the path the movement tick walks next.
+        // Since NA10 the snap goes through `snap_npc_to`, which stops the
+        // NPC: this must read 0. Non-zero is the pre-NA10 bug (audit S4),
+        // the chase path the movement tick would walk back out along.
         stale_path_len,
         snapped,
         "npc_ai.leash: leash complete"

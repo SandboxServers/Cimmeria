@@ -43,6 +43,8 @@ pub(super) fn castle_mgr() -> SpaceManager {
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
     )
     .unwrap();
+    // Castle's `resources.worlds` id: cover is indexed per world (NA21).
+    mgr.worlds.get_mut("Castle").unwrap().world_id = Some(8);
     mgr
 }
 
@@ -64,6 +66,7 @@ pub(super) fn cellblock_mgr() -> Option<(SpaceManager, u32)> {
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" /></Spaces>"#,
     )
     .unwrap();
+    mgr.worlds.get_mut("Castle_CellBlock").unwrap().world_id = Some(12);
     let space_id = mgr.space_id_for_world("Castle_CellBlock").unwrap();
     mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(mesh);
     Some((mgr, space_id))

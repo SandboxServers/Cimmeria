@@ -79,7 +79,8 @@ async fn two_leashes_are_not_a_loop() {
 }
 
 /// The instant snap is reported as the fallback it is, with how far it
-/// jumped and the chase path it left behind (audit S4).
+/// jumped. `stale_path_len` is the S4 before-picture (the chase path the
+/// old snap left behind); since NA10's `snap_npc_to` it must read 0.
 #[tokio::test]
 async fn the_leash_snap_reports_its_jump_and_the_stale_path() {
     let mut mgr = castle_mgr();
@@ -100,7 +101,7 @@ async fn the_leash_snap_reports_its_jump_and_the_stale_path() {
     assert_eq!(snap.len(), 1, "{:#?}", logs.all());
     for (k, v) in [
         ("snap_dist", "20.0"),
-        ("stale_path_len", "1"),
+        ("stale_path_len", "0"),
         ("path_ok", "false"),
         ("snapped", "true"),
     ] {

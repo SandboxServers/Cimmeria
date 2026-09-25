@@ -365,6 +365,8 @@ pub fn spawn_instance_npcs_from_records(
         }
     }
     tracing::Span::current().record("spawned", count);
+    // `cover.coverage` for the new instance, now that its NPCs exist.
+    space_mgr.log_cover_coverage(space_id);
     count
 }
 

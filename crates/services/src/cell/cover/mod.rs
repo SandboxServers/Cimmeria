@@ -41,7 +41,7 @@ mod tests;
 pub use ai_integration::{
     maintain_cover_for_npc, maintain_cover_for_npc_traced, CoverDecision, CoverTrace, NoCoverReason,
 };
-pub use coverage::{log_space_coverage, space_coverage, CoverageGap, SpaceCoverage};
+pub use coverage::{log_space_coverage, space_coverage, SpaceCoverage, NODE_FLOOR_TOLERANCE};
 pub use detection::{
     run_detection_tick, sets_near, CoverDetectionTable, CoverDetectionTick, DurationCoverEvent,
     EnteredCoverEvent, LeftCoverEvent, COVER_DURATION_MILESTONES_SECS, COVER_PROXIMITY_RADIUS,

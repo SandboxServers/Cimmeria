@@ -57,33 +57,30 @@ impl SpaceManager {
         };
         tracing::debug!(space_id, world = %world_name, "Created space instance");
         self.spaces.insert(space_id, instance);
-        // A space created before the cover service loaded is summarised by
-        // the startup path instead, once the index exists.
-        if self.npc_detectors.cover_load_done {
-            self.log_cover_coverage(space_id);
-        }
     }
 
-    /// Emit `cover.coverage event=space_summary` for one space: how many
-    /// cover nodes sit inside its bounds and on its navmesh. WARN when an
-    /// NPC there can never take cover.
+    /// Emit `cover.coverage event=space_summary` for one space: the cover
+    /// nodes of its world, how many stand on its navmesh, and how many of
+    /// its NPCs would use them. WARN when cover-seeking NPCs have nothing.
+    /// No-op until the cover index has loaded.
     pub(crate) fn log_cover_coverage(&self, space_id: u32) {
+        if !self.npc_detectors.cover_load_done {
+            return;
+        }
         let Some(space) = self.spaces.get(&space_id) else {
             return;
         };
-        let bounds = self.worlds.get(&space.world_name).map_or(
-            (f32::MIN, f32::MAX, f32::MIN, f32::MAX),
-            |w| {
-                (
-                    w.min_x as f32,
-                    w.max_x as f32,
-                    w.min_y as f32,
-                    w.max_y as f32,
-                )
-            },
+        let cover_npcs = space
+            .entities
+            .values()
+            .filter(|e| !e.is_player && e.use_cover && !e.is_stationary)
+            .count();
+        let coverage = super::super::cover::space_coverage(
+            &self.cover,
+            self.world_id_for_world(&space.world_name),
+            space.navmesh.as_ref(),
+            cover_npcs,
         );
-        let coverage =
-            super::super::cover::space_coverage(&self.cover, bounds, space.navmesh.as_ref());
         super::super::cover::log_space_coverage(
             space_id,
             &space.world_name,
@@ -92,8 +89,9 @@ impl SpaceManager {
         );
     }
 
-    /// The cover service has loaded: summarise every space that already
-    /// exists, and every one created from now on.
+    /// The cover service has loaded: summarise every space that exists now
+    /// (their NPCs are already spawned). Instanced spaces are summarised
+    /// after their own spawn, in `spawn_instance_npcs_from_records`.
     pub(crate) fn cover_loaded(&mut self) {
         self.npc_detectors.cover_load_done = true;
         let mut ids: Vec<u32> = self.spaces.keys().copied().collect();

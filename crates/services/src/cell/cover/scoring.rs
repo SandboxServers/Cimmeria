@@ -235,9 +235,16 @@ pub fn pick_best(
     weights: &CoverWeights,
     chunk_ally_counts: &std::collections::HashMap<i32, usize>,
 ) -> Option<usize> {
-    pick_best_traced(index, world_id, reservations, ctx, weights, chunk_ally_counts)
-        .best
-        .map(|c| c.idx)
+    pick_best_traced(
+        index,
+        world_id,
+        reservations,
+        ctx,
+        weights,
+        chunk_ally_counts,
+    )
+    .best
+    .map(|c| c.idx)
 }
 
 /// Vertical tolerance for cover candidates: cover on a different floor of
@@ -283,7 +290,12 @@ pub fn pick_best_traced(
     weights: &CoverWeights,
     chunk_ally_counts: &std::collections::HashMap<i32, usize>,
 ) -> PickTrace {
-    let candidate_indices = index.nearby(world_id, &ctx.npc_pos, MAX_COVER_DISTANCE, Some(MAX_COVER_Y_DIFF));
+    let candidate_indices = index.nearby(
+        world_id,
+        &ctx.npc_pos,
+        MAX_COVER_DISTANCE,
+        Some(MAX_COVER_Y_DIFF),
+    );
     let mut trace = PickTrace {
         scanned: candidate_indices.len(),
         ..PickTrace::default()

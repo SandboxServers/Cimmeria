@@ -13,8 +13,9 @@ use crate::cell::service::npc_ai::detectors::movement::{
 use crate::test_support::LogCapture;
 
 /// Chase until the movement tick has written a chase velocity, then let the
-/// target come into range: the next AI tick is `attack_in_place`, which
-/// clears the path and leaves the velocity (audit S1).
+/// target come into range: the next AI tick is `attack_in_place`. Before
+/// NA10 that cleared the path and left the chase velocity (audit S1); since
+/// NA10 it goes through `stop_npc_movement`, which zeroes it.
 async fn attack_in_place_after_a_chase() -> crate::cell::space_manager::SpaceManager {
     let mut mgr = castle_mgr();
     add_npc(
@@ -36,37 +37,82 @@ async fn attack_in_place_after_a_chase() -> crate::cell::space_manager::SpaceMan
         "precondition: the movement tick wrote a chase velocity"
     );
     ai_tick(&mut mgr).await;
-    let npc = mgr.get_entity(NPC).unwrap();
     assert!(
-        npc.nav_path.is_empty(),
+        mgr.get_entity(NPC).unwrap().nav_path.is_empty(),
         "precondition: attack_in_place cleared the path"
-    );
-    assert!(
-        npc.velocity[0] > 0.0,
-        "precondition (today's bug): the velocity survives the stop"
     );
     mgr
 }
 
-/// **Acceptance: stale velocity after `attack_in_place`.** Revert-proof:
-/// deleting the `report_stale_velocity` call in `after_movement_tick` (or
-/// the `after_movement_tick` call in the message loop's helper used here)
-/// leaves no row.
+/// **Regression guard for NA10** (this was NA02's positive case before
+/// NA10 landed). After `attack_in_place` the velocity is zeroed, so the
+/// running-in-place detector stays silent. Removing NA10's
+/// `stop_npc_movement` at the attack-in-place site brings the WARN back.
 #[tokio::test]
-async fn stale_velocity_fires_after_an_attack_in_place_stop() {
+async fn stale_velocity_is_silent_after_an_attack_in_place_stop() {
     let mut mgr = attack_in_place_after_a_chase().await;
+    assert_eq!(
+        mgr.get_entity(NPC).unwrap().velocity,
+        [0.0; 3],
+        "NA10: attack_in_place zeroes the chase velocity"
+    );
     let logs = LogCapture::install();
     for _ in 0..=STALE_VELOCITY_TICKS {
         movement_tick(&mut mgr);
     }
+    assert!(rows(&logs, "movement.npc", "stale_velocity").is_empty());
+}
+
+/// **Regression guard for NA10, leash.** The snap goes through
+/// `snap_npc_to`, which stops the NPC, so it no longer stands at spawn
+/// broadcasting its old chase velocity.
+#[tokio::test]
+async fn stale_velocity_is_silent_after_a_leash_snap() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [20.0, 0.0, 0.0],
+        Some([0.0; 3]),
+        AiState::Leashing,
+    );
+    mgr.get_entity_mut(NPC).unwrap().velocity = [6.0, 0.0, 0.0];
+    ai_tick(&mut mgr).await; // leash snap -> Idle
+    assert_eq!(mgr.get_entity(NPC).unwrap().ai_state(), AiState::Idle);
+    let logs = LogCapture::install();
+    for _ in 0..=STALE_VELOCITY_TICKS {
+        movement_tick(&mut mgr);
+    }
+    assert!(rows(&logs, "movement.npc", "stale_velocity").is_empty());
+}
+
+/// **Positive case: a stalled path that still carries a velocity.** The
+/// NPC holds a route and a chase velocity but does not move across ticks
+/// (the detector pass is driven alone, standing in for movement ticks that
+/// did not advance it). Revert-proof: deleting the `report_stale_velocity`
+/// call in `after_movement_tick` leaves no row.
+#[test]
+fn stale_velocity_fires_on_a_stalled_path_with_velocity() {
+    let mut mgr = castle_mgr();
+    add_npc(&mut mgr, "Castle", [0.0; 3], None, AiState::Fighting);
+    {
+        let npc = mgr.get_entity_mut(NPC).unwrap();
+        npc.velocity = [6.0, 0.0, 0.0];
+        npc.nav_path.push_back(Vector3::new(10.0, 0.0, 0.0));
+    }
+    let logs = LogCapture::install();
+    let t0 = Instant::now();
+    for i in 0..=u64::from(STALE_VELOCITY_TICKS) {
+        after_movement_tick(&mut mgr, t0 + Duration::from_millis(100 * i));
+    }
     let found = rows(&logs, "movement.npc", "stale_velocity");
-    assert_eq!(found.len(), 1, "one row (then throttled): {found:#?}");
+    assert_eq!(found.len(), 1, "{found:#?}");
     let row = &found[0];
     assert_eq!(row.level, Level::WARN);
     for (k, v) in [
         ("npc_id", "200"),
-        ("path_state", "empty"),
-        ("nav_path_len", "0"),
+        ("path_state", "stalled"),
+        ("nav_path_len", "1"),
         ("ai_state", "fighting"),
         ("tag", "Test_Guard"),
         ("world", "Castle"),
@@ -74,32 +120,6 @@ async fn stale_velocity_fires_after_an_attack_in_place_stop() {
     ] {
         assert!(row.has_field(k, v), "{k}={v} missing: {row:?}");
     }
-}
-
-/// **Acceptance: after a leash** (the telemetry plan's
-/// `animating_without_path`, folded into `stale_velocity` — see the
-/// `movement` module docs). The NPC stops to shoot, the player backs off
-/// past the leash radius, the leash snaps it home: the snap zeroes nothing,
-/// so the NPC stands at spawn broadcasting its old chase velocity.
-#[tokio::test]
-async fn stale_velocity_fires_after_a_leash_snap() {
-    let mut mgr = attack_in_place_after_a_chase().await;
-    // The player leaves the leash radius around spawn.
-    mgr.update_entity_position(super::PLAYER, [80.0, 0.0, 0.0], [0; 3], [0.0; 3]);
-    ai_tick(&mut mgr).await; // Fighting -> Leashing
-    ai_tick(&mut mgr).await; // leash snap -> Idle
-    let npc = mgr.get_entity(NPC).unwrap();
-    assert_eq!(npc.ai_state(), AiState::Idle, "precondition: leash ran");
-    assert!(npc.nav_path.is_empty());
-
-    let logs = LogCapture::install();
-    for _ in 0..=STALE_VELOCITY_TICKS {
-        movement_tick(&mut mgr);
-    }
-    let found = rows(&logs, "movement.npc", "stale_velocity");
-    assert_eq!(found.len(), 1, "{found:#?}");
-    assert!(found[0].has_field("ai_state", "idle"), "{:?}", found[0]);
-    assert!(found[0].has_field("path_state", "empty"));
 }
 
 /// A walking NPC is not stale, however long it walks.

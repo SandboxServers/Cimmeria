@@ -9,8 +9,8 @@ use crate::cell::cover::{Cover, CoverHeight, CoverNode, CoverQuality};
 use crate::test_support::LogCapture;
 
 /// Parse `db/resources/AI/Seed/cover_nodes.sql` into the nodes the loader
-/// would build (`pos = (pos_x, pos_y, pos_z)`, exactly as `cover/loader.rs`
-/// maps the columns).
+/// builds. Columns: `chunk_id, node_id, pos_x, pos_y, pos_z, orient,
+/// height, quality, width, tail`; set ids are `world_id * 100000 + n`.
 fn seed_nodes() -> Option<Vec<CoverNode>> {
     let sql = std::fs::read_to_string("../../db/resources/AI/Seed/cover_nodes.sql").ok()?;
     let nodes: Vec<CoverNode> = sql
@@ -23,9 +23,11 @@ fn seed_nodes() -> Option<Vec<CoverNode>> {
                 .split(',')
                 .map(str::trim)
                 .collect();
+            let chunk_id: i32 = f[0].parse().unwrap();
             CoverNode {
-                chunk_id: f[0].parse().unwrap(),
+                chunk_id,
                 node_id: f[1].parse().unwrap(),
+                world_id: chunk_id / 100_000,
                 pos: Vector3::new(
                     f[2].parse().unwrap(),
                     f[3].parse().unwrap(),
@@ -34,6 +36,7 @@ fn seed_nodes() -> Option<Vec<CoverNode>> {
                 orient: f[5].parse().unwrap(),
                 height: CoverHeight::Mid,
                 quality: CoverQuality::Good,
+                width: f[8].parse().unwrap(),
                 tail: [0; 4],
             }
         })
@@ -41,67 +44,102 @@ fn seed_nodes() -> Option<Vec<CoverNode>> {
     Some(nodes)
 }
 
-/// **Acceptance: the `cover.coverage` WARN on Cellblock with today's
-/// seed.** Note what it proves about the plan's own criterion: thousands
-/// of seed nodes land on the mesh's `y ≈ 0.2` ground plane by coincidence,
-/// so "WARN when nothing is on the mesh" would have stayed silent. The
-/// origin-centred-set test is what fires. Revert-proof: removing the
-/// `PrefabLocalCoordinates` arm of `SpaceCoverage::gap` turns this row INFO.
+/// Mark the fixture NPC as one that would look for cover.
+fn make_cover_npc(mgr: &mut crate::cell::space_manager::SpaceManager, pos: [f32; 3]) {
+    add_npc(mgr, "Castle_CellBlock", pos, None, AiState::Idle);
+    let npc = mgr.get_entity_mut(NPC).unwrap();
+    npc.use_cover = true;
+    npc.is_stationary = false;
+}
+
+fn field_usize(row: &crate::test_support::Captured, k: &str) -> usize {
+    row.fields
+        .get(k)
+        .unwrap_or_else(|| panic!("{k} missing: {row:?}"))
+        .parse()
+        .unwrap()
+}
+
+/// **The real world-12 seed (NA21) covers Cellblock.** About 236 extracted
+/// world-space nodes in world 12, most of them standing on the rebuilt
+/// mesh, and a cover-seeking NPC present: INFO, no WARN. Before NA21 this
+/// world had no usable cover (audit C1).
 #[test]
-fn cellblock_with_todays_cover_seed_warns() {
+fn the_cellblock_seed_is_on_the_mesh_and_does_not_warn() {
     let Some((mut mgr, space_id)) = cellblock_mgr() else {
         return;
     };
     let Some(nodes) = seed_nodes() else {
         return;
     };
-    assert!(nodes.len() > 9_000, "seed parse: {}", nodes.len());
     mgr.cover = Cover::from_loaded(Vec::new(), nodes);
+    make_cover_npc(&mut mgr, [-96.25, 34.591, -91.59]);
     let logs = LogCapture::install();
     mgr.cover_loaded();
     let found = rows(&logs, "cover.coverage", "space_summary");
     assert_eq!(found.len(), 1, "{found:#?}");
     let row = &found[0];
-    assert_eq!(row.level, Level::WARN, "{row:?}");
-    assert!(
-        row.has_field("reason", "prefab_local_coordinates"),
-        "{row:?}"
-    );
-    assert!(row.has_field("world", "Castle_CellBlock"));
+    assert_eq!(row.level, Level::INFO, "{row:?}");
     assert!(row.has_field("space_id", &space_id.to_string()));
-    let on_mesh = &row.fields["nodes_on_mesh"];
-    assert_ne!(
-        on_mesh, "0",
-        "documented: the seed's nodes DO hit the ground plane by coincidence"
+    assert!(row.has_field("world_id", "12"), "{row:?}");
+    assert!(row.has_field("cover_npcs", "1"), "{row:?}");
+    let in_world = field_usize(row, "nodes_in_world");
+    let on_mesh = field_usize(row, "nodes_on_mesh");
+    assert!(
+        (200..=280).contains(&in_world),
+        "about 236 world-12 nodes expected, got {in_world}"
     );
+    assert!(
+        on_mesh * 2 > in_world,
+        "most extracted nodes stand on the mesh: {on_mesh} of {in_world}"
+    );
+    assert!(field_usize(row, "sets_in_world") > 0);
 }
 
-/// Cover authored in world space — two sets standing on the mess-hall
-/// floor, far from the origin — is usable: INFO, no reason.
+/// **Acceptance: the WARN.** A meshed space whose NPCs use cover, in a
+/// world with no cover nodes (the index holds another world's only), gets
+/// `reason = no_usable_cover`. Revert-proof: making `SpaceCoverage::warns`
+/// return `false` turns this row INFO.
 #[test]
-fn placed_cover_on_the_mesh_is_info() {
+fn a_meshed_world_with_cover_npcs_and_no_nodes_warns() {
     let Some((mut mgr, _)) = cellblock_mgr() else {
         return;
     };
-    let node = |chunk_id, node_id, dx: f32| CoverNode {
-        chunk_id,
-        node_id,
-        pos: Vector3::new(-96.25 + dx, 34.6, -91.59),
+    let elsewhere = CoverNode {
+        chunk_id: 800_001,
+        node_id: 0,
+        world_id: 8,
+        pos: Vector3::new(-96.25, 34.6, -91.59),
         orient: 0.0,
         height: CoverHeight::Mid,
         quality: CoverQuality::Good,
+        width: 1.0,
         tail: [0; 4],
     };
-    mgr.cover = Cover::from_loaded(
-        Vec::new(),
-        vec![node(1, 0, 0.0), node(1, 1, 1.0), node(2, 0, 2.0)],
-    );
+    mgr.cover = Cover::from_loaded(Vec::new(), vec![elsewhere]);
+    make_cover_npc(&mut mgr, [-96.25, 34.591, -91.59]);
+    let logs = LogCapture::install();
+    mgr.cover_loaded();
+    let found = rows(&logs, "cover.coverage", "space_summary");
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].level, Level::WARN, "{:?}", found[0]);
+    assert!(found[0].has_field("reason", "no_usable_cover"));
+    assert!(found[0].has_field("nodes_in_world", "0"));
+    assert!(found[0].has_field("cover_npcs", "1"));
+}
+
+/// No cover-seeking NPC, nothing to warn about.
+#[test]
+fn a_world_without_cover_npcs_does_not_warn() {
+    let Some((mut mgr, _)) = cellblock_mgr() else {
+        return;
+    };
     let logs = LogCapture::install();
     mgr.cover_loaded();
     let found = rows(&logs, "cover.coverage", "space_summary");
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].level, Level::INFO, "{:?}", found[0]);
-    assert!(found[0].has_field("nodes_on_mesh", "3"), "{:?}", found[0]);
+    assert!(found[0].has_field("cover_npcs", "0"));
 }
 
 fn no_cover_rows(
