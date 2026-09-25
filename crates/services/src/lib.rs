@@ -13,6 +13,7 @@ pub mod base;
 pub mod cell;
 pub(crate) mod credential_redaction;
 pub mod database;
+pub mod firehose;
 pub mod mercury;
 pub mod minigame;
 pub mod orchestrator;

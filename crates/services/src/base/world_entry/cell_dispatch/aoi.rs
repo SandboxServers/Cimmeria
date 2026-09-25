@@ -174,12 +174,6 @@ pub(super) async fn left_aoi(
     .await;
 }
 
-/// 1-in-N sampling for the `wire.out.avatar_update` record in
-/// [`entity_moved`].
-const AVATAR_UPDATE_LOG_SAMPLE: u32 = 100;
-static AVATAR_UPDATE_LOG_COUNTER: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(0);
-
 /// `CellToBaseMsg::EntityMoved` — per-tick position relay for a ghost
 /// entity already in the witness's AoI.
 pub(super) async fn entity_moved(
@@ -193,38 +187,19 @@ pub(super) async fn entity_moved(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    tracing::trace!(witness_id, entity_id, "AoI: entity position update");
-    // UPDATE_AVATAR is unreliable and never reaches `wire.out`, so without
-    // this there is no record of the position / facing a client was given.
-    // 1-in-N over ALL sends: enough to reconstruct what a witness saw, cheap
-    // enough to leave on.
-    if AVATAR_UPDATE_LOG_COUNTER
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        .is_multiple_of(AVATAR_UPDATE_LOG_SAMPLE)
-    {
-        tracing::debug!(
-            target: "wire.out.avatar_update",
+    // Full row to world_entry.log; the 1-in-N `wire.out.avatar_update`
+    // sample (with the position, velocity and facing sent) to SigNoz. NA25.
+    crate::firehose::log_entity_moved(
+        &crate::firehose::AOI_POSITION_SAMPLER,
+        &crate::firehose::EntityMovedRow {
             witness_id,
             entity_id,
-            msg_id = crate::mercury::aoi::BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
-            pos_variant = "FullPos",
-            x = position[0],
-            y = position[1],
-            z = position[2],
-            vx = velocity[0],
-            vy = velocity[1],
-            vz = velocity[2],
-            yaw_rad = direction[1],
-            yaw_byte = crate::mercury::aoi::pack_angle(direction[1]),
-            pitch_byte = crate::mercury::aoi::pack_angle(direction[0]),
-            // NA02: `false` with a non-zero velocity is an NPC the client
-            // is animating as running while it stands still (audit S1).
-            // The client animates NPC movement from velocity alone, so no
-            // movement-type field is logged here.
+            position,
+            direction,
+            velocity,
             npc_moved_since_last,
-            "UPDATE_AVATAR sent (sampled) -- position and facing as transmitted to this witness"
-        );
-    }
+        },
+    );
     // UNRELIABLE — avatar position updates are continuous and self-correcting;
     // the next position frame supersedes any lost one within a tick or two.
     // Stays on the no-Channel-tracking path.

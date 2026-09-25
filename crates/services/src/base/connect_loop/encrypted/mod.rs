@@ -21,7 +21,7 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_RELIABLE};
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::cooked_data::{handle_element_data_request, handle_version_info_request};
-use super::super::helpers::{destroy_client_entities, to_hex};
+use super::super::helpers::destroy_client_entities;
 use super::super::resources::ResourceCache;
 use super::super::world_entry::handle_enable_entities;
 use super::super::ConnectedClientState;
@@ -77,7 +77,8 @@ pub(crate) async fn handle_encrypted_datagram(
         }
     };
 
-    tracing::trace!(%addr, len = plaintext.len(), hex = %to_hex(&plaintext), "DECRYPT_OK");
+    // Full row to base.log, a counted 1-in-N sample to SigNoz (NA25).
+    crate::firehose::log_decrypt_ok(&crate::firehose::DECRYPT_OK_SAMPLER, addr, &plaintext);
 
     let pkt = match parse_incoming(&plaintext) {
         Ok(p) => p,

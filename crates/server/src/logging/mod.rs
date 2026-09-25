@@ -17,46 +17,14 @@ use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntr
 
 use crate::otel;
 
-/// `EnvFilter` directives shared by the OTLP trace and log layers.
-///
-/// A custom `target:` that is not named here inherits the leading `info`, so
-/// its DEBUG events never reach SigNoz however useful they are.
-/// `aoi.create_emit` was built to localize the invisible-static-NPC drop and
-/// was absent from the 2026-09-19 repro for exactly that reason.
-///
-/// A directive's target matches by **string prefix** (`tracing-subscriber`
-/// compares `meta.target().starts_with(directive_target)`), and the longest
-/// matching directive wins. So `npc_ai=debug` already exports
-/// `npc_ai.transition`, `npc_ai.aggro`, `npc_ai.leash`, `npc_ai.tick` and
-/// `npc_ai.path_fail`, and `cover=debug` covers every `cover.*` target; but
-/// `wire.out=info`
-/// needs the more specific `wire.out.avatar_update=debug` beside it to let
-/// that one DEBUG sample through. `otel_filter_prefix_matching_exports_npc_ai_children`
-/// pins this behaviour, not just the string.
-const OTEL_FILTER: &str = "info,\
-                cimmeria_services=debug,\
-                cimmeria_mercury=debug,\
-                mercury.packet=info,\
-                mercury.retransmit=info,\
-                mercury.backpressure=warn,\
-                wire.in=info,wire.out=info,\
-                wire.out.avatar_update=debug,\
-                wire.out.forced_position=debug,\
-                aoi.entity_enter=debug,aoi.entity_leave=debug,\
-                aoi.create_emit=debug,\
-                movement.npc=debug,movement.player=debug,\
-                movement.navmesh=debug,\
-                npc_ai=debug,\
-                cover=debug,\
-                spawner=debug,\
-                content=info,\
-                threat=info,\
-                auth=info,\
-                world_entry=info,\
-                vendor=info,mail=info,progression=info,inventory=info,mission=info,\
-                sqlx::query=debug,\
-                tungstenite=off,tokio_tungstenite=off,hyper=off,\
-                h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
+mod filters;
+#[cfg(test)]
+mod parity_tests;
+
+use filters::{
+    otel_network_log_filter, otel_server_log_filter, otel_trace_log_filter, server_log_directives,
+    FILE_LAYERS, OTEL_FILTER, WIRE_FIREHOSE_MUTED,
+};
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -169,9 +137,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 pub(crate) fn init_logging(
     log_tx: broadcast::Sender<LogEntry>,
     log_buffer: LogBuffer,
-    otel_trace_layer: Option<otel::OtelTraceLayer>,
-    otel_log_layer: Option<otel::OtelLogLayer>,
-    otel_network_log_layer: Option<otel::OtelLogLayer>,
+    otel_layers: Option<otel::OtelLayers>,
 ) -> Vec<WorkerGuard> {
     // Move previous session's logs into archive/.
     archive_previous_logs();
@@ -209,10 +175,7 @@ pub(crate) fn init_logging(
     // stream, and retransmit noise. These stay at full fidelity in the file
     // layers (protocol.log) and OTLP; they just don't belong on an operator's
     // console. `RUST_LOG`, when set, overrides this entirely.
-    // The per-packet wire stream belongs in protocol.log + OTLP at full fidelity,
-    // not in human-facing sinks (console, server.log, admin WS). Mute it in each.
-    const WIRE_FIREHOSE_MUTED: &str =
-        "mercury.packet=warn,wire.in=warn,wire.out=warn,mercury.retransmit=warn";
+    // See `filters::WIRE_FIREHOSE_MUTED`.
     let console_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(format!("info,{WIRE_FIREHOSE_MUTED}")));
     layers.push(Box::new(fmt::layer().with_filter(console_filter)));
@@ -226,96 +189,14 @@ pub(crate) fn init_logging(
             .json()
             .with_writer(server_writer)
             .with_target(true)
-            .with_filter(EnvFilter::new(format!("info,{WIRE_FIREHOSE_MUTED}"))),
+            .with_filter(EnvFilter::new(server_log_directives())),
     ));
 
     // ── Per-system log files ─────────────────────────────────────────────
-    layers.push(log_layer!("auth.log", "off,cimmeria_services::auth=trace"));
-
-    layers.push(log_layer!(
-        "base.log",
-        "off,\
-         cimmeria_services::base::service=trace,\
-         cimmeria_services::base::connect_loop=trace,\
-         cimmeria_services::base::login=trace,\
-         cimmeria_services::base::tick_sync=trace,\
-         cimmeria_services::base::helpers=trace"
-    ));
-
-    layers.push(log_layer!(
-        "world_entry.log",
-        "off,\
-         cimmeria_services::base::world_entry=trace,\
-         cimmeria_services::base::world_entry_player=trace,\
-         cimmeria_services::base::world_entry_appearance=trace"
-    ));
-
-    layers.push(log_layer!(
-        "character.log",
-        "off,\
-         cimmeria_services::base::character=trace,\
-         cimmeria_services::base::character_create=trace,\
-         cimmeria_services::base::chardef=trace,\
-         cimmeria_services::base::cooked_data=trace,\
-         cimmeria_services::base::resources=trace"
-    ));
-
-    layers.push(log_layer!(
-        "protocol.log",
-        "off,\
-         cimmeria_services::mercury=trace,\
-         cimmeria_mercury=trace,\
-         mercury.packet=info,\
-         wire.in=info,wire.out=info,\
-         mercury.retransmit=info"
-    ));
-
-    layers.push(log_layer!(
-        "aoi.log",
-        "off,\
-         cimmeria_services::cell::service=trace,\
-         cimmeria_services::cell::space_manager=trace"
-    ));
-
-    layers.push(log_layer!(
-        "combat.log",
-        "off,\
-         cimmeria_services::cell::combat=trace,\
-         cimmeria_services::cell::abilities=trace"
-    ));
-
-    layers.push(log_layer!(
-        "content.log",
-        "off,cimmeria_services::cell::content=trace"
-    ));
-
-    layers.push(log_layer!(
-        "missions.log",
-        "off,cimmeria_services::cell::missions=trace"
-    ));
-
-    layers.push(log_layer!(
-        "interactions.log",
-        "off,\
-         cimmeria_services::cell::interactions=trace,\
-         cimmeria_services::cell::chat=trace,\
-         cimmeria_services::cell::mail=trace"
-    ));
-
-    layers.push(log_layer!(
-        "spawner.log",
-        "off,\
-         cimmeria_services::cell::spawner=trace,\
-         cimmeria_services::cell::gate_travel=trace,\
-         cimmeria_services::cell::ring_transport=trace"
-    ));
-
-    layers.push(log_layer!(
-        "dispatch.log",
-        "off,\
-         cimmeria_services::cell::dispatch=trace,\
-         cimmeria_services::base::dispatch=trace"
-    ));
+    // One layer per `FILE_LAYERS` row; the parity test walks the same table.
+    for l in FILE_LAYERS {
+        layers.push(log_layer!(l.file, l.directives));
+    }
 
     // ── WebSocket broadcast (debug+, all modules) ─────────────────────
     layers.push(Box::new(
@@ -342,52 +223,30 @@ pub(crate) fn init_logging(
 
     // ── OpenTelemetry → SigNoz (optional) ─────────────────────────────
     // Unlike the human-facing sinks above, OTLP keeps `mercury.packet` at info —
-    // it's the load-bearing analytical surface here, so muting/sampling it would
-    // defeat the purpose. The trace and log layers share one filter.
-    let otel_filter = OTEL_FILTER;
-
-    if let Some(layer) = otel_trace_layer {
-        layers.push(Box::new(layer.with_filter(EnvFilter::new(otel_filter))));
-    }
-    // The log signal splits across TWO OTLP providers (cimmeria-server +
-    // cimmeria-network — see `otel::init`). Per-layer FilterFn routes:
+    // it's the load-bearing analytical surface here, so muting it would defeat
+    // the purpose.
     //
-    // - `cimmeria-server` layer: receive everything EXCEPT TRACE/DEBUG/
-    //   INFO from network-noise scopes. WARN+ from network-noise scopes
-    //   still goes here so elevated severity surfaces in the operator's
-    //   primary view without dual-querying.
-    // - `cimmeria-network` layer: receive ONLY TRACE/DEBUG/INFO from
-    //   network-noise scopes. WARN+ is suppressed (it's already in the
-    //   server index).
+    // Spans go through `OTEL_FILTER`. Log records split across THREE providers
+    // (see `otel::init` and the routing table in `filters`), each filter
+    // disjoint from the other two so a record lands in exactly one index:
     //
-    // Composition: each branch is `EnvFilter::new(otel_filter)` AND a
-    // `FilterFn` doing the noise routing. Together they cover all events
-    // with no overlap (a single event lands in exactly one log index).
-    //
-    // We use `tracing_subscriber::filter::FilterExt::and` to combine the
-    // two filters, and `Box::new` at the end because the layer push
-    // signature wants a homogeneous trait object.
-    if let Some(layer) = otel_log_layer {
-        use tracing_subscriber::filter::{filter_fn, FilterExt};
-        let routing = filter_fn(|meta| {
-            // Server index: non-noise OR severity is WARN/ERROR.
-            !otel::is_network_noise_target(meta.target()) || *meta.level() <= tracing::Level::WARN
-        });
+    // - `cimmeria-server`: DEBUG and above, minus DEBUG/INFO from
+    //   network-noise scopes. WARN+ from those scopes stays here.
+    // - `cimmeria-network`: DEBUG/INFO from network-noise scopes.
+    // - `cimmeria-trace`: every TRACE row a file layer keeps, plus the
+    //   custom targets and the sampled firehose rows. NA25.
+    if let Some(otel) = otel_layers {
         layers.push(Box::new(
-            layer.with_filter(EnvFilter::new(otel_filter).and(routing)),
+            otel.trace.with_filter(EnvFilter::new(OTEL_FILTER)),
         ));
-    }
-    if let Some(layer) = otel_network_log_layer {
-        use tracing_subscriber::filter::{filter_fn, FilterExt};
-        let routing = filter_fn(|meta| {
-            // Network index: noise scopes only, at non-elevated severity.
-            // `level <= Level::WARN` is "WARN or more severe" (numerically
-            // smaller); the negation here means "less severe than WARN"
-            // i.e. INFO/DEBUG/TRACE.
-            otel::is_network_noise_target(meta.target()) && *meta.level() > tracing::Level::WARN
-        });
         layers.push(Box::new(
-            layer.with_filter(EnvFilter::new(otel_filter).and(routing)),
+            otel.server_log.with_filter(otel_server_log_filter()),
+        ));
+        layers.push(Box::new(
+            otel.network_log.with_filter(otel_network_log_filter()),
+        ));
+        layers.push(Box::new(
+            otel.trace_log.with_filter(otel_trace_log_filter()),
         ));
     }
 

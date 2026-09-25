@@ -334,18 +334,32 @@ impl SpaceManager {
             && self.spaces.get(&space_id).is_some_and(|s| s.navmesh.is_some())
             && !self.is_position_valid(entity_id, &proposed)
         {
-            tracing::trace!(
-                target: "movement.navmesh",
+            // NA25 made this row reachable (the `cimmeria-trace` index
+            // enables `movement.navmesh` at TRACE), so it now fires on every
+            // off-mesh packet. Throttled per player; `suppressed` keeps the
+            // packet count.
+            if let Some(suppressed) = self.movement_telemetry.advisory_off_mesh_log.admit(
                 entity_id,
-                space_id,
-                client_x = position[0],
-                client_y = position[1],
-                client_z = position[2],
-                reason = "advisory_off_mesh_accepted",
-                "movement.navmesh: position is off this world's navmesh and was \
-                 accepted anyway -- the world is 'advisory', so the mesh is not a \
-                 containment gate here"
-            );
+                "advisory_off_mesh",
+                now,
+                super::movement_telemetry::ADVISORY_OFF_MESH_LOG_INTERVAL,
+            ) {
+                let world = self.world_name_for_space(space_id).unwrap_or("unknown");
+                tracing::trace!(
+                    target: "movement.navmesh",
+                    entity_id,
+                    space_id,
+                    world = %world,
+                    client_x = position[0],
+                    client_y = position[1],
+                    client_z = position[2],
+                    reason = "advisory_off_mesh_accepted",
+                    suppressed,
+                    "movement.navmesh: position is off this world's navmesh and was \
+                     accepted anyway -- the world is 'advisory', so the mesh is not a \
+                     containment gate here"
+                );
+            }
         }
 
         // Layers 2+3 — speed (warn-only) + teleport (hard reject). Measured
