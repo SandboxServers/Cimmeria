@@ -515,6 +515,23 @@ one count:
   1200001. The hand-authored rows also had the wrong height: the markers
   are `CoverHeight = 1`, Mid, and 1381 had them as Low.
 
+## NA22 follow-through (2026-09-25)
+
+- **Q5 wired.** Effects 4565 and 1742 now carry `script_name`
+  `CoverStance` / `RemoveCoverStance`. The server grants 4565 when an NPC
+  reaches its reserved slot and runs 1742 when it leaves the slot, leashes,
+  dies or surrenders. The magnitude is the effect row's +100 `COVER_DEFENSE`,
+  not the ability text's +200. `COVER_DEFENSE` is not read by hit
+  resolution yet.
+- **Q4 still open.** No pose message was added (D-NA10). An NPC in cover
+  reaches the client only as its position and zero velocity, so step 2 of
+  the experiment above now tests exactly the shipped server: spawn
+  `MessHall_Guard1` (or any `use_cover` guard) at its marker, fight it from
+  in front of the cover, and watch whether the model crouches. Step 3's
+  `wire.out.movement_type` row no longer exists; use
+  `npc_ai decision_outcome=stay_in_cover` and `cover.stance event=granted`
+  instead. See [architecture/cover-system.md](../../architecture/cover-system.md).
+
 ## Tooling
 
 - `crates/upk-objects/src/bin/query_index.rs` — new `query-index` binary

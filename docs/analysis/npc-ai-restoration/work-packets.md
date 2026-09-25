@@ -267,7 +267,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA22
 
-**Status:** BlockedDependency (NA21, NA10, NA12; NA20 for pose). **Scope title:** Cover behaviour: hold, seek, pose (C3-C5, C7). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
+**Status:** Review (branch `npcai/na22-cover-behaviour` pushed 2026-09-25). Cover is a firing position: the fight tick seeks the best free slot within attack range less 2 u in range too (10 u walk, 4 s seek retry), holds it until flanked or out of range, stops at it with zero velocity and fires without chasing. Spawn hold within 1.5 u (spawn, startup sweep, respawn, leash home). Cover Stance (ability 1451) through new `CoverStance` / `RemoveCoverStance` scripts on effects 4565 / 1742, removed on leave, leash, death and surrender. `entity_templates.use_cover` (NULL = hostile faction 10; stationary, props and melee-only never). Squad affinity by distance (2 u), not by set. No pose wire (D-NA10); the Q4 owner experiment decides the crouch. See [architecture/cover-system.md](../../architecture/cover-system.md). **Scope title:** Cover behaviour: hold, seek, pose (C3-C5, C7). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
 
 **Scope:**
 

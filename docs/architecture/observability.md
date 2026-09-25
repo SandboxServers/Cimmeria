@@ -299,9 +299,10 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `follow_target_lost` | WARN — follow target no longer resolves; follow is cleared and the escort idles until a chain re-arms it |
 | `follow_dropped_no_target` | Follow state with no follow target — dropped to Idle |
 | `stationary_holds` | Stationary NPC out of range / no LOS — holds fire |
-| `stay_in_cover` | NPC in cover, threat in defensive arc — hold |
-| `move_to_cover` | NPC picked a fresh cover slot — paths to it |
+| `stay_in_cover` | NPC holds a cover slot that still defends and reaches the target. Terminal while it walks to the slot; once it stands there the attack branch's outcome (`attack_in_place` with `in_cover=true`) is terminal ([cover-system.md](cover-system.md)) |
+| `move_to_cover` | NPC picked a fresh cover slot that reaches its target (NA22: also when already in range) — paths to it |
 | `cover_released_flanked` | Threat flanked the cover — released, re-eval next tick |
+| `cover_released_out_of_range` / `cover_released_unreachable` / `cover_released_stale` | NA22 — the target left attack range from the slot / no route to the slot (the next seek waits 4 s) / the reservation named a node the index lacks |
 | `patrol_continue` | Patrol tick walking toward the current waypoint |
 | `patrol_dwell` | Patrol tick paused at a waypoint after arrival |
 | `wander_pick` | Wander tick chose a fresh destination within radius |

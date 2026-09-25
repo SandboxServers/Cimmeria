@@ -540,8 +540,10 @@ can shoot through a real wall on its own storey.
 
 The `npc_ai.tick` row carries both the navmesh verdict (`los`) and the rule
 that acted on it (`los_policy`: `strict`, `stationary`,
-`stationary_relaxed` or `stationary_other_storey`). A drone firing across
-the desk logs `los=blocked los_policy=stationary_relaxed`. The collision
+`stationary_relaxed`, `stationary_other_storey`, or `in_cover_slot` for a
+mobile NPC standing at its cover slot, NA22). A drone firing across
+the desk logs `los=blocked los_policy=stationary_relaxed`; a guard firing
+over its cover logs `los=blocked los_policy=in_cover_slot`. The collision
 geometry occluder that would replace this rule is tracked in #784.
 
 Ability launch (`use_ability/handle.rs`) checks range only. An NPC's line
@@ -551,7 +553,7 @@ occlusion source that can see over furniture.
 
 ---
 
-## Cover System (Not Implemented)
+## Cover System
 
 Cover nodes are spatial graph nodes placed in the world that provide defensive bonuses. The design supported mobs finding and reserving cover positions before or during combat.
 
@@ -559,7 +561,16 @@ Relevant properties: `useCover` (bool), `bCoverFromTarget` (bool direction flag)
 
 Relevant cell methods: `onReserveCoverSlot()`.
 
-None of this is implemented. The `CombatStance` property is set but not acted upon.
+The Python reference implemented none of this. The Rust server does (NA22); the design is in [architecture/cover-system.md](../architecture/cover-system.md). In short:
+
+- **Who:** `entity_templates.use_cover`, or a hostile (`faction = 10`) NPC when it is NULL. Stationary NPCs, props and melee-only NPCs never take cover.
+- **Spawned in cover:** an NPC authored within 1.5 u of a cover marker spawns holding that slot and keeps it while its target is in front of the cover and in range.
+- **Seeking cover:** in a fight, an NPC takes the best free slot that reaches its target (within attack range less 2 u), whether or not it already has a shot. With a shot it walks at most 10 u, and after a seek that finds nothing it waits 4 s before looking again.
+- **In cover:** on reaching the slot the NPC stops with zero velocity, gains Cover Stance (ability 1451, +100 `COVER_DEFENSE`), and fires from the slot without chasing.
+- **Leaving:** the slot and the stance go when the target flanks the cover or leaves attack range, and on leash, death or surrender.
+- **Pose:** there is no server-to-client pose message. Whether the client crouches an NPC standing at a marker is an open owner experiment.
+
+`CombatStance` is still set but not acted upon.
 
 ---
 
@@ -611,7 +622,7 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Submit state | DONE | `npc_ai_submit` clears combat state (threat_list, BSF_IN_COMBAT, movement-type cache) and holds. Reached via the `SetNpcAiState` content action. |
 | Error state | DONE | `npc_ai_error` is a quiescent diagnostic state — handler is a no-op per tick. Reached via the `SetNpcAiState` content action or the `enterErrorAIState` slash command. |
 | Despawning state | DONE | `npc_ai_despawn` removes the entity from the space on entry; AoI fires the leave events to witnesses. Reached via the `SetNpcAiState` content action. |
-| Cover system | DONE | `crates/services/src/cell/cover/` — DB loader (1,380 cover sets / 9,346 nodes seeded from the union of `covernodes_nikols.pak` + `covernodes_sdeiter.pak`), uniform-grid spatial index, slot reservation with auto-release-prior semantics, and node scoring. Wired into the Fighting state: when `use_cover` is set and the NPC is not stationary, `maintain_cover_for_npc` substitutes the chosen cover slot for the threat's position so the NPC paths to cover instead of charging. Cover is released on both the combat-end and leash transitions. See [#209](https://github.com/SandboxServers/Cimmeria/issues/209). |
+| Cover system | DONE | `crates/services/src/cell/cover/` — world-space markers per world (NA21, `cover_extract`), uniform-grid spatial index, slot reservation with auto-release-prior semantics, and node scoring. NA22: `use_cover` from `entity_templates.use_cover`, the spawn hold, the in-range seek of a slot that reaches the target, arrival stop + Cover Stance (ability 1451), release (and stance removal) on flank, out of range, leash, death and surrender. See [architecture/cover-system.md](../architecture/cover-system.md). Pose on the client is unconfirmed. |
 | NPC movement speed | PARTIAL | `move_speed` is a hardcoded `0.6` units per 100 ms tick (6 units/sec) set at construction (`crates/entity/src/cell_entity/construction.rs:84`) and never varied by AI state. `npc_movement_tick` reads it verbatim. So although the `EMobMovementType` byte broadcast to witnesses does change per state (Patrol vs CombatAdvance vs Leash), every NPC actually traverses at the same speed — the client plays a different gait animation over identical server-side motion. The seed data has distinct per-world speeds (`resources.worlds.walk_speed` ≈ 2.069, `run_speed` = 8.125) that nothing reads for NPCs. |
 | Mob group coordination | NOT IMPL | mobGroup property, mobJoinGroup() declared; deferred. |
 | Behavior event sets | NOT IMPL | addBehaviorSet/removeBehaviorSet declared; deferred. |
