@@ -13,23 +13,28 @@
 //! `hash(key) % N` cannot grow, needs no eviction policy, and costs
 //! one modulo per request.
 //!
-//! Two distinct keys that land on the same slot do not share a
-//! counter: the slot records the key's hash and is reset when a
-//! different key arrives. Collisions therefore leak allowance to the
-//! *second* caller rather than denying them — the safe direction for
-//! a supplementary telemetry pipeline, where a wrongly-refused
-//! developer costs more than a few junk log lines.
+//! Two distinct keys that land on the same slot share one counter.
+//! An earlier design reset the slot when a different key arrived, but
+//! that let a caller holding two colliding keys (two IPv6 /64s, say)
+//! alternate them and reset its own counter on every request. Sharing
+//! is fail-closed for whoever collides, and the key hash is seeded
+//! randomly per process so a collision cannot be chosen or precomputed.
+//! The residual cost is an unaimable ~1-in-4096 chance that two live
+//! callers share a bucket.
 //!
 //! That also means the per-`install_id` quota is a speed bump, not a
 //! boundary: `install_id` is chosen by the caller, so an attacker
 //! rotates it. The per-IP quota is the load-bearing control; the
 //! per-install one catches a launcher stuck in a relaunch loop.
 
+use std::hash::Hasher;
 use std::net::IpAddr;
 use std::sync::Mutex;
+#[cfg(not(test))]
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-/// Slots per table. 4096 × ~40 bytes ≈ 160 KiB, allocated once.
+/// Slots per table. 4096 × ~32 bytes ≈ 128 KiB, allocated once.
 const SLOTS: usize = 4096;
 
 /// Upper bound on a caller-supplied `install_id`. The launcher sends
@@ -45,7 +50,6 @@ pub struct QuotaExceeded {
 }
 
 struct Slot {
-    tag: u64,
     start: Instant,
     count: u32,
 }
@@ -84,11 +88,10 @@ impl WindowTable {
         let slot = &mut slots[idx];
         let live = matches!(
             slot,
-            Some(s) if s.tag == key && now.saturating_duration_since(s.start) < window
+            Some(s) if now.saturating_duration_since(s.start) < window
         );
         if !live {
             *slot = Some(Slot {
-                tag: key,
                 start: now,
                 count: 1,
             });
@@ -130,17 +133,24 @@ pub fn install_key(install_id: &str) -> u64 {
     hash_bytes(install_id.as_bytes())
 }
 
-/// FNV-1a. The keys are not adversarially chosen *against the hash*
-/// in any way that matters here — a collision leaks allowance rather
-/// than denying anyone (see the module docs) — so a keyed hash would
-/// buy nothing.
+/// SipHash keyed with a per-process random seed, so a caller cannot
+/// pick two keys that collide in a table (see the module docs).
+#[cfg(not(test))]
 fn hash_bytes(bytes: &[u8]) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in bytes {
-        h ^= *b as u64;
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    h
+    use std::hash::BuildHasher;
+    static SEED: OnceLock<std::collections::hash_map::RandomState> = OnceLock::new();
+    let mut h = SEED.get_or_init(Default::default).build_hasher();
+    h.write(bytes);
+    h.finish()
+}
+
+/// Tests hash with fixed keys so that whether two test addresses share
+/// a slot is decided once, not by a 1-in-4096 roll on every run.
+#[cfg(test)]
+fn hash_bytes(bytes: &[u8]) -> u64 {
+    let mut h = std::hash::DefaultHasher::new();
+    h.write(bytes);
+    h.finish()
 }
 
 /// Reject an `install_id` that could not have come from the launcher
@@ -157,6 +167,24 @@ pub fn validate_install_id(install_id: &str) -> Result<(), &'static str> {
         .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     {
         return Err("must be ASCII alphanumeric, '-' or '_'");
+    }
+    Ok(())
+}
+
+/// Upper bound on the free-form launcher metadata fields.
+pub const MAX_METADATA_LEN: usize = 256;
+
+/// Check a free-form launcher metadata field (`machine_id`, `branch`,
+/// `git_sha`, `launcher_version`). These reach `%`-Display in the
+/// mint log line, and the plain `fmt` sinks do not escape them, so an
+/// embedded newline would forge a log line. Anything printable is
+/// allowed — branch names carry `/` and `.`.
+pub fn validate_metadata(value: &str) -> Result<(), &'static str> {
+    if value.len() > MAX_METADATA_LEN {
+        return Err("exceeds 256 bytes");
+    }
+    if value.chars().any(char::is_control) {
+        return Err("must not contain control characters");
     }
     Ok(())
 }
@@ -217,7 +245,7 @@ mod tests {
             .expect("a new window starts with a full allowance");
     }
 
-    // Distinct keys are counted independently, so one caller
+    // Keys in different slots are counted independently, so one caller
     // exhausting its allowance never refuses another.
     #[test]
     fn distinct_keys_do_not_share_an_allowance() {
@@ -228,21 +256,31 @@ mod tests {
             .expect("a different key has its own counter");
     }
 
-    // Two keys hashing to the same slot must not accumulate into one
-    // counter — the colliding caller resets the slot instead of being
-    // refused. This is the property that keeps a fixed table from
-    // denying service to whoever collides with a busy key.
+    // Two keys landing on the same slot share its counter. The old
+    // reset-on-mismatch rule let a caller alternate two colliding keys
+    // to reset its own counter forever; sharing makes the collision
+    // fail closed for the colliding caller instead.
     #[test]
-    fn slot_collision_resets_rather_than_denies() {
+    fn slot_collision_shares_the_counter() {
         let t = table();
         let now = Instant::now();
         let a = 7u64;
-        let b = a + SLOTS as u64; // same slot index, different tag
-        t.check_and_record(a, 1, WINDOW, "mint/ip", now).unwrap();
-        t.check_and_record(b, 1, WINDOW, "mint/ip", now)
-            .expect("a colliding key must not inherit the other key's count");
-        t.check_and_record(a, 1, WINDOW, "mint/ip", now)
-            .expect("and the original key's slot was reset, not refused");
+        let b = a + SLOTS as u64; // same slot index
+        t.check_and_record(a, 2, WINDOW, "mint/ip", now).unwrap();
+        t.check_and_record(b, 2, WINDOW, "mint/ip", now).unwrap();
+        assert!(
+            t.check_and_record(a, 2, WINDOW, "mint/ip", now).is_err(),
+            "alternating colliding keys must not reset the slot"
+        );
+        assert!(t.check_and_record(b, 2, WINDOW, "mint/ip", now).is_err());
+    }
+
+    // The key hash is seeded, so equal inputs still agree within one
+    // process (the quota depends on it) while the seed stays hidden.
+    #[test]
+    fn keys_are_stable_within_the_process() {
+        assert_eq!(install_key("abc"), install_key("abc"));
+        assert_ne!(install_key("abc"), install_key("abd"));
     }
 
     // limit == 0 is the documented "disabled" value, not "refuse
@@ -276,6 +314,24 @@ mod tests {
         let a: IpAddr = "203.0.113.1".parse().unwrap();
         let b: IpAddr = "203.0.113.2".parse().unwrap();
         assert_ne!(ip_key(a), ip_key(b));
+    }
+
+    #[test]
+    fn validate_metadata_accepts_launcher_values_and_rejects_line_breaks() {
+        for ok in [
+            "",
+            "main",
+            "feature/foo.bar",
+            "0123456abcdef",
+            "0.1.0",
+            "DESKTOP-1",
+        ] {
+            validate_metadata(ok).unwrap_or_else(|e| panic!("{ok:?} should pass: {e}"));
+        }
+        assert!(validate_metadata("main\nlevel=error msg=forged").is_err());
+        assert!(validate_metadata("a\rb").is_err());
+        assert!(validate_metadata("x\u{1b}[31m").is_err());
+        assert!(validate_metadata(&"a".repeat(MAX_METADATA_LEN + 1)).is_err());
     }
 
     // The launcher's own install_id shape (UUID v4) must pass.

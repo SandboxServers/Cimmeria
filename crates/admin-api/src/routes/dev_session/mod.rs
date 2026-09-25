@@ -51,6 +51,7 @@ mod tests;
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
 use axum::Router;
 
@@ -67,8 +68,15 @@ pub use token::{
 #[cfg(test)]
 pub use token::env_lock;
 
+/// Request-body cap for both routes. The `Json` extractor reads and
+/// deserializes the body before any quota is charged, so axum's 2 MiB
+/// default would let an over-quota caller still make the server parse
+/// megabytes per request. A real mint body is a few hundred bytes.
+pub const MAX_BODY_BYTES: usize = 8 * 1024;
+
 pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
         .route("/dev-session", post(mint))
         .route("/dev-session/refresh", post(refresh))
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
 }

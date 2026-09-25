@@ -217,6 +217,29 @@ fn mint_rejects_an_install_id_the_launcher_could_not_produce() {
     assert!(matches!(err, AuthError::BadInstallId(_)));
 }
 
+// The metadata fields reach %-Display in the INFO mint line, so one
+// carrying a line break must be refused before it can forge a log line.
+#[test]
+fn mint_rejects_metadata_that_would_forge_a_log_line() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let p = policy(100, 100, 10);
+    let mut req = request("install-1");
+    req.branch = "main\nlevel=ERROR msg=forged".into();
+    let err = mint_inner(&t, &p, ip("203.0.113.1"), req, Instant::now(), NOW_UNIX).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            AuthError::BadField {
+                field: "branch",
+                ..
+            }
+        ),
+        "got {err:?}"
+    );
+    assert_eq!(status(err), axum::http::StatusCode::BAD_REQUEST);
+}
+
 // The kill switch still wins over everything, including the quota.
 #[test]
 fn kill_switch_refuses_mint_before_any_quota_is_charged() {

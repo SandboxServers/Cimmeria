@@ -149,12 +149,20 @@ implementation:
 - **The counter store cannot grow.** Both keys are caller-supplied, so
   a map keyed on either would be its own memory-exhaustion vector.
   The store is instead a fixed 4096-slot array indexed by
-  `hash(key) % N`; a slot records the key it is counting and resets
-  when a different key lands on it. Two keys that collide therefore
-  leak allowance to the second caller rather than refusing them —
-  the safe direction, since a wrongly-refused developer costs more
-  than a few junk log lines. IPv6 keys fold to the /64 prefix,
+  `hash(key) % N`, and two keys that land on the same slot share its
+  counter. Resetting the slot on a key change instead would let a
+  caller holding two colliding addresses (two IPv6 /64s, say) alternate
+  them and reset its own counter on every request. The hash is SipHash
+  with a per-process random seed, so a collision cannot be picked or
+  precomputed; what remains is an unaimable ~1-in-4096 chance that two
+  live callers share a bucket. IPv6 keys fold to the /64 prefix,
   because a single host is routinely handed a whole /64.
+- **Caller metadata is checked before it is logged.** `machine_id`,
+  `branch`, `git_sha` and `launcher_version` reach the INFO mint line,
+  and the plain `fmt` log sinks do not escape them, so a value with a
+  control character (or longer than 256 bytes) is refused with 400.
+  Both routes also cap the request body at 8 KiB, because the JSON
+  body is parsed before any quota is charged.
 
 Behind a reverse proxy (a Cloudflare Tunnel, say) every request
 arrives from the proxy, so the per-IP quota degenerates to a global

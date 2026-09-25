@@ -77,6 +77,11 @@ pub enum AuthError {
     QuotaExceeded(#[from] super::quota::QuotaExceeded),
     #[error("Invalid install_id: {0}")]
     BadInstallId(&'static str),
+    #[error("Invalid {field}: {reason}")]
+    BadField {
+        field: &'static str,
+        reason: &'static str,
+    },
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -94,7 +99,9 @@ impl AuthError {
             | AuthError::Expired { .. }
             | AuthError::MissingScope { .. }
             | AuthError::SessionLifetimeExceeded { .. } => StatusCode::UNAUTHORIZED,
-            AuthError::BadInstallId(_) | AuthError::Json(_) => StatusCode::BAD_REQUEST,
+            AuthError::BadInstallId(_) | AuthError::BadField { .. } | AuthError::Json(_) => {
+                StatusCode::BAD_REQUEST
+            }
         }
     }
 

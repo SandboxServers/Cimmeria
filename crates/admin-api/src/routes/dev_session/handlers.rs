@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use cimmeria_services::orchestrator::Orchestrator;
 
-use super::quota::{install_key, ip_key, validate_install_id, WindowTable};
+use super::quota::{install_key, ip_key, validate_install_id, validate_metadata, WindowTable};
 use super::token::{encode_token, load_secret, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
 
 pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
@@ -143,6 +143,7 @@ pub async fn mint(
         Instant::now(),
         chrono::Utc::now().timestamp(),
     )
+    .inspect_err(|e| log_refusal("mint", peer.ip(), e))
     .map(Json)
 }
 
@@ -159,6 +160,7 @@ pub async fn refresh(
         Instant::now(),
         chrono::Utc::now().timestamp(),
     )
+    .inspect_err(|e| log_refusal("refresh", peer.ip(), e))
     .map(Json)
 }
 
@@ -186,6 +188,14 @@ pub(super) fn mint_inner(
         now,
     )?;
     validate_install_id(&req.install_id).map_err(AuthError::BadInstallId)?;
+    for (field, value) in [
+        ("machine_id", &req.machine_id),
+        ("branch", &req.branch),
+        ("git_sha", &req.git_sha),
+        ("launcher_version", &req.launcher_version),
+    ] {
+        validate_metadata(value).map_err(|reason| AuthError::BadField { field, reason })?;
+    }
     tables.mint_install.check_and_record(
         install_key(&req.install_id),
         policy.mint_per_install,
@@ -302,6 +312,30 @@ pub(super) fn refresh_inner(
         chunk_max_bytes: DEFAULT_CHUNK_MAX_BYTES,
         flush_interval_ms: DEFAULT_FLUSH_INTERVAL_MS,
     })
+}
+
+/// Quota and validation refusals are the operator's signal that a
+/// limit needs tuning (see docs/operations/telemetry.md), so they are
+/// logged; the rest of the error family already surfaces elsewhere.
+fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
+    match err {
+        AuthError::QuotaExceeded(q) => tracing::warn!(
+            route,
+            peer = %peer,
+            scope = q.scope,
+            retry_after_secs = q.retry_after_secs,
+            reason = "dev_session_quota_exceeded",
+            "dev-session request refused: {}",
+            q
+        ),
+        AuthError::BadInstallId(_) | AuthError::BadField { .. } => tracing::debug!(
+            route,
+            peer = %peer,
+            reason = "dev_session_bad_request",
+            "dev-session request refused: {err}"
+        ),
+        _ => {}
+    }
 }
 
 pub(super) fn kill_switch_active() -> bool {
