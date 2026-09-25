@@ -176,7 +176,7 @@ Land NA00 first, because every later packet uses its `set_ai_state` helper and i
 
 ### NA13
 
-**Status:** BlockedDependency (NA00, NA12). **Scope title:** Faction-derived proximity aggro with radius, LoS, vertical band and GM toggle (A1-A6, A8). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor, server-authority-enforcer (GM toggle), database-persistence (seed columns).
+**Status:** Review (branch `npcai/na13-faction-aggro` pushed 2026-09-25, on NA12). Effective aggression = override (`spawnlist.aggression_override`, `set_aggression`, console) else the 2009 `FACTION_REACTION_TABLE` (code constant pinned to `enumerations.xml`; players react as faction 3); only HOSTILE aggroes. Runtime field is now `aggro.override_level: Option<MobAggression>`; the two `set_aggression` rows keep `level 1` (= HOSTILE). Gates: `entity_templates.aggro_radius` (default 18 u), 4 u vertical band, LoS with `Unknown` failing closed where a navmesh exists, dead, GM `.aggro off`. Spawns 20 and 10 seeded NEUTRAL; no other Castle/Harset chain calls `set_aggression`. Wire broadcast NOT shipped: the client consumes the level via `onAggressionOverrideUpdate` (SGWMob, index unverified), not `onEntityProperty` type 6 (open item in [npc-ai.md](../../gameplay/npc-ai.md#wire-not-broadcast-yet-open-item)). **Scope title:** Faction-derived proximity aggro with radius, LoS, vertical band and GM toggle (A1-A6, A8). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor, server-authority-enforcer (GM toggle), database-persistence (seed columns).
 
 **Scope:**
 
