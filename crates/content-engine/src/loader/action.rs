@@ -288,6 +288,11 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         "system_message" => Some(Action::SystemMessage {
             message_id: row.target_id?,
         }),
+        // The non-modal companion line lives in a sibling module for the
+        // same reason the entity-lifecycle verbs do: its three params are
+        // all reject-on-bad rather than default-through, and inlining the
+        // warns would push this file past the 500-line soft cap.
+        "npc_bark" => super::action_bark::convert_npc_bark(row),
         "qr_combat_damage" => {
             let stat_id = params.get("stat_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let source_id = params

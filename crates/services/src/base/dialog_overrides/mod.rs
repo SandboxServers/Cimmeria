@@ -58,6 +58,8 @@ mod patches_cellblock;
 #[cfg(test)]
 mod patch_seed_agreement_castle;
 #[cfg(test)]
+mod patch_seed_agreement_cellblock;
+#[cfg(test)]
 mod patch_tests;
 
 pub use emit::{emit_cooked_dialog, escape_xml_attr, CookedButton, CookedDialog, CookedScreen};

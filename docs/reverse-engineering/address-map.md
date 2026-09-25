@@ -1205,7 +1205,17 @@ Cross-world: `CellToBaseMsg::GateTravel` — full instance teardown.
 
 ## Cover System
 
-See [`findings/cover-system.md`](findings/cover-system.md) for full analysis.
+See [`findings/cover-system.md`](findings/cover-system.md) for full analysis, and
+[`findings/cover-world-placement.md`](findings/cover-world-placement.md) (NA20, 2026-09-24)
+for where Castle/Castle_CellBlock's actual placed cover nodes live: **not**
+`covernodes_*.pak`, and not `CA-Prebuilt.upk`/`GA-Arch.upk` (a case-insensitive
+string scan of both files for `covernode` returns zero hits — that premise was
+wrong). The real per-level data is `ASGWSpecCoverNode` actors and
+`StaticMeshActor.CoverNodeArray` groups baked directly into the `.umap` chunks,
+already in absolute UE3 world space (4,024 nodes across the two maps, no
+owner-transform composition needed for either pattern found). This does not
+change `USGWCoverNodeComponent_SpawnCoverNode` below, which is likely the
+separate prefab-pak pipeline (unreconciled — see the finding's Open Questions).
 
 ### Cover Weight Event Handlers (Client → Server)
 

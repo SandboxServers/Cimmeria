@@ -34,5 +34,24 @@ startup cache next to the existing ones. Keep the round-trip only for
 *authoring* commands, where a live query reflecting DB edits without a restart
 is the point. Accept that a cache is a startup snapshot.
 
+**Adding one is four edits, always the same four** (DU-03 added
+`dialog_screen_text`): a `load_*` fn in the matching `cell/spawner/<topic>.rs`,
+a `pub use` in `cell/spawner/mod.rs`, a field + `HashMap::new()` in
+`cell/space_manager/mod.rs`, and an `if let Some(ref pool) = self.db_pool`
+block in `cell/service/startup.rs`. Pick the failure level deliberately:
+`monologue_dialog_ids` is `error!` because an empty cache silently strips ~42%
+of dialog screens; a cache whose consumer fails closed with its own warn is
+`warn!`.
+
+**Dialog screen text specifically is reachable.** `resources.dialog_screens` is
+already queried at startup (`load_monologue_dialog_ids`), and
+`spawner::load_dialog_screen_text` now caches `screen_id → text` for the
+`npc_bark` action. `screen_id` is **globally unique across all 13,467 seeded
+rows** (verified by counting the seed), so a flat `HashMap<i32, String>` is
+correct — no `(dialog_id, screen_id)` key needed. `dialog_screens.text` is
+`NOT NULL`. Cost is roughly 1.3 MB per cell. So a content verb that needs
+original 2009 line text never needs a `"text"` param; name the `screen_id` and
+resolve server-side.
+
 Related: [[stat-with-no-consumer-trap]] — same family of "the plumbing exists
 but nothing reads it" checks before building on a claim in a doc comment.

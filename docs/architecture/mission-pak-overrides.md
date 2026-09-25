@@ -207,9 +207,11 @@ Field naming follows [docs/architecture/negative-logging-convention.md](negative
 
 1. Add the `DialogPatch` to the zone table — `patches_cellblock.rs` for Castle_CellBlock, `patches_castle.rs` for Castle. One file per zone so two packets editing different zones never collide.
 2. Make `db/resources/Dialogs/Seed/dialog_screen_buttons.sql` agree in the same commit. The client renders from the patch; the seed is the committed record and what the dialog button linter reads. They are kept in sync by hand, exactly as the full-regeneration overrides already require.
-3. Check the two hard rules: a dialog keying a `dialog_choice` chain ends with zero buttons or a button on its final screen; and never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003, 5004 or 5009.
+3. Check the two hard rules: a dialog keying a `dialog_choice` chain ends with zero buttons or a button on its final screen; and never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003, 5004, 5008 or 5009.
 
-Both zone tables ship empty. A patch plan participates in the metadata bump, so editing one re-invalidates that entry on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
+4. Add the row to the zone's `patch_seed_agreement_<zone>.rs` guards, which check the plan against the seed and run it against the committed `data/cache/CookedDataDialogs.pak`. The patcher keeps the original entry when a plan cannot apply, so without that guard a typo'd dialog or screen id leaves no failing test.
+
+The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). The Castle table carries three `OnlyOn` rows (DU-02b: 2573, 5861 and 2576 keep one button, on their final screen, so the mission 701 briefings fire their chains when read to the end). A patch plan participates in the metadata bump, so editing one re-invalidates that entry on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
 
 ## Adding a new override
 
