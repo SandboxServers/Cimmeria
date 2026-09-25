@@ -65,6 +65,22 @@ exactly like an accidental line-ending flip and is easy to "fix" by reverting
 good work. Check with `file <path>` after every scripted doc edit; find the
 offender with `re.finditer(rb"\r(?!\n)", open(p,"rb").read())`.
 
+**3b. Never put a Windows path — or any backslash — in scripted replacement
+text.** Writing `` `$C\\navmesh\\harset\\Harset\\mse13.nav` `` inside a
+`python - <<'PY'` heredoc produced `$C` + a real newline + `avmesh\harset\...`
+in the output markdown: the heredoc/tool layer collapsed `\\` to `\`, so Python
+saw `\n` and turned it into a line break **mid-word, inside a sentence**. The
+only warning was a `SyntaxWarning: invalid escape sequence '\h'` that scrolled
+past above a cheerful `ok`, and the file's line-ending check still came back
+clean — CRLF 110 / bare LF 0 — because a newline *is* legal, just not there.
+
+Prose with a path in it is exactly where this bites. Either spell the path with
+forward slashes, describe it instead of quoting it, or **use the Edit tool**,
+which takes the string literally and needs no escaping. And read back the
+rendered paragraph after any scripted prose edit — `git diff --stat` cannot see
+a newline that landed in the middle of a sentence, because the line count is
+still plausible.
+
 Two smaller ones from the same session:
 
 - The Bash tool **refuses** `lane.sh <cmd>` when any argument is computed at

@@ -181,6 +181,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
                 transport,
                 connected,
                 entity_to_addr,
+                cell_tx,
             )
             .await;
         }
@@ -300,6 +301,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             transport,
             connected,
             entity_to_addr,
+            cell_tx,
         )
         .await;
     }

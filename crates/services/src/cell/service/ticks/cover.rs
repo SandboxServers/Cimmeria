@@ -100,8 +100,8 @@ pub(in crate::cell::service) async fn cover_detection_tick(
             player_id,
             db_player_id,
             entered.cover_set_id,
-            sql_height_name(entered.representative_height),
-            sql_quality_name(entered.representative_quality),
+            entered.representative_height.sql_name(),
+            entered.representative_quality.sql_name(),
             engine,
             tx,
             space_mgr,
@@ -201,26 +201,6 @@ fn log_cover_edge(space_mgr: &SpaceManager, edge: &'static str, player_id: u32, 
         proximity_radius = COVER_PROXIMITY_RADIUS,
         "cover detection: player crossed a cover-set proximity edge"
     );
-}
-
-fn sql_height_name(h: crate::cell::cover::CoverHeight) -> &'static str {
-    use crate::cell::cover::CoverHeight;
-    match h {
-        CoverHeight::Low => "HEIGHT_Low",
-        CoverHeight::Mid => "HEIGHT_Mid",
-        CoverHeight::High => "HEIGHT_High",
-        CoverHeight::Los => "HEIGHT_LOS",
-    }
-}
-
-fn sql_quality_name(q: crate::cell::cover::CoverQuality) -> &'static str {
-    use crate::cell::cover::CoverQuality;
-    match q {
-        CoverQuality::Good => "QUALITY_Good",
-        CoverQuality::Better => "QUALITY_Better",
-        CoverQuality::Best => "QUALITY_Best",
-        CoverQuality::None_ => "QUALITY_None",
-    }
 }
 
 #[cfg(test)]
@@ -426,7 +406,7 @@ mod tests {
         assert_eq!(sets[0].0, 123);
     }
 
-    /// `sql_height_name` and `sql_quality_name` are pure mapping
+    /// `CoverHeight::sql_name` and `CoverQuality::sql_name` are pure mapping
     /// functions; pin every enum variant so a future enum addition
     /// (or rename of the SQL spelling) is caught at compile-time via
     /// the exhaustive match. Asserting the strings here also catches
@@ -434,14 +414,14 @@ mod tests {
     /// these exact strings in their trigger payloads.
     #[test]
     fn sql_height_and_quality_names_map_every_variant() {
-        assert_eq!(sql_height_name(CoverHeight::Low), "HEIGHT_Low");
-        assert_eq!(sql_height_name(CoverHeight::Mid), "HEIGHT_Mid");
-        assert_eq!(sql_height_name(CoverHeight::High), "HEIGHT_High");
-        assert_eq!(sql_height_name(CoverHeight::Los), "HEIGHT_LOS");
+        assert_eq!(CoverHeight::Low.sql_name(), "HEIGHT_Low");
+        assert_eq!(CoverHeight::Mid.sql_name(), "HEIGHT_Mid");
+        assert_eq!(CoverHeight::High.sql_name(), "HEIGHT_High");
+        assert_eq!(CoverHeight::Los.sql_name(), "HEIGHT_LOS");
 
-        assert_eq!(sql_quality_name(CoverQuality::Good), "QUALITY_Good");
-        assert_eq!(sql_quality_name(CoverQuality::Better), "QUALITY_Better");
-        assert_eq!(sql_quality_name(CoverQuality::Best), "QUALITY_Best");
-        assert_eq!(sql_quality_name(CoverQuality::None_), "QUALITY_None");
+        assert_eq!(CoverQuality::Good.sql_name(), "QUALITY_Good");
+        assert_eq!(CoverQuality::Better.sql_name(), "QUALITY_Better");
+        assert_eq!(CoverQuality::Best.sql_name(), "QUALITY_Best");
+        assert_eq!(CoverQuality::None_.sql_name(), "QUALITY_None");
     }
 }

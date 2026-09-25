@@ -32,12 +32,34 @@
 //! The next post-`onClientReady` position frame supersedes anything we
 //! would have buffered, so dropping `EntityMoved` pre-ready is correct
 //! and cheaper than queueing.
+//!
+//! # The first-login cinematic hold
+//!
+//! A second, narrower gate covers the first-login cinematic. The client
+//! ACKs an entity introduction it receives while the fullscreen movie plays
+//! and then can fail to render it: the 2026-09-19 Castle_CellBlock repro
+//! lost a `class_id 0` static-mesh corpse this way until relog, with every
+//! create packet acknowledged first try. The cinematic-exit
+//! `CollectGarbage` already reclaims the player's own appearance (#288), so
+//! the working theory is that it also reclaims a static mesh whose entity
+//! was created mid-movie.
+//!
+//! While [`ConnectedClientState::cinematic_aoi_hold`] is set,
+//! [`should_hold_entity_traffic`] keeps every *entity-scoped* message in the
+//! same buffer until the movie is cancelled or its duration elapses — see
+//! `world_entry_appearance::cinematic_aoi_hold`. That includes the two
+//! variants the pre-ready gate leaves alone, `WitnessEntityMethod` and
+//! `EntityInvisible`: a held entity's method sent ahead of its create would
+//! reach a client that has no such entity and be dropped for good.
+//! Player-self `EntityMethodCall`s are not held; they stay on
+//! [`should_defer`] and flush at `onClientReady` via
+//! [`drain_deferred_self_methods`].
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use crate::cell::messages::NpcAoIData;
+use crate::cell::messages::{NpcAoIData, PlayerAoIData};
 
 use super::ConnectedClientState;
 
@@ -71,6 +93,9 @@ pub(crate) enum DeferredAoiMsg {
         direction: [f32; 3],
         level: u32,
         npc_data: Option<NpcAoIData>,
+        /// Cell-side live state of a player observee; joined with the
+        /// observee's session identity at flush time, not at buffer time.
+        player_data: Option<PlayerAoIData>,
     },
     /// Buffered [`crate::cell::messages::CellToBaseMsg::LeftAoI`].
     LeftAoI { entity_id: u32 },
@@ -80,6 +105,17 @@ pub(crate) enum DeferredAoiMsg {
         method_index: u16,
         args: Vec<u8>,
     },
+    /// Buffered [`crate::cell::messages::CellToBaseMsg::WitnessEntityMethod`].
+    /// Only the cinematic hold buffers this variant.
+    WitnessEntityMethod {
+        entity_id: u32,
+        method_index: u16,
+        args: Vec<u8>,
+        entity_is_player: bool,
+    },
+    /// Buffered [`crate::cell::messages::CellToBaseMsg::EntityInvisible`].
+    /// Only the cinematic hold buffers this variant.
+    EntityInvisible { entity_id: u32 },
 }
 
 /// True iff the witness's session is still in the pre-`onClientReady`
@@ -101,6 +137,43 @@ pub(crate) fn should_defer(
         return false;
     };
     state.pending_map_loaded.is_some() || state.pending_client_ready.is_some()
+}
+
+/// True iff entity-scoped traffic for this witness must be buffered: the
+/// session is pre-`onClientReady` ([`should_defer`]) **or** inside the
+/// first-login cinematic hold.
+///
+/// Gates `EnteredAoI` / `LeftAoI` / `EntityMoved`. One lock, so both
+/// conditions are read from the same snapshot.
+pub(crate) fn should_hold_entity_traffic(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> bool {
+    let Ok(clients) = connected.lock() else {
+        return false;
+    };
+    let Some(state) = clients.get(&addr) else {
+        return false;
+    };
+    state.pending_map_loaded.is_some()
+        || state.pending_client_ready.is_some()
+        || state.cinematic_aoi_hold.is_some()
+}
+
+/// True iff the session is inside the first-login cinematic hold.
+///
+/// Gates `WitnessEntityMethod` / `EntityInvisible`, which the pre-ready
+/// window deliberately leaves ungated.
+pub(crate) fn cinematic_hold_active(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> bool {
+    let Ok(clients) = connected.lock() else {
+        return false;
+    };
+    clients
+        .get(&addr)
+        .is_some_and(|state| state.cinematic_aoi_hold.is_some())
 }
 
 /// Push `msg` into the witness's deferred-AoI buffer. Caller has already
@@ -154,6 +227,30 @@ pub(crate) fn drain_deferred(
         return Vec::new();
     };
     std::mem::take(&mut state.deferred_aoi_msgs)
+}
+
+/// Drain only the player-self [`DeferredAoiMsg::EntityMethodCall`] entries,
+/// in order, leaving entity-scoped messages buffered.
+///
+/// `handle_on_client_ready` uses this when the cinematic hold is active:
+/// mission, dialog and hotbar traffic buffered pre-ready must still reach
+/// the client at `onClientReady`, while entity introductions wait for the
+/// movie to end.
+pub(crate) fn drain_deferred_self_methods(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Vec<DeferredAoiMsg> {
+    let Ok(mut clients) = connected.lock() else {
+        return Vec::new();
+    };
+    let Some(state) = clients.get_mut(&addr) else {
+        return Vec::new();
+    };
+    let (self_methods, held): (Vec<_>, Vec<_>) = std::mem::take(&mut state.deferred_aoi_msgs)
+        .into_iter()
+        .partition(|m| matches!(m, DeferredAoiMsg::EntityMethodCall { .. }));
+    state.deferred_aoi_msgs = held;
+    self_methods
 }
 
 #[cfg(test)]
@@ -214,6 +311,80 @@ mod tests {
         assert!(
             !should_defer(&connected, addr),
             "missing session can't defer — message is just dropped by AoI handler"
+        );
+    }
+
+    /// The cinematic hold widens the entity-traffic gate but must leave the
+    /// player-self gate alone; reverting either half shows up here. A hold
+    /// that leaked into `should_defer` would park mission and dialog traffic
+    /// behind a 13-second movie.
+    #[test]
+    fn cinematic_hold_gates_entity_traffic_but_not_self_methods() {
+        let (addr, connected) = make_state_and_connected();
+        assert!(!should_hold_entity_traffic(&connected, addr));
+        assert!(!cinematic_hold_active(&connected, addr));
+
+        connected
+            .lock()
+            .unwrap()
+            .get_mut(&addr)
+            .unwrap()
+            .cinematic_aoi_hold = Some(super::super::world_entry_appearance::CinematicAoiHold {
+            token: 7,
+            started: tokio::time::Instant::now(),
+            releasing: false,
+        });
+
+        assert!(
+            should_hold_entity_traffic(&connected, addr),
+            "hold set → entity introductions buffer"
+        );
+        assert!(cinematic_hold_active(&connected, addr));
+        assert!(
+            !should_defer(&connected, addr),
+            "the hold must not defer player-self method calls"
+        );
+    }
+
+    /// Partial drain keeps order within each class and leaves the
+    /// entity-scoped entries buffered for the hold release.
+    #[test]
+    fn drain_deferred_self_methods_leaves_entity_traffic_buffered() {
+        let (addr, connected) = make_state_and_connected();
+        let self_call = |method_index| DeferredAoiMsg::EntityMethodCall {
+            entity_id: 2,
+            method_index,
+            args: Vec::new(),
+        };
+        push_deferred(&connected, addr, self_call(0x10));
+        push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: 100 });
+        push_deferred(&connected, addr, self_call(0x11));
+        push_deferred(
+            &connected,
+            addr,
+            DeferredAoiMsg::EntityInvisible { entity_id: 101 },
+        );
+
+        let drained = drain_deferred_self_methods(&connected, addr);
+        let indices: Vec<u16> = drained
+            .iter()
+            .map(|m| match m {
+                DeferredAoiMsg::EntityMethodCall { method_index, .. } => *method_index,
+                other => panic!("non-self message drained: {other:?}"),
+            })
+            .collect();
+        assert_eq!(indices, vec![0x10, 0x11], "self methods drain in order");
+
+        let held = drain_deferred(&connected, addr);
+        assert!(
+            matches!(
+                held.as_slice(),
+                [
+                    DeferredAoiMsg::LeftAoI { entity_id: 100 },
+                    DeferredAoiMsg::EntityInvisible { entity_id: 101 }
+                ]
+            ),
+            "entity-scoped entries stay buffered, in order: {held:?}"
         );
     }
 

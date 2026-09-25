@@ -51,6 +51,22 @@ The Tauri desktop app has **two** paths to the backend:
 | Browser | `{window.location.protocol}//{window.location.hostname}:8443` |
 | Override | `VITE_ADMIN_API_ORIGIN` environment variable |
 
+The server binds the admin API to **loopback by default** (`ADMIN_BIND` defaults to
+`127.0.0.1`; see `crates/common/src/config.rs`). The admin API has no authentication yet
+(JWT middleware is TODO — issue #439), so a non-loopback `ADMIN_BIND` exposes
+unauthenticated administrative control (server stop, content rewrite, log/credential
+streaming via `/ws/logs`) to every host that can route to the port. Only set it wide
+together with the JWT work. Launcher telemetry (`POST /api/auth/dev-session`,
+`/api/telemetry/*`) shares this listener, so a launcher on another host cannot reach it
+under the loopback default; a cross-host telemetry deployment needs a wide `ADMIN_BIND`
+and accepts the unauthenticated-admin exposure until JWT lands.
+
+Containers are different: a Docker published port forwards to the container's bridge
+address and cannot reach an in-container loopback bind, so the image sets
+`ADMIN_BIND=0.0.0.0` and the **publish** is the exposure control — `-p 127.0.0.1:8443:8443`
+for operator-only access, or no publish at all (see
+[`colo-deploy.md`](../operations/colo-deploy.md)).
+
 All REST endpoints are prefixed with `/api/`. WebSocket endpoints are prefixed with `/ws/`.
 
 ## REST Endpoints
