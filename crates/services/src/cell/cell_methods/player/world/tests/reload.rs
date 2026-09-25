@@ -318,3 +318,79 @@ async fn handle_reload_emits_ammo_type_under_correct_propid() {
          All onEntityProperty calls observed: {entity_property_calls:?}",
     );
 }
+
+/// The reload timer is the same type as an ability cooldown
+/// (`TIMER_ABILITY_COOLDOWN`), so its `BigWorldTimeComplete` must be the
+/// absolute game-clock expiry `now + warmup + cooldown`, not `0.0` — a
+/// `0.0` next to an absolute ability cooldown gives the client one bar it
+/// can finish and one it cannot (#271).
+#[tokio::test]
+async fn handle_reload_timer_expires_on_the_game_clock() {
+    use crate::base::game_time::game_time_secs;
+    use crate::cell::client_methods::being::ON_TIMER_UPDATE;
+
+    let mut mgr = make_mgr_with_player();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.weapon_holstered = false;
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                instance_id: 0,
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 2,
+                current_ammo: 0,
+                cur_ammo_type: 2,
+            },
+        );
+        e.active_bandolier_slot = 0;
+    }
+    mgr.ability_defs.insert(
+        596,
+        AbilityDef {
+            ability_id: 596,
+            name: "reload".to_string(),
+            cooldown: 1.0,
+            warmup: 0.5,
+            flags: 0,
+            is_ranged: false,
+            min_range: 0,
+            max_range: 0,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            required_ammo: 0,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
+    let (tx, mut rx) = mpsc::channel(32);
+    crate::base::game_time::wait_for_nonzero_game_time();
+    let before = game_time_secs();
+    handle_reload(1, &tx, &mut mgr).await;
+    let after = game_time_secs();
+
+    let mut timer = None;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id: 1,
+            method_index,
+            args,
+        } = msg
+        {
+            if method_index == ON_TIMER_UPDATE {
+                timer = Some(args);
+            }
+        }
+    }
+    let timer = timer.expect("reload must emit its cooldown onTimerUpdate");
+    assert_eq!(timer.len(), 21);
+    let total = f32::from_le_bytes(timer[13..17].try_into().unwrap());
+    assert_eq!(total, 1.5, "TotalTime = warmup + cooldown");
+    let expire = f32::from_le_bytes(timer[17..21].try_into().unwrap());
+    assert!(
+        expire >= before + 1.5 && expire <= after + 1.5,
+        "BigWorldTimeComplete must be game_time_secs() + 1.5, got {expire} \
+         (clock read {before}..{after})"
+    );
+}

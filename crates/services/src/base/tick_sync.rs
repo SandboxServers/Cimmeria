@@ -83,7 +83,13 @@ pub(crate) async fn run_tick_loop(
     // matching this timer to `UE3_INACTIVITY_TIMEOUT_MS`.
     const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
 
-    let mut tick: u32 = 0;
+    // Session-local count of loop iterations, used only for the occasional
+    // heartbeat log. The wire `gameTime` value is the shared game clock
+    // (`super::game_time::game_time_tick`), NOT this counter — absolute
+    // timer endpoints emitted by the cell (`onTimerUpdate`'s
+    // `BigWorldTimeComplete`) are in that same clock's domain, and the
+    // client derails when a tickSync jumps between the two.
+    let mut heartbeat: u32 = 0;
 
     tracing::debug!(%addr, "Tick-sync loop started");
 
@@ -144,7 +150,9 @@ pub(crate) async fn run_tick_loop(
         // Unreliable on its own counter sidesteps both: fire-and-forget,
         // reliable stream stays contiguous (client's `inSeqAt` only tracks
         // reliable arrivals), no TX window pressure.
-        let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks, enc_version);
+        let game_tick = super::game_time::game_time_tick();
+        let (seq_id, pkt) =
+            tick_sync_packet(&next_seq_unreliable, &key, game_tick, &acks, enc_version);
         if let Err(e) = transport.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break "send_error";
@@ -172,11 +180,15 @@ pub(crate) async fn run_tick_loop(
             }
         }
 
-        if tick.is_multiple_of(100) {
-            tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
+        heartbeat = heartbeat.wrapping_add(1);
+        if heartbeat.is_multiple_of(100) {
+            tracing::debug!(
+                %addr,
+                tick = game_tick,
+                seq_id,
+                "Tick-sync heartbeat (every 100th)"
+            );
         }
-
-        tick = tick.wrapping_add(1);
     };
 
     // Clean up entities for this disconnected client.

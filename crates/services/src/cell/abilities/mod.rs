@@ -49,7 +49,9 @@ pub(crate) use messaging::{
 pub use resolve::{
     ability_for_active_weapon, ability_for_item, is_ability_granted_by_active_weapon,
 };
-pub use use_ability::{handle_use_ability, handle_use_ability_with_kill_credit};
+pub use use_ability::{
+    handle_use_ability, handle_use_ability_at, handle_use_ability_with_kill_credit,
+};
 
 #[cfg(test)]
 pub(crate) use use_ability::maybe_trigger_auto_reload_for_test;

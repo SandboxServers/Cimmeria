@@ -146,7 +146,7 @@ pub(crate) async fn handle_login(
     transport.send_to(&reply, addr).await?;
 
     // time-sync bundle at seq=2.
-    let sync = build_time_sync(&key, 2, enc_version);
+    let sync = build_time_sync(&key, 2, super::game_time::game_time_tick(), enc_version);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
     transport.send_to(&sync, addr).await?;
 

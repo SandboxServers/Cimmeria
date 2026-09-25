@@ -197,3 +197,52 @@ async fn self_target_commits_returns_true() {
     assert!(committed);
     assert!(mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
 }
+
+/// Committed self-cast emits the cooldown `onTimerUpdate` (method 12)
+/// whose `BigWorldTimeComplete` (bytes 17..21 of the 21-byte payload) is
+/// **absolute** — fixed game-time anchor 1234.0 + cooldown 0.5. The
+/// client's cooldown handler compares this field against its tickSync-
+/// derived game time, so reverting the hardcoded 0.0 back in (or emitting
+/// a relative offset) leaves no reachable expiry and wedges the cooldown
+/// bar "on cooldown" for the rest of the session.
+#[tokio::test]
+async fn self_target_commit_emits_absolute_cooldown_expire_time() {
+    use crate::cell::client_methods::being::ON_TIMER_UPDATE;
+
+    let mut mgr = make_mgr();
+    make_player(&mut mgr, 1, [0.0; 3]);
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities.add_ability(7);
+    }
+    mgr.ability_defs.insert(7, make_ability(7, 0, 30)); // cooldown = 0.5
+    let (tx, mut rx) = mpsc::channel(64);
+
+    let committed = handle_use_ability_at(1234.0, 1, 7, 0, &tx, &mut mgr).await;
+    assert!(committed);
+
+    let msgs = drain(&mut rx);
+    let timer = msgs
+        .iter()
+        .find_map(|m| match m {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                args,
+            } if *method_index == ON_TIMER_UPDATE => Some(args.clone()),
+            _ => None,
+        })
+        .expect("committed self-cast must emit the cooldown onTimerUpdate");
+    assert_eq!(
+        timer.len(),
+        21,
+        "serialize_timer_update payload is 21 bytes"
+    );
+    let total = f32::from_le_bytes([timer[13], timer[14], timer[15], timer[16]]);
+    assert_eq!(total, 0.5, "TotalTime stays the cooldown duration");
+    let expire = f32::from_le_bytes([timer[17], timer[18], timer[19], timer[20]]);
+    assert!(
+        (expire - 1234.5).abs() < f32::EPSILON,
+        "BigWorldTimeComplete must be absolute now+cooldown (got {expire}); \
+         a 0.0 or relative value leaves the client unable to complete the cooldown"
+    );
+}

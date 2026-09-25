@@ -10,9 +10,7 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{
-    serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE, TIMER_ABILITY_COOLDOWN,
-};
+use cimmeria_entity::abilities::{build_cooldown_timer_args, AF_DEACTIVATE_AUTO_CYCLE};
 
 use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
@@ -62,13 +60,32 @@ async fn send_state_field(
 /// ability, on cooldown, reload in flight, no ammo, or out-of-range
 /// for an explicit target). Ground-target AoE callers gate
 /// secondary-target damage on this return value.
+pub async fn handle_use_ability(
+    entity_id: u32,
+    ability_id: i32,
+    target_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    // Capture the game clock once at entry; everything this invocation
+    // emits (the cooldown `BigWorldTimeComplete` especially) is anchored
+    // to this reading of the shared game-time domain.
+    let now_secs = crate::base::game_time::game_time_secs();
+    handle_use_ability_at(now_secs, entity_id, ability_id, target_id, tx, space_mgr).await
+}
+
+/// Time-injected core of [`handle_use_ability`]. `now_secs` is the server
+/// game time in the client's tickSync domain (`crate::base::game_time`),
+/// threaded in so the emitted `onTimerUpdate` `BigWorldTimeComplete` field
+/// is deterministic under test.
 #[tracing::instrument(
     name = "combat.use_ability",
     level = "info",
     skip_all,
     fields(entity_id, ability_id, target_id)
 )]
-pub async fn handle_use_ability(
+pub async fn handle_use_ability_at(
+    now_secs: f32,
     entity_id: u32,
     ability_id: i32,
     target_id: i32,
@@ -468,14 +485,8 @@ pub async fn handle_use_ability(
 
     // ── Send cooldown timer to attacker ──
 
-    let timer_args = serialize_timer_update(
-        ability_id,
-        TIMER_ABILITY_COOLDOWN,
-        entity_id as i32,
-        0,
-        cooldown_secs,
-        0.0, // TODO: bigWorldTimeComplete = gameTime + cooldown
-    );
+    let timer_args =
+        build_cooldown_timer_args(ability_id, entity_id as i32, cooldown_secs, now_secs);
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 

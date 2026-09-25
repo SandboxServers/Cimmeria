@@ -20,7 +20,7 @@ mod tests;
 
 // Public re-exports — keep `crate::cell::abilities::use_ability::Foo` paths
 // stable for callers (and `super::*` resolution for `tests`).
-pub use handle::handle_use_ability;
+pub use handle::{handle_use_ability, handle_use_ability_at};
 pub use kill_credit::handle_use_ability_with_kill_credit;
 
 #[cfg(test)]

@@ -434,6 +434,48 @@ the GM path `false`, so an admin command cannot mint levels.
 both together; on its own it cannot isolate the AI filter, because the death it
 resolves also stamps `AiState::Dead`.)
 
+### 20. Timer expiries are absolute on one server-wide game clock
+
+**Decision:** every `onTimerUpdate` start carries `BigWorldTimeComplete = now + duration`,
+where `now` is [`base::game_time::game_time_secs`](../../crates/services/src/base/game_time.rs).
+That covers the ability cooldown (`handle_use_ability`), the weapon-reload cooldown
+(`handle_reload`), the effect-duration start (`pulsing/register.rs`), and the GM `.net_timer`.
+The effect-duration clears still send `0.0`. The clock the client compares against is the
+same counter: the login bundle's `TICK_SYNC.gameTime` and `SET_GAME_TIME`
+(`build_time_sync`) and every heartbeat `TICK_SYNC` all carry `game_time_tick()`.
+
+**Why:** this is the C++ reference server's model, not an inference. `CellManager::ticks()`
+is milliseconds since start divided by `tick_rate`, and `tick_rate` (`100`) is
+*milliseconds per tick*. `ClientHandler::onConnected` writes that one counter into both
+`TICK_SYNC` and `SET_GAME_TIME`, and `ClientHandler::gameTick` keeps sending it. The Python
+`getGameTime()` is `ticks * tick_rate / 1000`, and `AbilityManager.py` sends
+`getGameTime() + cooldown` (and an effect's `completeTime`) as `BigWorldTimeComplete`.
+The client computes the time left as `BigWorldTimeComplete - now`
+(`ability-resolution-pipeline.md`), so the expiry and the client's clock have to be on the
+same counter.
+
+Before this, the three pieces were inconsistent. Login seeded every client at tick `0`, each
+session's heartbeat counted up from its own `0`, and expiries were `0.0` (cooldowns) or the
+bare duration (effects). Because each session's clock also started at `0`, the relative
+effect times only looked right early in a session. All three move together; changing one
+without the others breaks the rest. For example, a global heartbeat with a zero login seed
+makes the client's clock jump.
+
+**Trap:** `tickRate` is milliseconds per tick, not ticks per second. If the counter advanced
+100 times a second while the field still said `100`, the client's clock would run 10 times
+too fast and every absolute expiry would already have passed when it arrived.
+`ticks_to_secs` is the one conversion; `TICK_INTERVAL_MS` and `UPDATE_FREQUENCY_HZ` are the
+only copies of the rate.
+
+**Not verified in the live client.** The wire values match the reference server, but no
+playtest has confirmed cooldown bars or buff icons against a running `SGW.exe`.
+
+**Reversibility:** High. Guards: `time_sync_seeds_client_clock_with_server_ticks`,
+`self_target_commit_emits_absolute_cooldown_expire_time`,
+`handle_reload_timer_expires_on_the_game_clock`,
+`duration_effect_timers_carry_effect_id_and_absolute_expiry`,
+`ticks_convert_at_ms_per_tick`.
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:

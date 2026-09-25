@@ -30,8 +30,8 @@ fn default_config_session_produces_v1_handshake_bytes() {
     let reply_v1 = build_connect_reply(request_id, &ticket, &key, 1, EncryptionVersion::V1);
     assert_eq!(reply_default, reply_v1, "default connect_reply must be v1");
 
-    let sync_default = build_time_sync(&key, 2, selected);
-    let sync_v1 = build_time_sync(&key, 2, EncryptionVersion::V1);
+    let sync_default = build_time_sync(&key, 2, 0, selected);
+    let sync_v1 = build_time_sync(&key, 2, 0, EncryptionVersion::V1);
     assert_eq!(sync_default, sync_v1, "default time_sync must be v1");
 
     // And the v1 frame must NOT start with the v2 version byte — the actual
@@ -411,6 +411,9 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         .unwrap()
         .insert(ticket.clone(), pending);
 
+    // The time-sync bundle carries the live game clock; bracket the call so
+    // the expected bytes can be rebuilt for whichever tick it read.
+    let tick_before = crate::base::game_time::game_time_tick();
     handle_login(
         &dyn_transport,
         addr,
@@ -425,6 +428,7 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
     )
     .await
     .expect("Phase 3 handoff");
+    let tick_after = crate::base::game_time::game_time_tick();
 
     // Stop the tick loop before it can append a third packet.
     cancel_session(&connected, addr);
@@ -448,10 +452,15 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         ),
         "phase-3 connect_reply bytes (seq 1)"
     );
-    assert_eq!(
-        sent[1].1,
-        build_time_sync(&key, 2, cimmeria_mercury::encryption::EncryptionVersion::V1),
-        "initial time_sync bytes (seq 2)"
+    assert!(
+        (tick_before..=tick_after).any(|tick| sent[1].1
+            == build_time_sync(
+                &key,
+                2,
+                tick,
+                cimmeria_mercury::encryption::EncryptionVersion::V1
+            )),
+        "initial time_sync bytes (seq 2) must carry the game clock read during login"
     );
 }
 

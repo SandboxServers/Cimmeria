@@ -32,7 +32,7 @@ chain (root → leaf), the parser processes:
 This means interface methods always come before the entity's own methods at each
 level. The full parse order for SGWPlayer is:
 
-```
+```text
 SGWEntity (0 own, 0 interfaces with client methods)
   └─ SGWSpawnableEntity (12 own methods)
        └─ SGWBeing (1 own method)
@@ -99,6 +99,8 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 17 | `onBeingNameUpdate` | `WSTRING BeingName` |
 | 18 | `onTopSpeedUpdate` | `FLOAT TopSpeed` |
 | 19 | `onStateFieldUpdate` | `INT32 bStateField` |
+
+`BigWorldTimeComplete` (method 12) is an **absolute** time on the server game clock, not a relative offset: seconds = `gameTime * tickRate / 1000`, where `gameTime` is the server-wide tick counter the client is seeded with by `SET_GAME_TIME` at login and kept on by `TICK_SYNC`, and `tickRate` is milliseconds per tick (`100`). Starts are emitted as `now + duration` for cooldowns (type 2, ability and weapon reload) and effect durations (type 5), matching `AbilityManager.py`; the effect-duration clear sends `0.0`. See `crates/services/src/base/game_time.rs` and [`ability-resolution-pipeline.md`](../reverse-engineering/findings/ability-resolution-pipeline.md).
 
 ### SGWCombatant (interface) — 6 methods, indices 20–25
 

@@ -177,14 +177,15 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
         Some(s) => s.parse::<i32>().unwrap_or(0),
         None => 0,
     };
-    // SourceID = caller; BigWorldTimeComplete is still relative (see #271).
+    // SourceID = caller; BigWorldTimeComplete is absolute on the game
+    // clock, as legacy `Net.py` sends `getGameTime() + totalTime` (#271).
     let buf = serialize_timer_update(
         id,
         ty,
         caller_id as i32,
         secondary_id,
         total_time,
-        total_time,
+        crate::base::game_time::game_time_secs() + total_time,
     );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {

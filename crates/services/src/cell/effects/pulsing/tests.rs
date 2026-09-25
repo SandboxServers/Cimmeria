@@ -488,7 +488,7 @@ async fn pulse_tick_removes_instance_when_remaining_hits_zero() {
 /// carry the effect id at bytes 9..13; a `0` there leaves the clear unable
 /// to find the icon the start created.
 #[tokio::test]
-async fn duration_effect_timers_carry_effect_id_as_secondary_id() {
+async fn duration_effect_timers_carry_effect_id_and_absolute_expiry() {
     let mut mgr = make_mgr();
     let mut effect = make_dot_effect(2, 1.0, 10);
     effect.effect_id = 8889;
@@ -496,7 +496,10 @@ async fn duration_effect_timers_carry_effect_id_as_secondary_id() {
     let (tx, mut rx) = mpsc::channel(64);
     // Target the player (entity 1) so the timer is a direct
     // `EntityMethodCall` to its own client.
+    crate::base::game_time::wait_for_nonzero_game_time();
+    let before = crate::base::game_time::game_time_secs();
     register_active_effect(&mut mgr, 1, 2, &effect, Instant::now(), &tx).await;
+    let after = crate::base::game_time::game_time_secs();
     if let Some(t) = mgr.get_entity_mut(1) {
         if let Some(inst) = t.active_effects.first_mut() {
             inst.next_pulse_at = Instant::now() - Duration::from_secs(2);
@@ -530,6 +533,15 @@ async fn duration_effect_timers_carry_effect_id_as_secondary_id() {
         );
     }
     assert_eq!(&timers[1][13..21], &[0u8; 8], "the clear zeroes both times");
+
+    // #271: the start's BigWorldTimeComplete is absolute on the game clock
+    // (`instance.completeTime` in the Python reference), not the duration.
+    let total = f32::from_le_bytes(timers[0][13..17].try_into().unwrap());
+    let expire = f32::from_le_bytes(timers[0][17..21].try_into().unwrap());
+    assert!(
+        expire >= before + total && expire <= after + total,
+        "start expiry must be game_time_secs() + {total}, got {expire} (clock {before}..{after})"
+    );
 }
 
 /// **Harset H08 surrender guard.** A damage-over-time effect the player

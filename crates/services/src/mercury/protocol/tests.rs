@@ -4,7 +4,8 @@
 
 use super::super::{
     write_wstring, ACCOUNT_CLASS_ID, BASEMSG_CREATE_BASE_PLAYER, BASEMSG_LOGGED_OFF,
-    BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT, FRAG_FIRST_AND_LAST,
+    BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT, BASEMSG_SET_GAME_TIME, BASEMSG_TICK_SYNC,
+    BASEMSG_UPDATE_FREQUENCY_NOTIFICATION, FRAG_FIRST_AND_LAST,
 };
 use super::*;
 use cimmeria_mercury::encryption::MercuryEncryption;
@@ -34,6 +35,7 @@ fn time_sync_size() {
     let out = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(
@@ -71,14 +73,43 @@ fn time_sync_deterministic() {
     let a = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let b = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(a, b);
+}
+
+/// The login bundle seeds the client clock from the server-wide game clock:
+/// `TICK_SYNC.gameTime` and `SET_GAME_TIME` both carry `ticks` (C++
+/// `ClientHandler::onConnected` writes `CellManager::ticks()` into both),
+/// and `tickRate` is milliseconds per tick. A hardcoded `0` here restarts
+/// every client's clock at login while the heartbeat and the absolute
+/// `onTimerUpdate` expiries run on server uptime (#271).
+#[test]
+fn time_sync_seeds_client_clock_with_server_ticks() {
+    let ticks: u32 = 0x0001_2345;
+    let out = build_time_sync(
+        &TEST_KEY,
+        2,
+        ticks,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let pt = enc.decrypt(&out).unwrap();
+
+    assert_eq!(pt[1], BASEMSG_UPDATE_FREQUENCY_NOTIFICATION);
+    assert_eq!(pt[2], 10, "10 ticks per second");
+    assert_eq!(pt[3], BASEMSG_TICK_SYNC);
+    assert_eq!(&pt[4..8], &ticks.to_le_bytes(), "TICK_SYNC.gameTime");
+    assert_eq!(&pt[8..12], &100u32.to_le_bytes(), "tickRate = 100 ms/tick");
+    assert_eq!(pt[12], BASEMSG_SET_GAME_TIME);
+    assert_eq!(&pt[13..17], &ticks.to_le_bytes(), "SET_GAME_TIME");
 }
 
 #[test]
@@ -94,6 +125,7 @@ fn reply_and_time_sync_differ() {
     let sync = build_time_sync(
         &TEST_KEY,
         2,
+        0,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_ne!(reply, sync, "reply and time sync packets must differ");
