@@ -496,7 +496,7 @@ These are ClientMethods sent from the server. The server serializes them identic
 | 2 | `AbilityWarmup` | Ability ID |
 | 3 | `DurationEffect` | Effect ID |
 
-**Python validation**: `python/client/SGWBeing.py` `onTimerUpdate(id, timerCategory, entityId, 0, duration, endTime)` — matches. The 4th parameter `SecondaryId` is always passed as 0 in the Python caller.
+**Python validation**: `python/client/SGWBeing.py` `onTimerUpdate(id, timerCategory, entityId, 0, duration, endTime)` — matches. The 4th parameter `SecondaryId` is 0 for the cooldown callers, but `deprecated/python/cell/AbilityManager.py` `updateEffectTimer` passes `instance.effect.id` for `DurationEffect`, which is the key `EffectSet_HandleOnTimerUpdate` looks the active effect up by (see [effect-execution-model.md](effect-execution-model.md)).
 
 ---
 

@@ -10,6 +10,7 @@
 //! `deprecated/python/cell/commands/Misc.py` (`debug_*`) +
 //! `deprecated/python/cell/commands/Entity.py` (`threaten`/`aggression`).
 
+use cimmeria_entity::abilities::serialize_timer_update;
 use cimmeria_entity::cell_entity::AiState;
 use tokio::sync::mpsc;
 
@@ -176,13 +177,15 @@ async fn timer(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) 
         Some(s) => s.parse::<i32>().unwrap_or(0),
         None => 0,
     };
-    let mut buf = Vec::with_capacity(21);
-    buf.extend_from_slice(&id.to_le_bytes());
-    buf.push(ty as u8);
-    buf.extend_from_slice(&(caller_id as i32).to_le_bytes()); // SourceID
-    buf.extend_from_slice(&secondary_id.to_le_bytes());
-    buf.extend_from_slice(&total_time.to_le_bytes());
-    buf.extend_from_slice(&total_time.to_le_bytes()); // BigWorldTimeComplete (relative)
+    // SourceID = caller; BigWorldTimeComplete is still relative (see #271).
+    let buf = serialize_timer_update(
+        id,
+        ty,
+        caller_id as i32,
+        secondary_id,
+        total_time,
+        total_time,
+    );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: caller_id,
