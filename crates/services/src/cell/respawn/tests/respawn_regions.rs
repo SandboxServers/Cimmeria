@@ -7,7 +7,7 @@
 //! built on all three, so the list goes back out after the reanchor:
 //! clear first, then one add per region of THIS world, in one batch.
 
-use super::super::respawn::handle_respawn;
+use super::super::handle_respawn;
 use super::make_mgr_with_player;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{RegionData, REGION_FLAG_CLIENT_HINTED};

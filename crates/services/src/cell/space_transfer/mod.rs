@@ -19,7 +19,7 @@
 //! half of the flow, and it runs only after the *cell* half has already
 //! removed the entity from its old space (see
 //! [`crate::cell::gate_travel::handle_dial_gate`] and
-//! [`crate::cell::cell_methods::gm::travel`]). The cell half is where the
+//! [`crate::cell::console::gm::travel`]). The cell half is where the
 //! destructive step lives, so the cell half is where validation has to
 //! happen. The order enforced here is:
 //!
@@ -402,7 +402,7 @@ async fn execute_transfer(
     // state change — if phase 3 fails, the live entity still matches it.
     if let Some(pid) = player_id {
         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-            super::cell_methods::inventory::flush_dirty_bandolier_ammo(entity, pid, tx).await;
+            cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(entity, pid, tx).await;
         }
     }
 
@@ -446,7 +446,7 @@ async fn execute_transfer(
     // It runs after the confirmed enqueue, so the "a rejection changes
     // nothing" contract above still holds: by this point the transfer is
     // committed.
-    super::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
+    super::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
     space_mgr.destroy_entity(entity_id);
 
     tracing::info!(

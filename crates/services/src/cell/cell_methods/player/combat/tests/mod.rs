@@ -1,23 +1,8 @@
-//! Tests for combat dispatch and the respawn fork, split by theme when
-//! the single file crossed CLAUDE.md's 700-line hard cap (CA00):
-//! - this file: the shared `make_mgr_with_player` fixture and the
-//!   `dispatch` routing tests.
-//! - [`respawn_fork`]: `handle_respawn` — the same-world in-place burst
-//!   vs. the cross-world GateTravel branch, and the cell-entity state
-//!   each one leaves behind.
-//! - [`respawn_target`]: `resolve_respawn_target` — which (world,
-//!   position) the fork is handed, including the origin-row guard and
-//!   its negative-log seams.
-//!
-//! `make_mgr_with_player` stays private to the parent module; child
-//! modules reach it via `super::` with no visibility change.
+//! Tests for combat dispatch: the `make_mgr_with_player` fixture and the
+//! `dispatch` routing tests. The respawn fork's tests moved with the respawn
+//! core to `cell::respawn::tests`, with a copy of the fixture.
 
 use super::*;
-
-mod respawn_fork;
-mod respawn_regions;
-mod respawn_resync;
-mod respawn_target;
 
 /// Build a SpaceManager with one player at id=1 in the
 /// Castle_CellBlock instanced space (every dispatch test sees a

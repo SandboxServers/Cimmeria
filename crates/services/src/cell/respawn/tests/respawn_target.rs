@@ -2,7 +2,7 @@
 //! is handed, across all four priorities. Split out of the monolithic
 //! `combat/tests.rs` (CA00); the pre-existing test bodies are unchanged.
 
-use super::super::respawn::resolve_respawn_target;
+use super::super::resolve_respawn_target;
 use super::make_mgr_with_player;
 use crate::cell::spawner::RespawnerDef;
 

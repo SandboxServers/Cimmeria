@@ -3,7 +3,7 @@
 //! behind. Split out of the monolithic `combat/tests.rs` (CA00); test
 //! bodies are unchanged.
 
-use super::super::respawn::handle_respawn;
+use super::super::handle_respawn;
 use super::make_mgr_with_player;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::spawner::RespawnerDef;

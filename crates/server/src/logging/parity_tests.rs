@@ -934,6 +934,78 @@ fn combat_crate_events_keep_their_file_and_index() {
     }
 }
 
+/// The C4-C6 preparation of the services split moved cell modules inside
+/// `cimmeria-services`, which changed their `module_path!()`:
+///
+/// - chat is `cell::console::chat` (was `cell::chat`), and keeps
+///   `interactions.log`;
+/// - the client-cache resync and the hotbar seed are `cell::respawn::resync`
+///   (were under `cell::service::base_messages::player_init`, which
+///   `aoi.log`'s `cell::service` row kept), and keep `aoi.log`;
+/// - the respawn fork, the region registration, the trade session state and
+///   the GM handlers had no file before and have none now. The trade state is
+///   `cell::trade`, not under `cell::interactions`, whose row would have put
+///   it in `interactions.log`.
+///
+/// Every one keeps `server.log` from INFO and one OTLP index per level. The
+/// chat and resync rows fail this with the old file rows; the trade row fails
+/// it if the state moves under `cell::interactions`.
+#[test]
+fn cell_prep_moves_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file) in [
+        (
+            "cimmeria_services::cell::console::chat",
+            "file:interactions.log",
+        ),
+        ("cimmeria_services::cell::respawn::resync", "file:aoi.log"),
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+    for target in [
+        "cimmeria_services::cell::respawn",
+        "cimmeria_services::cell::respawn::region_registration",
+        "cimmeria_services::cell::trade::state",
+        "cimmeria_services::cell::trade::wire",
+        "cimmeria_services::cell::console::gm::world",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
 /// No target, at any level, is indexed twice.
 #[test]
 fn no_record_reaches_two_indexes() {

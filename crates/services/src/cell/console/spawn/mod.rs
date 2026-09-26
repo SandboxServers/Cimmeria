@@ -18,13 +18,13 @@
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Resource.py`.
 
+use cimmeria_cell_combat::cell::service::npc_ai::{self, AiTransitionReason};
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 mod authoring;

@@ -45,7 +45,7 @@ const FEEDBACK_ENTITY_DOES_NOT_HAVE_STARGATE_ADDRESS: u16 = 180;
 /// whose whole value is having exactly one. `gmDHD` is the one caller that
 /// needs an address it may not hold, and it solves that by topping up the
 /// caller's in-memory book before dialling — see
-/// [`crate::cell::cell_methods::gm::travel`], which is already authorised
+/// [`crate::cell::console::gm::travel`], which is already authorised
 /// against the session's access level by the cell-method GM gate.
 pub(super) async fn player_knows_stargate(
     entity_id: u32,

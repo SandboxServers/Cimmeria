@@ -45,7 +45,7 @@ pub(super) async fn handle_gm_spawn_npc_ready(
             // `gmSpawnByCmd` and the dot-console `.spawn` / `.spawnrandom`,
             // so naming one of them would misreport which command the GM
             // actually typed.
-            crate::cell::cell_methods::gm::feedback::send_gm_feedback(
+            crate::cell::console::gm::feedback::send_gm_feedback(
                 requester_entity_id,
                 &format!("spawned npc {id} (template {})", record.template_id),
                 tx,
@@ -59,7 +59,7 @@ pub(super) async fn handle_gm_spawn_npc_ready(
                 space_id,
                 "GmSpawnNpcReady: spawn failed: {e}"
             );
-            crate::cell::cell_methods::gm::feedback::send_gm_feedback(
+            crate::cell::console::gm::feedback::send_gm_feedback(
                 requester_entity_id,
                 &format!("spawn failed for template {}", record.template_id),
                 tx,

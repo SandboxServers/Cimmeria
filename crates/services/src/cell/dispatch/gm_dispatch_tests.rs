@@ -55,7 +55,7 @@ async fn gm_tail_method_rejected_for_non_gm_caller() {
 
     dispatch_cell_method(
         1,
-        crate::cell::cell_methods::gm::GM_GIVE_ITEM,
+        crate::cell::console::gm::GM_GIVE_ITEM,
         &args,
         &tx,
         &mut mgr,
@@ -111,7 +111,7 @@ async fn gm_tail_method_executes_for_gm_caller() {
 
     dispatch_cell_method(
         1,
-        crate::cell::cell_methods::gm::GM_GIVE_ITEM,
+        crate::cell::console::gm::GM_GIVE_ITEM,
         &args,
         &tx,
         &mut mgr,

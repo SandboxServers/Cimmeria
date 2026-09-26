@@ -3,10 +3,10 @@
 //! Same-space authoritative teleport of the selected target, falling back to
 //! the caller when nothing is selected. Reuses the native `gmGotoXYZ`/
 //! `gmSummon` mechanism cell-side
-//! (`crates/services/src/cell/cell_methods/gm/travel.rs`):
+//! (`crates/services/src/cell/console/gm/travel.rs`):
 //! `update_entity_position` + `note_authorized_teleport`, then
 //! `TeleportPlayer` for a player target only. See
-//! `crates/services/src/cell/cell_methods/gm/tests/travel.rs` for the native
+//! `crates/services/src/cell/console/gm/tests/travel.rs` for the native
 //! handlers' own coverage of the shared mechanism (this suite does not
 //! re-prove `update_entity_position`/AoI internals, only the `.gotoxyz`
 //! command's own target-resolution, player/NPC split, and feedback-routing

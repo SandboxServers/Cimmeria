@@ -241,6 +241,32 @@ Learned extracting `cimmeria-cell-combat` (C2, the first trait inversion):
   crate's lib**, so `unreachable_pub` on a gated hook never shows there. Run
   `clippy -p <new> --all-targets` on its own too.
 
+Learned doing the C4-C6 preparation (moves inside the monolith, no new crate):
+
+- **Two plan rows can contradict each other through a call chain.** §1 put
+  `resync.rs` in cell-methods, but the GM respawn edge forced the respawn fork
+  below methods AND console, and the fork calls the resync, so the resync had to
+  go down with it. Before moving a module to its §1 home, list its callers'
+  planned crates, not just its own.
+- **A `pub use` of a MODULE is a layering edge** (`check.py` counts `pub use x;`
+  of a module, not only of items). A back-compat shim in a sibling crate's module
+  (`cell_methods` re-exporting `console::gm`) is a violation; only a
+  `#[cfg(test)]` shim is invisible to the guard. Repoint production callers.
+- **Don't move code under another file layer's module prefix and "fix" it with
+  `=off`.** The OTLP trace index is derived from the `=trace` rows only, so an
+  `=off` row keeps the file clean but not the trace index. Pick a module path no
+  file row prefixes (trade went to `cell::trade`, not `cell::interactions::trade`).
+- **`check.py` resolves every path to the item's definer, so it misses a path
+  that passes THROUGH a higher crate's module to a lower item**
+  (`super::cell_methods::inventory::flush_dirty_bandolier_ammo` from interactions,
+  `crate::cell::service::npc_ai` from console). The extracted crate has no such
+  module. Scan for these hops (walk each written path with `check.Resolver`,
+  flag intermediate modules whose crate is not reachable) and repoint them to the
+  owning crate's path (`cimmeria_cell_combat::…`, `cimmeria_wire::state_field`).
+- **Place a new `mod` line in a shared `mod.rs` away from lines a parallel wave
+  edits**: git conflicts on adjacent hunks, so one untouched line between is the
+  minimum. `cell/mod.rs` is edited by every cell wave.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

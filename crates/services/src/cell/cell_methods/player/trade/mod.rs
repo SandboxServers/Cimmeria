@@ -21,13 +21,15 @@
 //! ## Module layout
 //!
 //! - [`handlers`] — the 4 inbound cell-method handlers + `dispatch`.
-//! - [`state`] — session lifecycle helpers (`begin_trading`, `apply_proposal`,
-//!   `cancel_session`, `clear_trade_state`, `partners_in_range`, and the
-//!   public `cancel_trade_on_disconnect` hook).
-//! - [`wire`] — outbound `onTradeState` / `onTradeResults` serializers
-//!   and the `stub_inv_items_for` info-leak-mitigating stub builder.
 //! - [`handoff`] — `request_execute_trade` (final cell-side checkpoint
 //!   before the base-side atomic commit).
+//!
+//! The session state machine (`state`) and the outbound serializers (`wire`)
+//! are in `cell::trade`, one layer below these handlers,
+//! because gate travel and the GM space transfer cancel an open trade on
+//! departure (`docs/architecture/services-crate-split.md` §2H). They are
+//! imported here, so the handlers still reach them as `super::state` and
+//! `super::wire`.
 //!
 //! Public surface is re-exported here so external callers can keep using
 //! `crate::cell::cell_methods::player::trade::{dispatch, cancel_trade_on_disconnect}`
@@ -35,15 +37,11 @@
 
 mod handlers;
 mod handoff;
-mod state;
-mod wire;
+
+use crate::cell::trade::{state, wire};
 
 #[cfg(test)]
 mod tests;
 
 pub use handlers::dispatch;
 pub use state::cancel_trade_on_disconnect;
-
-/// Mirror of `python/common/Constants.py: MAX_INTERACT_DISTANCE = 5`.
-/// Trade is gated by the same range as vendor / dialog interactions.
-const MAX_INTERACT_DISTANCE: f32 = 5.0;

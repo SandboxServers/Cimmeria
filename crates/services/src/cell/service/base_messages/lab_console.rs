@@ -97,7 +97,7 @@ pub(super) async fn handle_lab_console_exec(
 
 /// Decode the `Text` WSTRING out of an `onPlayerCommunication(Speaker,
 /// SpeakerFlags, Channel, Text)` arg buffer. Mirrors the serializer in
-/// [`crate::cell::cell_methods::gm::feedback`]. Returns `None` on a truncated
+/// [`crate::cell::console::gm::feedback`]. Returns `None` on a truncated
 /// buffer rather than panicking — a malformed capture must not take the
 /// endpoint down.
 fn decode_feedback_text(args: &[u8]) -> Option<String> {

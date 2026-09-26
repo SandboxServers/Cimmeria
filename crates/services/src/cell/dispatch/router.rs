@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use super::super::cell_methods;
+use super::super::console;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
@@ -112,7 +113,7 @@ pub async fn dispatch_cell_method(
     // reaching here means access_level >= GameMaster. Only a verified subset
     // is implemented; unimplemented 109+ indices return `false` and fall
     // through to the (already-authorized) warn arm below — harmless.
-    if cell_methods::gm::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
+    if console::gm::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
         return;
     }
 

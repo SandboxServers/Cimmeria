@@ -292,6 +292,9 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // cimmeria-cell-combat; services re-exports both at the same paths.
         "cimmeria_services::cell::combat",
         "cimmeria_services::cell::abilities",
+        // interactions.log's chat row before the C4-C6 preparation moved chat
+        // under the console; `cell` re-exports it (`pub use console::chat`).
+        "cimmeria_services::cell::chat",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -310,6 +313,8 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_services::base::character_create",
         "cimmeria_cell_combat::cell::combat",
         "cimmeria_cell_combat::cell::service::npc_ai",
+        "cimmeria_services::cell::console::chat",
+        "cimmeria_services::cell::respawn::resync",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

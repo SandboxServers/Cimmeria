@@ -121,19 +121,23 @@ cimmeria-services = [
 "cell::ring_transport" = "cimmeria-cell-content"
 "cell::interactions::dialog" = "cimmeria-cell-content"
 
+# Since the C4-C6 preparation (§2H) the trade session state is `cell::trade`
+# (the handlers stay in `cell::cell_methods::player::trade`), and the respawn
+# fork the cell methods and the GM console share is `cell::respawn`, with the
+# client-cache resync and the region registration it queues after the reanchor.
 "cell::interactions" = "cimmeria-cell-interactions"
 "cell::gate_travel" = "cimmeria-cell-interactions"
 "cell::space_transfer" = "cimmeria-cell-interactions"
+"cell::respawn" = "cimmeria-cell-interactions"
+"cell::trade" = "cimmeria-cell-interactions"
 "cell::mail" = "cimmeria-cell-interactions"
-"cell::cell_methods::player::trade::state" = "cimmeria-cell-interactions"
-"cell::cell_methods::player::trade::wire" = "cimmeria-cell-interactions"
 
 "cell::cell_methods" = "cimmeria-cell-methods"
-"cell::service::base_messages::player_init::resync" = "cimmeria-cell-methods"
 
+# Since the C4-C6 preparation (§2H) the chat interceptor and the native GM
+# cell methods are `cell::console::{chat, gm}`; `cell::chat` is a re-export in
+# the facade's `cell` module.
 "cell::console" = "cimmeria-cell-console"
-"cell::chat" = "cimmeria-cell-console"
-"cell::cell_methods::gm" = "cimmeria-cell-console"
 
 "cell::service" = "cimmeria-cell"
 "cell::dispatch" = "cimmeria-cell"

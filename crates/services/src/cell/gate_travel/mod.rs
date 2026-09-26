@@ -78,7 +78,7 @@ use sequences::{
 /// hold, unknown address, entity missing, same world, and, on the immediate
 /// path, an unrecoverable arrival or a closed base channel). The bool exists
 /// because
-/// [`super::cell_methods::gm::travel`] is the one dial caller with a
+/// [`super::console::gm::travel`] is the one dial caller with a
 /// client-visible feedback channel and used to report "dialing gate address
 /// N" unconditionally — including for dials the primitive refused.
 #[tracing::instrument(
@@ -487,7 +487,7 @@ async fn perform_gate_travel(
     // to the cross-world re-spawn.
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         if let Some(player_id) = entity.player_id {
-            super::cell_methods::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
+            cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
         }
     }
 
@@ -521,7 +521,7 @@ async fn perform_gate_travel(
     // traveller's partner with a dangling `trade_partner_entity_id` and no
     // `onTradeResults(Cancelled)`. Both lifecycle arms call it for the same
     // reason; stargate travel is just as much a departure.
-    super::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
+    super::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
 
     // Remove entity from current space (CellService side)
     space_mgr.destroy_entity(entity_id);

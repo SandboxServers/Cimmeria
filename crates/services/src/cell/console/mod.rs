@@ -16,7 +16,7 @@
 //!
 //! # Channel + auth
 //!
-//! [`crate::cell::chat::handle_chat_message`] calls [`handle_console_command`]
+//! [`chat::handle_chat_message`] calls [`handle_console_command`]
 //! from its `CHAN_SAY` arm when (a) the text starts with `.` **and** (b) the
 //! sender's [`CellEntity::access_level`](cimmeria_entity::cell_entity::CellEntity::access_level)
 //! is `>= GameMaster`. A GM's `.`-text is consumed (never broadcast to other
@@ -65,10 +65,17 @@
 
 mod aggro;
 mod bookmark;
+// The chat interceptor that routes a GM's `.`-lines here, and the native
+// `gm*` cell methods (SGWGmPlayer, index 109+). Both call into the console,
+// and the console calls the GM handlers, so all three are one crate in the
+// services split (`docs/architecture/services-crate-split.md` §2H). `cell::chat`
+// re-exports `chat` at its old path.
+pub mod chat;
 mod crafting;
 mod dispatch;
 mod entity;
 mod give;
+pub mod gm;
 mod mission;
 mod net;
 mod parse;
@@ -87,7 +94,7 @@ mod tests;
 
 /// Re-export of the single-recipient GM feedback line so console handlers and
 /// the framework share one delivery path with the native `gm*` cluster.
-pub(crate) use super::cell_methods::gm::feedback::send_gm_feedback;
+pub(crate) use gm::feedback::send_gm_feedback;
 
 // Framework re-exports: handlers reach these via `super::*`, so the split into
 // `registry` / `dispatch` / `parse` stays an internal refactor with no
