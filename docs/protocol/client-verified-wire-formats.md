@@ -198,7 +198,7 @@ RESOURCE_FRAGMENT (0x36) uses a linked-list reassembly model:
 > not have.
 >
 > **RESOLVED server-side (issue #267).** The Rust category map
-> (`crates/services/src/base/resources/mod.rs` `CATEGORY_PAKS`) now registers 21 categories
+> (`crates/resources/src/base/resources/mod.rs` `CATEGORY_PAKS`) now registers 21 categories
 > **1–21**, with 21 = `CookedBehaviorEvents.pak` (`BehaviorEventData`) and no `pet_command`;
 > a byte-exact wire test pins the fragment tag as 21. The numeric enum values were confirmed
 > out of the binary in the cooked-data findings (category id stored at `LibCategory+0x4`).

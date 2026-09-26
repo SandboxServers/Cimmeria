@@ -49,7 +49,7 @@ The handshake has three layers; each owns a distinct server-authority property.
   of truth (account vs sgw_player), authorization uses account.
 
 ## Static / server-only derivations from CharDefId on createCharacter
-- `crates/services/src/base/chardef.rs::chardef_lookup` — (alignment, archetype,
+- `crates/resources/src/base/chardef.rs::chardef_lookup` — (alignment, archetype,
   gender, bodyset, starting_world, pos_x/y/z). Client cannot spoof these.
 - `resources.char_creation_visgroups` + `_choices` — visual options, validated
   per group (VIS_Optional vs VIS_Forced).

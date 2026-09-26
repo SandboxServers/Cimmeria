@@ -11,7 +11,7 @@ last_updated: 2026-07-25
 > **RE Status**: Delivery path verified against `crates/` and `data/cache/`; the DB→PAK
 > *cooking* half is historical (original CME server) and no longer runs
 > **Sources**: `data/cache/` (21 PAKs, inspected directly), `db/resources/`,
-> `crates/services/src/base/cooked_data.rs`, `crates/services/src/base/resources.rs`,
+> `crates/services/src/base/cooked_data.rs`, `crates/resources/src/base/resources/mod.rs`,
 > `deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp`, `deprecated/python/`
 
 ---
@@ -59,11 +59,11 @@ PAK Files (data/cache/*.pak)  — 21 archives, pre-cooked, committed
         |
         | ResourceCache reads ZIP entries at startup
         v
-crates/services/src/base/resources.rs  (CategoryData / ResourceCache)
+crates/resources/src/base/resources/mod.rs  (CategoryData / ResourceCache)
         |
         | plus Cimmeria-authored overrides:
-        |   crates/services/src/base/dialog_overrides.rs
-        |   crates/services/src/base/item_overrides.rs
+        |   crates/resources/src/base/dialog_overrides/mod.rs
+        |   crates/resources/src/base/item_overrides.rs
         v
 crates/services/src/base/cooked_data.rs
         |
@@ -72,7 +72,7 @@ crates/services/src/base/cooked_data.rs
 Game Client (CookedDataCache)
 ```
 
-Kismet sequences (category 1) use the same mechanism through `crates/services/src/base/sequence_overrides.rs`. It matters more there than anywhere: a category with **no** override list answers a version mismatch with `invalidate_all = true` and pushes nothing, and the client, which never lazy-fetches, empties and persists its whole table. Never change a PAK's on-disk `MetaData` version to signal a change; add an override.
+Kismet sequences (category 1) use the same mechanism through `crates/resources/src/base/sequence_overrides.rs`. It matters more there than anywhere: a category with **no** override list answers a version mismatch with `invalidate_all = true` and pushes nothing, and the client, which never lazy-fetches, empties and persists its whole table. Never change a PAK's on-disk `MetaData` version to signal a change; add an override.
 
 Cimmeria's database layer is **`sqlx` 0.8**, not SOCI, and there is no Boost.Python
 binding — the server is a single Rust process (`crates/server/`).

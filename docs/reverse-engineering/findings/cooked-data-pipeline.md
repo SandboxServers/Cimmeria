@@ -264,10 +264,10 @@ The binary shows:
 and counts differently at the high end, OR the server and client have drifted in numbering. The
 binary's LibCategoryKey<N> template parameters are authoritative for what the client expects.
 
-**Recommended fix for Cimmeria (applied)**: `crates/services/src/base/resources/mod.rs`
+**Recommended fix for Cimmeria (applied)**: `crates/resources/src/base/resources/mod.rs`
 `CATEGORY_PAKS` now registers `behavior_event` as category 21 (`CookedBehaviorEvents.pak`),
 matching the client's 1–21 registration; a byte-exact wire test in
-`crates/services/src/base/resources/tests/category_map.rs` pins the fragment tag. No category
+`crates/services/src/base/resource_fragment_tests.rs` pins the fragment tag. No category
 22 exists in the Rust map. (The engine doc's category-7 note concerns the legacy C++ "push
 map" inside the unused `send_category_resources`, not the load/version-negotiation map.)
 
@@ -325,7 +325,7 @@ The engine doc was corrected to 21 categories (issue #267).
 4. **`FUN_004349b0`** — CME emit call used by `onCookedDataError` to fire `Event_Cache_ElementError`. Not yet confirmed as the generic emit path or a specific wrapper.
 
 5. **Server category 0 vs client start at 1** — **RESOLVED (issue #267)**: the Rust `CATEGORY_PAKS` in
-   `crates/services/src/base/resources/mod.rs` registers categories 1–21 (the client's enum), with no
+   `crates/resources/src/base/resources/mod.rs` registers categories 1–21 (the client's enum), with no
    category 0. The legacy `src/baseapp/mercury/sgw/resource.cpp` zero-indexed table is not the wire contract.
 
 6. **Category 21 server-side name** — **RESOLVED (issue #267)**: `CATEGORY_PAKS` registers category 21

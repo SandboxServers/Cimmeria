@@ -22,7 +22,7 @@ Every rule below cites either a client source file you can read yourself, or the
 
 Two consequences you will hit on your first change:
 
-- **Editing `db/resources/Dialogs/Seed/` changes nothing in game.** The seed is the server's parallel copy. It is what the content engine and the linters read; it is not what the player sees. (`crates/services/src/base/dialog_overrides.rs:1-12`)
+- **Editing `db/resources/Dialogs/Seed/` changes nothing in game.** The seed is the server's parallel copy. It is what the content engine and the linters read; it is not what the player sees. (`crates/resources/src/base/dialog_overrides/mod.rs:1-12`)
 - **The only route to the player is a cooked-entry override**, pushed at handshake through the per-key invalidation path. See [mission-pak-overrides.md](../architecture/mission-pak-overrides.md) for the mechanism. When you change a dialog, you change the seed *and* the override, and they must agree.
 
 ## Window types
