@@ -1613,3 +1613,67 @@ fn interactions_crate_events_keep_their_file_and_index() {
         }
     }
 }
+
+/// The client-callable cell methods moved from
+/// `cimmeria_services::cell::cell_methods` to the `cimmeria-cell-methods` crate
+/// (services crate split, wave C5a), which changed the `module_path!()` of
+/// every untargeted row in them. No file layer named them before the move and
+/// none names them now: they reach `server.log` from INFO and one OTLP index
+/// per level, `cimmeria-server` below TRACE (they log per cell-method call, not
+/// per packet, so they are not network noise). `cimmeria_services=debug` does
+/// not prefix-match `cimmeria_cell_methods`, so without its own `OTEL_FILTER`
+/// row every DEBUG row here would stop reaching SigNoz. The second half pins
+/// that no other crate's row covers the crate by prefix: with its own row
+/// dropped, none of its DEBUG rows is exported.
+#[test]
+fn cell_methods_crate_events_keep_their_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    let targets = [
+        "cimmeria_cell_methods::cell::cell_methods::being",
+        "cimmeria_cell_methods::cell::cell_methods::contact_list",
+        "cimmeria_cell_methods::cell::cell_methods::inventory::item_ops",
+        "cimmeria_cell_methods::cell::cell_methods::missionary",
+        "cimmeria_cell_methods::cell::cell_methods::player::combat",
+        "cimmeria_cell_methods::cell::cell_methods::player::interaction::interact",
+        "cimmeria_cell_methods::cell::cell_methods::player::trade::handlers",
+        "cimmeria_cell_methods::cell::cell_methods::player::vendor::train",
+        "cimmeria_cell_methods::cell::cell_methods::player::world",
+    ];
+    for target in targets {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+
+    let row = "cimmeria_cell_methods=debug,";
+    let without = OTEL_FILTER.replace(row, "");
+    assert_ne!(
+        without, OTEL_FILTER,
+        "OTEL_FILTER no longer carries `{row}`; update this test"
+    );
+    let hits: Hits = Arc::default();
+    let dispatch = Dispatch::new(
+        tracing_subscriber::registry()
+            .with(recorder(OTLP_SERVER.into(), &hits).with_filter(EnvFilter::new(without))),
+    );
+    for target in targets {
+        assert!(
+            sinks_for(&dispatch, &hits, target, Level::DEBUG).is_empty(),
+            "{target}'s DEBUG export must depend on its own `{row}` row"
+        );
+    }
+}

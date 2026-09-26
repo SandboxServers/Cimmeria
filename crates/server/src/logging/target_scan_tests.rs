@@ -35,6 +35,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "cell-combat",
     "cell-content",
     "cell-interactions",
+    "cell-methods",
     "commands",
     "common",
     "content-engine",

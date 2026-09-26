@@ -4,6 +4,10 @@
 
 use super::*;
 
+/// The ground-cast `entity_health_below` guard, which drives this
+/// dispatcher (Harset H04).
+mod aoe_health_below;
+
 /// Build a SpaceManager with one player at id=1 in the
 /// Castle_CellBlock instanced space (every dispatch test sees a
 /// fresh world). Caller can override is_player and stats.

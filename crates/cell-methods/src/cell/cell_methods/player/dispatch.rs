@@ -205,7 +205,7 @@ mod tests {
 
     /// Shadow-arm regression guard. Asserts that the
     /// `SPEND_APPLIED_SCIENCE_POINTS` arm in
-    /// `crates/services/src/cell/cell_methods/player/social.rs` stays
+    /// `crates/cell-methods/src/cell/cell_methods/player/social.rs` stays
     /// deleted: dispatching index 95 must produce **exactly one** info-
     /// level log carrying the `spendAppliedSciencePoints` substring, and
     /// that log must be the crafting submodule's `"(Phase 2)"` variant.
@@ -317,7 +317,7 @@ mod tests {
             !handled,
             "social::dispatch must NOT handle method 95 (SPEND_APPLIED_SCIENCE_POINTS). \
              A `true` here means a SPEND_APPLIED_SCIENCE_POINTS arm has been \
-             re-added to crates/services/src/cell/cell_methods/player/social.rs \
+             re-added to crates/cell-methods/src/cell/cell_methods/player/social.rs \
              — that's the shadow-arm trap this regression guard exists to \
              catch. Index 95 belongs to the crafting submodule; the outer \
              dispatcher already routes it there. Delete the social-side arm.",

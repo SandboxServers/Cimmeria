@@ -18,7 +18,7 @@ use cimmeria_entity::cell_entity::BandolierItem;
 /// activeItem else 0`).
 ///
 /// The manual slot-swap handler
-/// ([`crate::cell::cell_methods::inventory::bandolier::handle_request_active_slot_change`])
+/// ([`crate::cell::cell_methods::inventory::handle_request_active_slot_change`])
 /// already emits this property on every swap; the in-game equip paths
 /// here (`UpdateBandolierItem`, `SyncBandolierItems`) used to skip it,
 /// which surfaced as "the fire animation doesn't play until I swap

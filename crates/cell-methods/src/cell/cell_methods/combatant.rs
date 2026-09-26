@@ -15,7 +15,7 @@ pub use cimmeria_wire::cell::cell_methods::combatant::{
 };
 
 /// Being State Field bit positions (from Atrea.enums BSF_*).
-pub(crate) use cimmeria_wire::state_field::BSF_CROUCHING;
+pub use cimmeria_wire::state_field::BSF_CROUCHING;
 
 pub async fn dispatch(
     entity_id: u32,

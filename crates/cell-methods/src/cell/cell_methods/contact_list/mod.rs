@@ -12,10 +12,10 @@
 //! via `CellToBaseMsg` variants. The base owns all DB mutations and client
 //! echo responses.
 
-use crate::base::contact_list::wire::MAX_MEMBERS_PER_REQUEST;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::read_wstring;
+use cimmeria_wire::base::contact_list::wire::MAX_MEMBERS_PER_REQUEST;
 use tokio::sync::mpsc;
 
 pub use cimmeria_wire::cell::cell_methods::contact_list::{

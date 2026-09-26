@@ -630,6 +630,14 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_cell_interactions::cell::respawn::resync"
         ));
+        // The client-callable cell methods, `cimmeria_services::cell::cell_methods`
+        // in cimmeria-server until wave C5a moved them to cimmeria-cell-methods.
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_methods::cell::cell_methods::player::combat"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_methods::cell::cell_methods::inventory::item_ops"
+        ));
         // The feature handlers, `cimmeria_services::base::world_entry::methods`
         // in cimmeria-server until wave B2 moved them to cimmeria-base-methods.
         assert!(!is_network_noise_target(

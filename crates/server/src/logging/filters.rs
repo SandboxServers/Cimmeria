@@ -113,6 +113,13 @@ use crate::otel;
 /// the mail forwarding. No other crate's row is a prefix of it, and it is a
 /// prefix of none.
 ///
+/// `cimmeria_cell_methods=debug` (wave C5a) does the same for the
+/// client-callable cell methods: the per-interface dispatchers and the
+/// SGWPlayer handlers (combat and respawn, interaction, trade, vendors, world,
+/// crafting, social). No file layer names them, so they reach `server.log`
+/// from INFO and SigNoz from DEBUG, as they did under `cimmeria_services`. No
+/// other crate's row is a prefix of it, and it is a prefix of none.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -150,6 +157,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_base::base=debug,\
                 cimmeria_cell_content=debug,\
                 cimmeria_cell_interactions=debug,\
+                cimmeria_cell_methods=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\

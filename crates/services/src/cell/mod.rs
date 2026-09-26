@@ -25,12 +25,16 @@
 //! the respawn fork in `respawn`, the trade session state in `trade`, and
 //! `mail`) are in `cimmeria-cell-interactions` (wave C4), re-exported the
 //! same way.
+//!
+//! The client-callable cell methods (`cell_methods`) are in
+//! `cimmeria-cell-methods` (wave C5a), re-exported the same way.
 
 // In `cimmeria-cell-combat` (wave C2).
 pub use cimmeria_cell_combat::cell::abilities;
 // In `cimmeria-cell-world` (wave C1).
 pub use cimmeria_cell_world::cell::arrival;
-pub mod cell_methods;
+// In `cimmeria-cell-methods` (wave C5a).
+pub use cimmeria_cell_methods::cell::cell_methods;
 // Under the console since the services-split preparation for C4-C6 (§2H).
 pub use console::chat;
 // The server->client method index tables are wire contract (cimmeria-wire).
@@ -39,9 +43,8 @@ pub use cimmeria_wire::cell::client_methods;
 pub mod console;
 // In `cimmeria-cell-content` (wave C3).
 pub use cimmeria_cell_content::cell::content;
-/// The content tests that drive code still in this crate (a cell method,
-/// the gate dial, the relog hydration, the base's mission query).
-/// Test-only.
+/// The content tests that drive code still in this crate (the GM cell
+/// methods, the relog hydration, the base's mission query). Test-only.
 #[cfg(test)]
 mod content_tests;
 // The seam combat raises content events through (§2E), in `cimmeria-cell-world`.
@@ -84,10 +87,9 @@ pub(crate) use cimmeria_cell_interactions::cell::space_transfer;
 // travel and the space transfer, one layer below the cell methods and the GM
 // console (services-crate-split.md §2H).
 pub(crate) use cimmeria_cell_interactions::cell::respawn;
-// Player-to-player trade session state and its outbound wire, below the trade
-// cell-method handlers, which gate travel and the space transfer cancel on
-// departure (§2H).
-pub(crate) use cimmeria_cell_interactions::cell::trade;
+// `trade` (the trade session state, in `cimmeria-cell-interactions` since
+// wave C4) had one user here, the trade cell-method handlers, which moved to
+// `cimmeria-cell-methods` (wave C5a).
 // The spawner's DB loaders are in `cimmeria-cell-catalog` (wave W2b).
 // Populating spaces from their records is `space_manager::spawn_npcs_from_records`.
 pub use cimmeria_cell_catalog::cell::spawner;

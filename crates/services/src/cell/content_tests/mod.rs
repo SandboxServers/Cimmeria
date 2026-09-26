@@ -5,11 +5,10 @@
 //! Each drives something that is still here or above the content crate, so it
 //! could not move with the code it tests:
 //!
-//! - [`aoe_health_below`] — the `useAbilityOnGround` cell-method dispatch
-//!   (was `event_dispatch::lifecycle::tests`).
-//! - [`mission_abandoned`] — the Missionary and GM cell-method dispatchers
+//! - [`mission_abandoned`] — the GM cell-method dispatcher, `cell::console::gm`
 //!   (was `event_dispatch::mission_abandoned_tests`; its chain-action test
-//!   moved).
+//!   moved to the content crate, and its Missionary tests to
+//!   `cimmeria-cell-methods` in wave C5a).
 //! - [`mission_701_persistence`] — the base's `query_saved_missions`
 //!   (was `chain_replay_tests::mission_701::persistence`).
 //! - [`mission_742_hydration`] and [`mission_relog_persistence`] — the relog
@@ -19,13 +18,15 @@
 //! `stargate_grant_dial`, which drives the gate dial, was here too until wave
 //! C4 moved the dial to `cimmeria-cell-interactions`; it is that crate's
 //! `cell::gate_travel::tests::stargate_grant_dial` now.
+//! `aoe_health_below`, which drives the `useAbilityOnGround` cell method, went
+//! the same way in wave C5a: it is `cimmeria-cell-methods`'
+//! `cell::cell_methods::player::combat::tests::aoe_health_below`.
 //!
 //! Where a file kept only some of its tests, the fixtures they share are
 //! copies. The content internals they call (`execute_actions`,
 //! `populate_mission_context`, `load_single_chain_for_test`) are the content
 //! crate's `test-support` hooks.
 
-mod aoe_health_below;
 mod mission_701_persistence;
 mod mission_742_hydration;
 mod mission_abandoned;

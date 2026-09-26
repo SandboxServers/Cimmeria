@@ -128,7 +128,8 @@ cimmeria-services = [
 # reanchor. None of them is a module of this crate any more, so they have no
 # rows.
 
-"cell::cell_methods" = "cimmeria-cell-methods"
+# cimmeria-cell-methods is extracted (C5a): `cell::cell_methods` is a
+# re-export of it, so it has no row here.
 
 # Since the C4-C6 preparation (§2H) the chat interceptor and the native GM
 # cell methods are `cell::console::{chat, gm}`; `cell::chat` is a re-export in
