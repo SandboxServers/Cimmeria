@@ -51,7 +51,7 @@ Bumping the version is a deliberate PR: change the file, run the pre-PR checklis
 
 `tools/build-lane/lane.sh` is the machine-wide counting semaphore that every agent and worker cargo call goes through. It was previously an untracked script under `%TEMP%`.
 
-- **Slots:** `LANE_SLOTS`, defaulting to `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (2). `--exclusive` takes every slot.
+- **Slots:** `LANE_SLOTS`, else the number in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (4 on the 64 GB development machine, where the job log showed at least 27 GB free with four builds running), else 2. `--exclusive` takes every slot.
 - **Jobs:** `CARGO_BUILD_JOBS` defaults to the core count divided by the slot count (at least 4), so a full lane doesn't oversubscribe the CPU.
 - **Job log:** every job appends one JSON line to `%LOCALAPPDATA%\cimmeria-build\metrics\jobs.jsonl`. The line records the start time, the wait for a slot, the run time, the exit code, the worktree and commit, the settings (jobs, incremental, Dev Drive or local target, sccache), how many other builds were running, the lowest free RAM during the job, and the sccache hits and misses. `LANE_METRICS=0` turns it off. See §10 for the report.
 - **Compiler cache:** sccache is the `RUSTC_WRAPPER` when installed, with one shared cache.

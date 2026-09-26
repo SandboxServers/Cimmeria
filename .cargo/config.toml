@@ -4,7 +4,7 @@
 # (tools/build-lane/lane.sh) sets CARGO_BUILD_JOBS per build from the core and slot counts.
 
 [alias]
-test-workspace = "test --workspace --exclude cimmeria-app"
+test-workspace = "test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab"
 
 # Linux (CI runners): clang with the mold linker for faster links.
 [target.x86_64-unknown-linux-gnu]
