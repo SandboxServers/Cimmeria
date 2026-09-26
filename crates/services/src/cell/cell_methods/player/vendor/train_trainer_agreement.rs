@@ -24,14 +24,18 @@ const KNOWN: i32 = 5003; // already known
 const OTHER_ARCH: i32 = 5004; // only in another archetype's tree
 const HIGH_LEVEL: i32 = 5005; // needs level 10
 const NEEDS_PREREQ: i32 = 5006; // needs 5999, not known
+const SPEND_LOCKED: i32 = 5007; // needs 4 points spent, player has spent 2
+const TOO_EXPENSIVE: i32 = 5008; // costs 5, player has 3
 
-const OFFERED: [i32; 6] = [
+const OFFERED: [i32; 8] = [
     PASSES,
     UNKNOWN_DEF,
     KNOWN,
     OTHER_ARCH,
     HIGH_LEVEL,
     NEEDS_PREREQ,
+    SPEND_LOCKED,
+    TOO_EXPENSIVE,
 ];
 
 fn fixture() -> crate::cell::space_manager::SpaceManager {
@@ -44,6 +48,8 @@ fn fixture() -> crate::cell::space_manager::SpaceManager {
         p.archetype_id = Some(ARCH);
         p.level = 5;
         p.abilities.add_ability(KNOWN);
+        p.tree_progress.tree_points_spent = 2;
+        p.tree_progress.training_points = 3;
     }
     mgr.spawn_npc(TRAINER, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
@@ -54,8 +60,20 @@ fn fixture() -> crate::cell::space_manager::SpaceManager {
     mgr.trainer_abilities.insert((1, ARCH), OFFERED.to_vec());
     seed_ability_defs(
         &mut mgr,
-        &[PASSES, KNOWN, OTHER_ARCH, HIGH_LEVEL, NEEDS_PREREQ],
+        &[
+            PASSES,
+            KNOWN,
+            OTHER_ARCH,
+            HIGH_LEVEL,
+            NEEDS_PREREQ,
+            SPEND_LOCKED,
+            TOO_EXPENSIVE,
+        ],
     );
+    let mut spend_locked = TreeNode::with_defaults(ARCH, 2, SPEND_LOCKED, 1, vec![]);
+    spend_locked.required_branch_points = 4;
+    let mut too_expensive = TreeNode::with_defaults(ARCH, 2, TOO_EXPENSIVE, 1, vec![]);
+    too_expensive.skill_point_cost = 5;
     mgr.ability_tree_catalog = AbilityTreeCatalog::from_nodes([
         TreeNode::with_defaults(ARCH, 0, PASSES, 1, vec![]),
         TreeNode::with_defaults(ARCH, 0, UNKNOWN_DEF, 1, vec![]),
@@ -63,6 +81,8 @@ fn fixture() -> crate::cell::space_manager::SpaceManager {
         TreeNode::with_defaults(ARCH + 1, 0, OTHER_ARCH, 1, vec![]),
         TreeNode::with_defaults(ARCH, 1, HIGH_LEVEL, 10, vec![]),
         TreeNode::with_defaults(ARCH, 1, NEEDS_PREREQ, 1, vec![5999]),
+        spend_locked,
+        too_expensive,
     ]);
     mgr
 }

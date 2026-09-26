@@ -238,6 +238,8 @@ Each ability costs exactly 1 TP. Before the point is consumed, the system valida
 
 If any check fails, the client receives an error message and no points are spent.
 
+**Rust (ability-tree campaign, AT-03).** The Python flow above is the 2009 reference. The Rust server charges each node its own `skill_point_cost` from `resources.archetype_ability_tree`, not a flat 1 point, and adds the same amount to `sgw_player.tree_points_spent`, the archetype-wide spend that opens later nodes. The debit, the spend increment and both array appends are one guarded `UPDATE`, so a replayed purchase costs nothing. The client's point counter is refreshed with `onEntityProperty(GENERICPROPERTY_TrainingPoints)` right after each purchase. Rejections are still silent until AT-04 adds feedback. See [ability-system.md](ability-system.md#ability-trees-and-training).
+
 ### Respec
 
 Not implemented. The respec handler returns `player.onError('Not implemented yet!')`. There is no mechanism to refund spent training points or unlearn abilities.
@@ -333,7 +335,7 @@ def consumeAppliedSciencePoints(self, points):
 | Minigame XP rewards | Not implemented |
 | Archetype base stats on create | Implemented |
 | Stat scaling per level (health, focus) | Not implemented |
-| Training point spending (ability learn) | Implemented |
+| Training point spending (ability learn) | Implemented (per-node cost and archetype-wide spend gate since AT-03) |
 | Training point granting on level-up | Not implemented |
 | Ability respec | Not implemented |
 | Applied science point spending (disciplines) | Implemented |

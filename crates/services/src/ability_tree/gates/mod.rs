@@ -16,6 +16,7 @@ use super::catalog::TreeNode;
 use super::predicate::{TrainContext, TrainReject};
 
 pub(super) mod node;
+pub(super) mod spend;
 
 /// A gate over a resolved node.
 pub(super) type NodeGate = fn(&TrainContext<'_>, &TreeNode) -> Result<(), TrainReject>;
@@ -24,7 +25,9 @@ pub(super) type NodeGate = fn(&TrainContext<'_>, &TreeNode) -> Result<(), TrainR
 pub(super) const NODE_GATES: &[NodeGate] = &[
     node::level,
     node::prerequisites,
-    // Spend gates (gates/spend.rs) go here, then trainer gates (gates/trainer.rs).
+    spend::branch_points,
+    spend::points,
+    // Trainer gates (gates/trainer.rs) go here.
 ];
 
 /// What `node::resolve` establishes before any [`NodeGate`] runs.

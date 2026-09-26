@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg, MailOp};
 
 use super::super::super::ConnectedClientState;
+use super::super::methods::progression::TrainRequest;
 use super::super::methods::{
     handle_grant_cash, handle_grant_item, handle_grant_xp, handle_mail_request,
     handle_mission_update,
@@ -92,15 +93,20 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             entity_id,
             player_id,
             ability_id,
+            cost,
+            tree_index,
         } => {
             train_ability(
-                entity_id,
-                player_id,
-                ability_id,
+                TrainRequest {
+                    entity_id,
+                    player_id,
+                    ability_id,
+                    cost,
+                    tree_index,
+                },
                 ctx.db_pool,
                 ctx.connected,
                 ctx.cell_tx,
-                ctx.transport,
                 ctx.entity_to_addr,
             )
             .await
@@ -353,23 +359,17 @@ pub(super) async fn grant_xp(
 
 /// `CellToBaseMsg::TrainAbility`.
 pub(super) async fn train_ability(
-    entity_id: u32,
-    player_id: i32,
-    ability_id: i32,
+    request: TrainRequest,
     db_pool: &Option<Arc<PgPool>>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    transport: &Arc<dyn Transport>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     super::super::methods::progression::handle_train_ability(
-        entity_id,
-        player_id,
-        ability_id,
+        request,
         db_pool,
         connected,
         cell_tx,
-        transport,
         entity_to_addr,
     )
     .await;

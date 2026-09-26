@@ -70,7 +70,8 @@ async fn ability_granted_resends_trainer_open_with_unlocked_prereq() {
         BaseToCellMsg::AbilityGranted {
             entity_id: 1,
             ability_id: 597,
-            training_points_remaining: 4,
+            training_points: 4,
+            tree_points_spent: 1,
         },
         &tx,
         &mut mgr,
@@ -186,7 +187,8 @@ async fn ability_granted_with_no_trainer_pinned_does_not_resend() {
         BaseToCellMsg::AbilityGranted {
             entity_id: 1,
             ability_id: 597,
-            training_points_remaining: 4,
+            training_points: 4,
+            tree_points_spent: 1,
         },
         &tx,
         &mut mgr,
@@ -266,7 +268,8 @@ async fn ability_granted_resends_even_when_not_a_prereq() {
         BaseToCellMsg::AbilityGranted {
             entity_id: 1,
             ability_id: 700,
-            training_points_remaining: 4,
+            training_points: 4,
+            tree_points_spent: 1,
         },
         &tx,
         &mut mgr,

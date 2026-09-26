@@ -167,6 +167,7 @@ pub(crate) async fn try_open_trainer(
                 level: player.level as i32,
                 known: &player.abilities,
                 tree_points_spent: player.tree_progress.tree_points_spent,
+                training_points: player.tree_progress.training_points,
             };
             let trainable = match evaluate_train(&ctx) {
                 Ok(_) => 1,
@@ -272,6 +273,7 @@ pub(crate) mod tests {
             p.player_id = Some(100);
             p.archetype_id = Some(2);
             p.level = 1;
+            p.tree_progress.training_points = 1;
         }
 
         mgr.spawn_npc(200, "W", [5.0; 3], [0.0; 3]).unwrap();

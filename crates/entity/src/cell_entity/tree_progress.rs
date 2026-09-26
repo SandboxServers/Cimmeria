@@ -13,4 +13,9 @@ pub struct TreeProgress {
     pub trained_abilities: Vec<i32>,
     /// `sgw_player.tree_points_spent`.
     pub tree_points_spent: i32,
+    /// `sgw_player.training_points`: the unspent points the purchase gate
+    /// and the trainer's `trainable` byte compare against a node's cost.
+    /// The base owns the debit; the cell mirrors the value it returns on
+    /// `AbilityGranted` and on every level-up (`ProgressionChanged`).
+    pub training_points: i32,
 }
