@@ -93,8 +93,8 @@ default-members = [
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
-# This dramatically reduces .rlib sizes so the linker doesn't OOM on WSL
-# (~8 GB linker RSS instead of ~47 GB). Our own crates keep line tables only
+# This dramatically reduces .rlib sizes and the linker's memory use.
+# Our own crates keep line tables only
 # (see [profile.dev]); use `--profile dev-debug` for full debug info.
 [profile.dev.package."*"]
 opt-level = 1
