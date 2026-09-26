@@ -77,7 +77,7 @@ impl RingTransporter {
     /// movement-locked with the ring already past the state that would
     /// release them. The caller routes a refused id to the late-arrival
     /// release in
-    /// `cimmeria_services::cell::ring_transport::handle_remote_player_loaded` instead.
+    /// `cimmeria_cell_content::cell::ring_transport::handle_remote_player_loaded` instead.
     pub fn player_loaded(&mut self, entity_id: u32) -> bool {
         if !self.expects_player(entity_id) {
             return false;

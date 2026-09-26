@@ -16,7 +16,7 @@ Missions (quests) are the primary PvE progression mechanism. Each mission contai
 
 In the **legacy SGW server**, dynamic Python scripts (`deprecated/python/cell/MissionManager.py`, plus per-mission `.py` files in `deprecated/python/cell/missions/`) implemented mission lifecycle logic. That layer is reference-only in Cimmeria — see [docs/architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md) for the design rationale on replacing it.
 
-In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/services/src/cell/content/executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources/Missions/`; chain rows that drive mission progression live in `resources.content_*` tables.
+In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/cell-content/src/cell/content/executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources/Missions/`; chain rows that drive mission progression live in `resources.content_*` tables.
 
 ## Implementation Status
 
@@ -102,7 +102,7 @@ MissionManager.advance(missionId, stepId)
        |-> fire step completed/started events
 
 `advance_step`
-([crates/services/src/cell/missions/progression.rs](../../crates/services/src/cell/missions/progression.rs))
+([crates/cell-content/src/cell/missions/progression.rs](../../crates/cell-content/src/cell/missions/progression.rs))
 reports each old-step objective it completes as a completed-status
 `onObjectiveUpdate` (method 82) before the `onStepUpdate` transition frames.
 Without that report, whichever objective on a multi-objective AND-gate step
@@ -128,7 +128,7 @@ MissionManager.complete(missionId)
 
 ## Offer Guard (server-authoritative re-accept gate)
 
-`accept_mission` ([crates/services/src/cell/missions/mod.rs](../../crates/services/src/cell/missions/mod.rs))
+`accept_mission` ([crates/cell-content/src/cell/missions/mod.rs](../../crates/cell-content/src/cell/missions/mod.rs))
 ports Python `MissionManager.canOffer()` and refuses the accept when:
 
 - the mission is already **ACTIVE** (a re-accept would reset progress to
@@ -164,7 +164,7 @@ a mission without a def entry fails closed (treated as non-repeatable).
 - **Mission definitions**: 1,040 in `db/resources/Missions/Seed/missions.sql`
 - **Schema**: `Mission.xsd`
 - **Mission scripts**: `deprecated/python/cell/missions/` directory
-- **Persistence**: `sgw_mission` table (player_id, mission_id, status, current_step_id, completed/active/failed objective arrays, repeats). `active_objective_ids` holds the **current step's objective roster**, completed entries included, and `completed_objective_ids` the union of everything completed so far; both are serialized from the live `MissionInstance` after each mutation by [`cell/missions/persist.rs`](../../crates/services/src/cell/missions/persist.rs). Before #657 the accept and step-advance paths wrote the *step* id into the objective array and objective completion was never persisted at all. `hidden` / `optional` are not stored — hydration reads them back from `resources.mission_objectives`, which also repairs rows written before the fix
+- **Persistence**: `sgw_mission` table (player_id, mission_id, status, current_step_id, completed/active/failed objective arrays, repeats). `active_objective_ids` holds the **current step's objective roster**, completed entries included, and `completed_objective_ids` the union of everything completed so far; both are serialized from the live `MissionInstance` after each mutation by [`cell/missions/persist.rs`](../../crates/cell-content/src/cell/missions/persist.rs). Before #657 the accept and step-advance paths wrote the *step* id into the objective array and objective completion was never persisted at all. `hidden` / `optional` are not stored — hydration reads them back from `resources.mission_objectives`, which also repairs rows written before the fix
 
 ## RE Priorities
 

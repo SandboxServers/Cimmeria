@@ -241,6 +241,28 @@ Learned extracting `cimmeria-cell-combat` (C2, the first trait inversion):
   crate's lib**, so `unreachable_pub` on a gated hook never shows there. Run
   `clippy -p <new> --all-targets` on its own too.
 
+Learned extracting `cimmeria-cell-content` (C3, content + missions + ring dispatch):
+
+- **§3's per-test destinations go stale as waves land.** It sent `gc1_escort` and
+  `mission_742` to `cell`, but since C2 the NPC AI they drive is combat's: `gc1_escort`
+  moved whole and only one `mission_742` test needed services. Re-derive each test's
+  highest dependency with a grep of the moved tree, never from the plan's list.
+- **A shim left by an earlier wave can move whole.** C1 left `ring_transport/` in
+  services (dispatch, runtime, tests); its tests needed only world + content, so the
+  entire directory went and services just `pub use`s it. Check leftover tests before
+  keeping a shim.
+- **`use lower::…::dialog;` under the old name** keeps a sibling's
+  `super::super::dialog::x` compiling, and the stale-target resolver correctly treats
+  it as not-a-module (pin `cimmeria_services::…::dialog` as must-not-resolve).
+- **rustfmt sorts a run of `use` lines by path and leaves comments where they were**,
+  so a `// In crate X` comment ends up above another crate's re-export. Write the run
+  in path order yourself, or break it with a non-`use` item.
+- **A staying test that calls a production `pub(super)` fn** (`execute_actions`,
+  `populate_mission_context`) used B2's shape: `pub` + `cfg_attr(not(any(test,
+  feature)), allow(unreachable_pub))` on the item and a gated `#[doc(hidden)] pub use`
+  at the module root; staying tests import from that root, so their bodies are
+  unchanged. `clippy -p <new>` alone proves the no-feature build.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

@@ -1,6 +1,6 @@
 # Chain-replay tests must *execute* when the change is an executor arm
 
-`crates/services/src/cell/content/chain_replay_tests/` historically stopped at
+`crates/cell-content/src/cell/content/chain_replay_tests/` historically stopped at
 `ChainEngine::resolve_event` and asserted on the resolved `Action` list. That
 shape cannot tell a wired executor arm from `executor/mod.rs`'s `other =>`
 catch-all — which is exactly how `move_entity`'s five seeded rows no-opped in

@@ -7,7 +7,7 @@
 //! The public entry points (`handle_interact`, `handle_select_destination`,
 //! `handle_region_trigger`, `handle_remote_player_loaded`) and the per-tick
 //! deadline scan fire content chains and live above this crate, in
-//! `cimmeria-services`' `cell::ring_transport::runtime`, which re-exports this
+//! `cimmeria-cell-content`'s `cell::ring_transport::runtime`, which re-exports this
 //! module beside them.
 
 pub mod teardown;

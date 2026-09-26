@@ -204,7 +204,7 @@ taken, everywhere a navmesh could refuse a player a position:
 | `resolve_recovery_position`, respawner fallback | [`cell/space_manager/client_move.rs`](../../crates/cell-world/src/cell/space_manager/client_move.rs) | The authored respawner coordinate is kept rather than discarded for not being covered |
 | `resolve_recovery_position`, AABB clamp | [`cell/space_manager/client_move.rs`](../../crates/cell-world/src/cell/space_manager/client_move.rs) | Kept. This one matters most: answering `None` here returns `CorrectionSuppressed`, leaving a player exactly where the validator refuses to move them from |
 | `check_arrival` | [`cell/arrival.rs`](../../crates/cell-world/src/cell/arrival.rs) | An advisory destination returns `ArrivalCheck::Unvalidated` instead of `OffMesh` — "nothing could be checked", not "refused" |
-| Ring-pad warmup check | [`cell/ring_transport/runtime/tick.rs`](../../crates/services/src/cell/ring_transport/runtime/tick.rs) | Covered by the `check_arrival` change above |
+| Ring-pad warmup check | [`cell/ring_transport/runtime/tick.rs`](../../crates/cell-content/src/cell/ring_transport/runtime/tick.rs) | Covered by the `check_arrival` change above |
 | `audit_ring_pads` startup sweep | [`cell/ring_transport/regions.rs`](../../crates/cell-world/src/cell/ring_transport/regions.rs) | Covered by the `check_arrival` change above |
 | `respawner_fallback` | [`cell/respawner_fallback.rs`](../../crates/cell-catalog/src/cell/respawner_fallback.rs) | Stays a pure function taking `Option<&NavMesh>`. Both callers now pass the *containment* flavour, so an advisory world reaches it as `None`. The mode decision belongs at the caller, not inside the pure core |
 

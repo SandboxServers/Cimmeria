@@ -6,7 +6,7 @@ metadata:
 ---
 
 Found 2026-09-17 reviewing the H02 (Harset ring FSM timeouts) design against
-`crates/services/src/cell/ring_transport/`.
+`crates/cell-content/src/cell/ring_transport/`.
 
 **`SpaceManager::destroy_entity` is sync with no `tx`, and that is deliberate.**
 The codebase's established answer for "a subsystem needs async cleanup when a

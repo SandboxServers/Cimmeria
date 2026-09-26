@@ -31,7 +31,7 @@ the icon disappears on relog.
 ## The loop, end to end
 
 1. `Action::StartMinigame` → `CellToBaseMsg::StartMinigame`
-   (`crates/services/src/cell/content/executor/mod.rs:203-228`).
+   (`crates/cell-content/src/cell/content/executor/mod.rs:203-228`).
 2. Base registers a 64-hex one-time ticket keyed by `entity_id` and pushes
    `onStartMinigame(URL)` where URL = `http://unused/{host}/{port}/{game}/{entityId}/{ticket}`
    (`crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs:36-80`).

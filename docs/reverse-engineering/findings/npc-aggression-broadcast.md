@@ -199,7 +199,7 @@ an already-connected witness saw.
 
 ## 2009-vs-2026 notes
 
-Cimmeria's implementation (`crates/services/src/cell/content/executor/world/mod.rs::set_aggression`,
+Cimmeria's implementation (`crates/cell-content/src/cell/content/executor/world/mod.rs::set_aggression`,
 `crates/services/src/cell/console/net.rs::aggression`,
 `crates/cell-combat/src/cell/service/npc_ai/lifecycle/mod.rs::npc_ai_submit`)
 broadcasts `onAggressionOverrideUpdate`/`onAggressionOverrideCleared` on

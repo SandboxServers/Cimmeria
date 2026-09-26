@@ -3,7 +3,7 @@
 //! Splits the two shapes of "a participant went away": a real client
 //! disconnect, which can and must release the survivors synchronously, and
 //! everything else, which goes through the synchronous
-//! `SpaceManager::destroy_entity` and is reconciled by the ring tick (`cimmeria_services::cell::ring_transport::runtime`).
+//! `SpaceManager::destroy_entity` and is reconciled by the ring tick (`cimmeria_cell_content::cell::ring_transport::runtime`).
 
 use tokio::sync::mpsc;
 

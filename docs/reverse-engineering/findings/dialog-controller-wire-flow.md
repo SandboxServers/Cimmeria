@@ -36,7 +36,7 @@ The server-to-client half is `onDialogDisplay`, client method 105, declared in [
 | 12 | 1 | `UINT8` | `IsImmediate` | Display-versus-queue switch, read with the byte accessor `Mercury__unknown_00e57390` |
 | 13 | 4 | `INT32` | `aMissionId` | Stored, never read on the display path |
 
-Total payload 17 bytes. Cimmeria builds exactly this in `crates/services/src/cell/interactions/dialog.rs:51-56`, and hardcodes `IsImmediate = 1` at line 55.
+Total payload 17 bytes. Cimmeria builds exactly this in `crates/cell-content/src/cell/interactions/dialog.rs:51-56`, and hardcodes `IsImmediate = 1` at line 55.
 
 The client-to-server half is `dialogButtonChoice`, cell method 75, declared `<Exposed/>` at [`entities/defs/SGWPlayer.def:621-625`](../../../entities/defs/SGWPlayer.def): `INT32 DialogId, INT32 ButtonId`. It is the only thing a dialog ever sends back, and it fires on exactly two occasions — see [The two return paths](#the-two-return-paths).
 

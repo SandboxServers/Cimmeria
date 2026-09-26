@@ -14,7 +14,7 @@ last_updated: 2026-09-25
 
 Gate travel enables zone transitions via stargates and ring transporters. Stargates provide long-distance travel between worlds, while ring transporters provide local teleportation within or between nearby areas. Both systems involve multi-step sequences with animations, player visibility toggling, and movement locking.
 
-Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/base-world-entry/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/services/src/cell/ring_transport/) with an 8-state finite state machine.
+Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/base-world-entry/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/cell-content/src/cell/ring_transport/) with an 8-state finite state machine.
 
 > **Where the placement is chosen.** Castle CA10 split the dial from the crossing: `onDialGate` arms a 4-second dial and the player then walks into the `REGION_FLAG_Stargate` (bit 2) volume to cross. Both that crossing and the no-gate-volume immediate fallback funnel through one function, `cell::gate_travel::perform_gate_travel`, which holds the single `validate_gate_arrival` call. There is deliberately exactly one — a second call in either caller would validate, and warn, twice per crossing.
 
@@ -114,7 +114,7 @@ Two ordering constraints hold this together. The write runs after every mid-tran
 
 The seed verb takes `target_id` = `resources.stargates.stargate_id`. It is the address itself — not a world id, and not the repeating `address_origin` glyph.
 
-A grant has to reach three places, and all three are emitted from [`cell/content/executor/stargate.rs`](../../crates/services/src/cell/content/executor/stargate.rs):
+A grant has to reach three places, and all three are emitted from [`cell/content/executor/stargate.rs`](../../crates/cell-content/src/cell/content/executor/stargate.rs):
 
 1. `CellEntity::known_stargates`, which is what the dial gate above enforces against.
 2. The client, via `updateStargateAddress` (client method 66: `INT32 addressId`, `UINT8 hasAddress = 1`, `UINT8 hidden = 0`). The client is handed its whole address book exactly once, by `setupStargateInfo` at map load, so without this the grant is invisible until a relog.

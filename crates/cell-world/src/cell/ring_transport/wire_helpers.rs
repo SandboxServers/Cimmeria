@@ -2,7 +2,7 @@
 //! the byte payloads for the client methods we send during a ring trip
 //! (`onSequence`, `onStateFieldUpdate`, `onVisible`, `onRingTransporterList`).
 //!
-//! Kept separate from the dispatcher (`cimmeria_services::cell::ring_transport`'s
+//! Kept separate from the dispatcher (`cimmeria_cell_content::cell::ring_transport`'s
 //! `dispatch`) so the dispatcher only deals in
 //! `Effect → mpsc::Sender<CellToBaseMsg>` and doesn't accumulate byte-level
 //! plumbing.

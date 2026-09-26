@@ -223,7 +223,7 @@ pub(super) async fn npc_ai_follow(
 /// whose visibility widens, and only under `cfg(test)` or the
 /// `test-support` feature, so production callers keep the same narrow
 /// surface. Re-exported through `npc_ai` for
-/// `cell::content::chain_replay_tests::gc1_escort` in `cimmeria-services`.
+/// `cell::content::chain_replay_tests::gc1_escort` in `cimmeria-cell-content`.
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub async fn npc_ai_follow_for_test(

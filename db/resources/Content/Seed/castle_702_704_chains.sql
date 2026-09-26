@@ -84,7 +84,7 @@
 --
 -- `set_interaction_type` is GLOBAL on the entity, not per player: the arm
 -- mutates `CellEntity::interaction_type_flags` and fans the new value to
--- every witness (crates/services/src/cell/content/executor/world/mod.rs:19-65),
+-- every witness (crates/cell-content/src/cell/content/executor/world/mod.rs:19-65),
 -- and docs/content/interaction-flags.md:190 says so explicitly. In an
 -- instanced zone (the Castle_CellBlock precedent) that is harmless. In
 -- Castle, which is persistent and shared, it means:

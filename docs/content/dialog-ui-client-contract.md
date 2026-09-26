@@ -18,7 +18,7 @@ Every rule below cites either a client source file you can read yourself, or the
 
 ## The server sends an id, not a dialog
 
-`onDialogDisplay` carries five integers — the speaker's entity id, the dialog id, a mission-flags word, a one-byte immediate flag and a mission id. No text, no button list, no screen count. The client looks the rest up in `CookedDataDialogs.pak` (`crates/services/src/cell/interactions/dialog.rs:51-56`).
+`onDialogDisplay` carries five integers — the speaker's entity id, the dialog id, a mission-flags word, a one-byte immediate flag and a mission id. No text, no button list, no screen count. The client looks the rest up in `CookedDataDialogs.pak` (`crates/cell-content/src/cell/interactions/dialog.rs:51-56`).
 
 Two consequences you will hit on your first change:
 

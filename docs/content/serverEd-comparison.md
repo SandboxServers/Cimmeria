@@ -148,7 +148,7 @@ ServerEd's `ReloadScriptRequest` ([serverconnector.h:92-103](../../tools/ServerE
 
 ### Static validation at edit time
 
-ServerEd validated chains at edit time: required-port warnings ([scriptcompiler.cpp:914-919](../../tools/ServerEd/scriptcompiler.cpp#L914-L919)), unknown-property warnings, cycle detection. Cimmeria validates chains only at load time ([engine_loader.rs](../../crates/services/src/cell/content/engine_loader.rs)) — and silently drops malformed rows with a `warn!` rather than failing loud. **A typo in chain authoring shows up as a silent no-op in-game** — the worst possible failure mode.
+ServerEd validated chains at edit time: required-port warnings ([scriptcompiler.cpp:914-919](../../tools/ServerEd/scriptcompiler.cpp#L914-L919)), unknown-property warnings, cycle detection. Cimmeria validates chains only at load time ([engine_loader.rs](../../crates/cell-content/src/cell/content/engine_loader.rs)) — and silently drops malformed rows with a `warn!` rather than failing loud. **A typo in chain authoring shows up as a silent no-op in-game** — the worst possible failure mode.
 
 ### Visual graph authoring
 

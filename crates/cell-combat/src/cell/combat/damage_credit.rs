@@ -29,7 +29,7 @@
 //! every active effect). Each calls [`note_pre_damage_health`] immediately
 //! before applying damage; that queues the pre-hit percentage on the
 //! `SpaceManager`. A content-layer drain
-//! (`cimmeria_services::cell::content::fire_pending_health_below`, reached
+//! (`cimmeria_cell_content::cell::content::fire_pending_health_below`, reached
 //! through `ContentEvents::pending_health_below`) pops the queue
 //! and hands each sample to `fire_health_below_for_hit`, which samples the
 //! post-hit percentage itself.

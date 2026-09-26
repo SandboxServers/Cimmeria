@@ -36,7 +36,7 @@ interaction-only path.
 
 `Trigger::OnDialogSetOpen` is authorable (`loader/trigger.rs:60`,
 `event_type = 'dialog_set_open'`) and matches (`triggers/matching.rs:169`),
-but **no `fire_*` site in `crates/services/src/cell/content/event_dispatch/`
+but **no `fire_*` site in `crates/cell-content/src/cell/content/event_dispatch/`
 ever constructs a `TriggerType::DialogSetOpen` event**. Zero dispatch sites
 repo-wide. Any chain authored on it is dead.
 

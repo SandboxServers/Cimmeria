@@ -8,7 +8,7 @@ metadata:
 # `cargo fmt` sorts `mod` declarations — end-append instructions don't survive
 
 Multi-packet campaigns (Harset, Castle, Cellblock) hand several parallel workers
-the same shared `mod.rs` — `crates/services/src/cell/content/chain_replay_tests/mod.rs`
+the same shared `mod.rs` — `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs`
 is the usual one — with the instruction "append your `mod` line at the **end**,
 the coordinator resolves the merge". That instruction cannot be honoured:
 **rustfmt's `reorder_modules` defaults to `true`**, so `cargo fmt --all` sorts

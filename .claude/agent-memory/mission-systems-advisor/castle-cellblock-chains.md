@@ -16,7 +16,7 @@ Chain-id allocation: 622→1001-1010, 638→1011-1030, 639→1031-1040,
 An NPC/corpse with `interaction_type = 0` is made right-clickable purely by
 binding a dialog set to its `template_id` via
 `add_dialog_set(dsm_id, {slot: <template_id>})`. The `add_dialog_set` handler
-(`crates/services/src/cell/content/executor/dialog.rs:119`) stores
+(`crates/cell-content/src/cell/content/executor/dialog/mod.rs:119`) stores
 `(dsm_id, dialog_id, interaction_flags)` into the player's
 `available_interactions[template_id]` and pushes an InteractionType update
 merging the entity base flags with the dialog_set_map's `interaction_flags`.
