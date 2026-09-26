@@ -94,7 +94,7 @@ pub(in crate::cell::service) const ZERO_HEALTH_WARN_MIN_INTERVAL: Duration =
 /// [`crate::cell::combat::is_hostile_to_players`]), has a patrol path, or
 /// has a wander radius. Hostility is what makes both faction-10 mobs and
 /// the `set_aggression` content action trigger combat; see
-/// `cimmeria_services::cell::content::executor::world::set_aggression`.
+/// `cimmeria_cell_content::cell::content::executor::world::set_aggression`.
 pub async fn npc_ai_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,

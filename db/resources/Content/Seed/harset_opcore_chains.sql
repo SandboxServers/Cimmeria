@@ -55,7 +55,7 @@ SET search_path = resources, pg_catalog;
 --     Praxis offer, 6527 Praxis turn-in). Their disjointness is enforced
 --     by the extra conditions marked "DISJOINTNESS" below and is pinned
 --     by `marsh_interact_chains_are_pairwise_disjoint` in
---     crates/services/src/cell/content/chain_replay_tests/mission_1361.rs.
+--     crates/cell-content/src/cell/content/chain_replay_tests/mission_1361/mod.rs.
 --     Do not remove one of those conditions without re-running that test.
 --
 --     Two chains key on 'CmdCenter_Mohkatan' (6515 step 4040, 6520 step

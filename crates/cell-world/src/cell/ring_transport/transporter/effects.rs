@@ -2,7 +2,7 @@
 //!
 //! Split out of the FSM body so the state machine in [`super`] stays
 //! readable. Nothing here touches the world — the dispatcher
-//! (`cimmeria_services::cell::ring_transport`'s `dispatch`)
+//! (`cimmeria_cell_content::cell::ring_transport`'s `dispatch`)
 //! is the only consumer.
 
 /// Effects produced by FSM transitions. The state machine never touches the

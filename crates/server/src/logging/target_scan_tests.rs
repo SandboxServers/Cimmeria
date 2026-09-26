@@ -33,6 +33,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "cell-catalog",
     "cell-world",
     "cell-combat",
+    "cell-content",
     "commands",
     "common",
     "content-engine",
@@ -262,7 +263,12 @@ fn every_source_target_reaches_signoz_at_its_level() {
 fn scan_finds_known_targets() {
     let sites = emitted_targets();
     for (t, l) in [
+        // Emitted only by crates/cell-content (wave C3 of the services split):
+        // the dialog executor, the deferred content-action drain and the
+        // mission step activation.
         ("dialog.display", Level::DEBUG),
+        ("content.deferred", Level::INFO),
+        ("mission.step_context", Level::DEBUG),
         // Emitted only by crates/cell-combat (wave C2 of the services split).
         ("movement.movement_type", Level::TRACE),
         ("abilities.qr", Level::DEBUG),

@@ -9,7 +9,7 @@ metadata:
 
 The `once` boolean on `content_triggers` is loaded into `DbTriggerRow.once`
 (`crates/content-engine/src/loader/mod.rs:58`, SELECTed in
-`crates/services/src/cell/content/engine_loader.rs:68`) but **dropped on the
+`crates/cell-content/src/cell/content/engine_loader.rs:68`) but **dropped on the
 floor**:
 
 - `convert_trigger` (`crates/content-engine/src/loader/trigger.rs:8-106`) never

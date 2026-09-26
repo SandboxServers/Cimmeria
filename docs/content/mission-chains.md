@@ -160,7 +160,7 @@ Step indices (XML order, which the client uses for sequential progression): `211
 | 1007 | `player_loaded('Castle_CellBlock')` | `step_status(622, 80623) = 'active'` | `add_dialog_set(5230 → template 21)` — re-bind Guard on login |
 | 1121 | `dialog_open('3995')` (Frost body) | `step_status(622, 2113) = 'active'` AND `mission_status(1360) = 'not_active'` | `accept_mission(1360)` — Frost's Letter |
 
-Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the pistol from your inventory.") are **not** in the canonical PAK. They're added by two `MissionOverride` entries for mission 622 (`insert_after_step_id: 2113` then `insert_after_step_id: 80623`) in `crates/resources/src/base/mission_overrides.rs`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (steps 80623, 80622) and `mission_objectives.sql` (objectives 90623, 90622). The Guard's search dialog 3996 is a Cimmeria dialog shipped via a `CookedDataDialogs.pak` override (`crates/resources/src/base/dialog_overrides/mod.rs`). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (chains 1001–1007, 1121). Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_622.rs`, `mission_1360.rs`.
+Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the pistol from your inventory.") are **not** in the canonical PAK. They're added by two `MissionOverride` entries for mission 622 (`insert_after_step_id: 2113` then `insert_after_step_id: 80623`) in `crates/resources/src/base/mission_overrides.rs`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (steps 80623, 80622) and `mission_objectives.sql` (objectives 90623, 90622). The Guard's search dialog 3996 is a Cimmeria dialog shipped via a `CookedDataDialogs.pak` override (`crates/resources/src/base/dialog_overrides/mod.rs`). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (chains 1001–1007, 1121). Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_622.rs`, `mission_1360.rs`.
 
 **Mission 1360 — Frost's Letter (C04, new content)** [CONFIRMED]
 
@@ -326,7 +326,7 @@ Four chains implement the AND-gate, split to route around `cell::missions::compl
 | 1132 | `player_entered_cover(1200001)` | kill (2482) not completed, cover (2484) not completed | `complete_objective(639, 2484)`, `play_sequence(10014)` (hide the TakeCoverIndicator) |
 | 1133 | `player_entered_cover(1200001)` | kill (2482) already completed | `advance_step(639, 2343)` (implicitly completes 2484), `play_sequence(10014)` |
 
-Chains 1033/1132 each check their own target objective isn't already completed (not just the other one), so re-entering cover or a repeat death event doesn't resend `play_sequence(10014)` or re-run a no-op completion. Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (search `Mission 639 (C03 addition`). Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_639_cover.rs` (per-chain positive/negative cases for all four chains, plus both full kill/cover orderings end to end).
+Chains 1033/1132 each check their own target objective isn't already completed (not just the other one), so re-entering cover or a repeat death event doesn't resend `play_sequence(10014)` or re-run a no-op completion. Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (search `Mission 639 (C03 addition`). Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_639_cover.rs` (per-chain positive/negative cases for all four chains, plus both full kill/cover orderings end to end).
 
 ---
 
@@ -451,7 +451,7 @@ Same equip-from-inventory shape as mission 622, but the equip step is an **inter
 | 1055 | `interact_tag('Preparation_SMG1A')` | `step_status(641, 2121) = 'active'` | Grant P90 (item 21) → backpack (container 1); clear locker highlight; `advance_step(641, 80641)` |
 | 1066 | `item_equipped('21')` | `step_status(641, 80641) = 'active'` | `advance_step(641, 3563)` (talk to Marsh); re-set Marsh's mission-available marker |
 
-Step 80641 ("Equip the P90 from your inventory.") is added by `MissionOverride { mission_id: 641, insert_after_step_id: 2121 }` in `crates/resources/src/base/mission_overrides.rs:91-109`. Server-side seed rows: `mission_steps.sql` (step 80641, with index reordering for the existing 3563/3564 to keep XML order in sync) and `mission_objectives.sql` (objective 90641). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql:560-615`. Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` (4 chain-replay tests covering 1055 / 1066, plus chain 1051 acceptance).
+Step 80641 ("Equip the P90 from your inventory.") is added by `MissionOverride { mission_id: 641, insert_after_step_id: 2121 }` in `crates/resources/src/base/mission_overrides.rs:91-109`. Server-side seed rows: `mission_steps.sql` (step 80641, with index reordering for the existing 3563/3564 to keep XML order in sync) and `mission_objectives.sql` (objective 90641). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql:560-615`. Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_641.rs` (4 chain-replay tests covering 1055 / 1066, plus chain 1051 acceptance).
 
 **Link to next**: Explicitly calls `missions.complete(641)` and `missions.accept(680)` on Livewire victory. [CONFIRMED]
 
@@ -875,7 +875,7 @@ directions on purpose:
   and ignores any NPC in scope. See
   [content-engine.md §4](content-engine.md) for the full resolution order.
 
-**Tests**: `crates/services/src/cell/content/chain_replay_tests/mission_701/`
+**Tests**: `crates/cell-content/src/cell/content/chain_replay_tests/mission_701/`
 (live-DB chain-replay, split `arrival.rs` / `body.rs` / `restore.rs`, plus
 `persistence.rs` for the world-hop invariant).
 

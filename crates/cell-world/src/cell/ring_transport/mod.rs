@@ -21,7 +21,7 @@
 //! The effect dispatcher and the runtime entry points (`handle_interact`,
 //! `handle_select_destination`, `handle_region_trigger`,
 //! `run_tick_with_engine`) fire content chains, so they sit above this crate
-//! (`cimmeria-services`, `cell::ring_transport`, which re-exports this module
+//! (`cimmeria-cell-content`, `cell::ring_transport`, which re-exports this module
 //! beside them; docs/architecture/services-crate-split.md §2G). They reach the
 //! FSM and the wire helpers through the public `transporter`, `regions` and
 //! `wire_helpers` modules.

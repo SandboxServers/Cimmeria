@@ -138,7 +138,7 @@ async fn mission_completion_cell_to_base_to_db_to_relogin_round_trip() {
     );
 
     // ── 3. Build the EXACT message the executor emits ───────────
-    // Field set mirrors crates/services/src/cell/content/executor.rs
+    // Field set mirrors crates/cell-content/src/cell/content/executor/mod.rs
     // CompleteMission arm. Empty Vecs / None are the executor's
     // intentional contract for a "completed" message.
     let msg = CellToBaseMsg::MissionUpdate {
@@ -383,7 +383,7 @@ async fn second_completion_advances_persisted_repeats_counter_end_to_end() {
 /// mission 622's step 2113 is active. The packet's own acceptance criterion
 /// is "a live-DB test that the row persists across the 688 transition path".
 ///
-/// `cross_world_teleport` (crates/services/src/cell/content/executor/
+/// `cross_world_teleport` (crates/cell-content/src/cell/content/executor/
 /// transport.rs), the executor arm chain 1109 uses for the Cellblock →
 /// Castle hop, does exactly two things to the entity: flushes dirty
 /// bandolier ammo and calls `SpaceManager::destroy_entity`. Neither touches

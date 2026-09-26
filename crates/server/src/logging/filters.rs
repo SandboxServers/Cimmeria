@@ -102,6 +102,11 @@ use crate::otel;
 /// shares its `cimmeria_cell_co` prefix but not the name, so neither row
 /// matches the other crate.
 ///
+/// `cimmeria_cell_content=debug` (wave C3) does the same for the content
+/// layer: the chain executor and its dispatchers, missions, the ring
+/// dispatcher and entry points, and the dialog display. Neither
+/// `cimmeria_cell_combat` nor `cimmeria_cell_cover` is a prefix of it.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -137,6 +142,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_base_world_entry=debug,\
                 cimmeria_cell_combat=debug,\
                 cimmeria_base::base=debug,\
+                cimmeria_cell_content=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -307,16 +313,17 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     },
     FileLayer {
         file: "content.log",
-        directives: "off,cimmeria_services::cell::content=trace",
+        directives: "off,cimmeria_cell_content::cell::content=trace",
     },
     FileLayer {
         file: "missions.log",
-        directives: "off,cimmeria_services::cell::missions=trace",
+        directives: "off,cimmeria_cell_content::cell::missions=trace",
     },
     FileLayer {
         file: "interactions.log",
         directives: "off,\
              cimmeria_services::cell::interactions=trace,\
+             cimmeria_cell_content::cell::interactions=trace,\
              cimmeria_services::cell::chat=trace,\
              cimmeria_services::cell::mail=trace",
     },
@@ -326,7 +333,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
              cimmeria_cell_catalog::cell::spawner=trace,\
              cimmeria_cell_world::cell::space_manager::npc_population=trace,\
              cimmeria_services::cell::gate_travel=trace,\
-             cimmeria_services::cell::ring_transport=trace,\
+             cimmeria_cell_content::cell::ring_transport=trace,\
              cimmeria_cell_world::cell::ring_transport=trace",
     },
     FileLayer {

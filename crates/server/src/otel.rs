@@ -606,8 +606,17 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_cell_combat::cell::service::npc_ai::dispatch"
         ));
+        // The content layer, `cimmeria_services::cell::{content, missions,
+        // ring_transport}` in cimmeria-server until wave C3 moved it to
+        // cimmeria-cell-content.
         assert!(!is_network_noise_target(
-            "cimmeria_services::cell::content::executor::dialog"
+            "cimmeria_cell_content::cell::content::executor::dialog"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_content::cell::missions::progression"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_content::cell::ring_transport::dispatch"
         ));
         // The feature handlers, `cimmeria_services::base::world_entry::methods`
         // in cimmeria-server until wave B2 moved them to cimmeria-base-methods.

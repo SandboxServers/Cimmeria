@@ -519,7 +519,7 @@ VALUES
 -- A swap here is a user-visible bug (a Tau'ri player gets the
 -- "My symbiote will cure me" Jaffa dialog and vice versa) — issue #216.
 -- The chain-replay tests in
--- `crates/services/src/cell/content/chain_replay_tests.rs`
+-- `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs`
 -- (`mission_638_*` group) regression-guard the resolved-action shape
 -- for both archetype branches.
 
@@ -1611,7 +1611,7 @@ VALUES (1084, 'accept_mission', 687, NULL, '{}', 0, 0);
 -- (Hallway05_Guard1/2, MessHall_Guard1/2) get two increment chains
 -- both feeding the same counter.
 --
--- Chain-replay tests in `crates/services/src/cell/content/
+-- Chain-replay tests in `crates/cell-content/src/cell/content/
 -- chain_replay_tests.rs` (`mission_681_*` and `mission_686_*` groups)
 -- pin both the per-tag increment dispatch and the threshold-reached
 -- completion so the wiring can't drift.
@@ -1840,7 +1840,7 @@ VALUES
 -- as a quest world object so the right-click cursor renders the
 -- attention-pulse. Mirrors how chain 1053 highlights Preparation_SMG1A
 -- on mission 641 accept. The matching `mission_accepted` trigger fires
--- from `crates/services/src/cell/content/executor.rs::Action::AcceptMission`
+-- from `crates/cell-content/src/cell/content/executor/mod.rs::Action::AcceptMission`
 -- right after the mission state is committed (engine extension landed
 -- alongside this chain).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

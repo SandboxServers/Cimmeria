@@ -7,7 +7,10 @@
 //! Reference: `python/cell/SGWPlayer.py:1148-1203`
 
 mod dhd;
-mod dialog;
+// The dialog display choke point is in `cimmeria-cell-content` (wave C3):
+// the content executor opens dialogs through it. Imported under its old name,
+// so `super::super::dialog::send_dialog_display` in `dispatch` is unchanged.
+use cimmeria_cell_content::cell::interactions::dialog;
 mod dispatch;
 mod loot;
 mod trainer;

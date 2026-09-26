@@ -7,7 +7,7 @@ metadata:
 
 # `advance_step` vs `complete_objective` (verified 2026-09-18)
 
-`crates/services/src/cell/missions/progression.rs`.
+`crates/cell-content/src/cell/missions/progression.rs`.
 
 ## `advance_step(entity, mission, new_step)` does:
 
@@ -41,7 +41,7 @@ objective updates hardcode `hidden` and `optional` to `false`.
 ## Persistence gap (route to database-persistence)
 
 Both `accept_or_advance` and `advance_step` in
-`crates/services/src/cell/content/executor/mission.rs` send
+`crates/cell-content/src/cell/content/executor/mission.rs` send
 `CellToBaseMsg::MissionUpdate` with:
 
 - `active_objective_ids: vec![step_id]` — the **step** id in the objective list

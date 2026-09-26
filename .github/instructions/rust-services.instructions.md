@@ -14,7 +14,7 @@ applyTo: "crates/services/**/*.rs"
 
 ## Content engine actions
 
-Every action type in `Action` (see `crates/content-engine/src/actions.rs`) needs an executor arm in `crates/services/src/cell/content/executor.rs`. Stubs that only log are a known footgun — they make a chain *look* like it's running while doing nothing. If you spot a stub arm during review, ask whether the calling chain actually expects the side effect.
+Every action type in `Action` (see `crates/content-engine/src/actions.rs`) needs an executor arm in `crates/cell-content/src/cell/content/executor/mod.rs`. Stubs that only log are a known footgun — they make a chain *look* like it's running while doing nothing. If you spot a stub arm during review, ask whether the calling chain actually expects the side effect.
 
 Existing stubs to watch for: `Action::RemoveItem` (logs only — see content-chain rules), `Action::IncrementCounter`, `Action::ResetCounter`. Newer additions should either implement fully or be flagged with a `tracing::warn!` so silent no-ops are visible in logs.
 
@@ -51,6 +51,6 @@ Default to none. Only when the **why** is non-obvious: hidden constraint, subtle
 
 ## Reference
 
-- `crates/services/src/cell/ring_transport/runtime.rs` is a good example of how to dispatch FSM `Effect`s into wire `CellToBaseMsg`s.
+- `crates/cell-content/src/cell/ring_transport/dispatch.rs` is a good example of how to dispatch FSM `Effect`s into wire `CellToBaseMsg`s.
 - `crates/base-world-entry/src/base/world_entry/cell_dispatch/mod.rs` shows the base-side handler pattern for a `CellToBaseMsg` variant.
 - Reference Python in `python/cell/` and `python/common/` is the behaviour spec — read it for any new feature port.

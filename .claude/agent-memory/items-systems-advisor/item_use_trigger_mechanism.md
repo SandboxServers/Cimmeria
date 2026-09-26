@@ -12,7 +12,7 @@ Confirmed 2026-09-17 during a Harset zone evidence pass (READ-ONLY, no code chan
 **The live mechanism:**
 1. Seed a `content_triggers` row: `(chain_id, event_type='item_use', event_key='<item_id>', scope='player', once, sort_order)`. Real examples: `db/resources/Content/Seed/castle_cellblock_chains.sql:501` (chain 1034, key '19'), `db/resources/Content/Seed/consumables_chains.sql:39` (chain 4001, key '2893', the Health Slappack).
 2. Parsed by `crates/content-engine/src/loader/trigger.rs:36-38` — `"item_use" => Trigger::OnItemUse { item_id: key?.parse().ok()? }`. Keys strictly on `item_id`, nothing else.
-3. Dispatched by `crates/services/src/cell/content/event_dispatch/inventory.rs::fire_item_use` (starts line 28). Matches purely on `item_id` passed from the UseInventoryItem handler; sets `item_id`/`instance_id`/mission/stat context; resolves and executes whatever `content_actions` the matched chain(s) declare.
+3. Dispatched by `crates/cell-content/src/cell/content/event_dispatch/inventory.rs::fire_item_use` (starts line 28). Matches purely on `item_id` passed from the UseInventoryItem handler; sets `item_id`/`instance_id`/mission/stat context; resolves and executes whatever `content_actions` the matched chain(s) declare.
 
 **Consumption is NOT automatic.** Per the header comment in `consumables_chains.sql`: "`useItem` events fire without consuming, so per-item chains decide whether to remove." Every chain that should burn a stack must include its own explicit `remove_item` action (see chain 4001: `change_stat` then `remove_item` in that order, heal-before-consume so a channel-saturation failure on remove doesn't cost the player the heal).
 

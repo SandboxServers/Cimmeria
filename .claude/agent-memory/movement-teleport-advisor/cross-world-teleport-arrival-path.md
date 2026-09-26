@@ -7,7 +7,7 @@ metadata:
 
 Traced 2026-09-17. `cross_world_teleport` is **not** a forced-position path and must not be reviewed as one — the destination position rides the world-entry sequence, so `build_forced_position` never enters the picture. Forced position stays the intra-space primitive (`Action::Teleport`, `executor/transport.rs:34-92`, which does `update_position_preserving_facing` → `note_authorized_teleport` → `CellToBaseMsg::TeleportPlayer`).
 
-**The sequence** (`crates/services/src/cell/content/executor/transport.rs:110-154`):
+**The sequence** (`crates/cell-content/src/cell/content/executor/transport.rs:110-154`):
 
 1. flush dirty bandolier ammo
 2. `space_mgr.destroy_entity(entity_id)` — which also calls `movement_validator.forget(entity_id)` (`space_manager/entities.rs:152`), so there is no stale validator clock at the far end and no `note_authorized_teleport` is needed

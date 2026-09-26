@@ -16,6 +16,11 @@
 //! behaviour in `service::npc_ai`, and the bandolier, reload and item-sequence
 //! cell methods) is in `cimmeria-cell-combat` (wave C2), re-exported the same
 //! way.
+//!
+//! The content layer (`content`, `missions`, the ring dispatcher and entry
+//! points in `ring_transport`, and `interactions::dialog`) is in
+//! `cimmeria-cell-content` (wave C3), re-exported the same way;
+//! `interactions` imports `dialog` beside the handlers that stay.
 
 // In `cimmeria-cell-combat` (wave C2).
 pub use cimmeria_cell_combat::cell::abilities;
@@ -27,7 +32,13 @@ pub mod chat;
 pub use cimmeria_cell_combat::cell::combat;
 pub use cimmeria_wire::cell::client_methods;
 pub mod console;
-pub mod content;
+// In `cimmeria-cell-content` (wave C3).
+pub use cimmeria_cell_content::cell::content;
+/// The content tests that drive code still in this crate (a cell method,
+/// the gate dial, the relog hydration, the base's mission query).
+/// Test-only.
+#[cfg(test)]
+mod content_tests;
 // The seam combat raises content events through (§2E), in `cimmeria-cell-world`.
 pub use cimmeria_cell_world::cell::content_events;
 pub use cimmeria_cell_world::cell::cover;
@@ -41,12 +52,15 @@ mod harset_placement_tests;
 pub mod interactions;
 pub(crate) use cimmeria_wire::cell::kismet;
 pub mod mail;
+// In `cimmeria-cell-content` (wave C3).
+pub use cimmeria_cell_content::cell::missions;
+pub use cimmeria_cell_content::cell::ring_transport;
+// `playtest_friction_watch` had one user here, the content executor's dialog
+// path, which moved to `cimmeria-cell-content` (wave C3).
+pub(crate) use cimmeria_cell_world::cell::playtest_friction;
 // The Base<->Cell message contract is in `cimmeria-wire` (wave W3a).
 pub use cimmeria_wire::cell::messages;
-pub mod missions;
-pub(crate) use cimmeria_cell_world::cell::{playtest_friction, playtest_friction_watch};
 pub(crate) use cimmeria_wire::cell::player_journal;
-pub mod ring_transport;
 mod service;
 pub use cimmeria_cell_world::cell::space_manager;
 // Crate-internal: `transfer_player_to_space` is a destructive, unauthenticated

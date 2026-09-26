@@ -302,6 +302,14 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_services::base::login",
         "cimmeria_services::base::dispatch",
         "cimmeria_services::base::character_create",
+        // content.log's, missions.log's and spawner.log's services rows before
+        // wave C3 moved the content layer to cimmeria-cell-content; services
+        // re-exports all three at the same paths. `interactions` stays, but
+        // its `dialog` is an import of the content crate's, not a module.
+        "cimmeria_services::cell::content",
+        "cimmeria_services::cell::missions",
+        "cimmeria_services::cell::ring_transport",
+        "cimmeria_services::cell::interactions::dialog",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -322,6 +330,11 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_base::base",
         "cimmeria_base::base::connect_loop::encrypted",
         "cimmeria_base::base::character_create",
+        "cimmeria_cell_content::cell::content",
+        "cimmeria_cell_content::cell::missions",
+        "cimmeria_cell_content::cell::ring_transport",
+        "cimmeria_cell_content::cell::interactions::dialog",
+        "cimmeria_services::cell::interactions",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

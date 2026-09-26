@@ -17,8 +17,8 @@ use cimmeria_common::ServerConfig;
 
 use super::messages::{BaseToCellMsg, CellToBaseMsg};
 
-// `pub(crate)` so the mission-relog chain-replay guards can drive the
-// real `player_init::mission_restore` hydration instead of a hand-built
+// `pub(crate)` so the mission-relog guards (`cell::content_tests`) can drive
+// the real `player_init::mission_restore` hydration instead of a hand-built
 // replica of it (Harset H50). Nothing outside the crate sees it.
 pub(crate) mod base_messages;
 mod message_loop;
@@ -36,15 +36,6 @@ pub(crate) mod ticks;
 
 #[cfg(test)]
 mod tests;
-
-// Test-only re-export: `npc_ai` itself is a private module of
-// `cell::service` (production has no caller outside this service), but
-// GC1b-2's chain-replay suite (`cell::content::chain_replay_tests`) is
-// outside `cell::service` entirely and needs to drive individual follow
-// AI ticks. See the doc comment on `npc_ai::npc_ai_follow_for_test`
-// itself for why it bypasses the full tick dispatcher.
-#[cfg(test)]
-pub(crate) use npc_ai::npc_ai_follow_for_test;
 
 /// CellApp service managing spatial entity simulation.
 pub struct CellService {

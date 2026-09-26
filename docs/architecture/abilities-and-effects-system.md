@@ -220,7 +220,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Decision:** Content chains that apply an ability or an effect
 (`Action::LaunchAbility`, `Action::ApplyEffect`) call
-[`cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
+[`cell/content/effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs),
 which resolves the effect defs and calls `dispatch_by_name` +
 `register_active_effect` directly. They do **not** route through
 `cell::abilities::use_ability::handle_use_ability`.
@@ -263,8 +263,8 @@ factor the *effect-application tail* of `handle_use_ability` into a shared
 function that both call — not to route content back through the gated front
 door.
 
-**Code:** [`crates/services/src/cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
-dispatched from [`executor/mod.rs`](../../crates/services/src/cell/content/executor/mod.rs).
+**Code:** [`crates/cell-content/src/cell/content/effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs),
+dispatched from [`executor/mod.rs`](../../crates/cell-content/src/cell/content/executor/mod.rs).
 
 ### 17. `entity_health_below` samples at the damage seams and drains at the engine holders
 

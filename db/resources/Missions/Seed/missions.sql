@@ -1658,7 +1658,7 @@ INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail,
 -- off: not_active/active both mean "still locked" (re-launch ability 1597 on
 -- every relog); completed means "cleared" (never re-lock, never re-offer --
 -- num_repeats = 0 refuses a re-accept once completed, per the offer guard in
--- crates/services/src/cell/missions/lifecycle.rs).
+-- crates/cell-content/src/cell/missions/lifecycle.rs).
 INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (689, 'Prison Boot Lock (internal)', false, false, false, false, 1, false, true, true, false, false, 1, 'Prison Boot Lock', 'General', 0, false, false, false, NULL, 0, 0, NULL);
 
 INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (700, 'The Hidden Empire', true, true, true, true, 2, true, true, false, false, true, 21, 'The Hidden Empire', 'General', 1, false, false, false, NULL, 0, 0, NULL);

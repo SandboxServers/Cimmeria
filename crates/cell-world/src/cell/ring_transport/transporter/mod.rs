@@ -15,7 +15,7 @@
 //!   the pair-abort / player-forget entry points.
 //!
 //! Timing is tick-driven (100ms cadence) — see
-//! `cimmeria_services::cell::ring_transport::run_tick_with_engine`. The Python original used
+//! `cimmeria_cell_content::cell::ring_transport::run_tick_with_engine`. The Python original used
 //! `Atrea.addTimer` (game-time deadlines), which maps cleanly onto
 //! `Instant`-based deadlines we poll each tick.
 //!
@@ -40,7 +40,7 @@
 //! onto the pad, the peer ring, a client finishing a world load) also carries
 //! a bounded stall deadline; see [`STALL_TIMEOUTS`]. Without it a single
 //! stalled trip parks the ring in a non-`Idle` state forever, and
-//! `cimmeria_services::cell::ring_transport::handle_select_destination` refuses any destination that
+//! `cimmeria_cell_content::cell::ring_transport::handle_select_destination` refuses any destination that
 //! is not `Idle` — so one stall removes that pad from every peer in an
 //! all-to-all mesh (Harset regions 4-8). That is audit defect H-B3.
 

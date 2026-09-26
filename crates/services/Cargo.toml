@@ -55,6 +55,11 @@ cimmeria-base = { workspace = true }
 # pulsing, the NPC AI's behaviour, the bandolier and reload handlers), split
 # out of this crate (C2). Re-exported at the old `cell::…` paths.
 cimmeria-cell-combat = { workspace = true }
+# The cell's content layer (the content-chain executor and dispatchers,
+# missions, the ring-transport dispatcher and entry points, the dialog
+# display), split out of this crate (C3). Re-exported at `cell::{content,
+# missions, ring_transport}`; `cell::interactions` imports its `dialog`.
+cimmeria-cell-content = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 quick-xml = { workspace = true }
@@ -118,3 +123,9 @@ cimmeria-base-world-entry = { workspace = true, features = ["test-support"] }
 # tests that stay here because they drive the service loop or the content
 # engine.
 cimmeria-cell-combat = { workspace = true, features = ["test-support"] }
+
+# The content hooks (`load_single_chain_for_test`, `execute_actions`,
+# `populate_mission_context`) for the content tests in `cell::content_tests`,
+# which stay here because they drive a cell method, the gate dial or the
+# relog hydration.
+cimmeria-cell-content = { workspace = true, features = ["test-support"] }

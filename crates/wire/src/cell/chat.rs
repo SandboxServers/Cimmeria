@@ -45,7 +45,7 @@ pub const CHAN_SPLASH: u8 = 10;
 /// - Text: WSTRING (u32 char_count + N×2B UTF-16LE)
 ///
 /// One builder for the chat broadcaster and the `npc_bark` content action
-/// (`cimmeria_services::cell::content::executor::bark`), so a bark speaks
+/// (`cimmeria_cell_content::cell::content::executor::bark`), so a bark speaks
 /// through the same bytes as chat. A bark is the only non-modal text route
 /// the client actually honours, so it must be byte-identical to the
 /// chat path that is known to render — a second copy of this serializer

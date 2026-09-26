@@ -1354,3 +1354,88 @@ fn base_events_keep_their_file_and_index() {
         );
     }
 }
+
+/// The content layer moved from `cimmeria_services::cell` to the
+/// `cimmeria-cell-content` crate (services crate split, wave C3), which
+/// changed the `module_path!()` of every untargeted row in it. Each must
+/// still land where it did: `content.log` for the chain executor and its
+/// dispatchers, `missions.log` for missions, `spawner.log` for the ring
+/// dispatcher and entry points (beside the ring FSM's world-crate rows),
+/// `interactions.log` for the dialog display (beside the interaction
+/// handlers that stay in services), `server.log` from INFO, and one OTLP
+/// index per level. `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_cell_content`, so without its own `OTEL_FILTER` row every DEBUG
+/// row here would stop reaching SigNoz; without the file rows the four files
+/// would empty of them.
+#[test]
+fn content_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file) in [
+        (
+            "cimmeria_cell_content::cell::content::engine_loader",
+            "content.log",
+        ),
+        (
+            "cimmeria_cell_content::cell::content::event_dispatch::cover",
+            "content.log",
+        ),
+        (
+            "cimmeria_cell_content::cell::content::executor::dialog",
+            "content.log",
+        ),
+        (
+            "cimmeria_cell_content::cell::missions::progression",
+            "missions.log",
+        ),
+        (
+            "cimmeria_cell_content::cell::missions::lifecycle",
+            "missions.log",
+        ),
+        (
+            "cimmeria_cell_content::cell::ring_transport::dispatch",
+            "spawner.log",
+        ),
+        (
+            "cimmeria_cell_content::cell::ring_transport::runtime::entry",
+            "spawner.log",
+        ),
+        (
+            "cimmeria_cell_content::cell::interactions::dialog",
+            "interactions.log",
+        ),
+        // Stays in services; the moved dialog row must not have been its only
+        // route to the file.
+        (
+            "cimmeria_services::cell::interactions::dispatch::interact",
+            "interactions.log",
+        ),
+        // The ring FSM stayed in the world crate and keeps its own row.
+        (
+            "cimmeria_cell_world::cell::ring_transport::transporter::manager",
+            "spawner.log",
+        ),
+    ] {
+        let file = format!("file:{file}");
+        let file = file.as_str();
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}

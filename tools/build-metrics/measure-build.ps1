@@ -23,7 +23,7 @@
 param(
     [Parameter(Mandatory)] [string] $Label,
     [Parameter(Mandatory)] [string] $OutDir,
-    [string] $EditFile = 'crates/services/src/cell/content/mod.rs',
+    [string] $EditFile = 'crates/cell-content/src/cell/content/mod.rs',
     [string] $EditCrate = 'cimmeria-services',
     [switch] $SkipCold
 )

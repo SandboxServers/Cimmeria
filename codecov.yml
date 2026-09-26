@@ -170,6 +170,7 @@ component_management:
         - "crates/base-world-entry/**"
         - "crates/cell-combat/**"
         - "crates/base/**"
+        - "crates/cell-content/**"
       statuses:
         - type: project
           target: 62%

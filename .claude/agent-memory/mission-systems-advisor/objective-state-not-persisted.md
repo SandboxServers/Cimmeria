@@ -9,7 +9,7 @@ metadata:
 
 ## The write side is hardcoded empty
 
-`crates/services/src/cell/content/executor/mission.rs` sends
+`crates/cell-content/src/cell/content/executor/mission.rs` sends
 `CellToBaseMsg::MissionUpdate` from three places, and **all three** hardcode:
 
 - accept (`:84-85`)  → `completed_objective_ids: vec![]`, `active_objective_ids: vec![step_id]`

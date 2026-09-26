@@ -1,0 +1,63 @@
+[package]
+name = "cimmeria-cell-content"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The cell's content layer for the Cimmeria server emulator: the content-chain executor and its event dispatchers, mission state, the ring-transport dispatcher and entry points, and the dialog display choke point"
+
+# Split out of cimmeria-services (wave C3 of
+# docs/architecture/services-crate-split.md). The content executor drives
+# combat, the world and the ring transporter, and combat raises content events
+# back through `ContentEvents`, which `EngineEvents` here implements (§2E). The
+# ring dispatcher fires content chains and the content executor starts ring
+# trips, so the two live together (§2G), beside the world crate's ring FSM. The
+# module tree keeps its old nesting (`cell::content`, `cell::missions`,
+# `cell::ring_transport`, `cell::interactions::dialog`), and cimmeria-services
+# re-exports each module at its old path.
+[dependencies]
+# Combat (kill credit, the NPC AI's state changes, appearance refreshes, the
+# bandolier flush before a ring or gate trip).
+cimmeria-cell-combat = { workspace = true }
+# SpaceManager, the ring FSM and wire helpers, and the `ContentEvents` seam.
+cimmeria-cell-world = { workspace = true }
+# The spawner's catalog (templates, stargates, mission defs, regions).
+cimmeria-cell-catalog = { workspace = true }
+# The Base<->Cell message contract, the Mercury packet builders, the client
+# method indices, BSF bits, the chat serializer and the player journal.
+cimmeria-wire = { workspace = true }
+# The chain engine the executor runs.
+cimmeria-content-engine = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+# The cover-trigger counters.
+cimmeria-observability = { workspace = true }
+# The dialog and mission notifications.
+cimmeria-discord = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+sqlx = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+# Exposes the test-only hooks (`load_single_chain_for_test`, `execute_actions`,
+# `populate_mission_context`) to the content tests that stay in
+# cimmeria-services because they drive a cell method, the gate dial or the
+# relog hydration. cimmeria-services turns it on through its
+# [dev-dependencies]; a production build never sees them.
+test-support = ["cimmeria-cell-combat/test-support"]
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`, the `ContentEvents` fakes) and
+# hooks.
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# `force_ai_state` and `npc_ai_follow_for_test` for the chain-replay suites
+# that drive the NPC AI.
+cimmeria-cell-combat = { workspace = true, features = ["test-support"] }
+# `clock::Clock`, the injectable time source the ring-transport tests fake.
+cimmeria-mercury = { workspace = true }

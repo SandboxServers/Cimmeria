@@ -1,6 +1,6 @@
 # Ring transport FSM — traps and invariants
 
-`crates/services/src/cell/ring_transport/`. Read before touching ring travel,
+`crates/cell-content/src/cell/ring_transport/`. Read before touching ring travel,
 and before adding any FSM state that waits on something outside the FSM.
 
 ## The starvation mechanism (why unbounded states are expensive here)
