@@ -31,6 +31,13 @@ Learned extracting `cimmeria-resources` (wave W1b, 2026-09-26). Plan:
 - **Drop now-unused deps from services** (`zip` left with resources); nothing warns.
 - Baseline test counts: `nextest list --message-format oneline` before any `git mv`,
   then diff the moved names by suffix (the crate prefix and `::bin`/lib id change).
+- **A function moved INTO another file layer's module prefix changes its log file**
+  (W2b): the spawn functions went into `space_manager`, which `aoi.log` keeps whole.
+  Put moved code in its own module, name it in the old file layer and add
+  `<module>=off` to the other layer (longest match wins); pin it in `parity_tests.rs`.
+- **A `pub use` shim at the old path is itself a layering edge.** When code moves UP
+  (catalog -> world), a shim in the lower module is an upward edge and cannot survive
+  extraction; repoint the few callers instead of shimming.
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),

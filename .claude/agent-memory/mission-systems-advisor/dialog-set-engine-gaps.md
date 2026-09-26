@@ -9,11 +9,11 @@ metadata:
 
 ## 1. `dialog_set_maps` rows with `dialog_id IS NULL` are dropped at load
 
-`load_dialog_set_maps` (`crates/services/src/cell/spawner/dialogs.rs:28`) builds
+`load_dialog_set_maps` (`crates/cell-catalog/src/cell/spawner/dialogs.rs:28`) builds
 `DialogSetMapEntry { dialog_id: i32, interaction_flags: i64 }` and skips any row
 whose `dialog_id` is NULL. Pinned by
 `load_dialog_set_maps_drops_rows_with_null_dialog_id`
-(`crates/services/src/cell/spawner/tests/live_db_loaders.rs:269`).
+(`crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs:269`).
 
 Consequence: `add_dialog_set <dsm_id>` on such a row hits the
 `"dialog_set_maps cache miss for add_dialog_set"` warn branch

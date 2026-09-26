@@ -89,9 +89,9 @@ cimmeria-services = [
 "wire_log" = "cimmeria-wire-log"
 "minigame" = "cimmeria-minigame"
 
-"cell::spawner" = "cimmeria-cell-catalog"
-"ability_tree" = "cimmeria-cell-catalog"
-"cell::respawner_fallback" = "cimmeria-cell-catalog"
+# cimmeria-cell-catalog (`cell::spawner`, `ability_tree`,
+# `cell::respawner_fallback`) is extracted (W2b): crates/services/src only
+# re-exports it, so it has no rows here.
 
 "cell::cover" = "cimmeria-cell-cover"
 

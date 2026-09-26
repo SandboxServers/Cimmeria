@@ -7,7 +7,6 @@
 //! original C++ multi-process architecture where AuthenticationServer, BaseApp,
 //! and CellApp ran as separate services communicating over Mercury.
 
-pub mod ability_tree;
 pub mod base;
 pub mod cell;
 pub mod database;
@@ -25,6 +24,10 @@ pub mod wire_log;
 // resolving. `credential_redaction` was crate-private and stays so here.
 pub(crate) use cimmeria_auth::credential_redaction;
 pub use cimmeria_auth::{audit, auth};
+
+// Split out to `cimmeria-cell-catalog` (wave W2b), with `cell::spawner` and
+// `cell::respawner_fallback`; re-exported at the old path.
+pub use cimmeria_cell_catalog::ability_tree;
 
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.

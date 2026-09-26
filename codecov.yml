@@ -82,7 +82,7 @@ ignore:
   # either without a live DB, and the live-DB job runs the entire spawn
   # path end-to-end (every loader fires before the smoke shoot). Treat
   # like `connect_loop/**` above — integration-test territory.
-  - "crates/services/src/cell/spawner/abilities.rs"
+  - "crates/cell-catalog/src/cell/spawner/abilities.rs"
   - "crates/services/src/cell/service/startup.rs"
   # Deferred per issue #205 (fixture cost exceeds value-per-line)
   #
@@ -158,6 +158,7 @@ component_management:
         - "crates/auth/**"
         # Split out of cimmeria-services (docs/architecture/services-crate-split.md).
         - "crates/wire/**"
+        - "crates/cell-catalog/**"
       statuses:
         - type: project
           target: 62%

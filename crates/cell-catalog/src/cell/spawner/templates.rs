@@ -5,7 +5,7 @@
 //!
 //! The GM `.spawn` path resolves a template by round-tripping
 //! cell → base → cell (`CellToBaseMsg::GmSpawnNpc` →
-//! [`crate::base::gm_spawn`] → `BaseToCellMsg::GmSpawnNpcReady`), because
+//! `base::gm_spawn` → `BaseToCellMsg::GmSpawnNpcReady`), because
 //! the base owns the DB pool at request time. That shape does not work for
 //! a content chain's `spawn_entity` action, for two reasons:
 //!
@@ -54,7 +54,7 @@ use super::npcs::SpawnRecord;
 /// concatenated onto the end.
 ///
 /// Shared with the base-side GM spawn handler
-/// ([`crate::base::gm_spawn`]), which reads one template by id. Before the
+/// (`base::gm_spawn` in `cimmeria-services`), which reads one template by id. Before the
 /// PR #662 review the two sites carried byte-identical copies of this
 /// 25-column SELECT *and* of the field mapping below — so a new
 /// `entity_templates` column had to be added in two places, and a GM-
@@ -67,6 +67,11 @@ use super::npcs::SpawnRecord;
 /// dynamic-SQL-injection escape hatch (`AssertSqlSafe`) is never needed.
 /// The suffix is a literal at both call sites and the `$1` it references is
 /// still bound by the caller, so no user data is interpolated either way.
+///
+/// `#[macro_export]` because the GM spawn handler is in another crate
+/// (`cimmeria-services`' `base::gm_spawn`). The body names only `concat!`, so
+/// it needs no `$crate::` paths.
+#[macro_export]
 macro_rules! entity_template_select {
     ($tail:literal) => {
         concat!(
@@ -97,8 +102,6 @@ macro_rules! entity_template_select {
         )
     };
 }
-
-pub(crate) use entity_template_select;
 
 /// Load every `resources.entity_templates` row into a prototype
 /// [`SpawnRecord`], keyed by `template_id`.
@@ -193,7 +196,7 @@ pub async fn load_spawn_templates(pool: &PgPool) -> Result<HashMap<i32, SpawnRec
 /// `patrol_path_id`. A single-row caller can pass a one-entry map from
 /// [`crate::cell::spawner::load_patrol_points`]; a NULL or unresolved
 /// `patrol_path_id` yields an empty path either way.
-pub(crate) fn build_prototype(
+pub fn build_prototype(
     row: &sqlx::postgres::PgRow,
     patrol_paths: &HashMap<i32, Vec<cimmeria_common::Vector3>>,
 ) -> Result<SpawnRecord, sqlx::Error> {

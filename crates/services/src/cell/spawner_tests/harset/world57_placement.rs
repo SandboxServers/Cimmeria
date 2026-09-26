@@ -42,7 +42,7 @@ use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::NavMesh;
 
 use super::*;
-use crate::cell::spawner::regions::{is_point_in_region, load_regions_from_db};
+use crate::cell::spawner::{is_point_in_region, load_regions_from_db};
 
 /// World id of the Harset hub exterior.
 const HARSET: i32 = 57;

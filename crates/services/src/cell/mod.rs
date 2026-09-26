@@ -31,7 +31,8 @@ pub(crate) mod playtest_friction;
 pub(crate) mod playtest_friction_watch;
 /// Crate-internal: the shared respawner search behind both
 /// [`arrival::resolve_arrival`] and `SpaceManager::resolve_recovery_position`.
-pub(crate) mod respawner_fallback;
+/// In `cimmeria-cell-catalog` since wave W2b.
+pub(crate) use cimmeria_cell_catalog::cell::respawner_fallback;
 pub mod ring_transport;
 mod service;
 pub mod space_manager;
@@ -41,7 +42,13 @@ pub mod space_manager;
 // are the `.goto`/`.summon`/`.gotolocation` console commands in
 // `cell::console::travel` (P46).
 pub(crate) mod space_transfer;
-pub mod spawner;
+// The spawner's DB loaders are in `cimmeria-cell-catalog` (wave W2b).
+// Populating spaces from their records is `space_manager::spawn_npcs_from_records`.
+pub use cimmeria_cell_catalog::cell::spawner;
+/// The spawner tests that need `SpaceManager`, combat or the GM spawn
+/// handler, which are still in this crate. Test-only.
+#[cfg(test)]
+mod spawner_tests;
 
 use cimmeria_common::{EntityId, SpaceId};
 

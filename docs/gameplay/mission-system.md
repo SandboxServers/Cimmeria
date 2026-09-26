@@ -147,7 +147,7 @@ event, so a mis-gated chain (e.g. a `player_loaded` grant missing its
 Chain-side `not_active` gates remain the first line of defense; the
 guard is the server-authoritative backstop. Repeatability fields ride
 the `MissionDefEntry` cache loaded at startup
-([crates/services/src/cell/spawner/missions.rs](../../crates/services/src/cell/spawner/missions.rs));
+([crates/cell-catalog/src/cell/spawner/missions.rs](../../crates/cell-catalog/src/cell/spawner/missions.rs));
 a mission without a def entry fails closed (treated as non-repeatable).
 
 ## Mission Status Codes

@@ -69,7 +69,7 @@ read into `DbActionRow` and then discarded. Only
 
 Two independent proofs:
 
-1. **No loader reads it.** `crates/services/src/cell/spawner/missions.rs:54-59` and
+1. **No loader reads it.** `crates/cell-catalog/src/cell/spawner/missions.rs:54-59` and
    `:86-90` select from `mission_steps` / `mission_objectives` with **no `WHERE`
    on `step_enabled` or `is_enabled`**. Same for `mission_objectives.is_enabled`.
 2. **Every shipped, working mission has it false.** Castle Cellblock 622, 638,

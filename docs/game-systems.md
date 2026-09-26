@@ -186,7 +186,7 @@ NPCs and monsters spawn from fixed rows in `resources.spawnlist`, one entity per
 
 The 2009 design also had a population-control layer (`SGWSpawnRegion` / `SGWSpawnSet`: weighted random selection from spawn tables, population caps, set cooldowns, spawn regions grouping spawn points). **None of it is implemented** (#62): the Python server had empty stubs, `spawn_sets.sql` and `spawn_points.sql` are empty, and the shipped content does not need it. See [spawn-system.md](gameplay/spawn-system.md).
 
-**Data:** 154 entity templates seeded in `db/resources/Entities/Seed/entity_templates.sql`. **Server:** Confirmed working in-game — NPCs and world objects spawn visibly in Castle Cellblock and are interactable. Spawn logic lives in `crates/services/src/cell/spawner/`, with respawn handled by a 1 Hz `npc_respawn_tick` that reads `respawn_secs` and promotes Dead NPCs back to Idle.
+**Data:** 154 entity templates seeded in `db/resources/Entities/Seed/entity_templates.sql`. **Server:** Confirmed working in-game — NPCs and world objects spawn visibly in Castle Cellblock and are interactable. The spawn loaders live in `crates/cell-catalog/src/cell/spawner/` and populating spaces from them in `crates/services/src/cell/space_manager/`, with respawn handled by a 1 Hz `npc_respawn_tick` that reads `respawn_secs` and promotes Dead NPCs back to Idle.
 
 ## Dialog & Interactions
 

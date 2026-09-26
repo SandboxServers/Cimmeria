@@ -61,10 +61,11 @@ use crate::otel;
 /// that one DEBUG sample through. `otel_filter_prefix_matching_exports_npc_ai_children`
 /// pins this behaviour, not just the string.
 ///
-/// `cimmeria_wire=debug` keeps the code split out of `cimmeria-services`
-/// (docs/architecture/services-crate-split.md) at the DEBUG level
-/// `cimmeria_services=debug` gave it: a moved module's `module_path!()`
-/// target starts `cimmeria_wire::`, which the services row no longer matches.
+/// `cimmeria_wire=debug` and `cimmeria_cell_catalog=debug` keep the code
+/// split out of `cimmeria-services` (docs/architecture/services-crate-split.md)
+/// at the DEBUG level `cimmeria_services=debug` gave it: a moved module's
+/// `module_path!()` target starts with the new crate's name, which the
+/// services row no longer matches.
 ///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
@@ -91,6 +92,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_resources=debug,\
                 cimmeria_auth=debug,\
                 cimmeria_wire=debug,\
+                cimmeria_cell_catalog=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -262,7 +264,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "spawner.log",
         directives: "off,\
-             cimmeria_services::cell::spawner=trace,\
+             cimmeria_cell_catalog::cell::spawner=trace,\
              cimmeria_services::cell::space_manager::npc_population=trace,\
              cimmeria_services::cell::gate_travel=trace,\
              cimmeria_services::cell::ring_transport=trace",

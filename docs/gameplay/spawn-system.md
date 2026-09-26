@@ -10,8 +10,8 @@ last_updated: 2026-09-25
 ## Status: Implemented (IM)
 
 Spawning is confirmed working in-game — NPCs and world objects appear in Castle
-Cellblock and are interactable. The Rust implementation lives in
-[`crates/services/src/cell/spawner/`](../../crates/services/src/cell/spawner/), split by
+Cellblock and are interactable. The Rust loaders live in
+[`crates/cell-catalog/src/cell/spawner/`](../../crates/cell-catalog/src/cell/spawner/), split by
 what is being spawned or loaded: `npcs.rs`, `regions.rs`, `respawners.rs`,
 `stargates.rs`, `dialogs.rs`, `loot.rs`, `missions.rs`, and `abilities.rs` (which also
 builds the `(event_set_id, event_id) → sequence_id` lookup). Respawn is handled by a
@@ -379,7 +379,7 @@ spawn point itself may encode the template directly via `spawn_table_name` in
 
 ## NPC Ability Bucket and Selection
 
-`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/services/src/cell/spawner/npcs.rs`](../../crates/services/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
+`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/cell-catalog/src/cell/spawner/npcs.rs`](../../crates/cell-catalog/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
 
 Examples:
 

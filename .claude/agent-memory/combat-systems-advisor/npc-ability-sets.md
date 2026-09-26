@@ -24,7 +24,7 @@ the seed (line 273), so the failure aborts the whole DB load at INSERT.
 
 The Rust side is already multi-ready — the loader does
 `array_agg(asa.ability_id ORDER BY asa.ability_id)`
-(`crates/services/src/cell/spawner/npcs.rs:152-154`) and `choose_npc_ability`
+(`crates/cell-catalog/src/cell/spawner/npcs.rs:152-154`) and `choose_npc_ability`
 handles N ids. **The DB PK is the only blocker.** Widening it is a schema
 change (edit `_primary_keys.sql`), so it does not belong in a seed-only packet.
 

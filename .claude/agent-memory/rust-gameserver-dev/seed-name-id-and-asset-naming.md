@@ -22,7 +22,7 @@ Consequences:
 - **NULL / 0 `name_id` fails silently** — the property is omitted and the NPC appears unnamed.
   No error, no log. Worth a live-DB guard on any new named actor (see
   `castle_ca05_story_actors_all_have_a_client_resolvable_name_id` in
-  `crates/services/src/cell/spawner/tests/live_db_loaders.rs`).
+  `crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs`).
 - `resources.texts` IS a server-side seed table, which makes it tempting to treat as
   authoritative for display strings. It is only a *lookup* of what the client already has.
 

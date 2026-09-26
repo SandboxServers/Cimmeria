@@ -31,7 +31,7 @@ moment a region routes to travel — e.g. Harset H01's `REGION_FLAG_STARGATE`
 anywhere in the world would fire gate passage.
 
 The bbox needed for the check already exists and is the *same shape the client
-was sent*, so server and client agree: `crates/services/src/cell/spawner/regions.rs:92-101`
+was sent*, so server and client agree: `crates/cell-catalog/src/cell/spawner/regions.rs:92-101`
 expands a single-point cylinder into 4 corners, `X/Z within ±radius`, `Y within
 [py, py+h]`. **Y is the vertical axis** (see [[arrival-coordinate-offnavmesh]]).
 The fourth corner's `py + h` asymmetry is deliberate 2009 parity — do not

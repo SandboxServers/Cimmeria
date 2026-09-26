@@ -29,6 +29,10 @@ cimmeria-discord = { workspace = true }
 # of this crate (docs/architecture/services-crate-split.md, W1b). Re-exported
 # at `base::{resources, chardef, *_overrides}`.
 cimmeria-resources = { workspace = true }
+# The cell's DB-backed startup catalogs (spawner loaders, ability trees, the
+# respawner search), split out of this crate (W2b). Re-exported at
+# `cell::{spawner, respawner_fallback}` and `ability_tree`.
+cimmeria-cell-catalog = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
