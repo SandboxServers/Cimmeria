@@ -107,7 +107,7 @@ pub fn build_forced_position(
 /// `CREATE_ENTITY` does — it's a property-update on an already-existing
 /// entity. Safe to combine with same-entity entity-method calls in the
 /// same bundle.
-pub(crate) fn compose_forced_position_body(
+pub fn compose_forced_position_body(
     entity_id: u32,
     space_id: u32,
     position: [f32; 3],

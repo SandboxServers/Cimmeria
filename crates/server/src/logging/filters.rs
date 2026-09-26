@@ -21,7 +21,7 @@
 //!   client session key.
 //! - **The per-packet firehoses** (`wire.firehose.*`) reach the files in
 //!   full and SigNoz as a counted 1-in-N sample on another target. See
-//!   `cimmeria_services::firehose`.
+//!   `cimmeria_wire::firehose` (re-exported as `cimmeria_services::firehose`).
 //! - Nothing else. A new file layer whose DEBUG rows [`OTEL_FILTER`] does not
 //!   cover fails `every_file_directive_reaches_an_otlp_index`.
 //!
@@ -65,7 +65,9 @@ use crate::otel;
 /// split out of `cimmeria-services` (docs/architecture/services-crate-split.md)
 /// at the DEBUG level `cimmeria_services=debug` gave it: a moved module's
 /// `module_path!()` target starts with the new crate's name, which the
-/// services row no longer matches.
+/// services row no longer matches. Since wave W3a that includes the
+/// services-side Mercury glue, `cimmeria_wire::mercury` (the
+/// `append_entity_method` appearance diagnostics).
 ///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
@@ -228,7 +230,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "protocol.log",
         directives: "off,\
-             cimmeria_services::mercury=trace,\
+             cimmeria_wire::mercury=trace,\
              cimmeria_mercury=trace,\
              mercury.packet=info,\
              wire.in=info,wire.out=info,\

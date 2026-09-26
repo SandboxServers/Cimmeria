@@ -1,9 +1,9 @@
 //! Hex dumps of packet bytes for trace logs.
 //!
 //! The base's `UDP_OUT` traces and the wire firehose (`UDP_IN`,
-//! `DECRYPT_OK`) print packets through this one formatter, so every hex
-//! column in the logs reads the same. `cimmeria-services` re-exports it as
-//! `base::helpers::to_hex`.
+//! `DECRYPT_OK`, [`crate::firehose`]) print packets through this one
+//! formatter, so every hex column in the logs reads the same.
+//! `cimmeria-services` re-exports it as `base::helpers::to_hex`.
 
 /// Format a byte slice as a hex string for trace logging.
 pub fn to_hex(data: &[u8]) -> String {

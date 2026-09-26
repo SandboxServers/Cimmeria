@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "The wire contract shared by the Base and Cell services: method indices, state-field bits and the payload serializers both sides send."
+description = "The wire contract shared by the Base and Cell services: the Base<->Cell messages, the server's Mercury packet builders, method indices, state-field bits and the payload serializers both sides send."
 
 # The bottom of the cimmeria-services split (docs/architecture/services-crate-split.md
 # §1): every service crate may depend on this one, so it must never depend on a
@@ -14,6 +14,14 @@ description = "The wire contract shared by the Base and Cell services: method in
 # `SpawnRecord` carries a `Vector3` patrol path and a `MobAggression` override.
 cimmeria-common = { workspace = true }
 cimmeria-entity = { workspace = true }
+# The services-side packet builders (`mercury`) frame and encrypt with the
+# transport crate, and the world-entry payload reads the XP curve from `game`.
+cimmeria-mercury = { workspace = true }
+cimmeria-game = { workspace = true }
+# `BaseToCellMsg` carries `oneshot` reply channels; the lab query contract is
+# serde-serialisable.
+tokio = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

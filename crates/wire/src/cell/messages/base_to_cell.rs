@@ -114,7 +114,7 @@ pub enum BaseToCellMsg {
         /// archetype-keyed lookups on the cell side — currently the
         /// `Item_Equip`/`Item_Unequip`/`Item_Reload`/`Item_Use` event
         /// set resolution (`ARCHETYPE_ITEM_EVENT_SETS` in the python
-        /// source) via [`crate::cell::spawner::archetype_item_event_set`].
+        /// source) via `cimmeria_services::cell::spawner::archetype_item_event_set`.
         /// Without this, the cell entity's `archetype_id` stays `None`
         /// and the reload animation lookup falls through silently —
         /// see follow-up notes.
@@ -311,7 +311,7 @@ pub enum BaseToCellMsg {
     /// caller (the lab-mcp endpoint, base-side) awaits `reply_tx` for the
     /// [`LabConsoleResult`].
     ///
-    /// The GM access-level gate that [`crate::cell::chat`] applies to in-world
+    /// The GM access-level gate that `cimmeria_services::cell::chat` applies to in-world
     /// `.`-console input is re-applied here to the acting entity — a non-GM
     /// (or unknown) `entity_id` is rejected with `Err(_)`, never executed.
     /// Authorization is on the server-side `access_level` (from
@@ -391,7 +391,7 @@ pub enum BaseToCellMsg {
     /// actually succeeds (the cell is the layer that knows the new NPC id and
     /// whether the spawn took).
     GmSpawnNpcReady {
-        record: Box<crate::cell::spawner::SpawnRecord>,
+        record: Box<crate::cell::spawn_record::SpawnRecord>,
         space_id: u32,
         requester_entity_id: u32,
     },

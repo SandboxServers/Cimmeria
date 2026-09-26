@@ -470,6 +470,50 @@ fn catalog_crate_events_keep_their_file_and_index() {
     );
 }
 
+/// The services-side Mercury glue moved from `cimmeria_services::mercury` to
+/// the `cimmeria-wire` crate (services crate split, wave W3a), which changed
+/// the `module_path!()` of its untargeted rows: the `append_entity_method`
+/// appearance diagnostics (DEBUG, `mercury`), the map-load rows (INFO,
+/// `world_data::map_loaded`) and the unknown-world fallback (WARN,
+/// `world_data`). They must still land where they did: every level in
+/// `protocol.log`, INFO and up in `server.log`, and one OTLP index per level,
+/// `cimmeria-server` below TRACE. A `protocol.log` row still naming
+/// `cimmeria_services::mercury` empties the file of them, and without
+/// `cimmeria_wire=debug` the DEBUG rows stop reaching SigNoz. (The AoI builders and the firehoses in the same crate log
+/// on hand-named targets, `aoi.*` and `wire.*`, which the move did not change;
+/// the three `*_is_complete_on_disk_and_sampled_in_signoz` tests below drive
+/// the moved firehose emitters.)
+#[test]
+fn wire_mercury_events_keep_protocol_log_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in [
+        "cimmeria_wire::mercury",
+        "cimmeria_wire::mercury::world_data",
+        "cimmeria_wire::mercury::world_data::map_loaded",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&["file:protocol.log", OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&["file:protocol.log", OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&["file:protocol.log", SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
 /// `spawn_npcs_from_records` and `spawn_instance_npcs_from_records` moved
 /// from `cell::spawner::npcs` to `cell::space_manager::npc_population`
 /// (services crate split, wave W2b). `aoi.log` keeps every
@@ -525,6 +569,7 @@ fn trace_directives_are_derived_from_the_tables() {
     assert!(d.starts_with("off,"), "{d}");
     assert!(has("cimmeria_services::base::connect_loop=trace"), "{d}");
     assert!(has("cimmeria_mercury=trace"), "{d}");
+    assert!(has("cimmeria_wire::mercury=trace"), "{d}");
     assert!(has("movement.navmesh=trace"), "{d}");
     assert!(has("wire.sampled=trace"), "{d}");
     assert!(has("wire.firehose=off"), "{d}");

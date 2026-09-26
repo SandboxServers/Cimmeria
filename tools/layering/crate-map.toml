@@ -76,15 +76,13 @@ cimmeria-services = [
 "base::sequence_overrides" = "cimmeria-resources"
 "base::chardef" = "cimmeria-resources"
 
-# The Base<->Cell message contract. Already in crates/wire (W1c), so no
-# longer modules of this crate: cell::{client_methods, player_journal, kismet},
+# The Base<->Cell message contract is extracted to crates/wire (W1c, W3a), so
+# none of it is a module of this crate any more and it has no rows here:
+# cell::{client_methods, player_journal, kismet, messages},
+# cell::dispatch::{constants, names}, mercury, firehose,
 # base::contact_list::wire, cell::cell_methods::{inventory,player}::constants,
-# ability_tree::points_property.
-"mercury" = "cimmeria-wire"
-"firehose" = "cimmeria-wire"
-"cell::messages" = "cimmeria-wire"
-"cell::dispatch::constants" = "cimmeria-wire"
-"cell::dispatch::names" = "cimmeria-wire"
+# ability_tree::points_property. `cell::dispatch` keeps the two as private
+# imports of the wire modules.
 
 "wire_log" = "cimmeria-wire-log"
 "minigame" = "cimmeria-minigame"

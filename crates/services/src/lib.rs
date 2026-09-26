@@ -10,8 +10,6 @@
 pub mod base;
 pub mod cell;
 pub mod database;
-pub mod firehose;
-pub mod mercury;
 pub mod minigame;
 pub mod orchestrator;
 mod orchestrator_postgres;
@@ -28,6 +26,17 @@ pub use cimmeria_auth::{audit, auth};
 // Split out to `cimmeria-cell-catalog` (wave W2b), with `cell::spawner` and
 // `cell::respawner_fallback`; re-exported at the old path.
 pub use cimmeria_cell_catalog::ability_tree;
+
+// The server's Mercury message layer (the services-side packet builders) and
+// the per-packet log firehoses, split out to `cimmeria-wire` (wave W3a).
+// Re-exported at the old paths, so `crate::mercury::…` here and
+// `cimmeria_services::{mercury, firehose}` downstream keep resolving.
+pub use cimmeria_wire::{firehose, mercury};
+
+/// The `mercury::aoi` test that drives a `SpaceManager`, which is still in
+/// this crate. Test-only.
+#[cfg(test)]
+mod mercury_aoi_tests;
 
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.

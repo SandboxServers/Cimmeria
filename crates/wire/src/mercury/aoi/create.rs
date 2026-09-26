@@ -74,7 +74,7 @@ pub fn build_create_entity_base(
 /// entity_id and is unaffected. NOT safe to combine with same-entity
 /// property cascade in the same bundle (those must land in a later
 /// bundle once the CREATE_ENTITY transaction completes).
-pub(crate) fn compose_create_entity_base_body(
+pub fn compose_create_entity_base_body(
     entity_id: u32,
     class_id: u8,
     position: [f32; 3],
@@ -143,7 +143,7 @@ pub fn build_create_entity_cascade(
 /// phase 1 would put the entity in transaction for the rest of the
 /// bundle and silently drop the same-entity cascade messages
 /// (BeingAppearance, onStatUpdate, …).
-pub(crate) fn compose_create_entity_cascade_body(
+pub fn compose_create_entity_cascade_body(
     entity_id: u32,
     class_id: u8,
     level: u32,

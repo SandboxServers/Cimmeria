@@ -10,7 +10,7 @@ use super::{
     FirehoseSampler, AOI_POSITION_SAMPLE_TARGET, AOI_POSITION_TARGET, DECRYPT_OK_SAMPLE_TARGET,
     DECRYPT_OK_TARGET, UDP_IN_SAMPLE_TARGET, UDP_IN_TARGET,
 };
-use crate::base::helpers::to_hex;
+use crate::hex::to_hex;
 
 /// `DECRYPT_OK`: the plaintext of one decrypted inbound datagram.
 pub fn log_decrypt_ok(sampler: &FirehoseSampler, addr: SocketAddr, plaintext: &[u8]) {

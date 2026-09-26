@@ -24,15 +24,15 @@ mod update;
 mod tests;
 
 pub use create::{build_create_entity_base, build_create_entity_cascade};
-pub(crate) use create::{compose_create_entity_base_body, compose_create_entity_cascade_body};
+pub use create::{compose_create_entity_base_body, compose_create_entity_cascade_body};
 pub use leave::{build_entity_invisible, build_entity_leave};
 pub use method::{build_entity_method_packet, build_player_entity_method_packet};
-pub use player_ghost::{build_player_ghost_cascade, PlayerGhostCascade};
-pub(crate) use player_ghost::{
-    compose_player_ghost_cascade_body, PLAYER_FACTION, PLAYER_KISMET_EVENT_SET_ID,
+pub(crate) use player_ghost::PLAYER_KISMET_EVENT_SET_ID;
+pub use player_ghost::{
+    build_player_ghost_cascade, compose_player_ghost_cascade_body, PlayerGhostCascade,
+    PLAYER_FACTION,
 };
-pub(crate) use update::compose_forced_position_body;
-pub use update::{build_avatar_update, build_forced_position};
+pub use update::{build_avatar_update, build_forced_position, compose_forced_position_body};
 
 /// `BASEMSG_CREATE_ENTITY` — create a ghost (non-player) entity on the client (0x09).
 /// Sent when an entity enters a player's Area of Interest.
@@ -55,7 +55,7 @@ pub(crate) const BASEMSG_LEAVE_AOI: u8 = 0x0C;
 /// (`atan2(dx, dz) < 0`) rendered facing north -- "walks at me backwards".
 /// Wrapping into `[0, TAU)` first reproduces the C++ bit pattern for every
 /// input and changes nothing for the already-correct `[0, PI]` half.
-pub(crate) fn pack_angle(radians: f32) -> u8 {
+pub fn pack_angle(radians: f32) -> u8 {
     const SCALE: f32 = 0.024543693;
     if !radians.is_finite() {
         return 0;
@@ -69,7 +69,7 @@ pub(crate) fn pack_angle(radians: f32) -> u8 {
 
 /// Inverse of [`pack_angle`] for a byte received from a client: the wire
 /// carries a signed 256-steps-per-turn angle, the entity stores radians.
-pub(crate) fn unpack_angle(packed: i8) -> f32 {
+pub fn unpack_angle(packed: i8) -> f32 {
     f32::from(packed) * (std::f32::consts::TAU / 256.0)
 }
 

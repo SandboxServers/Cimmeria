@@ -23,10 +23,13 @@
 //! - [`router`] — the [`dispatch_cell_method`] entry point that delegates to
 //!   the per-interface `dispatch` functions in inheritance order.
 //! - [`names`] — the [`cell_method_name`] lookup used for logging.
+//!
+//! `constants` and `names` are wire contract and live in `cimmeria-wire`
+//! (wave W3a of the services crate split); they are imported here so
+//! `gm_gate` keeps naming them as `super::constants`.
 
-mod constants;
+use cimmeria_wire::cell::dispatch::{constants, names};
 mod gm_gate;
-mod names;
 mod router;
 
 #[cfg(test)]

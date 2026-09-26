@@ -80,11 +80,9 @@ pub const UDP_IN_SAMPLE_EVERY: u64 = 53;
 /// prime, so every pair gets sampled whenever fewer than 101 are live.
 pub const AOI_POSITION_SAMPLE_EVERY: u64 = 101;
 
-pub(crate) static DECRYPT_OK_SAMPLER: FirehoseSampler =
-    FirehoseSampler::new(DECRYPT_OK_SAMPLE_EVERY);
-pub(crate) static UDP_IN_SAMPLER: FirehoseSampler = FirehoseSampler::new(UDP_IN_SAMPLE_EVERY);
-pub(crate) static AOI_POSITION_SAMPLER: FirehoseSampler =
-    FirehoseSampler::new(AOI_POSITION_SAMPLE_EVERY);
+pub static DECRYPT_OK_SAMPLER: FirehoseSampler = FirehoseSampler::new(DECRYPT_OK_SAMPLE_EVERY);
+pub static UDP_IN_SAMPLER: FirehoseSampler = FirehoseSampler::new(UDP_IN_SAMPLE_EVERY);
+pub static AOI_POSITION_SAMPLER: FirehoseSampler = FirehoseSampler::new(AOI_POSITION_SAMPLE_EVERY);
 
 /// One firehose and the sampled row that stands in for it in SigNoz.
 #[derive(Debug, Clone, Copy)]

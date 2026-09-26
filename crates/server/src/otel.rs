@@ -193,6 +193,12 @@ fn host_name() -> String {
 ///   dispatch debug logs.
 /// - `cimmeria_services::base::tick_sync` — tick-sync heartbeats and
 ///   retransmit RTO notices.
+///
+/// `cimmeria_mercury::` is the transport crate only. The services-side packet
+/// builders in `cimmeria_wire::mercury` (moved out of `cimmeria-services` in
+/// wave W3a of the crate split) share the module name but log per map load
+/// and per appearance or tint call, not per datagram, so they stay in
+/// `cimmeria-server` as they did before the move.
 pub fn is_network_noise_target(target: &str) -> bool {
     target.starts_with("mercury.")
         || target == "cimmeria_services::base::connect_loop::encrypted"
@@ -599,6 +605,14 @@ mod tests {
         ));
         assert!(!is_network_noise_target(
             "cimmeria_services::base::dispatch"
+        ));
+        // The services-side Mercury glue is not the `cimmeria-mercury`
+        // transport crate: it was `cimmeria_services::mercury` in
+        // cimmeria-server until wave W3a moved it to `cimmeria-wire`, and a
+        // prefix grown to catch every `::mercury` module must not take it.
+        assert!(!is_network_noise_target("cimmeria_wire::mercury"));
+        assert!(!is_network_noise_target(
+            "cimmeria_wire::mercury::world_data::map_loaded"
         ));
         // Empty / arbitrary string — defaults to "not noise" (server).
         assert!(!is_network_noise_target(""));

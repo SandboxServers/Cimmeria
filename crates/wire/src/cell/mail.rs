@@ -7,7 +7,7 @@
 //!
 //! Reference: `python/cell/SGWPlayer.py:requestMailHeaders()`, `requestMailBody()`
 
-use crate::wstring::write_wstring;
+use crate::mercury::write_wstring;
 
 // ── Wire format helpers for BaseApp to build mail response packets ───────────
 

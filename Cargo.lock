@@ -1253,7 +1253,11 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-common",
  "cimmeria-entity",
+ "cimmeria-game",
+ "cimmeria-mercury",
  "cimmeria-test-support",
+ "serde",
+ "tokio",
  "tracing",
 ]
 

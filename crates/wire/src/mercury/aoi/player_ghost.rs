@@ -30,7 +30,7 @@ pub(crate) const PLAYER_KISMET_EVENT_SET_ID: i32 = 1025;
 
 /// Faction every player is placed in (`setupPlayer`). Shared with the owning
 /// client's `mapLoaded` body so the two views of one player cannot drift.
-pub(crate) const PLAYER_FACTION: u8 = 3;
+pub const PLAYER_FACTION: u8 = 3;
 
 /// `GENERICPROPERTY_AmmoTypeId` from `entities/defs/enumerations.xml`.
 const GENERICPROPERTY_AMMO_TYPE_ID: i32 = 3;
@@ -89,7 +89,7 @@ pub fn build_player_ghost_cascade(
 /// Same transaction-state contract as
 /// [`super::compose_create_entity_cascade_body`]: safe alongside other
 /// entities' cascades, never in the same bundle as this entity's phase 1.
-pub(crate) fn compose_player_ghost_cascade_body(
+pub fn compose_player_ghost_cascade_body(
     entity_id: u32,
     ghost: &PlayerGhostCascade<'_>,
 ) -> Vec<u8> {

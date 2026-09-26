@@ -42,7 +42,7 @@ pub use aoi::{
     build_entity_invisible, build_entity_leave, build_entity_method_packet, build_forced_position,
     build_player_entity_method_packet, build_player_ghost_cascade, PlayerGhostCascade,
 };
-pub(crate) use aoi::{
+pub use aoi::{
     compose_create_entity_base_body, compose_create_entity_cascade_body,
     compose_forced_position_body, compose_player_ghost_cascade_body,
 };
@@ -76,7 +76,7 @@ pub(crate) const REPLY_FLAGS_UNRELIABLE: u8 = FLAG_HAS_SEQUENCE | FLAG_ON_CHANNE
 /// sites compiling while the per-site reliability audit migrates them
 /// to the explicit `_RELIABLE` / `_UNRELIABLE` constants. New code MUST
 /// pick one of the explicit variants.
-pub(crate) const REPLY_FLAGS: u8 = REPLY_FLAGS_RELIABLE;
+pub const REPLY_FLAGS: u8 = REPLY_FLAGS_RELIABLE;
 
 // ── Message IDs ───────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ pub(crate) const BASEMSG_TICK_SYNC: u8 = 0x0D;
 pub(crate) const BASEMSG_SET_GAME_TIME: u8 = 0x03;
 /// `BASEMSG_CREATE_BASE_PLAYER` — create a base entity on the client (0x05).
 /// Wire format: `[entityID:u32][classID:u8][propertyCount:u8]`.
-pub(crate) const BASEMSG_CREATE_BASE_PLAYER: u8 = 0x05;
+pub const BASEMSG_CREATE_BASE_PLAYER: u8 = 0x05;
 /// Base entity method: `onCharacterList` (msg_id = 0x80 + methodId 2 = 0x82).
 /// Wire format: `[entityID:u32][ARRAY<CharacterInfo>]`.
 pub(crate) const BASEMSG_ON_CHARACTER_LIST: u8 = 0x82;
@@ -146,7 +146,7 @@ pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 /// `docs/protocol/client-verified-wire-formats.md` "Entity Class IDs".
 pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
-pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
+pub const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// SGWGmPlayer entity class ID (EntityTypeID 3 in entity definitions).
 ///
 /// `SGWGmPlayer.def` declares `<Parent>SGWPlayer</Parent>` with an empty
@@ -160,7 +160,7 @@ pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// (109+) becomes reachable. See
 /// `docs/architecture/gm-cell-method-gating.md` and
 /// `docs/protocol/cell-method-dispatch-table.md` for the full derivation.
-pub(crate) const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
+pub const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;
 
@@ -397,9 +397,17 @@ pub fn append_entity_method(
 
 // ── Serialization helpers ────────────────────────────────────────────────────
 
-/// Write a BigWorld `WSTRING` to a buffer. One encoder for every
-/// serializer, shared with the wire-contract payloads in `cimmeria-wire`.
-pub(crate) use cimmeria_wire::wstring::write_wstring;
+/// Write a BigWorld `WSTRING` to a buffer. The one encoder every serializer
+/// uses, the mail and contact-list payloads included.
+///
+/// Wire format: `[char_count: u32 LE][UTF-16LE data: char_count × 2 bytes]`.
+pub fn write_wstring(buf: &mut Vec<u8>, s: &str) {
+    let chars: Vec<u16> = s.encode_utf16().collect();
+    buf.extend_from_slice(&(chars.len() as u32).to_le_bytes());
+    for &ch in &chars {
+        buf.extend_from_slice(&ch.to_le_bytes());
+    }
+}
 
 /// Read a BigWorld `WSTRING` from a buffer at a given offset.
 ///
@@ -442,11 +450,7 @@ pub fn read_wstring(buf: &[u8], offset: usize) -> Result<(String, usize), String
 /// directions and every handshake builder — must pass the *same* version, so
 /// the bytes a client sees are internally consistent (a v2 handshake followed
 /// by v1 data, or vice-versa, would fail the peer's decrypt).
-pub(crate) fn encrypt_packet(
-    plaintext: &[u8],
-    key: &[u8; 32],
-    version: EncryptionVersion,
-) -> Vec<u8> {
+pub fn encrypt_packet(plaintext: &[u8], key: &[u8; 32], version: EncryptionVersion) -> Vec<u8> {
     let enc = MercuryEncryption::from_session_key_versioned(*key, version);
     enc.encrypt(plaintext)
         .expect("Mercury packet encryption failed")

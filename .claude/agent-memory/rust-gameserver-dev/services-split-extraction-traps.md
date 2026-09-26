@@ -60,6 +60,29 @@ Learned extracting `cimmeria-cell-cover` (W2a), where one file (`stance.rs`) sta
   (catalog -> world), a shim in the lower module is an upward edge and cannot survive
   extraction; repoint the few callers instead of shimming.
 
+Learned finishing `cimmeria-wire` (W3a: mercury glue, messages, firehose):
+
+- **Split a moved test FILE by test when only some tests need the monolith.** The
+  plan said `mercury/aoi/tests.rs` "needs world"; one test of twelve did. Keeping the
+  file would have made every AoI message id `pub` for tests alone. Move the file, then
+  cut the one test into a `<old>_tests.rs` at the services root.
+- **`check -p <lower>` first.** Its `never used` warnings are exactly the items the
+  higher crate's check will then report as E0603; widen that list in one pass.
+- **A `pub use cimmeria_x::y;` in lib.rs retires the module for the stale-target
+  guard** (it looks for `mod y`), so the old `FILE_LAYERS` row fails loudly: good
+  revert-proof, add the old path to the resolver's must-not-resolve list.
+- **Module-name clash with a lower crate.** `is_network_noise_target` matches the
+  `cimmeria_mercury::` prefix (transport crate); `cimmeria_wire::mercury` is not noise
+  and must not become noise. Pin both sides with assertions when a module shares a
+  name with a crate.
+- **A private import keeps `super::x` paths working**: `use cimmeria_wire::…::{constants,
+  names};` in the old `mod.rs` lets children still write `super::constants::…`, and
+  `check.py` follows the glob out of the crate without inventing edges.
+- **Python replacement text ending in `\` + newline is a line continuation** in a
+  triple-quoted string (the `FILE_LAYERS` rows end in `\`); use the Edit tool there.
+- `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc -p <crate> --no-deps`
+  checks the doc links a move touches in seconds (it also surfaces pre-existing ones).
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

@@ -24,7 +24,8 @@ mod harset_placement_tests;
 pub mod interactions;
 pub(crate) use cimmeria_wire::cell::kismet;
 pub mod mail;
-pub mod messages;
+// The Base<->Cell message contract is in `cimmeria-wire` (wave W3a).
+pub use cimmeria_wire::cell::messages;
 pub mod missions;
 pub(crate) use cimmeria_wire::cell::player_journal;
 pub(crate) mod playtest_friction;

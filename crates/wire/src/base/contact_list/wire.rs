@@ -13,9 +13,9 @@
 //! ARRAY   = 4-byte LE element count + N WSTRINGs.
 //!
 //! All functions return a `Vec<u8>` `args` payload suitable for passing to
-//! `cimmeria_services::mercury::build_player_entity_method_packet`.
+//! [`crate::mercury::build_player_entity_method_packet`].
 
-use crate::wstring::write_wstring;
+use crate::mercury::write_wstring;
 
 /// Serialize `onContactListUpdate` (CM 85) args.
 ///

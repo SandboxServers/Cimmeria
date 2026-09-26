@@ -110,7 +110,7 @@ pub enum CellToBaseMsg {
     /// `destination_space_id` names an *exact* already-loaded space instance
     /// to join, rather than letting the cell pick one by world name. Used by
     /// the GM cross-instance transfer primitive
-    /// ([`crate::cell::space_transfer`]) so `.goto <player>` lands in the
+    /// (`cimmeria_services::cell::space_transfer`) so `.goto <player>` lands in the
     /// target's actual instance instead of a freshly-created private one
     /// (`find_or_create_space` always allocates a NEW space for an instanced
     /// world). `None` keeps the historical behavior — resolve by world name.
@@ -137,7 +137,7 @@ pub enum CellToBaseMsg {
     ///
     /// The base resolves `account_id` from the session and uses it as the
     /// ownership predicate alongside `player_id`, the same fail-closed pair
-    /// [`crate::base::world_entry::gate_travel`]'s arrival persistence uses.
+    /// `cimmeria_services::base::world_entry::gate_travel`'s arrival persistence uses.
     /// The append is idempotent, so a retried or duplicated message cannot
     /// double-append — `resources.stargates.stargate_id` carries no
     /// uniqueness constraint and the column is a bare `integer[]`.
@@ -492,7 +492,7 @@ pub enum CellToBaseMsg {
     /// **Trust model:** the `.`-channel is GM-gated server-side, and `sql` is
     /// *server-generated* — numeric values are formatted from cell-parsed
     /// `i32`/`f32` and strings are escaped through
-    /// [`crate::cell::console::seed::sql_str`], so no raw client text is
+    /// `cimmeria_services::cell::console::seed::sql_str`, so no raw client text is
     /// concatenated into the statement. This mirrors the legacy
     /// `Atrea.dbQuery` authoring path. `label` is a short human tag for the
     /// feedback line (e.g. `"savespawn"`).

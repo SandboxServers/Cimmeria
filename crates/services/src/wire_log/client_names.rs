@@ -13,8 +13,8 @@
 //! * [`inbound_msg_name`] — client→server message IDs. Bundled
 //!   system-message IDs (0x00–0x0D) get explicit names; entity-method
 //!   calls (0xC0+) fall through to the cell-method-name lookup at
-//!   `cell::dispatch::names::cell_method_name`, which already covers
-//!   the full set.
+//!   `cimmeria_wire::cell::dispatch::names::cell_method_name`, which already
+//!   covers the full set.
 
 /// Outbound (server → client) method name for the flat SGWPlayer
 /// method index. Source: `docs/protocol/client-method-dispatch-table.md`.
@@ -208,7 +208,7 @@ pub fn inbound_msg_name(msg_id: u8) -> &'static str {
         // METHOD INDEX (`msg_id - 0x80`), not by message id. The old arm
         // matched 0xC0..=0xFF -- the BASE method range -- and passed the raw
         // id, so every entity method was logged as "unknown".
-        0x80..=0xBC => crate::cell::dispatch::cell_method_name(u16::from(msg_id - 0x80)),
+        0x80..=0xBC => cimmeria_wire::cell::dispatch::cell_method_name(u16::from(msg_id - 0x80)),
         // Sub-slot: the real index is `61 + payload[4]`; see
         // [`inbound_msg_name_with_payload`].
         0xBD => "cellMethodExtended",
@@ -224,7 +224,7 @@ pub fn inbound_msg_name(msg_id: u8) -> &'static str {
 pub fn inbound_msg_name_with_payload(msg_id: u8, payload: &[u8]) -> &'static str {
     if msg_id == 0xBD {
         if let Some(sub) = payload.get(4) {
-            return crate::cell::dispatch::cell_method_name(61 + u16::from(*sub));
+            return cimmeria_wire::cell::dispatch::cell_method_name(61 + u16::from(*sub));
         }
     }
     inbound_msg_name(msg_id)
@@ -273,7 +273,7 @@ mod tests {
     /// named "unknown".
     #[test]
     fn inbound_cell_methods_resolve_by_index_not_message_id() {
-        use crate::cell::dispatch::cell_method_name;
+        use cimmeria_wire::cell::dispatch::cell_method_name;
         assert_eq!(inbound_msg_name(0x80), cell_method_name(0));
         assert_eq!(inbound_msg_name(0x80), "setTargetID");
         assert_ne!(inbound_msg_name(0x81), "unknown");

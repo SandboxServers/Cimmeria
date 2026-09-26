@@ -1,10 +1,14 @@
 //! # cimmeria-wire
 //!
-//! The wire contract the Base and Cell services share: the client- and
-//! cell-method index tables, the `stateField` bits, and the payload
-//! serializers both halves of the server send. It is the bottom of the
-//! `cimmeria-services` split (`docs/architecture/services-crate-split.md`):
-//! every service crate may depend on it, and it depends on none of them.
+//! The wire contract the Base and Cell services share, and the server's
+//! Mercury message layer: the Base↔Cell message enums (`cell::messages`),
+//! the services-side packet builders (`mercury`, which builds on the
+//! `cimmeria-mercury` transport crate and is not part of it), the per-packet
+//! log firehoses (`firehose`), the client- and cell-method index tables, the
+//! `stateField` bits, and the payload serializers both halves of the server
+//! send. It is the bottom of the `cimmeria-services` split
+//! (`docs/architecture/services-crate-split.md`): every service crate may
+//! depend on it, and it depends on none of them.
 //!
 //! Code that moved here from `cimmeria-services` keeps its module path
 //! (`cell::kismet`, `base::contact_list::wire`, ...) under the same
@@ -32,21 +36,33 @@ pub mod base {
     }
 }
 
-/// Cell-side method indices and payload serializers.
+/// Cell-side method indices, payload serializers and the Base↔Cell messages.
 pub mod cell {
     pub mod cell_methods;
     pub mod chat;
     pub mod client_methods;
+    /// The client->server cell-method indices under their `CM_*` /
+    /// `CLIENT_MG_*` names, and their names for logging. The router that
+    /// dispatches on them stays in `cimmeria-services`.
+    pub mod dispatch {
+        pub mod constants;
+        pub mod names;
+
+        pub use constants::*;
+        pub use names::cell_method_name;
+    }
     pub mod kismet;
     pub mod mail;
+    pub mod messages;
     pub mod player_journal;
     pub mod spawn_record;
 }
 
 pub mod containers;
+pub mod firehose;
 pub mod hex;
+pub mod mercury;
 pub mod state_field;
-pub mod wstring;
 
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency); tests
 // import them from `crate::test_support`, as in every service crate.

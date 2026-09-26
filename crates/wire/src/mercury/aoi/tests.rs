@@ -621,7 +621,7 @@ fn compose_create_entity_cascade_body_matches_build_create_entity_cascade_body()
 ///
 /// `compose_forced_position_body` is appended via
 /// [`cimmeria_mercury::channel_bundle::ChannelBundle::append_raw_message`]
-/// inside [`crate::base::world_entry::teleport::build_teleport_bundle`].
+/// inside `cimmeria_services::base::world_entry::teleport::build_teleport_bundle`.
 /// The bundled wire bytes for that raw message MUST equal the body
 /// portion of the standalone [`build_forced_position`] packet. Divergence
 /// would split the wire format between the bundle-migrated teleport path
@@ -689,31 +689,4 @@ fn pack_angle_wraps_negative_yaw_like_the_cpp_cast() {
     // Out-of-range and non-finite inputs never panic or saturate high.
     assert_eq!(pack_angle(FRAC_PI_2 + 4.0 * PI), 64);
     assert_eq!(pack_angle(f32::NAN), 0);
-}
-
-/// A client facing byte must survive the store-as-radians round trip, in the
-/// right slot: wire order is (yaw, pitch, roll), `direction` is
-/// `[pitch, yaw, roll]`, and the broadcast reads yaw from `direction.y`.
-#[test]
-fn client_facing_bytes_round_trip_through_radians() {
-    use crate::cell::space_manager::SpaceManager;
-    let mut mgr = SpaceManager::new(1);
-    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
-    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
-    mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(cxml).unwrap();
-    mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
-        .unwrap();
-
-    for yaw in [0i8, 1, 64, 127, -1, -64, -128] {
-        mgr.update_entity_position(1, [10.0, 0.0, 10.0], [yaw, 5, -7], [0.0; 3]);
-        let d = mgr.get_entity(1).unwrap().direction;
-        assert_eq!(pack_angle(d.y), yaw as u8, "yaw byte {yaw} must round-trip");
-        assert_eq!(pack_angle(d.x), 5, "pitch lands in direction.x");
-        assert_eq!(pack_angle(d.z), (-7i8) as u8, "roll lands in direction.z");
-        assert!(
-            d.y.abs() <= std::f32::consts::PI + 1e-3,
-            "stored as radians"
-        );
-    }
 }

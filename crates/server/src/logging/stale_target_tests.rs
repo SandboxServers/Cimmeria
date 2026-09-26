@@ -263,6 +263,11 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // The FILE_LAYERS row removed with this guard: world_entry_player.rs
         // was split into world_entry/methods/ long ago.
         "cimmeria_services::base::world_entry_player",
+        // protocol.log's row before wave W3a moved the Mercury glue to
+        // cimmeria-wire. Services still re-exports `mercury` (`pub use`), but
+        // a re-export does not change `module_path!()`, so the old target
+        // matches nothing.
+        "cimmeria_services::mercury",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -277,7 +282,7 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_services::cell::space_manager",
         "cimmeria_services::base::world_entry",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
-        "cimmeria_services::mercury::method_idx",
+        "cimmeria_wire::mercury::method_idx",
         // A bare prefix covering cimmeria_client_launch and
         // cimmeria_client_telemetry.
         "cimmeria_client",
