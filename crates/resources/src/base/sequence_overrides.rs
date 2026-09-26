@@ -15,7 +15,7 @@
 //! # Never edit the PAK's `MetaData` version on disk
 //!
 //! Category 1 used to have no override list, so any version the client did not
-//! already hold made [`super::cooked_data::handle_version_info_request`] answer
+//! already hold made `cimmeria_services::base::cooked_data::handle_version_info_request` answer
 //! `invalidate_all = true` and push nothing. The client does not lazy-fetch: it
 //! emptied its sequence table, persisted the empty table to
 //! `Cache.en-US/CookedDataKismetSeqEvent.pak`, and no Kismet sequence played

@@ -18,6 +18,10 @@ cimmeria-occluder = { workspace = true }
 # errors/…). The crate's global-singleton `emit_*` API means no handle
 # threading — calls are no-ops until the server bin runs `cimmeria_discord::init`.
 cimmeria-discord = { workspace = true }
+# Cooked-data PAK cache + Cimmeria's overrides and the CharDef table, split out
+# of this crate (docs/architecture/services-crate-split.md, W1b). Re-exported
+# at `base::{resources, chardef, *_overrides}`.
+cimmeria-resources = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 # Auth TLS termination. `tokio-rustls` re-exports `rustls`;
@@ -36,7 +40,6 @@ quick-xml = { workspace = true }
 argon2 = { workspace = true }
 sha1 = { workspace = true }
 sqlx = { workspace = true }
-zip = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

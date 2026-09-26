@@ -6,10 +6,10 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The 28 workspace members and their **actual** inter-crate dependencies, generated
+The 29 workspace members and their **actual** inter-crate dependencies, generated
 from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*; a dotted
-arrow is a dev-dependency). The 28 comes from the `members` list in the root
-[Cargo.toml](../Cargo.toml): the 24 crates under `crates/`, plus `src-tauri` and the three tool crates
+arrow is a dev-dependency). The 29 comes from the `members` list in the root
+[Cargo.toml](../Cargo.toml): the 25 crates under `crates/`, plus `src-tauri` and the three tool crates
 (`tools/ContentEditor`, `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/`
 target is a deliberate workspace `exclude` — it needs nightly Rust.
 
@@ -39,6 +39,7 @@ flowchart TD
     services --> observability
     services --> commands
     services --> common
+    services --> resources
     game --> commands
     game --> common
     contentEngine --> entity
@@ -60,6 +61,8 @@ flowchart TD
     %% test-only
     services -. dev .-> testSupport["test-support (dev-only)"]
     testSupport --> mercury
+    resources -. dev .-> testSupport
+    resources -. dev .-> entity
     sceneEditor --> upk
     upkObjects --> upk
 
@@ -79,7 +82,7 @@ what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. Th
 `upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
 are an independent Unreal-package / navmesh toolchain; `supervisor`,
 `client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
-intra-workspace deps. `test-support` is a dev-dependency only. All 24 crates in `crates/` are catalogued below; the
+intra-workspace deps. `test-support` is a dev-dependency only. All 25 crates in `crates/` are catalogued below; the
 diagram additionally shows the `src-tauri` app and the `tools/` editors, which
 are workspace members that live outside `crates/`.
 
@@ -93,6 +96,7 @@ are workspace members that live outside `crates/`.
 | `game` | `cimmeria-game` | Game mechanics: combat, abilities, stats, effects |
 | `content-engine` | `cimmeria-content-engine` | Data-driven content runtime: missions, dialogs, sequences |
 | `services` | `cimmeria-services` | Auth, Base, and Cell service implementations — the bulk of server logic. Being split into an acyclic set of crates; see [docs/architecture/services-crate-split.md](../docs/architecture/services-crate-split.md) and the layering guard in [tools/layering/](../tools/layering/README.md) |
+| `resources` | `cimmeria-resources` | Cooked-data resource cache, split out of `cimmeria-services` (wave W1b of the [crate split](../docs/architecture/services-crate-split.md)). `ResourceCache` loads the client's `data/cache/*.pak` archives at startup and applies Cimmeria's in-memory mission, item, dialog and Kismet-sequence overrides, bumping each patched category's metadata so the `versionInfoRequest` handshake re-fetches exactly the patched entries ([docs/architecture/mission-pak-overrides.md](../docs/architecture/mission-pak-overrides.md)). Also holds the inventory bag tables and the CharDef table. No production workspace dependencies; `cimmeria-services` re-exports its modules at their old paths (`base::resources`, `base::chardef`, `base::*_overrides`). |
 | `test-support` | `cimmeria-test-support` | **Dev-dependency only.** Generic test helpers: the live-DB gate (`require_db_or_skip!`, which skips without `DATABASE_URL` and fails when it is set but unreachable), `LogCapture` for negative-log guards, the `TestTransport` re-export, and `source_scan` for workspace-wide source guards. Never depends on a service crate (that would link two copies of it into a test binary); domain fixtures stay with their types. Every crate that dev-depends on it must be listed in `tools/test-live-db.{sh,ps1}`. |
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |

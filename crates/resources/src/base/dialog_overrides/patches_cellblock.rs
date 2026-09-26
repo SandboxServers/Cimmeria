@@ -51,7 +51,7 @@ use super::patch::{ButtonPlan, DialogPatch};
 /// `data/cache/CookedDataDialogs.pak` and against the seed on 2026-09-21;
 /// the two agreed for all twelve. Both agreements are now tests, in
 /// [`super::patch_seed_agreement_cellblock`].
-pub const CELLBLOCK_DIALOG_PATCHES: &[DialogPatch] = &[
+pub(super) const CELLBLOCK_DIALOG_PATCHES: &[DialogPatch] = &[
     // ---- Mission 638, "Agree to escape" (Human branch) ----
     // Shipped: Accept (type 2, id 8) on all 5 screens 96175-96179.
     // Goes because the Accept is pure navigation noise — chain 1019 keys

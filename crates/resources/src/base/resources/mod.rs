@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 /// Order in which starter items fill inventory bags (Account.py:12-31).
 /// Equipment slots first so items get equipped and show on the char select screen.
-pub(crate) const BAG_FILL_ORDER: &[i32] = &[
+pub const BAG_FILL_ORDER: &[i32] = &[
     4,  // Head
     5,  // Face
     6,  // Neck
@@ -25,7 +25,7 @@ pub(crate) const BAG_FILL_ORDER: &[i32] = &[
 ];
 
 /// Max items per container (Constants.py:142-162).
-pub(crate) fn bag_max_slots(container_id: i32) -> i32 {
+pub fn bag_max_slots(container_id: i32) -> i32 {
     match container_id {
         1 => 40,     // Main
         2 => 100,    // Mission
@@ -45,7 +45,7 @@ pub(crate) fn bag_max_slots(container_id: i32) -> i32 {
 /// nonneg invariant test in this file still has a hook, and so a future
 /// container with a different lower bound can be added without touching
 /// every call site.
-pub(crate) fn bag_min_slot(_container_id: i32) -> i32 {
+pub fn bag_min_slot(_container_id: i32) -> i32 {
     0
 }
 
@@ -68,7 +68,7 @@ pub(crate) fn bag_min_slot(_container_id: i32) -> i32 {
 ///
 /// Returns `Some(bag_id)` for the first bag that satisfies both gates,
 /// `None` if no valid + non-full bag exists.
-pub(crate) fn pick_first_open_bag(
+pub fn pick_first_open_bag(
     container_sets: &[i32],
     slot_indices: &HashMap<i32, i32>,
 ) -> Option<i32> {
@@ -90,7 +90,7 @@ pub(crate) fn pick_first_open_bag(
 // ── Resource cache ───────────────────────────────────────────────────────────
 
 /// Per-category cooked data loaded from a PAK file.
-pub(crate) struct CategoryData {
+pub struct CategoryData {
     /// MetaData value (u32 from the PAK's MetaData entry).
     pub metadata: u32,
     /// elementId -> raw XML bytes.
@@ -105,11 +105,11 @@ pub(crate) struct CategoryData {
 /// in-memory after the PAK load so the client picks up the modifications
 /// via the existing cooked-data wire path — no on-disk PAK edit, no
 /// client-artifact distribution. The set of overridden element IDs per
-/// category is tracked so [`super::cooked_data::handle_version_info_request`]
+/// category is tracked so `cimmeria_services::base::cooked_data::handle_version_info_request`
 /// can emit `invalidate_all = false` + per-key `InvalidKeys`, scoping the
 /// client-side cache invalidation to just the patched entries.
 #[derive(Clone)]
-pub(crate) struct ResourceCache {
+pub struct ResourceCache {
     categories: Arc<HashMap<u32, CategoryData>>,
     /// `category_id -> sorted list of element IDs that were overridden`.
     /// Empty for categories with no overrides. Sorted so the on-wire
@@ -161,7 +161,7 @@ pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
 /// 21 for `pet_command` (never implemented client-side) and pushed
 /// `behavior_event` to 22, drifting past the client's contiguous 1–21 enum:
 /// a fragment tagged 22 is silently dropped. Match the client: 21.
-const CATEGORY_BEHAVIOR_EVENTS: u32 = 21;
+pub const CATEGORY_BEHAVIOR_EVENTS: u32 = 21;
 
 /// Category id for `CookedDataMissions.pak` (see [`CATEGORY_PAKS`]).
 const CATEGORY_MISSIONS: u32 = 3;

@@ -46,7 +46,7 @@ use super::parse::parse_cooked_dialog;
 use super::patch::{apply_dialog_patch, ButtonPlan, DialogPatch};
 use super::patches_castle::CASTLE_DIALOG_PATCHES;
 
-/// `CARGO_MANIFEST_DIR` is `<workspace>/crates/services`, so two hops up
+/// `CARGO_MANIFEST_DIR` is `<workspace>/crates/resources`, so two hops up
 /// land on the workspace root. Same convention as the content-engine
 /// linters.
 fn seed_dir() -> PathBuf {

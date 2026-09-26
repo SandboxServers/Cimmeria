@@ -17,6 +17,7 @@ $ErrorActionPreference = 'Stop'
 # Crates whose lib tests include live-DB tests (`require_db_or_skip!`), one per line.
 # cimmeria-test-support holds the gate itself and its tests.
 $LiveDbCrates = @(
+    'cimmeria-resources'
     'cimmeria-services'
     'cimmeria-test-support'
 )

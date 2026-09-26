@@ -83,6 +83,7 @@ use crate::otel;
 /// quiet on a healthy link and exactly the evidence a lossy one needs.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
+                cimmeria_resources=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -210,9 +211,9 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         directives: "off,\
              cimmeria_services::base::character=trace,\
              cimmeria_services::base::character_create=trace,\
-             cimmeria_services::base::chardef=trace,\
+             cimmeria_resources::base::chardef=trace,\
              cimmeria_services::base::cooked_data=trace,\
-             cimmeria_services::base::resources=trace",
+             cimmeria_resources::base::resources=trace",
     },
     FileLayer {
         file: "protocol.log",

@@ -1052,6 +1052,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-resources"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-entity",
+ "cimmeria-test-support",
+ "quick-xml 0.41.0",
+ "tracing",
+ "zip 8.6.0",
+]
+
+[[package]]
 name = "cimmeria-scene-editor"
 version = "0.1.0"
 dependencies = [
@@ -1113,6 +1124,7 @@ dependencies = [
  "cimmeria-mercury",
  "cimmeria-observability",
  "cimmeria-occluder",
+ "cimmeria-resources",
  "cimmeria-test-support",
  "proptest",
  "quick-xml 0.41.0",
@@ -1132,7 +1144,6 @@ dependencies = [
  "tokio-rustls",
  "tower",
  "tracing",
- "zip 8.6.0",
 ]
 
 [[package]]

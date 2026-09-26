@@ -118,6 +118,7 @@ flowchart TD
     services --> observability
     services --> commands
     services --> common
+    services --> resources
     game --> commands
     game --> common
     contentEngine --> entity
@@ -139,6 +140,8 @@ flowchart TD
     %% test-only
     services -. dev .-> testSupport["test-support (dev-only)"]
     testSupport --> mercury
+    resources -. dev .-> testSupport
+    resources -. dev .-> entity
     sceneEditor --> upk
     upkObjects --> upk
 
@@ -180,6 +183,7 @@ Cimmeria/
 │   ├── game/               Game mechanics and rules
 │   ├── content-engine/     Data-driven content pipeline
 │   ├── services/           Auth, Base, Cell service implementations
+│   ├── resources/          Cooked-data PAK cache, Cimmeria's overrides, CharDef table
 │   ├── test-support/       Test helpers (live-DB gate, log capture); dev-only
 │   ├── admin-api/          REST administration API
 │   ├── supervisor/         Process supervision and service lifecycle
@@ -211,6 +215,7 @@ Cimmeria/
 |---|---|
 | `cimmeria-mercury` | Mercury reliable UDP, AES-256-CBC + HMAC-MD5 |
 | `cimmeria-services` | Auth, Base, Cell service orchestration |
+| `cimmeria-resources` | Cooked-data PAK cache and Cimmeria's in-memory overrides |
 | `cimmeria-defs` | Entity definition parsing from XML |
 | `cimmeria-content-engine` | Data-driven mission/effect/dialog runtime |
 | `cimmeria-discord` | Discord notification dispatch (server + colo events) |

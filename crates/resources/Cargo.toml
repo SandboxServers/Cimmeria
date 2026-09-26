@@ -1,0 +1,28 @@
+[package]
+name = "cimmeria-resources"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Cooked-data resource cache (the client's data/cache PAKs) and Cimmeria's in-memory overrides, plus the CharDef table, for the Cimmeria server emulator"
+
+# Split out of cimmeria-services (wave W1b of
+# docs/architecture/services-crate-split.md). A leaf: it uses no other
+# workspace crate in production, so it compiles in parallel with everything
+# below the service crates. The module tree keeps its old nesting
+# (`base::resources`, `base::mission_overrides`, ...) so the services facade
+# re-exports it at the same paths.
+[dependencies]
+quick-xml = { workspace = true }
+tracing = { workspace = true }
+zip = { workspace = true }
+
+[dev-dependencies]
+# `resources/tests/inventory_slots.rs` pins the bag table against the
+# `INV_*` container ids.
+cimmeria-entity = { workspace = true }
+# `LogCapture` for the dialog-patch negative-log guards, re-exported from the
+# `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }

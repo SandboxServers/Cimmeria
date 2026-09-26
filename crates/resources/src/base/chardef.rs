@@ -6,7 +6,7 @@
 /// Starting coordinates:
 /// - Praxis (Castle_CellBlock): (-334.231, 73.472, -228.026)
 /// - SGU (SGC_W1): (201.5, 1.31, 49.724)
-pub(crate) fn chardef_lookup(
+pub fn chardef_lookup(
     id: i32,
 ) -> Option<(i32, i32, i32, &'static str, &'static str, f32, f32, f32)> {
     // (alignment, archetype, gender, bodyset, starting_world, pos_x, pos_y, pos_z)
