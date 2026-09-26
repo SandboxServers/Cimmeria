@@ -199,7 +199,7 @@ Static review at `beaf79471154a2e558fd7d112115950519a3f530` found a missing prog
 
 | Surface | Finding | Source |
 |---|---|---|
-| Method 138 delivery | The constant and wire-log decoder exist; no runtime sending call site was found | [player client methods](../../../crates/services/src/cell/client_methods/player.rs), [generated decoder](../../../crates/services/src/wire_log/decoders/generated.rs) |
+| Method 138 delivery | The constant and wire-log decoder exist; no runtime sending call site was found | [player client methods](../../../crates/wire/src/cell/client_methods/player.rs), [generated decoder](../../../crates/services/src/wire_log/decoders/generated.rs) |
 | Level mutation | The state stores levels, but production callers grant expertise or applied science points without changing the paradigm map; `.allcraft` reports incomplete implementation | [CraftingState](../../../crates/entity/src/crafting.rs), [grant handlers](../../../crates/services/src/base/crafting/handlers.rs), [console crafting](../../../crates/services/src/cell/console/crafting.rs) |
 | Persistence and login | Load/save helpers decode and re-encode the map; no login caller of `load_crafting_state` was found | [crafting persistence](../../../crates/services/src/base/crafting/persistence.rs) |
 

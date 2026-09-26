@@ -5,7 +5,7 @@ use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
-pub const ON_DIAL_GATE: u16 = 35;
+pub use cimmeria_wire::cell::cell_methods::gate_travel::ON_DIAL_GATE;
 
 pub async fn dispatch(
     entity_id: u32,

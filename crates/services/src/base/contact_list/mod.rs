@@ -7,4 +7,4 @@
 
 pub(crate) mod handlers;
 pub(crate) mod persistence;
-pub(crate) mod wire;
+pub(crate) use cimmeria_wire::base::contact_list::wire;

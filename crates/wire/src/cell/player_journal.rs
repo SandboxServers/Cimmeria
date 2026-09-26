@@ -20,55 +20,55 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
 /// Ring capacity per player.
-pub(crate) const RING: usize = 64;
+pub const RING: usize = 64;
 
 /// The closed `kind` vocabulary.
-pub(crate) mod kinds {
-    pub(crate) const WORLD_ENTER: &str = "world_enter";
-    pub(crate) const REANCHOR: &str = "reanchor";
-    pub(crate) const REGION_HINT: &str = "region_hint";
+pub mod kinds {
+    pub const WORLD_ENTER: &str = "world_enter";
+    pub const REANCHOR: &str = "reanchor";
+    pub const REGION_HINT: &str = "region_hint";
     /// A hint the server threw away. Paired with [`REGION_HINT`] so a `.bug`
     /// report can tell "the client never sent it" from "the server refused
     /// it" — the two look identical in-game (the door does nothing).
-    pub(crate) const REGION_HINT_REFUSED: &str = "region_hint_refused";
+    pub const REGION_HINT_REFUSED: &str = "region_hint_refused";
     /// A region entry the *server* synthesised because a mission step
     /// activated while the player was already standing in the volume (H52).
     /// Distinct from [`REGION_HINT`] so a `.bug` report can tell a real
     /// client crossing from a replay.
-    pub(crate) const REGION_REPLAY: &str = "region_replay";
-    pub(crate) const COVER_REPLAY: &str = "cover_replay";
-    pub(crate) const COVER_EDGE: &str = "cover_edge";
-    pub(crate) const STEP_ADVANCE: &str = "step_advance";
-    pub(crate) const MISSION_COMPLETE: &str = "mission_complete";
-    pub(crate) const DIALOG: &str = "dialog";
+    pub const REGION_REPLAY: &str = "region_replay";
+    pub const COVER_REPLAY: &str = "cover_replay";
+    pub const COVER_EDGE: &str = "cover_edge";
+    pub const STEP_ADVANCE: &str = "step_advance";
+    pub const MISSION_COMPLETE: &str = "mission_complete";
+    pub const DIALOG: &str = "dialog";
     /// A non-modal companion line spoken into the chat window by the
     /// `npc_bark` content action. Deliberately distinct from
     /// [`DIALOG`]: the whole point of a bark is that it opens no window,
     /// so a `.bug` report that lumped the two together could not tell
     /// "the player was interrupted" from "the player was told something
     /// while they kept moving".
-    pub(crate) const BARK: &str = "bark";
-    pub(crate) const ACTION_LIST: &str = "action_list";
-    pub(crate) const DEFERRED_SCHEDULED: &str = "deferred_scheduled";
-    pub(crate) const DEFERRED_FIRED: &str = "deferred_fired";
-    pub(crate) const DEATH: &str = "death";
-    pub(crate) const RESPAWN: &str = "respawn";
-    pub(crate) const KILL: &str = "kill";
-    pub(crate) const TELEPORT: &str = "teleport";
+    pub const BARK: &str = "bark";
+    pub const ACTION_LIST: &str = "action_list";
+    pub const DEFERRED_SCHEDULED: &str = "deferred_scheduled";
+    pub const DEFERRED_FIRED: &str = "deferred_fired";
+    pub const DEATH: &str = "death";
+    pub const RESPAWN: &str = "respawn";
+    pub const KILL: &str = "kill";
+    pub const TELEPORT: &str = "teleport";
     /// The player learned a stargate address (content grant). Answers
     /// "could they dial it yet?" from the bookmark alone — the client's
     /// DHD list and the server's dial gate are separate copies, and a
     /// player whose grant never landed sees a greyed-out destination with
     /// no error.
-    pub(crate) const STARGATE_ADDRESS: &str = "stargate_address";
+    pub const STARGATE_ADDRESS: &str = "stargate_address";
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Entry {
-    pub seq: u64,
-    pub at: Instant,
-    pub kind: &'static str,
-    pub detail: String,
+    pub(crate) seq: u64,
+    pub(crate) at: Instant,
+    pub(crate) kind: &'static str,
+    pub(crate) detail: String,
 }
 
 #[derive(Debug, Default)]
@@ -116,7 +116,7 @@ fn with<R>(entity_id: u32, f: impl FnOnce(&mut Journal) -> R) -> R {
 }
 
 /// Record one event for a player. Returns its `seq`.
-pub(crate) fn note(entity_id: u32, kind: &'static str, detail: impl Into<String>) -> u64 {
+pub fn note(entity_id: u32, kind: &'static str, detail: impl Into<String>) -> u64 {
     let detail = detail.into();
     let seq = with(entity_id, |j| j.push(kind, detail.clone(), Instant::now()));
     tracing::debug!(
@@ -141,7 +141,7 @@ pub(crate) fn between(entity_id: u32, after_seq: u64, before_seq: u64) -> Vec<St
 }
 
 /// The last `n` entries as `(seq, ms_ago, kind, detail)`, oldest first.
-pub(crate) fn tail(entity_id: u32, n: usize) -> Vec<(u64, u64, &'static str, String)> {
+pub fn tail(entity_id: u32, n: usize) -> Vec<(u64, u64, &'static str, String)> {
     let now = Instant::now();
     with(entity_id, |j| {
         j.tail(n)
@@ -160,7 +160,7 @@ pub(crate) fn tail(entity_id: u32, n: usize) -> Vec<(u64, u64, &'static str, Str
 
 /// What a deferred action's firing looked like relative to its scheduling.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DeferredReport {
+pub struct DeferredReport {
     pub scheduled_seq: u64,
     pub fired_seq: u64,
     pub delay_ms: i32,
@@ -174,7 +174,7 @@ static DEFERRED: LazyLock<Mutex<HashMap<(u32, i64, Instant), (u64, i32)>>> =
     LazyLock::new(Mutex::default);
 
 /// First token of an action's `Debug` form -- its variant name.
-pub(crate) fn action_kind(action: &impl std::fmt::Debug) -> String {
+pub fn action_kind(action: &impl std::fmt::Debug) -> String {
     let d = format!("{action:?}");
     d.split([' ', '{', '('])
         .next()
@@ -183,7 +183,7 @@ pub(crate) fn action_kind(action: &impl std::fmt::Debug) -> String {
 }
 
 /// A content action was queued to fire at `fire_at`.
-pub(crate) fn deferred_scheduled(
+pub fn deferred_scheduled(
     entity_id: u32,
     chain_id: i64,
     delay_ms: i32,
@@ -203,7 +203,7 @@ pub(crate) fn deferred_scheduled(
 
 /// The queued action is firing now. `None` if it was never seen scheduled
 /// (constructed directly, e.g. in tests).
-pub(crate) fn deferred_fired(
+pub fn deferred_fired(
     entity_id: u32,
     chain_id: i64,
     fire_at: Instant,
@@ -230,7 +230,7 @@ pub(crate) fn deferred_fired(
 }
 
 /// Drop a player's journal (entity ids are recycled).
-pub(crate) fn forget(entity_id: u32) {
+pub fn forget(entity_id: u32) {
     JOURNALS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)

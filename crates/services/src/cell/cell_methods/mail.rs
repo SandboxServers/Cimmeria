@@ -4,15 +4,11 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
-pub const REQUEST_MAIL_HEADERS: u16 = 43;
-pub const SEND_MAIL_MESSAGE: u16 = 44;
-pub const ARCHIVE_MAIL_MESSAGE: u16 = 45;
-pub const DELETE_MAIL_MESSAGE: u16 = 46;
-pub const RETURN_MAIL_MESSAGE: u16 = 47;
-pub const REQUEST_MAIL_BODY: u16 = 48;
-pub const TAKE_CASH_FROM_MAIL: u16 = 49;
-pub const TAKE_ITEM_FROM_MAIL: u16 = 50;
-pub const PAY_COD_FOR_MAIL: u16 = 51;
+pub use cimmeria_wire::cell::cell_methods::mail::{
+    ARCHIVE_MAIL_MESSAGE, DELETE_MAIL_MESSAGE, PAY_COD_FOR_MAIL, REQUEST_MAIL_BODY,
+    REQUEST_MAIL_HEADERS, RETURN_MAIL_MESSAGE, SEND_MAIL_MESSAGE, TAKE_CASH_FROM_MAIL,
+    TAKE_ITEM_FROM_MAIL,
+};
 
 pub async fn dispatch(
     entity_id: u32,

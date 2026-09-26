@@ -152,6 +152,8 @@ component_management:
       name: services
       paths:
         - "crates/services/**"
+        # Split out of cimmeria-services (docs/architecture/services-crate-split.md).
+        - "crates/wire/**"
       statuses:
         - type: project
           target: 62%

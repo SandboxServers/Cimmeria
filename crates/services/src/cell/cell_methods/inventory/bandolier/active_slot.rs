@@ -125,7 +125,7 @@ pub(crate) async fn handle_request_active_slot_change(
     // (currently 4 → server slots 0..=3, wire slots 1..=4); a forged value
     // would otherwise leave the entity in an impossible local state, cancel
     // any in-flight reload, and propagate via ActiveSlotUpdate to base.
-    let max_slots = crate::base::resources::bag_max_slots(bag_id);
+    let max_slots = cimmeria_wire::containers::bag_max_slots(bag_id);
     if !(0..max_slots).contains(&slot_id) {
         tracing::warn!(
             entity_id,

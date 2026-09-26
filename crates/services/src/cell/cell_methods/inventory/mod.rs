@@ -1,7 +1,7 @@
 //! SGWInventoryManager interface exposed CellMethods (indices 36–42).
 
 mod bandolier;
-pub mod constants;
+pub use cimmeria_wire::cell::cell_methods::inventory::constants;
 mod dispatch;
 mod item_ops;
 

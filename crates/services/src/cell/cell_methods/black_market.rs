@@ -4,12 +4,9 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
-pub const SEARCH: u16 = 61;
-pub const CREATE_AUCTION: u16 = 62;
-pub const PLACE_BID: u16 = 63;
-pub const CANCEL_AUCTION: u16 = 64;
-pub const START_WATCHING: u16 = 65;
-pub const STOP_WATCHING: u16 = 66;
+pub use cimmeria_wire::cell::cell_methods::black_market::{
+    CANCEL_AUCTION, CREATE_AUCTION, PLACE_BID, SEARCH, START_WATCHING, STOP_WATCHING,
+};
 
 pub async fn dispatch(
     entity_id: u32,

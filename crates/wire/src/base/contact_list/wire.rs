@@ -13,15 +13,15 @@
 //! ARRAY   = 4-byte LE element count + N WSTRINGs.
 //!
 //! All functions return a `Vec<u8>` `args` payload suitable for passing to
-//! `crate::mercury::build_player_entity_method_packet`.
+//! `cimmeria_services::mercury::build_player_entity_method_packet`.
 
-use crate::mercury::write_wstring;
+use crate::wstring::write_wstring;
 
 /// Serialize `onContactListUpdate` (CM 85) args.
 ///
 /// Sent to tell the client about a list header (id, name, flags). Used both
 /// for the login-time push and as the echo after create/rename/flags_update.
-pub(crate) fn build_on_contact_list_update(list_id: i32, name: &str, flags: u32) -> Vec<u8> {
+pub fn build_on_contact_list_update(list_id: i32, name: &str, flags: u32) -> Vec<u8> {
     let mut buf = Vec::with_capacity(4 + 4 + name.len() * 2 + 4);
     buf.extend_from_slice(&list_id.to_le_bytes());
     write_wstring(&mut buf, name);
@@ -30,7 +30,7 @@ pub(crate) fn build_on_contact_list_update(list_id: i32, name: &str, flags: u32)
 }
 
 /// Serialize `onContactListDelete` (CM 86) args.
-pub(crate) fn build_on_contact_list_delete(list_id: i32) -> Vec<u8> {
+pub fn build_on_contact_list_delete(list_id: i32) -> Vec<u8> {
     list_id.to_le_bytes().to_vec()
 }
 
@@ -38,7 +38,7 @@ pub(crate) fn build_on_contact_list_delete(list_id: i32) -> Vec<u8> {
 ///
 /// Also used for the login-time member push. `names` may be empty — in that
 /// case the wire encodes `[list_id][0u32]` (an empty array), which is valid.
-pub(crate) fn build_on_contact_list_add_members(list_id: i32, names: &[String]) -> Vec<u8> {
+pub fn build_on_contact_list_add_members(list_id: i32, names: &[String]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(4 + 4 + names.len() * 16);
     buf.extend_from_slice(&list_id.to_le_bytes());
     buf.extend_from_slice(&(names.len() as u32).to_le_bytes());
@@ -51,7 +51,7 @@ pub(crate) fn build_on_contact_list_add_members(list_id: i32, names: &[String]) 
 /// Serialize `onContactListRemoveMembers` (CM 88) args.
 ///
 /// Wire layout is identical to CM 87.
-pub(crate) fn build_on_contact_list_remove_members(list_id: i32, names: &[String]) -> Vec<u8> {
+pub fn build_on_contact_list_remove_members(list_id: i32, names: &[String]) -> Vec<u8> {
     build_on_contact_list_add_members(list_id, names)
 }
 
@@ -66,11 +66,7 @@ pub(crate) fn build_on_contact_list_remove_members(list_id: i32, names: &[String
 ///   8 = GateTravel    (data_value = destination world_id from resources.worlds)
 /// NOTE: these are power-of-two bit flags, NOT a 0-based index — the client tests
 /// the flag value, so sending 0 for LoggedInStatus never matches.
-pub(crate) fn build_on_contact_list_event(
-    player_name: &str,
-    event_id: u32,
-    data_value: i32,
-) -> Vec<u8> {
+pub fn build_on_contact_list_event(player_name: &str, event_id: u32, data_value: i32) -> Vec<u8> {
     let mut buf = Vec::with_capacity(4 + player_name.len() * 2 + 4 + 4);
     write_wstring(&mut buf, player_name);
     buf.extend_from_slice(&event_id.to_le_bytes());
@@ -85,26 +81,26 @@ pub(crate) fn build_on_contact_list_event(
 /// Referenced by both the cell-side wire parser (`cell_methods/contact_list.rs`)
 /// and the base-side handler (`handlers/crud.rs`). Defined here — the
 /// contact-list wire module — so both layers share a single definition.
-pub(crate) const MAX_MEMBERS_PER_REQUEST: usize = 100;
+pub const MAX_MEMBERS_PER_REQUEST: usize = 100;
 
 // ── EContactListEvent bitfield values (UINT32) ───────────────────────────────
 // Power-of-two flags from entities/defs/enumerations.xml — NOT a 0-based index.
 
 /// `EContactListEvent::ECONTACT_LIST_EVENT_LoggedInStatus` (bit 0).
-pub(crate) const EVENT_LOGGED_IN_STATUS: u32 = 1;
+pub const EVENT_LOGGED_IN_STATUS: u32 = 1;
 /// `ECONTACT_LIST_EVENT_GainLevel` (bit 1). data_value = the player's new level.
-pub(crate) const EVENT_GAIN_LEVEL: u32 = 2;
+pub const EVENT_GAIN_LEVEL: u32 = 2;
 /// `ECONTACT_LIST_EVENT_Death` (bit 2). data_value = 0 (client ignores it).
-pub(crate) const EVENT_DEATH: u32 = 4;
+pub const EVENT_DEATH: u32 = 4;
 /// `ECONTACT_LIST_EVENT_GateTravel` (bit 3). data_value = destination world_id
 /// from `resources.worlds` — client passes it to `getWorldInfo(value).Name`.
 /// Confirm the exact id-space via send-and-observe in playtest if needed.
-pub(crate) const EVENT_GATE_TRAVEL: u32 = 8;
+pub const EVENT_GATE_TRAVEL: u32 = 8;
 
 /// `dataValue` for LoggedInStatus: player came online.
-pub(crate) const DATA_ONLINE: i32 = 1;
+pub const DATA_ONLINE: i32 = 1;
 /// `dataValue` for LoggedInStatus: player went offline.
-pub(crate) const DATA_OFFLINE: i32 = 0;
+pub const DATA_OFFLINE: i32 = 0;
 
 #[cfg(test)]
 mod tests {

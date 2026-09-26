@@ -397,16 +397,9 @@ pub fn append_entity_method(
 
 // ── Serialization helpers ────────────────────────────────────────────────────
 
-/// Write a BigWorld `WSTRING` to a buffer.
-///
-/// Wire format: `[char_count: u32 LE][UTF-16LE data: char_count × 2 bytes]`.
-pub(crate) fn write_wstring(buf: &mut Vec<u8>, s: &str) {
-    let chars: Vec<u16> = s.encode_utf16().collect();
-    buf.extend_from_slice(&(chars.len() as u32).to_le_bytes());
-    for &ch in &chars {
-        buf.extend_from_slice(&ch.to_le_bytes());
-    }
-}
+/// Write a BigWorld `WSTRING` to a buffer. One encoder for every
+/// serializer, shared with the wire-contract payloads in `cimmeria-wire`.
+pub(crate) use cimmeria_wire::wstring::write_wstring;
 
 /// Read a BigWorld `WSTRING` from a buffer at a given offset.
 ///

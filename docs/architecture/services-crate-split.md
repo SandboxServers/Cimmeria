@@ -273,6 +273,21 @@ W0:
 - **`deferred_aoi.rs:332` (§2I) is test code**, inside a `#[cfg(test)]` module, so it is not a production edge.
 - **A stale file-layer directive.** The stale-target guard found `cimmeria_services::base::world_entry_player` in `FILE_LAYERS` (world_entry.log). The module no longer exists, so the row matched nothing; it was removed.
 
+W1c (`cimmeria-wire`):
+
+- **Where the cell-method indices landed.** They are at `cimmeria_wire::cell::cell_methods::<interface>`, the path the handlers already use, next to `cell::client_methods`, rather than at a top-level `wire::cell_methods`. `inventory/constants.rs` and `player/constants.rs` moved whole; the other ten interfaces had their constants lifted out of the handler files. `cell/dispatch/constants.rs` stays in the monolith until W3a. Its `super::super::cell_methods` paths reach wire through the re-exports now, and will resolve to wire's own module unchanged after the move.
+- **Four small modules the plan does not name:**
+  - `wstring`: `write_wstring`, which `contact_list/wire.rs` needs while `mercury/` stays behind. The copies in `mercury/mod.rs` and in `mail.rs` are now `pub use`s of it, so one encoder remains.
+  - `hex`: `to_hex`, named for what it holds rather than recreating a `base::helpers` module.
+  - `containers`: the `bag_max_slots` copy. `base::resources` keeps its own until W1b lands, and its two table-pin tests were copied with it.
+  - `state_field`: the BSF bits, at the crate root.
+
+  W3a must repoint `firehose/emit.rs` from `crate::base::helpers::to_hex` to `crate::hex::to_hex`, and fold the `write_wstring` re-export back into `mercury/mod.rs`.
+- **The `EChannel` ids moved with the chat serializer.** `CHAN_*` are the values of the payload's `Channel` byte, and the two serializer tests use them, so the tests could move with the serializer.
+- **The layering guard followed a glob into another crate.** `pub use constants::*` over a module that had moved out made the guard attribute every name behind it to the re-exporting module, which produced four false edges. `check.py` now treats such a name as belonging to the other crate.
+- **`cimmeria-wire` is in the live-DB crate list** although it has no live-DB tests. Its tests use `LogCapture`, so it dev-depends on `cimmeria-test-support`, and the list guard requires the entry. Its lib tests also ran in the live-DB tier while they were in services.
+- **`cimmeria_wire=debug` was added to `OTEL_FILTER`.** No moved code logs under a module-path target today; `player_journal` names `player.journal`. The row keeps moved code at the DEBUG export level `cimmeria_services=debug` gave it.
+
 ## 5. Risks and rules
 
 1. **Orphan rule and inherent impls.** All `impl SpaceManager` blocks move with `space_manager/`. No new inherent impl may appear in a higher crate; use free functions or extension traits.

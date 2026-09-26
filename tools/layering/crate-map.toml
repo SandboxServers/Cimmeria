@@ -77,18 +77,15 @@ cimmeria-services = [
 "base::sequence_overrides" = "cimmeria-resources"
 "base::chardef" = "cimmeria-resources"
 
-# The Base<->Cell message contract.
+# The Base<->Cell message contract. Already in crates/wire (W1c), so no
+# longer modules of this crate: cell::{client_methods, player_journal, kismet},
+# base::contact_list::wire, cell::cell_methods::{inventory,player}::constants,
+# ability_tree::points_property.
 "mercury" = "cimmeria-wire"
 "firehose" = "cimmeria-wire"
 "cell::messages" = "cimmeria-wire"
-"cell::client_methods" = "cimmeria-wire"
-"cell::player_journal" = "cimmeria-wire"
-"cell::kismet" = "cimmeria-wire"
 "cell::dispatch::constants" = "cimmeria-wire"
 "cell::dispatch::names" = "cimmeria-wire"
-"base::contact_list::wire" = "cimmeria-wire"
-"cell::cell_methods::inventory::constants" = "cimmeria-wire"
-"ability_tree::points_property" = "cimmeria-wire"
 
 "wire_log" = "cimmeria-wire-log"
 "minigame" = "cimmeria-minigame"

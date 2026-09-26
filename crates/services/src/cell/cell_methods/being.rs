@@ -4,10 +4,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
-/// Set current target entity.
-pub const SET_TARGET_ID: u16 = 0;
-/// Set movement type (walk/run/sprint).
-pub const SET_MOVEMENT_TYPE: u16 = 1;
+pub use cimmeria_wire::cell::cell_methods::being::{SET_MOVEMENT_TYPE, SET_TARGET_ID};
 
 pub async fn dispatch(
     entity_id: u32,

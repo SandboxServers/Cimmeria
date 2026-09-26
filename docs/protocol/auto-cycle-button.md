@@ -68,7 +68,7 @@ There is also a slash-command path: **`Event_SlashCmd_toggleAutoCycleAbility`** 
 The `Event_NetOut_SetAutoCycle` network dispatch resolves to **cell method index 83**, confirmed by:
 
 - `entities/defs/SGWPlayer.def` lines 701–704: `<setAutoCycle><Exposed/><Arg>INT8 enabled</Arg></setAutoCycle>`
-- `crates/services/src/cell/cell_methods/player/constants.rs:21`: `pub const SET_AUTO_CYCLE: u16 = 83;`
+- `crates/wire/src/cell/cell_methods/player/constants.rs:21`: `pub const SET_AUTO_CYCLE: u16 = 83;`
 - RTTI string `"setAutoCycle"` at `ghidra://SGW.exe@0x019c2e6c`
 - `docs/protocol/client-method-dispatch-table.md:289`: entry 83 confirmed
 

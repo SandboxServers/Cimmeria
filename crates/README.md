@@ -6,10 +6,10 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The 28 workspace members and their **actual** inter-crate dependencies, generated
+The 29 workspace members and their **actual** inter-crate dependencies, generated
 from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*; a dotted
-arrow is a dev-dependency). The 28 comes from the `members` list in the root
-[Cargo.toml](../Cargo.toml): the 24 crates under `crates/`, plus `src-tauri` and the three tool crates
+arrow is a dev-dependency). The 29 comes from the `members` list in the root
+[Cargo.toml](../Cargo.toml): the 25 crates under `crates/`, plus `src-tauri` and the three tool crates
 (`tools/ContentEditor`, `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/`
 target is a deliberate workspace `exclude` — it needs nightly Rust.
 
@@ -39,6 +39,7 @@ flowchart TD
     services --> observability
     services --> commands
     services --> common
+    services --> wire
     game --> commands
     game --> common
     contentEngine --> entity
@@ -59,6 +60,8 @@ flowchart TD
 
     %% test-only
     services -. dev .-> testSupport["test-support (dev-only)"]
+    wire -. dev .-> testSupport
+    wire -. dev .-> entity
     testSupport --> mercury
     sceneEditor --> upk
     upkObjects --> upk
@@ -74,12 +77,13 @@ flowchart TD
 ```
 
 The DAG is rooted at **common**. **services** is the hub — it pulls in `game`,
-`content-engine`, `entity`, `mercury`, `discord`, and `observability`, and is
+`content-engine`, `entity`, `mercury`, `discord`, `observability`, and `wire`
+(the first crate split out of it), and is
 what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. The
 `upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
 are an independent Unreal-package / navmesh toolchain; `supervisor`,
 `client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
-intra-workspace deps. `test-support` is a dev-dependency only. All 24 crates in `crates/` are catalogued below; the
+intra-workspace deps. `test-support` is a dev-dependency only. All 25 crates in `crates/` are catalogued below; the
 diagram additionally shows the `src-tauri` app and the `tools/` editors, which
 are workspace members that live outside `crates/`.
 
@@ -93,6 +97,7 @@ are workspace members that live outside `crates/`.
 | `game` | `cimmeria-game` | Game mechanics: combat, abilities, stats, effects |
 | `content-engine` | `cimmeria-content-engine` | Data-driven content runtime: missions, dialogs, sequences |
 | `services` | `cimmeria-services` | Auth, Base, and Cell service implementations — the bulk of server logic. Being split into an acyclic set of crates; see [docs/architecture/services-crate-split.md](../docs/architecture/services-crate-split.md) and the layering guard in [tools/layering/](../tools/layering/README.md) |
+| `wire` | `cimmeria-wire` | The Base↔Cell wire contract, split out of `services` (wave W1c): the server→client (`cell::client_methods`) and client→server (`cell::cell_methods`) method-index tables, the `stateField` bits (`state_field`), and the payload serializers both services send (kismet `onSequence`, chat, mail, contact list, training points, the `WSTRING` encoder, `to_hex`, the player journal). Modules keep their `cimmeria-services` paths under a `cell::`/`base::` skeleton, and `services` re-exports each at its old path. Depends on no service crate; every split crate may depend on it. |
 | `test-support` | `cimmeria-test-support` | **Dev-dependency only.** Generic test helpers: the live-DB gate (`require_db_or_skip!`, which skips without `DATABASE_URL` and fails when it is set but unreachable), `LogCapture` for negative-log guards, the `TestTransport` re-export, and `source_scan` for workspace-wide source guards. Never depends on a service crate (that would link two copies of it into a test binary); domain fixtures stay with their types. Every crate that dev-depends on it must be listed in `tools/test-live-db.{sh,ps1}`. |
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |

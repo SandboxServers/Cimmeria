@@ -20,7 +20,7 @@
 
 mod catalog;
 mod gates;
-mod points_property;
+use cimmeria_wire::ability_tree::points_property;
 mod predicate;
 
 pub use catalog::{AbilityTreeCatalog, TreeNode};

@@ -118,6 +118,7 @@ flowchart TD
     services --> observability
     services --> commands
     services --> common
+    services --> wire
     game --> commands
     game --> common
     contentEngine --> entity
@@ -138,6 +139,8 @@ flowchart TD
 
     %% test-only
     services -. dev .-> testSupport["test-support (dev-only)"]
+    wire -. dev .-> testSupport
+    wire -. dev .-> entity
     testSupport --> mercury
     sceneEditor --> upk
     upkObjects --> upk
@@ -157,7 +160,9 @@ shared types / config / error layer everything builds on). **mercury** (reliable
 UDP + AES-256), **commands** (command + permission model), **entity** (live game
 objects) and **defs** (entity-definition XML parser, not yet linked by any other
 crate) each sit directly on `common`; **game** and **content-engine** add
-gameplay rules and the data-driven content pipeline; **services** ties Auth / Base / Cell together and is
+gameplay rules and the data-driven content pipeline; **wire** holds the Base↔Cell
+wire contract (method indices, `stateField` bits, payload serializers) split out
+of `services`; **services** ties Auth / Base / Cell together and is
 what the **server** binary, the **admin-api** REST layer, the **app** desktop GUI
 (repo-root `src-tauri/`, package `cimmeria-app`) and the headless **wireclient**
 test client all build on. **discord** (notifications) and **observability** (OTLP

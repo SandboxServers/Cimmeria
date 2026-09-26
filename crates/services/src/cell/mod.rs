@@ -8,7 +8,8 @@ pub mod abilities;
 pub mod arrival;
 pub mod cell_methods;
 pub mod chat;
-pub mod client_methods;
+// The server->client method index tables are wire contract (cimmeria-wire).
+pub use cimmeria_wire::cell::client_methods;
 pub mod combat;
 pub mod console;
 pub mod content;
@@ -21,11 +22,11 @@ pub mod gate_travel;
 #[cfg(test)]
 mod harset_placement_tests;
 pub mod interactions;
-pub(crate) mod kismet;
+pub(crate) use cimmeria_wire::cell::kismet;
 pub mod mail;
 pub mod messages;
 pub mod missions;
-pub(crate) mod player_journal;
+pub(crate) use cimmeria_wire::cell::player_journal;
 pub(crate) mod playtest_friction;
 pub(crate) mod playtest_friction_watch;
 /// Crate-internal: the shared respawner search behind both

@@ -10,7 +10,7 @@
 /// `KISMET_VIEW_EventInvoker` — the camera follows the entity that
 /// triggered the sequence. `entities/defs/enumerations.xml:1581`
 /// (`deprecated/python/Atrea/enums.py:1159`).
-pub(crate) const KISMET_VIEW_EVENT_INVOKER: u8 = 3;
+pub const KISMET_VIEW_EVENT_INVOKER: u8 = 3;
 
 /// Build an `onSequence` payload.
 ///
@@ -18,7 +18,7 @@ pub(crate) const KISMET_VIEW_EVENT_INVOKER: u8 = 3;
 /// the 2009 server does at every call site we've recovered
 /// (`deprecated/python/cell/SGWPlayer.py:2112`, `:2124` pass
 /// `self.entityId` twice).
-pub(crate) fn build_on_sequence_args(seq_id: i32, entity_id: u32, view_type: u8) -> Vec<u8> {
+pub fn build_on_sequence_args(seq_id: i32, entity_id: u32, view_type: u8) -> Vec<u8> {
     let mut args = Vec::with_capacity(26);
     args.extend_from_slice(&seq_id.to_le_bytes()); // KismetEventSetSeqID
     args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID

@@ -17,9 +17,10 @@ use crate::mercury::method_idx::{
     ON_RING_TRANSPORTER_LIST, ON_SEQUENCE, ON_STATE_FIELD_UPDATE, ON_VISIBLE,
 };
 
-/// `BSF_MovementLock` — bit 6 of `state_field`. See
-/// `crates/entity/src/cell_entity/` for the full bit layout.
-pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
+/// `BSF_MovementLock` — bit 6 of `state_field`. The one definition is
+/// `cimmeria_wire::state_field`; see `docs/architecture/state-field-bits.md`
+/// for the full bit layout.
+pub use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
 
 /// Re-export for tests (see `super::tests`) and external consumers that
 /// dispatch on the destination-list method id.

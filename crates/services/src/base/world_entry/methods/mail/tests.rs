@@ -3,7 +3,7 @@
 //! `handle_mail_request` only outputs via UDP, so the tests assert on
 //! the SQL side-effects (rows present, flags column, read_time) rather
 //! than packet bytes. The wire-packet serializers (`serialize_on_mail_*`)
-//! have their own spot-check tests in `cell::mail::tests` — those don't
+//! have their own spot-check tests in `cimmeria_wire::cell::mail::tests` — those don't
 //! cover full byte-exact wire layouts, so byte-level wire regressions
 //! aren't pinned anywhere today.
 

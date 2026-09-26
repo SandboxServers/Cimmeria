@@ -18,12 +18,9 @@ use crate::cell::space_manager::SpaceManager;
 use crate::mercury::read_wstring;
 use tokio::sync::mpsc;
 
-pub const CREATE: u16 = 55;
-pub const DELETE: u16 = 56;
-pub const RENAME: u16 = 57;
-pub const FLAGS_UPDATE: u16 = 58;
-pub const ADD_MEMBERS: u16 = 59;
-pub const REMOVE_MEMBERS: u16 = 60;
+pub use cimmeria_wire::cell::cell_methods::contact_list::{
+    ADD_MEMBERS, CREATE, DELETE, FLAGS_UPDATE, REMOVE_MEMBERS, RENAME,
+};
 
 // ── Wire parse helpers ────────────────────────────────────────────────────────
 

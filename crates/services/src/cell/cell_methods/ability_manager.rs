@@ -4,12 +4,9 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
-/// Toggle combat debug overlay.
-pub const TOGGLE_COMBAT_DEBUG: u16 = 2;
-/// Toggle verbose combat debug logging.
-pub const TOGGLE_COMBAT_VERBOSE_DEBUG: u16 = 3;
-/// Respond to a confirmation prompt.
-pub const CONFIRMATION_RESPONSE: u16 = 4;
+pub use cimmeria_wire::cell::cell_methods::ability_manager::{
+    CONFIRMATION_RESPONSE, TOGGLE_COMBAT_DEBUG, TOGGLE_COMBAT_VERBOSE_DEBUG,
+};
 
 pub async fn dispatch(
     entity_id: u32,

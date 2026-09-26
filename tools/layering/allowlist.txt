@@ -11,33 +11,8 @@
 # fixes the edge. "(not in §2)" marks an edge the plan's §2 did not list.
 
 # --- §2A: the Base<->Cell contract moves into cimmeria-wire ---------------
-firehose::emit -> base::helpers  # to_hex
-cell::cell_methods::inventory::bandolier::active_slot -> base::resources  # bag_max_slots
+# W1c resolved the rest of this section; SpawnRecord moves in W2b.
 cell::messages::base_to_cell -> cell::spawner::npcs  # SpawnRecord, class_id_for_class
-# dispatch/constants.rs re-exports the cell-method index constants.
-cell::dispatch::constants -> cell::cell_methods::ability_manager
-cell::dispatch::constants -> cell::cell_methods::being
-cell::dispatch::constants -> cell::cell_methods::black_market
-cell::dispatch::constants -> cell::cell_methods::combatant
-cell::dispatch::constants -> cell::cell_methods::contact_list
-cell::dispatch::constants -> cell::cell_methods::gate_travel
-cell::dispatch::constants -> cell::cell_methods::mail
-cell::dispatch::constants -> cell::cell_methods::minigame
-cell::dispatch::constants -> cell::cell_methods::missionary
-cell::dispatch::constants -> cell::cell_methods::organization
-cell::dispatch::constants -> cell::cell_methods::player::constants
-# gm_gate (world) reads the same index constants.
-cell::dispatch::gm_gate -> cell::cell_methods::ability_manager
-cell::dispatch::gm_gate -> cell::cell_methods::combatant
-cell::dispatch::gm_gate -> cell::cell_methods::minigame
-cell::dispatch::gm_gate -> cell::cell_methods::player::constants
-# BSF bits -> one wire::state_field module.
-base::world_entry::cell_dispatch::state_field -> cell::combat::state
-cell::effects::scripts -> cell::combat::state
-cell::missions::progression -> cell::cell_methods::combatant
-cell::console::bookmark -> cell::cell_methods::combatant
-cell::content::executor::bark -> cell::chat  # bark serializer
-base::world_entry::methods::mail -> cell::mail  # MailHeader + serializers
 
 # --- §2B: catalog and cover ------------------------------------------------
 cell::spawner::npcs -> cell::space_manager  # spawn_*_from_records move to space_manager/spawn.rs

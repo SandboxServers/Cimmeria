@@ -14,6 +14,9 @@ cimmeria-content-engine = { workspace = true }
 cimmeria-commands = { workspace = true }
 cimmeria-observability = { workspace = true }
 cimmeria-occluder = { workspace = true }
+# The Base<->Cell wire contract (method indices, BSF bits, payload
+# serializers), split out of this crate; old paths re-export it.
+cimmeria-wire = { workspace = true }
 # Discord notification emits at semantic seams (login/world-entry/disconnect/
 # errors/…). The crate's global-singleton `emit_*` API means no handle
 # threading — calls are no-ops until the server bin runs `cimmeria_discord::init`.
