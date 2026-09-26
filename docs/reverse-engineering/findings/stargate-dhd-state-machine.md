@@ -142,7 +142,7 @@ Incremental address updates (any time):
 | [Canonical client dispatch table](../../protocol/client-method-dispatch-table.md), SGWPlayer row 100 | `onDHDReply` is client method **100**, with `WSTRING aMessage` | A method index does not establish when the server emits it |
 | MemberCallback RTTI [SGW 0x00cf5440] | Recorded `Event_NetIn_onDHDReply` subscriber is VCommunicator | Does not verify field decoding, a displayed text widget, or subscriber selection by entity ID |
 | [Rust client-method constants](../../../crates/wire/src/cell/client_methods/player.rs), `ON_DHD_REPLY` | Constant exists with value 100 | No production send call uses it in the audited Rust tree |
-| [Wire-log decoder](../../../crates/services/src/wire_log/decoders/generated.rs), `decode_100` | Reads one `wstring()` as `aMessage`; [name table](../../../crates/services/src/wire_log/client_names.rs) names method 100 | Diagnostic decoding is not a production emitter or independent client confirmation |
+| [Wire-log decoder](../../../crates/wire-log/src/wire_log/decoders/generated.rs), `decode_100` | Reads one `wstring()` as `aMessage`; [name table](../../../crates/wire-log/src/wire_log/client_names.rs) names method 100 | Diagnostic decoding is not a production emitter or independent client confirmation |
 
 A search of `crates/` for `onDHDReply` and `ON_DHD_REPLY` finds the constant, a method-index comment in `mercury/mod.rs`, and the wire-log name/decoder. No production Rust emitter was found. The absence of a named call site is a static audit result, not a packet-capture observation. The declaration contains no NPC or gate entity-ID argument, and neither the declaration nor the recorded subscriber establishes that changing the RPC's entity ID would route it to VCommunicator.
 

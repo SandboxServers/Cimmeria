@@ -5,7 +5,7 @@
 > **Confidence**: HIGH (wire formats, client Lua bridge); MEDIUM (presence semantics); LOW (flags bitmap internals)
 > **Sources**: `SGW.exe` Ghidra; `ContactListManager.def`; `alias.xml`;
 >   `deprecated/python/base/SGWPlayer.py`; `crates/services/src/cell/{cell_methods,client_methods}/contact_list.rs`;
->   `crates/services/src/wire_log/decoders/generated.rs`; `db/resources/Social/Types/E*.sql`;
+>   `crates/wire-log/src/wire_log/decoders/generated.rs`; `db/resources/Social/Types/E*.sql`;
 >   `db/resources/Texts/Seed/texts.sql`; `docs/reverse-engineering/findings/contact-list-wire-formats.md`
 > **Tracking issue**: replaces #71; resolves #275
 
