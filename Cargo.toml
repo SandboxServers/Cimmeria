@@ -47,6 +47,7 @@ members = [
     "crates/cell-world",
     "crates/base-methods",
     "crates/base-world-entry",
+    "crates/base",
 ]
 default-members = [
     "crates/common",
@@ -76,6 +77,7 @@ default-members = [
     "crates/cell-world",
     "crates/base-methods",
     "crates/base-world-entry",
+    "crates/base",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -234,6 +236,7 @@ cimmeria-base-session = { path = "crates/base-session" }
 cimmeria-cell-world = { path = "crates/cell-world" }
 cimmeria-base-methods = { path = "crates/base-methods" }
 cimmeria-base-world-entry = { path = "crates/base-world-entry" }
+cimmeria-base = { path = "crates/base" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

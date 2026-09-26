@@ -3,22 +3,14 @@
 //!
 //! See `docs/protocol/login-handshake.md` for the full wire-level spec.
 //!
-//! The per-connection session state (`ConnectedClientState`, `OnlinePlayer`,
-//! ...) and the session-layer modules are in `cimmeria-base-session` (wave B1
-//! of docs/architecture/services-crate-split.md), and world entry and the
-//! character list in `cimmeria-base-world-entry` (wave B3), re-exported below
-//! at their old paths.
-
-// ── Submodules ───────────────────────────────────────────────────────────────
-
-pub(crate) mod character_create;
-pub(crate) mod connect_loop;
-pub(crate) mod dispatch;
-pub(crate) mod login;
-mod service;
-
-#[cfg(test)]
-mod smoke_tests;
+//! Every module of the base track is in its own crate
+//! (docs/architecture/services-crate-split.md): the per-connection session
+//! state and the session-layer modules in `cimmeria-base-session` (wave B1),
+//! the feature handlers in `cimmeria-base-methods` (B2), world entry and the
+//! character list in `cimmeria-base-world-entry` (B3), and `BaseService`, the
+//! connect loop, login, the base-method dispatch and the character creator in
+//! `cimmeria-base` (B4). This module re-exports what the rest of this crate
+//! and the downstream crates name at their old paths.
 
 // Split out to `cimmeria-resources` (docs/architecture/services-crate-split.md,
 // wave W1b) and re-exported at their old paths.
@@ -27,74 +19,29 @@ pub use cimmeria_resources::base::{
 };
 
 // Split out to `cimmeria-base-session` (wave B1) and re-exported at their old
-// paths, with their old visibility. `gm_feedback` is not: its only users here
-// were the feature handlers, which moved to `cimmeria-base-methods` (B2). Nor
-// are `cinematic_aoi_hold`, `console_authoring`, `crafting`, `deferred_aoi`,
-// `deferred_aoi_lifecycle`, `session_identity` and `world_entry_chat`: world
-// entry was their only user here, and it moved to `cimmeria-base-world-entry`
-// (B3). `gm_spawn` and `PendingClientReadyInfo` are left only for tests.
-pub(crate) use cimmeria_base_session::base::{
-    archetype_name, contact_list, cooked_data, helpers, outbox, tick_sync, ConnectedClientState,
-};
+// paths, with their old visibility. `contact_list` is here for the cell's death
+// broadcast and contact-list methods, which name its `wire` module through it.
+// The other session modules are not: their users here moved to
+// `cimmeria-base-methods` (B2), `cimmeria-base-world-entry` (B3) and
+// `cimmeria-base` (B4). `gm_spawn`, `ConnectedClientState` and
+// `PendingClientReadyInfo` are left only for tests.
+pub(crate) use cimmeria_base_session::base::contact_list;
 #[cfg(test)]
-pub(crate) use cimmeria_base_session::base::{gm_spawn, PendingClientReadyInfo};
+pub(crate) use cimmeria_base_session::base::{
+    gm_spawn, ConnectedClientState, PendingClientReadyInfo,
+};
 pub use cimmeria_base_session::base::{BaseError, OnlinePlayer};
 
-// Split out to `cimmeria-base-world-entry` (wave B3) and re-exported at their
-// old paths, with their old visibility, for the connect loop, the character
-// creator and `BaseService`. `world_entry_appearance` is not: the connect loop
-// reaches its two handlers through `world_entry`, and nothing else here used it.
-pub(crate) use cimmeria_base_world_entry::base::{character, world_entry};
-
-pub use service::BaseService;
-
+// Split out to `cimmeria-base-world-entry` (wave B3) and re-exported at its old
+// path for the tests here that drive the cell and then the base's world entry
+// (`gate_round_trip_tests`, `mission_round_trip_tests`, the mission 701
+// persistence replay). `character` is not: the connect loop and the character
+// creator, its users here, moved to `cimmeria-base` (B4).
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mercury::SKIN_TINTS;
-    use cimmeria_common::ServerConfig;
+pub(crate) use cimmeria_base_world_entry::base::world_entry;
 
-    #[test]
-    fn new_service_is_not_running() {
-        let config = ServerConfig::default();
-        let svc = BaseService::new(&config);
-        assert!(!svc.is_running);
-        assert_eq!(svc.listener_addr.port(), 32832);
-    }
-
-    #[tokio::test]
-    async fn start_sets_running() {
-        let config = ServerConfig {
-            base_port: 0,
-            ..ServerConfig::default()
-        };
-        let mut svc = BaseService::new(&config);
-        svc.start().await.unwrap();
-        assert!(svc.is_running);
-    }
-
-    #[tokio::test]
-    async fn create_entity_fails_when_not_running() {
-        let config = ServerConfig::default();
-        let svc = BaseService::new(&config);
-        let result = svc.create_base_entity().await;
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn skin_tints_array_length() {
-        assert_eq!(SKIN_TINTS.len(), 16);
-    }
-
-    #[test]
-    fn skin_tints_all_nonzero() {
-        for (i, &tint) in SKIN_TINTS.iter().enumerate() {
-            assert_ne!(tint, 0, "SKIN_TINTS[{i}] should not be zero");
-        }
-    }
-
-    #[test]
-    fn skin_tints_index_0_matches_python() {
-        assert_eq!(SKIN_TINTS[0], 0x2F1308FF);
-    }
-}
+// Split out to `cimmeria-base` (wave B4) with the connect loop, login, the
+// base-method dispatch and the character creator, and re-exported at its old
+// path for the orchestrator and the downstream crates (§2H: the facade owns
+// this re-export).
+pub use cimmeria_base::base::BaseService;

@@ -187,10 +187,12 @@ fn host_name() -> String {
 ///   — explicit `target = "mercury.*"` strings in
 ///   `crates/mercury/src/instrumentation.rs`, `channel/mod.rs`,
 ///   `transport.rs`. Per-packet wire-level instrumentation.
-/// - `cimmeria_services::base::connect_loop::encrypted` —
+/// - `cimmeria_base::base::connect_loop::encrypted` —
 ///   bundle/decrypt DEBUG logs that fire per inbound packet.
-/// - `cimmeria_services::base::connect_loop::cell_arms` — cell-method
-///   dispatch debug logs.
+/// - `cimmeria_base::base::connect_loop::cell_arms` — cell-method
+///   dispatch debug logs. Both were `cimmeria_services::base::connect_loop::…`
+///   until wave B4 of the crate split moved the connect loop to
+///   `cimmeria-base`.
 /// - `cimmeria_base_session::base::tick_sync` — tick-sync heartbeats and
 ///   retransmit RTO notices. It was `cimmeria_services::base::tick_sync`
 ///   until wave B1 of the crate split moved it to `cimmeria-base-session`.
@@ -202,8 +204,8 @@ fn host_name() -> String {
 /// `cimmeria-server` as they did before the move.
 pub fn is_network_noise_target(target: &str) -> bool {
     target.starts_with("mercury.")
-        || target == "cimmeria_services::base::connect_loop::encrypted"
-        || target == "cimmeria_services::base::connect_loop::cell_arms"
+        || target == "cimmeria_base::base::connect_loop::encrypted"
+        || target == "cimmeria_base::base::connect_loop::cell_arms"
         || target.starts_with("cimmeria_base_session::base::tick_sync")
         || target.starts_with("cimmeria_mercury::")
 }
@@ -550,10 +552,10 @@ mod tests {
         assert!(is_network_noise_target("mercury.retransmit"));
         assert!(is_network_noise_target("mercury.backpressure"));
         assert!(is_network_noise_target(
-            "cimmeria_services::base::connect_loop::encrypted"
+            "cimmeria_base::base::connect_loop::encrypted"
         ));
         assert!(is_network_noise_target(
-            "cimmeria_services::base::connect_loop::cell_arms"
+            "cimmeria_base::base::connect_loop::cell_arms"
         ));
         assert!(is_network_noise_target(
             "cimmeria_base_session::base::tick_sync"
@@ -620,9 +622,16 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_base_world_entry::base::character"
         ));
+        // The rest of the connect loop, login, the base-method dispatch and the
+        // service were `cimmeria_services::base::…` in cimmeria-server until
+        // wave B4 moved them to cimmeria-base; only the two per-packet arms
+        // above are noise.
+        assert!(!is_network_noise_target("cimmeria_base::base::dispatch"));
         assert!(!is_network_noise_target(
-            "cimmeria_services::base::dispatch"
+            "cimmeria_base::base::connect_loop"
         ));
+        assert!(!is_network_noise_target("cimmeria_base::base::login"));
+        assert!(!is_network_noise_target("cimmeria_base::base::service"));
         // Only tick sync of the session crate is noise: its send helpers, outbox
         // and contact list stay in cimmeria-server, as they did before wave B1.
         assert!(!is_network_noise_target(

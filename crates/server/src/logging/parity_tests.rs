@@ -352,7 +352,7 @@ fn each_level_lands_in_its_index() {
             .collect()
     };
     let combat = "cimmeria_services::cell::combat::damage";
-    let noise = "cimmeria_services::base::connect_loop::encrypted";
+    let noise = "cimmeria_base::base::connect_loop::encrypted";
     assert_eq!(otlp(combat, Level::TRACE), [OTLP_TRACE]);
     assert_eq!(otlp(combat, Level::DEBUG), [OTLP_SERVER]);
     assert_eq!(otlp(combat, Level::INFO), [OTLP_SERVER]);
@@ -876,7 +876,7 @@ fn trace_directives_are_derived_from_the_tables() {
     let d = otel_trace_directives();
     let has = |needle: &str| d.split(',').any(|x| x == needle);
     assert!(d.starts_with("off,"), "{d}");
-    assert!(has("cimmeria_services::base::connect_loop=trace"), "{d}");
+    assert!(has("cimmeria_base::base::connect_loop=trace"), "{d}");
     assert!(has("cimmeria_mercury=trace"), "{d}");
     assert!(has("cimmeria_wire::mercury=trace"), "{d}");
     assert!(has("movement.navmesh=trace"), "{d}");
@@ -1129,10 +1129,10 @@ fn base_world_entry_events_keep_their_file_and_index() {
             );
         }
     }
-    // The character creator stays in `cimmeria-services` (wave B4) and keeps
-    // its own `character.log` row; the moved `character` row must not have
-    // been its only route there.
-    let create = "cimmeria_services::base::character_create";
+    // The character creator, `cimmeria-base` since wave B4, keeps its own
+    // `character.log` row; the moved `character` row must not have been its
+    // only route there.
+    let create = "cimmeria_base::base::character_create";
     assert!(
         sinks_for(&dispatch, &hits, create, Level::DEBUG).contains("file:character.log"),
         "{create} must stay in character.log"
@@ -1148,4 +1148,123 @@ fn base_world_entry_events_keep_their_file_and_index() {
         set(&[OTLP_SERVER]),
         "aoi.create_emit at DEBUG"
     );
+}
+
+/// `BaseService`, the connect loop, login, the SGWPlayer base-method dispatch
+/// and the character creator moved from
+/// `cimmeria_services::base::{service, connect_loop, login, dispatch,
+/// character_create}` to the `cimmeria-base` crate (services crate split, wave
+/// B4), which changed the `module_path!()` of every row in them (none has a
+/// hand-named target). They must still land where they did: the service, the
+/// connect loop and login in `base.log`, the dispatch in `dispatch.log`, the
+/// character creator in `character.log`, at every level, in `server.log` from
+/// INFO, and in one OTLP index per level. The connect loop's encrypted-bundle
+/// scanner and cell-method arms fire per datagram, so below WARN they keep the
+/// `cimmeria-network` index (`otel::is_network_noise_target`); everything else
+/// keeps `cimmeria-server`. `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_base`, so without the `cimmeria_base::base=debug` row the DEBUG
+/// rows would silently stop reaching SigNoz, and a file row still naming
+/// `cimmeria_services::base::…` would empty the file of them.
+///
+/// The new row names `cimmeria_base::base`, not the crate, so that it does not
+/// prefix-match the other base crates: each of their own rows must still be
+/// the only thing that exports their DEBUG rows, or the guards above for
+/// those crates could no longer fail.
+#[test]
+fn base_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file, noise) in [
+        ("cimmeria_base::base::service", "file:base.log", false),
+        ("cimmeria_base::base::connect_loop", "file:base.log", false),
+        (
+            "cimmeria_base::base::connect_loop::account_arms",
+            "file:base.log",
+            false,
+        ),
+        (
+            "cimmeria_base::base::connect_loop::encrypted",
+            "file:base.log",
+            true,
+        ),
+        (
+            "cimmeria_base::base::connect_loop::cell_arms",
+            "file:base.log",
+            true,
+        ),
+        ("cimmeria_base::base::login", "file:base.log", false),
+        ("cimmeria_base::base::dispatch", "file:dispatch.log", false),
+        (
+            "cimmeria_base::base::dispatch::chat",
+            "file:dispatch.log",
+            false,
+        ),
+        (
+            "cimmeria_base::base::dispatch::session",
+            "file:dispatch.log",
+            false,
+        ),
+        (
+            "cimmeria_base::base::character_create",
+            "file:character.log",
+            false,
+        ),
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        let below_warn = if noise { OTLP_NETWORK } else { OTLP_SERVER };
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, below_warn]),
+            "{target} at DEBUG"
+        );
+        assert_eq!(
+            sinks(Level::INFO),
+            set(&[file, SERVER_LOG, below_warn]),
+            "{target} at INFO"
+        );
+        for lvl in [Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+
+    for (row, sibling) in [
+        (
+            "cimmeria_base_session=debug,",
+            "cimmeria_base_session::base::outbox",
+        ),
+        (
+            "cimmeria_base_methods=debug,",
+            "cimmeria_base_methods::base::world_entry::methods::inventory",
+        ),
+        (
+            "cimmeria_base_world_entry=debug,",
+            "cimmeria_base_world_entry::base::world_entry::teleport",
+        ),
+    ] {
+        let without = OTEL_FILTER.replace(row, "");
+        assert_ne!(
+            without, OTEL_FILTER,
+            "OTEL_FILTER no longer carries `{row}`; update this test"
+        );
+        let hits: Hits = Arc::default();
+        let dispatch = Dispatch::new(
+            tracing_subscriber::registry()
+                .with(recorder(OTLP_SERVER.into(), &hits).with_filter(EnvFilter::new(without))),
+        );
+        assert!(
+            sinks_for(&dispatch, &hits, sibling, Level::DEBUG).is_empty(),
+            "{sibling}'s DEBUG export must depend on its own `{row}` row, not on \
+             cimmeria-base's"
+        );
+    }
 }

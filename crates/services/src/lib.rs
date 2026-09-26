@@ -17,8 +17,8 @@ mod orchestrator_shards;
 // Split out to `cimmeria-auth` (wave W1a of
 // docs/architecture/services-crate-split.md). Re-exported at the old paths so
 // `crate::auth::…` here and `cimmeria_services::{auth, audit}` downstream keep
-// resolving. `credential_redaction` was crate-private and stays so here.
-pub(crate) use cimmeria_auth::credential_redaction;
+// resolving. The crate-private `credential_redaction` re-export is gone: its
+// last users here, the connect loop and login, moved to `cimmeria-base` (B4).
 pub use cimmeria_auth::{audit, auth};
 
 // Split out to `cimmeria-cell-catalog` (wave W2b), with `cell::spawner` and
