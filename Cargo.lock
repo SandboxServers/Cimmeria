@@ -961,6 +961,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cell-content"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-cell-catalog",
+ "cimmeria-cell-combat",
+ "cimmeria-cell-world",
+ "cimmeria-common",
+ "cimmeria-content-engine",
+ "cimmeria-discord",
+ "cimmeria-entity",
+ "cimmeria-mercury",
+ "cimmeria-observability",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-cell-cover"
 version = "0.1.0"
 dependencies = [
@@ -1286,6 +1307,7 @@ dependencies = [
  "cimmeria-base-world-entry",
  "cimmeria-cell-catalog",
  "cimmeria-cell-combat",
+ "cimmeria-cell-content",
  "cimmeria-cell-world",
  "cimmeria-common",
  "cimmeria-content-engine",

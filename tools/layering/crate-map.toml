@@ -108,18 +108,16 @@ cimmeria-services = [
 # imports of the handler modules that stay here). None of them is a module of
 # this crate any more, so they have no rows.
 
+# cimmeria-cell-content is extracted (C3): `cell::{content, missions,
+# ring_transport}` are re-exports of it, and `cell::interactions` imports its
+# `dialog` privately. None of them is a module of this crate any more, so
+# they have no rows; `cell::content_tests` (the content tests that stay) is
+# test-only and invisible to the guard.
+
 # Cell track.
 # Since C2 `cell::service::npc_ai` here is the path shim that re-exports the
 # combat crate's NPC AI; only test modules sit beside it.
 "cell::service::npc_ai" = "cimmeria-cell-combat"
-
-"cell::content" = "cimmeria-cell-content"
-"cell::missions" = "cimmeria-cell-content"
-# Since C1 `cell::ring_transport` and `cell::ring_transport::runtime` here are
-# path shims that re-export the world crate's ring FSM beside the effect
-# dispatcher and the runtime entry points, which content takes (§2G).
-"cell::ring_transport" = "cimmeria-cell-content"
-"cell::interactions::dialog" = "cimmeria-cell-content"
 
 "cell::interactions" = "cimmeria-cell-interactions"
 "cell::gate_travel" = "cimmeria-cell-interactions"
