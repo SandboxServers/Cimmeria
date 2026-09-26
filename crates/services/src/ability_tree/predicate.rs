@@ -41,8 +41,9 @@ pub struct TrainContext<'a> {
     pub level: i32,
     pub known: &'a dyn KnownAbilities,
     /// Archetype-wide tree points spent (`sgw_player.tree_points_spent`).
-    /// No gate reads it yet.
     pub tree_points_spent: i32,
+    /// Unspent training points (`sgw_player.training_points`).
+    pub training_points: i32,
 }
 
 /// A purchase that passed every gate.
@@ -80,6 +81,16 @@ pub enum TrainReject {
     MissingPrerequisite {
         missing: i32,
     },
+    /// The archetype-wide spend is below the node's `required_branch_points`.
+    SpendGate {
+        required: i32,
+        spent: i32,
+    },
+    /// Training points are below the node's `skill_point_cost`.
+    NotEnoughPoints {
+        cost: i32,
+        available: i32,
+    },
 }
 
 impl TrainReject {
@@ -94,6 +105,8 @@ impl TrainReject {
             Self::NotInArchetypeTree => "not_in_archetype_tree",
             Self::LevelTooLow { .. } => "level_too_low",
             Self::MissingPrerequisite { .. } => "missing_prerequisite",
+            Self::SpendGate { .. } => "spend_gate",
+            Self::NotEnoughPoints { .. } => "not_enough_points",
         }
     }
 }

@@ -1,7 +1,7 @@
 //! Ability training: cell-side validation guards before the base-side
 //! `training_points` debit + DB persist.
 
-use crate::ability_tree::{evaluate_train, TrainContext, TrainReject};
+use crate::ability_tree::{evaluate_train, TrainContext, TrainPlan, TrainReject};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
@@ -17,9 +17,12 @@ use tokio::sync::mpsc;
 /// 4. Ability is in player's archetype tree (no cross-class training)
 /// 5. Player level meets the tree entry's `level` requirement
 /// 6. Every prerequisite is in `entity.abilities`
+/// 7. Archetype-wide `tree_points_spent` meets `required_branch_points`
+/// 8. `training_points` covers the node's `skill_point_cost`
 ///
-/// On all checks passing, sends `CellToBaseMsg::TrainAbility` to the
-/// base. The base does the `training_points` debit + DB UPDATE +
+/// On all checks passing, sends `CellToBaseMsg::TrainAbility` (with the
+/// node's cost and branch) to the base. The base does the cost debit,
+/// the spend increment + DB UPDATE +
 /// responds with `BaseToCellMsg::AbilityGranted`, which the cell's
 /// dispatcher handles (in `service/base_messages/mod.rs`) by adding
 /// the ability to `entity.abilities` and sending
@@ -50,6 +53,7 @@ pub(super) async fn handle_train_ability(
             level: entity.level as i32,
             known: &entity.abilities,
             tree_points_spent: entity.tree_progress.tree_points_spent,
+            training_points: entity.tree_progress.training_points,
         };
         (
             evaluate_train(&ctx),
@@ -85,13 +89,18 @@ pub(super) async fn handle_train_ability(
         player_id,
         ability_id,
         archetype_id = plan.archetype_id,
+        tree_index = plan.tree_index,
+        cost = plan.cost,
         "trainAbility: validation passed, requesting base persist + debit"
     );
+    warn_if_raw_cost_zero(entity_id, player_id, &plan);
     if let Err(e) = tx
         .send(CellToBaseMsg::TrainAbility {
             entity_id,
             player_id,
             ability_id,
+            cost: plan.cost,
+            tree_index: plan.tree_index,
         })
         .await
     {
@@ -108,6 +117,28 @@ pub(super) async fn handle_train_ability(
             ability_id,
             error = %e,
             "TrainAbility cell→base send failed — training point not debited"
+        );
+    }
+}
+
+/// Flag a purchase whose ability has no authored `training_cost`.
+///
+/// 59 of the 439 FINAL v2 nodes have a raw cost of 0 in
+/// `resources.abilities`. The debit uses the tree's `skill_point_cost`, so
+/// the purchase goes ahead; the WARN lets UAT see which nodes still carry
+/// an unsourced cost. The source value is never rewritten.
+fn warn_if_raw_cost_zero(entity_id: u32, player_id: i32, plan: &TrainPlan) {
+    if plan.raw_training_cost == 0 {
+        tracing::warn!(
+            target: "abilities",
+            event = "train_raw_cost_zero",
+            entity_id,
+            player_id,
+            ability_id = plan.ability_id,
+            archetype_id = plan.archetype_id,
+            tree_index = plan.tree_index,
+            cost = plan.cost,
+            "trainAbility: purchased node has raw training_cost 0 — debiting skill_point_cost"
         );
     }
 }
@@ -181,6 +212,28 @@ fn log_rejection(
             ability_id,
             missing_prereq = *missing,
             "trainAbility: prerequisite ability not known — rejecting"
+        ),
+        TrainReject::SpendGate { required, spent } => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            ability_id,
+            required_branch_points = *required,
+            tree_points_spent = *spent,
+            "trainAbility: archetype-wide spend below the node's gate — rejecting"
+        ),
+        TrainReject::NotEnoughPoints { cost, available } => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            ability_id,
+            cost = *cost,
+            training_points = *available,
+            "trainAbility: not enough training points — rejecting"
         ),
     }
 }
@@ -364,6 +417,7 @@ mod handle_train_ability_tests {
             e.player_id = Some(100);
             e.archetype_id = Some(1);
             e.level = 5;
+            e.tree_progress.training_points = 1;
         }
         let (tx, mut rx) = mpsc::channel(8);
         handle_train_ability(1, TEST_ABILITY, &tx, &mut mgr).await;

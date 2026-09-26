@@ -19,8 +19,6 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 // `cimmeria_game::player` (`LEVEL_XP`, levels 1-50 plus the level-50
 // display sentinel). This file keeps no copy of them.
 
-const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
-
 /// Handle XP grant from CellService -- compute level-ups, persist, and send
 /// client notifications.
 ///
@@ -240,6 +238,13 @@ pub async fn handle_grant_xp(
     );
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
 
+    // The cell's trainer gates read level and training points; mirror the
+    // persisted values so a node that just opened is trainable without a
+    // relog (AT-03). Only on a level boundary: XP alone changes neither.
+    if !levels_gained.is_empty() {
+        notify_cell_progression(cell_tx, entity_id, new_level, training_points).await;
+    }
+
     // The bundle above reaches only the levelling player's own client —
     // `send_bundle_to_witness_reliable` is single-recipient despite its name.
     // The 2009 server fanned the new level out to everyone watching too
@@ -273,6 +278,36 @@ pub async fn handle_grant_xp(
             entity_to_addr,
         )
         .await;
+    }
+}
+
+/// Send `BaseToCellMsg::ProgressionChanged` after a persisted level-up.
+async fn notify_cell_progression(
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
+    entity_id: u32,
+    level: u32,
+    training_points: u32,
+) {
+    let Some(tx) = cell_tx else {
+        return;
+    };
+    if let Err(e) = tx
+        .send(crate::cell::messages::BaseToCellMsg::ProgressionChanged {
+            entity_id,
+            level: level as i32,
+            training_points: training_points.min(i32::MAX as u32) as i32,
+        })
+        .await
+    {
+        tracing::warn!(
+            target: "progression",
+            event = "progression_changed_send_failed",
+            entity_id,
+            level,
+            training_points,
+            error = %e,
+            "GrantXP: base→cell ProgressionChanged send failed; trainer gates keep the old level until relog"
+        );
     }
 }
 
@@ -336,14 +371,13 @@ fn build_grant_xp_bundle(
             &(new_level as i32).to_le_bytes(),
         );
 
-        let mut tp_args = Vec::with_capacity(8);
-        tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
-        tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
+        // Same builder as the cell's trainer-purchase burst, so the two
+        // sends of the counter cannot drift apart.
         bundle.append_entity_method(
             method_idx::ON_ENTITY_PROPERTY,
             IDBASE_SGW_PLAYER,
             entity_id,
-            &tp_args,
+            &crate::ability_tree::training_points_property_args(training_points as i32),
         );
     }
 
@@ -462,160 +496,18 @@ pub async fn handle_grant_cash(
     }
 }
 
-/// Persist a trained ability + debit one training point.
-///
-/// Cell pre-validates archetype tree + prereqs (see Phase 5b);
-/// base only validates training_points >= 1 and the DB UPDATE returning
-/// `rows_affected == 1`. On success, sends
-/// `BaseToCellMsg::AbilityGranted` so the cell can add to
-/// `entity.abilities` and broadcast `onKnownAbilitiesUpdate`.
-///
-/// Persistence shape: `UPDATE sgw_player SET abilities = abilities || $1,
-/// training_points = training_points - 1 WHERE player_id = $2 AND
-/// training_points > 0`. The `training_points > 0` guard is the DB-side
-/// authority — even if the in-memory training_points view is stale, the
-/// row update only fires when actual rowstate allows.
-#[tracing::instrument(
-    name = "progression.train_ability",
-    level = "info",
-    skip_all,
-    fields(entity_id, player_id, ability_id)
-)]
-pub async fn handle_train_ability(
-    entity_id: u32,
-    player_id: i32,
-    ability_id: i32,
-    db_pool: &Option<Arc<PgPool>>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
-    _transport: &Arc<dyn Transport>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
-    let pool = match db_pool {
-        Some(p) => p,
-        None => {
-            tracing::warn!(entity_id, player_id, ability_id, "TrainAbility: no DB pool");
-            return;
-        }
-    };
-
-    let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-        Some(a) => a,
-        None => {
-            tracing::warn!(entity_id, "TrainAbility: no address for entity");
-            return;
-        }
-    };
-
-    // Fast-path check: the UPDATE's `training_points > 0` guard is the
-    // authoritative gate (atomic against the DB row), but a stale-cache
-    // pre-check spares a DB round-trip on the common "out of TP" case.
-    {
-        let map = match connected.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        let tp_in_memory = map
-            .get(&addr)
-            .and_then(|s| s.player_training_points)
-            .unwrap_or(0);
-        if tp_in_memory == 0 {
-            tracing::info!(
-                entity_id,
-                player_id,
-                ability_id,
-                "TrainAbility: rejected — no training points available (in-memory)"
-            );
-            return;
-        }
-    }
-
-    // Atomic: append ability_id + debit, but ONLY if training_points > 0
-    // AND the ability isn't already present. The `NOT (abilities @> ARRAY[$1])`
-    // clause prevents double-debit if two concurrent or replayed
-    // TrainAbility messages for the same ability arrive: the second
-    // returns 0 rows and the cell-side path treats that as a no-op.
-    // Without this, a player who clicks Train twice fast could lose two
-    // training points for one ability.
-    let result = sqlx::query_scalar::<_, i32>(
-        "UPDATE sgw_player \
-            SET abilities = abilities || $1::integer, \
-                training_points = training_points - 1 \
-          WHERE player_id = $2 \
-            AND training_points > 0 \
-            AND NOT (abilities @> ARRAY[$1::integer]) \
-        RETURNING training_points",
-    )
-    .bind(ability_id)
-    .bind(player_id)
-    .fetch_optional(pool.as_ref())
-    .await;
-
-    let training_points_remaining = match result {
-        Ok(Some(tp)) => tp,
-        Ok(None) => {
-            tracing::info!(
-                entity_id,
-                player_id,
-                ability_id,
-                "TrainAbility: UPDATE matched 0 rows (player_id missing or no training_points)"
-            );
-            return;
-        }
-        Err(e) => {
-            tracing::error!(
-                entity_id,
-                player_id,
-                ability_id,
-                "TrainAbility: UPDATE failed: {e}"
-            );
-            return;
-        }
-    };
-
-    // Sync in-memory training_points so the next train attempt sees the
-    // post-debit value without a DB read.
-    {
-        let mut map = match connected.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        if let Some(state) = map.get_mut(&addr) {
-            state.player_training_points = Some(training_points_remaining as u32);
-        }
-    }
-
-    tracing::info!(
-        entity_id,
-        player_id,
-        ability_id,
-        training_points_remaining,
-        "TrainAbility: persisted + debited"
-    );
-
-    // Notify cell so it adds the ability + broadcasts onKnownAbilitiesUpdate.
-    // If the channel is gone, the player's hotbar will be one ability behind
-    // until next relog — log loudly so SigNoz surfaces the desync.
-    if let Some(tx) = cell_tx {
-        if let Err(e) = tx
-            .send(crate::cell::messages::BaseToCellMsg::AbilityGranted {
-                entity_id,
-                ability_id,
-                training_points_remaining,
-            })
-            .await
-        {
-            tracing::error!(
-                entity_id, ability_id, error = %e,
-                "TrainAbility: base→cell AbilityGranted send failed; hotbar will desync until relog"
-            );
-        }
-    }
-}
+mod train_ability;
+pub use train_ability::{handle_train_ability, TrainRequest};
+#[cfg(test)]
+pub(crate) use train_ability::{persist_purchase, PurchaseResult};
 
 #[cfg(test)]
 mod level_cap_tests;
 #[cfg(test)]
 mod level_up_fanout_tests;
 #[cfg(test)]
+mod progression_changed_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod train_ability_tests;
