@@ -94,7 +94,9 @@ jobs:
       # §6). Fail when a dependency change didn't regenerate it: fix with
       # `cargo hakari generate && cargo hakari manage-deps --yes`.
       - name: install cargo-hakari
-        uses: taiki-e/install-action@cargo-hakari
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
       - name: workspace-hack is current
         run: |
           cargo hakari generate --diff
