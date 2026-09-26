@@ -95,7 +95,10 @@ flush them.
 ### Where the hold starts
 
 [`world_entry_appearance/cinematic_aoi_hold/`](../../crates/services/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs)
-owns the hold. `begin` runs inside `handle_on_client_ready`'s
+owns the hold. The hold record and `begin` are session state, in
+[`base/cinematic_aoi_hold.rs`](../../crates/base-session/src/base/cinematic_aoi_hold.rs)
+of `cimmeria-base-session`; arming the timeout and releasing the hold stay
+with the world-entry AoI flush. `begin` runs inside `handle_on_client_ready`'s
 `pending_client_ready` take, in the **same critical section**, when
 `first_login != 0`.
 

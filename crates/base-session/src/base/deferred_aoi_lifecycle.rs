@@ -74,7 +74,7 @@ fn cancel_enter_leave_pairs(buffered: Vec<DeferredAoiMsg>) -> Vec<DeferredAoiMsg
 /// the re-introduction instead of after it. The common case — no entity
 /// both leaves and enters — is a single segment, which keeps the 28-NPC
 /// world-entry burst at its two-bundle packet budget.
-pub(crate) fn lifecycle_segments(buffered: Vec<DeferredAoiMsg>) -> Vec<Vec<DeferredAoiMsg>> {
+pub fn lifecycle_segments(buffered: Vec<DeferredAoiMsg>) -> Vec<Vec<DeferredAoiMsg>> {
     let mut segments: Vec<Vec<DeferredAoiMsg>> = Vec::new();
     let mut current: Vec<DeferredAoiMsg> = Vec::new();
     let mut left_in_current: HashSet<u32> = HashSet::new();

@@ -51,7 +51,7 @@
 //! packet with the channel's TX window via
 //! `Channel::register_sent_packet`. This matches the channel's existing
 //! shadow-register flow (see
-//! [`crates/services/src/base/helpers.rs`]'s `shadow_register_reliable_send`).
+//! [`crates/base-session/src/base/helpers/mod.rs`]'s `shadow_register_reliable_send`).
 //!
 //! A per-channel auto-accumulator (every send appends to the same
 //! channel-owned bundle, flushed on tick boundary) would re-introduce the

@@ -31,9 +31,9 @@ pub(crate) mod presence_fanout;
 
 // Re-export the public surface so callers (cell_dispatch, login path, etc.)
 // can import from `handlers::*` without knowing the split.
-pub(crate) use header_ops::{handle_create, handle_delete, handle_flags_update, handle_rename};
-pub(crate) use member_ops::{handle_add_members, handle_remove_members};
-pub(crate) use presence_fanout::{fanout_contact_event, fanout_login_status};
+pub use header_ops::{handle_create, handle_delete, handle_flags_update, handle_rename};
+pub use member_ops::{handle_add_members, handle_remove_members};
+pub use presence_fanout::{fanout_contact_event, fanout_login_status};
 
 /// Push all contact lists + members to the player's client on world entry.
 ///
@@ -42,7 +42,7 @@ pub(crate) use presence_fanout::{fanout_contact_event, fanout_login_status};
 /// always has Friends / Ignore even on first login.
 ///
 /// Does nothing (logs warn) when `db_pool` is `None`.
-pub(crate) async fn push_contact_lists_on_login(
+pub async fn push_contact_lists_on_login(
     entity_id: u32,
     player_id: i32,
     db_pool: &Option<Arc<PgPool>>,

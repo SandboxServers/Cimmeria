@@ -159,7 +159,7 @@ on each other:
   or test cleanup. Required when the test path itself commits internally
   (e.g., outbox enqueue + drain in two separate connections).
 
-The outbox pilot tests (`crates/services/src/base/outbox/tests/`)
+The outbox pilot tests (`crates/base-session/src/base/outbox/tests/`)
 demonstrate both patterns — `enqueue_in_tx` runs inside a rolled-back
 tx, while the round-trip test commits real rows and cleans them up by
 sentinel `entity_id`.

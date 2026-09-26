@@ -391,7 +391,7 @@ The client sends one of these per resource category whenever it wants to confirm
 [categoryId: u32][version: u32]
 ```
 
-`version` is the `MetaData` value from the client's local copy of the category. The server compares against the `MetaData` it loaded from disk (`crates/services/src/base/cooked_data.rs:21-71`).
+`version` is the `MetaData` value from the client's local copy of the category. The server compares against the `MetaData` it loaded from disk (`crates/base-session/src/base/cooked_data.rs:21-71`).
 
 Implemented; see `handle_version_info_request`.
 
@@ -422,7 +422,7 @@ Verified by Ghidra decomp of `ServerConnection::onVersionInfo` (`FUN_00449460`):
 
 ### `resourceFragment` (NetIn, BASEMSG 0x36)
 
-How the server ships XML payloads for a single category-element pair. Already documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md); the format itself didn't change. What changed is **when** the server emits it: in addition to the lazy `elementDataRequest` reply path, the server now proactively pushes one `resourceFragment` per `InvalidKeys` entry immediately after `onVersionInfo`, in the same order the keys appear in the array (`crates/services/src/base/cooked_data.rs:107-120, 133-199`).
+How the server ships XML payloads for a single category-element pair. Already documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md); the format itself didn't change. What changed is **when** the server emits it: in addition to the lazy `elementDataRequest` reply path, the server now proactively pushes one `resourceFragment` per `InvalidKeys` entry immediately after `onVersionInfo`, in the same order the keys appear in the array (`crates/base-session/src/base/cooked_data.rs:107-120, 133-199`).
 
 The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment streams to expect before the cache is considered fresh.
 

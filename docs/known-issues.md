@@ -165,7 +165,7 @@ Systems with CellMethod dispatch wired but handlers still stubbed (each logs
 No longer stubbed:
 
 - **Contact list** (friend/ignore): implemented and merged —
-  `crates/services/src/base/contact_list/`, with login presence push, CM
+  `crates/base-session/src/base/contact_list/`, with login presence push, CM
   55–60, and GainLevel / Death / GateTravel presence events. Server-side chat
   and AoI ignore enforcement landed separately.
 - **Black market**: 4 of 6 CellMethods implemented (`BMSearch`,

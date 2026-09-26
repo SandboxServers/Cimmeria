@@ -655,6 +655,106 @@ fn npc_population_events_keep_spawner_log() {
     }
 }
 
+/// The BaseApp session layer moved from `cimmeria_services::base` to the
+/// `cimmeria-base-session` crate (services crate split, wave B1), which
+/// changed its events' `module_path!()`. They must still land where they did
+/// before the move:
+///
+/// - the send helpers keep `base.log`, and tick sync keeps `base.log` and the
+///   `cimmeria-network` index below WARN (`otel::is_network_noise_target`);
+/// - cooked-data delivery keeps `character.log`;
+/// - the space registry keeps `world_entry.log`, which the old
+///   `cimmeria_services::base::world_entry` row reached by prefix;
+/// - the modules no file names (outbox, contact list, deferred AoI, crafting,
+///   GM spawn) keep `server.log` from INFO;
+///
+/// and every one reaches one OTLP index per level. `cimmeria_services=debug`
+/// does not prefix-match `cimmeria_base_session`, so without its own
+/// `OTEL_FILTER` row the DEBUG rows would silently stop reaching SigNoz; a
+/// file row still naming `cimmeria_services::base::…` empties the file of
+/// them.
+#[test]
+fn base_session_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file, noise) in [
+        (
+            "cimmeria_base_session::base::helpers",
+            "file:base.log",
+            false,
+        ),
+        (
+            "cimmeria_base_session::base::helpers::witness_broadcast",
+            "file:base.log",
+            false,
+        ),
+        (
+            "cimmeria_base_session::base::tick_sync",
+            "file:base.log",
+            true,
+        ),
+        (
+            "cimmeria_base_session::base::cooked_data",
+            "file:character.log",
+            false,
+        ),
+        (
+            "cimmeria_base_session::base::world_entry::space_registry",
+            "file:world_entry.log",
+            false,
+        ),
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        let below_warn = if noise { OTLP_NETWORK } else { OTLP_SERVER };
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, below_warn]),
+            "{target} at DEBUG"
+        );
+        assert_eq!(
+            sinks(Level::INFO),
+            set(&[file, SERVER_LOG, below_warn]),
+            "{target} at INFO"
+        );
+        for lvl in [Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+    for target in [
+        "cimmeria_base_session::base::outbox",
+        "cimmeria_base_session::base::contact_list::handlers::presence_fanout",
+        "cimmeria_base_session::base::deferred_aoi",
+        "cimmeria_base_session::base::crafting::persistence",
+        "cimmeria_base_session::base::gm_spawn",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
 /// No target, at any level, is indexed twice.
 #[test]
 fn no_record_reaches_two_indexes() {

@@ -20,7 +20,7 @@ use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 /// Handle `ContactListAddMembers` — insert members and echo CM 87.
-pub(crate) async fn handle_add_members(
+pub async fn handle_add_members(
     entity_id: u32,
     player_id: i32,
     list_id: i32,
@@ -121,7 +121,7 @@ pub(crate) async fn handle_add_members(
 }
 
 /// Handle `ContactListRemoveMembers` — delete members and echo CM 88.
-pub(crate) async fn handle_remove_members(
+pub async fn handle_remove_members(
     entity_id: u32,
     player_id: i32,
     list_id: i32,

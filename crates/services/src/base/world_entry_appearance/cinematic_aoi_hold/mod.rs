@@ -32,15 +32,18 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cimmeria_mercury::transport::Transport;
-use tokio::time::Instant;
 
 use super::super::world_entry::cell_dispatch::flush_deferred_aoi;
 use super::super::ConnectedClientState;
+
+// The hold record and `begin` are session state (`base::cinematic_aoi_hold`);
+// arming the timeout and releasing the hold flush through the world-entry AoI
+// dispatch, so they stay here.
+pub(crate) use super::super::cinematic_aoi_hold::{begin, CinematicAoiHold};
 
 /// How long entity introductions wait when the movie runs to its natural
 /// end.
@@ -51,19 +54,6 @@ use super::super::ConnectedClientState;
 /// the first input came 16.4 s after `onClientReady`, so NPCs arriving at
 /// 16 s land behind that dialog rather than popping into an empty room.
 pub(crate) const HOLD_DURATION: Duration = Duration::from_secs(16);
-
-/// An active hold, stored on [`ConnectedClientState::cinematic_aoi_hold`].
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct CinematicAoiHold {
-    /// Distinguishes this hold from a later one on the same session, so a
-    /// stale timeout task cannot release a hold it did not start.
-    pub token: u64,
-    /// When the hold began — the origin [`HOLD_DURATION`] is measured from.
-    pub started: Instant,
-    /// A release has claimed this hold and is flushing it. A second releaser
-    /// (the timeout racing `cancelMovie`) must leave it alone: see [`release`].
-    pub releasing: bool,
-}
 
 /// Why a hold ended — the `reason` field on the release log line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,19 +69,6 @@ impl ReleaseReason {
             Self::Timeout => "timeout",
         }
     }
-}
-
-/// Start a hold on `state`. Caller holds the `connected` lock and is taking
-/// `pending_client_ready` in the same critical section.
-pub(crate) fn begin(state: &mut ConnectedClientState) -> CinematicAoiHold {
-    static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
-    let hold = CinematicAoiHold {
-        token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
-        started: Instant::now(),
-        releasing: false,
-    };
-    state.cinematic_aoi_hold = Some(hold);
-    hold
 }
 
 /// Spawn the task that releases `hold` once [`HOLD_DURATION`] has passed

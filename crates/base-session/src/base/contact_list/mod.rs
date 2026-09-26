@@ -5,6 +5,6 @@
 //! (CM 85–89). The login-push path is in `world_entry_appearance/client_ready.rs`
 //! and calls into `handlers` directly.
 
-pub(crate) mod handlers;
+pub mod handlers;
 pub(crate) mod persistence;
-pub(crate) use cimmeria_wire::base::contact_list::wire;
+pub use cimmeria_wire::base::contact_list::wire;

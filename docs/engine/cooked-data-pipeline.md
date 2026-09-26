@@ -11,7 +11,7 @@ last_updated: 2026-07-25
 > **RE Status**: Delivery path verified against `crates/` and `data/cache/`; the DB→PAK
 > *cooking* half is historical (original CME server) and no longer runs
 > **Sources**: `data/cache/` (21 PAKs, inspected directly), `db/resources/`,
-> `crates/services/src/base/cooked_data.rs`, `crates/resources/src/base/resources/mod.rs`,
+> `crates/base-session/src/base/cooked_data.rs`, `crates/resources/src/base/resources/mod.rs`,
 > `deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp`, `deprecated/python/`
 
 ---
@@ -26,7 +26,7 @@ last_updated: 2026-07-25
 >
 > The *delivery* pipeline (`versionInfoRequest` / `onVersionInfo` / `elementDataRequest` /
 > `BASEMSG_RESOURCE_FRAGMENT`) **is** live and is implemented in Rust at
-> `crates/services/src/base/cooked_data.rs`.
+> `crates/base-session/src/base/cooked_data.rs`.
 
 ## Overview
 
@@ -65,7 +65,7 @@ crates/resources/src/base/resources/mod.rs  (CategoryData / ResourceCache)
         |   crates/resources/src/base/dialog_overrides/mod.rs
         |   crates/resources/src/base/item_overrides.rs
         v
-crates/services/src/base/cooked_data.rs
+crates/base-session/src/base/cooked_data.rs
         |
         | BASEMSG_RESOURCE_FRAGMENT (0x36), fragmented at MAX_CHUNK
         v
@@ -167,7 +167,7 @@ client-side counterpart — the client numbers `behavior_event` as 21.
 > [!NOTE]
 > **Category 7 (`char_creation`) is deliberately not server-pushed.** It is absent from the
 > version-negotiation category map, so the client falls back to its local
-> `CookedCharCreation.pak`. See `crates/services/src/base/cooked_data.rs:246`. Do not
+> `CookedCharCreation.pak`. See `crates/base-session/src/base/cooked_data.rs:246`. Do not
 > "fix" this by adding category 7 to the map without understanding the character-creation
 > flow first.
 
@@ -380,7 +380,7 @@ Client                          BaseApp
 
 Each `BASEMSG_RESOURCE_FRAGMENT` message (original C++:
 `deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp:293-382`; Rust:
-`crates/services/src/base/cooked_data.rs`):
+`crates/base-session/src/base/cooked_data.rs`):
 
 ```
 +--------+--------+-------+--------+--------+--------+-----------+

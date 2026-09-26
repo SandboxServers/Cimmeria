@@ -62,7 +62,7 @@ pub(crate) fn tick_sync_packet(
 /// retransmit driver needs the full channel state, not just the counter.
 ///
 /// [`Channel`]: cimmeria_mercury::channel::Channel
-pub(crate) async fn run_tick_loop(
+pub async fn run_tick_loop(
     transport: Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],

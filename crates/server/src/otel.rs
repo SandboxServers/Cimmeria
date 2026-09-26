@@ -191,8 +191,9 @@ fn host_name() -> String {
 ///   bundle/decrypt DEBUG logs that fire per inbound packet.
 /// - `cimmeria_services::base::connect_loop::cell_arms` — cell-method
 ///   dispatch debug logs.
-/// - `cimmeria_services::base::tick_sync` — tick-sync heartbeats and
-///   retransmit RTO notices.
+/// - `cimmeria_base_session::base::tick_sync` — tick-sync heartbeats and
+///   retransmit RTO notices. It was `cimmeria_services::base::tick_sync`
+///   until wave B1 of the crate split moved it to `cimmeria-base-session`.
 ///
 /// `cimmeria_mercury::` is the transport crate only. The services-side packet
 /// builders in `cimmeria_wire::mercury` (moved out of `cimmeria-services` in
@@ -203,7 +204,7 @@ pub fn is_network_noise_target(target: &str) -> bool {
     target.starts_with("mercury.")
         || target == "cimmeria_services::base::connect_loop::encrypted"
         || target == "cimmeria_services::base::connect_loop::cell_arms"
-        || target.starts_with("cimmeria_services::base::tick_sync")
+        || target.starts_with("cimmeria_base_session::base::tick_sync")
         || target.starts_with("cimmeria_mercury::")
 }
 
@@ -555,7 +556,7 @@ mod tests {
             "cimmeria_services::base::connect_loop::cell_arms"
         ));
         assert!(is_network_noise_target(
-            "cimmeria_services::base::tick_sync"
+            "cimmeria_base_session::base::tick_sync"
         ));
         assert!(is_network_noise_target("cimmeria_mercury::session"));
     }
@@ -605,6 +606,14 @@ mod tests {
         ));
         assert!(!is_network_noise_target(
             "cimmeria_services::base::dispatch"
+        ));
+        // Only tick sync of the session crate is noise: its send helpers, outbox
+        // and contact list stay in cimmeria-server, as they did before wave B1.
+        assert!(!is_network_noise_target(
+            "cimmeria_base_session::base::helpers"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_base_session::base::outbox"
         ));
         // The services-side Mercury glue is not the `cimmeria-mercury`
         // transport crate: it was `cimmeria_services::mercury` in

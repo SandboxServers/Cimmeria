@@ -23,7 +23,7 @@ use crate::cell::messages::BaseToCellMsg;
 /// base-only tooling) and is silent. A failed send means the cell loop is
 /// gone; other players keep the stale view until they re-enter AoI, so it is
 /// logged per docs/architecture/negative-logging-convention.md.
-pub(crate) async fn broadcast_to_witnesses(
+pub async fn broadcast_to_witnesses(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_id: u32,
     method_index: u16,

@@ -12,7 +12,7 @@ use super::Channel;
 /// Punch list returned by a tick pass over a collection of channels.
 ///
 /// Cimmeria's actual tick driver lives in
-/// `crates/services/src/base/tick_sync.rs` — a per-session task that drives
+/// `crates/base-session/src/base/tick_sync.rs` — a per-session task that drives
 /// one channel per loop iteration via [`Channel::check_timeouts`],
 /// [`Channel::keepalive_due`], and [`Channel::is_timed_out`] directly. This
 /// type exists to document the bridge contract for any future driver that

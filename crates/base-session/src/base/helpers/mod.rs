@@ -82,7 +82,7 @@ use super::ConnectedClientState;
 /// helpers as `...await;` statements and ignore the result. The type is
 /// intentionally NOT `#[must_use]` so those sites compile unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WitnessSendOutcome {
+pub enum WitnessSendOutcome {
     /// Packet hit the wire. `seq` is the reliable/unreliable sequence
     /// number consumed; `bytes` is the encrypted datagram length.
     Sent {
@@ -114,13 +114,13 @@ impl WitnessSendOutcome {
     /// `entity_to_addr` — i.e. anything other than
     /// [`WitnessSendOutcome::AddrUnresolved`]. Used as the `addr_resolved`
     /// field on the AoI create-emit seam.
-    pub(crate) fn addr_resolved(&self) -> bool {
+    pub fn addr_resolved(&self) -> bool {
         !matches!(self, WitnessSendOutcome::AddrUnresolved)
     }
 
     /// Stable `reason` token for the failure arms, or `None` on success.
     /// Pinned by the negative-logging regression guards — treat as API.
-    pub(crate) fn failure_reason(&self) -> Option<&'static str> {
+    pub fn failure_reason(&self) -> Option<&'static str> {
         match self {
             WitnessSendOutcome::Sent { .. } => None,
             WitnessSendOutcome::AddrUnresolved => Some("entity_to_addr_miss"),
@@ -135,7 +135,7 @@ impl WitnessSendOutcome {
 /// Same rationale as [`WitnessSendOutcome`] but carries the multi-fragment
 /// shape: a bundle finalizes to `packets` fragments starting at `base_seq`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BundleSendOutcome {
+pub enum BundleSendOutcome {
     /// All fragments hit the wire. `base_seq` is the first reserved seq;
     /// `packets` is the fragment count; `bytes` is the total accumulated
     /// body length.
@@ -165,12 +165,12 @@ impl BundleSendOutcome {
     }
 
     /// `true` when the address resolved from `entity_to_addr`.
-    pub(crate) fn addr_resolved(&self) -> bool {
+    pub fn addr_resolved(&self) -> bool {
         !matches!(self, BundleSendOutcome::AddrUnresolved)
     }
 
     /// Stable `reason` token for the non-sent arms, or `None` on success.
-    pub(crate) fn failure_reason(&self) -> Option<&'static str> {
+    pub fn failure_reason(&self) -> Option<&'static str> {
         match self {
             BundleSendOutcome::Sent { .. } => None,
             BundleSendOutcome::AddrUnresolved => Some("entity_to_addr_miss"),
@@ -182,7 +182,7 @@ impl BundleSendOutcome {
 }
 
 /// The packet hex formatter for trace logs; shared with the wire firehose.
-pub(crate) use cimmeria_wire::hex::to_hex;
+pub use cimmeria_wire::hex::to_hex;
 
 /// Register an outgoing reliable packet's sequence number AND its
 /// encrypted on-wire bytes with the per-session
@@ -221,7 +221,7 @@ pub(crate) use cimmeria_wire::hex::to_hex;
 ///
 /// [`unsent_packets`]: cimmeria_mercury::channel::Channel::unsent_packets
 /// [`MAX_UNSENT_PACKETS`]: cimmeria_mercury::consts::MAX_UNSENT_PACKETS
-pub(crate) fn shadow_register_reliable_send(
+pub fn shadow_register_reliable_send(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     seq: u32,
@@ -302,7 +302,7 @@ pub(crate) fn collect_pending_retransmits(
 /// sentinel range or above the 28-bit space, get rejected by the
 /// peer's parser (R4 drop), and silently break ACK draining. Masking
 /// at allocation keeps every emitted seq inside the spec'd space.
-pub(crate) fn drain_acks_and_seq(
+pub fn drain_acks_and_seq(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> Result<(Vec<u32>, u32), Box<dyn std::error::Error + Send + Sync>> {
@@ -321,7 +321,7 @@ pub(crate) fn drain_acks_and_seq(
 /// handlers (char list, version info, resource fragments) that need the
 /// session's version to build their packets but don't otherwise hold a
 /// `ConnectedClientState` reference.
-pub(crate) fn get_enc_version(
+pub fn get_enc_version(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> EncryptionVersion {
@@ -333,7 +333,7 @@ pub(crate) fn get_enc_version(
 }
 
 /// Read the dynamically allocated account entity ID for a connected client.
-pub(crate) fn get_account_entity_id(
+pub fn get_account_entity_id(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
@@ -347,7 +347,7 @@ pub(crate) fn get_account_entity_id(
 /// the lock is poisoned — a missing session must never be treated as
 /// privileged. Used by `createCharacter` to stamp the new character's
 /// `access_level` from the account so it persists into world entry.
-pub(crate) fn get_access_level(
+pub fn get_access_level(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> u32 {
@@ -388,7 +388,7 @@ pub(crate) fn get_active_entity_id(
 /// so SigNoz can pivot on `disconnect_reason` to answer "what kind
 /// of disconnect am I looking at?" without inferring from message
 /// text.
-pub(crate) fn destroy_client_entities(
+pub fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
     addr: SocketAddr,
@@ -486,7 +486,7 @@ pub(crate) fn destroy_client_entities(
 /// to get encryption key and sequence number. Calls the packet builder closure
 /// and sends the result via UDP. No Channel registration — packets sent via
 /// this path are NOT tracked for retransmit.
-pub(crate) async fn send_to_witness<F>(
+pub async fn send_to_witness<F>(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -590,7 +590,7 @@ where
 /// Use plain [`send_to_witness`] for that case.
 ///
 /// [`Channel`]: cimmeria_mercury::channel::Channel
-pub(crate) async fn send_to_witness_reliable<F>(
+pub async fn send_to_witness_reliable<F>(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -700,7 +700,7 @@ where
 /// side if you want to skip the lookup overhead entirely.
 ///
 /// [`ChannelBundle`]: cimmeria_mercury::channel_bundle::ChannelBundle
-pub(crate) async fn send_bundle_to_witness_reliable(
+pub async fn send_bundle_to_witness_reliable(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -851,7 +851,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
 }
 
 mod witness_broadcast;
-pub(crate) use witness_broadcast::broadcast_to_witnesses;
+pub use witness_broadcast::broadcast_to_witnesses;
 
 #[cfg(test)]
 mod tests;

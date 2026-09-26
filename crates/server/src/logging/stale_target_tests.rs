@@ -268,6 +268,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // a re-export does not change `module_path!()`, so the old target
         // matches nothing.
         "cimmeria_services::mercury",
+        // base.log's rows before wave B1 moved the send helpers and tick sync
+        // to cimmeria-base-session; services re-exports both (`pub(crate) use`).
+        "cimmeria_services::base::helpers",
+        "cimmeria_services::base::tick_sync",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -283,6 +287,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_services::base::world_entry",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
+        // `pub mod world_entry { pub mod space_registry; }` is inline in
+        // base-session's base/mod.rs, with a file child.
+        "cimmeria_base_session::base::world_entry",
+        "cimmeria_base_session::base::world_entry::space_registry",
         // A bare prefix covering cimmeria_client_launch and
         // cimmeria_client_telemetry.
         "cimmeria_client",

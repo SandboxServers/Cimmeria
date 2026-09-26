@@ -380,7 +380,7 @@ Cimmeria's Rust port distributes the Nub's responsibilities across:
 |---|---|
 | UDP socket bind | [`crates/services/src/base/service.rs`](../../../crates/services/src/base/service.rs) |
 | `recv_from` loop | [`crates/services/src/base/connect_loop/mod.rs`](../../../crates/services/src/base/connect_loop/mod.rs) |
-| Per-session tick (retransmit + keepalive) | [`crates/services/src/base/tick_sync.rs`](../../../crates/services/src/base/tick_sync.rs) |
+| Per-session tick (retransmit + keepalive) | [`crates/base-session/src/base/tick_sync.rs`](../../../crates/base-session/src/base/tick_sync.rs) |
 | Per-peer state | `ConnectedClientState` in [`crates/services/src/base/`](../../../crates/services/src/base/) |
 | Per-peer reliable stream | [`Channel`](../../../crates/mercury/src/channel/mod.rs) (per-peer, equivalent to `Mercury::Channel` + `ChannelInternal` merged) |
 | Encrypted outbound | [`UdpTransport::send_to`](../../../crates/mercury/src/transport.rs) (encrypt inlined; PacketFilter seam not needed) |

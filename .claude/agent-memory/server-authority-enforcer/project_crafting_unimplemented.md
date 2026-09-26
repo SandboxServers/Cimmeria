@@ -24,7 +24,7 @@ CAT-F (Crafting / R&D / Training) audit complete on 2026-05-31. Trust posture:
   `crates/services/src/cell/cell_methods/player/crafting.rs:23-86`. All
   return `true` (handled) with `tracing::info!(... "UNIMPLEMENTED")`.
 - Persistence layer EXISTS:
-  - `crates/services/src/base/crafting/persistence.rs` — load/save round-trip
+  - `crates/base-session/src/base/crafting/persistence.rs` — load/save round-trip
     with `RowNotFound` guard on save; `applied_science_points`,
     `discipline_ids`, `blueprint_ids`, `racial_paradigm_levels`,
     `expertise[]` all persisted.

@@ -2,7 +2,7 @@
 //! correlator for an entity.
 //!
 //! This is the base counterpart to
-//! [`SpaceManager::player_identity`](crate::cell::space_manager::SpaceManager::player_identity).
+//! `cimmeria_services::cell::space_manager::SpaceManager::player_identity`.
 //! The cell can read identity straight off its `CellEntity`; the base has to
 //! go `entity_id → SocketAddr → ConnectedClientState`, because the session —
 //! not the entity — is where `account_id` lives.
@@ -41,7 +41,7 @@ use super::ConnectedClientState;
 /// makes the caller emit no identity fields at all. A poisoned lock is
 /// treated the same way: an observability helper must never panic or block
 /// the path it is only trying to describe.
-pub(crate) fn identity_for_entity(
+pub fn identity_for_entity(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     entity_id: u32,

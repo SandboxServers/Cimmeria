@@ -33,7 +33,7 @@ decision sits with the caller, not with a per-channel auto-accumulator.
 - **Layer A**: `ChannelBundle` lives in `crates/mercury` with 11 wire-format
   tests. ✅
 - **Layer A.5**: `send_bundle_to_witness_reliable` bridge in
-  [base/helpers/mod.rs](../../crates/services/src/base/helpers/mod.rs) ties the
+  [base/helpers/mod.rs](../../crates/base-session/src/base/helpers/mod.rs) ties the
   bundle to the session UDP socket + Channel TX-window registration. ✅
 - **Layer B (conservative slice for #356)**: the AoI EnteredAoI burst in
   [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/services/src/base/world_entry/cell_dispatch/deferred_flush.rs)
@@ -209,7 +209,7 @@ reservation, then `finalize()` runs without further mutation — so the
 estimate reflects the exact post-drain state at reservation time and
 no TOCTOU window opens between estimate and finalize. The contract is
 guarded by a `debug_assert!` (the post-finalize check in
-[base/helpers/mod.rs](../../crates/services/src/base/helpers/mod.rs)) and by
+[base/helpers/mod.rs](../../crates/base-session/src/base/helpers/mod.rs)) and by
 the boundary-case test
 `estimated_packet_count_matches_finalize_at_fragment_boundary_with_acks`
 in [crates/mercury/src/channel_bundle/mod.rs](../../crates/mercury/src/channel_bundle/mod.rs).

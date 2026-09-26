@@ -15,8 +15,8 @@ use tokio::time::Instant;
 
 use super::super::*;
 use super::one_session;
+use crate::base::cinematic_aoi_hold::CinematicAoiHold;
 use crate::base::deferred_aoi::DeferredAoiMsg;
-use crate::base::world_entry_appearance::CinematicAoiHold;
 use crate::test_support::TestTransport;
 
 /// A post-ready session with an active cinematic hold.

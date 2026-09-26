@@ -171,7 +171,7 @@ send_to_witness_reliable(
 .await;
 ```
 
-[`crates/services/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/services/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy from — see the `send_to_witness_reliable` call around line 117. The method-index constants (`method_idx::*`) are declared in the inline `method_idx` module at [`crates/wire/src/mercury/mod.rs:174`](../../crates/wire/src/mercury/mod.rs). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
+[`crates/base-session/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/base-session/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy from — see the `send_to_witness_reliable` call around line 117. The method-index constants (`method_idx::*`) are declared in the inline `method_idx` module at [`crates/wire/src/mercury/mod.rs:174`](../../crates/wire/src/mercury/mod.rs). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
 
 ---
 

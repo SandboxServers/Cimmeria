@@ -53,7 +53,7 @@ fn collect_watcher_entity_ids(
 /// Does NOT filter on the recipient's ignore list — `find_watchers` returns
 /// all contact-list watchers regardless. Ignore-list filtering before fanout
 /// is deferred to Phase 5.
-pub(crate) async fn fanout_contact_event(
+pub async fn fanout_contact_event(
     player_name: &str,
     event_id: u32,
     data_value: i32,
@@ -148,7 +148,7 @@ pub(crate) async fn fanout_contact_event(
 ///
 /// Called on player login (`data_value = DATA_ONLINE`) and logout
 /// (`data_value = DATA_OFFLINE`). Thin wrapper around `fanout_contact_event`.
-pub(crate) async fn fanout_login_status(
+pub async fn fanout_login_status(
     player_name: &str,
     is_online: bool,
     db_pool: &Option<Arc<PgPool>>,

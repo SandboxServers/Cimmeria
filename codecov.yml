@@ -97,7 +97,7 @@ ignore:
   # file ignored under #205; the path was widened to `**` after issue #244
   # split it into a directory.
   - "crates/services/src/base/connect_loop/**"
-  - "crates/services/src/base/cooked_data.rs"
+  - "crates/base-session/src/base/cooked_data.rs"
   # Was originally a single `dispatch.rs` file; the path was widened to `**`
   # after issue #529 split it into a directory (mod.rs + chat.rs + session.rs
   # + diagnostics.rs + tests.rs). Same rationale as connect_loop above — the
@@ -164,6 +164,7 @@ component_management:
         - "crates/cell-cover/**"
         - "crates/cell-catalog/**"
         - "crates/minigame/**"
+        - "crates/base-session/**"
       statuses:
         - type: project
           target: 62%

@@ -86,7 +86,7 @@ This section distills the seven V5 finding docs that together canonize the Mercu
 
 ![Mercury crate module architecture — lib.rs, packet/, bundle, codec, channel, transport, encryption, unpacker, unified](figures/mercury-01-module-architecture.svg)
 
-*Figure 1: the Rust crate that mirrors the Mercury wire format — `transport.rs` owns the send-side `UdpSocket` wrapper, `codec.rs` runs encode/decode, `encryption.rs` applies the AES-256-CBC + HMAC-MD5 filter, and `packet/`, `bundle.rs`, and `channel/` carry the wire-format invariants from this chapter. (The diagram art is awaiting a re-render to match the deletion of the orphan `nub.rs` registry; the per-session tick loop lives in `crates/services/src/base/tick_sync.rs` and the bridge contract — `TickActions` and the tick-driver ordering — now sits in `channel/mod.rs`.)*
+*Figure 1: the Rust crate that mirrors the Mercury wire format — `transport.rs` owns the send-side `UdpSocket` wrapper, `codec.rs` runs encode/decode, `encryption.rs` applies the AES-256-CBC + HMAC-MD5 filter, and `packet/`, `bundle.rs`, and `channel/` carry the wire-format invariants from this chapter. (The diagram art is awaiting a re-render to match the deletion of the orphan `nub.rs` registry; the per-session tick loop lives in `crates/base-session/src/base/tick_sync.rs` and the bridge contract — `TickActions` and the tick-driver ordering — now sits in `channel/mod.rs`.)*
 
 A Mercury packet is the contents of a single UDP datagram. The on-wire layout is three concatenated regions:
 
@@ -528,7 +528,7 @@ The queue is bookkeeping for retransmit; the on-wire bytes go out at register ti
 
 This is a server-only mechanism — no change to the wire format, the ack bitmap, or the client's behavior. The 32-slot cap remains in §1.7 R-rules; the queue is the implementation answer to "what does the server do between the cap and the inactivity-timeout reap."
 
-Cell-driven AoI traffic during the pre-`onClientReady` world-entry window is additionally **deferred upstream** by `services::base::deferred_aoi` so it never pressures the queue at all — see `crates/services/src/base/deferred_aoi.rs` for the buffer semantics. The Mercury-layer queue catches whatever the upstream gate let through (mostly the post-`onClientReady` flush burst itself, and any unrelated reliable traffic colliding with it).
+Cell-driven AoI traffic during the pre-`onClientReady` world-entry window is additionally **deferred upstream** by `services::base::deferred_aoi` so it never pressures the queue at all — see `crates/base-session/src/base/deferred_aoi.rs` for the buffer semantics. The Mercury-layer queue catches whatever the upstream gate let through (mostly the post-`onClientReady` flush burst itself, and any unrelated reliable traffic colliding with it).
 
 ### 1.8 Message dispatch
 

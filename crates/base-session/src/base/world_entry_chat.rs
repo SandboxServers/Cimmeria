@@ -1,7 +1,7 @@
 //! Chat-channel registration + welcome message for `onClientReady`.
 //!
 //! Pure arg-builders for the entity-method packets fired in
-//! [`super::world_entry_appearance::handle_on_client_ready`]. Split out
+//! `cimmeria_services::base::world_entry_appearance::handle_on_client_ready`. Split out
 //! of `world_entry_appearance.rs` so the byte-level wire-format logic
 //! has byte-exact unit tests without dragging in the file's async-handler
 //! surface; the wire-emit side stays next to the rest of the
@@ -48,7 +48,7 @@ pub(crate) fn build_chat_joined_args(channel_name: &str, channel_id: u8) -> Vec<
 /// Wire format: `[wstring speaker][u8 speaker_flags=0][u8 channel][wstring text]`.
 /// The text is `"Welcome to Stargate Worlds. Your player id is: {entity_id}."`
 /// pinned by [`tests`]; matches the python reference at `SGWPlayer.py:541`.
-pub(crate) fn build_welcome_message_args(speaker: &str, entity_id: u32) -> Vec<u8> {
+pub fn build_welcome_message_args(speaker: &str, entity_id: u32) -> Vec<u8> {
     let welcome = format!("Welcome to Stargate Worlds. Your player id is: {entity_id}.");
     let mut buf = Vec::with_capacity(16 + (speaker.len() + welcome.len()) * 2);
     write_wstring(&mut buf, speaker);

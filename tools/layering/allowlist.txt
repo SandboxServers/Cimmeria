@@ -52,5 +52,5 @@ cell::cell_methods::player::trade::state -> cell::cell_methods::player::trade  #
 cell::cell_methods::gm::world -> cell::cell_methods::player::combat::respawn  # (not in §2) gmRespawn calls handle_respawn
 
 # --- §2I: base-internal ------------------------------------------------------
-base -> base::service  # pub use service::BaseService -> facade
-base -> base::world_entry_appearance::cinematic_aoi_hold  # CinematicAoiHold
+# B1 resolved this section: the hold record moved to the session crate, and
+# `base` (now the path shim) maps to the facade, which owns `BaseService`.

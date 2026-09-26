@@ -115,6 +115,29 @@ Learned extracting `cimmeria-minigame` (W3c, a leaf module with one outside path
   coverage, so drop it and say so.
 - A worktree can arrive with a coordinator's uncommitted edit (`tools/build-lane/lane.sh`):
   `git add` by explicit path, never `-A`.
+Learned extracting `cimmeria-base-session` (B1, the first base-track wave):
+
+- **Zero-edit `crate::` paths for moved code.** A private `use cimmeria_wire::mercury;`
+  at the new crate root plus a private `mod cell { pub(crate) use …::messages; pub(crate)
+  use …::spawner; }` made every moved `crate::mercury::…` / `crate::cell::…` path compile
+  with no edit inside the moved files; the renames stayed at 100% similarity.
+- **Widen field TYPES too.** Making `ConnectedClientState` `pub` fires
+  `private_interfaces` ("type `DeferredAoiMsg` is more private than the item") for each
+  `pub` field whose type is `pub(crate)`. The `check -p <new>` dead-code list misses
+  items the new crate also uses itself (`send_to_witness_reliable`); only the higher
+  crate's E0603 pass finds those.
+- **An EnvFilter row matches sibling modules by string prefix.**
+  `cimmeria_services::base::world_entry=trace` also kept `world_entry_chat` and
+  `world_entry_appearance`, so ONE new row `cimmeria_base_session::base::world_entry`
+  covers all three moved `world_entry*` modules. Check what an old row matched by
+  prefix before assuming a moved module had no file.
+- **A hollowed-out parent module can map to the facade.** Once `base/mod.rs` only
+  declared the leftovers and re-exported, remapping `[exact] "base"` to
+  `cimmeria-services` retired the `base -> base::service` allowlist line.
+- **The Edit tool writes LF into CRLF files** (mixed endings). A later scripted
+  mutation that matches `\r\n` silently fails its assert; compare `line.strip()` instead.
+- **Something outside the wave may modify tracked files in the worktree** (the lane
+  script changed mid-session). Stage explicit paths, never `git add -A`.
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),

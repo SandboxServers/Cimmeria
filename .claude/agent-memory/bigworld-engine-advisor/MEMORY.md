@@ -116,7 +116,7 @@ Sub-slot encoding details: now confirmed in `findings/entity-property-sync.md` (
 - Mercury packet builder: `crates/mercury/src/packet.rs`
 - Encrypted message builders: `crates/wire/src/mercury/protocol/` (the prior `mercury_ext.rs` was split)
 - BaseApp handler: `crates/services/src/base.rs`
-- Cooked data handler: `crates/services/src/base/cooked_data.rs`
+- Cooked data handler: `crates/base-session/src/base/cooked_data.rs`
 - Version info builder: `crates/wire/src/mercury/protocol/` (resources / version-info submodule)
 
 ### Python Game Logic

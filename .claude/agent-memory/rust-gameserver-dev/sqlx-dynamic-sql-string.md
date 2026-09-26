@@ -41,4 +41,4 @@ root) and `cell/spawner/mod.rs` re-exports it with
 `concat!`, so it needs no `$crate::` paths.
 
 Live example: `crates/cell-catalog/src/cell/spawner/templates.rs`, shared with
-`crates/services/src/base/gm_spawn.rs` (PR #662 review, finding 3).
+`crates/base-session/src/base/gm_spawn.rs` (PR #662 review, finding 3).

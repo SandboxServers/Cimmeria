@@ -200,8 +200,8 @@ Static review at `beaf79471154a2e558fd7d112115950519a3f530` found a missing prog
 | Surface | Finding | Source |
 |---|---|---|
 | Method 138 delivery | The constant and wire-log decoder exist; no runtime sending call site was found | [player client methods](../../../crates/wire/src/cell/client_methods/player.rs), [generated decoder](../../../crates/wire-log/src/wire_log/decoders/generated.rs) |
-| Level mutation | The state stores levels, but production callers grant expertise or applied science points without changing the paradigm map; `.allcraft` reports incomplete implementation | [CraftingState](../../../crates/entity/src/crafting.rs), [grant handlers](../../../crates/services/src/base/crafting/handlers.rs), [console crafting](../../../crates/services/src/cell/console/crafting.rs) |
-| Persistence and login | Load/save helpers decode and re-encode the map; no login caller of `load_crafting_state` was found | [crafting persistence](../../../crates/services/src/base/crafting/persistence.rs) |
+| Level mutation | The state stores levels, but production callers grant expertise or applied science points without changing the paradigm map; `.allcraft` reports incomplete implementation | [CraftingState](../../../crates/entity/src/crafting.rs), [grant handlers](../../../crates/base-session/src/base/crafting/handlers.rs), [console crafting](../../../crates/services/src/cell/console/crafting.rs) |
+| Persistence and login | Load/save helpers decode and re-encode the map; no login caller of `load_crafting_state` was found | [crafting persistence](../../../crates/base-session/src/base/crafting/persistence.rs) |
 
 `onPlayerDataLoaded` has no arguments in `SGWPlayer.def`; it does not itself carry paradigm levels. This audit therefore does **not** establish that relogging restores the crafting UI. The legacy [Crafter](../../../deprecated/python/cell/Crafter.py) mutation path calls `onRacialParadigmUpdated`, whose [SGWPlayer](../../../deprecated/python/cell/SGWPlayer.py) implementation emits the update; that is reference intent, not a Rust implementation.
 

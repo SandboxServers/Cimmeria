@@ -41,7 +41,7 @@ and `expected` as paired structured fields so a single ops query
 ### Pattern C — Witness / lookup misses logged at `trace!`
 
 The `send_to_witness` family in
-[`crates/services/src/base/helpers/mod.rs`](../../crates/services/src/base/helpers/mod.rs)
+[`crates/base-session/src/base/helpers/mod.rs`](../../crates/base-session/src/base/helpers/mod.rs)
 historically logged AoI packet drops at `trace!`, making them
 invisible without `RUST_LOG=trace`. **Fix**: upgrade to `warn!` for the
 entity-to-addr miss (player-visible bug) and `debug!` for the
