@@ -98,7 +98,7 @@ inside a transaction it rolls back at the end (works for tests that
 don't need to span their own commit boundary), or pick a sentinel
 from the module's reserved `0x7000_xxxx` slot and delete its own
 rows on cleanup. The reserved-slot scheme is documented per-module
-(see `crates/services/src/base/character/mod.rs:276-281` and
+(see `crates/base-world-entry/src/base/character/mod.rs:276-281` and
 `crates/base-methods/src/base/world_entry/methods/missions.rs:146-148`
 for the canonical doc-comment shape) and is also summarised in the
 "Sentinel id discipline" section of [TESTING.md](../../TESTING.md).

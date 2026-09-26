@@ -518,7 +518,7 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
 - `items.quality_id` / `tech_comp` / `tier` / `applied_science_id` exist in the
   schema (`db/resources/Items/Tables/items.sql:8,12-14`) and are read by **no**
   combat path. The only Rust `INSERT`s naming them are test fixtures
-  (`crates/services/src/base/character/request_visuals_live_db_tests.rs:117`,
+  (`crates/base-world-entry/src/base/character/request_visuals_live_db_tests.rs:117`,
   `crates/base-session/src/base/console_authoring/tests.rs:93`).
 - `AbilityDef` (`crates/entity/src/abilities/defs.rs:101-117`) has no scaling
   fields. Base damage comes **only** from the effect NVPs

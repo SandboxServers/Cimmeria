@@ -26,6 +26,14 @@ use super::space_registry::resolve_space_id_fallback;
 mod address_grant;
 mod persist_arrival;
 pub(crate) use address_grant::handle_grant_stargate_address;
+// The arrival write. A test hook too: the dial-refusal round trip in
+// `cimmeria-services` (`gate_round_trip_tests::dial_refusal_persist`), which
+// also drives the cell's dial handler, calls it through the `test-support`
+// feature.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use persist_arrival::persist_arrival;
+#[cfg(not(any(test, feature = "test-support")))]
 use persist_arrival::persist_arrival;
 
 #[cfg(test)]
@@ -107,7 +115,10 @@ async fn abandon_unspaced_session(
         destination_space_id
     )
 )]
-pub(crate) async fn handle_gate_travel(
+// `pub` for the `test-support` re-export in `world_entry`; a production build
+// without the feature reaches it only through the cell dispatch.
+#[cfg_attr(not(any(test, feature = "test-support")), allow(unreachable_pub))]
+pub async fn handle_gate_travel(
     entity_id: u32,
     target_world_name: &str,
     position: [f32; 3],

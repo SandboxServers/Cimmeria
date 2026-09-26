@@ -39,7 +39,7 @@ use super::super::ConnectedClientState;
     skip_all,
     fields(peer = %addr, account_id),
 )]
-pub(crate) async fn handle_enable_entities(
+pub async fn handle_enable_entities(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],

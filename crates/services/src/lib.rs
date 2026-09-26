@@ -42,9 +42,14 @@ pub use cimmeria_wire_log::wire_log;
 // registers tickets in its `SessionRegistry`) keeps resolving.
 pub use cimmeria_minigame::minigame;
 
-/// The `sgw_mission` round-trip tests that drive the cell's missions and
-/// the base's cell dispatch, both still in this crate, against the
-/// feature handlers in `cimmeria-base-methods`. Test-only.
+/// The gate-travel round trips that drive the cell's gate handlers and then
+/// the base's world entry in `cimmeria-base-world-entry`. Test-only.
+#[cfg(test)]
+mod gate_round_trip_tests;
+
+/// The `sgw_mission` round-trip tests that drive the cell's missions, still
+/// in this crate, and the base's cell dispatch (`cimmeria-base-world-entry`)
+/// against the feature handlers in `cimmeria-base-methods`. Test-only.
 #[cfg(test)]
 mod mission_round_trip_tests;
 

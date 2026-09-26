@@ -7,14 +7,14 @@
 //! transitions, the cell handler broadcasts `onStateFieldUpdate` to the
 //! client, then sends this message so base persists the row. On next
 //! login, the hydrate path in
-//! `crates/services/src/base/world_entry_appearance.rs` reads the column
+//! `crates/base-world-entry/src/base/world_entry_appearance/client_ready/mod.rs` reads the column
 //! back into `InitPlayerState` and the preference survives the relog. (#412)
 //!
 //! Schema column:
 //!
 //! - `sgw_player.state_field INTEGER NOT NULL DEFAULT 0`
 //!
-//! Only bits in [`crate::cell::combat::PERSISTED_STATE_FIELD_MASK`] are
+//! Only bits in [`cimmeria_wire::state_field::PERSISTED_STATE_FIELD_MASK`] are
 //! ever stored. The cell send site already masks; this handler masks
 //! again defensively so a future send site that forgets can't leak a
 //! transient combat bit (BSF_Dead, BSF_InCombat, BSF_MovementLock) into
@@ -26,9 +26,8 @@
 
 use std::sync::Arc;
 
+use cimmeria_wire::state_field::PERSISTED_STATE_FIELD_MASK;
 use sqlx::PgPool;
-
-use crate::cell::combat::PERSISTED_STATE_FIELD_MASK;
 
 /// Persist a player's preference `state_field` bits to `sgw_player`.
 /// Returns silently after a `warn` if the row is missing or the write
@@ -91,8 +90,10 @@ mod tests {
     //! past `system_options::tests` at `0x7000_1600`.
 
     use super::*;
-    use crate::cell::combat::{BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK};
     use crate::test_support::require_db_or_skip;
+    use cimmeria_wire::state_field::{
+        BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,
+    };
 
     const TEST_BASE: i32 = 0x7000_1700;
 

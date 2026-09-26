@@ -34,7 +34,7 @@
 //!   `read_client_message_payload` extracts each message's payload.
 //! * **Outbound** — [`log_outbound_entity_method`] is called from the
 //!   `CellToBaseMsg::EntityMethodCall` and `WitnessEntityMethod` recv
-//!   sites in `crates/services/src/base/world_entry/cell_dispatch/`.
+//!   sites in `crates/base-world-entry/src/base/world_entry/cell_dispatch/`.
 //!
 //! # SigNoz targets
 //!

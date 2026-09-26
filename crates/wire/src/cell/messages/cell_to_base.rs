@@ -137,7 +137,7 @@ pub enum CellToBaseMsg {
     ///
     /// The base resolves `account_id` from the session and uses it as the
     /// ownership predicate alongside `player_id`, the same fail-closed pair
-    /// `cimmeria_services::base::world_entry::gate_travel`'s arrival persistence uses.
+    /// `cimmeria_base_world_entry::base::world_entry::gate_travel`'s arrival persistence uses.
     /// The append is idempotent, so a retried or duplicated message cannot
     /// double-append — `resources.stargates.stargate_id` carries no
     /// uniqueness constraint and the column is a bare `integer[]`.

@@ -52,7 +52,7 @@ pub fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 /// that swaps two entries can't slip past via the packet-count check:
 ///   1. `BeingAppearance` resend  (heals HOLD-FOR-TRANSACTION drop from
 ///      `handle_map_loaded`'s bundle — see the two-bundle split comment
-///      block in `cimmeria_services::base::world_entry::map_loaded` for the
+///      block in `cimmeria_base_world_entry::base::world_entry::map_loaded` for the
 ///      transaction-state rationale, and `docs/architecture/mercury-bundle.md`
 ///      for the ADR.)
 ///   2. `onEntityTint` resend     (same reason)
@@ -107,7 +107,7 @@ pub fn build_on_client_ready_burst_bundle(
 /// `handle_map_loaded`'s bundle), so the transaction-state rule allows
 /// combining them — see the safe-combine catalogue in
 /// `docs/architecture/mercury-bundle.md` and the two-bundle split comment in
-/// `cimmeria_services::base::world_entry::map_loaded` for the rationale.
+/// `cimmeria_base_world_entry::base::world_entry::map_loaded` for the rationale.
 ///
 /// Called per-iteration of the cinematic-guard spam loop (every 100 ms for
 /// up to 20 s) and also from `handle_cancel_movie` on real client

@@ -147,11 +147,8 @@ cimmeria-services = [
 # `base::world_entry_appearance::builders`) is extracted (B1):
 # crates/services/src only re-exports it, so it has no rows here.
 # Nor does cimmeria-base-methods (`base::world_entry::methods`), extracted
-# in B2 and re-exported the same way.
-
-"base::world_entry" = "cimmeria-base-world-entry"
-"base::world_entry_appearance" = "cimmeria-base-world-entry"
-"base::character" = "cimmeria-base-world-entry"
+# in B2 and re-exported the same way, nor cimmeria-base-world-entry
+# (`base::{world_entry, world_entry_appearance, character}`), extracted in B3.
 
 "base::service" = "cimmeria-base"
 "base::connect_loop" = "cimmeria-base"

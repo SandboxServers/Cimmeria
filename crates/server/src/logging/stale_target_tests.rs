@@ -279,6 +279,15 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // B2 moved them to cimmeria-base-methods; services re-exports `methods`
         // (`pub(crate) use`), which declares no module.
         "cimmeria_services::base::world_entry::methods",
+        // world_entry.log's and character.log's services rows before wave B3
+        // moved the rest of world entry and the character list to
+        // cimmeria-base-world-entry; services re-exports `world_entry` and
+        // `character` (`pub(crate) use`), which declares no module. The
+        // `character` row must not resolve through its `character_create`
+        // sibling, which stays and keeps its own row.
+        "cimmeria_services::base::world_entry",
+        "cimmeria_services::base::world_entry_appearance",
+        "cimmeria_services::base::character",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -291,7 +300,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_mercury",
         "cimmeria_server::logging",
         "cimmeria_cell_world::cell::space_manager",
-        "cimmeria_services::base::world_entry",
+        "cimmeria_base_world_entry::base::world_entry",
+        "cimmeria_base_world_entry::base::world_entry_appearance",
+        "cimmeria_base_world_entry::base::character",
+        "cimmeria_services::base::character_create",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

@@ -46,10 +46,12 @@ cimmeria-base-session = { workspace = true }
 # FSM, the synchronous effect scripts, the GM gate, ContentEvents), split out
 # of this crate (C1). Re-exported at the old `cell::…` paths.
 cimmeria-cell-world = { workspace = true }
-# The BaseApp's DB-backed feature handlers (player load, inventory, vendors,
-# trade, mail, missions, progression), split out of this crate (B2).
-# Re-exported at `base::world_entry::methods`.
-cimmeria-base-methods = { workspace = true }
+# The BaseApp's world entry (play-character, map load, gate travel, reanchor,
+# teleport, the CellToBase dispatch, onClientReady and the cinematic AoI hold's
+# release) and the character list, split out of this crate (B3). Re-exported at
+# `base::{world_entry, character}`. Its `world_entry::methods` is the feature
+# handlers of cimmeria-base-methods (B2), which this crate no longer names.
+cimmeria-base-world-entry = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
@@ -75,24 +77,12 @@ thiserror = { workspace = true }
 chaos-testing = ["cimmeria-mercury/test-support"]
 
 [dev-dependencies]
-# Re-pull tokio with `test-util` so time-dependent tests can freeze and
-# advance the clock (`#[tokio::test(start_paused = true)]` +
-# `tokio::time::advance`). Used by the cinematic AoI hold tests. Additive
-# over the `[dependencies]` entry — the feature only reaches test targets,
-# not the server binary.
-tokio = { workspace = true, features = ["test-util"] }
-
 # Re-pull mercury with the `test-support` feature so handler unit tests can
 # use `cimmeria_mercury::test_transport::TestTransport` (the recording UDP
 # fake) in place of a real socket. Additive over the `[dependencies]` entry
 # above — it only activates the extra feature for the test build. See
 # docs/architecture/transport-trait.md.
 cimmeria-mercury = { path = "../mercury", features = ["test-support"] }
-
-# Implement the `Transport` trait in tests that need send-failure
-# injection (e.g. partial-fragment recovery guard). Mercury's trait
-# uses `#[async_trait]`, so any implementor must also pull it in.
-async-trait = { workspace = true }
 
 # Generic test helpers: the live-DB gate (`require_db_or_skip!`),
 # `LogCapture` and the `TestTransport` re-export. Re-exported from the
@@ -114,6 +104,6 @@ cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # ticks/cover).
 cimmeria-cell-world = { workspace = true, features = ["test-support"] }
 
-# `progression::persist_purchase`, which the AT-01 hydrate round-trip in
-# `world_entry_appearance::client_ready::player_init_row` drives.
-cimmeria-base-methods = { workspace = true, features = ["test-support"] }
+# `world_entry::{handle_gate_travel, persist_arrival}`, which the gate round
+# trips in `gate_round_trip_tests` drive after the cell's dial handler.
+cimmeria-base-world-entry = { workspace = true, features = ["test-support"] }

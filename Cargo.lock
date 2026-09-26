@@ -907,6 +907,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-base-world-entry"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cimmeria-auth",
+ "cimmeria-base-methods",
+ "cimmeria-base-session",
+ "cimmeria-discord",
+ "cimmeria-entity",
+ "cimmeria-mercury",
+ "cimmeria-minigame",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "cimmeria-wire-log",
+ "rand 0.10.2",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-cell-catalog"
 version = "0.1.0"
 dependencies = [
@@ -1240,10 +1261,9 @@ dependencies = [
 name = "cimmeria-services"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "cimmeria-auth",
- "cimmeria-base-methods",
  "cimmeria-base-session",
+ "cimmeria-base-world-entry",
  "cimmeria-cell-catalog",
  "cimmeria-cell-world",
  "cimmeria-common",

@@ -11,7 +11,7 @@
 //! The fan-out cardinality half is here rather than in the base crate
 //! because it is about how many `WitnessEntityMethod` messages the CELL
 //! emits; the byte-level routing of those messages is pinned in
-//! `base/world_entry/cell_dispatch/tests_dispatch_arms/stargate_fanout.rs`.
+//! `crates/services/src/gate_round_trip_tests/stargate_fanout.rs`.
 
 use tokio::sync::mpsc;
 

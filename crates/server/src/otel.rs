@@ -606,6 +606,20 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_base_methods::base::world_entry::methods::inventory::grant"
         ));
+        // World entry, the CellToBase dispatch and the character list were
+        // `cimmeria_services::base::{world_entry, world_entry_appearance,
+        // character}` in cimmeria-server until wave B3 moved them to
+        // cimmeria-base-world-entry. The AoI dispatch runs once per AoI event,
+        // not per datagram, and has always been a cimmeria-server row.
+        assert!(!is_network_noise_target(
+            "cimmeria_base_world_entry::base::world_entry::cell_dispatch::aoi_dispatch"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_base_world_entry::base::world_entry_appearance::cinematic_aoi_hold"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_base_world_entry::base::character"
+        ));
         assert!(!is_network_noise_target(
             "cimmeria_services::base::dispatch"
         ));

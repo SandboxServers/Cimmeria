@@ -11,7 +11,7 @@ line references.
 
 ## `handle_gate_travel` is the back half, not the transfer
 
-`crates/services/src/base/world_entry/gate_travel/mod.rs::handle_gate_travel`
+`crates/base-world-entry/src/base/world_entry/gate_travel/mod.rs::handle_gate_travel`
 does **not** remove the entity from its old space. Its doc comment says so:
 "The CellService has already removed the entity from its old space." The
 destructive `space_mgr.destroy_entity(entity_id)` lives in the *cell*, in

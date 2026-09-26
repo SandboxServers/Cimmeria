@@ -81,7 +81,7 @@ That is **n = 1**. Treat it as a lead, not a finding.
 The mechanism it suggests is one we already know exists. The cinematic-exit
 `CollectGarbage` reclaims the player's own appearance asset — that is #288,
 the "dev cube", healed by the appearance spam in
-[`world_entry_appearance/cinematic.rs`](../../crates/services/src/base/world_entry_appearance/cinematic.rs).
+[`world_entry_appearance/cinematic.rs`](../../crates/base-world-entry/src/base/world_entry_appearance/cinematic.rs).
 The working theory is that the same GC also reclaims a static mesh whose entity
 was created mid-movie, and that nothing re-sends it. A `class_id 1` entity
 apparently survives, or heals itself; a `class_id 0` static mesh has no heal
@@ -94,7 +94,7 @@ flush them.
 
 ### Where the hold starts
 
-[`world_entry_appearance/cinematic_aoi_hold/`](../../crates/services/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs)
+[`world_entry_appearance/cinematic_aoi_hold/`](../../crates/base-world-entry/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs)
 owns the hold. The hold record and `begin` are session state, in
 [`base/cinematic_aoi_hold.rs`](../../crates/base-session/src/base/cinematic_aoi_hold.rs)
 of `cimmeria-base-session`; arming the timeout and releasing the hold stay
@@ -177,7 +177,7 @@ touch it:
 ### Where the flush lives now
 
 The flush code moved out of the over-cap `cell_dispatch/aoi.rs` into
-[`cell_dispatch/deferred_flush.rs`](../../crates/services/src/base/world_entry/cell_dispatch/deferred_flush.rs).
+[`cell_dispatch/deferred_flush.rs`](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs).
 `flush_deferred_aoi` now takes a `trigger: &'static str` — `on_client_ready`
 or `cinematic_hold_release` — and the info line reads "Flushing deferred-AoI
 buffer" with a `trigger` field. `flush_deferred_self_methods` is the

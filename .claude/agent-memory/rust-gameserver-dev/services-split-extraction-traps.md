@@ -191,6 +191,30 @@ Learned extracting `cimmeria-base-methods` (B2, a subtree two levels deep):
   a script, run the one parity test with `nextest run -p cimmeria-server <name>`,
   restore; repeat per row and for the `IN_PROCESS_CRATES` entry.
 
+Learned extracting `cimmeria-base-world-entry` (B3, the base track's third wave):
+
+- **The layering guard only proves PRODUCTION is clean.** `check.py --edges` showed zero
+  upward edges, yet three tests drove cell code (`cell::gate_travel::handle_dial_gate`,
+  `send_gate_sequence` on a `SpaceManager`). Grep the moved tree, tests included, for
+  `crate::cell::(gate_travel|space_manager|spawner|…)` before `git mv`, and cut those
+  tests to a services `*_tests/` dir with copies of their fixtures.
+- **A test hook for a fn that its parent also imports privately under the same name**
+  (`use persist_arrival::persist_arrival;`, fn == module name) needs a cfg-split pair:
+  `#[cfg(any(test, feature = "test-support"))] #[doc(hidden)] pub use m::f;` plus
+  `#[cfg(not(any(test, feature = "test-support")))] use m::f;`, or E0252.
+- **Services' path-compat `pub(crate) use` re-exports die in bulk**, and the lib and
+  lib-test targets report DIFFERENT unused sets (test-only users keep some alive).
+  `sort | uniq` on `--message-format short` hides which target said what; items only
+  tests use become `#[cfg(test)] pub(crate) use`.
+- **Dev-dependencies die silently too**: `async-trait`, tokio `test-util` and a lower
+  crate's `test-support` feature lost their last users here; grep for each after the move.
+- **Don't widen a module to `pub` that services never reached.** A `pub mod` whose docs
+  link private children trips rustdoc's `private_intra_doc_links` (CI never runs
+  `cargo doc`); keep the old `pub(crate)` and re-export the handlers from a public sibling.
+- **A FILE_LAYERS row that a sibling row covers by prefix survives every guard.** Revert-
+  proof each row: removing `…::world_entry_appearance` changed nothing because
+  `…::world_entry` matched it, so the row was dropped as redundant.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

@@ -75,7 +75,7 @@ pub(super) struct DispatchCtx<'a> {
 }
 
 /// Handle a message from CellService -- dispatches AoI packets to witness clients.
-pub(crate) async fn handle_cell_message(
+pub async fn handle_cell_message(
     msg: CellToBaseMsg,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,

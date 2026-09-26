@@ -25,7 +25,7 @@ prerequisite for safely implementing any of the GM cell methods.
   `crates/services/src/cell/dispatch/router.rs:101`.
 - `class_id` is hardcoded to SGWPlayer (0x02) regardless of
   access_level (see TODO at
-  `crates/services/src/base/world_entry/play_character.rs:89-94`).
+  `crates/base-world-entry/src/base/world_entry/play_character.rs:89-94`).
   Legitimate GMs CANNOT use GM commands today.
 - Three GM-shaped methods ARE in the regular SGWPlayer flat-index
   table (so reachable today even without the SGWGmPlayer class):

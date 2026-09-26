@@ -8,10 +8,10 @@ metadata:
 `CellToBaseMsg::WitnessEntityMethod` dispatch has **two** functions named
 `witness_entity_method` — a signature change must touch both:
 
-- `crates/services/src/base/world_entry/cell_dispatch/aoi_dispatch.rs` — the
+- `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi_dispatch.rs` — the
   wire-logging wrapper that `route` actually calls. Logs via
   `wire_log::log_outbound_entity_method` then delegates.
-- `crates/services/src/base/world_entry/cell_dispatch/aoi.rs` — the real
+- `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs` — the real
   emitter that builds the packet via `build_entity_method_packet`.
 
 **Why:** A grep for `witness_entity_method(` construction sites won't flag the

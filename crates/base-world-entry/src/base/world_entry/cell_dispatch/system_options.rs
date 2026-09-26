@@ -6,7 +6,7 @@
 //! changed option via `updateSystemOptions` (player method 93), the cell
 //! handler applies it in memory, then sends this message so base persists
 //! the row. On next login, the hydrate path in
-//! `crates/services/src/base/world_entry_appearance.rs` reads these
+//! `crates/base-world-entry/src/base/world_entry_appearance/client_ready/mod.rs` reads these
 //! columns back into `InitPlayerState` and the option survives the relog.
 //!
 //! Schema columns:

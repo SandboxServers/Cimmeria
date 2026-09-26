@@ -1040,3 +1040,112 @@ fn base_methods_events_keep_their_file_and_index() {
         }
     }
 }
+
+/// World entry, the CellToBase dispatch, `onClientReady`, the cinematic AoI
+/// hold's release and the character list moved from
+/// `cimmeria_services::base::{world_entry, world_entry_appearance, character}`
+/// to the `cimmeria-base-world-entry` crate (services crate split, wave B3),
+/// which changed the `module_path!()` of their untargeted rows. They must still
+/// land where they did: world entry and its appearance half in
+/// `world_entry.log`, the character list in `character.log`, at every level,
+/// in `server.log` from INFO, and in one OTLP index per level,
+/// `cimmeria-server` below TRACE (the AoI dispatch runs per AoI event, not per
+/// datagram, so it is not network noise). None of `cimmeria_services=debug`,
+/// `cimmeria_base_session=debug` and `cimmeria_base_methods=debug`
+/// prefix-matches `cimmeria_base_world_entry`, so without its own
+/// `OTEL_FILTER` row the DEBUG rows would silently stop reaching SigNoz, and
+/// without its own file rows the files would lose them.
+///
+/// The hand-named `aoi.*` rows the AoI dispatch and the hold emit did not
+/// change; `aoi.cinematic_hold` and `aoi.create_emit` are pinned here too, so
+/// the move is seen not to have touched them.
+#[test]
+fn base_world_entry_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file) in [
+        (
+            "cimmeria_base_world_entry::base::world_entry::cell_dispatch::aoi_dispatch",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry::cell_dispatch::inventory_dispatch",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry::gate_travel",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry::gate_travel::persist_arrival",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry::map_loaded",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry::reanchor_player",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry::teleport",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry_appearance::client_ready",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry_appearance::cinematic",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::world_entry_appearance::cinematic_aoi_hold",
+            "file:world_entry.log",
+        ),
+        (
+            "cimmeria_base_world_entry::base::character",
+            "file:character.log",
+        ),
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+    // The character creator stays in `cimmeria-services` (wave B4) and keeps
+    // its own `character.log` row; the moved `character` row must not have
+    // been its only route there.
+    let create = "cimmeria_services::base::character_create";
+    assert!(
+        sinks_for(&dispatch, &hits, create, Level::DEBUG).contains("file:character.log"),
+        "{create} must stay in character.log"
+    );
+    // Hand-named targets: no file, `server.log` from INFO, one index.
+    assert_eq!(
+        sinks_for(&dispatch, &hits, "aoi.cinematic_hold", Level::INFO),
+        set(&[SERVER_LOG, OTLP_SERVER]),
+        "aoi.cinematic_hold at INFO"
+    );
+    assert_eq!(
+        sinks_for(&dispatch, &hits, "aoi.create_emit", Level::DEBUG),
+        set(&[OTLP_SERVER]),
+        "aoi.create_emit at DEBUG"
+    );
+}

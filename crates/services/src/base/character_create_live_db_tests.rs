@@ -39,7 +39,7 @@ use std::sync::{Arc, Mutex};
 /// `0x7000_1900` (cover-loader); this steps to the next free slot so
 /// concurrent live-DB runs don't collide on account/player ids. Fits
 /// in `i32`. See the neighbour map in
-/// `crates/services/src/base/character/delete_live_db_tests.rs`.
+/// `crates/base-world-entry/src/base/character/delete_live_db_tests.rs`.
 const TEST_BASE: i32 = 0x7000_1A00;
 
 /// CharDefId with the fewest `VIS_Optional` groups in the seed data

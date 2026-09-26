@@ -89,7 +89,7 @@ exists. This is the strongest candidate yet for the owner's original
 report, since it only manifests under real packet loss.
 
 **Fix attempted and reverted:** made the AoI cascade
-(`entered_aoi` in `crates/services/src/base/world_entry/cell_dispatch/aoi.rs`)
+(`entered_aoi` in `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs`)
 wait for `CREATE_ENTITY`'s ACK (polling the witness's TX window) before
 sending the cascade. Closed the cascade-specific hole but Mercury only
 piggybacks ACKs on the peer's own next outbound send, so an idle

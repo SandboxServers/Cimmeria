@@ -38,7 +38,7 @@ mod player_init_row;
     skip_all,
     fields(peer = %addr),
 )]
-pub(crate) async fn handle_on_client_ready(
+pub async fn handle_on_client_ready(
     addr: SocketAddr,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,

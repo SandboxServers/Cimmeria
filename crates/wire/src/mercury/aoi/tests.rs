@@ -621,7 +621,7 @@ fn compose_create_entity_cascade_body_matches_build_create_entity_cascade_body()
 ///
 /// `compose_forced_position_body` is appended via
 /// [`cimmeria_mercury::channel_bundle::ChannelBundle::append_raw_message`]
-/// inside `cimmeria_services::base::world_entry::teleport::build_teleport_bundle`.
+/// inside `cimmeria_base_world_entry::base::world_entry::teleport::build_teleport_bundle`.
 /// The bundled wire bytes for that raw message MUST equal the body
 /// portion of the standalone [`build_forced_position`] packet. Divergence
 /// would split the wire format between the bundle-migrated teleport path

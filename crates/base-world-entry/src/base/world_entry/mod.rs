@@ -11,10 +11,14 @@
 //! - `methods` -- DB queries and feature handlers (player load, inventory, vendor,
 //!   trade, mail, missions, progression), in `cimmeria-base-methods` since wave
 //!   B2 of docs/architecture/services-crate-split.md.
+//!
+//! This module is in `cimmeria-base-world-entry` since wave B3;
+//! `cimmeria-services` re-exports it at its old path.
 
 // The feature handlers are in `cimmeria-base-methods` (wave B2), re-exported
 // at their old path, so `super::methods::…` in the siblings is unchanged.
-pub(crate) use cimmeria_base_methods::base::world_entry::methods;
+// `pub`: tests in `cimmeria-services` reach them through this path.
+pub use cimmeria_base_methods::base::world_entry::methods;
 
 pub(crate) mod cell_dispatch;
 mod enable_entities;
@@ -28,14 +32,21 @@ mod teleport;
 // resolves world names through it from below world entry.
 pub(crate) use cimmeria_base_session::base::world_entry::space_registry;
 
-// Public surface (re-exports keep `super::world_entry::handle_*` imports working
-// in connect_loop.rs and friends).
-pub(crate) use cell_dispatch::handle_cell_message;
-pub(crate) use enable_entities::handle_enable_entities;
-pub(crate) use map_loaded::handle_map_loaded;
-pub(crate) use play_character::handle_play_character;
+// Public surface: the connect loop and `BaseService`, still in
+// `cimmeria-services`, import these through `super::world_entry::handle_*`.
+pub use cell_dispatch::handle_cell_message;
+pub use enable_entities::handle_enable_entities;
+pub use map_loaded::handle_map_loaded;
+pub use play_character::handle_play_character;
 
 // Legacy re-exports from world_entry_appearance (kept here so connect_loop.rs's
 // existing `super::world_entry::{handle_on_client_ready, handle_cancel_movie}`
 // imports stay unchanged after this refactor).
-pub(crate) use super::world_entry_appearance::{handle_cancel_movie, handle_on_client_ready};
+pub use super::world_entry_appearance::{handle_cancel_movie, handle_on_client_ready};
+
+// Test hooks: the gate round trips in `cimmeria-services`
+// (`gate_round_trip_tests`) drive the cell's dial handler before these, so they
+// stay there and reach these through the `test-support` feature.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use gate_travel::{handle_gate_travel, persist_arrival};

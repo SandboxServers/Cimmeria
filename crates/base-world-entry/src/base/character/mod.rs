@@ -21,7 +21,7 @@ mod delete_live_db_tests;
 mod request_visuals_live_db_tests;
 
 /// Query the character list from the database.
-pub(crate) async fn query_character_list(
+pub async fn query_character_list(
     db_pool: &Option<Arc<PgPool>>,
     account_id: u32,
 ) -> Vec<CharacterInfo> {
@@ -87,7 +87,7 @@ pub(crate) async fn query_character_list(
 }
 
 /// Send `onCharacterCreateFailed`.
-pub(crate) async fn send_char_create_failed(
+pub async fn send_char_create_failed(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
@@ -109,7 +109,7 @@ pub(crate) async fn send_char_create_failed(
     skip_all,
     fields(peer = %addr, account_id, player_id),
 )]
-pub(crate) async fn handle_delete_character(
+pub async fn handle_delete_character(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
@@ -158,7 +158,7 @@ pub(crate) async fn handle_delete_character(
 }
 
 /// Handle `requestCharacterVisuals` (0xC6).
-pub(crate) async fn handle_request_character_visuals(
+pub async fn handle_request_character_visuals(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],

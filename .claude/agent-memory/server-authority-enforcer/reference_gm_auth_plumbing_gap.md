@@ -53,7 +53,7 @@ remembers to. This is structural.
 
 ### Related concern: entity-class hardcode
 
-`crates/services/src/base/world_entry/play_character.rs:89-94`
+`crates/base-world-entry/src/base/world_entry/play_character.rs:89-94`
 forces `class_id = 0x02 (SGWPlayer)` regardless of access_level.
 The TODO says: "Until we build a separate SGWGmPlayer index
 table, always use SGWPlayer (0x02) regardless of access_level."
