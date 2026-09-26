@@ -41,10 +41,11 @@ serde_json = { workspace = true }
 
 [features]
 # Exposes the test-only hooks (`load_single_chain_for_test`, `execute_actions`,
-# `populate_mission_context`) to the content tests that stay in
-# cimmeria-services because they drive a cell method, the gate dial or the
-# relog hydration. cimmeria-services turns it on through its
-# [dev-dependencies]; a production build never sees them.
+# `populate_mission_context`) to the content tests above this crate, which
+# drive the code they sit beside: the gate dial's replay in
+# cimmeria-cell-interactions and the relog-hydration tests in cimmeria-cell.
+# Those crates turn it on through their [dev-dependencies]; a production build
+# never sees them.
 test-support = ["cimmeria-cell-combat/test-support"]
 
 [dev-dependencies]

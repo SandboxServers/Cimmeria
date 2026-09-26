@@ -83,7 +83,7 @@ ignore:
   # path end-to-end (every loader fires before the smoke shoot). Treat
   # like `connect_loop/**` above — integration-test territory.
   - "crates/cell-catalog/src/cell/spawner/abilities.rs"
-  - "crates/services/src/cell/service/startup.rs"
+  - "crates/cell/src/cell/service/startup.rs"
   # Deferred per issue #205 (fixture cost exceeds value-per-line)
   #
   # The connect_loop directory hosts the BaseService UDP receive loop and the
@@ -174,6 +174,7 @@ component_management:
         - "crates/cell-console/**"
         - "crates/cell-interactions/**"
         - "crates/cell-methods/**"
+        - "crates/cell/**"
       statuses:
         - type: project
           target: 62%

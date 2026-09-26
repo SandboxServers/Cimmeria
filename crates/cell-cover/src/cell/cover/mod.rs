@@ -85,8 +85,9 @@ pub use spatial::CoverIndex;
 pub use types::{Cover, CoverHeight, CoverNode, CoverQuality, CoverSetMeta, CoverSlotKey};
 
 /// World id the cover unit tests place their nodes in (Castle_CellBlock).
-/// Also used by the cover tests that stay in `cimmeria-services` (they need
-/// the `SpaceManager`), through the `test-support` feature.
+/// Also used by the cover tests above this crate that need the
+/// `SpaceManager` or the NPC AI (in `cimmeria-cell-world` and `cimmeria-cell`),
+/// through the `test-support` feature.
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub const TEST_WORLD_ID: i32 = 12;

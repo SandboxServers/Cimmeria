@@ -4,7 +4,8 @@
 //! wave C3 of the services crate split
 //! (docs/architecture/services-crate-split.md): it drives the relog
 //! hydration, `player_init::mission_restore::build_restored_missions`,
-//! which is the cell service's and still in this crate. `BASKETS`,
+//! which is the cell service's, so it stayed in `cimmeria-services` beside
+//! the service until wave C6 moved both to this crate. `BASKETS`,
 //! `engine_with`, `fire` and `actions_of` are copies of that file's.
 
 use cimmeria_content_engine::actions::Action;

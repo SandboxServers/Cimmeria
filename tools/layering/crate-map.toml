@@ -115,10 +115,6 @@ cimmeria-services = [
 # test-only and invisible to the guard.
 
 # Cell track.
-# Since C2 `cell::service::npc_ai` here is the path shim that re-exports the
-# combat crate's NPC AI; only test modules sit beside it.
-"cell::service::npc_ai" = "cimmeria-cell-combat"
-
 # cimmeria-cell-interactions is extracted (C4): `cell::{interactions,
 # gate_travel, space_transfer, respawn, trade, mail}` are re-exports of it.
 # Since the C4-C6 preparation (§2H) the trade session state is `cell::trade`
@@ -137,8 +133,13 @@ cimmeria-services = [
 # (`pub use console::chat` in the facade's `cell` module). Neither is a module
 # of this crate any more, so they have no rows.
 
-"cell::service" = "cimmeria-cell"
-"cell::dispatch" = "cimmeria-cell"
+# cimmeria-cell is extracted (C6), the top of the cell track: `cell::dispatch`
+# and `cell::CellService` are re-exports of it. `cell::service` (with the NPC
+# AI's path shim, `cell::service::npc_ai`, that re-exports combat's) was a
+# private module and is not re-exported. None of them is a module of this
+# crate any more, so they have no rows; `cell::content_tests` and
+# `cell::spawner_tests` (the cross-track tests that stay) are test-only and
+# invisible to the guard.
 
 # Base track.
 # cimmeria-base-session (the session types of `base`, `base::{helpers,

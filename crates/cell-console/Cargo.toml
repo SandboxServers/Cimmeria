@@ -42,9 +42,9 @@ serde_json = { workspace = true }
 
 [features]
 # Exposes the test-only hook `console::exec` to the NPC movement tick's
-# `.speed` tests, which stay in cimmeria-services because they drive the tick.
-# cimmeria-services turns it on through its [dev-dependencies]; a production
-# build never sees it.
+# `.speed` tests, which are cimmeria-cell's because they drive the tick.
+# cimmeria-cell turns it on through its [dev-dependencies]; a production build
+# never sees it.
 test-support = []
 
 [dev-dependencies]

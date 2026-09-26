@@ -114,7 +114,7 @@ pub use crate::cell::combat::aggression::NPC_DEFAULT_ABILITY;
 /// auto-holstering. Tuned to absorb the gap between killing one mob and
 /// aggroing the next so chaining fights doesn't flicker the model.
 ///
-/// Read by `cimmeria_services::cell::service::ticks::holster_timer_tick`; not a
+/// Read by `cimmeria_cell::cell::service::ticks::holster_timer_tick`; not a
 /// wire-format constraint, just a UX choice. Bump it if players still
 /// see flicker when running between encounters.
 pub const OOC_HOLSTER_DELAY: std::time::Duration = std::time::Duration::from_secs(10);

@@ -650,6 +650,19 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_cell_methods::cell::cell_methods::inventory::item_ops"
         ));
+        // The cell service and the cell-method router,
+        // `cimmeria_services::cell::{service, dispatch}` in cimmeria-server
+        // until wave C6 moved them to cimmeria-cell. The loop logs per message
+        // and per tick, the router per cell-method call, not per datagram.
+        assert!(!is_network_noise_target(
+            "cimmeria_cell::cell::service::message_loop"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell::cell::service::ticks::npc_movement"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell::cell::dispatch::router"
+        ));
         // The feature handlers, `cimmeria_services::base::world_entry::methods`
         // in cimmeria-server until wave B2 moved them to cimmeria-base-methods.
         assert!(!is_network_noise_target(

@@ -13,13 +13,12 @@
 //!   `docs/architecture/transport-trait.md`.
 //!
 //! The domain fixtures live next to the types they build and are re-exported
-//! here: `make_space_manager*`, `seed_ability_defs`, the occluder and
-//! arrival-mesh helpers and the `ContentEvents` fakes come from
-//! `cimmeria_cell_world::test_fixtures` (wave C1), and
-//! `test_default_connected_client_state` from
-//! `cimmeria_base_session::test_fixtures` (wave B1). See
-//! `docs/architecture/services-crate-split.md` §3.
+//! here: `test_default_connected_client_state` from
+//! `cimmeria_base_session::test_fixtures` (wave B1). The world fixtures
+//! (`make_space_manager*` and the rest of `cimmeria_cell_world::test_fixtures`)
+//! were re-exported too until wave C6 moved their last users here, the cell
+//! service's tests and the spawner tests, to `cimmeria-cell` and the lower cell
+//! crates. See `docs/architecture/services-crate-split.md` §3.
 
 pub(crate) use cimmeria_base_session::test_fixtures::*;
-pub(crate) use cimmeria_cell_world::test_fixtures::*;
 pub(crate) use cimmeria_test_support::*;

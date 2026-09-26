@@ -13,7 +13,10 @@
 //! would read 2, and one never fired would read 0.
 //!
 //! Path 3 drives the GM cell-method dispatcher (`cell::console::gm`), so this
-//! test stays in this crate. Path 2, the chain action, is
+//! test sits beside it. Until wave C6 of the services crate split it was
+//! `cimmeria-services`' `cell::content_tests::mission_abandoned`, because the
+//! GM dispatcher was in that crate when wave C3 cut it out of the content
+//! crate's tree. Path 2, the chain action, is
 //! `event_dispatch::mission_abandoned_tests` in `cimmeria-cell-content` (wave C3
 //! of the services crate split, docs/architecture/services-crate-split.md);
 //! path 1 and the ordering guard drive the Missionary dispatcher and are

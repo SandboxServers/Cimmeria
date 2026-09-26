@@ -11,7 +11,7 @@ pub const REQUEST_AMMO_CHANGE: u16 = 42;
 /// `GENERICPROPERTY_AmmoTypeId` from `entities/defs/enumerations.xml`. Used as
 /// the property-id arg for `onEntityProperty` ammo-type indicator updates.
 /// Public so the cell-side base-message handlers in
-/// `cimmeria_services::cell::service::base_messages::bandolier` can emit it on the
+/// `cimmeria_cell::cell::service::base_messages::bandolier` can emit it on the
 /// equip paths (right-click / drag-in-game equip and chain-engine grant
 /// both need to push the active weapon's ammo subtype to the client —
 /// otherwise the fire-animation gate stays closed at the previous

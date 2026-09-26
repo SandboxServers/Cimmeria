@@ -16,8 +16,9 @@
 //!
 //! **Why the meshes are loaded by path rather than through `SpaceManager`:**
 //! `create_space_instance` resolves `data/spaces/{world}.nav` relative to the
-//! process CWD, which under `cargo test -p cimmeria-services` is the crate
-//! directory, so no space built by the ordinary fixtures ever has a mesh.
+//! process CWD, which under `cargo test` is the crate directory
+//! (`crates/cell-world`), so no space built by the ordinary fixtures ever has
+//! a mesh.
 //! Same reason `arrival::test_fixture_mesh` exists.
 
 use cimmeria_common::Vector3;

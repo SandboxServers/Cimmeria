@@ -285,7 +285,8 @@ async fn second_completion_advances_persisted_repeats_counter_end_to_end() {
 
     // ── Simulate a relog: drop the cell-side mission and rebuild
     //    it from query_saved_missions, mirroring what
-    //    cell/service/base_messages.rs does on InitPlayerState.
+    //    cimmeria-cell's cell/service/base_messages/player_init does on
+    //    InitPlayerState.
     //    This pins the production restore path as well as the
     //    write path — if `query_saved_missions` (or its column
     //    mapping) drops `repeats`, the seeded MissionInstance
@@ -390,7 +391,7 @@ async fn second_completion_advances_persisted_repeats_counter_end_to_end() {
 /// `sgw_mission` or the entity's in-memory `missions` list at all — it does
 /// not special-case missions in any way. The cell entity that arrives in
 /// Castle is rebuilt from scratch via `BaseToCellMsg::InitPlayerState`
-/// (crates/services/src/cell/service/base_messages/player_init/mod.rs),
+/// (crates/cell/src/cell/service/base_messages/player_init/mod.rs),
 /// which is fed a `Vec<SavedMission>` built by `query_saved_missions` —
 /// the exact same function and the exact same restore path an ordinary
 /// relog uses (see `mission_completion_cell_to_base_to_db_to_relogin_round_trip`

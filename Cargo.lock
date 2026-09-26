@@ -950,6 +950,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cell"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-cell-catalog",
+ "cimmeria-cell-combat",
+ "cimmeria-cell-console",
+ "cimmeria-cell-content",
+ "cimmeria-cell-interactions",
+ "cimmeria-cell-methods",
+ "cimmeria-cell-world",
+ "cimmeria-common",
+ "cimmeria-content-engine",
+ "cimmeria-entity",
+ "cimmeria-observability",
+ "cimmeria-occluder",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-cell-catalog"
 version = "0.1.0"
 dependencies = [
@@ -978,6 +1002,7 @@ dependencies = [
  "rand 0.10.2",
  "rand_chacha 0.10.0",
  "rand_distr",
+ "sqlx",
  "tokio",
  "tracing",
 ]
@@ -1385,6 +1410,7 @@ dependencies = [
  "cimmeria-base",
  "cimmeria-base-session",
  "cimmeria-base-world-entry",
+ "cimmeria-cell",
  "cimmeria-cell-catalog",
  "cimmeria-cell-combat",
  "cimmeria-cell-console",
@@ -1397,15 +1423,10 @@ dependencies = [
  "cimmeria-entity",
  "cimmeria-mercury",
  "cimmeria-minigame",
- "cimmeria-observability",
- "cimmeria-occluder",
  "cimmeria-resources",
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-wire-log",
- "quick-xml 0.41.0",
- "rand 0.10.2",
- "serde",
  "serde_json",
  "sqlx",
  "thiserror 2.0.20",

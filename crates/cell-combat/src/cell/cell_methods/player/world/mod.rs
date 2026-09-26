@@ -1,6 +1,6 @@
 //! The reload and item-sequence handlers of SGWPlayer's world-interaction
 //! cell methods. The `requestReload` dispatch arm itself stays with the rest
-//! of the world dispatcher in `cimmeria-services`.
+//! of the world dispatcher in `cimmeria-cell-methods`.
 
 pub mod item_sequence;
 pub mod reload;

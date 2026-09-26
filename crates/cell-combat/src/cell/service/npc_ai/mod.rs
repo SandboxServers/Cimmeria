@@ -3,7 +3,7 @@
 //! # Cadence
 //!
 //! Two passes share the AI surface, both driven from
-//! `cimmeria_services::cell::service::message_loop`:
+//! `cimmeria_cell::cell::service::message_loop`:
 //!
 //! - **[`npc_ai_tick`]** — natural cadence, every 20th AoI tick (~2s
 //!   at the 100ms AoI rate). Drives Idle-auto-aggro, Leashing, and

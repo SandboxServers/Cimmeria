@@ -494,8 +494,8 @@ async fn a_killing_hit_fires_death_and_the_dispatcher_suppresses_health_below() 
 // arrives with `pct_before <= threshold`). The sample now lives at the
 // health-application seams; these are the guards for the paths that had
 // none. The AoE secondary's guard drives the `useAbilityOnGround` cell
-// method, above this crate: `cimmeria-services`'
-// `cell::content_tests::aoe_health_below`.
+// method, above this crate: `cimmeria-cell-methods`'
+// `cell::cell_methods::player::combat::tests::aoe_health_below`.
 
 /// Register a pulsing DoT on the NPC, invoked by the player, already due
 /// to fire. `dmg` is the per-pulse HealthDamage.

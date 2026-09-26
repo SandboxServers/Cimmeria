@@ -41,11 +41,12 @@ pub use executor::deferred_content_action_tick;
 // `SpaceManager` (`space_manager::StepRegionReplayGuard`).
 pub use event_dispatch::{fire_mission_abandoned, fire_step_activation_regions};
 
-// Test hooks for the content tests that stay in `cimmeria-services`
-// (`cell::content_tests`), because they drive a cell method, the gate dial or
-// the relog hydration above this crate (wave C3 of
-// docs/architecture/services-crate-split.md). A production build never sees
-// them.
+// Test hooks for the content tests above this crate, which drive code they
+// sit beside: the gate dial's replay in `cimmeria-cell-interactions` and the
+// relog-hydration tests in `cimmeria-cell` (`cell::content_tests`). Wave C3
+// of docs/architecture/services-crate-split.md left them in
+// `cimmeria-services`; later waves moved each with the code it drives. A
+// production build never sees them.
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub use engine_loader::load_single_chain_for_test;

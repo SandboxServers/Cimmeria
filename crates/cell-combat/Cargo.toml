@@ -39,8 +39,10 @@ rand_distr = { workspace = true }
 
 [features]
 # Exposes the test-only hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,
-# `force_ai_state`, ...) to other crates' tests. cimmeria-services turns it on
-# through its [dev-dependencies]; a production build never sees them.
+# `force_ai_state`, ...) to other crates' tests. The cell crates above it
+# (cimmeria-cell-methods, cimmeria-cell) turn it on through their
+# [dev-dependencies], and cimmeria-cell-content's own `test-support` forwards
+# it; a production build never sees them.
 test-support = ["cimmeria-cell-world/test-support"]
 
 [dev-dependencies]
@@ -54,3 +56,6 @@ cimmeria-test-support = { workspace = true }
 cimmeria-cell-world = { workspace = true, features = ["test-support"] }
 # The fire line-of-sight tests build occluders directly.
 cimmeria-occluder = { workspace = true }
+# The Harset seed guards (`cell::spawner_tests::harset`) query the seeded rows
+# and write their sentinels.
+sqlx = { workspace = true }

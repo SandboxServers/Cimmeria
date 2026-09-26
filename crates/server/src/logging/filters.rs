@@ -126,6 +126,14 @@ use crate::otel;
 /// from INFO and SigNoz from DEBUG, as they did under `cimmeria_services`. No
 /// other crate's row is a prefix of it, and it is a prefix of none.
 ///
+/// `cimmeria_cell::cell=debug` (wave C6) does the same for the cell service:
+/// `CellService`, the cell loop, the base-message handlers, the ticks and the
+/// cell-method router. Like `cimmeria_base::base` it names the crate's one
+/// top-level module rather than the crate: a bare `cimmeria_cell` would
+/// prefix-match every `cimmeria_cell_*` crate (world, combat, content, cover,
+/// catalog, interactions, methods, console), so removing any of their rows
+/// above would change nothing and no guard could tell it was gone.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -165,6 +173,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_console=debug,\
                 cimmeria_cell_interactions=debug,\
                 cimmeria_cell_methods=debug,\
+                cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -286,7 +295,10 @@ pub(crate) struct FileLayer {
 /// `cimmeria_cell_console::cell::console::…`; chat keeps `interactions.log`.
 /// Since wave C4 the interaction handlers, mail, gate travel and the resync
 /// are `cimmeria_cell_interactions::cell::…`, beside the content crate's
-/// dialog display in `interactions.log`.
+/// dialog display in `interactions.log`. Since wave C6 the cell service (the
+/// loop, the base-message handlers and the ticks) and the cell-method router
+/// are `cimmeria_cell::cell::{service, dispatch}`, which `aoi.log` and
+/// `dispatch.log` name in place of the old `cimmeria_services::cell::…` rows.
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
@@ -332,7 +344,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "aoi.log",
         directives: "off,\
-             cimmeria_services::cell::service=trace,\
+             cimmeria_cell::cell::service=trace,\
              cimmeria_cell_interactions::cell::respawn::resync=trace,\
              cimmeria_cell_world::cell::service=trace,\
              cimmeria_cell_combat::cell::service=trace,\
@@ -374,7 +386,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "dispatch.log",
         directives: "off,\
-             cimmeria_services::cell::dispatch=trace,\
+             cimmeria_cell::cell::dispatch=trace,\
              cimmeria_cell_world::cell::dispatch=trace,\
              cimmeria_base::base::dispatch=trace",
     },

@@ -4,9 +4,10 @@
 //! One of the three abandon paths into `cell::missions::abandon_mission`.
 //! The other two, the client-callable `abandonMission` cell method and
 //! `gmMissionClear` / `gmMissionAbandon`, drive cell-method dispatchers that
-//! sit above this crate; their guards are `cimmeria-services`'
-//! `cell::content_tests::mission_abandoned`, whose fixtures these are copies
-//! of (split in wave C3 of docs/architecture/services-crate-split.md).
+//! sit above this crate; their guards are `cimmeria-cell-methods`'
+//! `cell::cell_methods::mission_abandoned_tests` and `cimmeria-cell-console`'s
+//! `cell::console::gm::mission_abandoned_tests`, whose fixtures these are
+//! copies of (split in wave C3 of docs/architecture/services-crate-split.md).
 //!
 //! The counter is bumped by the chain's own action, which makes "exactly
 //! once" observable — a dispatcher fired twice would read 2, and one never
