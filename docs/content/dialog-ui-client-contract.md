@@ -2,14 +2,14 @@
 title: "Dialog UI Client Contract"
 type: reference
 audience: content authors wiring dialogs, buttons and chains
-last_updated: 2026-09-21
+last_updated: 2026-09-26
 ---
 
 # Dialog UI Client Contract
 
 > **Type**: reference
 > **Audience**: content authors — anyone adding a dialog, a button, or a chain keyed on one
-> **Last updated**: 2026-09-21
+> **Last updated**: 2026-09-26
 > **Companion docs**: [reverse-engineering/findings/dialog-controller-wire-flow.md](../reverse-engineering/findings/dialog-controller-wire-flow.md) (the evidence), [content-engine.md](content-engine.md) (the runtime), [../architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) (how an edit reaches the client), [../engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md), [../analysis/dialog-ui-redesign/work-packets.md](../analysis/dialog-ui-redesign/work-packets.md) (the redesign ledger)
 
 The dialog window is a 2009 client you cannot change. Almost everything an author assumes about it is negotiable except this: the server sends a number, and the client draws whatever its own cooked catalogue says that number means. This page is the list of what the client actually does, and the authoring rules that fall out of it.
@@ -129,20 +129,20 @@ Tutorials are independent: a tutorial and a normal dialog can be open together w
 
 There is no bark, subtitle or floating-text path anywhere in the dialog module. Type 0 is a modal popup, not a bark — if you use it for a one-liner you stop the player, freeze them in front of a box and make them close it.
 
-Non-modal text goes through `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`, the same route chat and GM feedback already use (`entities/defs/interfaces/Communicator.def:48-53`, `crates/cell-console/src/cell/console/chat.rs:49,167`). Packet DU-03 wraps it in an authorable action; until that lands, there is no supported way to author one.
+Non-modal text goes through `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`, the same route chat and GM feedback already use (`entities/defs/interfaces/Communicator.def:48-53`, `crates/cell-console/src/cell/console/chat.rs:49,167`). Packet DU-03 wraps it in the authorable `npc_bark` content action (merged 2026-09-25, PR #769); Col. Marsh's escort lines (DU-07) are the first users.
 
-## What is not built yet
+## Packet status
 
-Do not write a chain against any of this. Each is tracked in the [dialog UI redesign ledger](../analysis/dialog-ui-redesign/work-packets.md), which is the only place their shape is decided.
+Do not write a chain against anything still planned or blocked below. Each is tracked in the [dialog UI redesign ledger](../analysis/dialog-ui-redesign/work-packets.md), which is the only place their shape is decided.
 
 | Packet | What it will add | Status |
 |---|---|---|
-| DU-01 | Patch-mode dialog overrides that can emit buttons | in progress |
-| DU-03 | `npc_bark` — non-modal NPC lines through the chat channel | in progress |
+| DU-01 | Patch-mode dialog overrides that can emit buttons | merged 2026-09-25 (#767) |
+| DU-03 | `npc_bark` — non-modal NPC lines through the chat channel | merged 2026-09-25 (#769) |
 | DU-04 | A non-immediate option on `display_dialog`, for lures | planned |
 | DU-06 | An authorable `button_id` condition | blocked on a decision |
-| DU-08 | An offered-dialog set replacing the single open-dialog pin | in progress |
-| DU-L | A seed linter enforcing both hard rules | in progress |
+| DU-08 | An offered-dialog set replacing the single open-dialog pin | merged 2026-09-25 (#770) |
+| DU-L | A seed linter enforcing both hard rules | merged 2026-09-25 (#768) |
 
 ## Evidence index
 

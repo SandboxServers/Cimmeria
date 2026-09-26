@@ -177,4 +177,26 @@ mod live_db {
             );
         }
     }
+
+    /// The tutorial cache must hold 5863 (the inventory help the client
+    /// opens by itself; its close is what spammed the forged-choice warning
+    /// on the 2026-09-26 colo run) and must NOT hold a normal chain-keyed
+    /// dialog. If a keyed dialog ever landed here, its unoffered close
+    /// would be logged at DEBUG and a real forgery would go quiet.
+    #[tokio::test]
+    async fn load_tutorial_dialog_ids_holds_only_tutorial_screens() {
+        let pool = require_db_or_skip!();
+        let ids = load_tutorial_dialog_ids(&pool)
+            .await
+            .expect("load_tutorial_dialog_ids must succeed");
+
+        assert!(
+            ids.contains(&5863),
+            "dialog 5863 (Items and Inventory tutorial) must be in the tutorial set"
+        );
+        assert!(
+            !ids.contains(&2299) && !ids.contains(&3999),
+            "chain-keyed Cellblock dialogs 2299 / 3999 are not tutorials and must              keep the forged-choice warning"
+        );
+    }
 }

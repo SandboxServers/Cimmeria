@@ -1547,9 +1547,11 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1082, 'accept_mission', 684, NULL, '{}', 0, 0);
 
 -- Chain 1083: enter Region5 when 685 completed and 686 not active → accept 686
--- CO-GATED with DU-07's bark chain 1178 (same trigger, same two conditions,
--- copied deliberately): keep the two condition sets identical, or 1178's
--- Marsh line starts repeating on every Region5 re-entry.
+-- In a normal run this never fires: chain 1091 already accepts 686 when the
+-- Hallway04 guard dies, before the player reaches Region5. It is the
+-- fallback for a player who is past Hallway04 without 686 active. DU-07's
+-- bark chain 1178 used to copy this gate and so never fired either; it now
+-- gates on 686 active instead (see chain 1178).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1083, '685→686 - Enter Region5: accept 686', 'mission', 685, true, 0);
 
@@ -2771,12 +2773,18 @@ VALUES (1177, 'npc_bark', NULL, NULL,
 -- -51.300), spawnlist.sql:138 and :102. The original Python subscribed the
 -- same region (Castle_CellBlock.py:503-512).
 --
--- Gate: deliberately the EXACT two conditions chain 1083 uses on this same
--- edge -- 685 completed, 686 not yet active. 1083 accepts 686 in the same
--- pass, which closes the second arm permanently, so this is the tightest
--- once-per-run gate available and it cannot drift out of step with the
--- accept it rides. KEEP THESE TWO CONDITION SETS IDENTICAL TO CHAIN 1083's:
--- if 1083 is ever loosened, this bark starts repeating.
+-- Gate: mission 686 active AND 687 not yet active, the same shape as chain
+-- 1177's. 686 is accepted by chain 1091 when the Hallway04 guard dies, so it
+-- is already active on the way in. Chain 1094 completes 686 and accepts 687
+-- on the Hallway05 kill counter, which closes the gate once the room is
+-- cleared. Same accepted exposure as 1177: backing out of Region5 and
+-- walking back in before a Hallway05 guard dies repeats the line.
+--
+-- FIX (2026-09-26 colo UAT): the first version copied chain 1083's gate
+-- (685 completed, 686 NOT active) on the belief that 1083 accepts 686 on this
+-- crossing. It does not in a normal run -- 1091 accepted 686 a room earlier
+-- -- so the "686 not active" arm was always false and this line never played
+-- for any player. `content.resolve` logged the skip on every Region5 entry.
 --
 -- Marsh is still alive and still present here: template 10 is faction 3, and
 -- only faction 10 (HOSTILE_FACTION, cell/combat/mod.rs:21) is damageable or
@@ -2793,8 +2801,8 @@ VALUES (1178, 'enter_region', 'Castle_Cellblock.Region5', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
-  (1178, 'mission_status', 685, NULL, 'eq', 'completed', 0),
-  (1178, 'mission_status', 686, NULL, 'eq', 'not_active', 1);
+  (1178, 'mission_status', 686, NULL, 'eq', 'active', 0),
+  (1178, 'mission_status', 687, NULL, 'eq', 'not_active', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1178, 'npc_bark', NULL, NULL,

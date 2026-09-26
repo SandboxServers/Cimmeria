@@ -185,6 +185,11 @@ pub struct SpaceManager {
     /// blank an NPC portrait and substitute the player's name for
     /// every NPC line.
     pub monologue_dialog_ids: std::collections::HashSet<i32>,
+    /// Dialog ids whose screen type is `DUIST_DefaultTutorial`. The client
+    /// opens some of these itself, so a close for one that was never
+    /// offered is expected, not a forgery; `dialogButtonChoice` still
+    /// rejects it but logs at DEBUG. Populated at startup.
+    pub tutorial_dialog_ids: std::collections::HashSet<i32>,
     /// Line text for every dialog screen: `screen_id → text`. Populated
     /// at startup from `resources.dialog_screens`. Read only by the
     /// `npc_bark` content action, which speaks an original 2009 line
@@ -417,6 +422,7 @@ impl SpaceManager {
             next_npc_id: 100_000,
             dialog_set_maps: HashMap::new(),
             monologue_dialog_ids: std::collections::HashSet::new(),
+            tutorial_dialog_ids: std::collections::HashSet::new(),
             dialog_screen_text: HashMap::new(),
             mission_defs: HashMap::new(),
             stargates: HashMap::new(),

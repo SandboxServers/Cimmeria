@@ -83,9 +83,12 @@ which chain shuts the gate. Watch for gates that never close: `mission_status X 
 active` on an edge where nothing completes X is a gate in name only - prefer the
 `step_status` of the step an `advance_step` on that same edge retires. Do NOT gate on the
 step being advanced *to*: `advance_step` re-sets the new step unconditionally, so that
-gate re-opens on a repeat. Co-gated pairs (bark 1178 beside accept 1083) need a comment
-on BOTH rows plus a test that walks all three states, or a one-sided edit re-opens it
-silently.
+gate re-opens on a repeat. Before co-gating on another chain's edge, check which chain
+actually performs the mutation in a real run: DU-07's bark 1178 copied accept-chain 1083's
+`686 not_active` gate, but chain 1091 had already accepted 686 on the Hallway04 kill a
+room earlier, so the gate never opened and the line never played (2026-09-26 UAT). Test
+a gate by resolving the preceding real event and carrying its mutations forward, not
+from a hand-picked context.
 
 ## `Condition::Counter` is a vacuous guard on most events
 

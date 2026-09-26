@@ -50,7 +50,8 @@ pub use abilities::{
     EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE, EVENT_ITEM_USE_ABILITY,
 };
 pub use dialogs::{
-    load_dialog_screen_text, load_dialog_set_maps, load_monologue_dialog_ids, DialogSetMapEntry,
+    load_dialog_screen_text, load_dialog_set_maps, load_monologue_dialog_ids,
+    load_tutorial_dialog_ids, DialogSetMapEntry,
 };
 pub use eye_heights::load_body_set_eye_heights;
 pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTableEntry, WeaponDef};

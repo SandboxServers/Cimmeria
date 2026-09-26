@@ -347,3 +347,50 @@ async fn a_forged_id_is_rejected_and_an_answered_id_cannot_be_reclosed() {
          on a later close — this is what keeps eviction from double-advancing"
     );
 }
+
+/// **Client-opened tutorial close.** The client opens some tutorial windows
+/// by itself (5863, the inventory help), so their `-1` close arrives for an
+/// id the server never offered. It must still be rejected (no chain fires)
+/// but at DEBUG, not as the forged-choice WARN: the 2026-09-26 colo run
+/// logged fourteen of those warnings from one player opening the inventory.
+#[tokio::test]
+async fn a_client_opened_tutorial_close_is_rejected_quietly() {
+    use crate::test_support::LogCapture;
+    let mut mgr = make_space_manager();
+    mgr.tutorial_dialog_ids.insert(5863);
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.player_id = Some(42);
+    }
+    let engine = engine_with_dialog_choice_chain(5863, "tut");
+    let (tx, _rx) = mpsc::channel(16);
+    let capture = LogCapture::install();
+
+    dispatch(
+        1,
+        DIALOG_BUTTON_CHOICE,
+        &dialog_choice_args(5863, -1),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert_eq!(
+        counter(&mgr, 1, "tut"),
+        0,
+        "an unoffered tutorial close must still not fire a chain"
+    );
+    assert!(
+        capture
+            .find_message(tracing::Level::WARN, "dialogButtonChoice rejected")
+            .is_none(),
+        "a client-opened tutorial close is not a forgery and must not warn"
+    );
+    assert!(
+        capture
+            .find_message(tracing::Level::DEBUG, "client-opened tutorial")
+            .is_some(),
+        "the quiet rejection must still leave a DEBUG trace"
+    );
+}

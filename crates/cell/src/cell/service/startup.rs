@@ -113,6 +113,20 @@ impl CellService {
             }
         }
 
+        // Load tutorial dialog ids so a close for a client-opened tutorial
+        // is not logged as a forged dialog choice. WARN on failure: the
+        // only cost is the louder log line coming back.
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_tutorial_dialog_ids(pool).await {
+                Ok(ids) => {
+                    space_mgr.tutorial_dialog_ids = ids;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load tutorial dialog ids: {e}");
+                }
+            }
+        }
+
         // Load dialog screen text for the `npc_bark` content action. An
         // empty cache makes every bark warn and send nothing rather than
         // speak a wrong line, so WARN is the right level: the failure is
