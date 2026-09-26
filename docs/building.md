@@ -2,12 +2,13 @@
 title: Building the Cimmeria Server
 type: how-to
 audience: engineers, new contributors
-last_updated: 2026-07-25
+last_updated: 2026-09-26
 companion_docs:
   - ../README.md
   - ../bootstrap/README.md
   - ../crates/README.md
   - ../CLAUDE.md
+  - architecture/build-system.md
   - guides/getting-started.md
   - troubleshooting.md
 ---
@@ -21,10 +22,11 @@ The active Cimmeria server is a Rust workspace under [`crates/`](../crates/). Th
 ## Prerequisites
 
 - **PowerShell 7+** (`pwsh`) — ships with Windows 11; install from [PowerShell/PowerShell](https://github.com/PowerShell/PowerShell) on other platforms.
-- **Rust stable** — install from [rustup.rs](https://rustup.rs).
+- **Windows, with the MSVC build tools.** Development builds run natively on Windows (PowerShell or Git Bash). CI builds on Linux, but there is no WSL or cross-compile path for development.
+- **Rust via rustup** — install from [rustup.rs](https://rustup.rs). You don't pick a version: [`rust-toolchain.toml`](../rust-toolchain.toml) pins Rust 1.98.1 with rustfmt and clippy, rustup picks it up automatically, and CI builds with the same version.
 - **Node.js 22+** — only required for the Tauri admin app (`-WithAdmin`) and the player-facing launcher (`-WithLauncher`).
 - **PostgreSQL 17** — `setup.ps1` provisions a local managed instance on port 5433 automatically. Pass `-UseDocker` to run it in a container instead.
-- ~1 GB free disk space for the Cargo target dir and the bundled Postgres.
+- Disk space for build output. A cold debug build of the CI-gated workspace, all targets, plus two rebuilds left a 14.2 GB target dir in the September 2026 measurement ([`architecture/build-system.md`](architecture/build-system.md)), and every extra worktree has its own. [`tools/build-hygiene/sweep.ps1`](../tools/build-hygiene/sweep.ps1) trims stale artifacts.
 
 ## One-command build and launch
 
@@ -54,20 +56,22 @@ The bootstrap pipeline is documented in detail in [`bootstrap/README.md`](../boo
 Once the prerequisites are in place you can drive the build directly:
 
 ```powershell
-# Windows native — debug build:
+# Debug build:
 cargo build -p cimmeria-server
 
-# Windows native — release build:
+# Release build, copied to the repo root:
 cargo build -p cimmeria-server --release
+Copy-Item .\target\release\cimmeria-server.exe .
+
+# Full debug info, for a debugger session (builds into target\dev-debug\):
+cargo build -p cimmeria-server --profile dev-debug
 ```
 
-```bash
-# WSL/Linux — cross-compile to Windows:
-cargo build -p cimmeria-server --target x86_64-pc-windows-gnu --release
-cp target/x86_64-pc-windows-gnu/release/cimmeria-server.exe .
-```
+The server runs on Windows alongside the game client, and you build it there. The normal dev profile keeps line tables only, so panics and backtraces show file:line; build the `dev-debug` profile when you need variables in a debugger.
 
-The server runs on Windows alongside the game client. Cross-compiling from WSL is a supported workflow; see [`CLAUDE.md`](../CLAUDE.md) for memory limits (~47 GB full link, mitigated by stripping dep debug info to ~8 GB).
+When you iterate, check the crate you changed rather than the whole server: `cargo check -p cimmeria-cell`, `-p cimmeria-cell-content`, `-p cimmeria-base-methods`, and so on. `cimmeria-services` is a small facade over about 20 crates, so `-p cimmeria-services` doesn't cover them. The crate table is in [`crates/README.md`](../crates/README.md).
+
+If AI agents drive your builds, they go through the build lane (`tools/build-lane/lane.sh`), which limits how many builds run at once and gives each worktree its own target dir. See "Build lane and concurrency" in [`CLAUDE.md`](../CLAUDE.md) and [`agents/development-workflow.md`](agents/development-workflow.md#builds-worktrees-and-test-databases).
 
 ## Running the server
 
@@ -109,14 +113,14 @@ The five gating checks CI runs are documented in [`CLAUDE.md`](../CLAUDE.md) und
 cargo fmt --all -- --check
 cargo clippy --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --all-targets -- -D warnings
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab --all-targets -- -D warnings
 cargo build --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry --all-targets
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 
 # Live-DB tests (need a running Postgres on :5433):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
@@ -129,9 +133,9 @@ See [`TESTING.md`](../TESTING.md) for the test-type taxonomy and when to use whi
 
 Common first-run failures and how to recover:
 
-- **WSL link step OOMs** — the full link can consume ~47 GB RAM. Use `cargo check -p cimmeria-services` for iteration; only run a full build when you need a binary. Cap parallelism with `CARGO_BUILD_JOBS=2`. Full details in [`CLAUDE.md`](../CLAUDE.md) → "Rust build memory (WSL)".
+- **`sccache: incremental compilation is prohibited`** — `CARGO_INCREMENTAL=1` is set while sccache is the `RUSTC_WRAPPER`. Unset `CARGO_INCREMENTAL` (the dev profile already builds workspace crates incrementally), or build through the lane, which drops sccache for that job.
 - **`DATABASE_URL` not set** — live-DB tests self-skip via `require_db_or_skip!`. Set the env var to opt into them.
-- **`external/` directory missing** — `external/` is not in git. It's populated by `setup.ps1`. A fresh checkout looks broken until setup runs.
+- **`external/` directory missing** — `external/` is not in git. It's populated by `setup.ps1`. A fresh checkout looks broken until setup runs, and a new worktree needs it junctioned in: create worktrees with `tools/build-lane/mk-worktree.sh`.
 - **Port 5433 in use** — another Postgres is running. Stop it, or use `-UseDocker` so the bootstrap brings up its own.
 
 The full list of first-day problems lives in [`troubleshooting.md`](troubleshooting.md).
@@ -142,6 +146,7 @@ The full list of first-day problems lives in [`troubleshooting.md`](troubleshoot
 - [`bootstrap/README.md`](../bootstrap/README.md) — the `setup.ps1` pipeline and the `CimmeriaBootstrap` PowerShell module
 - [`crates/README.md`](../crates/README.md) — crate layout, dependency graph, key source files
 - [`CLAUDE.md`](../CLAUDE.md) — repo invariants, build rules, pre-PR checklist
+- [`architecture/build-system.md`](architecture/build-system.md) — why the toolchain is pinned, the profiles, the build lane, Dev Drive and cleanup
 - [`TESTING.md`](../TESTING.md) — test types, picker, gotchas
 - [`guides/getting-started.md`](guides/getting-started.md) — first-time walkthrough
 - [`troubleshooting.md`](troubleshooting.md) — common first-day problems

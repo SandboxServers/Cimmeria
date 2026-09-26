@@ -21,58 +21,66 @@ The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agen
 - **Seeds are the source of truth.** Change seeded data in `db/resources/`; do not add `db/scripts/*.sql` migrations without asking.
 - **Prefer server-authoritative changes that need no client patch.** New opcodes, wire-crypto changes, and new client UI need a maintainer decision first.
 - **Every button press gets visible feedback on the first press**, whatever the original server did.
-- **Parallel agents: one worktree each, one test database each**, on top of the one-`cargo`-at-a-time rule below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
+- **Parallel agents: one worktree each, one test database each**, and every compiling `cargo` call goes through the build lane below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 
 ## Build rules
 
-Always target **Windows** — the server runs on Windows alongside the game client.
+Always target **Windows** — the server runs on Windows alongside the game client. Build natively on Windows, from PowerShell or Git Bash. The WSL cross-compile is retired; CI still builds and tests on Linux runners.
 
 ```bash
-# WSL/Linux: cross-compile to Windows.
-cargo build -p cimmeria-server --target x86_64-pc-windows-gnu --release
-cp target/x86_64-pc-windows-gnu/release/cimmeria-server.exe .
-
-# Windows natively:
 cargo build -p cimmeria-server --release
 cp target/release/cimmeria-server.exe .
 ```
 
-After building, copy the exe to the project root.
+After building, copy the exe to the project root. A build that went through the build lane on a Dev Drive writes to the target dir the lane prints when it starts (`$CIMMERIA_TARGET_ROOT/<worktree>/release/`), not to `target/`.
 
-### Rust build memory (WSL)
+- **One pinned toolchain.** [rust-toolchain.toml](rust-toolchain.toml) pins Rust 1.98.1 with rustfmt and clippy. rustup picks it up automatically, and CI installs the same version through [.github/actions/rust-toolchain](.github/actions/rust-toolchain/action.yml), so your clippy is CI's clippy. Bump the version in its own PR: change the file, run the pre-PR checklist, and fix the new lints in that PR.
+- **Debug info.** The dev profile keeps line tables only (`debug = "line-tables-only"`), so panics and backtraces keep file:line but a debugger sees no variables. For a debugger session, build with `cargo build --profile dev-debug`: full debug info, built into `target/dev-debug/`, so it never invalidates the normal dev build.
 
-The full link can consume ~47 GB RAM. The workspace's `[profile.dev.package."*"]` strips dep debug info to bring this down to ~8 GB, but you still need to be careful:
+The reasons behind all of this are in [docs/architecture/build-system.md](docs/architecture/build-system.md).
 
-1. **`cargo check -p cimmeria-services`** for iteration (1.5s, <2 GB). Only run full `cargo build`/`cargo test` when you actually need a binary or test results.
-2. **Never run multiple `cargo`/`rustc` processes concurrently.** Kill stale ones before starting a new build: `pkill -f rustc`.
-3. **Target specific crates** with `-p` rather than `--workspace`. Only build the workspace for final validation.
-4. Sanity-check before building: `ps aux | grep -E "cargo|rustc" | grep -v grep`.
-5. `CARGO_BUILD_JOBS=2` is set in `.bashrc` to cap parallel codegen.
+### Build lane and concurrency
+
+Several sessions and agents build on one workstation at once. Every agent or worker `cargo` call that compiles (`check`, `build`, `test`, `nextest`, `clippy`) goes through the build lane, [tools/build-lane/lane.sh](tools/build-lane/lane.sh):
+
+```bash
+bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
+bash tools/build-lane/lane.sh --exclusive cargo build --workspace ...   # workspace-wide or measurement runs
+```
+
+1. **One `cargo` per lane slot.** The lane is a machine-wide semaphore. The slot count lives in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (currently 4), `--exclusive` takes every slot, and `CARGO_BUILD_JOBS` defaults to cores ÷ slots. A slot whose holder died is freed by the next caller, so there is nothing to kill.
+2. **Iterate per crate with `-p`.** `cimmeria-services` is a small facade over about 20 crates, so check and test the crate you changed (`-p cimmeria-cell`, `-p cimmeria-cell-content`, `-p cimmeria-base-methods`, …). Build the workspace only for final validation.
+3. **The lane sets up the build environment:** a target dir per worktree (on the Dev Drive when one is set up), incremental builds for workspace crates, and sccache for third-party crates. A direct `cargo` call bypasses the slot count, which is why agents never make one.
+4. **Every lane job is logged.** `python tools/build-lane/lane_stats.py` reports on the log (`--recent 20` for the last jobs, `--html` for charts, `--csv` for a spreadsheet).
+
+Worktrees, per-worktree test databases and Dev Drive seeding: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 
 Quick reference:
 
 ```bash
-# Iteration
-cargo check -p cimmeria-services
-
-# Single-crate test: name the crate you changed. cimmeria-services is only
-# the facade now (the orchestrator, the database pool and the cross-track
+# Iteration: check the crate you changed. cimmeria-services is only the
+# facade now (the orchestrator, the database pool and the cross-track
 # round trips); the service code and its tests are in the split crates.
-cargo test -p cimmeria-cell
+bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
+
+# Single-crate test: name the crate you changed.
+bash tools/build-lane/lane.sh cargo test -p cimmeria-cell
 
 # Full workspace check — skip the GUI apps (Tauri editors and the egui
-# launcher), and the Windows-only client-telemetry cdylib so Linux
-# dev hosts don't need xkbcommon/xcb dev packages and the linker
-# doesn't OOM.
-cargo check --workspace \
+# launcher), and the Windows-only client-telemetry cdylib so CI's Linux
+# runners don't need xkbcommon/xcb dev packages. Same six exclusions as CI.
+bash tools/build-lane/lane.sh --exclusive cargo check --workspace \
   --exclude cimmeria-app \
   --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor \
   --exclude sgw-launcher \
   --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 
-# Kill stale builds
-pkill -f "cargo|rustc"
+# Full debug info for a debugger session (builds into target/dev-debug/)
+bash tools/build-lane/lane.sh cargo build -p cimmeria-server --profile dev-debug
+
+# What the lane has been doing
+python tools/build-lane/lane_stats.py --recent 20
 ```
 
 ## Pre-PR checklist
@@ -88,6 +96,8 @@ Run everything in the block below before pushing, or the pipeline will fail and 
 | `spec-lint` | [spec-lint.yml](.github/workflows/spec-lint.yml) | No — warn-only annotations | `docs/spec/**`, `crates/**`, manifest changes |
 
 A sixth job in `test.yml`, `coverage`, uploads to Codecov and does not gate. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
+
+Agents run the compiling commands below through the build lane, with `--exclusive` for the workspace-wide ones (`bash tools/build-lane/lane.sh --exclusive cargo clippy …`).
 
 ```bash
 cargo fmt --all -- --check
@@ -113,10 +123,9 @@ cargo test --doc -p cimmeria-commands
 # the script; tools/test-live-db.ps1 on Windows PowerShell):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   tools/test-live-db.sh
-
-# Layering guard for the cimmeria-services crate split (python3, a second;
-# CI runs it in the build job):
-python tools/layering/check.py
+# From a worktree, use the worktree's own database instead: this reloads
+# sgw_<worktree> from db/database.sql and runs the same tier in a lane slot.
+tools/build-lane/live-db-test.sh <test-name filter>
 
 # Markdown lint (warn-only — CI surfaces violations as PR annotations but
 # never blocks). Same rules as CodeRabbit's review:
@@ -142,9 +151,9 @@ tools/lint-figure-style.ps1         # Windows PowerShell
 The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/markdownlint-cli2) against [`.markdownlint-cli2.yaml`](.markdownlint-cli2.yaml) at the repo root. CI mirrors local invocation via [`DavidAnson/markdownlint-cli2-action`](.github/workflows/markdownlint.yml). First local run downloads the binary on-demand via `npx`; running `npm install` once pins the version from `package.json` for offline reuse. Phase 2 hardens the lint from warn-only to blocking — until then, fix what's easy and let reviewers nudge the rest.
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
-- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** CI floats on current stable Rust (no `rust-toolchain` pin), so its clippy is often newer than yours. Install that version side by side (`rustup toolchain install <version> --profile minimal`) and run `cargo +<version> clippy …` before pushing — see [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md) "Build and CI".
-- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`. If the failing step is the **layering guard**, a module edge in `crates/services/src` breaks the planned crate DAG, or an allowlisted edge no longer exists — see [tools/layering/README.md](tools/layering/README.md).
-- **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
+- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** That is no longer toolchain drift: [rust-toolchain.toml](rust-toolchain.toml) pins the version CI uses, so the old advice to install CI's newer clippy side by side is obsolete. Check that you ran the exact command above (`--workspace --all-targets -- -D warnings`), not a narrower `-p` run. Bumping Rust is its own PR: change `rust-toolchain.toml`, run this checklist, and fix the new lints there.
+- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
+- **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
 - **test-live-db fails** → CI runs `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate in its list) against a fresh `postgres:17.9` service container loaded from `db/database.sql`. A crate with a `cimmeria-test-support` dev-dependency must be in that list, or `live_db_wrapper_lists_every_test_support_crate` fails. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 - **figure-sources-in-sync fails** → A source DSL under `docs/drafts/spec/figures/sources/` was committed more recently than its rendered SVG one directory up. Re-render the affected diagram (Prixmaviz, or the local renderer per [docs/drafts/spec/figures/sources/README.md](docs/drafts/spec/figures/sources/README.md)) and commit the regenerated SVG alongside the source change. Pairing rule: `sources/<slug>.<ext>` pairs with `<slug>.svg`.
 - **figure-style-lint fails** → A figure source, rendered SVG, or chapter convention violated the style rule catalog inside [tools/lint-figure-style.sh](tools/lint-figure-style.sh). Common causes: Mermaid `flowchart`/`sequenceDiagram` missing the `htmlLabels:false` init directive (rules M1/M2), an SVG missing the cimmeria-bg theme-aware backdrop marker (S1), Graphviz intrinsic `fill="white"` backdrop polygon not stripped (S3), non-sequential `*Figure N:*` captions (C1), generic image alt text (C2), or a dangling image reference (C3). Run the script locally to see the specific rule code and remediation hint.
@@ -170,12 +179,13 @@ The map of "what changed → what to update":
 |---|---|
 | The README's listed feature set, status, or structure | [README.md](README.md) |
 | The pre-PR checklist, build commands, or repo invariants | [CLAUDE.md](CLAUDE.md) and [.github/copilot-instructions.md](.github/copilot-instructions.md) |
+| The toolchain pin, cargo profiles, `.cargo/config.toml`, or the build tooling under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` or `tools/build-metrics/` | [docs/architecture/build-system.md](docs/architecture/build-system.md) (the ADR), "Build rules" in this file and [.github/copilot-instructions.md](.github/copilot-instructions.md), the worktree and lane rules in [docs/agents/development-workflow.md](docs/agents/development-workflow.md), and [docs/troubleshooting.md](docs/troubleshooting.md) if the change adds a new failure mode |
 | Test conventions, types, or gotchas | [TESTING.md](TESTING.md) (and re-link from README if a new section is added) |
 | Markdown lint rules, exclusions, or the wrapper scripts | [.markdownlint-cli2.yaml](.markdownlint-cli2.yaml), [tools/lint-md.sh](tools/lint-md.sh), [tools/lint-md.ps1](tools/lint-md.ps1), and the workflow at [.github/workflows/markdownlint.yml](.github/workflows/markdownlint.yml) |
 | Add or remove ≥5% of workspace tests in one PR (~147 tests at current 2,936 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
 | Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
 | Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) (crate table). Regenerate the crate diagrams in [README.md](README.md) and crates/README.md with `python tools/crate-graph/crate_graph.py` (CI fails when they are stale); add a new crate to a layer in [tools/crate-graph/groups.toml](tools/crate-graph/groups.toml) |
-| A module added to, moved within, or split out of `crates/services/src` (the services crate split) | [tools/layering/crate-map.toml](tools/layering/crate-map.toml) (every production module maps to its target crate) and [tools/layering/allowlist.txt](tools/layering/allowlist.txt) (only shrinks); a new crate with live-DB tests goes in [tools/test-live-db.sh](tools/test-live-db.sh) and [.ps1](tools/test-live-db.ps1); tracing targets in `crates/server/src/logging/filters.rs`. Plan: [docs/architecture/services-crate-split.md](docs/architecture/services-crate-split.md) |
+| A new crate split out of an existing one, or a module moved between crates | A new crate with live-DB tests goes in [tools/test-live-db.sh](tools/test-live-db.sh) and [.ps1](tools/test-live-db.ps1); tracing targets in `crates/server/src/logging/filters.rs`; the crate table and graph per the row above. How the services split was done: [docs/architecture/services-crate-split.md](docs/architecture/services-crate-split.md). The layering guard that policed the split's planned crate DAG is retired: the crates now exist, and a new dependency edge shows up in the regenerated crate graph |
 | Wire format, method indices, or message catalog | [docs/protocol/client-method-dispatch-table.md](docs/protocol/client-method-dispatch-table.md), [docs/protocol/message-catalog.md](docs/protocol/message-catalog.md), the rest of [docs/protocol/](docs/protocol/), the canonical entity definitions under [entities/defs/](entities/defs/), and the `method_idx` constants module in `crates/wire/src/mercury/mod.rs` |
 | Mercury protocol-layer behavior (channel state, retransmit, fragmentation, keepalive, ack, RTO) or the loopback harness itself | [docs/architecture/mercury-loopback-harness.md](docs/architecture/mercury-loopback-harness.md), TESTING.md type 9, and (if the harness API surface changes) the `test_harness` module under [crates/mercury/src/test_harness/](crates/mercury/src/test_harness/) plus the `cimmeria-mercury` row in [crates/README.md](crates/README.md) |
 | Network-chaos primitives, lossy-socket wrappers, pcap-replay infra, or any new chaos scenario | [docs/architecture/network-chaos-testing.md](docs/architecture/network-chaos-testing.md), TESTING.md type 10, plus the `cimmeria-mercury` row in [crates/README.md](crates/README.md) if the L2 trait surface widens. New scenarios drop under [crates/mercury/src/test_harness/tests/chaos/](crates/mercury/src/test_harness/tests/chaos/). |

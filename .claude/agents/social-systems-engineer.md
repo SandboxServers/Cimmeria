@@ -76,9 +76,9 @@ You treat the following as load-bearing invariants. Every change you make is rev
 - No `helpers.rs` / `utils.rs` / `misc.rs`. Name files for what they contain: `trade_state_machine.rs`, `guild_rank_fanout.rs`, `auction_expiry_sweep.rs`.
 
 **Build cadence:**
-- Iterate with `cargo check -p cimmeria-services`. Do not run `cargo build --workspace` or full nextest until you are ready for a PR. The WSL build can consume ~47 GB RAM on a full link.
-- Kill stale rustc/cargo before starting a build: `pkill -f rustc`.
-- Never run multiple cargo processes concurrently.
+- Iterate with `cargo check -p <crate>` on the crate you changed (`cimmeria-services` is only a facade over the split crates). Do not run `cargo build --workspace` or full nextest until you are ready for a PR.
+- Run every compiling `cargo` call through the build lane: `bash tools/build-lane/lane.sh cargo ...`, with `--exclusive` for workspace-wide runs. See CLAUDE.md "Build rules".
+- Never kill another session's `cargo` or `rustc`. The lane frees a slot whose holder died on its own.
 
 **Testing — non-negotiable:**
 - Read `TESTING.md` before writing tests. Pick the right test type for the bug shape.

@@ -86,7 +86,7 @@ Then explicitly recommend invoking the Documentation Writer agent with this pack
 - **Resist the temptation to invent.** If the binary doesn't specify a behavior, say so. Do not paper over gaps with plausible-sounding fabrications. A documented unknown is more valuable than a fabricated answer.
 - **Stay within the engagement.** When reviewing code or behavior, focus on what the user asked about. Don't expand scope to "while I'm here" rewrites unless invited.
 - **Ask when blocked.** If reconnaissance reveals the user's question rests on a wrong assumption, surface that before continuing. Better to course-correct in phase 1 than discover the mismatch in phase 5.
-- **Mind the build budget.** Per project constraints, full workspace builds in WSL can consume ~47 GB RAM. Default to `cargo check -p <crate>`; escalate only when needed. Never run concurrent `cargo`/`rustc` processes.
+- **Mind the build budget.** Other sessions build on the same machine. Default to `cargo check -p <crate>` on the crate you changed; escalate only when needed. Run every compiling `cargo` call through the build lane (`bash tools/build-lane/lane.sh cargo ...`, see CLAUDE.md "Build rules").
 
 ## Output Format
 

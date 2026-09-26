@@ -55,6 +55,21 @@ These scripts run standalone with Python 3.x — they don't need the server runn
 |---|---|
 | `extract_tests.py` | Regenerate the test inventory under [`docs/testing/inventory/`](../docs/testing/inventory/). Walks the workspace `members` from the root `Cargo.toml`, catalogues every `#[test]` / `#[tokio::test]` with the line its `fn` is actually on and whether the body is a live-DB guard, and preserves the hand-curated table columns across regeneration. `--check` and `--verify-links` are drift gates that exit non-zero and write nothing; only `--write` modifies the repo. Stock Python 3, no dependencies. See [maintenance.md](../docs/testing/inventory/maintenance.md). |
 
+## Build Tooling
+
+How the Rust workspace is built on developer and agent machines. Why each piece exists, with the measurements, is in [`docs/architecture/build-system.md`](../docs/architecture/build-system.md); how to use them day to day is in [`docs/agents/development-workflow.md`](../docs/agents/development-workflow.md#builds-worktrees-and-test-databases).
+
+| Script | Purpose |
+|---|---|
+| `build-lane/lane.sh` | The build lane: a machine-wide semaphore every agent `cargo` call goes through (`bash tools/build-lane/lane.sh [--exclusive] cargo …`). Sets the job count, sccache, and a target dir per worktree, and logs every job. |
+| `build-lane/lane_stats.py` | Reports on the lane's job log (`--recent`, `--html`, `--csv`). |
+| `build-lane/mk-worktree.sh` | Creates a buildable worktree under `.claude/worktrees/`: junctions `external/` in and seeds the target dir on a Dev Drive. |
+| `build-lane/reload-db.sh` / `build-lane/live-db-test.sh` | Reload the worktree's own test database (`sgw_<worktree>`); run the live-DB tier against it in a lane slot. |
+| `dev-drive/New-CimmeriaDevDrive.ps1` | Creates a Windows Dev Drive for build output (run elevated). |
+| `dev-drive/Copy-WarmTarget.ps1` | Seeds a new worktree's target dir from a warm one by ReFS block cloning. |
+| `build-hygiene/sweep.ps1` | Runs `cargo-sweep` over every target dir on the machine. Don't run it while anything builds. |
+| `build-metrics/measure-build.ps1` | Controlled build measurements: cold build, edit loop, `cargo check`, peak memory, target size. |
+
 ## Lint & Check Scripts
 
 Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../CLAUDE.md)). Each ships in both a POSIX (`.sh`) and PowerShell (`.ps1`) flavor:

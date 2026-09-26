@@ -13,7 +13,7 @@ If you've just cloned the repo, walk through these in order:
 1. **[../README.md](../README.md)** — project overview and current status.
 2. **[guides/getting-started.md](guides/getting-started.md)** — first-time setup tutorial: prerequisites, `setup.ps1`, verifying the server is up, connecting the client.
 3. **[building.md](building.md)** — how to build and run the Rust server, including the CI checks.
-4. **[../CLAUDE.md](../CLAUDE.md)** — repo invariants, build memory rules (WSL), pre-PR checklist.
+4. **[../CLAUDE.md](../CLAUDE.md)** — repo invariants, build rules (Windows-native, pinned toolchain, the build lane), pre-PR checklist.
 5. **[../TESTING.md](../TESTING.md)** — test types, picker for which to use when, gotchas mined from PR reviews.
 6. **[connection-flow.md](connection-flow.md)** — end-to-end login + world entry. Once you've followed it through, the architecture starts to make sense.
 7. **[how-sgw-works.md](how-sgw-works.md)** — BigWorld, CME, and how the pieces fit together.
@@ -80,7 +80,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [Gap Analysis](gap-analysis.md) | Comprehensive system-by-system gap analysis with per-feature status tracking |
 | [Known Issues](known-issues.md) | Catalogue of known bugs (client/shared and server-side) with severity, status, and root cause |
 | [Multiplayer / LAN Setup](multiplayer.md) | `BASE_EXTERNAL` env var, LAN configuration, multi-machine play |
-| [Troubleshooting](troubleshooting.md) | Common first-day problems: build OOM, Postgres won't start, `DATABASE_URL` not set, client can't connect, `external/` missing |
+| [Troubleshooting](troubleshooting.md) | Common first-day problems: sccache vs `CARGO_INCREMENTAL`, a worktree without `external/`, a full build lane, Postgres won't start, `DATABASE_URL` not set, client can't connect, `external/` missing |
 
 ---
 
@@ -299,8 +299,8 @@ What an AI-assisted contributor (or their agents) needs that the code does not s
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, one `cargo`, one test DB), definition of done | Complete |
-| [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, CI clippy drift, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
+| [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, the build lane, one test DB each, Dev Drive seeding, cleanup), definition of done | Complete |
+| [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, the pinned toolchain and build-lane traps, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
 | [domain.md](agents/domain.md) | Where domain docs live (glossary = `spec/glossary.md`, ADRs = `architecture/`; no `CONTEXT.md` or `docs/adr/`), what to read before exploring, and what to do when sources disagree | Complete |
 | [issue-tracker.md](agents/issue-tracker.md) | GitHub Issues via the `gh` CLI; repo-specific `gh` traps; the ticket body contract; PRs-as-request-surface flag (off); wayfinder map / child / blocking conventions | Complete |
 | [triage-labels.md](agents/triage-labels.md) | Maps the five canonical triage roles to this repo's label strings, and defines what `ready-for-agent` and `ready-for-human` mean here | Complete |
