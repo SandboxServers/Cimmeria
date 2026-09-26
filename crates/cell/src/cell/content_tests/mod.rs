@@ -15,7 +15,8 @@
 //!
 //! The other tests of the old `cell::content_tests` went elsewhere:
 //! `mission_701_persistence` drives the base's `query_saved_missions`, so it
-//! stays in `cimmeria-services`; the GM half of `mission_abandoned` is
+//! is `cimmeria-base-methods`' (wave F), at the same `cell::content_tests`
+//! path; the GM half of `mission_abandoned` is
 //! `cimmeria-cell-console`'s `cell::console::gm::mission_abandoned_tests`.
 
 mod mission_742_hydration;

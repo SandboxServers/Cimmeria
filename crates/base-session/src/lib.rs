@@ -40,6 +40,11 @@ use cimmeria_wire::mercury;
 mod cell {
     pub(crate) use cimmeria_cell_catalog::cell::spawner;
     pub(crate) use cimmeria_wire::cell::messages;
+
+    /// The guard that the GM spawn handler maps a template as the cell's
+    /// startup cache does. Test-only.
+    #[cfg(test)]
+    mod spawner_tests;
 }
 
 /// Test fixtures for other crates' tests, behind the `test-support` feature.

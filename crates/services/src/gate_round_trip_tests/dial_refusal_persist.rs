@@ -6,7 +6,8 @@
 //! a_dial_to_an_unheld_address_arms_nothing_and_leaves_the_row_untouched`,
 //! which moved to `cimmeria-base-world-entry` (wave B3 of
 //! docs/architecture/services-crate-split.md) without this test: it drives the
-//! cell's dial handler, still in this crate. The sentinels and the four
+//! cell's dial handler (`cimmeria-cell-interactions` since wave C4), which
+//! that crate cannot reach. The sentinels and the four
 //! fixture helpers are copies of that module's; this test keeps the ids it had
 //! (`TEST_BASE + 4` and `+ 14`), which no test left there uses.
 

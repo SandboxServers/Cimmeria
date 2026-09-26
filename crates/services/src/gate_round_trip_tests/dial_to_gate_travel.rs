@@ -6,7 +6,8 @@
 //! dial_gate_to_handle_gate_travel_round_trips_destination_state`, which moved
 //! to `cimmeria-base-world-entry` (wave B3 of
 //! docs/architecture/services-crate-split.md) without this test: it drives the
-//! cell's dial handler, still in this crate. `make_state`, `make_socket` and
+//! cell's dial handler (`cimmeria-cell-interactions` since wave C4), which
+//! that crate cannot reach. `make_state`, `make_socket` and
 //! `stub_pending_ready` are copies of that file's fixtures.
 
 use std::collections::HashMap;

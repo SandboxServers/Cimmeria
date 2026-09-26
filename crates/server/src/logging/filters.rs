@@ -61,23 +61,27 @@ use crate::otel;
 /// that one DEBUG sample through. `otel_filter_prefix_matching_exports_npc_ai_children`
 /// pins this behaviour, not just the string.
 ///
-/// `cimmeria_wire=debug`, `cimmeria_cell_catalog=debug` and
+/// The `cimmeria_wire::…` rows, `cimmeria_cell_catalog=debug` and
 /// `cimmeria_cell_world=debug` keep the code
 /// split out of `cimmeria-services` (docs/architecture/services-crate-split.md)
 /// at the DEBUG level `cimmeria_services=debug` gave it: a moved module's
 /// `module_path!()` target starts with the new crate's name, which the
 /// services row no longer matches. Since wave W3a that includes the
 /// services-side Mercury glue, `cimmeria_wire::mercury` (the
-/// `append_entity_method` appearance diagnostics). `cimmeria_minigame=debug`
+/// `append_entity_method` appearance diagnostics). Wire's rows name each of
+/// its top-level modules rather than the crate: a bare `cimmeria_wire` would
+/// prefix-match `cimmeria_wire_log`, so removing wire-log's own row below
+/// would change nothing and no guard could tell it was gone (the rule the
+/// base and cell rows follow too, which `parity_tests::crate_rows` enforces
+/// for every row). The same guard fails when a new top-level wire module has
+/// no row. `cimmeria_minigame=debug`
 /// does the same for the SmartFoxServer host (wave W3c), which has no file of
 /// its own: its session and connection rows reach `server.log` from INFO and
 /// SigNoz from DEBUG.
 ///
 /// `cimmeria_wire_log=debug` (wave W3b) does the same for the decoded
-/// wire-message stream. `cimmeria_wire=debug` already prefix-matches
-/// `cimmeria_wire_log`, but only because the names happen to share a prefix;
-/// the row keeps wire-log's level from following any change to wire's. The
-/// stream's own rows ride the hand-named `wire.in` / `wire.out` directives.
+/// wire-message stream; no wire row reaches it. The stream's own rows ride
+/// the hand-named `wire.in` / `wire.out` directives.
 ///
 /// `cimmeria_base_session=debug` (wave B1) does the same for the BaseApp
 /// session layer: the send helpers, tick sync, the outbox, the contact list,
@@ -158,7 +162,14 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
                 cimmeria_auth=debug,\
-                cimmeria_wire=debug,\
+                cimmeria_wire::ability_tree=debug,\
+                cimmeria_wire::base=debug,\
+                cimmeria_wire::cell=debug,\
+                cimmeria_wire::containers=debug,\
+                cimmeria_wire::firehose=debug,\
+                cimmeria_wire::hex=debug,\
+                cimmeria_wire::mercury=debug,\
+                cimmeria_wire::state_field=debug,\
                 cimmeria_wire_log=debug,\
                 cimmeria_cell_cover=debug,\
                 cimmeria_cell_catalog=debug,\

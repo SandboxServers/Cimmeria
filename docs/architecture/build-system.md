@@ -7,7 +7,7 @@ last_updated: 2026-09-26
 
 # Build system: toolchain, profiles, concurrency and disk
 
-> **Status:** Accepted (2026-09-26). Implemented on `build/toolchain-overhaul`, except §6 (cargo-hakari, planned as the last step, after the crate split) and §9 (the crate split, in progress).
+> **Status:** Accepted (2026-09-26). Implemented on `build/toolchain-overhaul`, except §6 (cargo-hakari, planned as the last step, after the crate split).
 > **Scope:** how Cimmeria's Rust workspace is compiled on developer and agent machines and in CI, and why. The companion [services-crate-split.md](services-crate-split.md) covers the crate layout.
 
 ## Context
@@ -91,7 +91,7 @@ Cargo's built-in equivalent (`resolver.feature-unification`, [cargo#14774](https
 
 ### 7. One integration-test binary per crate
 
-Every integration test file under `tests/` is its own binary that relinks the whole dependency tree. Crates with several files now use `tests/it/main.rs` with one module per former file (content-engine, wireclient, navmesh-extractor: 23 binaries became 3). New integration tests go in `tests/it/`.
+Every integration test file under `tests/` is its own binary that relinks the whole dependency tree. Crates with several files now use `tests/it/main.rs` with one module per former file (content-engine, wireclient, navmesh-extractor: 23 binaries became 3). New integration tests go in `tests/it/`; mercury's `LossyTransport` round trips, which named only mercury, moved there from `crates/services/tests/` in the last wave of the services split.
 
 ### 8. Fewer and deduplicated dependencies
 
@@ -99,9 +99,9 @@ The September pass removed about 30 unused dependencies and collapsed duplicate 
 
 To find who pulls an old version, run `cargo tree -i <crate>@<version>`. Run `cargo machete` before adding a dependency cleanup PR.
 
-### 9. The services crate is being split (in progress)
+### 9. The services crate is split
 
-See [services-crate-split.md](services-crate-split.md) for the plan and the per-wave status.
+`cimmeria-services` is a facade over 18 service crates (2026-09-26). See [services-crate-split.md](services-crate-split.md) for the plan, the record of each wave and the final layout.
 
 ### 10. Measure before changing concurrency
 

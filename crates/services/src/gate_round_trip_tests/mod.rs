@@ -4,9 +4,9 @@
 //!
 //! Each was a test of `base::world_entry`, which moved to
 //! `cimmeria-base-world-entry` in wave B3 of
-//! docs/architecture/services-crate-split.md. The cell half is still in this
-//! crate, and the base crate cannot depend on the cell, so they stay here;
-//! they need both tracks, so their final home is the facade.
+//! docs/architecture/services-crate-split.md. The cell half is in
+//! `cimmeria-cell-interactions` (wave C4), and neither track's crates can
+//! depend on the other's, so these need the facade, their final home.
 //!
 //! - [`stargate_fanout`]: the gate `onSequence` fan-out, from the cell
 //!   emitter through the base dispatcher to the wire.

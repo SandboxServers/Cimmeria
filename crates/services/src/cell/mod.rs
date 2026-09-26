@@ -27,8 +27,7 @@
 //!   loop, the base-message handlers and the ticks) and the cell-method
 //!   router, `dispatch`.
 //!
-//! What is left here besides the re-exports are the two cross-track test
-//! modules, which wave F of the plan takes over.
+//! Nothing else is left here: the module holds only these re-exports.
 
 // The service and the cell-method router, in `cimmeria-cell` (wave C6). The
 // facade owns the `CellService` re-export (§2H): the orchestrator builds it.
@@ -80,10 +79,8 @@ pub use cimmeria_wire::cell::{client_methods, messages};
 //   has since moved to the crates above them; the last of those users, the
 //   cell loop and the base-message handlers, went to `cimmeria-cell` in wave
 //   C6. `harset_placement_tests` went to `cimmeria-cell-world` then too.
-
-/// The content test that drives the base's mission query. Test-only.
-#[cfg(test)]
-mod content_tests;
-/// The spawner test that drives the base-side GM spawn handler. Test-only.
-#[cfg(test)]
-mod spawner_tests;
+//
+// The last two test modules here went to the base crates in wave F:
+// `content_tests::mission_701_persistence` (the base's mission query) to
+// `cimmeria-base-methods` and `spawner_tests::template_prototype_parity` (the
+// GM spawn handler) to `cimmeria-base-session`, both at the same module path.

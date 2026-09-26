@@ -2,7 +2,7 @@
 //!
 //! The routing half (full row reaches a file layer and no OTLP layer, sample
 //! reaches OTLP) is tested against the real filters in
-//! `crates/server/src/logging/parity_tests.rs`.
+//! `crates/server/src/logging/parity_tests/firehose_sampling.rs`.
 
 use std::net::SocketAddr;
 

@@ -58,7 +58,7 @@ pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, Mis
 pub use navmesh_mode::NavmeshMode;
 pub use npcs::{class_id_for_class, load_spawns_from_db, SpawnRecord};
 // Reused by the base-side GM spawn handler
-// (`base::gm_spawn::load_spawn_record_for_template` in cimmeria-services).
+// (`base::gm_spawn::load_spawn_record_for_template` in cimmeria-base-session).
 pub use npcs::load_patrol_points;
 pub use regions::{
     is_point_in_region, load_regions_from_db, RegionLoadData, GENERIC_REGION_CHECK_THRESHOLD,

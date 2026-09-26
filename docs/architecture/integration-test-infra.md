@@ -45,7 +45,7 @@ variable isn't set, tests skip with a clear message rather than fail.
 ## What we do instead
 
 Live-DB tests live alongside their target module's existing
-`#[cfg(test)] mod tests;` block — not in `crates/services/tests/`.
+`#[cfg(test)] mod tests;` block — not in a crate's `tests/` directory.
 The reason is access: most of what we want to integration-test is
 internal SQL behavior (transaction boundaries, advisory locks,
 rows_affected invariants). Cargo's `tests/` directory only sees the

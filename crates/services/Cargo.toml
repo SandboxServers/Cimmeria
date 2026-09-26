@@ -3,13 +3,15 @@ name = "cimmeria-services"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Server service implementations for the Cimmeria server emulator"
+description = "The facade over the Cimmeria server emulator's service crates: the orchestrator, the database pool and re-exports of the services at their old module paths"
 
 [dependencies]
 # `ServerConfig`, which the orchestrator reads. Since wave C6 of the split
 # (docs/architecture/services-crate-split.md) this crate is the facade: the
 # orchestrator, the database pool and re-exports of the split crates at their
-# old paths. `cimmeria-mercury`, `cimmeria-entity` and
+# old paths. Every service crate below is a dependency only for those
+# re-exports (and the orchestrator's `BaseService`, `CellService`,
+# `AuthService` and minigame server). `cimmeria-mercury`, `cimmeria-entity` and
 # `cimmeria-content-engine` are dev-dependencies now (only the cross-track
 # tests name them), and `cimmeria-observability`, `cimmeria-occluder`, `rand`,
 # `quick-xml` and `serde` are gone: none of the code left here uses them.
@@ -98,9 +100,10 @@ chaos-testing = ["cimmeria-base/chaos-testing"]
 [dev-dependencies]
 # Mercury with the `test-support` feature, so the cross-track tests can use
 # `cimmeria_mercury::test_transport::TestTransport` (the recording UDP fake)
-# in place of a real socket, and the chaos integration test the lossy
-# transport. Only the tests name mercury since wave C6, so it is no longer a
-# normal dependency. See docs/architecture/transport-trait.md.
+# in place of a real socket. Only the tests name mercury since wave C6, so it
+# is no longer a normal dependency; the chaos integration test that used its
+# lossy transport is mercury's own since wave F. See
+# docs/architecture/transport-trait.md.
 cimmeria-mercury = { path = "../mercury", features = ["test-support"] }
 
 # Generic test helpers: the live-DB gate (`require_db_or_skip!`),
@@ -122,10 +125,10 @@ cimmeria-entity = { workspace = true }
 
 # World entry, which only this crate's tests name since wave B4 moved its
 # production users to cimmeria-base: the gate round trips
-# (`gate_round_trip_tests`), the mission round trips and the mission 701
-# persistence replay. The feature exposes `world_entry::{handle_gate_travel,
-# persist_arrival}`, which the gate round trips drive after the cell's dial
-# handler.
+# (`gate_round_trip_tests`) and the mission round trips
+# (`mission_round_trip_tests`). The feature exposes
+# `world_entry::{handle_gate_travel, persist_arrival}`, which the gate round
+# trips drive after the cell's dial handler.
 cimmeria-base-world-entry = { workspace = true, features = ["test-support"] }
 
 # `gate_travel::send_gate_sequence` for the gate fan-out byte test in

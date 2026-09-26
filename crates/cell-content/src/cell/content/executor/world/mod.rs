@@ -8,11 +8,13 @@
 //! These all locate a target entity by tag and either flip a flag or push
 //! a state change.
 
+// The NPC AI's state primitives are the world crate's; name them there, not
+// through the combat crate's `npc_ai`, which re-exports them.
+use cimmeria_cell_world::cell::service::npc_ai::{self, AiTransitionReason};
 use tokio::sync::mpsc;
 
 use super::transport;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 
 #[cfg(test)]
@@ -642,10 +644,9 @@ pub(super) async fn move_waypoint(
     let space_id = t.space_id.0 as u32;
     let direction = [t.direction.x, t.direction.y, t.direction.z];
     space_mgr.update_position_preserving_facing(target_id, destination, [0.0; 3]);
-    space_mgr.npc_detectors.note_move_source(
-        target_id,
-        crate::cell::service::npc_ai::detectors::MoveSource::Content,
-    );
+    space_mgr
+        .npc_detectors
+        .note_move_source(target_id, npc_ai::detectors::MoveSource::Content);
     // Authorized server move: reseed the movement-validator clock for
     // the moved entity (harmless for NPC targets — they never pass
     // through the client-position validator).

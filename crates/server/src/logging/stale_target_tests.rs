@@ -39,8 +39,8 @@ fn workspace_root() -> PathBuf {
 /// Library (or binary) crate name -> its root source file, for every package
 /// under `crates/`. The name is `[lib] name`, else the package name with `-`
 /// turned into `_`; the root is `[lib] path`, else `src/lib.rs`, else
-/// `src/main.rs`.
-fn crate_roots() -> BTreeMap<String, PathBuf> {
+/// `src/main.rs`. `parity_tests::crate_rows` reads the same map.
+pub(super) fn crate_roots() -> BTreeMap<String, PathBuf> {
     let crates = workspace_root().join("crates");
     let mut out = BTreeMap::new();
     for entry in std::fs::read_dir(&crates).expect("read crates/").flatten() {

@@ -1,5 +1,5 @@
-//! Services-layer integration test for the `LossyTransport` wrapper
-//! on the `BidirectionalTransport` recv-loop seam.
+//! Integration test for the `LossyTransport` wrapper on the
+//! `BidirectionalTransport` recv-loop seam.
 //!
 //! These tests demonstrate that the chaos infrastructure plugs into
 //! the services-layer recv path without behavioral regression. The
@@ -15,6 +15,11 @@
 //! 2. The recv loop in `connect_loop` can be invoked with a
 //!    `LossyTransport` (compile-time + runtime smoke that the
 //!    migration in `service.rs` actually accepts the wider trait).
+//!
+//! It names only this crate, so wave F of the services crate split
+//! (`docs/architecture/services-crate-split.md` §3) moved it here from
+//! `crates/services/tests/`. The recv loop it stands in for is
+//! `cimmeria-base`'s (`base::connect_loop`, started by `BaseService`).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -87,7 +92,7 @@ async fn lossy_transport_satisfies_bidirectional_transport_trait_for_recv_loop()
 /// Statistical loss assertion: gated behind `#[ignore]` because the
 /// 60ms-per-recv latency × 500 packets makes this a ~30s wall-time
 /// test that doesn't belong on every-commit CI. Run manually with
-/// `cargo test --test chaos_lossy_transport_integration -- --ignored`
+/// `cargo test -p cimmeria-mercury --test it chaos_lossy_transport_integration -- --ignored`
 /// or via the CI nightly profile when adding one.
 ///
 /// The fast-path assertions for the LossyTransport+recv-loop seam
