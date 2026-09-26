@@ -236,7 +236,10 @@ async fn trainer_in_another_space_is_out_of_range() {
     );
     let sent = train(&mut mgr, OFFERED).await;
     assert_eq!(methods(&sent), vec![ON_ERROR_CODE, ON_TRAINER_OPEN]);
-    assert_eq!(first_error(&sent), error_bytes(OFFERED, OUTSIDE_DISTANCE_CHECK));
+    assert_eq!(
+        first_error(&sent),
+        error_bytes(OFFERED, OUTSIDE_DISTANCE_CHECK)
+    );
 }
 
 // --- the node-gate error codes, byte-exact ------------------------------
