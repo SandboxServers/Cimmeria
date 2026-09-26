@@ -34,7 +34,7 @@ above it is fragments or nothing.
   instead (a row recorded on-mesh must stay on-mesh, a row recorded off-mesh
   must stay off-mesh) plus an on-mesh control so a mesh that failed to load
   cannot pass the off-mesh half vacuously. See
-  `crates/services/src/cell/spawner/tests/harset/world57_placement.rs`.
+  `crates/services/src/cell/spawner_tests/harset/world57_placement.rs`.
 - World 57 is `navmesh_mode = 'advisory'` (H53), so off-mesh does not
   rubber-band a player. It does kill NPC pathing, which is why everything
   placed in those quarters is `is_stationary = true`.

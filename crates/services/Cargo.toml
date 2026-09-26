@@ -32,6 +32,10 @@ cimmeria-resources = { workspace = true }
 # Server-driven NPC cover, split out in wave W2a. Re-exported at `cell::cover`
 # beside `cell::cover::stance`, which stays here until the world crate.
 cimmeria-cell-cover = { workspace = true }
+# The cell's DB-backed startup catalogs (spawner loaders, ability trees, the
+# respawner search), split out of this crate (W2b). Re-exported at
+# `cell::{spawner, respawner_fallback}` and `ability_tree`.
+cimmeria-cell-catalog = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }

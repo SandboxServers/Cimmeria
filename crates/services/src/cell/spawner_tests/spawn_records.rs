@@ -5,7 +5,9 @@
 //! Split out of the monolithic `spawner/tests.rs` (issue #529) — every
 //! test body and assertion is byte-identical to the original.
 
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{
+    spawn_instance_npcs_from_records, spawn_npcs_from_records, SpaceManager,
+};
 use crate::cell::spawner::*;
 
 fn make_manager_with_worlds() -> SpaceManager {

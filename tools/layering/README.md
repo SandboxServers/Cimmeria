@@ -10,7 +10,7 @@ crate DAG and is not on the allowlist.
 python tools/layering/check.py              # the check CI runs (build job)
 python tools/layering/check.py --list       # current violations, allowlist format, with file:line
 python tools/layering/check.py --prune      # delete allowlist lines whose edge is gone
-python tools/layering/check.py --edges cell::spawner::npcs   # one module's edges, both directions
+python tools/layering/check.py --edges cell::space_manager::spawn   # one module's edges, both directions
 python tools/layering/check.py --modules    # every production module, its crate, its size
 ```
 

@@ -52,6 +52,13 @@ Learned extracting `cimmeria-cell-cover` (W2a), where one file (`stance.rs`) sta
 - A dev-dependency on the same crate with `features = ["test-support"]` beside the
   normal dependency is how a `#[cfg(any(test, feature = "test-support"))]` hook
   reaches the higher crate's tests; `pub use …::*` forwards it at the old path.
+- **A function moved INTO another file layer's module prefix changes its log file**
+  (W2b): the spawn functions went into `space_manager`, which `aoi.log` keeps whole.
+  Put moved code in its own module, name it in the old file layer and add
+  `<module>=off` to the other layer (longest match wins); pin it in `parity_tests.rs`.
+- **A `pub use` shim at the old path is itself a layering edge.** When code moves UP
+  (catalog -> world), a shim in the lower module is an upward edge and cannot survive
+  extraction; repoint the few callers instead of shimming.
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),

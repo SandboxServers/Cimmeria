@@ -489,24 +489,24 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [instanced_space_destroyed_when_last_player_leaves](../../../crates/services/src/cell/space_manager/tests/instances.rs#L102) | unit | Cell / Space Manager | 2026-04-30 | Instanced space destroyed when last player leaves |  |
 | [non_instanced_space_survives_player_leaving](../../../crates/services/src/cell/space_manager/tests/instances.rs#L135) | unit | Cell / Space Manager | 2026-04-30 | Asserts on `mgr.spaces.contains_key(&65536)` |  |
 | [two_players_get_separate_instances](../../../crates/services/src/cell/space_manager/tests/instances.rs#L150) | unit | Cell / Space Manager | 2026-04-30 | Asserts inequality on `space1` |  |
-| [npc_ids_are_sequential](../../../crates/services/src/cell/spawner/tests/spawn_records.rs#L69) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `id1` |  |
-| [spawn_in_unknown_world_skipped](../../../crates/services/src/cell/spawner/tests/spawn_records.rs#L78) | unit | Cell / Spawner | 2026-04-30 | Asserts on `result.is_err()` |  |
-| [class_id_mapping](../../../crates/services/src/cell/spawner/tests/spawn_records.rs#L86) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `class_id_for_class("spawnable")` |  |
-| [spawn_npc_from_record_sets_template_fields](../../../crates/services/src/cell/spawner/tests/spawn_records.rs#L94) | unit | Cell / Spawner | 2026-04-30 | Asserts on `space_id > 0` |  |
-| [spawn_from_records_only_in_startup_spaces](../../../crates/services/src/cell/spawner/tests/spawn_records.rs#L114) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `count` |  |
-| [spawn_instance_npcs_filters_by_world](../../../crates/services/src/cell/spawner/tests/spawn_records.rs#L185) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `count` |  |
-| [find_entity_by_tag_works](../../../crates/services/src/cell/spawner/tests/spawn_records.rs#L201) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `found` |  |
-| [load_loot_tables_returns_seeded_data_with_non_empty_entries](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L19) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
-| [load_loot_tables_includes_guaranteed_slappack_for_cellblock_guards](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L40) | live-DB | Cell / Spawner | 2026-05-05 | Cellblock guard table (loot_table_id=2) must include item 2893 (Health Slappack TC1) at probability=1.0, qty=1. Pins the seed change so a future nerf updates both the seed and this guard consciously |  |
-| [load_item_defs_returns_seeded_weapons_with_clip_size_columns](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L65) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
-| [load_item_containers_projects_first_element_of_container_sets](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L169) | live-DB | Cell / Spawner | 2026-05-04 | Load item containers projects first element of container sets |  |
-| [load_respawners_returns_seeded_rows_with_world_names](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L201) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!respawners.is_empty()` |  |
-| [load_spawns_returns_records_with_resolved_world_names](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L217) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!records.is_empty()` |  |
-| [load_mission_defs_only_includes_missions_with_a_step](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L281) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
-| [load_step_objectives_groups_by_step_id](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L297) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
-| [load_dialog_set_maps_drops_rows_with_null_dialog_id](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L312) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
-| [load_stargates_resolves_world_join](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L416) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
-| [load_regions_applies_single_point_cylinder_workaround](../../../crates/services/src/cell/spawner/tests/live_db_loaders.rs#L431) | live-DB | Cell / Spawner | 2026-05-04 | Load regions applies single point cylinder workaround |  |
+| [npc_ids_are_sequential](../../../crates/services/src/cell/spawner_tests/spawn_records.rs#L69) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `id1` |  |
+| [spawn_in_unknown_world_skipped](../../../crates/services/src/cell/spawner_tests/spawn_records.rs#L78) | unit | Cell / Spawner | 2026-04-30 | Asserts on `result.is_err()` |  |
+| [class_id_mapping](../../../crates/services/src/cell/spawner_tests/spawn_records.rs#L86) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `class_id_for_class("spawnable")` |  |
+| [spawn_npc_from_record_sets_template_fields](../../../crates/services/src/cell/spawner_tests/spawn_records.rs#L94) | unit | Cell / Spawner | 2026-04-30 | Asserts on `space_id > 0` |  |
+| [spawn_from_records_only_in_startup_spaces](../../../crates/services/src/cell/spawner_tests/spawn_records.rs#L114) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `count` |  |
+| [spawn_instance_npcs_filters_by_world](../../../crates/services/src/cell/spawner_tests/spawn_records.rs#L185) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `count` |  |
+| [find_entity_by_tag_works](../../../crates/services/src/cell/spawner_tests/spawn_records.rs#L201) | unit | Cell / Spawner | 2026-04-30 | Asserts equality on `found` |  |
+| [load_loot_tables_returns_seeded_data_with_non_empty_entries](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L19) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
+| [load_loot_tables_includes_guaranteed_slappack_for_cellblock_guards](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L40) | live-DB | Cell / Spawner | 2026-05-05 | Cellblock guard table (loot_table_id=2) must include item 2893 (Health Slappack TC1) at probability=1.0, qty=1. Pins the seed change so a future nerf updates both the seed and this guard consciously |  |
+| [load_item_defs_returns_seeded_weapons_with_clip_size_columns](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L65) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
+| [load_item_containers_projects_first_element_of_container_sets](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L169) | live-DB | Cell / Spawner | 2026-05-04 | Load item containers projects first element of container sets |  |
+| [load_respawners_returns_seeded_rows_with_world_names](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L201) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!respawners.is_empty()` |  |
+| [load_spawns_returns_records_with_resolved_world_names](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L217) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!records.is_empty()` |  |
+| [load_mission_defs_only_includes_missions_with_a_step](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L281) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
+| [load_step_objectives_groups_by_step_id](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L297) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
+| [load_dialog_set_maps_drops_rows_with_null_dialog_id](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L312) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
+| [load_stargates_resolves_world_join](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L416) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
+| [load_regions_applies_single_point_cylinder_workaround](../../../crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs#L431) | live-DB | Cell / Spawner | 2026-05-04 | Load regions applies single point cylinder workaround |  |
 
 ## Mercury transport glue (55)
 

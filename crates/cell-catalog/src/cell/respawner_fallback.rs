@@ -2,7 +2,7 @@
 //!
 //! Two paths need the same answer and used to compute it twice:
 //!
-//! * [`crate::cell::arrival::resolve_arrival_with`] — an authored arrival
+//! * `cell::arrival::resolve_arrival_with` (`cimmeria-services`) — an authored arrival
 //!   (gate pin, ring pad) that the destination world's navmesh rejects.
 //! * `SpaceManager::resolve_recovery_position` — a client position the
 //!   movement validator rejects and cannot reproject onto the mesh.
@@ -57,7 +57,7 @@ pub(crate) fn is_unauthored(r: &RespawnerDef) -> bool {
 /// mesh the server has already declared untrustworthy does not cover it would
 /// leave the world with no recovery target at all. This function stays pure
 /// and takes the mode as an already-applied `Option`.
-pub(crate) fn nearest_valid_respawner(
+pub fn nearest_valid_respawner(
     respawners: &[RespawnerDef],
     world_name: &str,
     near: Vector3,

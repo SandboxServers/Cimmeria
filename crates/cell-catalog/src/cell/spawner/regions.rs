@@ -43,7 +43,7 @@ pub const GENERIC_REGION_CHECK_THRESHOLD: f32 = 1.5;
 /// and wants a tolerance band — see [`is_point_in_region`], which is built
 /// on top of this so the two can never disagree about a point that is
 /// genuinely inside.
-pub(crate) fn region_contains_xz(points: &[[f32; 3]], x: f32, z: f32) -> bool {
+pub fn region_contains_xz(points: &[[f32; 3]], x: f32, z: f32) -> bool {
     if points.len() < 3 {
         return false;
     }

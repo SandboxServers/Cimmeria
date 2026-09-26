@@ -131,7 +131,7 @@ pub struct WeaponDef {
 /// `None` and unrecognized visuals fall back to 700ms — wide enough
 /// that a missed classification doesn't snap mid-anim, narrow enough
 /// that pistol-class players don't see the flicker.
-pub fn classify_holster_duration(visual_component: Option<&str>) -> std::time::Duration {
+pub(super) fn classify_holster_duration(visual_component: Option<&str>) -> std::time::Duration {
     const SIDEARM: std::time::Duration = std::time::Duration::from_millis(600);
     const LONGARM: std::time::Duration = std::time::Duration::from_millis(1000);
     const FALLBACK: std::time::Duration = std::time::Duration::from_millis(700);

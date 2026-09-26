@@ -16,8 +16,9 @@ pub(crate) use crossing_hold_state::PendingCrossing;
 pub(crate) use deferred_content_actions::PendingContentAction;
 pub use entities::DespawnOutcome;
 pub(crate) use gate_dial_state::PendingGateDial;
-pub(crate) use navmesh_mode::mode_from_db_value;
-pub use navmesh_mode::NavmeshMode;
+// The mode is plain data owned by the spawner's world loader; the
+// containment predicate over it (`navmesh_containment`) stays here.
+pub use super::spawner::NavmeshMode;
 pub use queries::PlayerNameLookup;
 
 mod aoi;
@@ -33,7 +34,9 @@ mod gate_dial_state;
 mod lab_snapshots;
 mod lifecycle;
 mod movement_telemetry;
-mod navmesh_mode;
+mod navmesh_containment;
+mod npc_population;
+pub use npc_population::{spawn_instance_npcs_from_records, spawn_npcs_from_records};
 #[cfg(test)]
 pub(crate) mod occluder_fixtures;
 mod occlusion;

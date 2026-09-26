@@ -8,21 +8,21 @@
 //!   reference, and
 //! * `navmesh_mode`, which decides whether that world's navmesh is a
 //!   containment gate on player movement or information only (see
-//!   [`crate::cell::space_manager::NavmeshMode`]).
+//!   [`NavmeshMode`]).
 //!
 //! Every other cell-side loader JOINs that table to recover the name and
 //! throws the rest away, so this is the one place the mapping is kept. One
 //! query for both columns: a second round trip for the mode could fail on
 //! its own and leave the two halves of a world's definition disagreeing.
 //!
-//! Consumed by [`SpaceManager::stamp_world_rows`](crate::cell::space_manager::SpaceManager::stamp_world_rows),
-//! which writes both onto the matching `WorldDef`.
+//! Consumed by `SpaceManager::stamp_world_rows` (`cell::space_manager` in
+//! `cimmeria-services`), which writes both onto the matching `WorldDef`.
 
 use std::collections::HashMap;
 
 use sqlx::PgPool;
 
-use crate::cell::space_manager::NavmeshMode;
+use super::navmesh_mode::{mode_from_db_value, NavmeshMode};
 
 /// The `resources.worlds` columns the cell stamps onto a `WorldDef`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +49,7 @@ impl WorldRow {
 ///
 /// An unrecognised `navmesh_mode` string is logged and read as
 /// [`NavmeshMode::Enforce`]; see
-/// [`mode_from_db_value`](crate::cell::space_manager::NavmeshMode) for why
+/// [`mode_from_db_value`] for why
 /// the fallback is the strict side.
 pub async fn load_world_rows(pool: &PgPool) -> Result<HashMap<String, WorldRow>, sqlx::Error> {
     let rows: Vec<(i32, String, String)> = sqlx::query_as(
@@ -61,7 +61,7 @@ pub async fn load_world_rows(pool: &PgPool) -> Result<HashMap<String, WorldRow>,
     Ok(rows
         .into_iter()
         .map(|(world_id, world, mode)| {
-            let navmesh_mode = crate::cell::space_manager::mode_from_db_value(&world, &mode);
+            let navmesh_mode = mode_from_db_value(&world, &mode);
             (
                 world,
                 WorldRow {

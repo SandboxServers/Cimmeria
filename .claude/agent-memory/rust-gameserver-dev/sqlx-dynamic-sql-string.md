@@ -28,9 +28,17 @@ pub(crate) use entity_template_select;   // path-addressable, order-independent
 ```
 
 `pub(crate) use <macro_name>;` is what makes it reachable from another module
-(`crate::cell::spawner::entity_template_select`) without `#[macro_export]`
-dumping it at the crate root. Callers pass `""` or `" WHERE t.template_id = $1"`;
-the bind parameter is still bound normally.
+of the same crate without `#[macro_export]` dumping it at the crate root.
+Callers pass `""` or `" WHERE t.template_id = $1"`; the bind parameter is
+still bound normally.
 
-Live example: `crates/services/src/cell/spawner/templates.rs`, shared with
+**Across crates it needs `#[macro_export]`.** Since the services crate split
+(W2b) the macro lives in `cimmeria-cell-catalog` and its caller in
+`cimmeria-services`, so it is `#[macro_export]` (landing at the catalog crate
+root) and `cell/spawner/mod.rs` re-exports it with
+`pub use crate::entity_template_select;` to keep the old
+`crate::cell::spawner::entity_template_select` path. The body uses only
+`concat!`, so it needs no `$crate::` paths.
+
+Live example: `crates/cell-catalog/src/cell/spawner/templates.rs`, shared with
 `crates/services/src/base/gm_spawn.rs` (PR #662 review, finding 3).

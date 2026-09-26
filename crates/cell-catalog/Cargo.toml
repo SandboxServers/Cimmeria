@@ -1,0 +1,29 @@
+[package]
+name = "cimmeria-cell-catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The cell's DB-backed startup catalogs for the Cimmeria server emulator: the spawner's loaders (spawn records, templates, missions, dialogs, regions, loot, abilities, worlds), the archetype ability trees and the respawner search"
+
+# Split out of cimmeria-services (wave W2b of
+# docs/architecture/services-crate-split.md). It sits just above the wire
+# contract: the cell world and the base session both read these catalogs, so
+# it must never depend on a service crate. The module tree keeps its old
+# nesting (`cell::spawner`, `cell::respawner_fallback`, `ability_tree`), and
+# cimmeria-services re-exports each module at its old path.
+[dependencies]
+# `SpawnRecord` (the loaders' row type) and the ability-tree points payload.
+cimmeria-wire = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+# Generic test helpers: the live-DB gate (`require_db_or_skip!`), re-exported
+# from the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with
+# this dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }

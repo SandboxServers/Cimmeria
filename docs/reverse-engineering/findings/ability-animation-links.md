@@ -42,7 +42,7 @@ Sets 3 and 15 are channelable, so an ability with a warmup plays the weapon's Be
 
 ## What the seed now links
 
-The seed links 220 abilities in three tiers. `crates/services/src/cell/spawner/tests/live_db_ability_animation_links.rs` pins the family rule, the per-ability links and the Ability_End requirement.
+The seed links 220 abilities in three tiers. `crates/cell-catalog/src/cell/spawner/tests/live_db_ability_animation_links.rs` pins the family rule, the per-ability links and the Ability_End requirement.
 
 ### Tier 1: the recovered rule (162 abilities)
 

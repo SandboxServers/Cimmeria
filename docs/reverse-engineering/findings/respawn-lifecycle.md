@@ -211,7 +211,7 @@ not; treating one as real makes every fallback beneath it unreachable and drops 
 player at the world origin. See
 [death-respawn-system.md](../../gameplay/death-respawn-system.md#unauthored-respawner-rows).
 
-`RespawnerDef` structure (from `crates/services/src/cell/spawner/respawners.rs`):
+`RespawnerDef` structure (from `crates/cell-catalog/src/cell/spawner/respawners.rs`):
 ```rust
 pub struct RespawnerDef {
     pub respawner_id: i32,
@@ -340,4 +340,4 @@ are inferred but not confirmed against RTTI class names.
 - `docs/reverse-engineering/findings/cme-event-signal.md` — Pattern A/B emit pipeline
 - `crates/services/src/cell/cell_methods/player/combat/respawn.rs` — Rust implementation
 - `crates/services/src/cell/abilities/damage_apply/mod.rs` — onBeginAidWait send logic
-- `crates/services/src/cell/spawner/respawners.rs` — RespawnerDef, SQL query
+- `crates/cell-catalog/src/cell/spawner/respawners.rs` — RespawnerDef, SQL query

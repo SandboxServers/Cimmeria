@@ -26,6 +26,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "admin-api",
     "auth",
     "cell-cover",
+    "cell-catalog",
     "commands",
     "common",
     "content-engine",

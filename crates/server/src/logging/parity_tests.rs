@@ -435,6 +435,66 @@ fn cover_crate_events_keep_their_index() {
     }
 }
 
+/// The spawner's DB loaders moved from `cimmeria_services::cell::spawner` to
+/// the `cimmeria-cell-catalog` crate (services crate split, wave W2b), which
+/// changed their events' `module_path!()`. They must still land where they
+/// did before: every level in `spawner.log`, INFO and up in `server.log`, and
+/// one OTLP index per level. `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_cell_catalog`, so without its own `OTEL_FILTER` row the DEBUG
+/// rows would silently stop reaching SigNoz. The ability-tree catalog has no
+/// file of its own and keeps `server.log` plus its index.
+#[test]
+fn catalog_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    let loaders = "cimmeria_cell_catalog::cell::spawner::npcs";
+    let sinks = |lvl| sinks_for(&dispatch, &hits, loaders, lvl);
+    assert_eq!(sinks(Level::TRACE), set(&["file:spawner.log", OTLP_TRACE]));
+    assert_eq!(sinks(Level::DEBUG), set(&["file:spawner.log", OTLP_SERVER]));
+    for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+        assert_eq!(
+            sinks(lvl),
+            set(&["file:spawner.log", SERVER_LOG, OTLP_SERVER]),
+            "{loaders} at {lvl}"
+        );
+    }
+    let tree = "cimmeria_cell_catalog::ability_tree::catalog";
+    assert_eq!(
+        sinks_for(&dispatch, &hits, tree, Level::DEBUG),
+        set(&[OTLP_SERVER])
+    );
+    assert_eq!(
+        sinks_for(&dispatch, &hits, tree, Level::INFO),
+        set(&[SERVER_LOG, OTLP_SERVER])
+    );
+}
+
+/// `spawn_npcs_from_records` and `spawn_instance_npcs_from_records` moved
+/// from `cell::spawner::npcs` to `cell::space_manager::npc_population`
+/// (services crate split, wave W2b). `aoi.log` keeps every
+/// `cell::space_manager` module, so the move alone would have re-routed the
+/// spawn rows there; they must stay in `spawner.log` and only there, while
+/// the rest of `space_manager` keeps `aoi.log`.
+#[test]
+fn npc_population_events_keep_spawner_log() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let population = "cimmeria_services::cell::space_manager::npc_population";
+    let spawn = "cimmeria_services::cell::space_manager::spawn";
+    for lvl in LEVELS {
+        let sinks = sinks_for(&dispatch, &hits, population, lvl);
+        assert!(
+            sinks.contains("file:spawner.log") && !sinks.contains("file:aoi.log"),
+            "{population} at {lvl}: {sinks:?}"
+        );
+        let sinks = sinks_for(&dispatch, &hits, spawn, lvl);
+        assert!(
+            sinks.contains("file:aoi.log") && !sinks.contains("file:spawner.log"),
+            "{spawn} at {lvl}: {sinks:?}"
+        );
+    }
+}
+
 /// No target, at any level, is indexed twice.
 #[test]
 fn no_record_reaches_two_indexes() {

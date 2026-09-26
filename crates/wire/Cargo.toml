@@ -11,6 +11,9 @@ description = "The wire contract shared by the Base and Cell services: method in
 # service crate. Add workspace crates (common, mercury, entity, game,
 # observability) only as moved code needs them.
 [dependencies]
+# `SpawnRecord` carries a `Vector3` patrol path and a `MobAggression` override.
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
