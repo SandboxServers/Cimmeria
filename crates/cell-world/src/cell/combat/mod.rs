@@ -10,8 +10,8 @@
 //!   `entity_health_below` content trigger, and the queued pre-hit sample.
 //!
 //! Damage, threat, the auto-cycle and the dead-state helpers are combat
-//! proper and live in `cimmeria-services`' `cell::combat`, which re-exports
-//! these modules at their old paths.
+//! proper and live in `cimmeria-cell-combat`'s `cell::combat`, which
+//! re-exports these modules at their old paths.
 
 pub mod aggression;
 pub mod faction_reaction;

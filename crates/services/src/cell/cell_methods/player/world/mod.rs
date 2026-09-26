@@ -12,10 +12,11 @@ use tokio::sync::mpsc;
 use super::constants::*;
 
 mod auto_cycle;
-mod item_sequence;
 mod region_registration;
-mod reload;
 mod system_options;
+// The reload and item-sequence handlers are in `cimmeria-cell-combat` (wave
+// C2); imported at their old paths.
+use cimmeria_cell_combat::cell::cell_methods::player::world::{item_sequence, reload};
 
 // Re-export discipline: keep every cross-module call site's import path
 // identical after the split. `reload`/`item_sequence` items are consumed
@@ -23,7 +24,7 @@ mod system_options;
 // `cell_methods::player::world::<item>`.
 pub(crate) use item_sequence::fire_item_sequence;
 pub(crate) use region_registration::{send_client_hinted_regions, ClearFirst};
-pub(crate) use reload::{handle_reload, maybe_trigger_reload_on_activate, UNHOLSTER_DRAW_DURATION};
+pub(crate) use reload::{handle_reload, maybe_trigger_reload_on_activate};
 // Only the in-module test files (`tests.rs`, `system_options_tests.rs`)
 // reach these through `super::*`; gate the re-exports so the non-test build
 // doesn't flag them unused.

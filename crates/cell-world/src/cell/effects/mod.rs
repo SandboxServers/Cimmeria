@@ -55,8 +55,8 @@
 //! This synchronous layer (the trait, the context, the registry and the
 //! scripts) is in `cimmeria-cell-world`, because the spawn-time cover hold
 //! runs Cover Stance through it. The async pulsing layer (`pulsing`: register,
-//! tick, channel cancellation) is combat and stays above; `cimmeria-services`
-//! declares it beside a re-export of this module at `cell::effects`.
+//! tick, channel cancellation) is combat: `cimmeria-cell-combat` declares it
+//! beside a re-export of this module at `cell::effects`.
 
 pub mod cover_stance;
 pub mod registry;

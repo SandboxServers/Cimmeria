@@ -275,6 +275,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // aoi.log's row before wave C1 moved the space manager to
         // cimmeria-cell-world; services re-exports it at the same path.
         "cimmeria_services::cell::space_manager",
+        // combat.log's rows before wave C2 moved combat and abilities to
+        // cimmeria-cell-combat; services re-exports both at the same paths.
+        "cimmeria_services::cell::combat",
+        "cimmeria_services::cell::abilities",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -287,6 +291,8 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_mercury",
         "cimmeria_server::logging",
         "cimmeria_cell_world::cell::space_manager",
+        "cimmeria_cell_combat::cell::combat",
+        "cimmeria_cell_combat::cell::service::npc_ai",
         "cimmeria_services::base::world_entry",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",

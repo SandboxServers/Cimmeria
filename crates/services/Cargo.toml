@@ -46,10 +46,12 @@ cimmeria-base-session = { workspace = true }
 # FSM, the synchronous effect scripts, the GM gate, ContentEvents), split out
 # of this crate (C1). Re-exported at the old `cell::…` paths.
 cimmeria-cell-world = { workspace = true }
+# The cell's combat (abilities, damage, death, threat, the auto-cycle, effect
+# pulsing, the NPC AI's behaviour, the bandolier and reload handlers), split
+# out of this crate (C2). Re-exported at the old `cell::…` paths.
+cimmeria-cell-combat = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
-rand_distr = { workspace = true }
-rand_chacha = { workspace = true }
 quick-xml = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
@@ -109,3 +111,8 @@ cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # cover tests that stay here because they drive the NPC AI (npc_ai_cover*,
 # ticks/cover).
 cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# The combat test hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,
+# `npc_ai_follow_for_test`, `force_ai_state` through `npc_ai`, ...) for the
+# tests that stay here because they drive the service loop or the content
+# engine.
+cimmeria-cell-combat = { workspace = true, features = ["test-support"] }

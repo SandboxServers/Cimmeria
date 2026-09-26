@@ -50,7 +50,9 @@ pub mod sweep;
 pub mod threat;
 
 // The detector tests drive the AI and movement ticks, which sit above this
-// crate: they are `cell::service::npc_ai::detector_tests` in cimmeria-services.
+// crate: they are `cell::service::npc_ai::detector_tests` in
+// cimmeria-cell-combat, and in cimmeria-services for the ones that drive the
+// service loop's movement tick.
 
 /// The common identity every NPC row carries. Owned so a caller can resolve
 /// it before taking `&mut` on the manager.

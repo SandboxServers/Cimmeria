@@ -45,6 +45,7 @@ members = [
     "crates/minigame",
     "crates/base-session",
     "crates/cell-world",
+    "crates/cell-combat",
 ]
 default-members = [
     "crates/common",
@@ -72,6 +73,7 @@ default-members = [
     "crates/minigame",
     "crates/base-session",
     "crates/cell-world",
+    "crates/cell-combat",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -228,6 +230,7 @@ cimmeria-cell-catalog = { path = "crates/cell-catalog" }
 cimmeria-minigame = { path = "crates/minigame" }
 cimmeria-base-session = { path = "crates/base-session" }
 cimmeria-cell-world = { path = "crates/cell-world" }
+cimmeria-cell-combat = { path = "crates/cell-combat" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed
