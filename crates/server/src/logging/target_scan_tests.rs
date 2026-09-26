@@ -21,8 +21,9 @@ use super::filters::{FILE_LAYERS, OTLP_EXCLUDED_TARGETS};
 use super::parity_tests::{harness, sinks_for, OTLP_LOG_SINKS};
 
 /// Crates linked into the `cimmeria-server` process. Their events pass
-/// through the OTLP filters.
-const IN_PROCESS_CRATES: &[&str] = &[
+/// through the OTLP filters. `parity_tests::crate_rows` requires each to have
+/// its own `OTEL_FILTER` row or a listed reason why not.
+pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "admin-api",
     "auth",
     "base",
