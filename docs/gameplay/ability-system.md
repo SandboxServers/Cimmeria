@@ -146,6 +146,36 @@ The cell mirrors the trainer gates' inputs in `CellEntity::tree_progress` (`trai
 
 A purchased node whose `resources.abilities.training_cost` is 0 logs `abilities event=train_raw_cost_zero` at WARN. The purchase still goes ahead at `skill_point_cost`; the source value is never rewritten.
 
+### Trainer authority
+
+A purchase must happen at a trainer (AT-04). Before AT-04, a forged `trainAbility` trained from anywhere. The trainer gates in `ability_tree/gates/trainer.rs` run after the node and spend gates. They read the player's pinned `last_interaction_target`, which the cell resolves into a `TrainerPin` (`cell/interactions/trainer_authority.rs`). The pin must:
+
+- be set;
+- resolve to an entity that still exists;
+- have a template listed in `template_trainer_lists`;
+- be a trainer whose list offers this ability to the player's archetype;
+- still pass `interact_target_in_range`: the same space, and within `MAX_INTERACT_DISTANCE` (5).
+
+The trainer window computes its `trainable` byte with the same pin. A player who walks out of range and then triggers a re-send therefore sees every node greyed out, which matches what a purchase would get.
+
+`interact_target_in_range` now also rejects a target in another space. Positions are per-space coordinates, and `SpaceManager::get_entity` searches every space. Without the check, a trainer in another space at nearby coordinates counted as in range, and so did any `interact` target.
+
+### Rejection feedback
+
+A rejected purchase sends `onErrorCode` (121) with `SystemID 0` (`ERRORCODE_SYSTEM_Ability`), `InstanceID` set to the ability id, and the `ErrorCodeID` below (`cell/cell_methods/player/vendor/train_feedback.rs`). When the pin is a live trainer, `onTrainerOpen` is re-sent after it.
+
+| Rejection | `ErrorCodeID` | Fit |
+|---|---|---|
+| Not in the archetype's tree | 6 `NotSpecifiedArchetype` | Exact |
+| Level too low | 9 `LevelGreaterThanOrEqual` | Close |
+| Missing prerequisite | 167 `EntityDoesNotHaveAbility` | Exact |
+| No trainer pinned, trainer despawned, pin not a trainer, not offered here, out of range | 43 `OutsideDistanceCheck` | Close |
+| Not enough training points, spend gate (AT-03) | 35 `StatValueLessThan` | Reused: the 2009 enum has no token for either |
+| Already known | none: silent | The client already renders the node as known |
+| Unknown ability id, no player id, no archetype | none: silent | A legitimate client cannot send these. They are logged at WARN |
+
+The mapping comes from AT-E1 ([ability-trainer-ui.md](../reverse-engineering/findings/ability-trainer-ui.md) §2). Whether the client renders `onErrorCode` at all is **unresolved**: no client Lua consumes it. The trainer re-send is the feedback the player is known to see, so every coded rejection is followed by one. The re-send is skipped for the silent rows, so a forging client gets no free `onTrainerOpen` build per packet.
+
 ## Data References
 
 - **Ability definitions**: 1,886 in `db/resources/Abilities/Seed/abilities.sql`

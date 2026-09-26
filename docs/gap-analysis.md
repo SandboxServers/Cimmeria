@@ -1154,6 +1154,7 @@ Four layers of server-authoritative movement validation landed in PRs #437 and #
 | Teleport detection | IM | -- | entity/movement_validation/mod.rs:24-29 | Hard reject on the dual distance-AND-implied-speed gate. Recovery path rewritten by #644 after the playtest rubber-band loop; not re-tested in client since |
 | Damage sanity check | KM | -- | -- | No max-damage cap |
 | Action-at-distance exploit | IM | -- | cell/abilities/use_ability/handle.rs:238-262 | `useAbility` rejects targets beyond the ability's `max_range` (30.0 default) with `OutsideWeaponRange`. Player-side LOS is still *not* checked on this path; the #797 occluder LoS serves NPC AI only |
+| Ability-trainer authority | IM | -- | ability_tree/gates/trainer.rs; cell/interactions/trainer_authority.rs; cell/cell_methods/player/vendor/train_feedback.rs | **New 2026-09-26 (AT-04).** `trainAbility` used to train from anywhere. It now needs a pinned, live trainer whose list offers the node to the archetype, within `interact_target_in_range`. Rejections send `onErrorCode` (6/9/167/43) and then re-send `onTrainerOpen`. `interact_target_in_range` also rejects a target in another space, which closes the same hole for `interact`. Unit and wire tests only; not client-validated, and whether the client renders `onErrorCode` is unresolved (AT-E1 Q2) |
 
 ### Economy Sinks / Faucets --- IM
 
