@@ -73,6 +73,9 @@ pub(crate) struct PlayerWatch {
     travelled_since_respawn: f32,
     silence_reported: bool,
     last_dialog: Option<(i32, Instant)>,
+    /// The player closed or answered `last_dialog` (its `dialogButtonChoice`
+    /// was accepted), so whatever is displayed next did not displace it.
+    last_dialog_answered: bool,
 }
 
 impl PlayerWatch {
@@ -90,10 +93,20 @@ impl PlayerWatch {
         self.silence_reported = false;
     }
 
+    /// The player's choice for `dialog_id` was accepted. Only the dialog
+    /// currently on record counts: an older one answered late (the client's
+    /// eviction close, F13) says nothing about the one that replaced it.
+    pub(crate) fn note_dialog_answered(&mut self, dialog_id: i32) {
+        if self.last_dialog.is_some_and(|(id, _)| id == dialog_id) {
+            self.last_dialog_answered = true;
+        }
+    }
+
     pub(crate) fn note_dialog(&mut self, dialog_id: i32, now: Instant) -> Option<Friction> {
         let out = match self.last_dialog {
             Some((prev, at))
                 if prev != dialog_id
+                    && !self.last_dialog_answered
                     && now.saturating_duration_since(at) < DIALOG_DISPLACED_WITHIN =>
             {
                 Some(Friction::DialogDisplaced {
@@ -105,6 +118,7 @@ impl PlayerWatch {
             _ => None,
         };
         self.last_dialog = Some((dialog_id, now));
+        self.last_dialog_answered = false;
         out
     }
 
@@ -352,6 +366,11 @@ pub fn dialog_shown(entity_id: u32, dialog_id: i32) {
     if let Some(f) = with_watch(entity_id, |w| w.note_dialog(dialog_id, Instant::now())) {
         emit(entity_id, &f);
     }
+}
+
+/// The player closed or answered `dialog_id` (its choice passed the #479 gate).
+pub fn dialog_answered(entity_id: u32, dialog_id: i32) {
+    with_watch(entity_id, |w| w.note_dialog_answered(dialog_id));
 }
 
 /// A mission is being completed by a chain while objectives are still open.
@@ -609,6 +628,42 @@ mod tests {
             vec![19, 25],
             "on their floor, both are expected; the unregistered one never is"
         );
+    }
+
+    /// Colo 2026-09-26: the player closed 2299, whose `dialog_choice` chain
+    /// (1019) displayed 2298 in the same millisecond. That is the player
+    /// moving on, not a displacement. Same shape: 4001 -> 4000.
+    #[test]
+    fn dialog_answered_by_the_player_is_not_displaced_by_its_follow_up() {
+        let t0 = Instant::now();
+        let mut w = PlayerWatch::default();
+        assert_eq!(w.note_dialog(2299, t0), None);
+        w.note_dialog_answered(2299);
+        assert_eq!(w.note_dialog(2298, t0 + Duration::from_millis(1421)), None);
+
+        // The answered flag covers exactly one follow-up: 2298 itself was
+        // not answered, so a third dialog on its heels is still flagged.
+        assert!(w
+            .note_dialog(4000, t0 + Duration::from_millis(1600))
+            .is_some());
+    }
+
+    /// 2516 -> 5859: the server displays 5859 first, and 2516's close only
+    /// arrives afterwards (the client's eviction). A late answer for the
+    /// displaced dialog must not suppress anything.
+    #[test]
+    fn late_answer_for_an_evicted_dialog_does_not_mask_the_displacement() {
+        let t0 = Instant::now();
+        let mut w = PlayerWatch::default();
+        assert_eq!(w.note_dialog(2516, t0), None);
+        assert!(w
+            .note_dialog(5859, t0 + Duration::from_millis(500))
+            .is_some());
+        w.note_dialog_answered(2516);
+        assert!(!w.last_dialog_answered);
+        assert!(w
+            .note_dialog(2518, t0 + Duration::from_millis(900))
+            .is_some());
     }
 
     #[test]

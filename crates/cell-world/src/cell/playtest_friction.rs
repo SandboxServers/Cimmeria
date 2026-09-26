@@ -212,8 +212,8 @@ pub fn escort_tick(npc_id: u32, target_id: u32, dist: f32, max_d: f32, routed: b
 // The time-based and event-driven signals live in a sibling file; re-exported
 // so every call site keeps using `playtest_friction::...`.
 pub use super::playtest_friction_watch::{
-    dialog_shown, forget, leader_teleported, objectives_never_completed, player_tick,
-    region_contains_xz, region_hint, respawned,
+    dialog_answered, dialog_shown, forget, leader_teleported, objectives_never_completed,
+    player_tick, region_contains_xz, region_hint, respawned,
 };
 
 #[cfg(test)]
