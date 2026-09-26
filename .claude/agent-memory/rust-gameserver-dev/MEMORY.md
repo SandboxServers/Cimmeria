@@ -193,3 +193,4 @@
 - [npc-detector-telemetry-traps.md](npc-detector-telemetry-traps.md) — NA02: AI-path statics race across tests (use task_local); release detector state in destroy_entity AND destroy_space.
 - [npc-class-filter-and-dead-target-traps.md](npc-class-filter-and-dead-target-traps.md) — `all_npc_entity_ids` is mob-only (being-class Col Marsh never ticked; `spawn_npc` fixtures hide it); HEALTH alone is not dead.
 - [occluder-sizing-and-los-truth.md](occluder-sizing-and-los-truth.md) — NA27 occluder: paging + explorable trim made 23 worlds fit (90.6 MB); build-determinism and grazing-ray metric traps.
+- [ability-launch-fire-split.md](ability-launch-fire-split.md) — AT-10: handle_use_ability is launch-only; damage may fire a tick later via fire.rs; ground-AoE tests need class_id 0x04.
