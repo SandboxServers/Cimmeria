@@ -20,9 +20,7 @@
 //! verified against the SHA-1 hash and then **opportunistically migrated** to
 //! argon2id in the same login — no flag day, no mass re-hash.
 
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::{Algorithm, Argon2, Params, Version};
+use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
 use sha1::{Digest, Sha1};
 use sqlx::PgPool;
 
@@ -243,8 +241,10 @@ fn argon2id() -> Argon2<'static> {
 /// Returns `None` on the (practically impossible) hashing failure so callers
 /// can degrade gracefully rather than panic on a login path.
 fn hash_argon2id(plaintext: &str) -> Option<String> {
-    let salt = SaltString::generate(&mut OsRng);
-    match argon2id().hash_password(plaintext.as_bytes(), &salt) {
+    // `hash_password` draws a fresh 16-byte salt from the OS RNG — the same
+    // length `SaltString::generate` produced under argon2 0.5, so new PHC
+    // strings keep the `$argon2id$v=19$m=65536,t=3,p=1$<22-char salt>$` shape.
+    match argon2id().hash_password(plaintext.as_bytes()) {
         Ok(hash) => Some(hash.to_string()),
         Err(e) => {
             tracing::error!(reason = "argon2_hash_failed", error = %e, "argon2id hashing failed");
@@ -396,6 +396,37 @@ mod tests {
         );
         assert!(verify_argon2id("correct horse battery staple", &phc));
         assert!(!verify_argon2id("wrong password", &phc));
+    }
+
+    /// Crate-upgrade guard: every stored `password_hash_v2` row was minted by
+    /// argon2 0.5.3. This PHC string came from 0.5.3's
+    /// `SaltString::generate` + `hash_password` with the exact `argon2id()`
+    /// params. An argon2/password-hash bump that changes salt decoding or PHC
+    /// param parsing would lock every migrated account out — and trips this.
+    #[test]
+    fn verify_argon2id_accepts_hash_minted_by_argon2_0_5() {
+        const PHC_FROM_ARGON2_0_5: &str = "$argon2id$v=19$m=65536,t=3,p=1$\
+             /ldZYr+2G7/DWlGkh6t28A$PiniNilfh8g0JVhbVhhR5cCEVFi4fqrvx5SCF0G2Szc";
+        assert!(
+            verify_argon2id("cimmeria-argon2-0.5-fixture", PHC_FROM_ARGON2_0_5),
+            "a hash minted by argon2 0.5 must still verify"
+        );
+        assert!(!verify_argon2id("wrong password", PHC_FROM_ARGON2_0_5));
+    }
+
+    /// New hashes keep the stored shape: argon2id v19, the OWASP params, a
+    /// 16-byte salt (22 B64 chars) and a 32-byte tag (43 B64 chars).
+    #[test]
+    fn hash_argon2id_emits_owasp_params_and_16_byte_salt() {
+        let phc = hash_argon2id("shape-check").expect("hash must succeed");
+        let fields: Vec<&str> = phc.split('$').collect();
+        assert_eq!(
+            &fields[..4],
+            &["", "argon2id", "v=19", "m=65536,t=3,p=1"],
+            "got {phc}"
+        );
+        assert_eq!(fields[4].len(), 22, "salt must be 16 bytes, got {phc}");
+        assert_eq!(fields[5].len(), 43, "tag must be 32 bytes, got {phc}");
     }
 
     #[test]

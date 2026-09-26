@@ -8,4 +8,3 @@ description = "GM/admin command registry and dispatch for the Cimmeria server em
 [dependencies]
 cimmeria-common = { workspace = true }
 tracing = { workspace = true }
-thiserror = { workspace = true }

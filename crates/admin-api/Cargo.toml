@@ -6,14 +6,9 @@ license.workspace = true
 description = "REST/WebSocket admin API for the Cimmeria server emulator"
 
 [dependencies]
-cimmeria-common = { workspace = true }
 cimmeria-services = { workspace = true }
-cimmeria-entity = { workspace = true }
-cimmeria-content-engine = { workspace = true }
-cimmeria-commands = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
-tower = { workspace = true }
 tower-http = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
@@ -21,7 +16,6 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
-jsonwebtoken = { workspace = true }
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 

@@ -7,11 +7,13 @@ description = "Entity definitions parsed from .def XML files at compile time"
 build = "build/main.rs"
 
 [dependencies]
-serde = { workspace = true }
-bytes = { workspace = true }
-thiserror = { workspace = true }
+# Referenced only by the build-script-generated code pulled in with
+# `include!` (VECTOR3 -> `cimmeria_common::math::Vector3`), so a source-only
+# unused-dependency scan such as cargo-machete wrongly reports it as unused.
 cimmeria-common = { workspace = true }
 
 [build-dependencies]
 quick-xml = { workspace = true }
-serde = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["cimmeria-common"]

@@ -31,26 +31,18 @@ flowchart TD
 
     %% service + domain layer
     adminApi --> services
-    adminApi --> contentEngine["content-engine"]
-    adminApi --> entity
-    adminApi --> commands
-    adminApi --> common
     services --> game
-    services --> contentEngine
+    services --> contentEngine["content-engine"]
     services --> entity
     services --> mercury
     services --> discord
     services --> observability
     services --> commands
     services --> common
-    game --> entity
     game --> commands
     game --> common
     contentEngine --> entity
     contentEngine --> common
-    entity --> defs
-    entity --> mercury
-    entity --> commands
     entity --> common
 
     %% foundation
@@ -109,7 +101,7 @@ are workspace members that live outside `crates/`.
 | `navmesh-extractor` | `cimmeria-navmesh-extractor` | Extracts UE3 `.umap` chunk collision (StaticMesh, Terrain, BSP) to `.obj` for the C++ NavBuilder Recast pipeline, with the `extract_map` CLI (coverage report, floor probe), the `nav_inspect` connectivity gate (probe reachability plus `--gaps`, the boundary-edge gap finder and bottleneck chain search) and `obj_slab`, which measures the source chunk OBJs at a gap's coordinates to classify it. Also ships `archetype_census`, which reports what the prefab-archetype set actually contains per mesh, `occluder_extract`, which builds and measures `cimmeria-occluder` files from the same collision triangles (module `occluder`: an in-memory chunk walk, an exact segment tracer and the NA16-style accuracy sweep), and `cover_extract`, which turns the chunks' `SGWSpecCoverNode` / `CoverNodeArray` markers into the world-scoped `resources.cover_*` seeds ([docs/engine/cover-extraction.md](../docs/engine/cover-extraction.md)). Owns the XRC `.nav` round-trip parser/emitter — the canonical Rust-side ground truth for the wire format `crates/entity/src/navigation/` consumes at runtime. See [README](navmesh-extractor/README.md); the measured results live in [docs/engine/castle-extraction-measurements.md](../docs/engine/castle-extraction-measurements.md) and [docs/engine/castle-navmesh-connectivity.md](../docs/engine/castle-navmesh-connectivity.md). |
 | `wireclient` | `cimmeria-wireclient` | **Headless test client.** Drives the SOAP auth leg and the Mercury phase-3 handshake, and loads JSONL session traces with a diff policy. As of NA37 (2026-09-25), `session.rs`'s `GameSession` binds a real `tokio::net::UdpSocket` and drives it through `cimmeria_mercury::test_harness::LoopbackPeer` (the Tier 2 loopback harness's Channel driver, reused against a real BaseApp) for auth → world entry → movement — enough for a real two-client AoI visibility end-to-end test, including a network-chaos variant (loss/jitter/latency/targeted drop) behind the `chaos-testing` feature. `bundle.rs` adds a structural (not semantic) server→client bundle decoder. There is still no full replay engine or Castle Cellblock script driver — see the phase table in [docs/architecture/wireclient.md](../docs/architecture/wireclient.md) before treating any later phase as shipped. Pairs with `tools/pcap_to_session.py` (JSONL exporter built atop `tools/pcap_dissect.py`). |
 | `discord` | `cimmeria-discord` | Discord notification sink. Owns the `EventKind` catalogue and per-event `EventToggles`, hot-reloadable TOML config (`config::ConfigWatcher` over [config/discord.toml.example](../config/discord.toml.example)), channel routing (`router::channel_for`), embed formatting + budget trimming (`embed::format_event`), and a rate-limited async sender (`sender::` — HTTP, mock, and token-bucket). Also exposes `DiscordLayer`, a `tracing` layer that lifts warn/error records into notifications. Typed `emit_*` helpers are the intended call surface. See [docs/architecture/discord-notifications.md](../docs/architecture/discord-notifications.md). |
-| `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry SDK's metrics API. Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
+| `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry metrics API (the `opentelemetry` API crate only; the SDK and OTLP exporter are wired up in `cimmeria-server`). Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
 | `lab-mcp` | `cimmeria-lab-mcp` | In-server MCP endpoint (streamable HTTP via `rmcp`) for the live research lab (#687, #688). Fixed tool set — drive/inspect: `server_console_list`, `server_console_exec`, `server_sessions`, `server_log_tail`, `server_content_reload`, `server_db_query`; live state (#688): `server_entity_get`, `server_entity_query`, `server_witnesses`; per-session decoded packet taps (#688): `server_packet_tap_start`, `server_packet_tap_read`, `server_packet_tap_stop` — so an agent can drive/inspect a running server from Claude Code. Live-state + witness queries answer between ticks via `BaseToCellMsg::LabQuery` (read-only, capped); packet taps hang off the `wire_log` decode seams into a bounded per-session ring. Runs on its **own** `TcpListener` — never the admin router (#439) — fail-closed on `CIMMERIA_LAB_MCP_BIND` + `CIMMERIA_LAB_MCP_TOKEN` (>=32-byte token), gated by a single shared bearer token (constant-time compare), one `lab.tool_call` audit event per call. See [docs/architecture/live-research-lab.md](../docs/architecture/live-research-lab.md). |
 | `lab` | `cimmeria-lab` | **Windows-only supervisor + stdio MCP server** for the Live Research Lab (phases 1–2). Proxies the `client_*` probe tools to the injected client bridge (`cimmeria-client-telemetry` built `--features lab-bridge`) over a token-gated framed-JSON-RPC loopback channel, and owns the SGW.exe process lifecycle: `lab_client_start`/`_stop`/`_restart`/`_status`, `lab_login` (Lua autologin), `lab_screenshot`, `lab_crash_report`, a heartbeat watchdog, and a crash-recovery journal + quarantine. `lab_timeline` (phase 6) merges the local client event ring (heartbeat today; the full `client_events_read` ring is gated on #686) with server packet-tap rows fetched from `cimmeria-lab-mcp` over HTTP, projected onto one clock via a packet-tap round-trip offset estimate. Excluded from the workspace CI jobs (like `sgw-launcher`); not in `default-members`. See [docs/architecture/live-research-lab.md](../docs/architecture/live-research-lab.md) (design) and [docs/guides/live-research-lab.md](../docs/guides/live-research-lab.md) (rulebook + operating manual). |
 
