@@ -12,8 +12,11 @@
 -- server load order), we use scope_type='effect' with scope_id = NULL to
 -- match ALL instances of the effect class.  In practice, each effect script
 -- class maps to exactly one effect definition, so collisions are impossible.
--- When the engine loads chains with scope_id IS NULL and scope_type='effect',
--- it routes via the effect_id passed in on_effect_event().
+-- The loader ignores event_key for effect triggers and the matcher is a pure
+-- unit match, so a NULL-keyed row matches every effect event of its type.
+-- Since the #610 dispatch, `effect_init` fires from content ApplyEffect /
+-- LaunchAbility effect registration and carries the effect id in the event
+-- params (`effect_id`) as data.
 --
 -- Chain ID ranges:
 --   RangedEnergyDamage:  2001-2010

@@ -40,10 +40,14 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
+use cimmeria_content_engine::chain::ChainEngine;
+
 use crate::cell::abilities::send_entity_method;
 use crate::cell::effects::{self, EffectContext};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+
+use super::event_dispatch::fire_effect_init;
 
 /// Apply every effect owned by `ability_id` to `target_id`, sourced from
 /// `invoker_id`. Backs `Action::LaunchAbility`.
@@ -66,6 +70,7 @@ pub(super) async fn apply_ability_effects(
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> usize {
     // Clone the id list up front — the per-effect work needs `&mut
     // space_mgr` and would otherwise hold an immutable borrow of
@@ -94,7 +99,11 @@ pub(super) async fn apply_ability_effects(
 
     let mut registered = 0usize;
     for effect_id in effect_ids {
-        if apply_effect(effect_id, target_id, invoker_id, chain_id, tx, space_mgr).await {
+        if apply_effect(
+            effect_id, target_id, invoker_id, chain_id, tx, space_mgr, engine,
+        )
+        .await
+        {
             registered += 1;
         }
     }
@@ -130,6 +139,7 @@ pub(super) async fn apply_effect(
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> bool {
     let Some(effect) = space_mgr.effect_defs.get(&effect_id).cloned() else {
         tracing::warn!(
@@ -200,7 +210,10 @@ pub(super) async fn apply_effect(
 
     // Register the pulsing instance. No-ops and returns false for
     // single-shot effects; also emits the `onTimerUpdate` buff icon.
-    effects::register_active_effect(
+    // On a successful registration, fire `OnEffectInit` so content chains
+    // keyed on `effect_init` can react to the effect landing (seeded
+    // `effects_chains.sql` rows; see `event_dispatch::effects`).
+    let registered = effects::register_active_effect(
         space_mgr,
         target_id,
         invoker_id,
@@ -208,5 +221,9 @@ pub(super) async fn apply_effect(
         Instant::now(),
         tx,
     )
-    .await
+    .await;
+    if registered {
+        fire_effect_init(target_id, effect_id, engine, tx, space_mgr).await;
+    }
+    registered
 }

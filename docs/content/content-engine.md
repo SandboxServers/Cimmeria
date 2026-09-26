@@ -149,10 +149,11 @@ Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](..
 | Seed `event_type` | Variant | Why it matters |
 |---|---|---|
 | `dialog_set_open` | `OnDialogSetOpen` | The 2009 scripts used `dialog_set.open::<id>` as the "player interacted with a bound NPC" hook — mission 742's bug-planting step is written against it. Port that shape to `interact_tag` instead |
-| `effect_init` | `OnEffectInit` | No effect-lifecycle dispatch exists |
-| `effect_pulse_begin` | `OnEffectPulseBegin` | " |
-| `effect_pulse_end` | `OnEffectPulseEnd` | " |
-| `effect_removed` | `OnEffectRemoved` | " |
+| `effect_pulse_begin` | `OnEffectPulseBegin` | Only `effect_init` has a dispatch seam today (fires from content `ApplyEffect`/`LaunchAbility` effect registration — see `event_dispatch::effects`); pulse-begin needs a per-pulse site and a pulse-1-vs-pulse-N decision |
+| `effect_pulse_end` | `OnEffectPulseEnd` | " — also the trigger the seeded chain 2021 (`abandon_mission`) needs |
+| `effect_removed` | `OnEffectRemoved` | " — the removal sweep site is async but the channel-cancel removal path is sync; needs deferred firing |
+
+**Dispatched since #610:** `effect_init` → `OnEffectInit` fires when a pulsing effect is (re)registered through the content-engine `ApplyEffect` / `LaunchAbility` actions (`content::effect_apply::apply_effect` → `content::event_dispatch::fire_effect_init`). The effect id rides in `TriggerEvent.params` as data; the matcher is a pure unit match (the loader ignores `event_key` for effect triggers, and the seeded rows are NULL-keyed), so any `effect_init` chain runs when any pulsing effect lands. The ability-driven combat path (`use_ability` → `damage_apply`) still does not carry a `ChainEngine` handle and therefore does not fire it — follow-up.
 
 This is the trigger-side mirror of the action-side gap catalogued below, and it is the reason `apply_effect`'s one seeded row cannot fire: the row sits on an `effect`-scoped chain whose trigger is one of these.
 

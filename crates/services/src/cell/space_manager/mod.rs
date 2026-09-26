@@ -390,6 +390,14 @@ pub struct SpaceManager {
     /// already holds is the exclusive token. See
     /// `content::event_dispatch::step_activation`.
     pub(crate) step_region_replay: super::content::StepRegionReplayGuard,
+
+    /// Current depth of `OnEffectInit` content-chain dispatch, bounded by
+    /// `event_dispatch::effects::MAX_EFFECT_INIT_DEPTH`. Owned here for
+    /// the same reason as [`Self::step_region_replay`]: the recursion runs
+    /// through `content::executor::execute_actions`, whose `ApplyEffect`
+    /// arm re-enters the effect layer, and the `&mut SpaceManager` every
+    /// frame already holds is the exclusive token.
+    pub(crate) effect_init_depth: u32,
 }
 
 impl SpaceManager {
@@ -443,6 +451,7 @@ impl SpaceManager {
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
             step_region_replay: super::content::StepRegionReplayGuard::default(),
+            effect_init_depth: 0,
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
         }

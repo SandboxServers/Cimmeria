@@ -621,7 +621,7 @@ async fn execute_one(
             match target_id {
                 Some(target_id) => {
                     super::effect_apply::apply_ability_effects(
-                        ability_id, target_id, entity_id, chain_id, tx, space_mgr,
+                        ability_id, target_id, entity_id, chain_id, tx, space_mgr, engine,
                     )
                     .await;
                 }
@@ -650,13 +650,11 @@ async fn execute_one(
             // `pulse_duration` already carry the duration, so there
             // is nothing to honour here yet.
             //
-            // This arm is correct but currently unreachable: the only
-            // seeded `apply_effect` row is on an `effect`-scoped
-            // chain, and no `effect_*` trigger is dispatched anywhere
-            // in the cell service. It fires as soon as that
-            // dispatch lands.
+            // Reachable since `OnEffectInit` dispatch landed
+            // (`content::event_dispatch::effects`): a chain keyed on
+            // `effect_init` applies an effect with this arm.
             super::effect_apply::apply_effect(
-                effect_id, entity_id, entity_id, chain_id, tx, space_mgr,
+                effect_id, entity_id, entity_id, chain_id, tx, space_mgr, engine,
             )
             .await;
         }
