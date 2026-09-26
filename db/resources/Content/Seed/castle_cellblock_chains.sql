@@ -815,7 +815,7 @@ VALUES (1131, 'advance_step', 639, '2343', '{}', 0, 0);
 --
 -- Self-completion guard (found in review, 2026-09-18): `player_entered_cover`
 -- is edge-triggered on every proximity enter (once=false, see
--- crates/services/src/cell/cover/detection.rs), and `Action::PlaySequence`
+-- crates/cell-cover/src/cell/cover/detection.rs), and `Action::PlaySequence`
 -- sends unconditionally with no dedup (executor/mod.rs). Without condition
 -- 2 below, a player who leans out of cover and back in before killing the
 -- drone would re-fire this chain on every re-entry, resending

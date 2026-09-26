@@ -530,7 +530,7 @@ last_updated: 2026-09-25
   - the [2026-09-18 colo playtest](analysis/playtests/2026-09-18-colo-castle/README.md).
 - **Rust code**:
   - [`crates/services/src/cell/service/npc_ai/`](../crates/services/src/cell/service/npc_ai/): **51 files, 8,130 lines excluding tests** (11,500 with them). It holds dispatch, the `transition.rs` state-change helper, `idle_aggro.rs`, `aggro_gates.rs`, `assist.rs`, `fight.rs`, `fight_cover.rs`, `fight_target.rs`, `chase/`, `leash/`, `path_failure/`, `movement_stop/`, patrol, wander, investigate, follow, `lifecycle/` and the NA02 `detectors/`.
-  - [`crates/services/src/cell/cover/`](../crates/services/src/cell/cover/): **3,038 lines excluding tests** (4,556 with them). Includes `peek.rs` and `stance.rs`.
+  - [`crates/cell-cover/src/cell/cover/`](../crates/cell-cover/src/cell/cover/), the `cimmeria-cell-cover` crate: **2,827 lines excluding tests** (4,345 with them). Includes `peek.rs`. `stance.rs` (222 lines) stays in [`crates/services/src/cell/cover/`](../crates/services/src/cell/cover/), which re-exports the crate at its old path.
   - [`crates/services/src/cell/space_manager/cover_sight.rs`](../crates/services/src/cell/space_manager/cover_sight.rs): LoS policy.
   - [`crates/services/src/cell/combat/aggression.rs`](../crates/services/src/cell/combat/aggression.rs) and [`faction_reaction.rs`](../crates/services/src/cell/combat/faction_reaction.rs).
   - [`crates/services/src/cell/service/ticks/npc_ground.rs`](../crates/services/src/cell/service/ticks/npc_ground.rs) and `npc_movement.rs`.
@@ -1389,7 +1389,7 @@ These have substantial Rust implementations the per-system docs haven't fully ca
 | Discord Notifications | crates/discord/ | docs/architecture/discord-notifications.md |
 | Trading | crates/services/src/cell/cell_methods/player/trade/ + base/world_entry/methods/trade/ | **Added 2026-07-25.** docs/gameplay/trade-system.md still describes Python `Trade.py` as the implementation |
 | Ring Transport | crates/services/src/cell/ring_transport/ | **Added 2026-07-25.** About 5,856 lines (3,191 production); docs/gameplay/ring-transport-system.md does not yet cover the mission 688 client-patch route |
-| Cover system | crates/services/src/cell/cover/ | **Added 2026-07-25.** docs/game-systems.md still says "CoverSet entity is a stub" — corrected in that file on 2026-07-25 |
+| Cover system | crates/cell-cover/src/cell/cover/ | **Added 2026-07-25.** docs/game-systems.md still says "CoverSet entity is a stub" — corrected in that file on 2026-07-25 |
 | NPC AI movement states | crates/services/src/cell/service/npc_ai/ | **Added 2026-07-25.** docs/gameplay/npc-ai.md predates PR #428 |
 | GM command surface | crates/services/src/cell/cell_methods/gm/ + cell/console/ | **Added 2026-07-25.** About 6,070 + 12,730 lines (89 dot-commands as of 2026-09-25); no consolidated GM command reference |
 | Minigame server | crates/services/src/minigame/ | **Added 2026-07-25.** docs/gameplay/minigame-system.md still describes an external SmartFox process |
