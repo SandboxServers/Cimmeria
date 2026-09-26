@@ -125,7 +125,7 @@
 --    `destroy_entity`/`disconnect_entity`. Dying in Castle does NOT scrub
 --    it: `resolve_respawn_target` returns a World 8 respawner, so respawn
 --    takes the same-world in-place branch
---    (cell_methods/player/combat/respawn.rs:152+) and never destroys the
+--    (cell/respawn/mod.rs:177+) and never destroys the
 --    entity. The paths that DO scrub (logout, cross-world hop) are all
 --    followed by a `player_loaded`, which chain 1242 re-arms from.
 

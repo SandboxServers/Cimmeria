@@ -70,7 +70,7 @@ inert `OnCustomEvent { "__direct_invoke_<id>" }` so it lands in
 
 Player **death does not scrub it**: `resolve_respawn_target` matches a
 respawner by world name, and a same-world respawn takes the in-place
-branch (`cell_methods/player/combat/respawn.rs`) which never destroys the
+branch (`cell/respawn/mod.rs`) which never destroys the
 entity. Only the cross-world respawn branch destroys. So don't assume
 "death cancels the timer" — check which branch the world takes.
 

@@ -7,8 +7,9 @@
 //!   + value-range rejection.
 //! - [`handoff`] — the cell→base atomic-commit handoff + the
 //!   final-mile distance recheck regression guard.
-//! - [`wire`] — wire-byte fixtures (currently the `stub_inv_items_for`
-//!   info-leak sentinel guard).
+//!
+//! The wire-byte fixtures moved with the serializers to
+//! `cell::trade::tests`.
 
 use cimmeria_entity::trade::TradeProposal;
 
@@ -18,7 +19,6 @@ mod handlers;
 mod handlers_validation;
 mod handoff;
 mod lock_state;
-mod wire;
 
 /// Set up two players in the same space, separated by `dist` along the
 /// X axis. Both are flagged `is_player = true` and given player IDs so

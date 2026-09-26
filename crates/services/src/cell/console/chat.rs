@@ -8,9 +8,9 @@
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
-use super::console;
-use super::messages::CellToBaseMsg;
-use super::space_manager::SpaceManager;
+use crate::cell::console;
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
 
 // ── Channel IDs and the onPlayerCommunication serializer ──────────────────
 //
@@ -169,7 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_to_nonexistent_entity_is_noop() {
-        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
         let engine = ChainEngine::new();
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
 
@@ -181,7 +181,7 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_say_to_witnesses() {
-        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
         let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -253,7 +253,7 @@ mod tests {
     /// witnesses (never appears in others' chat).
     #[tokio::test]
     async fn gm_dot_command_is_intercepted_not_broadcast() {
-        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
         let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -284,7 +284,7 @@ mod tests {
     /// A non-GM's `.`-text is ordinary chat and DOES broadcast.
     #[tokio::test]
     async fn non_gm_dot_text_is_normal_chat() {
-        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
         let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -321,7 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_cell_channel_ignored() {
-        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
         let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();

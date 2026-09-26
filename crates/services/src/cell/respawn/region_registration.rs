@@ -9,9 +9,10 @@
 //!
 //! Two callers:
 //!
-//! - **World entry** (`player_init`): `mapLoaded` has already sent
+//! - **World entry** (`player_init`, through the re-export in
+//!   `cell_methods::player::world`): `mapLoaded` has already sent
 //!   `clearClientHintedGenericRegions`, so the list is registered as is.
-//! - **Same-world respawn** (`combat::respawn`): the reanchor burst's
+//! - **Same-world respawn** ([`super::handle_respawn`]): the reanchor burst's
 //!   `CREATE_BASE_PLAYER` recreates the client's pawn. In the 2026-09-18
 //!   Castle playtest a character that died and respawned sent zero region
 //!   hints for the remaining 28 minutes of its session, while the character

@@ -12,8 +12,11 @@ use tokio::sync::mpsc;
 use super::constants::*;
 
 mod auto_cycle;
-mod region_registration;
 mod system_options;
+// Registering the world's client-hinted regions is shared by world entry and
+// the respawn reanchor, which the GM `gmRespawn` also drives, so it sits with
+// the respawn core in `cell::respawn` (services-crate-split.md §2H).
+use crate::cell::respawn::region_registration;
 // The reload and item-sequence handlers are in `cimmeria-cell-combat` (wave
 // C2); imported at their old paths.
 use cimmeria_cell_combat::cell::cell_methods::player::world::{item_sequence, reload};

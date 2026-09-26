@@ -33,7 +33,7 @@ use super::spawner::RespawnerDef;
 /// zeros are caught without a special case.
 ///
 /// The same rule is spelled `is_unauthored` in
-/// `cell_methods::player::combat::respawn`, which searches the *unvalidated*
+/// `cimmeria_services::cell::respawn`, which searches the *unvalidated*
 /// candidate list (first-match, no navmesh) and so cannot share this
 /// function's signature.
 pub(crate) fn is_unauthored(r: &RespawnerDef) -> bool {

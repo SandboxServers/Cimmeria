@@ -18,7 +18,7 @@ use crate::cell::client_methods::player::{ON_TRADE_RESULTS, ON_TRADE_STATE};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-pub(super) async fn send_on_trade_results(
+pub(crate) async fn send_on_trade_results(
     entity_id: u32,
     partner_entity_id: i32,
     result: i32,
@@ -45,7 +45,7 @@ pub(super) async fn send_on_trade_results(
 
 /// Send `onTradeState` to both `entity_id` and `partner_entity_id`,
 /// each from their own perspective (local = self, remote = partner).
-pub(super) async fn send_on_trade_state_to_both(
+pub(crate) async fn send_on_trade_state_to_both(
     entity_id: u32,
     partner_entity_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,

@@ -27,7 +27,8 @@ pub use cimmeria_cell_combat::cell::abilities;
 // In `cimmeria-cell-world` (wave C1).
 pub use cimmeria_cell_world::cell::arrival;
 pub mod cell_methods;
-pub mod chat;
+// Under the console since the services-split preparation for C4-C6 (§2H).
+pub use console::chat;
 // The server->client method index tables are wire contract (cimmeria-wire).
 pub use cimmeria_cell_combat::cell::combat;
 pub use cimmeria_wire::cell::client_methods;
@@ -69,6 +70,15 @@ pub use cimmeria_cell_world::cell::space_manager;
 // are the `.goto`/`.summon`/`.gotolocation` console commands in
 // `cell::console::travel` (P46).
 pub(crate) mod space_transfer;
+// The respawn fork the player's Defeat Window and the GM `gmRespawn` share,
+// with the client-cache replays it queues after the reanchor. Beside gate
+// travel and the space transfer, one layer below the cell methods and the GM
+// console (services-crate-split.md §2H).
+pub(crate) mod respawn;
+// Player-to-player trade session state and its outbound wire, below the trade
+// cell-method handlers, which gate travel and the space transfer cancel on
+// departure (§2H).
+pub(crate) mod trade;
 // The spawner's DB loaders are in `cimmeria-cell-catalog` (wave W2b).
 // Populating spaces from their records is `space_manager::spawn_npcs_from_records`.
 pub use cimmeria_cell_catalog::cell::spawner;

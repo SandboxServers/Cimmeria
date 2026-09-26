@@ -310,6 +310,9 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_services::cell::missions",
         "cimmeria_services::cell::ring_transport",
         "cimmeria_services::cell::interactions::dialog",
+        // interactions.log's chat row before the C4-C6 preparation moved chat
+        // under the console; `cell` re-exports it (`pub use console::chat`).
+        "cimmeria_services::cell::chat",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -335,6 +338,8 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_cell_content::cell::ring_transport",
         "cimmeria_cell_content::cell::interactions::dialog",
         "cimmeria_services::cell::interactions",
+        "cimmeria_services::cell::console::chat",
+        "cimmeria_services::cell::respawn::resync",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

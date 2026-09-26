@@ -229,7 +229,7 @@ pub(crate) async fn handle_reanchor_player(
             entity_id, %addr, space_id, ?position,
             resent = "create_base_player,being_appearance,entity_tint",
             // The cell re-registers the generic regions itself, right behind this
-            // burst (`combat::respawn` -> `send_client_hinted_regions`).
+            // burst (`cell::respawn` -> `send_client_hinted_regions`).
             resent_by_cell = "generic_regions,inventory",
             not_resent = "mission_log,abilities,stats",
             "Reanchor: sent CREATE_BASE_PLAYER burst + BeingAppearance + onEntityTint (no RESET_ENTITIES)"

@@ -17,8 +17,13 @@ pub mod black_market;
 pub mod combatant;
 pub mod contact_list;
 pub mod gate_travel;
-/// SGWGmPlayer own CellMethods (flattened index 109+, GM-gated upstream).
-pub mod gm;
+// SGWGmPlayer own CellMethods (flattened index 109+, GM-gated upstream) are
+// `cell::console::gm`: the GM console calls them, and the console and these
+// cell methods are sibling crates in the services split (§2H). A production
+// re-export here would be a methods -> console edge, so the callers name the
+// new path. Only a test outside this tree still names the old one.
+#[cfg(test)]
+pub(crate) use super::console::gm;
 pub mod inventory;
 pub mod mail;
 pub mod minigame;

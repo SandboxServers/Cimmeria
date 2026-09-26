@@ -177,7 +177,7 @@ validation.
 
 The fix is a single per-entity bool, `CellEntity::movement_unrestricted`
 (default `false`, in-memory only — never persisted, matching the client's
-own no-save-across-sessions behavior). `cell_methods::gm::physics::handle_physics`
+own no-save-across-sessions behavior). `console::gm::physics::handle_physics`
 flips it on `onPhysics`, with **inverted wire polarity**: `bTurnOn=0`
 (physics off, client is flying/ghosting) sets `movement_unrestricted =
 true`; `bTurnOn=1` (physics restored) sets it back to `false`.
@@ -224,7 +224,7 @@ before. Regression guards (prefix `feat_onphysics_`) live in
 default-false negative control still rejects; a NaN poisoning attempt is
 rejected and the teleport gate keeps working afterward; two entities in
 the same space with only one flagged prove the bypass doesn't leak to
-the other) and `crates/services/src/cell/cell_methods/gm/tests/physics.rs`
+the other) and `crates/services/src/cell/console/gm/tests/physics.rs`
 (polarity, feedback text, truncated-arg rejection without mutation).
 
 ## GM off-navmesh allowance (`access_level`)

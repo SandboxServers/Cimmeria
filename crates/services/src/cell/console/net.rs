@@ -10,6 +10,7 @@
 //! `deprecated/python/cell/commands/Misc.py` (`debug_*`) +
 //! `deprecated/python/cell/commands/Entity.py` (`threaten`/`aggression`).
 
+use cimmeria_cell_combat::cell::service::npc_ai::{self, AiTransitionReason};
 use cimmeria_entity::abilities::serialize_timer_update;
 use cimmeria_entity::cell_entity::AiState;
 use tokio::sync::mpsc;
@@ -20,7 +21,6 @@ use crate::cell::abilities::{
 };
 use crate::cell::interactions;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::{ON_PLAYER_COMMUNICATION, ON_SEQUENCE};
 

@@ -14,7 +14,7 @@ Verified to exist as of 2026-05-27:
 | Same-world teleport | `crates/base-world-entry/src/base/world_entry/teleport.rs::handle_teleport_player` | Server-issued teleport (mission warp, GM tools) |
 | Cross-world gate travel | `crates/base-world-entry/src/base/world_entry/gate_travel/` | Stargate transition; arrival is fresh spawn so `last_pos` initializes from scratch |
 | Ring transport arrival | `crates/cell-world/src/cell/ring_transport/transporter/mod.rs` | Ring-platform pad-to-pad teleport |
-| Respawn after death | `crates/services/src/cell/cell_methods/player/combat/respawn.rs` | Death → respawner point snap |
+| Respawn after death | `crates/services/src/cell/respawn/mod.rs` | Death → respawner point snap |
 | World entry / play character | `crates/base-world-entry/src/base/world_entry/play_character.rs` | Initial spawn into world |
 | Reanchor (recovery) | `crates/base-world-entry/src/base/world_entry/reanchor_player.rs` | Desync recovery snap |
 

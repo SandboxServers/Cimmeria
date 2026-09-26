@@ -357,7 +357,7 @@ pub(crate) fn capture(
                 .collect(),
         )
         .to_string(),
-        crouched: caller.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0,
+        crouched: caller.state_field & cimmeria_wire::state_field::BSF_CROUCHING != 0,
         speed_scale: caller.stats.movement_speed_scale(),
         focus_cur: focus.map_or(0, |s| s.cur),
         focus_max: focus.map_or(0, |s| s.max),
@@ -409,7 +409,7 @@ fn emit_entity(bookmark_id: u64, rank: usize, s: &EntitySnapshot) {
         health = s.health_cur,
         health_max = s.health_max,
         state_field = s.state_field,
-        crouched = s.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0,
+        crouched = s.state_field & cimmeria_wire::state_field::BSF_CROUCHING != 0,
         interaction_flags = s.interaction_type_flags,
         ai_state = %s.ai_state,
         last_movement_type = %s.last_movement_type,

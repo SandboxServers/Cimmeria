@@ -262,7 +262,7 @@ fn entity_label(e: &CellEntity) -> String {
 /// (`deprecated/python/cell/commands/Entity.py:50-98`): **selection wins**
 /// over the explicit `entityId` arg, which is only a fallback when there is
 /// no current selection (opposite precedence from the native `gmShowPlayer`
-/// in `cell_methods::gm::query`, which treats a nonzero explicit id as
+/// in `console::gm::query`, which treats a nonzero explicit id as
 /// overriding the selection — do not conflate the two).
 ///
 /// Fields legacy always/conditionally prints that this codebase's
@@ -427,7 +427,7 @@ fn facing_class(caller_pos: Vector3, caller_dir: Vector3, target_pos: Vector3) -
 /// selected target. Mirrors legacy `facing`
 /// (`deprecated/python/cell/commands/Entity.py:137-153`). Target is
 /// required (`Target::Spawnable`) — no fallback to self, unlike the
-/// no-arg-inspection commands in `cell_methods::gm::query`.
+/// no-arg-inspection commands in `console::gm::query`.
 ///
 /// `target` and both entities are guaranteed valid by the time this runs:
 /// `dispatch::resolve_target` already required a resolved, same-space,

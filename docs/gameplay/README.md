@@ -34,7 +34,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Character Creation](#character-creation) | IM | Account | `base/character_create.rs`, `base/chardef.rs` | MEDIUM |
 | [Gate Travel](#gate-travel) | IM | GateTravel | `base/world_entry/gate_travel/`, `cell/gate_travel.rs` | MEDIUM |
 | [Cover](#combat) | IM | SGWCoverSet | `cell/cover/` | MEDIUM |
-| [Chat](#chat) | KM | Communicator | `base/dispatch/chat.rs`, `cell/chat.rs` | MEDIUM |
+| [Chat](#chat) | KM | Communicator | `base/dispatch/chat.rs`, `cell/console/chat.rs` | MEDIUM |
 | [Crafting](#crafting) | KM | (SGWPlayer direct) | `base/crafting/` (state only) | MEDIUM |
 | [Vendors](#vendors) | IM | SGWInventoryManager | `base/world_entry/methods/vendor/` | MEDIUM |
 | [Organizations](#organizations) | KM | OrganizationMember | `cell/cell_methods/organization.rs` (stubs) | MEDIUM |

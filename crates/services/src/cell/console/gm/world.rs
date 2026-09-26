@@ -267,7 +267,7 @@ pub(super) async fn handle_respawn_cmd(
         return true;
     }
     tracing::info!(entity_id, "gmRespawn: respawning GM");
-    crate::cell::cell_methods::player::combat::handle_respawn(entity_id, 0, tx, space_mgr).await;
+    crate::cell::respawn::handle_respawn(entity_id, 0, tx, space_mgr).await;
     send_gm_feedback(entity_id, "gmRespawn: respawned", tx).await;
     true
 }

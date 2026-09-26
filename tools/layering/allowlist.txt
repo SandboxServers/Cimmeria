@@ -33,9 +33,11 @@
 # content with the dispatcher and the runtime entry points.
 
 # --- §2H: interactions, methods, console and service ------------------------
-cell::service::base_messages::player_init::resync -> cell::service::base_messages::player_init  # send_known_abilities_update
-cell::cell_methods::player::trade::state -> cell::cell_methods::player::trade  # (not in §2) MAX_INTERACT_DISTANCE
-cell::cell_methods::gm::world -> cell::cell_methods::player::combat::respawn  # (not in §2) gmRespawn calls handle_respawn
+# The C4-C6 preparation resolved this section: the trade session state moved to
+# `cell::trade` with its range constant, the respawn fork (with
+# the resync and region registration it queues) moved to `cell::respawn` below
+# both the cell methods and the GM console, and chat and the GM handlers moved
+# under `cell::console`.
 
 # --- §2I: base-internal ------------------------------------------------------
 # B1 resolved this section: the hold record moved to the session crate, and

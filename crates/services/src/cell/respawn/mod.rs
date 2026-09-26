@@ -5,6 +5,21 @@
 //! `resolve_respawn_target` resolves `(world, position)` from the
 //! Defeat-Window-supplied respawner id, falling back through the player's
 //! current world to the Castle default.
+//!
+//! Two callers drive [`handle_respawn`]: the player's own Defeat Window and
+//! auto-respawn (`callForAid` / `respawn`, dispatched in
+//! `cell_methods::player::combat`) and the native GM `gmRespawn` (in
+//! `console::gm::world`). The GM console and the cell methods are sibling
+//! crates in the services split, so the respawn core they share sits one layer
+//! below both (`docs/architecture/services-crate-split.md` §2H), together with
+//! the two client-cache replays it queues behind the reanchor:
+//!
+//! - [`region_registration`] — the world's client-hinted trigger volumes.
+//! - [`resync`] — the hotbar, the active bandolier slot, the mission journal
+//!   and the `state_field` preference bits.
+//!
+//! World entry (`InitPlayerState`) sends the same two, so it reaches them here
+//! too.
 
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
@@ -12,6 +27,14 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::RespawnerDef;
+
+pub(crate) mod region_registration;
+pub(crate) mod resync;
+
+#[cfg(test)]
+mod tests;
+
+pub(crate) use resync::send_known_abilities_update;
 
 /// In-place respawn: keep the cell entity (and instance) alive, send a
 /// targeted client-side burst that re-creates just the pawn actor and
@@ -72,8 +95,8 @@ use crate::cell::spawner::RespawnerDef;
     ),
 )]
 // `pub(crate)` (widened from `pub(super)`) so the native GM `gmRespawn`
-// handler (`cell_methods::gm::world`) can reuse the exact same respawn
-// sequence as the combat Defeat-Window path — no duplicate respawn logic.
+// handler (`console::gm::world`) can reuse the exact same respawn sequence
+// as the combat Defeat-Window path — no duplicate respawn logic.
 pub(crate) async fn handle_respawn(
     entity_id: u32,
     respawner_id: i32,
@@ -127,7 +150,8 @@ pub(crate) async fn handle_respawn(
             .get_entity_mut(entity_id)
             .expect("entity existence checked above");
         if let Some(player_id) = entity.player_id {
-            super::super::super::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
+            cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(entity, player_id, tx)
+                .await;
         }
         space_mgr.destroy_entity(entity_id);
         tracing::info!(
@@ -266,10 +290,10 @@ pub(crate) async fn handle_respawn(
     // Queued on the same channel AFTER `ReanchorPlayer`, so the base sends
     // it behind the pawn-recreate burst.
     if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-        let regions = crate::cell::cell_methods::player::world::send_client_hinted_regions(
+        let regions = region_registration::send_client_hinted_regions(
             entity_id,
             &world_name,
-            crate::cell::cell_methods::player::world::ClearFirst::Yes,
+            region_registration::ClearFirst::Yes,
             tx,
             space_mgr,
         )
@@ -335,10 +359,7 @@ pub(crate) async fn handle_respawn(
     // journal and the client's cached `state_field`. Replay them the way
     // `InitPlayerState` does on login, queued behind the reanchor on the
     // same channel so they land after the client's creation transaction.
-    crate::cell::service::base_messages::player_init::resync_after_pawn_recreate(
-        entity_id, tx, space_mgr,
-    )
-    .await;
+    resync::resync_after_pawn_recreate(entity_id, tx, space_mgr).await;
 }
 
 /// A respawner row sitting exactly at the world origin is an unauthored

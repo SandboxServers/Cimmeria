@@ -253,6 +253,13 @@ pub(crate) struct FileLayer {
 /// the rest of world entry, `world_entry_appearance` and `character` are
 /// `cimmeria_base_world_entry::base::…` since wave B3; that crate's
 /// `world_entry` row keeps `world_entry_appearance` by the same prefix match.
+///
+/// The cell modules the C4-C6 preparation moved inside `cimmeria-services`
+/// keep their files the same way: `interactions.log` names chat at
+/// `cell::console::chat`, and `aoi.log` names `cell::respawn::resync`, the
+/// client-cache resync and hotbar seed that sat under `cell::service`'s
+/// `player_init` before. The trade session state (`cell::trade`), the respawn
+/// fork and the GM handlers (`cell::console::gm`) had no file and have none.
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
@@ -299,6 +306,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "aoi.log",
         directives: "off,\
              cimmeria_services::cell::service=trace,\
+             cimmeria_services::cell::respawn::resync=trace,\
              cimmeria_cell_world::cell::service=trace,\
              cimmeria_cell_combat::cell::service=trace,\
              cimmeria_cell_world::cell::space_manager=trace,\
@@ -324,7 +332,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         directives: "off,\
              cimmeria_services::cell::interactions=trace,\
              cimmeria_cell_content::cell::interactions=trace,\
-             cimmeria_services::cell::chat=trace,\
+             cimmeria_services::cell::console::chat=trace,\
              cimmeria_services::cell::mail=trace",
     },
     FileLayer {

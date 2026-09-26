@@ -21,14 +21,14 @@ registers the channels in the base's `DEFAULT_CHAT_CHANNELS` and an
 Verified 2026-09-21 while adding the `npc_bark` content action (DU-03). Three
 separate facts worth having before touching anything method-28 shaped:
 
-1. **The serializer exists FOUR times** — `cell/chat.rs`
+1. **The serializer exists FOUR times** — `cell/console/chat.rs`
    (`serialize_on_player_communication`, now `pub(crate)` so
-   `cell/content/executor/bark.rs` reuses it), `cell/cell_methods/gm/feedback.rs`
+   `cell/content/executor/bark.rs` reuses it), `cell/console/gm/feedback.rs`
    (private copy), and an inline `write_wstring`-based build in
    `cell/console/net.rs`. Wire shape is WSTRING speaker (u32 UTF-16 code-unit
    count + N×2B LE), UINT8 SpeakerFlags, UINT8 Channel, WSTRING text. Reuse
    `cell::chat::serialize_on_player_communication`; do not add a fifth.
-2. **`cell/chat.rs`'s channel constants diverge from
+2. **`cell/console/chat.rs`'s channel constants diverge from
    `entities/defs/enumerations.xml` for every channel ≥7.** The `.def` is
    `CHAN_server=8, CHAN_feedback=9, CHAN_tell=10, CHAN_splash=11`; `chat.rs` is
    `CHAN_SERVER=7, CHAN_FEEDBACK=9, CHAN_TELL=9, CHAN_SPLASH=10`. The feedback
@@ -44,7 +44,7 @@ separate facts worth having before touching anything method-28 shaped:
 Two delivery helpers (the wire serializer is duplicated in both — precedent for
 duplicating small serializers across cell/base):
 
-- **Cell-side**: `crate::cell::cell_methods::gm::feedback::send_gm_feedback(entity_id, &str, tx)`
+- **Cell-side**: `crate::cell::console::gm::feedback::send_gm_feedback(entity_id, &str, tx)`
   — emits a `CellToBaseMsg::EntityMethodCall{ method_index: 28 }` that the base
   relays to the entity's own client. `pub(crate)` so the cell `GmSpawnNpcReady`
   handler can use it too. Used for pre-dispatch rejections AND cell-confirmed

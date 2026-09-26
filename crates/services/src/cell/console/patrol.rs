@@ -17,13 +17,13 @@
 //! Reference: doko972/FanMMORPG `patrols.md` + `cell/commands/Resource.py`
 //! (`pathAdd`…`pathSetTeleportDelay`).
 
+use cimmeria_cell_combat::cell::service::npc_ai::{self, AiTransitionReason};
 use cimmeria_entity::cell_entity::AiState;
 use tokio::sync::mpsc;
 
 use super::seed;
 use super::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::service::npc_ai::{self, AiTransitionReason};
 use crate::cell::space_manager::SpaceManager;
 
 const POINT_SETS_SEED: &str = "db/resources/Events/Seed/point_sets.sql";

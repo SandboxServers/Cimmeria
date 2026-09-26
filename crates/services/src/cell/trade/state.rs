@@ -25,7 +25,7 @@ use super::MAX_INTERACT_DISTANCE;
 ///
 /// On success, writes `trade_partner_entity_id` + fresh empty
 /// `trade_proposal` on BOTH entities and returns `true`.
-pub(super) fn begin_trading(
+pub(crate) fn begin_trading(
     entity_id: u32,
     partner_entity_id: i32,
     space_mgr: &mut SpaceManager,
@@ -137,7 +137,7 @@ pub(super) fn begin_trading(
 ///
 /// On success, both sides' `lock_state` is reset to `None` and the
 /// updated `onTradeState` is fanned out to both clients.
-pub(super) async fn apply_proposal(
+pub(crate) async fn apply_proposal(
     entity_id: u32,
     partner_entity_id: i32,
     new_proposal: TradeProposal,
@@ -203,7 +203,7 @@ pub(super) async fn apply_proposal(
 
 /// Clear the trade state on both participants. Called from cancel /
 /// commit / disconnect paths.
-pub(super) fn clear_trade_state(
+pub(crate) fn clear_trade_state(
     entity_id: u32,
     partner_entity_id: i32,
     space_mgr: &mut SpaceManager,
@@ -219,7 +219,7 @@ pub(super) fn clear_trade_state(
 }
 
 /// Tear down a session and notify both clients with `onTradeResults(result)`.
-pub(super) async fn cancel_session(
+pub(crate) async fn cancel_session(
     entity_id: u32,
     partner_entity_id: i32,
     result: i32,
@@ -272,7 +272,7 @@ pub async fn cancel_trade_on_disconnect(
 /// 3m horizontally; a player on a balcony 6m above is not. Switching
 /// to a 2D (horizontal-only) check would diverge from every other
 /// interaction range gate in the codebase — out of scope for this PR.
-pub(super) fn partners_in_range(
+pub(crate) fn partners_in_range(
     entity_id: u32,
     partner_entity_id: i32,
     space_mgr: &SpaceManager,

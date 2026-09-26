@@ -12,7 +12,7 @@
 //! preference the player had toggled on was gone until they toggled it
 //! again by hand (the log shows the manual `setAutoCycle` 25 s later).
 
-use super::super::respawn::handle_respawn;
+use super::super::handle_respawn;
 use super::make_mgr_with_player;
 use crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE;
 use crate::cell::client_methods::missionary::ON_MISSION_UPDATE;

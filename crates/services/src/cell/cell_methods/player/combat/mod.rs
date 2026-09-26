@@ -3,8 +3,11 @@
 //! the auto-`respawn` path, and a couple of unimplemented stubs.
 //!
 //! The respawn fork (same-world in-place reanchor vs. cross-world
-//! gate-travel) lives in [`respawn`] so this match stays a thin
-//! "which entry point" dispatch.
+//! gate-travel) lives in `cell::respawn` so this match stays a thin
+//! "which entry point" dispatch. The native GM `gmRespawn` drives the same
+//! fork, and the GM console sits beside these handlers rather than above them
+//! in the services crate split, so the fork is one layer below both
+//! (`docs/architecture/services-crate-split.md` §2H).
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -13,12 +16,7 @@ use tokio::sync::mpsc;
 
 use super::constants::*;
 
-mod respawn;
-
-// Re-exported for the native GM `gmRespawn` handler
-// (`cell_methods::gm::world`), which reuses the same respawn sequence as the
-// combat Defeat-Window path rather than duplicating it.
-pub(crate) use respawn::handle_respawn;
+use crate::cell::respawn;
 
 #[cfg(test)]
 mod tests;
