@@ -26,7 +26,7 @@ pub(crate) const CREDENTIAL_PREFIX_LEN: usize = 6;
 /// ```ignore
 /// tracing::debug!(sid_prefix = %CredentialPrefix(&sid), "Phase 1 generated SID");
 /// ```
-pub(crate) struct CredentialPrefix<'a>(pub &'a str);
+pub struct CredentialPrefix<'a>(pub &'a str);
 
 impl fmt::Display for CredentialPrefix<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

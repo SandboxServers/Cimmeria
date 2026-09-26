@@ -115,7 +115,7 @@ A third, cheap: state is released on `destroy_entity`.
 
 Never log a credential value in full, at any level: this covers SIDs, tickets, session keys, passwords and password hashes, and raw request bodies that carry them. Disk logs, the admin `/ws/logs` stream and SigNoz all keep what they receive, and a harvested SID or ticket is enough to hijack a pending login ([#440](https://github.com/SandboxServers/Cimmeria/issues/440)).
 
-Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/services/src/credential_redaction.rs`:
+Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/auth/src/credential_redaction.rs`:
 
 ```rust
 tracing::debug!(ticket_prefix = %CredentialPrefix(&ticket), "Phase 2 generated session credentials");

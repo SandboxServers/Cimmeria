@@ -88,7 +88,7 @@ docker run -d --name cimmeria \
 
 ## Crate Dependency Graph
 
-The 23 workspace crates and their **actual** inter-crate dependencies (an arrow
+The 24 workspace crates and their **actual** inter-crate dependencies (an arrow
 **A → B** means *crate A depends on crate B*). Generated from each crate's
 `Cargo.toml`; GitHub renders the Mermaid below.
 
@@ -118,6 +118,9 @@ flowchart TD
     services --> observability
     services --> commands
     services --> common
+    services --> auth
+    auth --> discord
+    auth --> common
     game --> commands
     game --> common
     contentEngine --> entity
@@ -138,6 +141,7 @@ flowchart TD
 
     %% test-only
     services -. dev .-> testSupport["test-support (dev-only)"]
+    auth -. dev .-> testSupport
     testSupport --> mercury
     sceneEditor --> upk
     upkObjects --> upk
@@ -179,7 +183,8 @@ Cimmeria/
 │   ├── commands/           Server command framework
 │   ├── game/               Game mechanics and rules
 │   ├── content-engine/     Data-driven content pipeline
-│   ├── services/           Auth, Base, Cell service implementations
+│   ├── services/           Base and Cell service implementations (re-exports auth)
+│   ├── auth/               Auth service: SOAP login, TLS, credentials, login audit
 │   ├── test-support/       Test helpers (live-DB gate, log capture); dev-only
 │   ├── admin-api/          REST administration API
 │   ├── supervisor/         Process supervision and service lifecycle
@@ -211,6 +216,7 @@ Cimmeria/
 |---|---|
 | `cimmeria-mercury` | Mercury reliable UDP, AES-256-CBC + HMAC-MD5 |
 | `cimmeria-services` | Auth, Base, Cell service orchestration |
+| `cimmeria-auth` | SOAP login handshake, auth TLS, credential storage, login audit |
 | `cimmeria-defs` | Entity definition parsing from XML |
 | `cimmeria-content-engine` | Data-driven mission/effect/dialog runtime |
 | `cimmeria-discord` | Discord notification dispatch (server + colo events) |

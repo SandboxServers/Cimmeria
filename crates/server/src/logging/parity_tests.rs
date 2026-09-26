@@ -382,6 +382,31 @@ fn each_level_lands_in_its_index() {
     }
 }
 
+/// The auth service moved from `cimmeria_services::auth` to the
+/// `cimmeria-auth` crate (services crate split, wave W1a), which changed its
+/// events' `module_path!()`. They must still land where they did before the
+/// move: every level in `auth.log`, INFO and up in `server.log`, and one OTLP
+/// index per level. `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_auth`, so without its own `OTEL_FILTER` row the DEBUG rows and
+/// the handler spans would silently stop reaching SigNoz.
+#[test]
+fn auth_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let handlers = "cimmeria_auth::auth::handlers";
+    let sinks = |lvl| sinks_for(&dispatch, &hits, handlers, lvl);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    assert_eq!(sinks(Level::TRACE), set(&["file:auth.log", OTLP_TRACE]));
+    assert_eq!(sinks(Level::DEBUG), set(&["file:auth.log", OTLP_SERVER]));
+    for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+        assert_eq!(
+            sinks(lvl),
+            set(&["file:auth.log", SERVER_LOG, OTLP_SERVER]),
+            "{handlers} at {lvl}"
+        );
+    }
+}
+
 /// No target, at any level, is indexed twice.
 #[test]
 fn no_record_reaches_two_indexes() {

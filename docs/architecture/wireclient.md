@@ -318,7 +318,7 @@ New corpora are added by:
   [`crates/mercury/src/test_harness/`](../../crates/mercury/src/test_harness/)
   + [ADR](mercury-loopback-harness.md)
 - Server-side SOAP auth flow that wireclient drives:
-  [`crates/services/src/auth/`](../../crates/services/src/auth/)
+  [`crates/auth/src/auth/`](../../crates/auth/src/auth/)
 - Server-side Mercury phase-3 handshake:
   [`crates/services/src/base/login/`](../../crates/services/src/base/login/)
 - Server-side ability path that Phase 5 strengthens:

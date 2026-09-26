@@ -150,8 +150,11 @@ component_management:
           informational: true
     - component_id: services
       name: services
+      # The crates split out of cimmeria-services (docs/architecture/services-crate-split.md)
+      # stay in this component, so its figure stays comparable across the split.
       paths:
         - "crates/services/**"
+        - "crates/auth/**"
       statuses:
         - type: project
           target: 62%

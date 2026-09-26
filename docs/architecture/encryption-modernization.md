@@ -79,7 +79,7 @@ is the per-hook wiring in Phases 1–3, not the hooking layer itself.
 - **Server side:** terminate TLS with **tokio-rustls**, with **arc-swap**-based
   hot certificate reload (rotate the cert without dropping the listener). **Cert
   hot-reload is implemented:** a background mtime watcher
-  (`crates/services/src/auth/cert_watcher.rs`) polls the cert/key files and
+  (`crates/auth/src/auth/cert_watcher.rs`) polls the cert/key files and
   atomically swaps the live `rustls::ServerConfig` via `TlsCertStore::reload`
   when either file changes, so an operator's cert rotation (e.g. a Let's Encrypt
   renewal) is picked up without a server restart. The poll interval is
@@ -101,7 +101,7 @@ shim's rustls proxy does the real TLS. This sidesteps the dead OpenSSL entirely.
 
 **Status (server half): Implemented.** The server-side storage, verification,
 on-login migration, and the plaintext-over-TLS gate are in
-`crates/services/src/auth/credentials.rs`. The client-side plaintext patch
+`crates/auth/src/auth/credentials.rs`. The client-side plaintext patch
 (below) is still pending.
 
 - **Schema (implemented):** a **dual-column** scheme — the legacy SHA-1

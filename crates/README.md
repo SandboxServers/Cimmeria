@@ -6,10 +6,10 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The 28 workspace members and their **actual** inter-crate dependencies, generated
+The 29 workspace members and their **actual** inter-crate dependencies, generated
 from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*; a dotted
-arrow is a dev-dependency). The 28 comes from the `members` list in the root
-[Cargo.toml](../Cargo.toml): the 24 crates under `crates/`, plus `src-tauri` and the three tool crates
+arrow is a dev-dependency). The 29 comes from the `members` list in the root
+[Cargo.toml](../Cargo.toml): the 25 crates under `crates/`, plus `src-tauri` and the three tool crates
 (`tools/ContentEditor`, `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/`
 target is a deliberate workspace `exclude` — it needs nightly Rust.
 
@@ -39,6 +39,9 @@ flowchart TD
     services --> observability
     services --> commands
     services --> common
+    services --> auth
+    auth --> discord
+    auth --> common
     game --> commands
     game --> common
     contentEngine --> entity
@@ -59,6 +62,7 @@ flowchart TD
 
     %% test-only
     services -. dev .-> testSupport["test-support (dev-only)"]
+    auth -. dev .-> testSupport
     testSupport --> mercury
     sceneEditor --> upk
     upkObjects --> upk
@@ -79,7 +83,8 @@ what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. Th
 `upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
 are an independent Unreal-package / navmesh toolchain; `supervisor`,
 `client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
-intra-workspace deps. `test-support` is a dev-dependency only. All 24 crates in `crates/` are catalogued below; the
+intra-workspace deps. `test-support` is a dev-dependency only. `auth` is split out of
+`services`, which re-exports it at its old paths. All 25 crates in `crates/` are catalogued below; the
 diagram additionally shows the `src-tauri` app and the `tools/` editors, which
 are workspace members that live outside `crates/`.
 
@@ -93,6 +98,7 @@ are workspace members that live outside `crates/`.
 | `game` | `cimmeria-game` | Game mechanics: combat, abilities, stats, effects |
 | `content-engine` | `cimmeria-content-engine` | Data-driven content runtime: missions, dialogs, sequences |
 | `services` | `cimmeria-services` | Auth, Base, and Cell service implementations — the bulk of server logic. Being split into an acyclic set of crates; see [docs/architecture/services-crate-split.md](../docs/architecture/services-crate-split.md) and the layering guard in [tools/layering/](../tools/layering/README.md) |
+| `auth` | `cimmeria-auth` | Authentication service, split out of `cimmeria-services` (which re-exports it as `cimmeria_services::{auth, audit}`): the SOAP/HTTP login handshake (Phase 1 credential check, Phase 2 shard selection), TLS termination with certificate hot-reload, argon2id credential storage with on-login legacy-hash migration, login audit events (`audit::{LoginEvent, LoginEventBuffer}`) and `credential_redaction::CredentialPrefix` for log-safe SIDs and tickets. Depends only on `common` and `discord`. Its tracing targets are `cimmeria_auth::…` (`auth.log`). See [docs/protocol/login-handshake.md](../docs/protocol/login-handshake.md). |
 | `test-support` | `cimmeria-test-support` | **Dev-dependency only.** Generic test helpers: the live-DB gate (`require_db_or_skip!`, which skips without `DATABASE_URL` and fails when it is set but unreachable), `LogCapture` for negative-log guards, the `TestTransport` re-export, and `source_scan` for workspace-wide source guards. Never depends on a service crate (that would link two copies of it into a test binary); domain fixtures stay with their types. Every crate that dev-depends on it must be listed in `tools/test-live-db.{sh,ps1}`. |
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |
@@ -135,7 +141,7 @@ See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the six excluded crates below contribute the rest). 224 are live-DB regression guards — all in `cimmeria-services` — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the six excluded crates below contribute the rest). 224 are live-DB regression guards — in the crates `tools/test-live-db.sh` lists — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
 # Unit + non-DB integration:
@@ -153,7 +159,7 @@ The live-DB run must be serialised — some guards share sentinel id ranges and 
 
 | Path | Purpose |
 |---|---|
-| `services/src/auth/` | Authentication service — login, character select (`mod.rs`, `service.rs`, `handlers.rs`) |
+| `auth/src/auth/` | Authentication service — login, character select (`mod.rs`, `service.rs`, `handlers.rs`) |
 | `services/src/base/` | BaseApp service — entity persistence, player state, character creation, world entry |
 | `services/src/cell/` | CellApp service — world simulation, movement, abilities, combat, missions, gate travel |
 | `services/src/mercury/` | Mercury transport glue — AoI, protocol dispatch, world data |

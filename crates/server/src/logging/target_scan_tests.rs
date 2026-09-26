@@ -24,6 +24,7 @@ use super::parity_tests::{harness, sinks_for, OTLP_LOG_SINKS};
 /// through the OTLP filters.
 const IN_PROCESS_CRATES: &[&str] = &[
     "admin-api",
+    "auth",
     "commands",
     "common",
     "content-engine",

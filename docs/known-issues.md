@@ -59,11 +59,11 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 **Severity**: Low (security)
 **Status**: Partially fixed — the "never expire" claim is stale.
 **Description**: `TICKET_TTL` is 30 s and `SESSION_TTL` is 300 s
-(`crates/services/src/auth/mod.rs:41-45`), matching the C++ 30 s ticket
+(`crates/auth/src/auth/mod.rs:41-45`), matching the C++ 30 s ticket
 lifetime. A reaper task sweeps both maps every `REAPER_INTERVAL`
-(`crates/services/src/auth/service.rs:184-190`), and the Phase-2
+(`crates/auth/src/auth/service.rs:184-190`), and the Phase-2
 `ServerSelection` handler additionally checks `SESSION_TTL` inline
-(`crates/services/src/auth/handlers.rs:247`).
+(`crates/auth/src/auth/handlers.rs:247`).
 
 **What remains**: the Phase-3 consume path does **not** check the TTL. `handle_login`
 does a bare `map.remove(ticket)` (`crates/services/src/base/login/mod.rs:45-58`),

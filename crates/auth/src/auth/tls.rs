@@ -247,7 +247,7 @@ fn load_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, TlsError> {
 /// on *both* the HTTP and HTTPS paths for wiring simplicity, but per RFC 6797
 /// a user agent only **honours** the header when it is received over HTTPS —
 /// the plain-HTTP copy has no effect and is not relied upon for protection.
-pub const HSTS_VALUE: &str = "max-age=63072000; includeSubDomains";
+pub(crate) const HSTS_VALUE: &str = "max-age=63072000; includeSubDomains";
 
 /// axum middleware that stamps `Strict-Transport-Security` onto every response.
 ///
@@ -255,7 +255,7 @@ pub const HSTS_VALUE: &str = "max-age=63072000; includeSubDomains";
 /// HTTPS listeners emit it. Kept here (next to the TLS code it complements)
 /// rather than in `service.rs` so the header value and the listener live
 /// together.
-pub async fn hsts_layer(
+pub(crate) async fn hsts_layer(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
@@ -275,7 +275,7 @@ pub async fn hsts_layer(
 /// extracting `Extension<TlsConn>`. This is the gate that lets the login
 /// handler accept a plaintext password over HTTPS while continuing to reject it
 /// over plain HTTP.
-pub async fn tls_marker_layer(
+pub(crate) async fn tls_marker_layer(
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {

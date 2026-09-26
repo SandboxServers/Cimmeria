@@ -154,7 +154,7 @@ struct SessionRecord {
 /// IPv4-mapped-IPv6 form (`::ffff:127.0.0.1`) to plain IPv4 so a
 /// dual-stack listener does not false-positive on the same physical client
 /// (issue #442 caveat).
-pub(crate) fn client_ips_match(a: IpAddr, b: IpAddr) -> bool {
+pub fn client_ips_match(a: IpAddr, b: IpAddr) -> bool {
     normalize_ip(a) == normalize_ip(b)
 }
 

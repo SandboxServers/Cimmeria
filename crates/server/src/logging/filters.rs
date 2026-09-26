@@ -83,6 +83,7 @@ use crate::otel;
 /// quiet on a healthy link and exactly the evidence a lossy one needs.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
+                cimmeria_auth=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -185,7 +186,7 @@ pub(crate) struct FileLayer {
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
-        directives: "off,cimmeria_services::auth=trace",
+        directives: "off,cimmeria_auth::auth=trace",
     },
     FileLayer {
         file: "base.log",

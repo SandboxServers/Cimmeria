@@ -76,7 +76,8 @@ const CONVERGENCE_TIMEOUT: Duration = Duration::from_secs(25);
 async fn lossy_network_both_directions_still_converge() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "cimmeria_services=info".to_string()),
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "cimmeria_services=info,cimmeria_auth=info".to_string()),
         )
         .with_test_writer()
         .try_init();
@@ -232,7 +233,8 @@ async fn lossy_network_both_directions_still_converge() {
 async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "cimmeria_services=info".to_string()),
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "cimmeria_services=info,cimmeria_auth=info".to_string()),
         )
         .with_test_writer()
         .try_init();
