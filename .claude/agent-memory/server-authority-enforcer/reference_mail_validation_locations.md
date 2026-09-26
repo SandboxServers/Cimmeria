@@ -14,7 +14,7 @@ mail routing): `crates/services/src/cell/mail.rs:20-28` —
 and returns `None` (with `warn!`) if unset.
 
 **DB write paths** (currently only headers/body/archive/delete are wired):
-`crates/services/src/base/world_entry/methods/mail/mod.rs`
+`crates/base-methods/src/base/world_entry/methods/mail/mod.rs`
 - RequestHeaders: line 82-95 — `WHERE character_id = $1`, scoped.
 - RequestBody: line 155-185 — `WHERE mail_id = $1 AND character_id = $2`, scoped.
 - RequestBody read_time UPDATE: line 191-200 — **NOT scoped by character_id**

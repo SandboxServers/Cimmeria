@@ -5,7 +5,7 @@
 //! inventory, mission, world, and command systems.
 //!
 //! Interaction handlers (vendor, lootable, stargate, trainer) live in
-//! `cimmeria-services` — see `crates/services/src/base/world_entry/methods/`
+//! `cimmeria-services` — see `crates/base-methods/src/base/world_entry/methods/`
 //! and `crates/services/src/cell/{interactions,ring_transport}/`. Vendor,
 //! lootable, and stargate stubs that previously lived under
 //! `cimmeria-game::interactions::*` were deleted as dead code after audits

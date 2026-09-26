@@ -18,7 +18,7 @@
 //! to Col. Marsh") is Castle-side and out of this packet's scope. Mission
 //! persistence across the eventual Cellblock -> Castle hop is pinned by the
 //! live-DB round-trip test `frosts_letter_accept_round_trips_cell_to_base_to_db`
-//! in `crates/services/src/base/world_entry/methods/missions/tests.rs`, not
+//! in `crates/services/src/mission_round_trip_tests.rs`, not
 //! here — this file only pins chain *resolution*.
 
 use cimmeria_content_engine::actions::Action;

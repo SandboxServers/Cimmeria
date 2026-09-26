@@ -94,7 +94,7 @@ Nothing owns the whole cascade, so stop pretending one side does.
 | Half | Owner | Why it lives there |
 |---|---|---|
 | Live state — `stateField`, target, public stats, ammo type | **Cell** | The cell is the authority for combat state, health and targeting. It changes every tick |
-| Identity — name, level, archetype, alignment, `BeingAppearance` args, tint args | **Base** | The base owns `ConnectedClientState`, and `refresh_player_appearance` ([`methods/inventory/appearance.rs:36`](../../crates/services/src/base/world_entry/methods/inventory/appearance.rs)) keeps `cached_appearance_args` current across every equip, holster and bandolier change |
+| Identity — name, level, archetype, alignment, `BeingAppearance` args, tint args | **Base** | The base owns `ConnectedClientState`, and `refresh_player_appearance` ([`methods/inventory/appearance.rs:36`](../../crates/base-methods/src/base/world_entry/methods/inventory/appearance.rs)) keeps `cached_appearance_args` current across every equip, holster and bandolier change |
 
 The cell ships its half on
 `CellToBaseMsg::EnteredAoI { player_data: Option<PlayerAoIData> }`

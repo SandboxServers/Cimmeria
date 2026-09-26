@@ -26,7 +26,7 @@ There are three services and the message goes to exactly one of them:
 | Service | What it handles | Where the dispatcher lives |
 |---|---|---|
 | **Auth** | Pre-game: login, shard select. SOAP/HTTP. | [`crates/auth/src/auth/handlers.rs`](../../crates/auth/src/auth/handlers.rs) |
-| **Base** | Account-level state, chat, persistence, world entry. Most non-spatial messages. | [`crates/services/src/base/dispatch/`](../../crates/services/src/base/dispatch/) and the world-entry methods under [`crates/services/src/base/world_entry/methods/`](../../crates/services/src/base/world_entry/methods/) |
+| **Base** | Account-level state, chat, persistence, world entry. Most non-spatial messages. | [`crates/services/src/base/dispatch/`](../../crates/services/src/base/dispatch/) and the world-entry methods under [`crates/base-methods/src/base/world_entry/methods/`](../../crates/base-methods/src/base/world_entry/methods/) |
 | **Cell** | Spatial / runtime: movement, combat, abilities, AoI. | [`crates/services/src/cell/`](../../crates/services/src/cell/) (per-system dispatchers) |
 
 If you're not sure which it is, search [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md) for the method index — the table identifies the target service for every documented method.

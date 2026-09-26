@@ -275,6 +275,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // aoi.log's row before wave C1 moved the space manager to
         // cimmeria-cell-world; services re-exports it at the same path.
         "cimmeria_services::cell::space_manager",
+        // The feature handlers under world_entry.log's services row before wave
+        // B2 moved them to cimmeria-base-methods; services re-exports `methods`
+        // (`pub(crate) use`), which declares no module.
+        "cimmeria_services::base::world_entry::methods",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -294,6 +298,9 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // base-session's base/mod.rs, with a file child.
         "cimmeria_base_session::base::world_entry",
         "cimmeria_base_session::base::world_entry::space_registry",
+        // `pub mod world_entry { pub mod methods; }` is inline in
+        // base-methods' base/mod.rs, with a directory child.
+        "cimmeria_base_methods::base::world_entry::methods",
         // A bare prefix covering cimmeria_client_launch and
         // cimmeria_client_telemetry.
         "cimmeria_client",

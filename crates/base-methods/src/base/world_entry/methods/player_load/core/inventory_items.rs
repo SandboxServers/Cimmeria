@@ -12,7 +12,7 @@ use super::INVENTORY_ITEM_SELECT;
 ///
 /// Returns `InvItem` structs ready for wire serialization via `onUpdateItem`.
 /// Note: `slot_id` is stored 0-indexed in DB but sent 1-indexed on the wire.
-pub async fn query_inventory_items(
+pub(super) async fn query_inventory_items(
     pool: &PgPool,
     player_id: i32,
 ) -> Vec<cimmeria_entity::inventory::InvItem> {

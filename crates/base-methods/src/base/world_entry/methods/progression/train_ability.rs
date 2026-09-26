@@ -26,6 +26,9 @@ pub struct TrainRequest {
 }
 
 /// The row after a purchase: `RETURNING training_points, tree_points_spent`.
+// `pub` for the `test-support` re-export in `progression`; a production
+// build without the feature reaches it only through `handle_train_ability`.
+#[cfg_attr(not(any(test, feature = "test-support")), allow(unreachable_pub))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::FromRow)]
 pub struct PurchaseResult {
     pub training_points: i32,
@@ -45,6 +48,9 @@ pub struct PurchaseResult {
 /// `TrainAbility`s. The second one's `NOT (abilities @> ...)` sees the first
 /// one's append under Postgres row locking, so it matches 0 rows instead of
 /// debiting twice. A read-then-write pair would leave that window open.
+// `pub` for the `test-support` re-export in `progression`, like
+// `PurchaseResult`.
+#[cfg_attr(not(any(test, feature = "test-support")), allow(unreachable_pub))]
 pub async fn persist_purchase(
     pool: &PgPool,
     player_id: i32,

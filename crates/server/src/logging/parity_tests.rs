@@ -984,3 +984,59 @@ fn aoi_position_is_complete_on_disk_and_sampled_in_signoz() {
     assert_eq!(sampled, n.div_ceil(101));
     assert_eq!(sum, (sampled - 1) * 101 + 1);
 }
+
+/// The BaseApp's feature handlers moved from
+/// `cimmeria_services::base::world_entry::methods` to the
+/// `cimmeria-base-methods` crate (services crate split, wave B2), which
+/// changed the `module_path!()` of their untargeted rows: inventory grants,
+/// moves and use, vendor purchases and repairs, the trade swap, mail
+/// forwarding, mission persistence, player load and progression. The old
+/// `cimmeria_services::base::world_entry` row kept them in `world_entry.log`
+/// by prefix, and they must still land there at every level, in `server.log`
+/// from INFO, and in one OTLP index per level, `cimmeria-server` below TRACE
+/// (they are per request, not per packet, so not network noise).
+/// `cimmeria_services=debug` and
+/// `cimmeria_base_session=debug` do not prefix-match `cimmeria_base_methods`,
+/// so without its own `OTEL_FILTER` row the DEBUG rows would silently stop
+/// reaching SigNoz, and without its own `world_entry.log` row the file would
+/// lose them. (The hand-named `abilities`, `progression` and
+/// `trade.atomic_swap` targets did not change.)
+#[test]
+fn base_methods_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in [
+        "cimmeria_base_methods::base::world_entry::methods::inventory::grant::grant_item",
+        "cimmeria_base_methods::base::world_entry::methods::inventory::move_",
+        "cimmeria_base_methods::base::world_entry::methods::vendor::purchase",
+        "cimmeria_base_methods::base::world_entry::methods::vendor::helpers",
+        "cimmeria_base_methods::base::world_entry::methods::trade::execute",
+        "cimmeria_base_methods::base::world_entry::methods::trade::execute::swap",
+        "cimmeria_base_methods::base::world_entry::methods::mail",
+        "cimmeria_base_methods::base::world_entry::methods::missions",
+        "cimmeria_base_methods::base::world_entry::methods::player_load::core::player_data",
+        "cimmeria_base_methods::base::world_entry::methods::progression",
+        "cimmeria_base_methods::base::world_entry::methods::world_entry_db",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        let file = "file:world_entry.log";
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}

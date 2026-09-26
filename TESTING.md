@@ -50,7 +50,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 - Round-trip both directions when the codec is symmetric (`build_x` then `parse_x` then assert equality of the input).
 - Confirm method indices against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def` before writing the test, not after.
 
-**Examples**: `crates/mercury/src/packet/` (24 tests), `crates/services/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/wire/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
+**Examples**: `crates/mercury/src/packet/` (24 tests), `crates/base-methods/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/wire/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
 
 ### 3. Live-DB regression guards
 
@@ -59,14 +59,14 @@ This guide is the playbook for writing tests that survive review and catch real 
 **For**: SQL invariants that pure unit tests can't reach — `WHERE` clauses, `rows_affected` shapes, advisory locks, `ON CONFLICT` semantics, the `flags` column's role in vendor buyback, multi-character isolation. **Every Group A regression guard in PRs #143–#175 is this kind.**
 
 **Patterns to follow:**
-- Pick a **positive `0x7000_xxxx` sentinel base** for the module's test ids (e.g., `const TEST_BASE: i32 = 0x7000_0400;` for missions, `0x7000_1000` for character-list, `0x7000_0800` for vendor sell). Each module reserves its own slot in this range; the existing modules document neighbours in a doc-comment so the next contributor can step past them. See `crates/services/src/base/character/mod.rs:288-296` and `crates/services/src/base/world_entry/methods/missions.rs:150-154` for the canonical comment shape.
+- Pick a **positive `0x7000_xxxx` sentinel base** for the module's test ids (e.g., `const TEST_BASE: i32 = 0x7000_0400;` for missions, `0x7000_1000` for character-list, `0x7000_0800` for vendor sell). Each module reserves its own slot in this range; the existing modules document neighbours in a doc-comment so the next contributor can step past them. See `crates/services/src/base/character/mod.rs:288-296` and `crates/base-methods/src/base/world_entry/methods/missions/tests.rs:4-6` for the canonical comment shape.
 - The base must fit in `i32` because the `entity_id`/`account_id`/`player_id` columns are `INTEGER`. `0x7000_xxxx` does (it's well below `i32::MAX`); a `u32` like `0xDEAD_0000` wraps to a negative when bound `as i32` and lands in another module's territory — don't reach for high-bit constants.
 - Run serialised. Under nextest the `ci-live-db` profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`, which makes each test claim every available thread; under raw `cargo test`, pass `-- --test-threads=1`. Even within the partitioned-range scheme, some guards share rows in `resources.*` and collide under parallel execution. CI enforces this; local repro must match.
 - Cleanup must `DELETE WHERE <id> = $sentinel` (or `IN (...)` over the exact ids the test inserted), not a range predicate like `WHERE entity_id < 0` or `WHERE account_id BETWEEN base AND base+0xFF`. Range deletes can reach into a sibling module's slot if the partitioning ever drifts.
 - For shared rows (resources.items inserts), use `ON CONFLICT DO NOTHING` so test B's insert doesn't conflict with test A's leftover, and **don't `DELETE` shared rows in cleanup** — let them leak for the next run.
 - **Reproduce the bug shape.** A `handle_grant_cash` regression guard must seed two characters on the same account, grant to one, and assert the other's balance is unchanged. That's the shape the bug took (PR #143). A test that just grants and asserts the credit went through is a happy-path test, not a regression guard.
 
-**Examples**: `crates/services/src/base/world_entry/methods/progression/tests.rs` (PR #143), `crates/services/src/base/world_entry/methods/vendor/sell/tests.rs` (PR #154 — pin the `flags` column's role as buyback unit price), `crates/services/src/base/character/mod.rs` (4 guards on `query_character_list`).
+**Examples**: `crates/base-methods/src/base/world_entry/methods/progression/tests.rs` (PR #143), `crates/base-methods/src/base/world_entry/methods/vendor/sell/tests.rs` (PR #154 — pin the `flags` column's role as buyback unit price), `crates/services/src/base/character/mod.rs` (4 guards on `query_character_list`).
 
 ### 4. End-to-end PL/pgSQL smoke tests
 
@@ -98,7 +98,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 - For TOCTOU guards on `update_X WHERE type_id = $1`, the racing replacement row must use the **same `type_id`** as the original. A different-`type_id` race doesn't exercise the predicate the bug lives in.
 - Validate `rows_affected() == 1` on staged setup `UPDATE`s. A fixture drift fails loudly at the staging step rather than as a confusing assertion mismatch.
 
-**Examples**: `crates/services/src/base/world_entry/methods/inventory/move_/concurrency_tests.rs` (PR #150, PR #175), `crates/services/src/base/world_entry/methods/inventory/grant/` concurrency tests (PR #145).
+**Examples**: `crates/base-methods/src/base/world_entry/methods/inventory/move_/concurrency_tests.rs` (PR #150, PR #175), `crates/base-methods/src/base/world_entry/methods/inventory/grant/` concurrency tests (PR #145).
 
 ### 6. Chain-replay tests
 

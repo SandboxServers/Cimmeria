@@ -5,7 +5,7 @@
 /// This constant is the Rust-side anchor for a manual-coupling drift check —
 /// the live-DB test
 /// `archetype_count_matches_earchetype_enum_cardinality` (in
-/// `crates/services/src/base/world_entry/methods/player_load/meta.rs`)
+/// `crates/base-methods/src/base/world_entry/methods/player_load/meta.rs`)
 /// asserts this matches
 /// `cardinality(enum_range(NULL::resources."EArchetype"))` so that adding to
 /// the SQL enum without reviewing downstream consumers fails CI loudly

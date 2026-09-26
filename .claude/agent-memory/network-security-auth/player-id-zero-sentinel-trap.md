@@ -8,7 +8,7 @@ metadata:
 `query_player_load_data` returns `default_player_load_data()` when the DB pool
 is unavailable, a row is missing or account-mismatched, or the query errors; that
 default carries `player_id: 0`
-(`crates/services/src/base/world_entry/methods/player_load/meta.rs`).
+(`crates/base-methods/src/base/world_entry/methods/player_load/meta.rs`).
 `map_loaded.rs` then stores that value into `PendingClientReadyInfo.player_id`,
 which `world_entry_appearance/client_ready.rs` uses as the key for every
 per-player DB read it issues (abilities, archetype, bandolier, and anything

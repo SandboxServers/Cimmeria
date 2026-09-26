@@ -11,7 +11,7 @@
 //!
 //! Two write paths:
 //!   * [`enqueue`] — INSERT a row in its own short-lived statement. Used by
-//!     `cimmeria_services::base::world_entry::methods::inventory::handle_use_inventory_item`,
+//!     `cimmeria_base_methods::base::world_entry::methods::inventory::handle_use_inventory_item`,
 //!     which has no surrounding tx because it doesn't mutate inventory.
 //!   * [`enqueue_in_tx`] — INSERT inside a caller-owned transaction so the
 //!     event row is committed atomically with the caller's DB write. Future

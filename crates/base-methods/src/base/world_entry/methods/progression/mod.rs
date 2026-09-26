@@ -498,8 +498,13 @@ pub async fn handle_grant_cash(
 
 mod train_ability;
 pub use train_ability::{handle_train_ability, TrainRequest};
-#[cfg(test)]
-pub(crate) use train_ability::{persist_purchase, PurchaseResult};
+// The trainer's one-statement DB write. A test hook: besides this crate's
+// tests, the AT-01 hydrate round-trip in `cimmeria-services`
+// (`client_ready::player_init_row`) drives it, through the `test-support`
+// feature.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use train_ability::{persist_purchase, PurchaseResult};
 
 #[cfg(test)]
 mod level_cap_tests;

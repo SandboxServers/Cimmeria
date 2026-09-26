@@ -46,6 +46,10 @@ cimmeria-base-session = { workspace = true }
 # FSM, the synchronous effect scripts, the GM gate, ContentEvents), split out
 # of this crate (C1). Re-exported at the old `cell::…` paths.
 cimmeria-cell-world = { workspace = true }
+# The BaseApp's DB-backed feature handlers (player load, inventory, vendors,
+# trade, mail, missions, progression), split out of this crate (B2).
+# Re-exported at `base::world_entry::methods`.
+cimmeria-base-methods = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
@@ -109,3 +113,7 @@ cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # cover tests that stay here because they drive the NPC AI (npc_ai_cover*,
 # ticks/cover).
 cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+
+# `progression::persist_purchase`, which the AT-01 hydrate round-trip in
+# `world_entry_appearance::client_ready::player_init_row` drives.
+cimmeria-base-methods = { workspace = true, features = ["test-support"] }
