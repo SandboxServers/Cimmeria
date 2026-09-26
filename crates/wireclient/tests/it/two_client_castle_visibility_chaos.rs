@@ -15,19 +15,17 @@
 //! `lossy_network_both_directions_still_converge` for why it breaks the
 //! Mercury phase-3 handshake's positional parsing.
 //!
-//! Shared setup/driver helpers live in `tests/support/mod.rs`.
+//! Shared setup/driver helpers live in `tests/it/support/mod.rs`.
 //!
 //! Run locally (same DB setup as the lossless variant):
 //! ```text
 //! /c/Users/Steve/AppData/Local/Temp/cimmeria-castle/reload-db.sh
 //! DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/<db> \
-//!   cargo test -p cimmeria-wireclient --test two_client_castle_visibility_chaos -- --test-threads=1
+//!   cargo test -p cimmeria-wireclient --test it two_client_castle_visibility_chaos -- --test-threads=1
 //! ```
 //! Requires the `chaos-testing` feature on the `cimmeria-services`
 //! dev-dependency (already enabled in `Cargo.toml`) for
 //! `BaseService::set_transport_override`.
-
-mod support;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,7 +34,7 @@ use cimmeria_mercury::lossy_transport::{LossyConfig, LossyTransport};
 use cimmeria_mercury::transport::BidirectionalTransport;
 use cimmeria_wireclient::bundle::S2CMessage;
 
-use support::{
+use crate::support::{
     bind_base_socket, credentials_for, enter_castle_with_timeout, insert_castle_character,
     insert_sentinel_account, live_db_pool_or_skip, start_server_with_base_transport, wait_for,
     wait_for_recording, CASTLE_BASE_POS,

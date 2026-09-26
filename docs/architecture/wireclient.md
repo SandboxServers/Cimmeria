@@ -30,7 +30,7 @@ the handshake. There is still no replay engine: `Trace::c2s()` /
 `Trace::s2c()` are iterator filters with no consumer, and there is no
 semantic behavior-trace decoder (Phase 3) or Castle Cellblock script
 driver (Phase 4). What `GameSession` does cover — because
-[`crates/wireclient/tests/two_client_castle_visibility.rs`](../../crates/wireclient/tests/two_client_castle_visibility.rs)
+[`crates/wireclient/tests/it/two_client_castle_visibility.rs`](../../crates/wireclient/tests/it/two_client_castle_visibility.rs)
 needed it — is auth → character select → world entry
 (`ENABLE_ENTITIES`/`playCharacter`/`mapLoaded`/`onClientReady`) and enough
 client→server builders (movement, disconnect) to drive a player around
@@ -118,13 +118,18 @@ crates/wireclient/
 │                         #   + byte builders only (no socket) -- GameSession is
 │                         #   the driver for anything past the handshake now
 └── tests/
-    ├── auth_smoke.rs                    # In-process AuthService + Phase 1/2 round trip
-    ├── trace_load.rs                    # Loads the checked-in head fixture
-    ├── two_client_castle_visibility.rs  # Live-DB: two real GameSessions,
-    │                                    #   one shared Castle world, both
-    │                                    #   arrival orders (NA37)
+    ├── it/                                    # ONE integration-test binary
+    │   ├── main.rs                            # Declares the modules below
+    │   ├── auth_smoke.rs                      # In-process AuthService + Phase 1/2 round trip
+    │   ├── trace_load.rs                      # Loads the checked-in head fixture
+    │   ├── two_client_castle_visibility.rs    # Live-DB: two real GameSessions,
+    │   │                                      #   one shared Castle world, both
+    │   │                                      #   arrival orders (NA37)
+    │   ├── two_client_castle_visibility_chaos.rs  # Live-DB: the same scenario
+    │   │                                      #   under injected loss/latency
+    │   └── support/mod.rs                     # Shared server bring-up + world-entry driver
     └── fixtures/
-        └── castle_cellblock_head.jsonl   # 1 header + 5 events
+        └── castle_cellblock_head.jsonl         # 1 header + 5 events
 ```
 
 ### 2. Trace format — generic across captures
@@ -240,7 +245,7 @@ corrupt shared state.
 
 | Path | Events | Coverage |
 |---|---:|---|
-| [`crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl`](../../crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl) | 5 (+1 header line) | Head of a Castle Cellblock capture — enough to pin the JSONL loader in `tests/trace_load.rs`. |
+| [`crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl`](../../crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl) | 5 (+1 header line) | Head of a Castle Cellblock capture — enough to pin the JSONL loader in `tests/it/trace_load.rs`. |
 
 ### Planned, not in the repo
 
@@ -260,16 +265,16 @@ New corpora are added by:
    logs to `Sniffer: Got AES key from auth stream`).
 2. Running `python3 tools/pcap_to_session.py <pcap> <keys.txt> --out
    <slug>.jsonl --label <slug>`.
-3. Adding the JSONL to the test corpus directory and a smoke entry to
-   `crates/wireclient/tests/`.
+3. Adding the JSONL to the test corpus directory and a smoke module to
+   `crates/wireclient/tests/it/` (declared in its `main.rs`).
 
 ## Phasing & status
 
 | Phase | Work | Status |
 |---|---|---|
-| 1 | Scaffold + SOAP auth + handshake driver + JSONL trace | **Done** — 30 tests: `src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `tests/auth_smoke.rs` (3), `tests/trace_load.rs` (1) |
+| 1 | Scaffold + SOAP auth + handshake driver + JSONL trace | **Done** — 30 tests: `src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `tests/it/auth_smoke.rs` (3), `tests/it/trace_load.rs` (1) |
 | 1.5 | UDP send/recv loop + first encrypted round-trip against spawned BaseApp | **Done** (2026-09-25, NA37) — `GameSession::connect`/`from_auth_session` in `src/session.rs`, reusing `cimmeria_mercury::test_harness::LoopbackPeer` as the client-side Channel driver against a real `BaseService` UDP socket instead of building a second reliable-delivery implementation |
-| 2 | `mapLoaded()` + initial entity hydration assertion | **Partial** (NA37) — `GameSession` drives `ENABLE_ENTITIES`/`playCharacter`/`mapLoaded`/`onClientReady` through a real spawned `Orchestrator` and asserts `CREATE_ENTITY`/`BEING_APPEARANCE` hydration for a *second* real client's avatar (`tests/two_client_castle_visibility.rs`). No entity mirror, no single-player Castle Cellblock assertion yet |
+| 2 | `mapLoaded()` + initial entity hydration assertion | **Partial** (NA37) — `GameSession` drives `ENABLE_ENTITIES`/`playCharacter`/`mapLoaded`/`onClientReady` through a real spawned `Orchestrator` and asserts `CREATE_ENTITY`/`BEING_APPEARANCE` hydration for a *second* real client's avatar (`tests/it/two_client_castle_visibility.rs`). No entity mirror, no single-player Castle Cellblock assertion yet |
 | 3 | Entity mirror + behavior-trace module + semantic diff | Pending — `bundle.rs`'s `decode_bundle` is a structural decoder (msg_id/entity_id/class_id/method index) pulled forward for NA37, not the semantic per-method-argument decoder this phase specifies |
 | 4 | Castle Cellblock script (steps 1–8, 10, 12–20) | Pending |
 | 5 | Combat at step 9 + server-side LOS parity check | Pending |
@@ -284,7 +289,7 @@ New corpora are added by:
    on ephemeral ports, the same TOCTOU-tolerant bind-and-drop pattern
    `login_smoke`/`tls_smoke` already use, just repeated per service port.
    No `Command::spawn` of a separate `cimmeria-server.exe` was needed or
-   built — see `start_server` in `tests/two_client_castle_visibility.rs`.
+   built — see `start_server` in `tests/it/support/mod.rs`.
 2. **Dissector handshake quirk.** The Python dissector splits the
    unencrypted `baseAppLogin` and the encrypted `BASEMSG_REPLY_MESSAGE`
    bodies into spurious sub-messages because the message walker treats

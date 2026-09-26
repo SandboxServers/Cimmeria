@@ -1011,10 +1011,10 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| SOAP auth client (Phase 1+2) | IM | -- | wireclient/src/auth.rs | 357 lines, driven against an in-process `AuthService` over real TCP by tests/auth_smoke.rs. This is a live SOAP client, not replay |
+| SOAP auth client (Phase 1+2) | IM | -- | wireclient/src/auth.rs | 357 lines, driven against an in-process `AuthService` over real TCP by tests/it/auth_smoke.rs. This is a live SOAP client, not replay |
 | Mercury phase-3 handshake | IM | Socket loop | wireclient/src/handshake.rs | 546 lines: `build_baseapp_login` + reply parser. It produces and consumes bytes but **cannot perform a handshake**, because nothing sends them |
 | Pcap+key replay | KM | Socket loop | tools/pcap_to_session.py only | The Python tool converts `.pcap` + `keys.txt` → JSONL. No replay engine exists on either side |
-| Session-trace JSONL | IM | -- | wireclient/src/session_trace.rs | 567 lines: `Trace::from_jsonl_path`, c2s/s2c iterators, `Diff` + `DefaultPolicy`. 10 tests + tests/trace_load.rs |
+| Session-trace JSONL | IM | -- | wireclient/src/session_trace.rs | 567 lines: `Trace::from_jsonl_path`, c2s/s2c iterators, `Diff` + `DefaultPolicy`. 10 tests + tests/it/trace_load.rs |
 | LossyTransport drop/dup/reorder/latency | CW | -- | mercury/lossy_transport.rs | -- |
 | Loopback paired-channel tests | CW | -- | mercury/test_harness/ | 22 tests |
 | Network-chaos scenarios | CW | -- | mercury/test_harness/tests/chaos/ | 9 scenarios incl. `replay_lomiada`, `sustained_5pct_loss_60s`, `tx_window_overflow_with_recovery`. The last was flaky until #716 |

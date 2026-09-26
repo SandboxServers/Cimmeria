@@ -1,8 +1,8 @@
 //! Shared helpers for the NA37 two-client Castle visibility integration
 //! tests (`two_client_castle_visibility.rs` and
-//! `two_client_castle_visibility_chaos.rs`). Not itself a test target --
-//! `tests/support/` is a subdirectory, so cargo doesn't compile it as a
-//! separate binary; each test file does `mod support;` to pull these in.
+//! `two_client_castle_visibility_chaos.rs`). A plain module of the
+//! crate's one integration-test binary, declared once in
+//! `tests/it/main.rs`; the test modules reach it as `crate::support`.
 //!
 //! Live-DB only: needs real seeded accounts (`test`, and sentinel non-GM
 //! accounts each test inserts) and real `sgw_player` character rows each
@@ -11,17 +11,6 @@
 //! `crate::test_support::require_db_or_skip!`'s contract in
 //! `cimmeria-services` (this crate can't reach that private macro, so the
 //! same skip-vs-fail shape is reimplemented here).
-//!
-//! `mod support;` compiles this whole module into *each* including test
-//! binary, but the lossless and chaos test files each use only a subset
-//! of it (e.g. only the chaos file needs `bind_base_socket` /
-//! `start_server_with_base_transport` / `wait_for_recording`) --
-//! `#![allow(dead_code)]` avoids per-binary unused-item warnings for
-//! items a *different* sibling binary uses. `cargo check -p
-//! cimmeria-wireclient --all-targets` (which builds every test binary in
-//! one pass) is what would otherwise flag these.
-
-#![allow(dead_code)]
 
 use std::net::TcpListener as StdTcpListener;
 use std::sync::Arc;
@@ -81,9 +70,8 @@ pub async fn live_db_pool_or_skip() -> Option<PgPool> {
 
 // No macro here: `require_db_or_skip!`'s defining feature (an early
 // `return` out of the *caller's* function) doesn't survive being called
-// through a plain function, and `#[macro_export]` + `$crate` gets murky
-// across the "shared module included into several independent test
-// binaries" shape this file lives in. Each test just inlines:
+// through a plain function, so the helper returns an `Option` and each
+// test just inlines:
 // `let pool = match support::live_db_pool_or_skip().await { Some(p) => p, None => return };`
 
 // ── Sentinel account / character fixtures ───────────────────────────────
@@ -185,9 +173,14 @@ pub struct RunningServer {
 /// worlds could wrongly appear to share a space -- and, worse here, an
 /// entity that fails `CreateEntity` is never actually registered in any
 /// `SpaceManager` space, so it can never appear in anyone's AoI). `chdir`
-/// process-wide to the repo root once before starting the server, which is
-/// safe because both test files require `--test-threads=1` for their
-/// live-DB isolation anyway.
+/// process-wide to the repo root once before starting the server. That
+/// is shared with every other module of this test binary, and is safe
+/// because it always lands on the same absolute directory and none of
+/// the other modules resolves a CWD-relative path (`trace_load` finds
+/// its fixture through `CARGO_MANIFEST_DIR`, and `auth_smoke`'s
+/// `AuthService` runs with TLS off, so it reads no files). The live-DB
+/// modules also run serialised (`--test-threads=1` under `cargo test`,
+/// a process per test under nextest).
 pub fn chdir_to_repo_root_for_entities_xml() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let repo_root = manifest_dir
