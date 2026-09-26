@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 use super::primitives::Cursor;
 
-pub fn decode(msg_id: u8, payload: &[u8]) -> Option<Value> {
+pub(super) fn decode(msg_id: u8, payload: &[u8]) -> Option<Value> {
     match msg_id {
         0x03 => decode_avatar_update_explicit(payload),
         // SGWPlayer client method 70 — `onActiveSlotUpdate` is OUTBOUND,

@@ -14,7 +14,6 @@ pub mod minigame;
 pub mod orchestrator;
 mod orchestrator_postgres;
 mod orchestrator_shards;
-pub mod wire_log;
 
 // Split out to `cimmeria-auth` (wave W1a of
 // docs/architecture/services-crate-split.md). Re-exported at the old paths so
@@ -32,6 +31,12 @@ pub use cimmeria_cell_catalog::ability_tree;
 // Re-exported at the old paths, so `crate::mercury::…` here and
 // `cimmeria_services::{mercury, firehose}` downstream keep resolving.
 pub use cimmeria_wire::{firehose, mercury};
+
+// The decoded wire-message stream and the per-session packet tap, split out
+// to `cimmeria-wire-log` (wave W3b). Re-exported at the old path, so
+// `crate::wire_log::…` here and `cimmeria_services::wire_log::tap` downstream
+// keep resolving.
+pub use cimmeria_wire_log::wire_log;
 
 /// The `mercury::aoi` test that drives a `SpaceManager`, which is still in
 /// this crate. Test-only.

@@ -21,6 +21,9 @@ cimmeria-auth = { workspace = true }
 # The Base<->Cell wire contract (method indices, BSF bits, payload
 # serializers), split out of this crate; old paths re-export it.
 cimmeria-wire = { workspace = true }
+# The decoded wire-message stream (`wire.in` / `wire.out`) and the per-session
+# packet tap, split out in wave W3b. Re-exported from lib.rs as `wire_log`.
+cimmeria-wire-log = { workspace = true }
 # Discord notification emits at semantic seams (login/world-entry/disconnect/
 # errors/…). The crate's global-singleton `emit_*` API means no handle
 # threading — calls are no-ops until the server bin runs `cimmeria_discord::init`.

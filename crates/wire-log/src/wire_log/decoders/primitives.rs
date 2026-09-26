@@ -8,13 +8,13 @@
 /// Cursor for in-order primitive reads. Tracks position; advances on
 /// successful reads. Failures leave the cursor untouched (caller
 /// will typically abort the decode and return `None`).
-pub struct Cursor<'a> {
+pub(super) struct Cursor<'a> {
     buf: &'a [u8],
     pos: usize,
 }
 
 impl<'a> Cursor<'a> {
-    pub fn new(buf: &'a [u8]) -> Self {
+    pub(super) fn new(buf: &'a [u8]) -> Self {
         Self { buf, pos: 0 }
     }
 
@@ -24,22 +24,22 @@ impl<'a> Cursor<'a> {
     /// current decoders read fixed schemas and don't need it; Phase 2
     /// decoders for ARRAY-tailed methods will use it heavily.
     #[allow(dead_code)]
-    pub fn remaining(&self) -> usize {
+    pub(super) fn remaining(&self) -> usize {
         self.buf.len().saturating_sub(self.pos)
     }
 
-    pub fn u8(&mut self) -> Option<u8> {
+    pub(super) fn u8(&mut self) -> Option<u8> {
         let b = *self.buf.get(self.pos)?;
         self.pos += 1;
         Some(b)
     }
 
-    pub fn i8(&mut self) -> Option<i8> {
+    pub(super) fn i8(&mut self) -> Option<i8> {
         self.u8().map(|b| b as i8)
     }
 
     #[allow(dead_code)]
-    pub fn u16_le(&mut self) -> Option<u16> {
+    pub(super) fn u16_le(&mut self) -> Option<u16> {
         let end = self.pos.checked_add(2)?;
         let slice = self.buf.get(self.pos..end)?;
         self.pos = end;
@@ -47,18 +47,18 @@ impl<'a> Cursor<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn i16_le(&mut self) -> Option<i16> {
+    pub(super) fn i16_le(&mut self) -> Option<i16> {
         self.u16_le().map(|v| v as i16)
     }
 
-    pub fn u32_le(&mut self) -> Option<u32> {
+    pub(super) fn u32_le(&mut self) -> Option<u32> {
         let end = self.pos.checked_add(4)?;
         let slice = self.buf.get(self.pos..end)?;
         self.pos = end;
         Some(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
     }
 
-    pub fn i32_le(&mut self) -> Option<i32> {
+    pub(super) fn i32_le(&mut self) -> Option<i32> {
         self.u32_le().map(|v| v as i32)
     }
 
@@ -67,7 +67,7 @@ impl<'a> Cursor<'a> {
     // unused at the function level rather than the module level so a
     // genuine unused primitive elsewhere still warns.
     #[allow(dead_code)]
-    pub fn u64_le(&mut self) -> Option<u64> {
+    pub(super) fn u64_le(&mut self) -> Option<u64> {
         let end = self.pos.checked_add(8)?;
         let slice = self.buf.get(self.pos..end)?;
         self.pos = end;
@@ -77,11 +77,11 @@ impl<'a> Cursor<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn i64_le(&mut self) -> Option<i64> {
+    pub(super) fn i64_le(&mut self) -> Option<i64> {
         self.u64_le().map(|v| v as i64)
     }
 
-    pub fn f32_le(&mut self) -> Option<f32> {
+    pub(super) fn f32_le(&mut self) -> Option<f32> {
         self.u32_le().map(f32::from_bits)
     }
 
@@ -89,7 +89,7 @@ impl<'a> Cursor<'a> {
     /// many `u16` LE code units. Returns the decoded UTF-8 string
     /// (lossy on invalid surrogates — observability shouldn't fail
     /// the parse for cosmetic encoding issues).
-    pub fn wstring(&mut self) -> Option<String> {
+    pub(super) fn wstring(&mut self) -> Option<String> {
         let char_count = self.u32_le()? as usize;
         let bytes_needed = char_count.checked_mul(2)?;
         let end = self.pos.checked_add(bytes_needed)?;

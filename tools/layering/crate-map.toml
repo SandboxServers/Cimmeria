@@ -84,7 +84,8 @@ cimmeria-services = [
 # ability_tree::points_property. `cell::dispatch` keeps the two as private
 # imports of the wire modules.
 
-"wire_log" = "cimmeria-wire-log"
+# cimmeria-wire-log (`wire_log`) is extracted (W3b): crates/services/src only
+# re-exports it, so it has no row here.
 "minigame" = "cimmeria-minigame"
 
 # cimmeria-cell-catalog (`cell::spawner`, `ability_tree`,

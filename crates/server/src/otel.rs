@@ -614,6 +614,12 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_wire::mercury::world_data::map_loaded"
         ));
+        // The decoded wire-message stream (one row per message, not per
+        // datagram) has always been `cimmeria-server`; wave W3b moved its
+        // code from `cimmeria_services::wire_log` to `cimmeria-wire-log`.
+        assert!(!is_network_noise_target("wire.in"));
+        assert!(!is_network_noise_target("wire.out"));
+        assert!(!is_network_noise_target("cimmeria_wire_log::wire_log::tap"));
         // Empty / arbitrary string — defaults to "not noise" (server).
         assert!(!is_network_noise_target(""));
         assert!(!is_network_noise_target("unknown"));

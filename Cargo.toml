@@ -39,6 +39,7 @@ members = [
     "crates/resources",
     "crates/auth",
     "crates/wire",
+    "crates/wire-log",
     "crates/cell-cover",
     "crates/cell-catalog",
 ]
@@ -62,6 +63,7 @@ default-members = [
     "crates/resources",
     "crates/auth",
     "crates/wire",
+    "crates/wire-log",
     "crates/cell-cover",
     "crates/cell-catalog",
 ]
@@ -214,6 +216,7 @@ cimmeria-test-support = { path = "crates/test-support" }
 cimmeria-resources = { path = "crates/resources" }
 cimmeria-auth = { path = "crates/auth" }
 cimmeria-wire = { path = "crates/wire" }
+cimmeria-wire-log = { path = "crates/wire-log" }
 cimmeria-cell-cover = { path = "crates/cell-cover" }
 cimmeria-cell-catalog = { path = "crates/cell-catalog" }
 

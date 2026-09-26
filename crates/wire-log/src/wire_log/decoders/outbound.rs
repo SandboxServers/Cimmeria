@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 
 use super::primitives::Cursor;
 
-pub fn decode(method_index: u16, args: &[u8]) -> Option<Value> {
+pub(super) fn decode(method_index: u16, args: &[u8]) -> Option<Value> {
     match method_index {
         // SGWSpawnableEntity
         1 => decode_on_sequence(args),

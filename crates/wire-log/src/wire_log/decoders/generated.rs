@@ -4,8 +4,8 @@
 //!
 //! ```sh
 //! python tools/wire_decoder_codegen.py > \
-//!     crates/services/src/wire_log/decoders/generated.rs
-//! cargo fmt -p cimmeria-services
+//!     crates/wire-log/src/wire_log/decoders/generated.rs
+//! cargo fmt -p cimmeria-wire-log
 //! ```
 //!
 //! Source schemas: `docs/protocol/client-method-dispatch-table.md`.
