@@ -75,6 +75,7 @@ impl CellEntity {
             pending_slot_swap_at: None,
             pending_slot_swap_target: None,
             last_aoe_deaths: Vec::new(),
+            pending_cast: None,
             active_effects: Vec::new(),
             holster_animation_complete_at: None,
             ai_state: AiState::Idle,
