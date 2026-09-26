@@ -215,6 +215,32 @@ Learned extracting `cimmeria-base-world-entry` (B3, the base track's third wave)
   proof each row: removing `…::world_entry_appearance` changed nothing because
   `…::world_entry` matched it, so the row was dropped as redundant.
 
+Learned extracting `cimmeria-base` (B4, the top of the base track):
+
+- **A crate whose name prefixes its siblings' names poisons their guards.** EnvFilter
+  matches by string prefix, so an `OTEL_FILTER` row `cimmeria_base=debug` also matches
+  `cimmeria_base_session`/`_methods`/`_world_entry`; deleting any of THEIR rows then
+  changes nothing and their parity guards can never fail again. Name the crate's one
+  top module instead (`cimmeria_base::base=debug`; stale-target resolves it) and pin
+  sibling independence: drop each sibling row from `OTEL_FILTER` and assert its DEBUG
+  row is no longer exported. Check this for any future `cimmeria_cell` crate too.
+- **`otel::is_network_noise_target` compares some targets with `==`**, so a moved
+  per-packet module (`connect_loop::{encrypted, cell_arms}`) silently leaves the
+  `cimmeria-network` index unless the exact string is repointed; `each_level_lands_in_its_index`
+  and `trace_directives_are_derived_from_the_tables` also hardcode those paths.
+- **A feature that moves down keeps a forwarding feature** in services
+  (`chaos-testing = ["cimmeria-base/chaos-testing"]`). `check --workspace --all-targets`
+  compiles wireclient's test through feature unification, which proves the forward;
+  also clippy the new crate alone with `--features <f>` for the gated branch.
+- **A normal dependency can become test-only** after the last production user moves
+  (`base-world-entry` only named behind `#[cfg(test)]` re-exports): drop the normal
+  entry, keep the `test-support` dev-dependency. Same for a lower crate's re-export in
+  services' `lib.rs` (`credential_redaction`) and a leaf dep (`cimmeria-game`).
+- **Revert-proof with a mutation script**: back up `filters.rs`, apply one mutation per
+  run (drop the row, widen it, restore an old file row), run
+  `nextest -E 'test(parity_tests) | test(stale_target) | test(target_scan)'`, restore.
+  Five mutations fit in ~1 min of lane time.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

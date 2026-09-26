@@ -9,7 +9,7 @@
 
 ## Status
 
-**Accepted** — implemented for the whole `crates/services/src/base/` handler
+**Accepted** — implemented for the whole base handler (`crates/base/`, `crates/base-*/`)
 surface. Recv side and the `crates/services/src/cell/` direct-emit path are
 explicitly out of scope (see *Consequences* and *Out of scope*).
 
@@ -46,7 +46,7 @@ production or in fragile real-loopback timing tests.
 
 Separately, `crates/mercury/src/nub.rs` had carried `send_to`/`recv_from`
 as `todo!()` stubs because the actual I/O path lives in
-`services/src/base/connect_loop/mod.rs`, leaving no clean home for the
+`crates/base/src/base/connect_loop/mod.rs`, leaving no clean home for the
 byte-emitting layer. The `Nub` struct itself was a parallel registry
 never wired into the tokio per-session model and was deleted alongside
 this change; `TickActions` and the tick-driver contract moved into

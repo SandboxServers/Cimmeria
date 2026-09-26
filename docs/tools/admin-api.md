@@ -157,7 +157,7 @@ real — they reflect actual service-running state and a live DB health check.
 The plumbing to make this live already exists on the services side and is
 simply not wired up: `OnlinePlayer` (`crates/base-session/src/base/mod.rs:84`),
 `archetype_name()` (`crates/base-session/src/base/mod.rs:95`), and
-`online_players()` (`crates/services/src/base/service.rs:90`). Nothing in
+`online_players()` (`crates/base/src/base/service.rs:90`). Nothing in
 `admin-api` calls `online_players()` today. When it is wired, the per-player
 fields are expected to be:
 
@@ -531,7 +531,7 @@ the Tauri IPC commands below are a second, parallel path to the same job.
 | `crates/admin-api/src/middleware.rs` | CORS configuration |
 | `crates/services/src/orchestrator.rs` | Shared state provider |
 | `crates/base-session/src/base/mod.rs` | `OnlinePlayer` struct (line 84) + `archetype_name()` (line 95) |
-| `crates/services/src/base/service.rs` | `online_players()` (line 90) — not yet called by admin-api |
+| `crates/base/src/base/service.rs` | `online_players()` (line 90) — not yet called by admin-api |
 | `crates/admin-api/src/routes/editor.rs` | HTTP chain-editor content + draft persistence |
 | `crates/admin-api/src/routes/audit.rs` | `GET /api/audit/logins` |
 | `crates/admin-api/src/routes/dev_session/` | Launcher dev-session token mint + refresh (`token.rs` claims/HMAC, `quota.rs` mint+refresh limits) |

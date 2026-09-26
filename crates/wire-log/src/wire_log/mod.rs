@@ -30,7 +30,7 @@
 //! # Capture points
 //!
 //! * **Inbound** — [`log_inbound`] is called from the bundle scanner
-//!   in `crates/services/src/base/connect_loop/encrypted/mod.rs` after
+//!   in `crates/base/src/base/connect_loop/encrypted/mod.rs` after
 //!   `read_client_message_payload` extracts each message's payload.
 //! * **Outbound** — [`log_outbound_entity_method`] is called from the
 //!   `CellToBaseMsg::EntityMethodCall` and `WitnessEntityMethod` recv

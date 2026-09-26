@@ -32,8 +32,8 @@ mod teleport;
 // resolves world names through it from below world entry.
 pub(crate) use cimmeria_base_session::base::world_entry::space_registry;
 
-// Public surface: the connect loop and `BaseService`, still in
-// `cimmeria-services`, import these through `super::world_entry::handle_*`.
+// Public surface: the connect loop and `BaseService`, in `cimmeria-base`,
+// import these through `super::world_entry::handle_*`.
 pub use cell_dispatch::handle_cell_message;
 pub use enable_entities::handle_enable_entities;
 pub use map_loaded::handle_map_loaded;

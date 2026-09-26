@@ -24,7 +24,7 @@ all `<Exposed/>`):
 - `organizationRankChange(INT32 aOrganizationId, WSTRING aPlayerName, UINT8 aRank)` — RTTI `0x019be9b0`
 
 All four have **no base-dispatch arm in Rust** today; they hit the
-catch-all warn at `crates/services/src/base/dispatch.rs:333-347`.
+catch-all warn at `crates/base/src/base/dispatch/mod.rs:151-165`.
 
 ## Org / squad cell methods (rosters, text, bank, loot)
 

@@ -26,7 +26,7 @@ There are three services and the message goes to exactly one of them:
 | Service | What it handles | Where the dispatcher lives |
 |---|---|---|
 | **Auth** | Pre-game: login, shard select. SOAP/HTTP. | [`crates/auth/src/auth/handlers.rs`](../../crates/auth/src/auth/handlers.rs) |
-| **Base** | Account-level state, chat, persistence, world entry. Most non-spatial messages. | [`crates/services/src/base/dispatch/`](../../crates/services/src/base/dispatch/) and the world-entry methods under [`crates/base-methods/src/base/world_entry/methods/`](../../crates/base-methods/src/base/world_entry/methods/) |
+| **Base** | Account-level state, chat, persistence, world entry. Most non-spatial messages. | [`crates/base/src/base/dispatch/`](../../crates/base/src/base/dispatch/) and the world-entry methods under [`crates/base-methods/src/base/world_entry/methods/`](../../crates/base-methods/src/base/world_entry/methods/) |
 | **Cell** | Spatial / runtime: movement, combat, abilities, AoI. | [`crates/services/src/cell/`](../../crates/services/src/cell/) (per-system dispatchers) |
 
 If you're not sure which it is, search [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md) for the method index — the table identifies the target service for every documented method.
@@ -48,7 +48,7 @@ The canonical *source* of the method index is the entity definition in [`entitie
 
 ## The dispatcher pattern
 
-Take the base-side dispatcher as the canonical shape. From [`crates/services/src/base/dispatch/mod.rs`](../../crates/services/src/base/dispatch/mod.rs):
+Take the base-side dispatcher as the canonical shape. From [`crates/base/src/base/dispatch/mod.rs`](../../crates/base/src/base/dispatch/mod.rs):
 
 ```rust
 pub(crate) mod sgw_player_base {
@@ -111,7 +111,7 @@ let flags = i32::from_le_bytes(payload[off..off + 4].try_into()?);
 off += 4;
 ```
 
-[`crates/services/src/base/character_create.rs:47-80`](../../crates/services/src/base/character_create.rs) is the canonical worked example — note that it logs and returns a typed failure on every parse error rather than propagating, because a half-decoded payload means the channel is already out of sync.
+[`crates/base/src/base/character_create.rs:47-80`](../../crates/base/src/base/character_create.rs) is the canonical worked example — note that it logs and returns a typed failure on every parse error rather than propagating, because a half-decoded payload means the channel is already out of sync.
 
 **The wire format must match the `.def`.** A wrong type, wrong endianness, or wrong length-prefix encoding silently desyncs the channel. There is no graceful "wrong format" — the client just stops responding.
 
@@ -208,8 +208,8 @@ The maintainer reviewing your PR will check.
 
 The cleanest recent worked example is the `CANCEL_LOG_OFF` handler (msg id `0xD7`):
 
-- Constant: `crates/services/src/base/dispatch/mod.rs:61`
-- Dispatcher arm: `crates/services/src/base/dispatch/mod.rs:139`, same file.
+- Constant: `crates/base/src/base/dispatch/mod.rs:61`
+- Dispatcher arm: `crates/base/src/base/dispatch/mod.rs:139`, same file.
 - Handler: same file, free function.
 - Decode: zero-arg method — just an ack.
 - Tests: unit test for the dispatch path; live-DB guard for the session-state cancellation.

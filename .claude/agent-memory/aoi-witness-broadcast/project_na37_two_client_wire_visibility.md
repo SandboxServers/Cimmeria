@@ -72,7 +72,7 @@ NA34) only ran over lossless localhost, while the owner plays over the
 internet. Added `crates/wireclient/tests/two_client_castle_visibility_chaos.rs`
 plumbing a real `LossyTransport` into a real `BaseService` socket via a
 new `chaos-testing` Cargo feature +
-`BaseService::set_transport_override` seam (`crates/services/src/base/service.rs`).
+`BaseService::set_transport_override` seam (`crates/base/src/base/service.rs`).
 
 **Confirmed defect:** `Channel::receive_packet`'s in-order RX-window
 delivery gate (`crates/mercury/src/channel/channel_core.rs`) is fully

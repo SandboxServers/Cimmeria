@@ -17,7 +17,7 @@
 //!   first_req_offset = 0                           (footer)
 //!
 //!   The 2-byte gap at body[7..9] matches the server's parser at
-//!   `crates/services/src/base/login.rs::parse_baseapp_login` (reads
+//!   `crates/base/src/base/login/mod.rs::parse_baseapp_login` (reads
 //!   `account_id` from `body[9..13]` at line 218, not body[7..11]). The
 //!   gap is observable in any captured `baseAppLogin` byte dump — e.g.
 //!   `00 19 00 25 9d 01 00 [00 00] 01 00 00 00 14 …`.

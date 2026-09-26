@@ -25,7 +25,7 @@ view:
 2. **`service.name = cimmeria-network`** — the high-noise wire-level
    index. DEBUG and INFO only: every `mercury.packet` event, every
    bundle decrypt + cell-arms dispatch from
-   `cimmeria_services::base::connect_loop::*`, tick-sync heartbeats.
+   `cimmeria_base::base::connect_loop::*`, tick-sync heartbeats.
    Query this index when chasing wire-level issues; it never drowns the
    main view at normal severity.
 3. **`service.name = cimmeria-trace`** — TRACE-level rows only (NA25).

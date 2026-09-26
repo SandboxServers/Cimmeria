@@ -63,7 +63,7 @@ jobs:
               // World entry → spec.world.world-entry
               { match: 'crates/services/src/cell/cell_methods/player/world.rs',    chapter: 'spec.world.world-entry' },
               // Mission state machine → spec.missions.lifecycle-and-objectives
-              { match: 'crates/services/src/base/missions/',                       chapter: 'spec.missions.lifecycle-and-objectives' },
+              { match: 'crates/base-methods/src/base/world_entry/methods/missions/', chapter: 'spec.missions.lifecycle-and-objectives' },
             ];
 
             const pr = context.payload.pull_request;

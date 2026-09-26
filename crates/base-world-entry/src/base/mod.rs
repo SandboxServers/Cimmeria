@@ -4,8 +4,8 @@
 //! crate holds. The other names here are the session-layer modules and types
 //! that code reaches through `crate::base::…` and `super::super::…` paths,
 //! re-exported privately from `cimmeria-base-session`, so those paths compile
-//! unchanged. The service, the connect loop and the base-method dispatch stay
-//! in `cimmeria-services` (wave B4 moves them to `cimmeria-base`).
+//! unchanged. The service, the connect loop and the base-method dispatch are
+//! in `cimmeria-base` (wave B4).
 
 pub mod character;
 pub mod world_entry;

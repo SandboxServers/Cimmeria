@@ -14,10 +14,10 @@
 //!
 //! Split out of `cimmeria-services` (wave B3 of
 //! `docs/architecture/services-crate-split.md`). The module tree keeps its old
-//! nesting, so `crate::base::…` and `super::…` paths inside it are unchanged,
-//! and `cimmeria-services` re-exports `base::{world_entry, character}` at their
-//! old paths, where the connect loop and `BaseService` call them. The cell is
-//! reached only through the Base<->Cell messages in `cimmeria-wire`.
+//! nesting, so `crate::base::…` and `super::…` paths inside it are unchanged.
+//! The connect loop and `BaseService` in `cimmeria-base` call it through
+//! `base::{world_entry, character}`. The cell is reached only through the
+//! Base<->Cell messages in `cimmeria-wire`.
 
 #![warn(unreachable_pub)]
 
