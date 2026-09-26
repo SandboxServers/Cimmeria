@@ -89,7 +89,7 @@ tracing::debug!(
   [`observability.md`](observability.md#stable-target-catalog).
 
 **Reference:** the `npc_ai` state handlers in
-[`crates/services/src/cell/service/npc_ai/mod.rs`](../../crates/services/src/cell/service/npc_ai/mod.rs)
+[`crates/cell-combat/src/cell/service/npc_ai/mod.rs`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs)
 — every `patrol_arrived`, `patrol_waypoint_set`, `investigate_routed`,
 `follow_routed` event uses this shape.
 
@@ -99,7 +99,7 @@ The cell tick loop calls `npc_ai_fight`, `npc_ai_patrol`,
 `npc_ai_wander`, ... once per NPC per tick. At 50 NPCs × 1Hz that's 50
 handler invocations per second. **Each of those handlers must NOT add
 its own `#[tracing::instrument]`** — the parent dispatcher span at
-[`npc_ai/mod.rs:79`](../../crates/services/src/cell/service/npc_ai/mod.rs#L79)
+[`npc_ai/mod.rs:79`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs#L79)
 already wraps every call. Adding a span per handler would 2× the span
 volume for no diagnostic benefit (the parent already carries
 `npc_id`/`ai_state`/`space_id`).

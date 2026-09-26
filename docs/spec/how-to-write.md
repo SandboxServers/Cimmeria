@@ -121,7 +121,7 @@ If your chapter is server-only, mark Section 2 `N/A — server-only feature, no 
 
 Section 4 is where you derive what Cimmeria *should* do from sections 1–3. This is the load-bearing reasoning section. The reader should be able to read Section 4 in isolation and predict what `crates/` modules and types will appear in Section 5.
 
-**No line numbers.** Cite by symbol path: `crates/services/src/cell/combat/threat.rs::ThreatList::add`. See [conventions.md § the no-line-numbers rule](conventions.md#the-no-line-numbers-rule-for-sections-4-and-5) for why.
+**No line numbers.** Cite by symbol path: `crates/cell-combat/src/cell/combat/threat.rs::ThreatList::add`. See [conventions.md § the no-line-numbers rule](conventions.md#the-no-line-numbers-rule-for-sections-4-and-5) for why.
 
 Section 4 calls out divergences from Section 3 explicitly:
 

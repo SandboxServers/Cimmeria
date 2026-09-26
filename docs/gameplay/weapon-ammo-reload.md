@@ -88,7 +88,7 @@ Client                                         Cell                        Base
 
 The fire-gate skips the ammo check entirely for non-players (`entity.is_player == false`), so NPC mobs do not consume rounds — see [NPC ammo](#npc-ammo).
 
-Implementation: [`crates/services/src/cell/abilities/mod.rs:259-281`](../../crates/services/src/cell/abilities/mod.rs#L259) for the gate and consume; the `onStatUpdate` is dispatched from the post-resolve drain at [`abilities.rs:511-515`](../../crates/services/src/cell/abilities/mod.rs#L511).
+Implementation: [`crates/cell-combat/src/cell/abilities/mod.rs:259-281`](../../crates/cell-combat/src/cell/abilities/mod.rs#L259) for the gate and consume; the `onStatUpdate` is dispatched from the post-resolve drain at [`abilities.rs:511-515`](../../crates/cell-combat/src/cell/abilities/mod.rs#L511).
 
 ## Wire flow — reload
 
@@ -196,7 +196,7 @@ The flush hook lives on the `DisconnectEntity` cell handler — graceful logoff 
 
 **Trade-off**: a server crash mid-magazine — or any crash before the disconnect-detection window elapses — loses up to one magazine of ammo per active slot. We accepted this over write-per-fire because (a) ammo is cheap and easily refilled in-game, (b) write-per-fire would dominate the DB write rate during sustained combat, and (c) mid-magazine state is already non-deterministic from the player's view.
 
-Helper: [`flush_dirty_bandolier_ammo()`](../../crates/services/src/cell/cell_methods/inventory/bandolier/active_slot.rs#L19) drains the set into one `BandolierAmmoUpdate` per slot.
+Helper: [`flush_dirty_bandolier_ammo()`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs#L19) drains the set into one `BandolierAmmoUpdate` per slot.
 
 ## Client UI
 
@@ -225,7 +225,7 @@ if required_ammo > 0 && entity.is_player && current_ammo < required_ammo { … a
 
 This means mobs do not currently consume rounds, do not need to reload, and do not have their `bandolier_ammo_dirty` populated by combat. The legacy [`SGWMob.py`](../../deprecated/python/cell/SGWMob.py) implemented full mob ammo (`getAmmoStat`/`getClipSize`/`triggerReload`) but in practice mobs were rarely ammo-limited. We deferred the port; if/when mob reload is needed, three changes are required together — partial work will silently break:
 
-1. Remove the `is_player` short-circuit in [`abilities.rs`](../../crates/services/src/cell/abilities/mod.rs) so the ammo gate runs for NPCs.
+1. Remove the `is_player` short-circuit in [`abilities.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs) so the ammo gate runs for NPCs.
 2. Add an AI-driven `requestReload` equivalent that calls `set_slot_ammo` + `reload_complete_at` on the mob entity.
 3. **Widen `reload_completion_tick` beyond players.** It currently iterates [`space_mgr.all_player_entity_ids()`](../../crates/services/src/cell/service/mod.rs) only — an NPC that sets `reload_complete_at` will never be promoted by the existing tick, leaving the magazine empty forever. Either change the tick to scan all entities with `reload_complete_at = Some(_)`, add a `space_mgr.all_reloadable_entity_ids()` helper, or extend the iteration to include NPCs in fighting state.
 
@@ -288,7 +288,7 @@ Client                       Cell                              Base / DB
 | File | Purpose |
 |------|---------|
 | [`crates/entity/src/cell_entity.rs`](../../crates/entity/src/cell_entity/mod.rs) | `BandolierItem`, `active_ammo()`/`active_clip_size()`/`active_ammo_type()`/`set_slot_ammo()`/`refill_active_slot()`, `reload_complete_at`, `bandolier_ammo_dirty` |
-| [`crates/services/src/cell/abilities/mod.rs`](../../crates/services/src/cell/abilities/mod.rs) | `handle_use_ability` — fire-gate, consume, `onStatUpdate` drain |
+| [`crates/cell-combat/src/cell/abilities/mod.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs) | `handle_use_ability` — fire-gate, consume, `onStatUpdate` drain |
 | [`crates/services/src/cell/cell_methods/player/world.rs`](../../crates/services/src/cell/cell_methods/player/world/mod.rs) | `REQUEST_RELOAD` dispatch, `handle_reload` (warmup deadline + cooldown) |
 | [`crates/services/src/cell/service/mod.rs`](../../crates/services/src/cell/service/mod.rs) | `reload_completion_tick` (sole refill path), `InitPlayerState` bandolier seeding |
 | [`crates/services/src/cell/cell_methods/inventory.rs`](../../crates/services/src/cell/cell_methods/inventory.rs) | `REQUEST_ACTIVE_SLOT_CHANGE`, `REQUEST_AMMO_CHANGE`, `flush_dirty_bandolier_ammo` |

@@ -9,7 +9,7 @@ last_updated: 2026-09-18
 
 > **Last updated**: 2026-09-18
 > **Status**: Partially implemented. Firing today: ability begin/end, entity death, item equip/unequip/reload/use, ring transport, stargate open (`Stargate_MakeGate`) and crossing (`Stargate_CrossGate`), content-chain `play_sequence`, and the debug console commands. Not firing: all effect-lifecycle sequences, ability interrupt/failed, DHD chevrons, `Stargate_DestroyGate`, designer slots, spawn/despawn, the visibility-safety nudge, and every NVP parameter override.
-> **Implementation**: `crates/services/src/cell/abilities/` (ability + death), `cell/cell_methods/player/world/item_sequence.rs` (item handling), `cell/ring_transport/`, `cell/gate_travel/sequences.rs` (stargate 6100/6113), `cell/console/net.rs` (debug commands), `cell/spawner/abilities.rs` (`event_set_id → sequence_id` load)
+> **Implementation**: `crates/cell-combat/src/cell/abilities/` (ability + death), `cell/cell_methods/player/world/item_sequence.rs` (item handling), `cell/ring_transport/`, `cell/gate_travel/sequences.rs` (stargate 6100/6113), `cell/console/net.rs` (debug commands), `cell/spawner/abilities.rs` (`event_set_id → sequence_id` load)
 > **Data / defs**: `entities/defs/SGWSpawnableEntity.def`, `db/resources/Events/`
 >
 > The behavioural descriptions below that name `.py` files are historical — they document the original server's intent, which the Rust implementation mirrors. Where the two diverge, the Rust code is authoritative and the divergence is called out inline.
@@ -219,7 +219,7 @@ resultEffects = {
 | 4002 | `Item_Reload` | Weapon reloaded — `cell_methods/player/world/reload.rs:255` |
 | 4003 | `Item_Use` | Item used |
 
-All four route through `fire_item_sequence` in [`cell/cell_methods/player/world/item_sequence.rs`](../../crates/services/src/cell/cell_methods/player/world/item_sequence.rs). The lookup is **archetype-keyed, not item-keyed**: `archetype_item_event_set(archetype_id)` maps every human archetype to event set 804 (`"Item handling generic event set"`, kismet `KIS-abilities_human.KIS-handling`) and Asgard (archetype 5) to 1455. The per-event sequence is then resolved from `(event_set_id, event_id)`. A missing archetype, event set, or sequence is a silent no-op with a debug log, mirroring the original `if eventSet else None` fallthrough.
+All four route through `fire_item_sequence` in [`cell/cell_methods/player/world/item_sequence.rs`](../../crates/cell-combat/src/cell/cell_methods/player/world/item_sequence.rs). The lookup is **archetype-keyed, not item-keyed**: `archetype_item_event_set(archetype_id)` maps every human archetype to event set 804 (`"Item handling generic event set"`, kismet `KIS-abilities_human.KIS-handling`) and Asgard (archetype 5) to 1455. The per-event sequence is then resolved from `(event_set_id, event_id)`. A missing archetype, event set, or sequence is a silent no-op with a debug log, mirroring the original `if eventSet else None` fallthrough.
 
 The separate `items_event_sets` table (2,767 rows) maps item → event → ability and **is** read — by `cell/abilities/resolve.rs`, for per-weapon ability resolution (`EVENT_ITEM_USE_ABILITY` 5, `EVENT_ITEM_MELEE` 6, `EVENT_ITEM_RANGED` 7). It is not the source of the `Item_*` animation lookup above.
 

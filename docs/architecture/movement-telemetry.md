@@ -159,7 +159,7 @@ Two properties that are easy to break:
   silently deflates the rate an operator alerts on.
 
 The same primitive backs `npc_ai.path_fail` — see
-[`npc_ai/path_failure`](../../crates/services/src/cell/service/npc_ai/path_failure/mod.rs),
+[`npc_ai/path_failure`](../../crates/cell-combat/src/cell/service/npc_ai/path_failure/mod.rs),
 whose row additionally carries `fallback` (`direct_waypoint` |
 `path_unchanged`) because what the handler *did* about the failure is
 not derivable from why it failed.

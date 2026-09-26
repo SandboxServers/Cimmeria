@@ -12,7 +12,7 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (3, 'NID guard (SM
 
 -- Harset rebuild packet H11 (defect H-B8): before these two rows, every
 -- template without an `ability_set_id` fell back to `NPC_DEFAULT_ABILITY = 592`
--- (Pistol Shot, crates/services/src/cell/combat/threat/aggro.rs:19) -- Jaffa and
+-- (Pistol Shot, crates/cell-combat/src/cell/combat/threat/aggro.rs:19) -- Jaffa and
 -- Goa'uld NPCs firing a Tau'ri pistol.
 --
 -- H11 gave each of these sets exactly one ability, because
@@ -25,7 +25,7 @@ INSERT INTO ability_sets (ability_set_id, description) VALUES (3, 'NID guard (SM
 --
 -- Membership rule, unchanged by H09: an ability needs a non-NULL `event_set_id`,
 -- which is what gates the Ability_Begin/Ability_End `onSequence` broadcast
--- (crates/services/src/cell/abilities/use_ability/handle.rs:524). An ability with
+-- (crates/cell-combat/src/cell/abilities/use_ability/handle.rs:524). An ability with
 -- a NULL one deals damage and plays no animation -- which rules out 594 Strike,
 -- 540 Staff Strike, 479 Staff Blast, 1482 Ground Blast and 1768 Double Blast.
 --

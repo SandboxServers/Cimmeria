@@ -201,7 +201,7 @@ an already-connected witness saw.
 
 Cimmeria's implementation (`crates/services/src/cell/content/executor/world/mod.rs::set_aggression`,
 `crates/services/src/cell/console/net.rs::aggression`,
-`crates/services/src/cell/service/npc_ai/lifecycle/mod.rs::npc_ai_submit`)
+`crates/cell-combat/src/cell/service/npc_ai/lifecycle/mod.rs::npc_ai_submit`)
 broadcasts `onAggressionOverrideUpdate`/`onAggressionOverrideCleared` on
 every runtime change, not the client-dead `onEntityProperty` property.
 This is a deliberate divergence from the *literal* legacy wire call, in

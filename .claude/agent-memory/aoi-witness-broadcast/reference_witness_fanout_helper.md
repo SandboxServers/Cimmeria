@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-File: `crates/services/src/cell/abilities/messaging.rs`
+File: `crates/cell-combat/src/cell/abilities/messaging.rs`
 
 ## Three fanout helpers
 

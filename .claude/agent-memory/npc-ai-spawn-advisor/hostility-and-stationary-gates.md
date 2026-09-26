@@ -11,7 +11,7 @@ metadata:
 
 ## `HOSTILE_FACTION = 10` is the whole hostility model
 
-`crates/services/src/cell/combat/mod.rs:21`. Three consumers:
+`crates/cell-combat/src/cell/combat/mod.rs:21`. Three consumers:
 
 - `abilities/use_ability/handle.rs:224` — a harmful ability is **refused**
   when `target.is_player || target.faction != HOSTILE_FACTION`.

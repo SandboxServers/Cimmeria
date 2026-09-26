@@ -163,7 +163,7 @@ Crate names use the published crate name (the `name =` field in `Cargo.toml`), n
 
 ## The no-line-numbers rule for sections 4 and 5
 
-**Sections 4 (expected Rust) and 5 (actual Rust) must never cite line numbers.** Not in body text, not in `evidence_refs`, not in inline backticks. Always cite by symbol: `crates/services/src/cell/combat/threat.rs::ThreatList::add` in prose, `cimmeria-services::cell::combat::threat::ThreatList::add` in frontmatter.
+**Sections 4 (expected Rust) and 5 (actual Rust) must never cite line numbers.** Not in body text, not in `evidence_refs`, not in inline backticks. Always cite by symbol: `crates/cell-combat/src/cell/combat/threat.rs::ThreatList::add` in prose, `cimmeria-services::cell::combat::threat::ThreatList::add` in frontmatter.
 
 **Why:** Line numbers in Rust source rot on every refactor that moves a function around — and the Rust tree refactors often. A chapter that says "the cooldown check is at `threat.rs:147`" is wrong the day after the next `cargo fmt` adds an import. A chapter that says "the cooldown check is at `ThreatList::can_apply`" stays correct until the *symbol* moves, and if the symbol moves, that is a real semantic change that warrants a chapter revision anyway. The rule converts noise (line drift) into signal (semantic drift).
 
@@ -232,7 +232,7 @@ When a chapter references a finding doc, cite the path.
 
 When a chapter references a Rust symbol, cite the full path-qualified symbol with `::` separators.
 
-> The hit roll is computed by `crates/services/src/cell/combat/hit.rs::HitRoll::compute`.
+> The hit roll is computed by `crates/cell-combat/src/cell/combat/hit.rs::HitRoll::compute`.
 
 When a chapter references a Ghidra address, use the `ghidra://` scheme in inline code.
 

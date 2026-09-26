@@ -18,7 +18,7 @@ use crate::test_support::require_db_or_skip;
 /// this was redundant: item 19's `items_event_sets` binding `(2, 19, 1374,
 /// 5)` is loaded into `space_mgr.item_event_set_abilities` but read ONLY
 /// by the weapon-ability-resolution helpers in
-/// `crates/services/src/cell/abilities/resolve.rs`, both of which require
+/// `crates/cell-combat/src/cell/abilities/resolve.rs`, both of which require
 /// the item to be in the ACTIVE BANDOLIER SLOT — a consumable vial used
 /// from the mission-item container never reaches that code path. This test
 /// pins that chain 1034 is therefore the only place ability 1374 actually

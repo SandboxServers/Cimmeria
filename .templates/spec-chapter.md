@@ -144,7 +144,7 @@ supersedes: []
 <!--
   What Cimmeria MUST do, given sections 1–3.
 
-  NO LINE NUMBERS. Cite symbols: crates/services/src/cell/combat/threat/aggro.rs::generate_threat.
+  NO LINE NUMBERS. Cite symbols: crates/cell-combat/src/cell/combat/threat/aggro.rs::generate_threat.
   See docs/spec/conventions.md § "the no-line-numbers rule for sections 4 and 5".
 
   This is the load-bearing reasoning section. A reader should be able to

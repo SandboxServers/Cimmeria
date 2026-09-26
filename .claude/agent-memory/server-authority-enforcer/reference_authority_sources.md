@@ -14,4 +14,4 @@ metadata:
 - **Bandolier active slot:** `CellEntity.active_bandolier_slot` (cell) + `sgw_player.bandolier_slot` (base persist). Per-slot ammo lives in `sgw_inventory` row (container_id = 3).
 - **Looting target:** `CellEntity.looting_entity` — set by `interact()` after range check; not re-checked on subsequent lootItem calls. See [[exploit-loot-no-ownership]].
 - **Cooldowns:** `CellEntity.abilities` (`crates/entity/src/abilities`). `is_on_cooldown` + `start_ability_cooldown` are the canonical seam.
-- **Faction (hostility):** `CellEntity.faction` vs `combat::HOSTILE_FACTION` sentinel. Single-source-of-truth in `crates/services/src/cell/combat/mod.rs`. AoE and cone use it; single-target useAbility does NOT — see [[exploit-use-ability-no-faction]].
+- **Faction (hostility):** `CellEntity.faction` vs `combat::HOSTILE_FACTION` sentinel. Single-source-of-truth in `crates/cell-combat/src/cell/combat/mod.rs`. AoE and cone use it; single-target useAbility does NOT — see [[exploit-use-ability-no-faction]].

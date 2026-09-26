@@ -214,7 +214,7 @@ specification — the target behaviour, not shipped behaviour. wireclient:
   LOS always true"; v2: real navmesh).
 - Refuses to fire while cooldown is active.
 
-Server-side parity work tracked separately: `crates/services/src/cell/abilities/use_ability/`
+Server-side parity work tracked separately: `crates/cell-combat/src/cell/abilities/use_ability/`
 currently has range + cooldown + ammo + dead-state checks but no LOS check
 for player→NPC casts. Bringing player→NPC up to parity is part of Phase 5.
 
@@ -322,7 +322,7 @@ New corpora are added by:
 - Server-side Mercury phase-3 handshake:
   [`crates/services/src/base/login/`](../../crates/services/src/base/login/)
 - Server-side ability path that Phase 5 strengthens:
-  [`crates/services/src/cell/abilities/use_ability/`](../../crates/services/src/cell/abilities/use_ability/)
+  [`crates/cell-combat/src/cell/abilities/use_ability/`](../../crates/cell-combat/src/cell/abilities/use_ability/)
 - Two-client Castle visibility end-to-end test (NA37) and the AoI
   introduction cascade it validates over the wire:
   [player-ghost-aoi-cascade.md](player-ghost-aoi-cascade.md)

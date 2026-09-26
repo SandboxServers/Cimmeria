@@ -103,7 +103,7 @@ SET search_path = resources, pg_catalog;
 -- (no `script_name`), then calls `register_active_effect`, which returns
 -- `false` immediately for a non-pulsing effect WITHOUT sending anything --
 -- not `onTimerUpdate`, not any other wire packet (confirmed directly against
--- `crates/services/src/cell/effects/pulsing/register.rs`'s early
+-- `crates/cell-combat/src/cell/effects/pulsing/register.rs`'s early
 -- `if !effect.is_pulsing() { return false; }`, and pinned by the live-DB
 -- test `single_shot_scriptless_effect_registers_no_active_instance` in
 -- `executor/tests/effects.rs`). Firing ability 1597 today is therefore a
@@ -907,7 +907,7 @@ VALUES
 -- an `items_event_sets` row `(2, 19, 1374, 5)` binding it to ability 1374 on
 -- event_id 5 (USE), but that table is loaded into
 -- `space_mgr.item_event_set_abilities` and read ONLY by
--- `crates/services/src/cell/abilities/resolve.rs`'s weapon-ability-resolution
+-- `crates/cell-combat/src/cell/abilities/resolve.rs`'s weapon-ability-resolution
 -- helpers (`ability_for_active_weapon` / `is_ability_granted_by_active_weapon`),
 -- both of which require the item to be sitting in the player's ACTIVE
 -- BANDOLIER SLOT. A consumable vial used from the inventory/mission-item
@@ -973,7 +973,7 @@ VALUES
 -- any non-pulsing effect (`EffectDef::is_pulsing()` requires
 -- `pulse_count == 0 || pulse_count > 1`; 1 satisfies neither) WITHOUT
 -- sending any wire packet at all -- confirmed directly against
--- `crates/services/src/cell/effects/pulsing/register.rs`'s early
+-- `crates/cell-combat/src/cell/effects/pulsing/register.rs`'s early
 -- `if !effect.is_pulsing() { return false; }`, and pinned by the live-DB
 -- test `single_shot_scriptless_effect_registers_no_active_instance` in
 -- `executor/tests/effects.rs`. VERDICT: firing 1372 today is a complete

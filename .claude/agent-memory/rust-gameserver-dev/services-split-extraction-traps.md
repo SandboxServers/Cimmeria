@@ -166,6 +166,33 @@ Learned extracting `cimmeria-cell-world` (C1, the biggest cell wave, 22k lines):
   `cimmeria_<crate>=debug` or one file row must fail it; do it with a script
   file, not a heredoc (the `\`-newline continuations get mangled).
 
+Learned extracting `cimmeria-cell-combat` (C2, the first trait inversion):
+
+- **Prove an ordering guard by swapping, not by deleting.** The content-side
+  tests of the pulse path stayed green with "death, then health-below"
+  reversed: the real drain drops a lethal sample on `pct_after <= 0` either
+  way. Only a `RecordingContentEvents` assertion on the call sequence caught
+  the swap. Revert-proof each new order test by swapping the two calls.
+- **Script the §2E call-site rewrite by parsing the argument list** (balanced
+  parens, Nth argument), then read the forwarding wrappers: the script also
+  wrapped `npc_ai_tick_for_test`'s own `dispatch::npc_ai_tick(.., events)`.
+- **A test suite split by one tick call.** When 2 of 7 files in a moved test
+  directory call a services tick, move the rest and put the shared fixtures
+  in `<crate>::test_fixtures::<suite>` behind `test-support`; both halves
+  `pub(super) use` them. Keep the `use` lines the children reach through
+  `use super::*` in each half's `mod.rs` (unused-import errors tell you
+  which). A single test that needs the tick moves to a same-named file in
+  services, so its name does not change.
+- **`source_scan::is_test_path` did not know `test_fixtures`**; a fixture's
+  content-style `nav_path.clear()` tripped the world crate's nav-path guard
+  the moment it lived under `crates/<new>/src/test_fixtures/`.
+- **A higher crate's test naming a lower crate's private enum** (the
+  `BlindInSlot` return type) cannot go through a wrapper fn; make that one
+  module `#[doc(hidden)] pub mod` with the two items `pub`.
+- **`clippy -p <new> -p cimmeria-services` unifies `test-support` into the new
+  crate's lib**, so `unreachable_pub` on a gated hook never shows there. Run
+  `clippy -p <new> --all-targets` on its own too.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

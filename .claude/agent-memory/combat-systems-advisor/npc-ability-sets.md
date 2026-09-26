@@ -30,7 +30,7 @@ change (edit `_primary_keys.sql`), so it does not belong in a seed-only packet.
 
 ## 2. `event_set_id NULL` on the ability = no attack animation, ever
 
-`crates/services/src/cell/abilities/use_ability/handle.rs:524` gates the entire
+`crates/cell-combat/src/cell/abilities/use_ability/handle.rs:524` gates the entire
 `onSequence` broadcast (Ability_Begin 1000 / Ability_End 1001) on
 `ability_def.event_set_id` being `Some`. An ability with a NULL ability-level
 `event_set_id` deals damage with **no fire animation**. The effect row's own
@@ -45,7 +45,7 @@ Known-NULL (avoid): 594 Strike, 479 Staff Blast, 540 Staff Strike,
 
 ## 3. `max_range > 0` poisons the NPC walk-toward gate
 
-`ability_ranges` (`crates/services/src/cell/service/npc_ai/ability_select.rs:59-71`)
+`ability_ranges` (`crates/cell-combat/src/cell/service/npc_ai/ability_select.rs:59-71`)
 returns the def's `max_range` verbatim when non-zero, and `fight.rs` uses it as
 the `in_range` gate. `max_range = 0` is the sentinel meaning "use
 `NPC_ATTACK_RANGE = 30.0`". An ability like 1482 Ground Blast (`max_range 3000`)
@@ -56,7 +56,7 @@ the lower-id workhorse is cooling.
 ## 4. `is_ranged` does NOT gate range — melee abilities fire from 30m
 
 `is_ranged` is read only at
-`crates/services/src/cell/abilities/damage_apply/mod.rs:92-93` to pick the QR
+`crates/cell-combat/src/cell/abilities/damage_apply/mod.rs:92-93` to pick the QR
 accuracy/defense branch. It has no effect on range. A melee ability with
 `max_range 0` in an NPC set therefore resolves at the full 30m default and the
 NPC swings at empty air. Never put `is_ranged = false` abilities in an NPC set.

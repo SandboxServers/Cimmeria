@@ -26,7 +26,7 @@ This doc captures **what** was decided and **why**, with pointers to the code th
 
 **Reversibility:** Adding `on_pulse_begin` / `on_pulse_end` later is additive — existing scripts get default-empty impls, no migration. **Trapdoors:** none.
 
-**Code:** [`crates/cell-world/src/cell/effects/mod.rs`](../../crates/cell-world/src/cell/effects/mod.rs) — trait definition + `dispatch_by_name` / `dispatch_on_remove` helpers. The synchronous layer (trait, context, registry, scripts) is in `cimmeria-cell-world` because the spawn-time cover hold runs Cover Stance through it; the async pulsing scheduler (`effects/pulsing/`) stays with combat in `cimmeria-services`, which re-exports the whole layer at `cell::effects` ([services-crate-split.md](services-crate-split.md)).
+**Code:** [`crates/cell-world/src/cell/effects/mod.rs`](../../crates/cell-world/src/cell/effects/mod.rs) — trait definition + `dispatch_by_name` / `dispatch_on_remove` helpers. The synchronous layer (trait, context, registry, scripts) is in `cimmeria-cell-world` because the spawn-time cover hold runs Cover Stance through it; the async pulsing scheduler ([`effects/pulsing/`](../../crates/cell-combat/src/cell/effects/pulsing/)) is combat's, in `cimmeria-cell-combat`, whose `cell::effects` re-exports the synchronous layer beside it; `cimmeria-services` re-exports that module at the same path ([services-crate-split.md](services-crate-split.md)).
 
 ### 2. Active-effect storage on the target, not the source
 
@@ -41,7 +41,7 @@ Alternative considered: storage-on-source with target_ids in the instance. Rejec
 
 **Reversibility:** Switching to source-side storage would require a single-pass migration of the `active_effects` field; both queries stay O(N) just over different sets. Not a permanent commitment.
 
-**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (`ActiveEffectInstance` struct + `active_effects` field), [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (`ActiveEffectInstance` struct + `active_effects` field), [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 3. Refcount lifecycle via existing `state_flag_counts`
 
@@ -67,7 +67,7 @@ The PR initially added a separate `movement_lock_reasons: HashSet<(u32, i32)>` f
 
 **Reversibility:** Trapdoor — content authored to assume same-source stacking would break if the rule changes. None of our seed currently assumes this either way, so we're free to revise. Document the rule clearly so content authors don't drift.
 
-**Code:** `register_active_effect` in [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** `register_active_effect` in [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 5. Pulsing model: initial pulse + N-1 follow-ups
 
@@ -82,7 +82,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Reversible — could move the initial pulse into the tick loop by setting `next_pulse_at = now` and skipping the synchronous fire. Would defer first damage by up to 100ms (one tick), which is noticeable in playtest.
 
-**Code:** [`crates/services/src/cell/abilities/damage_apply/mod.rs`](../../crates/services/src/cell/abilities/damage_apply/mod.rs) (initial pulse), [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs) (registration + tick).
+**Code:** [`crates/cell-combat/src/cell/abilities/damage_apply/mod.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/mod.rs) (initial pulse), [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs) (registration + tick).
 
 ### 6. Channel cancellation triggers
 
@@ -102,7 +102,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Per-trigger thresholds (0.5m, 60 pulses) are tunable. Adding new cancel triggers is additive. Removing existing ones risks breaking content authored to rely on them.
 
-**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs) (`cancel_channels_from_attacker`, `cancel_channels_for_invoker_ability`, `channel_interrupt_on_movement_tick`).
+**Code:** [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs) (`cancel_channels_from_attacker`, `cancel_channels_for_invoker_ability`, `channel_interrupt_on_movement_tick`).
 
 ### 7. AF_CHANNEL_ALLOWS_MOVEMENT default = 0 (cancel-on-move)
 
@@ -130,7 +130,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Adding new TCM values is additive — add a fourth route. Re-routing existing TCMs is risky (changes content behaviour).
 
-**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs), [`crates/services/src/cell/abilities/dispatch.rs`](../../crates/services/src/cell/abilities/dispatch.rs).
+**Code:** [`crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs`](../../crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs), [`crates/cell-combat/src/cell/abilities/dispatch.rs`](../../crates/cell-combat/src/cell/abilities/dispatch.rs).
 
 ### 9. Absorption pool drain: elemental-specific first, generic catch-all second
 
@@ -146,7 +146,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Drain order is per-damage-type table inside `drain_absorption_pools`; trivially swapped. Changing the HEALTH-only rule means understanding the FOCUS-drain content semantics first.
 
-**Code:** [`crates/services/src/cell/combat/damage/pipeline.rs`](../../crates/services/src/cell/combat/damage/pipeline.rs) — `drain_absorption_pools` + `calculate_damage`.
+**Code:** [`crates/cell-combat/src/cell/combat/damage/pipeline.rs`](../../crates/cell-combat/src/cell/combat/damage/pipeline.rs) — `drain_absorption_pools` + `calculate_damage`.
 
 ### 10. Script-name dispatch over flag-bit dispatch for effect categories
 
@@ -172,7 +172,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Single constant, no schema commitment.
 
-**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 12. Channel safety cap = 60 pulses
 
@@ -182,7 +182,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Single constant.
 
-**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
+**Code:** [`crates/cell-combat/src/cell/effects/pulsing/mod.rs`](../../crates/cell-combat/src/cell/effects/pulsing/mod.rs).
 
 ### 13. CellEntity.last_aoe_deaths: per-attacker scratchpad for AoE kill credit
 
@@ -194,7 +194,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Reversible — switch to a return-type if a batching refactor surfaces the race.
 
-**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (field), [`crates/services/src/cell/abilities/use_ability/mod.rs`](../../crates/services/src/cell/abilities/use_ability/mod.rs) (stash + drain).
+**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (field), [`crates/cell-combat/src/cell/abilities/use_ability/mod.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/mod.rs) (stash + drain).
 
 ### 14. cone geometry: X/Z planar, ignoring Y
 
@@ -204,7 +204,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Per-ability flag could add Y-bound checking later. Backward-compatible (default behaviour stays the same).
 
-**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs) (`collect_cone_targets`).
+**Code:** [`crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs`](../../crates/cell-combat/src/cell/abilities/cone_aoe/mod.rs) (`collect_cone_targets`).
 
 ### 15. Pulse tick cadence = 100ms (piggyback on AoI tick)
 
@@ -269,15 +269,17 @@ dispatched from [`executor/mod.rs`](../../crates/services/src/cell/content/execu
 ### 17. `entity_health_below` samples at the damage seams and drains at the engine holders
 
 **Decision:** `pct_before` is sampled inside the two health-application seams —
-[`abilities/damage_apply`](../../crates/services/src/cell/abilities/damage_apply/) (single
+[`abilities/damage_apply`](../../crates/cell-combat/src/cell/abilities/damage_apply/) (single
 target, AoE secondary, cone secondary, and the effect scripts it dispatches) and
-[`effects/pulsing/tick.rs`](../../crates/services/src/cell/effects/pulsing/tick.rs)
+[`effects/pulsing/tick.rs`](../../crates/cell-combat/src/cell/effects/pulsing/tick.rs)
 (`fire_pulse`) — by
-[`combat::note_pre_damage_health`](../../crates/services/src/cell/combat/damage_credit.rs),
-which queues it on the `SpaceManager`. The callers that *do* hold a `&ChainEngine` drain the
-queue immediately after the hit via `content::fire_pending_health_below`: the kill-credit
-wrapper, the `useAbilityOnGroundTarget` handler, the pulse tick, and a per-tick safety drain
-in the cell message loop. The pure percentage arithmetic lives in
+[`combat::note_pre_damage_health`](../../crates/cell-combat/src/cell/combat/damage_credit.rs),
+which queues it on the `SpaceManager`. The queue is drained immediately after the hit by
+`content::fire_pending_health_below`: the kill-credit wrapper and the pulse tick reach it
+through `ContentEvents::pending_health_below` (combat takes `&dyn ContentEvents`, and the
+cell passes `EngineEvents(&engine)`; services-crate-split.md §2E), and the
+`useAbilityOnGroundTarget` handler and a per-tick safety drain in the cell message loop call
+it directly. The pure percentage arithmetic lives in
 [`cell/combat/health_threshold.rs`](../../crates/cell-world/src/cell/combat/health_threshold.rs).
 
 **Why a queue rather than a threaded handle.** The trigger needs three things at once: the
@@ -341,7 +343,7 @@ clock.
 surrender survives everything the *server* re-delivers on its own cadence, and changes
 nothing about what a player does deliberately. A pulse is on the automatic side by the same
 definition
-[`combat::is_auto_cycle_target_valid`](../../crates/services/src/cell/combat/auto_cycle.rs)
+[`combat::is_auto_cycle_target_valid`](../../crates/cell-combat/src/cell/combat/auto_cycle.rs)
 uses for the auto-fire loop: the deliberate act was applying the effect, and every tick
 after it is the scheduler's. So the two guards are one rule applied at two seams, and
 neither of them touches a direct hit.
@@ -376,7 +378,7 @@ doc comment; deleting both restores the pre-H08 behaviour and fails
 
 ### 19. Every death resolves through one function, including an effect script's killing blow
 
-**Decision:** [`abilities::death::resolve_death`](../../crates/services/src/cell/abilities/death/mod.rs)
+**Decision:** [`abilities::death::resolve_death`](../../crates/cell-combat/src/cell/abilities/death/mod.rs)
 is the only place a death happens. It owns the kill-site state mutations, the ordered wire
 burst, the threat drain, the death animation, kill XP, and the player Defeat Window.
 `damage_apply` calls it twice per hit — once for direct damage, once as a sweep after the

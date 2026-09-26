@@ -228,12 +228,12 @@ Other QR-denominated statements: effect `701` `+5 QR`; effect `4383`
 
 ### Current Rust behaviour + provenance
 
-Live path: `useAbility` → `crates/services/src/cell/combat/damage_apply/mod.rs:52`
+Live path: `useAbility` → `crates/cell-combat/src/cell/combat/damage_apply/mod.rs:52`
 `apply_damage_to_target` → `cell/combat/damage/{qr.rs, pipeline.rs}`.
 (`crates/game/src/combat/` is dead scaffolding, referenced nowhere outside its
 own module.)
 
-`crates/services/src/cell/combat/damage/qr.rs:50-73` — **FAN-GUESS**:
+`crates/cell-combat/src/cell/combat/damage/qr.rs:50-73` — **FAN-GUESS**:
 
 ```
 ranged: qr += COORDINATION.cur * 0.05      melee: qr += ENGAGEMENT.cur * 0.05
@@ -522,7 +522,7 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
   `crates/base-session/src/base/console_authoring/tests.rs:93`).
 - `AbilityDef` (`crates/entity/src/abilities/defs.rs:101-117`) has no scaling
   fields. Base damage comes **only** from the effect NVPs
-  (`crates/services/src/cell/combat/damage_apply/mod.rs:113-134`), with an
+  (`crates/cell-combat/src/cell/combat/damage_apply/mod.rs:113-134`), with an
   unknown-ability fallback of `(15, 0)` at `:133`. **ORIGINAL-DATA-BACKED** —
   this correctly reflects §0.3, that the shipped numbers live on abilities, not
   items.
@@ -719,7 +719,7 @@ damage-type assignment.
 **IMPLEMENTED for all four AF families in the pipeline; only Physical is
 reachable in live play.**
 
-`crates/services/src/cell/combat/damage/pipeline.rs` — **FAN-GUESS**
+`crates/cell-combat/src/cell/combat/damage/pipeline.rs` — **FAN-GUESS**
 (ported from `deprecated/python/cell/AbilityManager.py` `DamageCalc`):
 
 ```
@@ -990,7 +990,7 @@ the default — but two rows is thin evidence and I would not build a rule on it
 **Effect-*instance* stacking: IMPLEMENTED. Stat-*modifier* stacking and ordering:
 NOT IMPLEMENTED.**
 
-- `crates/services/src/cell/effects/pulsing/register.rs:88-113` — same
+- `crates/cell-combat/src/cell/effects/pulsing/register.rs:88-113` — same
   `effect_id` + same `invoker_id` **refreshes**
   (`existing.remaining_pulses = existing.remaining_pulses.max(remaining)`,
   `next_pulse_at = next_at`); a *different* invoker pushes a new
@@ -1096,14 +1096,14 @@ the AoE to the cover-node graph.
 **AoE target collection: IMPLEMENTED. Cover/LOS interaction: NOT IMPLEMENTED.**
 
 - Ground-target radius —
-  `crates/services/src/cell/abilities/dispatch.rs:106-136`: hostile NPCs only
+  `crates/cell-combat/src/cell/abilities/dispatch.rs:106-136`: hostile NPCs only
   (`npc.faction != HOSTILE_FACTION` skipped), same space, alive, 3-D
   `dist_sq <= radius_sq`. Radius from the first effect's `Radius` NVP, default
   `DEFAULT_GROUND_TARGET_RADIUS = 5.0` (`:23`), max range default `30.0`.
   **FAN-GUESS** for the constants — §7 shows the shipped data has only symbolic
   bands, so any metre value is invented. Full damage to every target: **no
   falloff, no LOS, no cover.**
-- Cone — `crates/services/src/cell/abilities/cone_aoe/geometry.rs:90-111`:
+- Cone — `crates/cell-combat/src/cell/abilities/cone_aoe/geometry.rs:90-111`:
   planar X/Z, `dist_sq_xz <= length_sq && dot >= cos(half_angle)`. Length and
   half-angle come from `EffectDef::tcm_range_meters` /
   `tcm_half_angle_radians` (`crates/entity/src/abilities/defs.rs:227-262`;

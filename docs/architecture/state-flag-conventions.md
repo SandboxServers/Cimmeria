@@ -137,7 +137,7 @@ independent flags.
 
 ## Tests
 
-Regression tests live in `crates/services/src/cell/combat/state.rs::tests`:
+Regression tests live in `crates/cell-combat/src/cell/combat/state.rs::tests`:
 
 - `refcount_keeps_flag_set_after_partial_unset` — the named multi-source
   semantic

@@ -7,7 +7,7 @@ metadata:
 
 # Combat-exit cleanup tail — death vs. non-death parity
 
-`apply_death_transition` (`crates/services/src/cell/abilities/death.rs`) is the only
+`apply_death_transition` (`crates/cell-combat/src/cell/abilities/death.rs`) is the only
 fully-correct combat-exit tail in the tree. Any NEW path that ends an NPC's combat
 while the NPC stays alive (surrender/submit, scripted pacify, future yield) must
 copy a **subset** of it. The subset boundary, as of 2026-09:

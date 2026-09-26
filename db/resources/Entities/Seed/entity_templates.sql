@@ -545,7 +545,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   30% health trigger needs 665 damage).
 -- faction 10 is MANDATORY, not a flavour choice: `useAbility` rejects a
 --   player single-target ability whenever `target.faction != HOSTILE_FACTION`
---   (crates/services/src/cell/abilities/use_ability/handle.rs:223-237), and no
+--   (crates/cell-combat/src/cell/abilities/use_ability/handle.rs:223-237), and no
 --   executor arm can change faction at runtime (`ModifyProperty` has no arm,
 --   there is no `set_faction`). At faction 1 the duel's
 --   `entity_health_below Rinla_Malac:30` trigger could never fire.

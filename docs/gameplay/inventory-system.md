@@ -105,7 +105,7 @@ No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE
 
 `INV_Bandolier` (container id `3`) holds 4 weapon slots indexed `0..3` and is the only container that tracks an active slot. Slot count matches legacy `deprecated/python/common/Constants.py:145` (`BAG_SIZES[INV_Bandolier] = 4`); there is no fist-weapon reservation, so all four slots are real weapon slots.
 
-The wire format is **1-indexed** (slots `1..4`). Server-side everything is **0-indexed**; the cell decoder subtracts 1 on inbound `requestActiveSlotChange` / `moveItem` and the grant/sync paths add 1 on outbound `onActiveSlotUpdate`. Mismatch on the inbound side was the original cause of the "switching slots doesn't work" bug — see `crates/services/src/cell/cell_methods/inventory/bandolier.rs` and `item_ops.rs`.
+The wire format is **1-indexed** (slots `1..4`). Server-side everything is **0-indexed**; the cell decoder subtracts 1 on inbound `requestActiveSlotChange` / `moveItem` and the grant/sync paths add 1 on outbound `onActiveSlotUpdate`. Mismatch on the inbound side was the original cause of the "switching slots doesn't work" bug — see `crates/cell-combat/src/cell/cell_methods/inventory/bandolier.rs` and `item_ops.rs`.
 
 Each bandolier slot persists not only the equipped item but also its **per-slot magazine state**:
 

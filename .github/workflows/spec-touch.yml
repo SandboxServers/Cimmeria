@@ -56,10 +56,11 @@ jobs:
               // Entity property sync + RPC dispatch → spec.protocol.entity-property-sync, spec.engine.universal-rpc-dispatcher
               { match: 'crates/wire/src/mercury/mod.rs',                           chapter: 'spec.protocol.message-catalog' },
               // Cell-side combat → spec.combat.*
-              { match: 'crates/services/src/cell/combat/',                         chapter: 'spec.combat.damage-pipeline' },
+              { match: 'crates/cell-combat/src/cell/combat/',                      chapter: 'spec.combat.damage-pipeline' },
               // Inventory state machine → spec.inventory.containers-and-equip
               { match: 'crates/services/src/cell/cell_methods/inventory/',         chapter: 'spec.inventory.containers-and-equip' },
               { match: 'crates/wire/src/cell/cell_methods/inventory/',             chapter: 'spec.inventory.containers-and-equip' },
+              { match: 'crates/cell-combat/src/cell/cell_methods/inventory/',      chapter: 'spec.inventory.containers-and-equip' },
               // World entry → spec.world.world-entry
               { match: 'crates/services/src/cell/cell_methods/player/world.rs',    chapter: 'spec.world.world-entry' },
               // Mission state machine → spec.missions.lifecycle-and-objectives

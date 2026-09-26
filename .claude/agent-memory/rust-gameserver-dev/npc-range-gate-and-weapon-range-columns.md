@@ -8,7 +8,7 @@ metadata:
 `resources.items` carries **four** range columns — `min_ranged_range`,
 `max_ranged_range`, `min_melee_range`, `max_melee_range` — and they are the
 data source for the server-wide NPC range constants in
-`crates/services/src/cell/combat/threat/aggro.rs`.
+`crates/cell-combat/src/cell/combat/threat/aggro.rs`.
 
 **Why:** `resources.abilities.max_range` is the `0` "use the server default"
 sentinel on every auto-attack in the seed, and `abilities.is_ranged` is read
