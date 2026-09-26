@@ -110,6 +110,10 @@ pub const NPC_MELEE_RANGE: f32 = 3.0;
 // in cimmeria-cell-world, because spawning grants it.
 pub use crate::cell::combat::aggression::NPC_DEFAULT_ABILITY;
 
+/// `CellEntity::class_id` of an SGWBeing: props and non-combat story actors.
+/// [`generate_threat`] refuses them.
+pub const BEING_CLASS_ID: u8 = 0x01;
+
 /// How long after leaving combat the weapon stays drawn before
 /// auto-holstering. Tuned to absorb the gap between killing one mob and
 /// aggroing the next so chaining fights doesn't flicker the model.
@@ -196,6 +200,24 @@ pub fn generate_threat(
     let preemptable = match space_mgr.get_entity(target_id) {
         None => return None,
         Some(target) if target.is_player => return None,
+        // A being (SGWBeing, class 0x01) never enters combat (NA42). Most
+        // beings are props, the rest are story actors such as Col Marsh, and
+        // none has an ability set to fight back with. Before this a hit
+        // preempted a following Marsh into Fighting, a state the AI tick
+        // never admits for a being, so he froze there for good. No threat,
+        // no preemption and no player combat: he stays in Follow.
+        Some(target) if target.class_id == BEING_CLASS_ID => {
+            tracing::debug!(
+                target: "npc_ai.aggro",
+                event = "being_refused",
+                npc_id = target_id,
+                attacker_id,
+                ai_state = target.ai_state().label(),
+                cause = cause.label(),
+                "threat refused: a being never enters combat"
+            );
+            return None;
+        }
         Some(target) if target.ai_state() == AiState::Leashing => {
             // NA02's `damage_ignored` row is the one trace of the evade.
             npc_ai::detectors::leash::on_damage_while_leashing(

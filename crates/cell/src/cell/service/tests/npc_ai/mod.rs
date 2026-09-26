@@ -56,7 +56,11 @@
 //!   death, a healed corpse still counts as dead, and the respawned player is
 //!   not re-acquired by the retry sweep.
 //! - [`being_follower`] — NA24: a `being`-class follower (Col Marsh) is
-//!   ticked and walks; an Idle or Fighting being (a prop) is not.
+//!   ticked and walks; an Idle or Fighting being (a prop) is not. NA42: a
+//!   damaged being takes no threat and stays in Follow.
+//! - [`follow_resume`] — NA42 on the real `castle_cellblock.nav`: a mob
+//!   escort hit mid-follow fights, leashes in place and resumes Follow with
+//!   its target kept; with its leader gone it clears the target and idles.
 //!
 //! Uses a non-instanced `Castle` fixture rather than the parent
 //! `make_test_space_mgr` (Castle_CellBlock, instanced) so the NPC and
@@ -79,6 +83,7 @@ mod assist;
 mod assist_castle;
 mod being_follower;
 mod dead_player_drop;
+mod follow_resume;
 mod leash_reset;
 mod leash_walk;
 mod melee_reach;

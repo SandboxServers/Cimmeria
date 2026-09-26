@@ -243,10 +243,9 @@ impl SpaceManager {
     /// movement tick. Most `being` templates are props (crates, consoles,
     /// corpses, elevator buttons) that sit in `Idle` with no route, and stay
     /// excluded. `Fighting` and `Leashing` are deliberately not admitted for
-    /// a being: `generate_threat` moves any shot NPC into `Fighting`, and a
-    /// prop must never get a fight pass (it would fire the default ability).
-    // TODO: a following being pulled into `Fighting` by damage freezes there,
-    // as it did before NA24; it needs a combat-capable class to fight back.
+    /// a being: a prop must never get a fight pass (it would fire the default
+    /// ability). Nothing puts a being there anyway: `generate_threat` refuses
+    /// a being (NA42), so a following being that is hit stays in `Follow`.
     pub fn ai_driven_npc_entity_ids(&self) -> Vec<u32> {
         use cimmeria_entity::cell_entity::AiState;
         let mut ids = Vec::new();

@@ -271,11 +271,12 @@ pub enum Action {
     /// target is left unresolved rather than silently following the
     /// wrong entity.
     ///
-    /// Threat preemption converts Follow → Fighting; the follow
-    /// target field persists on the entity but doesn't auto-route
-    /// back — only Patrol and Wander auto-resume from their per-state
-    /// scratch on Fighting → Leashing → Idle. Re-fire the action if a
-    /// continued follow is desired post-fight.
+    /// Threat preemption converts a mob's Follow → Fighting; the follow
+    /// target persists on the entity, and the leash that ends the fight
+    /// resets the follower where it stands and puts it back in Follow
+    /// while the target is still in the space (NA42). A target that has
+    /// left is cleared and the follower goes Idle; re-fire the action to
+    /// re-arm it. A `being` (Col Marsh) never enters combat at all.
     SetFollowTarget {
         entity_tag: String,
         target_tag: Option<String>,
