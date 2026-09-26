@@ -533,7 +533,7 @@ last_updated: 2026-09-25
   - [`crates/cell-cover/src/cell/cover/`](../crates/cell-cover/src/cell/cover/), the `cimmeria-cell-cover` crate: **2,827 lines excluding tests** (4,345 with them). Includes `peek.rs`. `stance.rs` (222 lines) stays in [`crates/services/src/cell/cover/`](../crates/services/src/cell/cover/), which re-exports the crate at its old path.
   - [`crates/cell-world/src/cell/space_manager/cover_sight.rs`](../crates/cell-world/src/cell/space_manager/cover_sight.rs): LoS policy.
   - [`crates/cell-world/src/cell/combat/aggression.rs`](../crates/cell-world/src/cell/combat/aggression.rs) and [`faction_reaction.rs`](../crates/cell-world/src/cell/combat/faction_reaction.rs).
-  - [`crates/services/src/cell/service/ticks/npc_ground.rs`](../crates/services/src/cell/service/ticks/npc_ground.rs) and `npc_movement.rs`.
+  - [`crates/cell/src/cell/service/ticks/npc_ground.rs`](../crates/cell/src/cell/service/ticks/npc_ground.rs) and `npc_movement.rs`.
   - [`crates/occluder/`](../crates/occluder/): 4,048 lines, with a `data/spaces/<world>.occ` for all 23 worlds.
   - [`crates/cell-console/src/cell/console/aggro.rs`](../crates/cell-console/src/cell/console/aggro.rs): the `.aggro` GM toggle.
 - **Recent PRs**:
@@ -594,14 +594,14 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH (re-read 2026-09-25). The **direct cell-side spawn from `resources.spawnlist`** covers the full spawn, death and respawn lifecycle, and the 2026-09-18 playtest measured 19 of 19 respawns at 120 s. The original `SGWSpawnRegion` / `SGWSpawnSet` population-control layer was **never built**: the Python server had empty stubs, and Rust spawns straight from the cell. Rows describing that layer were previously credited to `spawner/regions.rs`, but that file loads GenericRegion (client-hinted trigger regions). Issue #62 (triaged 2026-09-25) records the misattribution.
 - **Documentation**: [gameplay/spawn-system.md](gameplay/spawn-system.md). Its "Original Design (not implemented as such)" section is accurate.
-- **Rust code**: [`crates/cell-catalog/src/cell/spawner/`](../crates/cell-catalog/src/cell/spawner/) (split out of `cimmeria-services` in 2026-09) is **2,849 lines excluding tests, about 96 tests** (7,660 lines with the tests, now in `spawner/tests/` there and `cell/spawner_tests/` in `cimmeria-services`). It holds:
+- **Rust code**: [`crates/cell-catalog/src/cell/spawner/`](../crates/cell-catalog/src/cell/spawner/) (split out of `cimmeria-services` in 2026-09) is **2,849 lines excluding tests, about 96 tests** (7,660 lines with the tests, now in `spawner/tests/` there and `cell/spawner_tests/` in `cimmeria-cell-world`, `cimmeria-cell-combat` (the Harset guards) and `cimmeria-services` (the GM-spawn parity guard)). It holds:
   - `npcs.rs`: the spawnlist + template load (`SpawnRecord` itself is `cimmeria_wire::cell::spawn_record`), `aggression_override`, `leash_distance`, `use_cover`;
   - `templates.rs`: prototype records for content-engine `spawn_entity`;
   - `regions.rs`: GenericRegion, not spawn regions;
   - `respawners.rs`: player defeat-window respawn points;
   - `stargates.rs`, `dialogs.rs`, `loot.rs`, `missions.rs`, `abilities.rs`, `worlds.rs`.
 
-  Populating spaces from the records is [`crates/cell-world/src/cell/space_manager/npc_population.rs`](../crates/cell-world/src/cell/space_manager/npc_population.rs). NPC respawn is [`crates/services/src/cell/service/ticks/npc_respawn/`](../crates/services/src/cell/service/ticks/npc_respawn/). Mission-scoped spawns are [`crates/cell-world/src/cell/space_manager/spawn.rs`](../crates/cell-world/src/cell/space_manager/spawn.rs) and `cell/content/executor/spawn/`. The standalone `crates/game/src/world/spawning.rs` `SpawnSet` model has no caller in `cimmeria-services`.
+  Populating spaces from the records is [`crates/cell-world/src/cell/space_manager/npc_population.rs`](../crates/cell-world/src/cell/space_manager/npc_population.rs). NPC respawn is [`crates/cell/src/cell/service/ticks/npc_respawn/`](../crates/cell/src/cell/service/ticks/npc_respawn/). Mission-scoped spawns are [`crates/cell-world/src/cell/space_manager/spawn.rs`](../crates/cell-world/src/cell/space_manager/spawn.rs) and `cell/content/executor/spawn/`. The standalone `crates/game/src/world/spawning.rs` `SpawnSet` model has no caller in `cimmeria-services`.
 - **Recent PRs**:
   - Castle and Harset population: #667 (CA05, Castle World 8 story actors and respawn timers), #662 and #682 (Harset spawn/despawn actions, templates and spawns), #717 (Harset placements).
   - #640 (GM `.spawn` / `.despawn`).

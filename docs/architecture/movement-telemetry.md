@@ -14,7 +14,7 @@
 | Per-entity state, the throttle primitive, the load-time mesh line | [`movement_telemetry/mod.rs`](../../crates/cell-world/src/cell/space_manager/movement_telemetry/mod.rs) |
 | Every **hard reject**, all three outcomes | [`movement_telemetry/reject.rs`](../../crates/cell-world/src/cell/space_manager/movement_telemetry/reject.rs) |
 | The accepted-position sampler | [`movement_telemetry/position_sample.rs`](../../crates/cell-world/src/cell/space_manager/movement_telemetry/position_sample.rs) |
-| Dispatch (outcome → report call → snap-back) | [`base_messages/movement.rs`](../../crates/services/src/cell/service/base_messages/movement.rs) |
+| Dispatch (outcome → report call → snap-back) | [`base_messages/movement.rs`](../../crates/cell/src/cell/service/base_messages/movement.rs) |
 
 Emission lives on the `SpaceManager` rather than in the message handler
 because the rows need three things only it can answer: the world name

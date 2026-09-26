@@ -60,7 +60,7 @@ cleared state to witnesses. Verify against
 
 ## Tick cadences that set the leak window
 
-`crates/services/src/cell/service/message_loop.rs`, AoI tick = 100 ms:
+`crates/cell/src/cell/service/message_loop.rs`, AoI tick = 100 ms:
 - `holster_timer_tick` — every tick (:77)
 - `auto_cycle_tick`, `pending_attack_tick`, `npc_ai_retry_sweep` — every tick
 - `regen_tick` — every 10th tick (:144-145), i.e. 1 s

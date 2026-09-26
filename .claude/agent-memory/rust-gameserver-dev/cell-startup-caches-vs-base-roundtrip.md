@@ -7,7 +7,7 @@ metadata:
 
 # Cell startup caches beat cell→base round-trips inside the content executor
 
-`crates/services/src/cell/service/startup.rs` loads roughly twenty DB caches
+`crates/cell/src/cell/service/startup.rs` loads roughly twenty DB caches
 straight onto `SpaceManager` (`dialog_set_maps`, `mission_defs`, `stargates`,
 `ability_defs`, `effect_defs`, `item_defs`, `loot_tables`, `respawners`,
 `ring_regions`, `archetype_ability_trees`, and since Harset H03

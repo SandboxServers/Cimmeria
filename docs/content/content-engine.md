@@ -464,7 +464,7 @@ See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
 End-to-end trace, using `OnItemUse(2893)` (Health Slappack) as the worked example.
 
-1. **Gameplay observes the event.** Player double-clicks the Slappack. `crate::cell::content::fire_item_use(...)` is called from [base_messages/mod.rs](../../crates/services/src/cell/service/base_messages/mod.rs).
+1. **Gameplay observes the event.** Player double-clicks the Slappack. `crate::cell::content::fire_item_use(...)` is called from [base_messages/inventory_events.rs](../../crates/cell/src/cell/service/base_messages/inventory_events.rs#L118).
 2. **The bridge builds an `ExecutionContext`.** [event_dispatch/inventory.rs:28](../../crates/cell-content/src/cell/content/event_dispatch/inventory.rs#L28):
    - sets `item_id`, `instance_id`
    - calls `populate_mission_context` — writes every `mission_<id>_status`, `mission_<id>_step_<step>_status`, and `counter_<name>` from the source `CellEntity`

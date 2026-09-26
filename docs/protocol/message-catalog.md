@@ -8,7 +8,7 @@
 > [!WARNING]
 > **The per-message "Implemented" column and the Summary-by-System counts are
 > known-stale and are being reworked.** A 2026-07-25 audit against
-> `crates/cell-methods/src/cell/cell_methods/`, `crates/services/src/cell/dispatch/`
+> `crates/cell-methods/src/cell/cell_methods/`, `crates/cell/src/cell/dispatch/`
 > and `crates/base/src/base/dispatch/mod.rs` found three defect classes:
 >
 > - **Understated.** Whole subsystems marked "NO"/"Not implemented" do have

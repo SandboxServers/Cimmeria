@@ -65,7 +65,7 @@ handler, start from this snapshot rather than re-discovering the wire surface.
 
 - Base layer: `crates/base/src/base/dispatch/mod.rs::dispatch_sgw_player_base_method`
   — handles msg_id 0xC0..=0xD8 range. Catch-all warn arm at `dispatch.rs:333-346`.
-- Cell layer: `crates/services/src/cell/dispatch/router.rs:dispatch_cell_method`
+- Cell layer: `crates/cell/src/cell/dispatch/router.rs:dispatch_cell_method`
   — routes by `method_index` through inheritance order. Catch-all warn arm at
   `router.rs:101-106`.
 - Slash-command layer (separate path): `crates/commands/src/registry.rs` +

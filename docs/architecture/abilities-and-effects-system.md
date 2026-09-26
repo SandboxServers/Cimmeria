@@ -214,7 +214,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Could split into a separate tick with its own cadence if effect frequency becomes a bottleneck. No content depends on the cadence — pulses fire at `pulse_duration` intervals regardless of how often the tick runs.
 
-**Code:** [`crates/services/src/cell/service/message_loop.rs`](../../crates/services/src/cell/service/message_loop.rs).
+**Code:** [`crates/cell/src/cell/service/message_loop.rs`](../../crates/cell/src/cell/service/message_loop.rs).
 
 ### 16. Content-initiated effects use a separate entry point, not `handle_use_ability`
 

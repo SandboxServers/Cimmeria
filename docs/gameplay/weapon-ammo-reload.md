@@ -130,7 +130,7 @@ Client                       Cell                                       Base / D
   │                           │        current_ammo, cur_ammo_type}│   WHERE … type_id = …
 ```
 
-The fire-path **only** reads `active_ammo()`; it does not promote pending refills itself. The 100 ms `reload_completion_tick` is the sole refill path (Stage C cleanup — see [`crates/services/src/cell/service/mod.rs:602-681`](../../crates/services/src/cell/service/mod.rs#L602)).
+The fire-path **only** reads `active_ammo()`; it does not promote pending refills itself. The 100 ms `reload_completion_tick` is the sole refill path (Stage C cleanup — see [`crates/cell/src/cell/service/ticks/reload_completion.rs:24`](../../crates/cell/src/cell/service/ticks/reload_completion.rs#L24)).
 
 Matches legacy [`Reload.py`](../../deprecated/python/cell/effects/Reload.py): the effect resolves at warmup completion and runs `setCurrent(max)` on the ammo stat. Legacy ammo consumption was at warmup completion ([`AbilityManager.py:669-670`](../../deprecated/python/cell/AbilityManager.py#L669)); the Rust port consumes at fire-gate time instead, since there is no warmup state machine for typical fires.
 
@@ -185,11 +185,11 @@ The `bandolier_ammo_dirty: HashSet<i32>` set is the persistence buffer. Every fi
 
 | Drain point                              | What flushes                          | Code path |
 |------------------------------------------|---------------------------------------|-----------|
-| Reload completion tick (100 ms cadence)  | The active slot only                  | [`service.rs:610`](../../crates/services/src/cell/service/mod.rs#L610) |
+| Reload completion tick (100 ms cadence)  | The active slot only                  | [`ticks/reload_completion.rs:24`](../../crates/cell/src/cell/service/ticks/reload_completion.rs#L24) |
 | `requestActiveSlotChange`                | The previous slot, if dirty           | [`active_slot.rs:408-433`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs#L408) |
 | `requestAmmoChange`                      | The mutated slot, immediately         | [`ammo_change.rs:174-208`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs#L174) |
-| Disconnect (`DisconnectEntity`)          | All dirty slots                       | [`service.rs:403-417`](../../crates/services/src/cell/service/mod.rs#L403) |
-| Logout fallback (`DestroyEntity`)        | All dirty slots (idempotent)          | [`service.rs:383-396`](../../crates/services/src/cell/service/mod.rs#L383) |
+| Disconnect (`DisconnectEntity`)          | All dirty slots                       | [`base_messages/lifecycle.rs:218`](../../crates/cell/src/cell/service/base_messages/lifecycle.rs#L218) |
+| Logout fallback (`DestroyEntity`)        | All dirty slots (idempotent)          | [`base_messages/lifecycle.rs:154`](../../crates/cell/src/cell/service/base_messages/lifecycle.rs#L154) |
 | World transition (`handle_dial_gate`)    | All dirty slots                       | [`gate_travel/mod.rs:486-495`](../../crates/cell-interactions/src/cell/gate_travel/mod.rs#L486) |
 
 The flush hook lives on the `DisconnectEntity` cell handler — graceful logoff (`SGWPlayer.logOff`), Mercury `DISCONNECT (0x0C)`, and the tick-sync 60-second inactivity timeout ([`tick_sync.rs:79-84`](../../crates/base-session/src/base/tick_sync.rs#L79)) all route through `destroy_client_entities` ([`helpers.rs:67-111`](../../crates/base-session/src/base/helpers/mod.rs#L67)) which sends `BaseToCellMsg::DisconnectEntity`. So a player who closes the game without logging out still has their ammo persisted, just with up to a 60-second delay after their last received packet. The `DestroyEntity` flush is a no-op fallback for any path that bypasses `DisconnectEntity`.
@@ -227,7 +227,7 @@ This means mobs do not currently consume rounds, do not need to reload, and do n
 
 1. Remove the `is_player` short-circuit in [`abilities.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs) so the ammo gate runs for NPCs.
 2. Add an AI-driven `requestReload` equivalent that calls `set_slot_ammo` + `reload_complete_at` on the mob entity.
-3. **Widen `reload_completion_tick` beyond players.** It currently iterates [`space_mgr.all_player_entity_ids()`](../../crates/services/src/cell/service/mod.rs) only — an NPC that sets `reload_complete_at` will never be promoted by the existing tick, leaving the magazine empty forever. Either change the tick to scan all entities with `reload_complete_at = Some(_)`, add a `space_mgr.all_reloadable_entity_ids()` helper, or extend the iteration to include NPCs in fighting state.
+3. **Widen `reload_completion_tick` beyond players.** It currently iterates [`space_mgr.all_player_entity_ids()`](../../crates/cell/src/cell/service/ticks/reload_completion.rs#L33) only — an NPC that sets `reload_complete_at` will never be promoted by the existing tick, leaving the magazine empty forever. Either change the tick to scan all entities with `reload_complete_at = Some(_)`, add a `space_mgr.all_reloadable_entity_ids()` helper, or extend the iteration to include NPCs in fighting state.
 
 Cross-reference: [npc-ai.md § Ammo Management](npc-ai.md#ammo-management).
 
@@ -291,7 +291,7 @@ Client                       Cell                              Base / DB
 | [`crates/cell-combat/src/cell/abilities/mod.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs) | `handle_use_ability` — fire-gate, consume, `onStatUpdate` drain |
 | [`crates/cell-methods/src/cell/cell_methods/player/world/mod.rs`](../../crates/cell-methods/src/cell/cell_methods/player/world/mod.rs) | `REQUEST_RELOAD` dispatch |
 | [`crates/cell-combat/src/cell/cell_methods/player/world/reload.rs`](../../crates/cell-combat/src/cell/cell_methods/player/world/reload.rs) | `handle_reload` (warmup deadline + cooldown) |
-| [`crates/services/src/cell/service/mod.rs`](../../crates/services/src/cell/service/mod.rs) | `reload_completion_tick` (sole refill path), `InitPlayerState` bandolier seeding |
+| [`crates/cell/src/cell/service/ticks/reload_completion.rs`](../../crates/cell/src/cell/service/ticks/reload_completion.rs), [`base_messages/player_init/mod.rs`](../../crates/cell/src/cell/service/base_messages/player_init/mod.rs#L31) | `reload_completion_tick` (sole refill path), `InitPlayerState` bandolier seeding |
 | [`crates/cell-methods/src/cell/cell_methods/inventory/dispatch.rs`](../../crates/cell-methods/src/cell/cell_methods/inventory/dispatch.rs) | `REQUEST_ACTIVE_SLOT_CHANGE` and `REQUEST_AMMO_CHANGE` dispatch |
 | [`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/) | the active-slot and ammo-change handlers, `flush_dirty_bandolier_ammo` |
 | [`crates/wire/src/cell/messages/mod.rs`](../../crates/wire/src/cell/messages/mod.rs) | `CellToBaseMsg::BandolierAmmoUpdate`, `ActiveSlotUpdate`, `InitPlayerState` |

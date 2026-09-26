@@ -17,7 +17,7 @@ fix builds on.
 `access_level` (0=Player … 4=Developer) is sourced from the
 `account.accesslevel` DB column at login and lived only on the base
 layer's `ConnectedClientState`. The cell-method dispatcher
-(`crates/services/src/cell/dispatch/router.rs`) had no access to it, so
+(`crates/cell/src/cell/dispatch/router.rs`) had no access to it, so
 **every future `gm*` handler added to the cell layer was
 unauthenticated-by-default** — a handler that did `if !is_gm { return }`
 had nothing to check against. The moment any GM handler shipped without

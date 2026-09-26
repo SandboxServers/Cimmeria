@@ -14,7 +14,7 @@ explicit push needed for the "spawn into an already-occupied space" case.
 
 Evidence:
 
-- `crates/services/src/cell/service/message_loop.rs:54-66` — `run_aoi_tick`
+- `crates/cell/src/cell/service/message_loop.rs:54-66` — `run_aoi_tick`
   fires on **every** 100ms `tick_interval` tick, unconditionally (unlike NPC
   AI at every-20th and respawn at every-10th, which gate on
   `aoi_tick_counter.is_multiple_of(N)`).
