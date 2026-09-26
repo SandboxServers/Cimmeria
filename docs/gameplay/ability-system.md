@@ -2,12 +2,12 @@
 title: "Ability System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-26
 ---
 
 # Ability System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-26
 > **Status**: Implemented — direct-target, cone, AoE, ground-target, and channeled abilities all work. Remaining gaps: chain targeting, the combo/response system, and pre-launch ability conditions.
 
 ## Overview
@@ -21,20 +21,21 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Single-target ability launch | DONE | `TargetSelf`, `TargetTarget` |
-| Ability warmup timer | DONE | Speed modifiers applied (grenade, deploy, attack) |
+| Ability warmup timer | DONE | AT-10 (2026-09-26). A warmup ability sends `Ability_Begin` and fires after the warmup, not at launch. The speed stats (grenade, deploy, attack) shorten it. See [Warmup in the Rust server](#warmup-in-the-rust-server) |
 | Ability cooldown timer | DONE | Moniker-based shared cooldowns |
 | Effect dispatch on resolve | DONE | Effects applied to all collected targets |
 | Auto-cycle (auto-attack) | DONE | Re-fires ability on cooldown expiry |
-| Ability interruption | DONE | Cancels warmup, resets cooldown |
+| Ability interruption | DONE | AT-10. Death, a bandolier slot change, moving 0.5 m, and fire-time target, range, line-of-sight and ammo checks. Refunds the cooldown |
 | Ammo consumption | DONE | `requiredAmmo`, `consumeAmmo()` |
 | Weapon range check | DONE | `UseWeaponRange` flag uses equipped weapon range |
 | Position/facing check | DONE | Front/flank/rear mask validation |
 | Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |
 | AoE / cone targeting | DONE | `cell/abilities/cone_aoe/` — geometry, flag categories, and witness fan-out |
-| Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |
+| Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch/mod.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |
 | Channeled abilities | DONE | Channel pulsing and cancellation in `cell/effects/pulsing/`, with the `AF_CHANNEL_ALLOWS_MOVEMENT` movement gate |
 | Kismet sequences (begin, end) | DONE | `Ability_Begin` (1000) and `Ability_End` (1001) emitted from `use_ability/handle.rs` |
-| Kismet sequences (interrupt, failed) | NOT IMPL | `Ability_Interrupt` (1002) and `Ability_Failed` (1003) are never emitted, despite interruption itself working |
+| Kismet sequence (interrupt) | DONE | `Ability_Interrupt` (1002) is sent when a warmup is interrupted (AT-10) |
+| Kismet sequence (failed) | NOT IMPL | `Ability_Failed` (1003) is never emitted. Python never sent it either |
 | Chain targeting | NOT IMPL | |
 | Combo / response system | NOT IMPL | `Response` flag modifies cooldown only |
 | Ability conditions | NOT IMPL | Pre-launch condition checks from ability data |
@@ -98,6 +99,45 @@ AbilityManager.useAbility()
             |-> Fire 'ability.finished' event
             |-> abilityFinished()
 ```
+
+### Warmup in the Rust server
+
+The Rust server keeps the same split (AT-10). `handle_use_ability`
+(`cell/abilities/use_ability/handle.rs`) is the launch. It validates the cast,
+starts the cooldown for `cooldown + warmup`, and sends the cooldown timer. Then:
+
+- **Warmup = 0:** the cast fires in the same pass (`use_ability/fire.rs`). It
+  spends the ammo, sends `Ability_End`, and applies the damage. The wire is the
+  same as before AT-10.
+- **Warmup > 0:** it sends `Ability_Begin` and an `AbilityWarmup` (type 1)
+  `onTimerUpdate` to the player, then parks the cast on the caster. The cell's
+  100 ms warmup tick fires it through the same fire path when the warmup
+  expires. The ammo is spent then, not at launch.
+
+A player or NPC has one cast in its warmup at a time. A second `useAbility`
+during the warmup is refused and sends nothing, as python refused a launch
+while `currentAbility` was set. An NPC holds still while it casts.
+
+A warmup is interrupted, and the cast never fires, when:
+
+- the caster dies;
+- the caster changes its active bandolier slot;
+- the caster moves 0.5 m or more from where it started, unless the ability
+  has `AF_CHANNEL_ALLOWS_MOVEMENT` (the channel rule), or ends up in another
+  space;
+- at the moment it would fire, the target is gone, dead, in another space or
+  no longer hostile; the target is out of range (`onErrorCode` 42); a player
+  has no line of sight (`onErrorCode` 39); a player's active weapon is not
+  the one the cast started with; or a player's weapon is reloading or short
+  of ammo.
+
+An interrupt refunds the cooldown. It sends the player a zeroed warmup timer
+and a zeroed cooldown timer, then sends `Ability_Interrupt` to the caster and
+its witnesses. If the interrupted ability was the auto-cycle ability, the
+loop stops. Python interrupted on death and on a slot change only, and
+re-checked nothing when the warmup ended. The other triggers are
+server-authoritative additions. The design record is decision 21 of
+[abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md#21-warmup-is-a-pending-cast-per-caster-fired-by-the-100-ms-tick-at-10).
 
 ## Targeting Modes
 
