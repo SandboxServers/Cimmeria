@@ -88,6 +88,12 @@ pub(super) async fn run_cell_loop(
                 // when the queue is empty.
                 super::ticks::pending_attack_tick(tx, &mut space_mgr, &engine).await;
 
+                // Ability warmups (AT-10): interrupt any caster that moved
+                // off the spot, then fire every cast whose warmup has
+                // expired. Walks `pending_casts`, so it short-circuits when
+                // nobody is warming up.
+                crate::cell::abilities::warmup_tick(tx, &mut space_mgr, &engine).await;
+
                 // Fire any content-engine action deferred by
                 // `content_actions.delay_ms > 0` (C08a) whose delay has
                 // elapsed — e.g. "play a sequence, then N ms later, show

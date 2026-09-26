@@ -42,8 +42,9 @@ mod tests;
 pub use abilities::{
     archetype_item_event_set, load_ability_defs, load_effect_defs, load_event_set_sequences,
     load_item_event_set_abilities, load_template_trainer_lists, load_trainer_abilities,
-    EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ITEM_EQUIP, EVENT_ITEM_MELEE, EVENT_ITEM_RANGED,
-    EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE, EVENT_ITEM_USE_ABILITY,
+    EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ABILITY_INTERRUPT, EVENT_ITEM_EQUIP,
+    EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE,
+    EVENT_ITEM_USE_ABILITY,
 };
 pub use dialogs::{
     load_dialog_screen_text, load_dialog_set_maps, load_monologue_dialog_ids, DialogSetMapEntry,

@@ -119,40 +119,13 @@ pub async fn dispatch(
                 )
                 .await;
 
-                // `entity_health_below` drain for every target this cast
-                // wounded — primary and AoE secondaries alike. Before the
-                // PR #662 review the trigger only existed on the
-                // single-target path, so a ground cast that dragged a
-                // tagged mob through its threshold lost the crossing
-                // permanently (the band predicate needs `pct_before >
-                // threshold`, which no later hit can satisfy). Drained
-                // before the death fan-out below; a killing blow is
-                // suppressed inside `fire_health_below_for_hit`.
-                crate::cell::content::fire_pending_health_below(engine, tx, space_mgr).await;
-
-                if !deaths.is_empty() {
-                    // Resolve player_id once — it doesn't change across kills.
-                    let player_id = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);
-                    for dead_eid in deaths {
-                        let tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
-                        if let Some(tag) = tag {
-                            match player_id {
-                                Some(pid) => {
-                                    crate::cell::content::fire_entity_death(
-                                        entity_id, pid, &tag, engine, tx, space_mgr,
-                                    )
-                                    .await;
-                                }
-                                None => {
-                                    tracing::warn!(
-                                        entity_id, npc_tag = %tag, dead_eid,
-                                        "Skipping entity_death event (ground target): killer entity has no player_id"
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
+                // Health-below drain + `entity_death` per tagged kill.
+                // Shared with the warmup tick, which fires a ground cast
+                // whose primary had a warmup (AT-10).
+                crate::cell::abilities::credit_ground_deaths(
+                    entity_id, deaths, engine, tx, space_mgr,
+                )
+                .await;
             }
             true
         }

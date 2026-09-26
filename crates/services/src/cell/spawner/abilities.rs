@@ -9,6 +9,7 @@ use sqlx::PgPool;
 /// Event IDs for ability sequence lookups (from Atrea.enums).
 pub const EVENT_ABILITY_BEGIN: i32 = 1000;
 pub const EVENT_ABILITY_END: i32 = 1001;
+pub const EVENT_ABILITY_INTERRUPT: i32 = 1002;
 
 /// Event IDs for archetype-keyed item handling sequences (from Atrea.enums).
 /// Mirrors `Atrea.enums.Item_Equip` (4000), `Item_Unequip` (4001),

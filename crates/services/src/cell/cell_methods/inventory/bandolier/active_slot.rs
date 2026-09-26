@@ -138,6 +138,24 @@ pub(crate) async fn handle_request_active_slot_change(
         return;
     }
 
+    // A cast warming up with the outgoing weapon never fires: python
+    // `onActiveSlotChanged` → `AbilityManager.onBandolierSlotChange` →
+    // `interruptAbility` (AT-10). A same-slot request is not a change.
+    // The choreography re-entry from `pending_slot_swap_tick` finds no
+    // cast left to interrupt.
+    let slot_changes = space_mgr
+        .get_entity(entity_id)
+        .is_some_and(|e| e.active_bandolier_slot != slot_id);
+    if slot_changes {
+        crate::cell::abilities::interrupt_pending_cast(
+            entity_id,
+            crate::cell::abilities::InterruptReason::BandolierSlotChange,
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
+
     // Resolve player_id BEFORE taking the mutable borrow on
     // space_mgr, otherwise the immutable borrow would alias.
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {

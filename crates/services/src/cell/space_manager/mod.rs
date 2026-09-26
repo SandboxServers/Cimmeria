@@ -281,6 +281,11 @@ pub struct SpaceManager {
     /// double-check filter — the set is a "candidate" pointer set, not
     /// the source of truth.
     pub pending_ai_retries: std::collections::HashSet<u32>,
+    /// Casters holding a `pending_cast` (an ability in its warmup, AT-10).
+    /// The warmup tick walks this set instead of every entity. Like
+    /// `pending_ai_retries` it is a candidate set: an entry whose entity
+    /// is gone or whose `pending_cast` is `None` is dropped by the tick.
+    pub pending_casts: std::collections::HashSet<u32>,
     /// Server-authoritative movement validator. Consulted by
     /// `apply_client_position_update` on every inbound client position:
     /// bounds + navmesh + teleport hard-reject, speed warn-only. Holds a
@@ -427,6 +432,7 @@ impl SpaceManager {
             ring_point_set_to_region: HashMap::new(),
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
             pending_ai_retries: std::collections::HashSet::new(),
+            pending_casts: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),

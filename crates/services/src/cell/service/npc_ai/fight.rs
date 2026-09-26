@@ -68,6 +68,22 @@ pub(super) async fn npc_ai_fight(
         }
     }
 
+    // Mid-cast (AT-10): the ability it launched is still in its warmup.
+    // Hold still and let the warmup tick fire it; a launch now would only
+    // be refused as busy, and moving would interrupt the cast.
+    if crate::cell::abilities::is_casting(space_mgr, npc_id) {
+        super::note_outcome("casting");
+        tracing::debug!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "casting",
+            npc_id,
+            target_id,
+            "NPC AI: ability warming up, holding"
+        );
+        return;
+    }
+
     // Distance is needed before the pick, not after: since H09 an ability
     // set can hold both a ranged and a melee auto-attack, and which of the
     // two is usable depends on how far away the target is.
