@@ -48,7 +48,26 @@ GIT_COMMON="$(canon "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonex
 is_worktree=0
 [ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON" ] && is_worktree=1
 
-if [ -n "${CIMMERIA_TARGET_ROOT:-}" ]; then
+# The Dev Drive settings are user environment variables (tools/dev-drive/). A session
+# started before they were set doesn't have them, so fall back to the registry.
+user_env() {  # $1 = variable name; prints its HKCU\Environment value, if any
+  command -v reg >/dev/null 2>&1 || return 0
+  MSYS_NO_PATHCONV=1 reg query 'HKCU\Environment' /v "$1" 2>/dev/null \
+    | sed -n "s/^ *$1 *REG_[A-Z_]* *//p" | tr -d '\r'
+}
+[ -z "${CIMMERIA_TARGET_ROOT:-}" ] && CIMMERIA_TARGET_ROOT="$(user_env CIMMERIA_TARGET_ROOT)"
+[ -z "${CIMMERIA_SCCACHE_DIR:-}" ] && CIMMERIA_SCCACHE_DIR="$(user_env CIMMERIA_SCCACHE_DIR)"
+
+# A worktree moves its builds to the Dev Drive the first time it builds without a warm
+# local target/ (a new worktree). One that already has a local target/ stays put, so a
+# job in flight never turns cold; CIMMERIA_FORCE_DEV_DRIVE=1 moves it anyway.
+use_dev_drive=0
+if [ -n "${CIMMERIA_TARGET_ROOT:-}" ] && [ -d "$CIMMERIA_TARGET_ROOT" ]; then
+  if [ -d "$CIMMERIA_TARGET_ROOT/$NAME" ] || [ ! -d "$TOP/target" ] || [ "${CIMMERIA_FORCE_DEV_DRIVE:-0}" = 1 ]; then
+    use_dev_drive=1
+  fi
+fi
+if [ $use_dev_drive -eq 1 ]; then
   export CARGO_TARGET_DIR="$CIMMERIA_TARGET_ROOT/$NAME"
 else
   unset CARGO_TARGET_DIR                     # <worktree>/target
