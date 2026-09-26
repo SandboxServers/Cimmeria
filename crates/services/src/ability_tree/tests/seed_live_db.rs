@@ -41,7 +41,11 @@ async fn seed_per_archetype_node_counts_match_final_v2() {
         );
     }
     assert_eq!(catalog.len(), TOTAL_NODES, "total seeded nodes");
-    assert_eq!(catalog.archetype_count(), 7, "seven archetypes carry a tree");
+    assert_eq!(
+        catalog.archetype_count(),
+        7,
+        "seven archetypes carry a tree"
+    );
 }
 
 /// Every seeded archetype has three branches, and each branch has exactly
@@ -75,7 +79,11 @@ async fn seed_every_branch_has_one_root_and_one_level_50_capstone() {
             );
 
             let capstones: Vec<_> = branch.iter().filter(|n| n.is_capstone).collect();
-            assert_eq!(capstones.len(), 1, "{name} branch {tree_index}: one capstone");
+            assert_eq!(
+                capstones.len(),
+                1,
+                "{name} branch {tree_index}: one capstone"
+            );
             assert_eq!(
                 capstones[0].level, MAX_LEVEL,
                 "{name} branch {tree_index}: capstone {} unlocks at the level cap",
@@ -83,7 +91,10 @@ async fn seed_every_branch_has_one_root_and_one_level_50_capstone() {
             );
         }
         assert!(
-            catalog.tree(arch).iter().all(|n| (0..=2).contains(&n.tree_index)),
+            catalog
+                .tree(arch)
+                .iter()
+                .all(|n| (0..=2).contains(&n.tree_index)),
             "{name}: every node sits in branch 0..=2"
         );
     }
@@ -181,7 +192,10 @@ async fn seed_every_tree_row_has_an_ability() {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert!(missing.is_empty(), "tree rows without an ability: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "tree rows without an ability: {missing:?}"
+    );
 
     let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM resources.archetype_ability_tree")
         .fetch_one(&pool)

@@ -60,7 +60,13 @@ async fn catalog_loads_seed_v2_columns_and_joined_training_cost() {
                 node.is_capstone,
                 node.branch_name.as_deref(),
             ),
-            (*branch_points, *point_cost, *root, *capstone, branch.as_deref()),
+            (
+                *branch_points,
+                *point_cost,
+                *root,
+                *capstone,
+                branch.as_deref()
+            ),
             "archetype {arch} ability {id}: catalog must carry the seeded v2 columns"
         );
     }
@@ -68,8 +74,14 @@ async fn catalog_loads_seed_v2_columns_and_joined_training_cost() {
     // The comparison above is only meaningful if the seed sets values
     // other than the schema defaults (0, 1, false, false, NULL).
     let nodes = || (1..=7).flat_map(|arch| catalog.tree(arch).iter());
-    assert!(nodes().any(|n| n.required_branch_points > 0), "seed sets spend gates");
+    assert!(
+        nodes().any(|n| n.required_branch_points > 0),
+        "seed sets spend gates"
+    );
     assert!(nodes().any(|n| n.is_branch_root), "seed sets branch roots");
     assert!(nodes().any(|n| n.is_capstone), "seed sets capstones");
-    assert!(nodes().all(|n| n.branch_name.is_some()), "seed names every branch");
+    assert!(
+        nodes().all(|n| n.branch_name.is_some()),
+        "seed names every branch"
+    );
 }
