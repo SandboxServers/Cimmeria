@@ -51,6 +51,8 @@ fn tree_info_order_is_catalog_order_the_trainer_uses() {
                 level: 1,
                 known: &known,
                 tree_points_spent: 0,
+                // Enough to clear the spend gate: this test is about order.
+                training_points: 100,
             })
             .expect("fixture node is trainable");
             assert_eq!(plan.tree_index, branch as i32, "ability {ability_id}");
