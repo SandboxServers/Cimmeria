@@ -364,8 +364,9 @@ pub fn index_over(dir: &Path) -> PackageIndex {
 
 /// A unique, empty scratch directory under the system temp dir.
 ///
-/// Named by process and thread id so parallel test binaries cannot
-/// collide, and removed-then-recreated so a rerun never sees a stale
+/// Named by process and thread id so concurrent tests cannot collide,
+/// whether they are threads of one test binary or separate processes,
+/// and removed-then-recreated so a rerun never sees a stale
 /// OBJ from the previous one — an extractor test that asserts on the
 /// *set* of files in its output directory is otherwise trivially
 /// polluted.

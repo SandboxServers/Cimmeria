@@ -74,5 +74,5 @@ Data-driven content runtime: trigger/condition/action chains for missions, dialo
 | [entity_death_by_tag](../../../crates/content-engine/src/triggers/tests/matching_entity.rs#L58) | unit | Triggers | 2026-03-07 | Asserts on `trigger.matches(&event)` |  |
 | [effect_init_matches](../../../crates/content-engine/src/triggers/tests/matching_misc.rs#L70) | unit | Triggers | 2026-03-07 | Asserts on `trigger.matches(&event)` |  |
 | [mission_completed_matches](../../../crates/content-engine/src/triggers/tests/matching_mission.rs#L34) | unit | Triggers | 2026-03-07 | Asserts on `trigger.matches(&event)` |  |
-| [every_interact_tag_chain_has_set_interaction_type](../../../crates/content-engine/tests/interact_tag_linter.rs#L159) | integration | Tests / Interact Tag Linter | 2026-05-02 | Asserts on `seed_dir.exists()` |  |
-| [scan_chains_picks_up_basic_pattern](../../../crates/content-engine/tests/interact_tag_linter.rs#L353) | integration | Tests / Interact Tag Linter | 2026-05-02 | Asserts on `triggers.contains_key(&9999)` |  |
+| [every_interact_tag_chain_has_set_interaction_type](../../../crates/content-engine/tests/it/interact_tag_linter.rs#L266) | integration | Tests / Interact Tag Linter | 2026-05-02 | Asserts on `seed_dir.exists()` |  |
+| [scan_chains_picks_up_basic_pattern](../../../crates/content-engine/tests/it/interact_tag_linter.rs#L521) | integration | Tests / Interact Tag Linter | 2026-05-02 | Asserts on `triggers.contains_key(&9999)` |  |

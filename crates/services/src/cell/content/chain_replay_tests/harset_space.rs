@@ -249,7 +249,7 @@ async fn ring_switch_template_carries_the_ring_network_bit() {
         "entity template 3 must keep INT_RingNetwork (32) in \
          `interaction_type` — it is the only thing that makes the five \
          Harset ring switches right-clickable, and the five allowlist \
-         entries in crates/content-engine/tests/interact_tag_linter.rs \
+         entries in crates/content-engine/tests/it/interact_tag_linter.rs \
          suppress the linter's complaint on exactly that basis. Got \
          {flags}. If this bit is deliberately moving into chain SQL, seed \
          `set_interaction_type` actions and delete those allowlist entries.",

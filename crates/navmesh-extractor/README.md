@@ -36,13 +36,13 @@ Recast wrapper later if it buys anything.
 
 | Phase | Status |
 |---|---|
-| 0 — `.nav` round-trip smoke | **shipped** — see `tests/nav_roundtrip_castle_cellblock.rs` |
+| 0 — `.nav` round-trip smoke | **shipped** — see `tests/it/nav_roundtrip_castle_cellblock.rs` |
 | 1.1 — crate scaffold | **shipped** — modules `chunk_id`, `geometry`, `obj`, `umap`, `nav_roundtrip` |
-| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output) |
-| 1.2b — coverage report + floor probe + CLI | **shipped** — modules `coverage`, `floor_probe`, binary `extract_map`; see `tests/castle_coverage_and_probe.rs` |
-| 1.2c — prefab archetypes + `bCollideActors` | **shipped** — module `staticmesh/archetype`, binary `archetype_census`; see `tests/archetype_castle.rs` |
-| 1.3 — Terrain decoder | **shipped** — module `terrain`, wired into `extract_map`; see `tests/terrain_castle.rs` |
-| 1.4 — BSP `Model` / `Polys` decoder | **shipped** — `cimmeria_upk_objects::model` + module `bsp`, wired into `extract_map`; see `tests/bsp_castle_model_decode.rs`, `tests/bsp_castle_floor_evidence.rs`, `tests/bsp_castle_hull_cap.rs` |
+| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/it/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/it/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output) |
+| 1.2b — coverage report + floor probe + CLI | **shipped** — modules `coverage`, `floor_probe`, binary `extract_map`; see `tests/it/castle_coverage_and_probe.rs` |
+| 1.2c — prefab archetypes + `bCollideActors` | **shipped** — module `staticmesh/archetype`, binary `archetype_census`; see `tests/it/archetype_castle.rs` |
+| 1.3 — Terrain decoder | **shipped** — module `terrain`, wired into `extract_map`; see `tests/it/terrain_castle.rs` |
+| 1.4 — BSP `Model` / `Polys` decoder | **shipped** — `cimmeria_upk_objects::model` + module `bsp`, wired into `extract_map`; see `tests/it/bsp_castle_model_decode.rs`, `tests/it/bsp_castle_floor_evidence.rs`, `tests/it/bsp_castle_hull_cap.rs` |
 | 2 — NavBuilder rebuild + Castle_CellBlock acceptance | follow-up |
 | 3 — Recast tuning (`cs=0.15`, `ch=0.1`, `agentClimb=0.5`) | follow-up |
 | 4 — Roll out to remaining 23 maps | follow-up |
@@ -162,7 +162,7 @@ triangles == staticmesh_triangles + terrain_triangles + bsp_triangles
 ```
 
 reported per row as `sources_balanced` and asserted against the bytes
-on disk by `tests/extract_map_castle_cellblock.rs`.
+on disk by `tests/it/extract_map_castle_cellblock.rs`.
 `bsp_hull_cap_triangles` counts faces the hull-cap filter *removed*, so
 it is deliberately outside the sum.
 `probe` writes `probe_mappings.tsv` (mapping ranking) and
@@ -348,7 +348,7 @@ CIMMERIA_PACKAGE_INDEX=/path/to/package_index.bin \
   cargo test -p cimmeria-navmesh-extractor
 ```
 
-`tests/navbuilder_axis_roundtrip.rs` additionally takes
+`tests/it/navbuilder_axis_roundtrip.rs` additionally takes
 `CIMMERIA_NAVBUILDER` (default: the `bin64/NavBuilder_d.exe` reference
 binary found by walking up from the crate). One case in it asserts the
 parameter validation in `deprecated/cpp/src/nav_builder/build_params.hpp`
@@ -358,7 +358,7 @@ tree, which no probe can detect — say so explicitly:
 ```bash
 tools/build-navbuilder.ps1 -Out $TMP/NavBuilder.exe
 CIMMERIA_NAVBUILDER=$TMP/NavBuilder.exe CIMMERIA_NAVBUILDER_FROM_TREE=1 \
-  cargo test -p cimmeria-navmesh-extractor --test navbuilder_axis_roundtrip
+  cargo test -p cimmeria-navmesh-extractor --test it navbuilder_axis_roundtrip
 ```
 
 A skipped test is not a pass, so the walkers are also covered without
@@ -369,9 +369,9 @@ any of that, through the synthetic packages in [`test_support`](src/test_support
 | chain control flow — loops, depth budget, missing package vs missing export, collision veto ordering | `staticmesh/archetype/tests.rs`, against a `fetch` closure | yes |
 | chain over real package bytes — import chain ↔ dotted outer path, both property offsets, cross-package mesh keys | `staticmesh/archetype_walk_tests.rs`, against `test_support::prefab_package` | yes |
 | coverage arithmetic and TSV shape | `coverage/tests.rs` | yes |
-| the cooked SGW shapes themselves | `tests/archetype_castle.rs` | only with the client tree |
+| the cooked SGW shapes themselves | `tests/it/archetype_castle.rs` | only with the client tree |
 
-`tests/archetype_castle.rs` pins `Castle-000a0002` at 147
+`tests/it/archetype_castle.rs` pins `Castle-000a0002` at 147
 archetype-instanced actors → 125 emitted + 22 collision-vetoed, plus
 102 direct actors vetoed, and asserts the balance invariant. Both
 guards were revert-proved: disabling the `bCollideActors` gate fails

@@ -20,32 +20,32 @@
 //! the colo actually experiences, which this file's loopback run cannot
 //! exercise.
 //!
-//! Shared setup/driver helpers live in `tests/support/mod.rs` (see that
-//! file's doc comment for why it isn't a macro-based
+//! Shared setup/driver helpers live in `tests/it/support/mod.rs` (see
+//! that file's doc comment for why it isn't a macro-based
 //! `require_db_or_skip!`).
 //!
-//! Run locally:
+//! Run locally (the trailing `::` keeps the chaos module out):
 //! ```text
 //! /c/Users/Steve/AppData/Local/Temp/cimmeria-castle/reload-db.sh
 //! DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/<db> \
-//!   cargo test -p cimmeria-wireclient --test two_client_castle_visibility -- --test-threads=1
+//!   cargo test -p cimmeria-wireclient --test it two_client_castle_visibility:: -- --test-threads=1
 //! ```
 //! Not currently wired into `.github/workflows/test.yml`'s `ci-live-db`
 //! job (which today runs `-p cimmeria-services --lib` only) -- see
 //! `docs/architecture/wireclient.md` for the follow-up to add a
-//! `wireclient-e2e` nextest profile. `--test-threads=1` (or nextest's
-//! default per-file isolation) matters here because both tests in this
-//! file each spawn their own `Orchestrator` against the *same* shared
-//! database; sentinel id ranges are kept disjoint between tests so they
-//! could in principle run concurrently, but serializing avoids surprising
-//! interactions on the account/sgw_player tables.
-
-mod support;
+//! `wireclient-e2e` nextest profile. `--test-threads=1` matters here
+//! because every live-DB test in this binary (these two and the three
+//! in `two_client_castle_visibility_chaos.rs`) spawns its own
+//! `Orchestrator` against the *same* shared database; sentinel id
+//! ranges are kept disjoint between tests so they could in principle run
+//! concurrently, but serializing avoids surprising interactions on the
+//! account/sgw_player tables. nextest gives each test its own process
+//! but still runs them in parallel; `--profile ci-live-db` serialises.
 
 use std::time::Duration;
 
-use support::{
-    assert_never, credentials_for, insert_castle_character, insert_sentinel_account,
+use crate::support::{
+    self, assert_never, credentials_for, insert_castle_character, insert_sentinel_account,
     live_db_pool_or_skip, start_server, wait_for, CASTLE_BASE_POS, CLASS_SGWPLAYER,
 };
 

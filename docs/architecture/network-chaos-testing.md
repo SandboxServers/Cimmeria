@@ -169,7 +169,7 @@ packets of *any* fresh connection's Mercury phase-3 handshake
 breaking every multi-client test that shared the transport. These
 additions were built to reproduce a live AoI witness-fanout ordering
 hazard against a real `BaseService` socket
-(`crates/wireclient/tests/two_client_castle_visibility_chaos.rs`,
+(`crates/wireclient/tests/it/two_client_castle_visibility_chaos.rs`,
 gated behind `cimmeria-services`'s `chaos-testing` feature +
 `BaseService::set_transport_override`); see
 [`docs/analysis/npc-ai-restoration/work-packets.md`](../analysis/npc-ai-restoration/work-packets.md)'s

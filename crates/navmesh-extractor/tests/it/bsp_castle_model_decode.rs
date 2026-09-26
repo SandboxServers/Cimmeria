@@ -11,9 +11,7 @@
 //! Companion file: `bsp_castle_floor_evidence.rs` answers "is the
 //! floor here".
 
-mod bsp_support;
-
-use bsp_support::*;
+use crate::bsp_support::*;
 
 use cimmeria_navmesh_extractor::bsp::collect_bsp_triangles;
 use cimmeria_navmesh_extractor::bsp::{collect_bsp_models, EMIT_REVERSED};

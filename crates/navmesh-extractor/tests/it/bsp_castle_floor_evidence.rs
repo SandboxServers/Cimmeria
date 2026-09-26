@@ -13,9 +13,7 @@
 //! Companion file: `bsp_castle_model_decode.rs` covers the decode
 //! itself.
 
-mod bsp_support;
-
-use bsp_support::*;
+use crate::bsp_support::*;
 
 use cimmeria_navmesh_extractor::bsp::{collect_bsp_models, collect_bsp_triangles};
 use cimmeria_navmesh_extractor::geometry::TriangleSoup;

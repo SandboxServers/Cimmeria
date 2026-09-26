@@ -31,7 +31,7 @@
 //! decision to send `-1` is made inside the 2009 client. That side is
 //! guarded by the patch-versus-seed agreement tests in
 //! `base/dialog_overrides/patches_cellblock.rs` and by the R1 rule of
-//! `crates/content-engine/tests/dialog_button_linter.rs`.
+//! `crates/content-engine/tests/it/dialog_button_linter/mod.rs`.
 //!
 //! The existing per-mission modules (`mission_638`, `mission_640`,
 //! `mission_641`) are deliberately untouched: they cover the interact and

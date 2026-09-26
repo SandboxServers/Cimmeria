@@ -83,7 +83,7 @@ public:
 		// The cell counts Recast actually receives. Logged because they
 		// are where a float-vs-double slip shows up (maxEdgeLen 40 vs
 		// 39 at defaults) long before anyone diffs two .nav files;
-		// tests/navbuilder_axis_roundtrip.rs pins the default line.
+		// tests/it/navbuilder_axis_roundtrip.rs pins the default line.
 		INFO("Derived cells: walkableHeight=%d walkableClimb=%d walkableRadius=%d maxEdgeLen=%d minRegionArea=%d mergeRegionArea=%d",
 			config.walkableHeight, config.walkableClimb, config.walkableRadius,
 			config.maxEdgeLen, config.minRegionArea, config.mergeRegionArea);

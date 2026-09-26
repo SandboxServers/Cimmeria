@@ -37,7 +37,7 @@
 -- Packet CA05 (Castle map recon and story-actor authoring) owns the
 -- spawnlist rows, entity templates and point sets these chains name. Until
 -- CA05 lands, the region triggers below reference `point_sets.name` rows
--- that are not seeded, and `crates/content-engine/tests/interact_tag_linter.rs
+-- that are not seeded, and `crates/content-engine/tests/it/interact_tag_linter.rs
 -- ::every_chain_region_key_matches_a_seeded_point_set` fails for exactly
 -- those two keys. That is an expected cross-packet integration gap, not a
 -- typo in this file. The contracted names, byte-exact:

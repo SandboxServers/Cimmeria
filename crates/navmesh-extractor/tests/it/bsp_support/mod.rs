@@ -1,11 +1,8 @@
-//! Shared fixtures and geometry helpers for the BSP integration tests.
-//!
-//! Integration-test binaries are separate crates, so this module is
-//! `include`d by each of them via `mod bsp_support;`. Each binary uses
-//! a different subset, hence the blanket `dead_code` allow that the
-//! `tests/common/mod.rs` convention normally carries.
-
-#![allow(dead_code)]
+//! Shared fixtures and geometry helpers for the BSP integration tests
+//! (`bsp_castle_model_decode`, `bsp_castle_floor_evidence`,
+//! `bsp_castle_hull_cap`). A plain module of the crate's one
+//! integration-test binary, declared once in `tests/it/main.rs`; the
+//! test modules pull it in with `use crate::bsp_support::*`.
 
 use std::path::{Path, PathBuf};
 

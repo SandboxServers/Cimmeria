@@ -75,7 +75,7 @@ SET search_path = resources, pg_catalog;
 --
 --     That is why the seven `interact_tag` chains in this file carry no
 --     `set_interaction_type` action and are allowlisted in
---     crates/content-engine/tests/interact_tag_linter.rs. The bit is real;
+--     crates/content-engine/tests/it/interact_tag_linter.rs. The bit is real;
 --     it just arrives per-player instead of per-entity.
 --
 -- (C) WHEN A BEAT MUST USE THE BIND PATH INSTEAD OF `interact_tag`.
