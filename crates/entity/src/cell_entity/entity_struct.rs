@@ -420,6 +420,10 @@ pub struct CellEntity {
     /// callers that don't care about kill credit (NPC AI fire, etc.).
     pub last_aoe_deaths: Vec<u32>,
 
+    /// An ability launched with a positive warmup, waiting for the cell's
+    /// warmup tick to fire or interrupt it (AT-10). See [`super::PendingCast`].
+    pub pending_cast: Option<super::PendingCast>,
+
     /// Pulsing effects currently active on this entity (DoT, HoT,
     /// timed debuffs). Each instance carries its own scheduling, so
     /// the per-cell `effect_pulse_tick` walks this Vec to fire due

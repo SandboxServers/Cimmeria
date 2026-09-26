@@ -268,6 +268,14 @@ impl AbilityManager {
         );
     }
 
+    /// Drop one ability's cooldown. Returns whether one was running.
+    ///
+    /// Used by the warmup interrupt, which refunds the cooldown the launch
+    /// charged (python `AbilityManager.interruptAbility`).
+    pub fn clear_ability_cooldown(&mut self, ability_id: i32) -> bool {
+        self.ability_cooldowns.remove(&ability_id).is_some()
+    }
+
     /// Start cooldowns for an ability and its moniker groups.
     pub fn start_cooldowns(&mut self, ability: &AbilityDef, cooldown_secs: f32) {
         let duration = Duration::from_secs_f32(cooldown_secs);
