@@ -82,7 +82,7 @@ Total: 16 persistent (non-instanced) spaces loaded at startup. 8 additional inst
 
 > **`spaces.xml` is the only source of the instancing flag — `worlds.flags` is dead data.**
 > `SpaceManager::is_world_instanced` reads `WorldDef.instanced`, which is parsed from the
-> `Instanced` attribute above ([`space_manager/lifecycle.rs:121`](../../crates/services/src/cell/space_manager/lifecycle.rs#L121)).
+> `Instanced` attribute above ([`space_manager/lifecycle.rs:121`](../../crates/cell-world/src/cell/space_manager/lifecycle.rs#L121)).
 > The `resources.worlds.flags` column is never read by the cell runtime; the only consumer
 > anywhere is the admin-api spaces listing, which selects it for display. Do not reach for
 > it as a substitute. The two disagree today: `Harset_CmdCenter` (world 68) has `flags = 1`

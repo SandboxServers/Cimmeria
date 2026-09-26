@@ -210,7 +210,7 @@ binary has a complete, functioning handler for exactly this value; the
 2009 server-side `setAggression` simply used the wrong message. No client
 patch is needed; the handler has been there since 2009.
 
-The AoI-entry replay (`crates/services/src/cell/space_manager/aoi.rs`)
+The AoI-entry replay (`crates/cell-world/src/cell/space_manager/aoi.rs`)
 mirrors `createOnClient`'s conditional send exactly: only sent when an
 override is active, nothing for a faction-derived mob. The `.aggression
 clear` console verb (new in Cimmeria; legacy's console command had no

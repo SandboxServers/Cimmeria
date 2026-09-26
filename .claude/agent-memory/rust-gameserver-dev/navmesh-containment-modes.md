@@ -48,7 +48,7 @@ in advisory worlds. Bounds, speed and teleport layers are untouched.
 
 ## Traps found doing it
 
-- **`crates/services/src/cell/space_manager/tests/mod.rs`'s `TEST_SPACES_XML`
+- **`crates/cell-world/src/cell/space_manager/tests/mod.rs`'s `TEST_SPACES_XML`
   and `TEST_CELL_SPACES_XML` are load-bearing.** Four tests pin
   `space_count()` and the exact `(cell_id << 16) | index` startup space ids
   (`parse_spaces_xml_loads_all_worlds`, `startup_spaces_get_correct_ids`,

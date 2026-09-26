@@ -26,7 +26,7 @@ This doc captures **what** was decided and **why**, with pointers to the code th
 
 **Reversibility:** Adding `on_pulse_begin` / `on_pulse_end` later is additive — existing scripts get default-empty impls, no migration. **Trapdoors:** none.
 
-**Code:** [`crates/services/src/cell/effects/mod.rs`](../../crates/services/src/cell/effects/mod.rs) — trait definition + `dispatch_by_name` / `dispatch_on_remove` helpers.
+**Code:** [`crates/cell-world/src/cell/effects/mod.rs`](../../crates/cell-world/src/cell/effects/mod.rs) — trait definition + `dispatch_by_name` / `dispatch_on_remove` helpers. The synchronous layer (trait, context, registry, scripts) is in `cimmeria-cell-world` because the spawn-time cover hold runs Cover Stance through it; the async pulsing scheduler (`effects/pulsing/`) stays with combat in `cimmeria-services`, which re-exports the whole layer at `cell::effects` ([services-crate-split.md](services-crate-split.md)).
 
 ### 2. Active-effect storage on the target, not the source
 
@@ -57,7 +57,7 @@ The PR initially added a separate `movement_lock_reasons: HashSet<(u32, i32)>` f
 
 **Reversibility:** Already the simpler design — no commitment to walk back.
 
-**Code:** [`crates/entity/src/cell_entity/state_flags.rs`](../../crates/entity/src/cell_entity/state_flags.rs), `Stun::on_apply` / `on_remove` in [`crates/services/src/cell/effects/scripts.rs`](../../crates/services/src/cell/effects/scripts.rs).
+**Code:** [`crates/entity/src/cell_entity/state_flags.rs`](../../crates/entity/src/cell_entity/state_flags.rs), `Stun::on_apply` / `on_remove` in [`crates/cell-world/src/cell/effects/scripts.rs`](../../crates/cell-world/src/cell/effects/scripts.rs).
 
 ### 4. Stacking semantics: same-source refresh, multi-source stack
 
@@ -160,7 +160,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Could route flags into the dispatcher later (add a "if flags & EF_STUN, also run Stun" path) without breaking script_name routing.
 
-**Code:** [`crates/services/src/cell/effects/registry.rs`](../../crates/services/src/cell/effects/registry.rs).
+**Code:** [`crates/cell-world/src/cell/effects/registry.rs`](../../crates/cell-world/src/cell/effects/registry.rs).
 
 ### 11. Channel-interrupt distance = 0.5m
 
@@ -278,7 +278,7 @@ which queues it on the `SpaceManager`. The callers that *do* hold a `&ChainEngin
 queue immediately after the hit via `content::fire_pending_health_below`: the kill-credit
 wrapper, the `useAbilityOnGroundTarget` handler, the pulse tick, and a per-tick safety drain
 in the cell message loop. The pure percentage arithmetic lives in
-[`cell/combat/health_threshold.rs`](../../crates/services/src/cell/combat/health_threshold.rs).
+[`cell/combat/health_threshold.rs`](../../crates/cell-world/src/cell/combat/health_threshold.rs).
 
 **Why a queue rather than a threaded handle.** The trigger needs three things at once: the
 target's health on **both** sides of the hit, the attacking player as the acting entity, and
@@ -398,7 +398,7 @@ arm. Loot, XP, the `BSF_InCombat` clear and the auto-cycle stop were all 1.5 s l
 death event and the death transition were credited to different shots.
 
 **Why the sweep sits in `damage_apply` and not in the scripts.** A script holds
-`&mut SpaceManager` through a synchronous [`EffectContext`](../../crates/services/src/cell/effects/mod.rs)
+`&mut SpaceManager` through a synchronous [`EffectContext`](../../crates/cell-world/src/cell/effects/mod.rs)
 and cannot await the wire burst. Pushing lethality handling into each script would also mean
 every future HEALTH-touching script has to remember it — the same omission that produced
 this bug, re-armed nine times over. The sweep is unconditional rather than gated on "did a

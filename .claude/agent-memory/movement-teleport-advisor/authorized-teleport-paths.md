@@ -13,7 +13,7 @@ Verified to exist as of 2026-05-27:
 |---|---|---|
 | Same-world teleport | `crates/services/src/base/world_entry/teleport.rs::handle_teleport_player` | Server-issued teleport (mission warp, GM tools) |
 | Cross-world gate travel | `crates/services/src/base/world_entry/gate_travel/` | Stargate transition; arrival is fresh spawn so `last_pos` initializes from scratch |
-| Ring transport arrival | `crates/services/src/cell/ring_transport/transporter/mod.rs` | Ring-platform pad-to-pad teleport |
+| Ring transport arrival | `crates/cell-world/src/cell/ring_transport/transporter/mod.rs` | Ring-platform pad-to-pad teleport |
 | Respawn after death | `crates/services/src/cell/cell_methods/player/combat/respawn.rs` | Death → respawner point snap |
 | World entry / play character | `crates/services/src/base/world_entry/play_character.rs` | Initial spawn into world |
 | Reanchor (recovery) | `crates/services/src/base/world_entry/reanchor_player.rs` | Desync recovery snap |
@@ -25,7 +25,7 @@ Added since (verified 2026-09-17):
 | GM console travel | `crates/services/src/cell/console/travel/` (`.gotoxyz`, `.goto`, `.summon`, `.gotolocation`, `.gotospace`) | `snap_in_current_space` calls `note_authorized_teleport` unconditionally; cross-space legs go through `cell/space_transfer` |
 
 `cell/space_transfer` has **two** entry points, and picking the wrong one silently breaks `.gotospace`: `transfer_player_to_space` resolves a (possibly typed) world name through `canonical_world_name`, while `transfer_player_to_loaded_space` takes a pre-verified space id and never consults the world table. `.gotospace`'s whole promise is reaching a live instance whose world the table may not declare, so routing it through the name-based one re-imposes exactly the `UnknownWorld` dead-end it exists to avoid — and only the same-space fast path would still appear to work. The by-id path re-checks that the instance is still loaded, because arrival (`handle_create_entity`) degrades a stale `destination_space_id` to `find_or_create_space`, which for an undeclared world fails *after* teardown (un-spaced player).
-| Off-navmesh recovery | `crates/services/src/cell/space_manager/client_move.rs::reject_outcome` | Validator relocating a stranded entity — see [[snap-back-termination]] |
+| Off-navmesh recovery | `crates/cell-world/src/cell/space_manager/client_move.rs::reject_outcome` | Validator relocating a stranded entity — see [[snap-back-termination]] |
 
 **These are all unchecked position writes** — `update_entity_position` or (for
 the GM travel / console placement / recovery paths since 2026-09-17) its

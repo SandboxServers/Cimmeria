@@ -143,7 +143,7 @@ The two `EEffectFlag` bits that matter here:
 > `effects.script_name` is **not** original evidence. The column exists in the
 > dump DDL, but all 16 non-NULL values (`RangedPhysicalDamage`, `HealHealth`,
 > `Suppression`, …) are Cimmeria's own `EffectScript` registry keys in
-> `crates/services/src/cell/effects/registry.rs`. Do not cite it as original.
+> `crates/cell-world/src/cell/effects/registry.rs`. Do not cite it as original.
 
 ---
 
@@ -544,7 +544,7 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
   `resources.archetypes.healthPerLevel` and `focusPerLevel` exactly (§5), though
   they are hardcoded rather than read from the table.
 - NPCs: `HP = 200 + level*50`, `FOCUS = 200`
-  (`crates/services/src/cell/space_manager/spawn.rs:185-192`). **FAN-GUESS.**
+  (`crates/cell-world/src/cell/space_manager/spawn.rs:185-192`). **FAN-GUESS.**
 
 ---
 
@@ -872,7 +872,7 @@ them either.
 
 **Focus → Health damage: IMPLEMENTED, but only inside the effect scripts, and
 with a formula the data does not support.**
-`crates/services/src/cell/effects/scripts.rs:608-610` (`RangedPhysicalDamage`)
+`crates/cell-world/src/cell/effects/scripts.rs:608-610` (`RangedPhysicalDamage`)
 and `:298-300` (`MeleePhysicalDamage`):
 
 ```
@@ -1118,7 +1118,7 @@ the AoE to the cover-node graph.
 - Each cone secondary rolls its own QR and takes full damage
   (`cone_aoe/fan_out.rs:119-146`). PvE only (`all_npc_entity_ids`).
 - **LOS exists but is wired only to NPC AI.**
-  `crates/services/src/cell/space_manager/spatial.rs:15-37`
+  `crates/cell-world/src/cell/space_manager/spatial.rs:15-37`
   `has_line_of_sight` → `navmesh.raycast`, returning `true` when there is no
   navmesh/space/position. Called from exactly two places, both AI:
   `cell/service/npc_ai/fight.rs:241` and `:354`. Player `useAbility` and every

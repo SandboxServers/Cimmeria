@@ -46,7 +46,7 @@ account.accesslevel (DB)
 
 ### 2. A single dispatch-layer gate
 
-`crates/services/src/cell/dispatch/gm_gate.rs` is the choke point.
+`crates/cell-world/src/cell/dispatch/gm_gate.rs` is the choke point.
 `dispatch_cell_method` calls `enforce_gm_gate` **before** routing to any
 interface handler:
 

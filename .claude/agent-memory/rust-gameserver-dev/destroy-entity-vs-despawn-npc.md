@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-`SpaceManager::destroy_entity` (`crates/services/src/cell/space_manager/entities.rs`) is a pure state-removal primitive: it drops the entity from `space.entities` and the spatial grid, but does **not** touch any other entity's `witnesses` set and sends no `LeftAoI`. The next AoI tick will *eventually* notice and clean up, but only for players the tick happens to visit, and only after up to a full tick of the client rendering a corpse that's already gone server-side. This is the same failure shape as the Castle Cellblock invisible-corpse bug (issue #582).
+`SpaceManager::destroy_entity` (`crates/cell-world/src/cell/space_manager/entities.rs`) is a pure state-removal primitive: it drops the entity from `space.entities` and the spatial grid, but does **not** touch any other entity's `witnesses` set and sends no `LeftAoI`. The next AoI tick will *eventually* notice and clean up, but only for players the tick happens to visit, and only after up to a full tick of the client rendering a corpse that's already gone server-side. This is the same failure shape as the Castle Cellblock invisible-corpse bug (issue #582).
 
 `SpaceManager::despawn_npc` (same file) is the correct primitive for any NPC removal that content or a GM command triggers and that observers need to see disappear immediately: it fans `LeftAoI` to every witness synchronously, scrubs the target out of every other entity's `witnesses` set in the same pass, then calls `destroy_entity`. It is NPC-only — refuses a player target structurally (`DespawnOutcome::RefusedPlayer`), independent of any caller-side check. Already used by the `.despawn` GM console command (`cell/console/spawn/`).
 
