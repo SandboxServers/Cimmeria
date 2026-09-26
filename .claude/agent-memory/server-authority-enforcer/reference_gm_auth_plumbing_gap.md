@@ -15,7 +15,7 @@ exactly ONE site: the chat dispatch's `SPEAKER_GM` bit computation
 in `crates/base/src/base/dispatch/chat.rs:86-87`.
 
 The cell-method dispatch entry point at
-`crates/services/src/cell/dispatch/router.rs:33` has signature
+`crates/cell/src/cell/dispatch/router.rs:33` has signature
 `(entity_id, method_index, args, tx, space_mgr, engine)` — NO
 caller-identity parameter beyond entity_id. None of the per-
 interface dispatchers (`cell_methods::being::dispatch`,

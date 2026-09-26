@@ -120,7 +120,7 @@ The dispatcher declares
 `Span::current().record(...)` in the handler fills the slot.
 
 **Reference:** the cover-detection tick at
-[`crates/services/src/cell/service/ticks/cover.rs:31-36`](../../crates/services/src/cell/service/ticks/cover.rs#L31)
+[`crates/cell/src/cell/service/ticks/cover.rs:31-36`](../../crates/cell/src/cell/service/ticks/cover.rs#L31)
 declares `fields(player_count = tracing::field::Empty, events = tracing::field::Empty)`
 and the body fills them via `Span::current().record(...)`.
 
@@ -280,7 +280,7 @@ indistinguishable from a real account in a query and matches every NPC
 in the store; `"None"` pollutes the field's value set the same way.
 Absence is the correct encoding for "this entity has no account", and
 the guards in
-[`identity_propagation.rs`](../../crates/services/src/cell/service/base_messages/tests/identity_propagation.rs)
+[`identity_propagation.rs`](../../crates/cell/src/cell/service/base_messages/tests/identity_propagation.rs)
 assert the fields are **absent** for NPCs precisely so this shortcut
 trips CI.
 

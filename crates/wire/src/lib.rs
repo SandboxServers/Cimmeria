@@ -43,7 +43,7 @@ pub mod cell {
     pub mod client_methods;
     /// The client->server cell-method indices under their `CM_*` /
     /// `CLIENT_MG_*` names, and their names for logging. The router that
-    /// dispatches on them stays in `cimmeria-services`.
+    /// dispatches on them is `cimmeria-cell`'s.
     pub mod dispatch {
         pub mod constants;
         pub mod names;

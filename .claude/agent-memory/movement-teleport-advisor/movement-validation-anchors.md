@@ -26,7 +26,7 @@ if (_DAT_01e69c90 < SQRT(dz*dz + dx*dx + dy*dy) * (1.0 / dt)) { hard_snap(); }
 **Inbound client position seam.**
 
 - Wire: `0x03 AVATAR_UPDATE_EXPLICIT` (40 bytes), parsed at `crates/base/src/base/connect_loop/encrypted/mod.rs:214`.
-- Forwarded as `BaseToCellMsg::EntityMove`, handled in `crates/services/src/cell/service/base_messages/mod.rs:138`.
+- Forwarded as `BaseToCellMsg::EntityMove`, handled in `crates/cell/src/cell/service/base_messages/mod.rs:138`.
 - Final write at `crates/cell-world/src/cell/space_manager/entities.rs::update_entity_position:147`.
 - **Gap**: `0x02 AVATAR_UPDATE_IMPLICIT`, `0x04 WARD_IMPLICIT`, `0x05 WARD_EXPLICIT` are length-parsed but never dispatched. Separate issue; same validator will apply.
 

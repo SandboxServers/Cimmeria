@@ -108,7 +108,7 @@ Client <-- Mercury/UDP (encrypted) --> BaseApp
 AuthServer <-- Mercury/TCP --> BaseApp
 ```
 
-In Cimmeria only the client link is on the wire. Auth, base, and cell all run inside the single `cimmeria-server` process (`crates/server/`). The BaseApp↔CellApp hop is a pair of in-process `tokio::mpsc` channels carrying `BaseToCellMsg`/`CellToBaseMsg` (`crates/services/src/cell/service/mod.rs:83-90`), not Mercury/TCP, so it has no wire format to match.
+In Cimmeria only the client link is on the wire. Auth, base, and cell all run inside the single `cimmeria-server` process (`crates/server/`). The BaseApp↔CellApp hop is a pair of in-process `tokio::mpsc` channels carrying `BaseToCellMsg`/`CellToBaseMsg` (`crates/cell/src/cell/service/mod.rs:92-99`), not Mercury/TCP, so it has no wire format to match.
 
 ### Mercury::Nub Threading Model (from SGW.exe RE)
 

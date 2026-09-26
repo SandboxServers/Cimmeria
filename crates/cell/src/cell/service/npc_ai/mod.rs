@@ -12,7 +12,7 @@
 //! the H08 surrender guards (`ticks::auto_cycle_tick`, and a chain engine for
 //! the health-crossing case).
 
-pub use cimmeria_cell_combat::cell::service::npc_ai::*;
+pub(crate) use cimmeria_cell_combat::cell::service::npc_ai::*;
 
 #[cfg(test)]
 mod detector_tests;

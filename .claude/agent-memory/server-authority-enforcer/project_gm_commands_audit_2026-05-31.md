@@ -22,7 +22,7 @@ prerequisite for safely implementing any of the GM cell methods.
 
 - ZERO `gm*` cell methods are implemented in Rust. Every one
   falls through to the warn! arm at
-  `crates/services/src/cell/dispatch/router.rs:101`.
+  `crates/cell/src/cell/dispatch/router.rs:101`.
 - `class_id` is hardcoded to SGWPlayer (0x02) regardless of
   access_level (see TODO at
   `crates/base-world-entry/src/base/world_entry/play_character.rs:89-94`).

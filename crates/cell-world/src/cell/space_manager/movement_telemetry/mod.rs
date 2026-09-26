@@ -271,7 +271,7 @@ pub struct MovementTelemetry {
     /// Gates every hard-reject row — see [`reject`].
     pub(crate) reject_log: LogThrottle,
     /// Gates `npc_ai.path_fail` — see
-    /// `cimmeria_services::cell::service::npc_ai::path_failure`.
+    /// `cimmeria_cell_combat::cell::service::npc_ai::path_failure`.
     pub npc_path_fail_log: LogThrottle,
     /// Gates `movement.navmesh` `advisory_off_mesh_accepted` — see
     /// [`ADVISORY_OFF_MESH_LOG_INTERVAL`].

@@ -382,6 +382,35 @@ Learned extracting `cimmeria-cell-methods` (C5a, a leaf wave whose prep did the 
   inserted `OTEL_FILTER` row landed on the previous line. Use the Edit tool for any
   replacement that ends in a backslash.
 
+Learned extracting `cimmeria-cell` (C6, the top of the cell track):
+
+- **Scan `super::super::<Type>` too, not just modules.** The only miss of the
+  skeleton was `CellError` (`startup.rs` imports it from the parent `cell`);
+  the crate compiled on its own once it joined the private re-exports.
+- **The last wave re-homes every leftover test module, not just its tree.**
+  W2b's `spawner_tests` and the older `harset_placement_tests` had waited in
+  services for code that later waves had long since moved; re-derived per
+  file they went to world and combat. Two "cross-track" leftovers drive only
+  base code plus catalog loaders (`template_prototype_parity`,
+  `mission_701_persistence`), so their real home is a base crate, not the
+  facade.
+- **A test moved DOWN can need a dev-dependency the lower crate lacks**
+  (`sqlx` in combat for the Harset guards): E0433 on the crate name.
+- **`pub use x::*` inside a private module trips `unreachable_pub`** once the
+  module's last outside user leaves; narrow to `pub(crate) use`.
+- **Prove a "no bare `cimmeria_cell`" guard semantically, not only by string.**
+  A string check (`OTEL_FILTER` has no bare directive) fires first on every
+  mutation, hiding whether the sibling-shadow check works. Keep an in-test
+  block that builds the bare-row filter and asserts a sibling's DEBUG survives
+  dropping its own row, and revert-check once with the string check disabled.
+- **A re-exports-only facade module needs blank-line groups.** rustfmt sorts a
+  contiguous run of `use` lines and leaves the comments behind, which had
+  scrambled services' `cell/mod.rs` over six waves; one group per crate keeps
+  each comment with its re-exports.
+- **Recompute inventory anchors by searching `fn <name>`** in the new file
+  (a script over `[name](…#Ln)` links); relative `cell/service/…` paths in
+  notes stay valid under the new crate's `src/`.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

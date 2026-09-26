@@ -33,12 +33,14 @@
 //! | 742 | `MissionUpdate` emitted on a real completion, not on a no-op |
 //! | 742 | a pre-H50 row holding the STEP id self-heals on login |
 //!
-//! It drives the cell service's relog hydration, which is still in this
-//! crate, so it stayed here (as `cell::content_tests::mission_relog_persistence`,
-//! was `cell::content::chain_replay_tests::mission_relog_persistence`) when
+//! It drives the cell service's relog hydration, so it stayed beside the
+//! service (as `cell::content_tests::mission_relog_persistence`, was
+//! `cell::content::chain_replay_tests::mission_relog_persistence`) when
 //! wave C3 of the services crate split moved the content executor to
-//! `cimmeria-cell-content`. The executor, the context populator and the
-//! chain loader are that crate's `test-support` hooks.
+//! `cimmeria-cell-content`, and moved with the service from
+//! `cimmeria-services` to this crate in wave C6. The executor, the context
+//! populator and the chain loader are the content crate's `test-support`
+//! hooks.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};

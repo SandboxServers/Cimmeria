@@ -19,7 +19,7 @@ As of 2026-05-27, the ability trainer feature is largely implemented:
 - `crates/cell-interactions/src/cell/interactions/trainer.rs` — `try_open_trainer()` builds per-player ability list from `template_trainer_lists` + `trainer_abilities` + `archetype_ability_trees`, computes trainable flags, sends `onTrainerOpen`. 4 unit tests with byte-exact wire assertions.
 - `crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs:36-122` — `handle_train_ability()` cell-side 6-step validation. Sends `CellToBaseMsg::TrainAbility`.
 - `crates/base-methods/src/base/world_entry/methods/progression/mod.rs:400-530` — base-side atomic DB UPDATE with double-debit guard, TP debit, `BaseToCellMsg::AbilityGranted`.
-- `crates/services/src/cell/service/base_messages/mod.rs:363-381` — `AbilityGranted` mirrors onto entity, sends `onKnownAbilitiesUpdate` (method 101).
+- `crates/cell/src/cell/service/base_messages/mod.rs:363-381` — `AbilityGranted` mirrors onto entity, sends `onKnownAbilitiesUpdate` (method 101).
 
 **REMAINING (small, per that date):**
 1. Routing split: `dispatch.rs` calling old stub vs `try_open_trainer` — likely resolved since, given current `trainer.rs` is the sole file now.

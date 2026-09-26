@@ -162,9 +162,9 @@ pub struct RunningServer {
 /// `CellService::start()` loads `entities/spaces.xml` /
 /// `entities/cell_spaces.xml` (the "Castle" space definition these tests
 /// need) from the **process CWD**-relative path `"entities"`
-/// (`crates/services/src/cell/service/mod.rs`'s `entities_dir` default) --
+/// (`crates/cell/src/cell/service/mod.rs`'s `entities_dir` default) --
 /// there is no `ServerConfig` field or setter to override it from outside
-/// `cimmeria-services`. `cargo test` runs an integration test binary with
+/// `cimmeria-cell`. `cargo test` runs an integration test binary with
 /// its CWD set to the *package* directory (`crates/wireclient/`), not the
 /// workspace root, so the relative path resolves to a directory that
 /// doesn't exist and `CreateEntity` fails with `"Unknown world: Castle"`

@@ -44,9 +44,9 @@ tracing = { workspace = true }
 [features]
 # Exposes the test fixtures (`test_fixtures`) and the test-only hooks
 # (`force_ai_state`, `StepRegionReplayGuard::is_idle`, the arrival mesh
-# helpers, ...) to other crates' tests. cimmeria-cell-combat and
-# cimmeria-services turn it on through their [dev-dependencies] (combat's own
-# `test-support` forwards it); a production build never sees them.
+# helpers, ...) to other crates' tests. The cell crates above it turn it on
+# through their [dev-dependencies] (combat's own `test-support` forwards it);
+# a production build never sees them.
 test-support = ["cimmeria-cell-cover/test-support"]
 
 [dev-dependencies]

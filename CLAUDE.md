@@ -55,8 +55,10 @@ Quick reference:
 # Iteration
 cargo check -p cimmeria-services
 
-# Single-crate test
-cargo test -p cimmeria-services
+# Single-crate test: name the crate you changed. cimmeria-services is only
+# the facade now (the orchestrator, the database pool and the cross-track
+# round trips); the service code and its tests are in the split crates.
+cargo test -p cimmeria-cell
 
 # Full workspace check — skip the GUI apps (Tauri editors and the egui
 # launcher), and the Windows-only client-telemetry cdylib so Linux

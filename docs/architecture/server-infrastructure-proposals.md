@@ -103,7 +103,7 @@ it is still warn-only for exactly this reason, and that has worked out well
 enough to copy. See [movement-validation.md](movement-validation.md).
 
 The cell message loop ticks at 100 ms
-([`crates/services/src/cell/service/message_loop.rs`](../../crates/services/src/cell/service/message_loop.rs)),
+([`crates/cell/src/cell/service/message_loop.rs`](../../crates/cell/src/cell/service/message_loop.rs)),
 so 10 Hz is your measurement resolution.
 
 ---

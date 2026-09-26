@@ -16,7 +16,7 @@ NPC mob behavior is driven by a state machine implemented in the Rust cell servi
 
 The Detour-backed navmesh (via `space_mgr.find_path`) handles pathfinding for all movement states. Movement is interpolated at 100 ms cadence by `npc_movement_tick`.
 
-**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/cell-combat/src/cell/service/npc_ai/` (state-machine dispatch in `dispatch.rs` plus one module per behavior state — `fight.rs`, `fight_target.rs`, `patrol.rs`, `wander.rs`, `follow.rs`, `investigate.rs`, `leash/` (policy, walk home, reset), `lifecycle.rs`, `ability_select.rs`), `crates/cell-combat/src/cell/combat/threat/` (`generate_threat` preemption and the leash evade, the default `LEASH_DISTANCE` in `aggro.rs`, the player-side drain in `player_combat.rs`), `crates/services/src/cell/service/ticks/npc_respawn/` (Dead → Idle promotion), `crates/cell-cover/src/cell/cover/` (cover selection and reservation). The Python design files referenced in legacy sections (`deprecated/python/cell/SGWMob.py`, `deprecated/python/Atrea/enums.py`) are kept for evidence-of-intent only.
+**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/cell-combat/src/cell/service/npc_ai/` (state-machine dispatch in `dispatch.rs` plus one module per behavior state — `fight.rs`, `fight_target.rs`, `patrol.rs`, `wander.rs`, `follow.rs`, `investigate.rs`, `leash/` (policy, walk home, reset), `lifecycle.rs`, `ability_select.rs`), `crates/cell-combat/src/cell/combat/threat/` (`generate_threat` preemption and the leash evade, the default `LEASH_DISTANCE` in `aggro.rs`, the player-side drain in `player_combat.rs`), `crates/cell/src/cell/service/ticks/npc_respawn/` (Dead → Idle promotion), `crates/cell-cover/src/cell/cover/` (cover selection and reservation). The Python design files referenced in legacy sections (`deprecated/python/cell/SGWMob.py`, `deprecated/python/Atrea/enums.py`) are kept for evidence-of-intent only.
 
 ---
 
@@ -358,7 +358,7 @@ If/when NPC reload is needed, the same machinery applies — but **all three** o
 
 1. Drop the `is_player` short-circuit in the fire-gate ([`abilities.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs)).
 2. Set `reload_complete_at` from an AI-driven path (an NPC equivalent of `requestReload`).
-3. **Widen `reload_completion_tick`** ([`ticks/reload_completion.rs:24`](../../crates/services/src/cell/service/ticks/reload_completion.rs#L24)) — it currently iterates `space_mgr.all_player_entity_ids()` only, so an NPC's deadline would never be promoted. Add an `all_reloadable_entity_ids()` accessor or extend the existing one to include fighting NPCs.
+3. **Widen `reload_completion_tick`** ([`ticks/reload_completion.rs:24`](../../crates/cell/src/cell/service/ticks/reload_completion.rs#L24)) — it currently iterates `space_mgr.all_player_entity_ids()` only, so an NPC's deadline would never be promoted. Add an `all_reloadable_entity_ids()` accessor or extend the existing one to include fighting NPCs.
 
 See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full ammo and reload model.
 

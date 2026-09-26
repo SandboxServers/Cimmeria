@@ -2,7 +2,7 @@
 //!
 //! `fire_cover_entered` / `fire_cover_left` / `fire_cover_duration` are
 //! called from the periodic cover-detection tick (see
-//! `crates/services/src/cell/service/ticks/cover.rs`). `fire_npc_flanked`
+//! `crates/cell/src/cell/service/ticks/cover.rs`). `fire_npc_flanked`
 //! is called from the NPC AI tick when an NPC in cover detects a flank.
 //!
 //! All four mirror the region-event dispatcher shape: build an

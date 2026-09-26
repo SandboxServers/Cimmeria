@@ -24,7 +24,7 @@ use super::super::space_manager::SpaceManager;
 /// service map shows method-call hot spots at a glance.
 ///
 /// `level = "debug"` because the rate is bounded by player count × tick;
-/// flip `RUST_LOG=cimmeria_services::cell::dispatch=debug` to turn on.
+/// flip `RUST_LOG=cimmeria_cell::cell::dispatch=debug` to turn on.
 #[tracing::instrument(
     name = "cell.dispatch",
     level = "debug",

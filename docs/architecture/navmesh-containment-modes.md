@@ -189,7 +189,7 @@ arrive by paths that disagree:
   `SpaceManager::stamp_world_ids` became `stamp_world_rows`, writing both
   values onto the matching `WorldDef` (which gained a `navmesh_mode` field).
 - Called from
-  [`crates/services/src/cell/service/startup.rs`](../../crates/services/src/cell/service/startup.rs).
+  [`crates/cell/src/cell/service/startup.rs`](../../crates/cell/src/cell/service/startup.rs).
 
 ## Call sites routed through the predicate
 

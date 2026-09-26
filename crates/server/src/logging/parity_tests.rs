@@ -1779,3 +1779,162 @@ fn cell_methods_crate_events_keep_their_index() {
         );
     }
 }
+
+/// The cell service moved from `cimmeria_services::cell::{service, dispatch}`
+/// to the `cimmeria-cell` crate (services crate split, wave C6), which changed
+/// the `module_path!()` of every untargeted row in it. Each must still land
+/// where it did: the cell loop, the base-message handlers and the ticks in
+/// `aoi.log` (the old `cimmeria_services::cell::service` row), the cell-method
+/// router in `dispatch.log` (the old `cimmeria_services::cell::dispatch` row),
+/// at every level, in `server.log` from INFO, and in one OTLP index per level,
+/// `cimmeria-server` below TRACE (they log per message or per tick, not per
+/// datagram, so they are not network noise). `cimmeria_services=debug` does
+/// not prefix-match `cimmeria_cell`, so without the crate's own `OTEL_FILTER`
+/// row every DEBUG row here would stop reaching SigNoz, and a file row still
+/// naming `cimmeria_services::cell::…` would empty the file of them.
+///
+/// The row names `cimmeria_cell::cell`, never the bare crate: EnvFilter
+/// matches by string prefix, so `cimmeria_cell=debug` would also match every
+/// `cimmeria_cell_*` crate (the B4 rule for `cimmeria_base::base`). Each of
+/// those crates' own rows must still be the only thing that exports its DEBUG
+/// rows, or their guards above could never fail again. The last block proves
+/// this guard catches the bare row: under a filter with `cimmeria_cell=debug`
+/// in place of the real row, dropping a sibling's row no longer stops its
+/// export.
+#[test]
+fn cell_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file) in [
+        ("cimmeria_cell::cell::service", "file:aoi.log"),
+        ("cimmeria_cell::cell::service::startup", "file:aoi.log"),
+        ("cimmeria_cell::cell::service::message_loop", "file:aoi.log"),
+        (
+            "cimmeria_cell::cell::service::base_messages::lifecycle",
+            "file:aoi.log",
+        ),
+        (
+            "cimmeria_cell::cell::service::base_messages::player_init",
+            "file:aoi.log",
+        ),
+        (
+            "cimmeria_cell::cell::service::base_messages::player_init::mission_restore",
+            "file:aoi.log",
+        ),
+        (
+            "cimmeria_cell::cell::service::ticks::npc_movement",
+            "file:aoi.log",
+        ),
+        (
+            "cimmeria_cell::cell::service::ticks::npc_respawn",
+            "file:aoi.log",
+        ),
+        ("cimmeria_cell::cell::dispatch", "file:dispatch.log"),
+        ("cimmeria_cell::cell::dispatch::router", "file:dispatch.log"),
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+
+    let own_row = "cimmeria_cell::cell=debug,";
+    assert!(
+        OTEL_FILTER.contains(own_row),
+        "OTEL_FILTER no longer carries `{own_row}`; update this test"
+    );
+    for directive in OTEL_FILTER.split(',').map(str::trim) {
+        let target = directive.split_once('=').map_or(directive, |(t, _)| t);
+        assert_ne!(
+            target, "cimmeria_cell",
+            "OTEL_FILTER carries a bare `{directive}`: it prefix-matches every \
+             cimmeria_cell_* crate; name `cimmeria_cell::cell` instead"
+        );
+    }
+
+    // The DEBUG export of `target` under `filter` with `row` dropped.
+    let exported_without = |filter: &str, row: &str, target: &str| -> bool {
+        let without = filter.replace(row, "");
+        assert_ne!(
+            without, filter,
+            "the filter no longer carries `{row}`; update this test"
+        );
+        let hits: Hits = Arc::default();
+        let dispatch = Dispatch::new(
+            tracing_subscriber::registry()
+                .with(recorder(OTLP_SERVER.into(), &hits).with_filter(EnvFilter::new(without))),
+        );
+        !sinks_for(&dispatch, &hits, target, Level::DEBUG).is_empty()
+    };
+    assert!(
+        !exported_without(OTEL_FILTER, own_row, "cimmeria_cell::cell::service::ticks"),
+        "the cell service's DEBUG export must depend on its own `{own_row}` row"
+    );
+    let siblings = [
+        (
+            "cimmeria_cell_world=debug,",
+            "cimmeria_cell_world::cell::space_manager",
+        ),
+        (
+            "cimmeria_cell_combat=debug,",
+            "cimmeria_cell_combat::cell::abilities::use_ability",
+        ),
+        (
+            "cimmeria_cell_content=debug,",
+            "cimmeria_cell_content::cell::content::executor",
+        ),
+        (
+            "cimmeria_cell_interactions=debug,",
+            "cimmeria_cell_interactions::cell::gate_travel",
+        ),
+        (
+            "cimmeria_cell_methods=debug,",
+            "cimmeria_cell_methods::cell::cell_methods::player::combat",
+        ),
+        (
+            "cimmeria_cell_console=debug,",
+            "cimmeria_cell_console::cell::console::dispatch",
+        ),
+        (
+            "cimmeria_cell_cover=debug,",
+            "cimmeria_cell_cover::cell::cover",
+        ),
+        (
+            "cimmeria_cell_catalog=debug,",
+            "cimmeria_cell_catalog::cell::spawner",
+        ),
+    ];
+    for (row, sibling) in siblings {
+        assert!(
+            !exported_without(OTEL_FILTER, row, sibling),
+            "{sibling}'s DEBUG export must depend on its own `{row}` row, not on \
+             cimmeria-cell's"
+        );
+    }
+
+    // The same check under the bare crate-name row this test exists to reject:
+    // it would shadow every sibling, so the loop above would fail on it.
+    let bare = OTEL_FILTER.replace(own_row, "cimmeria_cell=debug,");
+    for (row, sibling) in siblings {
+        assert!(
+            exported_without(&bare, row, sibling),
+            "a bare `cimmeria_cell=debug` must shadow {sibling}'s own `{row}` row; \
+             if it no longer does, this guard proves nothing"
+        );
+    }
+}

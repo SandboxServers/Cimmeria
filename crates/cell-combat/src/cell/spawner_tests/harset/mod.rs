@@ -145,7 +145,8 @@ const PROP_TEMPLATES: [(i32, &str); 9] = [
 const PREEXISTING_HARSET_TEMPLATES: [i32; 10] = [42, 43, 46, 48, 53, 54, 159, 160, 163, 164];
 
 /// Sentinel spawn id for the loader round-trip. Sits well clear of every
-/// `0x7000_xxxx` base already in use by `crates/services` (highest today is
+/// `0x7000_xxxx` base already in use by the live-DB tests of the crates split
+/// out of `crates/services` (highest when this was written was
 /// `0x7000_5000`). Deleted by exact id before any assertion runs.
 const SENTINEL_SPAWN_ID: i32 = 0x7000_6100;
 

@@ -6,12 +6,14 @@ license.workspace = true
 description = "Server service implementations for the Cimmeria server emulator"
 
 [dependencies]
+# `ServerConfig`, which the orchestrator reads. Since wave C6 of the split
+# (docs/architecture/services-crate-split.md) this crate is the facade: the
+# orchestrator, the database pool and re-exports of the split crates at their
+# old paths. `cimmeria-mercury`, `cimmeria-entity` and
+# `cimmeria-content-engine` are dev-dependencies now (only the cross-track
+# tests name them), and `cimmeria-observability`, `cimmeria-occluder`, `rand`,
+# `quick-xml` and `serde` are gone: none of the code left here uses them.
 cimmeria-common = { workspace = true }
-cimmeria-mercury = { workspace = true }
-cimmeria-entity = { workspace = true }
-cimmeria-content-engine = { workspace = true }
-cimmeria-observability = { workspace = true }
-cimmeria-occluder = { workspace = true }
 # The auth service, login audit events and credential redaction, split out
 # in wave W1a (docs/architecture/services-crate-split.md). Re-exported from
 # lib.rs at the old `auth` and `audit` paths.
@@ -70,11 +72,12 @@ cimmeria-cell-console = { workspace = true }
 # SGWPlayer handlers), split out of this crate (C5a). Re-exported at
 # `cell::cell_methods`.
 cimmeria-cell-methods = { workspace = true }
+# The CellApp service (`CellService`, the cell loop, the base-message handlers
+# and the ticks) and the cell-method router, split out of this crate (C6), the
+# top of the cell track. Re-exported at `cell::{CellService, dispatch}`.
+cimmeria-cell = { workspace = true }
 tokio = { workspace = true }
-rand = { workspace = true }
-quick-xml = { workspace = true }
 sqlx = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
@@ -93,11 +96,11 @@ thiserror = { workspace = true }
 chaos-testing = ["cimmeria-base/chaos-testing"]
 
 [dev-dependencies]
-# Re-pull mercury with the `test-support` feature so handler unit tests can
-# use `cimmeria_mercury::test_transport::TestTransport` (the recording UDP
-# fake) in place of a real socket. Additive over the `[dependencies]` entry
-# above — it only activates the extra feature for the test build. See
-# docs/architecture/transport-trait.md.
+# Mercury with the `test-support` feature, so the cross-track tests can use
+# `cimmeria_mercury::test_transport::TestTransport` (the recording UDP fake)
+# in place of a real socket, and the chaos integration test the lossy
+# transport. Only the tests name mercury since wave C6, so it is no longer a
+# normal dependency. See docs/architecture/transport-trait.md.
 cimmeria-mercury = { path = "../mercury", features = ["test-support"] }
 
 # Generic test helpers: the live-DB gate (`require_db_or_skip!`),
@@ -111,14 +114,11 @@ cimmeria-test-support = { workspace = true }
 # `test_default_connected_client_state`, re-exported from the `test_support`
 # shim, for the gate round trips that stay here (`gate_round_trip_tests`).
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
-# The world fixtures (`test_fixtures`: `make_space_manager*`, the occluder and
-# arrival-mesh helpers, the `ContentEvents` fakes) and the test-only hooks
-# (`force_ai_state`, `StepRegionReplayGuard::is_idle`, `resolve_use_cover`),
-# re-exported from the `test_support` shim. Its feature also turns on
-# `cell::cover::TEST_WORLD_ID` (cimmeria-cell-cover's `test-support`) for the
-# cover tests that stay here because they drive the NPC AI (npc_ai_cover*,
-# ticks/cover).
-cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+
+# The chain engine and the entity types the cross-track tests build their
+# fixtures from (the gate dial's engine, the mission round trips' missions).
+cimmeria-content-engine = { workspace = true }
+cimmeria-entity = { workspace = true }
 
 # World entry, which only this crate's tests name since wave B4 moved its
 # production users to cimmeria-base: the gate round trips
@@ -128,23 +128,8 @@ cimmeria-cell-world = { workspace = true, features = ["test-support"] }
 # handler.
 cimmeria-base-world-entry = { workspace = true, features = ["test-support"] }
 
-# The combat test hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,
-# `npc_ai_follow_for_test`, `force_ai_state` through `npc_ai`, ...) for the
-# tests that stay here because they drive the service loop or the content
-# engine.
-cimmeria-cell-combat = { workspace = true, features = ["test-support"] }
-
-# The content hooks (`load_single_chain_for_test`, `execute_actions`,
-# `populate_mission_context`) for the content tests in `cell::content_tests`,
-# which stay here because they drive a cell method, the gate dial or the
-# relog hydration.
-cimmeria-cell-content = { workspace = true, features = ["test-support"] }
-
 # `gate_travel::send_gate_sequence` for the gate fan-out byte test in
 # `gate_round_trip_tests`, which stays here because it drives the base's world
 # entry after the cell's emitter.
 cimmeria-cell-interactions = { workspace = true, features = ["test-support"] }
 
-# `console::exec` for the `.speed` tests in `ticks::npc_movement`, which stay
-# here because they drive the NPC movement tick after the console command.
-cimmeria-cell-console = { workspace = true, features = ["test-support"] }

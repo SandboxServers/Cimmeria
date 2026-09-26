@@ -18,6 +18,16 @@ pub mod ring_transport;
 pub mod service;
 pub mod space_manager;
 
+/// Seed-vs-navmesh guards for the Harset coordinates placed from map data
+/// (`docs/analysis/harset-rebuild/placements/`). Test-only; in
+/// `cimmeria-services` until wave C6 of the services crate split.
+#[cfg(test)]
+mod harset_placement_tests;
+/// The spawner tests that need `SpaceManager`, cover or the aggression
+/// helpers. Test-only; in `cimmeria-services` until wave C6.
+#[cfg(test)]
+mod spawner_tests;
+
 // Lower crates, at the `cell::` paths the moved code names them by.
 pub(crate) use cimmeria_cell_catalog::cell::{respawner_fallback, spawner};
 pub(crate) use cimmeria_wire::cell::{kismet, messages, player_journal};

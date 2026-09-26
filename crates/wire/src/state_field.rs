@@ -36,7 +36,7 @@ pub const BSF_DEAD: u32 = 1 << BSF_DEAD_BIT;
 /// manual fire of a different ability, an
 /// `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing, target deselect,
 /// or dead/despawned target during the loop. See
-/// `cimmeria_services::cell::service::ticks::auto_cycle_tick` for the driver
+/// `cimmeria_cell::cell::service::ticks::auto_cycle_tick` for the driver
 /// loop.
 ///
 /// From python `Atrea.enums.BSF_AutoCycling = 1`.

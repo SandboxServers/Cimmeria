@@ -22,15 +22,12 @@ use super::messages::{BaseToCellMsg, CellToBaseMsg};
 // replica of it (Harset H50). Nothing outside the crate sees it.
 pub(crate) mod base_messages;
 mod message_loop;
-// `pub(in crate::cell)` rather than private so the Harset H09 live-DB guard in
-// `cell/spawner/tests/harset/ability_sets.rs` can reach `choose_npc_ability`.
-// That guard loads a multi-row ability set out of Postgres, spawns it through
-// `spawn_npc_from_record`, and then drives the selector — the seed, the loader
-// and the chooser are one chain, and the test that proves the chain end to end
-// has to be able to name both ends. The module's contents stay gated on their
-// own visibility (the `choose_npc_ability` re-export is `#[cfg(test)]`), and
-// nothing outside `crate::cell` gains anything.
-pub(in crate::cell) mod npc_ai;
+// The NPC AI's path shim. It was `pub(in crate::cell)` so the Harset H09
+// live-DB guard (`cell/spawner_tests/harset/ability_sets.rs`) could reach
+// `choose_npc_ability`; that guard is `cimmeria-cell-combat`'s since wave C6
+// of the services crate split and names that crate's own `npc_ai`, so only
+// the service loop and its tests use this path now.
+mod npc_ai;
 mod startup;
 pub(crate) mod ticks;
 

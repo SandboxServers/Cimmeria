@@ -29,7 +29,7 @@ bugs) — worth remembering for any future test that spins up a real
 `Orchestrator`/`CellService`:**
 
 1. **`entities_dir` CWD trap.** `CellService::start()`
-   (`crates/services/src/cell/service/mod.rs`) loads
+   (`crates/cell/src/cell/service/mod.rs`) loads
    `entities/spaces.xml` from the literal relative path `"entities"` —
    no `ServerConfig` field or setter overrides it. `cargo test`'s CWD
    for an integration-test binary is the *package* directory

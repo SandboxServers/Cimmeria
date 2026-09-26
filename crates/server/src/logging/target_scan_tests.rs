@@ -29,6 +29,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "base-methods",
     "base-session",
     "base-world-entry",
+    "cell",
     "cell-cover",
     "cell-catalog",
     "cell-world",
@@ -266,6 +267,10 @@ fn every_source_target_reaches_signoz_at_its_level() {
 fn scan_finds_known_targets() {
     let sites = emitted_targets();
     for (t, l) in [
+        // Emitted only by crates/cell (wave C6): the login-time session marker
+        // in the player-state restore and the NPC respawn tick's promotion.
+        ("session.start", Level::INFO),
+        ("spawner.npc_respawn", Level::INFO),
         // Emitted only by crates/cell-console (wave C5b): the GM feedback line,
         // the seed-SQL authoring block and the playtest bookmark.
         ("console.feedback", Level::DEBUG),

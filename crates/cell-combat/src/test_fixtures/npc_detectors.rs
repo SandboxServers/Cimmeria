@@ -2,7 +2,7 @@
 //! Cellblock mesh, one NPC and one threat player, and a real AI tick.
 //!
 //! Shared by `cell::service::npc_ai::detector_tests` here and by the two
-//! detector test files that drive the movement tick in `cimmeria-services`.
+//! detector test files that drive the movement tick in `cimmeria-cell`.
 
 use std::path::Path;
 

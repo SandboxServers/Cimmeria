@@ -2,7 +2,7 @@
 //!
 //! The cell method 83 `setAutoCycle(enabled)` arms a flag, but the actual
 //! re-fire loop is server-driven: every cooldown expiry the
-//! `cimmeria_services::cell::service::ticks::auto_cycle_tick` driver scans for armed
+//! `cimmeria_cell::cell::service::ticks::auto_cycle_tick` driver scans for armed
 //! players, reads the LIVE target from
 //! [`cimmeria_entity::cell_entity::CellEntity::current_target_id`], and
 //! re-invokes [`crate::cell::abilities::handle_use_ability`] with the

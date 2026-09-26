@@ -104,7 +104,7 @@ pub(crate) use parse::{parse_bool, parse_f32, parse_i32};
 pub(crate) use registry::{Spec, COMMANDS};
 
 // `exec` is only driven directly by the dispatch-coverage test and by the
-// NPC movement tick's `.speed` tests in `cimmeria-services`; gating the
+// NPC movement tick's `.speed` tests in `cimmeria-cell`; gating the
 // re-export keeps the non-test build from flagging it as unused.
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]

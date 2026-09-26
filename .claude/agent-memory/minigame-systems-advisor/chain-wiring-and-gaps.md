@@ -44,7 +44,7 @@ the icon disappears on relog.
 5. Base pushes `onEndMinigame()` and forwards `BaseToCellMsg::MinigameResult`
    (`cell_dispatch/minigame.rs:92-124`).
 6. Cell fires every `on_victory_chains` id **only when `result_code == 1`**
-   (`crates/services/src/cell/service/base_messages/minigame.rs:23-32`).
+   (`crates/cell/src/cell/service/base_messages/minigame.rs:23-32`).
 
 Result codes (RE, `findings/minigame-architecture.md:59-67`): 1 Success,
 2 Failure, 3 Interrupted, 4 Defeated. Only 1 fires chains.

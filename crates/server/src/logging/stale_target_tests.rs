@@ -330,6 +330,11 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // cimmeria-cell-methods; services re-exports `cell_methods` at the
         // same path, which declares no module.
         "cimmeria_services::cell::cell_methods",
+        // aoi.log's and dispatch.log's services rows before wave C6 moved the
+        // cell service and the cell-method router to cimmeria-cell; services
+        // re-exports `dispatch` and `CellService`, and declares neither module.
+        "cimmeria_services::cell::service",
+        "cimmeria_services::cell::dispatch",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -362,6 +367,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_cell_interactions::cell::respawn::resync",
         "cimmeria_cell_methods",
         "cimmeria_cell_methods::cell::cell_methods::player::world",
+        "cimmeria_cell::cell",
+        "cimmeria_cell::cell::service",
+        "cimmeria_cell::cell::service::ticks::npc_respawn",
+        "cimmeria_cell::cell::dispatch",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in
