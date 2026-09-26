@@ -5,7 +5,7 @@ use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::build_fragmented_bundle;
 
-use super::stats::{archetype_stats, level_exp};
+use super::stats::archetype_stats;
 use super::{
     append_entity_method, build_world_params_args, encrypt_packet, method_idx, write_wstring,
     PlayerLoadData, WorldEntryInfo, REPLY_FLAGS, SKIN_TINTS,
@@ -307,11 +307,12 @@ fn build_map_loaded_body_inner(
     // 18. onExpUpdate(INT32) — extended encoding
     append_method!(method_idx::ON_EXP_UPDATE, &data.exp.to_le_bytes());
 
-    // 19. onMaxExpUpdate(INT32) — extended encoding
-    append_method!(
-        method_idx::ON_MAX_EXP_UPDATE,
-        &level_exp(data.level).to_le_bytes()
-    );
+    // 19. onMaxExpUpdate(INT32) — extended encoding. Read from the `game`
+    //     crate's single XP table; a negative DB level reads as level 0 and
+    //     a level-50 player gets the display sentinel (no level 51). Every
+    //     table value fits i32.
+    let max_exp = cimmeria_game::player::max_exp_for_level(data.level.max(0) as u32) as i32;
+    append_method!(method_idx::ON_MAX_EXP_UPDATE, &max_exp.to_le_bytes());
 
     // 20. onEntityProperty x6 (INT32 propId, INT32 value)
     //     GENERICPROPERTY IDs from Atrea.enums

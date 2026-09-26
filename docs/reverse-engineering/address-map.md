@@ -1546,6 +1546,20 @@ The `onTaskUpdate` handler (`FUN_00d194b0`) reads `Count` as INT32 via `FUN_00e3
 
 ---
 
+## Ability Trainer UI (AT-E1, ability-trees campaign, 2026-09-25)
+
+Native Lua bindings behind `Content/UI/Core/Ability/Ability.lua`. Full writeup: `docs/reverse-engineering/findings/ability-trainer-ui.md`.
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x00aa2ac0` / `0x00ad8700` | `getTrainingTreeCount` shim / inner | Returns outer-array size of the `+0x8c → +0x50` ability-tree cache |
+| `0x00aa2ba0` / `0x00add0a0` | `getTrainableList` shim / inner | Walks the tree cache's inner array in stored (tree) order — not the trainer's offered-list order |
+| `0x00aa2c20` / `0x00add1b0` | `getTrainableInfo` shim / inner | Joins the `+0x8c → +0x3c` trainer-offered map with the client's own known-abilities lookup; writes no Lua field when the id isn't in the trainer map (confirms hidden-not-greyed) |
+| `0x00aa2ca0` / `0x00ad8720` | `buyTrainable` shim / sender | |
+| `0x00aa2d80` / `0x00aeacd0` | `respecAbilities` shim / sender | Zero-argument cell method 72 `resetMyAbilities` call |
+| `0x00c66ad0` | `GameEntityManager::instance()` | Asserts against `.\Src\GameEntityManager.cpp`; singleton is `g_EntityManager` at `0x01ef244c` (already listed above) |
+| `0x00d77f00` / `0x00d77fe0` | `register_NetIn_onErrorCode` / CME emit-info stub | Registration/RTTI only — **not** the behavioral handler; no native `onErrorCode` listener was located (UNRESOLVED, see finding doc) |
+
 ## How to Update
 
 When you identify a key address in Ghidra:

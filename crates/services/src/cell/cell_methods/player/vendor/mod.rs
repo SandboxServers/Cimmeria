@@ -11,6 +11,10 @@ use super::constants::*;
 
 mod session;
 mod train;
+#[cfg(test)]
+mod train_spend_tests;
+#[cfg(test)]
+mod train_trainer_agreement;
 mod wire;
 
 use session::{validate_template_id, vendor_context};

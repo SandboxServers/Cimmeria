@@ -205,5 +205,20 @@ async fn create_character_persists_session_access_level() {
          access_level 0. None means the character row was never inserted.",
     );
 
+    // AT-07 (D-AT02): a new character starts with 1 training point. The
+    // column defaults to 0, so dropping the `training_points` column or its
+    // `$17` bind from the INSERT reads back Some(0) here.
+    let training_points: Option<i32> =
+        sqlx::query_scalar("SELECT training_points FROM sgw_player WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("query persisted training_points");
+    assert_eq!(
+        training_points,
+        Some(1),
+        "a new character must start with 1 training point (v2 economy)"
+    );
+
     cleanup(&pool, account_id).await;
 }

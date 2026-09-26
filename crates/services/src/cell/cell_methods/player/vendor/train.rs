@@ -1,23 +1,28 @@
 //! Ability training: cell-side validation guards before the base-side
 //! `training_points` debit + DB persist.
 
+use crate::ability_tree::{evaluate_train, TrainContext, TrainPlan, TrainReject};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
 /// Train an ability — full validation + base-side persistence + debit.
 ///
-/// Cell-side validation:
+/// Cell-side validation is [`evaluate_train`], the same predicate the
+/// trainer window uses for its `trainable` byte, so a node the window
+/// enables is a node this handler forwards. Its gates, in order:
 /// 1. Ability id exists in `space_mgr.ability_defs` (rejects typos)
 /// 2. Player has a `player_id` (no orphan-entity grants)
 /// 3. Player not already known the ability (no-op duplicate)
-/// 4. Ability is in player's `archetype_ability_tree` (no cross-class
-///    training)
+/// 4. Ability is in player's archetype tree (no cross-class training)
 /// 5. Player level meets the tree entry's `level` requirement
-/// 6. Every `prerequisite_abilities` entry is in `entity.abilities`
+/// 6. Every prerequisite is in `entity.abilities`
+/// 7. Archetype-wide `tree_points_spent` meets `required_branch_points`
+/// 8. `training_points` covers the node's `skill_point_cost`
 ///
-/// On all checks passing, sends `CellToBaseMsg::TrainAbility` to the
-/// base. The base does the `training_points` debit + DB UPDATE +
+/// On all checks passing, sends `CellToBaseMsg::TrainAbility` (with the
+/// node's cost and branch) to the base. The base does the cost debit,
+/// the spend increment + DB UPDATE +
 /// responds with `BaseToCellMsg::AbilityGranted`, which the cell's
 /// dispatcher handles (in `service/base_messages/mod.rs`) by adding
 /// the ability to `entity.abilities` and sending
@@ -34,132 +39,45 @@ pub(super) async fn handle_train_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    // Step 1: ability exists
-    if !space_mgr.ability_defs.contains_key(&ability_id) {
-        tracing::warn!(
-            entity_id,
-            ability_id,
-            "trainAbility: ability_id not found in ability_defs — rejecting"
-        );
-        return;
-    }
-
-    // Snapshot the player's state for validation; no mutation here.
-    let (player_id, archetype_id, player_level, already_known) = {
+    let (verdict, player_id, archetype_id, player_level) = {
         let entity = match space_mgr.get_entity(entity_id) {
             Some(e) => e,
             None => return,
         };
+        let ctx = TrainContext {
+            catalog: &space_mgr.ability_tree_catalog,
+            ability_id,
+            ability_exists: space_mgr.ability_defs.contains_key(&ability_id),
+            player_id: entity.player_id,
+            archetype_id: entity.archetype_id,
+            level: entity.level as i32,
+            known: &entity.abilities,
+            tree_points_spent: entity.tree_progress.tree_points_spent,
+            training_points: entity.tree_progress.training_points,
+        };
         (
+            evaluate_train(&ctx),
             entity.player_id,
             entity.archetype_id,
             entity.level as i32,
-            entity.abilities.has_ability(ability_id),
         )
     };
 
-    // Step 2: player must have a player_id (rules out orphan entities,
-    // GM grants on NPCs, etc.)
-    let player_id = match player_id {
-        Some(pid) => pid,
-        None => {
-            tracing::warn!(
-                entity_id,
-                ability_id,
-                "trainAbility: entity has no player_id — rejecting"
-            );
-            return;
-        }
-    };
-
-    // Step 3: already-known is a silent no-op (replayed packet, UI
-    // double-click)
-    if already_known {
-        tracing::debug!(
-            entity_id,
-            player_id,
-            ability_id,
-            "trainAbility: ability already known — no-op"
-        );
-        return;
-    }
-
-    // Step 4: ability must be in the player's archetype training tree
-    let archetype_id = match archetype_id {
-        Some(a) => a,
-        None => {
-            tracing::warn!(
-                entity_id,
-                player_id,
-                ability_id,
-                "trainAbility: entity has no archetype_id — rejecting"
-            );
-            return;
-        }
-    };
-    let tree_entry = space_mgr
-        .archetype_ability_trees
-        .get(&archetype_id)
-        .and_then(|tree| tree.iter().find(|e| e.ability_id == ability_id));
-    let tree_entry = match tree_entry {
-        Some(e) => e,
-        None => {
-            tracing::info!(
-                target: "abilities",
-                event = "train_rejected",
-                reason = "not_in_archetype_tree",
+    let plan = match verdict {
+        Ok(plan) => plan,
+        Err(reject) => {
+            log_rejection(
+                &reject,
                 entity_id,
                 player_id,
                 archetype_id,
+                player_level,
                 ability_id,
-                "trainAbility: ability not in player's archetype tree — rejecting \
-                 (likely an unsupported archetype until Phase 7 content lands)"
             );
             return;
         }
     };
-
-    // Step 5: level requirement
-    if player_level < tree_entry.level {
-        tracing::info!(
-            target: "abilities",
-            event = "train_rejected",
-            reason = "level_too_low",
-            entity_id,
-            player_id,
-            ability_id,
-            player_level,
-            required_level = tree_entry.level,
-            "trainAbility: player level below required — rejecting"
-        );
-        return;
-    }
-
-    // Step 6: prerequisites
-    let prereqs = tree_entry.prerequisite_abilities.clone();
-    let missing_prereq = {
-        let entity = match space_mgr.get_entity(entity_id) {
-            Some(e) => e,
-            None => return,
-        };
-        prereqs
-            .iter()
-            .find(|&&pid| !entity.abilities.has_ability(pid))
-            .copied()
-    };
-    if let Some(missing) = missing_prereq {
-        tracing::info!(
-            target: "abilities",
-            event = "train_rejected",
-            reason = "missing_prerequisite",
-            entity_id,
-            player_id,
-            ability_id,
-            missing_prereq = missing,
-            "trainAbility: prerequisite ability not known — rejecting"
-        );
-        return;
-    }
+    let player_id = plan.player_id;
 
     // All validation passed. Hand off to base for the training_points
     // debit + DB persist. The cell-side state change happens when base
@@ -170,14 +88,19 @@ pub(super) async fn handle_train_ability(
         entity_id,
         player_id,
         ability_id,
-        archetype_id,
+        archetype_id = plan.archetype_id,
+        tree_index = plan.tree_index,
+        cost = plan.cost,
         "trainAbility: validation passed, requesting base persist + debit"
     );
+    warn_if_raw_cost_zero(entity_id, player_id, &plan);
     if let Err(e) = tx
         .send(CellToBaseMsg::TrainAbility {
             entity_id,
             player_id,
             ability_id,
+            cost: plan.cost,
+            tree_index: plan.tree_index,
         })
         .await
     {
@@ -198,6 +121,123 @@ pub(super) async fn handle_train_ability(
     }
 }
 
+/// Flag a purchase whose ability has no authored `training_cost`.
+///
+/// 59 of the 439 FINAL v2 nodes have a raw cost of 0 in
+/// `resources.abilities`. The debit uses the tree's `skill_point_cost`, so
+/// the purchase goes ahead; the WARN lets UAT see which nodes still carry
+/// an unsourced cost. The source value is never rewritten.
+fn warn_if_raw_cost_zero(entity_id: u32, player_id: i32, plan: &TrainPlan) {
+    if plan.raw_training_cost == 0 {
+        tracing::warn!(
+            target: "abilities",
+            event = "train_raw_cost_zero",
+            entity_id,
+            player_id,
+            ability_id = plan.ability_id,
+            archetype_id = plan.archetype_id,
+            tree_index = plan.tree_index,
+            cost = plan.cost,
+            "trainAbility: purchased node has raw training_cost 0 — debiting skill_point_cost"
+        );
+    }
+}
+
+/// The log line each rejection has always produced. Levels, targets and
+/// `reason=` values are unchanged from the pre-predicate handler; operators
+/// and log-based tests key on them.
+fn log_rejection(
+    reject: &TrainReject,
+    entity_id: u32,
+    player_id: Option<i32>,
+    archetype_id: Option<i32>,
+    player_level: i32,
+    ability_id: i32,
+) {
+    // Only reachable after the player-id gate passed, so the fallback is
+    // never logged.
+    let pid = player_id.unwrap_or_default();
+    match reject {
+        TrainReject::UnknownAbility => tracing::warn!(
+            entity_id,
+            ability_id,
+            "trainAbility: ability_id not found in ability_defs — rejecting"
+        ),
+        TrainReject::NoPlayerId => tracing::warn!(
+            entity_id,
+            ability_id,
+            "trainAbility: entity has no player_id — rejecting"
+        ),
+        // Replayed packet or UI double-click: a silent no-op.
+        TrainReject::AlreadyKnown => tracing::debug!(
+            entity_id,
+            player_id = pid,
+            ability_id,
+            "trainAbility: ability already known — no-op"
+        ),
+        TrainReject::NoArchetype => tracing::warn!(
+            entity_id,
+            player_id = pid,
+            ability_id,
+            "trainAbility: entity has no archetype_id — rejecting"
+        ),
+        TrainReject::NotInArchetypeTree => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            archetype_id = archetype_id.unwrap_or_default(),
+            ability_id,
+            "trainAbility: ability not in player's archetype tree — rejecting \
+             (likely an unsupported archetype until Phase 7 content lands)"
+        ),
+        TrainReject::LevelTooLow { required, .. } => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            ability_id,
+            player_level,
+            required_level = *required,
+            "trainAbility: player level below required — rejecting"
+        ),
+        TrainReject::MissingPrerequisite { missing } => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            ability_id,
+            missing_prereq = *missing,
+            "trainAbility: prerequisite ability not known — rejecting"
+        ),
+        TrainReject::SpendGate { required, spent } => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            ability_id,
+            required_branch_points = *required,
+            tree_points_spent = *spent,
+            "trainAbility: archetype-wide spend below the node's gate — rejecting"
+        ),
+        TrainReject::NotEnoughPoints { cost, available } => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            ability_id,
+            cost = *cost,
+            training_points = *available,
+            "trainAbility: not enough training points — rejecting"
+        ),
+    }
+}
+
 #[cfg(test)]
 mod handle_train_ability_tests {
     //! Validation guards on `handle_train_ability` (cell side). The
@@ -205,9 +245,9 @@ mod handle_train_ability_tests {
     //! unit tests pin the rejection cases so a refactor can't silently
     //! drop a guard.
     use super::*;
+    use crate::ability_tree::TreeNode;
     use crate::cell::messages::CellToBaseMsg;
     use crate::cell::space_manager::SpaceManager;
-    use crate::cell::spawner::ArchetypeAbilityTreeEntry;
     use cimmeria_entity::abilities::AbilityDef;
     use tokio::sync::mpsc;
 
@@ -247,11 +287,8 @@ mod handle_train_ability_tests {
         );
     }
 
-    fn seed_tree(mgr: &mut SpaceManager, archetype_id: i32, entry: ArchetypeAbilityTreeEntry) {
-        mgr.archetype_ability_trees
-            .entry(archetype_id)
-            .or_default()
-            .push(entry);
+    fn seed_tree(mgr: &mut SpaceManager, node: TreeNode) {
+        mgr.ability_tree_catalog.push(node);
     }
 
     fn drain_train_msgs(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<i32> {
@@ -314,13 +351,7 @@ mod handle_train_ability_tests {
         seed_ability(&mut mgr, TEST_ABILITY);
         seed_tree(
             &mut mgr,
-            2, // Commando
-            ArchetypeAbilityTreeEntry {
-                ability_id: TEST_ABILITY,
-                tree_index: 0,
-                level: 1,
-                prerequisite_abilities: vec![],
-            },
+            TreeNode::with_defaults(2, 0, TEST_ABILITY, 1, vec![]),
         );
         if let Some(e) = mgr.get_entity_mut(1) {
             e.player_id = Some(100);
@@ -339,15 +370,10 @@ mod handle_train_ability_tests {
     async fn rejects_below_required_level() {
         let mut mgr = make_mgr();
         seed_ability(&mut mgr, TEST_ABILITY);
+        // Requires level 10.
         seed_tree(
             &mut mgr,
-            1,
-            ArchetypeAbilityTreeEntry {
-                ability_id: TEST_ABILITY,
-                tree_index: 0,
-                level: 10, // requires level 10
-                prerequisite_abilities: vec![],
-            },
+            TreeNode::with_defaults(1, 0, TEST_ABILITY, 10, vec![]),
         );
         if let Some(e) = mgr.get_entity_mut(1) {
             e.player_id = Some(100);
@@ -363,15 +389,10 @@ mod handle_train_ability_tests {
     async fn rejects_missing_prerequisite_ability() {
         let mut mgr = make_mgr();
         seed_ability(&mut mgr, TEST_ABILITY);
+        // Requires ability 1000.
         seed_tree(
             &mut mgr,
-            1,
-            ArchetypeAbilityTreeEntry {
-                ability_id: TEST_ABILITY,
-                tree_index: 0,
-                level: 1,
-                prerequisite_abilities: vec![1000], // requires ability 1000
-            },
+            TreeNode::with_defaults(1, 0, TEST_ABILITY, 1, vec![1000]),
         );
         if let Some(e) = mgr.get_entity_mut(1) {
             e.player_id = Some(100);
@@ -390,18 +411,13 @@ mod handle_train_ability_tests {
         seed_ability(&mut mgr, TEST_ABILITY);
         seed_tree(
             &mut mgr,
-            1,
-            ArchetypeAbilityTreeEntry {
-                ability_id: TEST_ABILITY,
-                tree_index: 0,
-                level: 1,
-                prerequisite_abilities: vec![],
-            },
+            TreeNode::with_defaults(1, 0, TEST_ABILITY, 1, vec![]),
         );
         if let Some(e) = mgr.get_entity_mut(1) {
             e.player_id = Some(100);
             e.archetype_id = Some(1);
             e.level = 5;
+            e.tree_progress.training_points = 1;
         }
         let (tx, mut rx) = mpsc::channel(8);
         handle_train_ability(1, TEST_ABILITY, &tx, &mut mgr).await;

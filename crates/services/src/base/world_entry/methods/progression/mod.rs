@@ -6,7 +6,7 @@ use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
+use cimmeria_game::player::{apply_level_ups, max_exp_for_level};
 
 use super::super::super::contact_list::handlers::fanout_contact_event;
 use super::super::super::contact_list::wire::EVENT_GAIN_LEVEL;
@@ -15,19 +15,9 @@ use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witn
 use super::super::super::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
-const LEVEL_XP: [u64; 21] = [
-    0, 100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000, 14_000, 18_000, 25_000,
-    40_000, 60_000, 90_000, 120_000, 180_000, 250_000, 400_000,
-];
-
-// Compile-time guard: LEVEL_XP must cover every level from 1 through MAX_LEVEL,
-// indexed by current-level (1-based), so its length must equal MAX_LEVEL + 1.
-const _: () = assert!(
-    LEVEL_XP.len() == MAX_LEVEL as usize + 1,
-    "LEVEL_XP table length must equal MAX_LEVEL + 1; update LEVEL_XP when MAX_LEVEL changes"
-);
-
-const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
+// The XP table, the cap and the points-per-level all live in
+// `cimmeria_game::player` (`LEVEL_XP`, levels 1-50 plus the level-50
+// display sentinel). This file keeps no copy of them.
 
 /// Handle XP grant from CellService -- compute level-ups, persist, and send
 /// client notifications.
@@ -93,12 +83,9 @@ pub async fn handle_grant_xp(
         // wire value or a phantom delevel.
         let xp = prev_xp.saturating_add(xp_amount);
 
-        let mut gained = Vec::new();
-        while level < MAX_LEVEL && xp > LEVEL_XP[level as usize] {
-            level += 1;
-            tp += TRAINING_POINTS_PER_LEVEL;
-            gained.push(level);
-        }
+        // Shared with `PlayerState::grant_xp`: stops at MAX_LEVEL (50), one
+        // training point per level gained (v2 economy, D-AT02).
+        let gained = apply_level_ups(&mut level, &mut tp, xp);
 
         (player_id, xp, level, tp, gained, state.player_name.clone())
     };
@@ -238,8 +225,8 @@ pub async fn handle_grant_xp(
     // pair) + 2 (if any level gained) = 1..2N+3 packets where N = number of
     // levels gained. Typical small grant: 1 packet. Worst case (max-level
     // catch-up): 2N+3 packets. Post-bundle: 1 packet (body fits one fragment
-    // for any realistic N — each per-level pair is ~30 B and MAX_LEVEL=20
-    // caps the per-grant level delta, so the body stays well under
+    // for any realistic N — each per-level pair is ~30 B and MAX_LEVEL=50
+    // caps the per-grant level delta at 49, so the body stays well under
     // FRAGMENT_BODY_SIZE = 1300 B). Pinned by
     // `grant_xp_max_level_burst_bundles_to_single_packet`.
     let bundle = build_grant_xp_bundle(
@@ -250,6 +237,13 @@ pub async fn handle_grant_xp(
         &levels_gained,
     );
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+
+    // The cell's trainer gates read level and training points; mirror the
+    // persisted values so a node that just opened is trainable without a
+    // relog (AT-03). Only on a level boundary: XP alone changes neither.
+    if !levels_gained.is_empty() {
+        notify_cell_progression(cell_tx, entity_id, new_level, training_points).await;
+    }
 
     // The bundle above reaches only the levelling player's own client —
     // `send_bundle_to_witness_reliable` is single-recipient despite its name.
@@ -284,6 +278,36 @@ pub async fn handle_grant_xp(
             entity_to_addr,
         )
         .await;
+    }
+}
+
+/// Send `BaseToCellMsg::ProgressionChanged` after a persisted level-up.
+async fn notify_cell_progression(
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
+    entity_id: u32,
+    level: u32,
+    training_points: u32,
+) {
+    let Some(tx) = cell_tx else {
+        return;
+    };
+    if let Err(e) = tx
+        .send(crate::cell::messages::BaseToCellMsg::ProgressionChanged {
+            entity_id,
+            level: level as i32,
+            training_points: training_points.min(i32::MAX as u32) as i32,
+        })
+        .await
+    {
+        tracing::warn!(
+            target: "progression",
+            event = "progression_changed_send_failed",
+            entity_id,
+            level,
+            training_points,
+            error = %e,
+            "GrantXP: base→cell ProgressionChanged send failed; trainer gates keep the old level until relog"
+        );
     }
 }
 
@@ -328,11 +352,9 @@ fn build_grant_xp_bundle(
             entity_id,
             &(lvl as i32).to_le_bytes(),
         );
-        let next_threshold = if lvl >= MAX_LEVEL {
-            LEVEL_XP[MAX_LEVEL as usize] as i32
-        } else {
-            LEVEL_XP[lvl as usize] as i32
-        };
+        // At the cap this is the level-50 display sentinel, not a real
+        // threshold: there is no level 51. Every table value fits i32.
+        let next_threshold = max_exp_for_level(lvl) as i32;
         bundle.append_entity_method(
             method_idx::ON_MAX_EXP_UPDATE,
             IDBASE_SGW_PLAYER,
@@ -349,14 +371,13 @@ fn build_grant_xp_bundle(
             &(new_level as i32).to_le_bytes(),
         );
 
-        let mut tp_args = Vec::with_capacity(8);
-        tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
-        tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
+        // Same builder as the cell's trainer-purchase burst, so the two
+        // sends of the counter cannot drift apart.
         bundle.append_entity_method(
             method_idx::ON_ENTITY_PROPERTY,
             IDBASE_SGW_PLAYER,
             entity_id,
-            &tp_args,
+            &crate::ability_tree::training_points_property_args(training_points as i32),
         );
     }
 
@@ -475,158 +496,18 @@ pub async fn handle_grant_cash(
     }
 }
 
-/// Persist a trained ability + debit one training point.
-///
-/// Cell pre-validates archetype tree + prereqs (see Phase 5b);
-/// base only validates training_points >= 1 and the DB UPDATE returning
-/// `rows_affected == 1`. On success, sends
-/// `BaseToCellMsg::AbilityGranted` so the cell can add to
-/// `entity.abilities` and broadcast `onKnownAbilitiesUpdate`.
-///
-/// Persistence shape: `UPDATE sgw_player SET abilities = abilities || $1,
-/// training_points = training_points - 1 WHERE player_id = $2 AND
-/// training_points > 0`. The `training_points > 0` guard is the DB-side
-/// authority — even if the in-memory training_points view is stale, the
-/// row update only fires when actual rowstate allows.
-#[tracing::instrument(
-    name = "progression.train_ability",
-    level = "info",
-    skip_all,
-    fields(entity_id, player_id, ability_id)
-)]
-pub async fn handle_train_ability(
-    entity_id: u32,
-    player_id: i32,
-    ability_id: i32,
-    db_pool: &Option<Arc<PgPool>>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
-    _transport: &Arc<dyn Transport>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
-    let pool = match db_pool {
-        Some(p) => p,
-        None => {
-            tracing::warn!(entity_id, player_id, ability_id, "TrainAbility: no DB pool");
-            return;
-        }
-    };
+mod train_ability;
+pub use train_ability::{handle_train_ability, TrainRequest};
+#[cfg(test)]
+pub(crate) use train_ability::{persist_purchase, PurchaseResult};
 
-    let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-        Some(a) => a,
-        None => {
-            tracing::warn!(entity_id, "TrainAbility: no address for entity");
-            return;
-        }
-    };
-
-    // Fast-path check: the UPDATE's `training_points > 0` guard is the
-    // authoritative gate (atomic against the DB row), but a stale-cache
-    // pre-check spares a DB round-trip on the common "out of TP" case.
-    {
-        let map = match connected.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        let tp_in_memory = map
-            .get(&addr)
-            .and_then(|s| s.player_training_points)
-            .unwrap_or(0);
-        if tp_in_memory == 0 {
-            tracing::info!(
-                entity_id,
-                player_id,
-                ability_id,
-                "TrainAbility: rejected — no training points available (in-memory)"
-            );
-            return;
-        }
-    }
-
-    // Atomic: append ability_id + debit, but ONLY if training_points > 0
-    // AND the ability isn't already present. The `NOT (abilities @> ARRAY[$1])`
-    // clause prevents double-debit if two concurrent or replayed
-    // TrainAbility messages for the same ability arrive: the second
-    // returns 0 rows and the cell-side path treats that as a no-op.
-    // Without this, a player who clicks Train twice fast could lose two
-    // training points for one ability.
-    let result = sqlx::query_scalar::<_, i32>(
-        "UPDATE sgw_player \
-            SET abilities = abilities || $1::integer, \
-                training_points = training_points - 1 \
-          WHERE player_id = $2 \
-            AND training_points > 0 \
-            AND NOT (abilities @> ARRAY[$1::integer]) \
-        RETURNING training_points",
-    )
-    .bind(ability_id)
-    .bind(player_id)
-    .fetch_optional(pool.as_ref())
-    .await;
-
-    let training_points_remaining = match result {
-        Ok(Some(tp)) => tp,
-        Ok(None) => {
-            tracing::info!(
-                entity_id,
-                player_id,
-                ability_id,
-                "TrainAbility: UPDATE matched 0 rows (player_id missing or no training_points)"
-            );
-            return;
-        }
-        Err(e) => {
-            tracing::error!(
-                entity_id,
-                player_id,
-                ability_id,
-                "TrainAbility: UPDATE failed: {e}"
-            );
-            return;
-        }
-    };
-
-    // Sync in-memory training_points so the next train attempt sees the
-    // post-debit value without a DB read.
-    {
-        let mut map = match connected.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        if let Some(state) = map.get_mut(&addr) {
-            state.player_training_points = Some(training_points_remaining as u32);
-        }
-    }
-
-    tracing::info!(
-        entity_id,
-        player_id,
-        ability_id,
-        training_points_remaining,
-        "TrainAbility: persisted + debited"
-    );
-
-    // Notify cell so it adds the ability + broadcasts onKnownAbilitiesUpdate.
-    // If the channel is gone, the player's hotbar will be one ability behind
-    // until next relog — log loudly so SigNoz surfaces the desync.
-    if let Some(tx) = cell_tx {
-        if let Err(e) = tx
-            .send(crate::cell::messages::BaseToCellMsg::AbilityGranted {
-                entity_id,
-                ability_id,
-                training_points_remaining,
-            })
-            .await
-        {
-            tracing::error!(
-                entity_id, ability_id, error = %e,
-                "TrainAbility: base→cell AbilityGranted send failed; hotbar will desync until relog"
-            );
-        }
-    }
-}
-
+#[cfg(test)]
+mod level_cap_tests;
 #[cfg(test)]
 mod level_up_fanout_tests;
 #[cfg(test)]
+mod progression_changed_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod train_ability_tests;
