@@ -152,7 +152,7 @@ Systems with CellMethod dispatch wired but handlers still stubbed (each logs
   state, and Team/Command persistence landed on a feature branch (#568) but
   are **not on `main`**.
 - **Minigames**: mixed. The SmartFoxServer TCP server, ticket registry, and
-  the Livewire game are implemented (`crates/services/src/minigame/`), but
+  the Livewire game are implemented (`crates/minigame/src/minigame/`), but
   most MinigamePlayer CellMethods are still stubs — `startMinigame`,
   `endCurrentMinigame`, `spectateMinigame`, `requestSpectateList`, the four
   `debug*` methods, the `minigameCall*` trio, and the help-registration pair.

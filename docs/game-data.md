@@ -141,7 +141,7 @@ This pipeline is **confirmed working in our server**. When a client connects, th
 
 - **Mission reward dispatch** — no chain can award XP. `Action::GrantXP` exists in the content engine's action enum but has no loader arm *and* no executor arm, and all 1,040 mission rows in [db/resources/Missions/Seed/missions.sql](../db/resources/Missions/Seed/missions.sql) carry `reward_naq = 0, reward_xp = 0`. Both halves need doing before missions can pay out. See [content/content-engine.md §3](content/content-engine.md).
 - **Chain-driven effects, damage, and movement** — the `apply_effect`, `remove_effect`, `qr_combat_damage`, `move_entity`, `launch_ability`, and `fail_objective` content actions load from seed but have no executor arm, so the 13 seeded rows using them silently no-op.
-- **7 of 8 minigames** — only Livewire is implemented ([crates/services/src/minigame/games/](../crates/services/src/minigame/games/)); Hack, Activate, Analyze, Bypass, and the two Converse variants route to a shared placeholder, and Alignment / GoauldCrystals are commented out entirely.
+- **7 of 8 minigames** — only Livewire is implemented ([crates/minigame/src/minigame/games/](../crates/minigame/src/minigame/games/)); Hack, Activate, Analyze, Bypass, and the two Converse variants route to a shared placeholder, and Alignment / GoauldCrystals are commented out entirely.
 
 ### Recently Implemented (previously listed as missing)
 

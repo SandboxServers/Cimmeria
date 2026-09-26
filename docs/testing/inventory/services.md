@@ -586,24 +586,24 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
-| [new_clamps_difficulty_below_one](../../../crates/services/src/minigame/games/livewire/tests.rs#L37) | unit | Minigame / Games / Livewire | 2026-05-04 | `LivewireGame::new` clamps difficulty to [1, 4] |  |
-| [new_clamps_difficulty_above_four](../../../crates/services/src/minigame/games/livewire/tests.rs#L43) | unit | Minigame / Games / Livewire | 2026-05-04 | Asserts equality on `g.difficulty` |  |
-| [new_preserves_difficulty_within_range](../../../crates/services/src/minigame/games/livewire/tests.rs#L49) | unit | Minigame / Games / Livewire | 2026-05-04 | Asserts equality on `g.difficulty` |  |
-| [init_game_populates_wires_and_goals_per_difficulty](../../../crates/services/src/minigame/games/livewire/tests.rs#L59) | unit | Minigame / Games / Livewire | 2026-05-04 | `init_game` populates the wire grid via setup_wires |  |
-| [init_game_sets_read_out_prefix_per_difficulty](../../../crates/services/src/minigame/games/livewire/tests.rs#L75) | unit | Minigame / Games / Livewire | 2026-05-04 | `init_game` sets read_out to "<level_prefix><tech_competency>" |  |
-| [session_seed_threads_through_into_layout_generator](../../../crates/services/src/minigame/games/livewire/tests.rs#L100) | unit | Minigame / Games / Livewire | 2026-05-04 | `session.seed` must thread through into the `StdRng` instance used by the layout generator |  |
-| [started_returns_exactly_one_send_with_full_game_state](../../../crates/services/src/minigame/games/livewire/tests.rs#L135) | unit | Minigame / Games / Livewire | 2026-05-04 | `started()` runs init_game and returns one Send carrying the full game-state SfsObject (timer/playfield/wire fields visible to the client) |  |
-| [parse_version_check](../../../crates/services/src/minigame/protocol.rs#L379) | unit | Minigame / Protocol | 2026-03-22 | Asserts equality on `version` |  |
-| [parse_login](../../../crates/services/src/minigame/protocol.rs#L389) | unit | Minigame / Protocol | 2026-03-22 | Asserts equality on `zone` |  |
-| [parse_extension_request](../../../crates/services/src/minigame/protocol.rs#L407) | unit | Minigame / Protocol | 2026-03-22 | Asserts equality on `cmd` |  |
-| [encode_extension_roundtrip](../../../crates/services/src/minigame/protocol.rs#L420) | unit | Minigame / Protocol | 2026-03-22 | Asserts on `encoded.contains("<msg t='xt'>")` |  |
-| [pack_nested_object](../../../crates/services/src/minigame/protocol.rs#L431) | unit | Minigame / Protocol | 2026-03-22 | Asserts on `encoded.contains("<obj o='pos' t='a'>")` |  |
-| [register_and_authenticate](../../../crates/services/src/minigame/session.rs#L152) | unit | Minigame / Session | 2026-03-22 | Asserts equality on `session.entity_id` |  |
-| [wrong_ticket_fails](../../../crates/services/src/minigame/session.rs#L165) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg.authenticate(42, "WRONG", "Livewire").await.is_none()` |  |
-| [wrong_game_name_fails](../../../crates/services/src/minigame/session.rs#L174) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg.authenticate(42, &ticket, "Alignment").await.is_none()` |  |
-| [duplicate_session_rejected](../../../crates/services/src/minigame/session.rs#L185) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![]) .await .is_none()` |  |
-| [remove_allows_re_register](../../../crates/services/src/minigame/session.rs#L198) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![]) .await .is_some()` |  |
-| [ticket_is_64_hex_chars](../../../crates/services/src/minigame/session.rs#L213) | unit | Minigame / Session | 2026-03-22 | Asserts equality on `ticket.len()` |  |
+| [new_clamps_difficulty_below_one](../../../crates/minigame/src/minigame/games/livewire/tests.rs#L37) | unit | Minigame / Games / Livewire | 2026-05-04 | `LivewireGame::new` clamps difficulty to [1, 4] |  |
+| [new_clamps_difficulty_above_four](../../../crates/minigame/src/minigame/games/livewire/tests.rs#L43) | unit | Minigame / Games / Livewire | 2026-05-04 | Asserts equality on `g.difficulty` |  |
+| [new_preserves_difficulty_within_range](../../../crates/minigame/src/minigame/games/livewire/tests.rs#L49) | unit | Minigame / Games / Livewire | 2026-05-04 | Asserts equality on `g.difficulty` |  |
+| [init_game_populates_wires_and_goals_per_difficulty](../../../crates/minigame/src/minigame/games/livewire/tests.rs#L59) | unit | Minigame / Games / Livewire | 2026-05-04 | `init_game` populates the wire grid via setup_wires |  |
+| [init_game_sets_read_out_prefix_per_difficulty](../../../crates/minigame/src/minigame/games/livewire/tests.rs#L75) | unit | Minigame / Games / Livewire | 2026-05-04 | `init_game` sets read_out to "<level_prefix><tech_competency>" |  |
+| [session_seed_threads_through_into_layout_generator](../../../crates/minigame/src/minigame/games/livewire/tests.rs#L100) | unit | Minigame / Games / Livewire | 2026-05-04 | `session.seed` must thread through into the `StdRng` instance used by the layout generator |  |
+| [started_returns_exactly_one_send_with_full_game_state](../../../crates/minigame/src/minigame/games/livewire/tests.rs#L135) | unit | Minigame / Games / Livewire | 2026-05-04 | `started()` runs init_game and returns one Send carrying the full game-state SfsObject (timer/playfield/wire fields visible to the client) |  |
+| [parse_version_check](../../../crates/minigame/src/minigame/protocol.rs#L379) | unit | Minigame / Protocol | 2026-03-22 | Asserts equality on `version` |  |
+| [parse_login](../../../crates/minigame/src/minigame/protocol.rs#L389) | unit | Minigame / Protocol | 2026-03-22 | Asserts equality on `zone` |  |
+| [parse_extension_request](../../../crates/minigame/src/minigame/protocol.rs#L407) | unit | Minigame / Protocol | 2026-03-22 | Asserts equality on `cmd` |  |
+| [encode_extension_roundtrip](../../../crates/minigame/src/minigame/protocol.rs#L420) | unit | Minigame / Protocol | 2026-03-22 | Asserts on `encoded.contains("<msg t='xt'>")` |  |
+| [pack_nested_object](../../../crates/minigame/src/minigame/protocol.rs#L431) | unit | Minigame / Protocol | 2026-03-22 | Asserts on `encoded.contains("<obj o='pos' t='a'>")` |  |
+| [register_and_authenticate](../../../crates/minigame/src/minigame/session.rs#L152) | unit | Minigame / Session | 2026-03-22 | Asserts equality on `session.entity_id` |  |
+| [wrong_ticket_fails](../../../crates/minigame/src/minigame/session.rs#L165) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg.authenticate(42, "WRONG", "Livewire").await.is_none()` |  |
+| [wrong_game_name_fails](../../../crates/minigame/src/minigame/session.rs#L174) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg.authenticate(42, &ticket, "Alignment").await.is_none()` |  |
+| [duplicate_session_rejected](../../../crates/minigame/src/minigame/session.rs#L185) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![]) .await .is_none()` |  |
+| [remove_allows_re_register](../../../crates/minigame/src/minigame/session.rs#L198) | unit | Minigame / Session | 2026-03-22 | Asserts on `reg .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![]) .await .is_some()` |  |
+| [ticket_is_64_hex_chars](../../../crates/minigame/src/minigame/session.rs#L213) | unit | Minigame / Session | 2026-03-22 | Asserts equality on `ticket.len()` |  |
 
 ## Database access (3)
 

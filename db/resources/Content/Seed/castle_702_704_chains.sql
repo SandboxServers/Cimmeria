@@ -656,7 +656,7 @@ VALUES
 --     still active for both, so this chain resolves twice and emits two
 --     `StartMinigame` messages, each carrying `on_victory_chains: [1293]`.
 --     The guard is the minigame registry: `MinigameRegistry::register`
---     (crates/services/src/minigame/session.rs) returns `None` when
+--     (crates/minigame/src/minigame/session.rs) returns `None` when
 --     `sessions` already holds an entry for the entity, so the second
 --     launch never becomes a session and can never report a victory. Its
 --     own test `duplicate_session_rejected` pins that.

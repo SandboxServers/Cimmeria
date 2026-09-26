@@ -532,7 +532,7 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
   NPCs now take the same base damage from the effect NVPs.
 - `applied_science_points` is wired to crafting only
   (`crates/entity/src/crafting.rs:64`); `tech_competency` appears only in
-  `crates/services/src/minigame/session.rs:51`.
+  `crates/minigame/src/minigame/session.rs:51`.
 - `crates/game/src/inventory/items.rs:5` declares
   `ItemQuality { Common..Legendary }` — dead code, and it does **not** match the
   shipped `EItemQuality` (`Fantastic/Great/Good/Normal/Poor`).
