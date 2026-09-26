@@ -68,6 +68,8 @@ Its NA31 packet adds [`being-eye-heights.md`](findings/being-eye-heights.md). Th
 
 The ability-trees campaign's AT-E1 packet adds [`ability-trainer-ui.md`](findings/ability-trainer-ui.md) — the Trainer/Ability window's native Lua bindings decompiled (`getTrainableList`/`getTrainableInfo`/`getTrainingTreeCount`/`buyTrainable`/`respecAbilities`), confirming the tree/trainer join is hidden-not-greyed at the byte level and that the client has no client-side level/XP table. The `onErrorCode` client-side rendering question is left explicitly UNRESOLVED — no Lua consumer exists anywhere in the client, but whether a native listener renders it was not traced.
 
+[`ability-animation-links.md`](findings/ability-animation-links.md) explains why most abilities hit with no animation. The client plays whatever sequence id the server sends and has no ability-keyed lookup, so the link from an ability to its event set was CME server data that Project Giza's seed only partly recovered. The 35 recovered links follow a weapon-family rule, which the seed extends to 220 more abilities in three labelled tiers; the finding lists the few left open.
+
 See [`findings/README.md`](findings/README.md) for the full per-doc index.
 
 ## Bible relationship
