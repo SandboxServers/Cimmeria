@@ -85,7 +85,6 @@ cimmeria-services = [
 # imports of the wire modules.
 
 "wire_log" = "cimmeria-wire-log"
-"minigame" = "cimmeria-minigame"
 
 # cimmeria-cell-catalog (`cell::spawner`, `ability_tree`,
 # `cell::respawner_fallback`) is extracted (W2b): crates/services/src only
@@ -93,6 +92,9 @@ cimmeria-services = [
 
 # cimmeria-cell-cover is extracted (W2a): see `cell::cover` under the cell
 # track for what is left of the module here.
+
+# cimmeria-minigame (`minigame`) is extracted (W3c): crates/services/src only
+# re-exports it, so it has no rows here.
 
 # Cell track.
 "cell::space_manager" = "cimmeria-cell-world"

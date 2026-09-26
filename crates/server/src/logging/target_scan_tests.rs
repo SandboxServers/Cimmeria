@@ -36,6 +36,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "game",
     "lab-mcp",
     "mercury",
+    "minigame",
     "observability",
     "occluder",
     "resources",

@@ -67,7 +67,10 @@ use crate::otel;
 /// `module_path!()` target starts with the new crate's name, which the
 /// services row no longer matches. Since wave W3a that includes the
 /// services-side Mercury glue, `cimmeria_wire::mercury` (the
-/// `append_entity_method` appearance diagnostics).
+/// `append_entity_method` appearance diagnostics). `cimmeria_minigame=debug`
+/// does the same for the SmartFoxServer host (wave W3c), which has no file of
+/// its own: its session and connection rows reach `server.log` from INFO and
+/// SigNoz from DEBUG.
 ///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
@@ -96,6 +99,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire=debug,\
                 cimmeria_cell_cover=debug,\
                 cimmeria_cell_catalog=debug,\
+                cimmeria_minigame=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\

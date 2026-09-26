@@ -19,6 +19,7 @@ mod tests;
 
 use std::time::Duration;
 
+use cimmeria_wire::cell::messages::CellToBaseMsg;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
@@ -28,7 +29,6 @@ use self::result_dispatch::{send_minigame_result, RESULT_CANCELED, RESULT_DEFEAT
 use super::game::{GameOutput, MinigameInstance};
 use super::protocol::{self, SfsMessage};
 use super::session::{MinigameSession, SessionRegistry, PENDING_SESSION_TTL, SWEEP_INTERVAL};
-use crate::cell::messages::CellToBaseMsg;
 
 /// Start the minigame TCP server.
 pub async fn run(

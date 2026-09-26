@@ -4,9 +4,8 @@
 //! funnels through [`send_minigame_result`] so the Discord emit, the result
 //! codes and the send-failure log stay in one place.
 
+use cimmeria_wire::cell::messages::CellToBaseMsg;
 use tokio::sync::mpsc;
-
-use crate::cell::messages::CellToBaseMsg;
 
 // Result codes, matching C++ `MinigameResult`
 // (`deprecated/cpp/src/baseapp/minigame.hpp`) and

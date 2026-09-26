@@ -26,6 +26,7 @@ $LiveDbCrates = @(
     'cimmeria-test-support'
     'cimmeria-wire'
     'cimmeria-cell-catalog'
+    'cimmeria-minigame'
 )
 
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {

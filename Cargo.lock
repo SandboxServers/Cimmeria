@@ -1075,6 +1075,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-minigame"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-discord",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "quick-xml 0.41.0",
+ "rand 0.10.2",
+ "socket2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-navmesh-extractor"
 version = "0.1.0"
 dependencies = [
@@ -1174,6 +1188,7 @@ dependencies = [
  "cimmeria-entity",
  "cimmeria-game",
  "cimmeria-mercury",
+ "cimmeria-minigame",
  "cimmeria-observability",
  "cimmeria-occluder",
  "cimmeria-resources",
@@ -1186,7 +1201,6 @@ dependencies = [
  "rand_distr",
  "serde",
  "serde_json",
- "socket2",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",

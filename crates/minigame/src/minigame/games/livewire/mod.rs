@@ -41,7 +41,7 @@ pub(super) struct Wire {
 
 // ── Livewire game ────────────────────────────────────────────────────────────
 
-pub struct LivewireGame {
+pub(super) struct LivewireGame {
     // Session params
     pub(super) difficulty: u32,
     pub(super) tech_competency: u32,
@@ -79,7 +79,7 @@ pub struct LivewireGame {
 }
 
 impl LivewireGame {
-    pub fn new(session: &MinigameSession) -> Self {
+    pub(super) fn new(session: &MinigameSession) -> Self {
         // The content layer asserted difficulty 1-5
         // (`deprecated/python/cell/Minigame.py:16`) but every per-game
         // difficulty table only has rows 1-4 (`Livewire.py:52`,
