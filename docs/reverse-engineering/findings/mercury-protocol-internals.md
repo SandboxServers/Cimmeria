@@ -431,6 +431,25 @@ Full list in checkpoint at `docs/reverse-engineering/v5-campaign/worker-mercury-
 
 ---
 
+## Receive Ordering (NA38, 2026-09-25)
+
+The client orders its reliable stream itself. The unreliable stream is delivered on arrival. All addresses are from the NA38 Ghidra pass.
+
+| Function | Address | Finding |
+|---|---|---|
+| `Nub::processFilteredPacket` (tail) | `0x01580ad4` | Pops the ack list (`flags & 0x04`) and the 4-byte sequence ID (`flags & 0x40`, stored at packet `+0x44`). Rejects `flags & 0x80`. Then: not reliable (`flags & 0x10` clear) → `FUN_0158bb50` dedup, then process now. Reliable → `queueAckForPacket`; process the returned chain in order, or return 0 if the packet was buffered |
+| `UnAckedHandler::queueAckForPacket` | `0x0158cba0` | Queues the ACK (`FUN_0157ac40` on `+0x9c`) for any in-range sequence. At `seq == inSeqAt` (`+0x50`) it advances and chains the buffered packets from the slot table (`+0x40`, mask `+0x44`, count `+0x48`). Ahead within `+0x30` it buffers. Otherwise it drops |
+| `FUN_0158bb50` | `0x0158bb50` | Unreliable dedup: looks the sequence up in the structure at `+0x128`, counts a new one at `+0x158`, and prunes to `[seq - window, seq - window/2]` |
+| `ChannelInternal` ctor | `0x0158c7b0` | `+0x50 = 0x10000000` (`inSeqAt` = `SEQ_NULL`, adopted from the first reliable packet); `+0x30` = window, copied from `Channel+0x2c` |
+| `Channel` ctor | `0x01576bf0` | `Channel+0x2c = 0x200`: a 512-packet receive window |
+| `EntityManager::onEntityMoveWithError` | `0x00dd1650` | Unknown id → latest position, direction, space and vehicle stored in the map at `EntityManager+0x30` (`BW__unknown_00dd5120`) |
+| create handler (`ServerMessageHandler` slot `0x019ce98c`) | `0x00dd2270` | New id → reads and erases the `+0x30` record and hands it to entity construction (`BW_client_entity_manager_7`) |
+| method / property handlers (slots `0x019ce998` / `0x019ce994`) | `0x00dd2b80` / `0x00dd29d0` | Unknown id → message copied into a per-id buffer at `EntityManager+0x3c`. Replay at create time not traced |
+
+Implication: a lost reliable packet delays everything behind it on that channel until the retransmit arrives, and never reorders it. Cimmeria's `Channel::receive_parsed` implements the same gate for the server and the test harness. See `docs/protocol/mercury-wire-format.md` §"Receive Ordering".
+
+---
+
 ## Implications for Cimmeria
 
 1. **Mercury uses Nub naming** throughout — no "NetworkInterface" in the binary.

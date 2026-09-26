@@ -58,6 +58,15 @@ needed for future wireclient-style E2E tests. Requires
 
 ## Round 2 (2026-09-25): lossy-network chaos found the real defect
 
+> **Superseded by NA38 (2026-09-25).** The "defect" below was in the
+> harness, not in anything a real player sees. The SGW client orders its
+> own reliable stream (`queueAckForPacket` `0x0158cba0`) and caches early
+> position relays for unknown ids (`0x00dd1650` → `EntityManager+0x30`).
+> NA38 wired `Channel::receive_parsed` into both the harness and the
+> server, and the repro now passes un-ignored on an unchanged server. See
+> [[na38-client-orders-reliable-stream]] in bigworld-engine-advisor memory.
+> The owner's one-way report is still unexplained.
+
 The coordinator asked for a lossy-network variant since round 1 (like
 NA34) only ran over lossless localhost, while the owner plays over the
 internet. Added `crates/wireclient/tests/two_client_castle_visibility_chaos.rs`

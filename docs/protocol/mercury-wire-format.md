@@ -580,6 +580,21 @@ The `BaseChannel` manages `BundleUnpacker` instances in its `unpackers_` vector:
 3. **Completion trigger**: When an unpacker is complete AND the receive window head matches the unpacker's first fragment, the bundle is processed.
 4. **Ordered delivery**: `processBufferedMessages()` walks the receive window from the head. For each contiguous packet/bundle at the window head, it processes the bundle and slides the window forward.
 
+### Receive Ordering: SGW Client and Rust Server
+
+The SGW client orders its **reliable** stream and delivers **unreliable** packets on arrival. Evidence from `SGW.exe` (NA38):
+
+| Step | Address | Behaviour |
+|------|---------|-----------|
+| Split on `FLAG_RELIABLE` (`0x10`) | `Nub::processFilteredPacket` `0x01580ad4` | Reliable packets go to the receive window; unreliable ones go through `FUN_0158bb50`, a dedup check against `ChannelInternal+0x128`, and are processed immediately |
+| Receive window | `UnAckedHandler::queueAckForPacket` `0x0158cba0` | Queue the ACK. At `seq == inSeqAt` (`+0x50`), advance and chain every packet already buffered behind it. Ahead within the window, buffer the packet in the slot table at `+0x40` (mask `+0x44`) and deliver nothing (`"Buffering packet #%d above #%d"`, `0x01b1a040`). Behind `inSeqAt`, or already buffered, drop it |
+| `inSeqAt` start | `ChannelInternal` ctor `0x0158c7b0` | `0x10000000` (`SEQ_NULL`); the first reliable sequence received is adopted |
+| Window size | `Channel` ctor `0x01576bf0` | `0x200` (512) at `Channel+0x2c`, copied to `ChannelInternal+0x30` |
+| Early movement for an unknown entity | `EntityManager::onEntityMoveWithError` `0x00dd1650` | Latest position stored in the pending-entity map at `EntityManager+0x30`; the create handler (`0x00dd2270`) uses it |
+| Early method or property for an unknown entity | `0x00dd2b80`, `0x00dd29d0` | Message copied into a per-id buffer at `EntityManager+0x3c` |
+
+So a lost `CREATE_ENTITY` delays the reliable cascade behind it until the retransmit arrives; it never reorders it. The Rust `Channel::receive_parsed` (`crates/mercury/src/channel/rx_order.rs`) implements the same gate with `RX_WINDOW_SIZE = 512`. The server runs it on every client packet, with the channel anchored at seq 0, the client's first reliable sequence. It differs from the client in one way: a packet beyond the window is not acked, so the sender retransmits it. The 64-packet receive window in the table below is the deprecated C++ server's value.
+
 ## Channels
 
 A channel is a persistent communication endpoint between two addresses. It maintains ordering, reliability, and flow control state.
