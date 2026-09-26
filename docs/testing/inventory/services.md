@@ -412,8 +412,8 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [abandon_removes_mission](../../../crates/cell-content/src/cell/missions/lifecycle.rs#L498) | unit | Cell / Missions | 2026-03-06 | Abandon removes mission |  |
 | [complete_objective_completes_mission](../../../crates/cell-content/src/cell/missions/progression.rs#L326) | unit | Cell / Missions | 2026-03-06 | Complete objective completes mission |  |
 | [resend_sends_active_missions](../../../crates/cell-content/src/cell/missions/resend.rs#L49) | unit | Cell / Missions | 2026-03-06 | Resend sends active missions |  |
-| [new_service_is_not_running](../../../crates/services/src/cell/mod.rs#L56) | unit | Cell | 2026-03-06 | Asserts on `!svc.is_running` |  |
-| [start_sets_running](../../../crates/services/src/cell/mod.rs#L64) | unit | Cell | 2026-03-06 | Asserts on `svc.is_running` |  |
+| [new_service_is_not_running](../../../crates/cell/src/cell/mod.rs#L36) | unit | Cell | 2026-03-06 | Asserts on `!svc.is_running` |  |
+| [start_sets_running](../../../crates/cell/src/cell/mod.rs#L44) | unit | Cell | 2026-03-06 | Asserts on `svc.is_running` |  |
 | [full_ring_cycle_dispatches_expected_messages](../../../crates/cell-content/src/cell/ring_transport/tests/mod.rs#L53) | unit | Cell / Ring Transport | 2026-05-02 | End-to-end same-world ring travel: interact → select destination → player walks onto pad → tick through hide / warmup / cooldown → teleport_in event eventually dispatched |  |
 | `select_destination_cross_world_rejected` | unit | Cell / Ring Transport | 2026-05-02 | Cross-world ring travel is rejected before any state transitions | not found in the tree as of 2026-07-25 — location unknown |
 | [select_destination_self_rejected](../../../crates/cell-content/src/cell/ring_transport/tests/mod.rs#L538) | unit | Cell / Ring Transport | 2026-05-02 | Self-as-destination is rejected (matches Python `selectDestination`) |  |

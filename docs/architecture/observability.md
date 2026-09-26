@@ -237,13 +237,21 @@ exemptions are the `off` targets, each listed with its reason. Every crate
 directory must be classified as in- or out-of-process, so a new crate
 cannot skip the scan.
 
-`crates/server/src/logging/parity_tests.rs` builds the production filters
+`crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
 representative event at TRACE, DEBUG and INFO: an event the file keeps
 must reach exactly one OTLP index, or, for a firehose, none, with its
 sample reaching one. It also checks `server.log`'s targets, that no
 target at any level reaches two indexes, and that the guard itself
-catches a file layer added without `OTEL_FILTER` coverage.
+catches a file layer added without `OTEL_FILTER` coverage. Its
+`crate_rows` module guards the module-path rows themselves: every crate
+linked into the server has its own `OTEL_FILTER` row reaching each of its
+top-level modules (or a listed reason why not), and no row reaches the
+events of two crates. `EnvFilter` matches by string prefix, so a bare
+`cimmeria_cell` or `cimmeria_wire` row would also cover every
+`cimmeria_cell_*` crate or `cimmeria_wire_log`, and dropping one of those
+crates' own rows would then go unnoticed; the base, cell and wire rows name
+their crates' modules for that reason.
 
 ### Stable target catalog
 

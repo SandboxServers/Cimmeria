@@ -8,6 +8,10 @@ metadata:
 Learned extracting `cimmeria-resources` (wave W1b, 2026-09-26). Plan:
 `docs/architecture/services-crate-split.md`; its §4 "Deviations" list records each wave.
 
+**The split is finished (wave F, 2026-09-26) and `tools/layering/` is deleted.** The
+lessons below that name `check.py`, `crate-map.toml` or the allowlist are history; Cargo's
+crate graph enforces the DAG now, and `check -p <crate>` on its own is the hop test.
+
 - **A `cimmeria-test-support` dev-dependency forces a live-DB list entry**, even with zero
   `require_db_or_skip!` tests. `live_db_wrapper_lists_every_test_support_crate` keys on the
   dev-dependency, not on DB use. Add the crate to BOTH `tools/test-live-db.sh` and `.ps1`
@@ -410,6 +414,26 @@ Learned extracting `cimmeria-cell` (C6, the top of the cell track):
 - **Recompute inventory anchors by searching `fn <name>`** in the new file
   (a script over `[name](…#Ln)` links); relative `cell/service/…` paths in
   notes stay valid under the new crate's `src/`.
+
+Learned in wave F (the facade clean-up):
+
+- **A generic "no row reaches two crates" guard finds what per-crate guards miss.**
+  `cimmeria_wire=debug` had prefix-matched `cimmeria_wire_log` since W3b; W3b pinned only
+  that lowering wire's row left wire-log alone, never that wire-log's own row mattered.
+  Fix: one row per top-level module of the prefixing crate. Then the "own row" guard must
+  check every top-level module is covered, or a new module slips past the crate-level check.
+- **A moved test keeps its module path inside a crate's private skeleton**: `mod cell {
+  pub(crate) use …; #[cfg(test)] mod content_tests; }` in lib.rs resolves the child at
+  `src/cell/content_tests/`, so only the crate in the test id changes.
+- **An integration test that needs its own crate's feature**: self dev-dependency
+  `cimmeria-x = { path = ".", features = ["…"] }` (navmesh-extractor's precedent).
+- **`nextest list` omits `#[ignore]` tests by default**: a moved file with an ignored test
+  lists one fewer than its `#[test]` count, before and after alike.
+- **A mutation that replaces a directive string can hit the doc comment first**
+  (`filters.rs` quotes `cimmeria_cell::cell=debug` in prose): match the directive line with
+  its trailing `,\` and assert one hit.
+- **An earlier wave's "remaining hops" list goes stale**: C3 had already fixed four of the
+  prep's six. Re-derive from the code before editing.
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),

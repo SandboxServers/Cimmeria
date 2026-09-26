@@ -19,7 +19,7 @@ every wave. Found while extracting `cimmeria-wire` (W1c).
 - **Intra-doc links to `crate::cell::service::…`** break once the file sits
   in another crate. Rewrite them as plain code spans naming
   `cimmeria_services::…`.
-- **The layering guard and globs.** A module that keeps
+- **The layering guard and globs** (history: the guard was retired in wave F). A module that keeps
   `pub use constants::*` after `constants` became a `pub use cimmeria_wire::…`
   used to attribute every name behind the glob to itself (four false
   edges). `tools/layering/check.py` `_item` now returns `None` when the
