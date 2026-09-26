@@ -238,7 +238,7 @@ async fn arrive(
             event = "follow_target_lost",
             npc_id,
             target_id,
-            "NPC leash reset: follow target no longer in the space -- follow              cleared, the escort idles until a chain re-arms it"
+            "NPC leash reset: follow target no longer in the space -- follow cleared, the escort idles until a chain re-arms it"
         );
     }
     let (stat_update, state_field) = {
