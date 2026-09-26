@@ -28,9 +28,7 @@
 //! Every test self-skips when the cooked client tree is absent, and says
 //! so loudly. A skipped test is not a pass.
 
-mod bsp_support;
-
-use bsp_support::*;
+use crate::bsp_support::*;
 
 use cimmeria_navmesh_extractor::bsp::{collect_bsp_triangles, BspOptions};
 use cimmeria_navmesh_extractor::geometry::TriangleSoup;

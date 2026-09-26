@@ -3,7 +3,7 @@
 //!
 //! Self-skips (loudly) when the cooked asset bundle or a cached
 //! `PackageIndex` is absent — same contract as
-//! `tests/extract_map_castle_cellblock.rs`. A skipped run is not a pass;
+//! `tests/it/extract_map_castle_cellblock.rs`. A skipped run is not a pass;
 //! the skip reason is printed to stderr.
 //!
 //! Override the discovery with:
