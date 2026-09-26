@@ -181,8 +181,15 @@ arrival (duplicate counts, for example) should send unreliably, as
 Harness peers anchor their receive side at seq 0, because every
 `Channel` starts `next_tx_seq` at 0. The wireclient `GameSession`
 re-anchors at 3, the first sequence after the phase-3 reply (1) and
-the time-sync bundle (2). An unanchored `Channel` adopts the first
-reliable sequence it sees, which is how the client's `inSeqAt` starts.
+the time-sync bundle (2). Both starts are certain. An unanchored
+`Channel` adopts the first reliable sequence it sees, which is how the
+client's `inSeqAt` starts. The server's client sessions use that mode
+too, because nothing guarantees a client starts at 0.
+
+`LoopbackPeer::tick` also runs the receive-stall watchdog
+(`Channel::check_rx_stall`) and returns its report in
+`TickActions::rx_stall` on the ticks where it warns: a gap blocking
+delivery for more than `consts::RX_STALL_WARN_MS` (2 s).
 
 One gap is left: the client also dedups unreliable packets (a separate
 structure at `ChannelInternal+0x128`). The harness does not model that

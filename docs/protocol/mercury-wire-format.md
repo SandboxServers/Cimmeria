@@ -593,7 +593,7 @@ The SGW client orders its **reliable** stream and delivers **unreliable** packet
 | Early movement for an unknown entity | `EntityManager::onEntityMoveWithError` `0x00dd1650` | Latest position stored in the pending-entity map at `EntityManager+0x30`; the create handler (`0x00dd2270`) uses it |
 | Early method or property for an unknown entity | `0x00dd2b80`, `0x00dd29d0` | Message copied into a per-id buffer at `EntityManager+0x3c` |
 
-So a lost `CREATE_ENTITY` delays the reliable cascade behind it until the retransmit arrives; it never reorders it. The Rust `Channel::receive_parsed` (`crates/mercury/src/channel/rx_order.rs`) implements the same gate with `RX_WINDOW_SIZE = 512`. The server runs it on every client packet, with the channel anchored at seq 0, the client's first reliable sequence. It differs from the client in one way: a packet beyond the window is not acked, so the sender retransmits it. The 64-packet receive window in the table below is the deprecated C++ server's value.
+So a lost `CREATE_ENTITY` delays the reliable cascade behind it until the retransmit arrives; it never reorders it. The Rust `Channel::receive_parsed` (`crates/mercury/src/channel/rx_order.rs`) implements the same gate with `RX_WINDOW_SIZE = 512`. The server runs it on every client packet. Like the client, it adopts the first reliable sequence the peer sends. It differs from the client in one way: a packet beyond the window is not acked, so the sender retransmits it. A stall watchdog (`Channel::check_rx_stall`) warns when one gap blocks delivery for more than 2 s. It never skips the gap. The 64-packet receive window in the table below is the deprecated C++ server's value.
 
 ## Channels
 

@@ -22,7 +22,7 @@ mod state;
 mod tick;
 
 pub use channel_core::Channel;
-pub use rx_order::{RxDelivery, RxOutcome};
+pub use rx_order::{RxDelivery, RxOutcome, RxStall};
 pub use state::{ChannelState, RxEntry, TxEntry};
 pub use tick::TickActions;
 

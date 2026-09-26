@@ -79,6 +79,16 @@ pub mod consts {
     /// deferred-send queue can legitimately have in flight behind one loss.
     pub const RX_WINDOW_SIZE: usize = 512;
 
+    /// How long a reliable gap may block in-order delivery before the
+    /// receive-stall watchdog (`Channel::check_rx_stall`) warns. Nearly
+    /// three of the client's 700 ms resend timeouts, so an ordinary lost
+    /// packet recovers well inside it.
+    pub const RX_STALL_WARN_MS: u64 = 2_000;
+
+    /// Minimum spacing between repeat warnings for one unfilled gap, so a
+    /// wedged channel logs a steady trickle rather than a flood.
+    pub const RX_STALL_REWARN_MS: u64 = 10_000;
+
     /// Transmit window size — limits unacknowledged in-flight reliable
     /// packets per channel.
     ///

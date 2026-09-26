@@ -44,6 +44,8 @@ pub struct TickActions {
     pub retransmits: Vec<Bytes>,
     /// Encrypted keepalive datagrams emitted by this tick (zero or one).
     pub keepalives: Vec<Bytes>,
+    /// The receive-stall watchdog's report, on a tick where it warned.
+    pub rx_stall: Option<crate::channel::RxStall>,
 }
 
 /// Outcome of one `send_with_policy` policy-evaluation pass. Split out
@@ -616,6 +618,7 @@ impl LoopbackPeer {
 
         let retransmits = {
             let mut channel = self.channel.lock().expect("channel poisoned");
+            actions.rx_stall = channel.check_rx_stall();
             channel.check_timeouts()
         };
         for bytes in &retransmits {

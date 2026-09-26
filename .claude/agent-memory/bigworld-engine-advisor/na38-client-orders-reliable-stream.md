@@ -39,3 +39,9 @@ absorb it. Server-logic order across tasks (seq allocated out of logical
 order) is the remaining class. Rust: `Channel::receive_parsed`
 (`crates/mercury/src/channel/rx_order.rs`) models this gate for the
 server and the harness. Related: [[aoi-entity-introduction]].
+
+Server client channels adopt the first sequence and are **not** pinned to
+0. The coordinator rejected pinning: a client starting anywhere else would
+wedge its whole reliable stream. Stuck gaps are surfaced by
+`Channel::check_rx_stall` (WARN after 2 s, counter
+`mercury_rx_stalls_total`) and are never skipped, matching the client.

@@ -65,6 +65,18 @@ pub struct Channel {
     /// (the client's `inSeqAt == SEQ_NULL` start state).
     pub(super) rx_anchored: bool,
 
+    /// When the current reliable gap started blocking delivery: set when
+    /// a packet is buffered behind a gap, cleared when the window drains.
+    /// Read by [`Self::check_rx_stall`].
+    pub(super) rx_gap_since: Option<Instant>,
+
+    /// When the stall watchdog last warned about the current gap.
+    pub(super) rx_stall_warned_at: Option<Instant>,
+
+    /// Distinct reliable gaps that blocked delivery past
+    /// [`consts::RX_STALL_WARN_MS`] over this channel's life.
+    pub rx_stalls: u64,
+
     /// Socket address of the remote peer.
     pub remote_addr: SocketAddr,
 
@@ -169,6 +181,9 @@ impl Channel {
             next_tx_seq: 0,
             expected_rx_seq: 0,
             rx_anchored: false,
+            rx_gap_since: None,
+            rx_stall_warned_at: None,
+            rx_stalls: 0,
             remote_addr,
             last_sent: now,
             last_received: now,

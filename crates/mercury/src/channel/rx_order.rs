@@ -39,7 +39,9 @@
 //! reliable packets are released in sequence order, a gap holds everything
 //! behind it until the retransmit fills it, duplicates are dropped, and
 //! unreliable packets go straight through. Released packets then pass
-//! through the per-channel fragment assembler.
+//! through the per-channel fragment assembler. [`Channel::check_rx_stall`]
+//! is the stall watchdog: it warns when one gap has blocked delivery for
+//! longer than [`consts::RX_STALL_WARN_MS`], and it never skips the gap.
 //!
 //! Two deliberate differences from the client:
 //!
@@ -96,20 +98,44 @@ pub struct RxDelivery {
     pub outcome: RxOutcome,
 }
 
+/// A reliable gap the stall watchdog reported. See
+/// [`Channel::check_rx_stall`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RxStall {
+    /// How long the gap has blocked delivery.
+    pub stalled_for: std::time::Duration,
+    /// The missing sequence everything is waiting on.
+    pub expected: u32,
+    /// Lowest sequence buffered behind the gap.
+    pub first_buffered: u32,
+    /// Highest sequence buffered behind the gap.
+    pub last_buffered: u32,
+    /// How many packets are buffered.
+    pub buffered: usize,
+    /// Window slots in use, from the gap to the highest buffered packet.
+    pub depth: usize,
+    /// True on the first warning for this gap. False on the throttled
+    /// repeats.
+    pub first_warning: bool,
+}
+
 impl Channel {
     /// Pin the next reliable sequence number this channel expects from the
     /// peer, instead of adopting the first one that arrives.
     ///
-    /// Use it when the peer's starting sequence is known. The SGW client's
-    /// first reliable packet on a fresh channel is seq 0
-    /// (`authenticate` + `enableEntities`, flags `0x58`, in the
-    /// `castle_cellblock_head` capture). Pinning it means a lost first
-    /// packet is recovered by retransmit rather than skipped over when a
-    /// later one is adopted as the start.
+    /// Only use it where the peer's starting sequence is certain. That is
+    /// true of the loopback harness peers (both ends start at 0) and of the
+    /// wireclient `GameSession` (the server's handshake consumed seqs 1 and
+    /// 2). The server does **not** pin client channels. A client that
+    /// started anywhere but the pinned value would park every packet
+    /// behind a gap that never fills. It adopts the first sequence
+    /// instead, as the client's own `queueAckForPacket` does.
     pub fn anchor_rx_seq(&mut self, next_expected: u32) {
         self.expected_rx_seq = next_expected & SEQUENCE_MASK;
         self.rx_anchored = true;
         self.rx_window.clear();
+        self.rx_gap_since = None;
+        self.rx_stall_warned_at = None;
     }
 
     /// Whether the receive window has a starting sequence yet, either from
@@ -267,11 +293,89 @@ impl Channel {
             }
             self.expected_rx_seq = self.expected_rx_seq.wrapping_add(1) & SEQUENCE_MASK;
         }
+        // Stall-watchdog bookkeeping. An empty window means no gap. A
+        // window that is still non-empty after the head moved means the
+        // old gap filled and a new one is now blocking, so its clock
+        // restarts.
+        if self.rx_window.is_empty() {
+            self.rx_gap_since = None;
+            self.rx_stall_warned_at = None;
+        } else if !released.is_empty() || self.rx_gap_since.is_none() {
+            self.rx_gap_since = Some(self.last_received);
+            self.rx_stall_warned_at = None;
+        }
+
         let outcome = if released.is_empty() {
             RxOutcome::Buffered
         } else {
             RxOutcome::InOrder
         };
         (outcome, released)
+    }
+
+    /// Receive-stall watchdog: report a reliable gap that has blocked
+    /// in-order delivery for longer than [`consts::RX_STALL_WARN_MS`].
+    ///
+    /// Call it from the channel's periodic tick. It logs a WARN
+    /// (`mercury.rx_order`, `event=rx_stall`) when a gap first crosses the
+    /// threshold, then at most once per [`consts::RX_STALL_REWARN_MS`]
+    /// while the same gap stays open. `Some` is returned only on the ticks
+    /// that warn. [`RxStall::first_warning`] marks the first warning for a
+    /// gap, and [`Self::rx_stalls`] counts those.
+    ///
+    /// It never skips the gap. The SGW client does not skip one either:
+    /// `queueAckForPacket` only advances `inSeqAt` on the exact next
+    /// sequence. A packet that never arrives wedges the client too, until
+    /// the sender's retry cap or the inactivity timeout drops the channel.
+    pub fn check_rx_stall(&mut self) -> Option<RxStall> {
+        let since = self.rx_gap_since?;
+        let now = self.clock().now();
+        let stalled_for = now.saturating_duration_since(since);
+        if stalled_for < std::time::Duration::from_millis(consts::RX_STALL_WARN_MS) {
+            return None;
+        }
+        let first_warning = self.rx_stall_warned_at.is_none();
+        if let Some(last) = self.rx_stall_warned_at {
+            let rewarn = std::time::Duration::from_millis(consts::RX_STALL_REWARN_MS);
+            if now.saturating_duration_since(last) < rewarn {
+                return None;
+            }
+        }
+        self.rx_stall_warned_at = Some(now);
+        if first_warning {
+            self.rx_stalls += 1;
+        }
+
+        let buffered: Vec<u32> = self
+            .rx_window
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| slot.is_some())
+            .map(|(i, _)| self.expected_rx_seq.wrapping_add(i as u32) & SEQUENCE_MASK)
+            .collect();
+        let stall = RxStall {
+            stalled_for,
+            expected: self.expected_rx_seq,
+            first_buffered: buffered.first().copied().unwrap_or(self.expected_rx_seq),
+            last_buffered: buffered.last().copied().unwrap_or(self.expected_rx_seq),
+            buffered: buffered.len(),
+            depth: self.rx_window.len(),
+            first_warning,
+        };
+        tracing::warn!(
+            target: "mercury.rx_order",
+            event = "rx_stall",
+            reason = "reliable_gap_unfilled",
+            peer = %self.remote_addr,
+            expected = stall.expected,
+            first_buffered = stall.first_buffered,
+            last_buffered = stall.last_buffered,
+            buffered = stall.buffered,
+            depth = stall.depth,
+            stalled_ms = stall.stalled_for.as_millis() as u64,
+            first_warning,
+            "reliable gap is blocking in-order delivery -- the peer has not resent the missing packet"
+        );
+        Some(stall)
     }
 }

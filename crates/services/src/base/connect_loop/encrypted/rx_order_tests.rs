@@ -37,13 +37,13 @@ struct Rig {
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
 }
 
-/// A logged-in, in-world session whose channel is anchored at seq 0, the
-/// way `handle_login` leaves it.
+/// A logged-in, in-world session whose channel is built exactly as
+/// `handle_login` builds it (`new_client_channel`).
 fn rig() -> Rig {
     let addr: SocketAddr = "127.0.0.1:40001".parse().unwrap();
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(WITNESS_ID);
-    state.channel.lock().unwrap().anchor_rx_seq(0);
+    state.channel = Mutex::new(crate::base::login::new_client_channel(addr));
     let state_key = state.key;
     let pending_acks = Arc::clone(&state.pending_acks);
     let mut map = HashMap::new();
@@ -153,4 +153,23 @@ async fn a_retransmitted_duplicate_is_acked_but_not_dispatched_twice() {
         vec![0, 0],
         "the duplicate is re-acked so the client stops resending it"
     );
+}
+
+#[tokio::test]
+async fn a_client_whose_reliable_stream_starts_at_1234_is_dispatched_normally() {
+    // A session channel must adopt the client's first reliable sequence.
+    // Pinned at 0, seq 1234 would be 1234 slots ahead: past the 512 window,
+    // dropped unacked, and the login would hang.
+    let mut rig = rig();
+
+    deliver(&rig, &reliable_probe(&rig, 1234, 300)).await;
+    assert_eq!(
+        dispatched(&mut rig),
+        vec![300],
+        "the first reliable packet must run whatever its sequence"
+    );
+    deliver(&rig, &reliable_probe(&rig, 1236, 302)).await;
+    deliver(&rig, &reliable_probe(&rig, 1235, 301)).await;
+    assert_eq!(dispatched(&mut rig), vec![301, 302]);
+    assert_eq!(*rig.pending_acks.lock().unwrap(), vec![1234, 1236, 1235]);
 }
