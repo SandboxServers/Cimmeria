@@ -34,6 +34,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "cell-world",
     "cell-combat",
     "cell-content",
+    "cell-interactions",
     "commands",
     "common",
     "content-engine",
@@ -269,6 +270,9 @@ fn scan_finds_known_targets() {
         ("dialog.display", Level::DEBUG),
         ("content.deferred", Level::INFO),
         ("mission.step_context", Level::DEBUG),
+        // Emitted only by crates/cell-interactions (wave C4): the respawn
+        // resync's active-slot resend.
+        ("bandolier.resend", Level::INFO),
         // Emitted only by crates/cell-combat (wave C2 of the services split).
         ("movement.movement_type", Level::TRACE),
         ("abilities.qr", Level::DEBUG),

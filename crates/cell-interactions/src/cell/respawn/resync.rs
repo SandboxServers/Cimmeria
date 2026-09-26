@@ -34,7 +34,7 @@ use crate::cell::space_manager::SpaceManager;
 /// docs/reverse-engineering/findings/client-wire-emit-suppression.md.
 ///
 /// Wire: bag_id (i32 LE) + (slot_id + 1) (i32 LE, 1-indexed) = 8 bytes.
-pub(crate) async fn send_active_slot_resend(
+pub async fn send_active_slot_resend(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
@@ -138,7 +138,7 @@ pub(crate) async fn resync_after_pawn_recreate(
 ///
 /// Wire format: `ARRAY<INT32> AbilityData` → `u32 count` + N × `i32 ability_id`.
 /// Method index 101 (`ON_KNOWN_ABILITIES_UPDATE`).
-pub(crate) async fn send_known_abilities_update(
+pub async fn send_known_abilities_update(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,

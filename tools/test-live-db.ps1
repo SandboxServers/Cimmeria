@@ -34,6 +34,7 @@ $LiveDbCrates = @(
     'cimmeria-cell-combat'
     'cimmeria-base'
     'cimmeria-cell-content'
+    'cimmeria-cell-interactions'
 )
 
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {

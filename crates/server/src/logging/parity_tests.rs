@@ -949,7 +949,11 @@ fn combat_crate_events_keep_their_file_and_index() {
 ///
 /// Every one keeps `server.log` from INFO and one OTLP index per level. The
 /// chat and resync rows fail this with the old file rows; the trade row fails
-/// it if the state moves under `cell::interactions`.
+/// it if the state moves under `cell::interactions`. Wave C4 moved the resync,
+/// the fork, the region registration and the trade state on to
+/// `cimmeria-cell-interactions`, so they are named at that crate's paths;
+/// `interactions_crate_events_keep_their_file_and_index` covers the rest of
+/// that crate.
 #[test]
 fn cell_prep_moves_keep_their_file_and_index() {
     let (dispatch, hits) = harness(FILE_LAYERS);
@@ -960,7 +964,10 @@ fn cell_prep_moves_keep_their_file_and_index() {
             "cimmeria_services::cell::console::chat",
             "file:interactions.log",
         ),
-        ("cimmeria_services::cell::respawn::resync", "file:aoi.log"),
+        (
+            "cimmeria_cell_interactions::cell::respawn::resync",
+            "file:aoi.log",
+        ),
     ] {
         let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
         assert_eq!(
@@ -982,10 +989,10 @@ fn cell_prep_moves_keep_their_file_and_index() {
         }
     }
     for target in [
-        "cimmeria_services::cell::respawn",
-        "cimmeria_services::cell::respawn::region_registration",
-        "cimmeria_services::cell::trade::state",
-        "cimmeria_services::cell::trade::wire",
+        "cimmeria_cell_interactions::cell::respawn",
+        "cimmeria_cell_interactions::cell::respawn::region_registration",
+        "cimmeria_cell_interactions::cell::trade::state",
+        "cimmeria_cell_interactions::cell::trade::wire",
         "cimmeria_services::cell::console::gm::world",
     ] {
         let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
@@ -1477,10 +1484,11 @@ fn content_crate_events_keep_their_file_and_index() {
             "cimmeria_cell_content::cell::interactions::dialog",
             "interactions.log",
         ),
-        // Stays in services; the moved dialog row must not have been its only
-        // route to the file.
+        // The interaction handlers (in cimmeria-cell-interactions since wave
+        // C4); the moved dialog row must not have been their only route to
+        // the file.
         (
-            "cimmeria_services::cell::interactions::dispatch::interact",
+            "cimmeria_cell_interactions::cell::interactions::dispatch::interact",
             "interactions.log",
         ),
         // The ring FSM stayed in the world crate and keeps its own row.
@@ -1506,6 +1514,100 @@ fn content_crate_events_keep_their_file_and_index() {
             assert_eq!(
                 sinks(lvl),
                 set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
+/// The player interactions moved from `cimmeria_services::cell` to the
+/// `cimmeria-cell-interactions` crate (services crate split, wave C4), which
+/// changed the `module_path!()` of every untargeted row in them. Each must
+/// still land where it did: `interactions.log` for the interaction handlers
+/// and mail (beside the content crate's dialog display), `spawner.log` for
+/// gate travel, `aoi.log` for the client-cache resync, `server.log` from INFO,
+/// and one OTLP index per level. The space transfer, the respawn fork, the
+/// region registration and the trade state had no file and have none; they
+/// reach SigNoz from DEBUG. `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_cell_interactions`, so without its own `OTEL_FILTER` row every
+/// DEBUG row here would stop reaching SigNoz; without the file rows the three
+/// files would empty of them.
+#[test]
+fn interactions_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file) in [
+        (
+            "cimmeria_cell_interactions::cell::interactions::dispatch::interact",
+            "interactions.log",
+        ),
+        (
+            "cimmeria_cell_interactions::cell::interactions::loot",
+            "interactions.log",
+        ),
+        (
+            "cimmeria_cell_interactions::cell::interactions::trainer",
+            "interactions.log",
+        ),
+        ("cimmeria_cell_interactions::cell::mail", "interactions.log"),
+        // The dialog display stayed in the content crate and keeps its own row.
+        (
+            "cimmeria_cell_content::cell::interactions::dialog",
+            "interactions.log",
+        ),
+        (
+            "cimmeria_cell_interactions::cell::gate_travel",
+            "spawner.log",
+        ),
+        (
+            "cimmeria_cell_interactions::cell::gate_travel::tick",
+            "spawner.log",
+        ),
+        (
+            "cimmeria_cell_interactions::cell::respawn::resync",
+            "aoi.log",
+        ),
+    ] {
+        let file = format!("file:{file}");
+        let file = file.as_str();
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+    for target in [
+        "cimmeria_cell_interactions::cell::space_transfer",
+        "cimmeria_cell_interactions::cell::respawn",
+        "cimmeria_cell_interactions::cell::respawn::region_registration",
+        "cimmeria_cell_interactions::cell::trade::state",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
                 "{target} at {lvl}"
             );
         }

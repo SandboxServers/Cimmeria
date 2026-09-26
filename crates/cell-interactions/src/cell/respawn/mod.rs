@@ -28,13 +28,13 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::RespawnerDef;
 
-pub(crate) mod region_registration;
-pub(crate) mod resync;
+pub mod region_registration;
+pub mod resync;
 
 #[cfg(test)]
 mod tests;
 
-pub(crate) use resync::send_known_abilities_update;
+pub use resync::send_known_abilities_update;
 
 /// In-place respawn: keep the cell entity (and instance) alive, send a
 /// targeted client-side burst that re-creates just the pawn actor and
@@ -94,10 +94,10 @@ pub(crate) use resync::send_known_abilities_update;
         same_world = tracing::field::Empty,
     ),
 )]
-// `pub(crate)` (widened from `pub(super)`) so the native GM `gmRespawn`
+// `pub` (widened from `pub(super)`) so the native GM `gmRespawn`
 // handler (`console::gm::world`) can reuse the exact same respawn sequence
 // as the combat Defeat-Window path — no duplicate respawn logic.
-pub(crate) async fn handle_respawn(
+pub async fn handle_respawn(
     entity_id: u32,
     respawner_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,

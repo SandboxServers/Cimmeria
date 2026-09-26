@@ -17,8 +17,8 @@
 //! - [`wire`] — outbound `onTradeState` / `onTradeResults` serializers
 //!   and the `stub_inv_items_for` info-leak-mitigating stub builder.
 
-pub(crate) mod state;
-pub(crate) mod wire;
+pub mod state;
+pub mod wire;
 
 #[cfg(test)]
 mod tests;

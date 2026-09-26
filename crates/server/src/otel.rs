@@ -618,6 +618,18 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_cell_content::cell::ring_transport::dispatch"
         ));
+        // The player interactions, `cimmeria_services::cell::{interactions,
+        // gate_travel, respawn, ...}` in cimmeria-server until wave C4 moved
+        // them to cimmeria-cell-interactions.
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_interactions::cell::interactions::dispatch::interact"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_interactions::cell::gate_travel"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_interactions::cell::respawn::resync"
+        ));
         // The feature handlers, `cimmeria_services::base::world_entry::methods`
         // in cimmeria-server until wave B2 moved them to cimmeria-base-methods.
         assert!(!is_network_noise_target(

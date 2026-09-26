@@ -7,7 +7,7 @@
 //! with sentinel-bearing `InvItem` records — the cell doesn't own the full
 //! inventory state (base does), but the wire format requires a FIXED_DICT
 //! per item, so we emit obvious sentinels rather than plausible lies.
-//! See the [`UNRESOLVED_INV_ITEM_FIELD`] doc comment for the security
+//! See the `UNRESOLVED_INV_ITEM_FIELD` doc comment for the security
 //! rationale.
 
 use cimmeria_entity::inventory::InvItem;
@@ -18,7 +18,7 @@ use crate::cell::client_methods::player::{ON_TRADE_RESULTS, ON_TRADE_STATE};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-pub(crate) async fn send_on_trade_results(
+pub async fn send_on_trade_results(
     entity_id: u32,
     partner_entity_id: i32,
     result: i32,
@@ -45,7 +45,7 @@ pub(crate) async fn send_on_trade_results(
 
 /// Send `onTradeState` to both `entity_id` and `partner_entity_id`,
 /// each from their own perspective (local = self, remote = partner).
-pub(crate) async fn send_on_trade_state_to_both(
+pub async fn send_on_trade_state_to_both(
     entity_id: u32,
     partner_entity_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,

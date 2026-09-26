@@ -82,7 +82,8 @@ pub(crate) fn world_has_stargate_region(space_mgr: &SpaceManager, world_name: &s
 ///
 /// Returns the resolved sequence id, or `None` when the gate's event set
 /// has no sequence for `event_id` (nothing is sent in that case).
-pub(crate) async fn send_gate_sequence(
+#[cfg_attr(not(any(test, feature = "test-support")), allow(unreachable_pub))]
+pub async fn send_gate_sequence(
     entity_id: u32,
     event_set_id: Option<i32>,
     event_id: i32,

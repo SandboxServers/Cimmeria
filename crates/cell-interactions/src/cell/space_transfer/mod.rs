@@ -15,11 +15,11 @@
 //!
 //! # Why this can't just call `handle_gate_travel` blindly
 //!
-//! `crate::base::world_entry::gate_travel::handle_gate_travel` is the *base*
+//! `cimmeria_base_world_entry::base::world_entry::gate_travel::handle_gate_travel` is the *base*
 //! half of the flow, and it runs only after the *cell* half has already
 //! removed the entity from its old space (see
 //! [`crate::cell::gate_travel::handle_dial_gate`] and
-//! [`crate::cell::console::gm::travel`]). The cell half is where the
+//! `cimmeria_services::cell::console::gm::travel`). The cell half is where the
 //! destructive step lives, so the cell half is where validation has to
 //! happen. The order enforced here is:
 //!

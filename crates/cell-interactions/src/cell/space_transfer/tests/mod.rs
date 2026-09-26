@@ -11,7 +11,7 @@
 //!   default picks the first/default loaded instance deterministically.
 //!
 //! The mid-transfer disconnect stages are covered on the base side, in
-//! `crate::base::world_entry::gate_travel::tests::transfer`, because that is
+//! `cimmeria_base_world_entry::base::world_entry::gate_travel::tests::transfer`, because that is
 //! where the client session state lives.
 
 use cimmeria_entity::cell_entity::BandolierItem;

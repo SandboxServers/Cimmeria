@@ -25,11 +25,7 @@ use super::MAX_INTERACT_DISTANCE;
 ///
 /// On success, writes `trade_partner_entity_id` + fresh empty
 /// `trade_proposal` on BOTH entities and returns `true`.
-pub(crate) fn begin_trading(
-    entity_id: u32,
-    partner_entity_id: i32,
-    space_mgr: &mut SpaceManager,
-) -> bool {
+pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut SpaceManager) -> bool {
     if partner_entity_id <= 0 {
         tracing::warn!(entity_id, partner_entity_id, "beginTrading: invalid id");
         return false;
@@ -137,7 +133,7 @@ pub(crate) fn begin_trading(
 ///
 /// On success, both sides' `lock_state` is reset to `None` and the
 /// updated `onTradeState` is fanned out to both clients.
-pub(crate) async fn apply_proposal(
+pub async fn apply_proposal(
     entity_id: u32,
     partner_entity_id: i32,
     new_proposal: TradeProposal,
@@ -203,11 +199,7 @@ pub(crate) async fn apply_proposal(
 
 /// Clear the trade state on both participants. Called from cancel /
 /// commit / disconnect paths.
-pub(crate) fn clear_trade_state(
-    entity_id: u32,
-    partner_entity_id: i32,
-    space_mgr: &mut SpaceManager,
-) {
+pub fn clear_trade_state(entity_id: u32, partner_entity_id: i32, space_mgr: &mut SpaceManager) {
     if let Some(e) = space_mgr.get_entity_mut(entity_id) {
         e.trade_partner_entity_id = None;
         e.trade_proposal = None;
@@ -219,7 +211,7 @@ pub(crate) fn clear_trade_state(
 }
 
 /// Tear down a session and notify both clients with `onTradeResults(result)`.
-pub(crate) async fn cancel_session(
+pub async fn cancel_session(
     entity_id: u32,
     partner_entity_id: i32,
     result: i32,
@@ -272,11 +264,7 @@ pub async fn cancel_trade_on_disconnect(
 /// 3m horizontally; a player on a balcony 6m above is not. Switching
 /// to a 2D (horizontal-only) check would diverge from every other
 /// interaction range gate in the codebase — out of scope for this PR.
-pub(crate) fn partners_in_range(
-    entity_id: u32,
-    partner_entity_id: i32,
-    space_mgr: &SpaceManager,
-) -> bool {
+pub fn partners_in_range(entity_id: u32, partner_entity_id: i32, space_mgr: &SpaceManager) -> bool {
     let me = match space_mgr.get_entity(entity_id) {
         Some(e) => e,
         None => return false,

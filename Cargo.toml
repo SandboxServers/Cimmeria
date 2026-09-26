@@ -50,6 +50,7 @@ members = [
     "crates/cell-combat",
     "crates/base",
     "crates/cell-content",
+    "crates/cell-interactions",
 ]
 default-members = [
     "crates/common",
@@ -82,6 +83,7 @@ default-members = [
     "crates/cell-combat",
     "crates/base",
     "crates/cell-content",
+    "crates/cell-interactions",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -243,6 +245,7 @@ cimmeria-base-world-entry = { path = "crates/base-world-entry" }
 cimmeria-cell-combat = { path = "crates/cell-combat" }
 cimmeria-base = { path = "crates/base" }
 cimmeria-cell-content = { path = "crates/cell-content" }
+cimmeria-cell-interactions = { path = "crates/cell-interactions" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed
