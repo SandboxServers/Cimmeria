@@ -1,0 +1,56 @@
+[package]
+name = "cimmeria-cell-combat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The cell's combat for the Cimmeria server emulator: ability resolution, damage, death and loot, threat and the auto-cycle, effect pulsing, the bandolier and reload, and the NPC AI's behaviour"
+
+# Split out of cimmeria-services (wave C2 of
+# docs/architecture/services-crate-split.md). Combat and the NPC AI share one
+# crate because death purges threat and threat recruits assisters
+# synchronously, in an order a UAT fix depends on (§2D). The content engine
+# sits above this crate: kill credit, the pulse tick and the AI's flank step
+# raise content events through `ContentEvents` (cimmeria-cell-world), never by
+# calling the content executor. The module tree keeps its old nesting
+# (`cell::combat`, `cell::abilities`, `cell::effects`, `cell::service::npc_ai`,
+# `cell::cell_methods::…`), and cimmeria-services re-exports each module at
+# its old path.
+[dependencies]
+# SpaceManager, the NPC AI's state primitives, the synchronous effect scripts,
+# the cover hold, the GM gate and the `ContentEvents` seam.
+cimmeria-cell-world = { workspace = true }
+# The spawner's catalog (item event sets, `EVENT_ITEM_*`, the region test).
+cimmeria-cell-catalog = { workspace = true }
+# The Base<->Cell message contract, the Mercury packet builders, the cell and
+# client method indices, BSF bits and the container tables.
+cimmeria-wire = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+cimmeria-observability = { workspace = true }
+# The player-death and NPC-death notifications.
+cimmeria-discord = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+# Loot rolls, the NPC wander, and the QR Beta sampler.
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+rand_distr = { workspace = true }
+
+[features]
+# Exposes the test-only hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,
+# `force_ai_state`, ...) to other crates' tests. cimmeria-services turns it on
+# through its [dev-dependencies]; a production build never sees them.
+test-support = ["cimmeria-cell-world/test-support"]
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`, the occluder helpers, the
+# `ContentEvents` fakes) and hooks (`force_ai_state`, `TEST_WORLD_ID`).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# The fire line-of-sight tests build occluders directly.
+cimmeria-occluder = { workspace = true }

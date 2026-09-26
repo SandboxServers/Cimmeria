@@ -70,7 +70,7 @@ async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -114,7 +114,7 @@ async fn npc_ai_fight_with_short_max_range_holds_fire_when_target_outside() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -163,7 +163,7 @@ async fn npc_ai_fight_with_short_max_range_fires_when_target_inside() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -201,7 +201,7 @@ async fn npc_ai_fight_max_range_zero_falls_back_to_npc_attack_range() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -241,7 +241,7 @@ async fn npc_ai_fight_target_inside_min_range_schedules_backup_waypoint() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -312,7 +312,7 @@ async fn npc_ai_fight_schedules_retry_on_handle_use_ability_failure() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
     let after = std::time::Instant::now();
@@ -377,7 +377,7 @@ async fn npc_ai_retry_sweep_processes_due_npc_and_clears_slot() {
     crate::cell::service::npc_ai::npc_ai_retry_sweep(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -423,7 +423,7 @@ async fn npc_ai_fight_missing_ability_def_falls_back_to_npc_attack_range() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -515,7 +515,7 @@ async fn npc_ai_fight_stationary_does_not_back_off_inside_min_range() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

@@ -340,10 +340,10 @@ use `qrCombatDamage()`. Effect NVP values: HealthDamage 8-25, FocusDamage 80-250
 per damage type, level-based ability scaling, diminishing returns, cover system modifiers.
 
 **Since landed** (this section previously listed these as missing): cone/AoE targeting is
-implemented at [crates/services/src/cell/abilities/cone_aoe/](../../crates/services/src/cell/abilities/cone_aoe/)
+implemented at [crates/cell-combat/src/cell/abilities/cone_aoe/](../../crates/cell-combat/src/cell/abilities/cone_aoe/)
 (geometry, fan-out, flag categories, tests), and channeled abilities are driven by the
 `is_channeled` / `pulse_count` columns through
-[cell/effects/pulsing/](../../crates/services/src/cell/effects/pulsing/). Nine effect
+[cell/effects/pulsing/](../../crates/cell-combat/src/cell/effects/pulsing/). Nine effect
 scripts are registered in
 [cell/effects/registry.rs](../../crates/cell-world/src/cell/effects/registry.rs) —
 `HealHealth`, `HealFocus`, `MeleeDamage`, `MeleePhysicalDamage`, `AbsorbShield`, `Stun`,

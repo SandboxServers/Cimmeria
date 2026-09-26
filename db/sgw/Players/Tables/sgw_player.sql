@@ -47,7 +47,7 @@ CREATE TABLE sgw_player (
     reload_on_activate boolean DEFAULT false NOT NULL,
     -- Persisted user-preference bits of the cell entity's `state_field`
     -- bitmask. Only bits in PERSISTED_STATE_FIELD_MASK
-    -- (crates/services/src/cell/combat/state.rs) are ever written —
+    -- (crates/cell-combat/src/cell/combat/state.rs) are ever written —
     -- today that's BSF_AutoCycling (1 << 1) alone. Transient combat
     -- bits (BSF_Dead, BSF_InCombat, BSF_MovementLock) are masked out
     -- on write so a relog is always a clean combat slate. (#412)

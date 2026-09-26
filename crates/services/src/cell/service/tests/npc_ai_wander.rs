@@ -43,7 +43,7 @@ async fn idle_npc_with_wander_radius_transitions_to_wander_same_tick() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -80,7 +80,7 @@ async fn wander_with_future_deadline_is_a_no_op() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -110,7 +110,7 @@ async fn wander_with_zero_radius_drops_to_idle() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -138,7 +138,7 @@ async fn wander_with_active_nav_path_is_a_no_op() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -167,7 +167,7 @@ async fn idle_with_patrol_and_wander_picks_patrol() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -203,7 +203,7 @@ async fn wander_arrival_stamps_dwell_within_min_max_band() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -238,7 +238,7 @@ async fn wander_first_entry_stamps_dwell_without_routing() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -267,7 +267,7 @@ async fn wander_elapsed_dwell_routes_to_new_destination_and_clears_deadline() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

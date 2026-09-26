@@ -232,7 +232,7 @@ pub enum Action {
     /// Push a tagged NPC into `AiState::Investigating` with the given
     /// world-space point of interest. The NPC pathfinds to the POI,
     /// dwells `INVESTIGATE_DWELL_SECS` (hardcoded 5 seconds, defined
-    /// in `crates/services/src/cell/service/npc_ai.rs`), and returns
+    /// in `crates/cell-combat/src/cell/service/npc_ai.rs`), and returns
     /// to `AiState::Idle`. Future variations on the dwell would lift
     /// it to a template column.
     ///

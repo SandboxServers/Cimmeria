@@ -27,8 +27,10 @@ pub struct RustSource {
 
 impl RustSource {
     /// Test code by its path: anything outside a crate's `src/`, and under
-    /// `src/` any `tests`, `test_harness` or `*_tests` directory, or a
-    /// `tests.rs`, `*_tests.rs` or `test_support.rs` file.
+    /// `src/` any `tests`, `test_harness`, `test_fixtures` or `*_tests`
+    /// directory, or a `tests.rs`, `*_tests.rs` or `test_support.rs` file.
+    /// A split crate's `test_fixtures` module is compiled only for tests and
+    /// behind its `test-support` feature (services-crate-split §3).
     ///
     /// Inline `#[cfg(test)]` modules in production files are handled by
     /// [`production_lines`].
@@ -42,6 +44,7 @@ impl RustSource {
                 || c == "tests.rs"
                 || c == "test_support.rs"
                 || c == "test_support"
+                || c == "test_fixtures"
                 || c.ends_with("_tests")
                 || c.ends_with("_tests.rs")
         })
@@ -210,6 +213,7 @@ mod tests {
             "src/cell/content/chain_replay_tests/m.rs",
             "src/test_support.rs",
             "src/test_harness/mod.rs",
+            "src/test_fixtures/npc_surrender.rs",
             "tests/it/main.rs",
         ] {
             assert!(src(rel).is_test_path(), "{rel} should be test code");

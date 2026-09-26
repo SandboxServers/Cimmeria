@@ -54,7 +54,7 @@ async fn auto_aggro_broadcasts_appearance_refresh_on_holstered_player() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

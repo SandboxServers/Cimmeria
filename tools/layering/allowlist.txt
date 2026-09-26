@@ -21,12 +21,12 @@
 # what stays beside them.
 
 # --- §2E: combat -> content, inverted through ContentEvents -----------------
-cell::abilities::use_ability::kill_credit -> cell::content::event_dispatch::lifecycle
-cell::effects::pulsing::tick -> cell::content::event_dispatch::lifecycle
-cell::service::npc_ai::fight_cover -> cell::content::event_dispatch::cover
+# C2 resolved this section: kill credit, the pulse tick and the NPC AI take
+# `&dyn ContentEvents`, and the content crate passes `EngineEvents`.
 
 # --- §2F: combat -> cell_methods and service --------------------------------
-cell::cell_methods::inventory::bandolier::active_slot -> cell::service::ticks::holster  # HOLSTER_ANIMATION_DURATION
+# C2 resolved this section: `HOLSTER_ANIMATION_DURATION` moved into
+# `cell::combat`, and reload, item_sequence and the bandolier moved with combat.
 
 # --- §2G: content <-> ring transport ----------------------------------------
 # The ring FSM is in cimmeria-cell-world since C1; the shims left here map to

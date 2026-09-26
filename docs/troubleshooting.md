@@ -313,7 +313,7 @@ $env:RUST_LOG = "info"
 $env:RUST_LOG = "cimmeria=debug,info"
 
 # Just one module:
-$env:RUST_LOG = "cimmeria_services::cell::combat=trace,warn"
+$env:RUST_LOG = "cimmeria_cell_combat::cell::combat=trace,warn"
 ```
 
 The `tracing` filter syntax is in the [`tracing-subscriber` docs](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html).

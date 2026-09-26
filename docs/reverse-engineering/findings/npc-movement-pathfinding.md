@@ -139,7 +139,7 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 
 ### What Cimmeria currently sends
 
-`npc_ai_leash()` in `crates/services/src/cell/service/npc_ai.rs`:
+`npc_ai_leash()` in `crates/cell-combat/src/cell/service/npc_ai.rs`:
 1. Snaps the NPC to spawn position **instantly** (direct field write, no pathfinding).
 2. Restores health to max.
 3. Resets `ai_state` to `AiState::Idle`.

@@ -167,7 +167,7 @@ Header:  0xA9  (0x80 | 41)
 Payload: 4B BagId (i32 LE) + 4B SlotId (i32 LE)
 ```
 
-**Server side** (`crates/services/src/cell/cell_methods/inventory/bandolier.rs`):
+**Server side** (`crates/cell-combat/src/cell/cell_methods/inventory/bandolier.rs`):
 - Receives 1-indexed `SlotId`
 - Converts: `wire_slot_id.saturating_sub(1)` → 0-indexed
 - Updates active slot in player state

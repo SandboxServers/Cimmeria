@@ -11,8 +11,8 @@
 //!   off-mesh rows. Reporting only; they change no decision.
 //!
 //! The AI's behaviour (the tick, fighting, chasing, patrolling, the leash walk
-//! home) is in `cimmeria-services`' `cell::service::npc_ai`, which re-exports
-//! these modules at their old paths.
+//! home) is in `cimmeria-cell-combat`'s `cell::service::npc_ai`, which
+//! re-exports these modules at their old paths.
 
 pub mod detectors;
 pub mod leash;

@@ -351,7 +351,8 @@ fn each_level_lands_in_its_index() {
             .filter(|s| s.starts_with("otlp:"))
             .collect()
     };
-    let combat = "cimmeria_services::cell::combat::damage";
+    // Combat moved to cimmeria-cell-combat in wave C2 of the services split.
+    let combat = "cimmeria_cell_combat::cell::combat::damage";
     let noise = "cimmeria_services::base::connect_loop::encrypted";
     assert_eq!(otlp(combat, Level::TRACE), [OTLP_TRACE]);
     assert_eq!(otlp(combat, Level::DEBUG), [OTLP_SERVER]);
@@ -829,6 +830,91 @@ fn world_crate_events_keep_their_file_and_index() {
         "cimmeria_cell_world::cell::cover::stance",
         "cimmeria_cell_world::cell::arrival",
         "cimmeria_cell_world::cell::playtest_friction_watch",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
+/// Combat and the NPC AI's behaviour moved from `cimmeria_services::cell` to
+/// the `cimmeria-cell-combat` crate (services crate split, wave C2), which
+/// changed the `module_path!()` of every untargeted row in them. Each must
+/// still land where it did: `combat.log` for `combat` and `abilities`,
+/// `aoi.log` for the NPC AI under `cell::service` (the services
+/// `cell::service=trace` row used to keep it), `server.log` from INFO, and
+/// one OTLP index per level. The effect pulsing and the bandolier, reload and
+/// item-sequence handlers have no file and keep `server.log` plus their
+/// index. `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_cell_combat`, so without its own `OTEL_FILTER` row every DEBUG
+/// row here would stop reaching SigNoz; without the file rows the two files
+/// would empty of them.
+#[test]
+fn combat_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file) in [
+        ("cimmeria_cell_combat::cell::combat::damage", "combat.log"),
+        (
+            "cimmeria_cell_combat::cell::combat::threat::aggro",
+            "combat.log",
+        ),
+        (
+            "cimmeria_cell_combat::cell::abilities::use_ability::handle",
+            "combat.log",
+        ),
+        ("cimmeria_cell_combat::cell::abilities::death", "combat.log"),
+        (
+            "cimmeria_cell_combat::cell::service::npc_ai::dispatch",
+            "aoi.log",
+        ),
+        (
+            "cimmeria_cell_combat::cell::service::npc_ai::fight_cover",
+            "aoi.log",
+        ),
+        (
+            "cimmeria_cell_combat::cell::service::npc_ai::leash::begin",
+            "aoi.log",
+        ),
+    ] {
+        let file = format!("file:{file}");
+        let file = file.as_str();
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+    for target in [
+        "cimmeria_cell_combat::cell::effects::pulsing::tick",
+        "cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::active_slot",
+        "cimmeria_cell_combat::cell::cell_methods::player::world::reload",
     ] {
         let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
         // No file keeps it at TRACE, so the trace index does not either.

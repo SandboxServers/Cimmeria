@@ -9,6 +9,7 @@
 // gates, and module privacy is what keeps it unreachable from any
 // client-dispatched path. See the module doc before widening this.
 mod effect_apply;
+mod engine_events;
 mod engine_loader;
 mod event_dispatch;
 mod executor;
@@ -20,6 +21,10 @@ mod chain_replay_tests;
 // Public surface — preserve the flat `crate::cell::content::<fn>` paths that
 // callers across the cell service already use.
 pub use engine_loader::build_engine;
+// The chain engine as combat's `ContentEvents` (§2E of
+// docs/architecture/services-crate-split.md): combat, the effect pulses and
+// the NPC AI take `&dyn ContentEvents`, and callers pass `&EngineEvents(&engine)`.
+pub use engine_events::EngineEvents;
 pub use event_dispatch::{
     fire_chain_by_id, fire_cover_duration, fire_cover_entered, fire_cover_left, fire_dialog_choice,
     fire_dialog_open, fire_enter_region, fire_entity_death, fire_entity_health_below,

@@ -52,7 +52,7 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (100, 2008, 'Hea
 -- on its row in effects.sql.
 --
 -- Pulse-count accounting (verified against
--- `crates/services/src/cell/effects/pulsing.rs:118-119`):
+-- `crates/cell-combat/src/cell/effects/pulsing.rs:118-119`):
 --   - `damage_apply` fires the initial pulse synchronously
 --     (counts as pulse 1 of 25 — NOT an extra pulse)
 --   - `register_active_effect` schedules `remaining = pulse_count - 1`

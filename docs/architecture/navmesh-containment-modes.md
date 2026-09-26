@@ -217,7 +217,7 @@ to *know* keeps working:
 - `find_path`
 - `line_of_sight` / `has_line_of_sight`
 - `get_navmesh_height`
-- NPC wander validity ([`cell/service/npc_ai/wander.rs`](../../crates/services/src/cell/service/npc_ai/wander.rs))
+- NPC wander validity ([`cell/service/npc_ai/wander.rs`](../../crates/cell-combat/src/cell/service/npc_ai/wander.rs))
 - the `on_navmesh` field in [`cell/console/bookmark.rs`](../../crates/services/src/cell/console/bookmark.rs) (`.bug` reports)
 - the `on_navmesh` field in [`cell/space_manager/npc_population.rs`](../../crates/cell-world/src/cell/space_manager/npc_population.rs) (`spawner.npc_behaviour`)
 

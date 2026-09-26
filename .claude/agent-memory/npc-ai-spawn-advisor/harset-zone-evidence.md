@@ -59,7 +59,7 @@ Poly neighbour array stores the neighbour index **directly** (0-based),
 reciprocal on harset.nav (35,560/35,560). Header layout confirmed at
 `crates/entity/src/navigation/mod.rs:140-191`.
 
-## No-navmesh behaviour (`crates/services/src/cell/service/npc_ai/`)
+## No-navmesh behaviour (`crates/cell-combat/src/cell/service/npc_ai/`)
 
 Missing .nav is swallowed to `None` at `space_manager/lifecycle.rs:35-39`
 (debug log only). `find_path` → `None` (`space_manager/spatial.rs:49`).

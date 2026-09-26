@@ -35,7 +35,7 @@ The `0xC4` group mask (bits 2 + 6 + 7) is the movement-speed recompute — any o
 `state_field` is transient combat state with one exception: `BSF_AutoCycling`
 is a player preference toggle the original game kept across sessions. The
 persisted subset is defined by `PERSISTED_STATE_FIELD_MASK` in
-[crates/services/src/cell/combat/state.rs](../../crates/services/src/cell/combat/state.rs)
+[crates/cell-combat/src/cell/combat/state.rs](../../crates/cell-combat/src/cell/combat/state.rs)
 (today: `BSF_AutoCycling` alone) and stored in `sgw_player.state_field`:
 
 - **Write**: the explicit `setAutoCycle` toggle (player method 83) sends
@@ -84,7 +84,7 @@ mcp__ghidra__decompile_function 0x00ec0840      // CompositedAppearanceProxy::Ap
 
 ## Related
 
-- Source-of-truth for what each flag does: `crates/services/src/cell/combat/state.rs`.
+- Source-of-truth for what each flag does: `crates/cell-combat/src/cell/combat/state.rs`.
 - Holster mechanism (visible state on `CellEntity::weapon_holstered`): see the docstring on that field in `crates/entity/src/cell_entity/mod.rs`.
 - Bible — Mercury wire format ([`docs/drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md)): packet framing, encryption, sequencing — the layer that carries `onStateFieldUpdate`.
 - Bible — Entity property sync ([`docs/drafts/spec/entity-property-sync.md`](../drafts/spec/entity-property-sync.md)): `BeingAppearance.ComponentList` is replicated through this layer; this doc is what defines the `holster = omit weapon entry` contract on the wire.

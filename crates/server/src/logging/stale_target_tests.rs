@@ -288,6 +288,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_services::base::world_entry",
         "cimmeria_services::base::world_entry_appearance",
         "cimmeria_services::base::character",
+        // combat.log's rows before wave C2 moved combat and abilities to
+        // cimmeria-cell-combat; services re-exports both at the same paths.
+        "cimmeria_services::cell::combat",
+        "cimmeria_services::cell::abilities",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -304,6 +308,8 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_base_world_entry::base::world_entry_appearance",
         "cimmeria_base_world_entry::base::character",
         "cimmeria_services::base::character_create",
+        "cimmeria_cell_combat::cell::combat",
+        "cimmeria_cell_combat::cell::service::npc_ai",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

@@ -31,6 +31,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "cell-cover",
     "cell-catalog",
     "cell-world",
+    "cell-combat",
     "commands",
     "common",
     "content-engine",
@@ -261,7 +262,9 @@ fn scan_finds_known_targets() {
     let sites = emitted_targets();
     for (t, l) in [
         ("dialog.display", Level::DEBUG),
+        // Emitted only by crates/cell-combat (wave C2 of the services split).
         ("movement.movement_type", Level::TRACE),
+        ("abilities.qr", Level::DEBUG),
         ("movement.navmesh", Level::TRACE),
         ("npc_ai.transition", Level::DEBUG),
         ("mercury.packet", Level::INFO),

@@ -117,7 +117,7 @@ async fn tick(mgr: &mut crate::cell::space_manager::SpaceManager) {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 }

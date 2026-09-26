@@ -339,5 +339,5 @@ are inferred but not confirmed against RTTI class names.
 - `docs/reverse-engineering/findings/spawn-system-mechanics.md` — RespawnerMobId property, respawner entity definition
 - `docs/reverse-engineering/findings/cme-event-signal.md` — Pattern A/B emit pipeline
 - `crates/services/src/cell/cell_methods/player/combat/respawn.rs` — Rust implementation
-- `crates/services/src/cell/abilities/damage_apply/mod.rs` — onBeginAidWait send logic
+- `crates/cell-combat/src/cell/abilities/damage_apply/mod.rs` — onBeginAidWait send logic
 - `crates/cell-catalog/src/cell/spawner/respawners.rs` — RespawnerDef, SQL query

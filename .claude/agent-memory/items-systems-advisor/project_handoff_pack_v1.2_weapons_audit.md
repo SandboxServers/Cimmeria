@@ -12,8 +12,8 @@ Full report delivered to team-lead 2026-09-18 as a teammate audit task. Key dura
 **Phase 4 checklist reality check** (pack's `docs/IMPLEMENTATION_CHECKLIST.md`):
 - Weapon-family/auto-attack mapping: **already live**, not a gap — see [[items_event_sets_dual_purpose]].
 - 4-slot bandolier/active weapon: **already live** — `crates/entity/src/cell_entity/bandolier.rs`.
-- Reload: **already live** — two-phase draw-window state machine, `crates/services/src/cell/cell_methods/player/world/reload.rs`.
-- Ammo-*type* selection (which physical ammo is loaded): **already live** — `requestAmmoChange` handler, `crates/services/src/cell/cell_methods/inventory/bandolier/ammo_change.rs`.
+- Reload: **already live** — two-phase draw-window state machine, `crates/cell-combat/src/cell/cell_methods/player/world/reload.rs`.
+- Ammo-*type* selection (which physical ammo is loaded): **already live** — `requestAmmoChange` handler, `crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs`.
 - Ammo-*mode* toggle **abilities** (Hollow Point 715, Armor Piercing 719, Incendiary 723, 14 dart-type toggles): **real gap.** Ability/effect rows exist in the seed but no effect script implements the damage/penetration modifier — `crates/cell-world/src/cell/effects/registry.rs` has no arm for them, and effect 747's own `script_name` column is NULL even in the raw seed (the original 2009 client never wired a script here either). This is combat-systems-advisor territory once someone builds it (it's a damage-modifier effect, not an inventory op).
 - TechComp→damage scaling: **not started anywhere.** `tech_comp` only appears in vendor recharge pricing and the Livewire minigame; zero hits in `cell/combat/` or `cell/effects/`. Also combat-systems-advisor territory; item data already carries the `tech_comp` column so no schema work is needed, just the damage-formula hookup.
 

@@ -941,6 +941,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cell-combat"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-cell-catalog",
+ "cimmeria-cell-world",
+ "cimmeria-common",
+ "cimmeria-discord",
+ "cimmeria-entity",
+ "cimmeria-observability",
+ "cimmeria-occluder",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "rand 0.10.2",
+ "rand_chacha 0.10.0",
+ "rand_distr",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-cell-cover"
 version = "0.1.0"
 dependencies = [
@@ -1265,6 +1285,7 @@ dependencies = [
  "cimmeria-base-session",
  "cimmeria-base-world-entry",
  "cimmeria-cell-catalog",
+ "cimmeria-cell-combat",
  "cimmeria-cell-world",
  "cimmeria-common",
  "cimmeria-content-engine",
@@ -1281,8 +1302,6 @@ dependencies = [
  "cimmeria-wire-log",
  "quick-xml 0.41.0",
  "rand 0.10.2",
- "rand_chacha 0.10.0",
- "rand_distr",
  "serde",
  "serde_json",
  "sqlx",

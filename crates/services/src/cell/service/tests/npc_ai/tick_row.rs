@@ -31,7 +31,7 @@ async fn ai_tick_row_reports_state_target_facing_and_a_fight_outcome() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -88,7 +88,12 @@ async fn tick_rows(
     let (tx, _rx) = mpsc::channel(64);
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     for _ in 0..ticks {
-        crate::cell::service::npc_ai::npc_ai_tick(&tx, mgr, &engine).await;
+        crate::cell::service::npc_ai::npc_ai_tick(
+            &tx,
+            mgr,
+            &crate::cell::content::EngineEvents(&engine),
+        )
+        .await;
     }
     logs.all()
         .into_iter()

@@ -10,7 +10,7 @@ last_updated: 2026-05-27
 **Status**: Confirmed  
 **Confidence**: HIGH (binary + live-debugger verification + Python canonical source + entity def confirmed)  
 **Ghidra anchors**: `ghidra://SGW.exe@0x00aa29c0`, `ghidra://SGW.exe@0x00ad7820`, `ghidra://SGW.exe@0x00e02700`, `ghidra://SGW.exe@0x00e061b0`, `ghidra://SGW.exe@0x00cbbc40`, `ghidra://SGW.exe@0x00e01c90`, `ghidra://SGW.exe@0x00e05fb0`  
-**Related files**: `crates/services/src/cell/cell_methods/player/world/mod.rs`, `crates/services/src/cell/combat/auto_cycle.rs`, `crates/services/src/cell/service/ticks/auto_cycle.rs`, `crates/entity/src/abilities/manager.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
+**Related files**: `crates/services/src/cell/cell_methods/player/world/mod.rs`, `crates/cell-combat/src/cell/combat/auto_cycle.rs`, `crates/services/src/cell/service/ticks/auto_cycle.rs`, `crates/entity/src/abilities/manager.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
 
 ---
 
@@ -194,13 +194,13 @@ The loop is fully wired. The code lives in nine locations:
 |---|---|
 | `crates/entity/src/abilities/manager.rs` | `AbilityManager` fields: `auto_cycle` (flag), `auto_cycle_ability_id` (loop's committed ability), `last_fired_ability_id` (player's most recent fire — persists across loop on/off cycles, used by the immediate-fire path). |
 | `crates/entity/src/cell_entity/mod.rs` | `current_target_id` field — the player's live cursor selection, written by `setTargetID` (cell method 0). The auto-cycle tick + death sweep read this as the LIVE target instead of stashing one at arm-time. |
-| `crates/services/src/cell/combat/state.rs` | `BSF_AUTO_CYCLING` constant (mask `0x002`, bit 1). |
-| `crates/services/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. Manipulate `BSF_AUTO_CYCLING` with **raw `\|=` / `&= !mask` ops** (NOT the ref-counted `set_state_flag` / `unset_state_flag` helpers — see "Bit management" below). All three return `Some(new_state_field)` only when the bit actually transitioned. |
+| `crates/cell-combat/src/cell/combat/state.rs` | `BSF_AUTO_CYCLING` constant (mask `0x002`, bit 1). |
+| `crates/cell-combat/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. Manipulate `BSF_AUTO_CYCLING` with **raw `\|=` / `&= !mask` ops** (NOT the ref-counted `set_state_flag` / `unset_state_flag` helpers — see "Bit management" below). All three return `Some(new_state_field)` only when the bit actually transitioned. |
 | `crates/services/src/cell/cell_methods/being.rs` | `SET_TARGET_ID` handler (cell method 0) — persists the target id to `current_target_id` on the player entity so the auto-cycle tick can read it as the live re-fire target. |
 | `crates/services/src/cell/cell_methods/player/world/mod.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately AND fires immediately if `(last_fired_ability_id, current_target_id)` are both Some; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate`. |
-| `crates/services/src/cell/abilities/use_ability/mod.rs` | Manual-override gate at function entry (different ability ⇒ clear loop), arm/AF_DEACTIVATE branch at commit time, AND stashes `last_fired_ability_id` on every commit regardless of `auto_cycle` state. |
+| `crates/cell-combat/src/cell/abilities/use_ability/mod.rs` | Manual-override gate at function entry (different ability ⇒ clear loop), arm/AF_DEACTIVATE branch at commit time, AND stashes `last_fired_ability_id` on every commit regardless of `auto_cycle` state. |
 | `crates/services/src/cell/service/ticks/auto_cycle.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players and re-invokes `handle_use_ability` against the LIVE `current_target_id`. Cursor switches mid-loop redirect automatically; target deselect (`current_target_id = None`), dead/missing target, or out-of-range silently skips (no error packet, loop stays armed for resume). |
-| `crates/services/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at the dying entity gets their loop cleared (matches against LIVE `current_target_id`, not an arm-time stash). **Plus** clears the dying player's OWN auto-cycle — prevents the loop from auto-resuming on respawn. |
+| `crates/cell-combat/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at the dying entity gets their loop cleared (matches against LIVE `current_target_id`, not an arm-time stash). **Plus** clears the dying player's OWN auto-cycle — prevents the loop from auto-resuming on respawn. |
 
 ### Bit management — raw ops, NOT the ref-counted helpers
 

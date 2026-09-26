@@ -439,7 +439,7 @@ check" in [gap-analysis.md](../gap-analysis.md) §"Anti-Cheat Validation".
 **Ability range — closed; line-of-sight — open.** `useAbility` rejects targets
 beyond the ability's `max_range` (default 30.0) using server-side entity
 positions, not client-reported ones
-([`crates/services/src/cell/abilities/use_ability/handle.rs`](../../crates/services/src/cell/abilities/use_ability/handle.rs)).
+([`crates/cell-combat/src/cell/abilities/use_ability/handle.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/handle.rs)).
 Line of sight is *not* checked on that path, so an ability can still be cast
 through a wall. Closing it needs the navmesh raycast that NPC AI also wants.
 

@@ -90,6 +90,12 @@ use crate::otel;
 /// dispatch with its AoI emitters, `onClientReady`, the cinematic AoI hold's
 /// release and the character list. Neither base row above is a prefix of it.
 ///
+/// `cimmeria_cell_combat=debug` (wave C2) does the same for combat: ability
+/// resolution, damage and death, threat, the effect pulsing, the bandolier
+/// and reload handlers, and the NPC AI's behaviour. `cimmeria_cell_cover`
+/// shares its `cimmeria_cell_co` prefix but not the name, so neither row
+/// matches the other crate.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -123,6 +129,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_world=debug,\
                 cimmeria_base_methods=debug,\
                 cimmeria_base_world_entry=debug,\
+                cimmeria_cell_combat=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -280,15 +287,16 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         directives: "off,\
              cimmeria_services::cell::service=trace,\
              cimmeria_cell_world::cell::service=trace,\
+             cimmeria_cell_combat::cell::service=trace,\
              cimmeria_cell_world::cell::space_manager=trace,\
              cimmeria_cell_world::cell::space_manager::npc_population=off",
     },
     FileLayer {
         file: "combat.log",
         directives: "off,\
-             cimmeria_services::cell::combat=trace,\
+             cimmeria_cell_combat::cell::combat=trace,\
              cimmeria_cell_world::cell::combat=trace,\
-             cimmeria_services::cell::abilities=trace",
+             cimmeria_cell_combat::cell::abilities=trace",
     },
     FileLayer {
         file: "content.log",

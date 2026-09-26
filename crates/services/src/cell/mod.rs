@@ -8,25 +8,31 @@
 //! `cover`, the NPC AI's state primitives, the ring-transporter state machine,
 //! the synchronous effect scripts, the GM gate and `CellError`) is in
 //! `cimmeria-cell-world` (wave C1 of `docs/architecture/services-crate-split.md`).
-//! Its modules are re-exported here at their old paths; `combat`, `effects`,
-//! `dispatch`, `ring_transport` and `service` are partly there, and their
-//! modules here re-export the moved halves.
+//! Its modules are re-exported here at their old paths; `dispatch`,
+//! `ring_transport` and `service` are partly there, and their modules here
+//! re-export the moved halves.
+//!
+//! Combat (`abilities`, `combat`, the effect pulsing in `effects`, the NPC AI's
+//! behaviour in `service::npc_ai`, and the bandolier, reload and item-sequence
+//! cell methods) is in `cimmeria-cell-combat` (wave C2), re-exported the same
+//! way.
 
-pub mod abilities;
+// In `cimmeria-cell-combat` (wave C2).
+pub use cimmeria_cell_combat::cell::abilities;
 // In `cimmeria-cell-world` (wave C1).
 pub use cimmeria_cell_world::cell::arrival;
 pub mod cell_methods;
 pub mod chat;
 // The server->client method index tables are wire contract (cimmeria-wire).
+pub use cimmeria_cell_combat::cell::combat;
 pub use cimmeria_wire::cell::client_methods;
-pub mod combat;
 pub mod console;
 pub mod content;
 // The seam combat raises content events through (§2E), in `cimmeria-cell-world`.
 pub use cimmeria_cell_world::cell::content_events;
 pub use cimmeria_cell_world::cell::cover;
 pub mod dispatch;
-pub mod effects;
+pub use cimmeria_cell_combat::cell::effects;
 pub mod gate_travel;
 /// Seed-vs-navmesh guards for the Harset coordinates placed from map data
 /// (`docs/analysis/harset-rebuild/placements/`). Test-only.

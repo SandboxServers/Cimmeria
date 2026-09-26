@@ -42,7 +42,7 @@ async fn ai_tick(mgr: &mut SpaceManager) {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 }
@@ -238,7 +238,7 @@ async fn fighting_entry_sends_no_one_byte_method_1_to_witnesses() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

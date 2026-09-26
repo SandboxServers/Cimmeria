@@ -108,7 +108,7 @@ async fn npc_ai_fight_reserves_cover_slot_when_out_of_range_and_use_cover_on() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -149,7 +149,7 @@ async fn npc_ai_fight_does_not_reserve_cover_when_use_cover_false() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -186,7 +186,7 @@ async fn npc_ai_fight_stationary_does_not_reserve_cover() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -237,7 +237,7 @@ async fn npc_ai_fight_preserves_reservation_when_not_flanked() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -292,7 +292,7 @@ async fn npc_ai_fight_flanked_npc_releases_cover_and_clears_nav_path() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -309,6 +309,72 @@ async fn npc_ai_fight_flanked_npc_releases_cover_and_clears_nav_path() {
         "Released arm must clear nav_path so the NPC doesn't walk one more \
          tick toward the abandoned slot. Got: {:?}",
         npc.nav_path
+    );
+}
+
+/// The flank release raises its two content events through `ContentEvents`
+/// (§2E of docs/architecture/services-crate-split.md), in order: the NPC's
+/// `npc_flanked`, then the player-perspective `player_flanked_npc`, each with
+/// the NPC's template name and the flanking target. Swapping or dropping
+/// either call in `fight_cover::fire_flank_triggers` fails this.
+#[tokio::test]
+async fn npc_ai_fight_flanked_npc_raises_both_flank_events_in_order() {
+    use crate::test_support::{RecordedContentEvent, RecordingContentEvents};
+
+    let mut mgr = make_cover_fixture(
+        [0.0; 3],
+        [4.0, 0.0, 0.0],
+        // Same geometry as the release test above: the threat is behind
+        // the slot's facing, so the held slot is flanked.
+        vec![node(50, 0, 4.0, 0.0, 0.0)],
+    );
+    mgr.cover
+        .reservations
+        .lock()
+        .unwrap()
+        .reserve_for_entity(EntityId(200), CoverSlotKey::new(50, 0))
+        .unwrap();
+    mgr.create_entity(100, "Castle", [-40.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.is_player = true;
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.threat_list.insert(100, 1.0);
+        npc.npc_name = Some("HumanGuard".to_string());
+    }
+
+    let recorder = RecordingContentEvents::new();
+    let (tx, _rx) = mpsc::channel(16);
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &recorder).await;
+
+    assert!(
+        mgr.cover
+            .reservations
+            .lock()
+            .unwrap()
+            .slot_for_entity(EntityId(200))
+            .is_none(),
+        "test fixture: the NPC must release its flanked slot",
+    );
+    assert_eq!(
+        recorder.events(),
+        vec![
+            RecordedContentEvent::NpcFlanked {
+                npc_entity_id: 200,
+                threat_entity_id: 100,
+                npc_template: "HumanGuard".to_string(),
+            },
+            RecordedContentEvent::PlayerFlankedNpc {
+                npc_entity_id: 200,
+                player_entity_id: 100,
+                npc_template: "HumanGuard".to_string(),
+            },
+        ],
     );
 }
 
@@ -334,7 +400,7 @@ async fn npc_ai_fight_empty_threat_releases_cover_slot() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -385,7 +451,7 @@ async fn npc_ai_fight_leash_transition_releases_cover_slot() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

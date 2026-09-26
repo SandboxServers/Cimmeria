@@ -102,16 +102,16 @@ cimmeria-services = [
 # cimmeria-minigame (`minigame`) is extracted (W3c): crates/services/src only
 # re-exports it, so it has no rows here.
 
+# cimmeria-cell-combat is extracted (C2): `cell::{combat, abilities, effects}`
+# are re-exports of it, and so are `cell::cell_methods::inventory::bandolier`
+# and `cell::cell_methods::player::world::{reload, item_sequence}` (private
+# imports of the handler modules that stay here). None of them is a module of
+# this crate any more, so they have no rows.
+
 # Cell track.
-"cell::combat" = "cimmeria-cell-combat"
-"cell::abilities" = "cimmeria-cell-combat"
-# Since C1 `cell::effects` here is the path shim that re-exports the world
-# crate's effect scripts beside the async `pulsing` layer, which is combat.
-"cell::effects" = "cimmeria-cell-combat"
+# Since C2 `cell::service::npc_ai` here is the path shim that re-exports the
+# combat crate's NPC AI; only test modules sit beside it.
 "cell::service::npc_ai" = "cimmeria-cell-combat"
-"cell::cell_methods::player::world::reload" = "cimmeria-cell-combat"
-"cell::cell_methods::player::world::item_sequence" = "cimmeria-cell-combat"
-"cell::cell_methods::inventory::bandolier" = "cimmeria-cell-combat"
 
 "cell::content" = "cimmeria-cell-content"
 "cell::missions" = "cimmeria-cell-content"

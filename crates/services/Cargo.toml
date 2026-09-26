@@ -52,10 +52,13 @@ cimmeria-cell-world = { workspace = true }
 # `base::{world_entry, character}`. Its `world_entry::methods` is the feature
 # handlers of cimmeria-base-methods (B2), which this crate no longer names.
 cimmeria-base-world-entry = { workspace = true }
+
+# The cell's combat (abilities, damage, death, threat, the auto-cycle, effect
+# pulsing, the NPC AI's behaviour, the bandolier and reload handlers), split
+# out of this crate (C2). Re-exported at the old `cell::…` paths.
+cimmeria-cell-combat = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
-rand_distr = { workspace = true }
-rand_chacha = { workspace = true }
 quick-xml = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
@@ -107,3 +110,9 @@ cimmeria-cell-world = { workspace = true, features = ["test-support"] }
 # `world_entry::{handle_gate_travel, persist_arrival}`, which the gate round
 # trips in `gate_round_trip_tests` drive after the cell's dial handler.
 cimmeria-base-world-entry = { workspace = true, features = ["test-support"] }
+
+# The combat test hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,
+# `npc_ai_follow_for_test`, `force_ai_state` through `npc_ai`, ...) for the
+# tests that stay here because they drive the service loop or the content
+# engine.
+cimmeria-cell-combat = { workspace = true, features = ["test-support"] }

@@ -93,7 +93,12 @@ async fn following_being_is_ticked_and_moves_toward_its_leader() {
 
     let (tx, _rx) = mpsc::channel(256);
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
     assert!(
         !mgr.get_entity(marsh).unwrap().nav_path.is_empty(),
         "the follow handler must have run and planned a leg toward the leader"

@@ -6,7 +6,7 @@ metadata:
 ---
 
 `AiState::Follow` is wired end-to-end: handler
-`crates/services/src/cell/service/npc_ai/follow.rs`, dispatched unconditionally
+`crates/cell-combat/src/cell/service/npc_ai/follow.rs`, dispatched unconditionally
 from `npc_ai/dispatch.rs:55,89`; executor arm
 `cell/content/executor/world/mod.rs:149`.
 

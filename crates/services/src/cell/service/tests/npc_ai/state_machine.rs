@@ -19,9 +19,19 @@ async fn npc_ai_fighting_with_empty_threat_leashes_then_idles_at_spawn() {
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
     let (tx, _rx) = mpsc::channel(8);
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
     assert_eq!(mgr.get_entity(200).unwrap().ai_state(), AiState::Leashing);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
     assert_eq!(mgr.get_entity(200).unwrap().ai_state(), AiState::Idle);
 }
 
@@ -50,7 +60,7 @@ async fn npc_ai_npc_beyond_leash_distance_triggers_leashing() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
@@ -100,7 +110,7 @@ async fn npc_ai_dead_target_is_removed_but_other_threats_remain() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
@@ -162,7 +172,7 @@ async fn stationary_no_los_or_range_emits_structured_decision_log() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -216,7 +226,7 @@ async fn npc_ai_stationary_does_not_pathfind_when_out_of_range() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
@@ -257,7 +267,7 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
@@ -308,7 +318,7 @@ async fn npc_ai_leashing_with_follow_target_skips_spawn_snap() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
@@ -392,7 +402,7 @@ async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -435,7 +445,7 @@ async fn npc_ai_fight_single_nan_target_does_not_panic() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -477,7 +487,7 @@ async fn npc_ai_fight_nan_in_threat_list_with_other_targets_does_not_panic() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -523,7 +533,7 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -581,7 +591,7 @@ async fn npc_ai_in_range_attacker_turns_to_face_its_target() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

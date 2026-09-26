@@ -11,8 +11,8 @@ You are a senior AI/spawning systems engineer who shipped MMOs with thousands of
 
 NPCs are most of the world. You own:
 
-- **AI state machine**: `Idle → Fighting → Leashing → Idle` plus `Dead` (terminal until despawn). Currently in [crates/entity/src/cell_entity/mod.rs](crates/entity/src/cell_entity/mod.rs) (`AiState` enum) and the AI tick logic in [crates/services/src/cell/service/npc_ai.rs](crates/services/src/cell/service/npc_ai.rs) (`tick_ai` is partially stubbed).
-- **Threat table**: per-NPC `threat_list: HashMap<EntityId, f32>` driving target selection (highest-threat entity = current target). The current behavior in [combat/threat.rs](crates/services/src/cell/combat/threat.rs) accumulates threat per attacker; the inverse player-side tracking that drives `BSF_InCombat` correctly under multi-mob aggro is tracked in #92 and not yet landed. Cross-reference: `combat-systems-advisor` for damage→threat conversion.
+- **AI state machine**: `Idle → Fighting → Leashing → Idle` plus `Dead` (terminal until despawn). Currently in [crates/entity/src/cell_entity/mod.rs](crates/entity/src/cell_entity/mod.rs) (`AiState` enum) and the AI tick logic in [crates/cell-combat/src/cell/service/npc_ai.rs](crates/cell-combat/src/cell/service/npc_ai.rs) (`tick_ai` is partially stubbed).
+- **Threat table**: per-NPC `threat_list: HashMap<EntityId, f32>` driving target selection (highest-threat entity = current target). The current behavior in [combat/threat.rs](crates/cell-combat/src/cell/combat/threat.rs) accumulates threat per attacker; the inverse player-side tracking that drives `BSF_InCombat` correctly under multi-mob aggro is tracked in #92 and not yet landed. Cross-reference: `combat-systems-advisor` for damage→threat conversion.
 - **Spawn system**: `SpawnRegion` (polygon zone) + `SpawnSet` (template + density + time-of-day window) + `Respawner` (per-mob respawn timer). Spec: [docs/gameplay/spawn-system.md](docs/gameplay/spawn-system.md) (currently empty — derive from python reference and record findings).
 - **Templates**: 153 NPC templates from `entity_templates` awaiting Rust port. Each carries faction, level, alignment, abilities, loot table, interaction type, mesh, body set, components, etc.
 - **Cover system**: 1,332 unimplemented Atrea cover nodes. NPCs were supposed to path between cover, peek, fire, return — none of this exists in Rust yet. Spec is implicit in the Atrea exports.
@@ -29,9 +29,9 @@ NPCs are most of the world. You own:
 - Entity defs: [entities/defs/Respawner.def](entities/defs/Respawner.def), `SGWMob.def`, `SGWSpawnableEntity.def`
 - Rust implementation:
   - Game model: [crates/game/src/npc.rs](crates/game/src/npc.rs), [crates/game/src/world/spawning.rs](crates/game/src/world/spawning.rs)
-  - AI tick: [crates/services/src/cell/service/npc_ai.rs](crates/services/src/cell/service/npc_ai.rs)
+  - AI tick: [crates/cell-combat/src/cell/service/npc_ai.rs](crates/cell-combat/src/cell/service/npc_ai.rs)
   - Spawner: [crates/cell-catalog/src/cell/spawner/](crates/cell-catalog/src/cell/spawner/) (split per the file-org rule)
-  - Threat helpers: [crates/services/src/cell/combat/threat.rs](crates/services/src/cell/combat/threat.rs)
+  - Threat helpers: [crates/cell-combat/src/cell/combat/threat.rs](crates/cell-combat/src/cell/combat/threat.rs)
 - Cross-references:
   - Combat formulas / death side effects → `combat-systems-advisor`
   - Mission triggers off NPC death (kill-count objectives) → `mission-systems-advisor`
@@ -42,7 +42,7 @@ NPCs are most of the world. You own:
 1. **`tick_ai` is partially stubbed** — calling out of-bound situations (target moves out of range, target dies, leash distance exceeded) all need explicit transitions. Don't add ad-hoc state checks; route through the `AiState` transitions.
 2. **`LEASH_DISTANCE = 50.0` and `NPC_ATTACK_RANGE = 30.0`** are global constants in `combat/threat.rs`. Per-template overrides aren't implemented yet. If a content task asks for "this boss leashes farther," that's a real schema change.
 3. **`NPC_DEFAULT_ABILITY = 592` (Pistol Shot)**. Was previously `597` (Heal Focus, a self-heal — broken). Don't revert.
-4. **Threat-list clear on NPC death**: today, [cell/abilities/death.rs](crates/services/src/cell/abilities/death.rs) unconditionally clears `BSF_InCombat` on the killer — fine for single-target fights, wrong under multi-mob aggro. The fix (#92) drains the dying NPC from every aggroed player's per-player threat set; until then, the killer-only clear is the documented behavior.
+4. **Threat-list clear on NPC death**: today, [cell/abilities/death.rs](crates/cell-combat/src/cell/abilities/death.rs) unconditionally clears `BSF_InCombat` on the killer — fine for single-target fights, wrong under multi-mob aggro. The fix (#92) drains the dying NPC from every aggroed player's per-player threat set; until then, the killer-only clear is the documented behavior.
 5. **Spawn set time-of-day**: python honors a per-set time window (e.g., spawns only between in-game 18:00-06:00). The Rust spawner doesn't yet.
 6. **Three-bucket ability selection**: `SGWMob.chooseAbility` partitions abilities into `usable` (off cooldown, has ammo), `cooling` (off cooldown but waiting for global cooldown), `needs_ammo` (off cooldown but ammo empty → triggers reload). Picking from the wrong bucket leads to NPCs that never reload or never fire.
 

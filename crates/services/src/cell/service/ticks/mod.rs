@@ -20,7 +20,9 @@ mod reload_completion;
 pub(super) use aoi::run_aoi_tick;
 pub(super) use auto_cycle::auto_cycle_tick;
 pub(super) use cover::cover_detection_tick;
-pub(crate) use holster::HOLSTER_ANIMATION_DURATION;
+// The holster animation constant is combat's (§2F of
+// docs/architecture/services-crate-split.md); re-exported at its old path.
+pub(crate) use crate::cell::combat::HOLSTER_ANIMATION_DURATION;
 pub(super) use holster::{holster_timer_tick, pending_slot_swap_tick};
 pub(super) use npc_movement::npc_movement_tick;
 pub(super) use npc_respawn::npc_respawn_tick;

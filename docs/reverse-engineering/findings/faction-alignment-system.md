@@ -202,7 +202,7 @@ let is_hostile = space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
 });
 ```
 
-And in AoE dispatch (`crates/services/src/cell/abilities/dispatch.rs` line 113):
+And in AoE dispatch (`crates/cell-combat/src/cell/abilities/dispatch.rs` line 113):
 
 ```rust
 const HOSTILE_FACTION: u8 = 10;
@@ -396,7 +396,7 @@ mirror used for initial sync.
 | Method index constants | `crates/wire/src/cell/client_methods/combatant.rs` |
 | AoI NPC delivery | `crates/wire/src/mercury/aoi/create.rs` lines 166–174 |
 | Hostile combat gate | `crates/services/src/cell/cell_methods/player/interaction.rs` |
-| AoE hostile filter | `crates/services/src/cell/abilities/dispatch.rs` |
+| AoE hostile filter | `crates/cell-combat/src/cell/abilities/dispatch.rs` |
 | CME EventSignal architecture | `docs/reverse-engineering/findings/cme-event-signal.md` |
 | State-flag broadcast | `docs/reverse-engineering/findings/state-flag-broadcast.md` |
 | Ability resolution | `docs/reverse-engineering/findings/ability-resolution-pipeline.md` |
