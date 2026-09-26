@@ -54,6 +54,7 @@ These scripts run standalone with Python 3.x — they don't need the server runn
 | Script | Purpose |
 |---|---|
 | `extract_tests.py` | Regenerate the test inventory under [`docs/testing/inventory/`](../docs/testing/inventory/). Walks the workspace `members` from the root `Cargo.toml`, catalogues every `#[test]` / `#[tokio::test]` with the line its `fn` is actually on and whether the body is a live-DB guard, and preserves the hand-curated table columns across regeneration. `--check` and `--verify-links` are drift gates that exit non-zero and write nothing; only `--write` modifies the repo. Stock Python 3, no dependencies. See [maintenance.md](../docs/testing/inventory/maintenance.md). |
+| `ability_trees/generate_seed.py` | Validate the canonical ability-tree workbook and regenerate `archetype_ability_tree.sql`, `trainer_abilities.sql` and the committed JSON export. `--check` exits 1 on drift. Needs openpyxl unless run with `--from-json`. See [ability_trees/README.md](ability_trees/README.md). |
 
 ## Lint & Check Scripts
 

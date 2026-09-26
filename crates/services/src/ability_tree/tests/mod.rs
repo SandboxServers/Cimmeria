@@ -3,4 +3,6 @@
 mod catalog_live_db;
 mod points_property;
 mod predicate;
+mod seed_live_db;
+mod seed_reachability_live_db;
 mod spend_gates;

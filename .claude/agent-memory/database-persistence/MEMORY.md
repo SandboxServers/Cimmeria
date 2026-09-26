@@ -3,6 +3,7 @@
 ## Topic files
 
 - [live-db-verification.md](live-db-verification.md) — `require_db_or_skip!` tests count as PASS (not skip) with no DATABASE_URL, so a green no-DB run proves nothing; local live-DB recipe + how to prove a test hit the DB.
+- [seed-file-parsing-gotchas.md](seed-file-parsing-gotchas.md) — multi-line INSERTs in abilities.sql, apostrophes in comments, CRLF/LF drift checks; worktree guard rejects the word `source` in Bash.
 - [sgw-mission-objective-arrays.md](sgw-mission-objective-arrays.md) — `sgw_mission` DDL (verified live); `active_objective_ids` is the full roster not the pending subset; `0x7000_0Xxx` sentinel space is exhausted.
 
 ## Phase −0.5 triage status (2026-05-13)

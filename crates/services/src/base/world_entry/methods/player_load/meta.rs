@@ -418,8 +418,7 @@ mod tests {
 
     /// `query_archetype_ability_tree` against a seeded archetype
     /// returns Some(tree). Soldier (id=1) is the canonical test
-    /// archetype — Soldier and Commando are the only two archetypes
-    /// with seeded ability_tree rows.
+    /// archetype.
     #[tokio::test]
     async fn ability_tree_known_archetype_returns_some() {
         let pool = require_db_or_skip!();
@@ -446,8 +445,8 @@ mod tests {
 
     /// Walk every valid array-position in the EArchetype enum and call
     /// `query_archetype_ability_tree`. Asserts no panic / no SQL error
-    /// for any in-range id, and that the documented "Soldier and
-    /// Commando have data; others empty" mapping still holds.
+    /// for any in-range id, and that the documented "Soldier through
+    /// Sholva have data; Any and Jaffa empty" mapping still holds.
     ///
     /// Catches:
     /// - off-by-one bugs in the `enum_range[$1 + 1]` SQL
@@ -466,12 +465,13 @@ mod tests {
 
         for archetype_id in 0..enum_size {
             let result = query_archetype_ability_tree(&pool, archetype_id).await;
-            // Soldier (1) and Commando (2) are the only seeded
-            // archetypes with ability tree rows; everything else gets
-            // None. If the seed grows, update this assertion
-            // deliberately — surprise-Some is a stronger signal than
-            // surprise-None, so we lock down the current shape.
-            let expected_some = matches!(archetype_id, 1 | 2);
+            // The FINAL v2 seed (tools/ability_trees/generate_seed.py)
+            // gives Soldier (1) through Sholva (7) a tree. Any (0) and
+            // Jaffa (8, decision D-AT04) have no rows and get None. If
+            // the seed changes, update this assertion deliberately —
+            // surprise-Some is a stronger signal than surprise-None, so
+            // we lock down the current shape.
+            let expected_some = matches!(archetype_id, 1..=7);
             assert_eq!(
                 result.is_some(),
                 expected_some,
