@@ -1,20 +1,20 @@
 # AT-05b Worknote: FINAL v2 Seed Import
 
 > Type: reference. Audience: ability-trees campaign coordinator.
-> Updated: 2026-09-26. Companions: [README.md](../README.md), [work-packets.md](../work-packets.md), [audit.md](../audit.md), [source data](../source/README.md).
+> Updated: 2026-09-26 (rebased onto the #825 crate split). Companions: [README.md](../README.md), [work-packets.md](../work-packets.md), [audit.md](../audit.md), [source data](../source/README.md).
 
 ## Contract
 
 - **Packet:** AT-05b, seed import (AT-05a rebased onto AT-01 plus the live-DB guards).
 - **Decisions in force:** D-AT04 (Free Jaffa / Shol'va maps to `ARCHETYPE_Sholva` only, Jaffa gets no rows), D-AT06 (debug list 1 offers every node), D-AT09 (starter ability 1646 is the one allowed collision).
 - **Branch:** `trees/at05-seed-import` (draft PR #807), in worktree `.claude/worktrees/agent-a9a037326bb90baa4`.
-- **Base:** `origin/main` @ `b5130081` (AT-07, #812), which includes AT-01 (#813) and AT-E1 (#809). The old campaign-plan commit `cb80de95` was dropped (squash-merged as #805).
+- **Base:** `origin/main` @ `83154f8b` (#825, the build overhaul and `cimmeria-services` crate split). Before that, `b5130081` (AT-07, #812), which includes AT-01 (#813) and AT-E1 (#809). The old campaign-plan commit `cb80de95` was dropped (squash-merged as #805).
 - **Owned paths:**
   - `tools/ability_trees/` (generator, from AT-05a)
   - `db/resources/Archetypes/Seed/archetype_ability_tree.sql`, `db/resources/Abilities/Seed/trainer_abilities.sql` (generated)
   - `docs/analysis/ability-trees/source/trainer_server_export.json` (generated)
-  - `crates/services/src/ability_tree/tests/seed_live_db.rs` (new), `catalog_live_db.rs`, `tests/mod.rs`
-  - `crates/services/src/base/world_entry/methods/player_load/meta.rs` (tree-walk test expectation, from AT-05a)
+  - `crates/cell-catalog/src/ability_tree/tests/seed_live_db.rs` and `seed_reachability_live_db.rs` (new), `catalog_live_db.rs`, `tests/mod.rs` (were under `crates/services/src/ability_tree/` before #825)
+  - `crates/base-methods/src/base/world_entry/methods/player_load/meta.rs` (tree-walk test expectation, from AT-05a)
   - `docs/gameplay/ability-system.md`, `docs/gap-analysis.md`, this worknote
 - **Read set:** `TREES-WORKER-RULES.md`; `work-packets.md` (contract, AT-05a, AT-05b); `README.md` (D-AT04, D-AT06, D-AT09); `handoffs/session-resume.md`; `crates/services/src/ability_tree/` (catalog, tests); `crates/services/src/cell/spawner/abilities.rs` (`load_trainer_abilities`); `base/world_entry/methods/progression/` (tests); `db/resources/Archetypes/Types/EArchetype.sql`; `db/resources/_primary_keys.sql`.
 
@@ -57,6 +57,7 @@ check: committed files match the generator
 - One test beyond the acceptance list: `seed_prerequisites_are_nodes_of_the_same_branch`. A cross-branch or missing prerequisite would make a node permanently untrainable, and the generator's check for it does not run in CI.
 - `seed_every_tree_row_has_an_ability` duplicates the foreign key on purpose. `AbilityTreeCatalog::load` inner-joins `abilities`, so a dropped constraint would lose rows silently.
 - `catalog_live_db` now compares every loaded node's v2 columns against its raw row, so a loader column swap fails. A non-default floor stops the comparison passing vacuously on a stub seed.
+- `seed_reachability_live_db` checks that the seed and the AT-03 gates agree, which no `seed_live_db` test does (all five pass on the broken seed below). `seed_every_node_is_trainable_at_its_unlock_level_under_the_v2_economy` simulates a fresh character at each node's unlock level with that level's points (D-AT02: 1 point at level 1, +1 per level) and buys through `evaluate_train` itself: the node's prerequisite path first, then the cheapest node that raises the archetype-wide spend (D-AT03). `seed_every_branch_root_is_trainable_by_a_new_character` checks every root at level 1 with 1 point. Both collect every failing node before asserting, so one run names them all. The simulation proves sufficiency only: a greedy failure on a reachable node would be a false positive, which the current seed does not produce.
 
 ## Commands run
 
@@ -69,10 +70,33 @@ check: committed files match the generator
 | `$L/live-db-test.sh "::"` (full services live-DB suite, fresh reload) | 0 | 3333 run, 3333 passed, 0 skipped |
 | `$L/lane.sh cargo +1.98.1 clippy -p cimmeria-services --all-targets -- -D warnings` | 0 | Clean |
 | `$L/lane.sh cargo fmt --all`, then `-- --check` | 0 | Applied to `seed_live_db.rs`, then clean |
+| After the #825 rebase (repo lane, `tools/build-lane/`): | | |
+| `python tools/ability_trees/generate_seed.py --check` (and `--from-json --check`), then a plain regenerate and `git status --short` | 0 | Validator OK, no change: byte-identical |
+| `lane.sh cargo check -p cimmeria-cell-catalog --all-targets` | 0 | Clean |
+| `live-db-test.sh ability_tree::tests` | 0 | 27 run, 27 passed (cell-catalog, cimmeria-wire) |
+| `DATABASE_URL=... lane.sh bash tools/test-live-db.sh ability_tree::tests` on the broken seed | 100 | 25 passed, 2 failed (regression proof) |
+| `lane.sh cargo fmt --all`, then `-- --check` | 0 | Clean |
+| `lane.sh cargo clippy -p cimmeria-cell-catalog -p cimmeria-base-methods --all-targets -- -D warnings` | 0 | Clean |
+| `live-db-test.sh "::"` (every live-DB crate, fresh reload) | 0 | 3362 run, 3362 passed, 0 skipped |
 
 No live-DB test self-skipped: every run went through `live-db-test.sh`, which sets `DATABASE_URL`.
 
 ## Regression proof
+
+### `seed_reachability_live_db` (after the #825 rebase)
+
+Broke the seed in place on `sgw_agent_a9a037326bb90baa4` with `psql`, ran `DATABASE_URL=... lane.sh bash tools/test-live-db.sh ability_tree::tests` without a reload, then restored it with the full-tier reload.
+
+- Soldier capstone 1477 (level 50): `required_branch_points` 20 to 50. At level 50 a character spending 50 points has none left for the node.
+- Commando branch-0 root 642: `skill_point_cost` 1 to 2.
+- Scientist branch-0 root 948: `level` 1 to 5.
+
+Result: 27 run, 25 passed, 2 failed. Every `seed_live_db` and `catalog_live_db` test passed, so neither file already guards this shape.
+
+- `seed_every_node_is_trainable_at_its_unlock_level_under_the_v2_economy`: `[(1, 1477, 50, NotEnoughPoints { cost: 1, available: 0 }), (2, 642, 1, NotEnoughPoints { cost: 2, available: 1 })]`. Root 948 at level 5 is still reachable, as it should be.
+- `seed_every_branch_root_is_trainable_by_a_new_character`: `[(2, 642, NotEnoughPoints { cost: 2, available: 1 }), (3, 948, LevelTooLow { required: 5, actual: 1 })]`. The first run stopped at 642; the test now collects every locked root before asserting.
+
+### `seed_live_db` and `catalog_live_db` (before the rebase)
 
 Two scripts, run under lane holds against `sgw_agent_a9a037326bb90baa4` and then undone by the full-suite reload.
 
