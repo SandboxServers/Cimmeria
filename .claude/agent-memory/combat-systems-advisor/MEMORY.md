@@ -9,3 +9,4 @@
 - [fire-los-and-eye-heights.md](fire-los-and-eye-heights.md) — NA31 player fire LoS (error 39, tolerance rays) + body_sets.eye_height from ref-mesh bounds
 - [navmesh-los-reliability.md](navmesh-los-reliability.md) — navmesh LoS vs collision geometry: 45% false Blocked; PRU desk (S11); rejected heuristics; no fire-time LoS until an occluder exists
 - [qr-direction-and-cover.md](qr-direction-and-cover.md) — python QR beta branches were inverted (NA32 swapped them); cover QR units from alias.xml; test new QR terms on damage
+- [colo-combat-forensics.md](colo-combat-forensics.md) — Proving combat playtest reports from SigNoz: onStatUpdate decoder shows Min not Current, zombie detector, beam race, corpse re-create

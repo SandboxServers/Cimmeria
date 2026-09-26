@@ -124,22 +124,7 @@ impl SpaceManager {
                             "AoI: entity entered witness view"
                         );
                         let npc_data = if !other.is_player {
-                            Some(super::super::messages::NpcAoIData {
-                                name_id: other.name_id,
-                                faction: other.faction,
-                                alignment: other.alignment,
-                                entity_flags: other.entity_flags,
-                                // Send the BASE interaction type in the cascade (not merged).
-                                // Dynamic per-player flags are sent as a separate
-                                // InteractionType update below, matching the C++ server's
-                                // createOnClient(base) → dynamicUpdate(merged) flow.
-                                interaction_type: other.interaction_type_flags,
-                                speaker_id: other.speaker_id,
-                                event_set_id: other.event_set_id,
-                                static_mesh: other.static_mesh.clone(),
-                                body_set: other.body_set.clone(),
-                                components: other.components.clone(),
-                            })
+                            Some(super::super::messages::NpcAoIData::from_entity(other))
                         } else {
                             None
                         };

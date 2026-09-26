@@ -93,18 +93,7 @@ pub(super) async fn handle(
             continue;
         };
         let npc_data = if !other.is_player {
-            Some(NpcAoIData {
-                name_id: other.name_id,
-                faction: other.faction,
-                alignment: other.alignment,
-                entity_flags: other.entity_flags,
-                interaction_type: other.interaction_type_flags,
-                speaker_id: other.speaker_id,
-                event_set_id: other.event_set_id,
-                static_mesh: other.static_mesh.clone(),
-                body_set: other.body_set.clone(),
-                components: other.components.clone(),
-            })
+            Some(NpcAoIData::from_entity(other))
         } else {
             None
         };

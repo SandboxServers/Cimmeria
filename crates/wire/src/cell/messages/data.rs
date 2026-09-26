@@ -42,6 +42,61 @@ pub struct NpcAoIData {
     pub body_set: Option<String>,
     /// Body components (for `BeingAppearance` — humanoid entities with body parts).
     pub components: Vec<String>,
+    /// Live `CellEntity::state_field`. Python `SGWBeing.createOnClient`
+    /// sends `onStateFieldUpdate(self.stateField)`
+    /// (`deprecated/python/cell/SGWBeing.py:507`): a mob that is already a
+    /// corpse when a witness first sees it (it walked back into range, it
+    /// relogged, it reanchored after its own death) must arrive dead, or the
+    /// client builds a standing, full-health guard that never fights back.
+    pub state_field: u32,
+    /// Live HEALTH/FOCUS (`SGWBeing.sendStats` sends live values); `None`
+    /// keeps the cascade's template defaults. Boxed so the deferred-AoI
+    /// buffer enum stays under clippy's `large_enum_variant` bound.
+    pub vitals: Option<Box<NpcVitals>>,
+}
+
+/// Live HEALTH and FOCUS of an NPC, each as `[min, cur, max]` — the
+/// `StatUpdate` field order (`entities/defs/alias.xml`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NpcVitals {
+    pub health: [i32; 3],
+    pub focus: [i32; 3],
+}
+
+impl NpcAoIData {
+    /// Snapshot everything the NPC `createOnClient()` cascade needs from a
+    /// live cell entity — the template-driven identity plus the live
+    /// state/health a witness must be introduced with.
+    pub fn from_entity(entity: &cimmeria_entity::cell_entity::CellEntity) -> Self {
+        use cimmeria_entity::stats::{FOCUS, HEALTH};
+        let triple = |id| {
+            entity
+                .stats
+                .get(id)
+                .map_or([0; 3], |s| [s.min, s.cur, s.max])
+        };
+        Self {
+            name_id: entity.name_id,
+            faction: entity.faction,
+            alignment: entity.alignment,
+            entity_flags: entity.entity_flags,
+            // Send the BASE interaction type in the cascade (not merged).
+            // Dynamic per-player flags are sent as a separate
+            // InteractionType update, matching the C++ server's
+            // createOnClient(base) → dynamicUpdate(merged) flow.
+            interaction_type: entity.interaction_type_flags,
+            speaker_id: entity.speaker_id,
+            event_set_id: entity.event_set_id,
+            static_mesh: entity.static_mesh.clone(),
+            body_set: entity.body_set.clone(),
+            components: entity.components.clone(),
+            state_field: entity.state_field,
+            vitals: Some(Box::new(NpcVitals {
+                health: triple(HEALTH),
+                focus: triple(FOCUS),
+            })),
+        }
+    }
 }
 
 /// Live cell-side state of a **player** included in AoI enter events.
