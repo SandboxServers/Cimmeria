@@ -67,7 +67,10 @@ use crate::otel;
 /// `module_path!()` target starts with the new crate's name, which the
 /// services row no longer matches. Since wave W3a that includes the
 /// services-side Mercury glue, `cimmeria_wire::mercury` (the
-/// `append_entity_method` appearance diagnostics).
+/// `append_entity_method` appearance diagnostics). `cimmeria_base_session=debug`
+/// does the same for the BaseApp session layer (wave B1): the send helpers,
+/// tick sync, the outbox, the contact list, the deferred-AoI buffer and
+/// cooked-data delivery.
 ///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
@@ -96,6 +99,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire=debug,\
                 cimmeria_cell_cover=debug,\
                 cimmeria_cell_catalog=debug,\
+                cimmeria_base_session=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -195,6 +199,13 @@ pub(crate) struct FileLayer {
 /// A module path here must name a module that exists: when a module moves
 /// crate its `module_path!()` changes and the row silently stops matching.
 /// `stale_target_tests` fails on a path that no longer resolves.
+///
+/// A row matches by string prefix, so `world_entry.log`'s
+/// `cimmeria_base_session::base::world_entry` keeps every `world_entry*`
+/// module the session crate took from `cimmeria-services` (wave B1):
+/// `world_entry::space_registry`, `world_entry_appearance::builders` and
+/// `world_entry_chat`, which the old `cimmeria_services::base::world_entry` row
+/// matched the same way.
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
@@ -206,8 +217,8 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
              cimmeria_services::base::service=trace,\
              cimmeria_services::base::connect_loop=trace,\
              cimmeria_services::base::login=trace,\
-             cimmeria_services::base::tick_sync=trace,\
-             cimmeria_services::base::helpers=trace,\
+             cimmeria_base_session::base::tick_sync=trace,\
+             cimmeria_base_session::base::helpers=trace,\
              wire.firehose.decrypt=trace,\
              wire.firehose.udp_in=trace",
     },
@@ -216,6 +227,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         directives: "off,\
              cimmeria_services::base::world_entry=trace,\
              cimmeria_services::base::world_entry_appearance=trace,\
+             cimmeria_base_session::base::world_entry=trace,\
              wire.firehose.aoi_position=trace",
     },
     FileLayer {
@@ -224,7 +236,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
              cimmeria_services::base::character=trace,\
              cimmeria_services::base::character_create=trace,\
              cimmeria_resources::base::chardef=trace,\
-             cimmeria_services::base::cooked_data=trace,\
+             cimmeria_base_session::base::cooked_data=trace,\
              cimmeria_resources::base::resources=trace",
     },
     FileLayer {

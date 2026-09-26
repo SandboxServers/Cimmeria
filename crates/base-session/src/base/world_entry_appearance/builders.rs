@@ -19,7 +19,7 @@ use super::super::world_entry_chat::{build_chat_joined_args, DEFAULT_CHAT_CHANNE
 ///
 /// Used by `handle_map_loaded` to cache for later resend, and by
 /// `handle_on_client_ready` / `handle_cancel_movie` to resend.
-pub(crate) fn build_appearance_args(bodyset: &str, components: &[String]) -> Vec<u8> {
+pub fn build_appearance_args(bodyset: &str, components: &[String]) -> Vec<u8> {
     let mut buf = Vec::new();
     write_wstring(&mut buf, bodyset);
     buf.extend_from_slice(&(components.len() as u32).to_le_bytes());
@@ -33,7 +33,7 @@ pub(crate) fn build_appearance_args(bodyset: &str, components: &[String]) -> Vec
 ///
 /// Maps `skin_color_id` (DB index) through the SKIN_TINTS table, matching
 /// the C++ `requestCharacterVisuals` flow that sends the mapped tint value.
-pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
+pub fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
     let skin_tint = if (skin_color_id as usize) < SKIN_TINTS.len() {
         SKIN_TINTS[skin_color_id as usize]
     } else {
@@ -52,7 +52,7 @@ pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 /// that swaps two entries can't slip past via the packet-count check:
 ///   1. `BeingAppearance` resend  (heals HOLD-FOR-TRANSACTION drop from
 ///      `handle_map_loaded`'s bundle — see the two-bundle split comment
-///      block in [`crate::base::world_entry::map_loaded`] for the
+///      block in `cimmeria_services::base::world_entry::map_loaded` for the
 ///      transaction-state rationale, and `docs/architecture/mercury-bundle.md`
 ///      for the ADR.)
 ///   2. `onEntityTint` resend     (same reason)
@@ -64,7 +64,7 @@ pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 /// `num_messages = 2 + N + 1` and `estimated_packet_count() = 1` against
 /// realistic arg sizes — the same composition the handler actually emits
 /// (call-site duplication would let the test and the handler drift).
-pub(super) fn build_on_client_ready_burst_bundle(
+pub fn build_on_client_ready_burst_bundle(
     entity_id: u32,
     appearance_args: &[u8],
     tint_args: &[u8],
@@ -107,7 +107,7 @@ pub(super) fn build_on_client_ready_burst_bundle(
 /// `handle_map_loaded`'s bundle), so the transaction-state rule allows
 /// combining them — see the safe-combine catalogue in
 /// `docs/architecture/mercury-bundle.md` and the two-bundle split comment in
-/// [`crate::base::world_entry::map_loaded`] for the rationale.
+/// `cimmeria_services::base::world_entry::map_loaded` for the rationale.
 ///
 /// Called per-iteration of the cinematic-guard spam loop (every 100 ms for
 /// up to 20 s) and also from `handle_cancel_movie` on real client
@@ -115,7 +115,7 @@ pub(super) fn build_on_client_ready_burst_bundle(
 /// [`tests::appearance_resend_bundle_collapses_to_single_packet`] can pin
 /// `num_messages == 2` and `estimated_packet_count() == 1` against the same
 /// composition the resend path actually emits.
-pub(super) fn build_appearance_resend_bundle(
+pub fn build_appearance_resend_bundle(
     entity_id: u32,
     appearance_args: &[u8],
     tint_args: &[u8],

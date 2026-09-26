@@ -76,7 +76,7 @@ fn serialize_on_player_communication(
 /// write committing and this send), `send_to_witness_reliable` no-ops and warns
 /// internally — the DB write already committed, so dropping the feedback line
 /// is harmless.
-pub(crate) async fn send_gm_feedback_to_client(
+pub async fn send_gm_feedback_to_client(
     entity_id: u32,
     text: &str,
     transport: &Arc<dyn Transport>,

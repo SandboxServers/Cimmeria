@@ -36,7 +36,7 @@ const MAX_CHUNK: usize = 1390;
 /// Client payload: [categoryId: u32][version: u32]
 /// Response: onVersionInfo -- if we have data for this category, tell the client
 /// to invalidate and re-fetch; otherwise echo the client's version (cache OK).
-pub(crate) async fn handle_version_info_request(
+pub async fn handle_version_info_request(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
@@ -330,7 +330,7 @@ pub(crate) async fn send_category_resources(
 ///
 /// Client payload: [categoryId: u32][key: u32]
 /// Response: fragment the XML data for the requested element.
-pub(crate) async fn handle_element_data_request(
+pub async fn handle_element_data_request(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],

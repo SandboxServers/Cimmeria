@@ -84,7 +84,7 @@ pub(crate) const MAX_DEFERRED_AOI_MSGS: usize = 512;
 /// fields the AoI dispatch handlers need on flush, so we don't have to
 /// drag unrelated variants through the buffer.
 #[derive(Debug)]
-pub(crate) enum DeferredAoiMsg {
+pub enum DeferredAoiMsg {
     /// Buffered [`crate::cell::messages::CellToBaseMsg::EnteredAoI`].
     EnteredAoI {
         entity_id: u32,
@@ -126,7 +126,7 @@ pub(crate) enum DeferredAoiMsg {
 /// Returns `false` when the witness has no session entry (already
 /// disconnected — the message would be dropped anyway) or when the
 /// session is past `onClientReady`.
-pub(crate) fn should_defer(
+pub fn should_defer(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> bool {
@@ -145,7 +145,7 @@ pub(crate) fn should_defer(
 ///
 /// Gates `EnteredAoI` / `LeftAoI` / `EntityMoved`. One lock, so both
 /// conditions are read from the same snapshot.
-pub(crate) fn should_hold_entity_traffic(
+pub fn should_hold_entity_traffic(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> bool {
@@ -164,7 +164,7 @@ pub(crate) fn should_hold_entity_traffic(
 ///
 /// Gates `WitnessEntityMethod` / `EntityInvisible`, which the pre-ready
 /// window deliberately leaves ungated.
-pub(crate) fn cinematic_hold_active(
+pub fn cinematic_hold_active(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> bool {
@@ -188,7 +188,7 @@ pub(crate) fn cinematic_hold_active(
 /// cannot grow further. Dropping pre-ready AoI is equivalent to the cell
 /// having fired the event a tick later (after onClientReady), which the
 /// client tolerates as long as the missing entity isn't load-bearing.
-pub(crate) fn push_deferred(
+pub fn push_deferred(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     msg: DeferredAoiMsg,
@@ -216,7 +216,7 @@ pub(crate) fn push_deferred(
 ///
 /// Returns an empty `Vec` if the session has no buffered messages or
 /// has been removed.
-pub(crate) fn drain_deferred(
+pub fn drain_deferred(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> Vec<DeferredAoiMsg> {
@@ -236,7 +236,7 @@ pub(crate) fn drain_deferred(
 /// mission, dialog and hotbar traffic buffered pre-ready must still reach
 /// the client at `onClientReady`, while entity introductions wait for the
 /// movie to end.
-pub(crate) fn drain_deferred_self_methods(
+pub fn drain_deferred_self_methods(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
 ) -> Vec<DeferredAoiMsg> {

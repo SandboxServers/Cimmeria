@@ -104,7 +104,7 @@ async fn run_console_search(
     skip_all,
     fields(entity_id, label)
 )]
-pub(crate) async fn handle_execute_authoring_sql(
+pub async fn handle_execute_authoring_sql(
     entity_id: u32,
     label: &str,
     sql: &str,
@@ -202,7 +202,7 @@ pub(crate) async fn handle_execute_authoring_sql(
     skip_all,
     fields(entity_id, kind)
 )]
-pub(crate) async fn handle_console_search(
+pub async fn handle_console_search(
     entity_id: u32,
     kind: u8,
     query: &str,

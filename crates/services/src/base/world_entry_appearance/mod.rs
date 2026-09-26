@@ -24,10 +24,13 @@
 //! `client_ready::handle_on_client_ready` for the post-`onClientReady`
 //! `ChannelManager.playerLoggedIn` flow.
 
-mod builders;
 mod cinematic;
 mod cinematic_aoi_hold;
 mod client_ready;
+
+// The pure wire builders are in `cimmeria-base-session` (wave B1): the inventory
+// methods resend appearance from below world entry.
+use cimmeria_base_session::base::world_entry_appearance::builders;
 
 pub(crate) use builders::{build_appearance_args, build_tint_args};
 pub(crate) use cinematic::handle_cancel_movie;

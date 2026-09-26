@@ -36,6 +36,10 @@ cimmeria-cell-cover = { workspace = true }
 # respawner search), split out of this crate (W2b). Re-exported at
 # `cell::{spawner, respawner_fallback}` and `ability_tree`.
 cimmeria-cell-catalog = { workspace = true }
+# The BaseApp's per-connection session layer (session types, send helpers,
+# deferred AoI, outbox, tick sync, cooked data, contact list, crafting, ...),
+# split out of this crate (B1). Re-exported at the old `base::` paths.
+cimmeria-base-session = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
@@ -104,3 +108,7 @@ cimmeria-test-support = { workspace = true }
 # `cell::cover::TEST_WORLD_ID` for the cover tests that stay here because they
 # drive a `SpaceManager` (npc_ai_cover*, ticks/cover, space_manager/cover_hit).
 cimmeria-cell-cover = { workspace = true, features = ["test-support"] }
+
+# `test_default_connected_client_state`, re-exported from the `test_support`
+# shim, for the base tests that stay here.
+cimmeria-base-session = { workspace = true, features = ["test-support"] }

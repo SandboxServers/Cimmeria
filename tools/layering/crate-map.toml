@@ -145,22 +145,13 @@ cimmeria-services = [
 "cell::dispatch" = "cimmeria-cell"
 
 # Base track.
-"base::helpers" = "cimmeria-base-session"
-"base::outbox" = "cimmeria-base-session"
-"base::deferred_aoi" = "cimmeria-base-session"
-"base::deferred_aoi_lifecycle" = "cimmeria-base-session"
-"base::cinematic_aoi_hold" = "cimmeria-base-session"
-"base::session_identity" = "cimmeria-base-session"
-"base::gm_feedback" = "cimmeria-base-session"
-"base::world_entry_chat" = "cimmeria-base-session"
-"base::contact_list" = "cimmeria-base-session"
-"base::crafting" = "cimmeria-base-session"
-"base::console_authoring" = "cimmeria-base-session"
-"base::gm_spawn" = "cimmeria-base-session"
-"base::tick_sync" = "cimmeria-base-session"
-"base::cooked_data" = "cimmeria-base-session"
-"base::world_entry::space_registry" = "cimmeria-base-session"
-"base::world_entry_appearance::builders" = "cimmeria-base-session"
+# cimmeria-base-session (the session types of `base`, `base::{helpers,
+# outbox, deferred_aoi, deferred_aoi_lifecycle, cinematic_aoi_hold,
+# session_identity, gm_feedback, world_entry_chat, contact_list, crafting,
+# console_authoring, gm_spawn, tick_sync, cooked_data}`,
+# `base::world_entry::space_registry` and
+# `base::world_entry_appearance::builders`) is extracted (B1):
+# crates/services/src only re-exports it, so it has no rows here.
 
 "base::world_entry::methods" = "cimmeria-base-methods"
 
@@ -178,4 +169,6 @@ cimmeria-services = [
 [exact]
 "" = "cimmeria-services"
 "cell" = "cimmeria-cell-world"
-"base" = "cimmeria-base-session"
+# Since B1 `base/mod.rs` only declares the modules still here and re-exports
+# the session crate and `BaseService`, which go to the facade (plan §2H).
+"base" = "cimmeria-services"

@@ -31,6 +31,7 @@ LIVE_DB_CRATES=(
   cimmeria-test-support
   cimmeria-wire
   cimmeria-cell-catalog
+  cimmeria-base-session
 )
 
 if [ -z "${DATABASE_URL:-}" ]; then

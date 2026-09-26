@@ -20,7 +20,7 @@ use super::ConnectedClientState;
 
 /// An active hold, stored on [`ConnectedClientState::cinematic_aoi_hold`].
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct CinematicAoiHold {
+pub struct CinematicAoiHold {
     /// Distinguishes this hold from a later one on the same session, so a
     /// stale timeout task cannot release a hold it did not start.
     pub token: u64,
@@ -34,7 +34,7 @@ pub(crate) struct CinematicAoiHold {
 
 /// Start a hold on `state`. Caller holds the `connected` lock and is taking
 /// `pending_client_ready` in the same critical section.
-pub(crate) fn begin(state: &mut ConnectedClientState) -> CinematicAoiHold {
+pub fn begin(state: &mut ConnectedClientState) -> CinematicAoiHold {
     static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
     let hold = CinematicAoiHold {
         token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),

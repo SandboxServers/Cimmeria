@@ -20,8 +20,11 @@ mod gate_travel;
 mod map_loaded;
 mod play_character;
 mod reanchor_player;
-pub(crate) mod space_registry;
 mod teleport;
+
+// The space registry is in `cimmeria-base-session` (wave B1): base-methods
+// resolves world names through it from below world entry.
+pub(crate) use cimmeria_base_session::base::world_entry::space_registry;
 
 // Public surface (re-exports keep `super::world_entry::handle_*` imports working
 // in connect_loop.rs and friends).
@@ -34,6 +37,3 @@ pub(crate) use play_character::handle_play_character;
 // existing `super::world_entry::{handle_on_client_ready, handle_cancel_movie}`
 // imports stay unchanged after this refactor).
 pub(crate) use super::world_entry_appearance::{handle_cancel_movie, handle_on_client_ready};
-
-#[cfg(test)]
-mod tests;

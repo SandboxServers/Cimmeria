@@ -19,7 +19,7 @@ use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 /// Handle `ContactListCreate` — insert a new list and echo CM 85.
-pub(crate) async fn handle_create(
+pub async fn handle_create(
     entity_id: u32,
     player_id: i32,
     name: String,
@@ -76,7 +76,7 @@ pub(crate) async fn handle_create(
 }
 
 /// Handle `ContactListDelete` — delete a list and echo CM 86.
-pub(crate) async fn handle_delete(
+pub async fn handle_delete(
     entity_id: u32,
     player_id: i32,
     list_id: i32,
@@ -141,7 +141,7 @@ pub(crate) async fn handle_delete(
 }
 
 /// Handle `ContactListRename` — update name and echo CM 85.
-pub(crate) async fn handle_rename(
+pub async fn handle_rename(
     entity_id: u32,
     player_id: i32,
     list_id: i32,
@@ -228,7 +228,7 @@ pub(crate) async fn handle_rename(
 }
 
 /// Handle `ContactListFlagsUpdate` — update flags and echo CM 85.
-pub(crate) async fn handle_flags_update(
+pub async fn handle_flags_update(
     entity_id: u32,
     player_id: i32,
     list_id: i32,

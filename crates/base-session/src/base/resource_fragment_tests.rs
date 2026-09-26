@@ -2,10 +2,12 @@
 //! built for `CATEGORY_BEHAVIOR_EVENTS` must tag category 21, not the legacy
 //! 22.
 //!
-//! Moved here from `cimmeria-resources`' `base::resources::tests::category_map`
-//! when `base::resources` was split out (services-crate-split W1b): the
-//! fragment builder it drives, `crate::mercury::protocol`, is still in this
-//! crate. The category-map tests that need only the table stayed there.
+//! Was `cimmeria-resources`' `base::resources::tests::category_map` until
+//! `base::resources` was split out (services-crate-split W1b). It needs both
+//! the resource table and the fragment builder it drives,
+//! `crate::mercury::protocol` (in `cimmeria-wire`), so it lives in the lowest
+//! crate above both. The category-map tests that need only the table stayed
+//! in `cimmeria-resources`.
 
 use crate::base::resources::CATEGORY_BEHAVIOR_EVENTS;
 
