@@ -7,7 +7,7 @@
 //! transitions, the cell handler broadcasts `onStateFieldUpdate` to the
 //! client, then sends this message so base persists the row. On next
 //! login, the hydrate path in
-//! `crates/services/src/base/world_entry_appearance.rs` reads the column
+//! `crates/base-world-entry/src/base/world_entry_appearance/client_ready/mod.rs` reads the column
 //! back into `InitPlayerState` and the preference survives the relog. (#412)
 //!
 //! Schema column:

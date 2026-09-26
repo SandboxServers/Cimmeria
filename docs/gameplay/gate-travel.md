@@ -14,7 +14,7 @@ last_updated: 2026-09-25
 
 Gate travel enables zone transitions via stargates and ring transporters. Stargates provide long-distance travel between worlds, while ring transporters provide local teleportation within or between nearby areas. Both systems involve multi-step sequences with animations, player visibility toggling, and movement locking.
 
-Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/services/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/services/src/cell/ring_transport/) with an 8-state finite state machine.
+Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/base-world-entry/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/services/src/cell/ring_transport/) with an 8-state finite state machine.
 
 > **Where the placement is chosen.** Castle CA10 split the dial from the crossing: `onDialGate` arms a 4-second dial and the player then walks into the `REGION_FLAG_Stargate` (bit 2) volume to cross. Both that crossing and the no-gate-volume immediate fallback funnel through one function, `cell::gate_travel::perform_gate_travel`, which holds the single `validate_gate_arrival` call. There is deliberately exactly one — a second call in either caller would validate, and warn, twice per crossing.
 
@@ -98,7 +98,7 @@ The refusal reaches the player as `onErrorCode` (121): `SystemID = 0` (`ERRORCOD
 
 ## Address unlock on arrival
 
-A committed gate arrival appends the addresses the trip taught the traveller, in the same `sgw_player` UPDATE that persists the destination world and position ([`base/world_entry/gate_travel/persist_arrival.rs`](../../crates/services/src/base/world_entry/gate_travel/persist_arrival.rs)).
+A committed gate arrival appends the addresses the trip taught the traveller, in the same `sgw_player` UPDATE that persists the destination world and position ([`base/world_entry/gate_travel/persist_arrival.rs`](../../crates/base-world-entry/src/base/world_entry/gate_travel/persist_arrival.rs)).
 
 **This is new behaviour, not a restoration.** There is no unlock-on-visit anywhere in the 2009 Python: `SGWPlayer.addStargateAddress` has exactly two callers, the GM console command `giveaddress` and the Atrea authoring node `Act_StargateAddress`. Addresses were authored content. Cimmeria has no content-engine equivalent, so with the dial gate enforced this is the only grant path in the game.
 
@@ -118,7 +118,7 @@ A grant has to reach three places, and all three are emitted from [`cell/content
 
 1. `CellEntity::known_stargates`, which is what the dial gate above enforces against.
 2. The client, via `updateStargateAddress` (client method 66: `INT32 addressId`, `UINT8 hasAddress = 1`, `UINT8 hidden = 0`). The client is handed its whole address book exactly once, by `setupStargateInfo` at map load, so without this the grant is invisible until a relog.
-3. `sgw_player.known_stargates`, through `CellToBaseMsg::GrantStargateAddress` and an idempotent append in [`base/world_entry/gate_travel/address_grant.rs`](../../crates/services/src/base/world_entry/gate_travel/address_grant.rs) — deliberately the same statement shape as the arrival append beside it, minus the origin-world union.
+3. `sgw_player.known_stargates`, through `CellToBaseMsg::GrantStargateAddress` and an idempotent append in [`base/world_entry/gate_travel/address_grant.rs`](../../crates/base-world-entry/src/base/world_entry/gate_travel/address_grant.rs) — deliberately the same statement shape as the arrival append beside it, minus the origin-world union.
 
 Legs 1 and 2 go out **before** leg 3 is confirmed. The cell's copy is the thing the dial gate reads, so making the client's copy wait on a database round trip would reopen the divergence the arrival path closes: the server accepting a dial the client's UI does not offer. A lost leg-3 write costs the address at next login and warns; a lost leg-2 send makes a granted address undialable in silence.
 

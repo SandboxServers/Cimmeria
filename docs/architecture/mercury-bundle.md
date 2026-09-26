@@ -24,7 +24,7 @@ HOLD-FOR-TRANSACTION path and are silently dropped. Cross-entity batching is
 safe; same-entity-after-CREATE batching is not.
 
 Caller-owned, not channel-owned: the existing deliberate two-bundle split in
-[base/world_entry/map_loaded.rs](../../crates/services/src/base/world_entry/map_loaded.rs)
+[base/world_entry/map_loaded.rs](../../crates/base-world-entry/src/base/world_entry/map_loaded.rs)
 exists because the transaction-state hazard demands that the bundle-boundary
 decision sits with the caller, not with a per-channel auto-accumulator.
 
@@ -36,7 +36,7 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   [base/helpers/mod.rs](../../crates/base-session/src/base/helpers/mod.rs) ties the
   bundle to the session UDP socket + Channel TX-window registration. ✅
 - **Layer B (conservative slice for #356)**: the AoI EnteredAoI burst in
-  [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/services/src/base/world_entry/cell_dispatch/deferred_flush.rs)
+  [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs)
   now bundles into 2 cross-entity bundles (phase-1, phase-2) instead of
   2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
   (was 56 pre-bundle). ✅
@@ -111,7 +111,7 @@ are dropped. The transaction releases at the end of the bundle, and the same
 messages in a subsequent bundle apply normally.
 
 **Evidence**: the comment block at
-[base/world_entry/map_loaded.rs lines 66-79](../../crates/services/src/base/world_entry/map_loaded.rs#L66)
+[base/world_entry/map_loaded.rs lines 66-79](../../crates/base-world-entry/src/base/world_entry/map_loaded.rs#L66)
 documents this directly:
 
 > Previously we combined everything into one fragmented bundle, which caused
@@ -231,7 +231,7 @@ For a Castle_CellBlock instance with 28 NPCs:
 | **56 reliable packets** | **~11 reliable packets** |
 
 Regression-guarded at "≤ 15 packets" in
-[base/world_entry/cell_dispatch/tests.rs](../../crates/services/src/base/world_entry/cell_dispatch/tests.rs)
+[base/world_entry/cell_dispatch/tests.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/tests.rs)
 (`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`) with
 comfortable headroom for cascade-payload growth.
 
@@ -274,7 +274,7 @@ property/method updates. Regression-guarded by
 2 + DEFAULT_CHAT_CHANNELS.len() + 1` and `estimated_packet_count() == 1`)
 and `appearance_resend_bundle_collapses_to_single_packet` (pins
 `num_messages == 2` and `estimated_packet_count() == 1`) — both in
-[base/world_entry_appearance/mod.rs](../../crates/services/src/base/world_entry_appearance/mod.rs).
+[base/world_entry_appearance/mod.rs](../../crates/base-world-entry/src/base/world_entry_appearance/mod.rs).
 Plus the entity-method byte-equivalence guard at
 [mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs)
 (`channel_bundle_append_entity_method_matches_build_entity_method_packet_body` —
@@ -303,7 +303,7 @@ When migrating another call family (the issue's deferred list):
    non-burst-shaped one-off sends on `send_to_witness_reliable`.
 5. **Add a burst-shape regression guard** asserting the new packet count is
    below the pre-migration count. Mirror the pattern in
-   [cell_dispatch/tests.rs](../../crates/services/src/base/world_entry/cell_dispatch/tests.rs).
+   [cell_dispatch/tests.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/tests.rs).
 
 ## What did NOT change
 

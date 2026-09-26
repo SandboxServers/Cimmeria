@@ -27,7 +27,7 @@ use crate::test_support::require_db_or_skip;
 
 /// Sentinel base for cover-loader tests. One slot past
 /// `request_visuals_live_db_tests::TEST_BASE = 0x7000_1800` — see the
-/// neighbour map in `crates/services/src/base/character/delete_live_db_tests.rs`.
+/// neighbour map in `crates/base-world-entry/src/base/character/delete_live_db_tests.rs`.
 const TEST_BASE: i32 = 0x7000_1900;
 
 /// `i32::MAX`-safe set of chunk_ids reserved by these tests; we delete by

@@ -23,7 +23,7 @@
 //! Subsequent same-entity messages in the same bundle hit the client's
 //! HOLD-FOR-TRANSACTION path and are **silently dropped**. The existing
 //! deliberate two-bundle split in
-//! [`crates/services/src/base/world_entry/map_loaded.rs`] exists for
+//! [`crates/base-world-entry/src/base/world_entry/map_loaded.rs`] exists for
 //! exactly this reason — combining `CELL_PLAYER` (which creates the player
 //! entity) with same-entity `BeingAppearance` in one bundle dropped the
 //! appearance message.

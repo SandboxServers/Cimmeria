@@ -190,7 +190,7 @@ pub struct ConnectedClientState {
     pub pending_client_ready: Option<PendingClientReadyInfo>,
     /// Buffer of AoI-class cell→base messages held back while the client
     /// is still in the pre-`onClientReady` world-entry window. Flushed
-    /// from `cimmeria_services::base::world_entry_appearance::handle_on_client_ready`
+    /// from `cimmeria_base_world_entry::base::world_entry_appearance::handle_on_client_ready`
     /// once the client signals it's ready to receive entity data.
     ///
     /// Without this gate, the cell would fire CREATE_ENTITY + property

@@ -42,7 +42,7 @@ When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/comb
 3. **Reset cell-entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), then re-apply the persisted preference bits (`PERSISTED_STATE_FIELD_MASK`, today `BSF_AutoCycling`) that a relog keeps too, `clear_all_cooldowns`, `update_entity_position` to the spawn point.
 4. **`onStatUpdate`** — push the refreshed HEALTH/FOCUS to the HUD.
 5. **`onStateFieldUpdate(preference bits)`** — the post-reset field (0, or just `BSF_AutoCycling`). Applied as an XOR delta on the client, it clears BSF_Dead / BSF_MovementLock / dead-cursor visuals while leaving the preference bit alone.
-6. **`CellToBaseMsg::ReanchorPlayer { entity_id, space_id, position, rotation }`** — BaseApp [`handle_reanchor_player`](../../crates/services/src/base/world_entry/reanchor_player.rs) emits two packets to the client:
+6. **`CellToBaseMsg::ReanchorPlayer { entity_id, space_id, position, rotation }`** — BaseApp [`handle_reanchor_player`](../../crates/base-world-entry/src/base/world_entry/reanchor_player.rs) emits two packets to the client:
    - **Burst** — `BASEMSG_CREATE_BASE_PLAYER` + `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` + `BASEMSG_FORCED_POSITION`. `CREATE_BASE_PLAYER` is the load-bearing piece; it invokes the client's `createBasePlayer` hook (same path as initial login), which destroys the ragdolled pawn actor and instantiates a fresh standing one.
    - **Property replay** (separate bundle, after the client's creation transaction settles) — `BeingAppearance` + `onEntityTint`, drawn from `ConnectedClientState`'s `cached_appearance_args` / `cached_tint_args` (populated during initial world entry in `map_loaded.rs`). Without this the recreated pawn would render blank.
 
@@ -80,7 +80,7 @@ Two earlier approaches both failed:
 
 **Approach 4 — `CREATE_BASE_PLAYER` prefix without property replay**: pawn was destroyed cleanly (un-ragdolled, good) but the recreated pawn had no properties, leaving the player invisible. The base entity's properties are wiped along with the old pawn; we need to re-emit them after the recreate.
 
-**Current approach — Approach 4 + cached property replay**: send `CREATE_BASE_PLAYER` + `VIEWPORT_INFO` + `CREATE_CELL_PLAYER` + `FORCED_POSITION` as a burst, then in a separate bundle replay `BeingAppearance` and `onEntityTint` from `ConnectedClientState`'s cached world-entry args. The burst destroys/recreates the pawn (un-ragdoll); the replay repopulates its visuals. The replay must be a separate bundle because the client treats `CREATE_CELL_PLAYER` as the start of a creation transaction and drops entity methods sent in the same bundle (see [`map_loaded.rs:74-81`](../../crates/services/src/base/world_entry/map_loaded.rs)). All other client-side entities and kismet state survive untouched.
+**Current approach — Approach 4 + cached property replay**: send `CREATE_BASE_PLAYER` + `VIEWPORT_INFO` + `CREATE_CELL_PLAYER` + `FORCED_POSITION` as a burst, then in a separate bundle replay `BeingAppearance` and `onEntityTint` from `ConnectedClientState`'s cached world-entry args. The burst destroys/recreates the pawn (un-ragdoll); the replay repopulates its visuals. The replay must be a separate bundle because the client treats `CREATE_CELL_PLAYER` as the start of a creation transaction and drops entity methods sent in the same bundle (see [`map_loaded.rs:74-81`](../../crates/base-world-entry/src/base/world_entry/map_loaded.rs)). All other client-side entities and kismet state survive untouched.
 
 ## Critical: Ragdoll is Kismet-Controlled
 
@@ -148,11 +148,11 @@ ReanchorPlayer {
 }
 ```
 
-BaseApp handles this in [`base/world_entry/reanchor_player.rs::handle_reanchor_player`](../../crates/services/src/base/world_entry/reanchor_player.rs). Emits a `CREATE_BASE_PLAYER` (same wire layout as `phases::build_create_player` minus the `onClientMapLoad`) followed by `build_enter_world_body`, as a single standalone packet. No `RESET_ENTITIES`, no `onClientMapLoad`, no pending-state plumbing.
+BaseApp handles this in [`base/world_entry/reanchor_player.rs::handle_reanchor_player`](../../crates/base-world-entry/src/base/world_entry/reanchor_player.rs). Emits a `CREATE_BASE_PLAYER` (same wire layout as `phases::build_create_player` minus the `onClientMapLoad`) followed by `build_enter_world_body`, as a single standalone packet. No `RESET_ENTITIES`, no `onClientMapLoad`, no pending-state plumbing.
 
 ### CellToBaseMsg::GateTravel (cell→base, cross-world only)
 
-Used for cross-world respawn (respawner in a different world). Same path stargates use; full instance teardown on both sides. See [`base/world_entry/gate_travel/mod.rs`](../../crates/services/src/base/world_entry/gate_travel/mod.rs).
+Used for cross-world respawn (respawner in a different world). Same path stargates use; full instance teardown on both sides. See [`base/world_entry/gate_travel/mod.rs`](../../crates/base-world-entry/src/base/world_entry/gate_travel/mod.rs).
 
 ## Python Reference
 

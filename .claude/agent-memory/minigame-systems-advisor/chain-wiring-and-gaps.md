@@ -34,7 +34,7 @@ the icon disappears on relog.
    (`crates/services/src/cell/content/executor/mod.rs:203-228`).
 2. Base registers a 64-hex one-time ticket keyed by `entity_id` and pushes
    `onStartMinigame(URL)` where URL = `http://unused/{host}/{port}/{game}/{entityId}/{ticket}`
-   (`crates/services/src/base/world_entry/cell_dispatch/minigame.rs:36-80`).
+   (`crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs:36-80`).
 3. Client loads the SWF, connects TCP, speaks SFS 1.x:
    `<msg t='sys'><body action='login'><login z='Livewire'><nick>42</nick><pword>TICKET</pword></login></body></msg>`
    — `nick` is the entity id, `pword` is the ticket, `z` is the game name.

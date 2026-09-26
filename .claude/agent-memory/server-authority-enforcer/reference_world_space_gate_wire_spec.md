@@ -17,7 +17,7 @@ cross-referenced to entity defs, Ghidra symbols, and Rust handler files.
 | `onWorldInstanceReset` | 92 | `SGWPlayer.def:868-870` (no args, `<Exposed/>`) | `crates/services/src/cell/cell_methods/player/world/mod.rs:230-233` — **UNIMPLEMENTED STUB** |
 | `updateSystemOptions` | 93 | `SGWPlayer.def:872-875` (ARRAY of NameValuePair) | `crates/services/src/cell/cell_methods/player/world/mod.rs:235-238` → `handle_update_system_options` at lines 262-351 |
 | `triggerClientHintedGenericRegion` | 85 | `SGWPlayer.def:766-771` (INT32 id, UINT8 bEntering, VECTOR3 position) | `crates/services/src/cell/cell_methods/player/world/mod.rs:128-191` |
-| `cancelMovie` | 108 | `SGWPlayer.def:1104-1107` (WSTRING MovieName) | early-handled in `crates/services/src/base/connect_loop/cell_arms.rs:113-117` → `handle_cancel_movie` at `crates/services/src/base/world_entry_appearance.rs:721-741` |
+| `cancelMovie` | 108 | `SGWPlayer.def:1104-1107` (WSTRING MovieName) | early-handled in `crates/services/src/base/connect_loop/cell_arms.rs:113-117` → `handle_cancel_movie` at `crates/base-world-entry/src/base/world_entry_appearance/cinematic.rs:200` |
 | `onStrikeTeamResponse` | 11 (org range) | (per `Organization.def` — not searched here) | `crates/services/src/cell/cell_methods/organization.rs:65-77` — **UNIMPLEMENTED STUB** |
 
 ## Stub-only (no server arm, falls through to "Unhandled cell method" warn)

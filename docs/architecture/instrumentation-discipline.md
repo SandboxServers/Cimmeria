@@ -55,7 +55,7 @@ message → base handler) gets:
   — no `pid` / `eid` aliases.
 
 **The gold-standard reference:**
-[`crates/services/src/base/world_entry/play_character.rs:26-31`](../../crates/services/src/base/world_entry/play_character.rs#L26).
+[`crates/base-world-entry/src/base/world_entry/play_character.rs:26-31`](../../crates/base-world-entry/src/base/world_entry/play_character.rs#L26).
 
 ### Rule 2 — Every state transition gets a debug-level event with `event = "..."`
 

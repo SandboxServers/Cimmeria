@@ -1,7 +1,7 @@
 //! Chat-channel registration + welcome message for `onClientReady`.
 //!
 //! Pure arg-builders for the entity-method packets fired in
-//! `cimmeria_services::base::world_entry_appearance::handle_on_client_ready`. Split out
+//! `cimmeria_base_world_entry::base::world_entry_appearance::handle_on_client_ready`. Split out
 //! of `world_entry_appearance.rs` so the byte-level wire-format logic
 //! has byte-exact unit tests without dragging in the file's async-handler
 //! surface; the wire-emit side stays next to the rest of the

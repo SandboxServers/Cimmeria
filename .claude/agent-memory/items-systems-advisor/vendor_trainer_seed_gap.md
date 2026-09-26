@@ -8,7 +8,7 @@ metadata:
 Confirmed 2026-09-17 during a Harset zone evidence pass (READ-ONLY).
 
 **The mechanism is real and complete:**
-- `crates/services/src/base/world_entry/interactions/vendor.rs::send_store_open` sends `CellToBaseMsg::OpenVendorStore { vendor_template_id, .. }` (vendor_template_id = the NPC entity's `template_id`, read off the spawned entity, not a hardcoded value).
+- `crates/services/src/cell/interactions/vendor.rs::send_store_open` sends `CellToBaseMsg::OpenVendorStore { vendor_template_id, .. }` (vendor_template_id = the NPC entity's `template_id`, read off the spawned entity, not a hardcoded value).
 - `crates/base-methods/src/base/world_entry/methods/vendor/store.rs` (~line 77-79) resolves it: `SELECT buy_item_list, sell_item_list, repair_item_list, recharge_item_list FROM resources.entity_templates WHERE template_id = $1`.
 - `crates/base-methods/src/base/world_entry/methods/vendor/data/mod.rs` (`load_store_buy_items` etc.) then joins `resources.item_list_items` / `resources.item_list_prices` on those list ids to build the actual store payload.
 - Buy/sell/repair/recharge/buyback each have their own module under `crates/base-methods/src/base/world_entry/methods/vendor/` (`purchase/`, `sell/`, `repair.rs`, `recharge.rs`, `buyback/`) with their own tests.

@@ -14,7 +14,7 @@ API surface:
 - `guard.all()` — returns every captured event (useful inside `assert!` failure messages to debug what *did* fire).
 
 Examples in the codebase:
-- `crates/services/src/base/character/delete_live_db_tests.rs` — `use crate::test_support::{require_db_or_skip, LogCapture, TestTransport};`
+- `crates/base-world-entry/src/base/character/delete_live_db_tests.rs` — `use crate::test_support::{require_db_or_skip, LogCapture, TestTransport};`
 - `crates/base-session/src/base/helpers/tests.rs` lines 195, 235, 272, 331, 362, 393, 447 — many use cases for negative-log assertions.
 - `crates/services/src/cell/cell_methods/player/dispatch.rs` (after commit `fc821bd6`) — example of using `find_message` to distinguish which dispatcher branch fired.
 

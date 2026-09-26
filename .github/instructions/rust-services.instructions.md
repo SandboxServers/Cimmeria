@@ -52,5 +52,5 @@ Default to none. Only when the **why** is non-obvious: hidden constraint, subtle
 ## Reference
 
 - `crates/services/src/cell/ring_transport/runtime.rs` is a good example of how to dispatch FSM `Effect`s into wire `CellToBaseMsg`s.
-- `crates/services/src/base/world_entry/cell_dispatch.rs` shows the base-side handler pattern for a `CellToBaseMsg` variant.
+- `crates/base-world-entry/src/base/world_entry/cell_dispatch/mod.rs` shows the base-side handler pattern for a `CellToBaseMsg` variant.
 - Reference Python in `python/cell/` and `python/common/` is the behaviour spec — read it for any new feature port.

@@ -108,7 +108,7 @@ nothing cached it for a third party to read.
 
 ### 2. Join at emit time, not at event time
 
-[`base/world_entry/cell_dispatch/player_ghost.rs`](../../crates/services/src/base/world_entry/cell_dispatch/player_ghost.rs)
+[`base/world_entry/cell_dispatch/player_ghost.rs`](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/player_ghost.rs)
 does the join. `resolve_identity` reads the observee's session out from under
 the `connected` lock; `compose_cascade_body` picks the player-ghost cascade
 when both halves are present and the NPC/bare cascade otherwise.
