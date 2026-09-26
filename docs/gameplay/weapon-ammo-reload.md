@@ -190,7 +190,7 @@ The `bandolier_ammo_dirty: HashSet<i32>` set is the persistence buffer. Every fi
 | `requestAmmoChange`                      | The mutated slot, immediately         | [`inventory.rs:284-308`](../../crates/services/src/cell/cell_methods/inventory.rs#L284) |
 | Disconnect (`DisconnectEntity`)          | All dirty slots                       | [`service.rs:403-417`](../../crates/services/src/cell/service/mod.rs#L403) |
 | Logout fallback (`DestroyEntity`)        | All dirty slots (idempotent)          | [`service.rs:383-396`](../../crates/services/src/cell/service/mod.rs#L383) |
-| World transition (`handle_dial_gate`)    | All dirty slots                       | [`gate_travel.rs:75-90`](../../crates/services/src/cell/gate_travel.rs#L75) |
+| World transition (`handle_dial_gate`)    | All dirty slots                       | [`gate_travel/mod.rs:486-495`](../../crates/cell-interactions/src/cell/gate_travel/mod.rs#L486) |
 
 The flush hook lives on the `DisconnectEntity` cell handler — graceful logoff (`SGWPlayer.logOff`), Mercury `DISCONNECT (0x0C)`, and the tick-sync 60-second inactivity timeout ([`tick_sync.rs:79-84`](../../crates/base-session/src/base/tick_sync.rs#L79)) all route through `destroy_client_entities` ([`helpers.rs:67-111`](../../crates/base-session/src/base/helpers/mod.rs#L67)) which sends `BaseToCellMsg::DisconnectEntity`. So a player who closes the game without logging out still has their ammo persisted, just with up to a 60-second delay after their last received packet. The `DestroyEntity` flush is a no-op fallback for any path that bypasses `DisconnectEntity`.
 

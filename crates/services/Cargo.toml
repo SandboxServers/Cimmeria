@@ -58,8 +58,13 @@ cimmeria-cell-combat = { workspace = true }
 # The cell's content layer (the content-chain executor and dispatchers,
 # missions, the ring-transport dispatcher and entry points, the dialog
 # display), split out of this crate (C3). Re-exported at `cell::{content,
-# missions, ring_transport}`; `cell::interactions` imports its `dialog`.
+# missions, ring_transport}`.
 cimmeria-cell-content = { workspace = true }
+# The cell's player interactions (NPC interaction dispatch, stargate travel,
+# the GM space transfer, the respawn fork, trade session state, mail
+# forwarding), split out of this crate (C4). Re-exported at `cell::{
+# interactions, gate_travel, space_transfer, respawn, trade, mail}`.
+cimmeria-cell-interactions = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 quick-xml = { workspace = true }
@@ -129,3 +134,8 @@ cimmeria-cell-combat = { workspace = true, features = ["test-support"] }
 # which stay here because they drive a cell method, the gate dial or the
 # relog hydration.
 cimmeria-cell-content = { workspace = true, features = ["test-support"] }
+
+# `gate_travel::send_gate_sequence` for the gate fan-out byte test in
+# `gate_round_trip_tests`, which stays here because it drives the base's world
+# entry after the cell's emitter.
+cimmeria-cell-interactions = { workspace = true, features = ["test-support"] }

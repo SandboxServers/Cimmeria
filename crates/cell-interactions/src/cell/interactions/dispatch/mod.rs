@@ -47,7 +47,7 @@ pub(super) const MAX_INTERACT_DISTANCE: f32 = 5.0;
 /// Logs at `info` on rejection, matching the inner path's level: a
 /// too-far click is ordinary client behaviour (lag, a moving target),
 /// not an error.
-pub(crate) fn interact_target_in_range(
+pub fn interact_target_in_range(
     entity_id: u32,
     target_entity_id: u32,
     space_mgr: &SpaceManager,

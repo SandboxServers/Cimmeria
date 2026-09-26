@@ -19,8 +19,12 @@
 //!
 //! The content layer (`content`, `missions`, the ring dispatcher and entry
 //! points in `ring_transport`, and `interactions::dialog`) is in
-//! `cimmeria-cell-content` (wave C3), re-exported the same way;
-//! `interactions` imports `dialog` beside the handlers that stay.
+//! `cimmeria-cell-content` (wave C3), re-exported the same way.
+//!
+//! The player interactions (`interactions`, `gate_travel`, `space_transfer`,
+//! the respawn fork in `respawn`, the trade session state in `trade`, and
+//! `mail`) are in `cimmeria-cell-interactions` (wave C4), re-exported the
+//! same way.
 
 // In `cimmeria-cell-combat` (wave C2).
 pub use cimmeria_cell_combat::cell::abilities;
@@ -45,14 +49,16 @@ pub use cimmeria_cell_world::cell::content_events;
 pub use cimmeria_cell_world::cell::cover;
 pub mod dispatch;
 pub use cimmeria_cell_combat::cell::effects;
-pub mod gate_travel;
+// In `cimmeria-cell-interactions` (wave C4).
+pub use cimmeria_cell_interactions::cell::gate_travel;
 /// Seed-vs-navmesh guards for the Harset coordinates placed from map data
 /// (`docs/analysis/harset-rebuild/placements/`). Test-only.
 #[cfg(test)]
 mod harset_placement_tests;
-pub mod interactions;
-pub(crate) use cimmeria_wire::cell::kismet;
-pub mod mail;
+pub use cimmeria_cell_interactions::cell::interactions;
+// `kismet` (wire) had one user here, gate travel, which moved to
+// `cimmeria-cell-interactions` (wave C4).
+pub use cimmeria_cell_interactions::cell::mail;
 // In `cimmeria-cell-content` (wave C3).
 pub use cimmeria_cell_content::cell::missions;
 pub use cimmeria_cell_content::cell::ring_transport;
@@ -66,19 +72,22 @@ mod service;
 pub use cimmeria_cell_world::cell::space_manager;
 // Crate-internal: `transfer_player_to_space` is a destructive, unauthenticated
 // entry point (privilege is enforced by the console dispatch layer above it),
-// so it must not be reachable from outside this crate. Its production callers
+// so it must not be reachable from outside this crate. It is in
+// `cimmeria-cell-interactions` (wave C4), whose `space_transfer` module is
+// public so this crate can reach it; downstream crates depend only on this
+// one (services-crate-split.md §5.2). Its production callers
 // are the `.goto`/`.summon`/`.gotolocation` console commands in
 // `cell::console::travel` (P46).
-pub(crate) mod space_transfer;
+pub(crate) use cimmeria_cell_interactions::cell::space_transfer;
 // The respawn fork the player's Defeat Window and the GM `gmRespawn` share,
 // with the client-cache replays it queues after the reanchor. Beside gate
 // travel and the space transfer, one layer below the cell methods and the GM
 // console (services-crate-split.md §2H).
-pub(crate) mod respawn;
+pub(crate) use cimmeria_cell_interactions::cell::respawn;
 // Player-to-player trade session state and its outbound wire, below the trade
 // cell-method handlers, which gate travel and the space transfer cancel on
 // departure (§2H).
-pub(crate) mod trade;
+pub(crate) use cimmeria_cell_interactions::cell::trade;
 // The spawner's DB loaders are in `cimmeria-cell-catalog` (wave W2b).
 // Populating spaces from their records is `space_manager::spawn_npcs_from_records`.
 pub use cimmeria_cell_catalog::cell::spawner;

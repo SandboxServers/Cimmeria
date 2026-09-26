@@ -1171,7 +1171,7 @@ Auto-respawn (method 70 RESPAWN): client sends with no args after TimeToAid expi
 
 No binary evidence of per-player respawner unlock gating found in SGW.exe (issue #233 open). Current implementation uses global `Vec<RespawnerDef>` filtered only by `world_name`.
 
-Server-side priority (from `crates/services/src/cell/respawn/mod.rs`):
+Server-side priority (from `crates/cell-interactions/src/cell/respawn/mod.rs`):
 1. Explicit `respawner_id > 0` from CALL_FOR_AID
 2. First `RespawnerDef` matching entity's world
 3. Castle default: `"Castle_CellBlock"` at `[-334.231, 73.472, -228.026]`

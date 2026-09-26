@@ -91,7 +91,7 @@ async fn make_gate_fans_out_one_packet_to_each_witness_and_the_dialer() {
     // ── Cell side: produce the real messages ──────────────────────
     let mgr = space_with_three_players();
     let (cell_tx, mut cell_rx) = tokio::sync::mpsc::channel(32);
-    crate::cell::gate_travel::sequences::send_gate_sequence(
+    crate::cell::gate_travel::send_gate_sequence(
         DIALER,
         Some(EVENT_SET),
         EVENT_MAKE_GATE,

@@ -119,16 +119,14 @@ cimmeria-services = [
 # combat crate's NPC AI; only test modules sit beside it.
 "cell::service::npc_ai" = "cimmeria-cell-combat"
 
+# cimmeria-cell-interactions is extracted (C4): `cell::{interactions,
+# gate_travel, space_transfer, respawn, trade, mail}` are re-exports of it.
 # Since the C4-C6 preparation (§2H) the trade session state is `cell::trade`
 # (the handlers stay in `cell::cell_methods::player::trade`), and the respawn
 # fork the cell methods and the GM console share is `cell::respawn`, with the
-# client-cache resync and the region registration it queues after the reanchor.
-"cell::interactions" = "cimmeria-cell-interactions"
-"cell::gate_travel" = "cimmeria-cell-interactions"
-"cell::space_transfer" = "cimmeria-cell-interactions"
-"cell::respawn" = "cimmeria-cell-interactions"
-"cell::trade" = "cimmeria-cell-interactions"
-"cell::mail" = "cimmeria-cell-interactions"
+# client-cache resync and the region registration it queues after the
+# reanchor. None of them is a module of this crate any more, so they have no
+# rows.
 
 "cell::cell_methods" = "cimmeria-cell-methods"
 

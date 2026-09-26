@@ -54,7 +54,7 @@ const DEFAULT_RESPEC_COST: i32 = 1000;
 /// dead code (never assigned anywhere in production) that called a stub
 /// fabricating a list from `archetype_ability_tree` directly with no
 /// per-known-ability filtering — now removed.
-pub(crate) async fn try_open_trainer(
+pub async fn try_open_trainer(
     player_entity_id: u32,
     target_entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,

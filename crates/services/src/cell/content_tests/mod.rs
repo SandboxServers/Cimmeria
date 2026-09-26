@@ -15,8 +15,10 @@
 //! - [`mission_742_hydration`] and [`mission_relog_persistence`] — the relog
 //!   hydration, `player_init::mission_restore` (were in
 //!   `chain_replay_tests`).
-//! - [`stargate_grant_dial`] — the gate dial, `gate_travel::handle_dial_gate`
-//!   (was `executor::tests::stargate`).
+//!
+//! `stargate_grant_dial`, which drives the gate dial, was here too until wave
+//! C4 moved the dial to `cimmeria-cell-interactions`; it is that crate's
+//! `cell::gate_travel::tests::stargate_grant_dial` now.
 //!
 //! Where a file kept only some of its tests, the fixtures they share are
 //! copies. The content internals they call (`execute_actions`,
@@ -28,4 +30,3 @@ mod mission_701_persistence;
 mod mission_742_hydration;
 mod mission_abandoned;
 mod mission_relog_persistence;
-mod stargate_grant_dial;

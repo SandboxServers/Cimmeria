@@ -16,7 +16,7 @@ CAT-F (Crafting / R&D / Training) audit complete on 2026-05-31. Trust posture:
   required `self.trainerEntity != None` AND `distanceTo(trainerEntity) <=
   MAX_INTERACT_DISTANCE`; Rust dropped both. Filed as CAT-F-01 Medium. Fix:
   add `trainer_entity: Option<u32>` on entity, parallel to `vendor_entity`,
-  set by `try_open_trainer` at `crates/services/src/cell/interactions/trainer.rs:55`.
+  set by `try_open_trainer` at `crates/cell-interactions/src/cell/interactions/trainer.rs:55`.
 
 **The other five RPCs** — all stubs:
 - `spendAppliedSciencePoints` (95), `craft` (96), `research` (97),

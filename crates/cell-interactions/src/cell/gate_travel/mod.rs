@@ -44,8 +44,6 @@ use super::space_manager::SpaceManager;
 use crate::cell::client_methods::gate_travel::ON_STARGATE_PASSAGE;
 
 mod address_book;
-// `pub(crate)` so the base-side fan-out byte test can drive the real
-// emitter rather than hand-building `WitnessEntityMethod` messages.
 pub(crate) mod sequences;
 pub(crate) mod tick;
 
@@ -53,10 +51,15 @@ use address_book::player_knows_stargate;
 pub(crate) use sequences::world_has_stargate_region;
 pub use tick::{crossing_tick, gate_dial_tick};
 
-use sequences::{
-    origin_gate_event_set, send_gate_sequence, set_crossing_movement_lock,
-    EVENT_STARGATE_CROSS_GATE,
-};
+use sequences::{origin_gate_event_set, set_crossing_movement_lock, EVENT_STARGATE_CROSS_GATE};
+// The gate fan-out byte test in `cimmeria-services` (`gate_round_trip_tests`)
+// drives the real emitter rather than hand-building `WitnessEntityMethod`
+// messages, so tests and the `test-support` feature see it here.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use sequences::send_gate_sequence;
+#[cfg(not(any(test, feature = "test-support")))]
+use sequences::send_gate_sequence;
 
 // ── Dial ─────────────────────────────────────────────────────────────────────
 
@@ -78,7 +81,7 @@ use sequences::{
 /// hold, unknown address, entity missing, same world, and, on the immediate
 /// path, an unrecoverable arrival or a closed base channel). The bool exists
 /// because
-/// [`super::console::gm::travel`] is the one dial caller with a
+/// `cimmeria_services::cell::console::gm::travel` is the one dial caller with a
 /// client-visible feedback channel and used to report "dialing gate address
 /// N" unconditionally — including for dials the primitive refused.
 #[tracing::instrument(

@@ -313,6 +313,28 @@ Learned doing the C4-C6 preparation (moves inside the monolith, no new crate):
   edits**: git conflicts on adjacent hunks, so one untouched line between is the
   minimum. `cell/mod.rs` is edited by every cell wave.
 
+Learned extracting `cimmeria-cell-interactions` (C4, a wave whose prep did the hard part):
+
+- **An earlier wave's cut-out test can become yours.** C3 left
+  `content_tests::stargate_grant_dial` in services only because the gate dial
+  was still there; once C4 moved the dial, that test's highest dependency was
+  the new crate. Each wave, grep the services `*_tests` dirs left by earlier
+  waves for the modules you are moving, not just the moved tree itself.
+- **A module that was `pub(crate)` in services must be `pub` in the new crate**
+  (`space_transfer`, `respawn`, `trade`); keep services' re-export
+  `pub(crate) use` so the facade's surface does not grow, and fix any comment
+  that promised "crate-internal".
+- **A module turned `pub` exposes its doc to `private_intra_doc_links`**
+  (`trade::wire` linked a private const). Check public AND private docs in one
+  pass each: `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links -D
+  rustdoc::private_intra_doc_links" cargo doc -p <crate> --no-deps`, then again
+  with `--document-private-items`.
+- **Compiling the new crate on its own (`check -p <new>`) is the proof that no
+  path passes through a higher crate's module**; its dead-code list is then the
+  widening list for services' E0603 pass.
+- **A hand-named target only the moved tree emits** (`bandolier.resend` in the
+  resync) is the cheapest revert-proof for the `IN_PROCESS_CRATES` entry.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

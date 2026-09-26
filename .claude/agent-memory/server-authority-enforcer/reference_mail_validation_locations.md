@@ -9,7 +9,7 @@ metadata:
 `crates/services/src/cell/cell_methods/mail.rs`. Indices 43-51 (REQUEST_MAIL_HEADERS=43 … PAY_COD_FOR_MAIL=51).
 
 **Player-id resolution** (the canonical "refuse to fall back to 0" pattern for
-mail routing): `crates/services/src/cell/mail.rs:20-28` —
+mail routing): `crates/cell-interactions/src/cell/mail.rs:20-28` —
 `resolve_mail_player_id()` reads `space_mgr.get_entity(entity_id).player_id`
 and returns `None` (with `warn!`) if unset.
 
@@ -22,7 +22,7 @@ and returns `None` (with `warn!`) if unset.
 - Delete: line 231 — `WHERE mail_id = $1 AND character_id = $2`, scoped.
 - Archive: line 275-280 — `WHERE mail_id = $1 AND character_id = $2`, scoped.
 
-**Wire serializers**: `crates/services/src/cell/mail.rs:143-209`
+**Wire serializers**: `crates/cell-interactions/src/cell/mail.rs:143-209`
 (`serialize_on_mail_header_info`, `serialize_on_mail_read`,
 `serialize_on_mail_header_remove`). `onMailRead.ToText` is currently
 filled with the **reader's** name, not the recipient's (CAT-G-08).

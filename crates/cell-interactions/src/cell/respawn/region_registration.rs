@@ -32,7 +32,7 @@ use crate::mercury::method_idx::{ADD_CLIENT_HINTED_GENERIC_REGION, CLEAR_HINTED_
 
 /// Whether to lead the batch with `clearClientHintedGenericRegions`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ClearFirst {
+pub enum ClearFirst {
     /// The caller is re-registering onto a client that may still hold a list.
     Yes,
     /// The client's list is already known to be empty (`mapLoaded` cleared it).
@@ -46,7 +46,7 @@ pub(crate) enum ClearFirst {
 ///
 /// Sends nothing, not even the clear, when the world has no client-hinted
 /// regions: there is then nothing for the client to have lost.
-pub(crate) async fn send_client_hinted_regions(
+pub async fn send_client_hinted_regions(
     entity_id: u32,
     world_name: &str,
     clear_first: ClearFirst,

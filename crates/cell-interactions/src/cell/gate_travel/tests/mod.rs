@@ -9,6 +9,8 @@
 //!   crossing gate.
 //! - [`address_book`] — the CAT-O-01 dial gate: refusing an address the
 //!   player does not hold.
+//! - [`stargate_grant_dial`] — the content action that grants an address
+//!   turns that refusal into an accepted dial (Harset H55).
 
 use super::super::spawner::StargateEntry;
 use super::*;
@@ -17,6 +19,7 @@ mod address_book;
 mod arrival;
 mod dial_timer;
 mod sequences;
+mod stargate_grant_dial;
 
 /// Castle's real gate event set (`stargates.event_set_id` for
 /// `stargate_id = 2`). Its sequences are 10145 (6100) … 10158 (6113).

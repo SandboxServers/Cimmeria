@@ -107,6 +107,12 @@ use crate::otel;
 /// dispatcher and entry points, and the dialog display. Neither
 /// `cimmeria_cell_combat` nor `cimmeria_cell_cover` is a prefix of it.
 ///
+/// `cimmeria_cell_interactions=debug` (wave C4) does the same for the player
+/// interactions: the NPC interaction dispatch, stargate travel, the GM space
+/// transfer, the respawn fork with its resync, the trade session state and
+/// the mail forwarding. No other crate's row is a prefix of it, and it is a
+/// prefix of none.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -143,6 +149,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_combat=debug,\
                 cimmeria_base::base=debug,\
                 cimmeria_cell_content=debug,\
+                cimmeria_cell_interactions=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -260,6 +267,9 @@ pub(crate) struct FileLayer {
 /// client-cache resync and hotbar seed that sat under `cell::service`'s
 /// `player_init` before. The trade session state (`cell::trade`), the respawn
 /// fork and the GM handlers (`cell::console::gm`) had no file and have none.
+/// Since wave C4 the interaction handlers, mail, gate travel and the resync
+/// are `cimmeria_cell_interactions::cell::…`, beside the content crate's
+/// dialog display in `interactions.log`.
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
@@ -306,7 +316,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "aoi.log",
         directives: "off,\
              cimmeria_services::cell::service=trace,\
-             cimmeria_services::cell::respawn::resync=trace,\
+             cimmeria_cell_interactions::cell::respawn::resync=trace,\
              cimmeria_cell_world::cell::service=trace,\
              cimmeria_cell_combat::cell::service=trace,\
              cimmeria_cell_world::cell::space_manager=trace,\
@@ -330,17 +340,17 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "interactions.log",
         directives: "off,\
-             cimmeria_services::cell::interactions=trace,\
+             cimmeria_cell_interactions::cell::interactions=trace,\
              cimmeria_cell_content::cell::interactions=trace,\
              cimmeria_services::cell::console::chat=trace,\
-             cimmeria_services::cell::mail=trace",
+             cimmeria_cell_interactions::cell::mail=trace",
     },
     FileLayer {
         file: "spawner.log",
         directives: "off,\
              cimmeria_cell_catalog::cell::spawner=trace,\
              cimmeria_cell_world::cell::space_manager::npc_population=trace,\
-             cimmeria_services::cell::gate_travel=trace,\
+             cimmeria_cell_interactions::cell::gate_travel=trace,\
              cimmeria_cell_content::cell::ring_transport=trace,\
              cimmeria_cell_world::cell::ring_transport=trace",
     },

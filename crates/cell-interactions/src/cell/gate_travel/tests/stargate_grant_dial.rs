@@ -3,9 +3,11 @@
 //!
 //! Cut from `cimmeria-cell-content`'s `executor::tests::stargate` in wave C3
 //! of the services crate split (docs/architecture/services-crate-split.md):
-//! it drives the gate dial, `cell::gate_travel::handle_dial_gate`, which is
-//! still in this crate. `make_two_world_mgr`, `grant` and `drain` are copies
-//! of that file's.
+//! it drives the gate dial, `cell::gate_travel::handle_dial_gate`, which sits
+//! above the content crate. It stayed in `cimmeria-services` as
+//! `cell::content_tests::stargate_grant_dial` until wave C4 moved the gate
+//! dial here. `make_two_world_mgr`, `grant` and `drain` are copies of that
+//! file's; `execute_actions` is the content crate's `test-support` hook.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};

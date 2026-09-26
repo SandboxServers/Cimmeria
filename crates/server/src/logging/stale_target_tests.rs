@@ -313,6 +313,14 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // interactions.log's chat row before the C4-C6 preparation moved chat
         // under the console; `cell` re-exports it (`pub use console::chat`).
         "cimmeria_services::cell::chat",
+        // interactions.log's, spawner.log's and aoi.log's services rows before
+        // wave C4 moved the interaction handlers, mail, gate travel and the
+        // respawn fork (with its resync) to cimmeria-cell-interactions;
+        // services re-exports each at the same path.
+        "cimmeria_services::cell::interactions",
+        "cimmeria_services::cell::mail",
+        "cimmeria_services::cell::gate_travel",
+        "cimmeria_services::cell::respawn::resync",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -337,9 +345,11 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_cell_content::cell::missions",
         "cimmeria_cell_content::cell::ring_transport",
         "cimmeria_cell_content::cell::interactions::dialog",
-        "cimmeria_services::cell::interactions",
         "cimmeria_services::cell::console::chat",
-        "cimmeria_services::cell::respawn::resync",
+        "cimmeria_cell_interactions::cell::interactions",
+        "cimmeria_cell_interactions::cell::mail",
+        "cimmeria_cell_interactions::cell::gate_travel",
+        "cimmeria_cell_interactions::cell::respawn::resync",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

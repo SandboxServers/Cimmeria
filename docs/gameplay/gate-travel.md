@@ -70,7 +70,7 @@ The yaw is carried through unchanged even when the position falls back to a resp
 
 ## DHD interaction
 
-Right-clicking a prop whose `interaction_type_flags` carry `INT_DHD` (bit 16) opens the dialling UI. [`cell/interactions/dhd.rs`](../../crates/services/src/cell/interactions/dhd.rs) claims the interaction, looks up the stargate belonging to the **player's current world**, and emits `onDisplayDHD` (flat index 120) with a single `UINT8` — the gate's point-of-origin glyph.
+Right-clicking a prop whose `interaction_type_flags` carry `INT_DHD` (bit 16) opens the dialling UI. [`cell/interactions/dhd.rs`](../../crates/cell-interactions/src/cell/interactions/dhd.rs) claims the interaction, looks up the stargate belonging to the **player's current world**, and emits `onDisplayDHD` (flat index 120) with a single `UINT8` — the gate's point-of-origin glyph.
 
 Three things are easy to get wrong here:
 
@@ -82,7 +82,7 @@ A DHD prop on a world with no `stargates` row logs `reason = "no_stargate_for_wo
 
 ## Dial authorization
 
-`onDialGate` carries `targetAddressId` as a raw client `INT32`, so the address book is the only thing standing between a crafted packet and a cross-world teleport into unearned content. [`cell/gate_travel/address_book.rs`](../../crates/services/src/cell/gate_travel/address_book.rs) refuses any address not in `CellEntity::known_stargates`, which the base loads from `sgw_player.known_stargates` and hands to the cell on `InitPlayerState`.
+`onDialGate` carries `targetAddressId` as a raw client `INT32`, so the address book is the only thing standing between a crafted packet and a cross-world teleport into unearned content. [`cell/gate_travel/address_book.rs`](../../crates/cell-interactions/src/cell/gate_travel/address_book.rs) refuses any address not in `CellEntity::known_stargates`, which the base loads from `sgw_player.known_stargates` and hands to the cell on `InitPlayerState`.
 
 The check is the first thing `handle_dial_gate` does after the `-1` cancel sentinel, which matters three times over:
 

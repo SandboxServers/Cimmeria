@@ -184,7 +184,7 @@ Function `build_create_entity_cascade` takes no `state_field` parameter. A witne
 
 ### Bug B: Respawn state-clear not broadcast to witnesses
 
-**Location**: `crates/services/src/cell/respawn/mod.rs`
+**Location**: `crates/cell-interactions/src/cell/respawn/mod.rs`
 
 ```rust
 // Clear state flags (includes BSF_Dead)
