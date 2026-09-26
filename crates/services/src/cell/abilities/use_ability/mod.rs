@@ -6,6 +6,8 @@
 //!   auto-cycle arm/clear classification).
 //! - `fire_los` — the players-only fire-time line-of-sight gate (NA31).
 //! - `auto_reload` — the post-fire auto-reload trigger (`maybe_trigger_auto_reload`).
+//! - `sequence` — the Ability_Begin / Ability_End `onSequence` send
+//!   (owner + witnesses) and the NPC attack-animation WARNs (NA43).
 //! - `kill_credit` — `handle_use_ability_with_kill_credit`, the content-engine
 //!   `EntityDeath` wrapper for single-target player-driven casts.
 //! - `weapon_redirect` — the read-only archetype-default → active-weapon
@@ -15,6 +17,7 @@ mod auto_reload;
 mod fire_los;
 mod handle;
 mod kill_credit;
+mod sequence;
 mod weapon_redirect;
 
 #[cfg(test)]

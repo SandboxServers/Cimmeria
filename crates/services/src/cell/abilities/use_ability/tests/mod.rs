@@ -16,6 +16,7 @@ mod auto_cycle;
 mod fire_los;
 mod gating;
 mod holster_queue;
+mod sequence;
 mod target_validity;
 mod weapon_grant;
 
