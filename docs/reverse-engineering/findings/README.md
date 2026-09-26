@@ -80,6 +80,7 @@ This directory contains 72 per-system reverse engineering findings with evidence
 | `castle-bsp-geometry-location.md` | #46 (castle.nav) | Which Castle packages actually hold collidable BSP — only 16 of 144 chunks carry world geometry, every `Brush`-owned `Model` is a 108-byte stub, persistent-map packages carry none; split out of `bsp-model-polys-serialize.md` | HIGH (measured over all 144 chunks) |
 | `terrain-serialize-real-data-validation.md` | #46 (castle.nav) | `ATerrain::Serialize` recipe validated against `Castle-000a0002.umap` (522 KB sample, different map from the original `Castle_CellBlock` validation); records the flat-byte-skip property-walk bug; split out of `bsp-model-polys-serialize.md` | HIGH |
 | `cover-world-placement.md` | NA20 (npc-ai-restoration) | Cover node world-space placement — `SGWSpecCoverNode`/`SGWCoverNodeComponent` decoded directly from Castle/Castle_CellBlock `.umap` chunks (4,024 nodes, already world-space, no transform needed), corrects the prefab-pak-transform hypothesis, cross-validated against `castle_cellblock.nav` and the hand-authored MedStationDesk seed row; go/no-go and data model for NA21 | HIGH (placement, counts) / MEDIUM (relation to the separate prefab-pak pipeline) |
+| `ability-trainer-ui.md` | AT-E1 (ability-trees) | Trainer/Ability window client evidence — `getTrainableList`/`getTrainableInfo`/`getTrainingTreeCount`/`buyTrainable`/`respecAbilities` native binding decompiles; hidden-vs-greyed join confirmed at byte level; no client-side level/XP table; `respecAbilities` sends a bare cell method 72; D-AT08 error-code mapping | HIGH (Q1, Q3, Q4, Q5-send) / UNRESOLVED (Q2, `onErrorCode` native rendering) |
 
 ## Finding Format
 
@@ -111,4 +112,4 @@ Each finding should follow the template in [evidence-standards.md](../evidence-s
 
 All wire formats are derived from `.def` files + `alias.xml` type definitions. This is possible because ALL entity method calls route through a single **universal RPC dispatcher** at `0x00c6fc40` in the client binary. The dispatcher serializes arguments using BigWorld's `DataType::addToStream` virtual methods — the wire encoding is determined entirely by the type system, not per-method handler code.
 
-See `combat-wire-formats.md` for the full decompilation evidence and BigWorld DataType encoding reference table.
+See `combat-wire-formats.md` for the full decompilation evidence and BigWorld DataType encoding reference table.
