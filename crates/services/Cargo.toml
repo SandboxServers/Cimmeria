@@ -43,6 +43,19 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 
+[features]
+# Opt-in seam for services-layer chaos integration tests that need to
+# inject a `LossyTransport` in place of the real UDP socket inside a live
+# `BaseService`/`Orchestrator` (as opposed to the in-process handler unit
+# tests, which use `TestTransport` via `[dev-dependencies]`'s own
+# `test-support` re-pull below). Off by default so production builds never
+# link `lossy_transport` or its RNG state. External consumers (e.g.
+# `cimmeria-wireclient`'s live-DB chaos tests) pull it in via:
+# `cimmeria-services = { path = "../services", features = ["chaos-testing"] }`.
+# See docs/architecture/network-chaos-testing.md and
+# `BaseService::set_transport_override`.
+chaos-testing = ["cimmeria-mercury/test-support"]
+
 [dev-dependencies]
 # Socket options tokio does not expose without a deprecated wrapper. The
 # minigame handshake-failure guard needs SO_LINGER=0 so the client's close

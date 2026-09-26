@@ -58,11 +58,14 @@
 //! `docs/architecture/wireclient.md` for the phased rollout.
 
 pub mod auth;
+pub mod bundle;
 pub mod error;
 pub mod handshake;
+pub mod session;
 pub mod session_trace;
 
 mod client;
 
 pub use client::Client;
 pub use error::{Error, Result};
+pub use session::GameSession;

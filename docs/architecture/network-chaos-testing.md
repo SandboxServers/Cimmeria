@@ -155,6 +155,30 @@ scenario). RNG is per-direction and seeded.
 | `Transatlantic` | 60 ms | 0.5% | 0% |
 | `Mobile` | 80 ms | 1% | 0.2% |
 
+**NA37 round 2 additions (2026-09-25):** `LossyConfig` gained
+`jitter: Duration` (`with_jitter`) and `reorder_buffer_size: u32`
+(`with_reorder_buffer`) fields, and `LossyTransport` gained
+`drop_next_sends_to(n, addr, min_len)` for a deterministic,
+destination- and size-filtered forced drop (as opposed to the
+existing seeded-probabilistic loss), plus `flush_reorder_buffer()`.
+The reorder buffer is keyed per destination
+(`Mutex<HashMap<SocketAddr, Vec<Vec<u8>>>>`) — a shared buffer across
+destinations was tried first and rejected: it held up the first two
+packets of *any* fresh connection's Mercury phase-3 handshake
+(`BASEMSG_REPLY` + time-sync), which the client parses positionally,
+breaking every multi-client test that shared the transport. These
+additions were built to reproduce a live AoI witness-fanout ordering
+hazard against a real `BaseService` socket
+(`crates/wireclient/tests/two_client_castle_visibility_chaos.rs`,
+gated behind `cimmeria-services`'s `chaos-testing` feature +
+`BaseService::set_transport_override`); see
+[`docs/analysis/npc-ai-restoration/work-packets.md`](../analysis/npc-ai-restoration/work-packets.md)'s
+NA37 entry for the finding. Per-destination latency (as opposed to
+a single latency applied to the whole transport) and combining the
+reorder buffer with the lossless-handshake path remain open gaps —
+noted inline in the wireclient chaos test's doc comments rather than
+built speculatively.
+
 ### `PcapReplay`
 
 Loads a pcap file alongside a hex-encoded session key

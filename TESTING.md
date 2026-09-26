@@ -193,7 +193,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 **The three layers** (see [docs/architecture/network-chaos-testing.md](docs/architecture/network-chaos-testing.md) for the full ADR):
 
 - **L1 — Channel-level scenarios** under `tests/chaos/`. Use `LoopbackSession` + `NetworkPolicy.drop_at_send_count` / `drop_probability` / `duplicate_next_count` / `reorder_buffer_size` to construct the failure shape. Assert recovery with `peer.recv_n_bundles` + `invariants::all_safety_invariants`.
-- **L2 — `LossyTransport`** wrapping `BidirectionalTransport`. Use `LossyConfig::from_profile(LossyProfile::Transatlantic)` for the canonical "real wire" profile. Integration tests in `crates/services/tests/chaos_*.rs` wrap a real UDP socket and exercise the services-layer recv loop under chaos.
+- **L2 — `LossyTransport`** wrapping `BidirectionalTransport`. Use `LossyConfig::from_profile(LossyProfile::Transatlantic)` for the canonical "real wire" profile, or compose loss/`with_jitter`/`with_reorder_buffer` directly for a bespoke scenario. Integration tests in `crates/services/tests/chaos_*.rs` wrap a real UDP socket and exercise the services-layer recv loop under chaos; `crates/wireclient/tests/two_client_castle_visibility_chaos.rs` wraps a real `BaseService` socket (via the `chaos-testing` feature's `BaseService::set_transport_override` seam) to exercise the full two-client AoI witness-fanout path under loss/jitter/latency and a deterministic targeted drop (`drop_next_sends_to(n, addr, min_len)`).
 - **L3 — Pcap replay** via `PcapReplay::load(...).with_key_from(...)`. Loads a real pcap (e.g. `debug/lomiada-broke-in-hallway02/`), decrypts via the saved session key, yields ordered events. Tests should skip silently if the fixture isn't present so dev environments without `debug/` still pass.
 
 **Patterns to follow:**
@@ -212,28 +212,31 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - L2: `crates/services/tests/chaos_lossy_transport_integration.rs` (round-trip through `LossyTransport`, transatlantic-profile loss).
 - L3: `crates/mercury/src/test_harness/tests/chaos/replay_lomiada.rs` (real pcap fixture).
 
-### 11. Wire-level replay tests (`cimmeria-wireclient`) — **Phase 1 only; replay not yet built**
+### 11. Wire-level replay tests (`cimmeria-wireclient`) — **Phase 1 + a slice of 1.5/2/4; full replay not yet built**
 
-> **Status check before you rely on this section.** `cimmeria-wireclient` today is a
-> *byte-builder and trace-parser library*, not a replay engine. The crate contains no
-> `UdpSocket`, no `send_to`, and no `recv_from` — `Client::connect()` does not exist,
-> and `Client::from_handshake` is documented in-source as a test-only constructor
-> (`crates/wireclient/src/client.rs:64-67`). `Client::build_login_packet` stops at
-> "produce the bytes"; the doc-comment states the caller does the UDP send and that
-> "Phase 1.5 wires the socket loop" (`crates/wireclient/src/client.rs:56-59`).
-> `Trace::c2s()` / `Trace::s2c()` are plain iterator filters with no consumer.
-> Everything below marked **(planned)** describes the ADR's target state, not shipped
-> behavior. See the [wireclient ADR](docs/architecture/wireclient.md) phase table.
+> **Status check before you rely on this section.** `cimmeria-wireclient` was a
+> pure *byte-builder and trace-parser library* through Phase 1 (no `UdpSocket`, no
+> `Client::connect()`). NA37 (2026-09-25) added a real UDP socket loop
+> (`src/session.rs`'s `GameSession`, reusing `cimmeria_mercury::test_harness::LoopbackPeer`
+> as the client-side Channel driver) plus enough client→server builders and a
+> structural server→client bundle decoder (`src/bundle.rs`) to drive a real two-client
+> world-entry scenario end to end. There is still no semantic behavior-trace decoder
+> (Phase 3), no entity mirror, no Castle Cellblock script driver (Phase 4), and
+> `Trace::c2s()` / `Trace::s2c()` remain plain iterator filters with no replay
+> consumer. See the [wireclient ADR](docs/architecture/wireclient.md) phase table
+> before treating any given phase as shipped.
 
-**Where**: `crates/wireclient/` — 30 tests across 5 files: `src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `tests/auth_smoke.rs` (3), `tests/trace_load.rs` (1). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
+**Where**: `crates/wireclient/` — 32 unit/lib tests across 6 files (`src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `src/bundle.rs` (6)) plus 3 integration test files: `tests/auth_smoke.rs` (3), `tests/trace_load.rs` (1), `tests/two_client_castle_visibility.rs` (2, live-DB only). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
 
 **What works today:**
 
 - **SOAP auth Phase 1+2** driven against an in-process `AuthService` — `tests/auth_smoke.rs` covers the happy-path round trip, the Phase 1 `sid` cookie, and the Phase 2 same-`sid` replay rejection.
 - **Handshake byte builders / parsers** — `src/handshake.rs` builds the unencrypted `baseAppLogin` datagram and parses `connect_reply` / `time_sync`, pinned byte-exactly by 10 unit tests.
 - **JSONL trace load + diff classification** — `src/session_trace.rs` parses the header + event stream and classifies message pairs via `ComparisonPolicy`.
+- **A real UDP session against a real spawned server** — `src/session.rs`'s `GameSession` drives auth → Mercury handshake → character select → world entry (`ENABLE_ENTITIES`/`playCharacter`/`mapLoaded`/`onClientReady`) over an actual `tokio::net::UdpSocket` against a real `Orchestrator` (auth+base+cell), no server-side test seams. `tests/two_client_castle_visibility.rs` (**live-DB**, self-skips without `DATABASE_URL`) uses two of these to prove shared-world player-to-player visibility end to end (NA37): `CREATE_ENTITY` + `BEING_APPEARANCE`, movement relay, and leave-on-disconnect, in both arrival orders, plus a negative control for the 100m AoI radius. **Not wired into CI** (`ci-live-db` runs `-p cimmeria-services --lib` only) — run manually per the test file's header comment.
+- **Structural bundle decoding** — `src/bundle.rs`'s `decode_bundle` walks a reassembled server→client bundle and extracts msg_id/entity_id/class_id/method_index for each message (not full per-argument semantics — that's still Phase 3).
 
-**What it will catch once Phases 1.5–5 land (planned):**
+**What it will catch once Phases 2 (full)/3/4/5 land (planned):**
 
 - **Wire-path drift** — the server emits an `onCharacterList` body shape the Flash client wouldn't parse; existing wire-format tests pin one serializer at a time but don't catch when the *sequence* would desync the client.
 - **Client-invariant violations (planned — Phase 5)** — the ADR calls for wireclient to enforce equipped-weapon, ammo, range, LOS, and cooldown on its own outbound `useAbility` sends, so the server can't accept a fire no real client could have made. **None of that enforcement is written yet** — there is no stats mirror, entity mirror, or ability gate in the crate.
@@ -246,7 +249,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - **Reuse the dissector.** `tools/pcap_to_session.py` rides on `tools/pcap_dissect.py` so the decoder stays a single source of truth.
 - **The auth + handshake smoke is byte-exact.** SOAP Phase 1+2 and Mercury phase-3 are deterministic and pinned in `crates/wireclient/tests/auth_smoke.rs` plus the handshake unit tests in `handshake.rs`.
 
-**Examples**: `crates/wireclient/tests/auth_smoke.rs` (SOAP round-trip against in-process `AuthService`); `crates/wireclient/tests/trace_load.rs` (loads the head fixture); `crates/wireclient/src/handshake.rs` (byte-exact `baseAppLogin` + reply parsers). Follow-up phases land the UDP socket loop and then the Castle Cellblock e2e smoke against a spawned server.
+**Examples**: `crates/wireclient/tests/auth_smoke.rs` (SOAP round-trip against in-process `AuthService`); `crates/wireclient/tests/trace_load.rs` (loads the head fixture); `crates/wireclient/src/handshake.rs` (byte-exact `baseAppLogin` + reply parsers); `crates/wireclient/tests/two_client_castle_visibility.rs` (real two-client shared-world visibility against a spawned `Orchestrator`, live-DB only). Follow-up phases still need: the semantic behavior-trace decoder, the Castle Cellblock script driver, and a `wireclient-e2e` nextest profile / CI wiring for the live-DB test that already exists.
 
 ### 12. Negative-log regression guards
 
