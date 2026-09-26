@@ -65,6 +65,11 @@ cimmeria-cell-interactions = { workspace = true }
 # `gm*` cell methods), split out of this crate (C5b). Re-exported at
 # `cell::{console, chat}`.
 cimmeria-cell-console = { workspace = true }
+
+# The client-callable cell methods (the per-interface dispatchers and the
+# SGWPlayer handlers), split out of this crate (C5a). Re-exported at
+# `cell::cell_methods`.
+cimmeria-cell-methods = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 quick-xml = { workspace = true }

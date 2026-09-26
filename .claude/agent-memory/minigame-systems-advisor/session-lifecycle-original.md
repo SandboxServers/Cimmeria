@@ -31,7 +31,7 @@ author speculating about a client-side condition, not evidence of a server timer
 2. `cell/SGWPlayer.py:2010 minigameStartCancel()` — player dismisses the start dialog
    before the SWF ever connects. Reports `MINIGAME_RESULT_NotStarted` (3).
 
-Both are **UNIMPLEMENTED in Rust**: `crates/services/src/cell/cell_methods/minigame.rs`
+Both are **UNIMPLEMENTED in Rust**: `crates/cell-methods/src/cell/cell_methods/minigame.rs`
 `START_CANCEL` (CM method 30) only logs `"UNIMPLEMENTED: minigameStartCancel"`, and there
 is no `endMinigameForPlayer` path at all. Any TTL sweep in Cimmeria is a *substitute* for
 these, not a port of original behaviour — say so when reviewing one.

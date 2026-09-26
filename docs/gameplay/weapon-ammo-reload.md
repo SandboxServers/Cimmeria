@@ -152,7 +152,7 @@ Client (player clicks an ammo subtype icon)
 
 The persistence emit is **immediate**, not batched, because subtype is a deliberate user action and we want it durable before the next packet. The legacy validator was literally `pass`; we reject `ammo_type == 0` as obvious junk, with a TODO to whitelist against `Item.ammo_types` ([`crates/entity/src/inventory.rs:81`](../../crates/entity/src/inventory.rs#L81)).
 
-Def: [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190). Implementation: [`crates/services/src/cell/cell_methods/inventory.rs:250-329`](../../crates/services/src/cell/cell_methods/inventory.rs#L250).
+Def: [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190). Implementation: [`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs:41-245`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs#L41).
 
 ## Active slot swap
 
@@ -177,7 +177,7 @@ Client → Cell:  requestActiveSlotChange(bag_id=3, slot_id)
 
 The previous-slot flush catches the **mid-magazine swap** case: a player fires a few rounds, then swaps weapons before reloading the empty one. Without this, those fires would only persist on the next reload (which may never happen if the player swaps back to the original slot after the next world transition).
 
-Implementation: [`crates/services/src/cell/cell_methods/inventory.rs:162-249`](../../crates/services/src/cell/cell_methods/inventory.rs#L162).
+Implementation: [`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs:81-571`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs#L81).
 
 ## Persistence cadence
 
@@ -186,8 +186,8 @@ The `bandolier_ammo_dirty: HashSet<i32>` set is the persistence buffer. Every fi
 | Drain point                              | What flushes                          | Code path |
 |------------------------------------------|---------------------------------------|-----------|
 | Reload completion tick (100 ms cadence)  | The active slot only                  | [`service.rs:610`](../../crates/services/src/cell/service/mod.rs#L610) |
-| `requestActiveSlotChange`                | The previous slot, if dirty           | [`inventory.rs:184-205`](../../crates/services/src/cell/cell_methods/inventory.rs#L184) |
-| `requestAmmoChange`                      | The mutated slot, immediately         | [`inventory.rs:284-308`](../../crates/services/src/cell/cell_methods/inventory.rs#L284) |
+| `requestActiveSlotChange`                | The previous slot, if dirty           | [`active_slot.rs:408-433`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs#L408) |
+| `requestAmmoChange`                      | The mutated slot, immediately         | [`ammo_change.rs:174-208`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs#L174) |
 | Disconnect (`DisconnectEntity`)          | All dirty slots                       | [`service.rs:403-417`](../../crates/services/src/cell/service/mod.rs#L403) |
 | Logout fallback (`DestroyEntity`)        | All dirty slots (idempotent)          | [`service.rs:383-396`](../../crates/services/src/cell/service/mod.rs#L383) |
 | World transition (`handle_dial_gate`)    | All dirty slots                       | [`gate_travel/mod.rs:486-495`](../../crates/cell-interactions/src/cell/gate_travel/mod.rs#L486) |
@@ -289,9 +289,11 @@ Client                       Cell                              Base / DB
 |------|---------|
 | [`crates/entity/src/cell_entity.rs`](../../crates/entity/src/cell_entity/mod.rs) | `BandolierItem`, `active_ammo()`/`active_clip_size()`/`active_ammo_type()`/`set_slot_ammo()`/`refill_active_slot()`, `reload_complete_at`, `bandolier_ammo_dirty` |
 | [`crates/cell-combat/src/cell/abilities/mod.rs`](../../crates/cell-combat/src/cell/abilities/mod.rs) | `handle_use_ability` — fire-gate, consume, `onStatUpdate` drain |
-| [`crates/services/src/cell/cell_methods/player/world.rs`](../../crates/services/src/cell/cell_methods/player/world/mod.rs) | `REQUEST_RELOAD` dispatch, `handle_reload` (warmup deadline + cooldown) |
+| [`crates/cell-methods/src/cell/cell_methods/player/world/mod.rs`](../../crates/cell-methods/src/cell/cell_methods/player/world/mod.rs) | `REQUEST_RELOAD` dispatch |
+| [`crates/cell-combat/src/cell/cell_methods/player/world/reload.rs`](../../crates/cell-combat/src/cell/cell_methods/player/world/reload.rs) | `handle_reload` (warmup deadline + cooldown) |
 | [`crates/services/src/cell/service/mod.rs`](../../crates/services/src/cell/service/mod.rs) | `reload_completion_tick` (sole refill path), `InitPlayerState` bandolier seeding |
-| [`crates/services/src/cell/cell_methods/inventory.rs`](../../crates/services/src/cell/cell_methods/inventory.rs) | `REQUEST_ACTIVE_SLOT_CHANGE`, `REQUEST_AMMO_CHANGE`, `flush_dirty_bandolier_ammo` |
+| [`crates/cell-methods/src/cell/cell_methods/inventory/dispatch.rs`](../../crates/cell-methods/src/cell/cell_methods/inventory/dispatch.rs) | `REQUEST_ACTIVE_SLOT_CHANGE` and `REQUEST_AMMO_CHANGE` dispatch |
+| [`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/) | the active-slot and ammo-change handlers, `flush_dirty_bandolier_ammo` |
 | [`crates/wire/src/cell/messages/mod.rs`](../../crates/wire/src/cell/messages/mod.rs) | `CellToBaseMsg::BandolierAmmoUpdate`, `ActiveSlotUpdate`, `InitPlayerState` |
 
 ## Related docs

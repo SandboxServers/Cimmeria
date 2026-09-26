@@ -102,7 +102,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 ### 6. Chain-replay tests
 
-**Where**: `crates/cell-content/src/cell/content/chain_replay_tests/` (51 tests). A replay that also drives code above the content crate goes in the crate of that code instead, and reaches `load_single_chain_for_test`, `execute_actions` and `populate_mission_context` through `cimmeria-cell-content`'s `test-support` feature: the gate dial in `crates/cell-interactions/` (`cell::gate_travel::tests::stargate_grant_dial`), a cell method or the relog hydration in `crates/services/src/cell/content_tests/`.
+**Where**: `crates/cell-content/src/cell/content/chain_replay_tests/` (51 tests). A replay that also drives code above the content crate goes in the crate of that code instead, and reaches `load_single_chain_for_test`, `execute_actions` and `populate_mission_context` through `cimmeria-cell-content`'s `test-support` feature: the gate dial in `crates/cell-interactions/` (`cell::gate_travel::tests::stargate_grant_dial`), a client-callable cell method in `crates/cell-methods/` (`cell::cell_methods::mission_abandoned_tests`), a GM cell method or the relog hydration in `crates/services/src/cell/content_tests/`.
 
 **For**: Content chains in `db/resources/Content/Seed/space_*_chains.sql` — guarding against converter bugs (auto-generated `accept_mission` where `complete_mission` was meant), shadow conditions, missing `interact_tag`/`set_interaction_type` pairings.
 

@@ -1,0 +1,52 @@
+[package]
+name = "cimmeria-cell-methods"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The client-callable cell methods for the Cimmeria server emulator: the per-interface dispatchers (being, combatant, inventory, missionary, contact list, organization, mail, minigame, black market, gate travel) and the SGWPlayer handlers (combat, interaction, trade, vendor, world, crafting, social)"
+
+# Split out of cimmeria-services (wave C5a of
+# docs/architecture/services-crate-split.md). The handlers parse a cell-method
+# call's arguments and hand it to the system that owns the behaviour, so the
+# crate sits on top of the player interactions and beside the GM console:
+# neither depends on the other, and the cell service's router calls both
+# (§2H). The module tree keeps its old nesting (`cell::cell_methods`), and
+# cimmeria-services re-exports it at the old path.
+[dependencies]
+# The interaction dispatch, gate travel, the respawn fork, the trade session
+# state and the mail forwarding the handlers hand calls to.
+cimmeria-cell-interactions = { workspace = true }
+# The content layer: the chain events the handlers raise, the mission abandon
+# and the ring-transport entry points.
+cimmeria-cell-content = { workspace = true }
+# Combat: ability use, the auto-cycle, the BSF helpers, and the bandolier,
+# reload and item-sequence handlers the inventory and world dispatchers name.
+cimmeria-cell-combat = { workspace = true }
+# SpaceManager and the playtest-friction journal.
+cimmeria-cell-world = { workspace = true }
+# The spawner's catalog (event sets, weapons, stargates, the region check) and
+# the ability trees.
+cimmeria-cell-catalog = { workspace = true }
+# The Base<->Cell message contract, the cell-method and client-method indices,
+# the player journal, the contact-list wire limits and the Mercury string
+# helpers.
+cimmeria-wire = { workspace = true }
+# The chain engine every dispatcher takes.
+cimmeria-content-engine = { workspace = true }
+cimmeria-entity = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`, `seed_ability_defs`).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# `maybe_trigger_auto_reload_for_test`, for the system-options tests.
+cimmeria-cell-combat = { workspace = true, features = ["test-support"] }
+# `Vector3`, for the trade range tests.
+cimmeria-common = { workspace = true }

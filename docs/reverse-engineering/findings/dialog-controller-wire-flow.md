@@ -130,7 +130,7 @@ Discard closes the old window and — only if the old dialog has zero cooked but
 
 The container at `this+0x30` is a different thing: it holds every delivered dialog, queued or displayed, and is unbounded. Nothing evicts from it except an explicit discard.
 
-**This is a live server-side defect, not a theoretical one.** Display a zero-button dialog A, then display B. The client evicts A and sends `(A, -1)` *after* the server has already re-pinned `open_dialog_id` to B, so `crates/services/src/cell/cell_methods/player/interaction/dialog.rs:36-45` rejects the choice and A's content chain never fires. The original Python server kept a dictionary of displayed dialogs rather than a single pin. Packet DU-08 in the [dialog UI redesign ledger](../../analysis/dialog-ui-redesign/work-packets.md) fixed it (#770): the server now keeps a bounded set of offered dialog ids (`crates/entity/src/cell_entity/offered_dialogs.rs`), so the late `(A, -1)` is accepted and fires A's chain.
+**This is a live server-side defect, not a theoretical one.** Display a zero-button dialog A, then display B. The client evicts A and sends `(A, -1)` *after* the server has already re-pinned `open_dialog_id` to B, so `crates/cell-methods/src/cell/cell_methods/player/interaction/dialog.rs:36-45` rejects the choice and A's content chain never fires. The original Python server kept a dictionary of displayed dialogs rather than a single pin. Packet DU-08 in the [dialog UI redesign ledger](../../analysis/dialog-ui-redesign/work-packets.md) fixed it (#770): the server now keeps a bounded set of offered dialog ids (`crates/entity/src/cell_entity/offered_dialogs.rs`), so the late `(A, -1)` is accepted and fires A's chain.
 
 **Confidence: HIGH.**
 

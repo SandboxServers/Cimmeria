@@ -25,9 +25,9 @@ use cimmeria_cell_combat::cell::cell_methods::player::world::{item_sequence, rel
 // identical after the split. `reload`/`item_sequence` items are consumed
 // from bandolier, base_messages, ticks, and use_ability via
 // `cell_methods::player::world::<item>`.
-pub(crate) use item_sequence::fire_item_sequence;
-pub(crate) use region_registration::{send_client_hinted_regions, ClearFirst};
-pub(crate) use reload::{handle_reload, maybe_trigger_reload_on_activate};
+pub use item_sequence::fire_item_sequence;
+pub use region_registration::{send_client_hinted_regions, ClearFirst};
+pub use reload::{handle_reload, maybe_trigger_reload_on_activate};
 // Only the in-module test files (`tests.rs`, `system_options_tests.rs`)
 // reach these through `super::*`; gate the re-exports so the non-test build
 // doesn't flag them unused.

@@ -18,15 +18,16 @@ pub mod combatant;
 pub mod contact_list;
 pub mod gate_travel;
 // SGWGmPlayer own CellMethods (flattened index 109+, GM-gated upstream) are
-// `cell::console::gm`: the GM console calls them, and the console and these
-// cell methods are sibling crates in the services split (§2H). A production
-// re-export here would be a methods -> console edge, so the callers name the
-// new path. Only a test outside this tree still names the old one.
-#[cfg(test)]
-pub(crate) use super::console::gm;
+// `cell::console::gm` in `cimmeria-cell-console`: the GM console calls them,
+// and the console and these cell methods are sibling crates in the services
+// split (§2H), so this module does not re-export them.
 pub mod inventory;
 pub mod mail;
 pub mod minigame;
+/// The `abandonMission` path of the Harset H54 `mission_abandoned` guards
+/// (wave C5a moved them here from `cimmeria-services`). Test-only.
+#[cfg(test)]
+mod mission_abandoned_tests;
 pub mod missionary;
 pub mod organization;
 pub mod player;

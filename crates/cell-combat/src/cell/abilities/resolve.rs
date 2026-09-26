@@ -2,7 +2,7 @@
 //!
 //! The cell receives `useAbility` calls with a specific `ability_id`
 //! from the client, but the **server-driven right-click on a hostile
-//! NPC** path in `cimmeria_services::cell::cell_methods::player::interaction`
+//! NPC** path in `cimmeria_cell_methods::cell::cell_methods::player::interaction`
 //! needs to pick the ability itself. Before this module, that site
 //! hardcoded `592` (Pistol Shot) regardless of the equipped weapon,
 //! so a player wielding a P90 still fired Pistol Shot animations and
@@ -52,7 +52,7 @@ pub fn ability_for_item(space_mgr: &SpaceManager, item_id: i32, event_id: i32) -
 /// hostile-NPC path the previous behavior was "fire Pistol Shot 592",
 /// which is preserved as an explicit fallback at the call site rather
 /// than baked into this helper. See
-/// `crates/services/src/cell/cell_methods/player/interaction.rs` for
+/// `crates/cell-methods/src/cell/cell_methods/player/interaction/` for
 /// the canonical pattern.
 pub fn ability_for_active_weapon(
     space_mgr: &SpaceManager,

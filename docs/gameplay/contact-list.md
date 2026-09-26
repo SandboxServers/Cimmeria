@@ -18,7 +18,7 @@ The `ContactListManager` interface is defined in `entities/defs/interfaces/Conta
 
 Two internal base methods (`sendEventToPlayers` and `sendLoginStatusMessages`) handle server-side event broadcasting -- these are never called by the client.
 
-The Rust implementation splits across the two services. The six inbound cell methods (indices 55–60) live in [`crates/services/src/cell/cell_methods/contact_list/mod.rs`](../../crates/services/src/cell/cell_methods/contact_list/mod.rs) — they parse the wire payload, resolve `player_id`, and forward to the base via `CellToBaseMsg`. The base side ([`crates/base-session/src/base/contact_list/`](../../crates/base-session/src/base/contact_list/)) owns all DB mutations, the client echo responses, and the presence fanout.
+The Rust implementation splits across the two services. The six inbound cell methods (indices 55–60) live in [`crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs`](../../crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs) — they parse the wire payload, resolve `player_id`, and forward to the base via `CellToBaseMsg`. The base side ([`crates/base-session/src/base/contact_list/`](../../crates/base-session/src/base/contact_list/)) owns all DB mutations, the client echo responses, and the presence fanout.
 
 ## Implementation Status
 

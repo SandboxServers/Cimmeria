@@ -20,7 +20,7 @@ INT32   CostToRespec         // Naquadah respec cost (placeholder 1000), LE
 
 Total frame: `4 + 4 + N×5 + 4` bytes.
 
-Rust implementation: `crates/services/src/cell/cell_methods/player/trainer_interaction.rs:166-173`.
+Rust implementation: `crates/cell-interactions/src/cell/interactions/trainer.rs:198-205`.
 
 ## trainAbility (client → server, cell method index 77)
 

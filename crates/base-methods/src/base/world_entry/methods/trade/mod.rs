@@ -6,8 +6,8 @@
 //! after this writes through to the DB inside a single sqlx
 //! `BEGIN/COMMIT` block.
 //!
-//! See `crates/services/src/cell/cell_methods/player/trade.rs` for the
-//! cell-side state machine that drives the hand-off.
+//! See `crates/cell-methods/src/cell/cell_methods/player/trade/` for the
+//! cell-side handlers that drive the hand-off.
 
 mod execute;
 

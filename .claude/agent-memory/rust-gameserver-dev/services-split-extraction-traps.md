@@ -358,6 +358,29 @@ Learned extracting `cimmeria-cell-console` (C5b, run in parallel with C5a):
   leaving that line untouched between you and the sibling wave's append.
 - A Python mutation driver (edit, `subprocess` the lane nextest, restore in
   `finally`) ran five revert-proofs in about two minutes of lane time.
+Learned extracting `cimmeria-cell-methods` (C5a, a leaf wave whose prep did the hard part):
+
+- **Pre-flight in two scripts, then compile alone.** A `super::`-chain resolver over the
+  moved tree plus a `crate::` path census listed every outside edge (one: a test-only
+  shim); `check -p <new>` then compiled clean first time. Its unused-import warnings are
+  exactly the `pub(crate) use` path-compat re-exports the higher crate still names
+  (combat's `handle_reload` through `cell_methods::player::world`): widen those to
+  `pub use`, and repeat for each E0603 `services` reports.
+- **`target_scan_tests` cannot see a target below a `mod tests;` line.**
+  `strip_test_module` cuts a file at its first `#[cfg(test)] mod`, and a `mod.rs` that
+  declares its tests above its code (`player/combat/mod.rs`) hides every hand-named
+  target in it (`player.respawn`). Grep the target's file before adding it to
+  `scan_finds_known_targets`; if hidden, `every_crate_is_classified` is the revert-proof.
+- **A same-crate intra-doc link through a private `use` import breaks when the import's
+  module leaves the crate** (`cell_methods::inventory::bandolier::…` from the service
+  loop). Point it at a public re-export; `cargo doc --document-private-items` on
+  services finds these among the pre-existing noise if you grep for the moved path.
+- **A services test file that mixes two dispatchers splits along them**: the three
+  Missionary `mission_abandoned` tests went down with the dispatcher, the GM one stayed,
+  each half with fixture copies, so only the moved tests were renamed.
+- **The Bash tool mangles `\` + newline even inside a quoted `<<'EOF'` heredoc**: the
+  inserted `OTEL_FILTER` row landed on the previous line. Use the Edit tool for any
+  replacement that ends in a backslash.
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),

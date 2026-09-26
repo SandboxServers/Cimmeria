@@ -4,8 +4,9 @@
 //! Cut from `cimmeria-cell-content`'s `event_dispatch::lifecycle::tests` in
 //! wave C3 of the services crate split
 //! (docs/architecture/services-crate-split.md): it drives the real
-//! `useAbilityOnGround` cell-method dispatch, which is still in this crate.
-//! The duel fixtures are copies of that file's.
+//! `useAbilityOnGround` cell-method dispatch, so it waited in
+//! `cimmeria-services` until wave C5a moved the dispatcher here. The duel
+//! fixtures are copies of that file's.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{Chain, ChainEngine};

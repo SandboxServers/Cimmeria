@@ -19,13 +19,12 @@ pub use cimmeria_resources::base::{
 };
 
 // Split out to `cimmeria-base-session` (wave B1) and re-exported at their old
-// paths, with their old visibility. `contact_list` is here for the cell's death
-// broadcast and contact-list methods, which name its `wire` module through it.
-// The other session modules are not: their users here moved to
-// `cimmeria-base-methods` (B2), `cimmeria-base-world-entry` (B3) and
-// `cimmeria-base` (B4). `gm_spawn`, `ConnectedClientState` and
+// paths, with their old visibility. The session modules are not: their users
+// here moved to `cimmeria-base-methods` (B2), `cimmeria-base-world-entry` (B3)
+// and `cimmeria-base` (B4), and `contact_list`'s last one, the cell's
+// contact-list methods, to `cimmeria-cell-methods` (C5a), which names the
+// `wire` module in `cimmeria-wire`. `gm_spawn`, `ConnectedClientState` and
 // `PendingClientReadyInfo` are left only for tests.
-pub(crate) use cimmeria_base_session::base::contact_list;
 #[cfg(test)]
 pub(crate) use cimmeria_base_session::base::{
     gm_spawn, ConnectedClientState, PendingClientReadyInfo,

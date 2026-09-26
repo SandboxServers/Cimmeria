@@ -1,6 +1,6 @@
 //! SGWAbilityManager interface exposed CellMethods (indices 2–4).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::ability_manager`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::ability_manager`,
 //! which re-exports these constants.
 
 /// Toggle combat debug overlay.

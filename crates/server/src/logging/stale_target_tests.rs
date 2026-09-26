@@ -326,6 +326,10 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_services::cell::mail",
         "cimmeria_services::cell::gate_travel",
         "cimmeria_services::cell::respawn::resync",
+        // The cell methods had no file row, but wave C5a moved them to
+        // cimmeria-cell-methods; services re-exports `cell_methods` at the
+        // same path, which declares no module.
+        "cimmeria_services::cell::cell_methods",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -356,6 +360,8 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_cell_interactions::cell::mail",
         "cimmeria_cell_interactions::cell::gate_travel",
         "cimmeria_cell_interactions::cell::respawn::resync",
+        "cimmeria_cell_methods",
+        "cimmeria_cell_methods::cell::cell_methods::player::world",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

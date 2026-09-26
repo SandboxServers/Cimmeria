@@ -7,7 +7,7 @@ metadata:
 
 ## Auto-Cycle System — Confirmed Findings (2026-05-20)
 
-**Cell method**: 83 (`setAutoCycle`) — `crates/services/src/cell/cell_methods/player/constants.rs:21`  
+**Cell method**: 83 (`setAutoCycle`) — `crates/wire/src/cell/cell_methods/player/constants.rs:21`  
 **Wire format**: 2 bytes — `methodID|0x80` + `int8 enabled`  
 **Entity def**: `entities/defs/SGWPlayer.def:701–704`  
 **Ghidra**: `ghidra://SGW.exe@0x019c2e6c` (RTTI "setAutoCycle"), `ghidra://SGW.exe@0x019b3e90` (RTTI "Event_NetOut_SetAutoCycle")

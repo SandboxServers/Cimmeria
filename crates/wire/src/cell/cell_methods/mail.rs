@@ -1,6 +1,6 @@
 //! SGWMailManager interface exposed CellMethods (indices 43–51).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::mail`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::mail`,
 //! which re-exports these constants.
 
 pub const REQUEST_MAIL_HEADERS: u16 = 43;

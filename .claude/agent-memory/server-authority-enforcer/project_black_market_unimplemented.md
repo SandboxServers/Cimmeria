@@ -7,7 +7,7 @@ metadata:
 
 The SGW Black Market / Auction House surface (`SGWBlackMarketManager`,
 CellMethod indices 61–66) is fully unimplemented in
-`crates/services/src/cell/cell_methods/black_market.rs`. Every arm
+`crates/cell-methods/src/cell/cell_methods/black_market.rs`. Every arm
 returns `true` (handled) after a `tracing::info!("UNIMPLEMENTED: …")`,
 no DB tables back the surface, no `ON_BM_*` ClientMethod is ever
 emitted from the server, no expiry sweep exists.

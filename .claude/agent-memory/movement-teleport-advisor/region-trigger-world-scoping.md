@@ -7,7 +7,7 @@ metadata:
 
 **The `enter_region` content trigger has no world scoping anywhere in the chain, and the region id it keys off is a client-supplied integer.** Verified 2026-09-17 during the Harset H10 seed review.
 
-The path: `triggerClientHintedGenericRegion` (`crates/services/src/cell/cell_methods/player/world/mod.rs:54-114`) reads `region_id` out of the client's arg blob, resolves it with `SpaceManager::get_region` (`space_manager/queries.rs:190-192`) — a **flat `HashMap<runtime_id, RegionData>` spanning every world**, not the player's space — and fires `fire_enter_region(tag)` with the resolved `point_sets.name`. The only world filter in the system is on the *outbound* hint burst: `player_init/mod.rs:365-370` sends the client only `regions_for_world(world) & REGION_FLAG_CLIENT_HINTED`. Inbound is unfiltered.
+The path: `triggerClientHintedGenericRegion` (`crates/cell-methods/src/cell/cell_methods/player/world/mod.rs:54-114`) reads `region_id` out of the client's arg blob, resolves it with `SpaceManager::get_region` (`space_manager/queries.rs:190-192`) — a **flat `HashMap<runtime_id, RegionData>` spanning every world**, not the player's space — and fires `fire_enter_region(tag)` with the resolved `point_sets.name`. The only world filter in the system is on the *outbound* hint burst: `player_init/mod.rs:365-370` sends the client only `regions_for_world(world) & REGION_FLAG_CLIENT_HINTED`. Inbound is unfiltered.
 
 Downstream there is nothing to catch it either:
 

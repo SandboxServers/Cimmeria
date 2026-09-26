@@ -14,7 +14,7 @@ last_updated: 2026-07-25
 
 The trade system enables direct player-to-player item and currency exchange through a proposal-based trade window. Each player builds a proposal (items + cash), then both parties lock and confirm. The system uses version tracking to prevent race conditions and a three-state lock machine (None -> Locked -> LockedAndConfirmed) to ensure both parties agree before executing.
 
-The Rust implementation lives in [`crates/services/src/cell/cell_methods/player/trade/`](../../crates/services/src/cell/cell_methods/player/trade/). Session state hangs off the two `CellEntity`s (`trade_partner_entity_id` + `trade_proposal`); the atomic swap happens base-side, where the cell hands the to-be-executed proposals over as `CellToBaseMsg::ExecuteTrade` and the base wraps the whole exchange in a single sqlx transaction ([`base/world_entry/methods/trade/execute/`](../../crates/base-methods/src/base/world_entry/methods/trade/execute/)).
+The Rust implementation lives in [`crates/cell-methods/src/cell/cell_methods/player/trade/`](../../crates/cell-methods/src/cell/cell_methods/player/trade/). Session state hangs off the two `CellEntity`s (`trade_partner_entity_id` + `trade_proposal`); the atomic swap happens base-side, where the cell hands the to-be-executed proposals over as `CellToBaseMsg::ExecuteTrade` and the base wraps the whole exchange in a single sqlx transaction ([`base/world_entry/methods/trade/execute/`](../../crates/base-methods/src/base/world_entry/methods/trade/execute/)).
 
 ## Wire Methods
 

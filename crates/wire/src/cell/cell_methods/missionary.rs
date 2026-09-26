@@ -1,6 +1,6 @@
 //! Missionary interface exposed CellMethods (indices 52–54).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::missionary`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::missionary`,
 //! which re-exports these constants.
 
 pub const ABANDON_MISSION: u16 = 52;

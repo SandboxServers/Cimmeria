@@ -19,7 +19,7 @@ if entering and not region.isPointInRegion(entity.position):
 It tests `entity.position` — the **server-known** position — not the position the
 client sent in the RPC args.
 
-Cimmeria does not have this. `crates/services/src/cell/cell_methods/player/world/mod.rs`
+Cimmeria does not have this. `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs`
 TRIGGER_REGION arm parses the client's `x/y/z` into `_x/_y/_z` and discards them,
 then fires `fire_enter_region` / `fire_exit_region` and forwards to the ring FSM
 with no containment test of any kind. There is no `is_point_in_region` helper
