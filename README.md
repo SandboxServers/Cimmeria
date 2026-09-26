@@ -110,26 +110,18 @@ flowchart TD
 
     %% service + domain layer
     adminApi --> services
-    adminApi --> contentEngine["content-engine"]
-    adminApi --> entity
-    adminApi --> commands
-    adminApi --> common
     services --> game
-    services --> contentEngine
+    services --> contentEngine["content-engine"]
     services --> entity
     services --> mercury
     services --> discord
     services --> observability
     services --> commands
     services --> common
-    game --> entity
     game --> commands
     game --> common
     contentEngine --> entity
     contentEngine --> common
-    entity --> defs
-    entity --> mercury
-    entity --> commands
     entity --> common
 
     %% foundation
@@ -158,10 +150,10 @@ flowchart TD
 
 Every node is a workspace crate; the graph is a DAG rooted at **common** (the
 shared types / config / error layer everything builds on). **mercury** (reliable
-UDP + AES-256), **defs** (entity-definition XML parser) and **commands**
-(command + permission model) sit on `common`; **entity** composes them into live
-game objects; **game** and **content-engine** add gameplay rules and the
-data-driven content pipeline; **services** ties Auth / Base / Cell together and is
+UDP + AES-256), **commands** (command + permission model), **entity** (live game
+objects) and **defs** (entity-definition XML parser, not yet linked by any other
+crate) each sit directly on `common`; **game** and **content-engine** add
+gameplay rules and the data-driven content pipeline; **services** ties Auth / Base / Cell together and is
 what the **server** binary, the **admin-api** REST layer, the **app** desktop GUI
 (repo-root `src-tauri/`, package `cimmeria-app`) and the headless **wireclient**
 test client all build on. **discord** (notifications) and **observability** (OTLP
