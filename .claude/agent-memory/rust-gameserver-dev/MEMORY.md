@@ -21,6 +21,7 @@
 - [build-environment.md](build-environment.md) — rust-lld override is OBSOLETE (fixed upstream); a fresh worktree needs `external/` junction-linked; cargo's stderr is block-buffered through the Bash tool so a hung *test* looks like a hung build (diagnose via `UserModeTime`).
 - [stale-branch-clippy-toolchain-drift.md](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable (no toolchain pin), so idle branches fail on brand-new lints unrelated to their diff; update-branch before investigating.
 - [lane-sh-masks-cargo-exit-code.md](lane-sh-masks-cargo-exit-code.md) — `lane.sh` / `live-db-test.sh` exit 0 even when cargo failed; redirect to a file and grep for `^error` + `[lane] released (exit 0)`.
+- [dependency-dedupe-blockers.md](dependency-dedupe-blockers.md) — which duplicate dep versions upstream pins (sqlx, axum ws, reqwest, rmcp); machete false positives; live-db-test.sh needs `RUSTUP_TOOLCHAIN=1.98.1`.
 
 ## Working Environment
 
