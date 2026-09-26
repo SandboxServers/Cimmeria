@@ -1,6 +1,6 @@
 # Project Rules and Gotchas
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-26
 > **Audience**: Contributors and their agents, before proposing an approach
 > **Type**: Reference
 
@@ -52,8 +52,11 @@ Classify before you design.
 
 ## Build and CI
 
-- **CI floats on stable Rust; the repo has no `rust-toolchain` pin.** Every gating job in `test.yml` uses `dtolnay/rust-toolchain@stable`, so CI clippy is often newer than yours and `-D warnings` fails on lints your local version does not have (seen: `unnecessary_sort_by`, `ptr_arg`, `doc_lazy_continuation`). Before pushing Rust changes, run clippy on current stable: `rustup toolchain install stable --profile minimal` (or a specific version side by side), then `cargo +<version> clippy -p <crates> --all-targets -- -D warnings`. Clippy stops at the first failing target, so rerun until it exits 0.
-- **The build-memory rules in `CLAUDE.md` apply per machine, not per worktree.** One `cargo` at a time includes agents running in parallel. See [`development-workflow.md`](development-workflow.md).
+- **The toolchain is pinned; bump it on purpose.** `rust-toolchain.toml` pins Rust 1.98.1, and every CI workflow installs that version through `.github/actions/rust-toolchain`, so local clippy is CI's clippy. This replaces the old gotcha: CI used to float on stable, its clippy ran ahead of yours, and the workaround was a side-by-side `cargo +<version> clippy`. Don't do that anymore. Bump the version in its own PR: change the file, run the pre-PR checklist, and fix the new lints in that PR. Clippy stops at the first failing target, so rerun until it exits 0.
+- **Builds are Windows-native.** The WSL cross-compile and its memory rules (the ~47 GB link, `pkill -f rustc`, `CARGO_BUILD_JOBS=2`) are retired. The 47 GB figure predates `rust-lld` on Windows. See [`docs/architecture/build-system.md`](../architecture/build-system.md).
+- **The build lane is per machine, not per worktree.** Every agent or worker `cargo` call that compiles goes through `tools/build-lane/lane.sh`, including agents running in parallel in separate worktrees. See [`development-workflow.md`](development-workflow.md#build-through-the-lane).
+- **sccache and `CARGO_INCREMENTAL=1` don't mix.** sccache refuses to run when `CARGO_INCREMENTAL` is set to anything but `0`. The lane drops sccache for such a job; a direct `cargo` call with sccache as `RUSTC_WRAPPER` fails. Leave `CARGO_INCREMENTAL` unset: the dev profile already builds workspace crates incrementally.
+- **Don't run `tools/build-hygiene/sweep.ps1` while anything builds.** cargo-sweep can delete files a running build is about to use.
 - **A PR with merge conflicts gets no CI run at all.** Merge `main` first.
 - **Two doc-side CI jobs block a merge**, unlike markdownlint, which only warns: `figure-sources-in-sync` (a figure source under `docs/drafts/spec/figures/sources/` committed without its re-rendered SVG) and `figure-style-lint`. Both fire on changes under `docs/drafts/spec/`. Run `tools/check-figure-sources.sh` and `tools/lint-figure-style.sh` before pushing any change there, including a text-only edit to a draft chapter.
 - **`tools/lint-md.sh <file>` is slow** because the config glob still walks the whole tree. Calling `markdownlint-cli2 --no-globs <files>` directly finishes in seconds.
@@ -64,7 +67,7 @@ Classify before you design.
 - **Scripts that rewrite files must open them in binary mode** and write UTF-8 explicitly. Python's default text mode on Windows converts both the encoding and the line endings.
 - **Git Bash rewrites arguments that start with `/` or contain `:.`** into Windows paths. This breaks `gh ... --body "/release"` and `git show <ref>:.github/...`. Use PowerShell, `--body-file`, or `MSYS_NO_PATHCONV=1`.
 - **Revert-verification wipes uncommitted work.** Commit (or make a WIP commit) before you `git checkout` a file to prove a guard fails.
-- **Removing a worktree that has an `external/` junction:** remove the junction first. See [`development-workflow.md`](development-workflow.md).
+- **Removing a worktree that has an `external/` junction:** remove the junction first. See [`development-workflow.md`](development-workflow.md#create-a-worktree-that-builds).
 
 ## Client assets and RE tooling
 

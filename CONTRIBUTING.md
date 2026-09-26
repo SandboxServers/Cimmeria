@@ -19,16 +19,16 @@ Read these in order:
 
 1. [`README.md`](README.md) — what the project is and where it stands.
 2. [`docs/guides/getting-started.md`](docs/guides/getting-started.md) — get the server running on your machine. You cannot meaningfully contribute without this working.
-3. [`CLAUDE.md`](CLAUDE.md) — repo invariants, build memory rules (WSL), the **pre-PR checklist**. CI runs the checklist exactly; if you skip it locally you will round-trip.
+3. [`CLAUDE.md`](CLAUDE.md) — repo invariants, build rules (Windows-native builds, the pinned toolchain, the build lane), the **pre-PR checklist**. CI runs the checklist exactly; if you skip it locally you will round-trip.
 4. [`TESTING.md`](TESTING.md) — test types and when to use which. The single biggest source of PR rework is "you wrote a unit test, this needed a live-DB regression guard."
 5. The relevant doc for the area you're touching — `docs/protocol/` for wire formats, `docs/gameplay/` for game systems, `docs/architecture/` for cross-cutting concerns, `docs/content/` for content engine work, `docs/operations/` for runtime/deployment.
-6. [`docs/agents/rules-and-gotchas.md`](docs/agents/rules-and-gotchas.md) — decisions the maintainers have already made (seeds over migrations, server-authoritative first, no dependency on third-party loaders) and traps contributors have already hit (CI clippy is newer than yours, CRLF docs, Git Bash path mangling).
+6. [`docs/agents/rules-and-gotchas.md`](docs/agents/rules-and-gotchas.md) — decisions the maintainers have already made (seeds over migrations, server-authoritative first, no dependency on third-party loaders) and traps contributors have already hit (sccache and `CARGO_INCREMENTAL`, CRLF docs, Git Bash path mangling).
 
 ### Contributing with an AI harness
 
 Most work here is AI-assisted, and the repo is set up for it. A clone gives your harness the same context the maintainers' sessions have: `CLAUDE.md`, [`AGENTS.md`](AGENTS.md), the domain advisors under `.claude/agents/`, and what those advisors have learned under `.claude/agent-memory/`.
 
-- [`docs/agents/development-workflow.md`](docs/agents/development-workflow.md) is the ticket-to-PR pipeline and the advisor roster. It also covers running agents in parallel (one worktree each, one `cargo` at a time, one test database each).
+- [`docs/agents/development-workflow.md`](docs/agents/development-workflow.md) is the ticket-to-PR pipeline and the advisor roster. It also covers running agents in parallel (one worktree each, every build through the build lane, one test database each).
 - [`docs/agents/domain.md`](docs/agents/domain.md) tells skills where the glossary and ADRs live, and what to do when a ticket disagrees with the docs. **Reconcile the ticket against `docs/protocol/` before acting on it** — an agent that takes an issue's premise on faith can produce a green, well-tested, wrong PR.
 - [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md) and [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md) configure ticket-writing and triage skills, including what `ready-for-agent` means here.
 - Bring your own skills and plugins; keep their per-repo configuration under `docs/agents/` rather than in `CLAUDE.md`, which loads into every contributor's session.
@@ -101,7 +101,7 @@ git push -u origin your-handle/short-description
 gh pr create
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for the full pre-PR checklist, the WSL memory rules (the full link can OOM at ~47 GB without care), and the doc-update map.
+See [`CLAUDE.md`](CLAUDE.md) for the full pre-PR checklist, the build rules (Windows-native builds on a pinned toolchain, and the build lane agents use), and the doc-update map.
 
 ## Code style
 

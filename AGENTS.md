@@ -4,7 +4,7 @@
 
 Whatever harness you run, read these before designing a change:
 
-1. [CLAUDE.md](CLAUDE.md) — build rules (a full link can take ~47 GB; never run two `cargo` processes at once), the pre-PR checklist, test policy, the doc-update map, file organisation. It applies to every agent, not only Claude.
+1. [CLAUDE.md](CLAUDE.md) — build rules (Windows-native builds on a pinned toolchain; every compiling `cargo` call goes through the build lane, `tools/build-lane/lane.sh`), the pre-PR checklist, test policy, the doc-update map, file organisation. It applies to every agent, not only Claude.
 2. [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md) — decisions the maintainers have already made and traps contributors have already hit.
 3. [docs/agents/domain.md](docs/agents/domain.md) — where the domain docs live and what to do when sources disagree. **A ticket or draft chapter is a claim, not evidence:** reconcile it against `docs/protocol/` before changing a wire constant, index, or layout.
 4. [docs/agents/development-workflow.md](docs/agents/development-workflow.md) — the ticket-to-PR pipeline and the roster of domain advisors under `.claude/agents/`. If your harness has no subagents, read an advisor's definition and its `.claude/agent-memory/<agent>/MEMORY.md` as briefing material.

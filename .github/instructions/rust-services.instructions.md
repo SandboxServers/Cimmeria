@@ -26,14 +26,13 @@ When sending a `CellToBaseMsg::EntityMethodCall` or building a base→client pac
 - Confirm byte layout against `entities/defs/*.def`. Endianness is little-endian; vectors are 3×f32; strings use `write_wstring` (length-prefixed UTF-16).
 - Engine-level base messages (`BASEMSG_*` in `mercury/mod.rs`) are handled by the BigWorld client *before* user code runs — use them for authoritative state changes (`FORCED_POSITION` for teleport, etc.). Method-index-dispatched messages (0xBD prefix) hit user code and may be ignored under certain client states (e.g., `BSF_MovementLock`).
 
-## Build memory
+## Builds
 
-A full link of `cimmeria-services` can use ~47 GB RAM. The workspace's `[profile.dev.package."*"]` strips dependency debug info to bring this down to ~8 GB, but you still need to:
+Builds run natively on Windows on the toolchain `rust-toolchain.toml` pins; the build rules are in `CLAUDE.md` ("Build rules"), and the reasons in `docs/architecture/build-system.md`.
 
-1. Iterate with `cargo check -p cimmeria-services` — fast (~1.5s), low memory.
-2. Never run multiple `cargo`/`rustc` processes concurrently — `pkill -f rustc` first.
-3. Workspace builds for final validation only, with `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor` to skip the Tauri linker.
-4. `CARGO_BUILD_JOBS=2` is set in `.bashrc` to cap parallel codegen.
+1. Iterate with `cargo check -p <crate>` on the crate you changed. `cimmeria-services` is a small facade over the split crates, so `-p cimmeria-services` doesn't cover them.
+2. Agent and worker `cargo` calls go through the build lane, `tools/build-lane/lane.sh`, which limits how many builds run on the machine at once.
+3. Workspace builds for final validation only, with the six `--exclude` flags CI uses (`.github/workflows/test.yml`), under `lane.sh --exclusive`.
 
 ## File caps
 

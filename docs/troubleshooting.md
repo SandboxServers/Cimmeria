@@ -2,9 +2,10 @@
 title: Troubleshooting
 type: how-to
 audience: new contributors, operators
-last_updated: 2026-07-25
+last_updated: 2026-09-26
 companion_docs:
   - building.md
+  - architecture/build-system.md
   - guides/getting-started.md
   - ../CLAUDE.md
   - ../bootstrap/README.md
@@ -22,27 +23,58 @@ For long-standing bugs in the emulator itself (rather than setup), see [`known-i
 
 ## Build & toolchain
 
-### WSL build runs out of memory (link-step OOM)
+### `sccache: incremental compilation is prohibited`
 
-**Symptom.** `cargo build --workspace` hangs or gets killed during the final link step. WSL reports memory pressure. Sometimes the whole WSL instance becomes unresponsive.
+**Symptom.** A `cargo` command fails as soon as it starts compiling, with `sccache: incremental compilation is prohibited: Unset CARGO_INCREMENTAL to continue.`
 
-**Root cause.** A full workspace link can consume **~47 GB RAM** if dependency debug info isn't stripped.
+**Root cause.** `CARGO_INCREMENTAL` is set to something other than `0` while sccache is the `RUSTC_WRAPPER`, and sccache refuses to run under it. The build lane (`tools/build-lane/lane.sh`) handles this by dropping sccache for that job. A direct `cargo` call with `RUSTC_WRAPPER` set to sccache in your environment doesn't.
 
-**Fix.**
+**Fix.** Unset `CARGO_INCREMENTAL`. You don't need it: the dev profile already builds workspace crates incrementally, and sccache only caches third-party crates.
 
-1. The workspace `[profile.dev.package."*"]` already strips dep debug info, bringing the link down to ~8 GB. Verify your local `Cargo.toml` hasn't overridden this.
-2. Cap parallel codegen: `export CARGO_BUILD_JOBS=2`. (Already set in `.bashrc` if you followed the dev guide.)
-3. **Don't run `cargo build` or `cargo test` for iteration.** Use `cargo check -p cimmeria-services` instead — 1.5 s, <2 GB RAM.
-4. Kill stale `rustc`/`cargo` processes before starting a new build: `pkill -f rustc`. They linger after Ctrl-C and pile on.
-5. Target specific crates with `-p` rather than `--workspace`.
+```powershell
+Remove-Item Env:CARGO_INCREMENTAL    # PowerShell
+unset CARGO_INCREMENTAL              # Git Bash
+```
 
-Full rules in [`CLAUDE.md`](../CLAUDE.md) → "Rust build memory (WSL)."
+Or run the command through the lane: `bash tools/build-lane/lane.sh cargo <args>`. Why the two settings clash is in [`architecture/build-system.md`](architecture/build-system.md) §3.
+
+---
+
+### A new worktree won't build: missing Recast/Detour headers
+
+**Symptom.** In a worktree, the `cimmeria-entity` build script fails with a missing-header error. The error doesn't mention `external/`.
+
+**Root cause.** `crates/entity/build.rs` compiles Detour from `../../external/recast`, and `external/` is not in git. `git worktree add` gives you a worktree without it.
+
+**Fix.** Create worktrees with the lane's script, which junctions `external/` in from the main checkout (and seeds the target dir when you have a Dev Drive):
+
+```bash
+bash tools/build-lane/mk-worktree.sh <branch> <name>    # creates .claude/worktrees/<name>
+```
+
+For a worktree you already created by hand, add the junction yourself from PowerShell:
+
+```powershell
+New-Item -ItemType Junction -Path <worktree>\external -Target <main checkout>\external
+```
+
+When you remove such a worktree, remove the junction first with `cmd /c rmdir <worktree>\external`. A recursive delete can follow the junction and empty the real `external/`. See [`agents/development-workflow.md`](agents/development-workflow.md#create-a-worktree-that-builds).
+
+---
+
+### A build waits with `[lane] all N slots busy`
+
+**Symptom.** A build started through the lane prints `[lane] all 4 slots busy: [...] ... 60s` once a minute and doesn't start.
+
+**Root cause.** Other builds hold every lane slot. The brackets show each slot's worktree and command, so you can see who is building what.
+
+**Fix.** Wait: the lane starts your build as soon as a slot frees. You don't need to clean up after a crashed build, because a slot whose holder died is freed by the next caller (`[lane] breaking stale slot ...`). Leave other sessions' builds alone. To see which jobs are slow, run `python tools/build-lane/lane_stats.py --recent 20`. Don't raise the slot count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` without measuring first. The job log's lowest-free-RAM figure and `tools/build-metrics/measure-build.ps1` are how you measure; see [`architecture/build-system.md`](architecture/build-system.md) §10.
 
 ---
 
 ### `cargo check` is fast but `cargo build` takes forever
 
-**Symptom.** `cargo check -p cimmeria-services` completes in ~1.5 s but `cargo build` of the same crate takes minutes.
+**Symptom.** `cargo check -p cimmeria-cell` completes in seconds but `cargo build` of the same crate takes minutes.
 
 **Root cause.** This is normal — `cargo check` runs the type-checker without codegen (no machine code emitted). `cargo build` actually compiles to object files and links. The first full build is the slow one; incremental builds are much faster.
 
@@ -72,7 +104,7 @@ cargo update                         # Refresh Cargo.lock against latest deps
 cargo check -p cimmeria-services
 ```
 
-`cargo clean` without `-p` nukes the entire target dir — only do that as a last resort, since the next build will be slow.
+`cargo clean` without `-p` nukes the entire target dir — only do that as a last resort, since the next build will be slow. If you only want the disk space back, [`tools/build-hygiene/sweep.ps1`](../tools/build-hygiene/sweep.ps1) removes stale artifacts and keeps the ones your next build needs (don't run it while anything builds).
 
 ---
 
@@ -120,7 +152,7 @@ You'll lose any custom state. If you cared about it, the seed `test` account and
 
 ### `DATABASE_URL` not set / live-DB tests skip silently
 
-**Symptom.** You ran `cargo nextest run -p cimmeria-services` and the live-DB tests show as "skipped" rather than failing.
+**Symptom.** You ran `cargo nextest run` on a crate with live-DB tests and they show as "skipped" rather than failing.
 
 **Root cause.** The `require_db_or_skip!` macro that gates every live-DB test checks `DATABASE_URL`. If unset, the test self-skips so contributors without a local DB don't see false failures.
 
@@ -223,7 +255,7 @@ This is a documented repo invariant — see [`CLAUDE.md`](../CLAUDE.md) → "Rep
 
 **Symptom.** `setup.ps1` reports success but `.\cimmeria-server.exe` isn't at the repo root.
 
-**Root cause.** `setup.ps1` doesn't auto-copy the binary to the root after build — but several runbooks assume it does. The actual binary lives in `target/<profile>/cimmeria-server.exe`.
+**Root cause.** `setup.ps1` doesn't auto-copy the binary to the root after build — but several runbooks assume it does. The actual binary lives in `target/<profile>/cimmeria-server.exe`, or, for a build that went through the build lane on a Dev Drive, in `$CIMMERIA_TARGET_ROOT\<worktree>\<profile>\` (the lane prints the target dir when it starts).
 
 **Fix.** Either:
 
@@ -246,7 +278,7 @@ Copy-Item .\target\debug\cimmeria-server.exe .
 
 **Symptom.** Your PR is failing the `cargo clippy --workspace ... -- -D warnings` job in CI but `cargo clippy` succeeds locally.
 
-**Root cause.** Local `cargo clippy` without `-D warnings` only **shows** warnings; CI treats them as errors. You missed a warning during development.
+**Root cause.** Local `cargo clippy` without `-D warnings` only **shows** warnings; CI treats them as errors. You missed a warning during development. It isn't a version difference: [`rust-toolchain.toml`](../rust-toolchain.toml) pins the Rust version, and CI installs the same one.
 
 **Fix.** Run the exact CI invocation locally:
 
@@ -254,15 +286,16 @@ Copy-Item .\target\debug\cimmeria-server.exe .
 cargo clippy --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
-  --exclude cimmeria-client-telemetry `
+  --exclude cimmeria-client-telemetry --exclude cimmeria-lab `
   --all-targets -- -D warnings
 ```
 
-All five excludes matter — the four GUI crates (two Tauri editors plus the
-egui launcher) and the Windows-only client-telemetry cdylib. Dropping
-`cimmeria-client-telemetry` is the easy one to miss: it makes a Linux/WSL host
-need xkbcommon/xcb dev packages and can OOM the linker. The authoritative list
-is [`.github/workflows/test.yml`](../.github/workflows/test.yml).
+All six excludes matter — the four GUI crates (the Tauri admin app, the two
+Tauri editors and the egui launcher), the Windows-only client-telemetry cdylib,
+and the `cimmeria-lab` supervisor. Dropping `cimmeria-client-telemetry` is the
+easy one to miss: it makes a Linux host, such as CI's runners, need
+xkbcommon/xcb dev packages. The authoritative list is
+[`.github/workflows/test.yml`](../.github/workflows/test.yml).
 
 Fix the warning at the root cause. Don't sprinkle `#[allow(clippy::...)]` per call site — project thresholds for `too_many_arguments` (14) and `type_complexity` (500) are in [`clippy.toml`](../clippy.toml).
 
@@ -374,6 +407,6 @@ If nothing here helps:
 
 1. Check [`known-issues.md`](known-issues.md) for documented bugs that might be the symptom.
 2. Search [the GitHub issues](https://github.com/SandboxServers/Cimmeria/issues) — somebody may have hit it already.
-3. Open a new issue with: the exact error message, the platform (Win/WSL/Linux), the command that failed, the relevant log lines, and what you tried.
+3. Open a new issue with: the exact error message, the platform (Windows version), the command that failed, the relevant log lines, and what you tried.
 
 Maintainers respond fastest to issues that show effort — a reproducible failure beats a vague "it doesn't work" every time.
