@@ -32,13 +32,9 @@ pub use event_dispatch::{
 // per tick from `cell::service::message_loop`, same flat depth as the
 // `fire_*` dispatchers above.
 pub(crate) use executor::deferred_content_action_tick;
-// Re-entrancy bound for the H52 step-activation region replay. Re-exported
-// because the guard's state lives on `SpaceManager` (the `&mut` borrow the
-// whole recursion already threads) while its logic belongs with the
-// dispatcher that owns it.
-pub(crate) use event_dispatch::{
-    fire_mission_abandoned, fire_step_activation_regions, StepRegionReplayGuard,
-};
+// The H52 step-activation region replay. Its re-entrancy guard lives on
+// `SpaceManager` (`space_manager::StepRegionReplayGuard`).
+pub(crate) use event_dispatch::{fire_mission_abandoned, fire_step_activation_regions};
 
 #[cfg(test)]
 mod tests {

@@ -36,12 +36,9 @@ pub use damage::{
 pub use damage_credit::{note_pre_damage_health, HealthBelowSample};
 pub use health_threshold::{health_pct, health_pct_from, HealthPct};
 
-/// Faction sentinel for "this entity is hostile to players" — every
-/// damage / interact path that needs to gate on hostility imports this.
-/// Mirrors python `Atrea.enums.FACTION_Aggressive = 10`. Future faction
-/// model overhaul (PvP, contested factions) will retire this in favour
-/// of a per-pair hostility table.
-pub const HOSTILE_FACTION: u8 = 10;
+// The hostile-faction sentinel lives with the faction reaction table, in
+// cimmeria-cell-world, because spawning reads it.
+pub use faction_reaction::HOSTILE_FACTION;
 
 pub use state::{
     is_dead_state, mark_npc_dead, BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,

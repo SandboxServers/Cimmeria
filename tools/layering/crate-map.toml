@@ -110,6 +110,8 @@ cimmeria-services = [
 "cell::service::npc_ai::leash::policy" = "cimmeria-cell-world"
 "cell::combat::aggression" = "cimmeria-cell-world"
 "cell::combat::faction_reaction" = "cimmeria-cell-world"
+# `HealthBelowSample` is a `SpaceManager` field and needs `HealthPct`.
+"cell::combat::health_threshold" = "cimmeria-cell-world"
 "cell::dispatch::gm_gate" = "cimmeria-cell-world"
 
 "cell::combat" = "cimmeria-cell-combat"

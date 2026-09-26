@@ -20,6 +20,7 @@ mod tick;
 pub use entry::{
     handle_interact, handle_region_trigger, handle_remote_player_loaded, handle_select_destination,
 };
+pub(super) use teardown::dispatch_release_effects;
 pub use teardown::forget_player;
 pub use tick::run_tick_with_engine;
 

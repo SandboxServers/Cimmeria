@@ -265,7 +265,7 @@ fn check_stuck(
     else {
         return;
     };
-    let los = super::super::aggro_acquired::los_label(space_mgr.line_of_sight(npc_id, target_id));
+    let los = super::los::los_label(space_mgr.line_of_sight(npc_id, target_id));
     tracing::warn!(
         target: "npc_ai",
         event = "stuck",

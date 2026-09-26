@@ -75,7 +75,7 @@ mod follow;
 mod ground_endpoint_tests;
 mod idle_aggro;
 mod investigate;
-mod leash;
+pub(in crate::cell) mod leash;
 mod lifecycle;
 mod movement_stop;
 mod path_failure;

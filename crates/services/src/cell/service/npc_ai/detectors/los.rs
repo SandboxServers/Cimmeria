@@ -18,6 +18,18 @@ use crate::cell::space_manager::SpaceManager;
 
 pub(in crate::cell) const LOS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
+/// The three-state `los` / `has_los` label on the AI's per-NPC rows
+/// (`clear`, `blocked`, `unknown`). `npc_ai.los` itself uses the longer
+/// `LineOfSight::label` (`unknown_off_mesh`) because it is the row that
+/// explains the unknown.
+pub(in crate::cell) fn los_label(los: LineOfSight) -> &'static str {
+    match los {
+        LineOfSight::Clear => "clear",
+        LineOfSight::Blocked => "blocked",
+        LineOfSight::Unknown => "unknown",
+    }
+}
+
 /// What answered a line-of-sight query.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::cell) enum LosSource<'a> {

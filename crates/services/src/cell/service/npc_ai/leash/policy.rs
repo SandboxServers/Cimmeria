@@ -23,6 +23,14 @@ use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
 
+/// Default leash radius in world units, used when the NPC's template does not
+/// set `entity_templates.leash_distance`. It is measured from the **NPC's own**
+/// position to its spawn point, horizontally, not from the target (NA12,
+/// D-NA03): the old target-to-spawn test fired on a player standing 49.9 u
+/// from spawn and bounded how far any NPC would chase. Re-exported as
+/// `cell::combat::LEASH_DISTANCE`.
+pub const LEASH_DISTANCE: f32 = 50.0;
+
 /// Width of the hysteresis band above the leash radius, in world units.
 pub(in crate::cell::service) const LEASH_HYSTERESIS: f32 = 5.0;
 
@@ -80,7 +88,7 @@ pub(in crate::cell::service) fn horizontal_distance(a: &Vector3, b: &Vector3) ->
 /// The NPC's leash radius: its template's override when set, else the server
 /// default.
 pub(in crate::cell::service) fn leash_radius(distance_override: Option<f32>) -> f32 {
-    distance_override.unwrap_or(crate::cell::combat::LEASH_DISTANCE)
+    distance_override.unwrap_or(LEASH_DISTANCE)
 }
 
 /// Whether a fighting NPC at `npc_pos` should give up, and why.

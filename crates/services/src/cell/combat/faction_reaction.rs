@@ -22,6 +22,13 @@
 
 use cimmeria_entity::cell_entity::MobAggression;
 
+/// Faction sentinel for "this entity is hostile to players" — every
+/// damage / interact path that needs to gate on hostility imports this.
+/// Mirrors python `Atrea.enums.FACTION_Aggressive = 10`. Future faction
+/// model overhaul (PvP, contested factions) will retire this in favour
+/// of a per-pair hostility table.
+pub const HOSTILE_FACTION: u8 = 10;
+
 /// Number of factions in the table (rows and columns), `0 Undefined` to
 /// `43 Hostile_To_Players`.
 pub const FACTION_COUNT: usize = 44;

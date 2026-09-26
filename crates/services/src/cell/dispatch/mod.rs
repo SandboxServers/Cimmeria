@@ -50,3 +50,5 @@ pub use router::dispatch_cell_method;
 // because it is the one mapping every privilege check in the cell must share
 // — the movement validator's GM off-navmesh allowance included.
 pub(crate) use gm_gate::access_level_from_u32;
+// The `.`-console privilege test (re-exported as `cell::console::is_gm`).
+pub(crate) use gm_gate::is_gm;

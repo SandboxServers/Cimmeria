@@ -7,8 +7,8 @@
 
 use tokio::sync::mpsc;
 
-use super::super::dispatch::dispatch_release_effects;
-use super::super::transporter::AbortReason;
+use super::super::transporter::{AbortReason, Effect};
+use super::super::wire_helpers::{send_visible, update_state_flag, BSF_MOVEMENT_LOCK};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -55,5 +55,41 @@ pub async fn forget_player(
              re-check for the remaining travellers"
         );
         space_mgr.ring_transporters.note_load_recheck(region_id);
+    }
+}
+
+/// Dispatch the release effects an abort produces — `ShowPlayer` and
+/// `UnlockMovement` only.
+///
+/// Exists because the abort paths reachable from
+/// `SpaceManager::disconnect_entity` have no
+/// [`ChainEngine`](cimmeria_content_engine::chain::ChainEngine) in hand, and
+/// `dispatch::dispatch_effect` needs one for `Effect::FireTeleportIn`. Restricting
+/// the accepted set is the point, not a limitation: an abort must never fire
+/// arrival content for a trip that did not arrive. Anything else in the list
+/// is an FSM bug and is logged rather than silently skipped.
+pub(in crate::cell::ring_transport) async fn dispatch_release_effects(
+    effects: Vec<Effect>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    for effect in effects {
+        match effect {
+            Effect::ShowPlayer { entity_id } => {
+                send_visible(entity_id, true, tx, space_mgr).await;
+            }
+            Effect::UnlockMovement { entity_id } => {
+                update_state_flag(entity_id, BSF_MOVEMENT_LOCK, false, tx, space_mgr).await;
+            }
+            other => {
+                tracing::error!(
+                    effect = ?other,
+                    reason = "non_release_effect_in_abort",
+                    "ring abort: FSM produced an effect that is not a player release — \
+                     dropped, because the abort path has no ChainEngine and must not fire \
+                     arrival content for a trip that never arrived"
+                );
+            }
+        }
     }
 }

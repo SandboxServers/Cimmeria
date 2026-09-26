@@ -13,7 +13,7 @@
 //! logs `npc_ai.leash event=damage_ignored`.
 
 mod begin;
-pub(in crate::cell::service) mod policy;
+pub(in crate::cell) mod policy;
 
 pub(super) use begin::{begin_leash, drop_threat_target, leash_out, LeashOutAt};
 

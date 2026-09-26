@@ -45,8 +45,10 @@ mod queries;
 mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
+mod step_region_replay;
 #[cfg(test)]
 pub(crate) use spawn::resolve_use_cover;
+pub(crate) use step_region_replay::{StepRegionReplayGuard, MAX_REPLAY_DEPTH};
 mod xml;
 
 pub(crate) use movement_telemetry::{
@@ -392,7 +394,7 @@ pub struct SpaceManager {
     /// parameter back to the dispatcher — the `&mut SpaceManager` every frame
     /// already holds is the exclusive token. See
     /// `content::event_dispatch::step_activation`.
-    pub(crate) step_region_replay: super::content::StepRegionReplayGuard,
+    pub(crate) step_region_replay: StepRegionReplayGuard,
 }
 
 impl SpaceManager {
@@ -445,7 +447,7 @@ impl SpaceManager {
             patrol_authoring: HashMap::new(),
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
-            step_region_replay: super::content::StepRegionReplayGuard::default(),
+            step_region_replay: StepRegionReplayGuard::default(),
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
         }

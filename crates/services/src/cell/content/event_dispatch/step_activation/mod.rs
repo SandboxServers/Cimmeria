@@ -22,7 +22,8 @@
 //! by convention.
 //!
 //! **Re-entrancy.** A replayed chain may itself `advance_step`, which
-//! activates another step, which replays again. [`StepRegionReplayGuard`]
+//! activates another step, which replays again.
+//! [`StepRegionReplayGuard`](crate::cell::space_manager::StepRegionReplayGuard)
 //! bounds that with a depth cap *and* a per-activation visited set, so a
 //! two-region / two-step ping-pong terminates instead of recursing.
 //!
@@ -45,8 +46,6 @@
 //! content path only, so a replay can never start a ring transport or carry a
 //! player through a gate. `replay_never_touches_rings_or_gates` pins it.
 
-use std::collections::HashSet;
-
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::{Chain, ChainEngine};
@@ -66,59 +65,10 @@ mod cover_replay;
 /// journal. Named so an ops query and the worknote can quote the same string.
 pub(crate) const REPLAY_REASON: &str = "already_inside_on_step_activation";
 
-/// How deep a chain of step activations may replay before the guard stops it.
-///
-/// Four is a budget, not a modelled depth: the longest authored chain-of-steps
-/// in the seed that could plausibly self-advance through regions is two, and a
-/// run that reaches four is a content bug worth a WARN rather than a shape
-/// worth serving.
-const MAX_REPLAY_DEPTH: u32 = 4;
-
-/// Re-entrancy bound for [`fire_step_activation_regions`].
-///
-/// Lives on [`SpaceManager`] because the recursion runs through
-/// `executor::execute_actions`, which cannot thread a depth parameter back
-/// here. A thread-local would be wrong: the cell task is `async` and tokio may
-/// move it between worker threads at any `await`. The `&mut SpaceManager` the
-/// whole call chain already holds *is* the exclusive token, so a plain field
-/// on it is both correct and un-lockable.
-#[derive(Debug, Default)]
-pub(crate) struct StepRegionReplayGuard {
-    depth: u32,
-    /// `(entity_id, mission_id, step_id)` triples already replayed inside the
-    /// current outermost activation. Cleared when `depth` returns to zero, so
-    /// a later, genuine activation of the same step replays again.
-    visited: HashSet<(u32, i32, i32)>,
-}
-
-impl StepRegionReplayGuard {
-    /// Claim a replay slot. `false` means the caller must not replay and must
-    /// not call [`Self::exit`].
-    fn enter(&mut self, entity_id: u32, mission_id: i32, step_id: i32) -> Option<&'static str> {
-        if self.depth >= MAX_REPLAY_DEPTH {
-            return Some("replay_depth_exceeded");
-        }
-        if !self.visited.insert((entity_id, mission_id, step_id)) {
-            return Some("step_already_replayed");
-        }
-        self.depth += 1;
-        None
-    }
-
-    fn exit(&mut self) {
-        self.depth = self.depth.saturating_sub(1);
-        if self.depth == 0 {
-            self.visited.clear();
-        }
-    }
-
-    /// No replay in flight and nothing remembered — the state the guard must
-    /// be back in after every balanced `enter`/`exit` pair.
-    #[cfg(test)]
-    pub(crate) fn is_idle(&self) -> bool {
-        self.depth == 0 && self.visited.is_empty()
-    }
-}
+// The re-entrancy guard (`space_manager::StepRegionReplayGuard`) is a
+// `SpaceManager` field, so it lives with the space manager in
+// cimmeria-cell-world, with its depth cap.
+use crate::cell::space_manager::MAX_REPLAY_DEPTH;
 
 /// Re-fire `enter_region` for every client-hinted volume the player is already
 /// standing in, and `player_entered_cover` for every cover set they are already

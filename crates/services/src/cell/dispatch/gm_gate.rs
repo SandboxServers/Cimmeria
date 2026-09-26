@@ -202,6 +202,21 @@ pub async fn enforce_gm_gate(
     false
 }
 
+/// Minimum `access_level` (the `account.accesslevel` byte) that unlocks the
+/// `.`-console. `2` is `AccessLevel::GameMaster` — see
+/// [`access_level_from_u32`] for the canonical mapping. Kept as a bare
+/// constant (not a typed compare) so the channel gate in `cell::chat` is one
+/// cheap integer test on the hot chat path.
+const GM_ACCESS_LEVEL: u32 = 2;
+
+/// Returns `true` if `access_level` is GameMaster-or-higher and may therefore
+/// use the `.`-console. The chat interceptor calls this before consuming a
+/// `.`-prefixed `CHAN_SAY` line; the NPC AI reads it too.
+/// Re-exported as `cell::console::is_gm`.
+pub(crate) fn is_gm(access_level: u32) -> bool {
+    access_level >= GM_ACCESS_LEVEL
+}
+
 /// Map a raw `access_level` byte to the typed [`AccessLevel`]. Values
 /// above the known range clamp to `Developer` (most privileged) — an
 /// out-of-range stored level should never *lose* privilege, and the

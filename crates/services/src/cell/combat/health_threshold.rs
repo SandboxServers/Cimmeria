@@ -58,6 +58,20 @@ pub fn health_pct(entity: &CellEntity) -> Option<HealthPct> {
     health_pct_from(stat.cur, stat.max)
 }
 
+/// One target's health percentage, sampled immediately before a hit lands,
+/// queued on the `SpaceManager` by `combat::note_pre_damage_health`.
+///
+/// Carries the attacker because the acting player for the chain is the
+/// **attacker**, matching `fire_entity_death` — and for a DoT pulse the
+/// attacker is the effect's invoker (`ActiveEffectInstance::invoker_id`),
+/// not whoever happens to be swinging at the target this tick.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HealthBelowSample {
+    pub attacker_entity_id: u32,
+    pub target_entity_id: u32,
+    pub pct_before: HealthPct,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
