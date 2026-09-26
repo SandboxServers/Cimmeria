@@ -674,6 +674,12 @@ The estimates below are line proportions. Measure the real figures with `tools/b
 
 Weighted by the last 90 days of edits, the average edit would rebuild about 38k lines instead of 106k.
 
+**Measured after wave F** (2026-09-26, the harness in `tools/build-metrics/`; the full table and method are in [build-system.md](build-system.md#results)):
+
+- An edit in `cell::content` followed by the baseline's `cargo test -p cimmeria-services --no-run` took 16.3 s, against 164.7 s before the split (−90%). The same edit followed by `cargo check -p cimmeria-services` took 11.5 s, against 57.3 s.
+- The cold build of the gated workspace took 146.2 s, against 254.7 s, and its peak build memory was 2.9 GB, against 9.4 GB.
+- These figures include the rest of the build overhaul: the Dev Drive, incremental worktree builds, the dependency dedupe, `line-tables-only` and the workspace-hack. The split is what turns an edit from a ~240k-line recompile into a recompile of one crate and the handful above it.
+
 Later options:
 
 - Make the console a plug-in registered by the facade, so `cell` no longer depends on it.

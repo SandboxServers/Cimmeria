@@ -7,7 +7,7 @@ last_updated: 2026-09-26
 
 # Build system: toolchain, profiles, concurrency and disk
 
-> **Status:** Accepted (2026-09-26). Implemented on `build/toolchain-overhaul`, except §6 (cargo-hakari, planned as the last step, after the crate split).
+> **Status:** Accepted and implemented (2026-09-26, `build/toolchain-overhaul`). Measured results are in [Results](#results).
 > **Scope:** how Cimmeria's Rust workspace is compiled on developer and agent machines and in CI, and why. The companion [services-crate-split.md](services-crate-split.md) covers the crate layout.
 
 ## Context
@@ -142,4 +142,38 @@ Development builds run natively on Windows (PowerShell or Git Bash, driven by Cl
 
 ## Results
 
-Filled in by the final measurement of this overhaul (same harness, same machine): see the table at the end of this section once it lands.
+Measured on 2026-09-26 with `tools/build-metrics/measure-build.ps1`, on the same machine (i9-13900KF, 64 GB) and Rust 1.98.1. The baseline is main at `f153138b`, before the overhaul. The final measurement is this branch at `7aa6f9fd`. Both runs:
+
+- started from a fresh worktree with an empty target dir;
+- ran under `lane.sh --exclusive`, so nothing else was building;
+- had sccache off, incremental on and `CARGO_BUILD_JOBS=10`.
+
+The final run's target dir was on the Dev Drive. That is part of what is being measured.
+
+| | Baseline | Final | Change |
+|---|---|---|---|
+| Cold build: `cargo build --workspace --all-targets`, gated set | 254.7 s | 146.2 s | −43% |
+| Edit `cell/content/mod.rs`, then `cargo test -p cimmeria-services --no-run` (the baseline's loop) | 164.7 s | 16.3 s | −90% |
+| The same edit, then `cargo check -p cimmeria-services` | 57.3 s | 11.5 s | −80% |
+| The same edit, then `cargo test -p cimmeria-cell-content --no-run` (the loop now: test the crate you changed) | n/a | 17.7 s | |
+| The same edit, then `cargo check -p cimmeria-cell-content` (first check after a cold `build`) | n/a | 23.2 s | |
+| Peak working set of the build processes, cold | 9.4 GB | 2.9 GB | −69% |
+| Lowest free RAM during the cold build | 19.3 GB | 28.1 GB | |
+| Target dir after all phases | 14.2 GB | 7.1 GB | −50% |
+
+- **Baseline memory figures.** The baseline's memory samples were re-parsed after the fix to the harness's thousands-separator bug, so its `summary.json` memory fields are wrong; the corrected figures are the ones above.
+- **Why the edit loop dropped the most.** An edit in content now rebuilds content and the five crates above it, not a ~240k-line monolith. It rebuilds them incrementally, and no single rustc holds more than about 40k lines.
+- **Why the cold build dropped less.** It still compiles every crate. The gains there come from:
+  - parallel crates;
+  - `line-tables-only` debug info;
+  - the dependency dedupe;
+  - the Dev Drive.
+
+  The workspace-hack's cost to the critical path (§6) is included in the figure.
+- **What the harness doesn't isolate:**
+  - The incremental A/B in §3: an edit, then a `check` of content and services, took 17 s with incremental off and 5.5 s with it on.
+  - The hakari churn in §6: a `-p` check after a workspace check rebuilt up to 36 third-party crates before, and none after.
+  - The lane's job log, in real agent work on the last waves: the median `cargo check` fell from 27.7 s to 17.8 s, and the median scoped `nextest` from 40.6 s to 23.8 s.
+- **Lane slots.** A cold build now peaks at about 3 GB. The job log never saw less than 27 GB free with four builds running, so four slots of `cores / 4` jobs each stay the default. The CPU, not memory, is now the limit on more.
+
+The raw samples, `summary.json` files and cargo `--timings` reports stay in the measuring session's scratchpad. To re-measure, run the harness from a fresh worktree, using the same flags as the table.
