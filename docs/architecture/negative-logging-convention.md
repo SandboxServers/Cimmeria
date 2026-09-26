@@ -235,6 +235,36 @@ Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
 Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
 logging the credential.
 
+## NPC attack-animation seams (NA43)
+
+An NPC attack that cannot resolve its Ability_End `onSequence` still
+deals its damage, so the player takes hits from a guard that never
+visibly fires. `cell/abilities/use_ability/sequence.rs` WARNs on target
+`abilities.sequence` (`event = "ability_end"`) for **NPC attackers
+only**. Most player abilities have no event set (1851 of the 1886
+seeded), so the same condition on a player click is not a defect.
+
+| `outcome` | Seam | Fields |
+|---|---|---|
+| `no_ability_def` | the ability has no loaded `resources.abilities` row | `source_id`, `target_id`, `ability_id`, `suppressed` |
+| `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
+| `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
+| `no_witnesses` | the Ability_End went out to zero AoI witnesses | same, plus `sequence_id` |
+
+This is a Pattern D seam with one deliberate difference: the throttle
+(`SpaceManager::ability_sequence_log`, 60 s window) is keyed by
+**ability id**, not entity. The first three outcomes are facts about a
+seed row, and every NPC firing that ability repeats the same fact. The
+state is bounded by the ability table, so nothing is released in
+`destroy_entity`. The success rows (`ability_begin`, `ability_end`, at
+DEBUG) carry `witness_count`.
+
+The guards are `use_ability/tests/sequence.rs` (each WARN, the NPC-only
+scope, and the burst and independence throttle guards) and
+`service/tests/npc_ai/attack_sequence.rs` (`witness_count = 2` on a real
+fight tick). The seed side is linted by the live-DB
+`spawner/tests/npc_ability_animation.rs`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

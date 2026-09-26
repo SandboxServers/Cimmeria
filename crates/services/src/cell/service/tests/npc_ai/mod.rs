@@ -48,6 +48,8 @@
 //!   its 2 u comfort range (not melee, stationary or in cover; flanked
 //!   yes), the 3 s cooldown, the dead-zone hold, and the landing and the
 //!   cornered case on the real `castle_cellblock.nav`.
+//! - [`attack_sequence`] — NA43 / handoff §26 test 20: a fight tick sends
+//!   each AoI witness the NPC's Ability_End `onSequence`.
 //! - [`stop_hygiene`]  — NA10: a stopped NPC is broadcast with zero
 //!   velocity, and the leash snap keeps the spatial grid in sync.
 //! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
@@ -77,6 +79,7 @@ mod aggression;
 mod aggro_castle;
 mod assist;
 mod assist_castle;
+mod attack_sequence;
 mod being_follower;
 mod dead_player_drop;
 mod leash_reset;

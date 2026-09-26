@@ -301,6 +301,13 @@ pub struct SpaceManager {
     /// one slot per NPC — see `cell::service::npc_ai::dispatch`. Released in
     /// `destroy_entity`.
     pub(crate) zero_health_npc_log: LogThrottle,
+    /// Gates the NPC attack-animation WARNs (`abilities.sequence`
+    /// `no_event_set` / `no_end_sequence` / `no_witnesses`), keyed by
+    /// **ability id**, not entity: the missing sequence is a fact about the
+    /// ability's seed row, so every NPC firing it repeats one fact. Bounded
+    /// by the ability table, so nothing is released per entity. See
+    /// `cell::abilities::use_ability::sequence`.
+    pub(crate) ability_sequence_log: LogThrottle,
     /// NPC AI detector state (NA02): stuck / stale / floating / leash-loop
     /// trackers and their WARN throttles. Reporting only; released in
     /// `destroy_entity` and `destroy_space`. See
@@ -432,6 +439,7 @@ impl SpaceManager {
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
+            ability_sequence_log: LogThrottle::default(),
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
             occluder_residency: HashMap::new(),
