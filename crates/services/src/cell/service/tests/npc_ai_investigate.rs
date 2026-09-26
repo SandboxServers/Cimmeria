@@ -47,7 +47,7 @@ async fn investigate_first_tick_routes_toward_poi() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -80,7 +80,7 @@ async fn investigate_arrival_stamps_dwell() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -113,7 +113,7 @@ async fn investigate_with_elapsed_dwell_returns_to_idle() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -163,7 +163,7 @@ async fn investigate_with_no_poi_drops_to_idle() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -197,7 +197,7 @@ async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -225,7 +225,7 @@ async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

@@ -143,7 +143,7 @@ pub(super) async fn handle_interact(
             entity_id,
             resolved_ability,
             target_entity_id,
-            engine,
+            &crate::cell::content::EngineEvents(engine),
             tx,
             space_mgr,
         )

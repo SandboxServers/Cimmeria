@@ -49,6 +49,6 @@ pub use state::{
 };
 pub use threat::{
     clear_dead_npc_from_all_player_threat, drain_npc_from_player_combat, enter_player_combat,
-    exit_player_combat, generate_threat, AggroCause, LEASH_DISTANCE, NPC_ATTACK_RANGE,
-    NPC_DEFAULT_ABILITY, NPC_MELEE_RANGE, OOC_HOLSTER_DELAY,
+    exit_player_combat, generate_threat, AggroCause, HOLSTER_ANIMATION_DURATION, LEASH_DISTANCE,
+    NPC_ATTACK_RANGE, NPC_DEFAULT_ABILITY, NPC_MELEE_RANGE, OOC_HOLSTER_DELAY,
 };

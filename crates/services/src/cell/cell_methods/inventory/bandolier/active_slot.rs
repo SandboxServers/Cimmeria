@@ -196,7 +196,7 @@ pub(crate) async fn handle_request_active_slot_change(
         let duration = outgoing_item_id
             .and_then(|id| space_mgr.item_defs.get(&id))
             .map(|d| d.holster_animation_duration)
-            .unwrap_or(crate::cell::service::ticks::HOLSTER_ANIMATION_DURATION);
+            .unwrap_or(crate::cell::combat::HOLSTER_ANIMATION_DURATION);
         if let Some(e) = space_mgr.get_entity_mut(entity_id) {
             e.pending_slot_swap_at = Some(std::time::Instant::now() + duration);
             e.pending_slot_swap_target = Some(slot_id);

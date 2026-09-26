@@ -88,7 +88,12 @@ pub async fn dispatch(
                 // alive→dead detection + `fire_entity_death` wrap that
                 // previously lived inline here.
                 crate::cell::abilities::handle_use_ability_with_kill_credit(
-                    entity_id, ability_id, target_id, engine, tx, space_mgr,
+                    entity_id,
+                    ability_id,
+                    target_id,
+                    &crate::cell::content::EngineEvents(engine),
+                    tx,
+                    space_mgr,
                 )
                 .await;
             }

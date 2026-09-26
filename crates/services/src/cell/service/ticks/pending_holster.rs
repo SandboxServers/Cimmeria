@@ -70,7 +70,12 @@ pub(in crate::cell::service) async fn pending_attack_tick(
         // queued shot makes the kill — same divergence the auto-cycle
         // tick had until both paths joined the canonical helper.
         let _ = crate::cell::abilities::handle_use_ability_with_kill_credit(
-            entity_id, ability_id, target_id, engine, tx, space_mgr,
+            entity_id,
+            ability_id,
+            target_id,
+            &crate::cell::content::EngineEvents(engine),
+            tx,
+            space_mgr,
         )
         .await;
     }

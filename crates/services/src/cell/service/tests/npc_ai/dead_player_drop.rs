@@ -95,8 +95,18 @@ async fn npc_drops_a_dead_player_and_does_not_reacquire_it_after_respawn() {
     mgr.update_entity_position(PLAYER, [106.0, 0.0, 0.0], [0, 0, 0], [0.0; 3]);
 
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
-    crate::cell::service::npc_ai::npc_ai_retry_sweep(&tx, &mut mgr, &engine).await;
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    crate::cell::service::npc_ai::npc_ai_retry_sweep(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
 
     let npc = mgr.get_entity(NPC).unwrap();
     assert!(
@@ -121,7 +131,12 @@ async fn fight_pass_drops_a_target_carrying_bsf_dead_despite_health() {
     }
     let (tx, _rx) = mpsc::channel(1024);
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
 
     let npc = mgr.get_entity(NPC).unwrap();
     assert!(

@@ -223,7 +223,12 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
         // click path. The wrapper is a no-op when the target wasn't a
         // live tagged NPC or when no kill happened this tick.
         let _ = crate::cell::abilities::handle_use_ability_with_kill_credit(
-            entity_id, ability_id, target_id, engine, tx, space_mgr,
+            entity_id,
+            ability_id,
+            target_id,
+            &crate::cell::content::EngineEvents(engine),
+            tx,
+            space_mgr,
         )
         .await;
         // Commit/reject is the handler's call. A rejected re-fire

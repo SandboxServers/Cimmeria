@@ -87,7 +87,12 @@ async fn fixture(pool: &sqlx::PgPool, near_tag: &str) -> (SpaceManager, u32) {
 async fn ai_ticks(mgr: &mut SpaceManager, n: usize) {
     let (tx, _rx) = mpsc::channel(256);
     for _ in 0..n {
-        crate::cell::service::npc_ai::npc_ai_tick_for_test(&tx, mgr, &ChainEngine::new()).await;
+        crate::cell::service::npc_ai::npc_ai_tick_for_test(
+            &tx,
+            mgr,
+            &crate::cell::content::EngineEvents(&ChainEngine::new()),
+        )
+        .await;
     }
 }
 

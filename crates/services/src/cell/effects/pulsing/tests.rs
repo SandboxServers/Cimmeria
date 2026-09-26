@@ -12,7 +12,7 @@ use super::{
 };
 
 use crate::cell::space_manager::SpaceManager;
-use cimmeria_content_engine::chain::ChainEngine;
+use crate::test_support::NoContentEvents;
 use cimmeria_entity::abilities::EffectDef;
 use cimmeria_entity::stats::HEALTH;
 use std::collections::HashMap;
@@ -451,7 +451,7 @@ async fn pulse_tick_fires_due_pulse_and_decrements_remaining() {
         }
     }
     let hp_before = mgr.get_entity(2).unwrap().stats.get(HEALTH).unwrap().cur;
-    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
     let hp_after = mgr.get_entity(2).unwrap().stats.get(HEALTH).unwrap().cur;
     assert_eq!(hp_after, hp_before - 10, "DoT pulse should subtract 10");
     let active = &mgr.get_entity(2).unwrap().active_effects;
@@ -472,7 +472,7 @@ async fn pulse_tick_removes_instance_when_remaining_hits_zero() {
             inst.remaining_pulses = 1;
         }
     }
-    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
     let active = &mgr.get_entity(2).unwrap().active_effects;
     assert!(
         active.is_empty(),
@@ -503,7 +503,7 @@ async fn duration_effect_timers_carry_effect_id_as_secondary_id() {
             inst.remaining_pulses = 1;
         }
     }
-    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
     assert!(mgr.get_entity(1).unwrap().active_effects.is_empty());
 
     let mut timers = Vec::new();
@@ -565,7 +565,7 @@ async fn a_dot_cannot_finish_a_surrendered_npc() {
         }
     }
 
-    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
 
     let npc = mgr.get_entity(2).expect("the NPC must still exist");
     assert_eq!(
@@ -612,7 +612,7 @@ async fn a_dot_still_finishes_a_fighting_npc() {
         }
     }
 
-    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
 
     let npc = mgr.get_entity(2).expect("the corpse must still exist");
     assert_eq!(
@@ -641,9 +641,115 @@ async fn pulse_tick_skips_pulse_on_dead_target() {
             inst.next_pulse_at = Instant::now() - Duration::from_secs(2);
         }
     }
-    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
     let hp = mgr.get_entity(2).unwrap().stats.get(HEALTH).unwrap().cur;
     assert_eq!(hp, 0);
     let remaining = mgr.get_entity(2).unwrap().active_effects[0].remaining_pulses;
     assert_eq!(remaining, 3);
+}
+
+// ─── Content events (§2E of docs/architecture/services-crate-split.md) ───
+
+const DOT_NPC: u32 = 3;
+const DOT_NPC_TAG: &str = "Pulse_Guard";
+
+/// `make_mgr` plus a tagged NPC (entity 3) at 100/100 health carrying a DoT
+/// from the player (entity 1, player id 100), already due to pulse
+/// `damage` points.
+async fn armed_dot_npc(damage: i32) -> SpaceManager {
+    let mut mgr = make_mgr();
+    mgr.spawn_npc(DOT_NPC, "W", [3.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(DOT_NPC) {
+        npc.tag = Some(DOT_NPC_TAG.to_string());
+        if let Some(s) = npc.stats.get_mut(HEALTH) {
+            s.update(0, 100, 100);
+            s.clear_dirty();
+        }
+    }
+    let mut effect = make_dot_effect(5, 1.0, damage);
+    effect.effect_id = 9001;
+    mgr.effect_defs.insert(effect.effect_id, effect.clone());
+    let past = Instant::now() - Duration::from_secs(2);
+    let (tx, _rx) = mpsc::channel(64);
+    register_active_effect(&mut mgr, DOT_NPC, 1, &effect, past, &tx).await;
+    if let Some(inst) = mgr
+        .get_entity_mut(DOT_NPC)
+        .and_then(|t| t.active_effects.first_mut())
+    {
+        inst.next_pulse_at = past;
+    }
+    mgr
+}
+
+fn dot_npc_sample() -> crate::cell::combat::HealthBelowSample {
+    crate::cell::combat::HealthBelowSample {
+        attacker_entity_id: 1,
+        target_entity_id: DOT_NPC,
+        pct_before: crate::cell::combat::HealthPct(100.0),
+    }
+}
+
+/// **Order guard for the per-pulse content hooks.** A lethal pulse raises the
+/// death first and the health-below drain second: `dot_kill_credit` stamps
+/// `BSF_DEAD`, which is what the real drain reads to suppress the threshold
+/// chain for a killing tick. Swapping the two calls in `tick.rs` fails this.
+/// The content-side lifecycle tests cannot catch the swap, because the real
+/// drain also drops a lethal sample on `pct_after <= 0`.
+#[tokio::test]
+async fn a_lethal_pulse_raises_the_death_then_drains_health_below() {
+    use crate::test_support::{RecordedContentEvent, RecordingContentEvents};
+
+    let mut mgr = armed_dot_npc(500).await;
+    let recorder = RecordingContentEvents::new();
+    let (tx, _rx) = mpsc::channel(64);
+
+    effect_pulse_tick(&recorder, &tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(DOT_NPC).expect("the corpse stays");
+    assert!(
+        crate::cell::combat::is_dead_state(npc.state_field),
+        "test fixture: the pulse must kill the NPC",
+    );
+    assert_eq!(
+        recorder.events(),
+        vec![
+            RecordedContentEvent::EntityDeath {
+                killer_entity_id: 1,
+                player_id: 100,
+                entity_tag: DOT_NPC_TAG.to_string(),
+            },
+            RecordedContentEvent::PendingHealthBelow {
+                samples: vec![dot_npc_sample()],
+            },
+        ],
+    );
+}
+
+/// A pulse that only wounds raises the drain alone, once per pulse, with the
+/// pre-pulse sample.
+#[tokio::test]
+async fn a_wounding_pulse_raises_only_the_health_below_drain() {
+    use crate::test_support::{RecordedContentEvent, RecordingContentEvents};
+
+    let mut mgr = armed_dot_npc(10).await;
+    let recorder = RecordingContentEvents::new();
+    let (tx, _rx) = mpsc::channel(64);
+
+    effect_pulse_tick(&recorder, &tx, &mut mgr).await;
+
+    let hp = mgr
+        .get_entity(DOT_NPC)
+        .unwrap()
+        .stats
+        .get(HEALTH)
+        .unwrap()
+        .cur;
+    assert_eq!(hp, 90, "test fixture: the pulse must land 100 -> 90");
+    assert_eq!(
+        recorder.events(),
+        vec![RecordedContentEvent::PendingHealthBelow {
+            samples: vec![dot_npc_sample()],
+        }],
+    );
 }

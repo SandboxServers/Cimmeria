@@ -123,7 +123,7 @@ fn log_request(
         })
         .unwrap_or_default();
     let target = req.target_id.and_then(|t| space_mgr.get_entity(t));
-    let target_is_gm = target.map(|t| t.is_player && crate::cell::console::is_gm(t.access_level));
+    let target_is_gm = target.map(|t| t.is_player && crate::cell::dispatch::is_gm(t.access_level));
     let target_pos = target.map(|t| t.position);
     let wps = outcome.map(|o| o.waypoints.as_slice()).unwrap_or_default();
     let max_leg_dy = wps

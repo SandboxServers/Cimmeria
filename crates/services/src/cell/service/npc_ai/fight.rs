@@ -17,7 +17,7 @@ pub(super) async fn npc_ai_fight(
     npc_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-    engine: &cimmeria_content_engine::chain::ChainEngine,
+    events: &dyn crate::cell::content_events::ContentEvents,
 ) {
     use crate::cell::combat;
     use cimmeria_entity::cell_entity::MobMovementType;
@@ -134,7 +134,7 @@ pub(super) async fn npc_ai_fight(
         },
         tx,
         space_mgr,
-        engine,
+        events,
     )
     .await;
     // Standing at its slot the NPC fires over the cover and does not chase.

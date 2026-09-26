@@ -122,9 +122,9 @@ pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 pub(in crate::cell) async fn npc_ai_tick_for_test(
     tx: &tokio::sync::mpsc::Sender<crate::cell::messages::CellToBaseMsg>,
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
-    engine: &cimmeria_content_engine::chain::ChainEngine,
+    events: &dyn crate::cell::content_events::ContentEvents,
 ) {
-    dispatch::npc_ai_tick(tx, space_mgr, engine).await;
+    dispatch::npc_ai_tick(tx, space_mgr, events).await;
 }
 
 // The AI-state transition helper is the only way to change `ai_state`

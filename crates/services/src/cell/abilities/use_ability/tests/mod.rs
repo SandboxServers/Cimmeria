@@ -13,6 +13,7 @@ use cimmeria_entity::abilities::AbilityDef;
 use tokio::sync::mpsc;
 
 mod auto_cycle;
+mod content_events;
 mod fire_los;
 mod gating;
 mod holster_queue;

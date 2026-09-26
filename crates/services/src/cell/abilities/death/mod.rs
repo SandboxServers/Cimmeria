@@ -31,7 +31,7 @@
 
 use tokio::sync::mpsc;
 
-use crate::base::contact_list::wire::EVENT_DEATH;
+use cimmeria_wire::base::contact_list::wire::EVENT_DEATH;
 
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;

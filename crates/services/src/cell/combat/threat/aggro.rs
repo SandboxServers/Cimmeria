@@ -119,6 +119,38 @@ pub use crate::cell::combat::aggression::NPC_DEFAULT_ABILITY;
 /// see flicker when running between encounters.
 pub const OOC_HOLSTER_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// The holster timer's Phase 2 delay (`ticks::holster_timer_tick`, and the
+/// slot swap's deferred unequip) between firing the `Item_Unequip` animation and
+/// broadcasting the mesh-removal `BeingAppearance`. The constant
+/// is *intentionally shorter than the visible animation length* —
+/// it sets when the cell sends `RefreshAppearance(holstered=true)`,
+/// not when the client renders the mesh removal.
+///
+/// Timing target: the mesh-removal `BeingAppearance` should *arrive
+/// on the client* at the instant the holster animation visually
+/// completes. Without an early send the client renders the
+/// animation's final frame (pistol at thigh), then the blend tree
+/// returns to the idle-armed pose (weapon snaps back to the hand
+/// socket) for a few frames before the mesh-removal packet lands —
+/// a visible flicker.
+///
+/// 850ms was the first attempt; user playtest confirmed the flicker
+/// remained, which means the underlying `Item_Unequip` animation is
+/// shorter than ~850ms. 600ms is the next data point — the visible
+/// pistol-to-thigh motion seems to be in the ~500-700ms range based
+/// on the "few frames" of flicker description.
+///
+/// Trade-off at lower values: the mesh removes earlier in the
+/// animation. At 600ms with a ~700ms animation, the pistol vanishes
+/// during the last ~100ms of the holster motion — barely
+/// perceptible because the pistol is already settled at the thigh
+/// socket at that point. Strictly less visible than the flicker.
+///
+/// Empirically tuned against the `KIS-abilities_human.KIS-handling`
+/// Unequip branch — adjust upward if the flicker returns, downward
+/// if the pistol vanishes too early.
+pub const HOLSTER_ANIMATION_DURATION: std::time::Duration = std::time::Duration::from_millis(600);
+
 /// Generate threat on an NPC target from an attacker.
 ///
 /// Transitions the NPC from Idle to Fighting on first hit, accumulates

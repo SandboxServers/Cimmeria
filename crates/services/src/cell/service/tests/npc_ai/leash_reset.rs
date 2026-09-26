@@ -21,7 +21,7 @@ async fn ai_tick(mgr: &mut SpaceManager) -> Vec<CellToBaseMsg> {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
     std::iter::from_fn(|| rx.try_recv().ok()).collect()

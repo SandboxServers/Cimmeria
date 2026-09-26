@@ -129,7 +129,12 @@ async fn a_shot_that_crosses_the_threshold_disengages_both_sides() {
     let (tx, mut rx) = mpsc::channel(128);
 
     crate::cell::abilities::handle_use_ability_with_kill_credit(
-        PLAYER_A, ABILITY, NPC as i32, &engine, &tx, &mut mgr,
+        PLAYER_A,
+        ABILITY,
+        NPC as i32,
+        &crate::cell::content::EngineEvents(&engine),
+        &tx,
+        &mut mgr,
     )
     .await;
 
@@ -218,7 +223,12 @@ async fn the_auto_cycle_tick_closes_the_window_before_the_ai_tick_runs() {
     let (tx, _rx) = mpsc::channel(128);
 
     crate::cell::abilities::handle_use_ability_with_kill_credit(
-        PLAYER_A, ABILITY, NPC as i32, &engine, &tx, &mut mgr,
+        PLAYER_A,
+        ABILITY,
+        NPC as i32,
+        &crate::cell::content::EngineEvents(&engine),
+        &tx,
+        &mut mgr,
     )
     .await;
     assert_eq!(

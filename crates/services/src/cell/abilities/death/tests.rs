@@ -331,7 +331,7 @@ async fn dying_player_own_auto_cycle_clears_and_broadcasts() {
 /// because no `ContactListPresenceEvent` appears in the drained messages.
 #[tokio::test]
 async fn player_death_emits_contact_list_presence_event() {
-    use crate::base::contact_list::wire::EVENT_DEATH;
+    use cimmeria_wire::base::contact_list::wire::EVENT_DEATH;
 
     let mut mgr = make_mgr_with_player_and_npc();
     // Promote entity 2 (the target) to a player with a known character name.

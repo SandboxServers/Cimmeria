@@ -405,7 +405,7 @@ async fn a_wounding_hit_through_the_damage_path_fires_health_below() {
         PLAYER_EID,
         7,
         NPC_EID as i32,
-        &engine,
+        &crate::cell::content::EngineEvents(&engine),
         &tx,
         &mut mgr,
     )
@@ -460,7 +460,7 @@ async fn a_killing_hit_fires_death_and_the_dispatcher_suppresses_health_below() 
         PLAYER_EID,
         7,
         NPC_EID as i32,
-        &engine,
+        &crate::cell::content::EngineEvents(&engine),
         &tx,
         &mut mgr,
     )
@@ -537,7 +537,12 @@ async fn a_dot_pulse_crossing_fires_health_below_once() {
     damage_npc_to(&mut mgr, 35);
     arm_dot_on_npc(&mut mgr, &tx, 10).await;
 
-    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+    crate::cell::effects::effect_pulse_tick(
+        &crate::cell::content::EngineEvents(&engine),
+        &tx,
+        &mut mgr,
+    )
+    .await;
 
     let hp = mgr
         .get_entity(NPC_EID)
@@ -565,7 +570,12 @@ async fn a_second_dot_pulse_below_the_threshold_fires_nothing_more() {
 
     damage_npc_to(&mut mgr, 35);
     arm_dot_on_npc(&mut mgr, &tx, 10).await;
-    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+    crate::cell::effects::effect_pulse_tick(
+        &crate::cell::content::EngineEvents(&engine),
+        &tx,
+        &mut mgr,
+    )
+    .await;
 
     // Make the next pulse due and tick again: 25% -> 15%, already below.
     if let Some(inst) = mgr
@@ -574,7 +584,12 @@ async fn a_second_dot_pulse_below_the_threshold_fires_nothing_more() {
     {
         inst.next_pulse_at = std::time::Instant::now() - std::time::Duration::from_secs(2);
     }
-    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+    crate::cell::effects::effect_pulse_tick(
+        &crate::cell::content::EngineEvents(&engine),
+        &tx,
+        &mut mgr,
+    )
+    .await;
 
     assert_eq!(
         counter(&mgr, WOUND_COUNTER),
@@ -601,7 +616,12 @@ async fn a_killing_dot_pulse_fires_death_and_not_the_threshold() {
     damage_npc_to(&mut mgr, 35);
     arm_dot_on_npc(&mut mgr, &tx, 40).await;
 
-    crate::cell::effects::effect_pulse_tick(&engine, &tx, &mut mgr).await;
+    crate::cell::effects::effect_pulse_tick(
+        &crate::cell::content::EngineEvents(&engine),
+        &tx,
+        &mut mgr,
+    )
+    .await;
 
     let dead = mgr
         .get_entity(NPC_EID)

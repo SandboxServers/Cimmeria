@@ -39,7 +39,7 @@ use crate::cell::space_manager::SpaceManager;
 /// off`. The toggle is keyed by character id and only honoured while the
 /// entity still holds GM access (server-side `access_level`).
 pub(in crate::cell) fn gm_ignores_aggro(space_mgr: &SpaceManager, player: &CellEntity) -> bool {
-    crate::cell::console::is_gm(player.access_level)
+    crate::cell::dispatch::is_gm(player.access_level)
         && player
             .player_id
             .is_some_and(|c| space_mgr.gm_aggro_off.contains(&c))

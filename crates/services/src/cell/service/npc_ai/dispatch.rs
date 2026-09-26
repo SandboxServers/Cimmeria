@@ -98,7 +98,7 @@ pub(in crate::cell::service) const ZERO_HEALTH_WARN_MIN_INTERVAL: Duration =
 pub(in crate::cell::service) async fn npc_ai_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-    engine: &cimmeria_content_engine::chain::ChainEngine,
+    events: &dyn crate::cell::content_events::ContentEvents,
 ) {
     use cimmeria_entity::cell_entity::AiState;
 
@@ -168,7 +168,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
         );
         super::with_outcome_slot(async {
             match ai_state {
-                AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr, engine).await,
+                AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr, events).await,
                 AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
                 AiState::Patrol => npc_ai_patrol(npc_id, tx, space_mgr).await,
                 AiState::Wander => npc_ai_wander(npc_id, tx, space_mgr).await,
@@ -260,7 +260,7 @@ pub(in crate::cell::service) async fn npc_ai_tick(
 pub(in crate::cell::service) async fn npc_ai_retry_sweep(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-    engine: &cimmeria_content_engine::chain::ChainEngine,
+    events: &dyn crate::cell::content_events::ContentEvents,
 ) {
     use cimmeria_entity::cell_entity::AiState;
 
@@ -318,7 +318,7 @@ pub(in crate::cell::service) async fn npc_ai_retry_sweep(
             npc.ai_retry_at = None;
         }
         space_mgr.pending_ai_retries.remove(&npc_id);
-        npc_ai_fight(npc_id, tx, space_mgr, engine).await;
+        npc_ai_fight(npc_id, tx, space_mgr, events).await;
     }
 }
 

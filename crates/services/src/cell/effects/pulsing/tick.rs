@@ -8,7 +8,6 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
-use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::abilities::{
     serialize_timer_update, EffectDef, DT_PHYSICAL, TIMER_DURATION_EFFECT,
 };
@@ -17,6 +16,7 @@ use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use crate::cell::abilities::send_entity_method;
 use crate::cell::client_methods::being::ON_TIMER_UPDATE;
+use crate::cell::content_events::ContentEvents;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -33,20 +33,22 @@ use crate::cell::space_manager::SpaceManager;
 ///   3. Sweep removed instances (remaining_pulses == 0) after the
 ///      pulse-fire loop completes.
 ///
-/// The `engine` handle is what makes a DoT tick content-visible. Each
-/// fired pulse is followed immediately by two content hooks, both of which
-/// were missing before the PR #662 review:
+/// `events` is what makes a DoT tick content-visible (the chain engine in
+/// production, as `&EngineEvents(&engine)`; §2E of
+/// docs/architecture/services-crate-split.md). Each fired pulse is followed
+/// immediately by two content hooks, in this order, both of which were
+/// missing before the PR #662 review:
 ///
-/// - [`crate::cell::content::fire_pending_health_below`], draining the
-///   pre-pulse health sample so `entity_health_below` fires for a
-///   threshold a DoT crossed. Draining per pulse rather than per tick
-///   keeps `pct_after` exact when two DoTs land on the same target in the
-///   same 100ms tick.
 /// - [`dot_kill_credit`], because a pulse that takes a mob to zero used to
 ///   leave it standing at 0 HP with no death transition and no
 ///   `entity_dead_tag` credit at all.
+/// - `ContentEvents::pending_health_below` (`content::fire_pending_health_below`),
+///   draining the pre-pulse health sample so `entity_health_below` fires for a
+///   threshold a DoT crossed. Draining per pulse rather than per tick
+///   keeps `pct_after` exact when two DoTs land on the same target in the
+///   same 100ms tick.
 pub async fn effect_pulse_tick(
-    engine: &ChainEngine,
+    events: &dyn ContentEvents,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
@@ -110,8 +112,8 @@ pub async fn effect_pulse_tick(
             // `entity_health_below` on its way past the band, breaking the
             // "exactly one of the two per hit" contract that the
             // single-target path already honours.
-            dot_kill_credit(entity_id, inst.invoker_id, engine, tx, space_mgr).await;
-            crate::cell::content::fire_pending_health_below(engine, tx, space_mgr).await;
+            dot_kill_credit(entity_id, inst.invoker_id, events, tx, space_mgr).await;
+            events.pending_health_below(tx, space_mgr).await;
             // Update schedule + decrement on the matching instance,
             // located by (effect_id, invoker_id) — index would be unsafe.
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
@@ -213,7 +215,7 @@ pub async fn effect_pulse_tick(
 async fn dot_kill_credit(
     target_id: u32,
     invoker_id: u32,
-    engine: &ChainEngine,
+    events: &dyn ContentEvents,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
@@ -266,7 +268,8 @@ async fn dot_kill_credit(
     let Some(player_id) = space_mgr.get_entity(invoker_id).and_then(|e| e.player_id) else {
         return;
     };
-    crate::cell::content::fire_entity_death(invoker_id, player_id, &tag, engine, tx, space_mgr)
+    events
+        .entity_death(invoker_id, player_id, &tag, tx, space_mgr)
         .await;
 }
 

@@ -42,7 +42,7 @@ async fn zero_health_npc_without_dead_bit_gets_no_ai_turn() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 
@@ -144,7 +144,7 @@ async fn npc_killed_by_an_effect_bleed_does_not_shoot_back() {
     crate::cell::service::npc_ai::npc_ai_tick(
         &tx,
         &mut mgr,
-        &cimmeria_content_engine::chain::ChainEngine::new(),
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
     )
     .await;
 

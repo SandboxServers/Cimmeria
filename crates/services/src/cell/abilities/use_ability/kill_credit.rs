@@ -5,11 +5,11 @@
 //! events for any alive→dead transition (primary target + cone
 //! secondaries) so kill-count missions progress.
 
-use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::stats::HEALTH;
 
+use super::super::super::content_events::ContentEvents;
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 
@@ -25,8 +25,14 @@ use super::handle::handle_use_ability;
 /// Hallway_Guards") progress.
 ///
 /// It also drains the `entity_health_below` samples the damage seam
-/// queued for this cast — see
-/// [`crate::cell::content::fire_pending_health_below`].
+/// queued for this cast (`ContentEvents::pending_health_below`, which in
+/// production is `content::fire_pending_health_below`).
+///
+/// Content events go through `events` (§2E of
+/// docs/architecture/services-crate-split.md): per cast, the health-below
+/// drain first, then one `entity_death` for the primary target, then one per
+/// tagged cone-secondary kill. Production passes the chain engine as
+/// `&EngineEvents(&engine)`.
 ///
 /// **Not** for AoE / ground-target callers: those go through
 /// [`super::super::handle_use_ability_on_ground`], which returns the set of
@@ -40,7 +46,7 @@ use super::handle::handle_use_ability;
 /// calls `handle_use_ability`, and NPC kills shouldn't fire
 /// `EntityDeath` (the killer has no `player_id` — there's no mission to
 /// credit). Tests that exercise `handle_use_ability` mechanics also
-/// don't need to thread a `ChainEngine` through. Keeping the bare
+/// don't need to thread a `ContentEvents` through. Keeping the bare
 /// function callable from those sites preserves both invariants.
 ///
 /// Mirrors the python `useAbility` → `attemptDeath` → `_doDeath` chain
@@ -49,7 +55,7 @@ pub async fn handle_use_ability_with_kill_credit(
     entity_id: u32,
     ability_id: i32,
     target_id: i32,
-    engine: &ChainEngine,
+    events: &dyn ContentEvents,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
@@ -75,7 +81,7 @@ pub async fn handle_use_ability_with_kill_credit(
     // already carries `BSF_DEAD` by now), which is what keeps
     // `entity_dead_tag` and `entity_health_below` mutually exclusive per
     // hit.
-    crate::cell::content::fire_pending_health_below(engine, tx, space_mgr).await;
+    events.pending_health_below(tx, space_mgr).await;
 
     // Skip the death check when the ability was rejected pre-consume —
     // nothing was damaged, so nothing died. Also short-circuits the
@@ -113,7 +119,8 @@ pub async fn handle_use_ability_with_kill_credit(
         }
     };
 
-    crate::cell::content::fire_entity_death(entity_id, player_id, &tag, engine, tx, space_mgr)
+    events
+        .entity_death(entity_id, player_id, &tag, tx, space_mgr)
         .await;
 
     // Cone AoE kill credit: drain the per-attacker scratchpad that
@@ -127,10 +134,9 @@ pub async fn handle_use_ability_with_kill_credit(
     for dead_eid in cone_dead_ids {
         let dead_tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
         if let Some(t) = dead_tag {
-            crate::cell::content::fire_entity_death(
-                entity_id, player_id, &t, engine, tx, space_mgr,
-            )
-            .await;
+            events
+                .entity_death(entity_id, player_id, &t, tx, space_mgr)
+                .await;
         }
     }
     committed

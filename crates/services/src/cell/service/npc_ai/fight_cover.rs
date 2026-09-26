@@ -70,7 +70,7 @@ pub(super) async fn route_via_cover(
     step: CoverStep,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-    engine: &cimmeria_content_engine::chain::ChainEngine,
+    events: &dyn crate::cell::content_events::ContentEvents,
 ) -> CoverRoute {
     let CoverStep {
         npc_id,
@@ -184,7 +184,7 @@ pub(super) async fn route_via_cover(
             // velocity) until the re-pick lands next AI tick (NA10).
             super::stop_npc_movement(space_mgr, npc_id, super::StopReason::CoverReleased);
             if reason == ReleaseReason::Flanked {
-                fire_flank_triggers(npc_id, target_id, tx, space_mgr, engine).await;
+                fire_flank_triggers(npc_id, target_id, tx, space_mgr, events).await;
             }
             CoverRoute::Target
         }
@@ -330,25 +330,20 @@ async fn fire_flank_triggers(
     target_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-    engine: &cimmeria_content_engine::chain::ChainEngine,
+    events: &dyn crate::cell::content_events::ContentEvents,
 ) {
     let npc_template = space_mgr
         .get_entity(npc_id)
         .and_then(|e| e.npc_name.clone())
         .unwrap_or_default();
-    crate::cell::content::fire_npc_flanked(npc_id, target_id, &npc_template, engine, tx, space_mgr)
+    events
+        .npc_flanked(npc_id, target_id, &npc_template, tx, space_mgr)
         .await;
     // Mission-scoped chains (flank objectives, C06) need the flanking
     // player as the action target. No-ops when the threat isn't a player.
-    crate::cell::content::fire_player_flanked_npc(
-        npc_id,
-        target_id,
-        &npc_template,
-        engine,
-        tx,
-        space_mgr,
-    )
-    .await;
+    events
+        .player_flanked_npc(npc_id, target_id, &npc_template, tx, space_mgr)
+        .await;
 }
 
 /// The `decision_outcome=no_cover` row that replaces the silent
