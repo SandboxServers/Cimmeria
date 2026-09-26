@@ -93,6 +93,10 @@ pub(in crate::cell) enum AiTransitionReason {
     FollowNoTarget,
     /// The follow target no longer resolves (despawned / disconnected).
     FollowTargetGone,
+    /// A follower finished its leash (reset in place) and its follow target
+    /// is still in the space, so it goes back to Follow instead of Idle: an
+    /// escort survives a fight (NA42, handoff §17/§18).
+    FollowResumed,
 }
 
 impl AiTransitionReason {
@@ -121,6 +125,7 @@ impl AiTransitionReason {
             Self::InvestigateDone => "investigate_done",
             Self::FollowNoTarget => "follow_no_target",
             Self::FollowTargetGone => "follow_target_gone",
+            Self::FollowResumed => "follow_resumed",
         }
     }
 }
@@ -318,6 +323,7 @@ mod tests {
             AiTransitionReason::LeashSnapFallback.label(),
             "leash_snap_fallback"
         );
+        assert_eq!(AiTransitionReason::FollowResumed.label(), "follow_resumed");
         assert_eq!(AiState::Investigating.label(), "investigating");
     }
 

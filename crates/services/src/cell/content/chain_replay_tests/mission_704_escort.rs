@@ -9,10 +9,13 @@
 //! * **1291** ends it. Reaching the Communications Room advances the
 //!   step, clears the follow, arms the terminal and the workstation
 //!   actor, and retires the cell actor's `!`.
-//! * **1302** restarts it. `AiState::Follow` is preemptable into Fighting
-//!   and `npc_ai_leash` returns to Idle, never to Follow, so one point of
-//!   splash damage on the way to Level 5 ends the escort permanently.
-//!   Clicking Zuritska re-issues the follow. That click is why the cell
+//! * **1302** restarts it. `AiState::Follow` is preemptable into Fighting,
+//!   and before NA42 `npc_ai_leash` returned to Idle, never to Follow, so
+//!   one point of splash damage on the way to Level 5 ended the escort
+//!   permanently. Clicking Zuritska re-issues the follow. Since NA42 the
+//!   leash resumes Follow itself while the leader is in the space, so 1302
+//!   is a harmless backstop: re-arming an actor already following the
+//!   clicking player only replans its route. That click is why the cell
 //!   actor's `!` outlives mission 702 instead of being cleared at the
 //!   rescue — see `mission_702::chain_1263_*`.
 //!
@@ -310,10 +313,11 @@ async fn chain_1291_does_not_resolve_without_704() {
 // Chain 1302 — clicking Zuritska restarts a broken escort
 // ──────────────────────────────────────────────────────────────────────
 
-/// `AiState::Follow` is preemptable into Fighting, and `npc_ai_leash` ends
-/// at Idle and never returns to Follow. One point of splash damage on the
-/// way to Level 5 therefore ends the escort, and before this chain the only
-/// recovery was a relog. Clicking Zuritska re-issues the follow.
+/// `AiState::Follow` is preemptable into Fighting, and before NA42
+/// `npc_ai_leash` ended at Idle and never returned to Follow. One point of
+/// splash damage on the way to Level 5 therefore ended the escort, and
+/// before this chain the only recovery was a relog. Clicking Zuritska
+/// re-issues the follow; since NA42 that is a backstop, not the only repair.
 #[tokio::test]
 async fn chain_1302_interact_re_arms_the_escort_follow() {
     let pool = require_db_or_skip!();

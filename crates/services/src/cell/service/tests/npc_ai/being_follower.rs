@@ -108,8 +108,62 @@ async fn following_being_is_ticked_and_moves_toward_its_leader() {
     );
 }
 
+/// NA42: a following being that takes a hit stays in Follow. Before NA42
+/// `generate_threat` preempted Marsh into `Fighting`, a state the AI tick
+/// never admits for a being, so he froze there for good. Now a being takes
+/// no threat, is not preempted, and does not put the attacker into combat:
+/// he stays AI-driven and keeps walking toward his leader. Revert proof:
+/// drop the being arm in `generate_threat` and the state is `Fighting`,
+/// the NPC leaves the AI-driven set and never moves.
+#[tokio::test]
+async fn damaged_following_being_stays_in_follow_and_keeps_walking() {
+    let mut mgr = castle_with_player();
+    let marsh = mgr.allocate_npc_id();
+    mgr.spawn_npc_from_record(marsh, &being_record("Col Marsh (pet)"))
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(marsh) {
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
+        npc.follow_target_id = Some(PLAYER);
+    }
+
+    let entered = crate::cell::combat::generate_threat(
+        &mut mgr,
+        PLAYER,
+        marsh,
+        40.0,
+        crate::cell::combat::AggroCause::Damage,
+    );
+    assert_eq!(entered, None, "hitting a being puts nobody into combat");
+    let npc = mgr.get_entity(marsh).unwrap();
+    assert_eq!(
+        npc.ai_state(),
+        AiState::Follow,
+        "a being is never preempted"
+    );
+    assert!(npc.threat_list.is_empty(), "a being takes no threat");
+    assert_eq!(npc.follow_target_id, Some(PLAYER));
+    assert!(
+        mgr.get_entity(PLAYER).unwrap().threatened_mobs.is_empty(),
+        "the attacker must not be put into combat with a being"
+    );
+    assert!(mgr.ai_driven_npc_entity_ids().contains(&marsh));
+
+    let (tx, _rx) = mpsc::channel(256);
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    for _ in 0..10 {
+        crate::cell::service::ticks::npc_movement_tick(&mut mgr);
+    }
+    let x = mgr.get_entity(marsh).unwrap().position.x;
+    assert!(
+        x > 5.0,
+        "the hit being must keep walking toward its leader, got x = {x}"
+    );
+}
+
 /// The widening admits no props: an `Idle` being (a crate, a console) is not
-/// ticked, and a being shot into `Fighting` gets no fight pass.
+/// ticked, and a being forced into `Fighting` (nothing in the game puts one
+/// there since NA42) gets no fight pass.
 #[test]
 fn idle_or_fighting_being_is_not_ai_driven() {
     let mut mgr = castle_with_player();

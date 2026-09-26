@@ -55,6 +55,47 @@ const MESSHALL_G1: [f32; 3] = [-96.25, 34.591, -91.59];
 /// `Hallway01_Guard`'s spawn (`spawnlist.sql`) — a second confirmed-connected
 /// topside anchor, further along the escort route.
 const HALLWAY01: [f32; 3] = [-128.853, 39.552, -73.534];
+/// Every Hallway guard spawn on the escort route (`spawnlist.sql`, world
+/// 12), in route order. Mission 686 completes at Hallway05, so the escort
+/// has to be able to walk all the way there.
+const HALLWAY_GUARDS: [(&str, [f32; 3]); 6] = [
+    ("Hallway01_Guard", HALLWAY01),
+    ("Hallway02_Guard", [-113.485, 39.552, -63.042]),
+    ("Hallway03_Guard", [-98.58, 39.55, -77.09]),
+    ("Hallway04_Guard", [-61.349, 34.591, -69.032]),
+    ("Hallway05_Guard1", [-100.16, 24.67, -43.895]),
+    ("Hallway05_Guard2", [-101.5, 24.67, -51.3]),
+];
+
+/// Whether a `find_path` result's last waypoint actually reaches `goal`. A
+/// goal on another mesh component still returns `Some` with a truncated
+/// best-effort path, so "returns Some" or "more than one waypoint" is not a
+/// connectivity proof; the end has to land on the goal.
+///
+/// "On the goal" is within 1 u horizontally: `Hallway02_Guard` is authored
+/// against a wall 0.59 u off the mesh edge, and the route ends at the
+/// nearest walkable point beside it. A route truncated at the edge of
+/// another component ends metres away, not within a unit.
+fn reaches(path: &[cimmeria_common::Vector3], goal: [f32; 3]) -> bool {
+    path.last().is_some_and(|last| {
+        let horizontal = ((last.x - goal[0]).powi(2) + (last.z - goal[2]).powi(2)).sqrt();
+        horizontal < 1.0 && (last.y - goal[1]).abs() < 1.0
+    })
+}
+
+/// Whether Marsh's follow route ends by his leader. The Follow handler aims
+/// one `follow_min_distance` (2 u) short of the leader, so the end must be
+/// within that plus a margin, horizontally, and on the leader's floor. A
+/// route truncated at an island edge ends far from the leader.
+fn follow_leg_reaches(
+    nav_path: &std::collections::VecDeque<cimmeria_common::Vector3>,
+    leader: [f32; 3],
+) -> bool {
+    nav_path.back().is_some_and(|end| {
+        let horizontal = ((end.x - leader[0]).powi(2) + (end.z - leader[2]).powi(2)).sqrt();
+        horizontal <= 3.0 && (end.y - leader[1]).abs() < 1.5
+    })
+}
 
 fn nav_fixture_path() -> &'static Path {
     Path::new("../../data/spaces/castle_cellblock.nav")
@@ -504,10 +545,11 @@ async fn chain_1174_teleport_in_starts_follow_and_routes_a_real_multi_waypoint_p
 
     let marsh = mgr.get_entity(MARSH_EID).unwrap();
     assert!(
-        marsh.nav_path.len() > 1,
-        "follow must route Marsh via a real navmesh path (>1 waypoint) \
-         toward MessHall_Guard1's spawn, not the degenerate single-waypoint \
-         straight-line fallback; got nav_path {:?}",
+        marsh.nav_path.len() > 1 && follow_leg_reaches(&marsh.nav_path, MESSHALL_G1),
+        "follow must route Marsh via a real navmesh path (>1 waypoint) that \
+         reaches MessHall_Guard1's spawn, not the degenerate single-waypoint \
+         straight-line fallback or a route truncated at an island edge; got \
+         nav_path {:?}",
         marsh.nav_path,
     );
 
@@ -526,11 +568,63 @@ async fn chain_1174_teleport_in_starts_follow_and_routes_a_real_multi_waypoint_p
 
     let marsh = mgr.get_entity(MARSH_EID).unwrap();
     assert!(
-        marsh.nav_path.len() > 1,
-        "follow must keep routing Marsh via a real navmesh path as the \
-         player continues along the hallway waypoints, not degrade to a \
-         straight-line fallback; got nav_path {:?}",
+        marsh.nav_path.len() > 1 && follow_leg_reaches(&marsh.nav_path, HALLWAY01),
+        "follow must keep routing Marsh via a real navmesh path that reaches \
+         the player as they continue along the hallway waypoints, not degrade \
+         to a straight-line fallback or stop short; got nav_path {:?}",
         marsh.nav_path,
+    );
+}
+
+/// §10 connectivity: the escort route from the Ring 3 pad reaches every
+/// Hallway guard spawn, through Hallway05 where mission 686 completes. Only
+/// the first hop (MessHall_Guard1) was pinned before NA42. The last
+/// waypoint of `find_path` has to land on each spawn; a spawn on another
+/// mesh component still returns a truncated path, which this rejects.
+/// Needs only the navmesh fixture, no database.
+#[test]
+fn ring_3_pad_route_reaches_every_hallway_guard_spawn() {
+    let Some(mgr) = make_castle_cellblock_mgr_with_navmesh() else {
+        return; // fixture-less CI — skip
+    };
+    let pad = cimmeria_common::Vector3::new(
+        GC1B1_DESTINATION[0],
+        GC1B1_DESTINATION[1],
+        GC1B1_DESTINATION[2],
+    );
+    let mut unreachable = Vec::new();
+    for (tag, spawn) in HALLWAY_GUARDS {
+        let goal = cimmeria_common::Vector3::new(spawn[0], spawn[1], spawn[2]);
+        let path = mgr.find_path(MARSH_EID, &pad, &goal);
+        if !path.as_deref().is_some_and(|p| reaches(p, spawn)) {
+            unreachable.push(format!(
+                "{tag}: last waypoint {:?}",
+                path.and_then(|p| p.last().copied())
+            ));
+        }
+    }
+    assert!(
+        unreachable.is_empty(),
+        "the escort route from the Ring 3 pad must reach every Hallway guard \
+         spawn; unreachable: {unreachable:#?}",
+    );
+
+    // Control: the same predicate rejects a goal on another component. The
+    // Preparation room is disconnected from the topside route (chain 1173's
+    // test), so its route toward Hallway05 must not count as reaching it.
+    let prep = cimmeria_common::Vector3::new(
+        PREP_COLMARSH_SPAWN[0],
+        PREP_COLMARSH_SPAWN[1],
+        PREP_COLMARSH_SPAWN[2],
+    );
+    let (_, hallway05) = HALLWAY_GUARDS[4];
+    let goal = cimmeria_common::Vector3::new(hallway05[0], hallway05[1], hallway05[2]);
+    let from_prep = mgr.find_path(MARSH_EID, &prep, &goal);
+    assert!(
+        !from_prep.as_deref().is_some_and(|p| reaches(p, hallway05)),
+        "`reaches` must reject a truncated route from another component; \
+         got last waypoint {:?}",
+        from_prep.and_then(|p| p.last().copied()),
     );
 }
 
