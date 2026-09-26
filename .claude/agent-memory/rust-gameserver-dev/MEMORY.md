@@ -96,7 +96,7 @@
 
 ## Tooling quirks
 
-- [python-write-mangles-utf8-and-crlf.md](python-write-mangles-utf8-and-crlf.md) — `pathlib.write_text` encodes cp1252 on this host, so a scripted edit that adds an em-dash writes byte `0x97` and the crate stops compiling; always `read_bytes().decode("utf-8")` / `write_bytes(...encode("utf-8"))` and restore CRLF by hand.
+- [python-write-mangles-utf8-and-crlf.md](python-write-mangles-utf8-and-crlf.md) — `pathlib.write_text` encodes cp1252 on this host, so a scripted edit that adds an em-dash writes byte `0x97` and the crate stops compiling; always `read_bytes().decode("utf-8")` / `write_bytes(...encode("utf-8"))` and restore CRLF by hand; Git Bash `sed -i` strips CR too (use `sed -b`).
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
 - [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.

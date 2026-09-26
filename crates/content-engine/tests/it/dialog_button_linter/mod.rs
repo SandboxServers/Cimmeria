@@ -71,21 +71,16 @@
 //!
 //! # Layout
 //!
-//! Cargo fixes the entry point at `tests/dialog_button_linter.rs` and
-//! resolves a bare `mod` from a test root against `tests/` itself, where
-//! every `.rs` file becomes its own test target. So the submodules live
-//! in `tests/dialog_button_linter/` and are pulled in with `#[path]`;
-//! the usual `foo/mod.rs` house style cannot apply here. `sql_scan`
-//! explains why these seeds cannot be read a line at a time the way
-//! `interact_tag_linter.rs` reads its own.
+//! This linter is one module of the crate's single integration-test
+//! binary (`tests/it/main.rs`), so it follows the usual `foo/mod.rs`
+//! house style: the submodules sit beside this file in
+//! `tests/it/dialog_button_linter/`. `sql_scan` explains why these seeds
+//! cannot be read a line at a time the way `interact_tag_linter.rs`
+//! reads its own.
 
-#[path = "dialog_button_linter/rule_guards.rs"]
 mod rule_guards;
-#[path = "dialog_button_linter/rules.rs"]
 mod rules;
-#[path = "dialog_button_linter/seed_model.rs"]
 mod seed_model;
-#[path = "dialog_button_linter/sql_scan.rs"]
 mod sql_scan;
 
 use rules::{
@@ -111,7 +106,7 @@ fn chain_keyed_dialogs_have_a_button_on_their_final_screen_or_none_at_all() {
         violations.is_empty(),
         "dialog button linter (R1) found {n} problem(s):\n{body}\n\n\
          A STALE message means the opposite of a soft-lock: the dialog has been fixed, so \
-         its entry in R1_ALLOWLIST (tests/dialog_button_linter/rules.rs) must be deleted \
+         its entry in R1_ALLOWLIST (tests/it/dialog_button_linter/rules.rs) must be deleted \
          in the same commit as the fix.",
         n = violations.len(),
         body = violations.join("\n"),
@@ -198,7 +193,7 @@ fn every_ui_screen_type_label_is_known_to_the_button_rules() {
     assert!(
         untaught.is_empty(),
         "ui_screen_type label(s) {untaught:?} have no entry in \
-         drawable_button_types() (tests/dialog_button_linter/rules.rs). Until they do, R3 \
+         drawable_button_types() (tests/it/dialog_button_linter/rules.rs). Until they do, R3 \
          cannot check any dialog that uses them."
     );
 }

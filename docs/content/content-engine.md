@@ -723,7 +723,7 @@ Two modules are the exception, and are scoped by **action verb** rather than by 
 
 ### `interact_tag_linter.rs` — boot-free seed-file lint
 
-[interact_tag_linter.rs](../../crates/content-engine/tests/interact_tag_linter.rs) parses seed SQL files line-by-line (no DB, no engine boot) for two invariants:
+[interact_tag_linter.rs](../../crates/content-engine/tests/it/interact_tag_linter.rs) parses seed SQL files line-by-line (no DB, no engine boot) for two invariants:
 
 1. Every `interact_tag` trigger has a matching `set_interaction_type` action **somewhere in the same file** for the same NPC tag, modulo an explicit allowlist with reason comments. Catches the bug class where the chain triggers but no `INT_*` bit is set, so the client renders the entity as scenery and never sends the click.
 2. Within a single chain SQL file, every world prefix uses consistent case. The runtime resolver does case-sensitive string match, so `Castle_CellBlock.Region9` vs `Castle_Cellblock.Region9` silently never fires. Caught chain 1073's typo.

@@ -49,5 +49,21 @@ Two follow-on traps:
 CRLF/LF slip does not produce a spurious git diff — the compile failure is
 the symptom that matters, not the diff.
 
+## Git Bash shell tools have the same CRLF trap (2026-09-26)
+
+- **`sed -i` strips every CR** from each file it is handed, including
+  files with no match. Use `sed -b -i` (binary mode) to keep CRLF. In `-b`
+  mode the line still ends in `\r`, so a `...foo$` anchor never matches:
+  drop the `$` or use the Edit tool for anchored multi-line edits (the
+  Edit tool preserves CRLF).
+- **`grep -c $'\r$'` reports 0 on a CRLF file** (msys grep eats the CR).
+  Count instead: `tr -cd '\r' < f | wc -c` vs `tr -cd '\n' < f | wc -c`;
+  equal means all-CRLF. `unix2dos -q f` repairs a file a tool flattened.
+- **`cargo fmt` can write a CRLF file back as LF** after an edit; recheck
+  endings after formatting.
+- **`git stash` + `git stash pop` turns staged `git mv` renames into
+  unstaged deletes plus staged adds.** Content survives, but the index
+  shape does not; don't stash mid-move, re-stage with `git add -A <dir>`.
+
 Related: [[revert-verification-loses-uncommitted-fmt]],
 [[tooling-filter-and-path-traps]].

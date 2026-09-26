@@ -85,7 +85,7 @@ SET search_path = resources, pg_catalog;
 -- the spawner reads that column onto every spawned entity. Seeding the
 -- bit again would imply it needs setting and invite a later "fix" of a
 -- non-bug. The linter's five allowlist entries
--- (crates/content-engine/tests/interact_tag_linter.rs) record this.
+-- (crates/content-engine/tests/it/interact_tag_linter.rs) record this.
 --
 -- Behavioural note for UAT: a right-click OPENS THE DESTINATION LIST.
 -- It does not teleport. The hop happens on the follow-up

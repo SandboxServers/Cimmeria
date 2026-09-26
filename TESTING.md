@@ -112,12 +112,12 @@ This guide is the playbook for writing tests that survive review and catch real 
 - **If the thing you changed is an executor arm, resolving is not enough.** A resolve-only replay passes identically whether the executor has a match arm or drops the action in its `other =>` catch-all — that is precisely how `move_entity`’s five seeded rows no-opped in production while the suite stayed green. Push the `ResolvedActions` through `executor::execute_actions` and assert on the emitted `CellToBaseMsg`. See `chain_replay_tests/sgc_w1_move_entity.rs`.
 - **A verb with zero seed rows still gets a replay test.** Insert a sentinel chain (`0x7000_xxxx` chain id, per the live-DB rules above), load it through `load_single_chain_for_test`, then delete by exact id *before* asserting so a failing run cannot leave a live chain registered in the shared DB. See `chain_replay_tests/grant_xp.rs`.
 
-**Seed linters (a no-DB sibling).** Some seed invariants span two tables — or a table and a chain file — and a replay test cannot see them, because the chain loads and resolves perfectly while the *data it points at* is wrong. Those live as integration tests under `crates/content-engine/tests/`, parsing the seed SQL directly with no database:
+**Seed linters (a no-DB sibling).** Some seed invariants span two tables — or a table and a chain file — and a replay test cannot see them, because the chain loads and resolves perfectly while the *data it points at* is wrong. Those live as modules of the crate's integration-test binary under `crates/content-engine/tests/it/`, parsing the seed SQL directly with no database:
 
 | Linter | Enforces |
 |---|---|
-| [interact_tag_linter.rs](crates/content-engine/tests/interact_tag_linter.rs) | Every `interact_tag` chain has a `set_interaction_type` for that tag, every region key byte-matches a `point_sets.name`, every `*_chains.sql` is `\ir`'d from `db/database.sql`. |
-| [dialog_button_linter.rs](crates/content-engine/tests/dialog_button_linter.rs) | A dialog that keys a `dialog_choice` chain has zero buttons or a button on its **final** screen; the never-add-a-button dialogs stay zero-button; every button is one its own window can draw (Blurb 1-2, Dialog/Radio/Realization 2 and 4-6); a chain key is not a Tutorial or type-0 dialog. |
+| [interact_tag_linter.rs](crates/content-engine/tests/it/interact_tag_linter.rs) | Every `interact_tag` chain has a `set_interaction_type` for that tag, every region key byte-matches a `point_sets.name`, every `*_chains.sql` is `\ir`'d from `db/database.sql`. |
+| [dialog_button_linter/](crates/content-engine/tests/it/dialog_button_linter/mod.rs) | A dialog that keys a `dialog_choice` chain has zero buttons or a button on its **final** screen; the never-add-a-button dialogs stay zero-button; every button is one its own window can draw (Blurb 1-2, Dialog/Radio/Realization 2 and 4-6); a chain key is not a Tutorial or type-0 dialog. |
 
 **Patterns to follow:**
 
@@ -286,7 +286,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 | An invariant that spans two or more handlers | PL/pgSQL smoke + Rust harness |
 | A race condition or `join!`-of-futures correctness | Concurrency regression guard |
 | Content seed correctness (chains, triggers, action wiring) | Chain-replay test |
-| A seed invariant spanning two tables or a table and a chain file (dialog buttons vs `dialog_choice` keys, `interact_tag` vs `set_interaction_type`) | Seed linter under `crates/content-engine/tests/` |
+| A seed invariant spanning two tables or a table and a chain file (dialog buttons vs `dialog_choice` keys, `interact_tag` vs `set_interaction_type`) | Seed linter under `crates/content-engine/tests/it/` |
 | A BaseApp handler's outbound fan-out (which addrs, in what order, with which bytes) | Fan-out byte test |
 | Mercury protocol-layer behavior (reliable delivery under loss, fragment reassembly, keepalive cadence, encryption round-trip, RTO convergence) | Mercury session test |
 | A protocol-state recovery shape (single-packet drop in a long stream, burst loss, asymmetric ack loss, sustained probabilistic loss, lossy-socket integration), or a pcap-replay regression against a captured production session | Network chaos test |
@@ -371,6 +371,7 @@ This section is mined from review comments since the test push began. Each item 
 
 - **When a test module pushes the host file past 700 lines**, extract concurrency helpers and multi-threaded tests into a sibling `concurrency_tests.rs` or `tests/` submodule. **Reuse the existing `make_state()` / `make_ctx()` helper** — don't clone setup (PRs #143, #150).
 - **De-duplicate setup** across routing tests. PR #140 review required a `make_ctx()` helper so each test focuses on its routing assertion.
+- **A crate's integration tests build as one binary.** Cargo makes every `.rs` file directly under `tests/` its own crate, and each one links the whole dependency graph again. So a crate with more than one integration test file keeps them as modules of `tests/it/main.rs` (today: `content-engine`). Add a new integration test as a module there and declare it in `main.rs`; a shared helper is one more module, declared once, with no `#![allow(dead_code)]`. Run one module with `cargo test -p <crate> --test it <module>`. `cargo test` runs every module's tests on threads of one process, so a scratch directory needs a per-test name (a tag or the thread id), not just `std::process::id()`, and process-global state (`set_var`, `set_current_dir`, a global subscriber a test asserts on) is shared with every other module. A test that really needs its own process stays a separate binary, with a comment saying why.
 
 ### Comment hygiene
 

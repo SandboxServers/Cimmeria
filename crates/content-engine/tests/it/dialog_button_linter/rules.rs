@@ -231,7 +231,7 @@ pub(crate) fn r3_violations(seed: &DialogSeed, refs: &ChainRefs) -> Vec<String> 
             out.push(format!(
                 "  R3 dialog {dialog} (ui_screen_type {window}, referenced by {chains}): \
                  the linter does not know which buttons this window draws. Teach \
-                 drawable_button_types() in tests/dialog_button_linter/rules.rs — until \
+                 drawable_button_types() in tests/it/dialog_button_linter/rules.rs — until \
                  then no button on this dialog is being checked.",
                 chains = refs.references_for(dialog),
             ));

@@ -308,7 +308,7 @@ fn every_interact_tag_chain_has_set_interaction_type() {
          the client (the INT_* bit is never set):\n{}\n\n\
          Either add a set_interaction_type action to the chain, set the \
          entity template's default flags to include the bit, or add an \
-         allowlist entry in tests/interact_tag_linter.rs::allowlist with \
+         allowlist entry in tests/it/interact_tag_linter.rs::allowlist with \
          a comment explaining why.",
         violations.len(),
         violations.join("\n"),
