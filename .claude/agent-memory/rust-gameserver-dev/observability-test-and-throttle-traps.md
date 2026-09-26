@@ -49,7 +49,7 @@ signals the way `despawn` does — `entity.is_player || space.players.contains(&
 emits immediately, then <= 1 per window carrying `suppressed = N`; the
 **counter increments on every occurrence** including suppressed ones.
 Shared primitive is `LogThrottle` in
-`crates/services/src/cell/space_manager/movement_telemetry/`, keyed by
+`crates/cell-world/src/cell/space_manager/movement_telemetry/`, keyed by
 entity and released in `destroy_entity`. Use `saturating_duration_since`
 — plain `Instant` subtraction panics on a rewound sample.
 

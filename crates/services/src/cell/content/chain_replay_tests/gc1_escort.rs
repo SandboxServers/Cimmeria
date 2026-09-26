@@ -13,7 +13,7 @@
 //!
 //! GC1b-1/GC1b-2's tests load the real `data/spaces/castle_cellblock.nav`
 //! fixture (self-skipping when absent, the repo's standard pattern — see
-//! `crates/services/src/cell/space_manager/tests/movement_validation/navmesh.rs`)
+//! `crates/cell-world/src/cell/space_manager/tests/movement_validation/navmesh.rs`)
 //! because "Marsh's post-teleport_in position lands in the topside navmesh
 //! component" and "Marsh's nav_path stays non-degenerate while following"
 //! are both navmesh-shaped claims a fake/no-navmesh fixture cannot prove —

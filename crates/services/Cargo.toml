@@ -11,7 +11,6 @@ cimmeria-mercury = { workspace = true }
 cimmeria-entity = { workspace = true }
 cimmeria-game = { workspace = true }
 cimmeria-content-engine = { workspace = true }
-cimmeria-commands = { workspace = true }
 cimmeria-observability = { workspace = true }
 cimmeria-occluder = { workspace = true }
 # The auth service, login audit events and credential redaction, split out
@@ -32,9 +31,6 @@ cimmeria-discord = { workspace = true }
 # of this crate (docs/architecture/services-crate-split.md, W1b). Re-exported
 # at `base::{resources, chardef, *_overrides}`.
 cimmeria-resources = { workspace = true }
-# Server-driven NPC cover, split out in wave W2a. Re-exported at `cell::cover`
-# beside `cell::cover::stance`, which stays here until the world crate.
-cimmeria-cell-cover = { workspace = true }
 # The cell's DB-backed startup catalogs (spawner loaders, ability trees, the
 # respawner search), split out of this crate (W2b). Re-exported at
 # `cell::{spawner, respawner_fallback}` and `ability_tree`.
@@ -46,6 +42,10 @@ cimmeria-minigame = { workspace = true }
 # deferred AoI, outbox, tick sync, cooked data, contact list, crafting, ...),
 # split out of this crate (B1). Re-exported at the old `base::` paths.
 cimmeria-base-session = { workspace = true }
+# The cell's world state (SpaceManager, the NPC AI's state primitives, the ring
+# FSM, the synchronous effect scripts, the GM gate, ContentEvents), split out
+# of this crate (C1). Re-exported at the old `cell::…` paths.
+cimmeria-cell-world = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
@@ -85,11 +85,6 @@ tokio = { workspace = true, features = ["test-util"] }
 # docs/architecture/transport-trait.md.
 cimmeria-mercury = { path = "../mercury", features = ["test-support"] }
 
-# Property-based testing — used by the AoI differential test to drive
-# random entity walks across many ticks and verify that the per-event
-# diff-accumulated witness set always equals the actual witness set.
-proptest = { workspace = true }
-
 # Implement the `Transport` trait in tests that need send-failure
 # injection (e.g. partial-fragment recovery guard). Mercury's trait
 # uses `#[async_trait]`, so any implementor must also pull it in.
@@ -103,10 +98,14 @@ async-trait = { workspace = true }
 # enforces it.
 cimmeria-test-support = { workspace = true }
 
-# `cell::cover::TEST_WORLD_ID` for the cover tests that stay here because they
-# drive a `SpaceManager` (npc_ai_cover*, ticks/cover, space_manager/cover_hit).
-cimmeria-cell-cover = { workspace = true, features = ["test-support"] }
-
 # `test_default_connected_client_state`, re-exported from the `test_support`
 # shim, for the base tests that stay here.
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
+# The world fixtures (`test_fixtures`: `make_space_manager*`, the occluder and
+# arrival-mesh helpers, the `ContentEvents` fakes) and the test-only hooks
+# (`force_ai_state`, `StepRegionReplayGuard::is_idle`, `resolve_use_cover`),
+# re-exported from the `test_support` shim. Its feature also turns on
+# `cell::cover::TEST_WORLD_ID` (cimmeria-cell-cover's `test-support`) for the
+# cover tests that stay here because they drive the NPC AI (npc_ai_cover*,
+# ticks/cover).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }

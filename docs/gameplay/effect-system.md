@@ -138,7 +138,7 @@ BigWorldTimeComplete: FLOAT  -- Game time when effect expires
 
 - **Effect definitions**: 3,216 in `db/resources/Effects/Seed/effects.sql`
 - **Schema**: `Effect.xsd`
-- **Effect scripts**: `crates/services/src/cell/effects/scripts.rs`, with a matching `match` arm in `registry.rs`
+- **Effect scripts**: `crates/cell-world/src/cell/effects/scripts.rs`, with a matching `match` arm in `registry.rs`
 - **Stat result codes** (`EStatResultCode`): `SRC_None`, `SRC_Absorb`, `SRC_Mortal`, `SRC_Immune`
 - **Cross-cutting ADR**: [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
 

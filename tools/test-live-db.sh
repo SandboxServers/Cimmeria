@@ -33,6 +33,7 @@ LIVE_DB_CRATES=(
   cimmeria-cell-catalog
   cimmeria-minigame
   cimmeria-base-session
+  cimmeria-cell-world
 )
 
 if [ -z "${DATABASE_URL:-}" ]; then

@@ -68,7 +68,6 @@ pub use stargate::{fire_stargate_crossed, fire_stargate_dialed};
 pub(crate) use mission::fire_mission_abandoned;
 pub(super) use mission::{fire_mission_accepted, fire_mission_completed};
 pub(crate) use step_activation::fire_step_activation_regions;
-pub(crate) use step_activation::StepRegionReplayGuard;
 
 /// Fire a content chain directly by ID, bypassing trigger matching.
 ///

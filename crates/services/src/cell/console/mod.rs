@@ -101,19 +101,9 @@ pub(crate) use registry::{Spec, COMMANDS};
 #[cfg(test)]
 pub(crate) use dispatch::exec;
 
-/// Minimum `access_level` (the `account.accesslevel` byte) that unlocks the
-/// `.`-console. `2` is `AccessLevel::GameMaster` — see
-/// [`crate::cell::dispatch::gm_gate`] for the canonical mapping. Kept as a bare
-/// constant (not a typed compare) so the channel gate in
-/// [`crate::cell::chat`] is one cheap integer test on the hot chat path.
-const GM_ACCESS_LEVEL: u32 = 2;
-
-/// Returns `true` if `access_level` is GameMaster-or-higher and may therefore
-/// use the `.`-console. The chat interceptor calls this before consuming a
-/// `.`-prefixed `CHAN_SAY` line.
-pub(crate) fn is_gm(access_level: u32) -> bool {
-    access_level >= GM_ACCESS_LEVEL
-}
+// The `.`-console privilege test lives with the cell's GM gate, in
+// cimmeria-cell-world, because the NPC AI's GM checks sit below the console.
+pub(crate) use crate::cell::dispatch::is_gm;
 
 /// Public, owned description of one registered `.`-console command. Exposed so
 /// out-of-crate callers — the live-research-lab MCP `server_console_list` tool

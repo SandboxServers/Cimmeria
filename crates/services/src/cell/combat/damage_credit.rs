@@ -49,21 +49,12 @@
 //! (`effect_pulse_tick`), plus a per-tick safety drain in the cell message
 //! loop so a queued sample can never outlive one tick.
 
-use super::{health_pct, HealthPct};
+use super::health_pct;
 use crate::cell::space_manager::SpaceManager;
 
-/// One target's health percentage, sampled immediately before a hit lands.
-///
-/// Carries the attacker because the acting player for the chain is the
-/// **attacker**, matching `fire_entity_death` — and for a DoT pulse the
-/// attacker is the effect's invoker (`ActiveEffectInstance::invoker_id`),
-/// not whoever happens to be swinging at the target this tick.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HealthBelowSample {
-    pub attacker_entity_id: u32,
-    pub target_entity_id: u32,
-    pub pct_before: HealthPct,
-}
+// The queued sample is a `SpaceManager` field, so the type lives with the
+// health-percentage arithmetic in cimmeria-cell-world.
+pub use super::health_threshold::HealthBelowSample;
 
 /// Sample `target_entity_id`'s health percentage and queue it for the
 /// content-layer drain. Call this immediately before applying damage.
@@ -126,6 +117,7 @@ pub fn note_pre_damage_health(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell::combat::HealthPct;
 
     const PLAYER_EID: u32 = 1;
     const NPC_EID: u32 = 50;

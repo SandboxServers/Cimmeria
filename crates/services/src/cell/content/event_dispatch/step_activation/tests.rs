@@ -648,33 +648,3 @@ async fn a_failed_advance_does_not_replay() {
         "no step activated, so nothing may be replayed"
     );
 }
-
-// ── The guard in isolation ────────────────────────────────────────────────
-
-#[test]
-fn the_guard_caps_depth_and_clears_on_unwind() {
-    let mut g = StepRegionReplayGuard::default();
-    for step in 0..MAX_REPLAY_DEPTH as i32 {
-        assert_eq!(g.enter(PLAYER_EID, MISSION, step), None, "step {step}");
-    }
-    assert_eq!(
-        g.enter(PLAYER_EID, MISSION, 99),
-        Some("replay_depth_exceeded"),
-    );
-    for _ in 0..MAX_REPLAY_DEPTH {
-        g.exit();
-    }
-    assert!(g.is_idle());
-}
-
-#[test]
-fn the_guard_refuses_a_repeat_of_the_same_step_within_one_activation() {
-    let mut g = StepRegionReplayGuard::default();
-    assert_eq!(g.enter(PLAYER_EID, MISSION, STEP_ONE), None);
-    assert_eq!(
-        g.enter(PLAYER_EID, MISSION, STEP_ONE),
-        Some("step_already_replayed"),
-    );
-    // A different player's identical step is its own slot.
-    assert_eq!(g.enter(PLAYER_EID + 1, MISSION, STEP_ONE), None);
-}

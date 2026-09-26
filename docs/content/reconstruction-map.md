@@ -345,7 +345,7 @@ implemented at [crates/services/src/cell/abilities/cone_aoe/](../../crates/servi
 `is_channeled` / `pulse_count` columns through
 [cell/effects/pulsing/](../../crates/services/src/cell/effects/pulsing/). Nine effect
 scripts are registered in
-[cell/effects/registry.rs](../../crates/services/src/cell/effects/registry.rs) —
+[cell/effects/registry.rs](../../crates/cell-world/src/cell/effects/registry.rs) —
 `HealHealth`, `HealFocus`, `MeleeDamage`, `MeleePhysicalDamage`, `AbsorbShield`, `Stun`,
 `Suppression`, `RangedPhysicalDamage`, `RangedEnergyDamage`.
 

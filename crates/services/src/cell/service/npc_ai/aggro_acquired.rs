@@ -9,8 +9,6 @@
 //!
 //! See `docs/analysis/npc-ai-restoration/telemetry.md` §2.1.
 
-use cimmeria_entity::navigation::LineOfSight;
-
 use super::transition::{world_label, AiTransitionReason};
 use crate::cell::combat::AggroCause;
 use crate::cell::space_manager::SpaceManager;
@@ -30,17 +28,9 @@ impl AggroCause {
     }
 }
 
-/// The three-state `los` / `has_los` label on the AI's per-NPC rows
-/// (`clear`, `blocked`, `unknown`). `npc_ai.los` itself uses the longer
-/// `LineOfSight::label` (`unknown_off_mesh`) because it is the row that
-/// explains the unknown.
-pub(super) fn los_label(los: LineOfSight) -> &'static str {
-    match los {
-        LineOfSight::Clear => "clear",
-        LineOfSight::Blocked => "blocked",
-        LineOfSight::Unknown => "unknown",
-    }
-}
+// The three-state `los` label lives with the detectors, which use it too and
+// sit lower in the crate split (cimmeria-cell-world).
+pub(super) use super::detectors::los::los_label;
 
 /// Emit the `acquired` row and count it. Call after the NPC is in Fighting.
 ///

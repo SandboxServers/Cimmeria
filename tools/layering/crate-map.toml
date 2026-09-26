@@ -91,33 +91,23 @@ cimmeria-services = [
 # `cell::respawner_fallback`) is extracted (W2b): crates/services/src only
 # re-exports it, so it has no rows here.
 
-# cimmeria-cell-cover is extracted (W2a): see `cell::cover` under the cell
-# track for what is left of the module here.
+# cimmeria-cell-cover is extracted (W2a), and so is cimmeria-cell-world (C1):
+# `cell::{space_manager, arrival, playtest_friction, playtest_friction_watch,
+# cover}` are re-exports of it, and `cell::service::npc_ai::{detectors,
+# transition, movement_stop, leash::policy}`, `cell::combat::{aggression,
+# faction_reaction, health_threshold}`, `cell::dispatch::gm_gate` and the
+# synchronous half of `cell::effects` and `cell::ring_transport` live there.
+# None of them is a module of this crate any more, so they have no rows.
 
 # cimmeria-minigame (`minigame`) is extracted (W3c): crates/services/src only
 # re-exports it, so it has no rows here.
 
 # Cell track.
-"cell::space_manager" = "cimmeria-cell-world"
-"cell::arrival" = "cimmeria-cell-world"
-"cell::playtest_friction" = "cimmeria-cell-world"
-"cell::playtest_friction_watch" = "cimmeria-cell-world"
-"cell::ring_transport" = "cimmeria-cell-world"
-"cell::effects" = "cimmeria-cell-world"
-# Since W2a `cell::cover` here is only the path shim that re-exports
-# cimmeria-cell-cover beside `stance.rs`; both go to world in C1.
-"cell::cover" = "cimmeria-cell-world"
-"cell::service::npc_ai::detectors" = "cimmeria-cell-world"
-"cell::service::npc_ai::transition" = "cimmeria-cell-world"
-"cell::service::npc_ai::movement_stop" = "cimmeria-cell-world"
-"cell::service::npc_ai::leash::policy" = "cimmeria-cell-world"
-"cell::combat::aggression" = "cimmeria-cell-world"
-"cell::combat::faction_reaction" = "cimmeria-cell-world"
-"cell::dispatch::gm_gate" = "cimmeria-cell-world"
-
 "cell::combat" = "cimmeria-cell-combat"
 "cell::abilities" = "cimmeria-cell-combat"
-"cell::effects::pulsing" = "cimmeria-cell-combat"
+# Since C1 `cell::effects` here is the path shim that re-exports the world
+# crate's effect scripts beside the async `pulsing` layer, which is combat.
+"cell::effects" = "cimmeria-cell-combat"
 "cell::service::npc_ai" = "cimmeria-cell-combat"
 "cell::cell_methods::player::world::reload" = "cimmeria-cell-combat"
 "cell::cell_methods::player::world::item_sequence" = "cimmeria-cell-combat"
@@ -125,9 +115,10 @@ cimmeria-services = [
 
 "cell::content" = "cimmeria-cell-content"
 "cell::missions" = "cimmeria-cell-content"
-"cell::ring_transport::dispatch" = "cimmeria-cell-content"
-"cell::ring_transport::runtime::entry" = "cimmeria-cell-content"
-"cell::ring_transport::runtime::tick" = "cimmeria-cell-content"
+# Since C1 `cell::ring_transport` and `cell::ring_transport::runtime` here are
+# path shims that re-export the world crate's ring FSM beside the effect
+# dispatcher and the runtime entry points, which content takes (§2G).
+"cell::ring_transport" = "cimmeria-cell-content"
 "cell::interactions::dialog" = "cimmeria-cell-content"
 
 "cell::interactions" = "cimmeria-cell-interactions"
@@ -171,7 +162,9 @@ cimmeria-services = [
 # This module only, not the modules below it.
 [exact]
 "" = "cimmeria-services"
-"cell" = "cimmeria-cell-world"
-# Since B1 `base/mod.rs` only declares the modules still here and re-exports
-# the session crate and `BaseService`, which go to the facade (plan §2H).
+# Since C1 `cell/mod.rs` holds only module declarations and re-exports
+# (`CellError` is in cimmeria-cell-world); since B1 `base/mod.rs` only declares
+# the modules still here and re-exports the session crate. Their
+# `pub use service::{CellService, BaseService}` move to the facade (§2H).
+"cell" = "cimmeria-services"
 "base" = "cimmeria-services"

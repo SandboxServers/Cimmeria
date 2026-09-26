@@ -143,7 +143,7 @@ across a `.await`.
 self.account_id.is_none() || (self.is_player && self.archetype_id.is_some())
 ```
 
-`compute_player_aoi` ([`cell/space_manager/aoi.rs`](../../crates/services/src/cell/space_manager/aoi.rs))
+`compute_player_aoi` ([`cell/space_manager/aoi.rs`](../../crates/cell-world/src/cell/space_manager/aoi.rs))
 skips a non-introducible entity entirely — it never enters `current_aoi`, so
 the witness set is not marked and the entity is introduced properly on a
 later tick.
@@ -387,7 +387,7 @@ ends of a failed introduction. The row is catalogued in
     player-to-player visibility as `NT`, not `CW`.
 - **GMs are introduced as plain players.** `connect_entity` stamps
   `class_id = 0x02` (`SGWPlayer`) for every player
-  ([`cell/space_manager/entities.rs:337`](../../crates/services/src/cell/space_manager/entities.rs)),
+  ([`cell/space_manager/entities.rs:337`](../../crates/cell-world/src/cell/space_manager/entities.rs)),
   never `0x03` (`SGWGmPlayer`). Left alone on purpose: the witness method
   encoding assumes `IDBASE_SGW_PLAYER` for every player ghost, and
   `SGWGmPlayer`'s idbase has not been verified. Changing the class id

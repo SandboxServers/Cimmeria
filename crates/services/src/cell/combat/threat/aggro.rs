@@ -54,14 +54,9 @@ impl AggroCause {
     }
 }
 
-/// Default leash radius in world units, used when the NPC's template does not
-/// set `entity_templates.leash_distance`. It is measured from the **NPC's own**
-/// position to its spawn point, horizontally, not from the target (NA12,
-/// D-NA03): the old target-to-spawn test fired on a player standing 49.9 u
-/// from spawn and bounded how far any NPC would chase. The hysteresis band,
-/// vertical cap and the other leash policy numbers live in
-/// `cell::service::npc_ai::leash::policy`.
-pub const LEASH_DISTANCE: f32 = 50.0;
+// The default leash radius lives with the rest of the leash policy numbers,
+// which sit lower in the crate split (cimmeria-cell-world).
+pub use crate::cell::service::npc_ai::leash::policy::LEASH_DISTANCE;
 
 /// Maximum attack range in world units for NPC ranged attacks.
 /// NPCs won't fire until the target is within this distance.
@@ -111,9 +106,9 @@ pub const NPC_ATTACK_RANGE: f32 = 30.0;
 /// sites, which all go through `ability_select::effective_max_range`.
 pub const NPC_MELEE_RANGE: f32 = 3.0;
 
-/// Default NPC attack ability ID: "Pistol Shot" (ability 592, ranged DD).
-/// Was incorrectly 597 ("Heal Focus") — a self-heal, not an attack.
-pub const NPC_DEFAULT_ABILITY: i32 = 592;
+// The default NPC attack ability lives with the other NPC combat defaults,
+// in cimmeria-cell-world, because spawning grants it.
+pub use crate::cell::combat::aggression::NPC_DEFAULT_ABILITY;
 
 /// How long after leaving combat the weapon stays drawn before
 /// auto-holstering. Tuned to absorb the gap between killing one mob and

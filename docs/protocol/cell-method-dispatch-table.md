@@ -434,7 +434,7 @@ line 65) is index **109**; counting forward in document order (skipping
 ### Authorization
 
 The **entire** SGWGmPlayer tail (`index >= 109`) is GM-gated by
-`crates/services/src/cell/dispatch/gm_gate.rs`: a caller whose
+`crates/cell-world/src/cell/dispatch/gm_gate.rs`: a caller whose
 `CellEntity::access_level` is below `GameMaster` is rejected with an `onErrorCode`
 (method 121) **before** any handler runs. One range rule (`index >= 109`) secures
 every gm* method, implemented or not. See

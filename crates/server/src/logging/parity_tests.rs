@@ -639,8 +639,8 @@ fn wire_log_events_keep_protocol_log_and_index() {
 #[test]
 fn npc_population_events_keep_spawner_log() {
     let (dispatch, hits) = harness(FILE_LAYERS);
-    let population = "cimmeria_services::cell::space_manager::npc_population";
-    let spawn = "cimmeria_services::cell::space_manager::spawn";
+    let population = "cimmeria_cell_world::cell::space_manager::npc_population";
+    let spawn = "cimmeria_cell_world::cell::space_manager::spawn";
     for lvl in LEVELS {
         let sinks = sinks_for(&dispatch, &hits, population, lvl);
         assert!(
@@ -736,6 +736,99 @@ fn base_session_events_keep_their_file_and_index() {
         "cimmeria_base_session::base::deferred_aoi",
         "cimmeria_base_session::base::crafting::persistence",
         "cimmeria_base_session::base::gm_spawn",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
+/// The cell's world state moved from `cimmeria_services::cell` to the
+/// `cimmeria-cell-world` crate (services crate split, wave C1), which changed
+/// the `module_path!()` of every untargeted row in it. Each moved module must
+/// still land where it did: in its own file at every level (`aoi.log` for
+/// `space_manager` and the NPC AI's state primitives under `cell::service`,
+/// `combat.log` for the world half of combat, `spawner.log` for the ring
+/// FSM, `dispatch.log` for the GM gate), in `server.log` from INFO, and in
+/// one OTLP index per level. The effect scripts, the cover stance, arrival
+/// and the playtest friction watch have no file and keep `server.log` plus
+/// their index. `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_cell_world`, so without its own `OTEL_FILTER` row every DEBUG
+/// row here would silently stop reaching SigNoz; without the file rows the
+/// files would silently empty of them.
+#[test]
+fn world_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for (target, file) in [
+        (
+            "cimmeria_cell_world::cell::space_manager::entities",
+            "aoi.log",
+        ),
+        (
+            "cimmeria_cell_world::cell::service::npc_ai::detectors::sweep",
+            "aoi.log",
+        ),
+        (
+            "cimmeria_cell_world::cell::service::npc_ai::transition",
+            "aoi.log",
+        ),
+        (
+            "cimmeria_cell_world::cell::combat::aggression",
+            "combat.log",
+        ),
+        (
+            "cimmeria_cell_world::cell::ring_transport::transporter::manager",
+            "spawner.log",
+        ),
+        (
+            "cimmeria_cell_world::cell::ring_transport::runtime::teardown",
+            "spawner.log",
+        ),
+        (
+            "cimmeria_cell_world::cell::dispatch::gm_gate",
+            "dispatch.log",
+        ),
+    ] {
+        let file = format!("file:{file}");
+        let file = file.as_str();
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::TRACE),
+            set(&[file, OTLP_TRACE]),
+            "{target} at TRACE"
+        );
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[file, OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+    for target in [
+        "cimmeria_cell_world::cell::effects::scripts",
+        "cimmeria_cell_world::cell::cover::stance",
+        "cimmeria_cell_world::cell::arrival",
+        "cimmeria_cell_world::cell::playtest_friction_watch",
     ] {
         let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
         // No file keeps it at TRACE, so the trace index does not either.

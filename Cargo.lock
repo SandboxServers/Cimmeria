@@ -915,6 +915,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cell-world"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-cell-catalog",
+ "cimmeria-cell-cover",
+ "cimmeria-commands",
+ "cimmeria-common",
+ "cimmeria-content-engine",
+ "cimmeria-entity",
+ "cimmeria-mercury",
+ "cimmeria-observability",
+ "cimmeria-occluder",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "proptest",
+ "quick-xml 0.41.0",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-client-launch"
 version = "0.1.0"
 dependencies = [
@@ -1202,8 +1226,7 @@ dependencies = [
  "cimmeria-auth",
  "cimmeria-base-session",
  "cimmeria-cell-catalog",
- "cimmeria-cell-cover",
- "cimmeria-commands",
+ "cimmeria-cell-world",
  "cimmeria-common",
  "cimmeria-content-engine",
  "cimmeria-discord",
@@ -1217,7 +1240,6 @@ dependencies = [
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-wire-log",
- "proptest",
  "quick-xml 0.41.0",
  "rand 0.10.2",
  "rand_chacha 0.10.0",

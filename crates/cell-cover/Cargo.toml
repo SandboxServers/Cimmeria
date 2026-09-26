@@ -9,10 +9,10 @@ description = "Server-driven NPC cover for the Cimmeria server emulator: the wor
 # Split out of cimmeria-services (wave W2a of
 # docs/architecture/services-crate-split.md). The module tree keeps its old
 # nesting (`cell::cover`), so cimmeria-services re-exports it at the same path.
-# `cell::cover::stance` stays in cimmeria-services until the world crate takes
-# it: it runs Cover Stance through the effect-script layer and reads the
-# SpaceManager, and both sit above this crate. Nothing here depends on another
-# split crate.
+# `cell::cover::stance` is in cimmeria-cell-world (wave C1), which re-exports
+# this crate beside it: it runs Cover Stance through the effect-script layer
+# and reads the SpaceManager, and both sit above this crate. Nothing here
+# depends on another split crate.
 [dependencies]
 cimmeria-common = { workspace = true }
 # `navigation::{NavMesh, LineOfSight}` for the peek-point search and the
@@ -25,8 +25,8 @@ tracing = { workspace = true }
 
 [features]
 # Exposes the test-only hooks (`cell::cover::TEST_WORLD_ID`) to other crates'
-# tests. cimmeria-services turns it on through its [dev-dependencies]; a
-# production build never sees them.
+# tests. cimmeria-cell-world turns it on through its own `test-support`
+# feature and its [dev-dependencies]; a production build never sees them.
 test-support = []
 
 [dev-dependencies]

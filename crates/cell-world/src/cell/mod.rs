@@ -1,0 +1,44 @@
+//! The cell's world state, under the `cell::` paths it had in
+//! `cimmeria-services`.
+//!
+//! `cimmeria-services`' `cell` module re-exports each of these modules at the
+//! same path, beside the cell systems that sit above this crate (combat,
+//! content, interactions, the cell-method handlers, the console and the
+//! service loop).
+
+pub mod arrival;
+pub mod combat;
+pub mod content_events;
+pub mod cover;
+pub mod dispatch;
+pub mod effects;
+pub mod playtest_friction;
+pub mod playtest_friction_watch;
+pub mod ring_transport;
+pub mod service;
+pub mod space_manager;
+
+// Lower crates, at the `cell::` paths the moved code names them by.
+pub(crate) use cimmeria_cell_catalog::cell::{respawner_fallback, spawner};
+pub(crate) use cimmeria_wire::cell::{kismet, messages, player_journal};
+
+use cimmeria_common::{EntityId, SpaceId};
+
+/// Errors specific to the cell service.
+#[derive(Debug, thiserror::Error)]
+pub enum CellError {
+    #[error("Space {0} not found")]
+    SpaceNotFound(SpaceId),
+
+    #[error("Entity {0} not found in any cell")]
+    EntityNotFound(EntityId),
+
+    #[error("Failed to create space: {0}")]
+    SpaceCreationFailed(String),
+
+    #[error("Service not running")]
+    NotRunning,
+
+    #[error("Network error: {0}")]
+    Network(#[from] std::io::Error),
+}

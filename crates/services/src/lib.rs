@@ -42,11 +42,6 @@ pub use cimmeria_wire_log::wire_log;
 // registers tickets in its `SessionRegistry`) keeps resolving.
 pub use cimmeria_minigame::minigame;
 
-/// The `mercury::aoi` test that drives a `SpaceManager`, which is still in
-/// this crate. Test-only.
-#[cfg(test)]
-mod mercury_aoi_tests;
-
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.
 #[cfg(test)]

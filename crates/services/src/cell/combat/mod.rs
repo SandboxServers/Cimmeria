@@ -4,6 +4,11 @@
 //! - [`aggression`]: effective NPC aggression (override, else faction
 //!   reaction), aggro radius and vertical band (NA13).
 //! - [`faction_reaction`]: the 2009 `FACTION_REACTION_TABLE`.
+//!
+//! `aggression`, `faction_reaction` and `health_threshold` are in
+//! `cimmeria-cell-world` (wave C1 of `docs/architecture/services-crate-split.md`):
+//! spawning and the NPC detectors read them, and `SpaceManager` queues the
+//! health sample. They are re-exported here at their old paths.
 //! - [`damage`]: QR (Quality Rating) hit/miss/crit and damage pipeline.
 //! - [`damage_credit`]: the seam-level pre-hit health sample every damage
 //!   path queues for the `entity_health_below` content trigger.
@@ -12,12 +17,10 @@
 //! - [`state`]: dead/alive flag bit-packing in `stateField`.
 //! - [`threat`]: NPC aggro state, threat list, leash/attack-range constants.
 
-pub mod aggression;
+pub use cimmeria_cell_world::cell::combat::{aggression, faction_reaction, health_threshold};
 pub mod auto_cycle;
 pub mod damage;
 pub mod damage_credit;
-pub mod faction_reaction;
-pub mod health_threshold;
 pub mod state;
 pub mod threat;
 
@@ -36,12 +39,9 @@ pub use damage::{
 pub use damage_credit::{note_pre_damage_health, HealthBelowSample};
 pub use health_threshold::{health_pct, health_pct_from, HealthPct};
 
-/// Faction sentinel for "this entity is hostile to players" — every
-/// damage / interact path that needs to gate on hostility imports this.
-/// Mirrors python `Atrea.enums.FACTION_Aggressive = 10`. Future faction
-/// model overhaul (PvP, contested factions) will retire this in favour
-/// of a per-pair hostility table.
-pub const HOSTILE_FACTION: u8 = 10;
+// The hostile-faction sentinel lives with the faction reaction table, in
+// cimmeria-cell-world, because spawning reads it.
+pub use faction_reaction::HOSTILE_FACTION;
 
 pub use state::{
     is_dead_state, mark_npc_dead, BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,

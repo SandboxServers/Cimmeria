@@ -117,7 +117,7 @@ RECEIVING RING:
 
 #### Bounded aborts (Cimmeria, not 2009)
 
-The Python original had no timeouts: `SEND_WAIT`, `RECV_WAIT`, `RECV_WARMUP` and `REMOTE_LOAD_WAIT` all waited forever. Because `selectDestination` refuses any destination that is not `IDLE`, one stalled trip removed that pad from every peer that could reach it — on Harset's five-ring fully-connected mesh, permanently, for everybody. Cimmeria adds a bounded deadline to each of those four states ([`ring_transport/transporter/mod.rs:75-110`](../../crates/services/src/cell/ring_transport/transporter/mod.rs#L75-L110)):
+The Python original had no timeouts: `SEND_WAIT`, `RECV_WAIT`, `RECV_WARMUP` and `REMOTE_LOAD_WAIT` all waited forever. Because `selectDestination` refuses any destination that is not `IDLE`, one stalled trip removed that pad from every peer that could reach it — on Harset's five-ring fully-connected mesh, permanently, for everybody. Cimmeria adds a bounded deadline to each of those four states ([`ring_transport/transporter/mod.rs:75-110`](../../crates/cell-world/src/cell/ring_transport/transporter/mod.rs#L75-L110)):
 
 | Constant | Value | State it bounds |
 |---|---|---|
@@ -136,7 +136,7 @@ None of the four values is recovered data — they are judgement calls. `REMOTE_
 
 The readiness gate is `players_loaded.len() == num_remote_players()` — a *length* comparison — so **membership is checked before an arrival is counted**. `player_loaded` refuses an entity that is not in `expected_players`, and the cross-world `AdvanceRingDestination` hook (`handle_remote_player_loaded`) gates on the ring being in `RemoteLoadWait` *and* expecting this player. Without both halves, a passenger whose load timed out on one trip could satisfy the next trip's gate on its way in, advancing the ring for a passenger list the arrival is not on and leaving that trip's real travellers hidden and locked past the transition that releases them. A refused arrival is not dropped: it takes the late-arrival release (shown, unlocked, `teleport_in` fired) so its mission credit survives.
 
-**Departure cleanup.** A participant going away is handled two ways ([`runtime/teardown.rs`](../../crates/services/src/cell/ring_transport/runtime/teardown.rs)):
+**Departure cleanup.** A participant going away is handled two ways ([`runtime/teardown.rs`](../../crates/cell-world/src/cell/ring_transport/runtime/teardown.rs)):
 
 - **Client disconnect** calls `forget_player` synchronously from `SpaceManager::disconnect_entity`, before the AoI teardown runs. Rings the player was holding are released immediately; rings where co-travellers survive get a queued load-readiness re-check, because the expectation just shrank by one and the remaining travellers may now be ready.
 - **Every other teardown path** (GM despawn, respawn, a non-ring teleport) goes through the synchronous `SpaceManager::destroy_entity`, which has no channel to send on, so it records the departure and the next 100ms ring tick reconciles it.

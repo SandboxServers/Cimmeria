@@ -31,7 +31,7 @@
 //!
 //! This function does not mutate the NPC's `nav_path`, velocity or Cover
 //! Stance — those are caller concerns (`npc_ai::fight_cover`,
-//! `cimmeria_services::cell::cover::stance`). Reservation state (and the seek deferral that rides
+//! `cimmeria_cell_world::cell::cover::stance`). Reservation state (and the seek deferral that rides
 //! on it) is the only thing it touches, because the reservation table is
 //! the load-bearing invariant for "no two NPCs in the same slot" and has
 //! to be atomically consistent with the decision.
@@ -117,7 +117,7 @@ pub(super) fn try_reserve_or_warn(
 /// scoring pass will re-evaluate. Better to log + continue than to
 /// panic the cell process and kill every active player session.
 ///
-/// Public for `cimmeria_services::cell::cover::stance`, which takes the
+/// Public for `cimmeria_cell_world::cell::cover::stance`, which takes the
 /// reservation lock the same way.
 pub fn lock_or_recover(m: &Mutex<CoverReservations>) -> MutexGuard<'_, CoverReservations> {
     match m.lock() {

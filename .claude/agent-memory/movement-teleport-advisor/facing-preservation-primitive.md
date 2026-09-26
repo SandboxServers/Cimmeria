@@ -13,7 +13,7 @@ moved entity's facing to north. Witnesses render it; the moved player sees it
 on their own avatar.
 
 `SpaceManager::update_position_preserving_facing(entity_id, position, velocity)`
-(`crates/services/src/cell/space_manager/entities.rs`, landed 2026-09-17) is the
+(`crates/cell-world/src/cell/space_manager/entities.rs`, landed 2026-09-17) is the
 position-only writer — it never touches `direction`, so the facing survives by
 construction rather than by a capture/restore the caller can forget. Both
 writers share the private `write_position` tail. `update_entity_position` is

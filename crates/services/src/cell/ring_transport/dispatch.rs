@@ -16,6 +16,9 @@ use super::transporter::{Effect, State};
 use super::wire_helpers::{
     send_destination_list, send_play_sequence, send_visible, update_state_flag, BSF_MOVEMENT_LOCK,
 };
+// The release-only dispatcher lives with the teardown hook that needs it, in
+// cimmeria-cell-world; the runtime's tick and entry points reach it here.
+pub(super) use super::runtime::dispatch_release_effects;
 use crate::cell::content;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -217,41 +220,6 @@ pub(super) async fn dispatch_effects(
 ) {
     for effect in effects {
         dispatch_effect(effect, tx, space_mgr, engine).await;
-    }
-}
-
-/// Dispatch the release effects an abort produces — `ShowPlayer` and
-/// `UnlockMovement` only.
-///
-/// Exists because the abort paths reachable from
-/// `SpaceManager::disconnect_entity` have no [`ChainEngine`] in hand, and
-/// [`dispatch_effect`] needs one for `Effect::FireTeleportIn`. Restricting
-/// the accepted set is the point, not a limitation: an abort must never fire
-/// arrival content for a trip that did not arrive. Anything else in the list
-/// is an FSM bug and is logged rather than silently skipped.
-pub(super) async fn dispatch_release_effects(
-    effects: Vec<Effect>,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    for effect in effects {
-        match effect {
-            Effect::ShowPlayer { entity_id } => {
-                send_visible(entity_id, true, tx, space_mgr).await;
-            }
-            Effect::UnlockMovement { entity_id } => {
-                update_state_flag(entity_id, BSF_MOVEMENT_LOCK, false, tx, space_mgr).await;
-            }
-            other => {
-                tracing::error!(
-                    effect = ?other,
-                    reason = "non_release_effect_in_abort",
-                    "ring abort: FSM produced an effect that is not a player release — \
-                     dropped, because the abort path has no ChainEngine and must not fire \
-                     arrival content for a trip that never arrived"
-                );
-            }
-        }
     }
 }
 

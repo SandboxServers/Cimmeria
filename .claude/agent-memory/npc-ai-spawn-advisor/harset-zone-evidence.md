@@ -10,7 +10,7 @@ metadata:
 ## `worlds.flags` does NOT drive instancing in Cimmeria
 
 Instancing comes from `entities/spaces.xml` `Instanced="..."`
-(`crates/services/src/cell/space_manager/xml.rs:56`, `xml.rs:87-97`).
+(`crates/cell-world/src/cell/space_manager/xml.rs:56`, `xml.rs:87-97`).
 `worlds.flags` is read nowhere in Rust. They disagree for Harset_CmdCenter:
 
 | world | DB `flags` | spaces.xml `Instanced` | cell_spaces.xml startup |

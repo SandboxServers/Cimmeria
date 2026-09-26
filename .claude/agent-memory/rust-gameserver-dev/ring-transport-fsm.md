@@ -15,7 +15,7 @@ Asserting `state == Idle` is a happy-path test.
 
 ## Two destroy paths in `SpaceManager`, and they are not interchangeable
 
-`crates/services/src/cell/space_manager/entities.rs`:
+`crates/cell-world/src/cell/space_manager/entities.rs`:
 
 - `disconnect_entity(&mut self, entity_id, tx)` — **async, has `tx`**. The real
   client-disconnect route (`handle_disconnect_entity`). Emits `LeftAoI` to every

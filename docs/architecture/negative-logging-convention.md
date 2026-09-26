@@ -72,7 +72,7 @@ entity in Harset.
 | Throttle state is keyed by entity and released in `destroy_entity` | Bounded by the live entity population, and a recycled `entity_id` must not inherit a predecessor's open window — that would swallow the first reject of a fresh session, the exact row Pattern D exists to protect |
 
 The shared primitive is `LogThrottle` in
-[`crates/services/src/cell/space_manager/movement_telemetry/`](../../crates/services/src/cell/space_manager/movement_telemetry/mod.rs),
+[`crates/cell-world/src/cell/space_manager/movement_telemetry/`](../../crates/cell-world/src/cell/space_manager/movement_telemetry/mod.rs),
 parameterised on the window so each caller picks its own
 (`movement.validation_reject` uses 1 s against a 10 Hz packet rate;
 `npc_ai.path_fail` uses 5 s against the AI tick). Reuse it rather than

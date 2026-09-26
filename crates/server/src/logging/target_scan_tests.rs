@@ -28,6 +28,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "base-session",
     "cell-cover",
     "cell-catalog",
+    "cell-world",
     "commands",
     "common",
     "content-engine",

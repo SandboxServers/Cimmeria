@@ -219,7 +219,7 @@ returning `Accepted`. Three details matter for correctness:
 The bypass is scoped to the flagged entity only — every other entity's
 `movement_unrestricted` defaults `false` and is validated exactly as
 before. Regression guards (prefix `feat_onphysics_`) live in
-`crates/services/src/cell/space_manager/tests/movement_validation.rs`
+`crates/cell-world/src/cell/space_manager/tests/movement_validation.rs`
 (bypass accepts out-of-bounds / off-navmesh / teleport-shaped moves; the
 default-false negative control still rejects; a NaN poisoning attempt is
 rejected and the teleport gate keeps working afterward; two entities in
@@ -252,7 +252,7 @@ and height. See
 `access_level` is read from the `account.accesslevel` column at login and
 carried into the cell by `InitPlayerState`; it is never derived from a
 client-supplied byte. This is the same trust model as
-[`cell::dispatch::gm_gate`](../../crates/services/src/cell/dispatch/gm_gate.rs)
+[`cell::dispatch::gm_gate`](../../crates/cell-world/src/cell/dispatch/gm_gate.rs)
 and the `.`-console channel gate. The bypass emits a warn-level
 `movement.navmesh_gm_bypass` event and a
 `movement_validation_warns_total{reason="navmesh_gm_bypass"}` counter, so
@@ -277,7 +277,7 @@ reconnect, or authored-but-unreachable content coordinates, reach the same
 state for an ordinary player.
 
 `SpaceManager::reject_outcome`
-([client_move.rs](../../crates/services/src/cell/space_manager/client_move.rs))
+([client_move.rs](../../crates/cell-world/src/cell/space_manager/client_move.rs))
 resolves every hard reject into one of three outcomes:
 
 | Outcome | When | Caller action |
@@ -410,7 +410,7 @@ not an arbitrary smaller value), `just_above_jump_tolerance_is_still_invalid`,
 `below_navmesh_small_clip_is_still_invalid` (the asymmetry guard),
 `far_below_navmesh_same_xz_is_still_invalid`, and
 `jump_in_place_is_accepted_not_rejected` in
-`crates/services/src/cell/space_manager/tests/movement_validation/mod.rs`
+`crates/cell-world/src/cell/space_manager/tests/movement_validation/mod.rs`
 (end-to-end, also at the real apex).
 
 ## Follow-ups (not in #478)

@@ -165,6 +165,7 @@ component_management:
         - "crates/cell-catalog/**"
         - "crates/minigame/**"
         - "crates/base-session/**"
+        - "crates/cell-world/**"
       statuses:
         - type: project
           target: 62%

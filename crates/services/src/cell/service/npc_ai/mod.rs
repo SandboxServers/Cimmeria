@@ -65,7 +65,13 @@ mod aggro_acquired;
 mod aggro_gates;
 mod assist;
 mod chase;
-pub(in crate::cell) mod detectors;
+// The NPC AI's state primitives (`detectors`, `transition`, `movement_stop`,
+// `leash::policy`) are in `cimmeria-cell-world` (wave C1): every lower cell
+// system calls them. Imported at their old paths.
+pub(in crate::cell) use cimmeria_cell_world::cell::service::npc_ai::detectors;
+// The detector tests drive the AI and movement ticks, which stay here.
+#[cfg(test)]
+mod detector_tests;
 mod dispatch;
 mod fight;
 pub(in crate::cell::service) mod fight_cover;
@@ -75,14 +81,14 @@ mod follow;
 mod ground_endpoint_tests;
 mod idle_aggro;
 mod investigate;
-mod leash;
+pub(in crate::cell) mod leash;
 mod lifecycle;
-mod movement_stop;
+use cimmeria_cell_world::cell::service::npc_ai::movement_stop;
 mod path_failure;
 mod path_request;
 mod patrol;
 mod step_back;
-mod transition;
+use cimmeria_cell_world::cell::service::npc_ai::transition;
 mod wander;
 
 // Re-export discipline: external callers reach these via

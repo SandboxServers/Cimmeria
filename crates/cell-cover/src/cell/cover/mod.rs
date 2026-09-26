@@ -34,8 +34,8 @@
 //!
 //! The spawn hold, Cover Stance grant/revoke and the one release every
 //! combat-end path calls are not here: they run through the effect-script
-//! layer and read the `SpaceManager`, so they live in `cimmeria-services` as
-//! `cimmeria_services::cell::cover::stance` (wave W2a of
+//! layer and read the `SpaceManager`, so they live in `cimmeria-cell-world`
+//! as `cell::cover::stance` (waves W2a and C1 of
 //! `docs/architecture/services-crate-split.md`), built on [`lock_or_recover`]
 //! and [`horizontal`] from this module.
 

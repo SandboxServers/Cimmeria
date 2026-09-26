@@ -47,7 +47,7 @@ impl SpaceBounds {
     /// **Tightening path.** When a previously navmesh-less zone gets
     /// its navmesh wired, the per-space navmesh `bmin`/`bmax` becomes
     /// the source automatically (see `apply_client_position_update` in
-    /// `crates/services/src/cell/space_manager/entities.rs`). A later
+    /// `crates/cell-world/src/cell/space_manager/entities.rs`). A later
     /// validator layer narrows the in-bounds-cheating window by
     /// recording authorized server-side teleports (ring transport,
     /// respawn, content-engine teleport) via a `note_authorized_teleport`

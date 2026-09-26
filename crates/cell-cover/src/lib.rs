@@ -11,11 +11,11 @@
 //! `docs/architecture/services-crate-split.md`). The module tree keeps its old
 //! nesting under `cell`, so `crate::cell::cover::…` and `super::…` paths inside
 //! it are unchanged, and `cimmeria-services` re-exports the module at its old
-//! path, `cimmeria_services::cell::cover`. One file stays behind:
+//! path, `cimmeria_services::cell::cover`. One file lives above it:
 //! `cell/cover/stance.rs` (the spawn hold, Cover Stance and the shared
 //! release) needs the effect-script layer and the `SpaceManager`, which sit
-//! above this crate, so it lives in `cimmeria-services` at
-//! `cimmeria_services::cell::cover::stance` until the world crate takes it.
+//! above this crate, so it is in `cimmeria-cell-world` (wave C1), whose
+//! `cell::cover` re-exports this crate beside it.
 //!
 //! Tracing: the hand-named `cover.*` targets are unchanged; the module-path
 //! rows (the loader's counts, the poisoned-mutex warnings) are now

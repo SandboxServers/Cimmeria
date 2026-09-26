@@ -11,7 +11,7 @@
 //!
 //! The *effective* level of an NPC toward a viewer is the override when one
 //! is set, otherwise the faction reaction table
-//! (`cimmeria_services::cell::combat::faction_reaction`), exactly as
+//! (`cimmeria_cell_world::cell::combat::faction_reaction`), exactly as
 //! `SGWPlayer.getAggressionLevel` derived it in the python reference.
 
 use serde::{Deserialize, Serialize};

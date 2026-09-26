@@ -138,6 +138,33 @@ Learned extracting `cimmeria-base-session` (B1, the first base-track wave):
   mutation that matches `\r\n` silently fails its assert; compare `line.strip()` instead.
 - **Something outside the wave may modify tracked files in the worktree** (the lane
   script changed mid-session). Stage explicit paths, never `git add -A`.
+Learned extracting `cimmeria-cell-world` (C1, the biggest cell wave, 22k lines):
+
+- **rustc reports privacy in phases.** The first services check shows only
+  E0603/E0364 (paths); field and method privacy (E0616/E0624) appear only once
+  those are fixed, and the test target adds a third wave. Loop: `check -p world`,
+  widen restricted items at each dead-code site; `check -p services`, widen at
+  each `::: file:line` definition site rustc prints for E0624; then
+  `--all-targets`. The 452 E0624s collapsed onto six methods.
+- **Dead-in-world is a proxy, not the answer.** A `pub(crate)` helper is dead
+  in the new crate when its only callers are dead too; widening it gives an
+  `unreachable_pub`. Grep the higher crate for each name and restore the HEAD
+  visibility of the ones it never names.
+- **A `#[cfg(test)]` hook other crates need** becomes
+  `#[cfg(any(test, feature = "test-support"))] #[doc(hidden)] pub`, and so must
+  every private `#[cfg(test)]` helper it calls, or the feature build breaks.
+  A production `pub(crate)` fn behind a test-only re-export needs a gated
+  wrapper instead: `pub` in a private module re-exported only under the
+  feature trips `unreachable_pub` in a normal build.
+- **A shim's private `mod x;` shadowing a public glob's `x`** (the services
+  `ring_transport` shim declares `runtime` beside `pub use world::…::*`) trips
+  `hidden_glob_reexports`; make the local module `pub`.
+- **A test file under a moved directory that drives the monolith** moves back
+  with `git mv` to a sibling (`detectors/tests/` -> `npc_ai/detector_tests/`);
+  rewrite its `super::super::x` paths to `super::super::detectors::x`.
+- **Prove a new parity test by reverting a row.** Removing
+  `cimmeria_<crate>=debug` or one file row must fail it; do it with a script
+  file, not a heredoc (the `\`-newline continuations get mangled).
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),

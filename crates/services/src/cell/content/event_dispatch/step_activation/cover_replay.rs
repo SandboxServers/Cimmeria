@@ -18,7 +18,7 @@
 //! Everything else follows the region replay: mission-gated chains only, so a
 //! second delivery fails the gate the first one moved; containment re-checked
 //! before every fire, because an earlier replayed chain may have moved the
-//! player; and the caller's [`StepRegionReplayGuard`](super::StepRegionReplayGuard)
+//! player; and the caller's [`StepRegionReplayGuard`](crate::cell::space_manager::StepRegionReplayGuard)
 //! bounds a replayed chain that advances into another step.
 
 use std::time::Instant;
