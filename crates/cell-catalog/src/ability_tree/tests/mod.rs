@@ -2,4 +2,5 @@
 
 mod catalog_live_db;
 mod predicate;
+mod seed_live_db;
 mod spend_gates;
