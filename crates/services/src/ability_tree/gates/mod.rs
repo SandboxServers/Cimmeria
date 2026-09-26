@@ -17,6 +17,7 @@ use super::predicate::{TrainContext, TrainReject};
 
 pub(super) mod node;
 pub(super) mod spend;
+pub(super) mod trainer;
 
 /// A gate over a resolved node.
 pub(super) type NodeGate = fn(&TrainContext<'_>, &TreeNode) -> Result<(), TrainReject>;
@@ -27,7 +28,9 @@ pub(super) const NODE_GATES: &[NodeGate] = &[
     node::prerequisites,
     spend::branch_points,
     spend::points,
-    // Trainer gates (gates/trainer.rs) go here.
+    trainer::pinned,
+    trainer::offered,
+    trainer::in_range,
 ];
 
 /// What `node::resolve` establishes before any [`NodeGate`] runs.

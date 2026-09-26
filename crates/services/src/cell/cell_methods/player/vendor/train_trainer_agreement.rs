@@ -50,6 +50,9 @@ fn fixture() -> crate::cell::space_manager::SpaceManager {
         p.abilities.add_ability(KNOWN);
         p.tree_progress.tree_points_spent = 2;
         p.tree_progress.training_points = 3;
+        // The purchase side reads the pin; `interact` sets it before the
+        // trainer opens.
+        p.last_interaction_target = Some(TRAINER);
     }
     mgr.spawn_npc(TRAINER, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
         .unwrap();

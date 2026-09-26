@@ -11,6 +11,9 @@ use super::constants::*;
 
 mod session;
 mod train;
+mod train_feedback;
+#[cfg(test)]
+mod train_feedback_tests;
 #[cfg(test)]
 mod train_spend_tests;
 #[cfg(test)]

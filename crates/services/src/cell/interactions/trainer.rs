@@ -19,7 +19,9 @@
 //! predicate `trainAbility` uses (mirrors Python
 //! `AbilityTrainer.canTrainAbility`): the ability exists, isn't already
 //! known, is in the player's archetype tree, and the player meets its level
-//! and prerequisites.
+//! and prerequisites. The predicate's trainer-authority gates (AT-04) read
+//! this trainer as the pin, so a player who has walked out of range sees
+//! every node greyed, exactly as a purchase would be refused.
 //!
 //! Wire (verified against pcap + python):
 //!   `INT32 TrainerID, UINT32 count, [N × (INT32 abilityID + UINT8 trainable)], INT32 CostToRespec`
@@ -155,6 +157,16 @@ pub(crate) async fn try_open_trainer(
     // `trainAbility` for it would be forwarded: both sides call
     // `evaluate_train`. The client enables the Train button from this byte
     // alone, so a disagreement is a button that does nothing when pressed.
+    //
+    // Both callers pass the player's pin as `target_entity_id` (`interact`
+    // pins it just before calling here; the re-sends read it back), so the
+    // trainer gates see the same trainer a purchase would.
+    let pin = super::trainer_pin(
+        space_mgr,
+        player_entity_id,
+        Some(target_entity_id),
+        Some(player_archetype),
+    );
     let entries: Vec<(i32, u8)> = offered
         .iter()
         .map(|&ability_id| {
@@ -168,6 +180,7 @@ pub(crate) async fn try_open_trainer(
                 known: &player.abilities,
                 tree_points_spent: player.tree_progress.tree_points_spent,
                 training_points: player.tree_progress.training_points,
+                trainer: pin,
             };
             let trainable = match evaluate_train(&ctx) {
                 Ok(_) => 1,
@@ -276,7 +289,8 @@ pub(crate) mod tests {
             p.tree_progress.training_points = 1;
         }
 
-        mgr.spawn_npc(200, "W", [5.0; 3], [0.0; 3]).unwrap();
+        // Within MAX_INTERACT_DISTANCE (5): the trainer gate re-checks range.
+        mgr.spawn_npc(200, "W", [3.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(t) = mgr.get_entity_mut(200) {
             t.template_id = Some(25);
         }
@@ -300,7 +314,8 @@ pub(crate) mod tests {
         mgr.parse_spaces_xml(xml).unwrap();
         mgr.create_startup_spaces(cxml).unwrap();
         mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
-        mgr.spawn_npc(200, "W", [5.0; 3], [0.0; 3]).unwrap();
+        // Within MAX_INTERACT_DISTANCE (5): the trainer gate re-checks range.
+        mgr.spawn_npc(200, "W", [3.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(t) = mgr.get_entity_mut(200) {
             t.template_id = Some(99);
         }

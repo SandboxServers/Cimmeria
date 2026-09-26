@@ -26,6 +26,10 @@ fn ctx<'a>(catalog: &'a AbilityTreeCatalog, known: &'a HashSet<i32>) -> TrainCon
         known,
         tree_points_spent: 0,
         training_points: 3,
+        trainer: TrainerPin::Trainer {
+            offered: &[ABILITY],
+            in_range: true,
+        },
     }
 }
 

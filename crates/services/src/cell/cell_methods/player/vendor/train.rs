@@ -1,7 +1,9 @@
 //! Ability training: cell-side validation guards before the base-side
 //! `training_points` debit + DB persist.
 
+use super::train_feedback::send_reject_feedback;
 use crate::ability_tree::{evaluate_train, TrainContext, TrainPlan, TrainReject};
+use crate::cell::interactions::trainer_pin;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
@@ -19,6 +21,12 @@ use tokio::sync::mpsc;
 /// 6. Every prerequisite is in `entity.abilities`
 /// 7. Archetype-wide `tree_points_spent` meets `required_branch_points`
 /// 8. `training_points` covers the node's `skill_point_cost`
+/// 9. The pinned `last_interaction_target` is a live trainer that offers
+///    the ability to this archetype and is still in interaction range
+///    (AT-04: a forged `trainAbility` used to train from anywhere)
+///
+/// A rejection other than "already known" is answered with `onErrorCode`
+/// and a re-send of the pinned trainer (`train_feedback.rs`, D-AT08).
 ///
 /// On all checks passing, sends `CellToBaseMsg::TrainAbility` (with the
 /// node's cost and branch) to the base. The base does the cost debit,
@@ -54,6 +62,12 @@ pub(super) async fn handle_train_ability(
             known: &entity.abilities,
             tree_points_spent: entity.tree_progress.tree_points_spent,
             training_points: entity.tree_progress.training_points,
+            trainer: trainer_pin(
+                space_mgr,
+                entity_id,
+                entity.last_interaction_target,
+                entity.archetype_id,
+            ),
         };
         (
             evaluate_train(&ctx),
@@ -74,6 +88,7 @@ pub(super) async fn handle_train_ability(
                 player_level,
                 ability_id,
             );
+            send_reject_feedback(entity_id, ability_id, &reject, tx, space_mgr).await;
             return;
         }
     };
@@ -234,6 +249,23 @@ fn log_rejection(
             cost = *cost,
             training_points = *available,
             "trainAbility: not enough training points — rejecting"
+        ),
+        // Trainer authority. Info, not warn: walking away with the window
+        // open is ordinary play; a forged packet looks the same on the wire
+        // and is refused either way.
+        TrainReject::NoTrainerPinned
+        | TrainReject::TrainerDespawned
+        | TrainReject::PinNotATrainer
+        | TrainReject::NotOfferedByTrainer
+        | TrainReject::TrainerOutOfRange => tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = reject.reason(),
+            entity_id,
+            player_id = pid,
+            archetype_id = archetype_id.unwrap_or_default(),
+            ability_id,
+            "trainAbility: not at a trainer that teaches this ability — rejecting"
         ),
     }
 }
@@ -413,11 +445,19 @@ mod handle_train_ability_tests {
             &mut mgr,
             TreeNode::with_defaults(1, 0, TEST_ABILITY, 1, vec![]),
         );
+        // A trainer within interaction range, offering the node to Soldiers.
+        mgr.spawn_npc(200, "W", [3.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(t) = mgr.get_entity_mut(200) {
+            t.template_id = Some(25);
+        }
+        mgr.template_trainer_lists.insert(25, 1);
+        mgr.trainer_abilities.insert((1, 1), vec![TEST_ABILITY]);
         if let Some(e) = mgr.get_entity_mut(1) {
             e.player_id = Some(100);
             e.archetype_id = Some(1);
             e.level = 5;
             e.tree_progress.training_points = 1;
+            e.last_interaction_target = Some(200);
         }
         let (tx, mut rx) = mpsc::channel(8);
         handle_train_ability(1, TEST_ABILITY, &tx, &mut mgr).await;
