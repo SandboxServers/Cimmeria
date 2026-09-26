@@ -1,6 +1,6 @@
 # Abilities + Effects System
 
-> **Last updated**: 2026-09-18
+> **Last updated**: 2026-09-26
 > **Audience**: Engineers touching combat / abilities / effects on the cell
 > **Type**: ADR + reference
 > **Owner**: Combat systems
@@ -130,7 +130,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Adding new TCM values is additive — add a fourth route. Re-routing existing TCMs is risky (changes content behaviour).
 
-**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs), [`crates/services/src/cell/abilities/dispatch.rs`](../../crates/services/src/cell/abilities/dispatch.rs).
+**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs), [`crates/services/src/cell/abilities/dispatch/mod.rs`](../../crates/services/src/cell/abilities/dispatch/mod.rs).
 
 ### 9. Absorption pool drain: elemental-specific first, generic catch-all second
 
@@ -453,6 +453,64 @@ point or a volume, not an entity's eyes. The gameplay rules are in
 
 **Reversibility:** High. The gate is one `if` in `handle.rs` and one pre-gate in the
 auto-cycle tick. Removing it fails `a_shot_through_the_hallway_walls_is_refused_with_error_39`.
+
+### 21. Warmup is a pending cast per caster, fired by the 100 ms tick (AT-10)
+
+**Decision:** `handle_use_ability` is the launch half of a cast. It validates, charges the
+cooldown for `cooldown + warmup`, and sends the cooldown timer. With a zero warmup it then
+calls `fire::fire_cast` in the same pass, and the wire is unchanged from before AT-10. With a
+positive warmup it sends `Ability_Begin` and the `AbilityWarmup` (type 1) timer, and parks a
+`PendingCast` on the caster (`CellEntity.pending_cast`, indexed by
+`SpaceManager.pending_casts`). `warmup::warmup_tick` runs every AoI tick. It interrupts a
+caster that has moved, re-validates each cast whose warmup has expired, and fires it through
+the same `fire_cast`: ammo, `Ability_End`, channel cancel, damage, cone fan-out, auto-reload.
+Each of those runs once per cast, in the fire phase. NPC casters use the same path, and the
+NPC fight tick holds while its NPC is casting. A ground-target cast parks its ground point
+with the primary, and its secondaries are collected when it fires.
+
+One primitive, `warmup::interrupt_pending_cast`, cancels a warmup. It refunds the cooldown
+and sends the player a zeroed warmup timer and a zeroed cooldown timer, then sends
+`Ability_Interrupt` (1002) to the caster and witnesses. It also stops the auto-cycle loop if
+the interrupted ability is the loop's. The triggers are:
+
+| Trigger | Source | Where |
+|---|---|---|
+| Caster death | python `onDead` → `interruptAbility` | `death::apply_death_transition`, beside the channel cancel |
+| Active bandolier slot change | python `onBandolierSlotChange` | `handle_request_active_slot_change`, when the slot differs |
+| Caster moves ≥ 0.5 m (planar), unless `AF_CHANNEL_ALLOWS_MOVEMENT` | channel rule (decision 11); `SGWAbilityManager.def` pairs `lastWarmUpInterruptTime` with `lastChannelInterruptTime` | `warmup_tick` |
+| Caster in another space (whatever the flag) | Rust addition | `warmup_tick` |
+| At fire: a player's active-slot weapon is not the one it launched with | python `onBandolierSlotChange` also covered "the active item was swapped/removed" | `warmup_tick` |
+| At fire: target gone, dead, in another space, or no longer a valid target (#444) | Rust addition | `warmup_tick` |
+| At fire: target beyond range (sends `onErrorCode` 42) | Rust addition, the launch's own check | `warmup_tick` |
+| At fire: no line of sight for a player (sends `onErrorCode` 39) | Rust addition, decision 20 | `warmup_tick` |
+| At fire: a player's weapon is reloading or short of ammo | Rust addition | `warmup_tick` |
+
+A second launch while a cast warms up is refused silently, whatever the ability. Python
+`canUseAbility` refused while `currentAbility` was set.
+
+**Why:** Python (`AbilityInstance.launch` / `afterWarmup` / `interrupt`) is the only
+reference for the split, and it is followed where it speaks: the cooldown starts at launch
+and covers the warmup, ammo is spent at the fire, and the speed stats shorten the warmup.
+Death and slot change interrupt, the cooldown is refunded, and the cancel is the zeroed
+warmup timer plus `Ability_Interrupt`. Python's `afterWarmup` re-checked nothing and applied
+the effects to a dead or distant target. The fire-time checks are the conservative
+server-authoritative choice: a cast the launch would refuse is refused at the fire, with the
+same error codes. The zeroed cooldown timer is an addition, because python refunded the
+server cooldown without telling the client. The loop stop is an addition too, because
+without it a refunded auto-cycle ability relaunches on the next tick. A stun does not
+interrupt: nothing in python or in the Rust launch path gates on a stun, and a stun is only
+`BSF_MOVEMENT_LOCK`, which ring transport and death also set.
+
+**Reversibility:** High for the triggers: each is one call. The launch/fire split itself is
+load-bearing. `warmup_damage_waits_for_the_warmup_and_lands_once` fails if the fire goes back
+into the launch pass, and `zero_warmup_wire_is_unchanged` pins the zero-warmup bytes.
+
+**Code:** [`use_ability/handle.rs`](../../crates/services/src/cell/abilities/use_ability/handle.rs)
+(launch), [`use_ability/fire.rs`](../../crates/services/src/cell/abilities/use_ability/fire.rs)
+(fire), [`use_ability/warmup/`](../../crates/services/src/cell/abilities/use_ability/warmup/mod.rs)
+(park, tick, interrupt), [`dispatch/mod.rs`](../../crates/services/src/cell/abilities/dispatch/mod.rs)
+(`fire_ground_cast_after_warmup`). Evidence and test list:
+[AT-10 worknote](../analysis/ability-trees/worknotes/at10.md).
 
 ## Cross-cutting follow-ups
 
