@@ -440,9 +440,16 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
     let Some(e) = space_mgr.get_entity(npc_id) else {
         return;
     };
+    // NA44: which world and instance, what it fights with, and whether each
+    // ability can animate (`event_set_ids` 0 = no fire animation).
+    let ability_ids = super::npc_identity::sorted_ability_ids(e);
+    let event_set_ids = super::npc_identity::ability_event_set_ids(space_mgr, &ability_ids);
+    let world = space_mgr.get_entity_world_name(npc_id).unwrap_or_default();
     tracing::debug!(
         target: "spawner.npc_behaviour",
         npc_id,
+        world = %world,
+        space_id = space_mgr.get_entity_space_id(npc_id).unwrap_or(0),
         npc_name = e.npc_name.as_deref().unwrap_or(""),
         tag = e.tag.as_deref().unwrap_or(""),
         template_id = e.template_id.unwrap_or(0),
@@ -472,6 +479,9 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         wander_radius = e.wander_radius,
         interaction_flags = e.interaction_type_flags,
         loot_table_id = ?e.loot_table_id,
+        ability_ids = ?ability_ids,
+        event_set_ids = ?event_set_ids,
+        weapon_visual = %super::npc_identity::weapon_visual(e),
         "NPC spawned -- resolved behaviour"
     );
 }

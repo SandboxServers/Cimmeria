@@ -28,6 +28,7 @@ mod dialogs;
 mod eye_heights;
 mod loot;
 mod missions;
+pub(crate) mod npc_identity;
 mod npcs;
 mod regions;
 mod respawners;

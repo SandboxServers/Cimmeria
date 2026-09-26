@@ -21,20 +21,20 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Single-target ability launch | DONE | `TargetSelf`, `TargetTarget` |
-| Ability warmup timer | DONE | Speed modifiers applied (grenade, deploy, attack) |
+| Ability warmup timer | NOT IMPL (Rust) | The Python original deferred `Ability_End` and the effects until `afterWarmup` and applied speed modifiers (grenade, deploy, attack). Rust sends `Ability_Begin` and `Ability_End` back to back and resolves the effects at once; its cooldown also excludes the warmup (`cell/abilities/use_ability/handle.rs`). Every NPC combat ability has warmup 0, so NPCs are unaffected; player abilities with a warmup resolve early |
 | Ability cooldown timer | DONE | Moniker-based shared cooldowns |
 | Effect dispatch on resolve | DONE | Effects applied to all collected targets |
 | Auto-cycle (auto-attack) | DONE | Re-fires ability on cooldown expiry |
-| Ability interruption | DONE | Cancels warmup, resets cooldown |
+| Ability interruption | NOT IMPL (Rust) | Python cancelled the warmup and reset the cooldown. Rust has no warmup phase to interrupt (see the warmup row) |
 | Ammo consumption | DONE | `requiredAmmo`, `consumeAmmo()` |
 | Weapon range check | DONE | `UseWeaponRange` flag uses equipped weapon range |
-| Position/facing check | DONE | Front/flank/rear mask validation |
+| Position/facing check | NOT IMPL (Rust) | Python validated the front/flank/rear mask. Rust `AbilityDef` has no `positions` field and `handle_use_ability` checks no facing |
 | Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |
 | AoE / cone targeting | DONE | `cell/abilities/cone_aoe/` — geometry, flag categories, and witness fan-out |
 | Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |
 | Channeled abilities | DONE | Channel pulsing and cancellation in `cell/effects/pulsing/`, with the `AF_CHANNEL_ALLOWS_MOVEMENT` movement gate |
 | Kismet sequences (begin, end) | DONE | `Ability_Begin` (1000) and `Ability_End` (1001) emitted from `use_ability/handle.rs` |
-| Kismet sequences (interrupt, failed) | NOT IMPL | `Ability_Interrupt` (1002) and `Ability_Failed` (1003) are never emitted, despite interruption itself working |
+| Kismet sequences (interrupt, failed) | NOT IMPL | `Ability_Interrupt` (1002) and `Ability_Failed` (1003) are never emitted; interruption itself is not implemented in Rust either |
 | Chain targeting | NOT IMPL | |
 | Combo / response system | NOT IMPL | `Response` flag modifies cooldown only |
 | Ability conditions | NOT IMPL | Pre-launch condition checks from ability data |

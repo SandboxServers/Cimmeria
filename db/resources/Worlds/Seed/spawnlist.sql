@@ -32,6 +32,10 @@
 -- hold-position-and-fire branch, which is correct for a sentry anyway.
 -- It gates fight-time pathing ONLY -- patrol, wander and follow never
 -- read it -- so it is not a movement lock. Revisit after GH1.
+-- (2026-09-26: both premises are dated. NA26/NA28 rebuilt harset.nav and
+-- added harset_cmdcenter.nav for world 68, NA15 replaced the freeze with
+-- hold-then-home, and NA29 made five world-57 rows mobile. The rows that
+-- stay stationary do so per D-H06.)
 --
 -- Ring switches (template 3), the DHD (1) and the merchant basket (164)
 -- are props that can never enter combat, so they stay NULL; a delay on
@@ -564,9 +568,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- z[62,70] that is the only way onto her dais: "face the way a visitor
 -- arrives", which is the Castle lesson this packet must not repeat.
 --
--- All rows are `is_stationary = true`. World 68 has no navmesh at all, so an
--- NPC that tried to path would hit the `no_path` branch and freeze
--- (decision D-H06, same reasoning as the plaza sentries). Every row is
+-- All rows are `is_stationary = true`. When these rows were written, world
+-- 68 had no navmesh at all, so an NPC that tried to path would hit the
+-- `no_path` branch and freeze (decision D-H06, same reasoning as the plaza
+-- sentries). NA26 (2026-09-25) added data/spaces/harset_cmdcenter.nav; the
+-- rows stay stationary because they are talk NPCs with nowhere to go. Every row is
 -- non-hostile by template (faction 1 or 3, never 10) per D-H03/D-H04: 68 is
 -- a shared council room and nothing here is ever a kill target.
 -- `respawn_secs = 30` on every row for consistency with the 14 existing

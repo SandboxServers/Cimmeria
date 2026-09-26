@@ -297,7 +297,7 @@ UAT-1 ran on the colo on 2026-09-25 against build `059d6038`. Every finding, wit
 
 ### NA23
 
-**Status:** Review (branch `npcai/na23-cover-los` pushed; code commit 3cb044fd, rebased on NA24 #791). **Scope title:** Cover-aware line of sight and flank churn (UAT-1 findings 1-3, D-NA12). **Advisor:** npc-ai-spawn-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #793; earlier: branch `npcai/na23-cover-los`, code commit 3cb044fd, rebased on NA24 #791). **Scope title:** Cover-aware line of sight and flank churn (UAT-1 findings 1-3, D-NA12). **Advisor:** npc-ai-spawn-advisor.
 
 **Scope:**
 
@@ -330,7 +330,7 @@ The drone's `stationary_relaxed` shot is still pinned by NA16's `stationary_los.
 
 ### NA26
 
-**Status:** Review (branch `npcai/na26-navmesh-all-worlds` pushed, no PR; ran as a parallel worker to NA27). **Scope title:** Rebuild the navmesh for every world. **Advisor:** movement-teleport-advisor. **Owner request (2026-09-25):** "make sure we update all the worlds navmeshes too", server-authoritative, no client patch.
+**Status:** UATPending (merged 2026-09-25, PR #794; earlier: branch `npcai/na26-navmesh-all-worlds`; ran as a parallel worker to NA27). **Scope title:** Rebuild the navmesh for every world. **Advisor:** movement-teleport-advisor. **Owner request (2026-09-25):** "make sure we update all the worlds navmeshes too", server-authoritative, no client patch.
 
 **Scope:**
 
@@ -344,7 +344,7 @@ The drone's `stationary_relaxed` shot is still pinned by NA16's `stationary_los.
 
 ### NA29
 
-**Status:** Review (branch `npcai/na29-harset-arrival` pushed, no PR). **Scope title:** Harset gate arrival on the gate row; five world-57 spawns made mobile. **Advisor:** movement-teleport-advisor. **Owner decisions (2026-09-25):** "As long as the arrival is on the navmesh and doesn't cause issues put it in the original location", and yes to un-stationarying the rows NA26 moved onto the mesh. These close the two decisions NA26 left open.
+**Status:** UATPending (merged 2026-09-25, PR #795; earlier: branch `npcai/na29-harset-arrival`). **Scope title:** Harset gate arrival on the gate row; five world-57 spawns made mobile. **Advisor:** movement-teleport-advisor. **Owner decisions (2026-09-25):** "As long as the arrival is on the navmesh and doesn't cause issues put it in the original location", and yes to un-stationarying the rows NA26 moved onto the mesh. These close the two decisions NA26 left open.
 
 **Scope:**
 
@@ -363,7 +363,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA28
 
-**Status:** Review (branch `npcai/na28-tiled-navmesh` pushed, no PR). **Scope title:** Tiled navmeshes so the large exteriors get full coverage. **Advisor:** movement-teleport-advisor. **Owner approval (2026-09-25):** "Yes" to the tiled-mesh follow-up NA26 left open.
+**Status:** UATPending (merged 2026-09-25, PR #796; earlier: branch `npcai/na28-tiled-navmesh`). **Scope title:** Tiled navmeshes so the large exteriors get full coverage. **Advisor:** movement-teleport-advisor. **Owner approval (2026-09-25):** "Yes" to the tiled-mesh follow-up NA26 left open.
 
 **Scope:**
 
@@ -376,7 +376,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA27
 
-**Status:** Review (branch `npcai/na27-occluder` pushed, no PR). Phase 1 was no-go under the first size budget. The owner then raised the budget and asked for paging (2026-09-25, D-NA13), and phase 2 ships an `.occ` for all 23 worlds. **Scope title:** Line of sight from collision geometry ([#784](https://github.com/SandboxServers/Cimmeria/issues/784)). **Advisor:** npc-ai-spawn-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #797; earlier: branch `npcai/na27-occluder`). Phase 1 was no-go under the first size budget. The owner then raised the budget and asked for paging (2026-09-25, D-NA13), and phase 2 ships an `.occ` for all 23 worlds. **Scope title:** Line of sight from collision geometry ([#784](https://github.com/SandboxServers/Cimmeria/issues/784)). **Advisor:** npc-ai-spawn-advisor.
 
 **Scope:**
 
@@ -400,7 +400,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA34
 
-**Status:** Review (branch `npcai/na34-player-visibility` pushed, no PR). **Scope title:** Two players in a shared world (Castle, Harset) not reliably seeing each other. **Advisor:** aoi-witness-broadcast. **Owner report (2026-09-25):** "multiple players on the same map like castle can't reliably see each other... I think it's the first player on the map can see the second but the second can't see the first? Just a guess."
+**Status:** Done (merged 2026-09-25, PR #808; earlier: branch `npcai/na34-player-visibility`). **Scope title:** Two players in a shared world (Castle, Harset) not reliably seeing each other. **Advisor:** aoi-witness-broadcast. **Owner report (2026-09-25):** "multiple players on the same map like castle can't reliably see each other... I think it's the first player on the map can see the second but the second can't see the first? Just a guess."
 
 **Scope:**
 
@@ -415,7 +415,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA37
 
-**Status:** Done (2026-09-25, two rounds). **Scope title:** Reproduce shared-world player visibility end-to-end with two real wire clients, following up on NA34's in-process investigation; round 2 adds real-network chaos (packet loss, reorder, jitter, latency) per the owner's colo-vs-localhost concern. **Advisor:** aoi-witness-broadcast.
+**Status:** Done (2026-09-25, two rounds; merged 2026-09-26, PR #816). **Scope title:** Reproduce shared-world player visibility end-to-end with two real wire clients, following up on NA34's in-process investigation; round 2 adds real-network chaos (packet loss, reorder, jitter, latency) per the owner's colo-vs-localhost concern. **Advisor:** aoi-witness-broadcast.
 
 **Round 1 — real wire path, lossless localhost:**
 
@@ -445,7 +445,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA38
 
-**Status:** Review (branch `npcai/na38-reliable-ordering` pushed, no PR). **Scope title:** Mercury reliable-message ordering, the candidate cause of one-way player visibility. **Advisor:** bigworld-engine-advisor. Follows NA37 round 2.
+**Status:** UATPending (merged 2026-09-26, PR #817; earlier: branch `npcai/na38-reliable-ordering`). **Scope title:** Mercury reliable-message ordering, the candidate cause of one-way player visibility. **Advisor:** bigworld-engine-advisor. Follows NA37 round 2.
 
 **What the client does (Ghidra, `SGW.exe`):**
 
@@ -478,7 +478,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA31
 
-**Status:** Review (branch `npcai/na31-fire-los-eye-height` pushed, no PR; ran in parallel with NA32 and NA33). **Scope title:** Player fire-time line of sight and per-being eye heights (D-NA14). **Advisor:** combat-systems-advisor. **Owner approval (2026-09-25):** "work on all still open items".
+**Status:** UATPending (merged 2026-09-25, PR #811; earlier: branch `npcai/na31-fire-los-eye-height`; ran in parallel with NA32 and NA33). **Scope title:** Player fire-time line of sight and per-being eye heights (D-NA14). **Advisor:** combat-systems-advisor. **Owner approval (2026-09-25):** "work on all still open items".
 
 **Scope:**
 
@@ -500,9 +500,10 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 - Live-DB: `seeded_eye_heights_load_by_body_set`, `every_spawned_being_body_set_has_an_eye_height` and `a_seeded_jaffa_looks_from_its_measured_eye` fail on a seed with no `BS_JaffaMale` row and the human value set back to 1.5.
 
 **UAT:** in Castle_CellBlock, shoot a guard from behind a hallway wall. The client shows its line-of-sight message and fires nothing. Step out, and the shot fires. With auto-attack on, the message appears once and the loop resumes by itself.
+
 ### NA32
 
-**Status:** Review (branch `npcai/na32-cover-defense-stepback` pushed, no PR). **Scope title:** Cover Stance in the hit roll, and the ranged step-back. **Advisor:** combat-systems-advisor. **Owner approval (2026-09-25):** "Work on all still open items", which covers NA22's unwired stance and the step-back NA15 left for a decision. Recorded as D-NA15.
+**Status:** UATPending (merged 2026-09-25, PR #810; earlier: branch `npcai/na32-cover-defense-stepback`). **Scope title:** Cover Stance in the hit roll, and the ranged step-back. **Advisor:** combat-systems-advisor. **Owner approval (2026-09-25):** "Work on all still open items", which covers NA22's unwired stance and the step-back NA15 left for a decision. Recorded as D-NA15.
 
 **Scope and result:**
 
@@ -513,9 +514,10 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 - **Tests (each revert-proven).** `cover_damage` units (lunch table 10-20%, wall 50-60%, typical slot 25/35%, the band for every node and stat stack, penetration floor, flanked 0); `cover_hit` standing (slot, walk-to, flank band, player floor); `damage_apply/cover_tests.rs` through `apply_damage_to_target` (the guard slot takes exactly 35% off, wall 60% vs table 15%, flanked and away-from-cover take the exposed hit, a covered guard always takes at least 40%, covered player, the telemetry row); `qr` distribution tests (`expected_damage_rises_with_qr` and the band tests fail on the python order); `tests/npc_ai/step_back.rs` (steps back, fires outside 2 u, melee, stationary, cooldown, in flight, dead-zone hold, in cover, flanked) and two on the real `castle_cellblock.nav` (the step lands on the mess-hall floor; cornered against a wall it fires). Two `ability_range` tests moved their player from 1 u to 4 u, outside the comfort range.
 
 **Acceptance:** UAT: shoot a Cellblock guard in its cover slot from in front, then from its flank; SigNoz `abilities.qr event=cover_resolved` shows `defender_cover=in_cover final_pct=35.0` (a Mid/Better slot) then `flanked=true final_pct=0.0`. Walk into a guard's face: it backs off about 3 u (`decision_outcome=step_back`) and no more than once per 3 s.
+
 ### NA33
 
-**Status:** Done (merged 2026-09-25, branch `npcai/na33-aggression-broadcast`). **Scope title:** Broadcast the NPC aggression level to clients (D-NA16). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
+**Status:** UATPending (merged 2026-09-25, PR #806, branch `npcai/na33-aggression-broadcast`). **Scope title:** Broadcast the NPC aggression level to clients (D-NA16). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
 
 **Scope:**
 
@@ -528,7 +530,7 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 
 ### NA36
 
-**Status:** Done (branch `npcai/na36-extractor-gaps`, 2026-09-25). **Scope title:** Navmesh/occluder extractor geometry gaps (raised platforms with no decoded collision). **Advisor:** movement-teleport-advisor.
+**Status:** Done (merged 2026-09-25, PR #815, branch `npcai/na36-extractor-gaps`). **Scope title:** Navmesh/occluder extractor geometry gaps (raised platforms with no decoded collision). **Advisor:** movement-teleport-advisor.
 
 **Scope:**
 
@@ -540,9 +542,10 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 - Seeded-spawn Y audit (Harset only, the world with concrete telemetry evidence): of the still-open off-mesh `spawnlist` rows, none met the "seed Y wrong, high confidence" bar — 308 needs a live `.location` reading, 310's gap is a navmesh-connectivity issue (real terrain exists almost exactly at its seeded Y), and 311 is already flagged LOW-confidence/INFERRED with its own deletion candidate note. No `db/resources` seed changes shipped. Full table in navmesh-build-pipeline.md §11.
 
 **Acceptance:** `cimmeria-navmesh-extractor` 424/424 (including `mesh_actor_class_tests.rs` cases proving `KActor`/`FracturedStaticMeshActor` resolve identically to `StaticMeshActor` regardless of the flag, `InterpActor` is invisible with the flag off and resolves with it on, and an out-of-family class like `Pawn` is ignored either way; plus CLI-parsing tests for the bare `--include-interp-actors` flag and its occluder-side `true`/`false` equivalent); `cimmeria-entity` and `cimmeria-services` full suites green against the rebuilt `harset.nav` (`harset_placement_tests`, `world57_placement`, `off_mesh_sentry`, `movement_validation`, `line_of_sight` all pass unchanged); `cimmeria-server` green. `harset.occ`'s own self-check passed.
+
 ### NA35
 
-**Status:** Review (branch `npcai/na35-gate-travel-cinematic` pushed, no PR; code shipped once the owner lifted the session's usage restriction). **Scope title:** Stargate dial timing and gate-travel cinematic. **Advisor:** game-archaeology-specialist. **Owner request (2026-09-25):** "Is there a gate travel animation/cinematic we can put up for gate travel before putting up the loading screen for the transition between maps?" Tester Lomiada: "the dialing is quite fast/done when i leave the dhd is supposed do be?"
+**Status:** UATPending (merged 2026-09-25, PR #814; earlier: branch `npcai/na35-gate-travel-cinematic`; code shipped once the owner lifted the session's usage restriction). **Scope title:** Stargate dial timing and gate-travel cinematic. **Advisor:** game-archaeology-specialist. **Owner request (2026-09-25):** "Is there a gate travel animation/cinematic we can put up for gate travel before putting up the loading screen for the transition between maps?" Tester Lomiada: "the dialing is quite fast/done when i leave the dhd is supposed do be?"
 
 **Correction applied mid-session:** the coordinator relayed the owner's clarification that the deprecated legacy server never had working gate travel end to end, so `deprecated/python/cell/SGWPlayer.py` is not behavioural evidence — ground truth is the client binary alone. This packet's findings and D-CA20 (`docs/analysis/castle-rebuild/README.md`) are grounded entirely in `SGW.exe` Ghidra evidence, not the legacy Python.
 
@@ -561,6 +564,42 @@ The full services live-DB suite is green (3,227 tests). UAT: dial Harset from Ca
 - `crates/services/src/cell/gate_travel/` (`mod.rs`, `sequences.rs`, `tick.rs`) and `crates/services/src/cell/space_manager/gate_dial_state.rs` / `crossing_hold_state.rs`.
 
 **Acceptance:** fake-clock timer tests for both the retimed dial and the new crossing hold (`gate_dial_state` unit tests, each revert-proven — e.g. `dial_opens_almost_immediately_not_after_a_multi_second_hold` asserts `GATE_DIAL_DURATION < 500ms`); byte-exact wire tests for `Stargate_CrossGate`, `onStargatePassage`, and the `onStateFieldUpdate` movement-lock frame (`gate_travel::tests::dial_timer::crossing_an_open_gate_sends_cross_gate_then_onstargatepassage_and_defers_travel`); a hold-then-travel sequence test (`crossing_hold_elapsing_runs_the_deferred_travel`); a disconnect-during-hold test (`disconnect_during_the_crossing_hold_cancels_the_deferred_travel`); and a deferred-travel-failure test proving the movement lock is released, not left stuck (`deferred_travel_failure_clears_the_movement_lock`). Two pre-existing tests that asserted a synchronous `GateTravel` on crossing (`cell::cell_methods::player::world::tests::entering_a_stargate_region_with_an_open_dial_travels`, `cell::gate_travel::tests::arrival::crossing_into_an_unrecoverable_arrival_sends_no_transfer`) were updated to expire and drain the new hold first — without that they would have passed vacuously regardless of the arrival-refusal logic under test. `cimmeria-services` gate-related suite green (187 tests).
+
+## Phase 6: external handoff follow-ups (2026-09-26)
+
+An external "server-side AI reconstruction" handoff arrived on 2026-09-26. Five read-only auditors checked it claim by claim against `main`. Most of it was already fixed by NA10-NA38, and a few premises were wrong. The per-section verdicts, the evidence and the owner-decision list are in [evidence/handoff-2026-09-26-validation.md](evidence/handoff-2026-09-26-validation.md). NA41-NA44 implement only its HIGH-confidence open items and run as parallel workers with disjoint files. NA39 and NA40 were already in flight and are unrelated to the handoff.
+
+### NA39
+
+**Status:** Writing (in flight, 2026-09-26). **Scope title:** Cross-task ordering. Ledger stub; the packet's own PR fills in the scope and acceptance.
+
+### NA40
+
+**Status:** Writing (in flight, 2026-09-26). **Scope title:** Static `InterpActor`s in the navmesh and occluder builds, following NA36's opt-in. Ledger stub; the packet's own PR fills in the scope and acceptance.
+
+### NA41
+
+**Status:** Writing (in flight, 2026-09-26, branch `npcai/na41-*`). **Scope title:** Movers: no raw straight-line fallback on a meshed world (follow, patrol, wander, investigate, step-back), and face the target in the chase no-path branches. Handoff §9, §12, §17, §22; §26 tests 10, 12, 15. Files: `npc_ai/{follow,patrol,wander,investigate,step_back,chase/*,path_failure/*}.rs`, `ticks/npc_movement.rs`.
+
+### NA42
+
+**Status:** Writing (in flight, 2026-09-26, branch `npcai/na42-*`). **Scope title:** Follow resumes after a fight, and being-class followers never enter combat. Handoff §17, §18; §26 test 16. Files: `npc_ai/leash/*`, `npc_ai/transition.rs`, `combat/threat/aggro.rs`, `space_manager/queries.rs`, the escort tests.
+
+### NA43
+
+**Status:** Writing (in flight, 2026-09-26, branch `npcai/na43-*`). **Scope title:** Attack presentation: `abilities.sequence` negative logs and witness count, attack `onSequence` fan-out guard, player attack sequences to witnesses, and Castle hostile ability sets. Handoff §13, §14; §26 tests 18-20. Files: `abilities/use_ability/*`, `abilities/messaging.rs`, `entity_templates.sql`.
+
+### NA44
+
+**Status:** Review (branch `npcai/na44-observability-docs`). **Scope title:** Spawn and bookmark identity fields, the stale-doc sweep, and this ledger. Handoff §2, §25, §27-29.
+
+**Scope:**
+
+- `spawner.npc_behaviour` gains `world`, `space_id`, `ability_ids`, `event_set_ids` and `weapon_visual`; `playtest.bookmark.entity` gains `ability_ids`, `weapon_visual` and `current_target_id` ([telemetry.md §2.6](telemetry.md#26-spawn-and-bookmark-identity-na44)).
+- Every remaining claim of a server-to-client movement-type broadcast removed or annotated: entity-crate comments, the cell-method dispatch table, the cover and NPC-AI RE findings, `npc-ai.md`, the observability ADR, and two agent-memory notes.
+- Stale seed comments (Harset advisory mode, world 68's navmesh), `ability-system.md` warmup/interruption/facing marked not implemented in Rust, this ledger, the session resume and the validation ledger.
+
+**Acceptance:** `spawn_behaviour_row_names_the_world_the_abilities_and_the_weapon` and `playtest_bug_reports_abilities_weapon_and_current_target` (plus the extended `playtest_bug_emits_header_and_entity_rows_and_acks`), each revert-proven; markdownlint clean on the changed files.
 
 ## Suggested order
 

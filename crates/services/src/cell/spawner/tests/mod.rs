@@ -17,6 +17,8 @@
 //! - [`live_db_use_cover`]: live-DB guards that `entity_templates.use_cover`
 //!   (NA22) and the Cover Stance effect rows load as seeded, and that a
 //!   seeded guard spawns holding its seeded cover slot.
+//! - [`spawn_behaviour_row`]: the `spawner.npc_behaviour` row carries
+//!   `world`, `space_id`, the ability set, its event sets and the weapon (NA44).
 //! - [`template_prototype_parity`]: live-DB guard that the cell's startup
 //!   template cache and the base-side GM spawn handler map an
 //!   `entity_templates` row identically (PR #662 review, finding 3).
@@ -30,6 +32,7 @@ mod live_db_eye_heights;
 mod live_db_leash_distance;
 mod live_db_loaders;
 mod live_db_use_cover;
+mod spawn_behaviour_row;
 mod spawn_grounding;
 mod spawn_records;
 mod template_prototype_parity;

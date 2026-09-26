@@ -486,23 +486,19 @@ pub struct CellEntity {
     /// follows `EMobAggressionLevel` (1 = hostile); `None` means the faction
     /// reaction table decides. See [`super::AggroProfile`].
     pub aggro: super::AggroProfile,
-    /// Last `MobMovementType` broadcast to AoI witnesses via
-    /// `setMovementType`. `None` = nothing broadcast yet (initial state)
-    /// or last broadcast was a "clear" (entering Idle / Dead /
-    /// Despawning). Cached so re-entering the same state from the AI
-    /// tick doesn't re-spam the wire — only state *changes* fan out.
+    /// Last `MobMovementType` recorded for this NPC. `None` = nothing
+    /// recorded yet, or the last state entry cleared it (Idle / Dead /
+    /// Despawning). **Nothing reaches the client**: there is no
+    /// server-to-client movement-type message, and the client animates
+    /// NPC gait from `EntityMoved` velocity (NA10, #779). The value is
+    /// kept for telemetry (`movement.movement_type`) and the `.bug`
+    /// bookmark's `last_movement_type` field.
     ///
-    /// **Ownership**: this cache is written exclusively by
-    /// [`cell::abilities::messaging::broadcast_movement_type`]. The two
-    /// legitimate call sites are (a) the NPC AI tick, which broadcasts
-    /// on every state transition (Fighting entry, Leashing entry,
-    /// Idle entry), and (b) the inbound `setMovementType` cell-method
-    /// handler, which routes the inbound byte through the same helper
-    /// so the dedup is consistent in both directions. **Server-side
-    /// callers that want to set a movement type must go through the
-    /// helper, not write this field directly** — direct writes bypass
-    /// the AoI broadcast and the dedup, producing a server-thinks-A /
-    /// client-thinks-B divergence.
+    /// **Ownership**: written only by
+    /// [`cell::abilities::messaging::broadcast_movement_type`], which
+    /// dedups and logs each change. Its callers are the NPC AI state
+    /// entries and the inbound `setMovementType` cell-method handler.
+    /// Write through the helper, not directly, so the change is logged.
     ///
     /// Server-side only; never persisted, never restored across login.
     pub last_movement_type: Option<MobMovementType>,

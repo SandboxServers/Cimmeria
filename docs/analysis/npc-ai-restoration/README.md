@@ -1,7 +1,7 @@
 # NPC AI Restoration
 
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
-> Updated: 2026-09-24. Companions: [audit](audit.md), [work packets](work-packets.md), [telemetry plan](telemetry.md), [evidence passes](evidence/), [2026-09-18 colo playtest](../playtests/2026-09-18-colo-castle/README.md), [Castle rebuild](../castle-rebuild/README.md), [documentation index](../../readme.md).
+> Updated: 2026-09-24. Companions: [audit](audit.md), [work packets](work-packets.md), [telemetry plan](telemetry.md), [evidence passes](evidence/), [external handoff validation (2026-09-26)](evidence/handoff-2026-09-26-validation.md), [2026-09-18 colo playtest](../playtests/2026-09-18-colo-castle/README.md), [Castle rebuild](../castle-rebuild/README.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -90,10 +90,14 @@ The owner authorized an autonomous run on 2026-09-24: "autonomously work on thes
   - A coordinator trial-merge plus test run whenever a PR's CI predated the latest `main`. This caught one semantic conflict: NA12's `SpawnRecord.leash_distance` against NA11's test fixture.
 - **Not done:** UAT-0, the separate before-picture session (see D-NA06). Every in-client check is listed in [handoffs/session-resume.md](handoffs/session-resume.md).
 
+## External handoff validation (2026-09-26)
+
+An external "server-side AI reconstruction" handoff arrived after the campaign. [evidence/handoff-2026-09-26-validation.md](evidence/handoff-2026-09-26-validation.md) gives a verdict for each of its claims (ALREADY-FIXED, WRONG-CLAIM, OPEN or NEEDS-UAT), names the packet that takes each open item (NA41-NA44), and lists the items that need an owner decision. Its three stale premises: Castle has a navmesh (#709), there is no server-to-client movement type (D-NA10), and proximity aggro and an NPC-measured leash exist (NA13, NA12).
+
 ## Where confidence is low
 
 - How the client renders a stationary NPC that still has non-zero velocity. The code path is confirmed; the rendering is inferred. The `wire.out.avatar_update` export in NA00 settles it.
-- Which movement type or stance the client wants for "stationary in combat" (NA10), and the Leash movement type value: 5 per `enumerations.xml` vs 2 per one RE note.
+- ~~Which movement type or stance the client wants for "stationary in combat" (NA10), and the Leash movement type value: 5 per `enumerations.xml` vs 2 per one RE note.~~ Resolved: the client takes no movement type from the server (D-NA10), and Leash = 5 (NA30).
 - Whether `SGWCoverNodeComponent` in the prefab packages carries the node array or points at the pak template (NA20), and what drives the crouch and peek pose.
 - The original aggro, assist and leash radii (D-NA09 values are starting guesses).
 - Floating is shown in telemetry only indirectly until NA01 fixes the ground query. The mechanism is confirmed in code and in the path data.

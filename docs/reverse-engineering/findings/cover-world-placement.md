@@ -349,7 +349,8 @@ coordinates from Q3 in place of the original estimate:
    evaluate cover.
 2. Watch the client model: does it crouch/adopt a cover stance purely from
    standing at that position, with no additional server message beyond the
-   normal position/movement-type broadcast?
+   normal position and velocity updates? (There is no movement-type
+   broadcast; NA10 showed the client has no receiver for one.)
    - If **yes**: `cover-system.md`'s working hypothesis is confirmed —
      "position at a node is sufficient" — and NA22 needs no client-facing
      pose message, only correct positions (which NA21 now makes cheap to
@@ -477,7 +478,8 @@ transform composition is needed for either authoring pattern found.
 - NA20's Q4 (pose trigger) is still open; NA21 can and should proceed
   without it, since correct world-space positions are useful regardless
   (server-side cover selection/reservation logic, defense-buff wiring, and
-  the client's *existing, working* movement-type broadcast all benefit
+  the NPC's ordinary position and velocity updates all benefit (the
+  movement-type broadcast this once cited never reached a client; NA10)
   immediately). The pose question only gates whether the client visibly
   crouches, per the owner-decision framing already in `work-packets.md`.
 - The per-chunk owner-class breakdown (Pattern A vs. B mix) was sampled on
