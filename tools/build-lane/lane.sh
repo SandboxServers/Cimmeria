@@ -10,7 +10,7 @@
 # What it sets up for the wrapped command:
 #  * Slots: LANE_SLOTS (default: the number in $LANE_ROOT/lane/SLOTS, else 2). `--exclusive`
 #    takes every slot, for full-workspace builds and measurements.
-#  * CARGO_BUILD_JOBS (default 10) caps rustc parallelism per build.
+#  * CARGO_BUILD_JOBS defaults to cores / slots (floor 4) so a full lane fits the CPU.
 #  * sccache as RUSTC_WRAPPER when it is installed, with one shared cache
 #    ($CIMMERIA_SCCACHE_DIR, default $LANE_ROOT/sccache-cache).
 #  * Linked git worktrees (agents, campaign workers) build with CARGO_INCREMENTAL=0.
@@ -65,7 +65,13 @@ if [ -n "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER+set}" ]; then
   export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-40G}"
   export SCCACHE_IDLE_TIMEOUT=0
 fi
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-10}"
+# Split the cores across the slots so a full lane doesn't oversubscribe the CPU
+# (e.g. 32 cores / 4 slots = 8 jobs per build), with a floor of 4.
+if [ -z "${CARGO_BUILD_JOBS:-}" ]; then
+  cores="$(nproc 2>/dev/null || echo 8)"
+  CARGO_BUILD_JOBS=$(( cores / SLOTS )); [ "$CARGO_BUILD_JOBS" -lt 4 ] && CARGO_BUILD_JOBS=4
+fi
+export CARGO_BUILD_JOBS
 
 # --- acquire ------------------------------------------------------------------------
 held=()
