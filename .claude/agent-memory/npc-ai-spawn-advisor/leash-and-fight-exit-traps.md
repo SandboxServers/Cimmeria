@@ -11,6 +11,13 @@ Verified 2026-09-24 against main b0b594e9 (Cellblock aggro/stuck audit).
 > home) and drain player `threatened_mobs`; the leash measures NPC->spawn; Leashing evades (`generate_threat`
 > refuses it). NA10 already fixed stale velocity / nav_path / grid. See [[leash-reset-na12]]. The nav-extent,
 > DT_PARTIAL_RESULT, aggression-semantics and GM bullets below still stand.
+>
+> **Corrections 2026-09-26 (NA44, external-handoff validation).** The `broadcast_movement_type(None)` bullet
+> below is **wrong**: no movement type ever reaches the client (NA10 #779). The client animates from
+> `EntityMoved` velocity, and an NPC stops by being sent zero velocity, which NA10 wired into every stop.
+> Also closed since this note: proximity aggro for the template-24 guards (NA13 #787, faction reaction
+> table), the `MobAggression` broadcast (NA33 #806) and DT_PARTIAL_RESULT (NA15 treats a partial route
+> as a hold). Ledger: `docs/analysis/npc-ai-restoration/evidence/handoff-2026-09-26-validation.md`.
 
 - **Fight exits park the NPC in place.** `npc_ai/fight.rs:126-176` (threat empty / target dead / gone) -> Idle with no
   home return and no `nav_path` clear; leash (`fight.rs:179-216` + `leash.rs:48`) raw-writes spawn but also keeps
@@ -33,7 +40,8 @@ Verified 2026-09-24 against main b0b594e9 (Cellblock aggro/stuck audit).
 - **Stale velocity = "running in place".** Only final-waypoint arrival/death/respawn/submit zero `velocity`; every
   `nav_path.clear()` stop (attack-in-place `fight.rs:550`, preempt, cover release, leash) keeps the chase velocity,
   which `EntityMoved` re-sends every 100 ms -> client AvatarFilter extrapolates then snaps back.
-- `broadcast_movement_type(None)` emits NO wire byte, so the client keeps CombatAdvance/Leash after the fight ends.
+- ~~`broadcast_movement_type(None)` emits NO wire byte, so the client keeps CombatAdvance/Leash after the fight ends.~~
+  WRONG (2026-09-26): no movement type is ever sent; the client animates from velocity. See the correction above.
 - No GM check anywhere in aggro/threat/targeting; GMs are exempt from navmesh snap-back (`client_move.rs:283`), so a
   GM target can sit off-mesh (find_path end-poly fail, LoS Unknown = clear).
 

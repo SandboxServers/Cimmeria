@@ -113,7 +113,7 @@ The server is entirely responsible for NPC cover selection. The client only rece
 5. Best scoring unoccupied node + slot is selected.
 6. Server calls `SGWCoverSet.reserveCoverSlot(npcEntityID, nodeID, slotID)` to claim it.
 7. Server updates `publicReservationData` so clients know the slot is occupied.
-8. Server sends `aMovementType=0` + `aPath=[waypoints to node]` + `aEntityId` to the client via the existing movement protocol.
+8. ~~Server sends `aMovementType=0` + `aPath=[waypoints to node]` + `aEntityId` to the client via the existing movement protocol.~~ **Corrected (NA10, 2026-09-25):** no movement-type message goes to a client. The `aMovementType` / `aPath` / `aEntityId` triple is the GM `onShowPath` visualiser's argument list, not an NPC animation channel ([npc-movement-pathfinding.md §11](npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver)). The client sees the NPC walk to the node through ordinary `EntityMoved` position and velocity updates.
 
 **Evidence**: Cover weight fields confirmed in `SGWTextCommandMgr_OnChangeCoverWeight` at `0x00c87430`; weight field names: `aDistanceWeight`, `aDefCoverWeight`, `aOffCoverWeight`, `aMoveWeight`, `aCrossPathWeight`, `aCoverWeight` set via `FUN_00cb1d40` (SetField wrapper).
 
@@ -141,9 +141,9 @@ The client has no direct cover-claim message. The reservation state is surfaced 
 
 1. **`publicReservationData` property update** — `SGWCoverSet` is `CELL_PUBLIC`, so BigWorld streams `publicReservationData` updates to nearby clients when the array changes. Each element is a fixed-dict `{nodeID: INT32, slotID: INT8, entityID: INT32}`. Client receives this as a standard BigWorld property update on the `SGWCoverSet` entity. **However, because `SGWCoverSet` is `ServerOnly`, this property update goes to other server-side entities, not to game clients directly.** The `CELL_PUBLIC` flag means other cell entities (not game clients) can read it.
 
-2. **Movement type 0 (CoverAdvance)** — confirmed at `0x019d2ca4`: `"Entity: %d is moving to cover"`. When the NPC moves to cover, the client gets the movement update which visually positions the NPC at the cover node. The `USGWAnim_BlendByCover` node then blends the animation based on cover height.
+2. **The NPC's position and velocity** — the client sees an NPC move to the cover node through ordinary `EntityMoved` updates, and a stop through zero velocity. The string at `0x019d2ca4` (`"Entity: %d is moving to cover"`) belongs to the movement-type value `Cover` (0), but that value is never sent to a client: `setMovementType` is a client-to-server cell method, and the server sends no movement type back (NA10, #779; see [npc-movement-pathfinding.md](npc-movement-pathfinding.md) §11). The `USGWAnim_BlendByCover` node then blends the animation based on cover height; what drives its cover input on a remote NPC is unconfirmed (Cover Stance, ability 1451, is the NA22 candidate).
 
-**Key finding**: `SGWCoverSet` is `ServerOnly` — game clients never receive the entity or its properties directly. The client visualizes NPC-in-cover state purely from movement type 0 + the NPC's final position at the cover node.
+**Key finding**: `SGWCoverSet` is `ServerOnly` — game clients never receive the entity or its properties directly. The client sees an NPC in cover only through its position at the cover node and whatever state or effect puts its animation into the cover blend; no movement-type message is involved.
 
 ### CoverInfo Client Object (player-side only)
 
@@ -277,7 +277,7 @@ When an NPC enters combat state:
 5. Select best node and slot.
 6. Call `reserveCoverSlot` on the owning `SGWCoverSet`.
 7. Path the NPC to the node position.
-8. Send `aMovementType=0` + `aPath=[waypoints]` to the client.
+8. ~~Send `aMovementType=0` + `aPath=[waypoints]` to the client.~~ Corrected: move the NPC along the path with ordinary `EntityMoved` updates and stop it with zero velocity; no movement type is sent (see step 8 of the flow above).
 
 #### Step 4 — Cover Release
 

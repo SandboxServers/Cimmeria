@@ -46,7 +46,7 @@ Source: `entities/defs/interfaces/SGWBeing.def`
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
 | 0 | setTargetID | YES | INT32 targetId |
-| 1 | setMovementType | YES | UINT8 aMovementType (`EMobMovementType`: Cover=0, CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5, Avoid=6). Bidirectional via the BigWorld Exposed convention — the server fans the same method index out to AoI witnesses (and the entity's own client) on NPC AI state transitions. See `crate::cell::abilities::messaging::broadcast_movement_type` (#48 / #270). |
+| 1 | setMovementType | YES | UINT8 aMovementType (`EMobMovementType`: Cover=0, CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5, Avoid=6). Client to server only. The server sends no movement type back: witness method index 1 on every NPC type is `onSequence`, and the client has no NetIn `SetMovementType` handler. NPC state entries record the value in `last_movement_type` for telemetry and send nothing (`crate::cell::abilities::messaging::broadcast_movement_type`, NA10 #779). The client animates NPC gait from `EntityMoved` velocity. |
 | - | onPetSpawn | no | |
 | - | onPetDeath | no | |
 | - | onPetDetection | no | |
