@@ -245,7 +245,7 @@ impl SpaceManager {
         }
 
         // GM movement-validator bypass (`onPhysics` / `/gmsetfly` /
-        // `/gmsetghost` — see `cell_methods::gm::physics`). The client is
+        // `/gmsetghost` — see `console::gm::physics`). The client is
         // already authoritative for its own position while flying/
         // ghosting; skip straight past the remaining rejection layers
         // below but still advance the entity's tracked position (spatial

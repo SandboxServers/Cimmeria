@@ -27,7 +27,7 @@ Evidence (legacy python, same convention):
 
 ## Known bugs in this family
 
-- `cell/cell_methods/gm/query.rs::handle_show_rotation` reads
+- `cell/console/gm/query.rs::handle_show_rotation` reads
   `d.x.atan2(d.z)` — wrong. Tracked as **P48**.
 - `cell/console/entity.rs::look_at` (`.lookat`) writes a Cartesian unit
   vector `Vector3::new(dx/len, 0.0, dz/len)` — wrong; should be

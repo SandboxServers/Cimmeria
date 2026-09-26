@@ -87,7 +87,7 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   the other example of this same live pattern.
 
 - **A `pub(super)`-scoped helper in a sibling module tree
-  (`cell_methods::gm::forward_to_base`, `pub(super)` = visible only within
+  (`console::gm::forward_to_base`, `pub(super)` = visible only within
   `cell_methods`) is NOT reachable from `cell::console`, even though both
   are children of `cell::`.** Don't widen a shared helper's visibility to
   reuse it from an unrelated owned-path — that's a shared-file edit outside
@@ -171,7 +171,7 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   uses bare `destroy_entity` and should be switched over by P10.
 
 - **The `gmSpawnByCmd` cell↔base round-trip is already truthful about creation
-  results — don't re-derive it, and don't undermine it.** `cell_methods/gm/spawn.rs`
+  results — don't re-derive it, and don't undermine it.** `console/gm/spawn.rs`
   enqueues `CellToBaseMsg::GmSpawnNpc` and sends NO feedback; `base/gm_spawn.rs`
   sends the "template not found" line; `cell/service/base_messages/gm_spawn.rs`
   sends "spawned npc `<id>`" only after `spawn_npc_from_record_in_space` returns
@@ -216,7 +216,7 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   (`update_entity_position` + `note_authorized_teleport`, gated
   `TeleportPlayer` for players only), grep the native handler's own test
   file for an existing "does this actually reach witnesses" proof before
-  writing a new one from scratch** — `cell_methods/gm/tests/travel.rs`'s
+  writing a new one from scratch** — `console/gm/tests/travel.rs`'s
   `summoned_npc_is_broadcast_to_caller_witness` (a two-tick
   `compute_aoi_changes()` sequence) is the reusable proof shape for "grid
   update alone is sufficient, no separate AoI refresh needed." Still write

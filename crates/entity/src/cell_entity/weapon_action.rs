@@ -39,7 +39,7 @@ impl CellEntity {
     ///   `ReanchorPlayer` handle the appearance side.
     /// - `threatened_mobs` — held separately and cleared by the
     ///   same-world respawn handler (see
-    ///   `cell_methods/player/combat/respawn.rs`).
+    ///   `cell/respawn/mod.rs`).
     /// - `ai_retry_at` / `pending_ai_retries` — NPC-AI fields; the call
     ///   site is gated on `is_player`, so these are structurally
     ///   unreachable here. If the gate is ever relaxed, audit NPC AI

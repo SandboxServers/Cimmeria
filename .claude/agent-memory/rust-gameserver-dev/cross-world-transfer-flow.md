@@ -16,9 +16,9 @@ does **not** remove the entity from its old space. Its doc comment says so:
 "The CellService has already removed the entity from its old space." The
 destructive `space_mgr.destroy_entity(entity_id)` lives in the *cell*, in
 each of the five callers that emit `CellToBaseMsg::GateTravel`:
-`cell/gate_travel.rs` (stargate), `cell/cell_methods/gm/travel.rs`
+`cell/gate_travel.rs` (stargate), `cell/console/gm/travel.rs`
 (`gmGotoLocation`), `cell/content/executor/transport.rs` (chain teleport),
-`cell/ring_transport/dispatch.rs`, `cell/cell_methods/player/combat/respawn.rs`.
+`cell/ring_transport/dispatch.rs`, `cell/respawn/mod.rs`.
 
 **Why it matters:** any requirement of the form "validate before tearing
 down the entity's space/AoI state" must be implemented cell-side. A

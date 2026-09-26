@@ -19,7 +19,7 @@ handler, start from this snapshot rather than re-discovering the wire surface.
 - `sendPlayerCommunication` (base method `0xC2`, `dispatch.rs:77-156`) — the
   ONLY chat path that broadcasts. Server-authoritative speaker_name +
   speaker_flags (from session `access_level` / `dnd_message`). Cell-side
-  broadcast at `cell/chat.rs` filters channel to SAY/EMOTE/YELL only.
+  broadcast at `cell/console/chat.rs` filters channel to SAY/EMOTE/YELL only.
   **Gaps:** no rate limit, no text length cap, no ignore-list filter, no
   profanity filter. → CAT-L-01.
 - `chatSetDNDMessage` (base method `0xC4`, `dispatch.rs:191-233`) — stores

@@ -163,7 +163,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH (re-read 2026-09-25)
 - **Documentation**: [protocol/world-entry-phases.md](protocol/world-entry-phases.md), [engine/space-management.md](engine/space-management.md), [connection-flow.md](connection-flow.md), [gameplay/death-respawn-system.md](gameplay/death-respawn-system.md)
-- **Rust code**: [`crates/base-world-entry/src/base/world_entry/`](../crates/base-world-entry/src/base/world_entry/) — **95 files, 32,526 lines**. It covers `cell_dispatch/` (now including `position.rs` and `player_ghost.rs`), `gate_travel/`, `methods/{inventory, mail, player_load, progression, vendor}`, `reanchor_player.rs` (590) and `teleport.rs`. The post-reanchor replay is `cell/service/base_messages/player_init/resync.rs:88` (`resync_after_pawn_recreate`).
+- **Rust code**: [`crates/base-world-entry/src/base/world_entry/`](../crates/base-world-entry/src/base/world_entry/) — **95 files, 32,526 lines**. It covers `cell_dispatch/` (now including `position.rs` and `player_ghost.rs`), `gate_travel/`, `methods/{inventory, mail, player_load, progression, vendor}`, `reanchor_player.rs` (590) and `teleport.rs`. The post-reanchor replay is `cell/respawn/resync.rs:89` (`resync_after_pawn_recreate`).
 - **Recent PRs**:
   - #410, #414 and #422: earlier edition.
   - **#756**: the reanchor replays the hotbar, active slot, journal and `state_field`, and logout persists position.
@@ -194,7 +194,7 @@ last_updated: 2026-09-25
 | Forced position handling | CW | -- | services/cell/cell_methods | BASEMSG_FORCED_POSITION authoritative move. #644 bounded the snap-back recovery: nearest navmesh point, then respawner, then AABB clamp, with a 5-correction budget |
 | World-entry observability | CW | -- | base/world_entry/ | OTLP spans across the whole pipeline |
 | Cell dispatch arms | IM | -- | base/world_entry/cell_dispatch/ | tests_dispatch_arms/ has live-DB coverage. New arms `position.rs` (logout persist) and `player_ghost.rs` are not client-validated |
-| Same-world respawn client resync | NT | -- | base/world_entry/reanchor_player.rs; cell/service/base_messages/player_init/resync.rs:88 | **New 2026-09-25.** The reanchor's `CREATE_BASE_PLAYER` wipes the client's per-entity caches. P1 finding H8: after respawning, the client sent zero region hints for 28 minutes. Main now replays inventory, region hints (#682), hotbar, active slot, journal and `state_field`, and keeps the auto-cycle bit (#756). Regression guards are `combat::tests::respawn_resync` and `base_messages::tests::disconnect_persist_position`. There is no in-client respawn record after the fix |
+| Same-world respawn client resync | NT | -- | base/world_entry/reanchor_player.rs; cell/respawn/resync.rs:89 | **New 2026-09-25.** The reanchor's `CREATE_BASE_PLAYER` wipes the client's per-entity caches. P1 finding H8: after respawning, the client sent zero region hints for 28 minutes. Main now replays inventory, region hints (#682), hotbar, active slot, journal and `state_field`, and keeps the auto-cycle bit (#756). Regression guards are `combat::tests::respawn_resync` and `base_messages::tests::disconnect_persist_position`. There is no in-client respawn record after the fix |
 
 ### 7. Movement and Navigation --- IM
 
@@ -713,7 +713,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: MEDIUM-HIGH (code re-read 2026-09-25)
 - **Documentation**: [gameplay/chat-system.md](gameplay/chat-system.md), [reverse-engineering/findings/chat-wire-formats.md](reverse-engineering/findings/chat-wire-formats.md)
-- **Rust code**: [`crates/services/src/cell/chat.rs`](../crates/services/src/cell/chat.rs) (454), [`crates/services/src/base/dispatch/chat.rs`](../crates/services/src/base/dispatch/chat.rs) (219), [`crates/base-session/src/base/world_entry_chat.rs`](../crates/base-session/src/base/world_entry_chat.rs) (237): 910 lines including tests
+- **Rust code**: [`crates/services/src/cell/console/chat.rs`](../crates/services/src/cell/console/chat.rs) (454), [`crates/services/src/base/dispatch/chat.rs`](../crates/services/src/base/dispatch/chat.rs) (219), [`crates/base-session/src/base/world_entry_chat.rs`](../crates/base-session/src/base/world_entry_chat.rs) (237): 910 lines including tests
 - **Recent PRs**: #739 (stored DND message bounded to 128 characters, security finding CAT-L-02), #737 (players in a shared world now witness each other, so say/emote/yell can reach another player; not two-client validated), #769 (content-engine `npc_bark` speaks NPC lines over `onPlayerCommunication` on the say channel, a content feature that reuses the chat wire, not player chat)
 - **Open issues**: #471 (security audit CAT-L, chat / contact list, 9 findings)
 - **In-client record**: the 2026-09-18 colo playtest logged 20 say-channel sends from the real client, all `.`-prefixed GM console lines, which chat.rs:88-97 intercepts before broadcast ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 123). That proves client-to-server say routing. It does not prove witness rendering of ordinary chat.
@@ -721,7 +721,7 @@ last_updated: 2026-09-25
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Say/emote/yell (AoI) | NT | AoI | cell/chat.rs:99-110, 126-190 | Witness broadcast plus sender echo. Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
+| Say/emote/yell (AoI) | NT | AoI | cell/console/chat.rs:99-110, 126-190 | Witness broadcast plus sender echo. Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
 | Direct tells | KM | -- | -- | `sendPlayerCommunication` parses the `target` WSTRING, logs it, and forwards every message to the cell as a spatial broadcast (base/dispatch/chat.rs:22-108) |
 | User channels | KM | -- | -- | requestCreateChannel not ported |
 | Pre-defined channels | IM | -- | base/world_entry_chat.rs:20-29 | **Corrected 2026-07-25.** All 8 canonical channels (say/emote/yell/team/squad/command/server=7/tell=9) are auto-joined on world entry and pushed as `onChatJoined` (world_entry_appearance/builders.rs:89). `chatJoin` is acknowledged as a no-op (dispatch/chat.rs:113-125). **No cross-player routing on the non-spatial channels yet** |
@@ -730,7 +730,7 @@ last_updated: 2026-09-25
 | Chat flood protection | KM | -- | -- | No rate limiting |
 | Profanity filter | KM | -- | -- | No filtering |
 | Mute system | KM | -- | -- | No per-player muting |
-| GM broadcast | KM | Admin | -- | No system-wide message tool. GM feedback rides the `tell` channel to the caller only (cell/chat.rs:33-40) |
+| GM broadcast | KM | Admin | -- | No system-wide message tool. GM feedback rides the `tell` channel to the caller only (cell/console/chat.rs:33-40) |
 
 ### 22. Trading --- IM (ported 2026-06; was KM)
 
@@ -1198,7 +1198,7 @@ Re-read 2026-09-25. Every vendor-priced sink and faucet depends on a store windo
 
 - **Confidence**: HIGH (code re-read 2026-09-25)
 - **Documentation**: [analysis/legacy-command-parity/](analysis/legacy-command-parity/) (README, audit, work-packets), [tools/admin-api.md](tools/admin-api.md)
-- **Rust code**: native GM methods `cell/cell_methods/gm/` (6,070 lines); GM dot-console `cell/console/` (12,730 lines, 89 registered dot commands, up from 71 at the 2026-09-16 audit baseline); `crates/admin-api/`
+- **Rust code**: native GM methods `cell/console/gm/` (6,070 lines); GM dot-console `cell/console/` (12,730 lines, 89 registered dot commands, up from 71 at the 2026-09-16 audit baseline); `crates/admin-api/`
 - **Recent PRs**: #609 (GM gate extended to the minigame debug quartet, CM 20-23), #635-#640 and #642 (legacy dot-command parity packets P01-P05, P08, P18, P26, P44-P47), #644 (case-insensitive world lookup, `.gotospace`, account identity on console logs), #749 (`.summon` always brings the player to the caller), #787 (`.aggro` toggle), #676 (`.bug` playtest bookmark; rejected console commands now logged), #724 (admin API binds loopback by default), #740 (dev-session quotas)
 - **Open issues**: #439 (admin API has no authentication; the loopback bind is step 1 only), #473 (security audit CAT-N, 40 GM findings)
 
@@ -1208,15 +1208,15 @@ The GM command surface shipped in June via the client's **native `/` console**: 
 |---------|--------|--------|------|------------------|
 | Admin API (REST) | IM | -- | crates/admin-api/ | Loopback bind by default (#724); still **no authentication** (#439 open), so it must not be published |
 | Tauri admin panel | IM | -- | tools/ | Per-page features partial |
-| Native GM console (SGWGmPlayer) | CW | -- | cell/cell_methods/gm/ | 6,070 lines across give / stats / missions / travel / spawn / query / world / feedback + tests. PRs #473 / #516 / #518 / #521 / #524. Owner-confirmed 2026-06-20 |
+| Native GM console (SGWGmPlayer) | CW | -- | cell/console/gm/ | 6,070 lines across give / stats / missions / travel / spawn / query / world / feedback + tests. PRs #473 / #516 / #518 / #521 / #524. Owner-confirmed 2026-06-20 |
 | Access level system | CW | -- | cell/dispatch/gm_gate.rs | `enforce_gm_gate` refuses the whole gated method range; #609 added the minigame debug methods 20-23 to the allow-list. Owner-confirmed 2026-06-20 |
 | Python console | KM | -- | -- | C++ console not ported (intentional security) |
-| Console commands | IM | -- | crates/commands/ | Generic command framework (registry / parser / permissions). **Not** the active dot roster: the live path is cell/chat.rs → cell/console/ (legacy-command-parity README, "Architecture Guardrails") |
+| Console commands | IM | -- | crates/commands/ | Generic command framework (registry / parser / permissions). **Not** the active dot roster: the live path is cell/console/chat.rs → cell/console/ (legacy-command-parity README, "Architecture Guardrails") |
 | Dev/authoring `.`-console | IM | -- | cell/console/ | 12,730 lines, 89 registered dot commands. 12 of 49 parity packets integrated, milestone UATs pending. In-client record: the 2026-09-18 playtest ran `.speed`, `.gotoxyz`, `.location` and `.searchmission` successfully (12 of 20 accepted; appendix-session-timeline.md lines 76, 83, 123, 148). Re-verified 2026-09-25 |
 | Player info lookup | IM | -- | admin-api/routes/players.rs, cell/console/query.rs | Plus `gmShowPlayer` / `gmUsers` / `testLOS`, and `.info` / `.players` (P02, P04; `.players` now CellApp-wide) |
 | Ban/mute system | KM | -- | -- | No `GM_BAN` / `GM_MUTE` index and no handler anywhere in `crates/`. The admin API has a `/players/{id}/kick` route only |
-| Teleport command | CW | -- | cell/cell_methods/gm/travel.rs, cell/console/travel/ | Native `gmGotoXYZ` / `gmGoto` / `gmSummon` / `gmGotoLocation` / `gmDHD`, plus the dot commands `.gotoxyz` / `.goto` / `.summon` / `.gotolocation` / `.gotospace` (P26, P44-P46, #644, #749). `.gotoxyz` confirmed in the 2026-09-18 colo playtest (appendix-session-timeline.md line 148, "Works as designed"). Re-verified 2026-09-25 |
-| Item grant | CW | -- | cell/cell_methods/gm/give.rs | `gmGiveItem`, alongside give-xp / give-cash / remove-item / give-expertise / give-ASP; base-side confirmation. Owner-confirmed 2026-06-20. Dot `.giveitem` (P06) not yet built |
+| Teleport command | CW | -- | cell/console/gm/travel.rs, cell/console/travel/ | Native `gmGotoXYZ` / `gmGoto` / `gmSummon` / `gmGotoLocation` / `gmDHD`, plus the dot commands `.gotoxyz` / `.goto` / `.summon` / `.gotolocation` / `.gotospace` (P26, P44-P46, #644, #749). `.gotoxyz` confirmed in the 2026-09-18 colo playtest (appendix-session-timeline.md line 148, "Works as designed"). Re-verified 2026-09-25 |
+| Item grant | CW | -- | cell/console/gm/give.rs | `gmGiveItem`, alongside give-xp / give-cash / remove-item / give-expertise / give-ASP; base-side confirmation. Owner-confirmed 2026-06-20. Dot `.giveitem` (P06) not yet built |
 | Action logging | NT | -- | cell/console/dispatch.rs:47-116, cell/playtest_friction.rs | **Promoted 2026-09-25 (was IM).** Accepted commands log with `account_id` / `player_id` / `access_level` (#644) and relay to the Discord GM channel; rejections (unknown command, argc, bad target) now log with a `reason` (#676), closing playtest gap G7. The accepted-command audit reconstructed the 2026-09-18 playtest; rejection logging not yet seen in a session |
 | Announcement broadcast | KM | Chat | -- | -- |
 
@@ -1391,7 +1391,7 @@ These have substantial Rust implementations the per-system docs haven't fully ca
 | Ring Transport | crates/services/src/cell/ring_transport/ | **Added 2026-07-25.** About 5,856 lines (3,191 production); docs/gameplay/ring-transport-system.md does not yet cover the mission 688 client-patch route |
 | Cover system | crates/cell-cover/src/cell/cover/ | **Added 2026-07-25.** docs/game-systems.md still says "CoverSet entity is a stub" — corrected in that file on 2026-07-25 |
 | NPC AI movement states | crates/cell-combat/src/cell/service/npc_ai/ | **Added 2026-07-25.** docs/gameplay/npc-ai.md predates PR #428 |
-| GM command surface | crates/services/src/cell/cell_methods/gm/ + cell/console/ | **Added 2026-07-25.** About 6,070 + 12,730 lines (89 dot-commands as of 2026-09-25); no consolidated GM command reference |
+| GM command surface | crates/services/src/cell/console/gm/ + cell/console/ | **Added 2026-07-25.** About 6,070 + 12,730 lines (89 dot-commands as of 2026-09-25); no consolidated GM command reference |
 | Minigame server | crates/minigame/src/minigame/ | **Added 2026-07-25.** docs/gameplay/minigame-system.md still describes an external SmartFox process |
 | Movement validation | crates/entity/src/movement_validation/ | **Added 2026-07-25.** Four-layer anti-cheat with no ADR |
 

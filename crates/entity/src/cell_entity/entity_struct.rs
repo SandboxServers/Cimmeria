@@ -61,7 +61,7 @@ pub struct CellEntity {
     /// locally and instantly regardless of any server round-trip — this
     /// flag exists purely so the validator stops flagging the GM's now-
     /// unrestricted movement (off-navmesh, out-of-bounds, over-speed) as a
-    /// violation. See `crate::cell::cell_methods::gm::physics` for the
+    /// violation. See `crate::cell::console::gm::physics` for the
     /// wire-polarity mapping and `docs/architecture/movement-validation.md`
     /// for the bypass design.
     ///

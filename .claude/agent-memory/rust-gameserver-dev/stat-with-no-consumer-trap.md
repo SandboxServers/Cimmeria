@@ -31,7 +31,7 @@ curr/100". Cite that, not a pre-bible protocol doc.
   **rejects** out-of-range with feedback. Reject-don't-clamp is the house
   precedent for GM setters. Validate every stat a multi-stat setter touches
   *before* writing any of them, so the write is atomic.
-- Publication pattern for a stat change (copy from `cell_methods/gm/stats.rs`,
+- Publication pattern for a stat change (copy from `console/gm/stats.rs`,
   not reinvented): mutate → `serialize_dirty()` if `is_player` else
   `serialize_dirty_public()` → `clear_dirty()` →
   `crate::cell::abilities::send_entity_method(target, ON_STAT_UPDATE, payload,

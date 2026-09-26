@@ -197,7 +197,7 @@ Identical structure to `EventNetOut_callForAid_Ctor`.
 
 ## 5. Respawner Selection — resolve_respawn_target
 
-Implemented in `crates/services/src/cell/cell_methods/player/combat/respawn.rs`.
+Implemented in `crates/services/src/cell/respawn/mod.rs`.
 
 Priority order:
 1. Explicit `respawner_id > 0` from CALL_FOR_AID → find in `space_mgr.respawners` by id.
@@ -338,6 +338,6 @@ are inferred but not confirmed against RTTI class names.
 - `docs/reverse-engineering/findings/right-click-routing-on-corpse.md` — right-click gate at 0x00e68570
 - `docs/reverse-engineering/findings/spawn-system-mechanics.md` — RespawnerMobId property, respawner entity definition
 - `docs/reverse-engineering/findings/cme-event-signal.md` — Pattern A/B emit pipeline
-- `crates/services/src/cell/cell_methods/player/combat/respawn.rs` — Rust implementation
+- `crates/services/src/cell/respawn/mod.rs` — Rust implementation
 - `crates/cell-combat/src/cell/abilities/damage_apply/mod.rs` — onBeginAidWait send logic
 - `crates/cell-catalog/src/cell/spawner/respawners.rs` — RespawnerDef, SQL query
