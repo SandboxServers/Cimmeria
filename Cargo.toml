@@ -56,7 +56,8 @@ default-members = [
 
 # Optimize dependencies and strip their debug info in dev builds.
 # This dramatically reduces .rlib sizes so the linker doesn't OOM on WSL
-# (~8 GB linker RSS instead of ~47 GB). Our own crates keep full debug info.
+# (~8 GB linker RSS instead of ~47 GB). Our own crates keep line tables only
+# (see [profile.dev]); use `--profile dev-debug` for full debug info.
 [profile.dev.package."*"]
 opt-level = 1
 debug = false
@@ -200,8 +201,19 @@ cimmeria-lab-mcp = { path = "crates/lab-mcp" }
 # ---------------------------------------------------------------------------
 
 [profile.dev]
+# Line tables only: panics and backtraces keep file:line, but the compiler emits no
+# variable or type debug info. Full debug info is the largest single cost in a dev
+# build (compile time, PDB/linker memory, disk); a debugger session uses
+# `cargo build --profile dev-debug` instead. The test profile inherits this.
+debug = "line-tables-only"
 # Split debug info into a separate file — speeds up linking.
 split-debuginfo = "unpacked"
 # Fewer codegen units = fewer parallel LLVM backends = lower peak memory.
 # Default is 256 for dev; 16 is a good balance of speed vs memory.
 codegen-units = 16
+
+# Full debug info for stepping through our own crates in a debugger.
+# Output goes to target/dev-debug/, so it never invalidates the normal dev build.
+[profile.dev-debug]
+inherits = "dev"
+debug = true
