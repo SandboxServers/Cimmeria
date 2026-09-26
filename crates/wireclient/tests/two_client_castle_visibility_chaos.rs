@@ -123,8 +123,22 @@ async fn lossy_network_both_directions_still_converge() {
 
     // A enters first and is fully ready before B connects -- the
     // "walk-up" order.
-    let a = enter_castle_with_timeout(&server.auth_url, &gm_creds, A_PLAYER_ID, 1, CHAOS_RECV_TIMEOUT).await;
-    let b = enter_castle_with_timeout(&server.auth_url, &b_creds, B_PLAYER_ID, 2, CHAOS_RECV_TIMEOUT).await;
+    let a = enter_castle_with_timeout(
+        &server.auth_url,
+        &gm_creds,
+        A_PLAYER_ID,
+        1,
+        CHAOS_RECV_TIMEOUT,
+    )
+    .await;
+    let b = enter_castle_with_timeout(
+        &server.auth_url,
+        &b_creds,
+        B_PLAYER_ID,
+        2,
+        CHAOS_RECV_TIMEOUT,
+    )
+    .await;
     let a_id = a.player_entity_id.unwrap();
     let b_id = b.player_entity_id.unwrap();
 
@@ -134,24 +148,32 @@ async fn lossy_network_both_directions_still_converge() {
         m.is_create() && m.entity_id == Some(b_id)
     })
     .await
-    .unwrap_or_else(|| panic!("lossy network: A never saw B's create within {CONVERGENCE_TIMEOUT:?}"));
+    .unwrap_or_else(|| {
+        panic!("lossy network: A never saw B's create within {CONVERGENCE_TIMEOUT:?}")
+    });
     wait_for(&a, CONVERGENCE_TIMEOUT, |m| {
         m.method_index == Some(26) && m.entity_id == Some(b_id)
     })
     .await
-    .unwrap_or_else(|| panic!("lossy network: A never saw B's BEING_APPEARANCE within {CONVERGENCE_TIMEOUT:?}"));
+    .unwrap_or_else(|| {
+        panic!("lossy network: A never saw B's BEING_APPEARANCE within {CONVERGENCE_TIMEOUT:?}")
+    });
 
     // Direction 2: B sees A.
     wait_for(&b, CONVERGENCE_TIMEOUT, |m| {
         m.is_create() && m.entity_id == Some(a_id)
     })
     .await
-    .unwrap_or_else(|| panic!("lossy network: B never saw A's create within {CONVERGENCE_TIMEOUT:?}"));
+    .unwrap_or_else(|| {
+        panic!("lossy network: B never saw A's create within {CONVERGENCE_TIMEOUT:?}")
+    });
     wait_for(&b, CONVERGENCE_TIMEOUT, |m| {
         m.method_index == Some(26) && m.entity_id == Some(a_id)
     })
     .await
-    .unwrap_or_else(|| panic!("lossy network: B never saw A's BEING_APPEARANCE within {CONVERGENCE_TIMEOUT:?}"));
+    .unwrap_or_else(|| {
+        panic!("lossy network: B never saw A's BEING_APPEARANCE within {CONVERGENCE_TIMEOUT:?}")
+    });
 
     // Flush anything still held in the reorder buffer before shutdown so a
     // partial buffer doesn't mask an in-flight send during teardown.
@@ -279,7 +301,14 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
     // introduction. A short quiescence wait avoids the race; everything A
     // triggers on its own is on a lossless transport in this test, so it
     // completes in well under this window on localhost.
-    let a = enter_castle_with_timeout(&server.auth_url, &gm_creds, A_PLAYER_ID, 1, CHAOS_RECV_TIMEOUT).await;
+    let a = enter_castle_with_timeout(
+        &server.auth_url,
+        &gm_creds,
+        A_PLAYER_ID,
+        1,
+        CHAOS_RECV_TIMEOUT,
+    )
+    .await;
     let a_addr = a.local_addr().expect("A's local UDP addr");
     tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -294,7 +323,14 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
     // while developing this test).
     lossy.drop_next_sends_to(1, a_addr, 50);
 
-    let b = enter_castle_with_timeout(&server.auth_url, &b_creds, B_PLAYER_ID, 2, CHAOS_RECV_TIMEOUT).await;
+    let b = enter_castle_with_timeout(
+        &server.auth_url,
+        &b_creds,
+        B_PLAYER_ID,
+        2,
+        CHAOS_RECV_TIMEOUT,
+    )
+    .await;
     let b_id = b.player_entity_id.unwrap();
 
     // Record everything A receives on the way to seeing B's create, so we
@@ -312,7 +348,11 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
     });
     let create_index = seen
         .iter()
-        .position(|m| m.msg_id == create_msg.msg_id && m.entity_id == create_msg.entity_id && m.class_id == create_msg.class_id)
+        .position(|m| {
+            m.msg_id == create_msg.msg_id
+                && m.entity_id == create_msg.entity_id
+                && m.class_id == create_msg.class_id
+        })
         .expect("the matching message must be present in its own recording");
 
     let premature: Vec<&S2CMessage> = seen[..create_index]
@@ -396,8 +436,22 @@ async fn high_latency_clients_still_converge() {
     let gm_creds = credentials_for("test");
     let b_creds = credentials_for("na37_latency_b");
 
-    let a = enter_castle_with_timeout(&server.auth_url, &gm_creds, A_PLAYER_ID, 1, CHAOS_RECV_TIMEOUT).await;
-    let b = enter_castle_with_timeout(&server.auth_url, &b_creds, B_PLAYER_ID, 2, CHAOS_RECV_TIMEOUT).await;
+    let a = enter_castle_with_timeout(
+        &server.auth_url,
+        &gm_creds,
+        A_PLAYER_ID,
+        1,
+        CHAOS_RECV_TIMEOUT,
+    )
+    .await;
+    let b = enter_castle_with_timeout(
+        &server.auth_url,
+        &b_creds,
+        B_PLAYER_ID,
+        2,
+        CHAOS_RECV_TIMEOUT,
+    )
+    .await;
     let a_id = a.player_entity_id.unwrap();
     let b_id = b.player_entity_id.unwrap();
 
@@ -405,12 +459,16 @@ async fn high_latency_clients_still_converge() {
         m.is_create() && m.entity_id == Some(b_id)
     })
     .await
-    .unwrap_or_else(|| panic!("high latency: A never saw B's create within {CONVERGENCE_TIMEOUT:?}"));
+    .unwrap_or_else(|| {
+        panic!("high latency: A never saw B's create within {CONVERGENCE_TIMEOUT:?}")
+    });
     wait_for(&b, CONVERGENCE_TIMEOUT, |m| {
         m.is_create() && m.entity_id == Some(a_id)
     })
     .await
-    .unwrap_or_else(|| panic!("high latency: B never saw A's create within {CONVERGENCE_TIMEOUT:?}"));
+    .unwrap_or_else(|| {
+        panic!("high latency: B never saw A's create within {CONVERGENCE_TIMEOUT:?}")
+    });
 
     let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = ANY($1)")
         .bind([A_PLAYER_ID, B_PLAYER_ID].as_slice())

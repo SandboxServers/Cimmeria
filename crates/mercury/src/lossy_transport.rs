@@ -686,7 +686,8 @@ mod tests {
         let receiver = make_inner(0);
         let recv_addr = receiver.local_addr().unwrap();
         let sender_inner = make_inner(0);
-        let lossy = LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
+        let lossy =
+            LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
 
         lossy.drop_next_sends(3);
 
@@ -695,23 +696,31 @@ mod tests {
                 .send_to(format!("dropped-{i}").as_bytes(), recv_addr)
                 .await
                 .unwrap();
-            assert!(n > 0, "forced-drop send still reports the kernel's-view byte count");
+            assert!(
+                n > 0,
+                "forced-drop send still reports the kernel's-view byte count"
+            );
         }
         // The 4th send must land -- the counter is exhausted.
         lossy.send_to(b"survivor", recv_addr).await.unwrap();
 
         let mut buf = [0u8; 64];
-        let (len, _) = tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
-            .await
-            .expect("the 4th send must be delivered")
-            .unwrap();
+        let (len, _) =
+            tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                .await
+                .expect("the 4th send must be delivered")
+                .unwrap();
         assert_eq!(&buf[..len], b"survivor");
 
         // Nothing else arrives -- the 3 forced drops never hit the wire.
-        let timed_out = tokio::time::timeout(Duration::from_millis(100), receiver.recv_from(&mut buf))
-            .await
-            .is_err();
-        assert!(timed_out, "exactly 3 sends must have been dropped, not fewer");
+        let timed_out =
+            tokio::time::timeout(Duration::from_millis(100), receiver.recv_from(&mut buf))
+                .await
+                .is_err();
+        assert!(
+            timed_out,
+            "exactly 3 sends must have been dropped, not fewer"
+        );
     }
 
     #[tokio::test]
@@ -724,7 +733,8 @@ mod tests {
         let receiver_b = make_inner(0);
         let addr_b = receiver_b.local_addr().unwrap();
         let sender_inner = make_inner(0);
-        let lossy = LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
+        let lossy =
+            LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
 
         lossy.drop_next_sends_to(1, addr_a, 0);
 
@@ -737,15 +747,17 @@ mod tests {
 
         let mut buf = [0u8; 64];
         for expected in [b"to-b-1".as_slice(), b"to-b-2".as_slice()] {
-            let (len, _) = tokio::time::timeout(Duration::from_millis(500), receiver_b.recv_from(&mut buf))
-                .await
-                .expect("sends to B must be unaffected by the A-targeted drop")
-                .unwrap();
+            let (len, _) =
+                tokio::time::timeout(Duration::from_millis(500), receiver_b.recv_from(&mut buf))
+                    .await
+                    .expect("sends to B must be unaffected by the A-targeted drop")
+                    .unwrap();
             assert_eq!(&buf[..len], expected);
         }
-        let timed_out = tokio::time::timeout(Duration::from_millis(100), receiver_a.recv_from(&mut buf))
-            .await
-            .is_err();
+        let timed_out =
+            tokio::time::timeout(Duration::from_millis(100), receiver_a.recv_from(&mut buf))
+                .await
+                .is_err();
         assert!(timed_out, "the targeted send to A must have been dropped");
     }
 
@@ -760,34 +772,35 @@ mod tests {
         let receiver = make_inner(0);
         let recv_addr = receiver.local_addr().unwrap();
         let sender_inner = make_inner(0);
-        let lossy = LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
+        let lossy =
+            LossyTransport::new_symmetric(sender_inner, LossyConfig::new(Duration::ZERO, 0, 0, 0));
 
         lossy.drop_next_sends_to(1, recv_addr, 50);
 
         lossy.send_to(b"short", recv_addr).await.unwrap(); // 5 bytes, under min_len -- must land
-        lossy
-            .send_to(&vec![b'x'; 64], recv_addr)
-            .await
-            .unwrap(); // 64 bytes, at/over min_len -- must drop
+        lossy.send_to(&[b'x'; 64], recv_addr).await.unwrap(); // 64 bytes, at/over min_len -- must drop
         lossy.send_to(b"survivor", recv_addr).await.unwrap(); // budget exhausted -- must land
 
         let mut buf = [0u8; 128];
-        let (len, _) = tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
-            .await
-            .expect("the short send must pass the size filter and land")
-            .unwrap();
+        let (len, _) =
+            tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                .await
+                .expect("the short send must pass the size filter and land")
+                .unwrap();
         assert_eq!(&buf[..len], b"short");
 
-        let (len, _) = tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
-            .await
-            .expect("the survivor send must land once the budget is exhausted")
-            .unwrap();
+        let (len, _) =
+            tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                .await
+                .expect("the survivor send must land once the budget is exhausted")
+                .unwrap();
         assert_eq!(&buf[..len], b"survivor");
 
         // The 64-byte send never arrives -- it was the one dropped.
-        let timed_out = tokio::time::timeout(Duration::from_millis(100), receiver.recv_from(&mut buf))
-            .await
-            .is_err();
+        let timed_out =
+            tokio::time::timeout(Duration::from_millis(100), receiver.recv_from(&mut buf))
+                .await
+                .is_err();
         assert!(timed_out, "the 64-byte send must have been the one dropped");
     }
 
@@ -817,10 +830,11 @@ mod tests {
 
         let mut order = Vec::new();
         for _ in 0..3 {
-            let (len, _) = tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
-                .await
-                .expect("held packets must flush once the buffer fills")
-                .unwrap();
+            let (len, _) =
+                tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                    .await
+                    .expect("held packets must flush once the buffer fills")
+                    .unwrap();
             order.push(String::from_utf8_lossy(&buf[..len]).to_string());
         }
         assert_eq!(order, vec!["third", "second", "first"]);
@@ -843,13 +857,18 @@ mod tests {
         let mut buf = [0u8; 64];
         let mut order = Vec::new();
         for _ in 0..2 {
-            let (len, _) = tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
-                .await
-                .expect("explicit flush must deliver the partial buffer")
-                .unwrap();
+            let (len, _) =
+                tokio::time::timeout(Duration::from_millis(500), receiver.recv_from(&mut buf))
+                    .await
+                    .expect("explicit flush must deliver the partial buffer")
+                    .unwrap();
             order.push(String::from_utf8_lossy(&buf[..len]).to_string());
         }
-        assert_eq!(order, vec!["b", "a"], "explicit flush also reverses arrival order");
+        assert_eq!(
+            order,
+            vec!["b", "a"],
+            "explicit flush also reverses arrival order"
+        );
     }
 
     #[tokio::test]
@@ -889,7 +908,8 @@ mod tests {
                 "observed latency {lat:?} must not exceed base+jitter by more than scheduling slack"
             );
         }
-        let distinct: std::collections::HashSet<_> = latencies.iter().map(|d| d.as_millis()).collect();
+        let distinct: std::collections::HashSet<_> =
+            latencies.iter().map(|d| d.as_millis()).collect();
         assert!(
             distinct.len() > 1,
             "jitter must vary the observed latency across sends, got {latencies:?}"

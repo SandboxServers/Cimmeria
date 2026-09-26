@@ -69,12 +69,19 @@ use crate::otel;
 /// `wire.firehose=debug` is for the same reason: the firehose rows are
 /// TRACE, and the TRACE filter turns them off, but a DEBUG row ever emitted
 /// on one of those targets reaches its file and so must reach SigNoz.
+///
+/// `mercury.lossy_transport` (NA37 round 2) is the network-chaos test
+/// apparatus's own drop/latency/jitter log, behind `cimmeria-mercury`'s
+/// `test-support` feature — never compiled into a release build, but
+/// `target_scan_tests` reads source text regardless of feature gating, so it
+/// still needs an explicit level here.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
                 mercury.backpressure=info,\
+                mercury.lossy_transport=debug,\
                 wire.in=info,wire.out=info,\
                 wire.out.avatar_update=debug,\
                 wire.out.forced_position=debug,\

@@ -59,7 +59,9 @@ pub async fn live_db_pool_or_skip() -> Option<PgPool> {
     let url = match std::env::var("DATABASE_URL") {
         Ok(u) if !u.is_empty() => u,
         _ => {
-            eprintln!("two_client_castle_visibility: DATABASE_URL not set -- skipping (see reload-db.sh)");
+            eprintln!(
+                "two_client_castle_visibility: DATABASE_URL not set -- skipping (see reload-db.sh)"
+            );
             return None;
         }
     };
@@ -290,10 +292,9 @@ pub async fn bind_base_socket() -> (Arc<dyn BidirectionalTransport>, u16) {
         .await
         .expect("bind chaos base socket");
     let port = socket.local_addr().expect("local_addr").port();
-    let transport: Arc<dyn BidirectionalTransport> =
-        Arc::new(cimmeria_mercury::transport::UdpTransport::new(Arc::new(
-            socket,
-        )));
+    let transport: Arc<dyn BidirectionalTransport> = Arc::new(
+        cimmeria_mercury::transport::UdpTransport::new(Arc::new(socket)),
+    );
     (transport, port)
 }
 
@@ -420,7 +421,14 @@ pub async fn enter_castle(
     player_id: i32,
     request_id: u32,
 ) -> GameSession {
-    enter_castle_with_timeout(auth_url, creds, player_id, request_id, Duration::from_secs(5)).await
+    enter_castle_with_timeout(
+        auth_url,
+        creds,
+        player_id,
+        request_id,
+        Duration::from_secs(5),
+    )
+    .await
 }
 
 /// Poll `session`'s inbox (decoding every bundle that arrives) until
