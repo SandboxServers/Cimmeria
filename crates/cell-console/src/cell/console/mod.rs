@@ -99,18 +99,21 @@ pub(crate) use gm::feedback::send_gm_feedback;
 // Framework re-exports: handlers reach these via `super::*`, so the split into
 // `registry` / `dispatch` / `parse` stays an internal refactor with no
 // public-surface change.
-pub(crate) use dispatch::handle_console_command;
+pub use dispatch::handle_console_command;
 pub(crate) use parse::{parse_bool, parse_f32, parse_i32};
 pub(crate) use registry::{Spec, COMMANDS};
 
-// `exec` is only driven directly by the dispatch-coverage test; gating the
+// `exec` is only driven directly by the dispatch-coverage test and by the
+// NPC movement tick's `.speed` tests in `cimmeria-services`; gating the
 // re-export keeps the non-test build from flagging it as unused.
-#[cfg(test)]
-pub(crate) use dispatch::exec;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use dispatch::exec;
 
 // The `.`-console privilege test lives with the cell's GM gate, in
 // cimmeria-cell-world, because the NPC AI's GM checks sit below the console.
-pub(crate) use crate::cell::dispatch::is_gm;
+// Public for the live-research-lab console exec in `cimmeria-services`.
+pub use crate::cell::dispatch::is_gm;
 
 /// Public, owned description of one registered `.`-console command. Exposed so
 /// out-of-crate callers — the live-research-lab MCP `server_console_list` tool

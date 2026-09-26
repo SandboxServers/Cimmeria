@@ -130,10 +130,11 @@ cimmeria-services = [
 
 "cell::cell_methods" = "cimmeria-cell-methods"
 
-# Since the C4-C6 preparation (§2H) the chat interceptor and the native GM
-# cell methods are `cell::console::{chat, gm}`; `cell::chat` is a re-export in
-# the facade's `cell` module.
-"cell::console" = "cimmeria-cell-console"
+# cimmeria-cell-console is extracted (C5b): `cell::console`, which holds the
+# chat interceptor and the native GM cell methods (`console::{chat, gm}`) since
+# the C4-C6 preparation (§2H), is a re-export of it, and so is `cell::chat`
+# (`pub use console::chat` in the facade's `cell` module). Neither is a module
+# of this crate any more, so they have no rows.
 
 "cell::service" = "cimmeria-cell"
 "cell::dispatch" = "cimmeria-cell"

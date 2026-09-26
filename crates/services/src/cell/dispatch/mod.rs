@@ -50,6 +50,6 @@ pub use router::dispatch_cell_method;
 
 // The canonical raw-column → typed `AccessLevel` conversion,
 // `gm_gate::access_level_from_u32`, is used only inside `cimmeria-cell-world`
-// now (the movement validator's GM off-navmesh allowance).
-// The `.`-console privilege test (re-exported as `cell::console::is_gm`).
-pub(crate) use gm_gate::is_gm;
+// now (the movement validator's GM off-navmesh allowance). The `.`-console
+// privilege test, `gm_gate::is_gm`, is re-exported as `cell::console::is_gm`
+// by `cimmeria-cell-console` (wave C5b), straight from `cimmeria-cell-world`.

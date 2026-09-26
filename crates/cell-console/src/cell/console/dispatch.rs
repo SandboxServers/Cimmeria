@@ -1,7 +1,7 @@
 //! Parse / validate / route one GM `.`-console line.
 //!
 //! [`handle_console_command`] is the channel entry point called from
-//! [`crate::cell::chat`]; [`resolve_target`] enforces the per-command target
+//! [`crate::cell::console::chat`]; [`resolve_target`] enforces the per-command target
 //! contract and [`exec`] routes a validated command to its family handler.
 
 use cimmeria_content_engine::chain::ChainEngine;
@@ -20,9 +20,9 @@ use crate::cell::space_manager::SpaceManager;
 ///
 /// `text` is the raw chat body including the leading `.`. The caller is already
 /// confirmed `access_level >= GameMaster` by the channel gate in
-/// [`crate::cell::chat`]. Every accepted command is logged at `info` for the
+/// [`crate::cell::console::chat`]. Every accepted command is logged at `info` for the
 /// audit trail; validation failures reply to the GM via [`feedback`] and abort.
-pub(crate) async fn handle_console_command(
+pub async fn handle_console_command(
     caller_id: u32,
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -175,7 +175,8 @@ fn resolve_target(
 /// Route a validated command to its family handler. The big match mirrors
 /// `gm::dispatch`; each arm receives only the params it needs.
 #[allow(clippy::too_many_lines)]
-pub(crate) async fn exec(
+#[cfg_attr(not(any(test, feature = "test-support")), allow(unreachable_pub))]
+pub async fn exec(
     name: &str,
     caller_id: u32,
     args: &[&str],

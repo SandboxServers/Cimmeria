@@ -1,7 +1,7 @@
 //! Player-grant console commands: `.givecash`, `.givexp`.
 //!
 //! Both route through the same base-side grant sinks the native `gmGiveCash`/
-//! `gmGiveXp` methods use (`crates/services/src/cell/console/gm/give.rs`
+//! `gmGiveXp` methods use (`crates/cell-console/src/cell/console/gm/give.rs`
 //! -> `CellToBaseMsg::GrantCash`/`GrantXP`) — but unlike those caller-grants-
 //! to-self native paths, `.givecash`/`.givexp` grant to a *selected* target
 //! while the calling GM receives the feedback line. This caller/subject split

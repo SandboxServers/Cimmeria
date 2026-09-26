@@ -171,6 +171,7 @@ component_management:
         - "crates/cell-combat/**"
         - "crates/base/**"
         - "crates/cell-content/**"
+        - "crates/cell-console/**"
         - "crates/cell-interactions/**"
       statuses:
         - type: project
