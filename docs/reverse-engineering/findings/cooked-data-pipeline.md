@@ -267,7 +267,7 @@ binary's LibCategoryKey<N> template parameters are authoritative for what the cl
 **Recommended fix for Cimmeria (applied)**: `crates/resources/src/base/resources/mod.rs`
 `CATEGORY_PAKS` now registers `behavior_event` as category 21 (`CookedBehaviorEvents.pak`),
 matching the client's 1–21 registration; a byte-exact wire test in
-`crates/services/src/base/resource_fragment_tests.rs` pins the fragment tag. No category
+`crates/base-session/src/base/resource_fragment_tests.rs` pins the fragment tag. No category
 22 exists in the Rust map. (The engine doc's category-7 note concerns the legacy C++ "push
 map" inside the unused `send_category_resources`, not the load/version-negotiation map.)
 

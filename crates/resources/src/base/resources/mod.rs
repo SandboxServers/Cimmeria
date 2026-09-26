@@ -96,7 +96,7 @@ pub struct CategoryData {
 /// in-memory after the PAK load so the client picks up the modifications
 /// via the existing cooked-data wire path — no on-disk PAK edit, no
 /// client-artifact distribution. The set of overridden element IDs per
-/// category is tracked so `cimmeria_services::base::cooked_data::handle_version_info_request`
+/// category is tracked so `cimmeria_base_session::base::cooked_data::handle_version_info_request`
 /// can emit `invalidate_all = false` + per-key `InvalidKeys`, scoping the
 /// client-side cache invalidation to just the patched entries.
 #[derive(Clone)]

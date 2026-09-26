@@ -14,7 +14,7 @@ last_updated: 2026-09-19
 
 The chat system provides multi-channel text communication between players. It supports system channels (say, emote, yell, team, squad, command, officer, server, feedback, tell, splash) and user-created channels (chat, roleplay, alliance). Messages on cell-based channels are forwarded to the CellApp for spatial distribution; other messages are handled on the BaseApp.
 
-The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/services/src/base/dispatch/chat.rs) (inbound base methods), [`cell/chat.rs`](../../crates/services/src/cell/chat.rs) (spatial fanout), and [`base/world_entry_chat.rs`](../../crates/services/src/base/world_entry_chat.rs) (channel registration at world entry).
+The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/services/src/base/dispatch/chat.rs) (inbound base methods), [`cell/chat.rs`](../../crates/services/src/cell/chat.rs) (spatial fanout), and [`base/world_entry_chat.rs`](../../crates/base-session/src/base/world_entry_chat.rs) (channel registration at world entry).
 
 ## Implementation Status
 

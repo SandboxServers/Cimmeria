@@ -50,13 +50,13 @@ sequenceDiagram
     end
 ```
 
-The three-way reply is what makes per-mission patching work without nuking the rest of the client's cooked-data cache. See `crates/services/src/base/cooked_data.rs:53-71` for the response-shape decision in code and `crates/wire/src/mercury/protocol/resources.rs:80-113` for the `build_version_info` encoder.
+The three-way reply is what makes per-mission patching work without nuking the rest of the client's cooked-data cache. See `crates/base-session/src/base/cooked_data.rs:53-71` for the response-shape decision in code and `crates/wire/src/mercury/protocol/resources.rs:80-113` for the `build_version_info` encoder.
 
 ### Why the server pushes proactively
 
 The first version of the fix only invalidated; it didn't push. Symptom in dev: the runtime cache had `MetaData` advanced and `_622` / `_641` deleted, but the client never issued `elementDataRequest` for them — it was waiting for the server to push, because that's how the BigWorld client cache reload path works for `InvalidKeys`. Result: missions stopped being granted on subsequent logins because the catalog row was gone.
 
-`push_overridden_elements` (`crates/services/src/base/cooked_data.rs:133-199`) ships one `resourceFragment` per InvalidKey immediately after the `onVersionInfo` reply. `RequiredUpdates` on the version-info packet is set to the InvalidKeys count so the client knows how many fragments to expect.
+`push_overridden_elements` (`crates/base-session/src/base/cooked_data.rs:133-199`) ships one `resourceFragment` per InvalidKey immediately after the `onVersionInfo` reply. `RequiredUpdates` on the version-info packet is set to the InvalidKeys count so the client knows how many fragments to expect.
 
 The fix is **self-healing**: a client left in a previously-broken state (entries deleted, MetaData advanced past the patched value) will mismatch on its next handshake, get the same `InvalidKeys` set, and receive the proactive push. No manual cache delete required on the client side.
 
@@ -67,8 +67,8 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 | Per-mission XML patch + insertion-point spec | `crates/resources/src/base/mission_overrides.rs` | `MissionOverride`, `MISSION_OVERRIDES`, `apply_override` |
 | Apply patches at PAK load + bump metadata | `crates/resources/src/base/resources/mod.rs:162-236` | `ResourceCache::apply_mission_overrides` |
 | Track which element IDs were patched | `crates/resources/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
-| Three-way `onVersionInfo` reply | `crates/services/src/base/cooked_data.rs:21-123` | `handle_version_info_request` |
-| Push patched XML after the reply | `crates/services/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
+| Three-way `onVersionInfo` reply | `crates/base-session/src/base/cooked_data.rs:21-123` | `handle_version_info_request` |
+| Push patched XML after the reply | `crates/base-session/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
 | Wire encoder for `onVersionInfo` with `InvalidKeys` | `crates/wire/src/mercury/protocol/resources.rs:80-113` | `build_version_info` |
 | Wire-format guard | `crates/wire/src/mercury/protocol/tests.rs:159-171` | `version_info_per_key_invalidation_round_trips_through_encoder` |
 | Dialog full regeneration | `crates/resources/src/base/dialog_overrides/mod.rs` | `DialogOverride`, `DialogScreen`, `DialogButton`, `DIALOG_OVERRIDES`, `generate_dialog_xml` |

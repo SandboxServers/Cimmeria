@@ -672,7 +672,7 @@ fn resource_fragment_uses_u16_length_prefix() {
 /// cut the cold-cache login burst) has no regression net — a future
 /// overhead change in `build_resource_fragment` would silently push us
 /// over the wire limit on every patched-mission push. See
-/// `crates/services/src/base/cooked_data.rs::MAX_CHUNK`.
+/// `crates/base-session/src/base/cooked_data.rs::MAX_CHUNK`.
 /// Mercury `MAX_BODY_LENGTH` (plaintext body length, post-decrypt).
 const MERCURY_MAX_BODY_LENGTH: usize = 1411;
 
@@ -794,7 +794,7 @@ fn resource_fragment_non_first_frag_at_max_chunk_fits_within_mercury_body_limit(
 /// decoded WORD_LEN, not just a hand-computed body sum.
 #[test]
 fn resource_fragment_first_frag_at_cooked_data_max_chunk_has_safety_margin() {
-    const COOKED_DATA_MAX_CHUNK: usize = 1390; // crates/services/src/base/cooked_data.rs
+    const COOKED_DATA_MAX_CHUNK: usize = 1390; // crates/base-session/src/base/cooked_data.rs
 
     let xml = vec![b'Z'; COOKED_DATA_MAX_CHUNK];
     let out = build_resource_fragment(

@@ -115,7 +115,7 @@ when both halves are present and the NPC/bare cascade otherwise.
 
 The join happens when the packet is composed, which matters on the deferred
 path. A witness still loading its own map has its `EnteredAoI` buffered in
-[`base/deferred_aoi.rs`](../../crates/services/src/base/deferred_aoi.rs) for
+[`base/deferred_aoi.rs`](../../crates/base-session/src/base/deferred_aoi.rs) for
 seconds, and the observee can holster a weapon or swap armour in that time.
 Joining at buffer time would ship a stale body. Both call sites use the same
 function: `aoi::entered_aoi` (standalone packets) and
@@ -166,7 +166,7 @@ The base does not know who is looking: witness sets live on the cell, and a
 second copy on the base would be one more thing to leak on disconnect. So the
 base hands the finished args to the cell with
 `BaseToCellMsg::BroadcastToWitnesses { entity_id, method_index, args }`
-([`base/helpers/witness_broadcast.rs`](../../crates/services/src/base/helpers/witness_broadcast.rs)),
+([`base/helpers/witness_broadcast.rs`](../../crates/base-session/src/base/helpers/witness_broadcast.rs)),
 and the cell fans them out through `send_entity_method_to_witnesses` — the
 same path every cell-originated state change already uses — producing one
 `CellToBaseMsg::WitnessEntityMethod` per observer. The bytes broadcast are

@@ -8,7 +8,7 @@ metadata:
 ## The systemic GM-auth plumbing gap in Cimmeria
 
 `access_level` lives ONLY on `ConnectedClientState.access_level`
-(`crates/services/src/base/mod.rs:117`). Sourced from
+(`crates/base-session/src/base/mod.rs:145`). Sourced from
 `account.accesslevel` DB column via
 `crates/services/src/auth/handlers.rs:486-488`. Today consumed by
 exactly ONE site: the chat dispatch's `SPEAKER_GM` bit computation

@@ -18,7 +18,7 @@ The `ContactListManager` interface is defined in `entities/defs/interfaces/Conta
 
 Two internal base methods (`sendEventToPlayers` and `sendLoginStatusMessages`) handle server-side event broadcasting -- these are never called by the client.
 
-The Rust implementation splits across the two services. The six inbound cell methods (indices 55–60) live in [`crates/services/src/cell/cell_methods/contact_list/mod.rs`](../../crates/services/src/cell/cell_methods/contact_list/mod.rs) — they parse the wire payload, resolve `player_id`, and forward to the base via `CellToBaseMsg`. The base side ([`crates/services/src/base/contact_list/`](../../crates/services/src/base/contact_list/)) owns all DB mutations, the client echo responses, and the presence fanout.
+The Rust implementation splits across the two services. The six inbound cell methods (indices 55–60) live in [`crates/services/src/cell/cell_methods/contact_list/mod.rs`](../../crates/services/src/cell/cell_methods/contact_list/mod.rs) — they parse the wire payload, resolve `player_id`, and forward to the base via `CellToBaseMsg`. The base side ([`crates/base-session/src/base/contact_list/`](../../crates/base-session/src/base/contact_list/)) owns all DB mutations, the client echo responses, and the presence fanout.
 
 ## Implementation Status
 
@@ -135,7 +135,7 @@ The two system lists every character gets on first login use fixed monikers:
 | Friends | 300 |
 | Ignore | 301 |
 
-See `ensure_system_lists` in [`base/contact_list/persistence/mod.rs`](../../crates/services/src/base/contact_list/persistence/mod.rs). Player-created lists carry whatever moniker the client sends. The server stores and echoes the value without interpreting it; contact-event delivery is driven by list *membership*, not by flags.
+See `ensure_system_lists` in [`base/contact_list/persistence/mod.rs`](../../crates/base-session/src/base/contact_list/persistence/mod.rs). Player-created lists carry whatever moniker the client sends. The server stores and echoes the value without interpreting it; contact-event delivery is driven by list *membership*, not by flags.
 
 ## Relationship to Chat System
 

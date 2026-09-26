@@ -272,7 +272,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - **Treat `reason` values as stable API.** `find_event` matches `reason` by exact string equality. Renaming a value (even a typo fix) trips every guard pinned to the old string — coordinate via the convention doc.
 - **One test per seam.** Don't multiplex unrelated negative paths in one test — when one assertion fails, you want to know which seam broke.
 
-**Examples**: `crates/services/src/base/helpers/` (3× witness-miss WARN + 3× client-disconnect DEBUG), `crates/services/src/base/world_entry/map_loaded.rs::tests::map_loaded_fragment_send_failure_errors_and_logs` (FailAfter transport + state-not-mutated invariant), `crates/services/src/base/world_entry_appearance/` (`on_client_ready_errors_each_cell_tx_send_independently_when_closed` — 3 ERROR sites in one test with closed receiver).
+**Examples**: `crates/base-session/src/base/helpers/` (3× witness-miss WARN + 3× client-disconnect DEBUG), `crates/services/src/base/world_entry/map_loaded.rs::tests::map_loaded_fragment_send_failure_errors_and_logs` (FailAfter transport + state-not-mutated invariant), `crates/services/src/base/world_entry_appearance/` (`on_client_ready_errors_each_cell_tx_send_independently_when_closed` — 3 ERROR sites in one test with closed receiver).
 
 ---
 

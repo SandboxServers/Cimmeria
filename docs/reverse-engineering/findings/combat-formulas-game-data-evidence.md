@@ -519,7 +519,7 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
   schema (`db/resources/Items/Tables/items.sql:8,12-14`) and are read by **no**
   combat path. The only Rust `INSERT`s naming them are test fixtures
   (`crates/services/src/base/character/request_visuals_live_db_tests.rs:117`,
-  `crates/services/src/base/console_authoring/tests.rs:93`).
+  `crates/base-session/src/base/console_authoring/tests.rs:93`).
 - `AbilityDef` (`crates/entity/src/abilities/defs.rs:101-117`) has no scaling
   fields. Base damage comes **only** from the effect NVPs
   (`crates/services/src/cell/combat/damage_apply/mod.rs:113-134`), with an
