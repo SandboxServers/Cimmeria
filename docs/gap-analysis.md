@@ -43,7 +43,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH (re-read 2026-09-25: `auth/`, `base/login/mod.rs`, `server/main.rs` audit writer, PRs #698/#738)
 - **Documentation**: [connection-flow.md](connection-flow.md), [protocol/login-handshake.md](protocol/login-handshake.md), [architecture/negative-logging-convention.md](architecture/negative-logging-convention.md) (credential-field rule and cross-IP seams)
-- **Rust code**: [`crates/auth/src/auth/`](../crates/auth/src/auth/): 3,382 lines across 9 files (handlers.rs, credentials.rs, credential_log_guard.rs, login_smoke.rs, mod.rs, service.rs, tls.rs, tls_smoke.rs, cert_watcher.rs), including a live-DB login smoke. Also [`crates/auth/src/credential_redaction.rs`](../crates/auth/src/credential_redaction.rs) (`CredentialPrefix`) and the duplicate-login eviction in [`crates/services/src/base/login/mod.rs`](../crates/services/src/base/login/mod.rs)
+- **Rust code**: [`crates/auth/src/auth/`](../crates/auth/src/auth/): 3,382 lines across 9 files (handlers.rs, credentials.rs, credential_log_guard.rs, login_smoke.rs, mod.rs, service.rs, tls.rs, tls_smoke.rs, cert_watcher.rs), including a live-DB login smoke. Also [`crates/auth/src/credential_redaction.rs`](../crates/auth/src/credential_redaction.rs) (`CredentialPrefix`) and the duplicate-login eviction in [`crates/base/src/base/login/mod.rs`](../crates/base/src/base/login/mod.rs)
 - **Recent PRs**: #414 (auth + base + world-entry instrumentation), #366 (dev-session telemetry HMAC), #566 (auth TLS listener, argon2id credentials), #577 (cert mtime watcher + hot reload), **#698 (SIDs, tickets and the Phase 1 SOAP body no longer logged in full, #440)**, **#738 (login sessions bound to the issuing client IP, warn-only, #442)**, **#740 (dev-session mint quota + bounded refresh chain, #441)**
 - **Path forward**: argon2id already exists for the patched TLS client (`credentials.rs`, opportunistic migration from SHA-1 on plaintext login); the stock client still sends an unsalted SHA-1 hash, so that path cannot change without a client patch. Remaining work: login rate limiting; harden the #738 cross-IP seams from WARN to reject once the false-positive rate is measured; per-tick authenticate validation (#294); XML entity escaping in the auth responses (#447); add `plaintext_requires_tls` to the `login_audit.outcome` CHECK constraint (see Login audit row).
 
@@ -134,7 +134,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH (re-read 2026-09-25)
 - **Documentation**: [gameplay/character-creation.md](gameplay/character-creation.md)
-- **Rust code**: [`crates/services/src/base/character_create.rs`](../crates/services/src/base/character_create.rs) (636), [`crates/base-world-entry/src/base/character/`](../crates/base-world-entry/src/base/character/) (1,068 across `mod.rs`, `delete_live_db_tests.rs`, `request_visuals_live_db_tests.rs`), [`crates/resources/src/base/chardef.rs`](../crates/resources/src/base/chardef.rs) (333), plus `character_create_live_db_tests.rs` (209). About 2,250 lines in total. No code change since 2026-07-25.
+- **Rust code**: [`crates/base/src/base/character_create.rs`](../crates/base/src/base/character_create.rs) (636), [`crates/base-world-entry/src/base/character/`](../crates/base-world-entry/src/base/character/) (1,068 across `mod.rs`, `delete_live_db_tests.rs`, `request_visuals_live_db_tests.rs`), [`crates/resources/src/base/chardef.rs`](../crates/resources/src/base/chardef.rs) (333), plus `character_create_live_db_tests.rs` (209). About 2,250 lines in total. No code change since 2026-07-25.
 - **Recent PRs**:
   - #473 / #516 / #518: SGWGmPlayer.
   - **#704**: the Account typeID is pinned at `0x07` (its clientIndex) with a guard. The owner re-verified this against the binary: `0x08` would break character select.
@@ -713,7 +713,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: MEDIUM-HIGH (code re-read 2026-09-25)
 - **Documentation**: [gameplay/chat-system.md](gameplay/chat-system.md), [reverse-engineering/findings/chat-wire-formats.md](reverse-engineering/findings/chat-wire-formats.md)
-- **Rust code**: [`crates/services/src/cell/chat.rs`](../crates/services/src/cell/chat.rs) (454), [`crates/services/src/base/dispatch/chat.rs`](../crates/services/src/base/dispatch/chat.rs) (219), [`crates/base-session/src/base/world_entry_chat.rs`](../crates/base-session/src/base/world_entry_chat.rs) (237): 910 lines including tests
+- **Rust code**: [`crates/services/src/cell/chat.rs`](../crates/services/src/cell/chat.rs) (454), [`crates/base/src/base/dispatch/chat.rs`](../crates/base/src/base/dispatch/chat.rs) (219), [`crates/base-session/src/base/world_entry_chat.rs`](../crates/base-session/src/base/world_entry_chat.rs) (237): 910 lines including tests
 - **Recent PRs**: #739 (stored DND message bounded to 128 characters, security finding CAT-L-02), #737 (players in a shared world now witness each other, so say/emote/yell can reach another player; not two-client validated), #769 (content-engine `npc_bark` speaks NPC lines over `onPlayerCommunication` on the say channel, a content feature that reuses the chat wire, not player chat)
 - **Open issues**: #471 (security audit CAT-L, chat / contact list, 9 findings)
 - **In-client record**: the 2026-09-18 colo playtest logged 20 say-channel sends from the real client, all `.`-prefixed GM console lines, which chat.rs:88-97 intercepts before broadcast ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 123). That proves client-to-server say routing. It does not prove witness rendering of ordinary chat.
@@ -1110,7 +1110,7 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 
 - **Confidence**: HIGH (code re-read 2026-09-25)
 - **Documentation**: [architecture/server-infrastructure-proposals.md](architecture/server-infrastructure-proposals.md) §1 (session-resume design), [protocol/login-handshake.md](protocol/login-handshake.md) (cross-IP session binding). [architecture/server-systems.md](architecture/server-systems.md) is the superseded survey this section replaced.
-- **Rust code**: `crates/services/src/base/connect_loop/` (per-client lifecycle), `crates/services/src/base/login/mod.rs` (Phase 3 + duplicate eviction), `crates/base-session/src/base/tick_sync.rs`, `crates/auth/src/auth/`
+- **Rust code**: `crates/base/src/base/connect_loop/` (per-client lifecycle), `crates/base/src/base/login/mod.rs` (Phase 3 + duplicate eviction), `crates/base-session/src/base/tick_sync.rs`, `crates/auth/src/auth/`
 - **Recent PRs**: #711 (inactivity constants split, closes #293), #738 (login sessions bound to issuing IP, warn-only, closes #442), #698 (stop logging full SIDs / tickets / SOAP body), #756 (position persisted on logout)
 - **Open issues**: #460 (security audit CAT-A, auth / session / character lifecycle)
 

@@ -253,7 +253,7 @@ To change game content on the original server:
 4. Optionally use hot-reload for live updates during development
 
 **In Cimmeria**, changing a cooked-data record means adding an override entry in the
-relevant module under `crates/services/src/base/` (`dialog_overrides.rs`,
+relevant module under `crates/resources/src/base/` (`dialog_overrides/`,
 `item_overrides.rs`, or a new sibling following the same pattern). The override layer
 replaces the PAK entry for that element ID and marks it in the invalidation set so
 `onVersionInfo` tells the client to re-fetch it. Do not edit the `.pak` files in place —

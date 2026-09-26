@@ -66,7 +66,7 @@ lifetime. A reaper task sweeps both maps every `REAPER_INTERVAL`
 (`crates/auth/src/auth/handlers.rs:247`).
 
 **What remains**: the Phase-3 consume path does **not** check the TTL. `handle_login`
-does a bare `map.remove(ticket)` (`crates/services/src/base/login/mod.rs:45-58`),
+does a bare `map.remove(ticket)` (`crates/base/src/base/login/mod.rs:45-58`),
 so a ticket stays usable until the reaper happens to run — up to roughly one
 reaper interval past its nominal 30 s expiry. Tracked as CAT-A-04 in
 [`security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md`](security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md).

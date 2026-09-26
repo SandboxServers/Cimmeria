@@ -9,13 +9,12 @@ description = "Server service implementations for the Cimmeria server emulator"
 cimmeria-common = { workspace = true }
 cimmeria-mercury = { workspace = true }
 cimmeria-entity = { workspace = true }
-cimmeria-game = { workspace = true }
 cimmeria-content-engine = { workspace = true }
 cimmeria-observability = { workspace = true }
 cimmeria-occluder = { workspace = true }
 # The auth service, login audit events and credential redaction, split out
 # in wave W1a (docs/architecture/services-crate-split.md). Re-exported from
-# lib.rs at the old `auth`, `audit` and `credential_redaction` paths.
+# lib.rs at the old `auth` and `audit` paths.
 cimmeria-auth = { workspace = true }
 # The Base<->Cell wire contract (method indices, BSF bits, payload
 # serializers), split out of this crate; old paths re-export it.
@@ -46,12 +45,11 @@ cimmeria-base-session = { workspace = true }
 # FSM, the synchronous effect scripts, the GM gate, ContentEvents), split out
 # of this crate (C1). Re-exported at the old `cell::…` paths.
 cimmeria-cell-world = { workspace = true }
-# The BaseApp's world entry (play-character, map load, gate travel, reanchor,
-# teleport, the CellToBase dispatch, onClientReady and the cinematic AoI hold's
-# release) and the character list, split out of this crate (B3). Re-exported at
-# `base::{world_entry, character}`. Its `world_entry::methods` is the feature
-# handlers of cimmeria-base-methods (B2), which this crate no longer names.
-cimmeria-base-world-entry = { workspace = true }
+# The BaseApp service (`BaseService`, the connect loop, login, the SGWPlayer
+# base-method dispatch and the character creator), split out of this crate
+# (B4). Re-exported at `base::BaseService`. It owns the `chaos-testing`
+# feature, which this crate forwards.
+cimmeria-base = { workspace = true }
 
 # The cell's combat (abilities, damage, death, threat, the auto-cycle, effect
 # pulsing, the NPC AI's behaviour, the bandolier and reload handlers), split
@@ -69,15 +67,15 @@ thiserror = { workspace = true }
 [features]
 # Opt-in seam for services-layer chaos integration tests that need to
 # inject a `LossyTransport` in place of the real UDP socket inside a live
-# `BaseService`/`Orchestrator` (as opposed to the in-process handler unit
-# tests, which use `TestTransport` via `[dev-dependencies]`'s own
-# `test-support` re-pull below). Off by default so production builds never
-# link `lossy_transport` or its RNG state. External consumers (e.g.
-# `cimmeria-wireclient`'s live-DB chaos tests) pull it in via:
+# `BaseService`/`Orchestrator`. The seam itself, and the feature that gates
+# it, are cimmeria-base's since wave B4
+# (docs/architecture/services-crate-split.md); this forwards to it, so
+# external consumers (e.g. `cimmeria-wireclient`'s live-DB chaos tests) keep
+# pulling it in via:
 # `cimmeria-services = { path = "../services", features = ["chaos-testing"] }`.
 # See docs/architecture/network-chaos-testing.md and
 # `BaseService::set_transport_override`.
-chaos-testing = ["cimmeria-mercury/test-support"]
+chaos-testing = ["cimmeria-base/chaos-testing"]
 
 [dev-dependencies]
 # Re-pull mercury with the `test-support` feature so handler unit tests can
@@ -96,7 +94,7 @@ cimmeria-mercury = { path = "../mercury", features = ["test-support"] }
 cimmeria-test-support = { workspace = true }
 
 # `test_default_connected_client_state`, re-exported from the `test_support`
-# shim, for the base tests that stay here.
+# shim, for the gate round trips that stay here (`gate_round_trip_tests`).
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # The world fixtures (`test_fixtures`: `make_space_manager*`, the occluder and
 # arrival-mesh helpers, the `ContentEvents` fakes) and the test-only hooks
@@ -107,8 +105,12 @@ cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # ticks/cover).
 cimmeria-cell-world = { workspace = true, features = ["test-support"] }
 
-# `world_entry::{handle_gate_travel, persist_arrival}`, which the gate round
-# trips in `gate_round_trip_tests` drive after the cell's dial handler.
+# World entry, which only this crate's tests name since wave B4 moved its
+# production users to cimmeria-base: the gate round trips
+# (`gate_round_trip_tests`), the mission round trips and the mission 701
+# persistence replay. The feature exposes `world_entry::{handle_gate_travel,
+# persist_arrival}`, which the gate round trips drive after the cell's dial
+# handler.
 cimmeria-base-world-entry = { workspace = true, features = ["test-support"] }
 
 # The combat test hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,

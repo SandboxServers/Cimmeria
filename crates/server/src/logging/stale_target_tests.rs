@@ -292,6 +292,16 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // cimmeria-cell-combat; services re-exports both at the same paths.
         "cimmeria_services::cell::combat",
         "cimmeria_services::cell::abilities",
+        // base.log's, character.log's and dispatch.log's services rows before
+        // wave B4 moved the service, the connect loop, login, the base-method
+        // dispatch and the character creator to cimmeria-base; services
+        // re-exports only `BaseService`, and its `base/mod.rs` declares no
+        // module.
+        "cimmeria_services::base::service",
+        "cimmeria_services::base::connect_loop",
+        "cimmeria_services::base::login",
+        "cimmeria_services::base::dispatch",
+        "cimmeria_services::base::character_create",
         "cimmeria_services::no_such_module",
         "cimmeria_services::cell::no_such_child",
         "cimmeria_no_such_crate",
@@ -307,9 +317,11 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_base_world_entry::base::world_entry",
         "cimmeria_base_world_entry::base::world_entry_appearance",
         "cimmeria_base_world_entry::base::character",
-        "cimmeria_services::base::character_create",
         "cimmeria_cell_combat::cell::combat",
         "cimmeria_cell_combat::cell::service::npc_ai",
+        "cimmeria_base::base",
+        "cimmeria_base::base::connect_loop::encrypted",
+        "cimmeria_base::base::character_create",
         // `pub mod method_idx { … }` is inline in mercury/mod.rs.
         "cimmeria_wire::mercury::method_idx",
         // `pub mod world_entry { pub mod space_registry; }` is inline in

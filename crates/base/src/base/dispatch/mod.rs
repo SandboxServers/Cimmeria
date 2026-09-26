@@ -26,10 +26,10 @@ mod session;
 pub(crate) mod speaker_flags {
     /// Set when the speaker's `access_level > 0` (Moderator or higher).
     /// Python parity: `if player.accessLevel > 0`.
-    pub const GM: u8 = 0x01;
+    pub(crate) const GM: u8 = 0x01;
     /// Set when the speaker has a non-empty DND auto-reply message.
     /// Python parity: `if player.dndMessage is not None`.
-    pub const DND: u8 = 0x04;
+    pub(crate) const DND: u8 = 0x04;
 }
 
 /// SGWPlayer base-method message IDs we currently handle explicitly.
@@ -38,11 +38,11 @@ pub(crate) mod speaker_flags {
 /// and `elementDataRequest` while in-world. Those are dispatched separately in
 /// `connect_loop.rs` and must not be treated as SGWPlayer methods.
 pub(crate) mod sgw_player_base {
-    pub const CHAT_JOIN: u8 = 0xC0;
-    pub const CHAT_LEAVE: u8 = 0xC1;
-    pub const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
-    pub const CHAT_SET_AFK: u8 = 0xC3;
-    pub const CHAT_SET_DND: u8 = 0xC4;
+    pub(crate) const CHAT_JOIN: u8 = 0xC0;
+    pub(crate) const CHAT_LEAVE: u8 = 0xC1;
+    pub(crate) const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
+    pub(crate) const CHAT_SET_AFK: u8 = 0xC3;
+    pub(crate) const CHAT_SET_DND: u8 = 0xC4;
     /// SGWPlayer.elementDataRequest(UINT16 categoryId, UINT32 key) — cache
     /// miss request for a server resource. Same wire shape as the
     /// pre-world-entry 0xC1 cache flow (handled in `cooked_data.rs`),
@@ -54,12 +54,12 @@ pub(crate) mod sgw_player_base {
     /// so the perfStats-style benign telemetry doesn't trip operator
     /// alerts. See per-method dispatch table in
     /// `docs/protocol/sgwplayer-base-method-dispatch-table.md`.
-    pub const ELEMENT_DATA_REQUEST: u8 = 0xD5;
+    pub(crate) const ELEMENT_DATA_REQUEST: u8 = 0xD5;
     /// SGWPlayer.logOff(INT8 Disconnect) — 0=return to char select, 1=full exit
-    pub const LOG_OFF: u8 = 0xD6;
+    pub(crate) const LOG_OFF: u8 = 0xD6;
     /// SGWPlayer.cancelLogOff() — cancel pending logoff timer
-    pub const CANCEL_LOG_OFF: u8 = 0xD7;
-    pub const ON_CLIENT_READY: u8 = 0xD8;
+    pub(crate) const CANCEL_LOG_OFF: u8 = 0xD7;
+    pub(crate) const ON_CLIENT_READY: u8 = 0xD8;
     /// SGWPlayer.perfStats(12 × FLOAT) — client-side perf telemetry
     /// (FPS, frame time variance, etc.) pushed every ~15 s. Sink-only
     /// on the server: there is no actionable response, no persistence,
@@ -69,7 +69,7 @@ pub(crate) mod sgw_player_base {
     /// SigNoz, the right entry point is to parse the 12 floats here
     /// and emit a metric — until then, the DEBUG line is enough to
     /// confirm the client is still ticking.
-    pub const PERF_STATS: u8 = 0xDD;
+    pub(crate) const PERF_STATS: u8 = 0xDD;
 }
 
 /// Dispatch an SGWPlayer base method call (after world entry).

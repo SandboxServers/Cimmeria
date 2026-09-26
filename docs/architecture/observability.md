@@ -607,7 +607,7 @@ left.
 pushes `SGWPlayer.perfStats` — 12 floats covering FPS min/avg/max, bytes and
 packets in/out, lag min/avg/max, resends, and appearance-job count. The handler
 at
-[`crates/services/src/base/dispatch/diagnostics.rs`](../../crates/services/src/base/dispatch/diagnostics.rs)
+[`crates/base/src/base/dispatch/diagnostics.rs`](../../crates/base/src/base/dispatch/diagnostics.rs)
 validates the 48-byte payload length and then discards the contents; its own
 comment marks the intended next step ("parse the 12 floats here and emit a
 `perf_stats` metric"). This is the cheapest remaining win in the whole

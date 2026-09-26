@@ -148,20 +148,16 @@ cimmeria-services = [
 # crates/services/src only re-exports it, so it has no rows here.
 # Nor does cimmeria-base-methods (`base::world_entry::methods`), extracted
 # in B2 and re-exported the same way, nor cimmeria-base-world-entry
-# (`base::{world_entry, world_entry_appearance, character}`), extracted in B3.
-
-"base::service" = "cimmeria-base"
-"base::connect_loop" = "cimmeria-base"
-"base::dispatch" = "cimmeria-base"
-"base::login" = "cimmeria-base"
-"base::character_create" = "cimmeria-base"
+# (`base::{world_entry, world_entry_appearance, character}`), extracted in B3,
+# nor cimmeria-base (`base::{service, connect_loop, dispatch, login,
+# character_create}`), extracted in B4.
 
 # This module only, not the modules below it.
 [exact]
 "" = "cimmeria-services"
 # Since C1 `cell/mod.rs` holds only module declarations and re-exports
-# (`CellError` is in cimmeria-cell-world); since B1 `base/mod.rs` only declares
-# the modules still here and re-exports the session crate. Their
-# `pub use service::{CellService, BaseService}` move to the facade (§2H).
+# (`CellError` is in cimmeria-cell-world); since B4 `base/mod.rs` declares no
+# module and only re-exports the base-track crates. The `CellService` and
+# `BaseService` re-exports belong to the facade (§2H).
 "cell" = "cimmeria-services"
 "base" = "cimmeria-services"

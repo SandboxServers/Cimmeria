@@ -89,6 +89,12 @@ use crate::otel;
 /// play-character, map load, gate travel, reanchor, teleport, the CellToBase
 /// dispatch with its AoI emitters, `onClientReady`, the cinematic AoI hold's
 /// release and the character list. Neither base row above is a prefix of it.
+/// `cimmeria_base::base=debug` (wave B4) does the same for `BaseService`, the
+/// connect loop, login, the SGWPlayer base-method dispatch and the character
+/// creator. It names the crate's one top-level module rather than the crate:
+/// a bare `cimmeria_base` would prefix-match every `cimmeria_base_*` crate,
+/// so removing one of the three rows above would change nothing and no guard
+/// could tell it was gone.
 ///
 /// `cimmeria_cell_combat=debug` (wave C2) does the same for combat: ability
 /// resolution, damage and death, threat, the effect pulsing, the bandolier
@@ -130,6 +136,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_base_methods=debug,\
                 cimmeria_base_world_entry=debug,\
                 cimmeria_cell_combat=debug,\
+                cimmeria_base::base=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -248,9 +255,9 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "base.log",
         directives: "off,\
-             cimmeria_services::base::service=trace,\
-             cimmeria_services::base::connect_loop=trace,\
-             cimmeria_services::base::login=trace,\
+             cimmeria_base::base::service=trace,\
+             cimmeria_base::base::connect_loop=trace,\
+             cimmeria_base::base::login=trace,\
              cimmeria_base_session::base::tick_sync=trace,\
              cimmeria_base_session::base::helpers=trace,\
              wire.firehose.decrypt=trace,\
@@ -268,7 +275,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "character.log",
         directives: "off,\
              cimmeria_base_world_entry::base::character=trace,\
-             cimmeria_services::base::character_create=trace,\
+             cimmeria_base::base::character_create=trace,\
              cimmeria_resources::base::chardef=trace,\
              cimmeria_base_session::base::cooked_data=trace,\
              cimmeria_resources::base::resources=trace",
@@ -327,7 +334,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         directives: "off,\
              cimmeria_services::cell::dispatch=trace,\
              cimmeria_cell_world::cell::dispatch=trace,\
-             cimmeria_services::base::dispatch=trace",
+             cimmeria_base::base::dispatch=trace",
     },
 ];
 

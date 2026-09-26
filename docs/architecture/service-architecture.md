@@ -3,7 +3,7 @@
 > **Last updated**: 2026-07-25
 > **Type**: Reference
 > **Audience**: Engineers
-> **Sources**: `crates/auth/src/auth/`, `crates/services/src/base/`, `crates/services/src/cell/`, `crates/mercury/`, `config/`
+> **Sources**: `crates/auth/src/auth/`, `crates/base/`, `crates/base-*/`, `crates/services/src/cell/`, `crates/mercury/`, `config/`
 > **Companion docs**: [`../../crates/README.md`](../../crates/README.md), [`../connection-flow.md`](../connection-flow.md), [`../protocol/mercury-wire-format.md`](../protocol/mercury-wire-format.md)
 >
 > **Note** — The three-process Auth / Base / Cell topology described here is current. **The per-service "Source Files" tables below cite the deprecated C++ implementation paths** (`src/authentication/`, `src/baseapp/`, `src/cellapp/`) and are kept for historical mapping — those files live under [`deprecated/cpp/`](../../deprecated/cpp/). For the active Rust source layout see [`../../crates/README.md`](../../crates/README.md) and the per-domain modules under [`crates/auth/src/auth/`](../../crates/auth/src/auth/), [`crates/services/src/base/`](../../crates/services/src/base/), and [`crates/services/src/cell/`](../../crates/services/src/cell/).

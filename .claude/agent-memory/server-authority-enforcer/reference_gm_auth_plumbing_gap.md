@@ -12,7 +12,7 @@ metadata:
 `account.accesslevel` DB column via
 `crates/services/src/auth/handlers.rs:486-488`. Today consumed by
 exactly ONE site: the chat dispatch's `SPEAKER_GM` bit computation
-in `crates/services/src/base/dispatch.rs:131-133`.
+in `crates/base/src/base/dispatch/chat.rs:86-87`.
 
 The cell-method dispatch entry point at
 `crates/services/src/cell/dispatch/router.rs:33` has signature

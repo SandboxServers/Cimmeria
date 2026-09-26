@@ -9,7 +9,7 @@ applyTo: "crates/services/**/*.rs"
 ## Cell vs base split
 
 - **Cell** (`crates/services/src/cell/`) — entity state, content engine, AoI, NPC AI, abilities. One cell per space.
-- **Base** (`crates/services/src/base/`) — client connection lifecycle, world entry, client-method dispatch, persistence, witness broadcasts to the connected client.
+- **Base** (the base-track crates: `crates/base/`, `crates/base-world-entry/`, `crates/base-methods/`, `crates/base-session/`) — client connection lifecycle, world entry, client-method dispatch, persistence, witness broadcasts to the connected client.
 - They communicate by enum messages (`crates/wire/src/cell/messages/`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
 
 ## Content engine actions

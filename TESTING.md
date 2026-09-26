@@ -70,7 +70,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 ### 4. End-to-end PL/pgSQL smoke tests
 
-**Where**: SQL script in `tools/<feature>_smoke.sql`, embedded into a `#[tokio::test]` in `crates/services/src/base/smoke_tests.rs` via `include_str!`.
+**Where**: SQL script in `tools/<feature>_smoke.sql`, embedded into a `#[tokio::test]` in `crates/base/src/base/smoke_tests.rs` via `include_str!`.
 
 **For**: Whole-stack invariants that span multiple handlers and would still pass each handler's own per-handler tests. Today's three:
 - `vendor_store_smoke.sql` — sell → buyback → grant → purchase round-trip; catches drift between `handle_sell_vendor_items` and `handle_buyback_vendor_items` on the meaning of the `flags` column.
@@ -152,7 +152,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - If the handler reads `local_addr()`, construct with `TestTransport::with_local(addr)` — the default is a synthetic `127.0.0.1:0` placeholder.
 - `drain()` consumes the records (a second `drain()` is empty); `clear()` resets without returning; `filter_to(addr)` / `send_count_to(addr)` scope to one recipient.
 
-**Examples**: `crates/base-world-entry/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `crates/services/src/base/login/` (phase 1→4 ordered sequence), `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
+**Examples**: `crates/base-world-entry/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `crates/base/src/base/login/` (phase 1→4 ordered sequence), `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
 
 ### 9. Mercury session tests (loopback harness)
 
@@ -448,6 +448,6 @@ Before opening a PR that adds tests:
 - [crates/cell-world/src/test_fixtures/](crates/cell-world/src/test_fixtures/) — the world fixtures every cell crate's tests share: `make_space_manager*`, `seed_ability_defs`, the box-built `occluder_fixtures`, the Castle Cellblock arrival mesh (`test_fixture_mesh`, `test_insert_navmesh_space`), and the `ContentEvents` fakes (`NoContentEvents`, `RecordingContentEvents`) for combat tests that must not pull in the content engine. A crate above `cimmeria-cell-world` gets them, and the cross-crate test hooks (`force_ai_state`, `StepRegionReplayGuard::is_idle`, the detector and throttle `tracked*` counters), by dev-depending on it with `features = ["test-support"]` and re-exporting `test_fixtures::*` from its `test_support` shim.
 - [crates/cell-combat/src/test_fixtures/](crates/cell-combat/src/test_fixtures/) — the combat fixtures shared by a test suite split across crates: `npc_detectors` (the NA02 detector tests) and `npc_surrender` (the H08 surrender guards). Most of each suite is in `cimmeria-cell-combat`; the files that drive a tick of the service loop (`ticks::npc_movement_tick`, `ticks::auto_cycle_tick`) stay in `cimmeria-services` and import the same fixtures through the combat crate's `test-support` feature, which also exposes its cross-crate test hooks (`npc_ai_tick_for_test`, `resolve_death_for_test`, ...). `source_scan` treats every `test_fixtures` directory as test code. Combat code raises content events through `&dyn ContentEvents`: a combat test passes `NoContentEvents`, or `RecordingContentEvents` to pin which events fire in what order; a test that needs a chain to fire passes `EngineEvents(&engine)` and lives with the content engine.
 - [tools/test-live-db.sh](tools/test-live-db.sh) / [.ps1](tools/test-live-db.ps1) — the live-DB tier: the crate list and the one nextest invocation CI runs.
-- [crates/services/src/base/smoke_tests.rs](crates/services/src/base/smoke_tests.rs) — the three end-to-end smokes and their rationale.
+- [crates/base/src/base/smoke_tests.rs](crates/base/src/base/smoke_tests.rs) — the three end-to-end smokes and their rationale.
 - [tools/vendor_store_smoke.sql](tools/vendor_store_smoke.sql), [tools/inventory_move_smoke.sql](tools/inventory_move_smoke.sql), [tools/progression_smoke.sql](tools/progression_smoke.sql) — the smoke scripts themselves.
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — review checklist; the testing checklist in this file feeds into it.

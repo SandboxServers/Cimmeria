@@ -320,7 +320,7 @@ New corpora are added by:
 - Server-side SOAP auth flow that wireclient drives:
   [`crates/auth/src/auth/`](../../crates/auth/src/auth/)
 - Server-side Mercury phase-3 handshake:
-  [`crates/services/src/base/login/`](../../crates/services/src/base/login/)
+  [`crates/base/src/base/login/`](../../crates/base/src/base/login/)
 - Server-side ability path that Phase 5 strengthens:
   [`crates/cell-combat/src/cell/abilities/use_ability/`](../../crates/cell-combat/src/cell/abilities/use_ability/)
 - Two-client Castle visibility end-to-end test (NA37) and the AoI

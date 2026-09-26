@@ -65,7 +65,7 @@ Each entity type defines which components it has via the `.def` file and which P
 |-----------|-------------|--------------|
 | **LoginApp** | Handles initial Mercury-based login | Replaced by AuthenticationServer (SOAP) |
 | **BaseAppMgr** | Assigns players to BaseApps | Simplified; single BaseApp |
-| **BaseApp** | Manages base entities, client proxies | Implemented in `crates/services/src/base/` |
+| **BaseApp** | Manages base entities, client proxies | Implemented in `crates/base/` and the `crates/base-*/` crates |
 | **CellApp** | Spatial simulation, movement, combat | Implemented in `crates/services/src/cell/` |
 | **CellAppMgr** | Manages cell space distribution | Not implemented; single CellApp |
 | **DBMgr** | Database operations (MySQL in BW) | Replaced by direct PostgreSQL via `sqlx` |
@@ -162,7 +162,7 @@ All entity types are defined in `entities/entities.xml` and parsed at startup. E
 - A `.def` file in `entities/defs/` defining properties and methods
 - Optional parent type (inheritance)
 - Optional interface implementations
-- Python scripts, originally in `python/base/` and `python/cell/` (now `deprecated/python/`; Cimmeria implements this logic in Rust under `crates/services/src/base/` and `crates/services/src/cell/`)
+- Python scripts, originally in `python/base/` and `python/cell/` (now `deprecated/python/`; Cimmeria implements this logic in Rust under the base-track crates (`crates/base/`, `crates/base-*/`) and `crates/services/src/cell/`)
 
 ### Entity Type Hierarchy
 

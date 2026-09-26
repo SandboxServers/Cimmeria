@@ -4,8 +4,9 @@
 //! [`ConnectedClientState`] is one client that finished the Phase 3
 //! handshake (see `docs/protocol/login-handshake.md`); [`OnlinePlayer`] is the
 //! admin-API snapshot of one. The Mercury listener that owns the map of them,
-//! `BaseService`, and the world-entry flow stay in `cimmeria-services`, which
-//! re-exports this module's items at their old `base::` paths.
+//! `BaseService`, is in `cimmeria-base` and the world-entry flow in
+//! `cimmeria-base-world-entry`; `cimmeria-services` re-exports this module's
+//! items at their old `base::` paths.
 
 use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, Mutex};
@@ -262,7 +263,7 @@ pub struct ConnectedClientState {
     /// and calls `socket.send_to` directly; reliable sends mirror their
     /// encrypted bytes into this `Channel` via `register_sent_packet`
     /// after the socket send succeeds. ACK consumption + RTO sampling
-    /// happen on every received packet (`connect_loop/encrypted.rs`);
+    /// happen on every received packet (`cimmeria-base`'s `connect_loop/encrypted/mod.rs`);
     /// retransmits fire from the per-session `tick_sync` loop every
     /// 100 ms, capped at `RETRANSMIT_BUDGET_PER_TICK` entries per scan.
     ///

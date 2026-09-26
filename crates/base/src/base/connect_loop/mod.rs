@@ -111,7 +111,7 @@ pub(crate) async fn run_connect_loop(
 ///
 /// `level = "debug"` keeps these out of the SigNoz default-info filter
 /// — they're high-volume; turn them on at the operator's discretion
-/// (`RUST_LOG=cimmeria_services::base::connect_loop=debug`).
+/// (`RUST_LOG=cimmeria_base::base::connect_loop=debug`).
 #[tracing::instrument(
     name = "base.datagram",
     level = "debug",
