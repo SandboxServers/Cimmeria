@@ -182,3 +182,51 @@ async fn progression_changed_sends_nothing_to_the_client() {
     .await;
     assert!(frames.is_empty());
 }
+
+/// The level gate reads the level `InitPlayerState` hydrates. On `main`
+/// before AT-03 nothing stamped a player's cell level, so every player was
+/// level 1 to the trainer and the level-5 node stayed locked for a level-5
+/// character. Removing the stamp in the `InitPlayerState` arm fails this.
+#[tokio::test]
+async fn level_gate_reads_the_level_hydrated_at_world_entry() {
+    let mut mgr = fixture(true);
+    mgr.connect_entity(PLAYER);
+    deliver(
+        &mut mgr,
+        BaseToCellMsg::InitPlayerState {
+            entity_id: PLAYER,
+            player_id: 100,
+            account_id: 6,
+            world_name: "Agnos".into(),
+            archetype_id: 2,
+            saved_missions: vec![],
+            abilities: vec![],
+            active_bandolier_slot: 0,
+            bandolier_items: vec![],
+            system_options: cimmeria_entity::cell_entity::SystemOptions::default(),
+            state_field: 0,
+            access_level: 0,
+            known_stargates: vec![],
+            tree_progress: cimmeria_entity::cell_entity::TreeProgress {
+                trained_abilities: vec![],
+                tree_points_spent: 0,
+                training_points: 2,
+            },
+            level: 5,
+            character_name: None,
+            body_set: None,
+        },
+    )
+    .await;
+
+    let (tx, mut rx) = mpsc::channel(4);
+    assert!(crate::cell::interactions::try_open_trainer(PLAYER, TRAINER, &tx, &mgr).await);
+    let Ok(CellToBaseMsg::EntityMethodCall { args, .. }) = rx.try_recv() else {
+        panic!("expected onTrainerOpen");
+    };
+    assert_eq!(
+        trainable(&args, 641),
+        1,
+        "a level-5 character must be able to train the level-5 node"
+    );
+}
