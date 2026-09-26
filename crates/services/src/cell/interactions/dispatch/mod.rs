@@ -26,8 +26,8 @@ pub use interact::handle_interact;
 /// trust the interact-time `looting_entity` pin).
 pub(super) const MAX_INTERACT_DISTANCE: f32 = 5.0;
 
-/// Does `entity_id` exist, does `target_entity_id` exist, and are they
-/// within `MAX_INTERACT_DISTANCE` of each other?
+/// Does `entity_id` exist, does `target_entity_id` exist, are they in the
+/// same space, and are they within `MAX_INTERACT_DISTANCE` of each other?
 ///
 /// [`handle_interact`] performs this check inline because it needs the
 /// positions and interaction data anyway. This standalone version exists
@@ -74,6 +74,19 @@ pub(crate) fn interact_target_in_range(
             return false;
         }
     };
+
+    // Positions are per-space coordinates and `get_entity` searches every
+    // space, so without this a target in another space at the same
+    // coordinates would pass as "in range". That let a client pin a trainer
+    // (or fire a chain) in a space it never entered (AT-04 review).
+    if space_mgr.get_entity_space_id(entity_id) != space_mgr.get_entity_space_id(target_entity_id) {
+        tracing::info!(
+            entity_id,
+            target_entity_id,
+            "interact: target is in another space"
+        );
+        return false;
+    }
 
     // Compare squared distances so the common (in-range) path does no
     // sqrt. This runs on every interact, including the right-click spam
