@@ -7,7 +7,7 @@ last_updated: 2026-09-26
 
 # Build system: toolchain, profiles, concurrency and disk
 
-> **Status:** Accepted (2026-09-26, `build/toolchain-overhaul`).
+> **Status:** Accepted (2026-09-26). Implemented on `build/toolchain-overhaul`, except §6 (cargo-hakari, planned as the last step, after the crate split) and §9 (the crate split, in progress).
 > **Scope:** how Cimmeria's Rust workspace is compiled on developer and agent machines and in CI, and why. The companion [services-crate-split.md](services-crate-split.md) covers the crate layout.
 
 ## Context
@@ -82,9 +82,9 @@ Don't run it while something is building.
 
 On 2026-09-26 this freed 84.7 GB of stale artifacts and 70.6 GB of incremental caches from the main checkout alone.
 
-### 6. Feature unification with cargo-hakari
+### 6. Feature unification with cargo-hakari (planned)
 
-A generated `workspace-hack` crate (`cargo hakari generate` / `manage-deps`) makes every workspace crate request the same feature set for shared dependencies. `-p` builds then reuse what `--workspace` built, and the reverse. CI verifies the hack is up to date.
+A generated `workspace-hack` crate (`cargo hakari generate` / `manage-deps`) will make every workspace crate request the same feature set for shared dependencies, so `-p` builds reuse what `--workspace` built and the reverse. A CI step will verify the hack is up to date. It is generated after the crate split, which rewrites most manifests.
 
 Cargo's built-in equivalent (`resolver.feature-unification`, [cargo#14774](https://github.com/rust-lang/cargo/issues/14774)) is still nightly-only.
 
@@ -98,9 +98,9 @@ The September pass removed about 30 unused dependencies and collapsed duplicate 
 
 To find who pulls an old version, run `cargo tree -i <crate>@<version>`. Run `cargo machete` before adding a dependency cleanup PR.
 
-### 9. The services crate is split
+### 9. The services crate is being split (in progress)
 
-See [services-crate-split.md](services-crate-split.md).
+See [services-crate-split.md](services-crate-split.md) for the plan and the per-wave status.
 
 ### 10. Measure before changing concurrency
 
@@ -119,7 +119,7 @@ Development builds run natively on Windows (PowerShell or Git Bash, driven by Cl
 - Target dirs stop growing without bound, as long as the sweep runs.
 - Agent worktrees share compiled crates through sccache and need a Dev Drive only for the extra Defender and cloning gains.
 - Bumping Rust is now a visible, reviewable change instead of something CI does silently.
-- A `workspace-hack` dependency appears in every crate's manifest. `cargo hakari manage-deps` maintains it; don't edit it by hand.
+- Once §6 lands, a `workspace-hack` dependency appears in every crate's manifest. `cargo hakari manage-deps` maintains it; don't edit it by hand.
 
 ## Results
 

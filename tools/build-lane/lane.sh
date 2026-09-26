@@ -40,10 +40,13 @@ if [ $# -eq 0 ]; then echo "usage: lane.sh [--exclusive] <command> [args...]" >&
 # --- build environment --------------------------------------------------------------
 TOP="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 NAME="$(basename "$TOP")"
-GIT_DIR_ABS="$(git rev-parse --absolute-git-dir 2>/dev/null || true)"
-GIT_COMMON="$(cd "$(git rev-parse --git-common-dir 2>/dev/null || echo .)" && pwd)"
+# Compare canonical paths: under Git Bash, --absolute-git-dir prints C:/... while pwd
+# prints /c/..., so a raw string comparison would call the main checkout a worktree.
+canon() { (cd "$1" 2>/dev/null && pwd -P) || true; }
+GIT_DIR_ABS="$(canon "$(git rev-parse --absolute-git-dir 2>/dev/null || echo /nonexistent)")"
+GIT_COMMON="$(canon "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)")"
 is_worktree=0
-[ -n "$GIT_DIR_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON" ] && is_worktree=1
+[ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON" ] && is_worktree=1
 
 if [ -n "${CIMMERIA_TARGET_ROOT:-}" ]; then
   export CARGO_TARGET_DIR="$CIMMERIA_TARGET_ROOT/$NAME"

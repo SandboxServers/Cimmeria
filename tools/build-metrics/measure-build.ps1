@@ -80,14 +80,18 @@ function Add-Edit($file, $tag) {
     Add-Content $file "`n#[allow(dead_code)]`nfn __build_metrics_edit_$tag() -> u64 { $(Get-Random) }"
 }
 
+# Cargo's effective target dir: honours CARGO_TARGET_DIR (the lane sets it to the Dev Drive
+# when CIMMERIA_TARGET_ROOT is configured), so never assume <repo>/target.
+$targetDir = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).target_directory
+
 $result = [ordered]@{ label = $Label; when = (Get-Date -Format s); commit = (git rev-parse --short HEAD).Trim();
-    rustc = (rustc --version).Trim(); jobs = $env:CARGO_BUILD_JOBS; wrapper = $env:RUSTC_WRAPPER }
+    rustc = (rustc --version).Trim(); target_dir = $targetDir; jobs = $env:CARGO_BUILD_JOBS; wrapper = $env:RUSTC_WRAPPER }
 $orig = Get-Content $EditFile -Raw
 try {
     if (-not $SkipCold) {
         $result.cold_build_s = Invoke-Timed 'cold' { cargo build --workspace --all-targets @excludes --timings 2>&1 | Out-File (Join-Path $OutDir 'cold.log') }
-        Copy-Item (Join-Path $root 'target/cargo-timings/cargo-timing.html') (Join-Path $OutDir 'cargo-timing.html') -ErrorAction SilentlyContinue
-        $result.target_after_cold = Get-DirStats (Join-Path $root 'target')
+        Copy-Item (Join-Path $targetDir 'cargo-timings/cargo-timing.html') (Join-Path $OutDir 'cargo-timing.html') -ErrorAction SilentlyContinue
+        $result.target_after_cold = Get-DirStats $targetDir
     }
     Add-Edit $EditFile 'a'
     $result.edit_test_build_s = Invoke-Timed 'edit' { cargo test -p $EditCrate --no-run 2>&1 | Out-File (Join-Path $OutDir 'edit.log') }
@@ -109,5 +113,5 @@ foreach ($p in 'cold', 'edit', 'check') {
         $result["${p}_max_parallel_links"] = (($r | ForEach-Object { [int]$_.linker_n }) | Measure-Object -Maximum).Maximum
     }
 }
-$result.target_final = Get-DirStats (Join-Path $root 'target')
+$result.target_final = Get-DirStats $targetDir
 $result | ConvertTo-Json | Tee-Object (Join-Path $OutDir 'summary.json')
