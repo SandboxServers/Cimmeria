@@ -1,6 +1,6 @@
 ---
 name: na37-two-client-wire-visibility
-description: NA37 (2026-09-25) built a real two-wire-client Castle visibility E2E test; confirmed AoI introduction works over the real wire in both directions/orders/GM-status, so the owner's report is still unreproduced at two layers
+description: NA37 round 1 (2026-09-25) confirmed AoI introduction works over a lossless real wire; round 2 added network chaos and found the real defect -- receive_packet's RX-window ordering gate is dead code, so a lost+retransmitted CREATE_ENTITY lets appearance/movement for that entity arrive first
 metadata:
   type: project
 ---
@@ -55,3 +55,57 @@ fine as a one-sided real-client Channel driver against a real server
 socket — no second reliable-delivery/reassembly/ACK implementation is
 needed for future wireclient-style E2E tests. Requires
 `cimmeria-mercury`'s `test-harness` feature.
+
+## Round 2 (2026-09-25): lossy-network chaos found the real defect
+
+The coordinator asked for a lossy-network variant since round 1 (like
+NA34) only ran over lossless localhost, while the owner plays over the
+internet. Added `crates/wireclient/tests/two_client_castle_visibility_chaos.rs`
+plumbing a real `LossyTransport` into a real `BaseService` socket via a
+new `chaos-testing` Cargo feature +
+`BaseService::set_transport_override` seam (`crates/services/src/base/service.rs`).
+
+**Confirmed defect:** `Channel::receive_packet`'s in-order RX-window
+delivery gate (`crates/mercury/src/channel/channel_core.rs`) is fully
+implemented and unit-tested but is **dead code** — grep finds exactly
+one call site, its own unit test. Neither the live server receive path
+nor `LoopbackPeer`'s recv pump ever calls it; a non-fragmented packet's
+body is returned immediately with no ordering check. Reproduced with a
+deterministic burst-drop test (`LossyTransport::drop_next_sends_to(n,
+addr, min_len)`, added this round for exactly this) targeting a
+witness's `CREATE_ENTITY` for a peer: once retransmitted, dozens of the
+peer's appearance/stat cascade and movement messages arrive **before**
+the retransmit — an update for an entity the witness was never told
+exists. This is the strongest candidate yet for the owner's original
+report, since it only manifests under real packet loss.
+
+**Fix attempted and reverted:** made the AoI cascade
+(`entered_aoi` in `crates/services/src/base/world_entry/cell_dispatch/aoi.rs`)
+wait for `CREATE_ENTITY`'s ACK (polling the witness's TX window) before
+sending the cascade. Closed the cascade-specific hole but Mercury only
+piggybacks ACKs on the peer's own next outbound send, so an idle
+witness doesn't ACK promptly even at zero loss — the wait stalled
+*every* entity introduction on every login, turning a rare packet-loss
+bug into a universal latency regression. **Do not ship this pattern.**
+A real fix needs either genuine in-order delivery wired end to end
+(server recv path + `LoopbackPeer`'s pump both bypass `receive_packet`
+today) or a reactive hold keyed on `TxEntry::retransmit_count > 0` (only
+engages once a real retransmit happens, never on the happy path) — a
+protocol-layer change needing its own design review, out of scope here.
+The repro is preserved as `#[ignore]`d
+(`burst_drop_of_peer_create_entity_recovers_via_retransmit`) rather than
+shipped failing.
+
+**Gotcha for future `LossyTransport` work:** a reorder buffer shared
+across destinations breaks the Mercury phase-3 handshake (the first two
+packets of *any* fresh connection are parsed positionally) — key it
+per-`SocketAddr` (`HashMap<SocketAddr, Vec<Vec<u8>>>`), and even then
+avoid combining reorder with a lossless-handshake-sensitive scenario;
+document the limitation in the test rather than force it.
+
+**Post-rebase gotcha:** a new hand-named `tracing::debug!(target:
+"...")` call trips `crates/server/src/logging/target_scan_tests.rs`'s
+SigNoz parity guard (`every_source_target_reaches_signoz_at_its_level`)
+even when it's behind a test-only feature — the scanner reads source
+text, not compiled output. Any new custom log target needs an entry in
+`crates/server/src/logging/filters.rs`'s `OTEL_FILTER`.
