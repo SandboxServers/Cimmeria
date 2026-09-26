@@ -137,31 +137,32 @@ pub struct BandolierItem {
 
 /// NPC AI state machine. Discriminants match `Atrea.enums.AI_STATE_*` in
 /// `deprecated/python/Atrea/enums.py:228-239` so an `as u8` cast yields
-/// the same byte the original SGW server would have produced — used by
-/// the `setMovementType` broadcast helper for the subset of states with
-/// a corresponding `EMobMovementType` value.
+/// the same byte the original SGW server would have produced.
 ///
-/// # Wire animation mapping
+/// # Movement type is server-side bookkeeping, not a wire message
 ///
-/// State transitions broadcast `setMovementType` to AoI witnesses so
-/// the client picks the matching animation. Mapping:
+/// No server-to-client movement-type message exists (NA10, #779): the
+/// client animates an NPC's gait from the velocity on each `EntityMoved`,
+/// and an NPC stops by being sent zero velocity. `setMovementType` is a
+/// client-to-server cell method only. State entries still record an
+/// `EMobMovementType` in `last_movement_type` through
+/// `broadcast_movement_type`, which sends nothing and keeps the value for
+/// telemetry and the `.bug` bookmark. The recorded value per state:
 ///
-/// | Server state            | Wire byte                        | Client animation    |
-/// |-------------------------|----------------------------------|---------------------|
-/// | `Fighting` (entry)      | `MobMovementType::CombatAdvance` | Combat-stance walk  |
-/// | `Leashing` (entry)      | `MobMovementType::Leash`         | Leash-back trot     |
-/// | `Patrol` (entry)        | `MobMovementType::Patrol`        | Patrol walk         |
-/// | `Wander` (entry)        | `MobMovementType::Wander`        | Wander idle-walk    |
-/// | `Follow` (entry)        | `MobMovementType::Follow`        | Follow gait         |
-/// | `Investigating` (entry) | `MobMovementType::CombatAdvance` | Alert advance (closest match) |
-/// | `Idle` / `Submit` / `Despawning` (entry) | None (clears cache) | (client keeps prev) |
-/// | `Dead` / `Spawning` / `Error` | None | (client keeps prev — no transition fires from these states) |
+/// | Server state            | Recorded `last_movement_type`    |
+/// |-------------------------|----------------------------------|
+/// | `Fighting` (entry)      | `MobMovementType::CombatAdvance` |
+/// | `Leashing` (entry)      | `MobMovementType::Leash`         |
+/// | `Patrol` (entry)        | `MobMovementType::Patrol`        |
+/// | `Wander` (entry)        | `MobMovementType::Wander`        |
+/// | `Follow` (entry)        | `MobMovementType::Follow`        |
+/// | `Investigating` (entry) | `MobMovementType::CombatAdvance` |
+/// | `Idle` / `Submit` / `Despawning` (entry) | `None` (cleared) |
+/// | `Dead` / `Spawning` / `Error` | `None` (no transition fires from these states) |
 ///
-/// `Investigating` uses `CombatAdvance` because no dedicated
-/// investigate byte exists in `EMobMovementType`; the alert-advance
-/// animation it implies is the closest semantic match.
-/// The respawn tick clears `last_movement_type` on Dead → Idle so
-/// the next behavior-state entry re-broadcasts cleanly.
+/// `Investigating` records `CombatAdvance` because `EMobMovementType`
+/// has no investigate value. The respawn tick clears `last_movement_type`
+/// on Dead → Idle.
 ///
 /// `Spawning` is preserved as a variant for completeness with the source
 /// enum but is **never entered at runtime in Rust**. The Python original
@@ -186,21 +187,22 @@ pub enum AiState {
     Error = 11,
 }
 
-/// Mob movement-type byte broadcast via `setMovementType` (`SGWBeing`
-/// interface, method index 1). Discriminants match
-/// `entities/defs/enumerations.xml:1593-1604` (`EMobMovementType`) so an
-/// `as u8` cast yields the byte the client expects on the wire.
+/// Mob movement type (`EMobMovementType`). Discriminants match
+/// `entities/defs/enumerations.xml:1593-1604`, so an `as u8` cast yields
+/// the byte a client sends in the client-to-server `setMovementType`
+/// cell method (`SGWBeing`, method index 1).
 ///
-/// The client uses this **purely for animation selection** (run vs walk
-/// vs combat-stance vs leashed-trot) — gameplay-side movement is fully
-/// server-authoritative. Confirmed by Ghidra: `FUN_00deb660` in SGW.exe
-/// switches on this byte to format the debug labels "Entity: %d is
-/// patroling", "...leashing", etc. (strings at `019d2ca4`..`019d2e20`).
+/// **The server never sends it to a client** (NA10, #779): no
+/// server-to-client movement-type message exists, and the client animates
+/// NPC gait from `EntityMoved` velocity. `FUN_00deb660` in SGW.exe, whose
+/// "Entity: %d is patroling" / "...leashing" labels (strings at
+/// `019d2ca4`..`019d2e20`) were once read as an animation switch, is the
+/// GM `SGWGmPlayer.onShowPath` path visualiser. The server records the
+/// value per AI state in `last_movement_type` for telemetry only.
 ///
 /// Not all `AiState` values have a movement type — Idle / Spawning /
-/// Dead / Despawning / Submit / Error broadcast `None` (which the
-/// helper translates to "clear cached, no wire send" — the client
-/// defaults to the appearance the entity already had).
+/// Dead / Despawning / Submit / Error record `None` (the cache is
+/// cleared).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MobMovementType {

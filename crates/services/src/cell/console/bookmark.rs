@@ -103,6 +103,15 @@ pub(crate) struct EntitySnapshot {
     pub respawn_secs: Option<u32>,
     pub respawn_in_secs: Option<f32>,
     pub active_effect_ids: Vec<i32>,
+    /// Known abilities, sorted (NA44). An NPC with only 592 is on the
+    /// Pistol Shot fallback, whatever it is holding.
+    pub ability_ids: Vec<i32>,
+    /// The weapon mesh it is drawn holding; see
+    /// [`crate::cell::spawner::npc_identity::weapon_visual`].
+    pub weapon_visual: String,
+    /// The entity's selected target (`setTargetID`), `0` when none. NPCs
+    /// aim at `threat_top_id`; this is the player-side view.
+    pub current_target_id: i32,
 }
 
 /// The full bookmark: the caller's own snapshot plus the scene around them.
@@ -250,6 +259,9 @@ fn snapshot_entity(
             .respawn_at
             .map(|at| at.saturating_duration_since(now).as_secs_f32()),
         active_effect_ids: e.active_effects.iter().map(|fx| fx.effect_id).collect(),
+        ability_ids: crate::cell::spawner::npc_identity::sorted_ability_ids(e),
+        weapon_visual: crate::cell::spawner::npc_identity::weapon_visual(e),
+        current_target_id: e.current_target_id.unwrap_or(0),
     }
 }
 
@@ -436,6 +448,9 @@ fn emit_entity(bookmark_id: u64, rank: usize, s: &EntitySnapshot) {
         respawn_secs = ?s.respawn_secs,
         respawn_in_secs = ?s.respawn_in_secs,
         active_effect_ids = ?s.active_effect_ids,
+        ability_ids = ?s.ability_ids,
+        weapon_visual = %s.weapon_visual,
+        current_target_id = s.current_target_id,
         "playtest bookmark: entity near the tester at the moment of the report"
     );
 }

@@ -1,6 +1,6 @@
 ---
 name: npc-broadcast-facing-and-grounding
-description: NPC broadcast facing/grounding notes — pack_angle north-snap fixed in #677; the "send OnGround 0x18 to ground NPCs" idea is WRONG (corrected 2026-09-24), 0x18 keeps the client's current height
+description: NPC broadcast facing/grounding notes — pack_angle north-snap fixed in #677; the "send OnGround 0x18 to ground NPCs" idea is WRONG (corrected 2026-09-24), 0x18 keeps the client's current height; defect 3 (movement-type broadcast drives animation) is WRONG too (NA10, corrected 2026-09-26)
 metadata:
   type: reference
 ---
@@ -20,6 +20,18 @@ metadata:
 > server. Also, `get_navmesh_height` is not ground truth before NA01 (PR #774): it searched around
 > world Y = 0 and returned the wrong storey on multi-level meshes. Evidence:
 > `docs/analysis/npc-ai-restoration/evidence/npc-ground-audit.md` §B. The text below is kept as history.
+>
+> **Correction 2026-09-26 (NA10 #779, NA44).** Defect 3 is **wrong** as well, and it is the likely
+> source of the external handoff's §7 "send `setMovementType` at leg start" claim. There is **no
+> server-to-client movement-type message**. `setMovementType` is a client-to-server cell method only
+> (`SGWBeing.def`, `<Exposed/>`), and the client has no NetIn receiver for it. `FUN_00deb660` is the GM
+> `SGWGmPlayer.onShowPath` path visualiser, not an animation FSM. The old broadcast went to witnesses as
+> method index 1, which is `onSequence` on every NPC type, so it was a truncated Kismet trigger.
+> The client animates NPC gait from the `EntityMoved` velocity; stop an NPC by sending zero velocity
+> (`npc_ai::stop_npc_movement`). `broadcast_movement_type` now only records `last_movement_type` for
+> telemetry. Evidence: `docs/reverse-engineering/findings/npc-movement-pathfinding.md` §11,
+> `docs/analysis/npc-ai-restoration/evidence/handoff-2026-09-26-validation.md`. The
+> [[castle-has-no-navmesh]] link below is stale too: `castle.nav` shipped in #709.
 
 Three independent defects in the NPC position broadcast, all confirmed 2026-09-18 from the colo
 playtest. They compose into the long-standing "NPCs face the wrong way, walk up the air, moonwalk"
@@ -56,7 +68,7 @@ flying/swimming NPCs. The `physics` byte is separately hardcoded `0x01` (`update
 `aoi/tests.rs:207`) and the PHYS_* value table is **undocumented** — worth an RE pass at
 `FUN_00ddb830` / the `sentPhysics_` compare.
 
-**3. Animation and translation are decoupled channels.** The client picks mob animation from the
+**3. (WRONG, see the 2026-09-26 correction above.) Animation and translation are decoupled channels.** The client picks mob animation from the
 `setMovementType` byte (SGWBeing method 1, client FSM `FUN_00deb660`), **not** from velocity or
 position deltas — `crates/entity/src/cell_entity/mod.rs:180-190`. `npc_movement_tick` never calls
 `broadcast_movement_type`; only the AI-state handlers do, and `messaging.rs:226-231` dedups identical

@@ -291,8 +291,9 @@ pub enum Action {
     ///
     /// - `Despawning` → AI tick removes the entity from the space
     ///   on the next pass. Witnesses get an AoI-left event.
-    /// - `Submit` → clears combat state, broadcasts movement-type
-    ///   None; NPC sits inert until destroyed or transitioned.
+    /// - `Submit` → clears combat state and the recorded movement type
+    ///   (nothing is sent to clients); NPC sits inert until destroyed or
+    ///   transitioned.
     /// - `Error` → halts AI ticking on the NPC, logs the inconsistency.
     ///   Used by `enterErrorAIState` slash commands and by the AI tick
     ///   itself when it detects unrecoverable state.
