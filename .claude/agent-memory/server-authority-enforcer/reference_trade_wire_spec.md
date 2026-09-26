@@ -72,7 +72,7 @@ item view of the partner's offer.
 - `onTradeResults(INT32 EntityId, INT32 Result)` — `SGWPlayer.def:1385-1388`,
   method 145.
 
-Both are decoded by `crates/services/src/wire_log/decoders/generated.rs` and
+Both are decoded by `crates/wire-log/src/wire_log/decoders/generated.rs` and
 constant-defined in `crates/services/src/cell/client_methods/player.rs:96,98`
 but **no production code path in `crates/` emits them today**.
 

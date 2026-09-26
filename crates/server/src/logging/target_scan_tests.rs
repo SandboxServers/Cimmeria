@@ -42,6 +42,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "server",
     "services",
     "wire",
+    "wire-log",
 ];
 
 /// Crates that run in another process, so the server's filters never see
@@ -259,6 +260,9 @@ fn scan_finds_known_targets() {
         ("movement.navmesh", Level::TRACE),
         ("npc_ai.transition", Level::DEBUG),
         ("mercury.packet", Level::INFO),
+        // Emitted only by crates/wire-log (wave W3b of the services split).
+        ("wire.in", Level::INFO),
+        ("wire.out", Level::INFO),
         ("launcher.key_dump", Level::DEBUG),
         ("client.native", Level::TRACE),
     ] {

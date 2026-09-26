@@ -83,6 +83,23 @@ Learned finishing `cimmeria-wire` (W3a: mercury glue, messages, firehose):
 - `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc -p <crate> --no-deps`
   checks the doc links a move touches in seconds (it also surfaces pre-existing ones).
 
+Learned extracting `cimmeria-wire-log` (W3b):
+
+- **A crate name can prefix-match another crate's `OTEL_FILTER` row.**
+  `cimmeria_wire=debug` already covers `cimmeria_wire_log::…` (EnvFilter is a
+  string prefix), so a missing row would never fail a parity test. Add the
+  explicit row anyway and prove independence: rebuild an `EnvFilter` from
+  `OTEL_FILTER.replace("cimmeria_wire=debug,", "cimmeria_wire=info,")` and
+  assert the new crate's DEBUG row still passes.
+- **A crate that logs only on hand-named targets changes no `FILE_LAYERS` row.**
+  The revert-proof for its `IN_PROCESS_CRATES` entry is adding its targets to
+  `scan_finds_known_targets` (only it emits them), not a file-parity test.
+- **No `cimmeria-test-support` dev-dependency = the tests leave the live-DB
+  tier.** They ran there as services lib tests; report the tier shrinking
+  rather than listing a crate with no DB tests.
+- **The coordinator may edit shared tooling (`lane.sh`) inside your worktree
+  mid-wave.** Stage by path; never `git add -A`.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

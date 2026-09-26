@@ -10,7 +10,7 @@ priority decoders in `outbound.rs`.
 
 Run from the repo root:
     python tools/wire_decoder_codegen.py \
-        > crates/services/src/wire_log/decoders/generated.rs
+        > crates/wire-log/src/wire_log/decoders/generated.rs
 """
 
 from __future__ import annotations
@@ -273,8 +273,8 @@ HEADER = """//! Auto-generated wire-format decoders for SGWPlayer client methods
 //!
 //! ```sh
 //! python tools/wire_decoder_codegen.py > \\
-//!     crates/services/src/wire_log/decoders/generated.rs
-//! cargo fmt -p cimmeria-services
+//!     crates/wire-log/src/wire_log/decoders/generated.rs
+//! cargo fmt -p cimmeria-wire-log
 //! ```
 //!
 //! Source schemas: `docs/protocol/client-method-dispatch-table.md`.

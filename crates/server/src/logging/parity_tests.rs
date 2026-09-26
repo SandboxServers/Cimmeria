@@ -514,6 +514,80 @@ fn wire_mercury_events_keep_protocol_log_and_index() {
     }
 }
 
+/// The decoded wire-message stream moved from `cimmeria_services::wire_log`
+/// to the `cimmeria-wire-log` crate (services crate split, wave W3b). Its rows
+/// use the hand-named `wire.in` / `wire.out` targets, which the move did not
+/// change: at INFO, the level they are emitted at, they must still reach
+/// `protocol.log` and `cimmeria-server`, and stay out of `server.log`
+/// (`WIRE_FIREHOSE_MUTED`). An untargeted row in the crate would now carry
+/// `cimmeria_wire_log::…`, which no file names, so it must get what
+/// `cimmeria_services::wire_log` got: `server.log` from INFO and one OTLP
+/// index per level. Its DEBUG export comes from `cimmeria_wire_log=debug`
+/// itself, not from `cimmeria_wire=debug` prefix-matching the crate name:
+/// with wire's row lowered to INFO, the DEBUG row must still pass.
+#[test]
+fn wire_log_events_keep_protocol_log_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in ["wire.in", "wire.out"] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert_eq!(
+            sinks(Level::INFO),
+            set(&["file:protocol.log", OTLP_SERVER]),
+            "{target} at INFO"
+        );
+        for lvl in [Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&["file:protocol.log", SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+    for target in [
+        "cimmeria_wire_log::wire_log",
+        "cimmeria_wire_log::wire_log::tap",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+
+    let wire_at_info = OTEL_FILTER.replace("cimmeria_wire=debug,", "cimmeria_wire=info,");
+    assert_ne!(
+        wire_at_info, OTEL_FILTER,
+        "OTEL_FILTER no longer carries `cimmeria_wire=debug,`; update this test"
+    );
+    let hits: Hits = Arc::default();
+    let dispatch = Dispatch::new(
+        tracing_subscriber::registry()
+            .with(recorder(OTLP_SERVER.into(), &hits).with_filter(EnvFilter::new(wire_at_info))),
+    );
+    assert_eq!(
+        sinks_for(
+            &dispatch,
+            &hits,
+            "cimmeria_wire_log::wire_log",
+            Level::DEBUG
+        ),
+        set(&[OTLP_SERVER]),
+        "wire-log's DEBUG export must not depend on cimmeria_wire's row"
+    );
+}
+
 /// `spawn_npcs_from_records` and `spawn_instance_npcs_from_records` moved
 /// from `cell::spawner::npcs` to `cell::space_manager::npc_population`
 /// (services crate split, wave W2b). `aoi.log` keeps every

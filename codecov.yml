@@ -58,13 +58,13 @@ ignore:
   - "crates/supervisor/src/main.rs"
   - "crates/upk-objects/src/bin/**"
   - "crates/upk/src/bin/**"
-  # Generated code. crates/services/src/wire_log/decoders/generated.rs is
+  # Generated code. crates/wire-log/src/wire_log/decoders/generated.rs is
   # produced by tools/wire_decoder_codegen.py from
   # docs/protocol/client-method-dispatch-table.md. Hand-written counterparts
   # in decoders/outbound.rs carry the byte-exact assertions; testing the
   # generated walker would prove the codegen template substituted, not
   # that any hand-written code is correct.
-  - "crates/services/src/wire_log/decoders/generated.rs"
+  - "crates/wire-log/src/wire_log/decoders/generated.rs"
   # UPK + UPK-objects: UE3 cooked-asset parsers, consumed only by `bin/`
   # tools and the (already-ignored) Tauri editors. Not on the runtime
   # server path. Real-data validation runs via the bin/ tooling against
@@ -158,6 +158,7 @@ component_management:
         - "crates/auth/**"
         # Split out of cimmeria-services (docs/architecture/services-crate-split.md).
         - "crates/wire/**"
+        - "crates/wire-log/**"
         - "crates/cell-cover/**"
         - "crates/cell-catalog/**"
       statuses:

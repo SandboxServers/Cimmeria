@@ -1,7 +1,7 @@
 //! Wire serializers for server→client contact-list methods (CM 85–89).
 //!
 //! Wire formats confirmed against the auto-generated decoders in
-//! `crates/services/src/wire_log/decoders/generated.rs` (methods 85–89):
+//! `crates/wire-log/src/wire_log/decoders/generated.rs` (methods 85–89):
 //!
 //! - `onContactListUpdate`      (85): `[i32 list_id][WSTRING name][u32 flags]`
 //! - `onContactListDelete`      (86): `[i32 list_id]`

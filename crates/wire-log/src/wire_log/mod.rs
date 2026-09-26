@@ -5,7 +5,8 @@
 //!
 //! # Why this exists
 //!
-//! `mercury.packet` events (in [`crate::mercury` instrumentation]) give
+//! `mercury.packet` events (the `cimmeria-mercury` transport's
+//! instrumentation) give
 //! per-UDP-datagram metadata: direction, peer, length. That's enough
 //! to answer "did the network move bytes?" but not "what was IN the
 //! bundle?" — which is the question every wire-format bug starts with.
@@ -38,9 +39,10 @@
 //! # SigNoz targets
 //!
 //! Inbound events use `target: "wire.in"`. Outbound use `target:
-//! "wire.out"`. Both ship at info level. The OTLP filter in
-//! `crates/server/src/main.rs` whitelists both targets explicitly
-//! because they don't match the `cimmeria_services` prefix rule.
+//! "wire.out"`. Both ship at info level. `OTEL_FILTER` in
+//! `crates/server/src/logging/filters.rs` names both targets explicitly
+//! because they are not module paths, so no crate-name directive
+//! (`cimmeria_wire_log=debug`) matches them; `protocol.log` keeps them too.
 
 use std::net::SocketAddr;
 

@@ -1179,6 +1179,7 @@ dependencies = [
  "cimmeria-resources",
  "cimmeria-test-support",
  "cimmeria-wire",
+ "cimmeria-wire-log",
  "proptest",
  "quick-xml 0.41.0",
  "rand 0.10.2",
@@ -1258,6 +1259,16 @@ dependencies = [
  "cimmeria-test-support",
  "serde",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "cimmeria-wire-log"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-wire",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 

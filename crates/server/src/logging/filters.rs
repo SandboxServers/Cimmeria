@@ -69,6 +69,12 @@ use crate::otel;
 /// services-side Mercury glue, `cimmeria_wire::mercury` (the
 /// `append_entity_method` appearance diagnostics).
 ///
+/// `cimmeria_wire_log=debug` (wave W3b) does the same for the decoded
+/// wire-message stream. `cimmeria_wire=debug` already prefix-matches
+/// `cimmeria_wire_log`, but only because the names happen to share a prefix;
+/// the row keeps wire-log's level from following any change to wire's. The
+/// stream's own rows ride the hand-named `wire.in` / `wire.out` directives.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -94,6 +100,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_resources=debug,\
                 cimmeria_auth=debug,\
                 cimmeria_wire=debug,\
+                cimmeria_wire_log=debug,\
                 cimmeria_cell_cover=debug,\
                 cimmeria_cell_catalog=debug,\
                 cimmeria_mercury=debug,\
