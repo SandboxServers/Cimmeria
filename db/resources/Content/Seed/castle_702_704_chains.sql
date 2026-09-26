@@ -132,11 +132,12 @@
 -- ESCORT REPAIR, and why the cell actor's `!` outlives mission 702.
 --
 -- `AiState::Follow` is preemptable into Fighting by any threat
--- (`combat/threat/aggro.rs`), and `npc_ai_leash` ends at `AiState::Idle`
--- and never returns to Follow (`npc_ai/leash.rs`). One stray point of
--- splash damage to Zuritska on the way to Level 5 ends the escort
--- permanently; GC1b-0 stops the actor being teleported back to the cell, but
--- nothing restarts the follow.
+-- (`combat/threat/aggro.rs`). When this was written `npc_ai_leash` ended at
+-- `AiState::Idle` and never returned to Follow, so one stray point of
+-- splash damage to Zuritska on the way to Level 5 ended the escort
+-- permanently. Since NA42 the leash returns a follower to Follow while its
+-- leader is still in the space, so the click below is now a backstop (a
+-- leader that left and came back, or a follow cleared some other way).
 --
 -- The repair is a click. Chain 1302 (`interact_tag Castle_Zuritska_Cell`
 -- gated on 704 step 2405) re-issues `set_follow_target`, which means the
@@ -568,12 +569,13 @@ VALUES
 --
 -- RECONSTRUCTION, and the reason it exists: `AiState::Follow` is
 -- preemptable into Fighting by any threat (`combat/threat/aggro.rs`), and
--- `npc_ai_leash` ends at `AiState::Idle` and never returns to Follow
--- (`npc_ai/leash.rs`). One stray point of splash damage to Zuritska on the
--- way down to Level 5 therefore ends the escort permanently. GC1b-0 stops
--- the actor being teleported back to the cell, but nothing restarts the follow.
--- Before this chain the only re-fire was 1296 on `player_loaded`, i.e. the
--- player had to relog.
+-- before NA42 `npc_ai_leash` ended at `AiState::Idle` and never returned to
+-- Follow. One stray point of splash damage to Zuritska on the way down to
+-- Level 5 therefore ended the escort permanently. Before this chain the only
+-- re-fire was 1296 on `player_loaded`, i.e. the player had to relog. NA42
+-- makes the leash resume Follow itself, so this chain is now a harmless
+-- backstop: re-issuing `set_follow_target` on an actor that is already
+-- following the clicking player changes nothing but a fresh route.
 --
 -- The click is the "follow me again" affordance, which is why chain 1263 no
 -- longer clears the cell actor's `!` and chain 1291 clears it instead: the

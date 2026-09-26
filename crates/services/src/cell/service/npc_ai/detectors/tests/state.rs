@@ -42,10 +42,11 @@ async fn a_fight_that_ends_away_from_spawn_goes_home_and_is_not_parked() {
 }
 
 /// The one reset that still parks by design: a follower is reset where it
-/// stands (it must not be yanked away from the player it escorts), so it
-/// goes Idle away from spawn and the detector says so.
+/// stands (it must not be yanked away from the player it escorts). When its
+/// leader has gone (999 does not exist) the leash clears the target and goes
+/// Idle away from spawn, and the detector says so (NA42).
 #[tokio::test]
-async fn a_follower_reset_in_place_is_idle_parked() {
+async fn a_follower_whose_leader_is_gone_is_idle_parked() {
     let mut mgr = castle_mgr();
     add_npc(
         &mut mgr,
@@ -67,6 +68,36 @@ async fn a_follower_reset_in_place_is_idle_parked() {
         found[0]
     );
     assert!(found[0].has_field("npc_to_spawn", "20.0"));
+    assert_eq!(mgr.get_entity(NPC).unwrap().follow_target_id, None);
+}
+
+/// NA42: a follower whose leader is still in the space goes back to Follow
+/// after the in-place reset, so it is not parked. Before NA42 this fired
+/// with `reason=leash_arrived` and the escort stood there for good.
+#[tokio::test]
+async fn a_follower_whose_leader_is_here_resumes_and_is_not_parked() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [20.0, 0.0, 0.0],
+        Some([0.0; 3]),
+        AiState::Fighting,
+    );
+    mgr.create_entity(999, "Castle", [22.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(NPC).unwrap().follow_target_id = Some(999);
+    let logs = LogCapture::install();
+    ai_tick(&mut mgr).await; // -> Leashing
+    ai_tick(&mut mgr).await; // follower: reset in place, Follow
+    assert!(
+        rows(&logs, "npc_ai.idle_parked", "idle_parked").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+    let npc = mgr.get_entity(NPC).unwrap();
+    assert_eq!(npc.ai_state(), AiState::Follow);
+    assert_eq!(npc.follow_target_id, Some(999));
 }
 
 /// An aggressive NPC is still ticked when Idle, so it is not parked.

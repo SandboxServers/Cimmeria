@@ -283,16 +283,17 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
 }
 
 /// GC1b-0 hardening: a follower NPC (`follow_target_id.is_some()`)
-/// aggroed mid-escort must NOT be snapped back to `spawn_position` on
-/// the Leashing → Idle transition. Follow doesn't auto-resume after a
-/// fight (only Patrol/Wander do — see `Action::SetFollowTarget` doc),
-/// so teleporting a leashing follower back to spawn would strand it
-/// there with no route back to the player short of a content chain
-/// re-firing `SetFollowTarget`. Health/threat/cooldown cleanup must
-/// still run exactly as the non-follower case above.
+/// aggroed mid-escort must NOT be snapped back to `spawn_position` when
+/// its leash ends. It is reset where it stands and, with its leader still
+/// in the space, goes back to Follow (NA42) rather than Idle. Health,
+/// threat and cooldown cleanup must still run exactly as the non-follower
+/// case above.
 #[tokio::test]
 async fn npc_ai_leashing_with_follow_target_skips_spawn_snap() {
     let mut mgr = make_ai_fixture([0.0; 3], [40.0, 0.0, 40.0]);
+    // The leader, in the same space.
+    mgr.create_entity(999, "Castle", [45.0, 0.0, 40.0], [0.0; 3])
+        .unwrap();
     if let Some(npc) = mgr.get_entity_mut(200) {
         crate::cell::service::npc_ai::force_ai_state(npc, AiState::Leashing);
         npc.follow_target_id = Some(999);
@@ -312,7 +313,11 @@ async fn npc_ai_leashing_with_follow_target_skips_spawn_snap() {
     )
     .await;
     let npc = mgr.get_entity(200).unwrap();
-    assert!(matches!(npc.ai_state(), AiState::Idle));
+    assert_eq!(
+        npc.ai_state(),
+        AiState::Follow,
+        "a follower whose leader is still here resumes Follow (NA42)"
+    );
     assert_eq!(
         npc.position,
         Vector3::new(40.0, 0.0, 40.0),
@@ -335,8 +340,7 @@ async fn npc_ai_leashing_with_follow_target_skips_spawn_snap() {
     assert_eq!(
         npc.follow_target_id,
         Some(999),
-        "follow_target_id itself is untouched by leash — Follow doesn't \
-         auto-clear on threat preemption, per Action::SetFollowTarget doc"
+        "the leash keeps a follow target that still resolves"
     );
 }
 

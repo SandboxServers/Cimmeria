@@ -7,7 +7,8 @@
 //! - This file is the per-tick Leashing handler: keep walking, replan a stale
 //!   route, and on arrival heal, face the authored heading, clear cooldowns
 //!   and go Idle. It snaps home only when there is no route or the walk times
-//!   out.
+//!   out. A follower is reset where it stands and goes back to Follow when its
+//!   leader is still in the space (NA42), so an escort survives a fight.
 //!
 //! While Leashing the NPC evades: `combat::generate_threat` refuses it and
 //! logs `npc_ai.leash event=damage_ignored`.
@@ -74,10 +75,10 @@ pub(super) async fn npc_ai_leash(
     };
     let pos = npc.position;
     // A follower is not walked or snapped home. A fighting escort NPC
-    // (Follow does not clear `follow_target_id` on a threat preempt) that
-    // was sent back to spawn would be stranded there: Follow does not
-    // resume after a fight, so nothing would walk it back to the player
-    // (GC1b-0 hardening).
+    // (Follow does not clear `follow_target_id` on a threat preempt) is
+    // reset where it stands, and `arrive` puts it back in Follow when its
+    // leader is still in the space (NA42). Walking it home first would only
+    // lengthen the gap it then has to close (GC1b-0 hardening).
     let home = npc
         .spawn_position
         .filter(|_| npc.follow_target_id.is_none());
@@ -143,9 +144,41 @@ pub(super) async fn npc_ai_leash(
     arrive(npc_id, Arrival::SnapNoPath, tx, space_mgr).await;
 }
 
+/// What a leash reset does with the NPC's `follow_target_id`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FollowAfterLeash {
+    /// Not a follower: go Idle.
+    NotFollowing,
+    /// The leader is still spawned in the NPC's own space: go back to Follow
+    /// with the target kept (NA42, handoff §17/§18).
+    Resume,
+    /// The leader despawned, disconnected or is in another space: clear the
+    /// target and go Idle, as the Follow handler does for a lost target.
+    Lost(u32),
+}
+
+fn follow_after_leash(space_mgr: &SpaceManager, npc_id: u32) -> FollowAfterLeash {
+    let Some(target_id) = space_mgr
+        .get_entity(npc_id)
+        .and_then(|npc| npc.follow_target_id)
+    else {
+        return FollowAfterLeash::NotFollowing;
+    };
+    let npc_space = space_mgr.get_entity_space_id(npc_id);
+    let same_space = npc_space.is_some()
+        && space_mgr.get_entity(target_id).is_some()
+        && space_mgr.get_entity_space_id(target_id) == npc_space;
+    if same_space {
+        FollowAfterLeash::Resume
+    } else {
+        FollowAfterLeash::Lost(target_id)
+    }
+}
+
 /// The reset at the end of a leash: put the NPC home (snap only on the
 /// fallback arms), heal it, restore the authored facing, clear threat and
-/// cooldowns, go Idle, and open the re-aggro suppression window.
+/// cooldowns, go Idle (or back to Follow for a follower whose leader is
+/// still here), and open the re-aggro suppression window.
 async fn arrive(
     npc_id: u32,
     how: Arrival,
@@ -189,11 +222,25 @@ async fn arrive(
     drain_player_combat_then_clear(npc_id, tx, space_mgr).await;
 
     let world = super::world_label(space_mgr, npc_id);
-    let reason = if how.is_snap() {
-        super::AiTransitionReason::LeashSnapFallback
-    } else {
-        super::AiTransitionReason::LeashArrived
+    let follow = follow_after_leash(space_mgr, npc_id);
+    let (to, reason) = match follow {
+        // The next AI tick runs the Follow handler, which routes toward the
+        // leader from here. Before NA42 every exit landed in Idle, which the
+        // dispatcher never promotes back to Follow: one stray hit ended an
+        // escort for good (chain 1302 was Zuritska's click-to-repair).
+        FollowAfterLeash::Resume => (AiState::Follow, super::AiTransitionReason::FollowResumed),
+        _ if how.is_snap() => (AiState::Idle, super::AiTransitionReason::LeashSnapFallback),
+        _ => (AiState::Idle, super::AiTransitionReason::LeashArrived),
     };
+    if let FollowAfterLeash::Lost(target_id) = follow {
+        tracing::warn!(
+            target: "npc_ai.leash",
+            event = "follow_target_lost",
+            npc_id,
+            target_id,
+            "NPC leash reset: follow target no longer in the space -- follow cleared, the escort idles until a chain re-arms it"
+        );
+    }
     let (stat_update, state_field) = {
         let Some(npc) = space_mgr.get_entity_mut(npc_id) else {
             return;
@@ -201,7 +248,10 @@ async fn arrive(
         if let Some(health) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
             health.set_current(health.max);
         }
-        super::set_ai_state_on(npc, &world, AiState::Idle, reason);
+        if matches!(follow, FollowAfterLeash::Lost(_)) {
+            npc.follow_target_id = None;
+        }
+        super::set_ai_state_on(npc, &world, to, reason);
         npc.abilities.clear_all_cooldowns();
         npc.ai_retry_at = None;
         npc.leash.walk_started_at = None;
@@ -217,7 +267,10 @@ async fn arrive(
     };
 
     // Back at spawn: an NPC authored in cover takes its slot again (NA22).
-    crate::cell::cover::hold_spawn_cover(space_mgr, npc_id, "leash_home");
+    // A follower going back to Follow is not at spawn and is about to move.
+    if follow != FollowAfterLeash::Resume {
+        crate::cell::cover::hold_spawn_cover(space_mgr, npc_id, "leash_home");
+    }
 
     let outcome = if how.is_snap() {
         "leash_snap_fallback"

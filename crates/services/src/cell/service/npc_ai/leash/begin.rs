@@ -178,7 +178,8 @@ pub(in crate::cell::service::npc_ai) async fn leash_out(
 /// installed after it.
 ///
 /// A follower (`follow_target_id` set) and an NPC with no spawn point get no
-/// route: the leash tick resets them where they stand, as before.
+/// route: the leash tick resets them where they stand, and a follower whose
+/// leader is still in the space goes back to Follow (NA42).
 pub(in crate::cell::service::npc_ai) async fn begin_leash(
     npc_id: u32,
     reason: super::super::AiTransitionReason,

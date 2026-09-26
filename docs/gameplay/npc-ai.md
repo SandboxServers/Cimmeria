@@ -43,7 +43,7 @@ Defined in `deprecated/python/Atrea/enums.py` lines 228-239.
 
 ### State Transitions
 
-`generate_threat` preempts any non-Dead non-Fighting state to Fighting (with per-state scratch preserved so the post-fight return can re-evaluate). Idle promotion priority is **proximity aggro > patrol > wander**: a hostile NPC scans first and falls through when nobody qualifies (NA13).
+`generate_threat` preempts any non-Dead non-Fighting state to Fighting (with per-state scratch preserved so the post-fight return can re-evaluate). It never preempts a Leashing NPC (the evade) or a `being` (class 0x01: props and story actors such as Col Marsh), which takes no threat at all (NA42). Idle promotion priority is **proximity aggro > patrol > wander**: a hostile NPC scans first and falls through when nobody qualifies (NA13).
 
 ```
 Idle      -->  Fighting    (generate_threat fires + NPC was Idle / Patrol / Wander / Investigating / Follow)
@@ -55,6 +55,7 @@ Fighting  -->  Leashing    (the NPC is past its leash radius from spawn: leash_o
 Fighting  -->  Leashing    (last target dead / gone / out of AoI for 5 s: target_lost;
                             threat list already empty: threat_empty)
 Leashing  -->  Idle        (walked home: leash_arrived; no route or 20 s timeout: leash_snap_fallback)
+Leashing  -->  Follow      (a follower reset in place whose leader is still in the space: follow_resumed, NA42)
 Any alive -->  Dead        (HP -> 0; combat::mark_npc_dead)
 Dead      -->  Idle        (npc_respawn_tick promotes; respawn_at elapsed)
 Any alive -->  Despawning / Submit / Error  (SetNpcAiState content action)
@@ -432,7 +433,7 @@ The old metric was spawn-to-target in 3D. A player standing 49.9 u from the Cell
 
 **Arrival.** Within 1.5 u of spawn with its route finished, the NPC heals to full, faces its authored spawn heading, clears its cooldowns and goes Idle. For 5 s afterwards the Idle auto-aggro scan ignores players.
 
-**Snap fallback.** When no route can be planned, or the walk takes longer than 20 s, the NPC snaps to spawn through the grid-updating writer and resets the same way (`reason=leash_snap_fallback`). A follower (`follow_target_id` set) is reset where it stands and is not moved.
+**Snap fallback.** When no route can be planned, or the walk takes longer than 20 s, the NPC snaps to spawn through the grid-updating writer and resets the same way (`reason=leash_snap_fallback`). A follower (`follow_target_id` set) is reset where it stands and is not moved. If its leader is still in the space it then goes back to Follow (`reason=follow_resumed`) instead of Idle, and the next AI tick routes it after the leader. If the leader has left, the target is cleared, the NPC goes Idle and `npc_ai.leash event=follow_target_lost` warns (NA42).
 
 **Telemetry.** The leash reports through NA02's detectors (`npc_ai::detectors::leash`): `npc_ai.leash event=enter` (reason, trigger, `nav_path_len`, `npc_to_spawn`), `event=arrived` / `event=snap_fallback` (`arrival`, `walk_secs`, `snap_dist`), `event=loop` (should stay silent) and `event=damage_ignored`. The leash itself adds `event=replan` and `event=player_combat_exit`. NA02's `threat event=cleared_without_exit` and `npc_ai.idle_parked` should stay silent through a leash; tests pin both. The fight's `decision_outcome=leashed` row carries `trigger`, `npc_to_spawn` and `target_to_spawn`.
 
@@ -483,6 +484,8 @@ Evidence: `Home` property provides the anchor, `nextWanderTime` property stores 
 The mob maintains a set distance and angle behind a target entity (used by pets and escort NPCs).
 
 Evidence: `currentlyFollowing` (bool), `followTarget` (entity reference), `followMinDistance`, `followMaxDistance`, `followAngle`, `followMovementType` properties all defined in `.def`.
+
+**Runtime: an escort survives a fight (NA42).** A mob in Follow that takes a hit is preempted into Fighting and keeps its `follow_target_id`. When the fight ends, the leash resets it where it stands (it is never walked or snapped home) and returns it to Follow while its leader is still in the space; with the leader gone it clears the target and idles. Before NA42 every leash ended in Idle, which the dispatcher never promotes back to Follow, so one stray hit ended an escort for good; chain 1302 (click Zuritska to re-arm her follow) predates the fix and is now a harmless redundancy. A `being` follower such as Col Marsh never enters combat: `generate_threat` refuses beings, so a hit leaves him in Follow and still walking. None of the 24 seeded `being` templates has an ability set, so no being could have fought back anyway.
 
 ### Submit (State 10)
 
@@ -668,7 +671,7 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Investigating state | DONE | `npc_ai_investigate` handler routes the NPC to a content-set `poi`, dwells 5s (`INVESTIGATE_DWELL_SECS`), returns to Idle. Reached via the `SetNpcPoi` content action; the `onNoise` cell-method hook for in-game audio is deferred. |
 | Patrol state | DONE | `npc_ai_patrol` walks the loop from `entity_templates.patrol_path_id` → `point_set_points`. Dwells `patrol_point_delay` at each waypoint. Threat preemption preserves `patrol_next_index` so the post-fight return resumes the route. |
 | Wander state | DONE | `npc_ai_wander` samples a random point within `wander_radius` of `spawn_position`, validates against the navmesh, dwells a random duration in `[wander_min_dwell_secs, wander_max_dwell_secs]`. Off-mesh candidates fall back to `spawn_position`. |
-| Follow state | DONE | `npc_ai_follow` maintains a distance band `[follow_min_distance, follow_max_distance]` to the target. Out of band → pathfind toward target; below min → hold (no back-away). Reached via the `SetFollowTarget` content action. A `being`-class follower (Col Marsh, template 10) is ticked too: `ai_driven_npc_entity_ids` admits a `being` in Follow / Patrol / Wander / Investigating / Despawning / Submit / Error, never in Idle (props) or Fighting (NA24). |
+| Follow state | DONE | `npc_ai_follow` maintains a distance band `[follow_min_distance, follow_max_distance]` to the target. Out of band → pathfind toward target; below min → hold (no back-away). Reached via the `SetFollowTarget` content action. A `being`-class follower (Col Marsh, template 10) is ticked too: `ai_driven_npc_entity_ids` admits a `being` in Follow / Patrol / Wander / Investigating / Despawning / Submit / Error, never in Idle (props) or Fighting (NA24). A leash that ends a follower's fight returns it to Follow while its leader is in the space, and a being is never pulled into combat (NA42). |
 | Submit state | DONE | `npc_ai_submit` clears combat state (threat_list, BSF_IN_COMBAT, movement-type cache) and holds. Reached via the `SetNpcAiState` content action. |
 | Error state | DONE | `npc_ai_error` is a quiescent diagnostic state — handler is a no-op per tick. Reached via the `SetNpcAiState` content action or the `enterErrorAIState` slash command. |
 | Despawning state | DONE | `npc_ai_despawn` removes the entity from the space on entry; AoI fires the leave events to witnesses. Reached via the `SetNpcAiState` content action. |
