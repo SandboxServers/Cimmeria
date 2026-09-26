@@ -34,6 +34,11 @@ use cimmeria_wire::{ability_tree, mercury};
 
 mod cell {
     pub(crate) use cimmeria_wire::cell::{client_methods, mail, messages};
+
+    /// The mission 701 persistence replay, which drives this crate's
+    /// `query_saved_missions`. Test-only.
+    #[cfg(test)]
+    mod content_tests;
 }
 
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency), next to

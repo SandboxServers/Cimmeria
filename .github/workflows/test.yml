@@ -77,17 +77,11 @@ jobs:
 
   # cargo build catches link-time errors that cargo check misses (build
   # scripts, codegen output, dynamic-link issues).
-  #
-  # The layering guard runs first: it needs only python3 (preinstalled on the
-  # runner) and fails in seconds when a module edge in crates/services/src
-  # breaks the planned crate DAG. See tools/layering/README.md.
   build:
     name: cargo build (workspace)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: layering guard (services crate split)
-        run: python3 tools/layering/check.py
       - name: build-lane job log tests
         run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
       - uses: ./.github/actions/rust-toolchain

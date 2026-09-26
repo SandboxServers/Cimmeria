@@ -6,8 +6,8 @@
 //! They were in `base::world_entry::methods::missions::tests`, which moved to
 //! `cimmeria-base-methods` in wave B2 of
 //! docs/architecture/services-crate-split.md. These three need both the cell
-//! code, still in this crate, and the base world-entry code
-//! (`cimmeria-base-world-entry` since wave B3), and only the facade will sit
+//! code (`cimmeria-cell-content` since wave C3) and the base world-entry code
+//! (`cimmeria-base-world-entry` since wave B3), and only the facade sits
 //! above both. The sentinels and the two fixture helpers are
 //! the originals', so the tests touch the same rows as before.
 

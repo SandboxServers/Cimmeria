@@ -23,19 +23,19 @@ pub use cimmeria_resources::base::{
 // here moved to `cimmeria-base-methods` (B2), `cimmeria-base-world-entry` (B3)
 // and `cimmeria-base` (B4), and `contact_list`'s last one, the cell's
 // contact-list methods, to `cimmeria-cell-methods` (C5a), which names the
-// `wire` module in `cimmeria-wire`. `gm_spawn`, `ConnectedClientState` and
-// `PendingClientReadyInfo` are left only for tests.
-#[cfg(test)]
-pub(crate) use cimmeria_base_session::base::{
-    gm_spawn, ConnectedClientState, PendingClientReadyInfo,
-};
+// `wire` module in `cimmeria-wire`. `ConnectedClientState` and
+// `PendingClientReadyInfo` are left only for the gate round trips; `gm_spawn`'s
+// last user here, the template parity guard, moved to `cimmeria-base-session`
+// in wave F.
 pub use cimmeria_base_session::base::{BaseError, OnlinePlayer};
+#[cfg(test)]
+pub(crate) use cimmeria_base_session::base::{ConnectedClientState, PendingClientReadyInfo};
 
 // Split out to `cimmeria-base-world-entry` (wave B3) and re-exported at its old
 // path for the tests here that drive the cell and then the base's world entry
-// (`gate_round_trip_tests`, `mission_round_trip_tests`, the mission 701
-// persistence replay). `character` is not: the connect loop and the character
-// creator, its users here, moved to `cimmeria-base` (B4).
+// (`gate_round_trip_tests`, `mission_round_trip_tests`). `character` is not:
+// the connect loop and the character creator, its users here, moved to
+// `cimmeria-base` (B4).
 #[cfg(test)]
 pub(crate) use cimmeria_base_world_entry::base::world_entry;
 

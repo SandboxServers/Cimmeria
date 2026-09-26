@@ -1,11 +1,26 @@
 //! # cimmeria-services
 //!
-//! Server service implementations for the Cimmeria server emulator.
+//! The facade over the Cimmeria service crates. It owns two things:
 //!
-//! Contains the three core services (Auth, Base, Cell), a database connection
-//! pool, and an orchestrator that manages service lifecycle. This mirrors the
-//! original C++ multi-process architecture where AuthenticationServer, BaseApp,
-//! and CellApp ran as separate services communicating over Mercury.
+//! - [`orchestrator`]: the `Orchestrator` that starts the auth, base and cell
+//!   services in order in one process, shares the server state with the admin
+//!   API and the lab endpoint, and stops them in reverse. The original C++
+//!   server ran AuthenticationServer, BaseApp and CellApp as separate
+//!   processes talking over Mercury.
+//! - [`database`]: the PostgreSQL pool and the lab's read-only query.
+//!
+//! Everything else is a re-export. The services themselves live in their own
+//! crates since the services crate split
+//! (`docs/architecture/services-crate-split.md`): `cimmeria-auth`,
+//! `cimmeria-base` and the base crates below it, `cimmeria-cell` and the cell
+//! crates below it, `cimmeria-minigame`, and the shared `cimmeria-wire`
+//! contract. This crate re-exports them at the paths they had when they were
+//! modules here (`cimmeria_services::{auth, base, cell, mercury, …}`), which
+//! the server, the admin API, the lab endpoint and the wire client import;
+//! those crates depend only on this one. Its own tests are the
+//! orchestrator's and the pool's, and the round trips that drive both the
+//! cell and the base (`gate_round_trip_tests`, `mission_round_trip_tests`),
+//! which no crate below this one can reach.
 
 pub mod base;
 pub mod cell;
@@ -36,20 +51,23 @@ pub use cimmeria_wire::{firehose, mercury};
 // `crate::wire_log::…` here and `cimmeria_services::wire_log::tap` downstream
 // keep resolving.
 pub use cimmeria_wire_log::wire_log;
+
 // The in-process SmartFoxServer host for the Flash minigames, split out to
 // `cimmeria-minigame` (wave W3c). Re-exported at the old path, so
 // `crate::minigame::…` here (the orchestrator starts its server, the base
 // registers tickets in its `SessionRegistry`) keeps resolving.
 pub use cimmeria_minigame::minigame;
 
-/// The gate-travel round trips that drive the cell's gate handlers and then
-/// the base's world entry in `cimmeria-base-world-entry`. Test-only.
+/// The gate-travel round trips that drive the cell's gate handlers
+/// (`cimmeria-cell-interactions`) and then the base's world entry
+/// (`cimmeria-base-world-entry`). Test-only.
 #[cfg(test)]
 mod gate_round_trip_tests;
 
-/// The `sgw_mission` round-trip tests that drive the cell's missions, still
-/// in this crate, and the base's cell dispatch (`cimmeria-base-world-entry`)
-/// against the feature handlers in `cimmeria-base-methods`. Test-only.
+/// The `sgw_mission` round-trip tests that drive the cell's missions
+/// (`cimmeria-cell-content`) and the base's cell dispatch
+/// (`cimmeria-base-world-entry`) against the feature handlers in
+/// `cimmeria-base-methods`. Test-only.
 #[cfg(test)]
 mod mission_round_trip_tests;
 

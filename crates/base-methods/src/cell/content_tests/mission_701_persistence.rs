@@ -32,16 +32,18 @@
 //! is shared base-side surface that several concurrent packets touch.
 //! Wave C3 of the services crate split moved those guards to
 //! `cimmeria-cell-content`; this one calls the base's
-//! `query_saved_missions` (`cimmeria-base-methods`), which the content
-//! crate does not depend on, so it stayed in this crate as
+//! `query_saved_missions`, which the content crate does not depend on, so
+//! it stayed in `cimmeria-services` as
 //! `cell::content_tests::mission_701_persistence` (was
-//! `cell::content::chain_replay_tests::mission_701::persistence`).
+//! `cell::content::chain_replay_tests::mission_701::persistence`). Wave F
+//! moved it here, into the crate of the query it guards, under the same
+//! module path.
 //!
-//! Sentinel range `0x7000_6000` — steps past every sibling reservation in
-//! `crates/services` (`0x7000_0100`-`0x7000_0400`,
-//! `0x7000_1000`-`0x7000_1B00`, `0x7000_2000`, `0x7000_3000`,
-//! `0x7000_4000`, `0x7000_4242`, `0x7000_5000`). Cleanup deletes the exact
-//! ids inserted, never a range.
+//! Sentinel range `0x7000_6000` — steps past every sibling reservation the
+//! tests in `crates/services` held when it was chosen
+//! (`0x7000_0100`-`0x7000_0400`, `0x7000_1000`-`0x7000_1B00`,
+//! `0x7000_2000`, `0x7000_3000`, `0x7000_4000`, `0x7000_4242`,
+//! `0x7000_5000`). Cleanup deletes the exact ids inserted, never a range.
 
 use std::sync::Arc;
 

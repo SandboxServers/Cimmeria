@@ -162,7 +162,7 @@ pub async fn handle_gm_spawn_npc(
 /// Returns `Ok(None)` when the template doesn't exist. The ability-id bucket
 /// is loaded via the same correlated-subquery shape as the spawnlist loader so
 /// a GM-spawned mob is armed identically to a seeded one.
-pub async fn load_spawn_record_for_template(
+pub(crate) async fn load_spawn_record_for_template(
     pool: &PgPool,
     template_id: i32,
     world_name: &str,
