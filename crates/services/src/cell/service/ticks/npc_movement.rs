@@ -69,9 +69,9 @@ fn check_ground(
 /// `movementSpeedMod` stat.
 ///
 /// Without the scale the stat had **no** server-side effect at all and a GM's
-/// `.speed` (see [`crate::cell::console::stats::set_speed`]) would desync the
-/// client's prediction from the authoritative path stepping. See
-/// [`StatList::movement_speed_scale`] for the stat's contract and its
+/// `.speed` (see `cimmeria_cell_console::cell::console::stats::set_speed`)
+/// would desync the client's prediction from the authoritative path stepping.
+/// See [`StatList::movement_speed_scale`] for the stat's contract and its
 /// fallbacks.
 fn effective_move_speed(base: f32, stats: &StatList) -> f32 {
     base * stats.movement_speed_scale()

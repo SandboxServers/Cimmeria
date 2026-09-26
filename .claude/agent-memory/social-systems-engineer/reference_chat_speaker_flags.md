@@ -39,7 +39,7 @@ GM threshold is `accessLevel > 0` — includes Moderator (level 1), not just Gam
 [u32 speaker_len][UTF-16LE speaker...][u8 speaker_flags][u8 channel][u32 text_len][UTF-16LE text...]
 ```
 
-Serializer lives in `crates/services/src/cell/console/chat.rs::serialize_on_player_communication()`. Already correct — only the value passed as `speaker_flags` needs fixing.
+Serializer lives in `crates/cell-console/src/cell/console/chat.rs::serialize_on_player_communication()`. Already correct — only the value passed as `speaker_flags` needs fixing.
 
 ## State ownership in Rust
 

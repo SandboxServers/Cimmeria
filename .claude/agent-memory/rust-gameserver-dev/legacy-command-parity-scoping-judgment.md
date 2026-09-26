@@ -49,7 +49,7 @@ command to Rust. Recurring judgment calls worth remembering:
 - **The `Option<u32>` "fall back to caller when no target"-dead-code pattern
   recurs across every `Target::Being`/`Target::Mob`/`Target::Spawnable`
   handler, not just the ones P02 happened to touch.** `dispatch::resolve_target`
-  (`crates/services/src/cell/console/dispatch.rs`) returns `Err` before `exec`
+  (`crates/cell-console/src/cell/console/dispatch.rs`) returns `Err` before `exec`
   is ever called for any typed (non-`Target::None`) spec with no current
   selection — it only ever returns `Ok(None)` for `Target::None` commands. So
   any handler behind a typed spec that still takes `target_id: Option<u32>`
@@ -69,7 +69,7 @@ command to Rust. Recurring judgment calls worth remembering:
   remove an entry once inserted. Don't spend time hunting for a fixture trick;
   either test the absent-stat formatting logic as a unit test on the
   extracted formatting function directly (P03's approach — see
-  `crates/services/src/cell/console/stats.rs`'s `format_stat_line`), or flag
+  `crates/cell-console/src/cell/console/stats.rs`'s `format_stat_line`), or flag
   a proposed small `StatList::remove` addition in the handoff without adding
   it unasked (it's outside `crates/services`-scoped packets' owned paths).
 

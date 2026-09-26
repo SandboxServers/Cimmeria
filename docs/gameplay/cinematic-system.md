@@ -706,7 +706,7 @@ Event set **1025** ("Mob event set") contains 16 sequences and is the default an
 
 ## Debug Console Commands
 
-Three debug commands for testing sequences in-game, implemented in [`cell/console/net.rs`](../../crates/services/src/cell/console/net.rs):
+Three debug commands for testing sequences in-game, implemented in [`cell/console/net.rs`](../../crates/cell-console/src/cell/console/net.rs):
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|

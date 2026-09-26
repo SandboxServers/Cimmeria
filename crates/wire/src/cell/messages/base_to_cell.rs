@@ -311,9 +311,10 @@ pub enum BaseToCellMsg {
     /// caller (the lab-mcp endpoint, base-side) awaits `reply_tx` for the
     /// [`LabConsoleResult`].
     ///
-    /// The GM access-level gate that `cimmeria_services::cell::chat` applies to in-world
-    /// `.`-console input is re-applied here to the acting entity — a non-GM
-    /// (or unknown) `entity_id` is rejected with `Err(_)`, never executed.
+    /// The GM access-level gate that `cimmeria_cell_console::cell::console::chat`
+    /// applies to in-world `.`-console input is re-applied here to the acting
+    /// entity — a non-GM (or unknown) `entity_id` is rejected with `Err(_)`,
+    /// never executed.
     /// Authorization is on the server-side `access_level` (from
     /// `account.accesslevel`), never a client-asserted byte.
     ///

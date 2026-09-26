@@ -8,7 +8,7 @@ last_updated: 2026-06-18
 # Dev `.`-Console Channel (ADR)
 
 > **Status**: Adopted in issue #523. Implemented in
-> `crates/services/src/cell/console/` + `crates/base-session/src/base/console_authoring/mod.rs`.
+> `crates/cell-console/src/cell/console/` + `crates/base-session/src/base/console_authoring/mod.rs`.
 > **Confidence**: High for the channel/dispatch/auth and the read-only +
 > authoring families; medium for the seed-commit Discord hook (designed, not yet
 > wired) and the server/maintenance family (intentionally divergent — see below).

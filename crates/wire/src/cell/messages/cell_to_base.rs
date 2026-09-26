@@ -492,7 +492,7 @@ pub enum CellToBaseMsg {
     /// **Trust model:** the `.`-channel is GM-gated server-side, and `sql` is
     /// *server-generated* — numeric values are formatted from cell-parsed
     /// `i32`/`f32` and strings are escaped through
-    /// `cimmeria_services::cell::console::seed::sql_str`, so no raw client text is
+    /// `cimmeria_cell_console::cell::console::seed::sql_str`, so no raw client text is
     /// concatenated into the statement. This mirrors the legacy
     /// `Atrea.dbQuery` authoring path. `label` is a short human tag for the
     /// feedback line (e.g. `"savespawn"`).

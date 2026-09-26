@@ -85,6 +85,9 @@ logs/**
 # The cimmeria-services test suite writes tracing artifacts here; a
 # `git add -A crates` from a worktree would otherwise sweep them in.
 crates/services/logs/
+# The console's seed-authoring tests write their session logs here the same
+# way (under crates/services/logs/ until wave C5b moved the console).
+crates/cell-console/logs/
 
 # =============================================================================
 # Python

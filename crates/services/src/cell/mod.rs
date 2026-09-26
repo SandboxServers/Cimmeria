@@ -25,6 +25,10 @@
 //! the respawn fork in `respawn`, the trade session state in `trade`, and
 //! `mail`) are in `cimmeria-cell-interactions` (wave C4), re-exported the
 //! same way.
+//!
+//! The GM surfaces (`console`, with `chat` and the native `gm*` cell methods
+//! under it) are in `cimmeria-cell-console` (wave C5b), re-exported the same
+//! way; `chat` also keeps its old `cell::chat` path.
 
 // In `cimmeria-cell-combat` (wave C2).
 pub use cimmeria_cell_combat::cell::abilities;
@@ -36,7 +40,9 @@ pub use console::chat;
 // The server->client method index tables are wire contract (cimmeria-wire).
 pub use cimmeria_cell_combat::cell::combat;
 pub use cimmeria_wire::cell::client_methods;
-pub mod console;
+// In `cimmeria-cell-console` (wave C5b): the `.`-console, with the chat
+// interceptor and the native `gm*` cell methods under it.
+pub use cimmeria_cell_console::cell::console;
 // In `cimmeria-cell-content` (wave C3).
 pub use cimmeria_cell_content::cell::content;
 /// The content tests that drive code still in this crate (a cell method,
@@ -70,15 +76,15 @@ pub use cimmeria_wire::cell::messages;
 pub(crate) use cimmeria_wire::cell::player_journal;
 mod service;
 pub use cimmeria_cell_world::cell::space_manager;
-// Crate-internal: `transfer_player_to_space` is a destructive, unauthenticated
+// `space_transfer` (in `cimmeria-cell-interactions`, wave C4) is not
+// re-exported: `transfer_player_to_space` is a destructive, unauthenticated
 // entry point (privilege is enforced by the console dispatch layer above it),
-// so it must not be reachable from outside this crate. It is in
-// `cimmeria-cell-interactions` (wave C4), whose `space_transfer` module is
-// public so this crate can reach it; downstream crates depend only on this
-// one (services-crate-split.md §5.2). Its production callers
-// are the `.goto`/`.summon`/`.gotolocation` console commands in
-// `cell::console::travel` (P46).
-pub(crate) use cimmeria_cell_interactions::cell::space_transfer;
+// so it must not be reachable from outside the cell crates, and downstream
+// crates depend only on this one (services-crate-split.md §5.2). Its
+// production callers are the `.goto`/`.summon`/`.gotolocation` console
+// commands in `cell::console::travel` (P46), in `cimmeria-cell-console` since
+// wave C5b.
+
 // The respawn fork the player's Defeat Window and the GM `gmRespawn` share,
 // with the client-cache replays it queues after the reanchor. Beside gate
 // travel and the space transfer, one layer below the cell methods and the GM

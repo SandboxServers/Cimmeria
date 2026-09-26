@@ -587,7 +587,7 @@ design and the per-command status.
 
 > The server side is tested where marked, but a full live-client pass (typing each one in the real game and watching the result) is still pending. Treat ✅ as "the server does the right thing when the command arrives."
 >
-> **Accuracy caveat (2026-07-25):** the ✅/🚧/❌ marks in the `/`-command tables above have **not** been audited handler-by-handler. Two were checked and both were wrong — `/duelforfeit` and `/duelresponse` were marked ✅ but are `UNIMPLEMENTED` stubs (see the Dueling section); the totals here reflect that correction. Expect other rows to be optimistic in the same way, because a command that reaches a dispatch arm can still do nothing. The `.`-console section below **was** verified in full against [console/registry.rs](../crates/services/src/cell/console/registry.rs).
+> **Accuracy caveat (2026-07-25):** the ✅/🚧/❌ marks in the `/`-command tables above have **not** been audited handler-by-handler. Two were checked and both were wrong — `/duelforfeit` and `/duelresponse` were marked ✅ but are `UNIMPLEMENTED` stubs (see the Dueling section); the totals here reflect that correction. Expect other rows to be optimistic in the same way, because a command that reaches a dispatch arm can still do nothing. The `.`-console section below **was** verified in full against [console/registry.rs](../crates/cell-console/src/cell/console/registry.rs).
 
 ## See also
 

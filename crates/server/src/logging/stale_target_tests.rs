@@ -313,6 +313,11 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         // interactions.log's chat row before the C4-C6 preparation moved chat
         // under the console; `cell` re-exports it (`pub use console::chat`).
         "cimmeria_services::cell::chat",
+        // interactions.log's chat row, and the console the GM rows sat under,
+        // before wave C5b moved the console (with chat and the GM handlers) to
+        // cimmeria-cell-console; services re-exports it at the same path.
+        "cimmeria_services::cell::console",
+        "cimmeria_services::cell::console::chat",
         // interactions.log's, spawner.log's and aoi.log's services rows before
         // wave C4 moved the interaction handlers, mail, gate travel and the
         // respawn fork (with its resync) to cimmeria-cell-interactions;
@@ -345,7 +350,8 @@ fn resolver_rejects_missing_modules_and_accepts_real_ones() {
         "cimmeria_cell_content::cell::missions",
         "cimmeria_cell_content::cell::ring_transport",
         "cimmeria_cell_content::cell::interactions::dialog",
-        "cimmeria_services::cell::console::chat",
+        "cimmeria_cell_console::cell::console",
+        "cimmeria_cell_console::cell::console::chat",
         "cimmeria_cell_interactions::cell::interactions",
         "cimmeria_cell_interactions::cell::mail",
         "cimmeria_cell_interactions::cell::gate_travel",

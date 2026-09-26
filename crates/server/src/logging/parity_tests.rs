@@ -951,9 +951,10 @@ fn combat_crate_events_keep_their_file_and_index() {
 /// chat and resync rows fail this with the old file rows; the trade row fails
 /// it if the state moves under `cell::interactions`. Wave C4 moved the resync,
 /// the fork, the region registration and the trade state on to
-/// `cimmeria-cell-interactions`, so they are named at that crate's paths;
-/// `interactions_crate_events_keep_their_file_and_index` covers the rest of
-/// that crate.
+/// `cimmeria-cell-interactions`, and wave C5b moved chat and the GM handlers
+/// on to `cimmeria-cell-console`, so they are named at those crates' paths;
+/// `interactions_crate_events_keep_their_file_and_index` and
+/// `console_crate_events_keep_their_file_and_index` cover the rest of them.
 #[test]
 fn cell_prep_moves_keep_their_file_and_index() {
     let (dispatch, hits) = harness(FILE_LAYERS);
@@ -961,7 +962,7 @@ fn cell_prep_moves_keep_their_file_and_index() {
         |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
     for (target, file) in [
         (
-            "cimmeria_services::cell::console::chat",
+            "cimmeria_cell_console::cell::console::chat",
             "file:interactions.log",
         ),
         (
@@ -993,7 +994,7 @@ fn cell_prep_moves_keep_their_file_and_index() {
         "cimmeria_cell_interactions::cell::respawn::region_registration",
         "cimmeria_cell_interactions::cell::trade::state",
         "cimmeria_cell_interactions::cell::trade::wire",
-        "cimmeria_services::cell::console::gm::world",
+        "cimmeria_cell_console::cell::console::gm::world",
     ] {
         let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
         // No file keeps it at TRACE, so the trace index does not either.
@@ -1611,5 +1612,106 @@ fn interactions_crate_events_keep_their_file_and_index() {
                 "{target} at {lvl}"
             );
         }
+    }
+}
+
+/// The GM surfaces moved from `cimmeria_services::cell::console` to the
+/// `cimmeria-cell-console` crate (services crate split, wave C5b), which
+/// changed the `module_path!()` of every untargeted row in them. Each must
+/// still land where it did: chat in `interactions.log` (beside the
+/// interaction handlers and the dialog display), `server.log` from INFO, and
+/// one OTLP index per level. The rest of the console (the dispatcher, the
+/// command families, the #523 authoring commands) and the native GM handlers
+/// had no file and have none; they reach SigNoz from DEBUG.
+/// `cimmeria_services=debug` does not prefix-match `cimmeria_cell_console`, so
+/// without its own `OTEL_FILTER` row every DEBUG row here would stop reaching
+/// SigNoz; without the chat row `interactions.log` would lose chat.
+///
+/// The crate shares the `cimmeria_cell_co` prefix with the combat, content
+/// and cover crates. Each of their rows must still be the only thing that
+/// exports its own crate's DEBUG rows: if the console's row (or a shorter one
+/// standing in for it) prefix-matched a sibling, removing the sibling's row
+/// would change nothing, and that crate's guard could no longer fail.
+#[test]
+fn console_crate_events_keep_their_file_and_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    let target = "cimmeria_cell_console::cell::console::chat";
+    let file = "file:interactions.log";
+    let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+    assert_eq!(
+        sinks(Level::TRACE),
+        set(&[file, OTLP_TRACE]),
+        "{target} at TRACE"
+    );
+    assert_eq!(
+        sinks(Level::DEBUG),
+        set(&[file, OTLP_SERVER]),
+        "{target} at DEBUG"
+    );
+    for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+        assert_eq!(
+            sinks(lvl),
+            set(&[file, SERVER_LOG, OTLP_SERVER]),
+            "{target} at {lvl}"
+        );
+    }
+
+    for target in [
+        "cimmeria_cell_console::cell::console",
+        "cimmeria_cell_console::cell::console::dispatch",
+        "cimmeria_cell_console::cell::console::seed",
+        "cimmeria_cell_console::cell::console::spawn::authoring",
+        "cimmeria_cell_console::cell::console::travel",
+        "cimmeria_cell_console::cell::console::gm",
+        "cimmeria_cell_console::cell::console::gm::travel",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+
+    for (row, sibling) in [
+        (
+            "cimmeria_cell_combat=debug,",
+            "cimmeria_cell_combat::cell::abilities::use_ability",
+        ),
+        (
+            "cimmeria_cell_content=debug,",
+            "cimmeria_cell_content::cell::content::executor",
+        ),
+        (
+            "cimmeria_cell_cover=debug,",
+            "cimmeria_cell_cover::cell::cover",
+        ),
+    ] {
+        let without = OTEL_FILTER.replace(row, "");
+        assert_ne!(
+            without, OTEL_FILTER,
+            "OTEL_FILTER no longer carries `{row}`; update this test"
+        );
+        let hits: Hits = Arc::default();
+        let dispatch = Dispatch::new(
+            tracing_subscriber::registry()
+                .with(recorder(OTLP_SERVER.into(), &hits).with_filter(EnvFilter::new(without))),
+        );
+        assert!(
+            sinks_for(&dispatch, &hits, sibling, Level::DEBUG).is_empty(),
+            "{sibling}'s DEBUG export must depend on its own `{row}` row, not on \
+             cimmeria-cell-console's"
+        );
     }
 }

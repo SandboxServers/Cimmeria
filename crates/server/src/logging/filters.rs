@@ -107,6 +107,12 @@ use crate::otel;
 /// dispatcher and entry points, and the dialog display. Neither
 /// `cimmeria_cell_combat` nor `cimmeria_cell_cover` is a prefix of it.
 ///
+/// `cimmeria_cell_console=debug` (wave C5b) does the same for the GM
+/// surfaces: the `.`-console with its authoring commands, the chat
+/// interceptor and the native `gm*` cell methods. It shares the
+/// `cimmeria_cell_co` prefix with the combat, content and cover rows, but no
+/// row is a prefix of another.
+///
 /// `cimmeria_cell_interactions=debug` (wave C4) does the same for the player
 /// interactions: the NPC interaction dispatch, stargate travel, the GM space
 /// transfer, the respawn fork with its resync, the trade session state and
@@ -149,6 +155,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_combat=debug,\
                 cimmeria_base::base=debug,\
                 cimmeria_cell_content=debug,\
+                cimmeria_cell_console=debug,\
                 cimmeria_cell_interactions=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
@@ -267,6 +274,8 @@ pub(crate) struct FileLayer {
 /// client-cache resync and hotbar seed that sat under `cell::service`'s
 /// `player_init` before. The trade session state (`cell::trade`), the respawn
 /// fork and the GM handlers (`cell::console::gm`) had no file and have none.
+/// Since wave C5b the console, chat and the GM handlers are
+/// `cimmeria_cell_console::cell::console::…`; chat keeps `interactions.log`.
 /// Since wave C4 the interaction handlers, mail, gate travel and the resync
 /// are `cimmeria_cell_interactions::cell::…`, beside the content crate's
 /// dialog display in `interactions.log`.
@@ -342,7 +351,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         directives: "off,\
              cimmeria_cell_interactions::cell::interactions=trace,\
              cimmeria_cell_content::cell::interactions=trace,\
-             cimmeria_services::cell::console::chat=trace,\
+             cimmeria_cell_console::cell::console::chat=trace,\
              cimmeria_cell_interactions::cell::mail=trace",
     },
     FileLayer {

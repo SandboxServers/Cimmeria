@@ -11,12 +11,12 @@
 //! change hold across reconnects within the current deploy, but the next deploy
 //! rebuilds the DB from the `db/resources/` seeds and wipes it. The durable
 //! artifact is the seed SQL the cell records to the per-session authoring log
-//! and (later) Discord — see `crate::cell::console::seed`.
+//! and (later) Discord — see `cimmeria_cell_console::cell::console::seed`.
 //!
 //! **Trust model:** the `.`-channel is GM-gated server-side (the cell only
 //! forwards a command from an `access_level >= GameMaster` caller), and `sql`
 //! is server-generated — numeric values come from cell-parsed `i32`/`f32` and
-//! strings are escaped through `crate::cell::console::seed::sql_str`, so there
+//! strings are escaped through `cimmeria_cell_console::cell::console::seed::sql_str`, so there
 //! is no raw client text concatenated into the statement. This mirrors the
 //! legacy `Atrea.dbQuery` authoring path.
 
@@ -136,7 +136,7 @@ pub async fn handle_execute_authoring_sql(
     // injection. The audit is the "Trust model" note in this module's header —
     // `sql` is server-generated on the GM-gated `.`-channel, numerics come from
     // cell-parsed `i32`/`f32`, and strings are escaped through
-    // `crate::cell::console::seed::sql_str`. No raw client text is concatenated.
+    // `cimmeria_cell_console::cell::console::seed::sql_str`. No raw client text is concatenated.
     match sqlx::query(AssertSqlSafe(sql)).execute(pool.as_ref()).await {
         Ok(res) => {
             let rows = res.rows_affected();

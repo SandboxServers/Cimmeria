@@ -618,6 +618,18 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_cell_content::cell::ring_transport::dispatch"
         ));
+        // The GM surfaces, `cimmeria_services::cell::console` (with chat and
+        // the GM handlers) in cimmeria-server until wave C5b moved them to
+        // cimmeria-cell-console.
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_console::cell::console::dispatch"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_console::cell::console::chat"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_cell_console::cell::console::gm::world"
+        ));
         // The player interactions, `cimmeria_services::cell::{interactions,
         // gate_travel, respawn, ...}` in cimmeria-server until wave C4 moved
         // them to cimmeria-cell-interactions.

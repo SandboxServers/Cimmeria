@@ -143,7 +143,7 @@ pub(super) struct Traffic {
 impl Traffic {
     /// The single destination instance a transfer named, panicking unless
     /// exactly one transfer was enqueued.
-    pub fn only_gate_travel(&self) -> &(u32, String, Option<u32>, [f32; 3]) {
+    pub(super) fn only_gate_travel(&self) -> &(u32, String, Option<u32>, [f32; 3]) {
         assert_eq!(
             self.gate_travels.len(),
             1,
@@ -156,7 +156,7 @@ impl Traffic {
     /// `rotation` from the single enqueued `GateTravel`, panicking unless
     /// exactly one transfer was enqueued (same precondition as
     /// [`Self::only_gate_travel`]).
-    pub fn only_gate_travel_rotation(&self) -> [f32; 3] {
+    pub(super) fn only_gate_travel_rotation(&self) -> [f32; 3] {
         assert_eq!(
             self.gate_travel_rotations.len(),
             1,
@@ -166,11 +166,11 @@ impl Traffic {
         self.gate_travel_rotations[0]
     }
 
-    pub fn has_line(&self, text: &str) -> bool {
+    pub(super) fn has_line(&self, text: &str) -> bool {
         self.feedback.iter().any(|l| l == text)
     }
 
-    pub fn mentions(&self, fragment: &str) -> bool {
+    pub(super) fn mentions(&self, fragment: &str) -> bool {
         self.feedback.iter().any(|l| l.contains(fragment))
     }
 }

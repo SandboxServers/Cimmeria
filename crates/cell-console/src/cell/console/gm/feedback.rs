@@ -56,11 +56,7 @@ fn serialize_on_player_communication(
 /// Send a single feedback line to the GM only (no witness fan-out).
 ///
 /// Speaker is `"SYSTEM"`, flags `0`, channel `CHAN_FEEDBACK`.
-pub(crate) async fn send_gm_feedback(
-    caller_entity_id: u32,
-    text: &str,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-) {
+pub async fn send_gm_feedback(caller_entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
     // The only record of what a `.`-command told the GM (`.location`'s
     // position, `.searchmission`'s hits, every rejection reason).
     tracing::debug!(

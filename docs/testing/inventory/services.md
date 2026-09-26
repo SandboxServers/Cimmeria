@@ -289,11 +289,11 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [trigger_region_with_negative_id_rejects_via_explicit_guard](../../../crates/services/src/cell/cell_methods/player/world/tests/mod.rs#L49) | unit | Cell / Cell Methods / Player | 2026-05-04 | TRIGGER_REGION with a negative region_id must be rejected by the explicit `u32::try_from` guard, NOT by accidentally missing a sign-extended u32 lookup |  |
 | [handle_reload_no_op_when_already_full](../../../crates/services/src/cell/cell_methods/player/world/tests/reload.rs#L15) | unit | Cell / Cell Methods / Player | 2026-05-04 | `handle_reload` is a no-op when the active slot is at full clip and no reload is in flight |  |
 | [handle_reload_pins_reload_slot_id_to_current_active_slot](../../../crates/services/src/cell/cell_methods/player/world/tests/reload.rs#L47) | unit | Cell / Cell Methods / Player | 2026-05-04 | `handle_reload` from an empty magazine pins the slot id at the time of issue |  |
-| [serialize_on_player_communication_basic](../../../crates/services/src/cell/console/chat.rs#L229) | unit | Cell / Chat | 2026-03-06 | Asserts equality on `speaker_len` |  |
-| [serialize_on_player_communication_empty_text](../../../crates/services/src/cell/console/chat.rs#L260) | unit | Cell / Chat | 2026-03-06 | Asserts equality on `args.len()` |  |
-| [broadcast_to_nonexistent_entity_is_noop](../../../crates/services/src/cell/console/chat.rs#L279) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
-| [broadcast_say_to_witnesses](../../../crates/services/src/cell/console/chat.rs#L291) | unit | Cell / Chat | 2026-03-06 | Broadcast say to witnesses |  |
-| [non_cell_channel_ignored](../../../crates/services/src/cell/console/chat.rs#L431) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
+| [serialize_on_player_communication_basic](../../../crates/wire/src/cell/chat.rs#L91) | unit | Cell / Chat | 2026-03-06 | Asserts equality on `speaker_len` |  |
+| [serialize_on_player_communication_empty_text](../../../crates/wire/src/cell/chat.rs#L122) | unit | Cell / Chat | 2026-03-06 | Asserts equality on `args.len()` |  |
+| [broadcast_to_nonexistent_entity_is_noop](../../../crates/cell-console/src/cell/console/chat.rs#L171) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
+| [broadcast_say_to_witnesses](../../../crates/cell-console/src/cell/console/chat.rs#L183) | unit | Cell / Chat | 2026-03-06 | Broadcast say to witnesses |  |
+| [non_cell_channel_ignored](../../../crates/cell-console/src/cell/console/chat.rs#L323) | unit | Cell / Chat | 2026-03-06 | Asserts on `rx.try_recv().is_err()` |  |
 | [qr_positive_when_attacker_stronger](../../../crates/cell-combat/src/cell/combat/damage/qr.rs#L184) | unit | Cell / Combat / Damage | 2026-04-30 | Asserts on `qr > 0.0` |  |
 | [qr_negative_when_defender_stronger](../../../crates/cell-combat/src/cell/combat/damage/qr.rs#L193) | unit | Cell / Combat / Damage | 2026-04-30 | Asserts on `qr <= 0.0` |  |
 | [result_code_miss_below_miss_threshold](../../../crates/cell-combat/src/cell/combat/damage/qr.rs#L206) | unit | Cell / Combat / Damage | 2026-05-02 | Asserts equality on `qr_rand_to_result_code(0.03)` |  |

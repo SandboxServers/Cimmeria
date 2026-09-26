@@ -33,6 +33,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "cell-catalog",
     "cell-world",
     "cell-combat",
+    "cell-console",
     "cell-content",
     "cell-interactions",
     "commands",
@@ -264,6 +265,11 @@ fn every_source_target_reaches_signoz_at_its_level() {
 fn scan_finds_known_targets() {
     let sites = emitted_targets();
     for (t, l) in [
+        // Emitted only by crates/cell-console (wave C5b): the GM feedback line,
+        // the seed-SQL authoring block and the playtest bookmark.
+        ("console.feedback", Level::DEBUG),
+        ("authoring", Level::INFO),
+        ("playtest.bookmark", Level::INFO),
         // Emitted only by crates/cell-content (wave C3 of the services split):
         // the dialog executor, the deferred content-action drain and the
         // mission step activation.
