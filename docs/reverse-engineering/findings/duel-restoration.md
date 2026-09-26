@@ -5,7 +5,7 @@
 > **Confidence**: HIGH (wire format: binary RTTI + register fns); MEDIUM (lifecycle: reconstructed from .def, no server impl); LOW (timers/range/abort)
 > **Sources**: `SGW.exe` Ghidra; `deprecated/python/{base,cell}/SGWDuelMarker.py`; `deprecated/python/{base,cell}/SGWPlayer.py`;
 >   `entities/defs/SGWPlayer.def`; `entities/defs/SGWDuelMarker.def`; `python/Atrea/enums.py`;
->   `crates/services/src/cell/cell_methods/player/social.rs`; `docs/reverse-engineering/findings/duel-wire-formats.md`
+>   `crates/cell-methods/src/cell/cell_methods/player/social.rs`; `docs/reverse-engineering/findings/duel-wire-formats.md`
 > **Tracking issue**: replaces #70
 
 ## Completeness assessment

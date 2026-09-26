@@ -172,6 +172,7 @@ component_management:
         - "crates/base/**"
         - "crates/cell-content/**"
         - "crates/cell-interactions/**"
+        - "crates/cell-methods/**"
       statuses:
         - type: project
           target: 62%

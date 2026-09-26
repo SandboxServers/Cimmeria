@@ -12,13 +12,13 @@ cross-referenced to entity defs, Ghidra symbols, and Rust handler files.
 
 | Method | Index | Def location | Rust dispatch |
 |---|---|---|---|
-| `onDialGate` | 35 | `entities/defs/interfaces/GateTravel.def:70-74` (INT32 target, INT32 source) | `crates/services/src/cell/cell_methods/gate_travel.rs:17-37` → `crates/cell-interactions/src/cell/gate_travel/mod.rs:93-256` |
-| `setRingTransporterDestination` | 91 | `SGWPlayer.def:848-852` (INT32 regionId, INT32 destinationId) | `crates/services/src/cell/cell_methods/player/world/mod.rs:207-228` → `crates/cell-content/src/cell/ring_transport/runtime/entry.rs:244-350` |
-| `onWorldInstanceReset` | 92 | `SGWPlayer.def:868-870` (no args, `<Exposed/>`) | `crates/services/src/cell/cell_methods/player/world/mod.rs:230-233` — **UNIMPLEMENTED STUB** |
-| `updateSystemOptions` | 93 | `SGWPlayer.def:872-875` (ARRAY of NameValuePair) | `crates/services/src/cell/cell_methods/player/world/mod.rs:235-238` → `handle_update_system_options` at lines 262-351 |
-| `triggerClientHintedGenericRegion` | 85 | `SGWPlayer.def:766-771` (INT32 id, UINT8 bEntering, VECTOR3 position) | `crates/services/src/cell/cell_methods/player/world/mod.rs:128-191` |
+| `onDialGate` | 35 | `entities/defs/interfaces/GateTravel.def:70-74` (INT32 target, INT32 source) | `crates/cell-methods/src/cell/cell_methods/gate_travel.rs:17-37` → `crates/cell-interactions/src/cell/gate_travel/mod.rs:93-256` |
+| `setRingTransporterDestination` | 91 | `SGWPlayer.def:848-852` (INT32 regionId, INT32 destinationId) | `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs:207-228` → `crates/cell-content/src/cell/ring_transport/runtime/entry.rs:244-350` |
+| `onWorldInstanceReset` | 92 | `SGWPlayer.def:868-870` (no args, `<Exposed/>`) | `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs:230-233` — **UNIMPLEMENTED STUB** |
+| `updateSystemOptions` | 93 | `SGWPlayer.def:872-875` (ARRAY of NameValuePair) | `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs:235-238` → `handle_update_system_options` at lines 262-351 |
+| `triggerClientHintedGenericRegion` | 85 | `SGWPlayer.def:766-771` (INT32 id, UINT8 bEntering, VECTOR3 position) | `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs:128-191` |
 | `cancelMovie` | 108 | `SGWPlayer.def:1104-1107` (WSTRING MovieName) | early-handled in `crates/base/src/base/connect_loop/cell_arms.rs:113-117` → `handle_cancel_movie` at `crates/base-world-entry/src/base/world_entry_appearance/cinematic.rs:200` |
-| `onStrikeTeamResponse` | 11 (org range) | (per `Organization.def` — not searched here) | `crates/services/src/cell/cell_methods/organization.rs:65-77` — **UNIMPLEMENTED STUB** |
+| `onStrikeTeamResponse` | 11 (org range) | (per `Organization.def` — not searched here) | `crates/cell-methods/src/cell/cell_methods/organization.rs:65-77` — **UNIMPLEMENTED STUB** |
 
 ## Stub-only (no server arm, falls through to "Unhandled cell method" warn)
 

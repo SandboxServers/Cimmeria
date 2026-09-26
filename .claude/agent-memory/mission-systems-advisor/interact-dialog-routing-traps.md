@@ -18,7 +18,7 @@ Companions: [[multi-chain-dispatch-semantics]],
 `crates/cell-interactions/src/cell/interactions/dispatch/interact.rs:90`, inside
 `interactions::handle_interact`.
 
-`crates/services/src/cell/cell_methods/player/interaction/interact.rs:161-198`
+`crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs:161-198`
 fires `fire_interact_tag` / `fire_interact_template` FIRST and only calls
 `interactions::handle_interact` when `handled == false`. So:
 

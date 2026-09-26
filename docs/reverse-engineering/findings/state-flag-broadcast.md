@@ -243,7 +243,7 @@ There is no `TEST EBX, 0x100` (which would be needed for bit 8). BSF_Holster cha
 
 ### Server-side implementation (Cimmeria)
 
-`crates/services/src/cell/cell_methods/combatant.rs`:
+`crates/cell-methods/src/cell/cell_methods/combatant.rs`:
 
 ```rust
 REQUEST_HOLSTER_WEAPON => {
@@ -307,7 +307,7 @@ Pass `entity.state_field` at all call sites. The XOR-delta handler is idempotent
 
 ### Issue #249 — BSF_Holster witness broadcast
 
-**File**: `crates/services/src/cell/cell_methods/combatant.rs`
+**File**: `crates/cell-methods/src/cell/cell_methods/combatant.rs`
 
 In the `REQUEST_HOLSTER_WEAPON` arm and `SET_CROUCHED` arm:
 - `send_entity_method` will NOT work because it routes players to `EntityMethodCall` (owning client only). Use the witness-fanout helper described under #219 instead.

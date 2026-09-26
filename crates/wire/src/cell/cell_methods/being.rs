@@ -1,6 +1,6 @@
 //! SGWBeing interface exposed CellMethods (indices 0–1).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::being`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::being`,
 //! which re-exports these constants.
 
 /// Set current target entity.

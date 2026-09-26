@@ -34,9 +34,9 @@ Of the **25 tests** flagged with `no_assert_or_question_mark`, **24 are heuristi
 - [`crates/services/src/cell/dispatch/tests.rs:169`] `dispatch_trigger_region_exit` — **legitimate (weak)**. Calls `.unwrap()` on entity creation; the test body itself has `// No panic = success`. Same shape as the sibling above. Tighten by asserting `rx` produced no messages.
 - [`crates/services/src/cell/dispatch/tests.rs:223`] `dispatch_trigger_region_ignores_short_args` — **legitimate (weak)**. Asserts "silently skip"; only enforced via setup unwraps. Suggested fix: **tighten** by binding `mut rx` and asserting `rx.try_recv().is_err()`. The sibling at line 203 (`dispatch_trigger_region_unknown_id_warns`) does this correctly — copy that shape.
 - [`crates/cell-world/src/cell/space_manager/aoi_differential_test.rs:85`] `witness_set_equals_diff_accumulated_set_after_every_tick` — **legitimate**. The body uses `prop_assert_eq!` inside a `proptest!` block, which the regex misses. This is one of the strongest tests in the codebase (see Strong examples below).
-- [`crates/services/src/cell/cell_methods/player/vendor.rs:418`] `happy_path_returns_session_with_template_id` — **legitimate**. Calls `assert_session(...)`, a helper that internally `.expect("vendor_context should return Some")` and runs three `assert_eq!`s on the fields. The regex didn't follow into the helper.
-- [`crates/services/src/cell/cell_methods/player/vendor.rs:436`] `happy_path_returns_session_when_vendor_lacks_template_id` — **legitimate**. Same `assert_session` helper.
-- [`crates/services/src/cell/cell_methods/player/vendor.rs:457`] `returns_session_with_no_template_when_vendor_entity_id_is_stale` — **legitimate**. Same helper.
+- [`crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs:123`] `happy_path_returns_session_with_template_id` — **legitimate**. Calls `assert_session(...)`, a helper that internally `.expect("vendor_context should return Some")` and runs three `assert_eq!`s on the fields. The regex didn't follow into the helper.
+- [`crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs:141`] `happy_path_returns_session_when_vendor_lacks_template_id` — **legitimate**. Same `assert_session` helper.
+- [`crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs:162`] `returns_session_with_no_template_when_vendor_entity_id_is_stale` — **legitimate**. Same helper.
 
 ### mercury (4 flagged)
 

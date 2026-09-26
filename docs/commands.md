@@ -185,7 +185,7 @@ Challenge other players.
 > **Note (2026-07-25):** `/duelforfeit` and `/duelresponse` were previously marked
 > ✅ Yes. The server does receive and dispatch both, but each handler only logs
 > `UNIMPLEMENTED` and returns — no duel state changes
-> ([player/social.rs:92-103](../crates/services/src/cell/cell_methods/player/social.rs#L92-L103)).
+> ([player/social.rs:92-103](../crates/cell-methods/src/cell/cell_methods/player/social.rs#L92-L103)).
 > Reaching a handler is not the same as the handler doing its job. No part of the
 > duel system is implemented server-side.
 

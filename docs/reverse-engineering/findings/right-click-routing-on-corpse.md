@@ -8,7 +8,7 @@
 
 The bug was **server-side, not client-side**. None of the static-analysis hypotheses below (`+0x30/+0x31` gate bytes, `actor+0x1b4` entity ID, `onDuelEntitiesRemove` interactable-set hack) actually mattered.
 
-**What was happening**: the Cimmeria server's `interact` cell-method handler at [crates/services/src/cell/cell_methods/player/interaction.rs](../../../crates/services/src/cell/cell_methods/player/interaction/mod.rs) checked whether the target was a hostile NPC (`!is_player && faction == 10`) and **redirected to `useAbility` instead of running `handle_interact`**. The check didn't consider whether the NPC was dead. So:
+**What was happening**: the Cimmeria server's `interact` cell-method handler at [crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs](../../../crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs) checked whether the target was a hostile NPC (`!is_player && faction == 10`) and **redirected to `useAbility` instead of running `handle_interact`**. The check didn't consider whether the NPC was dead. So:
 
 - Alive hostile guard → reroute to `useAbility` ✓ correct
 - **Dead hostile guard → reroute to `useAbility`** ✗ — the lootable corpse's `interact` request was silently turned into combat, and the loot pipeline was never reached.
@@ -16,7 +16,7 @@ The bug was **server-side, not client-side**. None of the static-analysis hypoth
 **Fix**: gate the reroute on `!is_dead_state(target.state_field)`. Dead corpses fall through to `handle_interact`, which sees `interaction_type = Some(Loot)` and dispatches `onLootDisplay`.
 
 ```rust
-// crates/services/src/cell/cell_methods/player/interaction.rs:37-49
+// crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs:51-53
 let is_hostile = space_mgr.get_entity(target_entity_u32)
     .map_or(false, |t| {
         !t.is_player

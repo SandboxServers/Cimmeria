@@ -1,6 +1,6 @@
 //! MinigamePlayer interface exposed CellMethods (indices 20–34).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::minigame`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::minigame`,
 //! which re-exports these constants.
 
 pub const DEBUG_START: u16 = 20;

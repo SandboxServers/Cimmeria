@@ -194,7 +194,7 @@ The client has a single hard check on faction:
 FUN_00e719d0: walk entity list → if faction == 10 AND alive → treat as attack target
 ```
 
-In Cimmeria (`crates/services/src/cell/cell_methods/player/interaction.rs` line 49):
+In Cimmeria (`crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs` line 51):
 
 ```rust
 let is_hostile = space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
@@ -395,7 +395,7 @@ mirror used for initial sync.
 | World-entry sequence (phases 9–10) | `docs/reverse-engineering/findings/world-entry-pipeline.md` table row 9–10 |
 | Method index constants | `crates/wire/src/cell/client_methods/combatant.rs` |
 | AoI NPC delivery | `crates/wire/src/mercury/aoi/create.rs` lines 166–174 |
-| Hostile combat gate | `crates/services/src/cell/cell_methods/player/interaction.rs` |
+| Hostile combat gate | `crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs` |
 | AoE hostile filter | `crates/cell-combat/src/cell/abilities/dispatch.rs` |
 | CME EventSignal architecture | `docs/reverse-engineering/findings/cme-event-signal.md` |
 | State-flag broadcast | `docs/reverse-engineering/findings/state-flag-broadcast.md` |

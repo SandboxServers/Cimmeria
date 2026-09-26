@@ -167,7 +167,7 @@ When `reload_complete_at` elapses, `reload_completion_tick` runs:
 
 ### Bug
 
-In `crates/services/src/cell/cell_methods/player/world.rs` (before fix), `handle_reload` sent:
+In `crates/cell-combat/src/cell/cell_methods/player/world/reload.rs` (before fix), `handle_reload` sent:
 
 ```rust
 args.extend_from_slice(&7i32.to_le_bytes());  // BUG: 7 = GENERICPROPERTY_AccessLevel
@@ -271,7 +271,7 @@ The `InvItem.ammoTypes` array lists which `EAmmoType` values the weapon supports
 
 **Status: APPLIED** in this session.
 
-File: `crates/services/src/cell/cell_methods/player/world.rs`
+File: `crates/cell-combat/src/cell/cell_methods/player/world/reload.rs`
 
 ```rust
 // Before (BUG):

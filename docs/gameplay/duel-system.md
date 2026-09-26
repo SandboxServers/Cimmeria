@@ -18,7 +18,7 @@ The `SGWDuelMarker` entity is defined in `entities/defs/SGWDuelMarker.def` (pare
 
 ## Implementation Status
 
-The Rust server reserves and dispatches two duel cell methods in `crates/services/src/cell/cell_methods/player/social.rs`, but both handlers log `UNIMPLEMENTED` and return without acting:
+The Rust server reserves and dispatches two duel cell methods in `crates/cell-methods/src/cell/cell_methods/player/social.rs`, but both handlers log `UNIMPLEMENTED` and return without acting:
 
 | Method | Index | Handler |
 |--------|-------|---------|

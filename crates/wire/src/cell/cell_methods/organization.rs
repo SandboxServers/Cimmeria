@@ -1,6 +1,6 @@
 //! OrganizationMember interface exposed CellMethods (indices 8–19).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::organization`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::organization`,
 //! which re-exports these constants.
 
 pub const INVITE_RESPONSE: u16 = 8;

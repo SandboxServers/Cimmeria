@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-In `crates/services/src/cell/cell_methods/player/`, dispatch is layered:
+In `crates/cell-methods/src/cell/cell_methods/player/`, dispatch is layered:
 - `dispatch.rs::dispatch` is the **outer** router (takes 6 args including `&ChainEngine`). It matches against constant ranges (`CALL_FOR_AID..=RESET_MY_ABILITIES`, `ORG_CREATION..=CANCEL_MOVIE`, etc.) and routes to submodule dispatchers.
 - Each submodule (`crafting.rs`, `social.rs`, `combat.rs`, `world.rs`, ...) has its own `dispatch` function (typically 5 args, sometimes 6). These are the **inner** dispatchers — invoked by the outer router based on the range arm.
 

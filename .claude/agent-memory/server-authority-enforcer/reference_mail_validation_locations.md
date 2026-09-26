@@ -6,7 +6,7 @@ metadata:
 ---
 
 **Dispatcher** (decodes mail_id / container_id / slot_id from client bytes):
-`crates/services/src/cell/cell_methods/mail.rs`. Indices 43-51 (REQUEST_MAIL_HEADERS=43 … PAY_COD_FOR_MAIL=51).
+`crates/cell-methods/src/cell/cell_methods/mail.rs`. Indices 43-51 (REQUEST_MAIL_HEADERS=43 … PAY_COD_FOR_MAIL=51).
 
 **Player-id resolution** (the canonical "refuse to fall back to 0" pattern for
 mail routing): `crates/cell-interactions/src/cell/mail.rs:20-28` —

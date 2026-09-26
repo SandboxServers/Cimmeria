@@ -1,6 +1,6 @@
 //! SGWBlackMarketManager interface exposed CellMethods (indices 61–66).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::black_market`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::black_market`,
 //! which re-exports these constants.
 
 pub const SEARCH: u16 = 61;

@@ -1,6 +1,6 @@
 //! SGWCombatant interface exposed CellMethods (indices 5–7).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::combatant`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::combatant`,
 //! which re-exports these constants.
 
 /// Set crouched state.

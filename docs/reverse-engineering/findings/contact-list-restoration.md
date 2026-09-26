@@ -12,7 +12,7 @@
 ## #275 answer
 
 **The `contactListFlagsUpdate` handler EXISTS** — method index 58 in
-`crates/services/src/cell/cell_methods/contact_list.rs`. It correctly parses `list_id` (i32) + `flags`
+`crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs`. It correctly parses `list_id` (i32) + `flags`
 (u32) and dispatches to a `tracing::info!` **no-op stub**. So #275's "verify handler exists" is answered
 YES; the work is to implement it, folded into this issue.
 

@@ -400,7 +400,7 @@ positioning input.
   `stats/stat_list.rs:68,96-99`. **ORIGINAL-DATA-BACKED** for the ids (they match
   `enumerations.xml`), **NOT IMPLEMENTED** for the behaviour.
 - `BSF_CROUCHING` is a broadcast flag only:
-  `crates/services/src/cell/cell_methods/combatant.rs:21` `BSF_CROUCHING = 1<<2`,
+  `crates/cell-methods/src/cell/cell_methods/combatant.rs:21` `BSF_CROUCHING = 1<<2`,
   `:31-43` `setCrouched`. `calculate_qr` never reads it.
 - `crates/cell-cover/src/cell/cover/types.rs:12-39` `CoverHeight`
   `Low = 0.71` (commented *crouch-defeatable*), `Mid = 1.07`, `High = 1.52`,

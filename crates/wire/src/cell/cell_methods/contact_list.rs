@@ -1,6 +1,6 @@
 //! ContactListManager interface exposed CellMethods (indices 55–60).
 //!
-//! The handlers are in `cimmeria_services::cell::cell_methods::contact_list`,
+//! The handlers are in `cimmeria_cell_methods::cell::cell_methods::contact_list`,
 //! which re-exports these constants.
 
 pub const CREATE: u16 = 55;

@@ -65,7 +65,7 @@ NPC swings at empty air. Never put `is_ranged = false` abilities in an NPC set.
 
 `fight.rs` calls `handle_use_ability`. `handle_use_ability_on_ground` is invoked
 only from the player wire handler
-(`crates/services/src/cell/cell_methods/player/combat/mod.rs:77`). So
+(`crates/cell-methods/src/cell/cell_methods/player/combat/mod.rs:77`). So
 `TCM_AERadius` fan-out never happens for an NPC — a ground ability degrades to a
 single-target hit. See also `cell/abilities/cone_aoe/mod.rs:50-53`.
 

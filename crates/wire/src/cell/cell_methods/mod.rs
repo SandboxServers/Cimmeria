@@ -13,7 +13,7 @@
 //! 109-method table.
 //!
 //! Only the indices live here, one submodule per interface. The handlers are
-//! in `cimmeria_services::cell::cell_methods`, whose interface modules
+//! in `cimmeria_cell_methods::cell::cell_methods`, whose interface modules
 //! re-export these constants, and `cell::dispatch` re-exports them again as
 //! `CM_*`. SGWGmPlayer's own methods (109+) stay with the GM handlers.
 

@@ -5,7 +5,7 @@
 > **Confidence**: HIGH (wire formats: .def + binary confirmed); MEDIUM (server lifecycle: minimal Python); LOW (per-instance persistence: no DB schema found)
 > **Sources**: `entities/defs/SGWPet.def`; `entities.xml`; `deprecated/python/{base,cell}/SGWPet.py`;
 >   `deprecated/python/common/defs/PetCommand.py`; `SGW.exe` Ghidra (`GamePet.cpp`);
->   `crates/services/src/cell/cell_methods/player/social.rs`; `db/resources/AI/Types/EPetStance.sql`;
+>   `crates/cell-methods/src/cell/cell_methods/player/social.rs`; `db/resources/AI/Types/EPetStance.sql`;
 >   `docs/reverse-engineering/findings/pet-wire-formats.md`
 > **Tracking issue**: new (no prior pets issue existed)
 
