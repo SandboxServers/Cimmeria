@@ -52,7 +52,8 @@ Bumping the version is a deliberate PR: change the file, run the pre-PR checklis
 `tools/build-lane/lane.sh` is the machine-wide counting semaphore that every agent and worker cargo call goes through. It was previously an untracked script under `%TEMP%`.
 
 - **Slots:** `LANE_SLOTS`, defaulting to `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (2). `--exclusive` takes every slot.
-- **Jobs:** `CARGO_BUILD_JOBS` defaults to 10 per build.
+- **Jobs:** `CARGO_BUILD_JOBS` defaults to the core count divided by the slot count (at least 4), so a full lane doesn't oversubscribe the CPU.
+- **Job log:** every job appends one JSON line to `%LOCALAPPDATA%\cimmeria-build\metrics\jobs.jsonl`. The line records the start time, the wait for a slot, the run time, the exit code, the worktree and commit, the settings (jobs, incremental, Dev Drive or local target, sccache), how many other builds were running, the lowest free RAM during the job, and the sccache hits and misses. `LANE_METRICS=0` turns it off. See §10 for the report.
 - **Compiler cache:** sccache is the `RUSTC_WRAPPER` when installed, with one shared cache.
 - **No incremental cache in linked worktrees:** worktrees build with `CARGO_INCREMENTAL=0`. sccache cannot cache incremental compilations, so this lets a worker reuse every workspace crate it didn't touch, and it removes the incremental cache, the largest part of a warm target dir. The main checkout keeps incremental builds.
 - **Per-worktree target dirs:** each worktree keeps its own target dir. Cargo locks a target (or `build-dir`) for the whole build, so a shared one would serialise every worktree. Fine-grained locking is nightly-only and was reported deadlocking in September 2026 ([cargo#17508](https://github.com/rust-lang/cargo/issues/17508)).
@@ -63,7 +64,7 @@ Bumping the version is a deliberate PR: change the file, run the pre-PR checklis
 
 `tools/dev-drive/New-CimmeriaDevDrive.ps1` creates a dynamically sized VHDX formatted as a Windows Dev Drive. It must run from an elevated PowerShell. It also sets `CIMMERIA_TARGET_ROOT` and `CIMMERIA_SCCACHE_DIR` for the user, and the lane then places target dirs and the sccache cache on that drive.
 
-- **Defender:** a Dev Drive is a ReFS volume that Defender scans in performance mode.
+- **Defender:** a trusted Dev Drive is scanned asynchronously, but only while Defender's performance mode is on. That is a machine-wide setting, and it can be off. `(Get-MpPreference).PerformanceModeStatus` must read `0` (Enabled). With Tamper Protection on, `Set-MpPreference` silently leaves it unchanged; turn it on in Windows Security under **Virus & threat protection → Manage settings → Dev Drive protection**. The setup script checks this and warns.
 - **Block cloning:** ReFS copies files within the volume by cloning blocks. `Copy-WarmTarget.ps1`, called by `mk-worktree.sh`, seeds a new worktree's target dir from a warm one in seconds, at almost no disk cost.
 - **What seeding reuses:** only third-party crates. Cargo keys workspace crates by their source path, so those rebuild once per worktree.
 
@@ -105,6 +106,18 @@ See [services-crate-split.md](services-crate-split.md) for the plan and the per-
 ### 10. Measure before changing concurrency
 
 `tools/build-metrics/measure-build.ps1` measures the cold build, the edit loop, `cargo check`, peak memory and target size. Run it from a worktree with an empty target dir, under `lane.sh --exclusive`. Re-measure before changing the lane's slot count or `CARGO_BUILD_JOBS`.
+
+The harness gives controlled numbers for one moment. For day-to-day trends, the lane's job log (§3) records every real build, and `tools/build-lane/lane_stats.py` reports on it:
+
+```bash
+python tools/build-lane/lane_stats.py                    # last 14 days: by kind, by day, Dev Drive vs local, slowest jobs
+python tools/build-lane/lane_stats.py --kind check --match cimmeria-services --days 60
+python tools/build-lane/lane_stats.py --recent 20        # the last 20 jobs
+python tools/build-lane/lane_stats.py --html lane.html   # run time over time, one chart per kind
+python tools/build-lane/lane_stats.py --csv jobs.csv     # every field, for a spreadsheet
+```
+
+The log mixes very different jobs (a one-crate `cargo check` and a workspace `nextest` are both "a build"), so compare like with like with `--kind` and `--match`. A job's sccache hits and misses come from the shared sccache server, so they include any build that overlapped it; `busy_at_start` records how many did. The lowest free RAM is sampled every 2 seconds, so it is the figure to watch before raising the slot count.
 
 ### 11. No WSL builds
 

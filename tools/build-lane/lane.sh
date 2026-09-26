@@ -23,6 +23,9 @@
 #    the whole build, so sharing one would serialise every worktree). When
 #    CIMMERIA_TARGET_ROOT is set (a Dev Drive, see tools/dev-drive/), the target dir is
 #    $CIMMERIA_TARGET_ROOT/<worktree name> instead.
+#  * Job log: every job appends one JSON line to $LANE_ROOT/metrics/jobs.jsonl (wait and
+#    run time, exit code, worktree, commit, settings, lowest free RAM, sccache hits and
+#    misses). tools/build-lane/lane_stats.py reports on it. LANE_METRICS=0 turns it off.
 #
 # Lock layout: $LANE_ROOT/lane/slot.N directories (mkdir is atomic). A dead holder pid
 # breaks its own slot.
@@ -36,6 +39,9 @@ SLOTS="${LANE_SLOTS:-$(cat "$LOCKDIR/SLOTS" 2>/dev/null || echo 2)}"
 exclusive=0
 if [ "${1:-}" = "--exclusive" ]; then exclusive=1; shift; fi
 if [ $# -eq 0 ]; then echo "usage: lane.sh [--exclusive] <command> [args...]" >&2; exit 2; fi
+
+# Microseconds since the epoch (EPOCHREALTIME is bash 5; its separator follows the locale).
+now_us() { if [ -n "${EPOCHREALTIME:-}" ]; then echo "${EPOCHREALTIME/[.,]/}"; else echo "$(date +%s)000000"; fi; }
 
 # --- build environment --------------------------------------------------------------
 TOP="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -78,7 +84,9 @@ fi
 SCCACHE_BIN="${SCCACHE_BIN:-}"
 [ -z "$SCCACHE_BIN" ] && [ -x "$LANE_ROOT/bin/sccache.exe" ] && SCCACHE_BIN="$LANE_ROOT/bin/sccache.exe"
 [ -z "$SCCACHE_BIN" ] && SCCACHE_BIN="$(command -v sccache 2>/dev/null || true)"
+use_sccache=0
 if [ -n "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER+set}" ]; then
+  use_sccache=1
   export RUSTC_WRAPPER="$SCCACHE_BIN"
   export SCCACHE_DIR="${CIMMERIA_SCCACHE_DIR:-$LANE_ROOT/sccache-cache}"
   export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-40G}"
@@ -94,7 +102,11 @@ export CARGO_BUILD_JOBS
 
 # --- acquire ------------------------------------------------------------------------
 held=()
-release() { for s in "${held[@]:-}"; do [ -n "$s" ] && rm -rf "$s"; done; }
+sampler_pid=""
+release() {
+  for s in "${held[@]:-}"; do [ -n "$s" ] && rm -rf "$s"; done
+  [ -n "$sampler_pid" ] && kill "$sampler_pid" 2>/dev/null
+}
 trap 'release' EXIT INT TERM HUP
 
 try_slot() {  # $1 = slot dir, rest = command (for the "what" note); returns 0 if acquired
@@ -108,6 +120,7 @@ try_slot() {  # $1 = slot dir, rest = command (for the "what" note); returns 0 i
   return 1
 }
 
+t_request="$(now_us)"
 waited=0
 while :; do
   if [ $exclusive -eq 1 ]; then
@@ -129,8 +142,77 @@ while :; do
   sleep 5; waited=$((waited+5))
 done
 
+t_start="$(now_us)"
 echo "[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*" >&2
+
+# --- job log ------------------------------------------------------------------------
+METRICS="${LANE_METRICS:-1}"
+METRICS_DIR="${LANE_METRICS_DIR:-$LANE_ROOT/metrics}"
+cmd_str="$*"
+json_str() {  # $1 as a JSON string
+  local s="$1"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\t'/\\t}"; s="${s//$'\r'/\\r}"; s="${s//$'\n'/\\n}"
+  printf '"%s"' "$s"
+}
+json_bool() { [ "$1" -eq 1 ] && printf true || printf false; }
+json_num() { if [ -n "${1:-}" ]; then printf '%s' "$1"; else printf null; fi; }
+secs() { printf '%d.%03d' $(( $1 / 1000 )) $(( $1 % 1000 )); }  # ms -> "s.mmm"
+meminfo_kb() { local k v r; while read -r k v r; do [ "$k" = "$1:" ] && { echo "$v"; return; }; done < /proc/meminfo; }
+sccache_counts() {  # "<hits> <misses>" from the sccache server (shared by every build in flight)
+  "$SCCACHE_BIN" --show-stats 2>/dev/null | tr -d '\r' \
+    | awk '/^Cache hits +[0-9]+$/ {h=$3} /^Cache misses +[0-9]+$/ {m=$3} END {print h, m}'
+}
+
+if [ "$METRICS" != 0 ]; then
+  mkdir -p "$METRICS_DIR"
+  start_iso="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  commit="$(git rev-parse --short=10 HEAD 2>/dev/null || true)"
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  busy=0; for d in "$LOCKDIR"/slot.*; do [ -d "$d" ] && busy=$((busy + 1)); done
+  busy=$((busy - ${#held[@]}))               # slots other builds held when this one started
+  h0=""; m0=""; [ $use_sccache -eq 1 ] && read -r h0 m0 <<<"$(sccache_counts)"
+  memfile="$METRICS_DIR/.minfree.$$"
+  if [ -r /proc/meminfo ]; then                # lowest free RAM during the job, every 2 s
+    ( min=""; while :; do
+        v="$(meminfo_kb MemFree)"
+        if [ -n "$v" ] && { [ -z "$min" ] || [ "$v" -lt "$min" ]; }; then min=$v; echo "$min" > "$memfile"; fi
+        sleep 2
+      done ) &
+    sampler_pid=$!
+  fi
+fi
+
+record_job() {  # $1 = exit code, $2 = wait ms, $3 = run ms
+  local min_kb="" total_kb="" h1="" m1="" dh="" dm="" line i=0
+  if [ -n "$sampler_pid" ]; then
+    kill "$sampler_pid" 2>/dev/null; wait "$sampler_pid" 2>/dev/null; sampler_pid=""
+    min_kb="$(cat "$memfile" 2>/dev/null)"; rm -f "$memfile"
+    total_kb="$(meminfo_kb MemTotal)"
+  fi
+  if [ $use_sccache -eq 1 ]; then
+    read -r h1 m1 <<<"$(sccache_counts)"
+    # The counters restart with the server; skip the delta rather than go negative.
+    [ -n "$h0" ] && [ -n "$h1" ] && [ "$h1" -ge "$h0" ] && dh=$((h1 - h0))
+    [ -n "$m0" ] && [ -n "$m1" ] && [ "$m1" -ge "$m0" ] && dm=$((m1 - m0))
+  fi
+  line="{\"v\":1,\"t\":$(( t_start / 1000000 )),\"start\":$(json_str "$start_iso")"
+  line+=",\"worktree\":$(json_str "$NAME"),\"branch\":$(json_str "$branch"),\"commit\":$(json_str "$commit")"
+  line+=",\"cmd\":$(json_str "$cmd_str"),\"exit\":$1,\"wait_s\":$(secs "$2"),\"run_s\":$(secs "$3")"
+  line+=",\"exclusive\":$(json_bool $exclusive),\"slots\":${#held[@]},\"slots_total\":$SLOTS,\"busy_at_start\":$busy"
+  line+=",\"jobs\":$CARGO_BUILD_JOBS,\"incremental\":$(json_str "${CARGO_INCREMENTAL:-default}")"
+  line+=",\"dev_drive\":$(json_bool $use_dev_drive),\"target\":$(json_str "${CARGO_TARGET_DIR:-$TOP/target}")"
+  line+=",\"sccache\":$(json_bool $use_sccache),\"sccache_hits\":$(json_num "$dh"),\"sccache_misses\":$(json_num "$dm")"
+  line+=",\"min_free_mb\":$(json_num "${min_kb:+$((min_kb / 1024))}"),\"mem_total_mb\":$(json_num "${total_kb:+$((total_kb / 1024))}")}"
+  # mkdir is the lock; a holder that died leaves it behind, so give up waiting after ~5 s.
+  while ! mkdir "$METRICS_DIR/.lock" 2>/dev/null; do i=$((i + 1)); [ $i -ge 50 ] && break; sleep 0.1; done
+  printf '%s\n' "$line" >> "$METRICS_DIR/jobs.jsonl"
+  rmdir "$METRICS_DIR/.lock" 2>/dev/null
+}
+
 "$@"
 rc=$?
-echo "[lane] released (exit $rc)" >&2
+t_end="$(now_us)"
+run_ms=$(( (t_end - t_start) / 1000 )); wait_ms=$(( (t_start - t_request) / 1000 ))
+echo "[lane] released (exit $rc, ran $(secs $run_ms)s)" >&2
+[ "$METRICS" != 0 ] && record_job "$rc" "$wait_ms" "$run_ms"
 exit $rc

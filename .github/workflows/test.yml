@@ -88,6 +88,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: layering guard (services crate split)
         run: python3 tools/layering/check.py
+      - name: build-lane job log tests
+        run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
       - uses: ./.github/actions/rust-toolchain
       # README.md and crates/README.md embed a crate graph generated from
       # `cargo metadata`; fail when a Cargo.toml change left it stale.
