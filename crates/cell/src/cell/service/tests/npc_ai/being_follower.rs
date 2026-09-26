@@ -155,7 +155,12 @@ async fn damaged_following_being_stays_in_follow_and_keeps_walking() {
 
     let (tx, _rx) = mpsc::channel(256);
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &engine).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
     for _ in 0..10 {
         crate::cell::service::ticks::npc_movement_tick(&mut mgr);
     }

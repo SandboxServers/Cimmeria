@@ -112,7 +112,7 @@ pub use crate::cell::combat::aggression::NPC_DEFAULT_ABILITY;
 
 /// `CellEntity::class_id` of an SGWBeing: props and non-combat story actors.
 /// [`generate_threat`] refuses them.
-pub const BEING_CLASS_ID: u8 = 0x01;
+pub(crate) const BEING_CLASS_ID: u8 = 0x01;
 
 /// How long after leaving combat the weapon stays drawn before
 /// auto-holstering. Tuned to absorb the gap between killing one mob and
