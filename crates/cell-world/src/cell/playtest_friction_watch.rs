@@ -340,6 +340,9 @@ pub fn dialog_shown(entity_id: u32, dialog_id: i32) {
 }
 
 /// A mission is being completed by a chain while objectives are still open.
+/// `open` holds only objectives some chain completes on its own; turn-in
+/// objectives that only `CompleteMission` closes are filtered out by the
+/// caller (`content::executor::mission::report_objectives_left_open`).
 pub fn objectives_never_completed(entity_id: u32, mission_id: i32, open: &[(i32, bool)]) {
     for &(objective_id, optional) in open {
         tracing::warn!(

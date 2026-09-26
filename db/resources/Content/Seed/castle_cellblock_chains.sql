@@ -2099,23 +2099,40 @@ VALUES
    '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 2);
 
 -- Chain 1108: kill `Cellblock_ArmoryGuard1` while step 2356 active →
--- increment `armory_kills` counter. Optional objective 4647 doesn't gate
--- the mission, so this counter is purely for content-replay test
--- pinning — content authors can later add a "killed all the guards"
--- chain if obj 4647 becomes required.
+-- increment `armory_kills` and complete optional objective 4647
+-- ("Eliminate the NID guards."). ArmoryGuard1 (spawn 27) is the only
+-- guard in the armory, so its death IS "all the guards".
+--
+-- Before 2026-09-26 this chain only bumped the counter: 4647 stayed
+-- unchecked after the kill and was only force-completed later by chain
+-- 1107's `advance_step` (terminal use). Colo playtest bookmark
+-- 2026-09-26 03:03:55 (tester bookmark): "kill nid guards objective didnt seem to
+-- complete after all guards were killed" -- kill at -29 s, objective
+-- still open until the terminal advance at -22 s.
+--
+-- AUTO-COMPLETE TRAP check: `cell::missions::complete_objective` ends
+-- the mission once every REQUIRED objective is done. 4647 is
+-- `is_optional = true` and step 2356's required objective 2734 is still
+-- open here (the step gate guarantees chain 1107 has not run), so this
+-- cannot complete 688 early. The `objective_status neq completed` gate
+-- is the self-completion guard (same shape as chains 1141/1142): a
+-- second death event must not resend the checkmark or re-persist.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1108, '688 - Kill Cellblock_ArmoryGuard1: increment armory_kills', 'mission', 688, true, 1);
+VALUES (1108, '688 - Kill Cellblock_ArmoryGuard1: increment armory_kills, complete optional objective 4647', 'mission', 688, true, 1);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1108, 'entity_dead_tag', 'Cellblock_ArmoryGuard1', 'space', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
-  (1108, 'mission_status', 688, NULL,   'eq', 'active', 0),
-  (1108, 'step_status',    688, '2356', 'eq', 'active', 1);
+  (1108, 'mission_status',   688, NULL,   'eq',  'active',    0),
+  (1108, 'step_status',      688, '2356', 'eq',  'active',    1),
+  (1108, 'objective_status', 688, '4647', 'neq', 'completed', 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1108, 'increment_counter', NULL, 'armory_kills', '{"amount": 1}', 0, 0);
+VALUES
+  (1108, 'increment_counter',  NULL, 'armory_kills', '{"amount": 1}', 0, 0),
+  (1108, 'complete_objective', 688,  '4647',         '{}',            0, 1);
 
 INSERT INTO content_counters (chain_id, counter_name, target_value, reset_on)
 VALUES (1108, 'armory_kills', 1, 'mission_complete');
