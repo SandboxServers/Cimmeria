@@ -435,6 +435,48 @@ fn cover_crate_events_keep_their_index() {
     }
 }
 
+/// The SmartFoxServer host moved from `cimmeria_services::minigame` to the
+/// `cimmeria-minigame` crate (services crate split, wave W3c), which changed
+/// the `module_path!()` of every row it logs: none names a `target:`. No file
+/// layer names minigame, so the rows must still reach `server.log` from INFO
+/// and exactly one OTLP index per level, `cimmeria-server` below TRACE (the
+/// session and connection rows are per session, not per packet, so they are
+/// not network noise). `cimmeria_services=debug` does not prefix-match
+/// `cimmeria_minigame`, so without its own `OTEL_FILTER` row the DEBUG rows
+/// (connection accepted and closed, socket read and send errors, a command
+/// the placeholder game ignores) would silently stop reaching SigNoz.
+#[test]
+fn minigame_crate_events_keep_their_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in [
+        "cimmeria_minigame::minigame::server",
+        "cimmeria_minigame::minigame::server::framing",
+        "cimmeria_minigame::minigame::server::handshake",
+        "cimmeria_minigame::minigame::server::result_dispatch",
+        "cimmeria_minigame::minigame::session",
+        "cimmeria_minigame::minigame::games::livewire",
+        "cimmeria_minigame::minigame::games::placeholder",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        // No file keeps it at TRACE, so the trace index does not either.
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
 /// The spawner's DB loaders moved from `cimmeria_services::cell::spawner` to
 /// the `cimmeria-cell-catalog` crate (services crate split, wave W2b), which
 /// changed their events' `module_path!()`. They must still land where they

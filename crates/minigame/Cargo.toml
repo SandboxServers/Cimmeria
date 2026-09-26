@@ -1,0 +1,42 @@
+[package]
+name = "cimmeria-minigame"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The in-process SmartFoxServer 1.x host the Flash minigame SWFs connect to, for the Cimmeria server emulator: the SFS XML codec, the one-time ticket registry, the TCP server and the games (Livewire)"
+
+# Split out of cimmeria-services (wave W3c of
+# docs/architecture/services-crate-split.md). The module tree keeps its old
+# path (`minigame`), so cimmeria-services re-exports it there unchanged. It
+# reaches the rest of the server only through `CellToBaseMsg::MinigameResult`,
+# the wire contract, and depends on no service crate.
+[dependencies]
+# `cell::messages::CellToBaseMsg`, the channel every outcome leaves through.
+cimmeria-wire = { workspace = true }
+# `emit_minigame_result`, the gameplay-channel notification for an outcome.
+cimmeria-discord = { workspace = true }
+tokio = { workspace = true }
+# Ticket generation and the per-session Livewire layout seed.
+rand = { workspace = true }
+# The SmartFoxServer XML codec.
+quick-xml = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# Re-pull tokio with `test-util` so the session-expiry guards can freeze and
+# advance the clock (`#[tokio::test(start_paused = true)]` +
+# `tokio::time::advance`); the TTL is measured against `tokio::time::Instant`.
+# Additive over `[dependencies]`: the feature only reaches test targets.
+tokio = { workspace = true, features = ["test-util"] }
+# Socket options tokio does not expose without a deprecated wrapper. The
+# handshake-failure guard needs SO_LINGER=0 so the client's close is a reset
+# rather than a FIN -- a FIN leaves the server's writes succeeding and the
+# test stops reproducing the bug. Already in the lock as a tokio dependency;
+# this only makes it directly nameable from tests.
+socket2 = "0.6"
+# `LogCapture` for the result-delivery negative-log guard, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }

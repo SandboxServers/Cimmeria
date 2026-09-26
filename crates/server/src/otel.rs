@@ -620,6 +620,15 @@ mod tests {
         assert!(!is_network_noise_target("wire.in"));
         assert!(!is_network_noise_target("wire.out"));
         assert!(!is_network_noise_target("cimmeria_wire_log::wire_log::tap"));
+        // The SmartFoxServer host logs per minigame session, not per packet,
+        // and stayed in cimmeria-server when wave W3c moved it from
+        // `cimmeria_services::minigame` to `cimmeria-minigame`.
+        assert!(!is_network_noise_target(
+            "cimmeria_minigame::minigame::server"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_minigame::minigame::server::framing"
+        ));
         // Empty / arbitrary string — defaults to "not noise" (server).
         assert!(!is_network_noise_target(""));
         assert!(!is_network_noise_target("unknown"));

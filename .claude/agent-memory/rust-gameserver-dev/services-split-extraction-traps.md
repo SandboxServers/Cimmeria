@@ -99,6 +99,22 @@ Learned extracting `cimmeria-wire-log` (W3b):
   rather than listing a crate with no DB tests.
 - **The coordinator may edit shared tooling (`lane.sh`) inside your worktree
   mid-wave.** Stage by path; never `git add -A`.
+Learned extracting `cimmeria-minigame` (W3c, a leaf module with one outside path):
+
+- **Don't fake a skeleton for a path into a LOWER crate.** When the moved tree's only
+  outside reference is `crate::cell::messages::X` (already in wire), rewrite that import
+  to `cimmeria_wire::…` (catalog's `ability_tree` precedent). A `mod cell` shim in a crate
+  with no cell code misleads. rustfmt accepts the rewritten line left in the
+  `self`/`super` group, so move it to the external group by hand.
+- **`git ls-files --eol` before committing.** rustfmt rewrote an edited
+  `parity_tests.rs` to all-LF; harmless there (index `i/lf`), but a file whose index form
+  is `i/crlf` (`services/src/lib.rs`, the workspace `Cargo.toml`) would commit mixed
+  endings. Count `\r\n` vs bare `\n` in every touched file.
+- **Stale path entries hide in `codecov.yml` ignores.** `minigame/server.rs` had matched
+  nothing since the file became a directory; re-pointing it would silently change
+  coverage, so drop it and say so.
+- A worktree can arrive with a coordinator's uncommitted edit (`tools/build-lane/lane.sh`):
+  `git add` by explicit path, never `-A`.
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),

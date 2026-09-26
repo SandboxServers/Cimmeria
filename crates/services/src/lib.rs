@@ -10,7 +10,6 @@
 pub mod base;
 pub mod cell;
 pub mod database;
-pub mod minigame;
 pub mod orchestrator;
 mod orchestrator_postgres;
 mod orchestrator_shards;
@@ -37,6 +36,11 @@ pub use cimmeria_wire::{firehose, mercury};
 // `crate::wire_log::…` here and `cimmeria_services::wire_log::tap` downstream
 // keep resolving.
 pub use cimmeria_wire_log::wire_log;
+// The in-process SmartFoxServer host for the Flash minigames, split out to
+// `cimmeria-minigame` (wave W3c). Re-exported at the old path, so
+// `crate::minigame::…` here (the orchestrator starts its server, the base
+// registers tickets in its `SessionRegistry`) keeps resolving.
+pub use cimmeria_minigame::minigame;
 
 /// The `mercury::aoi` test that drives a `SpaceManager`, which is still in
 /// this crate. Test-only.

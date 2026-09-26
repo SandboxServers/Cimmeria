@@ -103,7 +103,6 @@ ignore:
   # + diagnostics.rs + tests.rs). Same rationale as connect_loop above — the
   # SGWPlayer base-method dispatch arms are session-glue/integration territory.
   - "crates/services/src/base/dispatch/**"
-  - "crates/services/src/minigame/server.rs"
   # ── Cell→Base dispatcher arms that wrap wire builders or session glue ──
   #
   # `cell_dispatch/aoi.rs` is six functions, each shaped
@@ -119,8 +118,11 @@ ignore:
   # `cell_dispatch/minigame.rs::start_minigame` is URL formatting +
   # `SessionRegistry::register` + `send_to_witness` woven together. Mocking
   # SessionRegistry plus building a UDP fixture per test is the same
-  # fixture-cost-vs-value-per-line tradeoff that put `minigame/server.rs`
-  # on this list — defer until a minigame integration harness exists.
+  # fixture-cost-vs-value-per-line tradeoff that once put the minigame
+  # server on this list (that entry, `minigame/server.rs`, stopped matching
+  # when #652 split the file into `server/` with a TCP session-lifecycle
+  # harness, and was dropped when the module moved to crates/minigame) —
+  # defer until a minigame integration harness covers this side too.
   # `minigame_result` IS unit-tested (see `cell_dispatch/tests.rs`); the
   # ignore is scoped to the file because codecov can't carve out a single
   # function.
@@ -161,6 +163,7 @@ component_management:
         - "crates/wire-log/**"
         - "crates/cell-cover/**"
         - "crates/cell-catalog/**"
+        - "crates/minigame/**"
       statuses:
         - type: project
           target: 62%

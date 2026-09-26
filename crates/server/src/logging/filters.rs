@@ -67,7 +67,10 @@ use crate::otel;
 /// `module_path!()` target starts with the new crate's name, which the
 /// services row no longer matches. Since wave W3a that includes the
 /// services-side Mercury glue, `cimmeria_wire::mercury` (the
-/// `append_entity_method` appearance diagnostics).
+/// `append_entity_method` appearance diagnostics). `cimmeria_minigame=debug`
+/// does the same for the SmartFoxServer host (wave W3c), which has no file of
+/// its own: its session and connection rows reach `server.log` from INFO and
+/// SigNoz from DEBUG.
 ///
 /// `cimmeria_wire_log=debug` (wave W3b) does the same for the decoded
 /// wire-message stream. `cimmeria_wire=debug` already prefix-matches
@@ -103,6 +106,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire_log=debug,\
                 cimmeria_cell_cover=debug,\
                 cimmeria_cell_catalog=debug,\
+                cimmeria_minigame=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\

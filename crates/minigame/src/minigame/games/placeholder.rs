@@ -12,12 +12,12 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::sfs_vars;
 
-pub struct PlaceholderGame {
+pub(super) struct PlaceholderGame {
     game_name: String,
 }
 
 impl PlaceholderGame {
-    pub fn new(game_name: &str) -> Self {
+    pub(super) fn new(game_name: &str) -> Self {
         Self {
             game_name: game_name.to_string(),
         }
