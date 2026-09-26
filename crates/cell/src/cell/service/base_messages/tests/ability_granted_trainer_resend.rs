@@ -47,7 +47,8 @@ async fn ability_granted_resends_trainer_open_with_unlocked_prereq() {
     }
 
     // Trainer NPC
-    mgr.spawn_npc(200, "W", [5.0; 3], [0.0; 3]).unwrap();
+    // Within MAX_INTERACT_DISTANCE (5): the trainer gate re-checks range.
+    mgr.spawn_npc(200, "W", [3.0, 0.0, 0.0], [0.0; 3]).unwrap();
     if let Some(t) = mgr.get_entity_mut(200) {
         t.template_id = Some(25);
     }
@@ -245,7 +246,8 @@ async fn ability_granted_resends_even_when_not_a_prereq() {
     }
 
     // Trainer NPC.
-    mgr.spawn_npc(200, "W", [5.0; 3], [0.0; 3]).unwrap();
+    // Within MAX_INTERACT_DISTANCE (5): the trainer gate re-checks range.
+    mgr.spawn_npc(200, "W", [3.0, 0.0, 0.0], [0.0; 3]).unwrap();
     if let Some(t) = mgr.get_entity_mut(200) {
         t.template_id = Some(25);
     }

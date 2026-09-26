@@ -5,3 +5,4 @@ mod predicate;
 mod seed_live_db;
 mod seed_reachability_live_db;
 mod spend_gates;
+mod trainer_gates;

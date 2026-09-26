@@ -6,6 +6,7 @@ use cimmeria_entity::abilities::AbilityManager;
 
 use super::catalog::{AbilityTreeCatalog, TreeNode};
 use super::gates;
+use super::gates::trainer::TrainerPin;
 
 /// The player's known-ability set, however the caller holds it.
 pub trait KnownAbilities {
@@ -44,6 +45,8 @@ pub struct TrainContext<'a> {
     pub tree_points_spent: i32,
     /// Unspent training points (`sgw_player.training_points`).
     pub training_points: i32,
+    /// The player's pinned interaction target, resolved by the caller.
+    pub trainer: TrainerPin<'a>,
 }
 
 /// A purchase that passed every gate.
@@ -91,6 +94,16 @@ pub enum TrainReject {
         cost: i32,
         available: i32,
     },
+    /// The player has no `last_interaction_target`.
+    NoTrainerPinned,
+    /// The pinned interaction target no longer exists.
+    TrainerDespawned,
+    /// The pinned interaction target is not a trainer.
+    PinNotATrainer,
+    /// The pinned trainer does not offer this ability to this archetype.
+    NotOfferedByTrainer,
+    /// The player is out of interaction range of the pinned trainer.
+    TrainerOutOfRange,
 }
 
 impl TrainReject {
@@ -107,6 +120,11 @@ impl TrainReject {
             Self::MissingPrerequisite { .. } => "missing_prerequisite",
             Self::SpendGate { .. } => "spend_gate",
             Self::NotEnoughPoints { .. } => "not_enough_points",
+            Self::NoTrainerPinned => "no_trainer_pinned",
+            Self::TrainerDespawned => "trainer_despawned",
+            Self::PinNotATrainer => "pin_not_a_trainer",
+            Self::NotOfferedByTrainer => "not_offered_by_trainer",
+            Self::TrainerOutOfRange => "trainer_out_of_range",
         }
     }
 }
