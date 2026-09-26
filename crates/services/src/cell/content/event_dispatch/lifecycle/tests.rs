@@ -644,7 +644,9 @@ async fn an_aoe_secondary_crossing_fires_health_below() {
             stat.clear_dirty();
         }
     }
-    arm_player_with_ability(&mut mgr, 10);
+    // 20 base damage survives QR and defense with enough left to cross 30%
+    // from 35% without killing.
+    arm_player_with_ability(&mut mgr, 20);
     damage_npc_to(&mut mgr, 35);
 
     // Drive the real cell-method dispatch rather than

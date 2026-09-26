@@ -394,16 +394,14 @@ async fn missing_attacker_with_no_pending_flush_bails_without_target_packets() {
     );
 }
 
-/// Player-attacker damage doubling is a known temporary balance hack
-/// (`// Temp: 2x player damage so players can kill NPCs before dying`).
-/// Pin "player deals strictly more damage than an NPC with the same
-/// ability" so the comment-and-the-multiplier stay coupled — when
-/// the hack is removed, this test is the canary that says so. The
-/// exact ratio isn't 2x because `combat::calculate_damage` applies
-/// QR + defense reductions on top, and integer truncation skews the
-/// post-reduction ratio away from the input ratio.
+/// A player and an NPC firing the same ability with the same stats deal
+/// the same damage. A temporary 2x player-damage multiplier used to sit
+/// in `apply_damage_to_target` to make NPCs easier to kill during
+/// testing; it distorted every balance measurement and was removed.
+/// Reintroduce any player-only scaling on the base damage and the two
+/// hits diverge.
 #[tokio::test]
-async fn player_attacker_does_more_damage_than_npc_attacker() {
+async fn player_and_npc_attackers_deal_equal_damage() {
     let mut mgr = make_mgr_player_vs_npc();
     let ability = make_ability(7, vec![100]);
     mgr.ability_defs.insert(7, ability.clone());
@@ -452,10 +450,11 @@ async fn player_attacker_does_more_damage_than_npc_attacker() {
 
     let player_dmg = 10_000 - after_player;
     let npc_dmg = 10_000 - after_npc;
-    assert!(
-            player_dmg > npc_dmg,
-            "player attacker must deal strictly more damage than NPC attacker; player={player_dmg}, npc={npc_dmg}"
-        );
+    assert!(player_dmg > 0, "the hit must land; player={player_dmg}");
+    assert_eq!(
+        player_dmg, npc_dmg,
+        "no player-only damage scaling; player={player_dmg}, npc={npc_dmg}"
+    );
 }
 
 /// Player dying mid-reload / mid-draw / mid-slot-swap must clear

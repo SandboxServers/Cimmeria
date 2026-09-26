@@ -526,9 +526,10 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
   unknown-ability fallback of `(15, 0)` at `:133`. **ORIGINAL-DATA-BACKED** —
   this correctly reflects §0.3, that the shipped numbers live on abilities, not
   items.
-- `damage_apply/mod.rs:135-141` doubles player health damage, commented
+- `damage_apply/mod.rs:135-141` used to double player health damage, commented
   `// Temp: 2x player damage so players can kill NPCs before dying`.
-  **FAN-GUESS / acknowledged placeholder.**
+  **FAN-GUESS / acknowledged placeholder** — removed 2026-09-26; players and
+  NPCs now take the same base damage from the effect NVPs.
 - `applied_science_points` is wired to crafting only
   (`crates/entity/src/crafting.rs:64`); `tech_competency` appears only in
   `crates/services/src/minigame/session.rs:51`.

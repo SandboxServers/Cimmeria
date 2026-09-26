@@ -150,14 +150,6 @@ pub(super) async fn apply_damage_to_target(
     } else {
         (15, 0)
     };
-    // Temp: 2x player damage so players can kill NPCs before dying
-    let is_player_attacker = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
-    let health_base_damage = if is_player_attacker {
-        health_base_damage * 2
-    } else {
-        health_base_damage
-    };
-
     // ── `entity_health_below` pre-hit sample ──
     //
     // This is the one seam every ability-driven health mutation passes

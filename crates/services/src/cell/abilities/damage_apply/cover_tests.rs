@@ -143,8 +143,7 @@ async fn a_guard_in_its_slot_takes_the_rated_reduction() {
     let exposed = damage(&mut open, PLAYER, NPC).await;
 
     let mut mgr = fixture([20.0, 0.0, 0.0], GUARD_SLOT, true, 100);
-    // Player damage is doubled upstream (the temporary 2x in `mod.rs`).
-    let want = expected(&mgr, PLAYER, NPC, HEALTH_DAMAGE * 2, 35.0);
+    let want = expected(&mgr, PLAYER, NPC, HEALTH_DAMAGE, 35.0);
     let logs = LogCapture::install();
     let covered = damage(&mut mgr, PLAYER, NPC).await;
 
