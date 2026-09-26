@@ -51,7 +51,7 @@ Phase 1 of an AoI introduction (`CREATE_ENTITY` + `UPDATE_AVATAR`) is
 class-agnostic and was already correct. Phase 2 — the `createOnClient()`
 cascade that fills in everything the client renders — had exactly one
 implementation, `compose_create_entity_cascade_body` in
-[`mercury/aoi/create.rs`](../../crates/services/src/mercury/aoi/create.rs),
+[`mercury/aoi/create.rs`](../../crates/wire/src/mercury/aoi/create.rs),
 written against `NpcAoIData`: template-sourced faction, alignment, name id,
 flags, and a `level` the cell holds. A player has none of that. The cell
 passes `npc_data: None` for a player, so a witness received an entity with a
@@ -98,7 +98,7 @@ Nothing owns the whole cascade, so stop pretending one side does.
 
 The cell ships its half on
 `CellToBaseMsg::EnteredAoI { player_data: Option<PlayerAoIData> }`
-([`cell/messages/data.rs`](../../crates/services/src/cell/messages/data.rs)),
+([`cell/messages/data.rs`](../../crates/wire/src/cell/messages/data.rs)),
 built by `PlayerAoIData::from_entity`. `Some` exactly when the entering
 entity is a player; NPCs keep carrying `NpcAoIData` and are untouched.
 
@@ -186,7 +186,7 @@ arrive later get the same number from the introduction cascade.
 ## The cascade
 
 Composed by `compose_player_ghost_cascade_body` in
-[`mercury/aoi/player_ghost.rs`](../../crates/services/src/mercury/aoi/player_ghost.rs).
+[`mercury/aoi/player_ghost.rs`](../../crates/wire/src/mercury/aoi/player_ghost.rs).
 Every method is encoded against `IDBASE_SGW_PLAYER` (61). Order matches the
 legacy chain top to bottom.
 
@@ -232,7 +232,7 @@ Two methods the legacy chain emits that this one does not:
 
 `PLAYER_KISMET_EVENT_SET_ID` and `PLAYER_FACTION` are shared constants: the
 owning client's `mapLoaded` body
-([`mercury/world_data/map_loaded.rs`](../../crates/services/src/mercury/world_data/map_loaded.rs))
+([`mercury/world_data/map_loaded.rs`](../../crates/wire/src/mercury/world_data/map_loaded.rs))
 now reads them instead of its own literals, so what you see of yourself and
 what others see of you cannot drift.
 

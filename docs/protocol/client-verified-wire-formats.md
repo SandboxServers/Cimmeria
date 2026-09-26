@@ -132,7 +132,7 @@ index of `entities/entities.xml`. The client assigns it while parsing
 > exposed base methods the client can only send from a live `Account` entity,
 > and they arrive with `0x07` on the wire. The guard is
 > `entity_class_ids_are_client_indices_not_raw_document_indices` in
-> `crates/services/src/mercury/protocol/tests.rs`.
+> `crates/wire/src/mercury/protocol/tests.rs`.
 
 Of the 18 entries in `entities/entities.xml`, 10 are `<ServerOnly/>`, leaving
 8 client types:
@@ -153,7 +153,7 @@ but is `<ServerOnly/>`, which is why `Account` is `0x07` and not `0x08`.
 `SGWEntity` is also `<ServerOnly/>` and has no classId at all.
 
 These match the Rust constants in
-[crates/services/src/mercury/mod.rs](../../crates/services/src/mercury/mod.rs):
+[crates/wire/src/mercury/mod.rs](../../crates/wire/src/mercury/mod.rs):
 `SGWPLAYER_CLASS_ID = 0x02`, `SGWGMPLAYER_CLASS_ID = 0x03`,
 `ACCOUNT_CLASS_ID = 0x07`.
 

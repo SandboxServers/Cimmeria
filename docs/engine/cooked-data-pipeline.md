@@ -416,7 +416,7 @@ first fragment spends only 16 of those on headers: `BASEMSG` 1, `WORD_LEN` 2, `d
 historical 1000-byte value wasted roughly 28% of every packet. 1390 leaves a 5-byte safety
 margin under the tighter first-fragment cap of 1395. This is a pure throughput change —
 the fragment *format* is unchanged, so client compatibility is preserved. A guard test in
-`crates/services/src/mercury/protocol/tests.rs` pins the constant against the decrypt path;
+`crates/wire/src/mercury/protocol/tests.rs` pins the constant against the decrypt path;
 change both together.
 
 ### Resource Category IDs

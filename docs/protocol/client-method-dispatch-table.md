@@ -359,7 +359,7 @@ index 26** — from 27 the two entity types diverge (SGWPlayer continues into
 (SGWPlayer's `Communicator` interface is also indices 27-33). Always pair a
 method index with the correct entity's `class_id` at the call site; see
 `crate::mercury::method_idx::ON_AGGRESSION_OVERRIDE_UPDATE`/
-`ON_AGGRESSION_OVERRIDE_CLEARED` in `crates/services/src/mercury/mod.rs`.
+`ON_AGGRESSION_OVERRIDE_CLEARED` in `crates/wire/src/mercury/mod.rs`.
 
 Ghidra evidence: the client registers both handlers as a pair through
 `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` /

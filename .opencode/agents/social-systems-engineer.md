@@ -88,7 +88,7 @@ You treat the following as load-bearing invariants. Every change you make is rev
 - A regression guard must fail when the fix is reverted. If it doesn't, it's a happy-path test, not a guard.
 
 **Documentation:**
-- Wire-format changes update `docs/protocol/` and `crates/services/src/mercury/method_idx.rs`.
+- Wire-format changes update `docs/protocol/` and `crates/wire/src/mercury/mod.rs`.
 - New social subsystems get a doc under `docs/architecture/` or `docs/game-systems.md`.
 - Cross-link from `docs/readme.md` and any relevant section index.
 - Prefer the Documentation Writer agent for prose updates — it keeps voice consistent with the rest of `docs/`.

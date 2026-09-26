@@ -8,7 +8,7 @@
 --   3. crates/entity/src/stats/archetype.rs::ARCHETYPE_COUNT                        - Rust-side cardinality anchor
 --   4. db/resources/Archetypes/Seed/archetype_ability_tree.sql                      - ability tree rows (or accept empty)
 --   5. crates/resources/src/base/chardef.rs                                         - CharDefId entries (or no character can use the new archetype)
---   6. crates/services/src/mercury/world_data/stats.rs::archetype_ability_tree      - DB-down fallback (only if non-empty fallback is desired)
+--   6. crates/wire/src/mercury/world_data/stats.rs::archetype_ability_tree      - DB-down fallback (only if non-empty fallback is desired)
 --
 -- The live-DB test `archetype_count_matches_earchetype_enum_cardinality`
 -- in `crates/services/src/base/world_entry/methods/player_load/meta.rs`

@@ -33,7 +33,7 @@ cross-referenced to entity defs, Ghidra symbols, and Rust handler files.
 | Quantity | Authority source |
 |---|---|
 | Stargate position / destination world | `space_mgr.stargates[address_id]` (loaded from `resources.stargates` at startup) — server-only |
-| Player's unlocked stargates | `sgw_player.known_stargates` (Postgres column) → `PlayerLoadData::known_stargates` (`crates/services/src/base/world_entry/methods/player_load/core.rs:60,217`) → shipped to client via `setupStargateInfo` at `crates/services/src/mercury/world_data/map_loaded.rs:175-181`. **NOT plumbed onto `CellEntity`** — gate handler can't consult it without an additional plumb. |
+| Player's unlocked stargates | `sgw_player.known_stargates` (Postgres column) → `PlayerLoadData::known_stargates` (`crates/services/src/base/world_entry/methods/player_load/core.rs:60,217`) → shipped to client via `setupStargateInfo` at `crates/wire/src/mercury/world_data/map_loaded.rs:175-181`. **NOT plumbed onto `CellEntity`** — gate handler can't consult it without an additional plumb. |
 | Ring-transporter pad layout | `space_mgr.ring_transporters` (loaded from DB at world load) |
 | Ring mission-gate | `RingTransporter::required_mission_id` (per pad) — checked in `handle_select_destination` at `runtime.rs:277-288` |
 | Player position | `space_mgr.get_entity(entity_id).position` — NOT consulted in gate / ring / region handlers (the trust gap in CAT-B-02/03/04) |

@@ -358,7 +358,7 @@ Verified against `crates/entity/src/space.rs` and `crates/entity/src/world_grid.
 (`onEntityVisible` / `onEntityInvisible`) to witnesses stored inside the grid, with
 hysteresis to damp boundary flapping. Cimmeria's grid is *pulled* — it answers "who is near
 this point?" and nothing more. Witness bookkeeping, enter/leave decisions and AoI fan-out
-live one layer up in `crates/services/src/mercury/aoi/` and `crates/services/src/cell/`, and
+live one layer up in `crates/wire/src/mercury/aoi/` and `crates/services/src/cell/`, and
 AoI radius is a **per-entity** field (`aoi_radius`, defaulting to 100.0 in
 `crates/entity/src/cell_entity/construction.rs:30`) rather than a global chunk count.
 
@@ -1016,7 +1016,7 @@ that earlier revisions of this table merged into one "Cimmeria" column.
 | **Spatial index** | `WorldGrid` — bucket grid, pull-based `query_radius` | `WorldGrid` — chunk grid, push-based witness notify | `RangeList` + `EntityCache` with LOD priorities |
 | **AoI radius** | Per-entity `aoi_radius`, default 100.0 | Global `grid_vision_distance` = 3 chunks (150 m) | Per-entity, `defaultAoIRadius` |
 | **AoI hysteresis** | **None** | Grid-level `grid_hysteresis` (1 chunk = 50 m) | Entity-level AoI radius + hysteresis area |
-| **Witness bookkeeping** | Service layer (`services/src/mercury/aoi/`, `services/src/cell/`) | Inside the grid (`WorldGridMember<T>`) | `Witness` on `RealEntity` |
+| **Witness bookkeeping** | Service layer (`wire/src/mercury/aoi/`, `services/src/cell/`) | Inside the grid (`WorldGridMember<T>`) | `Witness` on `RealEntity` |
 | **Entity replication** | None — all entities local | None | Ghost entities on adjacent CellApps within `ghostDistance` |
 | **Cross-boundary interaction** | N/A (no boundaries) | N/A | Ghosts enable interaction; messages forwarded to real |
 | **Entity offloading** | N/A | N/A | `offload()`/`onload()` with `convertRealToGhost`/`convertGhostToReal` |

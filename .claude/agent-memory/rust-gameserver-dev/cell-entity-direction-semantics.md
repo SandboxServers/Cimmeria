@@ -8,7 +8,7 @@ produced a whole family of shipped bugs. The settled answer:
 
 Evidence (Rust, outbound):
 
-- `crates/services/src/mercury/aoi/{create,update}.rs` pack
+- `crates/wire/src/mercury/aoi/{create,update}.rs` pack
   `pack_angle(direction[1])` as yaw, `[0]` pitch, `[2]` roll —
   unconditionally, for players and NPCs alike.
 - `pack_angle` (`mercury/aoi/mod.rs:47`) divides by `0.024543693` = 2*pi/256,

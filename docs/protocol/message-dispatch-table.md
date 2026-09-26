@@ -337,8 +337,8 @@ Example: playCharacter (0xC4 = base method index 4 | 0xC0)
 - [Message Catalog](message-catalog.md) — full entity method event catalog (420 messages)
 - [Position Updates](position-updates.md) — avatar update wire format details
 - C++ source: `deprecated/cpp/src/baseapp/mercury/sgw/messages.hpp` and `messages.cpp`
-- Rust source: the message-ID constants in `crates/services/src/mercury/mod.rs`
-  and `crates/services/src/mercury/aoi/mod.rs`; the inbound length table in
+- Rust source: the message-ID constants in `crates/wire/src/mercury/mod.rs`
+  and `crates/wire/src/mercury/aoi/mod.rs`; the inbound length table in
   `crates/services/src/base/connect_loop/encrypted/mod.rs`.
   (`crates/mercury/src/messages.rs` is **not** the registry for these IDs — its
   `MsgId` enum is self-declared placeholder values and matches nothing in this

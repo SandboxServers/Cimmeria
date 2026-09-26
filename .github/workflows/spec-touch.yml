@@ -54,7 +54,7 @@ jobs:
               // Mercury wire format → spec.protocol.mercury-wire-format
               { match: 'crates/mercury/',                                          chapter: 'spec.protocol.mercury-wire-format' },
               // Entity property sync + RPC dispatch → spec.protocol.entity-property-sync, spec.engine.universal-rpc-dispatcher
-              { match: 'crates/services/src/mercury/method_idx.rs',                chapter: 'spec.protocol.message-catalog' },
+              { match: 'crates/wire/src/mercury/mod.rs',                           chapter: 'spec.protocol.message-catalog' },
               // Cell-side combat → spec.combat.*
               { match: 'crates/services/src/cell/combat/',                         chapter: 'spec.combat.damage-pipeline' },
               // Inventory state machine → spec.inventory.containers-and-equip

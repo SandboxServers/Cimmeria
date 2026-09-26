@@ -10,7 +10,7 @@ applyTo: "crates/services/**/*.rs"
 
 - **Cell** (`crates/services/src/cell/`) — entity state, content engine, AoI, NPC AI, abilities. One cell per space.
 - **Base** (`crates/services/src/base/`) — client connection lifecycle, world entry, client-method dispatch, persistence, witness broadcasts to the connected client.
-- They communicate by enum messages (`crates/services/src/cell/messages/`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
+- They communicate by enum messages (`crates/wire/src/cell/messages/`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
 
 ## Content engine actions
 
@@ -22,7 +22,7 @@ Existing stubs to watch for: `Action::RemoveItem` (logs only — see content-cha
 
 When sending a `CellToBaseMsg::EntityMethodCall` or building a base→client packet:
 
-- Confirm `method_index` against `docs/protocol/client-method-dispatch-table.md`. Indices live in `crates/services/src/mercury/method_idx.rs` — prefer a named constant over a literal.
+- Confirm `method_index` against `docs/protocol/client-method-dispatch-table.md`. Indices live in `crates/wire/src/mercury/mod.rs` — prefer a named constant over a literal.
 - Confirm byte layout against `entities/defs/*.def`. Endianness is little-endian; vectors are 3×f32; strings use `write_wstring` (length-prefixed UTF-16).
 - Engine-level base messages (`BASEMSG_*` in `mercury/mod.rs`) are handled by the BigWorld client *before* user code runs — use them for authoritative state changes (`FORCED_POSITION` for teleport, etc.). Method-index-dispatched messages (0xBD prefix) hit user code and may be ignored under certain client states (e.g., `BSF_MovementLock`).
 

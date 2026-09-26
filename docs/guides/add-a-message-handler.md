@@ -93,7 +93,7 @@ Three pieces:
 
 ## Decode the payload
 
-Mercury payloads are byte-exact: every field has a fixed wire format derived from the `.def`. The decode utilities live in [`crates/mercury/`](../../crates/mercury/) and the per-domain helpers in [`crates/services/src/mercury/`](../../crates/services/src/mercury/).
+Mercury payloads are byte-exact: every field has a fixed wire format derived from the `.def`. The decode utilities live in [`crates/mercury/`](../../crates/mercury/) and the per-domain helpers in [`crates/wire/src/mercury/`](../../crates/wire/src/mercury/).
 
 The house idiom is a manual running offset over the `&[u8]` payload — fixed-width fields are read with `i32::from_le_bytes` on a slice, and length-prefixed UTF-16 strings go through `read_wstring`, which returns `(String, bytes_consumed)` so you can advance the offset yourself:
 
@@ -171,7 +171,7 @@ send_to_witness_reliable(
 .await;
 ```
 
-[`crates/services/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/services/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy from — see the `send_to_witness_reliable` call around line 117. The method-index constants (`method_idx::*`) are declared in the inline `method_idx` module at [`crates/services/src/mercury/mod.rs:174`](../../crates/services/src/mercury/mod.rs). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
+[`crates/services/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/services/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy from — see the `send_to_witness_reliable` call around line 117. The method-index constants (`method_idx::*`) are declared in the inline `method_idx` module at [`crates/wire/src/mercury/mod.rs:174`](../../crates/wire/src/mercury/mod.rs). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
 
 ---
 
@@ -198,7 +198,7 @@ Per the CLAUDE.md doc-update map, every PR that touches a method index, dispatch
 - [`docs/protocol/message-catalog.md`](../protocol/message-catalog.md) — add the new entry.
 - The relevant section README under [`docs/protocol/`](../protocol/).
 - The canonical entity definitions in [`entities/defs/`](../../entities/defs/) if you added a new method.
-- The `method_idx` module at `crates/services/src/mercury/mod.rs:174` — the constants module that pins method indices.
+- The `method_idx` module at `crates/wire/src/mercury/mod.rs:174` — the constants module that pins method indices.
 
 The maintainer reviewing your PR will check.
 

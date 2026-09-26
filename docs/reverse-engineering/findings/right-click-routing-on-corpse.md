@@ -96,8 +96,8 @@ No writers found that set either byte to 0 except `std::map`/`std::set` tree-bal
 ## Implications for the Rust server
 
 The gate requires the client to have received **both**:
-1. A method-call `onEntityMove` (method index 2) — currently we **don't send** this. We send the optimized [`build_avatar_update`](../../../crates/services/src/mercury/aoi/update.rs#L22) packet (BASEMSG `0x10` `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR`) which uses the position-stream protocol and may go through a different client path.
-2. A method-call `onVisible(1)` — we do send this in the AoI cascade at [mercury/aoi/create.rs:234](../../../crates/services/src/mercury/aoi/create.rs#L234), so `+0x31` should be set on AoI entry.
+1. A method-call `onEntityMove` (method index 2) — currently we **don't send** this. We send the optimized [`build_avatar_update`](../../../crates/wire/src/mercury/aoi/update.rs#L22) packet (BASEMSG `0x10` `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR`) which uses the position-stream protocol and may go through a different client path.
+2. A method-call `onVisible(1)` — we do send this in the AoI cascade at [mercury/aoi/create.rs:234](../../../crates/wire/src/mercury/aoi/create.rs#L234), so `+0x31` should be set on AoI entry.
 
 Why Frost works but the dead guard doesn't (open question):
 

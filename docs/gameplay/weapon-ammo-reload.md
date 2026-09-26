@@ -292,7 +292,7 @@ Client                       Cell                              Base / DB
 | [`crates/services/src/cell/cell_methods/player/world.rs`](../../crates/services/src/cell/cell_methods/player/world/mod.rs) | `REQUEST_RELOAD` dispatch, `handle_reload` (warmup deadline + cooldown) |
 | [`crates/services/src/cell/service/mod.rs`](../../crates/services/src/cell/service/mod.rs) | `reload_completion_tick` (sole refill path), `InitPlayerState` bandolier seeding |
 | [`crates/services/src/cell/cell_methods/inventory.rs`](../../crates/services/src/cell/cell_methods/inventory.rs) | `REQUEST_ACTIVE_SLOT_CHANGE`, `REQUEST_AMMO_CHANGE`, `flush_dirty_bandolier_ammo` |
-| [`crates/services/src/cell/messages/mod.rs`](../../crates/services/src/cell/messages/mod.rs) | `CellToBaseMsg::BandolierAmmoUpdate`, `ActiveSlotUpdate`, `InitPlayerState` |
+| [`crates/wire/src/cell/messages/mod.rs`](../../crates/wire/src/cell/messages/mod.rs) | `CellToBaseMsg::BandolierAmmoUpdate`, `ActiveSlotUpdate`, `InitPlayerState` |
 
 ## Related docs
 

@@ -340,7 +340,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   name_id 7586 -- beyond the packet's stated three columns, flagged in
 --                  worknotes/H11.md. `onNameIdUpdate` is only sent when
 --                  `name_id` is Some and non-zero
---                  (crates/services/src/mercury/aoi/create.rs:211-218), so
+--                  (crates/wire/src/mercury/aoi/create.rs:211-218), so
 --                  the hub Petbe currently renders with no display name at
 --                  all. 7586 is `DN_npc_mg_Petbe_Harset_Fac_fg` -> 'Petbe'.
 -- `ability_set_id` deliberately left NULL: an NPC that must never fight does

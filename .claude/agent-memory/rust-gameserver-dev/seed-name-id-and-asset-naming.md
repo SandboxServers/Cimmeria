@@ -10,7 +10,7 @@ authoring Castle World 8 story actors (CA05).
 
 ## `name_id` is resolved by the client, not the server
 
-`crates/services/src/mercury/aoi/create.rs:211-218` writes `name_id` raw onto the AoI create
+`crates/wire/src/mercury/aoi/create.rs:211-218` writes `name_id` raw onto the AoI create
 packet, and **only** when it is `Some(n)` with `n != 0`. The client resolves the id against its
 own PAK string table.
 

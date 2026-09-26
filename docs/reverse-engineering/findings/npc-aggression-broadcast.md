@@ -87,7 +87,7 @@ Indices 0-26 are identical for SGWMob and SGWPlayer — both share the
 `SGWSpawnableEntity → SGWBeing` prefix, and that prefix's parse is a
 property of the *ancestor classes*, not the leaf entity, so it cannot
 differ between the two. (This was already documented, pre-NA33, in
-`crates/services/src/mercury/mod.rs`'s `method_idx` module comment.) From
+`crates/wire/src/mercury/mod.rs`'s `method_idx` module comment.) From
 27 the two entity types diverge: SGWPlayer continues into
 Communicator/OrganizationMember/etc., while SGWMob's `Implements` is just
 the empty-client-method `Lootable`, so SGWMob's own two methods begin
@@ -188,7 +188,7 @@ an already-connected witness saw.
 
 | Claim | Evidence |
 |---|---|
-| SGWMob indices 0-26 match SGWPlayer's | `entities/defs/SGWBeing.def`, `entities/defs/SGWSpawnableEntity.def` — ancestor classes, parsed identically regardless of leaf entity; already noted in `crates/services/src/mercury/mod.rs` pre-NA33 |
+| SGWMob indices 0-26 match SGWPlayer's | `entities/defs/SGWBeing.def`, `entities/defs/SGWSpawnableEntity.def` — ancestor classes, parsed identically regardless of leaf entity; already noted in `crates/wire/src/mercury/mod.rs` pre-NA33 |
 | Lootable contributes 0 client methods | `entities/defs/interfaces/Lootable.def:1-7` — `<ClientMethods></ClientMethods>` empty |
 | SGWMob's own methods are `onAggressionOverrideUpdate`, `onAggressionOverrideCleared`, in that order | `entities/defs/SGWMob.def:554-562` |
 | Ghidra confirms a live paired handler reading `aAggressionLevel` and storing `GameMob + 0x16c` | Ghidra decompile of `0x00d31bd0` / `0x00d31cd0`, string/RTTI search for `onAggressionOverride*` |

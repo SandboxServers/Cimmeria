@@ -20,7 +20,7 @@ after the emitter is changed.
 
 **How to apply:** When changing the `WitnessEntityMethod` enum or the emitter
 signature, update the enum variant in
-`crates/services/src/cell/messages/cell_to_base.rs`, the extraction in
+`crates/wire/src/cell/messages/cell_to_base.rs`, the extraction in
 `aoi_dispatch.rs::route`, the wrapper `aoi_dispatch.rs::witness_entity_method`,
 AND the emitter `aoi.rs::witness_entity_method`.
 

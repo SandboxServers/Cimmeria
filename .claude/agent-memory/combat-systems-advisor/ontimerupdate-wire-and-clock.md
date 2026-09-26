@@ -59,7 +59,7 @@ or wrong SourceID silently discards for types 0–3.
 
 ## Server game clock
 
-Two messages carry it, both from `crates/services/src/mercury/protocol/session.rs`:
+Two messages carry it, both from `crates/wire/src/mercury/protocol/session.rs`:
 
 - `build_time_sync` (login, called from `base/login/mod.rs:132`) packs
   `UPDATE_FREQUENCY_NOTIFICATION = 10` (ms/tick ⇒ tickRate 100), `TICK_SYNC {ticks: 0, rate: 100}`,

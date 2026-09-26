@@ -19,7 +19,7 @@ if (_DAT_01e69c90 < SQRT(dz*dz + dx*dx + dy*dy) * (1.0 / dt)) { hard_snap(); }
 
 **Top-speed data source.** Per-world from `db/resources/Worlds/Seed/worlds.sql` `run_speed` column. Every populated world uses `8.125 u/s`. The `worlds` table also carries `walk_speed`, `swim_speed`, `crouch_run_speed`, `jump_speed`, etc. (see schema in `worlds.sql`). Python source reads them as `WorldInfo.runSpeed` in `deprecated/python/common/defs/WorldInfo.py:18`.
 
-**Drift bug — still open after #478.** `crates/services/src/mercury/world_data/mod.rs:112` hardcodes `runSpeed = 6.0` in `build_world_params_args`, while DB says 8.125. #478 did NOT reconcile this — the validator uses a `MovementValidator::DEFAULT_TOP_SPEED = 8.125` constant (the higher number, safe for the warn-only speed layer) and deferred per-world sourcing + the 6.0→8.125 client-facing fix to a follow-up. When that follow-up lands, source the validator top-speed and the `world_data` runSpeed from the same `WorldInfo`/DB value.
+**Drift bug — still open after #478.** `crates/wire/src/mercury/world_data/mod.rs:112` hardcodes `runSpeed = 6.0` in `build_world_params_args`, while DB says 8.125. #478 did NOT reconcile this — the validator uses a `MovementValidator::DEFAULT_TOP_SPEED = 8.125` constant (the higher number, safe for the warn-only speed layer) and deferred per-world sourcing + the 6.0→8.125 client-facing fix to a follow-up. When that follow-up lands, source the validator top-speed and the `world_data` runSpeed from the same `WorldInfo`/DB value.
 
 **Server tick rate.** 100 ms / 10 Hz per `deprecated/cpp-config/config/BaseService.config` `<tick_rate>100</tick_rate>`. Use this as the implicit cadence assumption when calibrating tolerance.
 

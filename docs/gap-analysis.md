@@ -277,7 +277,7 @@ last_updated: 2026-09-25
   - [`base/world_entry/cell_dispatch/aoi.rs`](../crates/services/src/base/world_entry/cell_dispatch/aoi.rs) (599), [`cell_dispatch/player_ghost.rs`](../crates/services/src/base/world_entry/cell_dispatch/player_ghost.rs) (369) and [`cell_dispatch/deferred_flush.rs`](../crates/services/src/base/world_entry/cell_dispatch/deferred_flush.rs) (455).
   - [`base/deferred_aoi_lifecycle.rs`](../crates/services/src/base/deferred_aoi_lifecycle.rs) (205).
   - [`base/world_entry_appearance/cinematic_aoi_hold/`](../crates/services/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs) (551).
-  - [`mercury/aoi/`](../crates/services/src/mercury/aoi/): `create.rs`, `leave.rs`, `method.rs`, `update.rs`, `player_ghost.rs` (337).
+  - [`mercury/aoi/`](../crates/wire/src/mercury/aoi/): `create.rs`, `leave.rs`, `method.rs`, `update.rs`, `player_ghost.rs` (337).
   - Witness fan-out helpers in `cell/abilities/messaging.rs:98,153`.
 - **Recent PRs**:
   - Earlier: #279 (BeingAppearance recomposite broadcast), #418, #408/#410, #580 (player combat and death state fanned out to witnesses; closes #232), #582 (`aoi.create_emit` / `aoi.create_send_failed` seams).

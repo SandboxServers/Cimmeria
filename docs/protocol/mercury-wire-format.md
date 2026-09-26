@@ -250,7 +250,7 @@ emitter. Widths 1 and 3 and the escape above are not implemented.
 | Inbound, per-`msg_id` table | `read_client_message_payload` in `crates/services/src/base/connect_loop/encrypted/mod.rs` | `CONSTANT` per message; `WORD` for `0x07` and for the wildcard, which covers every entity method |
 | Inbound, the readers themselves | `read_constant_payload` / `read_word_length_payload` in `crates/services/src/base/connect_loop/mod.rs` | 0 and 2 |
 | Outbound, generic bundle encoder | `Bundle::encode` in `crates/mercury/src/bundle.rs` | 2 only |
-| Outbound, `BASEMSG_REPLY_MESSAGE` | `build_connect_reply` in `crates/services/src/mercury/protocol/session.rs` | 4, written by hand |
+| Outbound, `BASEMSG_REPLY_MESSAGE` | `build_connect_reply` in `crates/wire/src/mercury/protocol/session.rs` | 4, written by hand |
 
 No entry in `ClientMessageList` declares `DWORD_LENGTH`, so the inbound
 wildcard's `WORD_LENGTH` assumption holds for every message a client can send,

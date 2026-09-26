@@ -381,7 +381,7 @@ widened the floor-clip allowance to match the much larger jump tolerance.
 
 `JUMP_HEIGHT_TOLERANCE` is sized from the client's own jump physics, not
 guessed: `build_world_params_args`
-(`crates/services/src/mercury/world_data/mod.rs`) hands the client
+(`crates/wire/src/mercury/world_data/mod.rs`) hands the client
 `gravity = -9.8` and `jumpSpeed = 8.0`, giving a ballistic apex of
 `jumpSpeed² / (2 * |gravity|) ≈ 3.27` units above takeoff. `4.0` leaves
 ~0.7 units of margin for uneven ground, slope, and query jitter.

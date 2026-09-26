@@ -182,7 +182,7 @@ goes through `crate::packet::build_fragmented_bundle` which:
   an R4 violation, killing reliable delivery for the whole bundle).
 
 Byte-equivalence with the standalone-packet builders is pinned by tests in
-[crates/services/src/mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
+[crates/wire/src/mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs)
 (`compose_create_entity_base_body_matches_build_create_entity_base_body`
 and the cascade variant).
 
@@ -276,7 +276,7 @@ and `appearance_resend_bundle_collapses_to_single_packet` (pins
 `num_messages == 2` and `estimated_packet_count() == 1`) — both in
 [base/world_entry_appearance/mod.rs](../../crates/services/src/base/world_entry_appearance/mod.rs).
 Plus the entity-method byte-equivalence guard at
-[mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
+[mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs)
 (`channel_bundle_append_entity_method_matches_build_entity_method_packet_body` —
 covers both direct and extended encodings via ON_PLAY_MOVIE = 155).
 
@@ -292,12 +292,12 @@ When migrating another call family (the issue's deferred list):
    `build_<thing>_packet` into a `compose_<thing>_body() -> Vec<u8>` that
    omits framing + encryption, then have `build_*` call it + add framing.
    Mirror the pattern from
-   [mercury/aoi/create.rs](../../crates/services/src/mercury/aoi/create.rs)
+   [mercury/aoi/create.rs](../../crates/wire/src/mercury/aoi/create.rs)
    (`compose_create_entity_base_body` / `compose_create_entity_cascade_body`).
 3. **Add a byte-equivalence regression guard** comparing `compose_*` output
    against the decrypted body portion of the standalone `build_*` packet.
    Mirror the pattern in
-   [mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs).
+   [mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs).
 4. **Migrate the caller** to build a `ChannelBundle`, append composed
    bodies, and send via `send_bundle_to_witness_reliable`. Keep
    non-burst-shaped one-off sends on `send_to_witness_reliable`.

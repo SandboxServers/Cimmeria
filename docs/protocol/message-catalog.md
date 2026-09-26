@@ -399,7 +399,7 @@ Implemented; see `handle_version_info_request`.
 
 The server's reply. Three response shapes — the third one is what enables per-mission patching.
 
-Wire format (encoder at `crates/services/src/mercury/protocol/resources.rs:80-113`):
+Wire format (encoder at `crates/wire/src/mercury/protocol/resources.rs:80-113`):
 
 ```text
 [accountEntityId: u32]

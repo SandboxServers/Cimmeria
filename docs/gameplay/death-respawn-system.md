@@ -137,7 +137,7 @@ No arguments. Sent by the cell at the start of respawn so the Defeat Window clos
 
 ### CellToBaseMsg::ReanchorPlayer (cell→base, internal RPC)
 
-Not on the client wire; this is the inter-service handoff. See [`crates/services/src/cell/messages/cell_to_base.rs`](../../crates/services/src/cell/messages/cell_to_base.rs) for the variant.
+Not on the client wire; this is the inter-service handoff. See [`crates/wire/src/cell/messages/cell_to_base.rs`](../../crates/wire/src/cell/messages/cell_to_base.rs) for the variant.
 
 ```text
 ReanchorPlayer {

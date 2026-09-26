@@ -59,7 +59,7 @@ These areas mostly need careful Rust work, content authoring, or test additions 
 
 These touch wire formats or client expectations directly. The wrong byte = silent disconnect.
 
-- **Protocol implementations** — anything under [`crates/mercury/`](crates/mercury/) and [`crates/services/src/mercury/`](crates/services/src/mercury/).
+- **Protocol implementations** — anything under [`crates/mercury/`](crates/mercury/) and [`crates/wire/src/mercury/`](crates/wire/src/mercury/).
 - **Wire-format additions** — new message handlers, new property dispatches. See [`docs/protocol/`](docs/protocol/) and [`docs/drafts/spec/`](docs/drafts/spec/) (the bible chapters in progress).
 - **New entity types or methods** — `.def` files in [`entities/defs/`](entities/defs/) drive everything; touching them propagates outwards.
 

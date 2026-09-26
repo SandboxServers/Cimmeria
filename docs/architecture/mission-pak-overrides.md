@@ -50,7 +50,7 @@ sequenceDiagram
     end
 ```
 
-The three-way reply is what makes per-mission patching work without nuking the rest of the client's cooked-data cache. See `crates/services/src/base/cooked_data.rs:53-71` for the response-shape decision in code and `crates/services/src/mercury/protocol/resources.rs:80-113` for the `build_version_info` encoder.
+The three-way reply is what makes per-mission patching work without nuking the rest of the client's cooked-data cache. See `crates/services/src/base/cooked_data.rs:53-71` for the response-shape decision in code and `crates/wire/src/mercury/protocol/resources.rs:80-113` for the `build_version_info` encoder.
 
 ### Why the server pushes proactively
 
@@ -69,8 +69,8 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 | Track which element IDs were patched | `crates/resources/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
 | Three-way `onVersionInfo` reply | `crates/services/src/base/cooked_data.rs:21-123` | `handle_version_info_request` |
 | Push patched XML after the reply | `crates/services/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
-| Wire encoder for `onVersionInfo` with `InvalidKeys` | `crates/services/src/mercury/protocol/resources.rs:80-113` | `build_version_info` |
-| Wire-format guard | `crates/services/src/mercury/protocol/tests.rs:159-171` | `version_info_per_key_invalidation_round_trips_through_encoder` |
+| Wire encoder for `onVersionInfo` with `InvalidKeys` | `crates/wire/src/mercury/protocol/resources.rs:80-113` | `build_version_info` |
+| Wire-format guard | `crates/wire/src/mercury/protocol/tests.rs:159-171` | `version_info_per_key_invalidation_round_trips_through_encoder` |
 | Dialog full regeneration | `crates/resources/src/base/dialog_overrides/mod.rs` | `DialogOverride`, `DialogScreen`, `DialogButton`, `DIALOG_OVERRIDES`, `generate_dialog_xml` |
 | Dialog patch of a shipped entry | `crates/resources/src/base/dialog_overrides/patch.rs` | `DialogPatch`, `ButtonPlan`, `apply_dialog_patch`, `apply_dialog_patches` |
 | Per-zone dialog patch tables | `crates/resources/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES` |
@@ -233,7 +233,7 @@ The original game's mission XML uses the step's `<StepDisplayLogText>` for the p
 Three layers of regression coverage:
 
 - **Unit tests on the patcher** (`crates/resources/src/base/mission_overrides.rs:146-271`, 5 tests) — XML insertion-point arithmetic, malformed-input refusal, the index-pinning guard for mission 641, and the duplicate-render guard for objective display text.
-- **Wire-format guard** on the encoder (`crates/services/src/mercury/protocol/tests.rs:159-171`) — pins that `build_version_info` accepts `&[u32]` and that empty vs populated keys produce different output sizes. Catches a future signature change that drops the slice or makes it optional.
+- **Wire-format guard** on the encoder (`crates/wire/src/mercury/protocol/tests.rs:159-171`) — pins that `build_version_info` accepts `&[u32]` and that empty vs populated keys produce different output sizes. Catches a future signature change that drops the slice or makes it optional.
 - **Dialog emitter, parser and patch tests** (`crates/resources/src/base/dialog_overrides/`) — byte-exact emitter pins for a screen with zero, one and two buttons; parse/emit round trips that prove escaped text and `&#xA;` survive verbatim; patch tests on inline QA-shape fixtures proving `OnlyOn` leaves exactly one button on the named screen and `StripAll` leaves none while every speaker, screen id and body is unchanged; and `LogCapture` guards on all three skip warns.
 - **Chain-replay tests** for the two missions that use this mechanism (`crates/services/src/cell/content/chain_replay_tests/mission_622.rs` — the sequenced Frost → 80623 → Guard → 80622 → equip flow, the per-step re-loot guards, and the login-restore chains 1006/1007; `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` for chains 1055/1066). These exercise the full `chain_id → trigger → condition → action` round-trip against the seeded `resources.content_*` tables, including the equip-step gating.
 

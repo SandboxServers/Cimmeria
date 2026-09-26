@@ -226,7 +226,7 @@ During `setupPlayer` / `map_loaded`, the server emits:
 | 9 | `onAlignmentUpdate` | 24 | `0x98` | Player's `alignment` from `sgw_player` (UINT8) |
 | 10 | `onFactionUpdate` | 25 | `0x99` | **Hardcoded 3** (`FACTION_Free_Jaffa`) |
 
-Source: `crates/services/src/mercury/world_data/map_loaded.rs` lines 212–215.
+Source: `crates/wire/src/mercury/world_data/map_loaded.rs` lines 212–215.
 
 The player's own faction is hardcoded to 3 at login. This matches what was captured from
 the live server during protocol recording. The `faction` column in `sgw_player` does not
@@ -240,7 +240,7 @@ When a new entity enters the player's AoI, `onAlignmentUpdate` and `onFactionUpd
 sent as part of the creation bundle (items 10–11 in the AoI entity-create sequence):
 
 ```rust
-// crates/services/src/mercury/aoi/create.rs lines 80–81, 166–174
+// crates/wire/src/mercury/aoi/create.rs lines 80–81, 166–174
 let align = npc_data.map_or(0u8, |d| d.alignment);
 let fac   = npc_data.map_or(0u8, |d| d.faction);
 // ...
@@ -394,7 +394,7 @@ mirror used for initial sync.
 | Wire format of the 1-byte messages | `docs/reverse-engineering/findings/combat-wire-formats.md` §onAlignmentUpdate / onFactionUpdate |
 | World-entry sequence (phases 9–10) | `docs/reverse-engineering/findings/world-entry-pipeline.md` table row 9–10 |
 | Method index constants | `crates/wire/src/cell/client_methods/combatant.rs` |
-| AoI NPC delivery | `crates/services/src/mercury/aoi/create.rs` lines 166–174 |
+| AoI NPC delivery | `crates/wire/src/mercury/aoi/create.rs` lines 166–174 |
 | Hostile combat gate | `crates/services/src/cell/cell_methods/player/interaction.rs` |
 | AoE hostile filter | `crates/services/src/cell/abilities/dispatch.rs` |
 | CME EventSignal architecture | `docs/reverse-engineering/findings/cme-event-signal.md` |

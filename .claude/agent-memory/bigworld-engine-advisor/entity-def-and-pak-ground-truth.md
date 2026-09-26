@@ -100,7 +100,7 @@ component-name lookup). `ENABLE_WATCHERS` was 1 for this build.
 `crates/entity/src/world_grid.rs` is a **pull-based radius-query bucket grid**
 (`query_radius`, `cell_key`). It has **no hysteresis**, no `visionExceptions_`, no
 witness sets, no `WorldGridMember`. Witness bookkeeping lives at
-`crates/services/src/mercury/aoi/` and `crates/services/src/cell/`.
+`crates/wire/src/mercury/aoi/` and `crates/services/src/cell/`.
 AoI radius is **per-entity**, default **100.0**
 (`crates/entity/src/cell_entity/construction.rs:30`) — *not* the old
 `grid_vision_distance` 3 chunks × 50 m = 150 m.

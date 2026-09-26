@@ -40,7 +40,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 ### 2. Wire-format tests
 
-**Where**: Same module as the serializer; conventionally `crates/mercury/src/**/*.rs` and `crates/services/src/mercury/protocol/tests.rs`.
+**Where**: Same module as the serializer; conventionally `crates/mercury/src/**/*.rs` and `crates/wire/src/mercury/protocol/tests.rs`.
 
 **For**: Anything that produces bytes the BigWorld client must accept. This is the single most "byte-exact" surface in the codebase — the client is unforgiving, and we have no way to renegotiate the protocol.
 
@@ -50,7 +50,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 - Round-trip both directions when the codec is symmetric (`build_x` then `parse_x` then assert equality of the input).
 - Confirm method indices against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def` before writing the test, not after.
 
-**Examples**: `crates/mercury/src/packet/` (24 tests), `crates/services/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/services/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
+**Examples**: `crates/mercury/src/packet/` (24 tests), `crates/services/src/base/world_entry/methods/vendor/serializers.rs` (12 byte-exact tests for the store payload), `crates/wire/src/mercury/aoi/` (14 wire-layout tests for the AoI builders, split across `create.rs` and `tests.rs`).
 
 ### 3. Live-DB regression guards
 

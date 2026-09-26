@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-`crates/services/src/mercury/mod.rs::read_wstring(buf, offset) -> Result<(String, usize), _>` returns `(decoded_string, bytes_consumed)`. The second tuple element is the number of bytes the WSTRING occupied — `4 + char_count*2` — NOT the new absolute offset into `buf`.
+`crates/wire/src/mercury/mod.rs::read_wstring(buf, offset) -> Result<(String, usize), _>` returns `(decoded_string, bytes_consumed)`. The second tuple element is the number of bytes the WSTRING occupied — `4 + char_count*2` — NOT the new absolute offset into `buf`.
 
 Correct pattern when chaining multiple `read_wstring` calls:
 

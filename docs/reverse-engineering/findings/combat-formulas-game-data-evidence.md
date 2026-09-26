@@ -539,7 +539,7 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
 - Level scaling is HP/Focus only:
   `crates/entity/src/stats/stat_list.rs:324-344`
   `max = base + per_level*(level-1)`, with `10` / `70` hardcoded at
-  `crates/services/src/mercury/world_data/stats.rs:21-40`.
+  `crates/wire/src/mercury/world_data/stats.rs:21-40`.
   **ORIGINAL-DATA-BACKED** — those two constants match
   `resources.archetypes.healthPerLevel` and `focusPerLevel` exactly (§5), though
   they are hardcoded rather than read from the table.
@@ -904,7 +904,7 @@ mechanism as the resist rolls in §4 — both rely on one effect in a sequence s
 gating its co-sequenced siblings.
 
 Player Focus pool `1570 + 70/level`
-(`crates/services/src/mercury/world_data/stats.rs`) — **ORIGINAL-DATA-BACKED**,
+(`crates/wire/src/mercury/world_data/stats.rs`) — **ORIGINAL-DATA-BACKED**,
 matches `resources.archetypes` exactly. Regen uses `FOCUS_REGEN` with `.max(1)`
 (`cell/service/ticks/regen.rs:81`).
 

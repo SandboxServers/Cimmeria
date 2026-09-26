@@ -203,7 +203,7 @@ Two exceptions to parity, both pinned:
   occurrence also emits a sampled row on a different, exported target,
   carrying `sampled_1_in = N` and `suppressed` (occurrences since the
   previous sample), so `sum(1 + suppressed)` recovers the true count.
-  The emitters and N live in `cimmeria_services::firehose`.
+  The emitters and N live in `cimmeria_wire::firehose`.
 
 | Firehose (file) | Sample | Index | N | Why this N |
 |---|---|---|---|---|
@@ -516,7 +516,7 @@ datagram), ACK queueing, `EntityMove` and
 packet). They are a few fields each and arrive at about the rate of
 `mercury.packet`, which `cimmeria-network` already receives unsampled —
 roughly one `cimmeria-trace` row per datagram. If that proves too much,
-move them behind `cimmeria_services::firehose` the same way.
+move them behind `cimmeria_wire::firehose` the same way.
 
 ### Timestamps — server-receive vs. client-generate
 

@@ -14,7 +14,7 @@ straight onto `SpaceManager` (`dialog_set_maps`, `mission_defs`, `stargates`,
 `spawn_templates` — every `resources.entity_templates` row as a prototype
 `SpawnRecord`). The cell **does** have a DB pool at startup.
 
-**Why this matters:** `crates/services/src/cell/messages/base_to_cell.rs` used
+**Why this matters:** `crates/wire/src/cell/messages/base_to_cell.rs` used
 to assert "the cell has no template cache", which pushes you toward copying the
 GM `.spawn` pattern (`CellToBaseMsg::GmSpawnNpc` → base query →
 `BaseToCellMsg::GmSpawnNpcReady`). Inside a **content-executor action** that is

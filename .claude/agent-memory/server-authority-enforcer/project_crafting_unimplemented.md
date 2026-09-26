@@ -31,7 +31,7 @@ CAT-F (Crafting / R&D / Training) audit complete on 2026-05-31. Trust posture:
   - `crates/entity/src/crafting.rs` — `CraftingState` struct + serializer for
     `onUpdateDiscipline` (method 136).
 - World-entry already sends `onUpdateKnownCrafts` from server-authoritative
-  `blueprint_ids` at `crates/services/src/mercury/world_data/map_loaded.rs:375`.
+  `blueprint_ids` at `crates/wire/src/mercury/world_data/map_loaded.rs:375`.
 
 **Wire shapes (from `entities/defs/SGWPlayer.def` lines 911-948, Ghidra-confirmed):**
 - `spendAppliedSciencePoints(INT32 aDisciplineSeqId)` — method 95

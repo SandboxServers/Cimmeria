@@ -166,7 +166,7 @@ Two independent bugs with the same root cause pattern: `onStateFieldUpdate` sent
 
 ### Bug A: AoI entry hardcodes `state_field = 0`
 
-**Location**: `crates/services/src/mercury/aoi/create.rs` (lines 175–181)
+**Location**: `crates/wire/src/mercury/aoi/create.rs` (lines 175–181)
 
 ```rust
 // 12. onStateFieldUpdate(0) — alive state   ← HARDCODED ZERO — BUG #232
@@ -287,7 +287,7 @@ Alternatively, extend `send_entity_method` to accept a flag indicating AoI fanou
 
 ### Issue #232 — AoI entry hardcoded zero
 
-**File**: `crates/services/src/mercury/aoi/create.rs`
+**File**: `crates/wire/src/mercury/aoi/create.rs`
 
 ```rust
 // Before:

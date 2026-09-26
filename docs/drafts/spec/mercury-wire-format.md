@@ -2581,4 +2581,4 @@ N/A — pending Section 1 review. Derived from Sections 1–3; will name the Rus
 
 ## Section 5 — Actual implementation in Rust
 
-N/A — pending Section 1 review. Catalogues current Rust state in `crates/mercury/` and `crates/services/src/mercury/`, flags divergences from Section 4. The known item to verify before authoring: the `encryption.rs` doc-comment that says "OpenSSL" — should say "RustCrypto" (and the implementation it's emulating uses CryptoPP, not OpenSSL).
+N/A — pending Section 1 review. Catalogues current Rust state in `crates/mercury/` and `crates/wire/src/mercury/`, flags divergences from Section 4. The known item to verify before authoring: the `encryption.rs` doc-comment that says "OpenSSL" — should say "RustCrypto" (and the implementation it's emulating uses CryptoPP, not OpenSSL).
