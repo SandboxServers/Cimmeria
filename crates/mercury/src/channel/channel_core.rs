@@ -49,14 +49,21 @@ pub struct Channel {
     /// no longer silently un-recoverable.
     pub unsent_packets: VecDeque<TxEntry>,
 
-    /// Inbound packets buffered for ordered delivery.
+    /// Inbound reliable packets buffered for ordered delivery. Slot `i`
+    /// holds sequence `expected_rx_seq + i`. See [`super::rx_order`].
     pub rx_window: VecDeque<Option<RxEntry>>,
 
     /// Next sequence number to assign to an outbound packet.
     pub next_tx_seq: u32,
 
-    /// Next sequence number we expect to receive from the peer.
+    /// Next reliable sequence number we expect to receive from the peer.
+    /// Meaningful once [`Self::rx_anchored`] is true.
     pub expected_rx_seq: u32,
+
+    /// Whether `expected_rx_seq` has been set, by
+    /// [`Self::anchor_rx_seq`] or by adopting the first reliable packet
+    /// (the client's `inSeqAt == SEQ_NULL` start state).
+    pub(super) rx_anchored: bool,
 
     /// Socket address of the remote peer.
     pub remote_addr: SocketAddr,
@@ -157,9 +164,11 @@ impl Channel {
             // state. Pre-allocating MAX_UNSENT_PACKETS would waste memory
             // on every channel for a path that fires only under congestion.
             unsent_packets: VecDeque::new(),
-            rx_window: VecDeque::with_capacity(consts::RX_WINDOW_SIZE),
+            // Allocate empty — the window only fills behind a gap.
+            rx_window: VecDeque::new(),
             next_tx_seq: 0,
             expected_rx_seq: 0,
+            rx_anchored: false,
             remote_addr,
             last_sent: now,
             last_received: now,
@@ -351,69 +360,6 @@ impl Channel {
         self.last_sent = now;
 
         Ok(())
-    }
-
-    /// Process an inbound packet, inserting it into the RX window.
-    ///
-    /// Returns `Ok(Some(packets))` with any newly in-order packets that
-    /// can be delivered upstream, or `Ok(None)` if we are still waiting
-    /// for earlier sequences.
-    pub fn receive_packet(&mut self, packet: Packet) -> Result<Option<Vec<Packet>>> {
-        let seq = packet.sequence;
-        self.last_received = self.clock.now();
-
-        // Instrument: inbound UDP packet observed. We record EVERY
-        // received packet here — including duplicates and packets
-        // beyond the window — because those are exactly the kind of
-        // anomalies the analytical store needs to surface. Filtering
-        // duplicates out at the record site would hide them in the
-        // SigNoz "incoming packet rate" plot.
-        crate::instrumentation::record_udp_packet(
-            crate::instrumentation::Direction::In,
-            seq,
-            packet.flags.0,
-            packet.body.len(),
-            self.remote_addr,
-        );
-
-        // How far ahead of our expected sequence is this packet?
-        // Wrapping subtraction handles sequence wraparound.
-        let offset = seq.wrapping_sub(self.expected_rx_seq) as usize;
-
-        // Drop if behind expected (duplicate/old) or beyond the window.
-        if offset >= consts::RX_WINDOW_SIZE {
-            // Either a duplicate (seq < expected, wrapping makes offset huge)
-            // or too far ahead to buffer.
-            return Ok(None);
-        }
-
-        // Grow the VecDeque with None slots if needed to reach the offset.
-        while self.rx_window.len() <= offset {
-            self.rx_window.push_back(None);
-        }
-
-        // Insert (ignore duplicates — don't overwrite an already-received slot).
-        if self.rx_window[offset].is_none() {
-            self.rx_window[offset] = Some(RxEntry {
-                packet,
-                received_at: self.last_received,
-            });
-        }
-
-        // Slide the window: drain consecutive Some entries from the front.
-        let mut delivered = Vec::new();
-        while let Some(Some(_)) = self.rx_window.front() {
-            // Front slot is filled — deliver it.
-            let entry = self.rx_window.pop_front().unwrap().unwrap();
-            self.expected_rx_seq = self.expected_rx_seq.wrapping_add(1);
-            delivered.push(entry.packet);
-        }
-
-        if delivered.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(delivered))
-        }
     }
 
     /// Process acknowledgement information received from the peer.

@@ -12,3 +12,4 @@ pub(super) use crate::packet::Packet;
 
 mod channel_lifecycle;
 mod reassembly;
+mod rx_order;

@@ -75,6 +75,12 @@ use crate::otel;
 /// `test-support` feature — never compiled into a release build, but
 /// `target_scan_tests` reads source text regardless of feature gating, so it
 /// still needs an explicit level here.
+///
+/// `mercury.rx_order` (NA38) is the reliable receive gate on each client
+/// session: DEBUG rows for a packet held behind a gap or dropped as a
+/// retransmitted duplicate, a WARN for one beyond the receive window. It
+/// only speaks when the client's packets arrive lost or reordered, so it is
+/// quiet on a healthy link and exactly the evidence a lossy one needs.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_mercury=debug,\
@@ -82,6 +88,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 mercury.retransmit=info,\
                 mercury.backpressure=info,\
                 mercury.lossy_transport=debug,\
+                mercury.rx_order=debug,\
                 wire.in=info,wire.out=info,\
                 wire.out.avatar_update=debug,\
                 wire.out.forced_position=debug,\

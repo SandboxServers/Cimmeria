@@ -197,21 +197,25 @@ async fn lossy_network_both_directions_still_converge() {
 ///    mechanism should fire regardless of payload -- `CREATE_ENTITY` gets
 ///    no special treatment.)
 /// 2. Does the eventual delivery still land within a bounded time?
-/// 3. **Ordering**: does *any other* message referencing the peer's
-///    entity id arrive at the witness *before* the (retransmitted)
-///    `CREATE_ENTITY` does? If so, a client that processes messages in
-///    wire-arrival order (rather than holding out-of-order arrivals for a
-///    gap-fill, the way a `Channel`'s RX window is *designed* to but
-///    is not actually wired into on the receive side used here -- see
-///    the finding recorded in
-///    `docs/analysis/npc-ai-restoration/work-packets.md` NA37 round 2 and
-///    `crates/mercury/src/channel/channel_core.rs::receive_packet`'s
-///    doc comment) would see a property update for an entity it has never
-///    created. This test's own `GameSession` has exactly that
-///    naive-arrival-order behavior (it's what `LoopbackPeer`'s recv pump
-///    does today), so a hazard detected here is real evidence of what a
-///    similarly-naive real client could experience, not a
-///    harness-specific artifact.
+/// 3. **Ordering**: does any *reliable-stream* message referencing the
+///    peer's entity id (the appearance/stat cascade, method calls) reach
+///    the witness's message handlers *before* the retransmitted
+///    `CREATE_ENTITY`? The witness's `GameSession` now runs the same
+///    in-order receive gate as the SGW client
+///    (`Channel::receive_parsed`, modelled on `queueAckForPacket` at
+///    `ghidra://SGW.exe@0x0158cba0`), so the cascade must wait behind the
+///    lost create exactly as it does on a real client.
+///
+/// Unreliable position relays (`UPDATE_AVATAR`, msg `0x10`) are *expected*
+/// to arrive first: they ride the separate unreliable stream, which the
+/// client delivers on arrival. That is harmless on the real client:
+/// `EntityManager::onEntityMoveWithError` (`ghidra://SGW.exe@0x00dd1650`)
+/// stores the latest position for an id it does not know yet in the
+/// pending-entity map at `EntityManager+0x30`, and the create handler
+/// (`ghidra://SGW.exe@0x00dd2270`) consumes that record when it builds the
+/// entity. So the test requires the early messages to be position relays
+/// only, and requires at least one, which proves the drop really landed on
+/// B's create rather than on some other packet.
 ///
 /// The drop targets B's introduction specifically (not A's own world-entry
 /// traffic) via [`LossyTransport::drop_next_sends_to`], armed on A's
@@ -219,33 +223,14 @@ async fn lossy_network_both_directions_still_converge() {
 /// very next thing the server sends to A's address is deterministically
 /// the AoI-tick-driven `CREATE_ENTITY` for B.
 ///
-/// **`#[ignore]`d: this reproduces a confirmed, currently-unfixed defect.**
-/// With `min_len` targeting precise enough to drop exactly B's
-/// `CREATE_ENTITY` (not incidental tickSync traffic -- see the git history
-/// of this file for the debugging that got the targeting this precise),
-/// the assertion below fails: dozens of cascade/appearance/stat/position
-/// messages for B's entity arrive at A before the retransmitted
-/// `CREATE_ENTITY` does. A server-side fix was attempted (make the AoI
-/// cascade send wait for the `CREATE_ENTITY` packet's ACK before firing)
-/// and **reverted** because it broke the lossless-network tests: a
-/// witness that hasn't sent anything of its own since receiving
-/// `CREATE_ENTITY` doesn't necessarily ACK it promptly (Mercury only
-/// piggybacks ACKs on the witness's own next outbound send), so the
-/// ack-wait stalled *every* entity introduction for up to its timeout
-/// even with zero packet loss -- an unacceptable universal latency
-/// regression traded for a narrow packet-loss fix. A safe fix needs
-/// either genuine Mercury-level in-order delivery (wiring
-/// `Channel::receive_packet`'s already-implemented, already-tested,
-/// currently-unused RX window into the live receive path on both ends --
-/// see that function's doc comment) or a *reactive* per-entity hold that
-/// only engages once a retransmit is actually observed for that entity's
-/// `CREATE_ENTITY` (`TxEntry::retransmit_count > 0`), not a *proactive*
-/// wait that pays the round-trip cost on every introduction regardless of
-/// loss. Both are more invasive than this packet's scope. See
-/// `docs/analysis/npc-ai-restoration/work-packets.md` NA37 round 2 for
-/// the full writeup. Run with `cargo test -- --ignored` to reproduce.
+/// History: NA37 round 2 ran this with a harness that handed bundles over
+/// in raw arrival order and saw the whole cascade land before the create.
+/// NA38 found the real client orders its reliable stream itself, so that
+/// was a harness gap, not a server bug. With the gate wired into the
+/// harness this passes on an unchanged server. Reverting the gate (every
+/// reliable packet delivered on arrival) fails it again. See
+/// `docs/analysis/npc-ai-restoration/work-packets.md` NA37 and NA38.
 #[tokio::test]
-#[ignore = "confirmed reproducible ordering-hazard defect, no safe server-side fix yet -- see doc comment and NA37 round 2 in work-packets.md"]
 async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
@@ -355,28 +340,33 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
         })
         .expect("the matching message must be present in its own recording");
 
-    let premature: Vec<&S2CMessage> = seen[..create_index]
+    let (early_positions, early_reliable): (Vec<&S2CMessage>, Vec<&S2CMessage>) = seen
+        [..create_index]
         .iter()
         .filter(|m| m.entity_id == Some(b_id))
-        .collect();
+        .partition(|m| m.is_position_update());
 
-    let premature_count = premature.len();
-    if !premature.is_empty() {
-        eprintln!(
-            "NA37 ordering-hazard FINDING: {premature_count} message(s) referencing B's entity \
-             id {b_id} arrived at A BEFORE B's (retransmitted) CREATE_ENTITY: {premature:?}. \
-             This is the naive-arrival-order hazard described in this test's doc comment -- \
-             see docs/analysis/npc-ai-restoration/work-packets.md NA37 round 2."
-        );
-    }
     assert!(
-        premature.is_empty(),
-        "ordering hazard reproduced: {premature_count} message(s) for B's entity (id {b_id}) \
-         arrived at A before B's own CREATE_ENTITY did: {premature:?}. A real client that \
-         processes messages in wire-arrival order (rather than holding out-of-order arrivals \
-         for a Mercury-level gap-fill) would receive a property update for an entity it has \
-         never created. See the doc comment on this test and the NA37 round-2 work-packets entry."
+        early_reliable.is_empty(),
+        "ordering hazard: {} reliable-stream message(s) for B's entity (id {b_id}) reached A's \
+         handlers before B's CREATE_ENTITY: {early_reliable:?}. The client's queueAckForPacket \
+         holds these behind the lost create; the harness gate must too (NA38).",
+        early_reliable.len()
     );
+    assert!(
+        !early_positions.is_empty(),
+        "no position relay for B arrived ahead of B's create, so the targeted drop did not land \
+         on the create and this run tested nothing"
+    );
+
+    // The cascade the gate held back must still follow the create.
+    wait_for(&a, CONVERGENCE_TIMEOUT, |m| {
+        m.method_index == Some(26) && m.entity_id == Some(b_id)
+    })
+    .await
+    .unwrap_or_else(|| {
+        panic!("burst-drop: A never saw B's BEING_APPEARANCE after the retransmitted create")
+    });
 
     let _ = lossy.flush_reorder_buffer().await;
     let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = ANY($1)")

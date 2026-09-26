@@ -15,8 +15,9 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
+use cimmeria_mercury::channel::RxDelivery;
 use cimmeria_mercury::encryption::MercuryEncryption;
-use cimmeria_mercury::packet::{parse_incoming, FLAG_RELIABLE};
+use cimmeria_mercury::packet::{parse_incoming, ParsedPacket};
 
 use crate::cell::messages::BaseToCellMsg;
 
@@ -102,14 +103,6 @@ pub(crate) async fn handle_encrypted_datagram(
         "Decrypted packet received"
     );
 
-    // Queue an ACK for any reliable message the client sends.
-    if pkt.flags & FLAG_RELIABLE != 0 {
-        if let Some(seq) = pkt.seq_id {
-            tracing::trace!(%addr, client_seq = seq, "Queueing ACK for client reliable message");
-            pending_acks.lock().unwrap().push(seq);
-        }
-    }
-
     // Route the client's ACKs of OUR reliable packets to the per-session
     // Channel's TX window. The Channel drains its window cumulatively
     // up through each acked sequence and feeds RTT samples
@@ -137,8 +130,87 @@ pub(crate) async fn handle_encrypted_datagram(
         }
     }
 
-    // Parse the client bundle.
-    let body = &pkt.body;
+    // In-order delivery of the client's reliable stream, the gate a
+    // BigWorld receiver runs (NA38): a reliable packet behind a gap waits
+    // for the client's retransmit, a retransmitted duplicate (our ACK was
+    // lost) is dropped instead of being dispatched a second time, and
+    // unreliable packets (movement) go straight through.
+    let Some(delivery) = receive_in_order(connected, addr, pkt) else {
+        return Ok(());
+    };
+    if let Some(seq) = delivery.ack {
+        tracing::trace!(%addr, client_seq = seq, "Queueing ACK for client reliable message");
+        pending_acks.lock().unwrap().push(seq);
+    }
+    for body in &delivery.bundles {
+        dispatch_client_bundle(
+            body,
+            transport,
+            addr,
+            key,
+            account_id,
+            connected,
+            db_pool,
+            resource_cache,
+            entity_manager,
+            cell_tx,
+            entity_to_addr,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Run one decrypted client packet through the session's
+/// [`cimmeria_mercury::channel::Channel`] receive gate.
+///
+/// `None` when the session is gone (torn down between the lookup that
+/// found its key and now) or its channel lock is poisoned; the packet is
+/// dropped either way.
+fn receive_in_order(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    pkt: ParsedPacket,
+) -> Option<RxDelivery> {
+    let clients = connected.lock().ok()?;
+    let Some(state) = clients.get(&addr) else {
+        tracing::debug!(
+            %addr,
+            reason = "session_gone",
+            "client packet arrived after its session was removed -- dropped"
+        );
+        return None;
+    };
+    let mut channel = state.channel.lock().ok()?;
+    match channel.receive_parsed(pkt) {
+        Ok(delivery) => Some(delivery),
+        Err(e) => {
+            tracing::warn!(
+                %addr,
+                reason = "rx_reassembly_error",
+                error = %e,
+                "client packet rejected by the channel receive path"
+            );
+            None
+        }
+    }
+}
+
+/// Walk one complete client bundle (the body can carry several
+/// back-to-back messages) and dispatch each message.
+async fn dispatch_client_bundle(
+    body: &[u8],
+    transport: &Arc<dyn Transport>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    account_id: u32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    resource_cache: &Option<Arc<ResourceCache>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if body.is_empty() {
         return Ok(());
     }
@@ -554,5 +626,7 @@ fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
         .collect()
 }
 
+#[cfg(test)]
+mod rx_order_tests;
 #[cfg(test)]
 mod tests;

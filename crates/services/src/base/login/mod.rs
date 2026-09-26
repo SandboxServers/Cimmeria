@@ -210,7 +210,16 @@ pub(crate) async fn handle_login(
                 player_training_points: None,
                 active_player_id: None,
                 pending_destination_ring_id: None,
-                channel: Mutex::new(cimmeria_mercury::channel::Channel::new(addr)),
+                // The client's first reliable packet on a fresh channel is
+                // seq 0 (authenticate + enableEntities, flags 0x58, in the
+                // castle_cellblock_head capture). Pin it so a lost seq 0 is
+                // recovered by retransmit instead of a later packet being
+                // adopted as the stream start (NA38).
+                channel: Mutex::new({
+                    let mut ch = cimmeria_mercury::channel::Channel::new(addr);
+                    ch.anchor_rx_seq(0);
+                    ch
+                }),
             },
         );
         arcs

@@ -7,7 +7,7 @@
 
 use std::time::Instant;
 
-use crate::packet::Packet;
+use crate::packet::{Packet, ParsedPacket};
 
 // ── Channel state ───────────────────────────────────────────────────────────
 
@@ -47,11 +47,13 @@ pub struct TxEntry {
     pub raw_bytes: bytes::Bytes,
 }
 
-/// Bookkeeping for a received packet in the receive window.
+/// Bookkeeping for a received reliable packet buffered in the receive
+/// window behind a gap.
 #[derive(Debug, Clone)]
 pub struct RxEntry {
-    /// The received packet.
-    pub packet: Packet,
+    /// The received packet, footers already parsed (fragment range
+    /// included, so a released fragment can go to the assembler).
+    pub packet: ParsedPacket,
     /// When the packet was received.
     pub received_at: Instant,
 }

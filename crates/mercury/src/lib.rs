@@ -66,8 +66,18 @@ pub mod consts {
     /// Maximum payload body per packet after header and footers.
     pub const MAX_BODY: usize = 1348;
 
-    /// Receive window size for reliable sequencing.
-    pub const RX_WINDOW_SIZE: usize = 64;
+    /// Receive window size for reliable sequencing: how far ahead of the
+    /// next expected sequence a reliable packet may arrive and still be
+    /// buffered for in-order delivery.
+    ///
+    /// 512, the SGW client's own value: the `Channel` constructor
+    /// (`ghidra://SGW.exe@0x01576bf0`) writes `0x200` to `Channel+0x2c`,
+    /// `ChannelInternal`'s constructor (`ghidra://SGW.exe@0x0158c7b0`)
+    /// copies it to `+0x30`, and `UnAckedHandler::queueAckForPacket`
+    /// (`ghidra://SGW.exe@0x0158cba0`) rejects a sequence further ahead
+    /// than that. A smaller window would drop packets the server's
+    /// deferred-send queue can legitimately have in flight behind one loss.
+    pub const RX_WINDOW_SIZE: usize = 512;
 
     /// Transmit window size — limits unacknowledged in-flight reliable
     /// packets per channel.
