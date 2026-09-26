@@ -87,7 +87,7 @@
 -- Fixed by moving the single "Take Missions" row onto the final screen
 -- 96825, in BOTH records: the cooked entry the client renders (row 2576
 -- of CASTLE_DIALOG_PATCHES in
--- crates/services/src/base/dialog_overrides/patches_castle.rs) and this
+-- crates/resources/src/base/dialog_overrides/patches_castle.rs) and this
 -- tree's dialog_screen_buttons.sql. The two are held in step by
 -- base/dialog_overrides/patch_seed_agreement_castle.rs and by the
 -- content-engine dialog_button_linter. The same packet closed the 5861

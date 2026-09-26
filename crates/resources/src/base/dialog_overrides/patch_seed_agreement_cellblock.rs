@@ -47,7 +47,7 @@ const ROSTER: [u32; 12] = [
     2299, 4001, 5022, 3999, 5023, 2309, 2516, 5859, 2305, 4000, 2308, 2518,
 ];
 
-/// `CARGO_MANIFEST_DIR` is `<workspace>/crates/services`, so two hops up
+/// `CARGO_MANIFEST_DIR` is `<workspace>/crates/resources`, so two hops up
 /// land on the workspace root.
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")

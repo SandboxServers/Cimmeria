@@ -50,7 +50,7 @@ use super::patch::{ButtonPlan, DialogPatch};
 /// `DialogWin` draws Accept (2) and Generic1-3 (4, 5, 6): both button
 /// types below are drawable. No row changes `ui_screen_type` — that is
 /// DU-04 / DU-05 territory.
-pub const CASTLE_DIALOG_PATCHES: &[DialogPatch] = &[
+pub(super) const CASTLE_DIALOG_PATCHES: &[DialogPatch] = &[
     // 2573 — Sgt. Gerschon's Human/Tau'ri offer of mission 701. Accept
     // shipped on all 7 screens (113552-113558), so a player could accept
     // off screen one without reading the briefing. Not a soft-lock —

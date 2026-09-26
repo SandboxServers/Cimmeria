@@ -20,7 +20,7 @@
 --
 -- The seed is the committed record; what the client actually renders is
 -- the startup patch in
--- crates/services/src/base/dialog_overrides/patches_cellblock.rs, and the
+-- crates/resources/src/base/dialog_overrides/patches_cellblock.rs, and the
 -- test module in that file fails if the two ever disagree. Do not restore
 -- these rows from the cooked PAK without deleting the matching patch rows.
 --

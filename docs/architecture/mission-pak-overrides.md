@@ -64,19 +64,19 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 
 | Concern | File | Symbol |
 |---|---|---|
-| Per-mission XML patch + insertion-point spec | `crates/services/src/base/mission_overrides.rs` | `MissionOverride`, `MISSION_OVERRIDES`, `apply_override` |
-| Apply patches at PAK load + bump metadata | `crates/services/src/base/resources/mod.rs:162-236` | `ResourceCache::apply_mission_overrides` |
-| Track which element IDs were patched | `crates/services/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
+| Per-mission XML patch + insertion-point spec | `crates/resources/src/base/mission_overrides.rs` | `MissionOverride`, `MISSION_OVERRIDES`, `apply_override` |
+| Apply patches at PAK load + bump metadata | `crates/resources/src/base/resources/mod.rs:162-236` | `ResourceCache::apply_mission_overrides` |
+| Track which element IDs were patched | `crates/resources/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
 | Three-way `onVersionInfo` reply | `crates/services/src/base/cooked_data.rs:21-123` | `handle_version_info_request` |
 | Push patched XML after the reply | `crates/services/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
 | Wire encoder for `onVersionInfo` with `InvalidKeys` | `crates/services/src/mercury/protocol/resources.rs:80-113` | `build_version_info` |
 | Wire-format guard | `crates/services/src/mercury/protocol/tests.rs:159-171` | `version_info_per_key_invalidation_round_trips_through_encoder` |
-| Dialog full regeneration | `crates/services/src/base/dialog_overrides/mod.rs` | `DialogOverride`, `DialogScreen`, `DialogButton`, `DIALOG_OVERRIDES`, `generate_dialog_xml` |
-| Dialog patch of a shipped entry | `crates/services/src/base/dialog_overrides/patch.rs` | `DialogPatch`, `ButtonPlan`, `apply_dialog_patch`, `apply_dialog_patches` |
-| Per-zone dialog patch tables | `crates/services/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES` |
-| Shared Server-Build dialog emitter | `crates/services/src/base/dialog_overrides/emit.rs` | `emit_cooked_dialog`, `escape_xml_attr`, `CookedDialog` |
-| Cooked-dialog reader | `crates/services/src/base/dialog_overrides/parse.rs` | `parse_cooked_dialog` |
-| Apply both dialog kinds + bump | `crates/services/src/base/resources/mod.rs` | `ResourceCache::apply_dialog_overrides` |
+| Dialog full regeneration | `crates/resources/src/base/dialog_overrides/mod.rs` | `DialogOverride`, `DialogScreen`, `DialogButton`, `DIALOG_OVERRIDES`, `generate_dialog_xml` |
+| Dialog patch of a shipped entry | `crates/resources/src/base/dialog_overrides/patch.rs` | `DialogPatch`, `ButtonPlan`, `apply_dialog_patch`, `apply_dialog_patches` |
+| Per-zone dialog patch tables | `crates/resources/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES` |
+| Shared Server-Build dialog emitter | `crates/resources/src/base/dialog_overrides/emit.rs` | `emit_cooked_dialog`, `escape_xml_attr`, `CookedDialog` |
+| Cooked-dialog reader | `crates/resources/src/base/dialog_overrides/parse.rs` | `parse_cooked_dialog` |
+| Apply both dialog kinds + bump | `crates/resources/src/base/resources/mod.rs` | `ResourceCache::apply_dialog_overrides` |
 
 ## The XML-index gotcha
 
@@ -118,13 +118,13 @@ The chain advances from step 2121 (index 0) to step 80641 (index 3). The client'
 
 The advance from index 0 → index 1 is a single-step delta, the guard accepts, and the player sees "Equip the P90".
 
-The same gotcha applies to mission 622, which now injects **two** steps for its sequenced loot split: `2113` ("Search the nearby corpses") is index 0, `80623` ("Search the NID Guard's body") must land at index 1, and `80622` ("Equip the pistol") at index 2. This is why mission 622 has two `MissionOverride` entries that must stay in registry order — the first is `insert_after_step_id: 2113` (injects 80623), the second is `insert_after_step_id: 80623` (injects 80622, anchoring on the just-injected step). Each advance is a single-step delta (2113→80623→80622), which the guard accepts. The regression test that pins the ordering is `override_622_injects_guard_then_equip_in_order` in `crates/services/src/base/mission_overrides.rs` (and `override_641_lands_between_2121_and_3563` pins the same discipline for mission 641).
+The same gotcha applies to mission 622, which now injects **two** steps for its sequenced loot split: `2113` ("Search the nearby corpses") is index 0, `80623` ("Search the NID Guard's body") must land at index 1, and `80622` ("Equip the pistol") at index 2. This is why mission 622 has two `MissionOverride` entries that must stay in registry order — the first is `insert_after_step_id: 2113` (injects 80623), the second is `insert_after_step_id: 80623` (injects 80622, anchoring on the just-injected step). Each advance is a single-step delta (2113→80623→80622), which the guard accepts. The regression test that pins the ordering is `override_622_injects_guard_then_equip_in_order` in `crates/resources/src/base/mission_overrides.rs` (and `override_641_lands_between_2121_and_3563` pins the same discipline for mission 641).
 
 ## Metadata bump policy
 
 The category's `MetaData` value is what the client compares against to decide whether to refresh anything at all. We need a fresh value when the override content changes — otherwise the client never refetches — but we also need it to be **stable across server starts**, because otherwise every reconnect re-invalidates the same entries even when nothing changed (and incidentally racks up unnecessary `resourceFragment` traffic on every connection).
 
-The bump is content-derived (`crates/services/src/base/resources/mod.rs:204-223`):
+The bump is content-derived (`crates/resources/src/base/resources/mod.rs:204-223`):
 
 ```rust
 let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -151,9 +151,9 @@ What makes dialogs different from missions: the server's `displayDialog` path ca
 
 ### Two override kinds
 
-**Full regeneration** — `DialogOverride`, in `crates/services/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible.
+**Full regeneration** — `DialogOverride`, in `crates/resources/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible.
 
-**Patch** — `DialogPatch`, in `crates/services/src/base/dialog_overrides/patch.rs`. Parses the entry the client already shipped, edits only what the plan names, and re-emits. Use it for one of the 5,405 dialogs the game shipped. Restating tens of screens of voiced dialogue in a Rust source file to move one button is a transcription error waiting to happen; a patch cannot make that mistake, because it never retypes the text.
+**Patch** — `DialogPatch`, in `crates/resources/src/base/dialog_overrides/patch.rs`. Parses the entry the client already shipped, edits only what the plan names, and re-emits. Use it for one of the 5,405 dialogs the game shipped. Restating tens of screens of voiced dialogue in a Rust source file to move one button is a transcription error waiting to happen; a patch cannot make that mistake, because it never retypes the text.
 
 A patch declares a dialog id, an optional replacement `ui_screen_type`, and one of three button plans:
 
@@ -219,22 +219,22 @@ When you want a new client-visible step to appear in the quest log:
 
 1. **Add the server-side step row** in `db/resources/Missions/Seed/mission_steps.sql`. The chain engine reads this for `advance_step` / `step_status` evaluation. Pick a step ID well above the canonical PAK's range (the override modules use `80<mission_id>` — e.g., `80622` for a mission-622 step — so collisions are obvious).
 2. **Add the matching objective row** in `db/resources/Missions/Seed/mission_objectives.sql`. Use a single space (`" "`) for `display_log_text` — see [Why a single-space objective display text](#why-a-single-space-objective-display-text) below for the rationale.
-3. **Add a `MissionOverride` entry** to the `MISSION_OVERRIDES` slice in `crates/services/src/base/mission_overrides.rs`. The `injected_steps_xml` must use the same step ID and objective ID as the SQL rows; `insert_after_step_id` must be the step the chain is advancing **from** (not the one it's advancing to).
+3. **Add a `MissionOverride` entry** to the `MISSION_OVERRIDES` slice in `crates/resources/src/base/mission_overrides.rs`. The `injected_steps_xml` must use the same step ID and objective ID as the SQL rows; `insert_after_step_id` must be the step the chain is advancing **from** (not the one it's advancing to).
 4. **Reference the new step ID in the relevant content chain action.** Example: chain 1003's `advance_step` with `target_id=622, target_key='80623'` advances mission 622 from step 2113 to the new Guard-search step 80623; chain 1005 then advances 80623 → 80622 (`db/resources/Content/Seed/castle_cellblock_chains.sql`, chains 1001–1007).
 
 Cross-check: the server-side seed (`mission_steps.sql`, `mission_objectives.sql`) and the client-side override (`MISSION_OVERRIDES`) must agree on `StepID`, `ObjectiveID`, and the `IsHidden` / `IsOptional` flags. The wire message `onObjectiveUpdate` only carries the ID and status, so any drift surfaces as a missing UI line on the player's screen even though the chain engine thinks it's making progress.
 
 ### Why a single-space objective display text
 
-The original game's mission XML uses the step's `<StepDisplayLogText>` for the player-visible objective string and leaves the per-objective `<DisplayLogText>` as a single space. See `_622` step 2113 / objective 2452 and `_641` step 2121 / objective 4116 in the canonical PAK. Putting the real text on both produces a visibly duplicated line in the live mission log — a regression observed on the Frost-step UI before this convention was adopted. The regression guard for this is `objective_display_text_is_blank_to_avoid_double_render` in `crates/services/src/base/mission_overrides.rs:258-271`.
+The original game's mission XML uses the step's `<StepDisplayLogText>` for the player-visible objective string and leaves the per-objective `<DisplayLogText>` as a single space. See `_622` step 2113 / objective 2452 and `_641` step 2121 / objective 4116 in the canonical PAK. Putting the real text on both produces a visibly duplicated line in the live mission log — a regression observed on the Frost-step UI before this convention was adopted. The regression guard for this is `objective_display_text_is_blank_to_avoid_double_render` in `crates/resources/src/base/mission_overrides.rs:258-271`.
 
 ## Testing the override path
 
 Three layers of regression coverage:
 
-- **Unit tests on the patcher** (`crates/services/src/base/mission_overrides.rs:146-271`, 5 tests) — XML insertion-point arithmetic, malformed-input refusal, the index-pinning guard for mission 641, and the duplicate-render guard for objective display text.
+- **Unit tests on the patcher** (`crates/resources/src/base/mission_overrides.rs:146-271`, 5 tests) — XML insertion-point arithmetic, malformed-input refusal, the index-pinning guard for mission 641, and the duplicate-render guard for objective display text.
 - **Wire-format guard** on the encoder (`crates/services/src/mercury/protocol/tests.rs:159-171`) — pins that `build_version_info` accepts `&[u32]` and that empty vs populated keys produce different output sizes. Catches a future signature change that drops the slice or makes it optional.
-- **Dialog emitter, parser and patch tests** (`crates/services/src/base/dialog_overrides/`) — byte-exact emitter pins for a screen with zero, one and two buttons; parse/emit round trips that prove escaped text and `&#xA;` survive verbatim; patch tests on inline QA-shape fixtures proving `OnlyOn` leaves exactly one button on the named screen and `StripAll` leaves none while every speaker, screen id and body is unchanged; and `LogCapture` guards on all three skip warns.
+- **Dialog emitter, parser and patch tests** (`crates/resources/src/base/dialog_overrides/`) — byte-exact emitter pins for a screen with zero, one and two buttons; parse/emit round trips that prove escaped text and `&#xA;` survive verbatim; patch tests on inline QA-shape fixtures proving `OnlyOn` leaves exactly one button on the named screen and `StripAll` leaves none while every speaker, screen id and body is unchanged; and `LogCapture` guards on all three skip warns.
 - **Chain-replay tests** for the two missions that use this mechanism (`crates/services/src/cell/content/chain_replay_tests/mission_622.rs` — the sequenced Frost → 80623 → Guard → 80622 → equip flow, the per-step re-loot guards, and the login-restore chains 1006/1007; `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` for chains 1055/1066). These exercise the full `chain_id → trigger → condition → action` round-trip against the seeded `resources.content_*` tables, including the equip-step gating.
 
 See [TESTING.md](../../TESTING.md) for the picker that maps these test types to bug shapes.

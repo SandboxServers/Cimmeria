@@ -4,7 +4,7 @@
 //!
 //! Split out of [`super::overrides`] when patch-mode overrides pushed that
 //! file past the 700-line cap. The engine's own tests live next to the code,
-//! in `crates/services/src/base/dialog_overrides/`.
+//! in `crates/resources/src/base/dialog_overrides/`.
 
 use super::super::*;
 

@@ -17,7 +17,7 @@
 /// 3. This constant
 /// 4. `db/resources/Archetypes/Seed/archetype_ability_tree.sql` — ability
 ///    tree rows for the new archetype (or accept empty)
-/// 5. `crates/services/src/base/chardef.rs` — CharDefId entries that
+/// 5. `crates/resources/src/base/chardef.rs` — CharDefId entries that
 ///    reference the new archetype (or accept that no character can be
 ///    created with it)
 /// 6. `crates/services/src/mercury/world_data/stats.rs::archetype_ability_tree`

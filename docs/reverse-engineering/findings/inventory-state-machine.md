@@ -44,7 +44,7 @@ Container IDs are integers 1–20. They are transmitted on the wire inside `InvI
 | 19 | `INV_TEAM_BANK` | — | Team/guild bank |
 | 20 | `INV_COMMAND_BANK` | — | Command bank |
 
-**Evidence**: `crates/entity/src/inventory.rs` constants; slot counts from `crates/services/src/base/resources.rs` `item_allows_container` table.
+**Evidence**: `crates/entity/src/inventory.rs` constants; slot counts from `crates/resources/src/base/resources/mod.rs` `item_allows_container` table.
 
 **Equipment slots**: Container IDs 4–14 correspond to the 11 equipment body slots. Each has capacity 1 (single item). Moving an item to one of these containers via `moveItem` constitutes an equip operation. The server validates that the item's `itemType` permits the target container via the `item_allows_container` check in `move_/mod.rs`.
 

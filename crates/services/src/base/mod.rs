@@ -19,7 +19,6 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 pub(crate) mod character;
 pub(crate) mod character_create;
-pub(crate) mod chardef;
 pub(crate) mod connect_loop;
 pub(crate) mod console_authoring;
 pub(crate) mod contact_list;
@@ -27,17 +26,12 @@ pub(crate) mod cooked_data;
 pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
 pub(crate) mod deferred_aoi_lifecycle;
-pub(crate) mod dialog_overrides;
 pub(crate) mod dispatch;
 pub(crate) mod gm_feedback;
 pub(crate) mod gm_spawn;
 pub(crate) mod helpers;
-pub(crate) mod item_overrides;
 pub(crate) mod login;
-pub(crate) mod mission_overrides;
 pub(crate) mod outbox;
-pub(crate) mod resources;
-pub(crate) mod sequence_overrides;
 mod service;
 pub(crate) mod session_identity;
 pub(crate) mod tick_sync;
@@ -46,7 +40,15 @@ pub(crate) mod world_entry_appearance;
 pub(crate) mod world_entry_chat;
 
 #[cfg(test)]
+mod resource_fragment_tests;
+#[cfg(test)]
 mod smoke_tests;
+
+// Split out to `cimmeria-resources` (docs/architecture/services-crate-split.md,
+// wave W1b) and re-exported at their old paths.
+pub use cimmeria_resources::base::{
+    chardef, dialog_overrides, item_overrides, mission_overrides, resources, sequence_overrides,
+};
 
 pub use service::BaseService;
 
