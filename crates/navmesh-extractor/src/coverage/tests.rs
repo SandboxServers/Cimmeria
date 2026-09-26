@@ -351,14 +351,14 @@ fn decode_status_tracks_the_phases_that_have_landed() {
         "FracturedStaticMeshActor",
     ] {
         assert_eq!(
-            decode_status(class, false),
+            decode_status(class, InterpActorMode::Off),
             DecodeStatus::Decoded,
             "{class}"
         );
         assert_eq!(
-            decode_status(class, true),
+            decode_status(class, InterpActorMode::Classify),
             DecodeStatus::Decoded,
-            "{class} (unaffected by include_interp_actors)"
+            "{class} (unaffected by the InterpActor mode)"
         );
     }
     for class in [
@@ -368,7 +368,7 @@ fn decode_status_tracks_the_phases_that_have_landed() {
         "BlockingVolume",
     ] {
         assert_eq!(
-            decode_status(class, false),
+            decode_status(class, InterpActorMode::Off),
             DecodeStatus::ViaOwner,
             "{class}"
         );
@@ -382,32 +382,66 @@ fn decode_status_tracks_the_phases_that_have_landed() {
         "SomethingNew",
     ] {
         assert_eq!(
-            decode_status(class, false),
+            decode_status(class, InterpActorMode::Off),
             DecodeStatus::NotDecoded,
             "{class}"
         );
     }
 }
 
-/// InterpActor's decode status tracks the run, not a static table —
-/// this is the whole point of making it opt-in.
+/// InterpActor's decode status tracks the run, not a static table.
 #[test]
-fn interp_actor_decode_status_follows_the_run_flag_not_a_static_table() {
+fn interp_actor_decode_status_follows_the_run_mode_not_a_static_table() {
     assert_eq!(
-        decode_status("InterpActor", false),
+        decode_status("InterpActor", InterpActorMode::Off),
         DecodeStatus::NotDecoded
     );
-    assert_eq!(decode_status("InterpActor", true), DecodeStatus::Decoded);
+    assert_eq!(
+        decode_status("InterpActor", InterpActorMode::Classify),
+        DecodeStatus::Decoded
+    );
+}
+
+/// NA40: under `classify`, InterpActor is read, but one the classifier
+/// could not decide on is left out of the bake — so the class census
+/// must keep calling it a collision risk while any are counted, and
+/// stop once none are.
+#[test]
+fn the_class_census_flags_interp_actor_while_any_is_undecided() {
+    let census_risk = |undecided: u64| {
+        let mut skips = SkipTally::default();
+        skips.add_n(SkipReason::InterpActorExcluded, 3);
+        skips.add_n(SkipReason::InterpActorUndecided, undecided);
+        let report = MapCoverage {
+            chunks: vec![ChunkCoverage {
+                chunk: "M-00000001".into(),
+                skips,
+                class_census: [("InterpActor".to_string(), 5u64)].into_iter().collect(),
+                ..Default::default()
+            }],
+            interp_actors: InterpActorMode::Classify,
+            ..Default::default()
+        };
+        let mut out = Vec::new();
+        report.write_class_census_into(&mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        text.lines()
+            .find(|l| l.starts_with("InterpActor	"))
+            .expect("InterpActor row")
+            .to_string()
+    };
+    assert_eq!(census_risk(1), "InterpActor	5	1	yes	yes");
+    assert_eq!(census_risk(0), "InterpActor	5	1	yes	no");
 }
 
 /// Only classes that are BOTH collision-bearing AND unread are risks,
-/// with the run's `include_interp_actors` flag off (the default).
+/// with the run's InterpActor mode `Off`.
 #[test]
 fn collision_risk_is_the_intersection_not_the_whole_list() {
     let risky: Vec<&str> = COLLISION_BEARING_CLASSES
         .iter()
         .copied()
-        .filter(|c| decode_status(c, false) == DecodeStatus::NotDecoded)
+        .filter(|c| decode_status(c, InterpActorMode::Off) == DecodeStatus::NotDecoded)
         .collect();
     assert_eq!(
         risky,
@@ -418,9 +452,9 @@ fn collision_risk_is_the_intersection_not_the_whole_list() {
             // NA36 moved KActor / FracturedStaticMeshActor out of this
             // list unconditionally: they are always Decoded, so the
             // intersection with COLLISION_BEARING_CLASSES no longer
-            // includes them. InterpActor is back in this list by
-            // default (opt-in, off) — a future map's rebuild that
-            // forgets the flag still sees it flagged as a risk here.
+            // includes them. InterpActor is in this list under `Off`;
+            // under `classify` it is a risk only while the classifier
+            // leaves any undecided (tested above).
             // StaticMeshCollectionActor remains the one class with no
             // implementation at all.
             "InterpActor",

@@ -18,6 +18,7 @@
 //!
 //! Self-skips when the cooked asset bundle isn't present.
 
+use cimmeria_navmesh_extractor::interp_actor::InterpActorMode;
 use std::path::{Path, PathBuf};
 
 use cimmeria_navmesh_extractor::staticmesh::{
@@ -32,7 +33,7 @@ use cimmeria_navmesh_extractor::umap::enumerate_chunks;
 /// main repo checkout or a worktree under `.claude/worktrees/<slug>/`.
 /// Rather than hardcode a fixed climb count, walk ancestors until we
 /// find a directory that contains the expected `sgw/` sibling.
-fn castle_cellblock_dir() -> PathBuf {
+pub(crate) fn castle_cellblock_dir() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let suffix =
         PathBuf::from("sgw/Stargate Worlds-QA/Working/SGWGame/CookedPC/Maps/Castle_CellBlock");
@@ -56,7 +57,7 @@ fn castle_cellblock_dir() -> PathBuf {
         .unwrap_or_else(|| manifest.join(&suffix))
 }
 
-fn skip_if_missing(dir: &Path, what: &str) -> bool {
+pub(crate) fn skip_if_missing(dir: &Path, what: &str) -> bool {
     if !dir.exists() {
         eprintln!(
             "Skipping {what} — asset bundle not present at {}",
@@ -102,7 +103,12 @@ fn castle_cellblock_walks_static_mesh_actors() {
         // Index-less on purpose: this test measures the *direct*
         // component path, so archetype stubs must stay skips rather
         // than resolving through their prefab packages.
-        let walk = collect_static_mesh_instances(&pkg, None, &mut ArchetypeCache::default(), false);
+        let walk = collect_static_mesh_instances(
+            &pkg,
+            None,
+            &mut ArchetypeCache::default(),
+            InterpActorMode::Off,
+        );
         // `collect_static_mesh_instances` now returns an `ActorWalk` so
         // the coverage report can see *why* the rest were skipped; the
         // resolvable-instance count this test asserts on is unchanged.
@@ -154,7 +160,7 @@ fn castle_cellblock_walks_static_mesh_actors() {
 /// Look for a pre-built `PackageIndex` cache that a developer can drop
 /// into the project root. Returns `None` if absent — tests that need
 /// the index then self-skip.
-fn try_load_package_index() -> Option<cimmeria_upk_objects::PackageIndex> {
+pub(crate) fn try_load_package_index() -> Option<cimmeria_upk_objects::PackageIndex> {
     // An explicit cache path wins: the index is ~190 MB, so developers
     // keep it out of the repo tree.
     if let Ok(p) = std::env::var("CIMMERIA_PACKAGE_INDEX") {
@@ -222,7 +228,7 @@ fn castle_cellblock_with_index_produces_triangles() {
         return;
     }
 
-    let result = extract_chunk(&chunk, Some(&index), false).expect("extract_chunk");
+    let result = extract_chunk(&chunk, Some(&index), InterpActorMode::Off).expect("extract_chunk");
     eprintln!(
         "Castle_CellBlock fffefffd: actors_total={} resolved={} unresolved={} triangles={}",
         result.actors_total,
@@ -266,7 +272,7 @@ fn castle_cellblock_extract_chunk_without_index_emits_no_geometry() {
     let chunks = enumerate_chunks(&dir).expect("enumerate_chunks");
     let chunk = chunks.first().expect("at least one chunk");
 
-    let result = extract_chunk(chunk, None, false).expect("extract_chunk");
+    let result = extract_chunk(chunk, None, InterpActorMode::Off).expect("extract_chunk");
     assert_eq!(
         result.soup.triangle_count(),
         0,

@@ -2,6 +2,7 @@
 //! packages (NA27). CI has no client assets; the asset-backed numbers come
 //! from `occluder_extract measure` runs recorded in the data README.
 
+use cimmeria_navmesh_extractor::interp_actor::InterpActorMode;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
@@ -64,7 +65,7 @@ fn the_walk_sees_the_same_triangles_as_extract_map() {
     .unwrap();
     let totals = report.totals();
     let mut seen = (0usize, 0usize);
-    let stats = for_each_chunk(&map, Some(&index), false, |c| {
+    let stats = for_each_chunk(&map, Some(&index), InterpActorMode::Off, |c| {
         seen.0 += c.geometry.len();
         seen.1 += c.terrain.len();
     })
@@ -89,10 +90,15 @@ fn the_walk_emits_bigworld_metres_y_up() {
     let index = index_over(&root);
     let mut geometry = Vec::new();
     let mut terrain = Vec::new();
-    for_each_chunk(&root.join("Maps").join("Synth"), Some(&index), false, |c| {
-        geometry.extend_from_slice(&c.geometry);
-        terrain.extend_from_slice(&c.terrain);
-    })
+    for_each_chunk(
+        &root.join("Maps").join("Synth"),
+        Some(&index),
+        InterpActorMode::Off,
+        |c| {
+            geometry.extend_from_slice(&c.geometry);
+            terrain.extend_from_slice(&c.terrain);
+        },
+    )
     .unwrap();
     assert!(
         geometry
@@ -113,14 +119,19 @@ fn an_occluder_built_from_the_walk_blocks_at_the_ceiling_and_keeps_terrain_exact
     let root = cooked_root("occ-build");
     let index = index_over(&root);
     let mut b = OccluderBuilder::new(BuildParams::default(), "Synth").unwrap();
-    for_each_chunk(&root.join("Maps").join("Synth"), Some(&index), false, |c| {
-        for t in &c.geometry {
-            b.add_triangle(t, Source::Geometry);
-        }
-        for t in &c.terrain {
-            b.add_triangle(t, Source::Terrain);
-        }
-    })
+    for_each_chunk(
+        &root.join("Maps").join("Synth"),
+        Some(&index),
+        InterpActorMode::Off,
+        |c| {
+            for t in &c.geometry {
+                b.add_triangle(t, Source::Geometry);
+            }
+            for t in &c.terrain {
+                b.add_triangle(t, Source::Terrain);
+            }
+        },
+    )
     .unwrap();
     assert_eq!(b.terrain_fallback_count(), 0, "1 m patches at the origin");
     let occ = b.finish().unwrap();
