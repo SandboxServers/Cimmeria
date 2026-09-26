@@ -119,16 +119,47 @@ async fn assist_radius_check_rejects_non_positive_values() {
     }
 }
 
-/// No seeded template sets an assist radius yet: every seeded NPC uses the
-/// 10 u default. Update this test when a template tunes it.
+/// The one seeded tuning (D-NA09 UAT, colo 2026-09-26): template 24, the NID
+/// Guard, rallies the whole Castle_CellBlock barracks. At the 10 u default a
+/// shot barracks guard pulled in nobody (its neighbours stand 13.1, 19.3 and
+/// 25.0 u apart). Every seeded spawn's radius is read through the spawn
+/// loader, so this fails if the seed reverts, if another template starts
+/// tuning without this test learning about it, or if a barracks guard moves
+/// out of its neighbours' reach.
 #[tokio::test]
-async fn no_seeded_template_sets_an_assist_radius_yet() {
+async fn barracks_guards_assist_radius_covers_the_room() {
     let pool = require_db_or_skip!();
     let spawns = load_spawns_from_db(&pool).await.expect("load spawns");
-    let radii: Vec<_> = spawns
+    let tuned: std::collections::BTreeSet<_> = spawns
         .iter()
         .filter(|s| s.assist_radius.is_some())
-        .map(|s| (s.spawn_id, s.assist_radius))
+        .map(|s| s.template_id)
         .collect();
-    assert!(radii.is_empty(), "{radii:?}");
+    assert_eq!(
+        tuned,
+        [24].into_iter().collect(),
+        "only the NID Guard template tunes assist_radius"
+    );
+
+    let guards: Vec<_> = ["Barracks_Guard1", "Barracks_Guard2", "Barracks_Guard3"]
+        .iter()
+        .map(|tag| {
+            spawns
+                .iter()
+                .find(|s| s.tag.as_deref() == Some(*tag))
+                .unwrap_or_else(|| panic!("seeded spawn {tag}"))
+        })
+        .collect();
+    for a in &guards {
+        let radius = a.assist_radius.expect("a barracks guard tunes its radius");
+        for b in &guards {
+            let d = ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt();
+            assert!(
+                d <= radius,
+                "{:?} is {d:.1} u from {:?}, beyond its {radius} u assist radius",
+                a.tag,
+                b.tag
+            );
+        }
+    }
 }

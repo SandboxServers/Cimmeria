@@ -5,7 +5,28 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+use cimmeria_common::Vector3;
+
+use super::leash::policy::horizontal_distance;
 use super::record_decision_outcome;
+
+/// A route in flight is abandoned for a fresh one once the leader stands
+/// further than this (horizontally) from where the route ends, or further
+/// than its follow band's outer edge when that is wider.
+const FOLLOW_REPATH_HORIZONTAL: f32 = 5.0;
+
+/// ...or further than this up or down from it: a storey, not a jump.
+const FOLLOW_REPATH_VERTICAL: f32 = 4.0;
+
+/// Whether the route the follower is walking, ending at `route_end`, still
+/// leads to the leader now at `target_pos`. A follower used to walk every
+/// route to its end: after the player died and respawned 125 u away, Col
+/// Marsh walked the whole way to the respawn point while the player ran back
+/// past him, then turned round (colo 2026-09-26 02:34:48-02:35:18).
+fn route_is_stale(route_end: &Vector3, target_pos: &Vector3, max_d: f32) -> bool {
+    horizontal_distance(route_end, target_pos) > FOLLOW_REPATH_HORIZONTAL.max(max_d)
+        || (route_end.y - target_pos.y).abs() > FOLLOW_REPATH_VERTICAL
+}
 
 /// NPC follow behavior: maintain a distance band to a target entity.
 ///
@@ -16,11 +37,13 @@ use super::record_decision_outcome;
 /// - **Target in band** (`min <= dist <= max`) → no work; stay put.
 /// - **Target above max** → pathfind to a point one `min_distance`
 ///   short of the target so the NPC settles inside the band rather
-///   than running all the way up to the target. With no usable route,
-///   [`super::path_failure::UnroutedMove`] decides: on a meshed world the
-///   follower slides across the mesh toward that point or holds, keeping
-///   its target and the Follow state; only a meshless world walks the
-///   straight line (NA41).
+///   than running all the way up to the target. A route already in
+///   flight is kept while it still ends near the target, and replaced
+///   once the target has moved away from its end ([`route_is_stale`]).
+///   With no usable route, [`super::path_failure::UnroutedMove`] decides:
+///   on a meshed world the follower slides across the mesh toward that
+///   point or holds, keeping its target and the Follow state; only a
+///   meshless world walks the straight line (NA41).
 /// - **Target below min** → no work (NPCs don't back away).
 pub(super) async fn npc_ai_follow(
     npc_id: u32,
@@ -29,13 +52,13 @@ pub(super) async fn npc_ai_follow(
 ) {
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
-    let (target_id, npc_pos, min_d, max_d, nav_empty) = match space_mgr.get_entity(npc_id) {
+    let (target_id, npc_pos, min_d, max_d, route_end) = match space_mgr.get_entity(npc_id) {
         Some(e) => (
             e.follow_target_id,
             e.position,
             e.follow_min_distance,
             e.follow_max_distance,
-            e.nav_path.is_empty(),
+            e.nav_path.back().copied(),
         ),
         None => return,
     };
@@ -114,10 +137,25 @@ pub(super) async fn npc_ai_follow(
         return;
     }
 
-    if !nav_empty {
-        // Movement in flight toward the target.
-        record_decision_outcome("follow_band");
-        return;
+    if let Some(end) = route_end {
+        if !route_is_stale(&end, &target_pos, max_d) {
+            // Movement in flight toward the target.
+            record_decision_outcome("follow_band");
+            return;
+        }
+        // The leader has left the route's end behind (respawned, ran the
+        // other way): plan again from here rather than walk the old route
+        // out. The new route below replaces it.
+        tracing::debug!(
+            target: "npc_ai",
+            event = "follow_repath_stale",
+            npc_id,
+            target_id,
+            dist,
+            end_to_target = horizontal_distance(&end, &target_pos),
+            end_dy = target_pos.y - end.y,
+            "NPC AI: follow route no longer leads to the target -- replanning"
+        );
     }
 
     // Out of band — pathfind to a point one min_distance short of
@@ -366,6 +404,64 @@ mod tests {
         let npc = mgr.get_entity(101).unwrap();
         assert_eq!(npc.follow_target_id, None);
         assert_eq!(npc.ai_state(), AiState::Idle);
+    }
+
+    /// Colo 2026-09-26 02:34:48: the player died and respawned 125 u away,
+    /// and Col Marsh walked his whole 25-waypoint route to the respawn point
+    /// while the player ran back toward him. A route whose end the leader
+    /// has left behind must be replaced on the next tick, not walked out.
+    #[tokio::test]
+    async fn a_route_the_leader_has_left_behind_is_replanned() {
+        let mut mgr = make_space_mgr();
+        mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.spawn_npc(102, "Agnos", [50.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(101) {
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
+            npc.follow_target_id = Some(102);
+        }
+        let (tx, _rx) = mpsc::channel(8);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+        let end = |m: &SpaceManager| m.get_entity(101).unwrap().nav_path.back().copied();
+        assert!((end(&mgr).unwrap().x - 48.0).abs() < 0.01);
+
+        // The leader turns up on the other side of the follower.
+        mgr.get_entity_mut(102).unwrap().position = cimmeria_common::Vector3::new(0.0, 0.0, 30.0);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+        let end = end(&mgr).expect("a new route");
+        assert!(
+            end.x.abs() < 0.01 && (end.z - 28.0).abs() < 0.01,
+            "the route must now end 2 u short of the leader at (0, 0, 30), \
+             not at the old (48, 0, 0); got {end:?}"
+        );
+    }
+
+    /// A leader still near the end of the route in flight keeps that route:
+    /// the follower does not replan every tick while it closes the gap.
+    #[tokio::test]
+    async fn a_route_still_ending_near_the_leader_is_kept() {
+        let mut mgr = make_space_mgr();
+        mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.spawn_npc(102, "Agnos", [50.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(101) {
+            crate::cell::service::npc_ai::force_ai_state(npc, AiState::Follow);
+            npc.follow_target_id = Some(102);
+        }
+        let (tx, _rx) = mpsc::channel(8);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+        mgr.get_entity_mut(102).unwrap().position = cimmeria_common::Vector3::new(51.0, 0.0, 3.0);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+        let end = mgr
+            .get_entity(101)
+            .unwrap()
+            .nav_path
+            .back()
+            .copied()
+            .unwrap();
+        assert!((end.x - 48.0).abs() < 0.01 && end.z.abs() < 0.01, "{end:?}");
     }
 
     /// The unrouted fallback must keep the follower on its OWN height. It used
