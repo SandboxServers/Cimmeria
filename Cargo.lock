@@ -897,6 +897,7 @@ name = "cimmeria-base-methods"
 version = "0.1.0"
 dependencies = [
  "cimmeria-base-session",
+ "cimmeria-cell-catalog",
  "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-game",
