@@ -868,6 +868,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-base-methods"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-base-session",
+ "cimmeria-discord",
+ "cimmeria-entity",
+ "cimmeria-game",
+ "cimmeria-mercury",
+ "cimmeria-observability",
+ "cimmeria-resources",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-base-session"
 version = "0.1.0"
 dependencies = [
@@ -1200,6 +1218,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cimmeria-auth",
+ "cimmeria-base-methods",
  "cimmeria-base-session",
  "cimmeria-cell-catalog",
  "cimmeria-cell-cover",

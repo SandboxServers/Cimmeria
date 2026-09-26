@@ -25,6 +25,7 @@ use super::parity_tests::{harness, sinks_for, OTLP_LOG_SINKS};
 const IN_PROCESS_CRATES: &[&str] = &[
     "admin-api",
     "auth",
+    "base-methods",
     "base-session",
     "cell-cover",
     "cell-catalog",
@@ -265,6 +266,9 @@ fn scan_finds_known_targets() {
         // Emitted only by crates/wire-log (wave W3b of the services split).
         ("wire.in", Level::INFO),
         ("wire.out", Level::INFO),
+        // Emitted only by crates/base-methods (wave B2).
+        ("trade.atomic_swap", Level::DEBUG),
+        ("progression", Level::WARN),
         ("launcher.key_dump", Level::DEBUG),
         ("client.native", Level::TRACE),
     ] {

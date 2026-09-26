@@ -1,4 +1,20 @@
-use super::*;
+//! The `sgw_mission` round-trip tests that drive the cell's mission code on a
+//! `SpaceManager` (and, for two of them, the base's cell-to-base dispatch)
+//! together with the base's `handle_mission_update` and
+//! `query_saved_missions`.
+//!
+//! They were in `base::world_entry::methods::missions::tests`, which moved to
+//! `cimmeria-base-methods` in wave B2 of
+//! docs/architecture/services-crate-split.md. These three need both the cell
+//! and the base world-entry code, which are still in this crate, and only the
+//! facade will sit above both. The sentinels and the two fixture helpers are
+//! the originals', so the tests touch the same rows as before.
+
+use std::sync::Arc;
+
+use sqlx::PgPool;
+
+use crate::base::world_entry::methods::missions::{handle_mission_update, query_saved_missions};
 use crate::test_support::require_db_or_skip;
 
 /// Sentinel base for mission tests. Distinct from grant_cash (0x7000_0100),
@@ -45,153 +61,6 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
     .execute(pool)
     .await
     .expect("insert player");
-}
-
-/// Happy path: handle_mission_update INSERTs a row with all fields present.
-#[tokio::test]
-async fn inserts_new_mission_row_with_all_fields() {
-    let pool = require_db_or_skip!();
-    let account_id = TEST_PLAYER_BASE;
-    let player_id = TEST_PLAYER_BASE + 1;
-    cleanup(&pool, account_id, player_id).await;
-    insert_account_and_player(&pool, account_id, player_id).await;
-    let db_pool = Some(Arc::new(pool.clone()));
-
-    handle_mission_update(
-        player_id,
-        12345,
-        2,
-        Some(7),
-        &[1, 2, 3],
-        &[10, 20],
-        &[30],
-        &[],
-        5,
-        &db_pool,
-    )
-    .await;
-
-    // Filter on (player_id, mission_id) and use fetch_one so a regression
-    // that inserted multiple rows would surface either as the count check
-    // failing or as fetch_one's "expected one row" error.
-    let row_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
-    )
-    .bind(player_id)
-    .bind(12345)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(row_count, 1, "INSERT must produce exactly one row");
-
-    let row: (
-        i32,
-        i32,
-        Option<i32>,
-        Vec<i32>,
-        Vec<i32>,
-        Vec<i32>,
-        Vec<i32>,
-        i32,
-    ) = sqlx::query_as(
-        "SELECT mission_id, status, current_step_id, \
-                completed_step_ids, completed_objective_ids, \
-                active_objective_ids, failed_objective_ids, repeats \
-         FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
-    )
-    .bind(player_id)
-    .bind(12345)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(row.0, 12345, "mission_id");
-    assert_eq!(row.1, 2, "status");
-    assert_eq!(row.2, Some(7), "current_step_id");
-    assert_eq!(row.3, vec![1, 2, 3], "completed_step_ids");
-    assert_eq!(row.4, vec![10, 20], "completed_objective_ids");
-    assert_eq!(row.5, vec![30], "active_objective_ids");
-    assert_eq!(row.6, Vec::<i32>::new(), "failed_objective_ids");
-    assert_eq!(row.7, 5, "repeats");
-
-    cleanup(&pool, account_id, player_id).await;
-}
-
-/// Regression guard: the prior UPSERT omitted `repeats = EXCLUDED.repeats`,
-/// so re-completing a repeatable mission would appear to reset the counter
-/// on relog instead of advancing it. This test seeds a row with repeats=3,
-/// then runs an UPSERT with repeats=4 — the row must persist 4, not 3.
-#[tokio::test]
-async fn upsert_propagates_repeats_column_on_conflict() {
-    let pool = require_db_or_skip!();
-    let account_id = TEST_PLAYER_BASE + 100;
-    let player_id = TEST_PLAYER_BASE + 101;
-    cleanup(&pool, account_id, player_id).await;
-    insert_account_and_player(&pool, account_id, player_id).await;
-    let db_pool = Some(Arc::new(pool.clone()));
-
-    // Seed: mission already at repeats=3, status=1.
-    handle_mission_update(player_id, 9999, 1, None, &[], &[], &[], &[], 3, &db_pool).await;
-
-    // Re-complete: cell now sends status=2, repeats=4.
-    handle_mission_update(player_id, 9999, 2, None, &[], &[], &[], &[], 4, &db_pool).await;
-
-    let (status, repeats): (i32, i32) = sqlx::query_as(
-        "SELECT status, repeats FROM sgw_mission \
-         WHERE player_id = $1 AND mission_id = $2",
-    )
-    .bind(player_id)
-    .bind(9999)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(status, 2, "status must update on conflict");
-    assert_eq!(
-        repeats, 4,
-        "repeats must propagate via EXCLUDED.repeats on conflict — \
-         a 3 here means the UPSERT regressed to omitting the column",
-    );
-
-    cleanup(&pool, account_id, player_id).await;
-}
-
-/// Regression guard: query_saved_missions uses i8::try_from(r.status) with
-/// a clamp fallback. A pathological row whose `status` column doesn't fit
-/// in i8 must clamp to i8::MIN/MAX rather than wrap modulo 256 via `as i8`
-/// (which would silently turn a 200 into -56). Done at the query layer
-/// because the `status` column is `integer` so legitimate writes can
-/// outpace the i8 wire/cell representation.
-#[tokio::test]
-async fn query_saved_missions_clamps_out_of_range_status_to_i8_max() {
-    let pool = require_db_or_skip!();
-    let account_id = TEST_PLAYER_BASE + 200;
-    let player_id = TEST_PLAYER_BASE + 201;
-    cleanup(&pool, account_id, player_id).await;
-    insert_account_and_player(&pool, account_id, player_id).await;
-
-    // Insert directly via SQL so we can write a status that handle_mission_update
-    // (which takes i8) couldn't produce. 500 is well outside i8 range.
-    sqlx::query(
-        "INSERT INTO sgw_mission \
-            (player_id, mission_id, status, current_step_id, \
-             completed_step_ids, completed_objective_ids, \
-             active_objective_ids, failed_objective_ids, repeats) \
-         VALUES ($1, 1, 500, NULL, '{}', '{}', '{}', '{}', 0)",
-    )
-    .bind(player_id)
-    .execute(&pool)
-    .await
-    .expect("insert oversize-status mission");
-
-    let db_pool = Some(Arc::new(pool.clone()));
-    let missions = query_saved_missions(&db_pool, player_id).await;
-    assert_eq!(missions.len(), 1);
-    assert_eq!(
-        missions[0].status,
-        i8::MAX,
-        "status 500 (outside i8) must clamp to i8::MAX, not wrap modulo 256 to -12",
-    );
-
-    cleanup(&pool, account_id, player_id).await;
 }
 
 /// Cross-service triangle: cell completion → CellToBaseMsg::MissionUpdate
@@ -502,40 +371,6 @@ async fn second_completion_advances_persisted_repeats_counter_end_to_end() {
         mission.repeats, 2,
         "DB row must carry the cell's post-second-completion repeats — \
          a 1 here means the UPSERT regressed to dropping the column on conflict",
-    );
-
-    cleanup(&pool, account_id, player_id).await;
-}
-
-/// Companion: clamp on the negative side too. A status of -200 must
-/// clamp to i8::MIN (-128), not wrap to +56.
-#[tokio::test]
-async fn query_saved_missions_clamps_out_of_range_status_to_i8_min() {
-    let pool = require_db_or_skip!();
-    let account_id = TEST_PLAYER_BASE + 300;
-    let player_id = TEST_PLAYER_BASE + 301;
-    cleanup(&pool, account_id, player_id).await;
-    insert_account_and_player(&pool, account_id, player_id).await;
-
-    sqlx::query(
-        "INSERT INTO sgw_mission \
-            (player_id, mission_id, status, current_step_id, \
-             completed_step_ids, completed_objective_ids, \
-             active_objective_ids, failed_objective_ids, repeats) \
-         VALUES ($1, 1, -200, NULL, '{}', '{}', '{}', '{}', 0)",
-    )
-    .bind(player_id)
-    .execute(&pool)
-    .await
-    .expect("insert negative-status mission");
-
-    let db_pool = Some(Arc::new(pool.clone()));
-    let missions = query_saved_missions(&db_pool, player_id).await;
-    assert_eq!(missions.len(), 1);
-    assert_eq!(
-        missions[0].status,
-        i8::MIN,
-        "status -200 must clamp to i8::MIN, not wrap modulo 256 to +56",
     );
 
     cleanup(&pool, account_id, player_id).await;

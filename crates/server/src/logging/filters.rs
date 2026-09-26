@@ -81,6 +81,9 @@ use crate::otel;
 /// `cimmeria_base_session=debug` (wave B1) does the same for the BaseApp
 /// session layer: the send helpers, tick sync, the outbox, the contact list,
 /// the deferred-AoI buffer and cooked-data delivery.
+/// `cimmeria_base_methods=debug` (wave B2) does the same for the BaseApp's
+/// feature handlers: player load, inventory, vendors, trade, mail, missions
+/// and progression. `cimmeria_base_session` is not a prefix of it.
 ///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
@@ -112,6 +115,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_catalog=debug,\
                 cimmeria_minigame=debug,\
                 cimmeria_base_session=debug,\
+                cimmeria_base_methods=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -217,7 +221,10 @@ pub(crate) struct FileLayer {
 /// module the session crate took from `cimmeria-services` (wave B1):
 /// `world_entry::space_registry`, `world_entry_appearance::builders` and
 /// `world_entry_chat`, which the old `cimmeria_services::base::world_entry` row
-/// matched the same way.
+/// matched the same way. That old row still keeps the world-entry modules left
+/// in `cimmeria-services`; the feature handlers under it,
+/// `world_entry::methods`, are `cimmeria_base_methods::base::world_entry::methods`
+/// since wave B2.
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
@@ -240,6 +247,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
              cimmeria_services::base::world_entry=trace,\
              cimmeria_services::base::world_entry_appearance=trace,\
              cimmeria_base_session::base::world_entry=trace,\
+             cimmeria_base_methods::base::world_entry::methods=trace,\
              wire.firehose.aoi_position=trace",
     },
     FileLayer {

@@ -46,6 +46,10 @@ cimmeria-minigame = { workspace = true }
 # deferred AoI, outbox, tick sync, cooked data, contact list, crafting, ...),
 # split out of this crate (B1). Re-exported at the old `base::` paths.
 cimmeria-base-session = { workspace = true }
+# The BaseApp's DB-backed feature handlers (player load, inventory, vendors,
+# trade, mail, missions, progression), split out of this crate (B2).
+# Re-exported at `base::world_entry::methods`.
+cimmeria-base-methods = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
@@ -110,3 +114,7 @@ cimmeria-cell-cover = { workspace = true, features = ["test-support"] }
 # `test_default_connected_client_state`, re-exported from the `test_support`
 # shim, for the base tests that stay here.
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
+
+# `progression::persist_purchase`, which the AT-01 hydrate round-trip in
+# `world_entry_appearance::client_ready::player_init_row` drives.
+cimmeria-base-methods = { workspace = true, features = ["test-support"] }

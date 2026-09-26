@@ -47,6 +47,12 @@ pub use cimmeria_minigame::minigame;
 #[cfg(test)]
 mod mercury_aoi_tests;
 
+/// The `sgw_mission` round-trip tests that drive the cell's missions and
+/// the base's cell dispatch, both still in this crate, against the
+/// feature handlers in `cimmeria-base-methods`. Test-only.
+#[cfg(test)]
+mod mission_round_trip_tests;
+
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.
 #[cfg(test)]

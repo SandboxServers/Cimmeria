@@ -4,17 +4,16 @@
 //!
 //! Shared container constants and the duplicated `INVENTORY_ITEM_SELECT` SQL
 //! stay here in `mod.rs` (both loaders + the SQL drift guard reference them).
-//! The two loaders are re-exported so the existing
-//! `player_load::core::{query_player_load_data, query_inventory_items}` import
-//! paths stay valid.
+//! `query_player_load_data` is re-exported so the existing
+//! `player_load::core::query_player_load_data` import path stays valid.
 
 mod inventory_items;
 mod player_data;
 
 // Internal callers reach this via `inventory_items::`; only this module's
-// test mod uses the bare re-export, so gate it to the test build.
+// test mod uses the bare import, so gate it to the test build.
 #[cfg(test)]
-pub use inventory_items::query_inventory_items;
+use inventory_items::query_inventory_items;
 pub use player_data::query_player_load_data;
 
 // Used by the test modules below via `use super::*`. Gated to `cfg(test)` so

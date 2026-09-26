@@ -29,11 +29,12 @@ pub use cimmeria_resources::base::{
 };
 
 // Split out to `cimmeria-base-session` (wave B1) and re-exported at their old
-// paths, with their old visibility.
+// paths, with their old visibility. `gm_feedback` is not: its only users here
+// were the feature handlers, which moved to `cimmeria-base-methods` (B2).
 pub(crate) use cimmeria_base_session::base::{
     archetype_name, cinematic_aoi_hold, console_authoring, contact_list, cooked_data, crafting,
-    deferred_aoi, deferred_aoi_lifecycle, gm_feedback, gm_spawn, helpers, outbox, session_identity,
-    tick_sync, world_entry_chat, ConnectedClientState, PendingClientReadyInfo,
+    deferred_aoi, deferred_aoi_lifecycle, gm_spawn, helpers, outbox, session_identity, tick_sync,
+    world_entry_chat, ConnectedClientState, PendingClientReadyInfo,
 };
 pub use cimmeria_base_session::base::{BaseError, OnlinePlayer};
 

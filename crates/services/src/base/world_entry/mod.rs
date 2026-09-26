@@ -9,10 +9,12 @@
 //! - `gate_travel` -- gate transitions (replays world entry against a new space).
 //! - `cell_dispatch` -- CellToBaseMsg fan-out to per-feature handlers.
 //! - `methods` -- DB queries and feature handlers (player load, inventory, vendor,
-//!   mail, missions, progression). Renamed from `world_entry_methods` for parity
-//!   with this directory's naming.
+//!   trade, mail, missions, progression), in `cimmeria-base-methods` since wave
+//!   B2 of docs/architecture/services-crate-split.md.
 
-pub(crate) mod methods;
+// The feature handlers are in `cimmeria-base-methods` (wave B2), re-exported
+// at their old path, so `super::methods::…` in the siblings is unchanged.
+pub(crate) use cimmeria_base_methods::base::world_entry::methods;
 
 pub(crate) mod cell_dispatch;
 mod enable_entities;

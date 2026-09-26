@@ -601,8 +601,10 @@ mod tests {
         assert!(!is_network_noise_target(
             "cimmeria_services::cell::content::executor::dialog"
         ));
+        // The feature handlers, `cimmeria_services::base::world_entry::methods`
+        // in cimmeria-server until wave B2 moved them to cimmeria-base-methods.
         assert!(!is_network_noise_target(
-            "cimmeria_services::base::world_entry::methods::inventory::grant"
+            "cimmeria_base_methods::base::world_entry::methods::inventory::grant"
         ));
         assert!(!is_network_noise_target(
             "cimmeria_services::base::dispatch"

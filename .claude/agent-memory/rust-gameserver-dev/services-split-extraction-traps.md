@@ -139,6 +139,31 @@ Learned extracting `cimmeria-base-session` (B1, the first base-track wave):
 - **Something outside the wave may modify tracked files in the worktree** (the lane
   script changed mid-session). Stage explicit paths, never `git add -A`.
 
+Learned extracting `cimmeria-base-methods` (B2, a subtree two levels deep):
+
+- **Scan `super::` chains, not just `crate::` paths, for outside edges.** Deep files
+  write `super::super::super::super::helpers`; resolve each chain against the file's
+  module path (a short script) to list what the skeleton must re-export. B2's
+  skeleton: private `pub(crate) use` of the session modules in `base/mod.rs`, an
+  inline `pub mod world_entry { pub mod methods; }`, and a private one-item
+  `mod world_entry_appearance` for the builder the code names through that path.
+- **A test-only re-export of a PRODUCTION item that a higher crate's test needs**
+  cannot use the plain hook shape: the item is `pub` in a private module, so a
+  build without the feature fires `unreachable_pub`, and narrowing it breaks the
+  feature-gated `pub use` (E0364). Gate the re-export with
+  `#[cfg(any(test, feature = "test-support"))] #[doc(hidden)] pub use`, and put
+  `#[cfg_attr(not(any(test, feature = "test-support")), allow(unreachable_pub))]`
+  on the item.
+- **Run `clippy -p <new crate>` ON ITS OWN too.** In a combined `-p new -p services`
+  run, services' dev-dependency turns the new crate's `test-support` feature on for
+  its lib, which hides the no-feature `unreachable_pub` warning.
+- **A path-compat re-export in services can lose its last user** (`base::gm_feedback`
+  only served the moved handlers): services fails `unused_imports` right after the
+  move. Drop the name and say why in the comment.
+- **Revert-proof the tracing rows cheaply**: back up `filters.rs`, delete one row with
+  a script, run the one parity test with `nextest run -p cimmeria-server <name>`,
+  restore; repeat per row and for the `IN_PROCESS_CRATES` entry.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].
