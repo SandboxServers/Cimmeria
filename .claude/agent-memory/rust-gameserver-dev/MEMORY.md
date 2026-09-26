@@ -193,3 +193,4 @@
 - [npc-detector-telemetry-traps.md](npc-detector-telemetry-traps.md) — NA02: AI-path statics race across tests (use task_local); release detector state in destroy_entity AND destroy_space.
 - [npc-class-filter-and-dead-target-traps.md](npc-class-filter-and-dead-target-traps.md) — `all_npc_entity_ids` is mob-only (being-class Col Marsh never ticked; `spawn_npc` fixtures hide it); HEALTH alone is not dead.
 - [occluder-sizing-and-los-truth.md](occluder-sizing-and-los-truth.md) — NA27 occluder: paging + explorable trim made 23 worlds fit (90.6 MB); build-determinism and grazing-ray metric traps.
+- [interact-range-and-logcapture-traps.md](interact-range-and-logcapture-traps.md) — `get_entity` spans all spaces, so proximity gates need a space check (AT-04 fix); LogCapture tests flake under threaded cargo test, not nextest.
