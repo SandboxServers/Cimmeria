@@ -7,7 +7,7 @@ metadata:
 
 CAT-O (World/Space/Gate/Ring) audit completed 2026-05-31. Six findings filed.
 
-**Fact**: The gate-travel handler (`crates/services/src/cell/gate_travel.rs`)
+**Fact**: The gate-travel handler (`crates/cell-interactions/src/cell/gate_travel/`)
 validates the destination against the *global* `space_mgr.stargates` catalog
 only — it ignores the player's `knownStargateAddresses` (CELL_PRIVATE on
 GateTravel.def, persisted to `sgw_player.known_stargates`, hydrated into

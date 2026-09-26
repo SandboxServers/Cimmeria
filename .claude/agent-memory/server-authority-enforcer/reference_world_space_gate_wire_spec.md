@@ -12,7 +12,7 @@ cross-referenced to entity defs, Ghidra symbols, and Rust handler files.
 
 | Method | Index | Def location | Rust dispatch |
 |---|---|---|---|
-| `onDialGate` | 35 | `entities/defs/interfaces/GateTravel.def:70-74` (INT32 target, INT32 source) | `crates/services/src/cell/cell_methods/gate_travel.rs:17-37` → `crates/services/src/cell/gate_travel.rs:35-108` |
+| `onDialGate` | 35 | `entities/defs/interfaces/GateTravel.def:70-74` (INT32 target, INT32 source) | `crates/services/src/cell/cell_methods/gate_travel.rs:17-37` → `crates/cell-interactions/src/cell/gate_travel/mod.rs:93-256` |
 | `setRingTransporterDestination` | 91 | `SGWPlayer.def:848-852` (INT32 regionId, INT32 destinationId) | `crates/services/src/cell/cell_methods/player/world/mod.rs:207-228` → `crates/cell-content/src/cell/ring_transport/runtime/entry.rs:244-350` |
 | `onWorldInstanceReset` | 92 | `SGWPlayer.def:868-870` (no args, `<Exposed/>`) | `crates/services/src/cell/cell_methods/player/world/mod.rs:230-233` — **UNIMPLEMENTED STUB** |
 | `updateSystemOptions` | 93 | `SGWPlayer.def:872-875` (ARRAY of NameValuePair) | `crates/services/src/cell/cell_methods/player/world/mod.rs:235-238` → `handle_update_system_options` at lines 262-351 |

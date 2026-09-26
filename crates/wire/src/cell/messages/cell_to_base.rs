@@ -110,7 +110,7 @@ pub enum CellToBaseMsg {
     /// `destination_space_id` names an *exact* already-loaded space instance
     /// to join, rather than letting the cell pick one by world name. Used by
     /// the GM cross-instance transfer primitive
-    /// (`cimmeria_services::cell::space_transfer`) so `.goto <player>` lands in the
+    /// (`cimmeria_cell_interactions::cell::space_transfer`) so `.goto <player>` lands in the
     /// target's actual instance instead of a freshly-created private one
     /// (`find_or_create_space` always allocates a NEW space for an instanced
     /// world). `None` keeps the historical behavior — resolve by world name.

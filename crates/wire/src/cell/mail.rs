@@ -2,8 +2,8 @@
 //! `onMailHeaderRemove` serializers and the [`MailHeader`] they carry.
 //!
 //! The base builds these from its mail queries. The cell's mail handlers,
-//! which forward requests to the base, stay in
-//! `cimmeria_services::cell::mail`, which re-exports everything here.
+//! which forward requests to the base, are in
+//! `cimmeria_cell_interactions::cell::mail`, which re-exports everything here.
 //!
 //! Reference: `python/cell/SGWPlayer.py:requestMailHeaders()`, `requestMailBody()`
 

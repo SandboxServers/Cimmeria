@@ -15,7 +15,7 @@ Companions: [[multi-chain-dispatch-semantics]],
 ## 1. `interact_tag` short-circuit kills the `last_interaction_target` pin
 
 `last_interaction_target` has exactly ONE write site repo-wide:
-`crates/services/src/cell/interactions/dispatch/interact.rs:90`, inside
+`crates/cell-interactions/src/cell/interactions/dispatch/interact.rs:90`, inside
 `interactions::handle_interact`.
 
 `crates/services/src/cell/cell_methods/player/interaction/interact.rs:161-198`

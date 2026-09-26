@@ -3,8 +3,9 @@
 //!
 //! `cimmeria-services`' `cell` module re-exports each of these modules at the
 //! same path, beside the cell systems that sit above this crate (the rest of
-//! interactions, gate travel, space transfer, the cell-method handlers, the
-//! console and the service loop).
+//! interactions, gate travel and the space transfer in
+//! `cimmeria-cell-interactions`, the cell-method handlers, the console and the
+//! service loop).
 
 pub mod content;
 pub mod interactions;

@@ -7,7 +7,7 @@
 -- World 8 (Castle) rows 1-4 shipped with pos (0,0,0) in the recovered data:
 -- the names survived, the coordinates did not. Dying anywhere in Castle put
 -- the player at the world origin, because `resolve_respawn_target`
--- (crates/services/src/cell/respawn/mod.rs) found a
+-- (crates/cell-interactions/src/cell/respawn/mod.rs) found a
 -- matching row and returned its zeros — the safe fallbacks below it were
 -- unreachable precisely because the rows existed. See
 -- docs/analysis/castle-rebuild/audit.md defect B1 and decision D-CA11.
