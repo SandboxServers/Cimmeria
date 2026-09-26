@@ -98,7 +98,7 @@ The workspace crates and their **actual** inter-crate dependencies. An arrow
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
 flowchart TD
-    subgraph apps["Binaries and apps"]
+    subgraph grp_apps["Binaries and apps"]
         app["app"]
         clientLaunch["client-launch"]
         lab["lab"]
@@ -106,24 +106,24 @@ flowchart TD
         supervisor["supervisor"]
         sgwLauncher["sgw-launcher"]
     end
-    subgraph api["Admin and lab APIs"]
+    subgraph grp_api["Admin and lab APIs"]
         adminApi["admin-api"]
         labMcp["lab-mcp"]
     end
-    subgraph facade["Services facade"]
+    subgraph grp_facade["Services facade"]
         services["services"]
     end
-    subgraph cell["Cell (world simulation) track"]
+    subgraph grp_cell["Cell (world simulation) track"]
         cellCatalog["cell-catalog"]
         cellCover["cell-cover"]
     end
-    subgraph wire["Wire contract and edge services"]
+    subgraph grp_wire["Wire contract and edge services"]
         auth["auth"]
         resources["resources"]
         wire["wire"]
         wireLog["wire-log"]
     end
-    subgraph domain["Domain and engine"]
+    subgraph grp_domain["Domain and engine"]
         commands["commands"]
         contentEngine["content-engine"]
         defs["defs"]
@@ -131,13 +131,13 @@ flowchart TD
         game["game"]
         occluder["occluder"]
     end
-    subgraph foundation["Protocol and foundation"]
+    subgraph grp_foundation["Protocol and foundation"]
         common["common"]
         discord["discord"]
         mercury["mercury"]
         observability["observability"]
     end
-    subgraph tools["Tools, test clients and asset toolchain"]
+    subgraph grp_tools["Tools, test clients and asset toolchain"]
         clientTelemetry["client-telemetry"]
         contentEditor["content-editor"]
         navmeshExtractor["navmesh-extractor"]
@@ -147,7 +147,7 @@ flowchart TD
         upkObjects["upk-objects"]
         wireclient["wireclient"]
     end
-    subgraph test["Test-only"]
+    subgraph grp_test["Test-only"]
         testSupport["test-support (dev-only)"]
     end
     adminApi --> services

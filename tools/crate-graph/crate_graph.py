@@ -150,7 +150,9 @@ def render(full: bool = False) -> str:
         crates = by_group.get(g)
         if not crates:
             continue
-        lines.append(f'    subgraph {g}["{titles[g]}"]')
+        # Prefix group ids: a layer and a crate can share a name (the "wire" layer
+        # holds the `wire` crate), and Mermaid rejects a subgraph whose id equals a node id.
+        lines.append(f'    subgraph grp_{g}["{titles[g]}"]')
         for c in crates:
             label = short(c) + (" (dev-only)" if c in dev_only else "")
             lines.append(f'        {node_id(c)}["{label}"]')
