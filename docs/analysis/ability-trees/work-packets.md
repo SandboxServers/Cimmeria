@@ -1,7 +1,7 @@
 # Ability Trees Work Packets
 
 > Type: how-to. Audience: the coordinator and packet workers.
-> Updated: 2026-09-25. Companions: [launch prompt and decisions](README.md), [compatibility audit](audit.md), [source data](source/README.md), [testing playbook](../../../TESTING.md), [NPC AI ledger](../npc-ai-restoration/work-packets.md) (same dispatch rules).
+> Updated: 2026-09-26. Companions: [launch prompt and decisions](README.md), [compatibility audit](audit.md), [source data](source/README.md), [testing playbook](../../../TESTING.md), [NPC AI ledger](../npc-ai-restoration/work-packets.md) (same dispatch rules).
 
 ## Dispatch rules
 
@@ -55,15 +55,18 @@ AT-01 foundation ────┬──► AT-02 one source of truth ────
 AT-E1 client evidence├──► AT-03 spend gate + atomic debit ───────┼──► AT-08 respec ──► AT-09 close-out ─► AT-06 UAT
 AT-05a seed generator┼──► AT-04 trainer authority + feedback ────┤
                      ├──► AT-05b seed import (merge of AT-05a) ──┤
-                     └──► AT-07 level cap 50 + TP economy ───────┘
+                     ├──► AT-07 level cap 50 + TP economy ───────┤
+                     └──► AT-10 ability warmup (combat, beside) ──┘
 ```
+
+AT-10 was added on 2026-09-26. It touches the ability-use path, not the tree code, so it runs beside Wave 1.
 
 AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no behaviour change. AT-E1 and AT-05a run beside it because they touch no Rust file that AT-01 owns.
 
 **Contended files.** The coordinator merges these one packet at a time:
 
 - `cell/cell_methods/player/vendor/train.rs`: AT-01, then AT-04 (reject feedback only; the gates live in `gates/`).
-- `base/world_entry/methods/progression/mod.rs`: AT-03 (`handle_train_ability`), AT-07 (`grant_xp` and `LEVEL_XP`), AT-08 (respec handler). These are different functions. Merge AT-03 before AT-07.
+- `base/world_entry/methods/progression/mod.rs`: AT-03 (`handle_train_ability`), AT-07 (`grant_xp` and `LEVEL_XP`), AT-08 (respec handler). These are different functions. AT-07 merged first (#812, 2026-09-26), reversing the planned order because it was finished before AT-03 started; AT-03 rebases onto it and adds `ProgressionChanged` inside `grant_xp`.
 - `base/world_entry/methods/player_load/core/player_data.rs`: AT-02 (tree fetch), AT-03 (the new `sgw_player` columns in the `SELECT`).
 - `mercury/world_data/stats.rs`: AT-02 deletes the tree arrays, AT-07 deletes `LEVEL_EXP`.
 
@@ -77,7 +80,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-01
 
-**Status:** Ready. **Scope title:** Schema, shared tree catalog and the single trainability predicate. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
+**Status:** Integrated (#813). **Scope title:** Schema, shared tree catalog and the single trainability predicate. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
 
 **Scope:**
 
@@ -95,7 +98,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-E1
 
-**Status:** Ready. **Scope title:** Client evidence for the trainer UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra plus the client's Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only.
+**Status:** Integrated (#809). Question 2 (`onErrorCode` rendering) stays UNRESOLVED. **Scope title:** Client evidence for the trainer UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra plus the client's Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only.
 
 **Questions, each answered with an address or file:line:**
 
@@ -109,7 +112,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-05a
 
-**Status:** Ready. **Scope title:** Seed generator and import validator. **Depends:** the contract above (it writes the columns AT-01 creates). **Advisor:** database-persistence.
+**Status:** Integrated into AT-05b (#807). **Scope title:** Seed generator and import validator. **Depends:** the contract above (it writes the columns AT-01 creates). **Advisor:** database-persistence.
 
 **Scope:**
 
@@ -127,7 +130,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-02
 
-**Status:** BlockedDependency (AT-01). **Scope title:** One source of truth for `onAbilityTreeInfo`. **Advisor:** aoi-witness-broadcast (wire).
+**Status:** Writing (`trees/at02-one-source-of-truth`). **Scope title:** One source of truth for `onAbilityTreeInfo`. **Advisor:** aoi-witness-broadcast (wire).
 
 **Scope:**
 
@@ -139,7 +142,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-03
 
-**Status:** BlockedDependency (AT-01). **Scope title:** Archetype-wide spend gate and atomic purchase. **Advisor:** server-authority-enforcer, database-persistence, testing-validation-engineer.
+**Status:** Writing (`trees/at03-spend-gate`). **Scope title:** Archetype-wide spend gate and atomic purchase. **Advisor:** server-authority-enforcer, database-persistence, testing-validation-engineer.
 
 **Scope:**
 
@@ -147,6 +150,11 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 - `CellToBaseMsg::TrainAbility` carries `cost` and `tree_index`.
 - The base `UPDATE` in one statement: append to `abilities` and `trained_abilities`, `training_points -= cost`, `tree_points_spent += cost`, guarded by `training_points >= cost AND NOT (abilities @> ARRAY[id])`. It returns both counters, and `AbilityGranted` carries both back to the cell.
 - A structured WARN `abilities event=train_raw_cost_zero` when a purchased node's `raw_training_cost = 0`. The source value is never rewritten.
+
+**Added 2026-09-26:**
+
+- The TrainingPoints property send on `AbilityGranted`, moved here from AT-04.
+- AT-03 found that the cell never hydrates a player's `level`. It stays at 1, so on `main` the level gate blocks every node above level 1 in game. AT-03 carries `level` and `training_points` on `TreeProgress`, stamps them at `InitPlayerState`, and adds `BaseToCellMsg::ProgressionChanged`, which `grant_xp` sends after the persist.
 
 **Acceptance:**
 
@@ -157,25 +165,25 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-04
 
-**Status:** BlockedDependency (AT-01). **Scope title:** Trainer authority, reject feedback and the points refresh. **Advisor:** server-authority-enforcer.
+**Status:** Writing (`trees/at04-trainer-authority`). **Scope title:** Trainer authority, reject feedback and the points refresh. **Advisor:** server-authority-enforcer.
 
 **Scope:**
 
 - `gates/trainer.rs`. `last_interaction_target` must be set, must resolve to a live entity whose template is in `template_trainer_lists`, must offer this ability to this archetype, and must still pass `interact_target_in_range`. Reuse the interact gate; do not add a new distance constant.
 - Rejection feedback (D-AT08): `onErrorCode` with the codes AT-E1 names, then an `onTrainerOpen` re-send when a trainer is pinned. A replayed purchase of an already-known ability stays silent.
-- Handle `AbilityGranted` by sending `ON_ENTITY_PROPERTY(GENERICPROPERTY_TrainingPoints, remaining)` before the trainer re-send (audit A-07), using a shared builder with the level-up bundle.
+- ~~Handle `AbilityGranted` by sending the TrainingPoints property.~~ **Moved to AT-03 on 2026-09-26**, because AT-03 owns `AbilityGranted`.
 
 **Acceptance:** a unit test per trainer-gate rejection (no pin, pin not a trainer, not offered, out of range, target despawned), a byte-exact test of the points property and of each error code, and an ordering test for the grant burst.
 
 ### AT-05b
 
-**Status:** BlockedDependency (AT-01, AT-05a). **Scope title:** Seed import. Rebase AT-05a onto AT-01 and add the live-DB guards.
+**Status:** Writing (draft PR #807, retargeted to `main`). **Scope title:** Seed import. Rebase AT-05a onto AT-01 and add the live-DB guards.
 
 **Acceptance:** live-DB tests assert the per-archetype counts from the v1 handoff §11 against a fresh `db/database.sql`: Soldier 72, Commando 64, Scientist 59, Archaeologist 65, Asgard 66, Sholva 51, Goa'uld 62, and Jaffa 0 (documented, D-AT04). Also: one root and one level-50 capstone per branch, every `trainer_abilities` row matched by a tree row, and every tree row matched by an ability. The existing `handle_train_ability` live-DB fixture that assumed stub rows is updated.
 
 ### AT-07
 
-**Status:** BlockedDependency (AT-01, for the merge order only; the work can start in Wave 0 if a worker is free). **Scope title:** Level cap 50 and the v2 training-point economy (D-AT02). **Advisor:** combat-systems-advisor (level-scaled stats), database-persistence.
+**Status:** Integrated (#812). **Scope title:** Level cap 50 and the v2 training-point economy (D-AT02). **Advisor:** combat-systems-advisor (level-scaled stats), database-persistence.
 
 **Scope:**
 
@@ -187,6 +195,21 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 - AT-E1 question 4 decides whether the client needs anything at the cap.
 
 **Acceptance:** `grant_xp` tests at 20→21, 49→50 and at the cap (no level 51, no points past 50). A 50-entry table test against the workbook values. A live-DB test that the check accepts 50 and rejects 51.
+
+### AT-10
+
+**Status:** Writing (`trees/at10-ability-warmup`). **Scope title:** Ability warmup: charged abilities fire after the warmup, not at once. **Depends:** none; it runs beside Wave 1. **Advisor:** combat-systems-advisor, server-authority-enforcer.
+
+**Bug.** `cell/abilities/use_ability/handle.rs` (about lines 545-600, at `b5130081`) sends `Ability_Begin`, then `Ability_End`, and applies damage in the same pass. No warmup timer exists, so a charge-up ability deals its damage when the charge starts. The 2009 flow in `docs/gameplay/ability-system.md` ("Ability Lifecycle") started a warmup timer after `Ability_Begin` and ran `afterWarmup()` (ammo, `Ability_End`, targets, effects) when it expired. `docs/gap-analysis.md` lists "Ability warmup" as IM, which overstates it: only the animation exists. The tree seed puts many more warmup abilities within reach, so the campaign makes the bug more visible.
+
+**Scope:**
+
+- A per-caster pending cast, driven by the cell tick. Abilities with `warmup > 0` send `Ability_Begin`, then resolve through the existing post-warmup path when the timer expires. Abilities with `warmup = 0` are unchanged, byte for byte.
+- Derive the original semantics from the legacy Python `AbilityManager`/`AbilityInstance` and the client, not from guesses. For each, record the evidence in the worknote: when ammo and cooldown are committed, what cancels a warmup (movement, stun, death, the target dying or leaving range, a second ability press), how a cancel reaches the client, and whether range and target are re-checked at fire time.
+- NPC casters use the same path, with no second implementation.
+- Correct the gap-analysis row.
+
+**Acceptance:** a test that damage is not applied before the warmup expires and is applied once after it (the regression guard: it fails on today's code); one test per cancel trigger; a wire test of the begin-then-end order across the delay; a test that zero-warmup abilities are unchanged.
 
 ## Wave 2
 
@@ -202,7 +225,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
   - `tree_points_spent = 0`, `trained_abilities = '{}'`;
   - `naquadah -= cost`, guarded by `naquadah >= cost`.
 - Replay-safe: a second respec with nothing trained is a no-op that charges nothing.
-- Then send the known-abilities update, the points property and the trainer re-send. The price stays at today's 1000 until it is sourced (D-AT10). Remove refunded abilities from the hotbar the way AT-E1 question 5 says the client expects.
+- Then send the known-abilities update, the points property and the trainer re-send. The price stays at today's 1000 until it is sourced (D-AT10). **Hotbar (owner decision, 2026-09-26):** AT-E1 found that the client has no action-bar cleanup. The server strips refunded ability ids from the saved hotbar in the same respec transaction and re-sends the hotbar. If the client ignores a re-send mid-session, the bar is clean after relog.
 
 **Acceptance:**
 
@@ -211,7 +234,7 @@ AT-01 is the only bottleneck. It is kept small: schema, catalog, predicate, no b
 
 ### AT-09
 
-**Status:** BlockedDependency (all). **Scope title:** Close-out. Write `handoffs/session-resume.md` with the owner's UAT checklist, update `docs/project-status.md` and `docs/gap-analysis.md`, and put `/release` on the last PR.
+**Status:** BlockedDependency (all, including AT-10). **Scope title:** Close-out. Write `handoffs/session-resume.md` with the owner's UAT checklist, update `docs/project-status.md` and `docs/gap-analysis.md`, and put `/release` on the last PR.
 
 ## AT-06: owner UAT (colo, after the release)
 
@@ -225,4 +248,5 @@ For each showcase archetype, in order Soldier, Commando, Scientist, Archaeologis
 6. Walk away from the trainer and replay a train packet. It is rejected with feedback.
 7. Double-click a purchase. Only one point is spent.
 8. Level with `gmGiveXp` to 21 and then to 50. The XP bar behaves, there is no level 51, the capstone opens at 50 once its path and spend are met, and you have 50 points in total.
-9. Respec. Trainer nodes go away, and starter abilities stay. Points are refunded and 1000 naquadah is charged.
+9. Respec. Trainer nodes go away, and starter abilities stay. Points are refunded and 1000 naquadah is charged. Refunded abilities are gone from the hotbar, at the latest after a relog.
+10. Use a trained ability that has a charge-up (AT-10). Damage lands when the charge finishes, not when it starts. Interrupting the charge behaves as the AT-10 worknote records.
