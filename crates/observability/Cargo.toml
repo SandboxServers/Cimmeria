@@ -7,10 +7,8 @@ description = "Metrics facade — thin macro layer over the OpenTelemetry SDK's 
 
 [dependencies]
 # Tracks the same major as crates/server's OTel stack — re-vendor in
-# lockstep when bumping (the SDK's Meter type is the API we expose).
+# lockstep when bumping (the API crate's `Meter` is the type we expose).
+# The SDK and OTLP exporter are wired up only in crates/server; this facade
+# needs just the API, which keeps tonic/prost out of cimmeria-services'
+# dependency graph.
 opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "metrics"] }
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "metrics"] }
-
-[dev-dependencies]
-tokio = { workspace = true }

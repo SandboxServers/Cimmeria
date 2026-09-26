@@ -11,7 +11,6 @@ cimmeria-common = { workspace = true }
 tokio = { workspace = true }
 bytes = { workspace = true }
 tracing = { workspace = true }
-thiserror = { workspace = true }
 rand = { workspace = true }
 # ChaCha20 RNG — bitwise-deterministic across platforms (unlike StdRng).
 # Used by `test_harness::policy::DropProbability` and by
@@ -41,7 +40,6 @@ sha2 = { workspace = true }
 # Codec / framing
 tokio-util = { version = "0.7", features = ["codec"] }
 cipher = "0.5"
-digest = "0.11"
 
 [features]
 # Exposes `test_transport::TestTransport`, a recording `Transport` impl for
@@ -81,3 +79,9 @@ pcap-file = "2.0"
 # payloads from pcap records. Cross-platform, no system libpcap
 # needed.
 etherparse = "0.20"
+
+# The `md-5` package's library is named `md5` (`use md5::Md5` in
+# encryption/), which a source-only unused-dependency scan cannot map back to
+# the package name.
+[package.metadata.cargo-machete]
+ignored = ["md-5"]

@@ -41,7 +41,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 
 [features]
 # Opt-in seam for services-layer chaos integration tests that need to

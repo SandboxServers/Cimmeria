@@ -8,8 +8,6 @@ description = "Data-driven content system: trigger/condition/action chains repla
 [dependencies]
 cimmeria-common = { workspace = true }
 cimmeria-entity = { workspace = true }
-tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-thiserror = { workspace = true }
