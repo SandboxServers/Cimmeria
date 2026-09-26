@@ -24,6 +24,8 @@ use super::builders::build_on_client_ready_burst_bundle;
 use super::cinematic::send_cinematic;
 use super::cinematic_aoi_hold;
 
+mod player_init_row;
+
 /// Finalize world entry after the client sends `SGWPlayer.onClientReady`.
 ///
 /// Also resends BeingAppearance + onEntityTint. The first copy was sent in the
@@ -228,38 +230,20 @@ pub(crate) async fn handle_on_client_ready(
         bandolier_items,
         system_options,
         state_field,
-        known_stargates,
+        (known_stargates, tree_progress, level),
         body_set,
     ) = if let Some(pool) = db_pool {
-        #[derive(sqlx::FromRow)]
-        struct PlayerInitRow {
-            bandolier_slot: i32,
-            auto_reload: bool,
-            reload_on_activate: bool,
-            state_field: i32,
-            known_stargates: Vec<i32>,
-            // The character's body set, for its line-of-sight eye height
-            // on the cell (NA31).
-            bodyset: Option<String>,
-        }
-        let row: Option<PlayerInitRow> = match sqlx::query_as::<_, PlayerInitRow>(
-            "SELECT bandolier_slot, auto_reload, reload_on_activate, state_field, \
-                    known_stargates, bodyset \
-                 FROM sgw_player WHERE player_id = $1",
-        )
-        .bind(pending.player_id)
-        .fetch_optional(pool.as_ref())
-        .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!(
+        let row =
+            match player_init_row::load_player_init_row(pool.as_ref(), pending.player_id).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(
                     player_id = pending.player_id,
                     "Player init read failed; defaulting to XML defaults but logging error: {e}"
                 );
-                None
-            }
-        };
+                    None
+                }
+            };
         let (slot, opts, state_field, known, body_set) = match row {
             Some(r) => (
                 r.bandolier_slot,
@@ -271,7 +255,15 @@ pub(crate) async fn handle_on_client_ready(
                 // schema's non-negative CHECK), so the lossless cast
                 // back to the in-memory u32 bitmask is safe.
                 r.state_field as u32,
-                r.known_stargates,
+                (
+                    r.known_stargates,
+                    cimmeria_entity::cell_entity::TreeProgress {
+                        trained_abilities: r.trained_abilities,
+                        tree_points_spent: r.tree_points_spent,
+                        training_points: r.training_points,
+                    },
+                    r.level,
+                ),
                 r.bodyset,
             ),
             None => {
@@ -290,7 +282,7 @@ pub(crate) async fn handle_on_client_ready(
                     0,
                     cimmeria_entity::cell_entity::SystemOptions::default(),
                     0,
-                    Vec::new(),
+                    (Vec::new(), Default::default(), 1),
                     None,
                 )
             }
@@ -309,7 +301,7 @@ pub(crate) async fn handle_on_client_ready(
             Vec::new(),
             cimmeria_entity::cell_entity::SystemOptions::default(),
             0,
-            Vec::new(),
+            (Vec::new(), Default::default(), 1),
             None,
         )
     };
@@ -355,6 +347,8 @@ pub(crate) async fn handle_on_client_ready(
                 state_field,
                 access_level,
                 known_stargates,
+                tree_progress,
+                level,
                 character_name: player_name.clone(),
                 body_set,
             })

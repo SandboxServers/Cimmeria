@@ -184,25 +184,28 @@ pub enum CellToBaseMsg {
         gm_feedback_to: Option<u32>,
     },
 
-    /// Train a new ability for a player — debit one training point and
-    /// persist the new ability to `sgw_player.abilities`. The base side
-    /// owns `training_points` (it lives on `ConnectedClientState`) and
-    /// the DB UPDATE, so this round-trip is the only correct path.
+    /// Buy an ability-tree node for a player: debit the node's cost, add
+    /// it to the archetype-wide spend, and persist the ability to
+    /// `sgw_player.abilities` and `trained_abilities`, all in one `UPDATE`.
+    /// The base owns `training_points` and the DB row, so this round-trip
+    /// is the only correct path.
     ///
-    /// Cell pre-validates: ability exists, ability is in player's
-    /// archetype tree, level requirement met, prereqs known, not already
-    /// known. Base only validates training_points >= 1 (the cell's
-    /// per-player state isn't authoritative for that) and the DB UPDATE
-    /// returning `rows_affected == 1`.
+    /// The cell has already passed `ability_tree::evaluate_train` (every
+    /// node, spend and point gate). The base re-checks only what the row
+    /// itself decides atomically: `training_points >= cost` and the
+    /// ability not already known.
     ///
     /// On success, base responds with
-    /// [`crate::cell::messages::BaseToCellMsg::AbilityGranted`] so the
-    /// cell can add to `entity.abilities` and broadcast
-    /// `onKnownAbilitiesUpdate`.
+    /// [`crate::cell::messages::BaseToCellMsg::AbilityGranted`].
     TrainAbility {
         entity_id: u32,
         player_id: i32,
         ability_id: i32,
+        /// The node's `skill_point_cost` (`TrainPlan::cost`). Debited from
+        /// `training_points` and added to `tree_points_spent`.
+        cost: i32,
+        /// The node's branch (`TrainPlan::tree_index`), for logs.
+        tree_index: i32,
     },
 
     /// Grant an item to a player and persist to `sgw_inventory`.

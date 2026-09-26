@@ -153,6 +153,14 @@ pub enum BaseToCellMsg {
         /// check at `deprecated/python/cell/SGWPlayer.py:2060-2064`).
         /// Authoritative server-side value — never client-supplied.
         known_stargates: Vec<i32>,
+        /// `sgw_player.trained_abilities` + `tree_points_spent`, stamped
+        /// onto `CellEntity::tree_progress`. Ride the same SELECT as
+        /// `known_stargates`.
+        tree_progress: cimmeria_entity::cell_entity::TreeProgress,
+        /// `sgw_player.level`, from the same SELECT. Stamped onto
+        /// `CellEntity::level`, which the trainer's level gate reads;
+        /// without it every player trains as level 1.
+        level: i32,
         /// The selected character's display name, sourced from the base
         /// `ConnectedClientState.player_name`. Cached on
         /// `CellEntity::character_name` so cell-side seams (the `.`-console
@@ -219,23 +227,33 @@ pub enum BaseToCellMsg {
         quantity: i32,
     },
 
-    /// Base confirmed: ability trained, training point debited, persisted
-    /// to `sgw_player.abilities`. Sent in response to
-    /// [`crate::cell::messages::CellToBaseMsg::TrainAbility`] after the
-    /// DB UPDATE succeeded with `rows_affected == 1` and the
-    /// `ConnectedClientState.player_training_points` was decremented.
+    /// Base confirmed a trainer purchase: the one `UPDATE` appended the
+    /// ability to `sgw_player.abilities` and `trained_abilities`, debited
+    /// the node's cost and added it to `tree_points_spent`. Sent in
+    /// response to [`crate::cell::messages::CellToBaseMsg::TrainAbility`]
+    /// only; no other grant path uses it.
     ///
-    /// On receipt, the cell adds `ability_id` to `entity.abilities` and
-    /// broadcasts `onKnownAbilitiesUpdate` so the player's hotbar
-    /// refreshes. `training_points_remaining` is informational — useful
-    /// to send to the client as a `feedback` line ("You have N training
-    /// points left").
-    ///
-    ///
+    /// On receipt, the cell mirrors all three onto the entity, then sends
+    /// `onKnownAbilitiesUpdate`, the training-point property, and (with a
+    /// trainer pinned) the `onTrainerOpen` re-send.
     AbilityGranted {
         entity_id: u32,
         ability_id: i32,
-        training_points_remaining: i32,
+        /// `sgw_player.training_points` after the debit (`RETURNING`).
+        training_points: i32,
+        /// `sgw_player.tree_points_spent` after the increment (`RETURNING`).
+        tree_points_spent: i32,
+    },
+
+    /// The base persisted a level-up: the character's new level and
+    /// training points. Sent by `handle_grant_xp` after its `UPDATE`
+    /// commits, so the cell's trainer gates (level, `NotEnoughPoints`) read
+    /// the same values the base debits against instead of the
+    /// world-entry snapshot.
+    ProgressionChanged {
+        entity_id: u32,
+        level: i32,
+        training_points: i32,
     },
 
     /// Inventory item was used by the player (in response to

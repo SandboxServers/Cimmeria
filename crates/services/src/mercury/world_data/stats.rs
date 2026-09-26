@@ -88,16 +88,3 @@ pub fn archetype_ability_tree(archetype_id: i32) -> cimmeria_entity::abilities::
         _ => AbilityTreeData::default(), // Other archetypes: empty trees
     }
 }
-
-/// Total XP required to reach each level (from `python/common/Constants.py`).
-const LEVEL_EXP: [i32; 21] = [
-    0, // Level 1-10
-    100, 200, 300, 600, 1000, 1600, 2500, 4000, 6000, 9000, // Level 11-20
-    14000, 18000, 25000, 40000, 60000, 90000, 120000, 180000, 250000, 400000,
-];
-
-/// Get the XP required for a given level (clamped to table bounds).
-pub(in crate::mercury) fn level_exp(level: i32) -> i32 {
-    let idx = (level as usize).min(LEVEL_EXP.len() - 1);
-    LEVEL_EXP[idx]
-}

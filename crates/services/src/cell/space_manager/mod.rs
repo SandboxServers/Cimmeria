@@ -222,13 +222,11 @@ pub struct SpaceManager {
     /// (e.g., the right-click handler falls back to `592` so a fresh
     /// checkout without seeded bindings stays responsive).
     pub item_event_set_abilities: HashMap<(i32, i32), i32>,
-    /// Per-archetype ability training tree: `archetype_id → Vec<entry>`.
-    /// Loaded from `resources.archetype_ability_tree` at startup. Used by
-    /// the `train_ability` cell method to validate that a requested
-    /// ability is in the player's archetype tree, level requirement is
-    /// met, and all prerequisite abilities are known. See
-    /// Phase 5b.
-    pub archetype_ability_trees: HashMap<i32, Vec<super::spawner::ArchetypeAbilityTreeEntry>>,
+    /// Every archetype's ability tree, loaded from
+    /// `resources.archetype_ability_tree` at startup. Read by
+    /// `ability_tree::evaluate_train` for both the `trainAbility` purchase
+    /// gate and the trainer window's `trainable` byte.
+    pub ability_tree_catalog: crate::ability_tree::AbilityTreeCatalog,
     /// Trainer NPC ability lists: `(list_id, archetype_id) → Vec<ability_id>`.
     /// Loaded from `resources.trainer_abilities` at startup. Used by the
     /// trainer NPC interaction flow (`onInteract` → `sendAbilityList`) to
@@ -418,7 +416,7 @@ impl SpaceManager {
             sequence_map: HashMap::new(),
             item_containers: HashMap::new(),
             item_event_set_abilities: HashMap::new(),
-            archetype_ability_trees: HashMap::new(),
+            ability_tree_catalog: crate::ability_tree::AbilityTreeCatalog::default(),
             trainer_abilities: HashMap::new(),
             template_trainer_lists: HashMap::new(),
             item_defs: HashMap::new(),

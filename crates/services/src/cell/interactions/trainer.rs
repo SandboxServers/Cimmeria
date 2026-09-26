@@ -15,10 +15,11 @@
 //! trainer get an empty list back, which the client handles gracefully (no
 //! abilities shown but UI still opens).
 //!
-//! Trainable filter (mirrors Python `AbilityTrainer.canTrainAbility`):
-//! - Player level meets the tree entry's `level` requirement
-//! - All `prerequisite_abilities` are in the player's known set
-//! - The ability isn't already known
+//! Trainable filter: `crate::ability_tree::evaluate_train`, the same
+//! predicate `trainAbility` uses (mirrors Python
+//! `AbilityTrainer.canTrainAbility`): the ability exists, isn't already
+//! known, is in the player's archetype tree, and the player meets its level
+//! and prerequisites.
 //!
 //! Wire (verified against pcap + python):
 //!   `INT32 TrainerID, UINT32 count, [N × (INT32 abilityID + UINT8 trainable)], INT32 CostToRespec`
@@ -30,6 +31,7 @@
 
 use tokio::sync::mpsc;
 
+use crate::ability_tree::{evaluate_train, TrainContext, TrainReject};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -97,37 +99,30 @@ pub(crate) async fn try_open_trainer(
     // Same split rationale as above: `player_missing` is an entity-
     // lifecycle issue (player entity wasn't found at all), `no_archetype`
     // is a state issue (player entity exists but archetype_id is unset).
-    let (player_archetype, player_level, known_abilities) = {
-        let player = match space_mgr.get_entity(player_entity_id) {
-            Some(p) => p,
-            None => {
-                cimmeria_observability::counter!(
-                    "trainer_opens_total",
-                    "outcome" => "player_missing",
-                );
-                return false;
-            }
-        };
-        let arch = match player.archetype_id {
-            Some(a) => a,
-            None => {
-                tracing::warn!(
-                    player_entity_id,
-                    target_entity_id,
-                    "trainer interact: player has no archetype_id — skipping"
-                );
-                cimmeria_observability::counter!(
-                    "trainer_opens_total",
-                    "outcome" => "no_archetype",
-                );
-                return false;
-            }
-        };
-        (
-            arch,
-            player.level as i32,
-            player.abilities.known_ability_ids(),
-        )
+    let player = match space_mgr.get_entity(player_entity_id) {
+        Some(p) => p,
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "player_missing",
+            );
+            return false;
+        }
+    };
+    let player_archetype = match player.archetype_id {
+        Some(a) => a,
+        None => {
+            tracing::warn!(
+                player_entity_id,
+                target_entity_id,
+                "trainer interact: player has no archetype_id — skipping"
+            );
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "no_archetype",
+            );
+            return false;
+        }
     };
 
     // Lookup the abilities this trainer offers to this archetype.
@@ -156,47 +151,42 @@ pub(crate) async fn try_open_trainer(
         // empty-offering branch is tracked separately.
     }
 
-    // For each offered ability, compute `trainable` (1 if the player can
-    // train it now, 0 otherwise). Mirrors AbilityTrainer.canTrainAbility:
-    // ability must be in player's archetype tree, level requirement met,
-    // every prereq known, not already known.
-    let known_set: std::collections::HashSet<i32> = known_abilities.into_iter().collect();
-    let tree = space_mgr
-        .archetype_ability_trees
-        .get(&player_archetype)
-        .cloned()
-        .unwrap_or_default();
-
+    // For each offered ability, `trainable` is 1 exactly when a
+    // `trainAbility` for it would be forwarded: both sides call
+    // `evaluate_train`. The client enables the Train button from this byte
+    // alone, so a disagreement is a button that does nothing when pressed.
     let entries: Vec<(i32, u8)> = offered
         .iter()
         .map(|&ability_id| {
-            let trainable = if known_set.contains(&ability_id) {
-                0
-            } else if let Some(entry) = tree.iter().find(|e| e.ability_id == ability_id) {
-                let level_ok = player_level >= entry.level;
-                let prereqs_ok = entry
-                    .prerequisite_abilities
-                    .iter()
-                    .all(|p| known_set.contains(p));
-                if level_ok && prereqs_ok {
-                    1
-                } else {
+            let ctx = TrainContext {
+                catalog: &space_mgr.ability_tree_catalog,
+                ability_id,
+                ability_exists: space_mgr.ability_defs.contains_key(&ability_id),
+                player_id: player.player_id,
+                archetype_id: Some(player_archetype),
+                level: player.level as i32,
+                known: &player.abilities,
+                tree_points_spent: player.tree_progress.tree_points_spent,
+                training_points: player.tree_progress.training_points,
+            };
+            let trainable = match evaluate_train(&ctx) {
+                Ok(_) => 1,
+                Err(TrainReject::NotInArchetypeTree) => {
+                    tracing::warn!(
+                        target: "abilities",
+                        event = "trainer_offered_unbound",
+                        player_entity_id,
+                        trainer_entity_id = target_entity_id,
+                        list_id,
+                        archetype_id = player_archetype,
+                        ability_id,
+                        "Trainer offers ability not in player's archetype tree — \
+                         content gap (trainer_abilities row without matching \
+                         archetype_ability_tree entry)"
+                    );
                     0
                 }
-            } else {
-                tracing::warn!(
-                    target: "abilities",
-                    event = "trainer_offered_unbound",
-                    player_entity_id,
-                    trainer_entity_id = target_entity_id,
-                    list_id,
-                    archetype_id = player_archetype,
-                    ability_id,
-                    "Trainer offers ability not in player's archetype tree — \
-                     content gap (trainer_abilities row without matching \
-                     archetype_ability_tree entry)"
-                );
-                0
+                Err(_) => 0,
             };
             (ability_id, trainable)
         })
@@ -266,8 +256,8 @@ pub(crate) async fn try_open_trainer(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::ability_tree::{AbilityTreeCatalog, TreeNode};
     use crate::cell::space_manager::SpaceManager;
-    use crate::cell::spawner::ArchetypeAbilityTreeEntry;
     use tokio::sync::mpsc;
 
     pub(crate) fn make_mgr_with_trainer_and_player() -> SpaceManager {
@@ -283,6 +273,7 @@ pub(crate) mod tests {
             p.player_id = Some(100);
             p.archetype_id = Some(2);
             p.level = 1;
+            p.tree_progress.training_points = 1;
         }
 
         mgr.spawn_npc(200, "W", [5.0; 3], [0.0; 3]).unwrap();
@@ -291,29 +282,12 @@ pub(crate) mod tests {
         }
         mgr.template_trainer_lists.insert(25, 1);
         mgr.trainer_abilities.insert((1, 2), vec![597, 646, 641]);
-        mgr.archetype_ability_trees.insert(
-            2,
-            vec![
-                ArchetypeAbilityTreeEntry {
-                    ability_id: 597,
-                    tree_index: 1,
-                    level: 1,
-                    prerequisite_abilities: vec![],
-                },
-                ArchetypeAbilityTreeEntry {
-                    ability_id: 646,
-                    tree_index: 1,
-                    level: 1,
-                    prerequisite_abilities: vec![],
-                },
-                ArchetypeAbilityTreeEntry {
-                    ability_id: 641,
-                    tree_index: 1,
-                    level: 5,
-                    prerequisite_abilities: vec![],
-                },
-            ],
-        );
+        crate::test_support::seed_ability_defs(&mut mgr, &[597, 646, 641]);
+        mgr.ability_tree_catalog = AbilityTreeCatalog::from_nodes([
+            TreeNode::with_defaults(2, 1, 597, 1, vec![]),
+            TreeNode::with_defaults(2, 1, 646, 1, vec![]),
+            TreeNode::with_defaults(2, 1, 641, 5, vec![]),
+        ]);
 
         mgr
     }

@@ -189,6 +189,7 @@ last_updated: 2026-09-25
 | Map load sequence | CW | -- | base/world_entry/ | All 30+ client setup messages. See the cold-client direct-login callout above: the server sequence matches healthy entries, and the cause is unknown |
 | Stat sync to client | CW | -- | base/world_entry/methods/player_load | All stats sent on entry |
 | Ability tree sync | CW | -- | base/world_entry/methods/player_load | 3 trees per archetype |
+| Ability-tree purchase (spend gate, per-node cost) | NT | -- | ability_tree/gates/spend.rs, base/world_entry/methods/progression/train_ability.rs | AT-03 (2026-09-26): archetype-wide spend gate, per-node `skill_point_cost`, one guarded `UPDATE` (live-DB replay guard), point counter refreshed after each purchase. The cell's player level is now loaded at world entry and follows level-ups; before this, every player trained as level 1. No client run yet |
 | Zone transition | NT | -- | base/world_entry/gate_travel/ | **Changed 2026-09-25 (was IM).** The single-player hop is proven in-client: P1's Cellblock → Castle cross-world teleport was "CONFIRMED clean", with 16 missions reloaded and no errors (playtest README §3, 7:23 PM). The earlier IM reason, "multi-player sync incomplete", is now addressed in code: #737 introduces arriving players with the `SGWPlayer` ghost cascade once their client has loaded, and #640 (P45) adds a cross-space transfer primitive. Neither has a two-client run, hence NT rather than CW. Re-verified 2026-09-25 |
 | Forced position handling | CW | -- | services/cell/cell_methods | BASEMSG_FORCED_POSITION authoritative move. #644 bounded the snap-back recovery: nearest navmesh point, then respawner, then AABB clamp, with a 5-correction budget |
 | World-entry observability | CW | -- | base/world_entry/ | OTLP spans across the whole pipeline |
@@ -657,7 +658,7 @@ last_updated: 2026-09-25
 | Client notification | CW | -- | base/world_entry/methods/progression/ | 5 wire messages |
 | XP from mob kills | CW | -- | cell/abilities/death/side_effects.rs, loot_drop.rs:118 | 10×mob_level, Cell→Base pipeline |
 | XP curve | CW | -- | game/player.rs | LEVEL_XP[21] ported from Python Constants |
-| Level cap (20) | CW | -- | game/player.rs | MAX_LEVEL enforced |
+| Level cap (50) | CW | -- | game/player.rs | MAX_LEVEL = 50 and 1 training point per level (AT-07, D-AT02). Levels 21-50 of `LEVEL_XP` and the 1-point economy are PROJECT FINAL v2 values, not retail data |
 | DB persistence | CW | -- | sqlx | sgw_player.level + .exp |
 | Stat scaling on level-up | CW | -- | entity/stats/ | scale_for_level(), full heal on level-up |
 | Training points on level-up | CW | -- | game/player.rs | 2 TP/level, 38 by level 20 |

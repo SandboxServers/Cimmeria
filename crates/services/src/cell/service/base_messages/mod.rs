@@ -147,6 +147,8 @@ pub(super) async fn handle_base_message(
             state_field,
             access_level,
             known_stargates,
+            tree_progress,
+            level,
             character_name,
             body_set,
         } => {
@@ -182,6 +184,13 @@ pub(super) async fn handle_base_message(
                 if body_set.is_some() {
                     entity.body_set = body_set;
                 }
+                // Same reason as `known_stargates`: stamped here, not
+                // threaded into the argument-capped handler below.
+                entity.tree_progress = tree_progress;
+                // The trainer's level gate reads this. Before AT-03 nothing
+                // stamped a player's level, so every player trained as
+                // level 1. `max(1)` keeps a corrupt row from reading as 0.
+                entity.level = level.max(1) as u32;
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently
@@ -367,16 +376,33 @@ pub(super) async fn handle_base_message(
         BaseToCellMsg::AbilityGranted {
             entity_id,
             ability_id,
-            training_points_remaining,
+            training_points,
+            tree_points_spent,
         } => {
             ability_granted::handle_ability_granted(
-                entity_id,
-                ability_id,
-                training_points_remaining,
+                ability_granted::Granted {
+                    entity_id,
+                    ability_id,
+                    training_points,
+                    tree_points_spent,
+                },
                 tx,
                 space_mgr,
             )
             .await;
+        }
+
+        BaseToCellMsg::ProgressionChanged {
+            entity_id,
+            level,
+            training_points,
+        } => {
+            ability_granted::handle_progression_changed(
+                entity_id,
+                level,
+                training_points,
+                space_mgr,
+            );
         }
 
         BaseToCellMsg::ItemUsed {

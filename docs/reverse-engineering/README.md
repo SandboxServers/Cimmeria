@@ -66,6 +66,8 @@ The NPC AI restoration campaign's NA20 packet adds [`cover-world-placement.md`](
 
 Its NA31 packet adds [`being-eye-heights.md`](findings/being-eye-heights.md). The script pawn gives every being one stock UE3 cylinder, so eye heights come from each body set's reference skeletal-mesh bounds instead: 1.81 m for a human male, 2.12 m for a Jaffa male and 0.15 m for a rat. The finding also shows that `ErrorStrings.pak` code 39 (`CONDITION_FEEDBACK_LOS`) is the line-of-sight feedback the client has text for.
 
+The ability-trees campaign's AT-E1 packet adds [`ability-trainer-ui.md`](findings/ability-trainer-ui.md) — the Trainer/Ability window's native Lua bindings decompiled (`getTrainableList`/`getTrainableInfo`/`getTrainingTreeCount`/`buyTrainable`/`respecAbilities`), confirming the tree/trainer join is hidden-not-greyed at the byte level and that the client has no client-side level/XP table. The `onErrorCode` client-side rendering question is left explicitly UNRESOLVED — no Lua consumer exists anywhere in the client, but whether a native listener renders it was not traced.
+
 See [`findings/README.md`](findings/README.md) for the full per-doc index.
 
 ## Bible relationship

@@ -392,8 +392,8 @@ pub(crate) async fn handle_create_character(
         "INSERT INTO sgw_player \
          (account_id, player_name, extra_name, alignment, archetype, gender, \
           world_location, bodyset, level, title, pos_x, pos_y, pos_z, \
-          skin_color_id, components, world_id, abilities, access_level) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12, $13, $14, $15, $16) \
+          skin_color_id, components, world_id, abilities, access_level, training_points) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12, $13, $14, $15, $16, $17) \
          RETURNING player_id",
     )
     .bind(account_id as i32)
@@ -412,6 +412,9 @@ pub(crate) async fn handle_create_character(
     .bind(world_id)
     .bind(&abilities)
     .bind(access_level)
+    // v2 economy (D-AT02): a level-1 character starts with 1 training point.
+    // The column default is 0, so this bind is what gives it.
+    .bind(cimmeria_game::player::STARTING_TRAINING_POINTS as i32)
     .fetch_one(pool.as_ref())
     .await;
 
