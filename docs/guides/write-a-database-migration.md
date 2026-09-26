@@ -178,7 +178,7 @@ Three non-negotiables:
 2. **Sentinel IDs fit in `i32`** and are unique per test. Don't reuse sentinels across tests in the same crate.
 3. **Cleanup deletes by exact sentinel**, not by range. Range deletes will collide with other tests.
 
-The full pattern is in [`docs/architecture/integration-test-infra.md`](../architecture/integration-test-infra.md) and [`crates/services/src/test_support.rs`](../../crates/services/src/test_support.rs).
+The full pattern is in [`docs/architecture/integration-test-infra.md`](../architecture/integration-test-infra.md) and [`crates/test-support/src/live_db_gate.rs`](../../crates/test-support/src/live_db_gate.rs).
 
 ---
 
@@ -194,7 +194,7 @@ psql -h localhost -p 5433 -U w-testing -d sgw -f db/scripts/add_your_migration.s
 
 # 3. Run the live-DB tests:
 $env:DATABASE_URL = "postgres://w-testing:w-testing@localhost:5433/sgw"
-cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+tools/test-live-db.ps1
 
 # 4. Verify idempotency — run the migration a second time, expect no errors:
 psql -h localhost -p 5433 -U w-testing -d sgw -f db/scripts/add_your_migration.sql

@@ -325,60 +325,47 @@ mod tests {
     /// definition. The field itself is private, so `npc.ai_state = X` no
     /// longer compiles anywhere; this closes the one remaining door.
     ///
-    /// Scans every `.rs` file under `crates/`. Reverting any call site to the
-    /// raw writer — or adding a new one — fails this test.
+    /// Scans every `.rs` file under `crates/`, test code included. The two
+    /// allowed files are named by their path under their crate's `src/`, so
+    /// the allowlist still matches after `transition.rs` moves to another
+    /// crate (services-crate-split.md §2C moves it to cimmeria-cell-world).
+    /// Reverting any call site to the raw writer, or adding a new one, fails
+    /// this test.
     #[test]
     fn raw_ai_state_writer_is_called_only_from_the_transition_helper() {
+        use crate::test_support::source_scan::rust_sources;
+
         const RAW: &str = "replace_ai_state_unlogged";
-        let crates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("crates/ dir")
-            .to_path_buf();
+        // The setter's home in cimmeria-entity, and this file.
         let allowed = [
-            "entity/src/cell_entity/ai_state.rs",
-            "services/src/cell/service/npc_ai/transition.rs",
+            "cell_entity/ai_state.rs",
+            "cell/service/npc_ai/transition.rs",
         ];
         let mut offenders = Vec::new();
-        let mut stack = vec![crates_dir.clone()];
         let mut scanned = 0usize;
-        while let Some(dir) = stack.pop() {
-            let Ok(rd) = std::fs::read_dir(&dir) else {
+        let mut allowed_seen = 0usize;
+        for file in rust_sources() {
+            scanned += 1;
+            if allowed.contains(&file.src_rel.as_deref().unwrap_or("")) {
+                allowed_seen += 1;
                 continue;
-            };
-            for entry in rd.flatten() {
-                let path = entry.path();
-                let name = entry.file_name();
-                if path.is_dir() {
-                    if name != "target" && name != "node_modules" {
-                        stack.push(path);
-                    }
-                    continue;
-                }
-                if path.extension().is_none_or(|e| e != "rs") {
-                    continue;
-                }
-                scanned += 1;
-                let rel = path
-                    .strip_prefix(&crates_dir)
-                    .unwrap()
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                if allowed.contains(&rel.as_str()) {
-                    continue;
-                }
-                let Ok(text) = std::fs::read_to_string(&path) else {
-                    continue;
-                };
-                for (i, line) in text.lines().enumerate() {
-                    if line.contains(RAW) {
-                        offenders.push(format!("{rel}:{}: {}", i + 1, line.trim()));
-                    }
+            }
+            for (i, line) in file.read().lines().enumerate() {
+                if line.contains(RAW) {
+                    offenders.push(format!("{}:{}: {}", file.crates_rel, i + 1, line.trim()));
                 }
             }
         }
         assert!(
             scanned > 100,
             "scan found only {scanned} files; wrong root?"
+        );
+        // Each allowed path must name exactly one file, or a second crate
+        // with a `cell/service/npc_ai/transition.rs` would be waved through.
+        assert_eq!(
+            allowed_seen,
+            allowed.len(),
+            "each allowed path must match exactly one file under crates/*/src"
         );
         assert!(
             offenders.is_empty(),

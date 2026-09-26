@@ -65,5 +65,20 @@ the symptom that matters, not the diff.
   unstaged deletes plus staged adds.** Content survives, but the index
   shape does not; don't stash mid-move, re-stage with `git add -A <dir>`.
 
+## Backslashes do not survive an inline `python - <<'PY'` command
+
+The Bash tool rewrites `\\` to `\` in the command text before bash sees it,
+quoted heredoc or not. An anchor that ends a line with a Rust string
+continuation (`trace,\` then newline) therefore reaches Python as a line
+continuation, the anchor silently loses its newlines, and the replace
+finds nothing (seen 2026-09-26 on `filters.rs` and `test.yml`).
+
+**How to apply:** for any edit whose anchor contains a backslash, write the
+script to the scratchpad with the Write tool and run it, using raw strings;
+or use the Edit tool directly. In a raw string, never put the backslash
+right before the closing quotes: `r"""…\"""` is a SyntaxError (the `\"`
+escapes the quote). End the anchor one character earlier or include the
+trailing newline.
+
 Related: [[revert-verification-loses-uncommitted-fmt]],
 [[tooling-filter-and-path-traps]].

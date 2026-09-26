@@ -22,7 +22,12 @@ mod orchestrator_postgres;
 mod orchestrator_shards;
 pub mod wire_log;
 
-#[cfg(test)]
-mod live_db_gate;
+// Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
+// are re-exported from this module next to the crate's own fixtures.
 #[cfg(test)]
 pub(crate) mod test_support;
+
+// Guards `tools/test-live-db.{sh,ps1}`: every crate with a
+// `cimmeria-test-support` dev-dependency must be in the live-DB crate list.
+#[cfg(test)]
+mod live_db_wrapper_tests;

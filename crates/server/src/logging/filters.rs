@@ -178,6 +178,10 @@ pub(crate) struct FileLayer {
 /// Each row starts `off` and names module paths, which is why the
 /// `wire.firehose.*` targets are listed explicitly: moving a row off its
 /// module-path target would otherwise drop it from its file.
+///
+/// A module path here must name a module that exists: when a module moves
+/// crate its `module_path!()` changes and the row silently stops matching.
+/// `stale_target_tests` fails on a path that no longer resolves.
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
@@ -198,7 +202,6 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "world_entry.log",
         directives: "off,\
              cimmeria_services::base::world_entry=trace,\
-             cimmeria_services::base::world_entry_player=trace,\
              cimmeria_services::base::world_entry_appearance=trace,\
              wire.firehose.aoi_position=trace",
     },
@@ -278,7 +281,11 @@ pub(crate) fn directive_pairs(directives: &str) -> impl Iterator<Item = (&str, &
 /// a Rust module path. For module paths the file layers are the authority on
 /// what is kept at TRACE, so [`OTEL_FILTER`]'s blanket `cimmeria_services=debug`
 /// does not become `cimmeria_services=trace`.
-fn is_custom_target(target: &str) -> bool {
+///
+/// Every workspace crate linked into the server is named `cimmeria_*`, so a
+/// target this returns `false` for is a module path or an external crate's
+/// path; `stale_target_tests` checks the former exist.
+pub(super) fn is_custom_target(target: &str) -> bool {
     !target.contains("::") && !target.starts_with("cimmeria_")
 }
 

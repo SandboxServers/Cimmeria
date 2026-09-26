@@ -21,6 +21,8 @@ mod filters;
 #[cfg(test)]
 mod parity_tests;
 #[cfg(test)]
+mod stale_target_tests;
+#[cfg(test)]
 mod target_scan_tests;
 
 use filters::{

@@ -124,7 +124,7 @@ last_updated: 2026-09-25
 | Mission persistence | CW | -- | entity/missions.rs | sgw_mission + per-step state |
 | Cell event outbox | CW | -- | base/outbox/ | Durable Base→Cell event delivery |
 | Compile-time query checking | KM | -- | -- | **Re-verified 2026-09-25 (was CW).** No code: `crates/` contains zero `sqlx::query!` / `query_as!` / `query_scalar!` macro invocations and no `.sqlx` offline data. Every query is a runtime-checked `sqlx::query(...)` string, verified only by the live-DB suite at test time |
-| Live-DB test infrastructure | CW | -- | live_db_gate.rs, test_support.rs | `require_db_or_skip!`: **764 invocations** (was 228 at 2026-07-25), all in `cimmeria-services`. Since #702 it fails, rather than skips, when `DATABASE_URL` is set but unreachable. CI `test-live-db` runs against postgres:17.9 |
+| Live-DB test infrastructure | CW | -- | `cimmeria-test-support` (live_db_gate.rs), test_support.rs shims, tools/test-live-db.sh | `require_db_or_skip!`: **764 invocations** (was 228 at 2026-07-25), all in `cimmeria-services`. Since #702 it fails, rather than skips, when `DATABASE_URL` is set but unreachable. CI `test-live-db` runs against postgres:17.9 |
 | Connection pooling | CW | -- | database.rs:52 (`PgPool::connect`) | sqlx pool with default sizing. The old audit's "single connection per service" claim was wrong |
 | Migration framework | KM | -- | db/scripts/ | Idempotent manual scripts, no Diesel/sqlx-migrate. Project rule: seeds are the source of truth, so no new `db/scripts/` without asking |
 

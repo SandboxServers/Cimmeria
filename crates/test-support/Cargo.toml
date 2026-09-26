@@ -1,0 +1,19 @@
+[package]
+name = "cimmeria-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Generic test helpers for the Cimmeria service crates: the live-DB gate, log capture and the recording UDP fake. Dev-dependency only."
+
+# Never depend on a service crate from here. A service crate's tests would then
+# link two copies of it ("expected `SpaceManager`, found `SpaceManager`"), each
+# with its own statics. Domain fixtures stay in the crate that owns their types.
+# See docs/architecture/services-crate-split.md §3.
+[dependencies]
+# `test-support` exposes `test_transport::TestTransport`, re-exported below.
+cimmeria-mercury = { workspace = true, features = ["test-support"] }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

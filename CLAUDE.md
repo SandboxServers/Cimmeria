@@ -106,9 +106,15 @@ cargo nextest run --profile=ci --workspace \
 # doctests today, so this is a one-crate sanity check:
 cargo test --doc -p cimmeria-commands
 
-# Live-DB tests — start the bundled Postgres first, then:
+# Live-DB tests — start the bundled Postgres first, then run every crate
+# with live-DB tests in one serialised nextest run (the crate list lives in
+# the script; tools/test-live-db.ps1 on Windows PowerShell):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+  tools/test-live-db.sh
+
+# Layering guard for the cimmeria-services crate split (python3, a second;
+# CI runs it in the build job):
+python tools/layering/check.py
 
 # Markdown lint (warn-only — CI surfaces violations as PR annotations but
 # never blocks). Same rules as CodeRabbit's review:
@@ -135,9 +141,9 @@ The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/m
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
 - **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** CI floats on current stable Rust (no `rust-toolchain` pin), so its clippy is often newer than yours. Install that version side by side (`rustup toolchain install <version> --profile minimal`) and run `cargo +<version> clippy …` before pushing — see [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md) "Build and CI".
-- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
+- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`. If the failing step is the **layering guard**, a module edge in `crates/services/src` breaks the planned crate DAG, or an allowlisted edge no longer exists — see [tools/layering/README.md](tools/layering/README.md).
 - **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
-- **test-live-db fails** → CI runs `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
+- **test-live-db fails** → CI runs `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate in its list) against a fresh `postgres:17.9` service container loaded from `db/database.sql`. A crate with a `cimmeria-test-support` dev-dependency must be in that list, or `live_db_wrapper_lists_every_test_support_crate` fails. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 - **figure-sources-in-sync fails** → A source DSL under `docs/drafts/spec/figures/sources/` was committed more recently than its rendered SVG one directory up. Re-render the affected diagram (Prixmaviz, or the local renderer per [docs/drafts/spec/figures/sources/README.md](docs/drafts/spec/figures/sources/README.md)) and commit the regenerated SVG alongside the source change. Pairing rule: `sources/<slug>.<ext>` pairs with `<slug>.svg`.
 - **figure-style-lint fails** → A figure source, rendered SVG, or chapter convention violated the style rule catalog inside [tools/lint-figure-style.sh](tools/lint-figure-style.sh). Common causes: Mermaid `flowchart`/`sequenceDiagram` missing the `htmlLabels:false` init directive (rules M1/M2), an SVG missing the cimmeria-bg theme-aware backdrop marker (S1), Graphviz intrinsic `fill="white"` backdrop polygon not stripped (S3), non-sequential `*Figure N:*` captions (C1), generic image alt text (C2), or a dangling image reference (C3). Run the script locally to see the specific rule code and remediation hint.
 
@@ -150,7 +156,7 @@ The non-negotiables:
 - **Pick the right type.** If you change a `WHERE` clause or `rows_affected` invariant, you need a live-DB regression guard, not a unit test. If you change a serializer, you need a byte-exact wire-format test. The picker table is in TESTING.md.
 - **Reproduce the bug shape.** A regression guard must fail when the fix is reverted; if it doesn't, it's a happy-path test, not a guard. PR reviewers will check.
 - **One feature can need multiple tests.** Vendor stack changes typically need unit + wire-format + live-DB + smoke. Don't skip a layer because "the next layer up will catch it" — that's the bug shape TESTING.md exists to prevent.
-- **Live-DB tests use `require_db_or_skip!`** and run serialised. Under nextest the `ci-live-db` profile pins this with `threads-required = "num-test-threads"`; with `cargo test`, pass `-- --test-threads=1`. Sentinels fit in `i32`. Cleanup deletes by exact sentinel, not by range. See `crates/services/src/test_support.rs`.
+- **Live-DB tests use `require_db_or_skip!`** and run serialised. Under nextest the `ci-live-db` profile pins this with `threads-required = "num-test-threads"`; with `cargo test`, pass `-- --test-threads=1`. Sentinels fit in `i32`. Cleanup deletes by exact sentinel, not by range. The gate lives in `crates/test-support/` (`cimmeria-test-support`), re-exported from each crate's `crate::test_support`.
 
 ## Required documentation for every PR
 
@@ -167,6 +173,7 @@ The map of "what changed → what to update":
 | Add or remove ≥5% of workspace tests in one PR (~147 tests at current 2,936 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
 | Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
 | Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) and the crate diagram in [README.md](README.md) |
+| A module added to, moved within, or split out of `crates/services/src` (the services crate split) | [tools/layering/crate-map.toml](tools/layering/crate-map.toml) (every production module maps to its target crate) and [tools/layering/allowlist.txt](tools/layering/allowlist.txt) (only shrinks); a new crate with live-DB tests goes in [tools/test-live-db.sh](tools/test-live-db.sh) and [.ps1](tools/test-live-db.ps1); tracing targets in `crates/server/src/logging/filters.rs`. Plan: [docs/architecture/services-crate-split.md](docs/architecture/services-crate-split.md) |
 | Wire format, method indices, or message catalog | [docs/protocol/client-method-dispatch-table.md](docs/protocol/client-method-dispatch-table.md), [docs/protocol/message-catalog.md](docs/protocol/message-catalog.md), the rest of [docs/protocol/](docs/protocol/), the canonical entity definitions under [entities/defs/](entities/defs/), and the `method_idx` constants module in `crates/services/src/mercury/mod.rs` |
 | Mercury protocol-layer behavior (channel state, retransmit, fragmentation, keepalive, ack, RTO) or the loopback harness itself | [docs/architecture/mercury-loopback-harness.md](docs/architecture/mercury-loopback-harness.md), TESTING.md type 9, and (if the harness API surface changes) the `test_harness` module under [crates/mercury/src/test_harness/](crates/mercury/src/test_harness/) plus the `cimmeria-mercury` row in [crates/README.md](crates/README.md) |
 | Network-chaos primitives, lossy-socket wrappers, pcap-replay infra, or any new chaos scenario | [docs/architecture/network-chaos-testing.md](docs/architecture/network-chaos-testing.md), TESTING.md type 10, plus the `cimmeria-mercury` row in [crates/README.md](crates/README.md) if the L2 trait surface widens. New scenarios drop under [crates/mercury/src/test_harness/tests/chaos/](crates/mercury/src/test_harness/tests/chaos/). |
