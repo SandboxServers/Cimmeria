@@ -19,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 $LiveDbCrates = @(
     'cimmeria-resources'
     'cimmeria-auth'
+    'cimmeria-cell-cover'
     'cimmeria-services'
     'cimmeria-test-support'
 )

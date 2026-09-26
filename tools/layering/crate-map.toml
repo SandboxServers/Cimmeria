@@ -97,7 +97,8 @@ cimmeria-services = [
 "cell::respawner_fallback" = "cimmeria-cell-catalog"
 "cell::space_manager::navmesh_mode" = "cimmeria-cell-catalog"
 
-"cell::cover" = "cimmeria-cell-cover"
+# cimmeria-cell-cover is extracted (W2a): see `cell::cover` under the cell
+# track for what is left of the module here.
 
 # Cell track.
 "cell::space_manager" = "cimmeria-cell-world"
@@ -106,7 +107,9 @@ cimmeria-services = [
 "cell::playtest_friction_watch" = "cimmeria-cell-world"
 "cell::ring_transport" = "cimmeria-cell-world"
 "cell::effects" = "cimmeria-cell-world"
-"cell::cover::stance" = "cimmeria-cell-world"
+# Since W2a `cell::cover` here is only the path shim that re-exports
+# cimmeria-cell-cover beside `stance.rs`; both go to world in C1.
+"cell::cover" = "cimmeria-cell-world"
 "cell::service::npc_ai::detectors" = "cimmeria-cell-world"
 "cell::service::npc_ai::transition" = "cimmeria-cell-world"
 "cell::service::npc_ai::movement_stop" = "cimmeria-cell-world"

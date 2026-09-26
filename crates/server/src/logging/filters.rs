@@ -85,6 +85,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
                 cimmeria_auth=debug,\
+                cimmeria_cell_cover=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\

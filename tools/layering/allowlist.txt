@@ -43,7 +43,6 @@ cell::spawner::npcs -> cell::space_manager  # spawn_*_from_records move to space
 cell::spawner::npcs -> cell::service::npc_ai::detectors::spawn
 cell::spawner::npcs -> cell::combat::aggression
 cell::space_manager::navmesh_mode -> cell::space_manager  # (not in §2) the `impl SpaceManager` block stays in world
-cell::cover -> cell::cover::stance  # cover/mod.rs re-exports stance
 
 # --- §2C: the cell::service hub -> cimmeria-cell-world ---------------------
 cell::service::npc_ai::leash::policy -> cell::combat::threat::aggro  # LEASH_DISTANCE

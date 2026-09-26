@@ -8,7 +8,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [stale-branch-clippy-toolchain-drift.md](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable; idle branches fail on new lints. Update the branch first.
 - [lane-sh-masks-cargo-exit-code.md](lane-sh-masks-cargo-exit-code.md) — `lane.sh` / `live-db-test.sh` exit 0 on a failed cargo; grep the captured file for `^error` and the `[lane] released` line.
 - [dependency-dedupe-blockers.md](dependency-dedupe-blockers.md) — duplicate dep versions pinned upstream (sqlx, axum ws, reqwest, rmcp); machete false positives.
-- [services-split-extraction-traps.md](services-split-extraction-traps.md) — extracting a crate from services: test-support dev-dep forces the live-DB list; allowlist edges vanish; unreachable_pub; split tests out.
+- [services-split-extraction-traps.md](services-split-extraction-traps.md) — extracting a crate from services: test-support dev-dep forces the live-DB list; allowlist edges vanish; unreachable_pub; split tests out; partial-move shims.
 
 ## Working environment
 

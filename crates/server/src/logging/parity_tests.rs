@@ -407,6 +407,34 @@ fn auth_crate_events_keep_their_file_and_index() {
     }
 }
 
+/// Cover moved from `cimmeria_services::cell::cover` to the
+/// `cimmeria-cell-cover` crate (wave W2a), which changed the `module_path!()`
+/// of its untargeted rows: the loader's counts and skipped-row warnings, and
+/// the poisoned-mutex warnings. No file layer names cover, so they must still
+/// reach `server.log` from INFO and one OTLP index per level as before.
+/// `cimmeria_services=debug` does not prefix-match `cimmeria_cell_cover`, so
+/// without its own `OTEL_FILTER` row a DEBUG row in the crate would not reach
+/// SigNoz, as it did before the move. (The hand-named `cover.*` targets did
+/// not change.)
+#[test]
+fn cover_crate_events_keep_their_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let loader = "cimmeria_cell_cover::cell::cover::loader";
+    let sinks = |lvl| sinks_for(&dispatch, &hits, loader, lvl);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    // No file keeps it at TRACE, so the trace index does not either.
+    assert!(sinks(Level::TRACE).is_empty(), "{loader} at TRACE");
+    assert_eq!(sinks(Level::DEBUG), set(&[OTLP_SERVER]));
+    for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+        assert_eq!(
+            sinks(lvl),
+            set(&[SERVER_LOG, OTLP_SERVER]),
+            "{loader} at {lvl}"
+        );
+    }
+}
+
 /// No target, at any level, is indexed twice.
 #[test]
 fn no_record_reaches_two_indexes() {

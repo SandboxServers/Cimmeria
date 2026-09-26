@@ -375,6 +375,15 @@ W1a (`cimmeria-auth`):
 - **`cimmeria_services=debug` does not cover the new crate.** A directive matches by string prefix, and `cimmeria_services` is not a prefix of `cimmeria_auth`, so `OTEL_FILTER` gained `cimmeria_auth=debug` and `auth.log` names `cimmeria_auth::auth`. The same holds for every crate whose name does not start with an existing directive; the parity guard catches a missing row.
 - **Auth-only dependencies left `cimmeria-services`:** `axum`, `tokio-rustls`, `rustls-pemfile`, `arc-swap`, `argon2` and `sha1`, and the dev-dependencies `reqwest`, `rcgen` and `tower`.
 
+W2a (`cimmeria-cell-cover`):
+
+- **`observability` is a dependency too.** `reservation.rs` counts `cover_reservation_state` through `cimmeria_observability::counter!`, which §1's "common, entity, sqlx" misses. The crate still depends on no split crate.
+- **`stance.rs` stays at its old path, behind a shim.** `crates/services/src/cell/cover/mod.rs` is now `pub use cimmeria_cell_cover::cell::cover::*` plus `mod stance` and its re-exports, so every `crate::cell::cover::…` path in services compiles unchanged, `stance` included, and no call site was edited. `stance.rs` imports the two helpers it shares with the decision code from the shim: `lock_or_recover` (was `pub(super)`) and `horizontal` (was `pub(crate)`, also used by `space_manager::cover_hit` and `npc_ai::chase::cover_slot`) are now `pub`. Nothing else was widened.
+- **`crate-map.toml` maps the shim to world, and the allowlist loses `cell::cover -> cell::cover::stance`.** What is left of `cell::cover` in services is the shim and `stance.rs`, and world takes both in C1, so `cell::cover` now maps to `cimmeria-cell-world` (the separate `cell::cover::stance` row became redundant and is gone). Every production importer of `cell::cover` is in world or above, so no new violation appears. The allowlist has 53 lines.
+- **`TEST_WORLD_ID` is a `test-support` hook** (§3): `#[cfg(any(test, feature = "test-support"))] #[doc(hidden)] pub`, enabled by the services dev-dependency for the cover tests that stay there because they drive a `SpaceManager` (`service/tests/npc_ai_cover*.rs`, `ticks/cover.rs`, `space_manager/cover_hit.rs`).
+- **All 71 cover tests moved**, the 6 live-DB loader tests among them, so the crate joins the live-DB wrapper list. None needed a helper from the monolith.
+- **Tracing.** No file layer names cover, and the hand-named `cover.*` targets are unchanged. The untargeted rows (the loader's counts and skipped-row warnings, the poisoned-mutex warnings) now carry `cimmeria_cell_cover::…`; `OTEL_FILTER` gained `cimmeria_cell_cover=debug` to keep their DEBUG export, pinned by `cover_crate_events_keep_their_index`.
+
 ## 5. Risks and rules
 
 1. **Orphan rule and inherent impls.** All `impl SpaceManager` blocks move with `space_manager/`. No new inherent impl may appear in a higher crate; use free functions or extension traits.

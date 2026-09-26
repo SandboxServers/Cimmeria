@@ -1,6 +1,6 @@
 ---
 name: services-split-extraction-traps
-description: Traps when extracting a module tree out of cimmeria-services into its own crate (services-crate-split waves) — guards that fire on a crate with no DB tests, allowlist edges that vanish, unreachable_pub, and tests whose helper stays behind
+description: Traps when extracting a module tree out of cimmeria-services into its own crate (services-crate-split waves) — guards that fire on a crate with no DB tests, allowlist edges that vanish, unreachable_pub, tests whose helper stays behind, and the shim for a file that stays behind
 metadata:
   type: project
 ---
@@ -31,6 +31,27 @@ Learned extracting `cimmeria-resources` (wave W1b, 2026-09-26). Plan:
 - **Drop now-unused deps from services** (`zip` left with resources); nothing warns.
 - Baseline test counts: `nextest list --message-format oneline` before any `git mv`,
   then diff the moved names by suffix (the crate prefix and `::bin`/lib id change).
+  `lane.sh --exclusive` queues behind every running single-slot job, so start the
+  baseline first and do only non-Rust edits while it waits.
+
+Learned extracting `cimmeria-cell-cover` (W2a), where one file (`stance.rs`) stayed:
+
+- **Partial extraction = keep the old `mod.rs` as a shim**: `pub use
+  cimmeria_x::cell::cover::*;` + `mod stance;` + its `pub use`. Zero call-site edits.
+  The file left behind imports shared helpers through `super::` (the glob), so any
+  `pub(crate)`/`pub(super)` helper it used must become `pub` and be re-exported.
+- **check.py resolves every item used through such a shim to the shim module
+  itself** (a glob from an external crate resolves to nothing). Map the shim in
+  `crate-map.toml` to the crate that will own the leftover file (world here); that
+  also retires the "mod re-exports leftover" allowlist edge. Check `--edges <shim>`
+  first: every importer must sit at or above that crate.
+- **No existing guard notices a missing `cimmeria_<crate>=debug` OTEL_FILTER row for
+  a crate with no `FILE_LAYERS` row** (the file-parity guard walks file rows only).
+  Add a `<crate>_events_keep_their_index` parity test and prove it fails with the row
+  removed.
+- A dev-dependency on the same crate with `features = ["test-support"]` beside the
+  normal dependency is how a `#[cfg(any(test, feature = "test-support"))]` hook
+  reaches the higher crate's tests; `pub use …::*` forwards it at the old path.
 
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
