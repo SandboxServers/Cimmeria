@@ -22,8 +22,9 @@
 
 use cimmeria_common::EntityId;
 
-use super::ai_integration::{horizontal, lock_or_recover, COVER_ARRIVE_RADIUS};
-use super::types::CoverSlotKey;
+// `super` is the services `cell::cover` shim, which re-exports
+// `cimmeria_cell_cover::cell::cover`.
+use super::{horizontal, lock_or_recover, CoverSlotKey, COVER_ARRIVE_RADIUS};
 use crate::cell::effects::{self, EffectContext};
 use crate::cell::space_manager::SpaceManager;
 

@@ -29,6 +29,9 @@ cimmeria-discord = { workspace = true }
 # of this crate (docs/architecture/services-crate-split.md, W1b). Re-exported
 # at `base::{resources, chardef, *_overrides}`.
 cimmeria-resources = { workspace = true }
+# Server-driven NPC cover, split out in wave W2a. Re-exported at `cell::cover`
+# beside `cell::cover::stance`, which stays here until the world crate.
+cimmeria-cell-cover = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
@@ -93,3 +96,7 @@ async-trait = { workspace = true }
 # in tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
 # enforces it.
 cimmeria-test-support = { workspace = true }
+
+# `cell::cover::TEST_WORLD_ID` for the cover tests that stay here because they
+# drive a `SpaceManager` (npc_ai_cover*, ticks/cover, space_manager/cover_hit).
+cimmeria-cell-cover = { workspace = true, features = ["test-support"] }

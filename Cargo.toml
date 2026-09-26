@@ -39,6 +39,7 @@ members = [
     "crates/resources",
     "crates/auth",
     "crates/wire",
+    "crates/cell-cover",
 ]
 default-members = [
     "crates/common",
@@ -60,6 +61,7 @@ default-members = [
     "crates/resources",
     "crates/auth",
     "crates/wire",
+    "crates/cell-cover",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -210,6 +212,7 @@ cimmeria-test-support = { path = "crates/test-support" }
 cimmeria-resources = { path = "crates/resources" }
 cimmeria-auth = { path = "crates/auth" }
 cimmeria-wire = { path = "crates/wire" }
+cimmeria-cell-cover = { path = "crates/cell-cover" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

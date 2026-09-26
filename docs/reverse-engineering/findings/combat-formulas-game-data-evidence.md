@@ -402,7 +402,7 @@ positioning input.
 - `BSF_CROUCHING` is a broadcast flag only:
   `crates/services/src/cell/cell_methods/combatant.rs:21` `BSF_CROUCHING = 1<<2`,
   `:31-43` `setCrouched`. `calculate_qr` never reads it.
-- `crates/services/src/cell/cover/types.rs:12-39` `CoverHeight`
+- `crates/cell-cover/src/cell/cover/types.rs:12-39` `CoverHeight`
   `Low = 0.71` (commented *crouch-defeatable*), `Mid = 1.07`, `High = 1.52`,
   `Los = 2.52`. These are **ORIGINAL-DATA-BACKED** — the comment cites
   *"Binary-confirmed heights via direct memory read of `DAT_018f41c8/cc/d0/d4` in

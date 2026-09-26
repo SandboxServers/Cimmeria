@@ -31,7 +31,7 @@
 //!
 //! This function does not mutate the NPC's `nav_path`, velocity or Cover
 //! Stance — those are caller concerns (`npc_ai::fight_cover`,
-//! [`super::stance`]). Reservation state (and the seek deferral that rides
+//! `cimmeria_services::cell::cover::stance`). Reservation state (and the seek deferral that rides
 //! on it) is the only thing it touches, because the reservation table is
 //! the load-bearing invariant for "no two NPCs in the same slot" and has
 //! to be atomically consistent with the decision.
@@ -116,7 +116,10 @@ pub(super) fn try_reserve_or_warn(
 /// worst case is some live reservations are inconsistent and the next
 /// scoring pass will re-evaluate. Better to log + continue than to
 /// panic the cell process and kill every active player session.
-pub(super) fn lock_or_recover(m: &Mutex<CoverReservations>) -> MutexGuard<'_, CoverReservations> {
+///
+/// Public for `cimmeria_services::cell::cover::stance`, which takes the
+/// reservation lock the same way.
+pub fn lock_or_recover(m: &Mutex<CoverReservations>) -> MutexGuard<'_, CoverReservations> {
     match m.lock() {
         Ok(g) => g,
         Err(poisoned) => {
@@ -254,7 +257,7 @@ pub struct CoverQuery {
 }
 
 /// Horizontal (XZ) distance.
-pub(crate) fn horizontal(a: &Vector3, b: &Vector3) -> f32 {
+pub fn horizontal(a: &Vector3, b: &Vector3) -> f32 {
     ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
 }
 

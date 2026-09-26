@@ -1,0 +1,39 @@
+[package]
+name = "cimmeria-cell-cover"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Server-driven NPC cover for the Cimmeria server emulator: the world-space cover loader, per-world spatial index, slot reservation, scoring, peek points and player cover detection"
+
+# Split out of cimmeria-services (wave W2a of
+# docs/architecture/services-crate-split.md). The module tree keeps its old
+# nesting (`cell::cover`), so cimmeria-services re-exports it at the same path.
+# `cell::cover::stance` stays in cimmeria-services until the world crate takes
+# it: it runs Cover Stance through the effect-script layer and reads the
+# SpaceManager, and both sit above this crate. Nothing here depends on another
+# split crate.
+[dependencies]
+cimmeria-common = { workspace = true }
+# `navigation::{NavMesh, LineOfSight}` for the peek-point search and the
+# per-space coverage summary.
+cimmeria-entity = { workspace = true }
+# `counter!` for the `cover_reservation_state` metric.
+cimmeria-observability = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# Exposes the test-only hooks (`cell::cover::TEST_WORLD_ID`) to other crates'
+# tests. cimmeria-services turns it on through its [dev-dependencies]; a
+# production build never sees them.
+test-support = []
+
+[dev-dependencies]
+# `#[tokio::test]` for the live-DB loader tests.
+tokio = { workspace = true }
+# The live-DB gate (`require_db_or_skip!`) and `LogCapture`, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
