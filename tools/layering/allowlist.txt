@@ -53,4 +53,3 @@ cell::cell_methods::gm::world -> cell::cell_methods::player::combat::respawn  # 
 
 # --- §2I: base-internal ------------------------------------------------------
 base -> base::service  # pub use service::BaseService -> facade
-base -> base::world_entry_appearance::cinematic_aoi_hold  # CinematicAoiHold

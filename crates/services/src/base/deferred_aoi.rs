@@ -329,7 +329,7 @@ mod tests {
             .unwrap()
             .get_mut(&addr)
             .unwrap()
-            .cinematic_aoi_hold = Some(super::super::world_entry_appearance::CinematicAoiHold {
+            .cinematic_aoi_hold = Some(super::super::cinematic_aoi_hold::CinematicAoiHold {
             token: 7,
             started: tokio::time::Instant::now(),
             releasing: false,

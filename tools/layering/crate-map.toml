@@ -149,6 +149,7 @@ cimmeria-services = [
 "base::outbox" = "cimmeria-base-session"
 "base::deferred_aoi" = "cimmeria-base-session"
 "base::deferred_aoi_lifecycle" = "cimmeria-base-session"
+"base::cinematic_aoi_hold" = "cimmeria-base-session"
 "base::session_identity" = "cimmeria-base-session"
 "base::gm_feedback" = "cimmeria-base-session"
 "base::world_entry_chat" = "cimmeria-base-session"

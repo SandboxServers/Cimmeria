@@ -19,6 +19,7 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 pub(crate) mod character;
 pub(crate) mod character_create;
+pub(crate) mod cinematic_aoi_hold;
 pub(crate) mod connect_loop;
 pub(crate) mod console_authoring;
 pub(crate) mod contact_list;
@@ -219,7 +220,7 @@ pub(crate) struct ConnectedClientState {
     /// witness buffers into [`Self::deferred_aoi_msgs`] instead of reaching a
     /// client that is playing a fullscreen movie — see [`deferred_aoi`] and
     /// `world_entry_appearance::cinematic_aoi_hold`.
-    pub cinematic_aoi_hold: Option<world_entry_appearance::CinematicAoiHold>,
+    pub cinematic_aoi_hold: Option<cinematic_aoi_hold::CinematicAoiHold>,
     pub player_name: Option<String>,
     pub player_level: Option<i32>,
     pub player_archetype: Option<i32>,
