@@ -16,12 +16,12 @@
 /// 2. `db/sgw/Players/Tables/sgw_player.sql` — `CHECK (archetype <= N)` bound
 /// 3. This constant
 /// 4. `db/resources/Archetypes/Seed/archetype_ability_tree.sql` — ability
-///    tree rows for the new archetype (or accept empty)
+///    tree rows for the new archetype (or accept empty: the player is sent
+///    an empty `onAbilityTreeInfo` and the server logs `abilities
+///    event=tree_missing`)
 /// 5. `crates/services/src/base/chardef.rs` — CharDefId entries that
 ///    reference the new archetype (or accept that no character can be
 ///    created with it)
-/// 6. `crates/services/src/mercury/world_data/stats.rs::archetype_ability_tree`
-///    — DB-down fallback (only if non-empty fallback is desired)
 pub const ARCHETYPE_COUNT: usize = 9;
 
 /// Archetype-specific base stat values passed to [`super::StatList::apply_archetype`].

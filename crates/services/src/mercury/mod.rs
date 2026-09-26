@@ -48,8 +48,8 @@ pub(crate) use aoi::{
 };
 
 pub use world_data::{
-    archetype_ability_tree, archetype_stats, build_create_player, build_enter_world,
-    build_enter_world_body, build_map_loaded, build_map_loaded_body, build_on_player_data_loaded,
+    archetype_stats, build_create_player, build_enter_world, build_enter_world_body,
+    build_map_loaded, build_map_loaded_body, build_on_player_data_loaded,
     build_setup_world_parameters, fragment_count, fragment_map_loaded,
 };
 

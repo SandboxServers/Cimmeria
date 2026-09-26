@@ -5,6 +5,7 @@
 
 use super::*;
 
+mod ability_tree_info;
 mod bandolier;
 mod entity_encoding;
 mod map_loaded;
@@ -13,6 +14,23 @@ mod stargates;
 mod stats;
 
 const TEST_KEY: [u8; 32] = [0x42u8; 32];
+
+/// Branch sizes of the fixture tree. They match the retired hard-coded
+/// Commando tree (28/30/27), so the fragmentation tests keep the payload
+/// size they were calibrated on.
+const FIXTURE_BRANCH_SIZES: [i32; 3] = [28, 30, 27];
+
+/// A Commando-shaped `onAbilityTreeInfo` payload built the way player load
+/// builds it: a catalog, then `ability_tree::tree_info`. Ids are synthetic
+/// (`9000 + 100 * branch + n`); no test here depends on real ability ids.
+fn fixture_ability_tree() -> cimmeria_entity::abilities::AbilityTreeData {
+    use crate::ability_tree::{tree_info, AbilityTreeCatalog, TreeNode};
+    let catalog = AbilityTreeCatalog::from_nodes((0..3).flat_map(|branch| {
+        (0..FIXTURE_BRANCH_SIZES[branch as usize])
+            .map(move |n| TreeNode::with_defaults(2, branch, 9000 + 100 * branch + n, 1, vec![]))
+    }));
+    tree_info(&catalog, 2, 1)
+}
 
 fn sample_player_load_data() -> PlayerLoadData {
     PlayerLoadData {
@@ -36,7 +54,7 @@ fn sample_player_load_data() -> PlayerLoadData {
         first_login: 0,
         access_level: 0,
         skin_color_id: 0,
-        ability_tree: archetype_ability_tree(2),
+        ability_tree: fixture_ability_tree(),
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],

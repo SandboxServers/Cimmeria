@@ -22,7 +22,7 @@ pub use map_loaded::{
     build_map_loaded, build_map_loaded_body, fragment_count, fragment_map_loaded,
 };
 
-pub use stats::{archetype_ability_tree, archetype_stats};
+pub use stats::archetype_stats;
 
 // ── Shared imports from parent (mercury) ─────────────────────────────────────
 // Used by submodules via `super::`.

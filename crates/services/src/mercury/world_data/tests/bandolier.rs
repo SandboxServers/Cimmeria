@@ -37,7 +37,7 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
         first_login: 0,
         access_level: 0,
         skin_color_id: 0,
-        ability_tree: archetype_ability_tree(2),
+        ability_tree: super::fixture_ability_tree(),
         items: vec![],
         active_bandolier_slot: 0,
         // Slot 0: 8 of 15 (mid-mag), slot 2: 12 of 12 (full).
@@ -157,7 +157,7 @@ fn build_map_loaded_seeds_active_slot_indicator_from_persisted_slot() {
         first_login: 0,
         access_level: 0,
         skin_color_id: 0,
-        ability_tree: archetype_ability_tree(2),
+        ability_tree: super::fixture_ability_tree(),
         items: vec![],
         // Persisted bandolier_slot = 2 (server-internal). The wire packet
         // must report slot 3 (= server slot + 1) so the client UI

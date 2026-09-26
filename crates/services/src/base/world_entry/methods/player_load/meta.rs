@@ -4,15 +4,12 @@ use sqlx::PgPool;
 
 use cimmeria_entity::abilities::AbilityTreeData;
 
-use crate::mercury::{archetype_ability_tree, PlayerLoadData};
+use crate::mercury::PlayerLoadData;
 
 /// Default player load data when the DB is unavailable.
 ///
-/// Caveat: `archetype` and `ability_tree` are both keyed to archetype id 1
-/// here. If a caller ever partially overrides this struct (e.g., a half-loaded
-/// row that fills `archetype` from DB but leaves the rest defaulted), the
-/// tree won't match the new archetype. This is the "DB unavailable" sentinel
-/// used as a whole, so today this is fine — but keep the two values in sync.
+/// The ability tree is empty: with no database there is no catalog, and the
+/// tree is never fabricated in Rust (AT-02).
 pub fn default_player_load_data() -> PlayerLoadData {
     PlayerLoadData {
         player_id: 0,
@@ -37,7 +34,7 @@ pub fn default_player_load_data() -> PlayerLoadData {
         skin_color_id: 0,
         active_bandolier_slot: 0,
         bandolier_items: vec![],
-        ability_tree: archetype_ability_tree(1),
+        ability_tree: AbilityTreeData::default(),
         items: vec![],
         // Defaults from SystemOptions.xml when the row can't be loaded —
         // keeps the in-memory `SystemOptions::default()` value and the
@@ -145,79 +142,31 @@ pub async fn query_bandolier_items_tx(
     Ok(map_bandolier_rows(rows))
 }
 
-/// Query archetype ability tree data from the database.
-///
-/// `archetype_id` is the array-position (0-based) of the value in the
-/// `resources."EArchetype"` enum — verified by the
-/// `archetype_count_matches_earchetype_enum_cardinality` test below to match
-/// `cimmeria_entity::stats::ARCHETYPE_COUNT`. The SQL maps the i32 to the
-/// enum value via `enum_range(NULL::resources."EArchetype")[$1 + 1]` so
-/// adding a new archetype to the enum doesn't require a Rust change here.
-pub async fn query_archetype_ability_tree(
+/// The player's `onAbilityTreeInfo` payload, built from the process's
+/// shared [`crate::ability_tree::AbilityTreeCatalog`], the one the cell's
+/// trainer and purchase gate read. No per-player query and no fallback
+/// tree: an archetype with no rows gets an empty tree and one WARN (see
+/// [`crate::ability_tree::tree_info`]), and a catalog that fails to load
+/// gets an empty tree and one ERROR.
+pub async fn player_ability_tree(
     pool: &PgPool,
     archetype_id: i32,
-) -> Option<AbilityTreeData> {
-    // Negative ids would compute a 0-or-negative array subscript; Postgres
-    // array indexing is 1-based and returns NULL for out-of-range subscripts,
-    // so the query would still match 0 rows and behave correctly. Guarding
-    // here is purely a fast path that avoids a DB round-trip on bogus input
-    // and preserves the behavior of the prior `archetype_resource_name(< 0)
-    // == None` short-circuit. (Note: `$1 + 1` doesn't underflow at i32::MIN —
-    // the int4 + int4 arithmetic stays in range; the only overflow case in
-    // the SQL would be `archetype_id == i32::MAX`, which we never produce.)
-    if archetype_id < 0 {
-        return None;
-    }
-
-    #[derive(sqlx::FromRow)]
-    struct AbilityTreeRow {
-        tree_index: i32,
-        ability_id: i32,
-    }
-
-    let rows = match sqlx::query_as::<_, AbilityTreeRow>(
-        "SELECT tree_index, ability_id \
-         FROM resources.archetype_ability_tree \
-         WHERE archetype = (enum_range(NULL::resources.\"EArchetype\"))[$1 + 1] \
-         ORDER BY tree_index, ability_index",
-    )
-    .bind(archetype_id)
-    .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
+    player_id: i32,
+) -> AbilityTreeData {
+    match crate::ability_tree::shared_catalog(pool).await {
+        Ok(catalog) => crate::ability_tree::tree_info(&catalog, archetype_id, player_id),
         Err(e) => {
-            tracing::error!(archetype_id, "Failed to query ability tree: {e}");
-            return None;
+            tracing::error!(
+                target: "abilities",
+                event = "tree_catalog_load_failed",
+                reason = "catalog_load_failed",
+                player_id,
+                archetype_id,
+                "Ability-tree catalog failed to load; sending an empty onAbilityTreeInfo: {e}"
+            );
+            AbilityTreeData::default()
         }
-    };
-
-    if rows.is_empty() {
-        return None;
     }
-
-    // The DB schema constrains tree_index to a valid range — if a row violates
-    // that, the data set is corrupted and silently skipping rows would ship a
-    // partial ability tree. Bail with None so the caller's fallback (the
-    // archetype-derived default tree) takes over instead.
-    let mut ability_tree = AbilityTreeData::default();
-    for row in rows {
-        let tree_index = match usize::try_from(row.tree_index) {
-            Ok(idx) if idx < ability_tree.trees.len() => idx,
-            _ => {
-                tracing::error!(
-                    archetype_id,
-                    tree_index = row.tree_index,
-                    tree_count = ability_tree.trees.len(),
-                    "Ability tree index out of range — schema constraint violated; bailing to fallback tree"
-                );
-                return None;
-            }
-        };
-        ability_tree.trees[tree_index].push(row.ability_id);
-    }
-
-    Some(ability_tree)
 }
 
 #[cfg(test)]
@@ -231,8 +180,8 @@ mod tests {
     //!   to default_ammo_type (the legacy Account.py behavior).
     //! - `query_bandolier_items` empty-bandolier path.
     //! - `query_bandolier_items` no-pool short-circuit.
-    //! - `query_archetype_ability_tree` against a seeded archetype
-    //!   (returns Some) and an unknown archetype id (returns None).
+    //! - `player_ability_tree` against every `EArchetype` value: the
+    //!   catalog-built tree equals the table read directly.
 
     use super::*;
     use crate::test_support::require_db_or_skip;
@@ -416,47 +365,14 @@ mod tests {
         assert!(items.is_empty());
     }
 
-    /// `query_archetype_ability_tree` against a seeded archetype
-    /// returns Some(tree). Soldier (id=1) is the canonical test
-    /// archetype — Soldier and Commando are the only two archetypes
-    /// with seeded ability_tree rows.
+    /// `player_ability_tree` for every `EArchetype` value, and for an id
+    /// outside it, equals the table grouped by `tree_index` in
+    /// `ability_index` order. That is exactly what the retired per-player
+    /// query sent, so AT-02 leaves the seeded archetypes' `onAbilityTreeInfo`
+    /// bytes unchanged, and an archetype with no rows gets an empty tree
+    /// instead of the old hand-copied Rust fallback.
     #[tokio::test]
-    async fn ability_tree_known_archetype_returns_some() {
-        let pool = require_db_or_skip!();
-        let result = query_archetype_ability_tree(&pool, 1).await;
-        assert!(
-            result.is_some(),
-            "Soldier archetype (id=1) must have a seeded ability tree",
-        );
-    }
-
-    /// Negative archetype ids short-circuit before hitting the DB —
-    /// the same fail-safe the previous `archetype_resource_name`
-    /// match provided. Caller (player_load) substitutes the default
-    /// tree on None.
-    #[tokio::test]
-    async fn ability_tree_negative_archetype_returns_none() {
-        let pool = require_db_or_skip!();
-        let result = query_archetype_ability_tree(&pool, -1).await;
-        assert!(
-            result.is_none(),
-            "negative archetype id must short-circuit before any DB read",
-        );
-    }
-
-    /// Walk every valid array-position in the EArchetype enum and call
-    /// `query_archetype_ability_tree`. Asserts no panic / no SQL error
-    /// for any in-range id, and that the documented "Soldier and
-    /// Commando have data; others empty" mapping still holds.
-    ///
-    /// Catches:
-    /// - off-by-one bugs in the `enum_range[$1 + 1]` SQL
-    /// - schema-vs-enum desyncs where a CHECK rejects an id the enum
-    ///   allows (the function still works for that id since CHECK only
-    ///   matters on insert, but a future "tighten by adding the CHECK"
-    ///   refactor would surface here)
-    #[tokio::test]
-    async fn ability_tree_walks_full_enum_range_without_panic() {
+    async fn player_ability_tree_matches_table_for_every_archetype() {
         let pool = require_db_or_skip!();
         let enum_size: i32 =
             sqlx::query_scalar("SELECT cardinality(enum_range(NULL::resources.\"EArchetype\"))")
@@ -464,21 +380,30 @@ mod tests {
                 .await
                 .expect("read enum cardinality");
 
-        for archetype_id in 0..enum_size {
-            let result = query_archetype_ability_tree(&pool, archetype_id).await;
-            // Soldier (1) and Commando (2) are the only seeded
-            // archetypes with ability tree rows; everything else gets
-            // None. If the seed grows, update this assertion
-            // deliberately — surprise-Some is a stronger signal than
-            // surprise-None, so we lock down the current shape.
-            let expected_some = matches!(archetype_id, 1 | 2);
-            assert_eq!(
-                result.is_some(),
-                expected_some,
-                "archetype_id={archetype_id}: expected_some={expected_some}, got is_some={}",
-                result.is_some(),
-            );
+        let mut seeded = 0;
+        for archetype_id in -1..=enum_size {
+            let mut expected: [Vec<i32>; 3] = Default::default();
+            let rows: Vec<(i32, i32)> = sqlx::query_as(
+                "SELECT tree_index, ability_id                  FROM resources.archetype_ability_tree                  WHERE archetype = (enum_range(NULL::resources.\"EArchetype\"))[$1 + 1]                  ORDER BY tree_index, ability_index",
+            )
+            .bind(archetype_id)
+            .fetch_all(&pool)
+            .await
+            .expect("read tree rows");
+            for (tree_index, ability_id) in rows {
+                expected[tree_index as usize].push(ability_id);
+            }
+            if expected.iter().any(|t| !t.is_empty()) {
+                seeded += 1;
+            }
+
+            let tree = player_ability_tree(&pool, archetype_id, TEST_BASE).await;
+            assert_eq!(tree.trees, expected, "archetype_id={archetype_id}");
         }
+        assert!(
+            seeded >= 2,
+            "the seed must carry at least Soldier and Commando"
+        );
     }
 
     /// Cardinality tripwire: pin the `cimmeria_entity::stats::ARCHETYPE_COUNT`
@@ -487,7 +412,7 @@ mod tests {
     /// Failure here is intentional — adding a value to the SQL enum
     /// without bumping `ARCHETYPE_COUNT` (and walking the checklist
     /// next to it) leaves downstream consumers (CHECK constraint,
-    /// chardef, fallback ability tree) potentially stale. Failing CI
+    /// chardef, ability-tree seed rows) potentially stale. Failing CI
     /// loud forces the dev to revisit each one.
     #[tokio::test]
     async fn archetype_count_matches_earchetype_enum_cardinality() {

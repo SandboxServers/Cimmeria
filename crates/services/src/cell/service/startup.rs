@@ -295,9 +295,11 @@ impl CellService {
                     tracing::warn!("Failed to load items_event_sets abilities: {e}");
                 }
             }
-            match crate::ability_tree::AbilityTreeCatalog::load(pool).await {
-                Ok(map) => {
-                    space_mgr.ability_tree_catalog = map;
+            // The shared snapshot: the base's `onAbilityTreeInfo` reads the
+            // same one, so the trainer and the client's tree always agree.
+            match crate::ability_tree::shared_catalog(pool).await {
+                Ok(catalog) => {
+                    space_mgr.ability_tree_catalog = (*catalog).clone();
                 }
                 Err(e) => {
                     tracing::warn!("Failed to load archetype ability trees: {e}");
