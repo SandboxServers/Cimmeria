@@ -148,6 +148,9 @@ A non-fragmented unreliable position-update packet — flags byte `0x28` (`0x20 
 
 The flags byte is the gate for the entire packet shape. Eight bits, mapped exactly to stock BigWorld's low byte:
 
+> [!WARNING]
+> Bits 5 to 7 in this table, and the worked examples above and below that use them (`0xB8`, `0x28`), do not match the binary. `docs/audits/mercury-rust-conformance-2026-05-15.md` §11.1 found this, and NA38's decompile of `Nub::processFilteredPacket` (`ghidra://SGW.exe@0x01580ad4`) confirms it. Bit 6 (`0x40`) makes the reader pop the 4-byte sequence ID. Bit 7 (`0x80`) takes the error path. The wire fragment flag is `0x20`. The constants in `crates/mercury/src/packet/mod.rs` are correct. A non-fragmented, sequenced, unreliable position packet is therefore `0x48`, and a reliable one is `0x58`. The rest of this table needs rewriting against the binary.
+
 | Bit | Mask | Flag | Triggers (on send) | Triggers (on receive) |
 |----:|------|---|---|---|
 | 0 | `0x01` | `FLAG_HAS_FIRST_REQUEST_OFFSET` | Bundle contains at least one request message | Reader pops a `uint16 firstRequestOffset` from the footer |
@@ -1855,6 +1858,12 @@ R11 through R16 are not "extra" requirements; they document what the client *act
 | Sequence ID above `inSeqAt` but inside window | `"Buffering packet #%d above #%d"` at `0x01b1a040`[^unacked-queue-ack] | Hold for reorder; deliver when the gap fills |
 | Sequence ID outside window in either direction (far-out) | `"Sequence number #%d is way out of window #%d!"` at `0x01b19f90`[^unacked-queue-ack] | Warning log; not immediately fatal (no disconnect from this path alone) |
 | Range-check failure (negative delta wrap) | `"Got out-of-range incoming seq #%d (inSeqAt: #%d)"` at `0x01b19e78`[^unacked-queue-ack] | Range-check rejection at the entry of the function |
+
+**Scope of the reorder: reliable packets only (NA38).** `Nub::processFilteredPacket` (`ghidra://SGW.exe@0x01580ad4`) calls `queueAckForPacket` only for packets with `FLAG_IS_RELIABLE` (`0x10`) on a channel. When the call returns a chain (the packet was the next expected one, plus any buffered packets it unblocked), the caller processes the chain in sequence order. When it returns nothing, the packet was buffered or dropped. Unreliable packets skip the window: `FUN_0158bb50` checks them against the separate dedup structure at `ChannelInternal+0x128`, and they are processed on arrival. Two more constants bound the window. `inSeqAt` (`+0x50`) starts at `0x10000000` in the `ChannelInternal` constructor (`ghidra://SGW.exe@0x0158c7b0`), and `queueAckForPacket` adopts the first reliable sequence it sees. The window size at `+0x30` is copied from `Channel+0x2c`, which the `Channel` constructor (`ghidra://SGW.exe@0x01576bf0`) sets to `0x200` (512). The ACK is queued before the window checks, so the client acks even a packet it then drops as far out of window.
+
+A peer's entity messages that arrive before its `CREATE_ENTITY` are not lost either. `EntityManager::onEntityMoveWithError` (`ghidra://SGW.exe@0x00dd1650`, `ServerMessageHandler` vtable slot `0x019ce99c`) stores the latest position for an unknown id in the pending-entity map at `EntityManager+0x30`. The create handler (`ghidra://SGW.exe@0x00dd2270`, slot `0x019ce98c`) erases that record and passes it to the new entity. The method and property handlers (`0x00dd2b80`, `0x00dd29d0`) copy an unknown entity's message into a per-id buffer at `+0x3c`; the replay of that buffer was not traced.
+
+[Cimmeria server-side note: `Channel::receive_parsed` (`crates/mercury/src/channel/rx_order.rs`) is this gate. The server runs it on every client packet. Like the client, it adopts the peer's first reliable sequence; the `castle_cellblock_head` capture shows the client starting at seq 0 with flags `0x58`, but the server does not rely on that. The loopback/wireclient harness runs it too. Unlike the client, it does not ack a packet beyond the window, so the sender retransmits it. `Channel::check_rx_stall` warns when one gap blocks delivery for more than 2 s. It never skips the gap, because the client never does.]
 
 The client tolerates reorder *within* the window and discards *below* it; far-out-of-window only warns. None of these is a hard disconnect — the disconnect-on-sequence happens at the higher-level "packet with sequence number outside valid range" path enumerated in the R1–R10 rows above (`"Dropping packet due to receiving a packet with sequence number outside valid range"`), which fires when the 28-bit space itself is violated (`seq_id == 0x10000000`).
 

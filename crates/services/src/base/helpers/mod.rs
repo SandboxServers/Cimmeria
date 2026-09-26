@@ -287,6 +287,14 @@ pub(crate) fn collect_pending_retransmits(
     let Ok(mut channel) = state.channel.lock() else {
         return Vec::new();
     };
+    // Receive-stall watchdog, on the same 100 ms tick as the retransmit
+    // scan: a client reliable packet the client never resent is blocking
+    // everything it sent after it (NA38). The WARN is logged inside.
+    if let Some(stall) = channel.check_rx_stall() {
+        if stall.first_warning {
+            cimmeria_observability::counter!("mercury_rx_stalls_total");
+        }
+    }
     channel.check_timeouts()
 }
 

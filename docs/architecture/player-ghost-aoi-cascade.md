@@ -360,15 +360,31 @@ ends of a failed introduction. The row is catalogued in
     gate into the live path on both ends) or a reactive per-entity hold
     keyed on an *observed* retransmit, not a proactive wait. See
     `docs/analysis/npc-ai-restoration/work-packets.md` NA37 round 2 for
-    the full writeup and the (currently `#[ignore]`d) reproduction test.
-  - This is now the most likely explanation for the owner's report: a
-    real player over the internet (packet loss, unlike any test run so
-    far) hitting exactly this race. The owner's *next* session should be
-    captured live and checked against the `aoi.introduce` /
-    `aoi.player_ghost_incomplete` / `aoi.entered_no_witness_addr`
-    telemetry (NA34) for corroborating evidence. Until a live two-client
-    UAT (or the protocol-level fix) lands, treat player-to-player
-    visibility as `NT`, not `CW`.
+    the full writeup and the reproduction test (un-ignored by NA38).
+  - **NA38 ruled this mechanism out for real players.** The SGW client
+    orders its reliable stream itself. `UnAckedHandler::queueAckForPacket`
+    (`ghidra://SGW.exe@0x0158cba0`) buffers a reliable packet that
+    arrives ahead of a gap and releases it once the retransmit fills the
+    gap. Unreliable position relays pass the gap, but
+    `EntityManager::onEntityMoveWithError` (`0x00dd1650`) keeps the
+    latest one for an unknown id, and the create handler (`0x00dd2270`)
+    uses it. So a lost `CREATE_ENTITY` costs one retransmit, not a missing
+    player. The round-2 failure came from the harness, whose recv pump
+    handed bundles over in raw arrival order. The harness now runs the
+    same gate (`Channel::receive_parsed`), and
+    `burst_drop_of_peer_create_entity_recovers_via_retransmit` passes on
+    an unchanged server. The server's own receive path also orders the
+    client's reliable stream now, and drops retransmitted duplicates
+    instead of dispatching them twice.
+  - The owner's report is therefore still unexplained. What remains to
+    test is server logic order: a reliable message about the peer
+    reaching the witness from a different task than the one that sent
+    the witness its create. The ordered harness can now surface that.
+    Capture the owner's *next* session live and check it against the
+    `aoi.introduce` / `aoi.player_ghost_incomplete` /
+    `aoi.entered_no_witness_addr` telemetry (NA34) and the new
+    `mercury.rx_order` rows. Until a live two-client UAT passes, treat
+    player-to-player visibility as `NT`, not `CW`.
 - **GMs are introduced as plain players.** `connect_entity` stamps
   `class_id = 0x02` (`SGWPlayer`) for every player
   ([`cell/space_manager/entities.rs:337`](../../crates/services/src/cell/space_manager/entities.rs)),

@@ -11,6 +11,7 @@ All five topic files have been triaged per #264 step 4. Bucket tags below each l
 
 ## Topic files
 
+- [na38-client-orders-reliable-stream.md](na38-client-orders-reliable-stream.md) - **[NEW 2026-09-25]** Client orders reliable packets (512 window, adopts first seq), delivers unreliable on arrival, caches early msgs for unknown ids.
 - [interface-element-length-escape.md](interface-element-length-escape.md) - **[NEW 2026-09-19]** Mercury length fields escalate on value: an all-0xFF sentinel in the inline field plus a 4-byte real length in the body. Ghidra-cited.
 - [message-id-00-direction-split.md](message-id-00-direction-split.md) - **[NEW 2026-09-19]** msg 0x00 is BASEAPP_LOGIN inbound and AUTHENTICATE outbound; REPLY_MESSAGE 0xFF borrows the server AUTHENTICATE (DWORD) descriptor.
 

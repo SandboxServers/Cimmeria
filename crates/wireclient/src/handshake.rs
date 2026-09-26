@@ -222,6 +222,10 @@ pub fn parse_baseapp_reply(
 
 // ── Inbound: time sync triple (seq=2) ───────────────────────────────────────
 
+/// The first reliable sequence the server sends on the channel after the
+/// phase-3 handshake: the reply took seq 1 and the time-sync bundle seq 2.
+pub const FIRST_CHANNEL_SEQ: u32 = 3;
+
 /// Decoded `tickSync` snapshot from the server's seq=2 reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimeSyncReply {

@@ -3,8 +3,11 @@
 //! Owns a [`Channel`], a real loopback `UdpSocket`, an injected
 //! [`TestClock`](super::TestClock), and (optionally) a
 //! [`MercuryEncryption`] context. Spawns a recv pump that reads from the
-//! socket, decrypts, parses, feeds inbound packets into the channel, and
-//! makes reassembled bundles available via [`Self::recv_n_bundles`].
+//! socket, decrypts, parses, feeds inbound packets through the channel's
+//! in-order receive gate ([`Channel::receive_parsed`]), and makes the
+//! delivered bundles available via [`LoopbackPeer::recv_n_bundles`] in
+//! delivery order: reliable bundles in sequence order with duplicates
+//! dropped, unreliable bundles as they arrive.
 //!
 //! Per-direction [`NetworkPolicy`] is held by the
 //! [`LoopbackSession`](super::LoopbackSession) and consulted by each
@@ -41,6 +44,8 @@ pub struct TickActions {
     pub retransmits: Vec<Bytes>,
     /// Encrypted keepalive datagrams emitted by this tick (zero or one).
     pub keepalives: Vec<Bytes>,
+    /// The receive-stall watchdog's report, on a tick where it warned.
+    pub rx_stall: Option<crate::channel::RxStall>,
 }
 
 /// Outcome of one `send_with_policy` policy-evaluation pass. Split out
@@ -137,7 +142,13 @@ impl LoopbackPeer {
     ) -> std::io::Result<Self> {
         let addr = socket.local_addr()?;
         let socket = Arc::new(socket);
-        let channel = Arc::new(Mutex::new(Channel::with_clock(peer_addr, clock.clone())));
+        // Every harness peer's reliable stream starts at seq 0
+        // (`next_tx_seq` is 0 on a new Channel), so pin the receive side
+        // there instead of adopting whichever packet lands first. A
+        // wireclient `GameSession` re-anchors past the phase-3 handshake.
+        let mut ch = Channel::with_clock(peer_addr, clock.clone());
+        ch.anchor_rx_seq(0);
+        let channel = Arc::new(Mutex::new(ch));
 
         let inbox = Arc::new(Mutex::new(VecDeque::new()));
         let inbox_notify = Arc::new(Notify::new());
@@ -607,6 +618,7 @@ impl LoopbackPeer {
 
         let retransmits = {
             let mut channel = self.channel.lock().expect("channel poisoned");
+            actions.rx_stall = channel.check_rx_stall();
             channel.check_timeouts()
         };
         for bytes in &retransmits {
@@ -760,33 +772,31 @@ fn spawn_recv_pump(
                 }
             }
 
-            // Reliable inbound packets owe a piggyback ack to the peer
-            // on the next outbound send.
-            if pkt.is_reliable() {
-                if let Some(seq) = pkt.seq_id {
-                    let mut acks = pending_acks.lock().expect("pending_acks poisoned");
-                    acks.push(seq);
+            // In-order delivery, the way the SGW client's
+            // `queueAckForPacket` does it (`Channel::receive_parsed`):
+            // reliable packets behind a gap wait for the retransmit,
+            // duplicates are dropped, unreliable packets go straight
+            // through, and released fragments are reassembled. The inbox
+            // therefore sees what the real client's message handlers
+            // see, not raw wire-arrival order (NA38).
+            let delivery = {
+                let mut ch = channel.lock().expect("channel poisoned");
+                match ch.receive_parsed(pkt) {
+                    Ok(d) => d,
+                    Err(_) => continue,
                 }
-            }
-
-            // Fragment reassembly or pass-through. `reassemble_parsed`
-            // returns `Ok(None)` for "buffering, no complete bundle yet"
-            // and `Ok(Some(bytes))` when the bundle is assembled.
-            let delivered: Option<Bytes> = if pkt.is_fragmented() {
-                let mut ch = channel.lock().expect("channel poisoned");
-                ch.reassemble_parsed(&pkt).unwrap_or_default()
-            } else {
-                // Non-fragmented: the body IS the bundle. Still mark
-                // receive-side activity for the keepalive / inactivity
-                // timers.
-                let mut ch = channel.lock().expect("channel poisoned");
-                ch.touch_received();
-                Some(pkt.body.clone())
             };
 
-            if let Some(body) = delivered {
+            // Every accepted reliable packet, duplicates included, owes a
+            // piggyback ack on the next outbound send.
+            if let Some(seq) = delivery.ack {
+                let mut acks = pending_acks.lock().expect("pending_acks poisoned");
+                acks.push(seq);
+            }
+
+            if !delivery.bundles.is_empty() {
                 let mut inbox = inbox.lock().expect("inbox poisoned");
-                inbox.push_back(body);
+                inbox.extend(delivery.bundles);
                 inbox_notify.notify_one();
             }
         }

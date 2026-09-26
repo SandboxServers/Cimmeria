@@ -115,6 +115,16 @@ impl GameSession {
             policy,
         )
         .await?;
+        // The server's reliable stream opened with the baseAppLogin reply
+        // (seq 1) and the time-sync bundle (seq 2), both consumed above
+        // before the Channel existed. The real client's channel saw them
+        // (its `inSeqAt` adopts seq 1), so the next reliable packet it
+        // expects is 3. Pin that, so the receive gate orders everything
+        // after the handshake the way the client does (NA38).
+        peer.channel
+            .lock()
+            .expect("channel poisoned")
+            .anchor_rx_seq(handshake::FIRST_CHANNEL_SEQ);
 
         Ok(Self {
             peer,

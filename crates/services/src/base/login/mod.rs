@@ -210,7 +210,7 @@ pub(crate) async fn handle_login(
                 player_training_points: None,
                 active_player_id: None,
                 pending_destination_ring_id: None,
-                channel: Mutex::new(cimmeria_mercury::channel::Channel::new(addr)),
+                channel: Mutex::new(new_client_channel(addr)),
             },
         );
         arcs
@@ -249,6 +249,20 @@ pub(crate) async fn handle_login(
     ));
 
     Ok(())
+}
+
+/// The Mercury channel for a newly logged-in client session.
+///
+/// Its receive side is deliberately left **unanchored**. It adopts the
+/// first reliable sequence the client sends, as the client's own
+/// `queueAckForPacket` does for the server's stream (`inSeqAt` starts at
+/// `SEQ_NULL`, ctor `ghidra://SGW.exe@0x0158c7b0`). The one capture we have
+/// shows the client starting at seq 0. But pinning 0 would park every
+/// reliable packet from a client that started anywhere else behind a gap
+/// that never fills, and drop anything over 512 ahead unacked, hanging the
+/// login (NA38).
+pub(crate) fn new_client_channel(addr: SocketAddr) -> cimmeria_mercury::channel::Channel {
+    cimmeria_mercury::channel::Channel::new(addr)
 }
 
 /// Parse the `baseAppLogin` packet body.
