@@ -17,7 +17,7 @@ workspace `exclude`, because it needs nightly Rust.
 <!-- crate-graph:begin -->
 
 ```mermaid
-%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 flowchart TD
     subgraph grp_apps["Binaries and apps"]
         app["app"]

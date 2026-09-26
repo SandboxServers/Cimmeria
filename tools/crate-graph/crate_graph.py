@@ -151,7 +151,7 @@ def render(full: bool = False) -> str:
         by_group.setdefault(group_of(n, members, prefixes), []).append(n)
     lines = [
         "```mermaid",
-        '%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%',
+        '%%{init: {"flowchart": {"htmlLabels": false}}}%%',
         "flowchart TD",
     ]
     order = [g for g, _ in groups] + (["other"] if "other" in by_group else [])

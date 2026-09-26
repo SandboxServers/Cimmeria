@@ -96,7 +96,7 @@ The workspace crates and their **actual** inter-crate dependencies. An arrow
 <!-- crate-graph:begin -->
 
 ```mermaid
-%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 flowchart TD
     subgraph grp_apps["Binaries and apps"]
         app["app"]
