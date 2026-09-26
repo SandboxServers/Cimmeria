@@ -110,7 +110,8 @@ impl PlayerWatch {
 
     /// Re-evaluate the time-based signals. `missions` is
     /// `(mission_id, current_step_id)` for every active, non-hidden mission;
-    /// `regions_inside` is every region the server believes contains `pos`.
+    /// `regions_inside` is every region the client's own hit test puts `pos`
+    /// inside ([`regions_client_should_hint`]).
     pub(crate) fn evaluate(
         &mut self,
         now: Instant,
@@ -301,16 +302,30 @@ pub fn player_tick(
     let world = space_mgr
         .get_entity_world_name(entity_id)
         .unwrap_or_default();
-    let regions: Vec<(u32, String)> = space_mgr
-        .regions_for_world(&world)
-        .into_iter()
-        .filter(|r| region_contains_xz(&r.points, pos[0], pos[2]))
-        .map(|r| (r.runtime_id, r.tag.clone()))
-        .collect();
+    let regions = regions_client_should_hint(&space_mgr.regions_for_world(&world), pos);
     let fired = with_watch(entity_id, |w| w.evaluate(now, pos, &missions, &regions));
     for f in &fired {
         emit(entity_id, f);
     }
+}
+
+/// The regions `region_dwell_no_hint` may complain about at `pos`: the ones
+/// registered with the client (`REGION_FLAG_CLIENT_HINTED`) whose volume the
+/// client's own hit test puts `pos` inside. An XZ-only test here reported
+/// Castle_Cellblock Region6/Region12 for players on the floor above them,
+/// where the client correctly stays silent (2026-09-26 colo logs).
+pub(crate) fn regions_client_should_hint(
+    regions: &[&crate::cell::space_manager::RegionData],
+    pos: [f32; 3],
+) -> Vec<(u32, String)> {
+    regions
+        .iter()
+        .filter(|r| r.flags & crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED != 0)
+        .filter(|r| {
+            crate::cell::spawner::client_would_hint_region(&r.points, r.height, r.radius, pos)
+        })
+        .map(|r| (r.runtime_id, r.tag.clone()))
+        .collect()
 }
 
 /// The client reported a region edge (`triggerClientHintedGenericRegion`).
@@ -399,6 +414,7 @@ pub fn forget(entity_id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell::space_manager::RegionData;
 
     fn secs(t0: Instant, s: u64) -> Instant {
         t0 + Duration::from_secs(s)
@@ -531,6 +547,68 @@ mod tests {
         );
         assert_eq!(w.note_dialog(5859, t0 + Duration::from_millis(700)), None);
         assert_eq!(w.note_dialog(1, secs(t0, 10)), None);
+    }
+
+    /// Seeded Castle_Cellblock regions (point_set_points 2034/2037/2043,
+    /// height 0, flags 1) as the loader hands them over.
+    fn cellblock_region(runtime_id: u32, tag: &str, points: [[f32; 3]; 4]) -> RegionData {
+        RegionData {
+            runtime_id,
+            db_set_id: 0,
+            tag: tag.to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 0.0,
+            radius: 0.0,
+            flags: crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED,
+            points: points.to_vec(),
+        }
+    }
+
+    /// 2026-09-26 colo: entity 2 at (-129.338, 39.552, -96.1) -- the room up
+    /// the ramp west of the Mess Hall -- drew `client_region_hint_missing` for
+    /// Region6 and Region12, whose ceilings are 29.96 and 31.90. The client
+    /// stays silent there by design, so the watcher must not expect a hint.
+    /// Down on their floor (y 24.67) it still must.
+    #[test]
+    fn dwell_candidates_follow_the_clients_ceiling_not_just_xz() {
+        let r6 = cellblock_region(
+            19,
+            "Castle_Cellblock.Region6",
+            [
+                [-115.08, 24.64, -146.42],
+                [-115.08, 24.64, -75.2],
+                [-148.85, 24.64, -75.2],
+                [-148.85, 29.96, -146.42],
+            ],
+        );
+        let r12 = cellblock_region(
+            25,
+            "Castle_Cellblock.Region12",
+            [
+                [-148.81, 24.64, -93.8],
+                [-148.81, 24.64, -146.72],
+                [-115.18, 24.64, -146.72],
+                [-115.18, 31.9, -93.8],
+            ],
+        );
+        let mut unhinted = r12.clone();
+        unhinted.runtime_id = 99;
+        unhinted.flags = 0;
+        let regions = [&r6, &r12, &unhinted];
+
+        assert!(
+            regions_client_should_hint(&regions, [-129.338, 39.552, -96.1]).is_empty(),
+            "upper floor: above both ceilings, the client sends nothing"
+        );
+        let below: Vec<u32> = regions_client_should_hint(&regions, [-129.338, 24.67, -96.1])
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(
+            below,
+            vec![19, 25],
+            "on their floor, both are expected; the unregistered one never is"
+        );
     }
 
     #[test]
