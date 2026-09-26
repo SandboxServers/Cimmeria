@@ -3,9 +3,18 @@
 //! Manages spatial entity simulation, world cells, movement, and Area of
 //! Interest calculations. Mirrors the C++ CellApp that partitions the game
 //! world into spatial cells and simulates entity interactions within them.
+//!
+//! The world state every cell system shares (`space_manager`, `arrival`,
+//! `cover`, the NPC AI's state primitives, the ring-transporter state machine,
+//! the synchronous effect scripts, the GM gate and `CellError`) is in
+//! `cimmeria-cell-world` (wave C1 of `docs/architecture/services-crate-split.md`).
+//! Its modules are re-exported here at their old paths; `combat`, `effects`,
+//! `dispatch`, `ring_transport` and `service` are partly there, and their
+//! modules here re-export the moved halves.
 
 pub mod abilities;
-pub mod arrival;
+// In `cimmeria-cell-world` (wave C1).
+pub use cimmeria_cell_world::cell::arrival;
 pub mod cell_methods;
 pub mod chat;
 // The server->client method index tables are wire contract (cimmeria-wire).
@@ -13,7 +22,9 @@ pub use cimmeria_wire::cell::client_methods;
 pub mod combat;
 pub mod console;
 pub mod content;
-pub mod cover;
+// The seam combat raises content events through (§2E), in `cimmeria-cell-world`.
+pub use cimmeria_cell_world::cell::content_events;
+pub use cimmeria_cell_world::cell::cover;
 pub mod dispatch;
 pub mod effects;
 pub mod gate_travel;
@@ -27,16 +38,11 @@ pub mod mail;
 // The Base<->Cell message contract is in `cimmeria-wire` (wave W3a).
 pub use cimmeria_wire::cell::messages;
 pub mod missions;
+pub(crate) use cimmeria_cell_world::cell::{playtest_friction, playtest_friction_watch};
 pub(crate) use cimmeria_wire::cell::player_journal;
-pub(crate) mod playtest_friction;
-pub(crate) mod playtest_friction_watch;
-/// Crate-internal: the shared respawner search behind both
-/// [`arrival::resolve_arrival`] and `SpaceManager::resolve_recovery_position`.
-/// In `cimmeria-cell-catalog` since wave W2b.
-pub(crate) use cimmeria_cell_catalog::cell::respawner_fallback;
 pub mod ring_transport;
 mod service;
-pub mod space_manager;
+pub use cimmeria_cell_world::cell::space_manager;
 // Crate-internal: `transfer_player_to_space` is a destructive, unauthenticated
 // entry point (privilege is enforced by the console dispatch layer above it),
 // so it must not be reachable from outside this crate. Its production callers
@@ -51,28 +57,10 @@ pub use cimmeria_cell_catalog::cell::spawner;
 #[cfg(test)]
 mod spawner_tests;
 
-use cimmeria_common::{EntityId, SpaceId};
-
 pub use service::CellService;
 
-/// Errors specific to the cell service.
-#[derive(Debug, thiserror::Error)]
-pub enum CellError {
-    #[error("Space {0} not found")]
-    SpaceNotFound(SpaceId),
-
-    #[error("Entity {0} not found in any cell")]
-    EntityNotFound(EntityId),
-
-    #[error("Failed to create space: {0}")]
-    SpaceCreationFailed(String),
-
-    #[error("Service not running")]
-    NotRunning,
-
-    #[error("Network error: {0}")]
-    Network(#[from] std::io::Error),
-}
+/// Errors specific to the cell service. In `cimmeria-cell-world` (wave C1).
+pub use cimmeria_cell_world::cell::CellError;
 
 #[cfg(test)]
 mod tests {

@@ -61,7 +61,8 @@ use crate::otel;
 /// that one DEBUG sample through. `otel_filter_prefix_matching_exports_npc_ai_children`
 /// pins this behaviour, not just the string.
 ///
-/// `cimmeria_wire=debug` and `cimmeria_cell_catalog=debug` keep the code
+/// `cimmeria_wire=debug`, `cimmeria_cell_catalog=debug` and
+/// `cimmeria_cell_world=debug` keep the code
 /// split out of `cimmeria-services` (docs/architecture/services-crate-split.md)
 /// at the DEBUG level `cimmeria_services=debug` gave it: a moved module's
 /// `module_path!()` target starts with the new crate's name, which the
@@ -96,6 +97,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire=debug,\
                 cimmeria_cell_cover=debug,\
                 cimmeria_cell_catalog=debug,\
+                cimmeria_cell_world=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -240,13 +242,15 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "aoi.log",
         directives: "off,\
              cimmeria_services::cell::service=trace,\
-             cimmeria_services::cell::space_manager=trace,\
-             cimmeria_services::cell::space_manager::npc_population=off",
+             cimmeria_cell_world::cell::service=trace,\
+             cimmeria_cell_world::cell::space_manager=trace,\
+             cimmeria_cell_world::cell::space_manager::npc_population=off",
     },
     FileLayer {
         file: "combat.log",
         directives: "off,\
              cimmeria_services::cell::combat=trace,\
+             cimmeria_cell_world::cell::combat=trace,\
              cimmeria_services::cell::abilities=trace",
     },
     FileLayer {
@@ -268,14 +272,16 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "spawner.log",
         directives: "off,\
              cimmeria_cell_catalog::cell::spawner=trace,\
-             cimmeria_services::cell::space_manager::npc_population=trace,\
+             cimmeria_cell_world::cell::space_manager::npc_population=trace,\
              cimmeria_services::cell::gate_travel=trace,\
-             cimmeria_services::cell::ring_transport=trace",
+             cimmeria_services::cell::ring_transport=trace,\
+             cimmeria_cell_world::cell::ring_transport=trace",
     },
     FileLayer {
         file: "dispatch.log",
         directives: "off,\
              cimmeria_services::cell::dispatch=trace,\
+             cimmeria_cell_world::cell::dispatch=trace,\
              cimmeria_services::base::dispatch=trace",
     },
 ];

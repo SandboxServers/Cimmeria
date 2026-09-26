@@ -1,0 +1,61 @@
+[package]
+name = "cimmeria-cell-world"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The cell's world state for the Cimmeria server emulator: the SpaceManager and its spaces, AoI and movement validation, NPC state primitives and detectors, the ring-transporter state machine, the synchronous effect scripts, and the ContentEvents seam the combat layer raises content events through"
+
+# Split out of cimmeria-services (wave C1 of
+# docs/architecture/services-crate-split.md). Every cell system above it
+# (combat, content, interactions, methods, console) reads and mutates the
+# world through `SpaceManager`, so this crate must never depend on one of them;
+# `ContentEvents` is the one call it needs back up, and it is a trait here. The
+# module tree keeps its old nesting (`cell::space_manager`, `cell::service::npc_ai::…`,
+# `cell::ring_transport::…`), and cimmeria-services re-exports each module at
+# its old path.
+[dependencies]
+# The Base<->Cell message contract, the Mercury packet builders and the cell
+# method indices every wire helper here writes.
+cimmeria-wire = { workspace = true }
+# The spawner's catalog types (`SpawnRecord`, `WorldRow`, stargates, regions)
+# and the respawner search.
+cimmeria-cell-catalog = { workspace = true }
+# The cover index and reservations `SpaceManager` owns.
+cimmeria-cell-cover = { workspace = true }
+# `actions::Action` for the deferred content-action queue.
+cimmeria-content-engine = { workspace = true }
+# Collision-geometry line of sight (NA27).
+cimmeria-occluder = { workspace = true }
+# `permissions::AccessLevel` for the GM gate.
+cimmeria-commands = { workspace = true }
+# `clock::Clock`, the injectable time source of the ring-transporter FSM.
+cimmeria-mercury = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+cimmeria-observability = { workspace = true }
+tokio = { workspace = true }
+quick-xml = { workspace = true }
+sqlx = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# Exposes the test fixtures (`test_fixtures`) and the test-only hooks
+# (`force_ai_state`, `StepRegionReplayGuard::is_idle`, the arrival mesh
+# helpers, ...) to other crates' tests. cimmeria-services turns it on through
+# its [dev-dependencies]; a production build never sees them.
+test-support = ["cimmeria-cell-cover/test-support"]
+
+[dev-dependencies]
+# Property-based AoI differential test.
+proptest = { workspace = true }
+# The live-DB gate (`require_db_or_skip!`), `LogCapture` and the source-scan
+# walker, re-exported from the `#[cfg(test)] mod test_support` shim in lib.rs.
+# Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# `cell::cover::TEST_WORLD_ID` for the cover-stance and cover-hit tests.
+cimmeria-cell-cover = { workspace = true, features = ["test-support"] }

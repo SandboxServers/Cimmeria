@@ -16,10 +16,9 @@
 # --- §2B: catalog and cover ------------------------------------------------
 
 # --- §2C: the cell::service hub -> cimmeria-cell-world ---------------------
-# effects/mod.rs re-exports the async pulsing layer, which stays in combat.
-cell::effects -> cell::effects::pulsing::channel_cancel
-cell::effects -> cell::effects::pulsing::register
-cell::effects -> cell::effects::pulsing::tick
+# C1 resolved this section: the preparation moves and the extraction of
+# cimmeria-cell-world, whose leftover path shims map to the crates that own
+# what stays beside them.
 
 # --- §2E: combat -> content, inverted through ContentEvents -----------------
 cell::abilities::use_ability::kill_credit -> cell::content::event_dispatch::lifecycle
@@ -30,14 +29,10 @@ cell::service::npc_ai::fight_cover -> cell::content::event_dispatch::cover
 cell::cell_methods::inventory::bandolier::active_slot -> cell::service::ticks::holster  # HOLSTER_ANIMATION_DURATION
 
 # --- §2G: content <-> ring transport ----------------------------------------
-# ring_transport/{mod,runtime/mod}.rs re-export the runtime entry points.
-cell::ring_transport -> cell::ring_transport::runtime::entry
-cell::ring_transport -> cell::ring_transport::runtime::tick
-cell::ring_transport::runtime -> cell::ring_transport::runtime::entry
-cell::ring_transport::runtime -> cell::ring_transport::runtime::tick
+# The ring FSM is in cimmeria-cell-world since C1; the shims left here map to
+# content with the dispatcher and the runtime entry points.
 
 # --- §2H: interactions, methods, console and service ------------------------
-cell -> cell::service  # pub use service::CellService -> facade
 cell::service::base_messages::player_init::resync -> cell::service::base_messages::player_init  # send_known_abilities_update
 cell::cell_methods::player::trade::state -> cell::cell_methods::player::trade  # (not in §2) MAX_INTERACT_DISTANCE
 cell::cell_methods::gm::world -> cell::cell_methods::player::combat::respawn  # (not in §2) gmRespawn calls handle_respawn

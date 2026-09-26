@@ -33,11 +33,6 @@ pub use cimmeria_cell_catalog::ability_tree;
 // `cimmeria_services::{mercury, firehose}` downstream keep resolving.
 pub use cimmeria_wire::{firehose, mercury};
 
-/// The `mercury::aoi` test that drives a `SpaceManager`, which is still in
-/// this crate. Test-only.
-#[cfg(test)]
-mod mercury_aoi_tests;
-
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.
 #[cfg(test)]

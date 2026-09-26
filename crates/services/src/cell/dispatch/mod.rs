@@ -25,11 +25,13 @@
 //! - [`names`] — the [`cell_method_name`] lookup used for logging.
 //!
 //! `constants` and `names` are wire contract and live in `cimmeria-wire`
-//! (wave W3a of the services crate split); they are imported here so
-//! `gm_gate` keeps naming them as `super::constants`.
+//! (wave W3a of the services crate split). `gm_gate` is in
+//! `cimmeria-cell-world` (wave C1), because the movement validator and the NPC
+//! AI read it; it is imported here so the router and the tests keep naming it
+//! as `super::gm_gate`.
 
+use cimmeria_cell_world::cell::dispatch::gm_gate;
 use cimmeria_wire::cell::dispatch::{constants, names};
-mod gm_gate;
 mod router;
 
 #[cfg(test)]
@@ -46,9 +48,8 @@ pub use constants::*;
 pub use names::cell_method_name;
 pub use router::dispatch_cell_method;
 
-// The canonical raw-column → typed `AccessLevel` conversion. Re-exported
-// because it is the one mapping every privilege check in the cell must share
-// — the movement validator's GM off-navmesh allowance included.
-pub(crate) use gm_gate::access_level_from_u32;
+// The canonical raw-column → typed `AccessLevel` conversion,
+// `gm_gate::access_level_from_u32`, is used only inside `cimmeria-cell-world`
+// now (the movement validator's GM off-navmesh allowance).
 // The `.`-console privilege test (re-exported as `cell::console::is_gm`).
 pub(crate) use gm_gate::is_gm;
