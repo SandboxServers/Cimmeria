@@ -67,8 +67,11 @@ async fn outbox_round_trip_against_real_db() {
 }
 ```
 
-The gate lives in `crates/services/src/live_db_gate.rs` and is
-re-exported from `test_support`. `test_pool()` returns
+The gate lives in `crates/test-support/src/live_db_gate.rs`
+(`cimmeria-test-support`, a dev-dependency) and is re-exported from each
+crate's `crate::test_support` shim. The macro is `#[macro_export]` and
+reaches the gate through `$crate`, while `module_path!()` still expands
+at the call site. `test_pool()` returns
 `Result<PgPool, SkipReason>`, and the macro treats the two failure
 shapes differently:
 
@@ -83,7 +86,12 @@ shapes differently:
   live-DB guard as passed without executing any of them.
 
 Only `DATABASE_URL=postgres://… cargo test` exercises the integration
-path.
+path. CI and the local recipe run it through `tools/test-live-db.sh` (or
+`.ps1`), which lists every crate with live-DB tests and runs their lib
+tests in one `--profile=ci-live-db` nextest invocation. A crate with a
+`cimmeria-test-support` dev-dependency must be in that list;
+`live_db_wrapper_lists_every_test_support_crate` enforces it, because a
+crate left out would pass CI with every live-DB test skipped (#615).
 
 Each test is responsible for its own data isolation: either work
 inside a transaction it rolls back at the end (works for tests that

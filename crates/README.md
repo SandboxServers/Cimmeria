@@ -6,10 +6,10 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The 23 workspace members and their **actual** inter-crate dependencies, generated
-from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*). The 23
-comes from the `members` list in the root [Cargo.toml](../Cargo.toml): the 19
-crates under `crates/`, plus `src-tauri` and the three tool crates
+The 28 workspace members and their **actual** inter-crate dependencies, generated
+from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*; a dotted
+arrow is a dev-dependency). The 28 comes from the `members` list in the root
+[Cargo.toml](../Cargo.toml): the 24 crates under `crates/`, plus `src-tauri` and the three tool crates
 (`tools/ContentEditor`, `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/`
 target is a deliberate workspace `exclude` — it needs nightly Rust.
 
@@ -56,6 +56,10 @@ flowchart TD
     navmeshExtractor --> occluder
     services --> occluder
     sceneEditor["scene-editor (tool)"] --> upkObjects
+
+    %% test-only
+    services -. dev .-> testSupport["test-support (dev-only)"]
+    testSupport --> mercury
     sceneEditor --> upk
     upkObjects --> upk
 
@@ -75,7 +79,7 @@ what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. Th
 `upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
 are an independent Unreal-package / navmesh toolchain; `supervisor`,
 `client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
-intra-workspace deps. All 19 crates in `crates/` are catalogued below; the
+intra-workspace deps. `test-support` is a dev-dependency only. All 24 crates in `crates/` are catalogued below; the
 diagram additionally shows the `src-tauri` app and the `tools/` editors, which
 are workspace members that live outside `crates/`.
 
@@ -88,7 +92,8 @@ are workspace members that live outside `crates/`.
 | `commands` | `cimmeria-commands` | Server command dispatch framework |
 | `game` | `cimmeria-game` | Game mechanics: combat, abilities, stats, effects |
 | `content-engine` | `cimmeria-content-engine` | Data-driven content runtime: missions, dialogs, sequences |
-| `services` | `cimmeria-services` | Auth, Base, and Cell service implementations — the bulk of server logic |
+| `services` | `cimmeria-services` | Auth, Base, and Cell service implementations — the bulk of server logic. Being split into an acyclic set of crates; see [docs/architecture/services-crate-split.md](../docs/architecture/services-crate-split.md) and the layering guard in [tools/layering/](../tools/layering/README.md) |
+| `test-support` | `cimmeria-test-support` | **Dev-dependency only.** Generic test helpers: the live-DB gate (`require_db_or_skip!`, which skips without `DATABASE_URL` and fails when it is set but unreachable), `LogCapture` for negative-log guards, the `TestTransport` re-export, and `source_scan` for workspace-wide source guards. Never depends on a service crate (that would link two copies of it into a test binary); domain fixtures stay with their types. Every crate that dev-depends on it must be listed in `tools/test-live-db.{sh,ps1}`. |
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |
 | `server` | `cimmeria-server` | **Binary entry point.** `cargo run -p cimmeria-server` |
@@ -139,10 +144,10 @@ cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor 
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo test -p cimmeria-services --lib -- --test-threads=1
+  ../tools/test-live-db.sh
 ```
 
-`--test-threads=1` is required for the live-DB run — some guards share sentinel id ranges and would collide under parallel execution. See [../TESTING.md](../TESTING.md) for the full picker, gotchas, and review checklist, and [../docs/testing/inventory/README.md](../docs/testing/inventory/README.md) for the catalogue of every test in the workspace (one file per crate).
+The live-DB run must be serialised — some guards share sentinel id ranges and would collide under parallel execution. `tools/test-live-db.sh` runs every crate with live-DB tests under the serialised `ci-live-db` nextest profile; with plain `cargo test`, pass `-- --test-threads=1`. See [../TESTING.md](../TESTING.md) for the full picker, gotchas, and review checklist, and [../docs/testing/inventory/README.md](../docs/testing/inventory/README.md) for the catalogue of every test in the workspace (one file per crate).
 
 ## Key Source Files
 

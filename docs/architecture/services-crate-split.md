@@ -8,6 +8,7 @@ last_updated: 2026-09-26
 # Splitting `cimmeria-services` into an acyclic crate graph
 
 > **Status:** Accepted, in progress on `build/toolchain-overhaul` (2026-09-26).
+> **W0 done (2026-09-26):** `cimmeria-test-support`, the live-DB wrapper `tools/test-live-db.{sh,ps1}`, the layering guard `tools/layering/` (55 allowlisted edges) and the source-scan and stale-target guards are in. Deviations are listed under [§4](#deviations-found-during-the-waves).
 > **Why:** `cimmeria-services` was one crate of 914 files: about 106k production lines plus 150k lines of tests. rustc does most of its work for a crate serially, so every edit re-checked the whole crate, every test run linked one ~250k-line test binary, and a machine's cores sat idle. On 2026-09-26, editing one file in `cell::content` and rebuilding the services test binary took **164.7 s**. This plan splits the crate along its real seams so Cargo can compile the pieces in parallel and an edit rebuilds only what depends on it. See [build-system.md](build-system.md) for the wider build overhaul.
 
 Conventions: `file:line` paths are relative to `crates/services/src/` as of `origin/main` `f153138b` (2026-09-26), unless marked. "Lines" means production lines, comments included. Inline `#[cfg(test)]` modules and test files are excluded.
@@ -257,6 +258,20 @@ Keeping the nesting also keeps `include_str!` and `CARGO_MANIFEST_DIR/../../data
 | **F Final** | Facade cleanup, cross-track tests, delete the layering allowlist, docs and CI paths | 1 agent |
 
 The two tracks touch disjoint trees (`src/cell/**` and `src/base/**`). They conflict only on list files: workspace `members`, the services `Cargo.toml` and `lib.rs`, the logging filter rows, `IN_PROCESS_CRATES`, the live-DB crate list, `codecov.yml` and `spec-touch.yml`.
+
+### Deviations found during the waves
+
+W0:
+
+- **`cimmeria-test-support` gained `source_scan`**, a walker over every crate's sources that names files by their path under `src/`. The §5.4 guards use it, so their scans and allowlists survive a move. The crate is also in the live-DB crate list: its gate tests ran in the services live-DB job before, and the live-DB run keeps the same test set.
+- **Edges §2 does not list.** The layering guard found three production edges the plan missed:
+  - `cell_methods::gm::world` → `player::combat::respawn` (`gmRespawn` calls `handle_respawn`). This is console → methods, so §2H's claim that console stops depending on methods needs one more move.
+  - `player::trade::state` → `player::trade` (`MAX_INTERACT_DISTANCE`), which must move with `state.rs`.
+  - `space_manager::navmesh_mode` → `space_manager`: `navmesh_mode.rs` also holds an `impl SpaceManager` block, which must stay in world when the file moves to catalog.
+
+  The allowlist also holds the module re-exports that the planned moves leave behind (`cover` → `stance`, `effects` → `pulsing`, `ring_transport` and `ring_transport::runtime` → `runtime::{entry,tick}`), and `dispatch::gm_gate` → the `cell_methods` index constants, which §2A's constants move resolves.
+- **`deferred_aoi.rs:332` (§2I) is test code**, inside a `#[cfg(test)]` module, so it is not a production edge.
+- **A stale file-layer directive.** The stale-target guard found `cimmeria_services::base::world_entry_player` in `FILE_LAYERS` (world_entry.log). The module no longer exists, so the row matched nothing; it was removed.
 
 ## 5. Risks and rules
 

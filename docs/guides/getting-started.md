@@ -187,7 +187,7 @@ Live-DB tests (the ones that need a running PostgreSQL) self-skip via `require_d
 
 ```powershell
 $env:DATABASE_URL = "postgres://w-testing:w-testing@localhost:5433/sgw"
-cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+tools/test-live-db.ps1
 ```
 
 The full pre-PR checklist (formatting, clippy, build, tests, doctests, lint scripts) is in [`CLAUDE.md`](../../CLAUDE.md) → "Pre-PR checklist." CI runs it exactly — if you skip it locally, the PR will round-trip.

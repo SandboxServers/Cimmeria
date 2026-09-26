@@ -64,6 +64,9 @@ Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../C
 | `lint-md.sh` / `lint-md.ps1` | Markdown lint via `markdownlint-cli2` (warn-only; `--fix` auto-fixes) |
 | `check-figure-sources.sh` / `check-figure-sources.ps1` | Verify each figure source DSL has a re-rendered SVG (blocking in CI) |
 | `lint-figure-style.sh` / `lint-figure-style.ps1` | Figure style + format lint — Mermaid init directives, theme backdrops, caption numbering (blocking in CI) |
+| `test-live-db.sh` / `test-live-db.ps1` | The live-DB test tier: runs the lib tests of every crate in its list in one `--profile=ci-live-db` nextest invocation (blocking in CI; `--llvm-cov` for the coverage job). Needs `DATABASE_URL`. |
+
+`layering/check.py` (Python 3.11+) is the layering guard for the `cimmeria-services` crate split: it builds the production module graph of `crates/services/src`, maps each module to its planned crate (`layering/crate-map.toml`) and fails on an edge the planned crate DAG forbids unless `layering/allowlist.txt` lists it, or on an allowlisted edge that no longer exists. Blocking in CI (the build job). See [layering/README.md](layering/README.md).
 
 `spec-lint/` is a small Rust crate (`cargo run -p spec-lint`) used for spec-document linting.
 

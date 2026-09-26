@@ -133,7 +133,7 @@ $env:DATABASE_URL = "postgres://w-testing:w-testing@localhost:5433/sgw"
 # Docker PG:
 $env:DATABASE_URL = "postgres://w-testing:w-testing@localhost:5433/sgw"
 
-cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+tools/test-live-db.ps1
 ```
 
 The `ci-live-db` profile serialises tests (`threads-required = "num-test-threads"`) because some guards share sentinel id ranges. Don't try to parallelise it — see [`docs/architecture/integration-test-infra.md`](architecture/integration-test-infra.md).
@@ -270,7 +270,7 @@ Fix the warning at the root cause. Don't sprinkle `#[allow(clippy::...)]` per ca
 
 ### Live-DB test passes for me but fails in CI
 
-**Symptom.** CI's `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` fails on a test that's green on your machine.
+**Symptom.** CI's live-DB job (`tools/test-live-db.sh`, the `ci-live-db` nextest profile) fails on a test that's green on your machine.
 
 **Root cause.** Common causes:
 
@@ -282,7 +282,7 @@ Fix the warning at the root cause. Don't sprinkle `#[allow(clippy::...)]` per ca
 
 ```powershell
 $env:DATABASE_URL = "postgres://w-testing:w-testing@localhost:5433/sgw"
-cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+tools/test-live-db.ps1
 ```
 
 ---

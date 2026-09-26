@@ -279,7 +279,7 @@ New corpora are added by:
 | 4 | Castle Cellblock script (steps 1–8, 10, 12–20) | Pending |
 | 5 | Combat at step 9 + server-side LOS parity check | Pending |
 | 6 | `#[cfg(test)]` force-victory hook | Pending |
-| 7 | nextest `wireclient-e2e` profile + CI workflow | Pending — `two_client_castle_visibility.rs` is live-DB-gated (skips without `DATABASE_URL`) and is **not** wired into `.github/workflows/test.yml`'s `ci-live-db` job yet (that job runs `-p cimmeria-services --lib` only); run it manually per the header comment in the test file until this phase lands |
+| 7 | nextest `wireclient-e2e` profile + CI workflow | Pending — `two_client_castle_visibility.rs` is live-DB-gated (skips without `DATABASE_URL`) and is **not** wired into `.github/workflows/test.yml`'s `ci-live-db` job yet (that job runs the lib tests of the crates in `tools/test-live-db.sh` only); run it manually per the header comment in the test file until this phase lands |
 
 ## Risks & open questions
 

@@ -6,7 +6,7 @@
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
 > **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**. CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` cdylib, leaving **2,691 tests actually gated on every PR**. Of those, 224 are live-DB regression guards (`require_db_or_skip!`, all in `cimmeria-services`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~147 tests at the current 2,936 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently has **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**. CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` cdylib, leaving **2,691 tests actually gated on every PR**. Of those, 224 are live-DB regression guards (`require_db_or_skip!`, all in `cimmeria-services`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~147 tests at the current 2,936 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate with live-DB tests) against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 
@@ -233,7 +233,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - **SOAP auth Phase 1+2** driven against an in-process `AuthService` — `tests/it/auth_smoke.rs` covers the happy-path round trip, the Phase 1 `sid` cookie, and the Phase 2 same-`sid` replay rejection.
 - **Handshake byte builders / parsers** — `src/handshake.rs` builds the unencrypted `baseAppLogin` datagram and parses `connect_reply` / `time_sync`, pinned byte-exactly by 10 unit tests.
 - **JSONL trace load + diff classification** — `src/session_trace.rs` parses the header + event stream and classifies message pairs via `ComparisonPolicy`.
-- **A real UDP session against a real spawned server** — `src/session.rs`'s `GameSession` drives auth → Mercury handshake → character select → world entry (`ENABLE_ENTITIES`/`playCharacter`/`mapLoaded`/`onClientReady`) over an actual `tokio::net::UdpSocket` against a real `Orchestrator` (auth+base+cell), no server-side test seams. `tests/it/two_client_castle_visibility.rs` (**live-DB**, self-skips without `DATABASE_URL`) uses two of these to prove shared-world player-to-player visibility end to end (NA37): `CREATE_ENTITY` + `BEING_APPEARANCE`, movement relay, and leave-on-disconnect, in both arrival orders, plus a negative control for the 100m AoI radius. **Not wired into CI** (`ci-live-db` runs `-p cimmeria-services --lib` only) — run manually per the test file's header comment.
+- **A real UDP session against a real spawned server** — `src/session.rs`'s `GameSession` drives auth → Mercury handshake → character select → world entry (`ENABLE_ENTITIES`/`playCharacter`/`mapLoaded`/`onClientReady`) over an actual `tokio::net::UdpSocket` against a real `Orchestrator` (auth+base+cell), no server-side test seams. `tests/it/two_client_castle_visibility.rs` (**live-DB**, self-skips without `DATABASE_URL`) uses two of these to prove shared-world player-to-player visibility end to end (NA37): `CREATE_ENTITY` + `BEING_APPEARANCE`, movement relay, and leave-on-disconnect, in both arrival orders, plus a negative control for the 100m AoI radius. **Not wired into CI** (the `ci-live-db` run covers the lib tests of the crates in `tools/test-live-db.sh` only) — run manually per the test file's header comment.
 - **Structural bundle decoding** — `src/bundle.rs`'s `decode_bundle` walks a reassembled server→client bundle and extracts msg_id/entity_id/class_id/method_index for each message (not full per-argument semantics — that's still Phase 3).
 
 **What it will catch once Phases 2 (full)/3/4/5 land (planned):**
@@ -365,7 +365,8 @@ This section is mined from review comments since the test push began. Each item 
 ### Test-DB hygiene
 
 - **Live-DB tests run against `sgw` loaded from `db/database.sql` in CI**, and against a developer-supplied `DATABASE_URL` locally. The bundled local Postgres binds to **port 5433** (not 5432) — see [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) for setup.
-- **Unset skips; unreachable fails.** `require_db_or_skip!` skips only when `DATABASE_URL` is unset or empty. When it is set but the connection fails, the test panics with "DATABASE_URL set but connect failed: …", because a skip reports as a pass and would hide a whole live-DB run that executed nothing (#615, see [crates/services/src/live_db_gate.rs](crates/services/src/live_db_gate.rs)).
+- **Unset skips; unreachable fails.** `require_db_or_skip!` skips only when `DATABASE_URL` is unset or empty. When it is set but the connection fails, the test panics with "DATABASE_URL set but connect failed: …", because a skip reports as a pass and would hide a whole live-DB run that executed nothing (#615, see [crates/test-support/src/live_db_gate.rs](crates/test-support/src/live_db_gate.rs)).
+- **A crate with live-DB tests must be in the live-DB crate list.** CI runs the live-DB tier through `tools/test-live-db.{sh,ps1}`, which lists the crates to run; a crate missing from it passes CI with every live-DB test skipped. `live_db_wrapper_lists_every_test_support_crate` fails when a crate with a `cimmeria-test-support` dev-dependency is not listed, and when the two scripts disagree.
 
 ### File and module hygiene
 
@@ -410,14 +411,14 @@ Start the bundled Postgres on port 5433 (via `setup.ps1`'s bootstrap), then:
 
 ```bash
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+  tools/test-live-db.sh          # tools/test-live-db.ps1 in PowerShell
 ```
 
-The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready. With `DATABASE_URL` set to a database that can't be reached, the guards fail rather than skip, so a wrong port shows up as red instead of a false green.
+The script runs `cargo nextest run --profile=ci-live-db --lib` once over every crate in its list, and passes extra arguments (a test-name filter, `--no-fail-fast`) through to nextest. It refuses to run without `DATABASE_URL`, because every live-DB test would skip and pass. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready. With `DATABASE_URL` set to a database that can't be reached, the guards fail rather than skip, so a wrong port shows up as red instead of a false green.
 
 ### CI (every PR)
 
-`.github/workflows/test.yml` defines six jobs. Five gate merge: `fmt`, `clippy`, `build`, `test` (workspace, no DB, nextest), `test-live-db` (postgres:17.9 service container, nextest). The sixth, `coverage` (`cargo llvm-cov` over a no-DB workspace pass plus a services live-DB pass), is `continue-on-error: true` — its artifact and summary are advisory, so a coverage-tool flake never blocks a merge. Nextest's JUnit XML output from the `test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
+`.github/workflows/test.yml` defines six jobs. Five gate merge: `fmt`, `clippy`, `build`, `test` (workspace, no DB, nextest), `test-live-db` (postgres:17.9 service container, nextest). The sixth, `coverage` (`cargo llvm-cov` over a no-DB workspace pass plus a live-DB pass through `tools/test-live-db.sh --llvm-cov`), is `continue-on-error: true` — its artifact and summary are advisory, so a coverage-tool flake never blocks a merge. Nextest's JUnit XML output from the `test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
 
 ---
 
@@ -435,7 +436,7 @@ Before opening a PR that adds tests:
 - [ ] No PR/issue numbers in source comments.
 - [ ] Setup helper reused, not cloned.
 - [ ] Reverting the fix makes the test fail (regression-guard test).
-- [ ] Test runs locally serialised against a live DB if applicable (`cargo nextest run --profile=ci-live-db ...`, or `cargo test ... -- --test-threads=1`).
+- [ ] Test runs locally serialised against a live DB if applicable (`tools/test-live-db.sh`, or `cargo test ... -- --test-threads=1`).
 
 ---
 
@@ -443,7 +444,8 @@ Before opening a PR that adds tests:
 
 - [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) — the "no testcontainers, no `sqlx::test`" decision and local setup.
 - [.github/workflows/test.yml](.github/workflows/test.yml) — the canonical CI definition.
-- [crates/services/src/test_support.rs](crates/services/src/test_support.rs) — `require_db_or_skip!` and `test_pool`.
+- [crates/test-support/](crates/test-support/) — `cimmeria-test-support`: `require_db_or_skip!`, `test_pool`, `LogCapture`, the `TestTransport` re-export and `source_scan`. Each crate re-exports it from its `crate::test_support` shim next to its own domain fixtures ([crates/services/src/test_support.rs](crates/services/src/test_support.rs)).
+- [tools/test-live-db.sh](tools/test-live-db.sh) / [.ps1](tools/test-live-db.ps1) — the live-DB tier: the crate list and the one nextest invocation CI runs.
 - [crates/services/src/base/smoke_tests.rs](crates/services/src/base/smoke_tests.rs) — the three end-to-end smokes and their rationale.
 - [tools/vendor_store_smoke.sql](tools/vendor_store_smoke.sql), [tools/inventory_move_smoke.sql](tools/inventory_move_smoke.sql), [tools/progression_smoke.sql](tools/progression_smoke.sql) — the smoke scripts themselves.
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — review checklist; the testing checklist in this file feeds into it.

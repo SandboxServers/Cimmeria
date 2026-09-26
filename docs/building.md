@@ -120,7 +120,7 @@ cargo nextest run --profile=ci --workspace \
 
 # Live-DB tests (need a running Postgres on :5433):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+  tools/test-live-db.sh
 ```
 
 See [`TESTING.md`](../TESTING.md) for the test-type taxonomy and when to use which.

@@ -89,7 +89,7 @@ cargo nextest run --profile=ci --workspace \
 
 # 5. If you changed anything touching the database, run live-DB tests:
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+  tools/test-live-db.sh
 
 # 6. Update the doc-update-map entries CLAUDE.md identifies for your change
 

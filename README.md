@@ -31,7 +31,7 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Tests & CI
 
-The Rust workspace currently carries **5,333 `#[test]` / `#[tokio::test]` cases** across **812 files**, of which **4,975 are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, the Windows-only client-telemetry cdylib, and the live research lab). **775 are live-DB regression guards** (gated by `require_db_or_skip!`, 774 in `cimmeria-services`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently carries **5,333 `#[test]` / `#[tokio::test]` cases** across **812 files**, of which **4,975 are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, the Windows-only client-telemetry cdylib, and the live research lab). **775 are live-DB regression guards** (gated by `require_db_or_skip!`, 774 in `cimmeria-services`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and the live-DB tier (`tools/test-live-db.sh`: the lib tests of every crate with live-DB tests) against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
@@ -135,6 +135,10 @@ flowchart TD
     navmeshExtractor --> occluder
     services --> occluder
     sceneEditor["scene-editor (tool)"] --> upkObjects
+
+    %% test-only
+    services -. dev .-> testSupport["test-support (dev-only)"]
+    testSupport --> mercury
     sceneEditor --> upk
     upkObjects --> upk
 
@@ -176,6 +180,7 @@ Cimmeria/
 │   ├── game/               Game mechanics and rules
 │   ├── content-engine/     Data-driven content pipeline
 │   ├── services/           Auth, Base, Cell service implementations
+│   ├── test-support/       Test helpers (live-DB gate, log capture); dev-only
 │   ├── admin-api/          REST administration API
 │   ├── supervisor/         Process supervision and service lifecycle
 │   ├── server/             Binary entry point (cargo run -p cimmeria-server)
