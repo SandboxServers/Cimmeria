@@ -197,7 +197,7 @@ async fn resend_appearance_after_cinematic(
 /// onEntityTint to recover from the cinematic-exit GC, flips
 /// `cinematic_spam_cancel` so `send_cinematic`'s spam loop stops early, and
 /// releases the first-login AoI hold if one is active.
-pub(crate) async fn handle_cancel_movie(
+pub async fn handle_cancel_movie(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     entity_id: u32,

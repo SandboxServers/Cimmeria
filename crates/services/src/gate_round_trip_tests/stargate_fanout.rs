@@ -3,7 +3,8 @@
 //! The cell emits one `WitnessEntityMethod` per observer for
 //! `Stargate_MakeGate` / `Stargate_CrossGate`; this pins what those
 //! messages become on the wire once the base routes them. Sibling of
-//! [`super::witness_broadcast`], but end-to-end from the cell emitter
+//! `cell_dispatch::tests_dispatch_arms::witness_broadcast` in
+//! `cimmeria-base-world-entry`, but end-to-end from the cell emitter
 //! rather than from a hand-built message: the cell-side fan-out
 //! (`cell::gate_travel::sequences::send_gate_sequence`) produces the
 //! messages, the base dispatcher routes them, and the assertions cover
@@ -17,14 +18,18 @@
 //!    dialer as the observee, `IDBASE_SGW_PLAYER`, and the 26-byte
 //!    `onSequence` payload carrying the DB-resolved sequence id.
 
-use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
-use super::super::*;
-use super::test_default_connected_client_state;
+use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
+use cimmeria_mercury::transport::Transport;
+
+use crate::base::world_entry::handle_cell_message;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::StargateEntry;
 use crate::mercury::{build_entity_method_packet, method_idx::ON_SEQUENCE};
-use crate::test_support::TestTransport;
+use crate::test_support::{test_default_connected_client_state, TestTransport};
 
 /// Castle gate event set and the `Stargate_MakeGate` sequence it
 /// resolves to (`event_sets_sequences` 10011 → `sequences` 10145/6100).

@@ -33,5 +33,6 @@ mod client_ready;
 use cimmeria_base_session::base::world_entry_appearance::builders;
 
 pub(crate) use builders::{build_appearance_args, build_tint_args};
-pub(crate) use cinematic::handle_cancel_movie;
-pub(crate) use client_ready::handle_on_client_ready;
+// `pub`: `world_entry` re-exports both to the connect loop in `cimmeria-services`.
+pub use cinematic::handle_cancel_movie;
+pub use client_ready::handle_on_client_ready;

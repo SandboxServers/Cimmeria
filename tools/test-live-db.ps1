@@ -30,6 +30,7 @@ $LiveDbCrates = @(
     'cimmeria-base-session'
     'cimmeria-cell-world'
     'cimmeria-base-methods'
+    'cimmeria-base-world-entry'
 )
 
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {

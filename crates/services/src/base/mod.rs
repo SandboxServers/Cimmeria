@@ -5,19 +5,17 @@
 //!
 //! The per-connection session state (`ConnectedClientState`, `OnlinePlayer`,
 //! ...) and the session-layer modules are in `cimmeria-base-session` (wave B1
-//! of docs/architecture/services-crate-split.md), re-exported below at their
-//! old paths.
+//! of docs/architecture/services-crate-split.md), and world entry and the
+//! character list in `cimmeria-base-world-entry` (wave B3), re-exported below
+//! at their old paths.
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
-pub(crate) mod character;
 pub(crate) mod character_create;
 pub(crate) mod connect_loop;
 pub(crate) mod dispatch;
 pub(crate) mod login;
 mod service;
-pub(crate) mod world_entry;
-pub(crate) mod world_entry_appearance;
 
 #[cfg(test)]
 mod smoke_tests;
@@ -30,13 +28,23 @@ pub use cimmeria_resources::base::{
 
 // Split out to `cimmeria-base-session` (wave B1) and re-exported at their old
 // paths, with their old visibility. `gm_feedback` is not: its only users here
-// were the feature handlers, which moved to `cimmeria-base-methods` (B2).
+// were the feature handlers, which moved to `cimmeria-base-methods` (B2). Nor
+// are `cinematic_aoi_hold`, `console_authoring`, `crafting`, `deferred_aoi`,
+// `deferred_aoi_lifecycle`, `session_identity` and `world_entry_chat`: world
+// entry was their only user here, and it moved to `cimmeria-base-world-entry`
+// (B3). `gm_spawn` and `PendingClientReadyInfo` are left only for tests.
 pub(crate) use cimmeria_base_session::base::{
-    archetype_name, cinematic_aoi_hold, console_authoring, contact_list, cooked_data, crafting,
-    deferred_aoi, deferred_aoi_lifecycle, gm_spawn, helpers, outbox, session_identity, tick_sync,
-    world_entry_chat, ConnectedClientState, PendingClientReadyInfo,
+    archetype_name, contact_list, cooked_data, helpers, outbox, tick_sync, ConnectedClientState,
 };
+#[cfg(test)]
+pub(crate) use cimmeria_base_session::base::{gm_spawn, PendingClientReadyInfo};
 pub use cimmeria_base_session::base::{BaseError, OnlinePlayer};
+
+// Split out to `cimmeria-base-world-entry` (wave B3) and re-exported at their
+// old paths, with their old visibility, for the connect loop, the character
+// creator and `BaseService`. `world_entry_appearance` is not: the connect loop
+// reaches its two handlers through `world_entry`, and nothing else here used it.
+pub(crate) use cimmeria_base_world_entry::base::{character, world_entry};
 
 pub use service::BaseService;
 

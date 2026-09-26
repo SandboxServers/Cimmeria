@@ -27,6 +27,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "auth",
     "base-methods",
     "base-session",
+    "base-world-entry",
     "cell-cover",
     "cell-catalog",
     "cell-world",
@@ -270,6 +271,10 @@ fn scan_finds_known_targets() {
         // Emitted only by crates/base-methods (wave B2).
         ("trade.atomic_swap", Level::DEBUG),
         ("progression", Level::WARN),
+        // Emitted only by crates/base-world-entry (wave B3): the AoI
+        // dispatch's create emitter and the cinematic AoI hold.
+        ("aoi.create_emit", Level::DEBUG),
+        ("aoi.cinematic_hold", Level::INFO),
         ("launcher.key_dump", Level::DEBUG),
         ("client.native", Level::TRACE),
     ] {

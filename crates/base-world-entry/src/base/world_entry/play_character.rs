@@ -29,7 +29,7 @@ use super::methods::{query_player_load_data, query_world_entry};
     skip_all,
     fields(peer = %addr, account_id, player_id),
 )]
-pub(crate) async fn handle_play_character(
+pub async fn handle_play_character(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],

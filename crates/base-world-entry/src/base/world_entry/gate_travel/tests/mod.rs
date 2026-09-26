@@ -1,10 +1,10 @@
 //! Tests for the gate-travel cell↔base handoff seam.
 //!
 //! What's pinned:
-//!   * cell-side `handle_dial_gate` emits a CellToBaseMsg::GateTravel
-//!     with the right target world / position fields — fed verbatim
-//!     into `handle_gate_travel`, the destination state lands in
-//!     ConnectedClientState's pending_world_entry.
+//!   * The cell→base half of the seam, cell-side `handle_dial_gate`'s
+//!     `CellToBaseMsg::GateTravel` fed verbatim into `handle_gate_travel`,
+//!     drives the cell's dial handler, so it is
+//!     `gate_round_trip_tests::dial_to_gate_travel` in `cimmeria-services`.
 //!   * Active-player-id fail-closed guard: missing `active_player_id`
 //!     refuses to persist the destination (otherwise a fallback would
 //!     corrupt the wrong character on multi-character accounts).
@@ -96,162 +96,6 @@ pub(super) fn make_state() -> ConnectedClientState {
 
 pub(super) async fn make_socket() -> Arc<dyn Transport> {
     Arc::new(TestTransport::new())
-}
-
-/// Cross-service round-trip: cell-side `handle_dial_gate` emits a
-/// `CellToBaseMsg::GateTravel` with the captured destination fields,
-/// and `handle_gate_travel` propagates them verbatim into
-/// ConnectedClientState's pending_world_entry. Pins the entire
-/// cell→base→cell handoff at the message-shape level — a regression
-/// in either side of the pair would surface here.
-#[tokio::test]
-async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
-    use crate::cell::gate_travel::handle_dial_gate;
-    use crate::cell::messages::CellToBaseMsg;
-    use crate::cell::space_manager::SpaceManager;
-    use crate::cell::spawner::StargateEntry;
-
-    // ── Cell side: drive handle_dial_gate ───────────────────────
-    let mut mgr = SpaceManager::new(1);
-    let xml = r#"<?xml version="1.0"?><Spaces>
-        <Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" />
-        <Space WorldName="Castle" Instanced="false" MinX="0" MaxX="1000" MinY="0" MaxY="1000" />
-    </Spaces>"#;
-    let cxml = r#"<?xml version="1.0"?><Spaces>
-        <Space WorldName="Agnos" />
-        <Space WorldName="Castle" />
-    </Spaces>"#;
-    mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(cxml).unwrap();
-
-    const ENTITY_ID: u32 = 42;
-    const TARGET_GATE: i32 = 2;
-    const TARGET_X: f32 = 761.677;
-    const TARGET_Y: f32 = 63.466;
-    const TARGET_Z: f32 = 551.716;
-    const TARGET_YAW: f32 = 2.152;
-
-    mgr.stargates.insert(
-        TARGET_GATE,
-        StargateEntry {
-            world_name: "Castle".to_string(),
-            x: TARGET_X,
-            y: TARGET_Y,
-            z: TARGET_Z,
-            yaw: TARGET_YAW,
-            address_origin: 18,
-            // Unpinned: this fixture asserts the traveller lands on the gate
-            // row, which is what an unpinned gate must keep doing.
-            arrival: None,
-            event_set_id: None,
-        },
-    );
-    mgr.create_entity(ENTITY_ID, "Agnos", [10.0; 3], [0.0; 3])
-        .unwrap();
-    mgr.connect_entity(ENTITY_ID);
-    // `handle_dial_gate` refuses an address the player does not hold
-    // (CAT-O-01), so the round-trip fixture has to grant one — this test is
-    // about the cell→base message shape, not the address book.
-    mgr.get_entity_mut(ENTITY_ID)
-        .expect("traveller")
-        .known_stargates = vec![TARGET_GATE];
-
-    let (tx, mut rx) = mpsc::channel::<CellToBaseMsg>(16);
-    // No `REGION_FLAG_Stargate` region is registered for Agnos, so the
-    // dial takes the CA10 fallback and travels in one call — which is
-    // what this round-trip wants to exercise. The arm-then-cross path is
-    // covered in `cell::gate_travel::tests`.
-    let engine = cimmeria_content_engine::chain::ChainEngine::new();
-    handle_dial_gate(ENTITY_ID, TARGET_GATE, 0, &tx, &mut mgr, &engine).await;
-
-    // Cell entity destroyed (post-handoff cleanup).
-    assert!(
-        mgr.get_entity(ENTITY_ID).is_none(),
-        "cell entity must be destroyed before the GateTravel message lands at base"
-    );
-
-    // Capture the GateTravel message — this is the cell→base contract.
-    let captured = match rx.try_recv().expect("GateTravel emitted") {
-        CellToBaseMsg::GateTravel {
-            entity_id,
-            target_world_name,
-            position,
-            rotation,
-            destination_ring_id,
-            destination_space_id,
-        } => {
-            // Stargate dial-travel must NOT carry a ring id — that field is
-            // reserved for `Effect::TeleportCrossWorld`.
-            assert_eq!(
-                destination_ring_id, None,
-                "stargate dial-gate must leave destination_ring_id=None",
-            );
-            // Stargate travel resolves by world name: no exact-instance
-            // targeting (that is GM `.goto <player>` only, packet P45).
-            assert_eq!(
-                destination_space_id, None,
-                "stargate dial-gate must leave destination_space_id=None",
-            );
-            (entity_id, target_world_name, position, rotation)
-        }
-        other => panic!("expected GateTravel, got {other:?}"),
-    };
-    assert_eq!(captured.0, ENTITY_ID, "entity_id round-trips");
-    assert_eq!(captured.1, "Castle", "target world from stargate cache");
-    assert!((captured.2[0] - TARGET_X).abs() < 0.01);
-    assert!((captured.2[1] - TARGET_Y).abs() < 0.01);
-    assert!((captured.2[2] - TARGET_Z).abs() < 0.01);
-    assert_eq!(
-        captured.3,
-        [0.0, 0.0, TARGET_YAW],
-        "rotation = [0, 0, yaw] from stargate"
-    );
-
-    // ── Base side: feed the captured fields into handle_gate_travel ─
-    let transport = make_socket().await;
-    let addr: SocketAddr = "127.0.0.1:55700".parse().unwrap();
-    let connected = Arc::new(Mutex::new(HashMap::new()));
-    connected.lock().unwrap().insert(addr, make_state());
-    let entity_to_addr = Arc::new(Mutex::new({
-        let mut m = HashMap::new();
-        m.insert(ENTITY_ID, addr);
-        m
-    }));
-    // No cell_tx — handle_gate_travel falls back to resolve_space_id_fallback.
-    // No db_pool — the persist UPDATE branch is skipped.
-    handle_gate_travel(
-        captured.0,
-        &captured.1,
-        captured.2,
-        captured.3,
-        None, // stargate dial-travel has no cross-world ring carry-through
-        None, // ... and no exact-instance targeting
-        &transport,
-        &connected,
-        &entity_to_addr,
-        &None,
-        &None,
-    )
-    .await
-    .expect("base-side gate travel completes");
-
-    // Pending world entry now reflects the destination — the next
-    // ENABLE_ENTITIES from the client will drive the create-player
-    // wire flow against this entry.
-    let map = connected.lock().unwrap();
-    let c = map.get(&addr).unwrap();
-    let entry = c
-        .pending_world_entry
-        .as_ref()
-        .expect("pending_world_entry must be populated post-gate-travel");
-    assert_eq!(entry.player_entity_id, ENTITY_ID);
-    assert_eq!(entry.world_name, "Castle");
-    assert_eq!(entry.pos, captured.2);
-    assert_eq!(entry.rot, captured.3);
-    assert_eq!(c.pending_player_entity_id, Some(ENTITY_ID));
-    // pending_client_ready cleared so the next ENABLE_ENTITIES
-    // doesn't observe a stale ready-state from the old world.
-    assert!(c.pending_client_ready.is_none());
 }
 
 /// Active-player-id fail-closed guard (unit-level). Without

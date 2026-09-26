@@ -114,7 +114,7 @@ ignore:
   # UdpSocket fixture for any non-trivial assertion. The unit-test value of
   # "with empty fixtures the function doesn't panic" is low; real
   # regressions surface in the wire-builder tests or in integration runs.
-  - "crates/services/src/base/world_entry/cell_dispatch/aoi.rs"
+  - "crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs"
   # `cell_dispatch/minigame.rs::start_minigame` is URL formatting +
   # `SessionRegistry::register` + `send_to_witness` woven together. Mocking
   # SessionRegistry plus building a UDP fixture per test is the same
@@ -126,7 +126,7 @@ ignore:
   # `minigame_result` IS unit-tested (see `cell_dispatch/tests.rs`); the
   # ignore is scoped to the file because codecov can't carve out a single
   # function.
-  - "crates/services/src/base/world_entry/cell_dispatch/minigame.rs"
+  - "crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs"
 
 # Components let the PR comment break coverage out by subsystem. Mirrors
 # the crate dependency graph in README.md so reviewers can see "the
@@ -167,6 +167,7 @@ component_management:
         - "crates/base-session/**"
         - "crates/cell-world/**"
         - "crates/base-methods/**"
+        - "crates/base-world-entry/**"
       statuses:
         - type: project
           target: 62%

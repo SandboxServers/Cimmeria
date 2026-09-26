@@ -35,8 +35,10 @@
 //!   no-pool / no-addr — pinned via `LogCapture`).
 //! - [`witness_broadcast`] — `WitnessEntityMethod` / `EntityInvisible`
 //!   single-witness fan-out byte tests.
-//! - [`stargate_fanout`]   — the gate `onSequence` fan-out, driven
-//!   end-to-end from the cell emitter through the dispatcher.
+//!
+//! The gate `onSequence` fan-out test, driven end-to-end from the cell
+//! emitter through the dispatcher, needs the cell's gate travel and is
+//! `gate_round_trip_tests::stargate_fanout` in `cimmeria-services`.
 
 use super::*;
 use crate::base::PendingClientReadyInfo;
@@ -47,7 +49,6 @@ mod cinematic_hold_gate;
 mod fallible_handlers;
 mod gm_grant_arms;
 mod passthrough;
-mod stargate_fanout;
 mod two_player_visibility;
 mod witness_broadcast;
 

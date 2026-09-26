@@ -38,7 +38,7 @@ use super::methods::default_player_load_data;
     skip_all,
     fields(peer = %addr),
 )]
-pub(crate) async fn handle_map_loaded(
+pub async fn handle_map_loaded(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
