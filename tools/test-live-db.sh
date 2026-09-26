@@ -23,6 +23,7 @@ set -euo pipefail
 # cimmeria-test-support holds the gate itself and its tests.
 LIVE_DB_CRATES=(
   cimmeria-resources
+  cimmeria-auth
   cimmeria-services
   cimmeria-test-support
 )

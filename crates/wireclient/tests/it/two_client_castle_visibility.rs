@@ -81,7 +81,8 @@ use cimmeria_wireclient::session::GameSession;
 async fn two_clients_in_castle_see_each_other_both_arrival_orders() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "cimmeria_services=info".to_string()),
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "cimmeria_services=info,cimmeria_auth=info".to_string()),
         )
         .with_test_writer()
         .try_init();

@@ -194,7 +194,7 @@ CME replaced BigWorld's LoginApp with a SOAP/HTTP authentication system. The `So
 - Session token management
 - Shard list serialization
 
-Cimmeria's equivalent is the auth service in `crates/services/src/auth/`, which serves the same SOAP endpoints — `POST /SGWLogin/UserAuth` and `POST /SGWLogin/ServerSelection` (`crates/services/src/auth/handlers.rs:29,216`). (The original C++ `AuthenticationServer` under `src/authentication/` no longer exists in this repo.)
+Cimmeria's equivalent is the auth service in `crates/auth/src/auth/`, which serves the same SOAP endpoints — `POST /SGWLogin/UserAuth` and `POST /SGWLogin/ServerSelection` (`crates/auth/src/auth/handlers.rs:29,216`). (The original C++ `AuthenticationServer` under `src/authentication/` no longer exists in this repo.)
 
 ## SpaceViewport System
 

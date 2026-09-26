@@ -572,15 +572,15 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
-| [random_hex_length](../../../crates/services/src/auth/handlers.rs#L525) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `random_hex(10).len()` |  |
-| [random_alphanumeric_length_and_charset](../../../crates/services/src/auth/handlers.rs#L531) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `sid.len()` |  |
-| [parse_valid_login_request](../../../crates/services/src/auth/handlers.rs#L538) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `req.sku` |  |
-| [parse_server_selection_request](../../../crates/services/src/auth/handlers.rs#L547) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `sel` |  |
-| [login_success_xml_contains_shard](../../../crates/services/src/auth/handlers.rs#L554) | unit | Auth / Handlers | 2026-03-16 | Asserts on `xml.contains(r#"AccountId="42""#)` |  |
-| [server_location_xml_contains_key_and_ticket](../../../crates/services/src/auth/handlers.rs#L571) | unit | Auth / Handlers | 2026-03-16 | Asserts on `xml.contains(r#"SessionKey="AAAA""#)` |  |
-| [login_smoke_drives_phase1_and_phase2_through_real_http_stack](../../../crates/services/src/auth/login_smoke.rs#L87) | smoke | Auth / Login Smoke | 2026-05-04 | Login smoke drives phase1 and phase2 through real http stack |  |
-| [new_service_is_not_running](../../../crates/services/src/auth/service.rs#L340) | unit | Auth / Service | 2026-03-16 | Asserts on `!svc.is_running` |  |
-| [start_sets_running](../../../crates/services/src/auth/service.rs#L349) | unit | Auth / Service | 2026-03-16 | Asserts on `svc.is_running` |  |
+| [random_hex_length](../../../crates/auth/src/auth/handlers.rs#L525) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `random_hex(10).len()` |  |
+| [random_alphanumeric_length_and_charset](../../../crates/auth/src/auth/handlers.rs#L531) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `sid.len()` |  |
+| [parse_valid_login_request](../../../crates/auth/src/auth/handlers.rs#L538) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `req.sku` |  |
+| [parse_server_selection_request](../../../crates/auth/src/auth/handlers.rs#L547) | unit | Auth / Handlers | 2026-03-16 | Asserts equality on `sel` |  |
+| [login_success_xml_contains_shard](../../../crates/auth/src/auth/handlers.rs#L554) | unit | Auth / Handlers | 2026-03-16 | Asserts on `xml.contains(r#"AccountId="42""#)` |  |
+| [server_location_xml_contains_key_and_ticket](../../../crates/auth/src/auth/handlers.rs#L571) | unit | Auth / Handlers | 2026-03-16 | Asserts on `xml.contains(r#"SessionKey="AAAA""#)` |  |
+| [login_smoke_drives_phase1_and_phase2_through_real_http_stack](../../../crates/auth/src/auth/login_smoke.rs#L87) | smoke | Auth / Login Smoke | 2026-05-04 | Login smoke drives phase1 and phase2 through real http stack |  |
+| [new_service_is_not_running](../../../crates/auth/src/auth/service.rs#L340) | unit | Auth / Service | 2026-03-16 | Asserts on `!svc.is_running` |  |
+| [start_sets_running](../../../crates/auth/src/auth/service.rs#L349) | unit | Auth / Service | 2026-03-16 | Asserts on `svc.is_running` |  |
 
 ## Minigame (18)
 

@@ -587,9 +587,7 @@ mod tests {
     #[test]
     fn is_network_noise_target_does_not_match_high_signal_scopes() {
         // Rejected (stay in cimmeria-server):
-        assert!(!is_network_noise_target(
-            "cimmeria_services::auth::handlers"
-        ));
+        assert!(!is_network_noise_target("cimmeria_auth::auth::handlers"));
         assert!(!is_network_noise_target(
             "cimmeria_services::cell::abilities::use_ability"
         ));

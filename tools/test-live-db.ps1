@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 # cimmeria-test-support holds the gate itself and its tests.
 $LiveDbCrates = @(
     'cimmeria-resources'
+    'cimmeria-auth'
     'cimmeria-services'
     'cimmeria-test-support'
 )

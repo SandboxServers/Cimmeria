@@ -843,6 +843,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-auth"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "argon2",
+ "axum",
+ "cimmeria-common",
+ "cimmeria-discord",
+ "cimmeria-test-support",
+ "quick-xml 0.41.0",
+ "rand 0.10.2",
+ "rcgen",
+ "reqwest 0.13.4",
+ "rustls-pemfile",
+ "serde",
+ "sha1 0.11.0",
+ "sqlx",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-rustls",
+ "tower",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-client-launch"
 version = "0.1.0"
 dependencies = [
@@ -1111,10 +1136,8 @@ dependencies = [
 name = "cimmeria-services"
 version = "0.1.0"
 dependencies = [
- "arc-swap",
- "argon2",
  "async-trait",
- "axum",
+ "cimmeria-auth",
  "cimmeria-commands",
  "cimmeria-common",
  "cimmeria-content-engine",
@@ -1131,18 +1154,12 @@ dependencies = [
  "rand 0.10.2",
  "rand_chacha 0.10.0",
  "rand_distr",
- "rcgen",
- "reqwest 0.13.4",
- "rustls-pemfile",
  "serde",
  "serde_json",
- "sha1 0.11.0",
  "socket2",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",
- "tokio-rustls",
- "tower",
  "tracing",
 ]
 

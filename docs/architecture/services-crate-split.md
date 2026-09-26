@@ -369,6 +369,12 @@ W1b (`cimmeria-resources`):
 - **`bag_max_slots` stayed in resources**, as the wave brief asked. Its layering-allowlist line is gone anyway: `base::resources` is now a re-export of another crate, which the guard does not follow, so the edge left the scanned graph. W1c's copy in wire is the planned fix; the coordinator dedupes.
 - **The `crate-map.toml` rows for the moved modules stay.** They now match no module in `crates/services/src`, which `check.py` allows. Deleting them is left to wave F, which retires the guard's lists.
 
+W1a (`cimmeria-auth`):
+
+- **No allowlist edge to remove.** No module of `auth`, `audit` or `credential_redaction` had a violating edge, so the allowlist keeps its 55 lines. Their three `crate-map.toml` rows are gone instead: `check.py` scans only `crates/services/src`, where the modules no longer exist, and a new `auth` module there would now be unmapped and fail the check. Later extractions do the same.
+- **`cimmeria_services=debug` does not cover the new crate.** A directive matches by string prefix, and `cimmeria_services` is not a prefix of `cimmeria_auth`, so `OTEL_FILTER` gained `cimmeria_auth=debug` and `auth.log` names `cimmeria_auth::auth`. The same holds for every crate whose name does not start with an existing directive; the parity guard catches a missing row.
+- **Auth-only dependencies left `cimmeria-services`:** `axum`, `tokio-rustls`, `rustls-pemfile`, `arc-swap`, `argon2` and `sha1`, and the dev-dependencies `reqwest`, `rcgen` and `tower`.
+
 ## 5. Risks and rules
 
 1. **Orphan rule and inherent impls.** All `impl SpaceManager` blocks move with `space_manager/`. No new inherent impl may appear in a higher crate; use free functions or extension traits.

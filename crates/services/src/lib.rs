@@ -8,11 +8,8 @@
 //! and CellApp ran as separate services communicating over Mercury.
 
 pub mod ability_tree;
-pub mod audit;
-pub mod auth;
 pub mod base;
 pub mod cell;
-pub(crate) mod credential_redaction;
 pub mod database;
 pub mod firehose;
 pub mod mercury;
@@ -21,6 +18,13 @@ pub mod orchestrator;
 mod orchestrator_postgres;
 mod orchestrator_shards;
 pub mod wire_log;
+
+// Split out to `cimmeria-auth` (wave W1a of
+// docs/architecture/services-crate-split.md). Re-exported at the old paths so
+// `crate::auth::…` here and `cimmeria_services::{auth, audit}` downstream keep
+// resolving. `credential_redaction` was crate-private and stays so here.
+pub(crate) use cimmeria_auth::credential_redaction;
+pub use cimmeria_auth::{audit, auth};
 
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.

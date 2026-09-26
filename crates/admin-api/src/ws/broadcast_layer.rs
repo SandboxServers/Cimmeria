@@ -28,7 +28,7 @@ pub struct LogEntry {
     pub timestamp_ms: u64,
     /// Log level: TRACE, DEBUG, INFO, WARN, ERROR.
     pub level: String,
-    /// Module target (e.g. `cimmeria_services::auth`).
+    /// Module target (e.g. `cimmeria_auth::auth`).
     pub target: String,
     /// The log message text.
     pub message: String,

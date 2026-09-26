@@ -1,0 +1,60 @@
+[package]
+name = "cimmeria-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Authentication service for the Cimmeria server emulator: the SOAP login handshake (Phases 1 and 2), TLS termination, credential storage, login audit events and credential redaction"
+
+# Split out of cimmeria-services (wave W1a). See
+# docs/architecture/services-crate-split.md §1. This crate must not depend on
+# any other split crate: it sits at the bottom of the DAG beside
+# cimmeria-resources and cimmeria-wire.
+[dependencies]
+cimmeria-common = { workspace = true }
+# Discord notification emits at the auth-failure and DB-error seams. The
+# crate's global-singleton `emit_*` API means no handle threading; calls are
+# no-ops until the server bin runs `cimmeria_discord::init`.
+cimmeria-discord = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+# Auth TLS termination. `tokio-rustls` re-exports `rustls`;
+# `rustls-pemfile` loads the PEM cert chain + private key; `arc-swap` holds the
+# live `rustls::ServerConfig` so `reload_certs()` can hot-swap it per-connection
+# without dropping the listener.
+tokio-rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+arc-swap = { workspace = true }
+rand = { workspace = true }
+quick-xml = { workspace = true }
+# Password storage: argon2id for stored hashes, sha1 to recompute the legacy
+# client hash during opportunistic on-login migration.
+argon2 = { workspace = true }
+sha1 = { workspace = true }
+sqlx = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# Generic test helpers: the live-DB gate (`require_db_or_skip!`) and
+# `LogCapture`. Re-exported from the `#[cfg(test)] mod test_support` shim in
+# lib.rs, so tests import them from `crate::test_support`. Every crate with
+# this dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+
+# HTTP client for the login smoke (drives the auth Phase 1 / Phase 2
+# endpoints in-process). Already used elsewhere in the workspace, so
+# version comes from the workspace lock.
+reqwest = { workspace = true }
+
+# Self-signed cert generation for the auth-TLS integration test. Crate-local
+# dev-dependency (not a workspace dep) so it stays out of the production
+# dependency graph. Emits PEM, which the same `rustls-pemfile` path the
+# production loader uses then parses.
+rcgen = "0.14"
+
+# `ServiceExt::oneshot` for driving the HSTS middleware through a Router in a
+# unit test without standing up a socket.
+tower = { workspace = true }

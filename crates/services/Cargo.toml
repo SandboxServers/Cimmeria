@@ -14,6 +14,10 @@ cimmeria-content-engine = { workspace = true }
 cimmeria-commands = { workspace = true }
 cimmeria-observability = { workspace = true }
 cimmeria-occluder = { workspace = true }
+# The auth service, login audit events and credential redaction, split out
+# in wave W1a (docs/architecture/services-crate-split.md). Re-exported from
+# lib.rs at the old `auth`, `audit` and `credential_redaction` paths.
+cimmeria-auth = { workspace = true }
 # Discord notification emits at semantic seams (login/world-entry/disconnect/
 # errors/…). The crate's global-singleton `emit_*` API means no handle
 # threading — calls are no-ops until the server bin runs `cimmeria_discord::init`.
@@ -23,22 +27,10 @@ cimmeria-discord = { workspace = true }
 # at `base::{resources, chardef, *_overrides}`.
 cimmeria-resources = { workspace = true }
 tokio = { workspace = true }
-axum = { workspace = true }
-# Auth TLS termination. `tokio-rustls` re-exports `rustls`;
-# `rustls-pemfile` loads the PEM cert chain + private key; `arc-swap` holds the
-# live `rustls::ServerConfig` so `reload_certs()` can hot-swap it per-connection
-# without dropping the listener.
-tokio-rustls = { workspace = true }
-rustls-pemfile = { workspace = true }
-arc-swap = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
 rand_chacha = { workspace = true }
 quick-xml = { workspace = true }
-# Password storage: argon2id for stored hashes, sha1 to recompute the legacy
-# client hash during opportunistic on-login migration.
-argon2 = { workspace = true }
-sha1 = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -81,11 +73,6 @@ tokio = { workspace = true, features = ["test-util"] }
 # docs/architecture/transport-trait.md.
 cimmeria-mercury = { path = "../mercury", features = ["test-support"] }
 
-# HTTP client for the login smoke (drives the auth Phase 1 / Phase 2
-# endpoints in-process). Already used elsewhere in the workspace, so
-# version comes from the workspace lock.
-reqwest = { workspace = true }
-
 # Property-based testing — used by the AoI differential test to drive
 # random entity walks across many ticks and verify that the per-event
 # diff-accumulated witness set always equals the actual witness set.
@@ -103,13 +90,3 @@ async-trait = { workspace = true }
 # in tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
 # enforces it.
 cimmeria-test-support = { workspace = true }
-
-# Self-signed cert generation for the auth-TLS integration test. Crate-local
-# dev-dependency (not a workspace dep) so it stays out of the production
-# dependency graph. Emits PEM, which the same `rustls-pemfile` path the
-# production loader uses then parses.
-rcgen = "0.14"
-
-# `ServiceExt::oneshot` for driving the HSTS middleware through a Router in a
-# unit test without standing up a socket.
-tower = { workspace = true }

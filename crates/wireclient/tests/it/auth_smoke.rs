@@ -2,7 +2,7 @@
 //! `AuthService`.
 //!
 //! Pairs symmetrically with the server-side
-//! `cimmeria_services::auth::login_smoke`: that test asserts the server
+//! `cimmeria_auth::auth::login_smoke`: that test asserts the server
 //! emits the expected XML and cookie; this one asserts the wireclient
 //! consumes them correctly and produces a load-bearing [`AuthSession`].
 //! Together they pin both sides of the SOAP handshake.

@@ -67,9 +67,8 @@ cimmeria-services = [
 "database" = "cimmeria-services"
 
 # L1, parallel with wire.
-"auth" = "cimmeria-auth"
-"audit" = "cimmeria-auth"
-"credential_redaction" = "cimmeria-auth"
+# cimmeria-auth (`auth`, `audit`, `credential_redaction`) is extracted (W1a):
+# crates/services/src only re-exports it, so it has no rows here.
 "base::resources" = "cimmeria-resources"
 "base::mission_overrides" = "cimmeria-resources"
 "base::item_overrides" = "cimmeria-resources"

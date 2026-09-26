@@ -27,7 +27,7 @@ See also: [../architecture/mission-pak-overrides.md](../architecture/mission-pak
 ## Key References
 
 - **BigWorld source**: `external/engines/BigWorld-Engine-2.0.1/` (if present)
-- **Cimmeria Rust implementation** (active): `crates/mercury/`, `crates/services/src/auth/`, `crates/services/src/base/`, `crates/services/src/cell/`
+- **Cimmeria Rust implementation** (active): `crates/mercury/`, `crates/auth/src/auth/`, `crates/services/src/base/`, `crates/services/src/cell/`
 - **Legacy C++ implementation** (historical, not extended): `deprecated/cpp/src/` (`mercury/`, `authentication/`, `baseapp/`, `cellapp/`)
 - **Entity definitions**: `entities/defs/` — define the property/method contract
 - **Existing docs**: `docs/connection-flow.md`, `docs/network-messages.md`
