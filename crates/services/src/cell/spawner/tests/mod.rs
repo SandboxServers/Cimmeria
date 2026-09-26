@@ -17,11 +17,15 @@
 //! - [`live_db_use_cover`]: live-DB guards that `entity_templates.use_cover`
 //!   (NA22) and the Cover Stance effect rows load as seeded, and that a
 //!   seeded guard spawns holding its seeded cover slot.
+//! - [`live_db_ability_animation_links`]: live-DB guards that weapon-bound
+//!   damage abilities carry the weapon family's event set, so their hits
+//!   animate.
 //! - [`template_prototype_parity`]: live-DB guard that the cell's startup
 //!   template cache and the base-side GM spawn handler map an
 //!   `entity_templates` row identically (PR #662 review, finding 3).
 
 mod harset;
+mod live_db_ability_animation_links;
 mod live_db_aggression;
 mod live_db_assist;
 mod live_db_castle_seed;

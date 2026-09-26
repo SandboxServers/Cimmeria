@@ -11,12 +11,12 @@ Physical
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (471, 'TestMineExplode', 'Explosion damage from TestMine', 'ABILITY_TYPE_DD', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Low', 0, 100, 0, '{532,533}', '{}', NULL, 0, '{CAS_POSITION_REAR,CAS_POSITION_ABOVE}', '{}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1000, 'Dart Rifle: Multi-Shot', 'No ability description available to populate object_text_values table', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4976,4975}', '{488944709,1470900795,2389790449}', NULL, 0, NULL, '{2389790449}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1000, 'Dart Rifle: Multi-Shot', 'No ability description available to populate object_text_values table', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4976,4975}', '{488944709,1470900795,2389790449}', 3, 0, NULL, '{2389790449}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1075, 'Uzi Spray', 'Strafe:
 Single target w/Cone
 Cone: Medium
-Damage: 50 Health / 500 Focus', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1254,1206}', '{1470900795,728213066,3737159407}', NULL, 0, NULL, '{728213066}');
+Damage: 50 Health / 500 Focus', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1254,1206}', '{1470900795,728213066,3737159407}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1012, 'Deployable: Microwave Emitter', '
 ', 'ABILITY_TYPE_DD', 30, 5890, 'set:CoreWidgets image:IconMissing', false, 0, 500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 100, 2, '{5066,5065}', '{1470900795,3942340794}', NULL, 0, NULL, '{}');
@@ -97,22 +97,22 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 Medium Cone Attack
 -300F / -30H
 Channeled
-2 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1404,1403}', '{1470900795,2035259765,1388011139}', NULL, 0, NULL, '{2035259765}');
+2 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1404,1403}', '{1470900795,2035259765,1388011139}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1317, 'Single Pump', 'Ranged Cone Attack
 -200F / -20H
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1542,1541}', '{1470900795,2035259765}', NULL, 0, NULL, '{2035259765}');
+1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1542,1541}', '{1470900795,2035259765}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1233, 'Draw Area', 'Ranged Single Target Attack with Area Effect
 -200F / -20H
 3 Ammo
-High Threat', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:AOE_Draw_Area', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 500, 'THREAT_LEVEL_High', 1, 100, 0, '{1393}', '{728213066,1470900795,3942340794}', NULL, 0, NULL, '{728213066}');
+High Threat', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:AOE_Draw_Area', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 500, 'THREAT_LEVEL_High', 1, 100, 0, '{1393}', '{728213066,1470900795,3942340794}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1240, 'Straegis Explode', 'Mine damage
 Physical
 -500 F
--50 H', 'ABILITY_TYPE_DD', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Medium', NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 0, '{1398,1397}', '{}', NULL, 0, NULL, '{}');
+-50 H', 'ABILITY_TYPE_DD', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Medium', NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 0, '{1398,1397}', '{}', 1507, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1259, 'Sticky Bomb', 'Spawns Sticky Bomb: Time: 10 seconds
 Small Radius AE
@@ -141,14 +141,14 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1331, 'Multi Pump', 'Ranged Cone Attack
 -100F / -10H
 1 Ammo / pulse
-5 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1573,1572,1571,1570,1569,1568}', '{1388011139,1470900795,2035259765}', NULL, 0, NULL, '{2035259765}');
+5 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1573,1572,1571,1570,1569,1568}', '{1388011139,1470900795,2035259765}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1332, 'Point Blank Fire', 'Non-Targeted Narrow Cone Attack
 -100F / -10H
 -300F / -30H for Melee Range
 
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1575,1574}', '{1388011139,1470900795,2035259765}', NULL, 0, NULL, '{2035259765}');
+1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1575,1574}', '{1388011139,1470900795,2035259765}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1364, 'Shockwave Grenade', '-100F / -10H
 Knockdown: 6 seconds
@@ -209,7 +209,7 @@ Disarm:
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1481, 'Rapid Blasts', 'Ranged Channelled Attack
 -250 F
 -25H
-10 Ticks 1 second intervals', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:Cone_Fire_Zone', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{1777}', '{61434600,1383013887,1470900795,2684233211,3747947334}', NULL, 0, NULL, '{1383013887}');
+10 Ticks 1 second intervals', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:Cone_Fire_Zone', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{1777}', '{61434600,1383013887,1470900795,2684233211,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1533, 'Attack Protocol: Apply Damage', 'Energy Direct Damage
 Cost: 3 Gigajoules', 'ABILITY_TYPE_DD', 1, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{4603}', '{1470900795,2105557341,2331725528}', NULL, 0, NULL, '{}');
@@ -233,10 +233,10 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1475, 'Flushing Fire', 'Channeled Medium Cone Attack
 -100F / -10H
 Short Radius Uninhabitable Area
-5 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Short', 'Medium', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1767}', '{728213066,1470900795,3737159407}', NULL, 0, NULL, '{728213066}');
+5 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Short', 'Medium', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1767}', '{728213066,1470900795,3737159407}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1437, 'MS018_061308_Blast', 'Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1723}', '{3212632871,1383013887}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1723}', '{3212632871,1383013887}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1453, 'Heroism', '+50 Response', 'ABILITY_TYPE_Buff', 30, 0, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Extreme', NULL, 1, 'TCM_Group', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{1745,1744}', '{3212632871}', NULL, 0, NULL, '{}');
 
@@ -256,10 +256,10 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1506, 'MS018_062008_Sticky Object', 'Throws a Defensive Grenade', 'ABILITY_TYPE_DD', 0, 18, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Melee', NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Medium', 0, 20, 2, '{1915,1817,1820,1885}', '{2936348458,3212632871}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1486, 'Rain of Steel', 'Non-Targeted Wide Cone Attack
--500F/ -50H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Wide', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1785}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+-500F/ -50H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Wide', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1785}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1482, 'Ground Blast', 'Staff: Ground Target Small Radius Attack 
--500F / -50H', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2140,1778}', '{61434600,1383013887,1470900795,2684233211,3212632871,3747947334}', NULL, 0, NULL, '{1383013887}');
+-500F / -50H', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2140,1778}', '{61434600,1383013887,1470900795,2684233211,3212632871,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1540, 'Attack Protocol: Energy Cascade: Narrow', 'Energy Cone, Chain Lightning Effect
 Cost: X Gigajoules', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5136,4627,4626,5141}', '{1470900795,2105557341,2331725528}', NULL, 0, NULL, '{}');
@@ -267,7 +267,7 @@ Cost: X Gigajoules', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissin
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1546, 'Attack Protocol: Energy Cascade: Medium', 'Energy Cone, Chain Lightning Effect
 Cost: X Gigajoules', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5145,5144,4633,4632}', '{1470900795,2105557341}', NULL, 0, NULL, '{}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1478, 'Launch Grenade: Fragmentation', 'Launches a Fragmentation Grenade', 'ABILITY_TYPE_DD', 4, 1812, 'set:AbilityIcons001 image:AOE_Offensive_Grenade', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 0, 25, 0.5, '{3508,1776,1775,1774,1773}', '{294285776,1470900795,312541303,256246877}', NULL, 0, NULL, '{312541303}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1478, 'Launch Grenade: Fragmentation', 'Launches a Fragmentation Grenade', 'ABILITY_TYPE_DD', 4, 1812, 'set:AbilityIcons001 image:AOE_Offensive_Grenade', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 0, 25, 0.5, '{3508,1776,1775,1774,1773}', '{294285776,1470900795,312541303,256246877}', 3, 0, NULL, '{312541303}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1538, 'Attack Protocol: Proximity: Multi-Blast', 'Energy Melee Damage
 Cost: X Gigajoules', 'ABILITY_TYPE_DD', 2, 533, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Melee', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4618}', '{1470900795,2105557341,2331725528}', NULL, 0, NULL, '{}');
@@ -338,7 +338,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (640, 'Aimed Shot: Torso', 'Ranged Single Target Attack w/ +200 ACC
 -400F / -40H
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{703}', '{2882868408,1388011139}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{703}', '{2882868408,1388011139}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (581, 'Rifle Auto Attack', 'Ranged Single Target Attack
 -300F
@@ -346,7 +346,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 1 Ammo', 'ABILITY_TYPE_DD', 3, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{643}', '{2882868408}', 3, 1, '{CAS_POSITION_FRONT}', '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (660, 'Bash', 'Melee Attack
--200F / -20H', 'ABILITY_TYPE_DD', 4, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{728}', '{1470900795,1388011139,3212632871}', NULL, 0, NULL, '{}');
+-200F / -20H', 'ABILITY_TYPE_DD', 4, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{728}', '{1470900795,1388011139,3212632871}', 300, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (661, 'Generic Add or Remove Time', 'This ability adds or removes time from a mini-game as a cheat.', 'ABILITY_TYPE_Undefined', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, true, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 0, '{}', '{}', NULL, 0, NULL, '{}');
 
@@ -361,17 +361,17 @@ Small Radius', 'ABILITY_TYPE_DD', 10, 1808, 'set:AbilityIcons001 image:AOE_Area_
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1623, 'Ribbon Device: Knockdown', 'Ranged Single Target Attack with Knockdown
 -200F
 -20H
-', 'ABILITY_TYPE_DD', 10, 20, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4151,1971,1970}', '{2650822895,4193235610,1470900795}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 10, 20, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4151,1971,1970}', '{2650822895,4193235610,1470900795}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1624, 'Ribbon Device: Fear', 'Ranged Single Target Attack with Fear
 -200F
 -20H
-', 'ABILITY_TYPE_DD', 10, 1556, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4154,1973,1972}', '{1470900795,2650822895,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 10, 1556, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4154,1973,1972}', '{1470900795,2650822895,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1627, 'Ribbon Device:Disruption Beam', 'Ranged Single Target Attack
 -200F
 -20H
-', 'ABILITY_TYPE_DD', 2.5, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1977}', '{1470900795,2684233211,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 2.5, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1977}', '{1470900795,2684233211,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1652, 'Jaffa: Double Blast', 'Orders Jaffa Pet to use Double Blast
 Staff: Ranged Single Target Attack
@@ -403,14 +403,14 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1671, 'MS018_063008_Spray and Pray', 'SMG: Medium Cone Attack /w DoT
 -100F / -10H
 DOT: Focus -50F / -5H 10 Ticks
-25 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:Cone_Spray_and_Pray', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2055,2054,2053,2052}', '{728213066}', NULL, 0, NULL, '{728213066}');
+25 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:Cone_Spray_and_Pray', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2055,2054,2053,2052}', '{728213066}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1679, 'MS018_063008_Double Blast', 'Staff: Ranged Single Target Attack
 -150F / -15H Per Pulse
 2 Pulses', 'ABILITY_TYPE_DD', 0, 1557, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2068}', '{}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1691, 'MS018_062008_Radiated Blasts', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2096}', '{1383013887,3212632871}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2096}', '{1383013887,3212632871}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1677, 'MS018_062008_Offensive Grenade', 'Grenade:Thrown: Offensive Grenade
 5% chance to knockdown targets', 'ABILITY_TYPE_DD', 0, 18, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 25, 2, '{2064,2065,2063}', '{}', NULL, 0, NULL, '{}');
@@ -432,7 +432,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1692, 'MS018_063008_DAMP Grenade', 'Throws a DAMP Grenade', 'ABILITY_TYPE_DD', 0, 2, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Melee', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 0, 25, 2, '{2098,2097}', '{}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1695, 'MS018_062008_Reign Of Chaos', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2101}', '{1383013887,3212632871}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2101}', '{1383013887,3212632871}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1733, 'Arc of Battle', 'Targeted Melee Cone Attack: Narrow
 F-100 F-10
@@ -479,7 +479,7 @@ Medium Cone Attack
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1854, 'MS019_Destruction Beam', 'Test ability for content.', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2358}', '{}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1833, 'MS019_DoublePump', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2319}', '{2035259765,3212632871}', NULL, 0, NULL, '{2035259765}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2319}', '{2035259765,3212632871}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1859, 'MS019_Rapid Blasts', 'Staff: Ranged Single Target Attack
 -200F / -20H', 'ABILITY_TYPE_DD', 0, 1557, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2364}', '{}', NULL, 0, NULL, '{}');
@@ -553,7 +553,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2476}', '{3212632871}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1918, 'MS019_ReignOfChaos', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2467}', '{1383013887,3212632871}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2467}', '{1383013887,3212632871}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1925, 'MS018_063008_Double Blast', 'Staff: Ranged Single Target Attack
 -150F / -15H Per Pulse
@@ -577,12 +577,12 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -20H
 ', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2488,2487}', '{}', NULL, 0, NULL, '{}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1890, 'Launch Grenade: Fragmentation', 'Launches a Fragmentation Grenade', 'ABILITY_TYPE_DOT', 4, 1813, 'set:AbilityIcons001 image:AOE_Offensive_Grenade', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 1, 25, 0.5, '{}', '{256246877,294285776,312541303,1470900795}', NULL, 0, NULL, '{312541303}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1890, 'Launch Grenade: Fragmentation', 'Launches a Fragmentation Grenade', 'ABILITY_TYPE_DOT', 4, 1813, 'set:AbilityIcons001 image:AOE_Offensive_Grenade', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 1, 25, 0.5, '{}', '{256246877,294285776,312541303,1470900795}', 3, 0, NULL, '{312541303}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1949, 'Ribbon Device: Shot', 'Ranged Single Target Attack with Fear
 -200F
 -20H
-', 'ABILITY_TYPE_DD', 3, 5, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2522}', '{2650822895,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 3, 5, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2522}', '{2650822895,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1955, 'MS019_Summon Jaffa', 'Spawns an Anti-Personnel Mine
 ', 'ABILITY_TYPE_DD', 0, 18, 'set:CoreWidgets image:IconMissing', false, 0, 500, false, 'Melee', NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Low', 0, 100, 0, '{2532,2531,2530}', '{2936348458}', NULL, 0, NULL, '{}');
@@ -703,16 +703,16 @@ Damage Over Time:
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2095, 'MS020_080817_CoverDenial', 'LMG: AOE Medium Radius Attack w/ DOA
 -300F / -30H
 Unihabitable Area: 20 seconds
-25 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Narrow', 2, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2823,2822}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Narrow', 2, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2823,2822}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2096, 'MS020_080817_FireZone', 'Non-Targeted Medium Cone Attack
--500F/ -50H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2824}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+-500F/ -50H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2824}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2097, 'MS020_080817_RainofSteel', 'Non-Targeted Wide Cone Attack
--500F/ -50H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Wide', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2825}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+-500F/ -50H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Wide', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2825}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2109, 'MS020_080817_Blast', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 80, 0, '{2849}', '{1383013887}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 80, 0, '{2849}', '{1383013887}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2122, 'MS020_080817_DrawArea', 'Ranged Single Target Attack with Area Effect
 -200F / -20H
@@ -798,12 +798,12 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2183, 'MS020_080818_Scattershot', 'Non-Targeted Narrow Cone Attack
 -200F / -20H
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3012}', '{2035259765}', NULL, 0, NULL, '{2035259765}');
+1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3012}', '{2035259765}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2184, 'MS020_080818_MultiPump', 'Ranged Cone Attack
 -100F / -10H
 1 Ammo / pulse
-5 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3016,3015,3014,3013}', '{2035259765}', NULL, 0, NULL, '{2035259765}');
+5 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3016,3015,3014,3013}', '{2035259765}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2227, 'MS020_080818_Heroism', 'Heals 35% of the player''s Focus pool', 'ABILITY_TYPE_Heal', 0, 1681, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 0, 100, 0, '{3212,3090}', '{}', NULL, 0, NULL, '{}');
 
@@ -1035,7 +1035,7 @@ Medium Radius
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2694, 'Annihilation Beam', 'Ranged Cone Attack
 -200F
 -20H
-5 energy', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3886,3885}', '{1470900795,2684233211,4193235610}', NULL, 0, NULL, '{4193235610}');
+5 energy', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3886,3885}', '{1470900795,2684233211,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2830, 'MS000_TEMPLATE_Summon', 'Summon Template', 'ABILITY_TYPE_DD', 0, 1680, 'set:CoreWidgets image:IconMissing', false, 0, 500, false, 'Melee', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Low', 0, 100, 0, '{4099,4098,4097}', '{}', NULL, 0, NULL, '{}');
 
@@ -1048,16 +1048,16 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2847, 'Straegis: Dissonance', 'Pulsing AOE Damage
 Range Short
 20 seconds Duration
-', 'ABILITY_TYPE_Undefined', 25, 1552, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Medium', 'Narrow', 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4138}', '{1470900795}', NULL, 0, NULL, '{}');
+', 'ABILITY_TYPE_Undefined', 25, 1552, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Medium', 'Narrow', 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4138}', '{1470900795}', 1497, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2841, 'Destruction Pulse', 'Zat: Ground Target Small Radius Attack 
 -500F / -50H
-Stun: 5 seconds', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{4126,4125,4124,4123}', '{61434600,1383013887,1470900795,2684233211,3212632871,3747947334}', NULL, 0, NULL, '{1383013887}');
+Stun: 5 seconds', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{4126,4125,4124,4123}', '{61434600,1383013887,1470900795,2684233211,3212632871,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2846, 'Ribbon Device: Lord''s Presence', 'Ranged Single Target Attack
 -500F
 -50H
-', 'ABILITY_TYPE_DD', 4, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{4137}', '{1470900795,3748251909,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 4, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{4137}', '{1470900795,3748251909,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2864, 'EMP Grenade', 'Throws an EMP Grenade
 Mechanical: -500F / -50H, Disorient: 20 Sec
@@ -1283,7 +1283,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (3484, 'MS022_081121_Str-GroundVoid', 'Deployable abilities template.', 'ABILITY_TYPE_DD', 0, 1687, 'set:CoreWidgets image:IconMissing', true, 0, 100, false, 'Melee', NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Medium', 0, 25, 0, '{5283,5282}', '{}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (523, 'Concussive Grenade', 'Throws a Defensive Grenade
-Knocks down targets for 5 seconds', 'ABILITY_TYPE_DD', 10, 3858, 'set:AbilityIcons001 image:AOE_Defensive_Grenade', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Medium', 0, 20, 1.5, '{2384,729,1455,583}', '{1470900795,2936348458,3212632871,3707106929}', NULL, 0, NULL, '{}');
+Knocks down targets for 5 seconds', 'ABILITY_TYPE_DD', 10, 3858, 'set:AbilityIcons001 image:AOE_Defensive_Grenade', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Medium', 0, 20, 1.5, '{2384,729,1455,583}', '{1470900795,2936348458,3212632871,3707106929}', 296, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (599, 'Anti personel Mine Explode', 'Mine damage
 Physical
@@ -1301,19 +1301,19 @@ Knockdown: 5 Seconds', 'ABILITY_TYPE_DD', 5, 2, 'set:CoreWidgets image:IconMissi
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (612, 'Area Burst', 'HMG: Targeted Narrow Cone Attack
 -300F / -30H
-15 Ammo', 'ABILITY_TYPE_DD', 1, 21, 'set:AbilityIcons001 image:Cone_Area_Burst', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1194,674}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+15 Ammo', 'ABILITY_TYPE_DD', 1, 21, 'set:AbilityIcons001 image:Cone_Area_Burst', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1194,674}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (632, 'Long Burst', 'LMG: Single Target Attack: Channeled
 2 Pulses: -300F / -30H
-5 Ammo per pulse', 'ABILITY_TYPE_DD', 1.5, 21, 'set:AbilityIcons001 image:DD_Long_Burst', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4522,694}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+5 Ammo per pulse', 'ABILITY_TYPE_DD', 1.5, 21, 'set:AbilityIcons001 image:DD_Long_Burst', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4522,694}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (654, 'Single Pump', 'Ranged Cone Attack
 -200F / -20H
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 1.5, 1557, 'set:AbilityIcons001 image:Cone_Pinning_Fire', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{719,1124}', '{1388011139,1470900795,2035259765,3212632871,3387009882,3707106929}', NULL, 0, NULL, '{2035259765}');
+1 Ammo', 'ABILITY_TYPE_DD', 1.5, 1557, 'set:AbilityIcons001 image:Cone_Pinning_Fire', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{719,1124}', '{1388011139,1470900795,2035259765,3212632871,3387009882,3707106929}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (653, 'Blast', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{718}', '{1470900795,1383013887,61434600,3212632871,3747947334}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{718}', '{1470900795,1383013887,61434600,3212632871,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1175, 'Binding Goo', '-50% Movement: 20 Seconds', 'ABILITY_TYPE_Debuff', 40, 0, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 50, 0, '{1337}', '{}', NULL, 0, NULL, '{}');
 
@@ -1321,7 +1321,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 Medium Cone Attack
 -300F / -30H
 
-2 Ammo', 'ABILITY_TYPE_DD', 3, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2772,2771,2770,2769,791,1125}', '{1388011139,1470900795,2035259765,3387009882,3707106929}', NULL, 0, NULL, '{2035259765}');
+2 Ammo', 'ABILITY_TYPE_DD', 3, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2772,2771,2770,2769,791,1125}', '{1388011139,1470900795,2035259765,3387009882,3707106929}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (724, 'Anti-Personnel Mortar', 'Mortar: Fires a Mortar Round
 Short Radius AOE
@@ -1335,11 +1335,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 AOE Fear: 20 meters for 20 seconds', 'ABILITY_TYPE_Debuff', 5, 1553, 'set:CoreWidgets image:IconMissing', true, 0, 2000, false, 'Short', 'Medium', 2, 'TCM_AECone', 100, 'THREAT_LEVEL_High', 1, 100, 1, '{2776,2775,2774,821}', '{1470900795,3387009882}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (804, 'Strafe', 'LMG: Medium Cone Attack
--200F / -20H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{848,847}', '{1470900795,1115110575,256246877,3707106929}', NULL, 0, NULL, '{1115110575}');
+-200F / -20H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{848,847}', '{1470900795,1115110575,256246877,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (775, 'Double Blast', 'Staff: Ranged Single Target Attack
 -150F / -15H Per Pulse
-2 Pulses', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Double_Blast', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{819}', '{61434600,1383013887,1470900795,2684233211,3212632871,3747947334}', NULL, 0, NULL, '{1383013887}');
+2 Pulses', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Double_Blast', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{819}', '{61434600,1383013887,1470900795,2684233211,3212632871,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (791, 'Enhance Group: Humanoid: Focus', 'Increases group''s Focus maximum by 10% for 600 seconds', 'ABILITY_TYPE_Buff', 5, 664, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Extreme', NULL, 2, 'TCM_Group', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0.5, '{4477,1415,837}', '{1470900795,3300867488}', NULL, 0, NULL, '{}');
 
@@ -1349,7 +1349,7 @@ Mechanicals Only', 'ABILITY_TYPE_Debuff', 5, 1, 'set:CoreWidgets image:IconMissi
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (850, 'Scattershot', 'Non-Targeted Narrow Cone Attack
 -200F / -20H
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:Cone_Rain_of_Steel', true, 0, 0, false, 'Weapon', 'Medium', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{906}', '{1470900795,2035259765,3707106929,1388011139}', NULL, 0, NULL, '{2035259765}');
+1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:Cone_Rain_of_Steel', true, 0, 0, false, 'Weapon', 'Medium', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{906}', '{1470900795,2035259765,3707106929,1388011139}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (820, 'Dumbfire Missile', 'Missile Launcher: Medium Radius AOE
 -800F / -80H', 'ABILITY_TYPE_DD', 35, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 0, 25, 6, '{1456,875,876,874}', '{1470900795,3653534243,256246877}', NULL, 0, NULL, '{}');
@@ -1359,13 +1359,13 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 1 Ammo', 'ABILITY_TYPE_DD', 35, 21, 'set:CoreWidgets image:IconMissing', true, 0, 3500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 25, 6, '{1454,910,909,908}', '{1470900795,500677761,256246877}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (854, 'Smoke Grenade', 'Grenade: Thrown: Medium AE
-+200 Defense to targets', 'ABILITY_TYPE_DD', 10, 2322, 'set:WeaponIcons001 image:EM-M67Frag_00', true, 0, 2500, false, 'Long', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 25, 3, '{}', '{1470900795,3212632871,3707106929}', NULL, 0, NULL, '{}');
++200 Defense to targets', 'ABILITY_TYPE_DD', 10, 2322, 'set:WeaponIcons001 image:EM-M67Frag_00', true, 0, 2500, false, 'Long', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 25, 3, '{}', '{1470900795,3212632871,3707106929}', 296, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (858, 'Leadership', 'Focus Regeneration Increase: 50%
 20 Seconds', 'ABILITY_TYPE_Heal', 300, 0, 'set:AbilityIcons001 image:Buff_Leadership', true, 0, 0, false, 'Short', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 1, 100, 2, '{1211,921}', '{1470900795,3212632871}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (861, 'High-Explosive Grenade', 'Grenade:Thrown: Offensive Grenade
-5% chance to knockdown targets', 'ABILITY_TYPE_DD', 15, 2322, 'set:AbilityIcons001 image:AOE_Offensive_Grenade', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 25, 1.5, '{924,927}', '{1470900795,2936348458,3212632871,3707106929}', NULL, 0, NULL, '{}');
+5% chance to knockdown targets', 'ABILITY_TYPE_DD', 15, 2322, 'set:AbilityIcons001 image:AOE_Offensive_Grenade', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 25, 1.5, '{924,927}', '{1470900795,2936348458,3212632871,3707106929}', 296, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1176, 'Energy Pulse', 'Adds ', 'ABILITY_TYPE_Undefined', 10, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 4, '{1338}', '{1470900795}', NULL, 0, NULL, '{}');
 
@@ -1374,7 +1374,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 Disorient: 15 seconds', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Long', 'Medium', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1426,943,944}', '{1470900795,292070744}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (868, 'Flashbang Grenade', 'Grenade: Thrown: Flashbang Grenade:
-5 second detonation delay', 'ABILITY_TYPE_DD', 10, 3858, 'set:AbilityIcons001 image:AOE_Flashbang', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 20, 1.5, '{1466,1465,938,937,935}', '{1470900795,2936348458,3212632871}', NULL, 0, NULL, '{}');
+5 second detonation delay', 'ABILITY_TYPE_DD', 10, 3858, 'set:AbilityIcons001 image:AOE_Flashbang', true, 0, 2500, false, 'Short', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 20, 1.5, '{1466,1465,938,937,935}', '{1470900795,2936348458,3212632871}', 296, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (869, 'Morale Boost', 'Short Radius 35% Focus Heal', 'ABILITY_TYPE_Heal', 35, 0, 'set:AbilityIcons001 image:Buff_Rally', false, 0, 0, false, 'Short', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 0, 100, 2, '{1215,939}', '{1470900795,3212632871}', NULL, 0, NULL, '{}');
 
@@ -1432,7 +1432,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -300F -30D
 +Acc
 -20H
-15 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3360}', '{488944709,1470900795,2389790449}', NULL, 0, NULL, '{2389790449}');
+15 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3360}', '{488944709,1470900795,2389790449}', 3, 0, NULL, '{2389790449}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (583, 'Shotgun Auto Attack', 'Ranged Cone Attack
 -200F
@@ -1458,7 +1458,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -30% Movement Speed
 Duration: 15 Sec
 15 Ammo
-', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:Cone_Pinning_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4411,4410,4409,1766,1765,1764}', '{3606086656,3737159407,3942340794,1470900795}', NULL, 0, NULL, '{3606086656}');
+', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:Cone_Pinning_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4411,4410,4409,1766,1765,1764}', '{3606086656,3737159407,3942340794,1470900795}', 15, 0, NULL, '{3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (712, 'Ribbon Device Auto Attack', 'Ranged Single Target Attack
 -200F
@@ -1468,19 +1468,19 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1476, 'No Rest for the Weary', 'Auto Weapons: Ranged Single Target Medium Cone Attack w/ High Interrupt Chance
 -200F
 -20H
-15 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1772,1771,1770}', '{1470900795,3175425141,3737159407}', NULL, 0, NULL, '{3175425141}');
+15 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1772,1771,1770}', '{1470900795,3175425141,3737159407}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (718, 'Selective Fire', 'AutoWeapons: Single Target Channeled Attack
 F-200
 H-20
 3 ammo per pulse
 This attack can be interrupted by damage or movement
-', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{778}', '{1470900795,3175425141,3387009882,3737159407}', NULL, 0, NULL, '{3175425141}');
+', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{778}', '{1470900795,3175425141,3387009882,3737159407}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1668, 'MS018_063008_Selective Fire', 'AutoWeapons: Ranged Single Target Narrow Cone Attack
 -200F
 -20H
-15 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2044,2043}', '{728213066,3175425141,3606086656}', NULL, 0, NULL, '{3175425141,728213066,3606086656}');
+15 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2044,2043}', '{728213066,3175425141,3606086656}', 15, 0, NULL, '{3175425141,728213066,3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1477, 'All Out Assault', 'AutoWeapons: Ranged Single Target Medium Cone Channelled Attack
 Exponential Damage
@@ -1488,87 +1488,87 @@ Exponential Damage
 -300F -30H
 -400F -40H
 3 Ammo per pulse
-50 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5270,5269,5268,5267,4357,3702}', '{1470900795,3175425141,3737159407}', NULL, 0, NULL, '{3175425141}');
+50 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5270,5269,5268,5267,4357,3702}', '{1470900795,3175425141,3737159407}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1980, 'Weapon of War', 'AW: Medium Cone Channelled Attack: 20 pulses
 -30F / -3H per pulse
-Ammo Per Pulse: 3', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:Cone_Sustained_Sweep', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2582,2581}', '{3175425141,3707106929,1470900795}', NULL, 0, NULL, '{3175425141}');
+Ammo Per Pulse: 3', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:Cone_Sustained_Sweep', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2582,2581}', '{3175425141,3707106929,1470900795}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1416, 'MS018_061308_Dumbfire Missile', 'Medium Radius AOE
--800F / -80H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 0, 25, 1, '{1703,1702,1701,1700}', '{3175425141,3653534243,256246877}', NULL, 0, NULL, '{3175425141}');
+-800F / -80H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 0, 25, 1, '{1703,1702,1701,1700}', '{3175425141,3653534243,256246877}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1438, 'MS018_062008_Denial of Area', 'LMG: AOE Small Radius
 -300F / -30H
 Fear Area: 15 seconds
-25 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1726,1725,1724}', '{1115110575,3175425141,256246877}', NULL, 0, NULL, '{3175425141,1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 2500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1726,1725,1724}', '{1115110575,3175425141,256246877}', 15, 0, NULL, '{3175425141,1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2858, 'Ashrak Dagger: Dervish', 'Targeted Melee Cone Attack
 -200F -20H
 
-', 'ABILITY_TYPE_DD', 4, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Melee', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4178,4153,4152}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+', 'ABILITY_TYPE_DD', 4, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, 'Melee', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4178,4153,4152}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1184, 'Indistinguishable', '+400 Disguise Rating', 'ABILITY_TYPE_Heal', 0, 128, 'set:CoreWidgets image:IconMissing', false, 0, 0, true, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1347}', '{3300867488}', NULL, 0, NULL, '{}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1217, 'Dart Rifle: Dart Cone', 'Fires darts in a cone pattern for maximum coverage.', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4978,1382}', '{488944709,1470900795,2389790449}', NULL, 0, NULL, '{2389790449}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1217, 'Dart Rifle: Dart Cone', 'Fires darts in a cone pattern for maximum coverage.', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4978,1382}', '{488944709,1470900795,2389790449}', 3, 0, NULL, '{2389790449}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (989, 'Dart Pistol: Aimed Shot', 'Ranged Single Target High Accuracy Shot
 -300F -30D
 +Acc
 -20H
-15 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{3361}', '{488944709,1470900795,2389790449}', NULL, 0, NULL, '{2389790449}');
+15 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Long', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{3361}', '{488944709,1470900795,2389790449}', 3, 0, NULL, '{2389790449}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1880, 'Incinerate Target', 'Flamethrower: Medium Cone Channelled Attack: 10 pulses
 -150F / -30H per pulse
 Damage Over Time:
--100F -10H (8ticks)', 'ABILITY_TYPE_DD', 2, 1557, 'set:AbilityIcons001 image:AOE_AntiPersonelle_Mortar', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3484,3483,2398,3476,3475,2397}', '{256246877,1470900795,4283851787}', NULL, 0, NULL, '{4283851787}');
+-100F -10H (8ticks)', 'ABILITY_TYPE_DD', 2, 1557, 'set:AbilityIcons001 image:AOE_AntiPersonelle_Mortar', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3484,3483,2398,3476,3475,2397}', '{256246877,1470900795,4283851787}', 15, 0, NULL, '{4283851787}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1883, 'Incinerating Stream', 'Flamethrower: Medium Cone Channelled Attack: 10 pulses
 -150F / -30H per pulse
 Damage Over Time:
--100F -10H (8ticks)', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:CD_Sustained_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3478,3477,2407,2406,2405,2404}', '{256246877,1470900795,4283851787}', NULL, 0, NULL, '{4283851787}');
+-100F -10H (8ticks)', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:CD_Sustained_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3478,3477,2407,2406,2405,2404}', '{256246877,1470900795,4283851787}', 15, 0, NULL, '{4283851787}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1886, 'Incinerate Target', 'Flamethrower: Medium Cone Channelled Attack: 10 pulses
 -150F / -30H per pulse
 Damage Over Time:
--100F -10H (8ticks)', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2416,2415,2414,2413}', '{256246877,1470900795,4283851787}', NULL, 0, NULL, '{4283851787}');
+-100F -10H (8ticks)', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2416,2415,2414,2413}', '{256246877,1470900795,4283851787}', 15, 0, NULL, '{4283851787}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1889, 'Incinerate Area', 'Flamethrower: Medium Cone Channelled Attack: 10 pulses
 -150F / -30H per pulse
 Damage Over Time:
--100F -10H (8ticks)', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 2000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4542,4530,4539,4538,4531,2422,4540}', '{256246877,1470900795,4283851787}', NULL, 0, NULL, '{4283851787}');
+-100F -10H (8ticks)', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 2000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4542,4530,4539,4538,4531,2422,4540}', '{256246877,1470900795,4283851787}', 15, 0, NULL, '{4283851787}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2102, 'Incinerate Ground', 'Flamethrower: Ground Target AOE: Short
-25 Ammo', 'ABILITY_TYPE_DD', 5, 1557, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 1500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 50, 0, '{}', '{1470900795,4283851787,256246877}', NULL, 0, NULL, '{4283851787}');
+25 Ammo', 'ABILITY_TYPE_DD', 5, 1557, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 1500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 50, 0, '{}', '{1470900795,4283851787,256246877}', 15, 0, NULL, '{4283851787}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1487, 'Penetrating Barrage', 'HMG: Medium Channelled Cone Attack
 -300F / -30H
 Ignores 2 QR of Cover
-25 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4996,1786}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4996,1786}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1673, 'MS018_063008_Sustained Sweep', 'LMG: Medium Cone Channelled Attack: 20 pulses
 -50F / -5H per pulse
-Ammo Per Pulse: 5', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2058,2057}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+Ammo Per Pulse: 5', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2058,2057}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1783, 'MS019_071408_Denial of Area', 'LMG: AOE Small Radius
 -300F / -30H
 Fear Area: 15 seconds
-25 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Denial_of_Area', true, 500, 3500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2234,2233}', '{256246877,1115110575,1470900795,3707106929}', NULL, 0, NULL, '{1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Denial_of_Area', true, 500, 3500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2234,2233}', '{256246877,1115110575,1470900795,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1788, 'MS019_071408_Strafe', 'LMG: Medium Cone Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2242,2241}', '{256246877,1115110575,3707106929}', NULL, 0, NULL, '{1115110575}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2242,2241}', '{256246877,1115110575,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1827, 'Denial of Area', 'LMG: AOE Small Radius
 -300F / -30H
 Fear Area: 15 seconds
-25 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Denial_of_Area', true, 500, 3500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2306,2305}', '{256246877,1115110575,1470900795,3707106929}', NULL, 0, NULL, '{1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Denial_of_Area', true, 500, 3500, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2306,2305}', '{256246877,1115110575,1470900795,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1968, 'NO ABILITY DISPLAY NAME!', 'LMG: Medium Cone Attack
 -200F / -20H
-Fear: 15 seconds', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Interrupting_Shot', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2566,2558,2557,2564,2563,2565}', '{256246877,1115110575,1470900795,3707106929}', NULL, 0, NULL, '{1115110575}');
+Fear: 15 seconds', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Interrupting_Shot', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2566,2558,2557,2564,2563,2565}', '{256246877,1115110575,1470900795,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2103, 'Launch Grenade: Concussion', 'Launches a Concussion Grenade
 -500 F -50 H
-Knockdown: 6 seconds', 'ABILITY_TYPE_DD', 4, 277, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 1, 30, 0.5, '{3393,2839,2838,2837,2836}', '{294285776,1470900795,312541303,256246877}', NULL, 0, NULL, '{312541303}');
+Knockdown: 6 seconds', 'ABILITY_TYPE_DD', 4, 277, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 1, 30, 0.5, '{3393,2839,2838,2837,2836}', '{294285776,1470900795,312541303,256246877}', 3, 0, NULL, '{312541303}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2105, 'Launch Grenade: Barrage', 'Launches multiple Grenades: Standard Ammo
 AOE: Medium
@@ -1578,69 +1578,69 @@ AOE: Medium
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2419, 'Launch Grenade: Single', 'Launches a Standard Grenade
 AOE: Short
 -500 F -50 H
-', 'ABILITY_TYPE_DD', 2, 1813, 'set:WeaponIcon002 image:WP_Grenade_00', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 0, 25, 0.5, '{3511,3510}', '{256246877,294285776,312541303,1470900795}', NULL, 0, NULL, '{312541303}');
+', 'ABILITY_TYPE_DD', 2, 1813, 'set:WeaponIcon002 image:WP_Grenade_00', true, 0, 2500, false, 'Medium', NULL, 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_High', 0, 25, 0.5, '{3511,3510}', '{256246877,294285776,312541303,1470900795}', 3, 0, NULL, '{312541303}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2446, 'NO ABILITY DISPLAY NAME!', 'NO ABILITY DESCRIPTION!', 'ABILITY_TYPE_DD', 0, 1812, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 0, false, 'Medium', NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_High', 0, 100, 0, '{3564}', '{294285776,1470900795,312541303,256246877}', NULL, 0, NULL, '{312541303}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2446, 'NO ABILITY DISPLAY NAME!', 'NO ABILITY DESCRIPTION!', 'ABILITY_TYPE_DD', 0, 1812, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 0, false, 'Medium', NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_High', 0, 100, 0, '{3564}', '{294285776,1470900795,312541303,256246877}', 3, 0, NULL, '{312541303}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2094, 'MS020_080817_AreaBurst', 'HMG: Targeted Narrow Cone Attack
 -300F / -30H
-15 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2821,2820}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+15 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2821,2820}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2098, 'MS020_080817_PenetratingBarrage', 'HMG: Medium Channelled Cone Attack
 -300F / -30H
 Ignores 2 QR of Cover
-25 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2826}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 500, 3500, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2826}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2143, 'Intimidation Fire', 'LMG: Medium Cone Attack
 -200F / -20H
-Fear: 15 seconds', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2928,2927,2926,2925,2924,2923}', '{256246877,1115110575,1470900795,3707106929}', NULL, 0, NULL, '{1115110575}');
+Fear: 15 seconds', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2928,2927,2926,2925,2924,2923}', '{256246877,1115110575,1470900795,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2304, 'MS020_080829_SuppressionZone', 'Targeted Medium Cone Attack w/ Suppression
 -100F
 -10H
 15s Suppression
 50 Ammo
-', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3274,3276,3278,3277}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3274,3276,3278,3277}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (656, 'Sustained Bursts', 'LMG: Ranged Channelled Attack: Narrow Cone
 -1500F / -150H
 5 ammo per pulse
-50 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:CD_Sustained_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4336,721}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+50 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:CD_Sustained_Fire', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4336,721}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (658, 'Heavy Suppression', 'HMG: Targeted Wide Cone Attack w/ Suppression
 -100F / -10H
 Suppression: 15 Seconds
-50 Ammo', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:Cone_Heavy_Suppression', true, 0, 0, false, 'Long', 'Wide', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1478,1477,1196,1195,725,724}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+50 Ammo', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:Cone_Heavy_Suppression', true, 0, 0, false, 'Long', 'Wide', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1478,1477,1196,1195,725,724}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (659, 'Suppression Zone', 'Targeted Medium Cone Attack w/ Suppression
 -100F
 -10H
 15s Suppression
 50 Ammo
-', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:Cone_Suppression_Zone', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1482,1481,1198,1197,727,726}', '{256246877,1115110575,1470900795,3707106929}', NULL, 0, NULL, '{1115110575}');
+', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:Cone_Suppression_Zone', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1482,1481,1198,1197,727,726}', '{256246877,1115110575,1470900795,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (808, 'Cover Denial', 'LMG: AOE Medium Radius Attack w/ DOA
 -300F / -30H
 Unihabitable Area: 20 seconds
-25 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:AOE_Cover_Denial', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{853}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:AOE_Cover_Denial', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{853}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (812, 'Denial of Area', 'LMG: AOE Small Radius
 -300F / -30H
 Fear Area: 15 seconds
-25 Ammo', 'ABILITY_TYPE_DD', 4, 277, 'set:AbilityIcons001 image:AOE_Denial_of_Area', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1485,858,857}', '{256246877,1115110575,1470900795,3707106929}', NULL, 0, NULL, '{1115110575}');
+25 Ammo', 'ABILITY_TYPE_DD', 4, 277, 'set:AbilityIcons001 image:AOE_Denial_of_Area', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1485,858,857}', '{256246877,1115110575,1470900795,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (818, 'Sustained Sweep', 'LMG: Medium Cone Channelled Attack: 20 pulses
 -50F / -5H per pulse
-Ammo Per Pulse: 5', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:Cone_Sustained_Sweep', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{864,865}', '{256246877,1115110575,1470900795,3707106929}', NULL, 0, NULL, '{1115110575}');
+Ammo Per Pulse: 5', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:Cone_Sustained_Sweep', true, 0, 0, false, 'Weapon', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{864,865}', '{256246877,1115110575,1470900795,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (853, 'Fire Zone', 'Non-Targeted Medium Cone Attack
--500F/ -50H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{911}', '{256246877,1115110575,1470900795}', NULL, 0, NULL, '{1115110575}');
+-500F/ -50H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 1, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{911}', '{256246877,1115110575,1470900795}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1318, 'Double Pump', 'Ranged Narrow Cone Attack
 Medium Cone Attack
 -300F / -30H
 
-2 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1544,1543}', '{1470900795,2035259765}', NULL, 0, NULL, '{2035259765}');
+2 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1544,1543}', '{1470900795,2035259765}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1180, 'Induce Panic: Alien', 'Ranged Single Target Debuff: Fear
 Fear: 20 seconds', 'ABILITY_TYPE_Debuff', 5, 1, 'set:CoreWidgets image:IconMissing', true, 0, 2000, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_High', 1, 100, 0, '{4566,1343}', '{3387009882,1470900795}', NULL, 0, NULL, '{}');
@@ -1649,128 +1649,128 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 Medium Cone Attack
 -300F / -30H
 
-2 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2237,2236}', '{1388011139,1470900795,2035259765,3387009882,3707106929}', NULL, 0, NULL, '{2035259765}');
+2 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2237,2236}', '{1388011139,1470900795,2035259765,3387009882,3707106929}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2253, 'MS020_080818_MultiPump', 'Ranged Cone Attack
 -200F / -20H
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3164,3163}', '{2035259765}', NULL, 0, NULL, '{2035259765}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Weapon', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3164,3163}', '{2035259765}', 3, 0, NULL, '{2035259765}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (722, 'Spray and Pray', 'SMG: Medium Cone Attack /w DoT
 -100F / -10H
 DOT: Focus -50F / -5H 10 Ticks
-25 Ammo', 'ABILITY_TYPE_DD', 20, 21, 'set:AbilityIcons001 image:Cone_Spray_and_Pray', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5034,5033,1219,1218,752,751}', '{728213066,1470900795,3737159407}', NULL, 0, NULL, '{728213066}');
+25 Ammo', 'ABILITY_TYPE_DD', 20, 21, 'set:AbilityIcons001 image:Cone_Spray_and_Pray', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5034,5033,1219,1218,752,751}', '{728213066,1470900795,3737159407}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1847, 'MS019_DenialOfArea', 'Assault Rifle: Ranged Medium Cone Attack
 -100F
 -10H
 25 Ammo
-Debuff: Suppression: 20 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 3500, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2347,2346,2345,2343}', '{728213066,1115110575}', NULL, 0, NULL, '{1115110575,728213066}');
+Debuff: Suppression: 20 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 3500, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2347,2346,2345,2343}', '{728213066,1115110575}', 15, 0, NULL, '{1115110575,728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1500, 'MS018_062008_Radiated Blasts', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1804}', '{1383013887,3212632871}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1804}', '{1383013887,3212632871}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1505, 'MS018_062008_Double Blast', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1816}', '{1383013887,3212632871}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1816}', '{1383013887,3212632871}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1768, 'Double Blast', 'Staff: Ranged Single Target Attack
 -150F / -15H Per Pulse
-2 Pulses', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:DD_Double_Blast', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{2210}', '{1470900795,1383013887,2684233211,3212632871,3747947334}', NULL, 0, NULL, '{1383013887}');
+2 Pulses', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:DD_Double_Blast', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{2210}', '{1470900795,1383013887,2684233211,3212632871,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1922, 'MS019_Rapid Blasts', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2473}', '{1383013887,3212632871}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2473}', '{1383013887,3212632871}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2001, 'Arc of Fury', 'Staff: Targeted Narrow Cone Attack
 -200F / -20H
-Knockdown: 3 Seconds', 'ABILITY_TYPE_DD', 4, 273, 'set:CoreWidgets image:IconMissing', true, 0, 300, false, 'Melee', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 75, 0, '{2620,2619,2618,2617,2616,2615}', '{61434600,1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+Knockdown: 3 Seconds', 'ABILITY_TYPE_DD', 4, 273, 'set:CoreWidgets image:IconMissing', true, 0, 300, false, 'Melee', 'Narrow', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 75, 0, '{2620,2619,2618,2617,2616,2615}', '{61434600,1383013887,1470900795,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2006, 'Distracting Blast', 'Staff: Ranged Single Target Attack
 -200F / -20H
-Accuracy -100: 25 Seconds', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{2628,2627,2626}', '{61434600,1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+Accuracy -100: 25 Seconds', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{2628,2627,2626}', '{61434600,1383013887,1470900795,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2024, 'Charged Blast', 'Staff: Targeted Beam Cone Attack
 -200F / -20H
-Warm Up: 2 seconds', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:Cone_Area_Burst', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2666,2665}', '{61434600,1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+Warm Up: 2 seconds', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:Cone_Area_Burst', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2666,2665}', '{61434600,1383013887,1470900795,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2026, 'Starburst', 'Staff: Ground Target Medium Radius Attack 
--500F / -50H', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2671,2670}', '{1470900795,1383013887,61434600,2684233211,3212632871,3747947334}', NULL, 0, NULL, '{1383013887}');
+-500F / -50H', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2671,2670}', '{1470900795,1383013887,61434600,2684233211,3212632871,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2042, 'Maximum Blast', 'Staff: Ground Target Medium Radius Attack 
--1000F / -100H', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 4, '{2695,2694}', '{1383013887,1470900795,61434600,3747947334}', NULL, 0, NULL, '{1383013887}');
+-1000F / -100H', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 4, '{2695,2694}', '{1383013887,1470900795,61434600,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2043, 'Weapon of Terror', 'Staff: Targeted Medium Cone Attack
 -400F / -40H
 Fear: 10 seconds
-Warm Up: 2 seconds', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2701,2700,2699,2698,2697,2696}', '{61434600,1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+Warm Up: 2 seconds', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2701,2700,2699,2698,2697,2696}', '{61434600,1383013887,1470900795,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2025, 'Whirlwind', 'PBAOE Melee Range
 -200 f -20 H
-Knockdown 5 seconds', 'ABILITY_TYPE_DD', 4, 273, 'set:AbilityIcons001 image:AOE_Draw_Area', false, 0, 0, false, 'Melee', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 100, 0, '{2669,2668,2667}', '{1470900795,1383013887,3747947334,61434600}', NULL, 0, NULL, '{1383013887}');
+Knockdown 5 seconds', 'ABILITY_TYPE_DD', 4, 273, 'set:AbilityIcons001 image:AOE_Draw_Area', false, 0, 0, false, 'Melee', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 100, 0, '{2669,2668,2667}', '{1470900795,1383013887,3747947334,61434600}', 300, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2029, 'Bewilderment', 'PBAOE Melee Range
 -200 f -20 H
-Confusion: 20 seconds', 'ABILITY_TYPE_DD', 4, 273, 'set:AbilityIcons001 image:AOE_Draw_Area', false, 0, 0, false, 'Melee', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 100, 0, '{2679,2678,2677}', '{1470900795,1383013887,3747947334,61434600}', NULL, 0, NULL, '{1383013887}');
+Confusion: 20 seconds', 'ABILITY_TYPE_DD', 4, 273, 'set:AbilityIcons001 image:AOE_Draw_Area', false, 0, 0, false, 'Melee', NULL, 1, 'TCM_AERadius', 0, 'THREAT_LEVEL_None', 1, 100, 0, '{2679,2678,2677}', '{1470900795,1383013887,3747947334,61434600}', 300, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1182, 'Induce Calm: Humanoid', 'Single Target Threat Wipe', 'ABILITY_TYPE_Debuff', 45, 1553, 'set:CoreWidgets image:IconMissing', true, 0, 2000, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2782,1345}', '{1470900795,3387009882}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2058, 'Devastating Blast', 'Staff: Ground Target Medium Radius Attack 
 -500F / -50H
 DOT: -150F -15H
-10 Ticks', 'ABILITY_TYPE_DD', 30, 277, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2725,2724,2720,2719}', '{61434600,1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+10 Ticks', 'ABILITY_TYPE_DD', 30, 277, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{2725,2724,2720,2719}', '{61434600,1383013887,1470900795,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2715, 'Dominance Blast', 'Staff: Ground Target Small Radius Attack 
 -500F / -50H
-Fear: 15 seconds', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{3910,3909,3908,3907}', '{1383013887,1470900795,2684233211}', NULL, 0, NULL, '{1383013887}');
+Fear: 15 seconds', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Short', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{3910,3909,3908,3907}', '{1383013887,1470900795,2684233211}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (3277, 'Blast', 'Staff: Ranged Single Target Attack
--200F / -20H', 'ABILITY_TYPE_DD', 3.5, 20, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{4876}', '{1383013887,1470900795}', NULL, 0, NULL, '{1383013887}');
+-200F / -20H', 'ABILITY_TYPE_DD', 3.5, 20, 'set:AbilityIcons001 image:DD_Selective_Fire', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 0, '{4876}', '{1383013887,1470900795}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (3322, 'Charged Blast', 'Staff: Targeted Beam Cone Attack
 -200F / -20H
-Warm Up: 2 seconds', 'ABILITY_TYPE_DD', 10, 20, 'set:AbilityIcons001 image:Cone_Area_Burst', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{4923,4922}', '{1383013887,1470900795}', NULL, 0, NULL, '{1383013887}');
+Warm Up: 2 seconds', 'ABILITY_TYPE_DD', 10, 20, 'set:AbilityIcons001 image:Cone_Area_Burst', true, 0, 0, false, 'Weapon', 'Beam', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{4923,4922}', '{1383013887,1470900795}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1628, 'Ribbon Device:Disruption Stream', 'Channelled Single Target Attack (7 ticks)
 -100F
 -10H
-', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1978}', '{1470900795,2684233211,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1978}', '{1470900795,2684233211,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1639, 'Ribbon Device:Destruction Beam', 'Ranged Single Target Attack
 -200F
 -20H
-', 'ABILITY_TYPE_DD', 2.5, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1988}', '{1470900795,2684233211,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 2.5, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1988}', '{1470900795,2684233211,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2717, 'Fist of an Angry God', 'Ribbon Device: Ground Target Mediuml Radius Attack 
 -500F / -50H
-Knockdown: 8 seconds', 'ABILITY_TYPE_DD', 4, 1557, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{3916,3915,3914,3913}', '{1470900795,2684233211,4193235610}', NULL, 0, NULL, '{4193235610}');
+Knockdown: 8 seconds', 'ABILITY_TYPE_DD', 4, 1557, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 80, 2, '{3916,3915,3914,3913}', '{1470900795,2684233211,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2718, 'Wrath of God', 'Strike: Ground Target Large Radius Attack 
 -1500F / -150H
 Channeled: Pulsing Damage: 30 Ticks
--400 F -40H', 'ABILITY_TYPE_DD', 300, 1813, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{3919,3921,3920}', '{1470900795,2684233211,4193235610}', NULL, 0, NULL, '{4193235610}');
+-400 F -40H', 'ABILITY_TYPE_DD', 300, 1813, 'set:AbilityIcons001 image:AOE_Dumbfire_Missile', true, 0, 3000, false, 'Medium', 'Narrow', 3, 'TCM_AERadius', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{3919,3921,3920}', '{1470900795,2684233211,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2795, 'Lord''s Visage', 'Ranged Cone Attack: -10 Energy
 -200F
 -20H
 Disorient: 15 seconds
-', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4055,4054,4053,4052,4051,4050}', '{1470900795,3748251909,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4055,4054,4053,4052,4051,4050}', '{1470900795,3748251909,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1669, 'MS018_063008_Cover Fire', 'Assault Rifle: Ranged Medium Cone Attack
 -100F
 -10H
 25 Ammo
-Debuff: Suppression: 20 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2050,2049,2048,2047,2046,2045}', '{3606086656}', NULL, 0, NULL, '{3606086656}');
+Debuff: Suppression: 20 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2050,2049,2048,2047,2046,2045}', '{3606086656}', 15, 0, NULL, '{3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (720, 'Cover Fire', 'Assault Rifle: Ranged Medium Cone Attack
 -100F
 -10H
 25 Ammo
-Debuff: Suppression: 20 seconds', 'ABILITY_TYPE_DD', 15, 21, 'set:AbilityIcons001 image:Cone_Cover_Fire', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1476,1475,1217,1216,749,748}', '{1470900795,3606086656,3737159407}', NULL, 0, NULL, '{3606086656}');
+Debuff: Suppression: 20 seconds', 'ABILITY_TYPE_DD', 15, 21, 'set:AbilityIcons001 image:Cone_Cover_Fire', true, 0, 0, false, 'Medium', 'Medium', 2, 'TCM_AECone', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1476,1475,1217,1216,749,748}', '{1470900795,3606086656,3737159407}', 15, 0, NULL, '{3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2827, 'Lord''s Will', 'Ranged Cone Attack: -10 Energy
 -200F
 -20H
 Snare: 15 seconds
-', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4093,4092,4091,4090,4089,4088}', '{1470900795,3748251909,4193235610}', NULL, 0, NULL, '{4193235610}');
+', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, 'Medium', 'Narrow', 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4093,4092,4091,4090,4089,4088}', '{1470900795,3748251909,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1179, 'Induce Doubt: Alien', 'Ranged Single Target Debuff: Confusion
 Confusion: 20 seconds', 'ABILITY_TYPE_Debuff', 5, 1937, 'set:CoreWidgets image:IconMissing', true, 0, 2000, false, NULL, NULL, 2, 'TCM_Single', 100, 'THREAT_LEVEL_High', 1, 100, 0.5, '{2777,1342}', '{1470900795,3387009882}', NULL, 0, NULL, '{}');
@@ -1787,12 +1787,12 @@ Toggle', 'ABILITY_TYPE_Buff', 30, 1, 'set:CoreWidgets image:IconMissing', true, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1076, 'Lok''nel', 'Melee Attack w/ Knockdown
 -100F / 10H
 5 Second Knockdown
-', 'ABILITY_TYPE_DD', 4, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1209,1208,1207}', '{1470900795}', NULL, 0, NULL, '{}');
+', 'ABILITY_TYPE_DD', 4, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1209,1208,1207}', '{1470900795}', 300, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1077, 'Lok''nel Kei', 'High Damage Melee Attack w/ Knockdown and Accuracy Debuff
 -100F / 10H
 5 Second Knockdown
-', 'ABILITY_TYPE_DD', 15, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1214,1213,1212}', '{1470900795}', NULL, 0, NULL, '{}');
+', 'ABILITY_TYPE_DD', 15, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1214,1213,1212}', '{1470900795}', 300, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1079, 'Heavy Weapon Exit Setup: Mortar', 'Removes Heavy Weapon State
 ', 'ABILITY_TYPE_Buff', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Medium', 0, 100, 4, '{1224}', '{500677761}', NULL, 0, NULL, '{}');
@@ -1834,7 +1834,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -60H 
 + Knockdown
 
-', 'ABILITY_TYPE_DD', 45, 5, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 3, '{1243,1242}', '{1470900795,2882868408}', NULL, 0, NULL, '{2882868408}');
+', 'ABILITY_TYPE_DD', 45, 5, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 3, '{1243,1242}', '{1470900795,2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1137, 'Nerve Strike', 'High Damage Melee Attack w/ Stun
 5 Second Stun
@@ -1861,7 +1861,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1155, 'Matter: Quicksilver', '120F
 20H', 'ABILITY_TYPE_DD', 3, 16, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1321}', '{}', NULL, 0, NULL, '{}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1156, 'Straegis: Disengage', 'Knocks the target down', 'ABILITY_TYPE_DD', 15, 16, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1322}', '{1470900795}', NULL, 0, NULL, '{}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1156, 'Straegis: Disengage', 'Knocks the target down', 'ABILITY_TYPE_DD', 15, 16, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1322}', '{1470900795}', 1499, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1172, 'Caustic Mist', 'Short Range PBAOE Contamination DOT.
 ', 'ABILITY_TYPE_DOT', 20, 0, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 25, 3, '{1334}', '{1470900795}', NULL, 0, NULL, '{}');
@@ -1870,14 +1870,14 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1174, 'Drone Shot', 'General Drone Shot
 -20H
--175F', 'ABILITY_TYPE_DD', 1, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 0, '{1336}', '{1470900795,2105557341,4159160043}', NULL, 0, NULL, '{}');
+-175F', 'ABILITY_TYPE_DD', 1, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 0, '{1336}', '{1470900795,2105557341,4159160043}', 15, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1185, 'Disguise: Alien: Mark I', 'Toggled Disguise Ability
 Disguise Rating: 100', 'ABILITY_TYPE_Buff', 2, 8, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 1, '{1349,1348}', '{1470900795}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1186, 'Drone Strike', 'Melee Attack
 -125F
--15H', 'ABILITY_TYPE_DD', 1.5, 21, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1350}', '{1470900795,4159160043}', NULL, 0, NULL, '{}');
+-15H', 'ABILITY_TYPE_DD', 1.5, 21, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1350}', '{1470900795,4159160043}', 300, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1187, 'Disguise: Alien: Mark II', 'Toggled Disguise Ability
 Disguise Rating: 200', 'ABILITY_TYPE_Buff', 2, 8, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 1, '{1352,1351}', '{1470900795,3300867488}', NULL, 0, NULL, '{}');
@@ -1981,12 +1981,12 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1247, 'Execution', 'Ranged Single Target Attack
 -150F / -15H
 1 Ammo
-Bonus Damage when opponent Focus is low.', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1412,1411,1410}', '{292070744,1470900795,2445422768}', NULL, 0, NULL, '{2445422768}');
+Bonus Damage when opponent Focus is low.', 'ABILITY_TYPE_DD', 4, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1412,1411,1410}', '{292070744,1470900795,2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1242, 'Aimed Shot: Arm', 'Ranged Single Target Attack
 -300F / -30H
 Disarm: 10 Sec
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{4309,1402,1401}', '{1388011139,1470900795,2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{4309,1402,1401}', '{1388011139,1470900795,2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1250, 'Escape', 'Player goes into Stealth mode.
 Full stealth rating restored.', 'ABILITY_TYPE_Buff', 300, 24, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 1, 100, 0, '{1418,1417}', '{210985080,292070744,896281579,1450759534,1470900795,2819009444,3481040701}', NULL, 0, NULL, '{2819009444,3481040701,896281579,1450759534,210985080}');
@@ -2023,7 +2023,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 Damage: -250F / -25H
 Blind: -200 ACC / -200 DEF
 Disorient: 15 sec
-1 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 4, '{4335,4334,4333,4332,1596,1595,1594}', '{1388011139,1470900795,2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 4, '{4335,4334,4333,4332,1596,1595,1594}', '{1388011139,1470900795,2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1391, '5m Timer Fail Objective', 'No ability description available to populate object_text_values table', 'ABILITY_TYPE_Undefined', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 1, 0, '{1672}', '{}', NULL, 0, NULL, '{}');
 
@@ -2041,7 +2041,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1433, 'Mob Strike', 'Melee Attack
 -125F
--15H', 'ABILITY_TYPE_DD', 2, 261, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1717}', '{1470900795}', NULL, 0, NULL, '{}');
+-15H', 'ABILITY_TYPE_DD', 2, 261, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1717}', '{1470900795}', 300, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1439, '1m Timer Complete Mission', 'No ability description available to populate object_text_values table', 'ABILITY_TYPE_Undefined', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 1, 0, '{1727}', '{}', NULL, 0, NULL, '{}');
 
@@ -2083,7 +2083,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1434, 'Snap Shot', 'Ranged Single Target Attack
 -300F / -30H
-1 Ammo', 'ABILITY_TYPE_DD', 3, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1718}', '{1470900795,2882868408,1388011139}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 3, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1718}', '{1470900795,2882868408,1388011139}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1871, 'Siphon Energy', '120F
 20H', 'ABILITY_TYPE_DD', 3, 16, 'set:CoreWidgets image:IconMissing', true, 0, 300, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2383}', '{1470900795}', NULL, 0, NULL, '{}');
@@ -2228,11 +2228,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1626, 'Suppression Blast', 'Staff Weapon: Ranged Single Target Attack w/Suppression
 -100F / -10H
-Suppression: 15 seconds', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 1, '{1976,1975,1974}', '{61434600,1383013887,1470900795,2684233211,3747947334}', NULL, 0, NULL, '{1383013887}');
+Suppression: 15 seconds', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 80, 1, '{1976,1975,1974}', '{61434600,1383013887,1470900795,2684233211,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1638, 'Destruction Shot', 'Ranged Single Target Attack w/ Stun
 -150F / -15H
-Stun: 5 Seconds', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2736,1986,1987}', '{1995443945,2723649405,1470900795,3212632871,3387009882,3748251909}', NULL, 0, NULL, '{2723649405}');
+Stun: 5 Seconds', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2736,1986,1987}', '{1995443945,2723649405,1470900795,3212632871,3387009882,3748251909}', 3, 0, NULL, '{2723649405}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1642, 'Stance: Soldier', 'Toggled Ability:
 Cover Defense 
@@ -2273,7 +2273,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1672, 'MS018_063008_Long Burst', 'LMG: Single Target Attack: Channeled
 2 Pulses: -300F / -30H
-5 Ammo per pulse', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2056}', '{1115110575}', NULL, 0, NULL, '{1115110575}');
+5 Ammo per pulse', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2056}', '{1115110575}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1681, 'MS018_063008_Disruption Shot', 'Energy Pistol: Ranged Single Target Attack w/ Snare
 -150F / -15H
@@ -2332,7 +2332,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -130F
 -30H
 -25H
--25H', 'ABILITY_TYPE_DD', 0, 20, 'set:CoreWidgets image:IconMissing', false, 0, 200, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2080,2079}', '{830336901}', NULL, 0, NULL, '{830336901}');
+-25H', 'ABILITY_TYPE_DD', 0, 20, 'set:CoreWidgets image:IconMissing', false, 0, 200, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2080,2079}', '{830336901}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1734, 'Head Crack', 'Targeted Single Target Melee Attack w/ Disorient
 
@@ -2389,12 +2389,12 @@ Pulse Duration: 1 second
 ', 'ABILITY_TYPE_DD', 0, 1541, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{2240}', '{}', NULL, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1736, 'Blinding Shot', 'Targeted Single Target Attack w/ +1 QR Defensive Debuff and -1 QR Offensive Debuff
-', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{2139,2138}', '{2445422768,3747947334,1470900795}', NULL, 0, NULL, '{2445422768}');
+', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{2139,2138}', '{2445422768,3747947334,1470900795}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1732, 'Savage Blows', 'Staff: Targeted Single Target Channelled Melee Attack
 F-100 H-10 Per Pulse: 10 Pulses
 Pulse Duration: 1 second
-', 'ABILITY_TYPE_DD', 10, 277, 'set:AbilityIcons001 image:Melee_Strike', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2135}', '{1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+', 'ABILITY_TYPE_DD', 10, 277, 'set:AbilityIcons001 image:Melee_Strike', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2135}', '{1383013887,1470900795,3747947334}', 300, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1822, 'Food Buffet Induction Bar', 'No ability description available to populate object_text_values table', 'ABILITY_TYPE_Undefined', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 1, 0, '{2294}', '{}', NULL, 0, NULL, '{}');
 
@@ -2441,7 +2441,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1834, 'Destruction Shot', 'Ranged Single Target Attack w/ Stun
 -150F / -15H
-Stun: 5 Seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2322,2321,2320}', '{1470900795,2723649405}', NULL, 0, NULL, '{2723649405}');
+Stun: 5 Seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2322,2321,2320}', '{1470900795,2723649405}', 3, 0, NULL, '{2723649405}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1858, 'MS019_MarksmansStance', 'AE Increases Accuracy by 150 for 15 seconds', 'ABILITY_TYPE_Buff', 0, 0, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{2363}', '{}', NULL, 0, NULL, '{}');
 
@@ -2475,11 +2475,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1879, 'Point Blank Shot', 'Pistol: Ranged Single Target Attack
 -200F / -20H
 DOT: -150F / -30H (8 Ticks)
-1 Ammo', 'ABILITY_TYPE_DOT', 2, 21, 'set:AbilityIcons001 image:DD_Pistol_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2394,2393}', '{1388011139,1470900795,2445422768,3737159407}', NULL, 0, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DOT', 2, 21, 'set:AbilityIcons001 image:DD_Pistol_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2394,2393}', '{1388011139,1470900795,2445422768,3737159407}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1863, 'MS019_Suppression Blast', 'Staff Weapon: Ranged Single Target Attack w/Suppression
 -100F / -10H
-Suppression: 15 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2369,2368,2367}', '{1383013887,2684233211}', NULL, 0, NULL, '{1383013887}');
+Suppression: 15 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2369,2368,2367}', '{1383013887,2684233211}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1888, 'Steady Fire', 'Increases Interruption Resistance + 10% for 30 seconds', 'ABILITY_TYPE_Buff', 5, 24, 'set:AbilityIcons001 image:Buff_Steady_Fire', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{4999,2421}', '{256246877,1470900795}', NULL, 0, NULL, '{}');
 
@@ -2513,17 +2513,17 @@ Suppression: 15 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:D
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1911, 'MS019_AimedShotLeg', 'Ranged Single Target Attack
 -200F / -20H
 Snare: 15 Second 
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2449,2450}', '{2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2449,2450}', '{2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1912, 'MS019_AimedShotArm*', 'Ranged Single Target Attack
 -300F / -30H
 Disarm: 10 Sec
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{2453,2452}', '{2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{2453,2452}', '{2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1905, 'Radiated Blasts', 'Ranged Channelled Attack
 -250 F
 -25H
-10 Ticks 1 second intervals', 'ABILITY_TYPE_DD', 20, 21, 'set:AbilityIcons001 image:Cone_Fire_Zone', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 80, 0, '{2439}', '{1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+10 Ticks 1 second intervals', 'ABILITY_TYPE_DD', 20, 21, 'set:AbilityIcons001 image:Cone_Fire_Zone', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 80, 0, '{2439}', '{1383013887,1470900795,3747947334}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1926, 'NO ABILITY DISPLAY NAME!', 'NO ABILITY DESCRIPTION!', 'ABILITY_TYPE_Undefined', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 1, 0, '{2480}', '{}', NULL, 0, NULL, '{}');
 
@@ -2629,7 +2629,7 @@ Focus Damage -100', 'ABILITY_TYPE_DD', 4, 16, 'set:CoreWidgets image:IconMissing
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1984, 'Staff Swing', 'Melee Attack: Staff
 -100F
--10H', 'ABILITY_TYPE_DD', 1, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5308,5307,2586}', '{61434600,1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+-10H', 'ABILITY_TYPE_DD', 1, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{5308,5307,2586}', '{61434600,1383013887,1470900795,3747947334}', 300, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1999, 'MS020_Conversation:Mediator', 'Heals 35% of the player''s Focus pool', 'ABILITY_TYPE_Heal', 0, 145, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_High', 0, 100, 0, '{2613}', '{}', NULL, 0, NULL, '{}');
 
@@ -2771,7 +2771,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2146, 'MS020_080817_Takedown', 'Melee Attack w/ Knockdown
 -100F / 10H
 5 Second Knockdown
-', 'ABILITY_TYPE_DD', 0, 1809, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2935,2934}', '{}', NULL, 0, NULL, '{}');
+', 'ABILITY_TYPE_DD', 0, 1809, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2935,2934}', '{}', 300, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2119, 'MS020_080817_Missile:HighExplosive', 'Ranged Single Target Attack:
 Warmup: 1 second
@@ -2783,11 +2783,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -100F
 -10H
 1 Ammo
-DOT: 8 Ticks: -50F -5H per tick', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Wounding_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2846,2845}', '{728213066}', NULL, 0, NULL, '{728213066}');
+DOT: 8 Ticks: -50F -5H per tick', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Wounding_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2846,2845}', '{728213066}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2100, 'MS020_080817_FlamethrowerTest', 'Staff Weapon: Ranged Single Target Attack w/Suppression
 -100F / -10H
-Suppression: 15 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2829,2828}', '{1383013887,2684233211}', NULL, 0, NULL, '{1383013887}');
+Suppression: 15 seconds', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2829,2828}', '{1383013887,2684233211}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2120, 'MS020_080817_Missile:EMP
 ', 'Ranged Single Target Attack:
@@ -2855,7 +2855,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2139, 'MS020_080817_Snapshot', 'Ranged Single Target Attack
 -300F / -30H
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2916}', '{2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2916}', '{2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2153, 'MS020_080817_Disarm', 'Melee Attack
 -200F
@@ -2924,7 +2924,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -100F
 -10H
 1 Ammo
-DOT: 8 Ticks: -50F -5H per tick', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Wounding_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2968,2967}', '{728213066}', NULL, 0, NULL, '{728213066}');
+DOT: 8 Ticks: -50F -5H per tick', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Wounding_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2968,2967}', '{728213066}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2194, 'Stance: Martial', 'Self target: Stance: +100 Accuracy for Melee Attacks', 'ABILITY_TYPE_Buff', 0, 520, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4228,3043}', '{292070744,1470900795}', NULL, 0, NULL, '{}');
 
@@ -2954,7 +2954,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2225, 'MS020_080818_LeathalShot', 'Ranged Single Target Attack w/ DoT
 -200F / -20H
 -100F / -10H x10
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{3088,3087}', '{2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{3088,3087}', '{2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2226, 'MS020_080818_HunkerDown', 'Heals 35% of the player''s Focus pool', 'ABILITY_TYPE_Heal', 0, 145, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_High', 0, 100, 0, '{3089}', '{}', NULL, 0, NULL, '{}');
 
@@ -3705,11 +3705,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2848, 'Submit to your Lord', 'Ranged Channelled Attack
 -200F / 20H
-Energy: 10', 'ABILITY_TYPE_DD', 5, 21, 'set:AbilityIcons001 image:DD_Pistol_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4140,4139}', '{1470900795,2445422768,3387009882}', NULL, 0, NULL, '{2445422768}');
+Energy: 10', 'ABILITY_TYPE_DD', 5, 21, 'set:AbilityIcons001 image:DD_Pistol_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4140,4139}', '{1470900795,2445422768,3387009882}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2869, 'Disrupt Soul', 'Melee Attack: Channeled
 -200F / -20H
-10 pulses', 'ABILITY_TYPE_DD', 6, 1557, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4173}', '{1470900795,2650822895,4193235610}', NULL, 0, NULL, '{4193235610}');
+10 pulses', 'ABILITY_TYPE_DD', 6, 1557, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4173}', '{1470900795,2650822895,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2871, 'MS020_080818_RevealII', 'Toggle ability template', 'ABILITY_TYPE_Buff', 2, 1560, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 1, '{4186,4185}', '{}', NULL, 0, NULL, '{}');
 
@@ -4658,7 +4658,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (734, 'Burst-', 'Burst Ability
 120F
-20H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 50, 'THREAT_LEVEL_High', 0, 100, 0, '{777}', '{3175425141,1470900795}', NULL, 0, NULL, '{3175425141}');
+20H', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 50, 'THREAT_LEVEL_High', 0, 100, 0, '{777}', '{3175425141,1470900795}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (680, 'Mini-game: Contextual Guide', 'The Archaeologist decreases the timer in a mini-game to receive an advantage in exchange.', 'ABILITY_TYPE_Undefined', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, true, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 1, 100, 0, '{}', '{320218562}', NULL, 0, NULL, '{}');
 
@@ -4670,7 +4670,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (655, 'Snap Shot', 'Ranged Single Target Attack
 -300F / -30H
-1 Ammo', 'ABILITY_TYPE_DD', 3, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{720}', '{1388011139,1470900795,2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 3, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{720}', '{1388011139,1470900795,2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (684, 'Mini-game: Re-Survey', 'The Archaeologist alters the function of the playfield in a mini-game.', 'ABILITY_TYPE_Undefined', 0, 0, 'set:CoreWidgets image:IconMissing', false, 0, 0, true, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 1, 100, 0, '{}', '{}', NULL, 0, NULL, '{}');
 
@@ -4731,7 +4731,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (713, 'Draw Fire', 'SMG: Ranged Single Target Attack
 -200F / -20H
 3 Ammo
-High Threat', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Draw_Fire', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_High', 1, 100, 0, '{739}', '{728213066,1470900795,3737159407,3942340794}', NULL, 0, NULL, '{728213066}');
+High Threat', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Draw_Fire', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_High', 1, 100, 0, '{739}', '{728213066,1470900795,3737159407,3942340794}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (719, 'Armor Piercing Ammunition', 'Buff:
 Toggle
@@ -4795,7 +4795,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (728, 'Full Magazine', 'Ranged Channelled Attack
 -1000F / -100H
-Ammo: 15', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Pistol_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{765}', '{2445422768,3387009882,1470900795}', NULL, 0, NULL, '{2445422768}');
+Ammo: 15', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Pistol_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{765}', '{2445422768,3387009882,1470900795}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (739, 'Rifle Melee AA', 'Melee Attack: Auto Attack
 -100F
@@ -4805,11 +4805,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -100F
 -10H
 1 Ammo
-DOT: 8 Ticks: -50F -5H per tick', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:DD_Wounding_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{4237,4236,743,742}', '{728213066,1470900795,2936348458,3737159407,3942340794}', NULL, 0, NULL, '{728213066}');
+DOT: 8 Ticks: -50F -5H per tick', 'ABILITY_TYPE_DD', 10, 21, 'set:AbilityIcons001 image:DD_Wounding_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1, '{4237,4236,743,742}', '{728213066,1470900795,2936348458,3737159407,3942340794}', 15, 0, NULL, '{728213066}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (730, 'Poisonous Blast', 'Poisonous Blast Ability
 130 F
-25H', 'ABILITY_TYPE_DD', 3, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{768}', '{1383013887}', NULL, 0, NULL, '{1383013887}');
+25H', 'ABILITY_TYPE_DD', 3, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{768}', '{1383013887}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (711, 'Ribbon Device Melee AA', 'Melee Attack: Auto Attack
 -100F
@@ -4857,10 +4857,10 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (780, 'Point Shooter', 'Pistol: Ranged Single Target Attack
 -100F / -10H
 DOT: -50F / -5H (8 Ticks)
-1 Ammo', 'ABILITY_TYPE_DOT', 10, 21, 'set:AbilityIcons001 image:DD_Point_Shooter', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{4315,2768,823,822}', '{1388011139,1470900795,2445422768,3737159407}', NULL, 0, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DOT', 10, 21, 'set:AbilityIcons001 image:DD_Point_Shooter', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{4315,2768,823,822}', '{1388011139,1470900795,2445422768,3737159407}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (772, 'Damage Shot', 'Ranged Single Target Attack:
--200F / -20H', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{814}', '{1470900795,2723649405,17962629,1995443945,3212632871,3387009882,3748251909}', NULL, 0, NULL, '{2723649405}');
+-200F / -20H', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{814}', '{1470900795,2723649405,17962629,1995443945,3212632871,3387009882,3748251909}', 3, 0, NULL, '{2723649405}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (807, 'Spew', 'Spew
 120F
@@ -4910,12 +4910,12 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (848, 'Repeated Fire', 'Ranged Channelled Attack
 -300F / -30H 
-1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{904}', '{1470900795,2882868408,1388011139}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{904}', '{1470900795,2882868408,1388011139}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (855, 'Aimed Shot: Leg', 'Ranged Single Target Attack
 -200F / -20H
 Snare: 15 Second 
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{1460,917,916}', '{1388011139,1470900795,2882868408,3707106929}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{1460,917,916}', '{1388011139,1470900795,2882868408,3707106929}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (859, 'Concentration', 'Increases Interruption Resistance by +100% for 15 seconds', 'ABILITY_TYPE_Buff', 0, 520, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{922,4294}', '{1388011139,1470900795,3707106929}', NULL, 0, NULL, '{}');
 
@@ -5026,7 +5026,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (983, 'Bite', 'Melee Attack
 -125F
--15H', 'ABILITY_TYPE_DD', 3, 1, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1092}', '{1470900795}', NULL, 0, NULL, '{}');
+-15H', 'ABILITY_TYPE_DD', 3, 1, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1092}', '{1470900795}', 300, 0, NULL, '{}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (984, 'Infected Bite', 'Melee Attack
 -125F
@@ -5078,26 +5078,26 @@ Warmup: 1 second
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (993, 'Dart Pistol: Half Magazine', 'Ranged Channelled Attack
 -700F
 -70H
- Ammo: 7', 'ABILITY_TYPE_DD', 30, 1, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1103}', '{2389790449,488944709,1470900795}', NULL, 0, NULL, '{2389790449}');
+ Ammo: 7', 'ABILITY_TYPE_DD', 30, 1, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1103}', '{2389790449,488944709,1470900795}', 3, 0, NULL, '{2389790449}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (997, 'Full Mag: Dart Pistol', 'Ranged Channelled Attack
 -1500F
 -150H
- Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1106}', '{488944709,1470900795,3257416555}', NULL, 0, NULL, '{3257416555}');
+ Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1106}', '{488944709,1470900795,3257416555}', 15, 0, NULL, '{3257416555}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2408, 'Automatic Weapon Melee AA', 'Melee Attack: Auto Attack
 -100F
 -10H', 'ABILITY_TYPE_DD', 2, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3469}', '{4283851787}', 300, 0, NULL, '{4283851787}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (985, 'Launch Grenade', 'Throws a Defensive Grenade', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 100, 2500, false, NULL, NULL, 3, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 25, 3, '{1097,1096,1095,1094}', '{1470900795,312541303}', NULL, 0, NULL, '{312541303}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (985, 'Launch Grenade', 'Throws a Defensive Grenade', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 100, 2500, false, NULL, NULL, 3, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 25, 3, '{1097,1096,1095,1094}', '{1470900795,312541303}', 3, 0, NULL, '{312541303}');
 
-INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (986, 'Rain of Chaos', 'No ability description available to populate object_text_values table', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 25, 3, '{1099,2518,2515,2513,2514,1101,1098,1100}', '{312541303,1470900795}', NULL, 0, NULL, '{312541303}');
+INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (986, 'Rain of Chaos', 'No ability description available to populate object_text_values table', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 25, 3, '{1099,2518,2515,2513,2514,1101,1098,1100}', '{312541303,1470900795}', 3, 0, NULL, '{312541303}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (982, 'Blinding Shot', 'Ranged Single Target Attack:
 Warmup: 1 second
 -120F
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{1091,1090}', '{1470900795,2445422768}', NULL, 0, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DD', 45, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{1091,1090}', '{1470900795,2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (708, 'Pistol Melee AA', 'Melee Attack: Auto Attack
 -100F
@@ -5146,7 +5146,7 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 Warmup: 1 second
 -175F
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 1.5, 21, 'set:AbilityIcons001 image:CD_Steady_Aim', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{4243}', '{2445422768,1470900795}', NULL, 1, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DD', 1.5, 21, 'set:AbilityIcons001 image:CD_Steady_Aim', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{4243}', '{2445422768,1470900795}', 3, 1, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (579, 'Pistol Auto Attack', 'Ranged Single Target Attack
 -100F
@@ -5157,20 +5157,20 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 -100F / -10H 
 Snare: 15 Seconds
 1 Ammo
-', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Snare_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2042,2041,2040}', '{3606086656}', NULL, 0, NULL, '{3606086656}');
+', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Snare_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2042,2041,2040}', '{3606086656}', 15, 0, NULL, '{3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1074, 'Uzi Burst', 'Scatter Gun Burst Ability
 200F
-20H', 'ABILITY_TYPE_DD', 2, 4, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1205}', '{3175425141}', NULL, 0, NULL, '{3175425141}');
+20H', 'ABILITY_TYPE_DD', 2, 4, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1205}', '{3175425141}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1665, 'MS018_063008_Burst', 'Ranged Single Target Attack
 -200F / -20H
-3 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Burst', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2036}', '{3175425141}', NULL, 0, NULL, '{3175425141}');
+3 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:AbilityIcons001 image:DD_Burst', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2036}', '{3175425141}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1072, 'Test Effect', 'Ranged Single Target Attack w/Suppression
 -100F / -10H
 15 Ammo
-Suppression: 20 seconds', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1201}', '{1470900795,728213066,3175425141,3606086656}', NULL, 0, NULL, '{3175425141,728213066,3606086656}');
+Suppression: 20 seconds', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1201}', '{1470900795,728213066,3175425141,3606086656}', 15, 0, NULL, '{3175425141,728213066,3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1943, 'MS019_AshrakDaggerParalyze*', 'Melee Attack with Stun
 -200F / -20H', 'ABILITY_TYPE_DD', 4, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2520,2519}', '{728213066,830336901,1115110575,1383013887,1470900795,2035259765,2389790449,2445422768,2650822895,2723649405,2882868408,3175425141,3257416555,3606086656,4193235610}', NULL, 0, NULL, '{3175425141,830336901,2389790449,3257416555,1115110575,2445422768,2882868408,2035259765,728213066,1383013887,2723649405,3606086656,4193235610}');
@@ -5181,55 +5181,55 @@ Warmup: 2 second
 -15H
 1 Ammo
 -450
--45 if behind target', 'ABILITY_TYPE_DD', 50, 5, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{1851,1847,1850,1239}', '{1470900795,3175425141}', NULL, 0, NULL, '{3175425141}');
+-45 if behind target', 'ABILITY_TYPE_DD', 50, 5, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{1851,1847,1850,1239}', '{1470900795,3175425141}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1966, 'Target: Leg', 'Ranged Single Target Attack
 -200F / -20H
 Snare: 15 Second 
-3 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2553,2552,2551}', '{1470900795,3175425141,3707106929}', NULL, 0, NULL, '{3175425141}');
+3 Ammo', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2553,2552,2551}', '{1470900795,3175425141,3707106929}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1967, 'Target: Leg', 'Ranged Single Target Attack
 -200F / -20H
-DOT: -150 -50 8 Ticks', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2556,2555,2554}', '{1470900795,3175425141,3707106929}', NULL, 0, NULL, '{3175425141}');
+DOT: -150 -50 8 Ticks', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2556,2555,2554}', '{1470900795,3175425141,3707106929}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1976, 'NO ABILITY DISPLAY NAME!', 'Ranged Single Target Attack
 -200F / -20H
 DOT: -400 8 Ticks
-Disorientation: 10 seconds', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2575,2574,2573,2572}', '{3175425141,3707106929,1470900795}', NULL, 0, NULL, '{3175425141}');
+Disorientation: 10 seconds', 'ABILITY_TYPE_DD', 5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2575,2574,2573,2572}', '{3175425141,3707106929,1470900795}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (3096, 'Burst-', 'Burst Ability
 200F
-20H', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_High', 0, 100, 0, '{4476}', '{3175425141}', NULL, 0, NULL, '{3175425141}');
+20H', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_High', 0, 100, 0, '{4476}', '{3175425141}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (34, 'Burst-', 'Burst Ability
 200F
-20H', 'ABILITY_TYPE_DD', 1, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{77}', '{3175425141}', NULL, 0, NULL, '{3175425141}');
+20H', 'ABILITY_TYPE_DD', 1, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{77}', '{3175425141}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (598, 'Quick Burst', 'Ranged Single Target Attack
 -200F / -20H
-3 Ammo', 'ABILITY_TYPE_DD', 1, 21, 'set:AbilityIcons001 image:DD_Burst', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{660}', '{1470900795,2936348458,3175425141,3387009882,3707106929,3737159407,3942340794}', NULL, 0, NULL, '{3175425141}');
+3 Ammo', 'ABILITY_TYPE_DD', 1, 21, 'set:AbilityIcons001 image:DD_Burst', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{660}', '{1470900795,2936348458,3175425141,3387009882,3707106929,3737159407,3942340794}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (725, 'Sustained Fire', 'Automatic Weapons: Ranged Channelled Attack: Exponential Damage
 -1200F
 -120H
-50 pulses 3 Ammo per pulse', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:CD_ZeroIn', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{759,758,757}', '{1470900795,3175425141,3737159407}', NULL, 0, NULL, '{3175425141}');
+50 pulses 3 Ammo per pulse', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:CD_ZeroIn', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{759,758,757}', '{1470900795,3175425141,3737159407}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (891, 'Suppression Shot', 'Automatic Weapon: Ranged Single Target Attack w/Suppression
 -100F / -10H
 15 Ammo
-Suppression: 20 seconds', 'ABILITY_TYPE_DD', 4, 1557, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1483,976,975}', '{1470900795,2936348458,3175425141,3707106929,3737159407,3942340794}', NULL, 0, NULL, '{3175425141}');
+Suppression: 20 seconds', 'ABILITY_TYPE_DD', 4, 1557, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1483,976,975}', '{1470900795,2936348458,3175425141,3707106929,3737159407,3942340794}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (938, 'Energy Burst', 'Burst Ability
 120F
-20H', 'ABILITY_TYPE_DD', 1, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1032}', '{3175425141}', NULL, 0, NULL, '{3175425141}');
+20H', 'ABILITY_TYPE_DD', 1, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1032}', '{3175425141}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (977, 'Nail Gun Burst', 'Nail Gun Burst Ability
 130F
-30H', 'ABILITY_TYPE_DD', 2, 4, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1083}', '{3175425141}', NULL, 0, NULL, '{3175425141}');
+30H', 'ABILITY_TYPE_DD', 2, 4, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1083}', '{3175425141}', 15, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (987, 'Heavy Weapon Strike', 'Melee Attack: Auto Attack
 -160F
--60H', 'ABILITY_TYPE_DD', 2, 277, 'set:CoreWidgets image:IconMissing', false, 0, 300, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1102}', '{3175425141}', NULL, 0, NULL, '{3175425141}');
+-60H', 'ABILITY_TYPE_DD', 2, 277, 'set:CoreWidgets image:IconMissing', false, 0, 300, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1102}', '{3175425141}', 300, 0, NULL, '{3175425141}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (595, 'Automatic Weapon Melee AA', 'Melee Attack: Auto Attack
 -100F
@@ -5247,65 +5247,65 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1356, 'Evisceration', 'Melee Attack w/DOT
 -300F /-30H
-DOT: -100F / -10H (Ticks: 8)', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1601,1600}', '{1470900795,830336901,292070744}', NULL, 0, NULL, '{830336901}');
+DOT: -100F / -10H (Ticks: 8)', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1601,1600}', '{1470900795,830336901,292070744}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1357, 'Execution', 'Melee Attack w/ Bonus Damage vs low Focus
--100F /-10H', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1604,1603,1602}', '{1470900795,830336901,292070744}', NULL, 0, NULL, '{830336901}');
+-100F /-10H', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1604,1603,1602}', '{1470900795,830336901,292070744}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1612, 'Battlefield Wound', 'DOT: 8 Ticks
 -150 F
 -15 H
-', 'ABILITY_TYPE_DOT', 4, 4, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Low', 0, 100, 0, '{1955}', '{830336901,2574412533}', NULL, 0, NULL, '{830336901}');
+', 'ABILITY_TYPE_DOT', 4, 4, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Low', 0, 100, 0, '{1955}', '{830336901,2574412533}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1613, 'Ashrak Dagger: Back Slash', 'Melee Attack
--200F / -20H', 'ABILITY_TYPE_DD', 1, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4176,4143,4142,1956}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+-200F / -20H', 'ABILITY_TYPE_DD', 1, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4176,4143,4142,1956}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1620, 'Ashrak Dagger: Onslaught', 'Melee Attack: Channeled
 -200F / -20H
-10 pulses', 'ABILITY_TYPE_DD', 6, 1301, 'set:WeaponIcon003 image:WP_HumanBlade_3A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4179,1963}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+10 pulses', 'ABILITY_TYPE_DD', 6, 1301, 'set:WeaponIcon003 image:WP_HumanBlade_3A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4179,1963}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1621, 'Ashrak Dagger: Paralyze', 'Melee Attack with Stun
--200F / -20H', 'ABILITY_TYPE_DD', 4, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4177,3525,1965,1964}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+-200F / -20H', 'ABILITY_TYPE_DD', 4, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4177,3525,1965,1964}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2828, 'Assassin''s Strike', 'Melee Attack w/DOT
 -100F /-10H
-DOT: -50F / -5H (Ticks: 8)', 'ABILITY_TYPE_DD', 5, 341, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4095,4094}', '{292070744,830336901,1470900795}', NULL, 0, NULL, '{830336901}');
+DOT: -50F / -5H (Ticks: 8)', 'ABILITY_TYPE_DD', 5, 341, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4095,4094}', '{292070744,830336901,1470900795}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2857, 'Ashrak Dagger: Crippling Slash', 'Melee Attack with Snare
--100F / -10H', 'ABILITY_TYPE_DD', 4, 277, 'set:WeaponIcon003 image:WP_HumanBlade_5A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4150,4149,4148}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+-100F / -10H', 'ABILITY_TYPE_DD', 4, 277, 'set:WeaponIcon003 image:WP_HumanBlade_5A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4150,4149,4148}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2860, 'Decimation Wound', 'Melee Attack
 -100 F -10 H
-First link of Decimation chain', 'ABILITY_TYPE_DD', 5, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4180,4158,4157,4156}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+First link of Decimation chain', 'ABILITY_TYPE_DD', 5, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4180,4158,4157,4156}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2861, 'Prolong Agony', 'Melee Attack
 -100 F -10 H
-Second link of Decimation chain', 'ABILITY_TYPE_DD', 10, 276, 'set:WeaponIcon002 image:WP_HumanBlade_1A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4181,4166,4161,4160,4159}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+Second link of Decimation chain', 'ABILITY_TYPE_DD', 10, 276, 'set:WeaponIcon002 image:WP_HumanBlade_1A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4181,4166,4161,4160,4159}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2862, 'Inevitable End', 'Melee Attack
 -100 F -10 H
-Finishes Decimation chain', 'ABILITY_TYPE_DD', 10, 276, 'set:WeaponIcon003 image:WP_HumanBlade_4A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4182,4165,4164,4163,4162}', '{830336901,1470900795,2650822895}', NULL, 0, NULL, '{830336901}');
+Finishes Decimation chain', 'ABILITY_TYPE_DD', 10, 276, 'set:WeaponIcon003 image:WP_HumanBlade_4A_00', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4182,4165,4164,4163,4162}', '{830336901,1470900795,2650822895}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (641, 'Surprise Attack', 'Blade:
 Fists: 
 Front -150F / -15H
 Flank: -200 F / -20H
-Rear: -400 F / -40H', 'ABILITY_TYPE_DD', 3, 277, 'set:AbilityIcons002 image:DD_Suprise_Attack', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{704,1559,1560}', '{292070744,830336901,1470900795}', NULL, 0, NULL, '{830336901}');
+Rear: -400 F / -40H', 'ABILITY_TYPE_DD', 3, 277, 'set:AbilityIcons002 image:DD_Suprise_Attack', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{704,1559,1560}', '{292070744,830336901,1470900795}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (651, 'Wounding Strike', 'Melee Attack w/DOT
 -100F /-10H
-DOT: -50F / -5H (Ticks: 8)', 'ABILITY_TYPE_DD', 5, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4235,4234,716,715}', '{292070744,830336901,1470900795}', NULL, 0, NULL, '{830336901}');
+DOT: -50F / -5H (Ticks: 8)', 'ABILITY_TYPE_DD', 5, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4235,4234,716,715}', '{292070744,830336901,1470900795}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (979, 'Shiv', 'Melee Attack
 -130F
 -30H
 -25H
--25H', 'ABILITY_TYPE_DD', 6, 276, 'set:CoreWidgets image:IconMissing', false, 0, 200, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1086,1085}', '{830336901,1470900795}', NULL, 0, NULL, '{830336901}');
+-25H', 'ABILITY_TYPE_DD', 6, 276, 'set:CoreWidgets image:IconMissing', false, 0, 200, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1086,1085}', '{830336901,1470900795}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (980, 'Stab', 'Melee Attack
 -140F
 -30H
-', 'ABILITY_TYPE_DD', 3, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1087}', '{1470900795,830336901}', NULL, 0, NULL, '{830336901}');
+', 'ABILITY_TYPE_DD', 3, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1087}', '{1470900795,830336901}', 300, 0, NULL, '{830336901}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1087, 'Dart Pistol Melee AA', 'Melee Attack: Auto Attack
 -100F
@@ -5317,7 +5317,7 @@ Toggle', 'ABILITY_TYPE_Heal', 0, 1557, 'set:CoreWidgets image:IconMissing', true
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1952, 'Dart Rifle: Continuous', 'LMG: Ranged Channelled Attack: Narrow Cone
 -1500F / -150H
 5 ammo per pulse
-50 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2527}', '{1470900795,2389790449,488944709}', NULL, 0, NULL, '{2389790449}');
+50 pulses', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2527}', '{1470900795,2389790449,488944709}', 3, 0, NULL, '{2389790449}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2874, 'Dart Type: Beneficial: Antidote', 'Buff:
 Toggle', 'ABILITY_TYPE_Heal', 0, 1557, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{5007,5006}', '{488944709,1470900795,2389790449}', NULL, 0, NULL, '{2389790449}');
@@ -5330,7 +5330,7 @@ Damage: Increased', 'ABILITY_TYPE_Buff', 0, 1557, 'set:CoreWidgets image:IconMis
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (773, 'Destruction Shot', 'Ranged Single Target Attack w/ Stun
 -150F / -15H
-Stun: 5 Seconds', 'ABILITY_TYPE_DD', 15, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{816,815}', '{1470900795,1009441186,1995443945,3748251909}', NULL, 0, NULL, '{1009441186}');
+Stun: 5 Seconds', 'ABILITY_TYPE_DD', 15, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{816,815}', '{1470900795,1009441186,1995443945,3748251909}', 3, 0, NULL, '{1009441186}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1903, 'LMG Melee AA', 'Melee Attack: Auto Attack
 -100F
@@ -5339,11 +5339,11 @@ INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1978, 'Executioner''s Fire', 'Ranged Single Target Attack
 -300F / -30H
 3 Ammo
-Bonus Damage when opponent Focus is below 50%.', 'ABILITY_TYPE_DD', 10, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2579,2577,2578}', '{1470900795,1115110575,3707106929}', NULL, 0, NULL, '{1115110575}');
+Bonus Damage when opponent Focus is below 50%.', 'ABILITY_TYPE_DD', 10, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 2, '{2579,2577,2578}', '{1470900795,1115110575,3707106929}', 15, 0, NULL, '{1115110575}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (540, 'Staff Strike', 'Melee Attack
 -130F
--25H', 'ABILITY_TYPE_DD', 3, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{603}', '{1383013887}', NULL, 0, NULL, '{1383013887}');
+-25H', 'ABILITY_TYPE_DD', 3, 276, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{603}', '{1383013887}', 300, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1246, 'Stealthed Strike', 'Melee Attack
 -200F
@@ -5356,88 +5356,88 @@ Snare: -50% Movement', 'ABILITY_TYPE_DD', 4, 273, 'set:CoreWidgets image:IconMis
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1319, 'Half Mag', 'Ranged Channelled Attack
 -100F / -10H (7 Ticks)
- Ammo: 7', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1545}', '{1470900795,2445422768}', NULL, 0, NULL, '{2445422768}');
+ Ammo: 7', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1545}', '{1470900795,2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1435, 'Pistol Shot-', 'Ranged Single Target Attack:
 Warmup: 1 second
 -175F
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1719}', '{1470900795,2445422768}', NULL, 0, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1719}', '{1470900795,2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1678, 'MS018_063008_Point Shooter', 'Pistol: Ranged Single Target Attack
 -100F / -10H
 DOT: -50F / -5H (8 Ticks)
-1 Ammo', 'ABILITY_TYPE_DOT', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2067,2066}', '{2445422768}', NULL, 0, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DOT', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2067,2066}', '{2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1705, 'Pistol Shot-', 'Ranged Single Target Attack:
 Warmup: 1 second
 -175F
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2121}', '{1470900795,2445422768}', NULL, 0, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DD', 2, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{2121}', '{1470900795,2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2185, 'MS020_080818_PointBlankFire', 'Pistol: Ranged Single Target Attack
 -200F / -20H
 DOT: -150F / -30H (8 Ticks)
-1 Ammo', 'ABILITY_TYPE_DOT', 0, 21, 'set:AbilityIcons001 image:DD_Point_Shooter', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3018,3017}', '{2445422768}', NULL, 0, NULL, '{2445422768}');
+1 Ammo', 'ABILITY_TYPE_DOT', 0, 21, 'set:AbilityIcons001 image:DD_Point_Shooter', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{3018,3017}', '{2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2198, 'Crippling Shot', 'Pistol: Ranged Single Target Attack
 -100F
 -10H
 1 Ammo
-Snare: 15 seconds', 'ABILITY_TYPE_DD', 20, 21, 'set:AbilityIcons001 image:DD_Snare_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3050,3049,3048}', '{1388011139,1470900795,2445422768}', NULL, 0, NULL, '{2445422768}');
+Snare: 15 seconds', 'ABILITY_TYPE_DD', 20, 21, 'set:AbilityIcons001 image:DD_Snare_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{3050,3049,3048}', '{1388011139,1470900795,2445422768}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (706, 'Half Mag', 'Pistol: Ranged Channelled Attack
 -100F / -10H (7 Ticks)
- Ammo: 7', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{732}', '{1470900795,2445422768,1388011139,3212632871,3387009882}', NULL, 0, NULL, '{2445422768}');
+ Ammo: 7', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{732}', '{1470900795,2445422768,1388011139,3212632871,3387009882}', 3, 0, NULL, '{2445422768}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1358, 'Lethal Shot', 'Ranged Single Target Attack w/ DoT
 -200F / -20H
 -100F / -10H x10
-1 Ammo', 'ABILITY_TYPE_DD', 10, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 4, '{1606,1605}', '{1470900795,2882868408,1388011139}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 10, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 4, '{1606,1605}', '{1470900795,2882868408,1388011139}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1359, 'Red Mist', 'Single Target Attack
 -500F / -50H
 -1500F / -150H vs Low Focus
-1 Ammo', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 3, '{1609,1608,1607}', '{1388011139,1470900795,2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 30, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 3, '{1609,1608,1607}', '{1388011139,1470900795,2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1913, 'MS018_063008_Headshot', '-250F 
 -60H 
 + Knockdown
 
-', 'ABILITY_TYPE_DD', 0, 5, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2454}', '{2882868408}', NULL, 0, NULL, '{2882868408}');
+', 'ABILITY_TYPE_DD', 0, 5, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2454}', '{2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2140, 'MS020_080817_AimedShot:Head', 'Ranged Single Target Attack
 -300F / -30H
 Disarm: 10 Sec
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{2918,2917}', '{2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 1, '{2918,2917}', '{2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2144, 'MS020_080817_RedMist', 'Single Target Attack
 -500F / -50H
 -1500F / -150H vs Low Focus
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2930,2929}', '{2882868408}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 2, '{2930,2929}', '{2882868408}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2999, 'Aimed Shot: Leg', 'Ranged Single Target Attack
 -200F / -20H
 Snare: 15 Second 
-1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{4360,4359,4358}', '{1388011139,1470900795,2882868408,3707106929}', NULL, 0, NULL, '{2882868408}');
+1 Ammo', 'ABILITY_TYPE_DD', 0, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 1.5, '{4360,4359,4358}', '{1388011139,1470900795,2882868408,3707106929}', 3, 0, NULL, '{2882868408}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2007, 'Savage Blows', 'Staff: Melee Channelled Attack: Exponential Damage
 -1000F
 -100H
-', 'ABILITY_TYPE_DD', 15, 277, 'set:AbilityIcons001 image:Melee_Strike', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2631,2630,2629}', '{61434600,1383013887,1470900795,3747947334}', NULL, 0, NULL, '{1383013887}');
+', 'ABILITY_TYPE_DD', 15, 277, 'set:AbilityIcons001 image:Melee_Strike', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2631,2630,2629}', '{61434600,1383013887,1470900795,3747947334}', 300, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (479, 'Staff Blast', 'Staff Blast Ability
 120F
-20H', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{541}', '{1383013887}', NULL, 0, NULL, '{1383013887}');
+20H', 'ABILITY_TYPE_DD', 2, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{541}', '{1383013887}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (499, 'Staff Fire Blast', 'Staff Blast Ability
 130 F
-25H', 'ABILITY_TYPE_DD', 3, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{561}', '{1383013887,1470900795}', NULL, 0, NULL, '{1383013887}');
+25H', 'ABILITY_TYPE_DD', 3, 20, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{561}', '{1383013887,1470900795}', 3, 0, NULL, '{1383013887}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2775, 'Lord''s Decree', 'Ribbon Device: Ranged Single Target Attack w/Suppression
 -100F / -10H
 5 Energy
-Suppression: 20 seconds', 'ABILITY_TYPE_DD', 5, 1557, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4007,4006,4005}', '{1470900795,3748251909,4193235610}', NULL, 0, NULL, '{4193235610}');
+Suppression: 20 seconds', 'ABILITY_TYPE_DD', 5, 1557, 'set:AbilityIcons001 image:DD_Suppression_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4007,4006,4005}', '{1470900795,3748251909,4193235610}', 300, 0, NULL, '{4193235610}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2161, 'MS020_080817_Escape', 'Player goes into Stealth mode.
 Full stealth rating restored.', 'ABILITY_TYPE_Heal', 0, 24, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 1, 'TCM_Single', 0, 'THREAT_LEVEL_None', 0, 100, 1, '{2964,2963}', '{210985080,896281579,1450759534,2819009444,3481040701}', NULL, 0, NULL, '{2819009444,3481040701,896281579,1450759534,210985080}');
@@ -5447,26 +5447,26 @@ Activates Stealth', 'ABILITY_TYPE_Buff', 0, 8, 'set:AbilityIcons001 image:Buff_B
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (2069, 'Disintegration Shot', 'Energy Pistol: Ranged Channelled Attack: Exponential Damage w/Stun
 
-', 'ABILITY_TYPE_DD', 5, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4974,2750,2749,2748,2747,2746}', '{1470900795,2723649405,3387009882,3748251909}', NULL, 0, NULL, '{2723649405}');
+', 'ABILITY_TYPE_DD', 5, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{4974,2750,2749,2748,2747,2746}', '{1470900795,2723649405,3387009882,3748251909}', 3, 0, NULL, '{2723649405}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (774, 'Disruption Shot', 'Energy Pistol: Ranged Single Target Attack w/ Snare
 -150F / -15H
-Snare: 15 Seconds', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1461,818,817}', '{17962629,1470900795,1995443945,2723649405,3212632871,3748251909}', NULL, 0, NULL, '{2723649405}');
+Snare: 15 Seconds', 'ABILITY_TYPE_DD', 3, 21, 'set:AbilityIcons001 image:DD_Disruption_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1461,818,817}', '{17962629,1470900795,1995443945,2723649405,3212632871,3748251909}', 3, 0, NULL, '{2723649405}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (978, 'Damage Shot', 'Ranged Single Target Attack:
 Warmup: 1 second
 -120F
 -20H
-1 Ammo', 'ABILITY_TYPE_DD', 2.5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1084}', '{1470900795,2723649405}', NULL, 0, NULL, '{2723649405}');
+1 Ammo', 'ABILITY_TYPE_DD', 2.5, 21, 'set:CoreWidgets image:IconMissing', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 0, 100, 0, '{1084}', '{1470900795,2723649405}', 3, 0, NULL, '{2723649405}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (657, 'Interrupting Shot', 'Assault Rifle: Ranged Attack: Interrupts 
--100F / -10H', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:DD_Interrupting_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{723,722}', '{1470900795,3606086656,3737159407}', NULL, 0, NULL, '{3606086656}');
+-100F / -10H', 'ABILITY_TYPE_DD', 4, 21, 'set:AbilityIcons001 image:DD_Interrupting_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{723,722}', '{1470900795,3606086656,3737159407}', 15, 0, NULL, '{3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (717, 'Snare Shot', 'Assault Rifle: Ranged Attack w/ Snare
 -100F / -10H 
 Snare: 15 Seconds
 1 Ammo
-', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Snare_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1462,745,744}', '{1470900795,3606086656,3737159407}', NULL, 0, NULL, '{3606086656}');
+', 'ABILITY_TYPE_DD', 2, 21, 'set:AbilityIcons001 image:DD_Snare_Shot', true, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{1462,745,744}', '{1470900795,3606086656,3737159407}', 15, 0, NULL, '{3606086656}');
 
 INSERT INTO abilities (ability_id, name, description, type_id, cooldown, flags, icon, is_ranged, min_range, max_range, passive_yn, param1, param2, target_type_id, target_collection_method, taunt_adjustment, threat_level_id, training_cost, velocity, warmup, effect_ids, moniker_ids, event_set_id, required_ammo, positions, item_monikers) VALUES (1944, 'MS019_AshrakDaggerBackSlash*', 'Melee Attack
 -200F / -20H', 'ABILITY_TYPE_DD', 0, 277, 'set:CoreWidgets image:IconMissing', false, 0, 0, false, NULL, NULL, 2, 'TCM_Single', 0, 'THREAT_LEVEL_Undefined', 1, 100, 0, '{2521}', '{728213066,830336901,1115110575,1383013887,1388011139,1470900795,2035259765,2389790449,2445422768,2650822895,2723649405,2882868408,3175425141,3212632871,3257416555,3606086656,4193235610}', NULL, 0, NULL, '{3175425141,830336901,2389790449,3257416555,1115110575,2445422768,2882868408,2035259765,728213066,1383013887,2723649405,3606086656,4193235610}');
