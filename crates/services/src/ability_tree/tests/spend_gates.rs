@@ -49,6 +49,12 @@ fn ctx<'a>(
         known,
         tree_points_spent: spent,
         training_points: points,
+        // At a reachable trainer offering every node, so only the spend
+        // gates can reject.
+        trainer: TrainerPin::Trainer {
+            offered: &[ROOT, CAPSTONE, OTHER_BRANCH_TIER1, NEEDS_STARTER],
+            in_range: true,
+        },
     }
 }
 

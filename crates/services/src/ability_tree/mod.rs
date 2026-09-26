@@ -24,8 +24,8 @@ mod points_property;
 mod predicate;
 
 pub use catalog::{AbilityTreeCatalog, TreeNode};
-pub use points_property::{training_points_property_args, GENERICPROPERTY_TRAINING_POINTS};
 pub use gates::trainer::TrainerPin;
+pub use points_property::{training_points_property_args, GENERICPROPERTY_TRAINING_POINTS};
 pub use predicate::{evaluate_train, KnownAbilities, TrainContext, TrainPlan, TrainReject};
 
 #[cfg(test)]
