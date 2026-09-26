@@ -40,7 +40,7 @@ Classify before you design.
 
 - **GM gameplay commands use the client's native `/` console.** The client consumes every `/` command locally and emits `gm*` cell-method calls, so `/` lines never reach the server as chat. **Do not build a server-side `/`-chat parser.** It cannot work against the real client.
 - **The client learns a player is a GM only from the entity class.** `accessLevel` is `CELL_PRIVATE` and never replicated, so GMs enter the world as `SGWGmPlayer` (`0x03`). The server still authorizes every GM call against its own `access_level`, never a client-asserted value. See [`docs/architecture/gm-cell-method-gating.md`](../architecture/gm-cell-method-gating.md).
-- **Commands with no native slash binding go through the `.`-console** (`crates/services/src/cell/console/`), which intercepts `.`-prefixed say-chat from GMs. See [`docs/architecture/dev-console-channel.md`](../architecture/dev-console-channel.md).
+- **Commands with no native slash binding go through the `.`-console** (`crates/cell-console/src/cell/console/`), which intercepts `.`-prefixed say-chat from GMs. See [`docs/architecture/dev-console-channel.md`](../architecture/dev-console-channel.md).
 - **Authoring commands (`savespawn`, `path_*`) emit seed SQL for a human to commit.** They apply in memory and to the live database so the GM sees the result, but the durable artifact is SQL for `db/resources/`, emitted through one choke point (`cell/console/seed.rs`) to the server log, never shown in game. Deploys rebuild the database from seeds, so a live-only write is lost.
 
 ## Database and content

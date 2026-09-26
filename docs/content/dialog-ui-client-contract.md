@@ -129,7 +129,7 @@ Tutorials are independent: a tutorial and a normal dialog can be open together w
 
 There is no bark, subtitle or floating-text path anywhere in the dialog module. Type 0 is a modal popup, not a bark — if you use it for a one-liner you stop the player, freeze them in front of a box and make them close it.
 
-Non-modal text goes through `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`, the same route chat and GM feedback already use (`entities/defs/interfaces/Communicator.def:48-53`, `crates/services/src/cell/console/chat.rs:49,167`). Packet DU-03 wraps it in an authorable action; until that lands, there is no supported way to author one.
+Non-modal text goes through `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`, the same route chat and GM feedback already use (`entities/defs/interfaces/Communicator.def:48-53`, `crates/cell-console/src/cell/console/chat.rs:49,167`). Packet DU-03 wraps it in an authorable action; until that lands, there is no supported way to author one.
 
 ## What is not built yet
 

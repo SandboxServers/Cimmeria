@@ -1,7 +1,7 @@
 //! The `onPlayerCommunication` payload and the `EChannel` ids it carries.
 //!
-//! The chat handlers stay in `cimmeria_services::cell::chat`, which
-//! re-exports everything here; the `npc_bark` content action speaks through
+//! The chat handlers are `cimmeria_cell_console::cell::console::chat`,
+//! which re-exports everything here; the `npc_bark` content action speaks through
 //! the same serializer.
 //!
 //! Reference: `python/cell/SGWPlayer.py:processPlayerCommunication()`

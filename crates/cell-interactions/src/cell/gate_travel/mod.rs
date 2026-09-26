@@ -81,7 +81,7 @@ use sequences::send_gate_sequence;
 /// hold, unknown address, entity missing, same world, and, on the immediate
 /// path, an unrecoverable arrival or a closed base channel). The bool exists
 /// because
-/// `cimmeria_services::cell::console::gm::travel` is the one dial caller with a
+/// `cimmeria_cell_console::cell::console::gm::travel` is the one dial caller with a
 /// client-visible feedback channel and used to report "dialing gate address
 /// N" unconditionally — including for dials the primitive refused.
 #[tracing::instrument(

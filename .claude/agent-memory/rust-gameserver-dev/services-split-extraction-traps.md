@@ -335,6 +335,30 @@ Learned extracting `cimmeria-cell-interactions` (C4, a wave whose prep did the h
 - **A hand-named target only the moved tree emits** (`bandolier.resend` in the
   resync) is the cheapest revert-proof for the `IN_PROCESS_CRATES` entry.
 
+Learned extracting `cimmeria-cell-console` (C5b, run in parallel with C5a):
+
+- **A hop through a higher crate's module can be free.** `console/mod.rs` named
+  `crate::cell::dispatch::is_gm` (services' router module, the cell crate); the
+  prep's hop scan missed it. World has a `cell::dispatch` at the same path with
+  the same items, so the skeleton imports world's module and nothing is edited.
+  Check a lower crate for a same-path module before repointing.
+- **Services loses re-exports AND normal deps whose last user moved.** Here
+  `cell::dispatch::is_gm`, `cell::space_transfer` and `cimmeria-discord`
+  (`git grep -l cimmeria_discord HEAD -- crates/services/src` listed only the
+  console). The compiler flags the re-exports; nothing flags the dependency.
+- **An import only the moved tests use** trips `unused import` on
+  `check -p <new>`: make it `#[cfg(test)]` and its crate a dev-dependency.
+- **A doc link left behind into a private module of the moved tree breaks**
+  (`[`crate::cell::console::stats::set_speed`]` in services' `ticks`). Grep the
+  staying code for `[`crate::<moved path>` links; make them code spans.
+- **The test inventory can name the wrong file.** Two "chat.rs" rows had been
+  wire's tests since W1c. Find each test by `fn` name before fixing anchors.
+- **Parallel waves on the same list files**: insert BEFORE the latest wave's
+  line (e.g. `cimmeria_cell_console=debug` above `cimmeria_cell_interactions`),
+  leaving that line untouched between you and the sibling wave's append.
+- A Python mutation driver (edit, `subprocess` the lane nextest, restore in
+  `finally`) ran five revert-proofs in about two minutes of lane time.
+
 Related: [[python-write-mangles-utf8-and-crlf]] (use byte-level scripted edits; the Bash
 tool mangles `\\\r` in heredocs, so write scripts with the Write tool),
 [[lane-sh-masks-cargo-exit-code]].

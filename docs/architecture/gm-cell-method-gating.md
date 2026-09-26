@@ -123,7 +123,7 @@ cannot do at all.
 
 **No GM action audit log.** Every accepted `.`-console command is logged at
 `info` for the audit trail
-([`crates/services/src/cell/console/dispatch.rs`](../../crates/services/src/cell/console/dispatch.rs)),
+([`crates/cell-console/src/cell/console/dispatch.rs`](../../crates/cell-console/src/cell/console/dispatch.rs)),
 and login events land in the `login_audit` table, but there is no durable,
 queryable record of GM *actions* — who granted what item to whom, and when.
 The design is small: wrap the dispatch seam and write command name, actor,

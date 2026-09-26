@@ -483,7 +483,7 @@ beyond the 3 verified handlers above.
 
 > [!NOTE]
 > All 38 DONE methods are dispatched from the single `match` in
-> [crates/services/src/cell/console/gm/mod.rs](../../crates/services/src/cell/console/gm/mod.rs)
+> [crates/cell-console/src/cell/console/gm/mod.rs](../../crates/cell-console/src/cell/console/gm/mod.rs)
 > (lines 190-260). A grep for `GM_*` constants finds only **35** of them --
 > the other three are declared without the prefix because the `.def` method
 > names themselves have no `gm` prefix: `LIST_ABILITIES = 123`

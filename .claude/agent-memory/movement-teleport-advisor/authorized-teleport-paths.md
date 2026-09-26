@@ -22,7 +22,7 @@ Added since (verified 2026-09-17):
 
 | Path | File | Trigger |
 |---|---|---|
-| GM console travel | `crates/services/src/cell/console/travel/` (`.gotoxyz`, `.goto`, `.summon`, `.gotolocation`, `.gotospace`) | `snap_in_current_space` calls `note_authorized_teleport` unconditionally; cross-space legs go through `cell/space_transfer` |
+| GM console travel | `crates/cell-console/src/cell/console/travel/` (`.gotoxyz`, `.goto`, `.summon`, `.gotolocation`, `.gotospace`) | `snap_in_current_space` calls `note_authorized_teleport` unconditionally; cross-space legs go through `cell/space_transfer` |
 
 `cell/space_transfer` has **two** entry points, and picking the wrong one silently breaks `.gotospace`: `transfer_player_to_space` resolves a (possibly typed) world name through `canonical_world_name`, while `transfer_player_to_loaded_space` takes a pre-verified space id and never consults the world table. `.gotospace`'s whole promise is reaching a live instance whose world the table may not declare, so routing it through the name-based one re-imposes exactly the `UnknownWorld` dead-end it exists to avoid — and only the same-space fast path would still appear to work. The by-id path re-checks that the instance is still loaded, because arrival (`handle_create_entity`) degrades a stale `destination_space_id` to `find_or_create_space`, which for an undeclared world fails *after* teardown (un-spaced player).
 | Off-navmesh recovery | `crates/cell-world/src/cell/space_manager/client_move.rs::reject_outcome` | Validator relocating a stranded entity — see [[snap-back-termination]] |

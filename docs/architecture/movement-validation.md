@@ -224,7 +224,7 @@ before. Regression guards (prefix `feat_onphysics_`) live in
 default-false negative control still rejects; a NaN poisoning attempt is
 rejected and the teleport gate keeps working afterward; two entities in
 the same space with only one flagged prove the bypass doesn't leak to
-the other) and `crates/services/src/cell/console/gm/tests/physics.rs`
+the other) and `crates/cell-console/src/cell/console/gm/tests/physics.rs`
 (polarity, feedback text, truncated-arg rejection without mutation).
 
 ## GM off-navmesh allowance (`access_level`)

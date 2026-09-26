@@ -342,7 +342,7 @@ pub struct SpaceManager {
     /// `.seedconfirm` groups it per file and emits it, `.seedcancel` discards
     /// it. Server-side, ephemeral (never persisted) — the durable artifact is
     /// the per-session authoring log file and the committed seed. See
-    /// `crate::cell::console::seed`.
+    /// `cimmeria_cell_console::cell::console::seed`.
     pub authoring_changes: HashMap<u32, Vec<(String, String)>>,
     /// GMs (`entity_id`) who toggled `.autosavespawn` on. A session preference;
     /// informational hook for spawn-authoring. Never persisted.

@@ -607,7 +607,7 @@ The table below is corrected against that split.
 > two ways, both gated server-side on the player's `access_level` rather than a
 > shared secret: the client's native `/`-commands (see
 > [commands.md](../commands.md)) and the `.`-prefixed dev console
-> ([dispatch.rs:19](../../crates/services/src/cell/console/dispatch.rs#L19),
+> ([dispatch.rs:19](../../crates/cell-console/src/cell/console/dispatch.rs#L19),
 > [dev-console-channel ADR](../architecture/dev-console-channel.md)). Nothing
 > needs to be set to enable them.
 

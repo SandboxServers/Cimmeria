@@ -35,7 +35,7 @@ still needs an explicit read of the subject's current facing before teardown —
 `update_position_preserving_facing` does not help there.
 
 Regression guard: `native_gm_travel_preserves_facing` in
-`crates/services/src/cell/console/gm/tests/travel.rs` (verified to fail on
+`crates/cell-console/src/cell/console/gm/tests/travel.rs` (verified to fail on
 revert, one arm per handler). Use a non-zero, non-symmetric facing in any new
 guard — `[0, 0, 0]` still matches after the bug is reintroduced.
 
