@@ -22,6 +22,7 @@ cimmeria-entity = { workspace = true }
 cimmeria-observability = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [features]
 # Exposes the test-only hooks (`cell::cover::TEST_WORLD_ID`) to other crates'

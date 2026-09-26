@@ -22,6 +22,7 @@ rand = { workspace = true }
 # The SmartFoxServer XML codec.
 quick-xml = { workspace = true }
 tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
 # Re-pull tokio with `test-util` so the session-expiry guards can freeze and

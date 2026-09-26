@@ -83,6 +83,7 @@ sqlx = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [features]
 # Opt-in seam for services-layer chaos integration tests that need to

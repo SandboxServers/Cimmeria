@@ -12,3 +12,4 @@ description = "Metrics facade — thin macro layer over the OpenTelemetry SDK's 
 # needs just the API, which keeps tonic/prost out of cimmeria-services'
 # dependency graph.
 opentelemetry = "0.32"
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }

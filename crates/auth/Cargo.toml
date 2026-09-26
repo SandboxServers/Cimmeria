@@ -35,6 +35,7 @@ sqlx = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
 # Generic test helpers: the live-DB gate (`require_db_or_skip!`) and

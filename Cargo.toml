@@ -20,6 +20,7 @@ members = [
     "crates/server",
     "crates/supervisor",
     "crates/launcher",
+    "crates/workspace-hack",
     "src-tauri",
     "tools/ContentEditor",
     "tools/SceneEditor",

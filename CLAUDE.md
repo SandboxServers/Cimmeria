@@ -101,6 +101,9 @@ Agents run the compiling commands below through the build lane, with `--exclusiv
 
 ```bash
 cargo fmt --all -- --check
+# The workspace-hack (cargo-hakari) must match the manifests; after a
+# dependency change, regenerate with `cargo hakari generate && cargo hakari manage-deps --yes`:
+cargo hakari generate --diff && cargo hakari manage-deps --dry-run
 cargo clippy --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
@@ -152,7 +155,7 @@ The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/m
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
 - **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** That is no longer toolchain drift: [rust-toolchain.toml](rust-toolchain.toml) pins the version CI uses, so the old advice to install CI's newer clippy side by side is obsolete. Check that you ran the exact command above (`--workspace --all-targets -- -D warnings`), not a narrower `-p` run. Bumping Rust is its own PR: change `rust-toolchain.toml`, run this checklist, and fix the new lints there.
-- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
+- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`. If the failing step is **workspace-hack is current**, a dependency change didn't regenerate the hakari crate: run `cargo hakari generate && cargo hakari manage-deps --yes` (install it once with `cargo install cargo-hakari --locked`) and commit the result. See [docs/architecture/build-system.md](docs/architecture/build-system.md) §6.
 - **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
 - **test-live-db fails** → CI runs `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate in its list) against a fresh `postgres:17.9` service container loaded from `db/database.sql`. A crate with a `cimmeria-test-support` dev-dependency must be in that list, or `live_db_wrapper_lists_every_test_support_crate` fails. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 - **figure-sources-in-sync fails** → A source DSL under `docs/drafts/spec/figures/sources/` was committed more recently than its rendered SVG one directory up. Re-render the affected diagram (Prixmaviz, or the local renderer per [docs/drafts/spec/figures/sources/README.md](docs/drafts/spec/figures/sources/README.md)) and commit the regenerated SVG alongside the source change. Pairing rule: `sources/<slug>.<ext>` pairs with `<slug>.svg`.

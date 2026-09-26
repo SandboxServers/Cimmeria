@@ -40,6 +40,7 @@ sha2 = { workspace = true }
 # Codec / framing
 tokio-util = { version = "0.7", features = ["codec"] }
 cipher = "0.5"
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [features]
 # Exposes `test_transport::TestTransport`, a recording `Transport` impl for

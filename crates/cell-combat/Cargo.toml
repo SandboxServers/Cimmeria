@@ -36,6 +36,7 @@ tracing = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 rand_distr = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [features]
 # Exposes the test-only hooks (`resolve_death_for_test`, `npc_ai_tick_for_test`,

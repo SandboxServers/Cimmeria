@@ -29,3 +29,4 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 flate2 = { workspace = true }
 zip = { workspace = true }
 bytes = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }

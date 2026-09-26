@@ -33,6 +33,7 @@ reqwest = { workspace = true }
 # Hex-encoded session keys come down from the auth server as 64-char strings;
 # decode here before handing to `cimmeria_mercury::MercuryEncryption`.
 hex = "0.4"
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
 # Drive the in-process AuthService for the auth-smoke, and the full

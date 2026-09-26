@@ -38,6 +38,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [features]
 # Exposes the test-only hooks (`load_single_chain_for_test`, `execute_actions`,
