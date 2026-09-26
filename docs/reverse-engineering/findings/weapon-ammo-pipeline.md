@@ -180,7 +180,7 @@ The client receives `onEntityProperty(type=7, value=ammoType)` and interprets ty
 **`GENERICPROPERTY_AmmoTypeId` = 3** — confirmed by:
 
 - `entities/defs/enumerations.xml` line 1725: `<Token><Name>GENERICPROPERTY_AmmoTypeId</Name> <Value>3</Value></Token>`
-- `crates/services/src/cell/cell_methods/inventory/constants.rs`: `pub(crate) const GENERICPROPERTY_AMMO_TYPE_ID: i32 = 3;`
+- `crates/wire/src/cell/cell_methods/inventory/constants.rs`: `pub const GENERICPROPERTY_AMMO_TYPE_ID: i32 = 3;`
 - `crates/services/src/mercury/world_data/tests/bandolier.rs` line 208: "cur_ammo_type is sent as the AmmoTypeId (prop_id = 3) entity property"
 - Existing test in `bandolier.rs` lines 243-264 independently verifies propId=3 for the world-entry path
 
@@ -284,7 +284,7 @@ use crate::cell::cell_methods::inventory::constants::{
 let args = build_entity_property_args(GENERICPROPERTY_AMMO_TYPE_ID, ammo_type);
 ```
 
-File: `crates/services/src/cell/cell_methods/inventory/constants.rs`
+File: `crates/wire/src/cell/cell_methods/inventory/constants.rs`
 
 ```rust
 // Before:

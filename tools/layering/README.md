@@ -56,6 +56,10 @@ production dependencies:
   to the module that defines it. Importing a module is not an edge by itself;
   using an item through it is. A `pub use` of an item is an edge from the
   re-exporting module.
+- A name that resolves into another crate is not an edge, including one
+  reached through a glob of a module that has already moved out
+  (`pub use constants::*` where `constants` is now a
+  `cimmeria_wire::…::constants` re-export).
 
 It does not see macro-generated paths other than `$crate::…`, and it
 resolves names textually, so a local binding that shadows a child module's

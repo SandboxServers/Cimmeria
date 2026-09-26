@@ -5,9 +5,9 @@ use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
-pub const ABANDON_MISSION: u16 = 52;
-pub const SHARE_MISSION: u16 = 53;
-pub const SHARE_MISSION_RESPONSE: u16 = 54;
+pub use cimmeria_wire::cell::cell_methods::missionary::{
+    ABANDON_MISSION, SHARE_MISSION, SHARE_MISSION_RESPONSE,
+};
 
 pub async fn dispatch(
     entity_id: u32,

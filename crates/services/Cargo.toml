@@ -18,6 +18,9 @@ cimmeria-occluder = { workspace = true }
 # in wave W1a (docs/architecture/services-crate-split.md). Re-exported from
 # lib.rs at the old `auth`, `audit` and `credential_redaction` paths.
 cimmeria-auth = { workspace = true }
+# The Base<->Cell wire contract (method indices, BSF bits, payload
+# serializers), split out of this crate; old paths re-export it.
+cimmeria-wire = { workspace = true }
 # Discord notification emits at semantic seams (login/world-entry/disconnect/
 # errors/…). The crate's global-singleton `emit_*` API means no handle
 # threading — calls are no-ops until the server bin runs `cimmeria_discord::init`.

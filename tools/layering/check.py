@@ -517,6 +517,11 @@ class Resolver:
             gmod = self.c.modules.get(tuple(gabs)) if gabs is not None else None
             if gmod and self._has_name(gmod, name, set()):
                 return self._item(gmod, name, rest, seen)
+        # The name is not defined here or behind a glob of this crate, but the
+        # module glob-imports another crate (`pub use constants::*` where
+        # `constants` now lives in cimmeria-wire): the name comes from there.
+        if any(self.to_abs(mod, g) is None for g in mod.globs):
+            return None
         return mod.path
 
 

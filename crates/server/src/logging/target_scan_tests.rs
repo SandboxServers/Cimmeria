@@ -39,6 +39,7 @@ const IN_PROCESS_CRATES: &[&str] = &[
     "resources",
     "server",
     "services",
+    "wire",
 ];
 
 /// Crates that run in another process, so the server's filters never see

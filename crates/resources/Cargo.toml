@@ -13,6 +13,8 @@ description = "Cooked-data resource cache (the client's data/cache PAKs) and Cim
 # (`base::resources`, `base::mission_overrides`, ...) so the services facade
 # re-exports it at the same paths.
 [dependencies]
+# `bag_max_slots` is re-exported from the wire contract (one copy of the table).
+cimmeria-wire = { workspace = true }
 quick-xml = { workspace = true }
 tracing = { workspace = true }
 zip = { workspace = true }

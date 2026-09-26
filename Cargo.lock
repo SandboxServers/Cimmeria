@@ -1149,6 +1149,7 @@ dependencies = [
  "cimmeria-occluder",
  "cimmeria-resources",
  "cimmeria-test-support",
+ "cimmeria-wire",
  "proptest",
  "quick-xml 0.41.0",
  "rand 0.10.2",
@@ -1214,6 +1215,15 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "cimmeria-wire"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-entity",
+ "cimmeria-test-support",
  "tracing",
 ]
 

@@ -15,12 +15,15 @@
 $ErrorActionPreference = 'Stop'
 
 # Crates whose lib tests include live-DB tests (`require_db_or_skip!`), one per line.
-# cimmeria-test-support holds the gate itself and its tests.
+# cimmeria-test-support holds the gate itself and its tests. cimmeria-wire has no
+# live-DB tests yet; it dev-depends on cimmeria-test-support (for LogCapture), so
+# the guard requires it here, and its lib tests ran in this tier before the split.
 $LiveDbCrates = @(
     'cimmeria-resources'
     'cimmeria-auth'
     'cimmeria-services'
     'cimmeria-test-support'
+    'cimmeria-wire'
 )
 
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {

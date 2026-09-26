@@ -92,7 +92,7 @@ Implementation: [`crates/services/src/cell/abilities/mod.rs:259-281`](../../crat
 
 ## Wire flow — reload
 
-`requestReload(EReloadType)` is a Mercury **cell method** on `SGWPlayer` (def: [`entities/defs/SGWPlayer.def:794-797`](../../entities/defs/SGWPlayer.def#L794), wire opcode 86 / `0x56` — defined as `REQUEST_RELOAD` in [`crates/services/src/cell/cell_methods/player/constants.rs`](../../crates/services/src/cell/cell_methods/player/constants.rs); the `0x14` value in the [decompiled client binding](../reverse-engineering/decompiled/14_standalone_named.c#L298900) is a registration index, not the wire opcode).
+`requestReload(EReloadType)` is a Mercury **cell method** on `SGWPlayer` (def: [`entities/defs/SGWPlayer.def:794-797`](../../entities/defs/SGWPlayer.def#L794), wire opcode 86 / `0x56` — defined as `REQUEST_RELOAD` in [`crates/wire/src/cell/cell_methods/player/constants.rs`](../../crates/wire/src/cell/cell_methods/player/constants.rs); the `0x14` value in the [decompiled client binding](../reverse-engineering/decompiled/14_standalone_named.c#L298900) is a registration index, not the wire opcode).
 
 ```text
 Client                       Cell                                       Base / DB

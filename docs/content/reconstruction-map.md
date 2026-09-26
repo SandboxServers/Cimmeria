@@ -538,7 +538,7 @@ implementation from the wire format documentation inward.
 | **Contact Lists** | Medium | 6 methods, all `pass` | contact-list-wire-formats.md | Friend/ignore list, online status |
 | **Groups** | Medium | All methods empty | group-wire-formats.md | SGWPlayerGroupAuthority empty shell |
 
-> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/services/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/services/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/services/src/cell/cell_methods/organization.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/services/src/cell/client_methods/contact_list.rs)). **Black Market** is implemented but unmerged (see the row above). **Groups** and **PvP / Dueling** remain unimplemented. Read the effort estimates as historical.
+> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/services/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/services/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/services/src/cell/cell_methods/organization.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/wire/src/cell/client_methods/contact_list.rs)). **Black Market** is implemented but unmerged (see the row above). **Groups** and **PvP / Dueling** remain unimplemented. Read the effort estimates as historical.
 
 ---
 

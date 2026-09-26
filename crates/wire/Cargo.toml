@@ -1,0 +1,20 @@
+[package]
+name = "cimmeria-wire"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The wire contract shared by the Base and Cell services: method indices, state-field bits and the payload serializers both sides send."
+
+# The bottom of the cimmeria-services split (docs/architecture/services-crate-split.md
+# §1): every service crate may depend on this one, so it must never depend on a
+# service crate. Add workspace crates (common, mercury, entity, game,
+# observability) only as moved code needs them.
+[dependencies]
+tracing = { workspace = true }
+
+[dev-dependencies]
+# `LogCapture` for the player-journal log guard. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }

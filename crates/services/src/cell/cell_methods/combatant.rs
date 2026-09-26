@@ -10,15 +10,12 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
-/// Set crouched state.
-pub const SET_CROUCHED: u16 = 5;
-/// Toggle heal debug overlay.
-pub const TOGGLE_HEAL_DEBUG: u16 = 6;
-/// Request holster/unholster weapon.
-pub const REQUEST_HOLSTER_WEAPON: u16 = 7;
+pub use cimmeria_wire::cell::cell_methods::combatant::{
+    REQUEST_HOLSTER_WEAPON, SET_CROUCHED, TOGGLE_HEAL_DEBUG,
+};
 
 /// Being State Field bit positions (from Atrea.enums BSF_*).
-pub(crate) const BSF_CROUCHING: u32 = 1 << 2;
+pub(crate) use cimmeria_wire::state_field::BSF_CROUCHING;
 
 pub async fn dispatch(
     entity_id: u32,

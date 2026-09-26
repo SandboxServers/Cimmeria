@@ -24,18 +24,9 @@ pub const BAG_FILL_ORDER: &[i32] = &[
     15, // Crafting
 ];
 
-/// Max items per container (Constants.py:142-162).
-pub fn bag_max_slots(container_id: i32) -> i32 {
-    match container_id {
-        1 => 40,     // Main
-        2 => 100,    // Mission
-        3 => 4,      // Bandolier
-        4..=14 => 1, // Equipment slots
-        15 => 100,   // Crafting
-        16 => 12,    // Vendor Buyback
-        _ => 0,
-    }
-}
+/// Max items per container (Constants.py:142-162). The table lives in `cimmeria-wire`,
+/// which the cell's bandolier check also reads; this re-export keeps the old path.
+pub use cimmeria_wire::containers::bag_max_slots;
 
 /// Lowest assignable slot for a container. All current containers, including
 /// the bandolier, start at slot 0 — there is no fist-weapon reservation in

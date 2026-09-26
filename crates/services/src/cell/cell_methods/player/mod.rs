@@ -1,5 +1,5 @@
 pub mod combat;
-pub mod constants;
+pub use cimmeria_wire::cell::cell_methods::player::constants;
 pub mod crafting;
 mod dispatch;
 pub mod interaction;

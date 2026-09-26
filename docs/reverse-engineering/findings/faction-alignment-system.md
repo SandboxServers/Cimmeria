@@ -393,7 +393,7 @@ mirror used for initial sync.
 |-------|----------|
 | Wire format of the 1-byte messages | `docs/reverse-engineering/findings/combat-wire-formats.md` §onAlignmentUpdate / onFactionUpdate |
 | World-entry sequence (phases 9–10) | `docs/reverse-engineering/findings/world-entry-pipeline.md` table row 9–10 |
-| Method index constants | `crates/services/src/cell/client_methods/combatant.rs` |
+| Method index constants | `crates/wire/src/cell/client_methods/combatant.rs` |
 | AoI NPC delivery | `crates/services/src/mercury/aoi/create.rs` lines 166–174 |
 | Hostile combat gate | `crates/services/src/cell/cell_methods/player/interaction.rs` |
 | AoE hostile filter | `crates/services/src/cell/abilities/dispatch.rs` |

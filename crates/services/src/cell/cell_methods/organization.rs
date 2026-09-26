@@ -4,18 +4,10 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
-pub const INVITE_RESPONSE: u16 = 8;
-pub const LEAVE: u16 = 9;
-pub const BROADCAST_MINIMAP_PING: u16 = 10;
-pub const STRIKE_TEAM_RESPONSE: u16 = 11;
-pub const PVP_LEAVE_RESPONSE: u16 = 12;
-pub const MOTD: u16 = 13;
-pub const NOTE: u16 = 14;
-pub const OFFICER_NOTE: u16 = 15;
-pub const SET_RANK_PERMISSIONS: u16 = 16;
-pub const SET_RANK_NAME: u16 = 17;
-pub const SQUAD_SET_LOOT_MODE: u16 = 18;
-pub const TRANSFER_CASH: u16 = 19;
+pub use cimmeria_wire::cell::cell_methods::organization::{
+    BROADCAST_MINIMAP_PING, INVITE_RESPONSE, LEAVE, MOTD, NOTE, OFFICER_NOTE, PVP_LEAVE_RESPONSE,
+    SET_RANK_NAME, SET_RANK_PERMISSIONS, SQUAD_SET_LOOT_MODE, STRIKE_TEAM_RESPONSE, TRANSFER_CASH,
+};
 
 pub async fn dispatch(
     entity_id: u32,

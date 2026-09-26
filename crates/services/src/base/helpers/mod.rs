@@ -181,13 +181,8 @@ impl BundleSendOutcome {
     }
 }
 
-/// Format a byte slice as a hex string for trace logging.
-pub(crate) fn to_hex(data: &[u8]) -> String {
-    data.iter()
-        .map(|b| format!("{:02X}", b))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
+/// The packet hex formatter for trace logs; shared with the wire firehose.
+pub(crate) use cimmeria_wire::hex::to_hex;
 
 /// Register an outgoing reliable packet's sequence number AND its
 /// encrypted on-wire bytes with the per-session

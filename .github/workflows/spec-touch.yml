@@ -59,6 +59,7 @@ jobs:
               { match: 'crates/services/src/cell/combat/',                         chapter: 'spec.combat.damage-pipeline' },
               // Inventory state machine → spec.inventory.containers-and-equip
               { match: 'crates/services/src/cell/cell_methods/inventory/',         chapter: 'spec.inventory.containers-and-equip' },
+              { match: 'crates/wire/src/cell/cell_methods/inventory/',             chapter: 'spec.inventory.containers-and-equip' },
               // World entry → spec.world.world-entry
               { match: 'crates/services/src/cell/cell_methods/player/world.rs',    chapter: 'spec.world.world-entry' },
               // Mission state machine → spec.missions.lifecycle-and-objectives

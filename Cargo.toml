@@ -38,6 +38,7 @@ members = [
     "crates/test-support",
     "crates/resources",
     "crates/auth",
+    "crates/wire",
 ]
 default-members = [
     "crates/common",
@@ -58,6 +59,7 @@ default-members = [
     "crates/test-support",
     "crates/resources",
     "crates/auth",
+    "crates/wire",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -207,6 +209,7 @@ cimmeria-lab-mcp = { path = "crates/lab-mcp" }
 cimmeria-test-support = { path = "crates/test-support" }
 cimmeria-resources = { path = "crates/resources" }
 cimmeria-auth = { path = "crates/auth" }
+cimmeria-wire = { path = "crates/wire" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed
