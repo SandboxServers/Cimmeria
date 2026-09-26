@@ -9,7 +9,9 @@
 
 pub mod character;
 pub mod world_entry;
-pub mod world_entry_appearance;
+// Crate-private, as it was in `cimmeria-services`: `world_entry` re-exports
+// the two handlers the connect loop calls.
+pub(crate) mod world_entry_appearance;
 
 pub(crate) use cimmeria_base_session::base::{
     cinematic_aoi_hold, console_authoring, contact_list, crafting, deferred_aoi,
