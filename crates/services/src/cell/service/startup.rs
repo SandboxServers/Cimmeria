@@ -52,7 +52,8 @@ impl CellService {
             vec![]
         };
 
-        let npc_count = spawner::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
+        let npc_count =
+            super::super::space_manager::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
         tracing::info!(npc_count, "NPC population initialized");
 
         // Stamp the per-world `resources.worlds` settings onto the

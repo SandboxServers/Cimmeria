@@ -92,7 +92,6 @@ cimmeria-services = [
 "cell::spawner" = "cimmeria-cell-catalog"
 "ability_tree" = "cimmeria-cell-catalog"
 "cell::respawner_fallback" = "cimmeria-cell-catalog"
-"cell::space_manager::navmesh_mode" = "cimmeria-cell-catalog"
 
 "cell::cover" = "cimmeria-cell-cover"
 

@@ -11,14 +11,9 @@
 # fixes the edge. "(not in §2)" marks an edge the plan's §2 did not list.
 
 # --- §2A: the Base<->Cell contract moves into cimmeria-wire ---------------
-# W1c resolved the rest of this section; SpawnRecord moves in W2b.
-cell::messages::base_to_cell -> cell::spawner::npcs  # SpawnRecord, class_id_for_class
+# W1c resolved this section, and W2b moved SpawnRecord.
 
 # --- §2B: catalog and cover ------------------------------------------------
-cell::spawner::npcs -> cell::space_manager  # spawn_*_from_records move to space_manager/spawn.rs
-cell::spawner::npcs -> cell::service::npc_ai::detectors::spawn
-cell::spawner::npcs -> cell::combat::aggression
-cell::space_manager::navmesh_mode -> cell::space_manager  # (not in §2) the `impl SpaceManager` block stays in world
 cell::cover -> cell::cover::stance  # cover/mod.rs re-exports stance
 
 # --- §2C: the cell::service hub -> cimmeria-cell-world ---------------------

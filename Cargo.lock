@@ -1082,6 +1082,7 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-entity",
  "cimmeria-test-support",
+ "cimmeria-wire",
  "quick-xml 0.41.0",
  "tracing",
  "zip 8.6.0",
@@ -1222,6 +1223,7 @@ dependencies = [
 name = "cimmeria-wire"
 version = "0.1.0"
 dependencies = [
+ "cimmeria-common",
  "cimmeria-entity",
  "cimmeria-test-support",
  "tracing",

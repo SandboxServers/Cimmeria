@@ -26,8 +26,8 @@ use tokio::sync::mpsc;
 
 use super::super::engine_loader::load_single_chain_for_test;
 use super::super::executor::execute_actions;
-use crate::cell::space_manager::SpaceManager;
-use crate::cell::spawner::{load_spawns_from_db, spawn_npcs_from_records};
+use crate::cell::space_manager::{spawn_npcs_from_records, SpaceManager};
+use crate::cell::spawner::load_spawns_from_db;
 use crate::test_support::require_db_or_skip;
 
 const PLAYER: u32 = 7301;

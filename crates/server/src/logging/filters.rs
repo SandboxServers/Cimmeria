@@ -235,7 +235,8 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "aoi.log",
         directives: "off,\
              cimmeria_services::cell::service=trace,\
-             cimmeria_services::cell::space_manager=trace",
+             cimmeria_services::cell::space_manager=trace,\
+             cimmeria_services::cell::space_manager::npc_population=off",
     },
     FileLayer {
         file: "combat.log",
@@ -262,6 +263,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         file: "spawner.log",
         directives: "off,\
              cimmeria_services::cell::spawner=trace,\
+             cimmeria_services::cell::space_manager::npc_population=trace,\
              cimmeria_services::cell::gate_travel=trace,\
              cimmeria_services::cell::ring_transport=trace",
     },

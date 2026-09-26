@@ -3,16 +3,19 @@
 //! Loads spawn data and several lookup tables from the database
 //! (`resources.spawnlist` joined with `resources.entity_templates` and
 //! `resources.worlds`, plus mission/dialog/stargate/region/loot caches)
-//! and populates world spaces with NPC entities.
+//! that `SpaceManager` uses to populate world spaces with NPC entities.
 //!
 //! Submodule layout:
 //! - `missions` — mission definitions + step objectives.
 //! - `dialogs` — dialog set map cache.
-//! - `npcs` — `SpawnRecord`, class-id mapping, DB-driven NPC population.
+//! - `npcs` — the `spawnlist` loader and its `SpawnRecord` normalisers. The
+//!   record type itself is wire contract (`cimmeria_wire::cell::spawn_record`),
+//!   and populating spaces from it is `space_manager::spawn_npcs_from_records`.
 //! - `respawners` — defeat-window respawn locations.
 //! - `eye_heights` — per-body-set eye heights for line of sight (NA31).
 //! - `stargates` — gate destination cache.
 //! - `worlds` — world name → `world_id` map (the DB-only half of `spaces.xml`).
+//! - `navmesh_mode` — the per-world `NavmeshMode` those rows carry.
 //! - `regions` — generic region (AreaSet) loading.
 //! - `abilities` — ability/effect defs + event-set sequence map.
 //! - `loot` — loot tables + item container map + weapon defs.
@@ -28,6 +31,7 @@ mod dialogs;
 mod eye_heights;
 mod loot;
 mod missions;
+mod navmesh_mode;
 mod npcs;
 mod regions;
 mod respawners;
@@ -51,10 +55,8 @@ pub use dialogs::{
 pub use eye_heights::load_body_set_eye_heights;
 pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTableEntry, WeaponDef};
 pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, MissionObjectiveDef};
-pub use npcs::{
-    class_id_for_class, load_spawns_from_db, spawn_instance_npcs_from_records,
-    spawn_npcs_from_records, SpawnRecord,
-};
+pub use navmesh_mode::NavmeshMode;
+pub use npcs::{class_id_for_class, load_spawns_from_db, SpawnRecord};
 // Internal helper reused by the base-side GM spawn handler
 // (`base::gm_spawn::load_spawn_record_for_template`). Crate-visible only — not
 // part of the spawner's public surface.

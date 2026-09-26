@@ -112,7 +112,7 @@ pub(super) async fn handle_create_entity(
                     })
                     .await;
 
-                let npc_count = spawner::spawn_instance_npcs_from_records(
+                let npc_count = crate::cell::space_manager::spawn_instance_npcs_from_records(
                     spawn_records,
                     &world_name,
                     space_id,

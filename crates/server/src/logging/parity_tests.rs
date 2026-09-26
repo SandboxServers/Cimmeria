@@ -407,6 +407,31 @@ fn auth_crate_events_keep_their_file_and_index() {
     }
 }
 
+/// `spawn_npcs_from_records` and `spawn_instance_npcs_from_records` moved
+/// from `cell::spawner::npcs` to `cell::space_manager::npc_population`
+/// (services crate split, wave W2b). `aoi.log` keeps every
+/// `cell::space_manager` module, so the move alone would have re-routed the
+/// spawn rows there; they must stay in `spawner.log` and only there, while
+/// the rest of `space_manager` keeps `aoi.log`.
+#[test]
+fn npc_population_events_keep_spawner_log() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let population = "cimmeria_services::cell::space_manager::npc_population";
+    let spawn = "cimmeria_services::cell::space_manager::spawn";
+    for lvl in LEVELS {
+        let sinks = sinks_for(&dispatch, &hits, population, lvl);
+        assert!(
+            sinks.contains("file:spawner.log") && !sinks.contains("file:aoi.log"),
+            "{population} at {lvl}: {sinks:?}"
+        );
+        let sinks = sinks_for(&dispatch, &hits, spawn, lvl);
+        assert!(
+            sinks.contains("file:aoi.log") && !sinks.contains("file:spawner.log"),
+            "{spawn} at {lvl}: {sinks:?}"
+        );
+    }
+}
+
 /// No target, at any level, is indexed twice.
 #[test]
 fn no_record_reaches_two_indexes() {
