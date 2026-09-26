@@ -159,11 +159,16 @@ fn snap_moves_through_the_grid_stops_and_sets_facing() {
 /// `nav_path.clear()` would reintroduce the stale-velocity bug, because a
 /// cleared path stops the movement tick from ever zeroing velocity again.
 ///
-/// Scans every `.rs` file under `crates/services/src`, up to its first
-/// `#[cfg(test)]` line, and skips test-only files. Reverting any converted
-/// site fails this test.
+/// Scans the production code of every crate under `crates/`, not just this
+/// one, so a writer in a crate split out of cimmeria-services is still seen.
+/// Inline `#[cfg(test)]` modules are skipped wherever they sit in a file, and
+/// test-only files by their path. The allowed file is named by its path under
+/// its crate's `src/`, which survives a move to another crate. Reverting any
+/// converted site fails this test.
 #[test]
 fn nav_path_is_written_only_through_the_movement_stop_helpers() {
+    use crate::test_support::source_scan::{production_lines, rust_sources};
+
     const PATTERNS: [&str; 4] = [
         // Field accesses only (leading `.`), so a local named `nav_path`
         // (the navmesh file path) does not match.
@@ -172,65 +177,30 @@ fn nav_path_is_written_only_through_the_movement_stop_helpers() {
         ".nav_path.push_back(",
         ".nav_path.extend(",
     ];
-    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let allowed = ["cell/service/npc_ai/movement_stop/mod.rs"];
     let mut offenders = Vec::new();
     let mut scanned = 0usize;
-    let mut stack = vec![src.clone()];
-    while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else {
+    let mut crates = std::collections::BTreeSet::new();
+    for file in rust_sources() {
+        if file.is_test_path() || allowed.contains(&file.src_rel.as_deref().unwrap_or("")) {
             continue;
-        };
-        for entry in rd.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
+        }
+        scanned += 1;
+        crates.insert(file.crates_rel.split('/').next().unwrap_or("").to_string());
+        let text = file.read();
+        for (n, line) in production_lines(&text) {
+            let code = line.trim_start();
+            if code.starts_with("//") {
                 continue;
             }
-            if path.extension().is_none_or(|e| e != "rs") {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(&src)
-                .unwrap()
-                .to_string_lossy()
-                .replace('\\', "/");
-            let test_only = rel.contains("/tests/")
-                || rel.ends_with("tests.rs")
-                || rel.contains("_tests/")
-                || rel.starts_with("test_support");
-            if test_only || allowed.contains(&rel.as_str()) {
-                continue;
-            }
-            scanned += 1;
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let lines: Vec<&str> = text.lines().collect();
-            for (i, line) in lines.iter().enumerate() {
-                let code = line.trim_start();
-                // An inline `#[cfg(test)] mod tests { ... }` block ends the
-                // production code. A `#[cfg(test)]` on a single item (a
-                // test-only re-export) does not.
-                if code.starts_with("#[cfg(test)]")
-                    && lines.get(i + 1).is_some_and(|n| {
-                        n.trim_start().starts_with("mod ") && n.trim_end().ends_with('{')
-                    })
-                {
-                    break;
-                }
-                if code.starts_with("//") {
-                    continue;
-                }
-                if PATTERNS.iter().any(|p| code.contains(p)) {
-                    offenders.push(format!("{rel}:{}: {}", i + 1, code));
-                }
+            if PATTERNS.iter().any(|p| code.contains(p)) {
+                offenders.push(format!("{}:{n}: {code}", file.crates_rel));
             }
         }
     }
     assert!(
-        scanned > 100,
-        "scan found only {scanned} files; wrong root?"
+        scanned > 500 && crates.contains("services") && crates.contains("entity"),
+        "scan found only {scanned} files in {crates:?}; wrong root?"
     );
     assert!(
         offenders.is_empty(),

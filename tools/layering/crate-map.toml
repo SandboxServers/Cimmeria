@@ -1,0 +1,184 @@
+# Target crate for every production module of crates/services/src, and the
+# planned crate DAG. Source: docs/architecture/services-crate-split.md §1
+# (crate contents and "Workspace deps") and §2 (whole-module moves).
+#
+# Read by tools/layering/check.py. See tools/layering/README.md.
+
+# The DAG. Each crate lists the split crates it depends on directly; a module
+# edge is allowed when its target crate is the source crate or reachable from
+# it. Workspace crates outside the split (common, entity, mercury, ...) are
+# not listed: every split crate may use them.
+#
+# Layer order, lowest first (crates on one line build in parallel):
+#   auth, resources, wire, cell-cover
+#   wire-log, minigame, cell-catalog
+#   cell-world, base-session
+#   cell-combat, base-methods
+#   cell-content, base-world-entry
+#   cell-interactions, base
+#   cell-methods, cell-console
+#   cell
+#   services (facade)
+[crates]
+cimmeria-auth = []
+cimmeria-resources = []
+cimmeria-wire = []
+cimmeria-cell-cover = []
+cimmeria-wire-log = ["cimmeria-wire"]
+cimmeria-minigame = ["cimmeria-wire"]
+cimmeria-cell-catalog = ["cimmeria-wire"]
+cimmeria-cell-world = ["cimmeria-cell-catalog", "cimmeria-cell-cover", "cimmeria-wire"]
+cimmeria-cell-combat = ["cimmeria-cell-world"]
+cimmeria-cell-content = ["cimmeria-cell-combat"]
+cimmeria-cell-interactions = ["cimmeria-cell-content"]
+cimmeria-cell-methods = ["cimmeria-cell-interactions"]
+cimmeria-cell-console = ["cimmeria-cell-interactions"]
+cimmeria-cell = ["cimmeria-cell-methods", "cimmeria-cell-console"]
+cimmeria-base-session = ["cimmeria-wire", "cimmeria-cell-catalog", "cimmeria-resources"]
+cimmeria-base-methods = ["cimmeria-base-session"]
+cimmeria-base-world-entry = [
+    "cimmeria-base-methods",
+    "cimmeria-wire-log",
+    "cimmeria-minigame",
+    "cimmeria-auth",
+]
+cimmeria-base = ["cimmeria-base-world-entry", "cimmeria-auth", "cimmeria-resources"]
+cimmeria-services = [
+    "cimmeria-cell",
+    "cimmeria-base",
+    "cimmeria-auth",
+    "cimmeria-minigame",
+    "cimmeria-wire",
+]
+
+# A module, and every module below it, belongs to this crate. The longest
+# matching prefix wins. Every production module must match a row here or in
+# [exact]; check.py fails on an unmapped module, so a new module forces the
+# question.
+#
+# Items that move on their own (a constant, a struct, a serializer) are not
+# modelled: their module stays mapped to where the rest of the file goes, and
+# the edge stays in allowlist.txt until the item moves.
+[prefix]
+# Facade.
+"orchestrator" = "cimmeria-services"
+"orchestrator_postgres" = "cimmeria-services"
+"orchestrator_shards" = "cimmeria-services"
+"database" = "cimmeria-services"
+
+# L1, parallel with wire.
+"auth" = "cimmeria-auth"
+"audit" = "cimmeria-auth"
+"credential_redaction" = "cimmeria-auth"
+"base::resources" = "cimmeria-resources"
+"base::mission_overrides" = "cimmeria-resources"
+"base::item_overrides" = "cimmeria-resources"
+"base::dialog_overrides" = "cimmeria-resources"
+"base::sequence_overrides" = "cimmeria-resources"
+"base::chardef" = "cimmeria-resources"
+
+# The Base<->Cell message contract.
+"mercury" = "cimmeria-wire"
+"firehose" = "cimmeria-wire"
+"cell::messages" = "cimmeria-wire"
+"cell::client_methods" = "cimmeria-wire"
+"cell::player_journal" = "cimmeria-wire"
+"cell::kismet" = "cimmeria-wire"
+"cell::dispatch::constants" = "cimmeria-wire"
+"cell::dispatch::names" = "cimmeria-wire"
+"base::contact_list::wire" = "cimmeria-wire"
+"cell::cell_methods::inventory::constants" = "cimmeria-wire"
+"ability_tree::points_property" = "cimmeria-wire"
+
+"wire_log" = "cimmeria-wire-log"
+"minigame" = "cimmeria-minigame"
+
+"cell::spawner" = "cimmeria-cell-catalog"
+"ability_tree" = "cimmeria-cell-catalog"
+"cell::respawner_fallback" = "cimmeria-cell-catalog"
+"cell::space_manager::navmesh_mode" = "cimmeria-cell-catalog"
+
+"cell::cover" = "cimmeria-cell-cover"
+
+# Cell track.
+"cell::space_manager" = "cimmeria-cell-world"
+"cell::arrival" = "cimmeria-cell-world"
+"cell::playtest_friction" = "cimmeria-cell-world"
+"cell::playtest_friction_watch" = "cimmeria-cell-world"
+"cell::ring_transport" = "cimmeria-cell-world"
+"cell::effects" = "cimmeria-cell-world"
+"cell::cover::stance" = "cimmeria-cell-world"
+"cell::service::npc_ai::detectors" = "cimmeria-cell-world"
+"cell::service::npc_ai::transition" = "cimmeria-cell-world"
+"cell::service::npc_ai::movement_stop" = "cimmeria-cell-world"
+"cell::service::npc_ai::leash::policy" = "cimmeria-cell-world"
+"cell::combat::aggression" = "cimmeria-cell-world"
+"cell::combat::faction_reaction" = "cimmeria-cell-world"
+"cell::dispatch::gm_gate" = "cimmeria-cell-world"
+
+"cell::combat" = "cimmeria-cell-combat"
+"cell::abilities" = "cimmeria-cell-combat"
+"cell::effects::pulsing" = "cimmeria-cell-combat"
+"cell::service::npc_ai" = "cimmeria-cell-combat"
+"cell::cell_methods::player::world::reload" = "cimmeria-cell-combat"
+"cell::cell_methods::player::world::item_sequence" = "cimmeria-cell-combat"
+"cell::cell_methods::inventory::bandolier" = "cimmeria-cell-combat"
+
+"cell::content" = "cimmeria-cell-content"
+"cell::missions" = "cimmeria-cell-content"
+"cell::ring_transport::dispatch" = "cimmeria-cell-content"
+"cell::ring_transport::runtime::entry" = "cimmeria-cell-content"
+"cell::ring_transport::runtime::tick" = "cimmeria-cell-content"
+"cell::interactions::dialog" = "cimmeria-cell-content"
+
+"cell::interactions" = "cimmeria-cell-interactions"
+"cell::gate_travel" = "cimmeria-cell-interactions"
+"cell::space_transfer" = "cimmeria-cell-interactions"
+"cell::mail" = "cimmeria-cell-interactions"
+"cell::cell_methods::player::trade::state" = "cimmeria-cell-interactions"
+"cell::cell_methods::player::trade::wire" = "cimmeria-cell-interactions"
+
+"cell::cell_methods" = "cimmeria-cell-methods"
+"cell::service::base_messages::player_init::resync" = "cimmeria-cell-methods"
+
+"cell::console" = "cimmeria-cell-console"
+"cell::chat" = "cimmeria-cell-console"
+"cell::cell_methods::gm" = "cimmeria-cell-console"
+
+"cell::service" = "cimmeria-cell"
+"cell::dispatch" = "cimmeria-cell"
+
+# Base track.
+"base::helpers" = "cimmeria-base-session"
+"base::outbox" = "cimmeria-base-session"
+"base::deferred_aoi" = "cimmeria-base-session"
+"base::deferred_aoi_lifecycle" = "cimmeria-base-session"
+"base::session_identity" = "cimmeria-base-session"
+"base::gm_feedback" = "cimmeria-base-session"
+"base::world_entry_chat" = "cimmeria-base-session"
+"base::contact_list" = "cimmeria-base-session"
+"base::crafting" = "cimmeria-base-session"
+"base::console_authoring" = "cimmeria-base-session"
+"base::gm_spawn" = "cimmeria-base-session"
+"base::tick_sync" = "cimmeria-base-session"
+"base::cooked_data" = "cimmeria-base-session"
+"base::world_entry::space_registry" = "cimmeria-base-session"
+"base::world_entry_appearance::builders" = "cimmeria-base-session"
+
+"base::world_entry::methods" = "cimmeria-base-methods"
+
+"base::world_entry" = "cimmeria-base-world-entry"
+"base::world_entry_appearance" = "cimmeria-base-world-entry"
+"base::character" = "cimmeria-base-world-entry"
+
+"base::service" = "cimmeria-base"
+"base::connect_loop" = "cimmeria-base"
+"base::dispatch" = "cimmeria-base"
+"base::login" = "cimmeria-base"
+"base::character_create" = "cimmeria-base"
+
+# This module only, not the modules below it.
+[exact]
+"" = "cimmeria-services"
+"cell" = "cimmeria-cell-world"
+"base" = "cimmeria-base-session"

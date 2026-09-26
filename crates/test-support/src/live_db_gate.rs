@@ -2,7 +2,8 @@
 //! no database is configured, and **fail** when one is configured but
 //! unreachable.
 //!
-//! Re-exported from [`crate::test_support`], so call sites keep writing
+//! Re-exported from the crate root. Each consuming crate re-exports it from
+//! its `crate::test_support` shim, so call sites write
 //! `use crate::test_support::require_db_or_skip;`. See
 //! `docs/architecture/integration-test-infra.md` for local setup.
 //!
@@ -20,7 +21,7 @@ use sqlx::PgPool;
 
 /// Why [`test_pool`] produced no pool.
 #[derive(Debug)]
-pub(crate) enum SkipReason {
+pub enum SkipReason {
     /// `DATABASE_URL` was unset or empty: a legitimate skip (fresh
     /// checkout, or CI's no-DB pass).
     NotConfigured,
@@ -45,13 +46,13 @@ impl std::fmt::Display for SkipReason {
 /// Bounded to 4 connections — high enough for tests that exercise
 /// concurrent paths (drainer + caller in parallel), low enough that
 /// a careless test loop can't exhaust a hand-tuned local Postgres.
-pub(crate) async fn test_pool() -> Result<PgPool, SkipReason> {
+pub async fn test_pool() -> Result<PgPool, SkipReason> {
     test_pool_from_url(std::env::var("DATABASE_URL").ok().as_deref()).await
 }
 
 /// [`test_pool`] with the URL passed in rather than read from the
 /// environment, so the gate can be tested without mutating process env.
-pub(crate) async fn test_pool_from_url(url: Option<&str>) -> Result<PgPool, SkipReason> {
+pub async fn test_pool_from_url(url: Option<&str>) -> Result<PgPool, SkipReason> {
     let url = match url {
         Some(u) if !u.is_empty() => u,
         _ => return Err(SkipReason::NotConfigured),
@@ -80,8 +81,9 @@ pub(crate) async fn test_pool_from_url(url: Option<&str>) -> Result<PgPool, Skip
 /// the pool (`Some`), skip (`None`, only when `DATABASE_URL` is unset), or
 /// panic when `DATABASE_URL` is set but the database is unreachable.
 ///
-/// `test` names the caller in the skip/panic message.
-pub(crate) fn pool_or_skip(result: Result<PgPool, SkipReason>, test: &str) -> Option<PgPool> {
+/// `test` names the caller in the skip/panic message. [`require_db_or_skip!`]
+/// passes the caller's `module_path!()`.
+pub fn pool_or_skip(result: Result<PgPool, SkipReason>, test: &str) -> Option<PgPool> {
     match result {
         Ok(pool) => Some(pool),
         Err(SkipReason::NotConfigured) => {
@@ -102,6 +104,10 @@ pub(crate) fn pool_or_skip(result: Result<PgPool, SkipReason>, test: &str) -> Op
 /// configured. Panics when `DATABASE_URL` is set but unreachable — see the
 /// module docs.
 ///
+/// `#[macro_export]`, so it lives at this crate's root; it reaches the gate
+/// through `$crate`, and `module_path!()` still expands at the call site, so
+/// the skip line names the calling test's module.
+///
 /// ```ignore
 /// #[tokio::test]
 /// async fn my_db_test() {
@@ -109,19 +115,15 @@ pub(crate) fn pool_or_skip(result: Result<PgPool, SkipReason>, test: &str) -> Op
 ///     // ... test body uses pool ...
 /// }
 /// ```
+#[macro_export]
 macro_rules! require_db_or_skip {
     () => {{
-        match $crate::test_support::pool_or_skip(
-            $crate::test_support::test_pool().await,
-            module_path!(),
-        ) {
+        match $crate::pool_or_skip($crate::test_pool().await, module_path!()) {
             Some(p) => p,
             None => return,
         }
     }};
 }
-
-pub(crate) use require_db_or_skip;
 
 #[cfg(test)]
 mod tests {

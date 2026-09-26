@@ -1113,6 +1113,7 @@ dependencies = [
  "cimmeria-mercury",
  "cimmeria-observability",
  "cimmeria-occluder",
+ "cimmeria-test-support",
  "proptest",
  "quick-xml 0.41.0",
  "rand 0.10.2",
@@ -1131,7 +1132,6 @@ dependencies = [
  "tokio-rustls",
  "tower",
  "tracing",
- "tracing-subscriber",
  "zip 8.6.0",
 ]
 
@@ -1152,6 +1152,17 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower-http 0.7.1",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "cimmeria-test-support"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-mercury",
+ "sqlx",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

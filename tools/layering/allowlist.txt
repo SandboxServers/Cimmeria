@@ -1,0 +1,87 @@
+# Module edges in crates/services/src that break the planned crate DAG
+# (tools/layering/crate-map.toml), seeded 2026-09-26 at wave W0.
+#
+# Format: `<source module> -> <target module>`; anything after `#` is a note.
+# check.py fails on a violation missing from this list AND on a line whose
+# edge no longer exists, so this list only shrinks. When a wave removes an
+# edge, delete its line (`python tools/layering/check.py --prune`).
+# `python tools/layering/check.py --list` prints the current file:line of each.
+#
+# Grouped by the section of docs/architecture/services-crate-split.md that
+# fixes the edge. "(not in §2)" marks an edge the plan's §2 did not list.
+
+# --- §2A: the Base<->Cell contract moves into cimmeria-wire ---------------
+firehose::emit -> base::helpers  # to_hex
+cell::cell_methods::inventory::bandolier::active_slot -> base::resources  # bag_max_slots
+cell::messages::base_to_cell -> cell::spawner::npcs  # SpawnRecord, class_id_for_class
+# dispatch/constants.rs re-exports the cell-method index constants.
+cell::dispatch::constants -> cell::cell_methods::ability_manager
+cell::dispatch::constants -> cell::cell_methods::being
+cell::dispatch::constants -> cell::cell_methods::black_market
+cell::dispatch::constants -> cell::cell_methods::combatant
+cell::dispatch::constants -> cell::cell_methods::contact_list
+cell::dispatch::constants -> cell::cell_methods::gate_travel
+cell::dispatch::constants -> cell::cell_methods::mail
+cell::dispatch::constants -> cell::cell_methods::minigame
+cell::dispatch::constants -> cell::cell_methods::missionary
+cell::dispatch::constants -> cell::cell_methods::organization
+cell::dispatch::constants -> cell::cell_methods::player::constants
+# gm_gate (world) reads the same index constants.
+cell::dispatch::gm_gate -> cell::cell_methods::ability_manager
+cell::dispatch::gm_gate -> cell::cell_methods::combatant
+cell::dispatch::gm_gate -> cell::cell_methods::minigame
+cell::dispatch::gm_gate -> cell::cell_methods::player::constants
+# BSF bits -> one wire::state_field module.
+base::world_entry::cell_dispatch::state_field -> cell::combat::state
+cell::effects::scripts -> cell::combat::state
+cell::missions::progression -> cell::cell_methods::combatant
+cell::console::bookmark -> cell::cell_methods::combatant
+cell::content::executor::bark -> cell::chat  # bark serializer
+base::world_entry::methods::mail -> cell::mail  # MailHeader + serializers
+
+# --- §2B: catalog and cover ------------------------------------------------
+cell::spawner::npcs -> cell::space_manager  # spawn_*_from_records move to space_manager/spawn.rs
+cell::spawner::npcs -> cell::service::npc_ai::detectors::spawn
+cell::spawner::npcs -> cell::combat::aggression
+cell::space_manager::navmesh_mode -> cell::space_manager  # (not in §2) the `impl SpaceManager` block stays in world
+cell::cover -> cell::cover::stance  # cover/mod.rs re-exports stance
+
+# --- §2C: the cell::service hub -> cimmeria-cell-world ---------------------
+cell::service::npc_ai::leash::policy -> cell::combat::threat::aggro  # LEASH_DISTANCE
+cell::service::npc_ai::detectors::sweep -> cell::service::npc_ai::aggro_acquired  # los_label
+cell::space_manager::spawn -> cell::combat::threat::aggro  # NPC_DEFAULT_ABILITY
+cell::space_manager::spawn -> cell::combat  # HOSTILE_FACTION
+cell::space_manager -> cell::combat::damage_credit  # HealthBelowSample
+cell::space_manager -> cell::content::event_dispatch::step_activation  # StepRegionReplayGuard
+cell::ring_transport::runtime::teardown -> cell::ring_transport::dispatch  # dispatch_release_effects
+cell::service::npc_ai::aggro_gates -> cell::console  # is_gm
+cell::service::npc_ai::path_request -> cell::console  # is_gm
+# effects/mod.rs re-exports the async pulsing layer, which stays in combat.
+cell::effects -> cell::effects::pulsing::channel_cancel
+cell::effects -> cell::effects::pulsing::register
+cell::effects -> cell::effects::pulsing::tick
+
+# --- §2E: combat -> content, inverted through ContentEvents -----------------
+cell::abilities::use_ability::kill_credit -> cell::content::event_dispatch::lifecycle
+cell::effects::pulsing::tick -> cell::content::event_dispatch::lifecycle
+cell::service::npc_ai::fight_cover -> cell::content::event_dispatch::cover
+
+# --- §2F: combat -> cell_methods and service --------------------------------
+cell::cell_methods::inventory::bandolier::active_slot -> cell::service::ticks::holster  # HOLSTER_ANIMATION_DURATION
+
+# --- §2G: content <-> ring transport ----------------------------------------
+# ring_transport/{mod,runtime/mod}.rs re-export the runtime entry points.
+cell::ring_transport -> cell::ring_transport::runtime::entry
+cell::ring_transport -> cell::ring_transport::runtime::tick
+cell::ring_transport::runtime -> cell::ring_transport::runtime::entry
+cell::ring_transport::runtime -> cell::ring_transport::runtime::tick
+
+# --- §2H: interactions, methods, console and service ------------------------
+cell -> cell::service  # pub use service::CellService -> facade
+cell::service::base_messages::player_init::resync -> cell::service::base_messages::player_init  # send_known_abilities_update
+cell::cell_methods::player::trade::state -> cell::cell_methods::player::trade  # (not in §2) MAX_INTERACT_DISTANCE
+cell::cell_methods::gm::world -> cell::cell_methods::player::combat::respawn  # (not in §2) gmRespawn calls handle_respawn
+
+# --- §2I: base-internal ------------------------------------------------------
+base -> base::service  # pub use service::BaseService -> facade
+base -> base::world_entry_appearance::cinematic_aoi_hold  # CinematicAoiHold

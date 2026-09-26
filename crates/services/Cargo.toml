@@ -93,11 +93,13 @@ proptest = { workspace = true }
 # uses `#[async_trait]`, so any implementor must also pull it in.
 async-trait = { workspace = true }
 
-# Log-capture for negative-logging regression guards.
-# Tests install a custom `Layer` to assert that a specific WARN/ERROR
-# event fired with the expected structured fields. Without this, a
-# reverted log change goes undetected. See `test_support::LogCapture`.
-tracing-subscriber = { workspace = true }
+# Generic test helpers: the live-DB gate (`require_db_or_skip!`),
+# `LogCapture` and the `TestTransport` re-export. Re-exported from the
+# `#[cfg(test)] mod test_support` shim, so tests import them from
+# `crate::test_support`. Every crate with this dev-dependency must be listed
+# in tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
 
 # Self-signed cert generation for the auth-TLS integration test. Crate-local
 # dev-dependency (not a workspace dep) so it stays out of the production

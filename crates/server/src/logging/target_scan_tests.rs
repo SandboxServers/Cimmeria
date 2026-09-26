@@ -58,6 +58,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
     ("upk", "offline asset tooling"),
     ("upk-objects", "offline asset tooling"),
     ("wireclient", "headless test client"),
+    (
+        "test-support",
+        "dev-dependency only (test helpers); never linked into the server binary",
+    ),
 ];
 
 /// Literal targets that survive the test-code filter below but are only ever

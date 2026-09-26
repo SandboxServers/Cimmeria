@@ -77,11 +77,17 @@ jobs:
 
   # cargo build catches link-time errors that cargo check misses (build
   # scripts, codegen output, dynamic-link issues).
+  #
+  # The layering guard runs first: it needs only python3 (preinstalled on the
+  # runner) and fails in seconds when a module edge in crates/services/src
+  # breaks the planned crate DAG. See tools/layering/README.md.
   build:
     name: cargo build (workspace)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: layering guard (services crate split)
+        run: python3 tools/layering/check.py
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
@@ -160,6 +166,12 @@ jobs:
   # actually fire in this job — the prior `test` job's
   # require_db_or_skip! short-circuits without DATABASE_URL.
   #
+  # tools/test-live-db.sh holds the list of crates with live-DB tests and
+  # runs all of them in one nextest invocation, so a crate split out of
+  # cimmeria-services cannot silently drop out of this job (#615). The job
+  # name still says `-p cimmeria-services` so a required status check keyed
+  # on it keeps matching; the split's final wave renames it.
+  #
   # The `ci-live-db` profile in .config/nextest.toml serialises every
   # test (threads-required = "num-test-threads"). Some live-DB tests share
   # sentinel id ranges in resources.* and collide under parallel
@@ -210,7 +222,7 @@ jobs:
         with:
           shared-key: test-live-db
       - name: cargo nextest run (live DB)
-        run: cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+        run: bash tools/test-live-db.sh
       - name: upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v7
@@ -224,8 +236,9 @@ jobs:
   # Coverage report. Same matrix as the test + test-live-db jobs combined,
   # instrumented under cargo-llvm-cov. Two passes share counter data via
   # `--no-report`: the workspace pass picks up unit + non-DB integration
-  # coverage, the second pass runs `-p cimmeria-services --lib` against a
-  # live Postgres so the require_db_or_skip! guards actually count.
+  # coverage, the second pass runs the live-DB crates' lib tests
+  # (tools/test-live-db.sh --llvm-cov) against a live Postgres so the
+  # require_db_or_skip! guards actually count.
   # `cargo llvm-cov report` then merges them into one HTML/cobertura/summary.
   #
   # Both passes drive nextest under llvm-cov so a single test execution
@@ -296,10 +309,8 @@ jobs:
         run: |
           cargo llvm-cov --no-report nextest \
             --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
-      - name: services live-DB pass
-        run: |
-          cargo llvm-cov --no-report nextest \
-            --profile=ci-live-db -p cimmeria-services --lib
+      - name: live-DB pass
+        run: bash tools/test-live-db.sh --llvm-cov
       - name: render reports
         run: |
           mkdir -p target/coverage
