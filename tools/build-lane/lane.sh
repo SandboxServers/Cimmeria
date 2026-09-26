@@ -12,13 +12,13 @@
 #    takes every slot, for full-workspace builds and measurements.
 #  * CARGO_BUILD_JOBS defaults to cores / slots (floor 4) so a full lane fits the CPU.
 #  * sccache as RUSTC_WRAPPER when it is installed, with one shared cache
-#    ($CIMMERIA_SCCACHE_DIR, default $LANE_ROOT/sccache-cache).
-#  * Linked git worktrees (agents, campaign workers) build with CARGO_INCREMENTAL=0.
-#    sccache cannot cache incremental compilations, and a short-lived worktree gains
-#    little from an incremental cache. Without it, crates a worker did not touch come
-#    straight from sccache, and the worktree's target/ skips the incremental cache
-#    (the largest part of a warm target dir). The main checkout keeps incremental.
-#    Override with CARGO_INCREMENTAL=1 in the caller's environment.
+#    ($CIMMERIA_SCCACHE_DIR, default $LANE_ROOT/sccache-cache). It caches third-party
+#    crates. Workspace crates build incrementally (the dev profile's default), and sccache
+#    passes those through uncached. Worktrees used to force CARGO_INCREMENTAL=0 so sccache
+#    could cache workspace crates as well, but sccache keys a crate by its absolute path,
+#    so one worktree's crates never hit in another: the job log showed 0% hits while the
+#    edit loop lost its incremental reuse. sccache refuses to run at all when
+#    CARGO_INCREMENTAL is set to anything but 0, so a caller that sets it gets no sccache.
 #  * Target dir: each worktree builds into its own target/ (cargo locks a target dir for
 #    the whole build, so sharing one would serialise every worktree). When
 #    CIMMERIA_TARGET_ROOT is set (a Dev Drive, see tools/dev-drive/), the target dir is
@@ -46,13 +46,6 @@ now_us() { if [ -n "${EPOCHREALTIME:-}" ]; then echo "${EPOCHREALTIME/[.,]/}"; e
 # --- build environment --------------------------------------------------------------
 TOP="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 NAME="$(basename "$TOP")"
-# Compare canonical paths: under Git Bash, --absolute-git-dir prints C:/... while pwd
-# prints /c/..., so a raw string comparison would call the main checkout a worktree.
-canon() { (cd "$1" 2>/dev/null && pwd -P) || true; }
-GIT_DIR_ABS="$(canon "$(git rev-parse --absolute-git-dir 2>/dev/null || echo /nonexistent)")"
-GIT_COMMON="$(canon "$(git rev-parse --git-common-dir 2>/dev/null || echo /nonexistent)")"
-is_worktree=0
-[ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON" ] && is_worktree=1
 
 # The Dev Drive settings are user environment variables (tools/dev-drive/). A session
 # started before they were set doesn't have them, so fall back to the registry.
@@ -78,13 +71,13 @@ if [ $use_dev_drive -eq 1 ]; then
 else
   unset CARGO_TARGET_DIR                     # <worktree>/target
 fi
-if [ $is_worktree -eq 1 ] && [ -z "${CARGO_INCREMENTAL:-}" ]; then
-  export CARGO_INCREMENTAL=0
-fi
 SCCACHE_BIN="${SCCACHE_BIN:-}"
 [ -z "$SCCACHE_BIN" ] && [ -x "$LANE_ROOT/bin/sccache.exe" ] && SCCACHE_BIN="$LANE_ROOT/bin/sccache.exe"
 [ -z "$SCCACHE_BIN" ] && SCCACHE_BIN="$(command -v sccache 2>/dev/null || true)"
 use_sccache=0
+if [ -n "${CARGO_INCREMENTAL:-}" ] && [ "$CARGO_INCREMENTAL" != 0 ]; then
+  SCCACHE_BIN=""                             # sccache aborts under CARGO_INCREMENTAL=1
+fi
 if [ -n "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER+set}" ]; then
   use_sccache=1
   export RUSTC_WRAPPER="$SCCACHE_BIN"
