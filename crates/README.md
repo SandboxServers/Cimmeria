@@ -6,82 +6,104 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The 28 workspace members and their **actual** inter-crate dependencies, generated
-from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*; a dotted
-arrow is a dev-dependency). The 28 comes from the `members` list in the root
-[Cargo.toml](../Cargo.toml): the 24 crates under `crates/`, plus `src-tauri` and the three tool crates
-(`tools/ContentEditor`, `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/`
-target is a deliberate workspace `exclude` — it needs nightly Rust.
+The workspace members and their **actual** inter-crate dependencies (an arrow
+**A → B** means *A depends on B*). The graph is generated from `cargo metadata` by
+`tools/crate-graph/crate_graph.py`, and CI fails if it is stale. The members come
+from the `members` list in the root [Cargo.toml](../Cargo.toml): the crates under
+`crates/`, plus `src-tauri` and the tool crates (`tools/ContentEditor`,
+`tools/SceneEditor`, `tools/spec-lint`). The `fuzz/` target is a deliberate
+workspace `exclude`, because it needs nightly Rust.
+
+<!-- crate-graph:begin -->
 
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
 flowchart TD
-    %% entry points / binaries
-    server --> adminApi["admin-api"]
-    server --> services
-    server --> discord
-    server --> observability
-    server --> common
-    app["app (src-tauri, cimmeria-app)"] --> adminApi
-    app --> services
-    app --> common
-    wireclient --> services
-    wireclient --> mercury
-    wireclient --> common
-
-    %% service + domain layer
-    adminApi --> services
-    services --> game
-    services --> contentEngine["content-engine"]
-    services --> entity
-    services --> mercury
-    services --> discord
-    services --> observability
-    services --> commands
-    services --> common
-    game --> commands
-    game --> common
-    contentEngine --> entity
-    contentEngine --> common
-    entity --> common
-
-    %% foundation
-    mercury --> common
-    defs --> common
-    commands --> common
-
-    %% UPK / navmesh toolchain (independent of the server spine)
-    navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
-    navmeshExtractor --> upk
-    navmeshExtractor --> occluder
-    services --> occluder
-    sceneEditor["scene-editor (tool)"] --> upkObjects
-
-    %% test-only
-    services -. dev .-> testSupport["test-support (dev-only)"]
-    testSupport --> mercury
-    sceneEditor --> upk
-    upkObjects --> upk
-
-    %% standalone crates with no intra-workspace dependencies
-    subgraph standalone["Standalone (no intra-workspace deps)"]
-        supervisor
-        clientTelemetry["client-telemetry"]
-        launcher["launcher (sgw-launcher)"]
-        contentEditor["content-editor (tool)"]
-        specLint["spec-lint (tool)"]
+    subgraph apps["Binaries and apps"]
+        app["app"]
+        clientLaunch["client-launch"]
+        lab["lab"]
+        server["server"]
+        supervisor["supervisor"]
+        sgwLauncher["sgw-launcher"]
     end
+    subgraph api["Admin and lab APIs"]
+        adminApi["admin-api"]
+        labMcp["lab-mcp"]
+    end
+    subgraph facade["Services facade"]
+        services["services"]
+    end
+    subgraph domain["Domain and engine"]
+        commands["commands"]
+        contentEngine["content-engine"]
+        defs["defs"]
+        entity["entity"]
+        game["game"]
+        occluder["occluder"]
+    end
+    subgraph foundation["Protocol and foundation"]
+        common["common"]
+        discord["discord"]
+        mercury["mercury"]
+        observability["observability"]
+    end
+    subgraph tools["Tools, test clients and asset toolchain"]
+        clientTelemetry["client-telemetry"]
+        contentEditor["content-editor"]
+        navmeshExtractor["navmesh-extractor"]
+        sceneEditor["scene-editor"]
+        specLint["spec-lint"]
+        upk["upk"]
+        upkObjects["upk-objects"]
+        wireclient["wireclient"]
+    end
+    subgraph test["Test-only"]
+        testSupport["test-support (dev-only)"]
+    end
+    adminApi --> services
+    app --> adminApi
+    commands --> common
+    contentEngine --> entity
+    defs --> common
+    entity --> common
+    game --> commands
+    lab --> clientLaunch
+    labMcp --> adminApi
+    mercury --> common
+    navmeshExtractor --> occluder
+    navmeshExtractor --> upkObjects
+    sceneEditor --> upkObjects
+    server --> labMcp
+    services --> contentEngine
+    services --> discord
+    services --> game
+    services --> mercury
+    services --> observability
+    services --> occluder
+    testSupport --> mercury
+    upkObjects --> upk
+    wireclient --> mercury
+    sgwLauncher --> clientLaunch
 ```
 
-The DAG is rooted at **common**. **services** is the hub — it pulls in `game`,
-`content-engine`, `entity`, `mercury`, `discord`, and `observability`, and is
-what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. The
-`upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
-are an independent Unreal-package / navmesh toolchain; `supervisor`,
-`client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
-intra-workspace deps. `test-support` is a dev-dependency only. All 24 crates in `crates/` are catalogued below; the
-diagram additionally shows the `src-tauri` app and the `tools/` editors, which
-are workspace members that live outside `crates/`.
+*Generated by `tools/crate-graph/crate_graph.py` from `cargo metadata`: 28 workspace crates, 40 direct dependency edges (24 shown; an edge already implied by a longer path is omitted). Dev-dependencies are not drawn. Regenerate with `python tools/crate-graph/crate_graph.py`; CI fails when this block is stale.*
+
+<!-- crate-graph:end -->
+
+`cimmeria-services` is being split into an acyclic set of crates (a wire
+contract, a cell track and a base track, with `cimmeria-services` as a thin
+facade); see [docs/architecture/services-crate-split.md](../docs/architecture/services-crate-split.md)
+for the plan, the target graph and each wave's status.
+
+The DAG is rooted at **common**. Until the split lands, **services** is the hub
+the `server`, `admin-api`, `lab-mcp`, `app` and `wireclient` crates build on. The
+`upk` / `upk-objects` / `navmesh-extractor` / `occluder` crates (plus the
+`scene-editor` tool) are the Unreal-package, navmesh and line-of-sight toolchain;
+`supervisor`, `client-telemetry`, `content-editor` and `spec-lint` have no
+intra-workspace dependencies. `test-support` is a dev-dependency only. The table
+below catalogues the crates in `crates/`; the diagram also shows `src-tauri` and
+the `tools/` editors, which are workspace members outside `crates/`.
 
 | Crate | Package Name | Purpose |
 |---|---|---|

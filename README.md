@@ -88,84 +88,111 @@ docker run -d --name cimmeria \
 
 ## Crate Dependency Graph
 
-The 23 workspace crates and their **actual** inter-crate dependencies (an arrow
-**A → B** means *crate A depends on crate B*). Generated from each crate's
-`Cargo.toml`; GitHub renders the Mermaid below.
+The workspace crates and their **actual** inter-crate dependencies. An arrow
+**A → B** means *crate A depends on crate B*. The diagram is generated from
+`cargo metadata` and CI checks that it is current, so it always matches the
+`Cargo.toml` files; GitHub renders the Mermaid below.
+
+<!-- crate-graph:begin -->
 
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
 flowchart TD
-    %% entry points / binaries
-    server --> adminApi["admin-api"]
-    server --> services
-    server --> discord
-    server --> observability
-    server --> common
-    app["app (src-tauri, cimmeria-app)"] --> adminApi
-    app --> services
-    app --> common
-    wireclient --> services
-    wireclient --> mercury
-    wireclient --> common
-
-    %% service + domain layer
-    adminApi --> services
-    services --> game
-    services --> contentEngine["content-engine"]
-    services --> entity
-    services --> mercury
-    services --> discord
-    services --> observability
-    services --> commands
-    services --> common
-    game --> commands
-    game --> common
-    contentEngine --> entity
-    contentEngine --> common
-    entity --> common
-
-    %% foundation
-    mercury --> common
-    defs --> common
-    commands --> common
-
-    %% UPK / navmesh toolchain (independent of the server spine)
-    navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
-    navmeshExtractor --> upk
-    navmeshExtractor --> occluder
-    services --> occluder
-    sceneEditor["scene-editor (tool)"] --> upkObjects
-
-    %% test-only
-    services -. dev .-> testSupport["test-support (dev-only)"]
-    testSupport --> mercury
-    sceneEditor --> upk
-    upkObjects --> upk
-
-    %% standalone crates with no intra-workspace dependencies
-    subgraph standalone["Standalone (no intra-workspace deps)"]
-        supervisor
-        clientTelemetry["client-telemetry"]
-        launcher["launcher (sgw-launcher)"]
-        contentEditor["content-editor (tool)"]
-        specLint["spec-lint (tool)"]
+    subgraph apps["Binaries and apps"]
+        app["app"]
+        clientLaunch["client-launch"]
+        lab["lab"]
+        server["server"]
+        supervisor["supervisor"]
+        sgwLauncher["sgw-launcher"]
     end
+    subgraph api["Admin and lab APIs"]
+        adminApi["admin-api"]
+        labMcp["lab-mcp"]
+    end
+    subgraph facade["Services facade"]
+        services["services"]
+    end
+    subgraph domain["Domain and engine"]
+        commands["commands"]
+        contentEngine["content-engine"]
+        defs["defs"]
+        entity["entity"]
+        game["game"]
+        occluder["occluder"]
+    end
+    subgraph foundation["Protocol and foundation"]
+        common["common"]
+        discord["discord"]
+        mercury["mercury"]
+        observability["observability"]
+    end
+    subgraph tools["Tools, test clients and asset toolchain"]
+        clientTelemetry["client-telemetry"]
+        contentEditor["content-editor"]
+        navmeshExtractor["navmesh-extractor"]
+        sceneEditor["scene-editor"]
+        specLint["spec-lint"]
+        upk["upk"]
+        upkObjects["upk-objects"]
+        wireclient["wireclient"]
+    end
+    subgraph test["Test-only"]
+        testSupport["test-support (dev-only)"]
+    end
+    adminApi --> services
+    app --> adminApi
+    commands --> common
+    contentEngine --> entity
+    defs --> common
+    entity --> common
+    game --> commands
+    lab --> clientLaunch
+    labMcp --> adminApi
+    mercury --> common
+    navmeshExtractor --> occluder
+    navmeshExtractor --> upkObjects
+    sceneEditor --> upkObjects
+    server --> labMcp
+    services --> contentEngine
+    services --> discord
+    services --> game
+    services --> mercury
+    services --> observability
+    services --> occluder
+    testSupport --> mercury
+    upkObjects --> upk
+    wireclient --> mercury
+    sgwLauncher --> clientLaunch
 ```
 
-Every node is a workspace crate; the graph is a DAG rooted at **common** (the
-shared types / config / error layer everything builds on). **mercury** (reliable
-UDP + AES-256), **commands** (command + permission model), **entity** (live game
-objects) and **defs** (entity-definition XML parser, not yet linked by any other
-crate) each sit directly on `common`; **game** and **content-engine** add
-gameplay rules and the data-driven content pipeline; **services** ties Auth / Base / Cell together and is
-what the **server** binary, the **admin-api** REST layer, the **app** desktop GUI
-(repo-root `src-tauri/`, package `cimmeria-app`) and the headless **wireclient**
-test client all build on. **discord** (notifications) and **observability** (OTLP
-metrics) are cross-cutting libraries pulled in by `services` + `server`. The
-**upk** / **upk-objects** / **navmesh-extractor** crates plus the `scene-editor`
-tool form an independent Unreal-package / navmesh toolchain. **supervisor**,
-**client-telemetry**, **launcher** (`sgw-launcher`), and the `content-editor` /
-`spec-lint` tools carry no intra-workspace dependencies.
+*Generated by `tools/crate-graph/crate_graph.py` from `cargo metadata`: 28 workspace crates, 40 direct dependency edges (24 shown; an edge already implied by a longer path is omitted). Dev-dependencies are not drawn. Regenerate with `python tools/crate-graph/crate_graph.py`; CI fails when this block is stale.*
+
+<!-- crate-graph:end -->
+
+Every node is a workspace crate and the graph is a DAG rooted at **common** (the
+shared types, config and error layer).
+
+- **mercury** (reliable UDP, AES-256), **commands** (command and permission
+  model), **entity** (live game objects), **game** and **content-engine** (the
+  data-driven content pipeline) are the domain layer.
+- **services** ties Auth, Base and Cell together. The **server** binary, the
+  **admin-api** REST layer, **lab-mcp**, the **app** desktop GUI (repo-root
+  `src-tauri/`, package `cimmeria-app`) and the headless **wireclient** test
+  client build on it.
+- **services is being split** into about 19 crates along its real seams: a wire
+  contract, a cell track (world → combat → content → interactions →
+  methods/console → cell) and a base track (session → methods → world entry →
+  base) that compile in parallel, with `cimmeria-services` left as a thin facade.
+  The plan, the target graph and each wave's status are in
+  [docs/architecture/services-crate-split.md](docs/architecture/services-crate-split.md).
+  New crates appear in the graph above as their wave lands.
+- **discord** (notifications) and **observability** (OTLP metrics) are
+  cross-cutting libraries.
+- The **upk** / **upk-objects** / **navmesh-extractor** / **occluder** crates
+  plus the `scene-editor` tool form the Unreal-package, navmesh and
+  line-of-sight toolchain.
+- **test-support** is a dev-only crate shared by tests.
 
 ## Project Structure
 

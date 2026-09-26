@@ -1,0 +1,60 @@
+# Layer groups for the generated crate dependency graph (tools/crate-graph/crate_graph.py).
+# Order = top to bottom in the diagram. A crate not listed by name falls back to the
+# first matching prefix, then to "Other". The planned cimmeria-services split crates
+# (docs/architecture/services-crate-split.md) are listed ahead of time so each lands
+# in the right layer as its wave merges.
+
+[[group]]
+id = "apps"
+title = "Binaries and apps"
+crates = ["cimmeria-server", "cimmeria-app", "cimmeria-lab", "cimmeria-supervisor", "sgw-launcher", "cimmeria-client-launch"]
+
+[[group]]
+id = "api"
+title = "Admin and lab APIs"
+crates = ["cimmeria-admin-api", "cimmeria-lab-mcp"]
+
+[[group]]
+id = "facade"
+title = "Services facade"
+crates = ["cimmeria-services"]
+
+[[group]]
+id = "cell"
+title = "Cell (world simulation) track"
+crates = ["cimmeria-cell", "cimmeria-cell-console", "cimmeria-cell-methods", "cimmeria-cell-interactions",
+          "cimmeria-cell-content", "cimmeria-cell-combat", "cimmeria-cell-world", "cimmeria-cell-cover",
+          "cimmeria-cell-catalog"]
+prefixes = ["cimmeria-cell-"]
+
+[[group]]
+id = "base"
+title = "Base (session) track"
+crates = ["cimmeria-base", "cimmeria-base-world-entry", "cimmeria-base-methods", "cimmeria-base-session"]
+prefixes = ["cimmeria-base-"]
+
+[[group]]
+id = "wire"
+title = "Wire contract and edge services"
+crates = ["cimmeria-wire", "cimmeria-wire-log", "cimmeria-minigame", "cimmeria-auth", "cimmeria-resources"]
+
+[[group]]
+id = "domain"
+title = "Domain and engine"
+crates = ["cimmeria-content-engine", "cimmeria-game", "cimmeria-entity", "cimmeria-commands", "cimmeria-defs", "cimmeria-occluder"]
+
+[[group]]
+id = "foundation"
+title = "Protocol and foundation"
+crates = ["cimmeria-mercury", "cimmeria-discord", "cimmeria-observability", "cimmeria-common"]
+
+[[group]]
+id = "tools"
+title = "Tools, test clients and asset toolchain"
+crates = ["cimmeria-wireclient", "cimmeria-navmesh-extractor", "cimmeria-upk", "cimmeria-upk-objects",
+          "cimmeria-scene-editor", "cimmeria-content-editor", "cimmeria-spec-lint", "cimmeria-client-telemetry"]
+
+[[group]]
+id = "test"
+title = "Test-only"
+crates = ["cimmeria-test-support"]

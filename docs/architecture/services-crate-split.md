@@ -61,13 +61,98 @@ Two crates are deliberately smaller or larger than a 3–20k band:
 - **NPC AI is merged into combat.** Death→purge and threat→assist are synchronous, ordering-critical calls (§2D).
 - **The spawner is split.** Its DB loaders go to catalog; its SpaceManager-populating functions go to world.
 
-```text
-entity ─ wire ─┬─ catalog ─┬─ cell-world ─ cell-combat ─ cell-content ─ cell-interactions ─┬─ cell-methods ─┬─ cell ─┐
-               │  (cover ──┘ from entity)                                                  └─ cell-console ─┘        │
-               │           └─ base-session ─ base-methods ─ base-world-entry ─ base ─────────────────────────────────┼─ services ─ admin-api ─ lab-mcp ─ server
-               ├─ wire-log ─────────────────────────────┘ (into base-world-entry)                                    │
-               └─ minigame ─────────────────────────────┘                                                            │
-common ─ auth, resources (L1, parallel with wire) ──────────────────────────────────────────────────────────────────┘
+*Figure 1: planned crate graph after the split. An arrow A → B means A depends on B; edges implied by a longer path are omitted. Thick-bordered crates are the cell track's critical path. The live graph of what has actually landed is generated into the [README](../../README.md#crate-dependency-graph).*
+
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+flowchart TD
+    subgraph apps["Binaries and APIs (unchanged)"]
+        server["server"]
+        labMcp["lab-mcp"]
+        adminApi["admin-api"]
+    end
+    subgraph facade["Facade"]
+        services["services (facade: orchestrator, database, re-exports)"]
+    end
+    subgraph cellTrack["Cell track"]
+        cell["cell (service loop, dispatch)"]
+        cellMethods["cell-methods"]
+        cellConsole["cell-console (GM console, chat, gm)"]
+        cellInteractions["cell-interactions (interactions, gate travel, space transfer, trade state)"]
+        cellContent["cell-content (content executor, missions, ring dispatch)"]
+        cellCombat["cell-combat (combat, abilities, effects pulsing, NPC AI behaviour)"]
+        cellWorld["cell-world (SpaceManager, NPC state, effect scripts, ContentEvents)"]
+        cellCover["cell-cover"]
+        cellCatalog["cell-catalog (spawner loaders, ability trees)"]
+    end
+    subgraph baseTrack["Base track"]
+        base["base (service, connect loop, login, dispatch)"]
+        baseWorldEntry["base-world-entry"]
+        baseMethods["base-methods"]
+        baseSession["base-session (session state, outbox, deferred AoI)"]
+    end
+    subgraph edgeSvc["Wire contract and edge services"]
+        wire["wire (Base↔Cell messages, mercury glue, method indices)"]
+        wireLog["wire-log"]
+        minigame["minigame"]
+        auth["auth"]
+        resources["resources (overrides, chardefs)"]
+    end
+    subgraph lower["Existing lower crates"]
+        contentEngine["content-engine"]
+        game["game"]
+        entity["entity"]
+        occluder["occluder"]
+        commands["commands"]
+        mercury["mercury"]
+        discord["discord"]
+        observability["observability"]
+        common["common"]
+    end
+    testSupport["test-support (dev-only)"]
+
+    server --> labMcp --> adminApi --> services
+    services --> cell
+    services --> base
+    cell --> cellMethods
+    cell --> cellConsole
+    cellMethods --> cellInteractions
+    cellConsole --> cellInteractions
+    cellInteractions --> cellContent --> cellCombat --> cellWorld
+    cellWorld --> cellCatalog
+    cellWorld --> cellCover
+    cellWorld --> contentEngine
+    cellWorld --> occluder
+    cellWorld --> commands
+    base --> baseWorldEntry --> baseMethods --> baseSession
+    baseWorldEntry --> wireLog
+    baseWorldEntry --> minigame
+    baseWorldEntry --> auth
+    base --> resources
+    baseSession --> cellCatalog
+    baseSession --> resources
+    cellCatalog --> wire
+    wireLog --> wire
+    minigame --> wire
+    minigame --> discord
+    wire --> game
+    wire --> observability
+    wire --> mercury
+    game --> entity
+    contentEngine --> entity
+    resources --> entity
+    resources --> mercury
+    cellCover --> entity
+    auth --> discord
+    entity --> common
+    mercury --> common
+    discord --> common
+    observability --> common
+    commands --> common
+    testSupport -.-> mercury
+
+    classDef critical stroke-width:3px
+    class wire,cellCatalog,cellWorld,cellCombat,cellContent,cellInteractions,cellConsole,cell,services critical
 ```
 
 - **Critical path (new crates):** wire 6.0 → catalog 2.4 → world 12.3 → combat 13.4 → content 8.4 → interactions 3.4 → console 10.1 → cell 5.9 → services 0.8 = **62.7k lines (59% of today's 105.8k)**.

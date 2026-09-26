@@ -89,6 +89,10 @@ jobs:
       - name: layering guard (services crate split)
         run: python3 tools/layering/check.py
       - uses: ./.github/actions/rust-toolchain
+      # README.md and crates/README.md embed a crate graph generated from
+      # `cargo metadata`; fail when a Cargo.toml change left it stale.
+      - name: crate graph is current
+        run: python3 tools/crate-graph/crate_graph.py --check
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
       - name: hydrate external/recast

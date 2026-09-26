@@ -215,10 +215,12 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 36 documents.
+How the Cimmeria emulator itself is structured. 38 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [build-system.md](architecture/build-system.md) | **2026-09 decision record.** How the workspace is built: the pinned toolchain, dev profiles, the build lane, Dev Drive, artifact sweeping, cargo-hakari, test-binary and dependency hygiene, with the measured baseline and results | In progress |
+| [services-crate-split.md](architecture/services-crate-split.md) | Splitting `cimmeria-services` into an acyclic set of crates: target crate map and planned dependency graph, every cycle edge and its fix, test-support strategy, migration waves and per-wave status | In progress |
 | [service-architecture.md](architecture/service-architecture.md) | Auth, Base, Cell service topology, inter-service protocol, developer mode, console commands | Complete |
 | [server-infrastructure-proposals.md](architecture/server-infrastructure-proposals.md) | The five unbuilt server-only systems, with a concrete design for each: session resume across a network blip, per-player rate limiting, world-state persistence, a global event scheduler, and economy instrumentation. Sequenced by test-session pain, not cost | Proposed |
 | [server-systems.md](architecture/server-systems.md) | **Superseded pointer page.** Routing table showing where each of the original eight server-system sections went, plus the four stale claims most likely to be re-quoted from it | Superseded |

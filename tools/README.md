@@ -68,6 +68,8 @@ Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../C
 
 `layering/check.py` (Python 3.11+) is the layering guard for the `cimmeria-services` crate split: it builds the production module graph of `crates/services/src`, maps each module to its planned crate (`layering/crate-map.toml`) and fails on an edge the planned crate DAG forbids unless `layering/allowlist.txt` lists it, or on an allowlisted edge that no longer exists. Blocking in CI (the build job). See [layering/README.md](layering/README.md).
 
+`crate-graph/crate_graph.py` (Python 3.11+) generates the crate dependency graph in `README.md` and `crates/README.md` from `cargo metadata`; `--check` runs in CI and fails when a `Cargo.toml` change left the diagram stale. See [crate-graph/README.md](crate-graph/README.md).
+
 `spec-lint/` is a small Rust crate (`cargo run -p spec-lint`) used for spec-document linting.
 
 ## ServerEd (Qt Legacy)
