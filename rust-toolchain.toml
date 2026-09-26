@@ -1,0 +1,11 @@
+# One Rust version for local builds, agents and CI.
+#
+# Every rustc version produces its own copies of every compiled crate, so a floating
+# toolchain meant two full sets of artifacts on each machine (local stable plus the newer
+# stable CI ran for clippy) and clippy failures that only CI could see. Bump this on purpose:
+# change the version, run the pre-PR checklist, fix any new lints, and land it as its own PR.
+# CI reads the channel from this file (see .github/workflows/*.yml).
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
