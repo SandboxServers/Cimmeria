@@ -101,7 +101,7 @@ spawns, 38 DB missions), Lucia (892 tiles, 11 transporters), Omega_Site (5 beam 
 
 All 1,040 missions have `reward_xp = 0` and `reward_naq = 0`. But every mission has a
 level (1-50), `giveExperience()` is fully implemented, and reward fields are loaded from
-DB and paid out on completion. The placeholder XP table covers 20 levels (MAX_LEVEL = 20).
+DB and paid out on completion. The XP table covers 50 levels (MAX_LEVEL = 50): levels 1-20 are the placeholder Python values, levels 21-50 are PROJECT FINAL v2 values (ability-trees AT-07), not retail data.
 
 **What is needed:** Extend XP table to 50 levels. Define XP/Naquadah reward formulas
 based on mission level. SQL UPDATE to populate all 1,040 missions.
@@ -317,7 +317,7 @@ Server-side formulas are not in the client binary. Any values are guesswork.
 
 Current XP table covers 20 levels with placeholder values (irregular -- L12 requires
 less per-level than L11). Missions span L1-50, implying a 50-level game.
-`giveExperience()` works with multi-level-up. MAX_LEVEL = 20.
+`giveExperience()` works with multi-level-up. MAX_LEVEL = 50, one training point per level (PROJECT FINAL v2, AT-07).
 
 **What is missing:** XP table for levels 21-50, corrected L1-20 curve, XP-per-kill
 formulas, XP modifiers (group bonus, rest), level-50 progression.

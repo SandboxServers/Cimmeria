@@ -657,7 +657,7 @@ last_updated: 2026-09-25
 | Client notification | CW | -- | base/world_entry/methods/progression/ | 5 wire messages |
 | XP from mob kills | CW | -- | cell/abilities/death/side_effects.rs, loot_drop.rs:118 | 10×mob_level, Cell→Base pipeline |
 | XP curve | CW | -- | game/player.rs | LEVEL_XP[21] ported from Python Constants |
-| Level cap (20) | CW | -- | game/player.rs | MAX_LEVEL enforced |
+| Level cap (50) | CW | -- | game/player.rs | MAX_LEVEL = 50 and 1 training point per level (AT-07, D-AT02). Levels 21-50 of `LEVEL_XP` and the 1-point economy are PROJECT FINAL v2 values, not retail data |
 | DB persistence | CW | -- | sqlx | sgw_player.level + .exp |
 | Stat scaling on level-up | CW | -- | entity/stats/ | scale_for_level(), full heal on level-up |
 | Training points on level-up | CW | -- | game/player.rs | 2 TP/level, 38 by level 20 |

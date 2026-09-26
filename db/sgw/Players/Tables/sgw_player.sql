@@ -63,7 +63,7 @@ CREATE TABLE sgw_player (
     CONSTRAINT archetype_sanity CHECK (((archetype >= 0) AND (archetype <= 8))),
     CONSTRAINT bandolier_slot_sanity CHECK (((bandolier_slot >= 0) AND (bandolier_slot <= 3))),
     CONSTRAINT gender_sanity CHECK (((gender >= 1) AND (gender <= 3))),
-    CONSTRAINT level_sanity CHECK (((level >= 0) AND (level <= 20))),
+    CONSTRAINT level_sanity CHECK (((level >= 0) AND (level <= 50))),
     CONSTRAINT skin_color_sanity CHECK (((skin_color_id >= 0) AND (skin_color_id <= 15)))
 );
 
