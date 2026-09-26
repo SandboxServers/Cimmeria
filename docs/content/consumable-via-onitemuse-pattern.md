@@ -20,7 +20,7 @@ If you only need the recipe, jump to [The chain shape](#the-chain-shape).
 
 The 2009 Python server fired `item.use::<typeId>` as a pure event and let per-mission handlers decide whether to call `removeItemByDesign` ([`deprecated/python/cell/Inventory.py`](../../deprecated/python/cell/Inventory.py) around the `useItem` path). Mission scripts like Find Ambernol removed the vial; radio flows did not.
 
-A later fanmmorpg fork changed that to auto-consume one unit on successful ability launch. **Cimmeria deliberately keeps the pre-fork pattern** — see the file-level comment in [`crates/services/src/base/world_entry/methods/inventory/core/use_instance.rs`](../../crates/services/src/base/world_entry/methods/inventory/core/use_instance.rs).
+A later fanmmorpg fork changed that to auto-consume one unit on successful ability launch. **Cimmeria deliberately keeps the pre-fork pattern** — see the file-level comment in [`crates/base-methods/src/base/world_entry/methods/inventory/core/use_instance.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/core/use_instance.rs).
 
 This works because:
 
@@ -112,5 +112,5 @@ Every `item_use`-triggered chain in seed data as of issue #332. The content-engi
 - [docs/content/content-engine.md](content-engine.md) — runtime reference for triggers and actions.
 - [docs/content/equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) — sibling pattern for weapon grants (uses `item_equipped`, not `item_use`).
 - [`.github/instructions/content-chains.instructions.md`](../../.github/instructions/content-chains.instructions.md) — PR review checklist including inventory consumption.
-- [`crates/services/src/base/world_entry/methods/inventory/core/use_instance.rs`](../../crates/services/src/base/world_entry/methods/inventory/core/use_instance.rs) — base handler that fires `OnItemUse` without consuming.
+- [`crates/base-methods/src/base/world_entry/methods/inventory/core/use_instance.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/core/use_instance.rs) — base handler that fires `OnItemUse` without consuming.
 - [TESTING.md](../../TESTING.md) — the seed SQL linter tests are unit tests over the Content/Seed tree (no DB required).

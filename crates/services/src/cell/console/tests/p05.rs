@@ -8,7 +8,7 @@
 //! it must NOT send any optimistic "requested" feedback of its own — the
 //! base sends the real, post-commit outcome. The live-DB/wire-fanout
 //! coverage for the base-side `gm_feedback_to` split lives in
-//! `crates/services/src/base/world_entry/methods/progression/tests.rs`
+//! `crates/base-methods/src/base/world_entry/methods/progression/tests.rs`
 //! (same `legacy_p05_` filter).
 //!
 //! Filter prefix: `legacy_p05_`.

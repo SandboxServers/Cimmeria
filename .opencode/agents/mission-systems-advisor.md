@@ -30,7 +30,7 @@ Missions are the spine of player progression. You own:
 - Rust implementation:
   - Engine: [crates/content-engine/src/](crates/content-engine/src/) (loader, chain, conditions, triggers, actions)
   - Cell-side dispatcher: [crates/services/src/cell/content/](crates/services/src/cell/content/) (executor, event_dispatch)
-  - Base persistence: [crates/services/src/base/world_entry/methods/missions.rs](crates/services/src/base/world_entry/methods/missions.rs)
+  - Base persistence: [crates/base-methods/src/base/world_entry/methods/missions/mod.rs](crates/base-methods/src/base/world_entry/methods/missions/mod.rs)
   - Entity model: [crates/entity/src/missions.rs](crates/entity/src/missions.rs)
 - Cross-references:
   - For dialog wire formats: see `bigworld-engine-advisor` (it's a method dispatch).

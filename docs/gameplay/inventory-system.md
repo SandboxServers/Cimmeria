@@ -14,7 +14,7 @@ last_updated: 2026-09-25
 
 The inventory system manages item storage, equipping, movement, and currency for player entities. Items are organized into numbered bags (containers) with fixed slot counts. Each bag may represent general storage, equipment slots, crafting storage, or mission items. Equipped items contribute visual components to the player model and trigger equip/unequip callbacks.
 
-Inventory splits across the two services: cell-side operations live in [`cell/cell_methods/inventory/`](../../crates/services/src/cell/cell_methods/inventory/) (item ops plus the bandolier/active-slot machinery), and everything that touches the database — including the entire vendor stack — lives in [`base/world_entry/methods/inventory/`](../../crates/services/src/base/world_entry/methods/inventory/) and [`base/world_entry/methods/vendor/`](../../crates/services/src/base/world_entry/methods/vendor/). Item definitions come from `db/resources/Items/`.
+Inventory splits across the two services: cell-side operations live in [`cell/cell_methods/inventory/`](../../crates/services/src/cell/cell_methods/inventory/) (item ops plus the bandolier/active-slot machinery), and everything that touches the database — including the entire vendor stack — lives in [`base/world_entry/methods/inventory/`](../../crates/base-methods/src/base/world_entry/methods/inventory/) and [`base/world_entry/methods/vendor/`](../../crates/base-methods/src/base/world_entry/methods/vendor/). Item definitions come from `db/resources/Items/`.
 
 ## Implementation Status
 

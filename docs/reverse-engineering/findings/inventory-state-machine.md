@@ -92,7 +92,7 @@ When the player right-clicks an item to equip it and the target equipment slot i
 3. Moves new item to target slot
 4. Sends two `onUpdateItem` events — one for each moved item
 
-The swap logic lives in `crates/services/src/base/world_entry/methods/inventory/move_/mod.rs`. Issue #240 tracks a bug where right-click swap puts the swapped-out item into an inconsistent slot; the binary confirms both items should be resolved in a single transaction.
+The swap logic lives in `crates/base-methods/src/base/world_entry/methods/inventory/move_/mod.rs`. Issue #240 tracks a bug where right-click swap puts the swapped-out item into an inconsistent slot; the binary confirms both items should be resolved in a single transaction.
 
 ---
 

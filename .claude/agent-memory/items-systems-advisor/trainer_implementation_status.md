@@ -18,7 +18,7 @@ As of 2026-05-27, the ability trainer feature is largely implemented:
 **DONE (as of that date):**
 - `crates/services/src/cell/cell_methods/player/trainer_interaction.rs` — `try_open_trainer()` builds per-player ability list from `template_trainer_lists` + `trainer_abilities` + `archetype_ability_trees`, computes trainable flags, sends `onTrainerOpen`. 4 unit tests with byte-exact wire assertions.
 - `crates/services/src/cell/cell_methods/player/vendor.rs:491-658` — `handle_train_ability()` cell-side 6-step validation. Sends `CellToBaseMsg::TrainAbility`.
-- `crates/services/src/base/world_entry/methods/progression/mod.rs:400-530` — base-side atomic DB UPDATE with double-debit guard, TP debit, `BaseToCellMsg::AbilityGranted`.
+- `crates/base-methods/src/base/world_entry/methods/progression/mod.rs:400-530` — base-side atomic DB UPDATE with double-debit guard, TP debit, `BaseToCellMsg::AbilityGranted`.
 - `crates/services/src/cell/service/base_messages/mod.rs:363-381` — `AbilityGranted` mirrors onto entity, sends `onKnownAbilitiesUpdate` (method 101).
 
 **REMAINING (small, per that date):**

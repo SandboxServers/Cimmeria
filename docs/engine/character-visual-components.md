@@ -223,7 +223,7 @@ Names are from `resources.containers` (`db/resources/Items/Seed/containers.sql`)
 
 Containers 1–2 (`MAIN`, `MISSION`) and 15–20 (`CRAFTING`, `BUYBACK`, `BANK`, `AUCTION`, `TEAMBANK`, `COMMANDBANK`) are `is_equipped = false` and contribute no visuals.
 
-The Rust constants mirror this exactly: `CONTAINER_BANDOLIER = 3` and `EQUIPMENT_CONTAINERS = &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]` (`crates/services/src/base/world_entry/methods/player_load/core/mod.rs:30-31`). The visuals query (`crates/services/src/base/character/mod.rs:204-213`) takes `slot_id = 0` from every non-bandolier equipment container, plus `container_id = 3 AND slot_id = bandolier_slot` for the active weapon, and filters to `visual_component IS NOT NULL`.
+The Rust constants mirror this exactly: `CONTAINER_BANDOLIER = 3` and `EQUIPMENT_CONTAINERS = &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]` (`crates/base-methods/src/base/world_entry/methods/player_load/core/mod.rs:30-31`). The visuals query (`crates/services/src/base/character/mod.rs:204-213`) takes `slot_id = 0` from every non-bandolier equipment container, plus `container_id = 3 AND slot_id = bandolier_slot` for the active weapon, and filters to `visual_component IS NOT NULL`.
 
 ## Component Name Format
 

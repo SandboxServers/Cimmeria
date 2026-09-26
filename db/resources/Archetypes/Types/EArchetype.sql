@@ -11,7 +11,7 @@
 --   6. crates/wire/src/mercury/world_data/stats.rs::archetype_ability_tree      - DB-down fallback (only if non-empty fallback is desired)
 --
 -- The live-DB test `archetype_count_matches_earchetype_enum_cardinality`
--- in `crates/services/src/base/world_entry/methods/player_load/meta.rs`
+-- in `crates/base-methods/src/base/world_entry/methods/player_load/meta.rs`
 -- asserts this enum's cardinality matches ARCHETYPE_COUNT — bumping the
 -- enum without bumping the const fails CI. The checklist below is NOT
 -- mechanically validated; treat the test failure as a prompt to walk

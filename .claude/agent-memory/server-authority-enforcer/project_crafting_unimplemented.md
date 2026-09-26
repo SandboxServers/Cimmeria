@@ -11,7 +11,7 @@ CAT-F (Crafting / R&D / Training) audit complete on 2026-05-31. Trust posture:
 - Cell side: archetype-tree membership + level + prereqs + already-known guard,
   at `crates/services/src/cell/cell_methods/player/vendor.rs:491`.
 - Base side: atomic `UPDATE … WHERE training_points > 0 AND NOT (abilities @>
-  ARRAY[$1])` at `crates/services/src/base/world_entry/methods/progression/mod.rs:456`.
+  ARRAY[$1])` at `crates/base-methods/src/base/world_entry/methods/progression/mod.rs:456`.
 - **BUT** missing trainer-NPC interaction state + distance check — Python
   required `self.trainerEntity != None` AND `distanceTo(trainerEntity) <=
   MAX_INTERACT_DISTANCE`; Rust dropped both. Filed as CAT-F-01 Medium. Fix:

@@ -23,7 +23,7 @@ The first instinct is to grant the weapon directly to bandolier (`container_id =
 - **Bandolier ammo desync.** The freshly-granted weapon ended up in the bandolier with stale or zero ammo metadata, because the grant path didn't run the ammo-replenishment branch that the manual-equip path runs. Players couldn't fire.
 - **Fire-animation broken.** The active-weapon-slot pointer stayed on the previous slot (often empty), so the client's animation rig treated the player as unarmed even though the weapon icon showed in the bandolier.
 
-Both bugs disappear if the weapon is granted to the **backpack** (`container_id = 1`) and the player drops it into the bandolier themselves — that path is the one the inventory move handler covers in detail (`crates/services/src/base/world_entry/methods/inventory/move_/mod.rs`), and it's exhaustively guarded by the inventory-move regression suite.
+Both bugs disappear if the weapon is granted to the **backpack** (`container_id = 1`) and the player drops it into the bandolier themselves — that path is the one the inventory move handler covers in detail (`crates/base-methods/src/base/world_entry/methods/inventory/move_/mod.rs`), and it's exhaustively guarded by the inventory-move regression suite.
 
 So: don't force-equip. Direct the player to do it.
 

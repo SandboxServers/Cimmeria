@@ -323,7 +323,7 @@ VALUES
 -- as an ordinary relog does. So 1360 survives the hop for the same reason
 -- any other active mission survives a relog; see the live-DB round-trip
 -- test `frosts_letter_accept_round_trips_cell_to_base_to_db` in
--- crates/services/src/base/world_entry/methods/missions/tests.rs.
+-- crates/services/src/mission_round_trip_tests.rs.
 --
 -- Chain ID range: 1121-1130.
 
