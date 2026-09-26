@@ -66,18 +66,11 @@ else {
 fsutil devdrv trust "${DriveLetter}:" | Out-Host
 fsutil devdrv query "${DriveLetter}:" | Out-Host
 
-# Trust alone isn't enough: performance mode is a machine-wide Defender setting that can be
-# off (PerformanceModeStatus 0 = Enabled, 1 = Disabled). With Tamper Protection on,
-# Set-MpPreference reports success but changes nothing, so read the value back.
-try {
-    if ((Get-MpPreference).PerformanceModeStatus -ne 0) { Set-MpPreference -PerformanceModeStatus Enabled }
-    if ((Get-MpPreference).PerformanceModeStatus -eq 0) { Write-Host 'Defender performance mode: on.' }
-    else {
-        Write-Warning ('Defender performance mode is OFF, so Defender still scans this drive synchronously. ' +
-            'Turn it on in Windows Security > Virus & threat protection > Manage settings > Dev Drive protection.')
-    }
-}
-catch { Write-Warning "Could not read Defender settings ($_). Check Dev Drive protection in Windows Security." }
+# Confirm the scanning mode per volume in Windows Security. Get-MpPreference's
+# PerformanceModeStatus is not a per-volume reading: on 2026-09-26 it said 1 ("Disabled")
+# while Windows Security listed this drive as scanned asynchronously.
+Write-Host ("Check Windows Security > Virus & threat protection > Manage settings > Dev Drive protection: " +
+    "${DriveLetter}: should say 'Asynchronous scanning is on'.")
 
 # Re-attach at every logon (a VHDX does not auto-mount).
 $taskName = 'Cimmeria Dev Drive attach'

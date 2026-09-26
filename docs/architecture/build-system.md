@@ -64,7 +64,7 @@ Bumping the version is a deliberate PR: change the file, run the pre-PR checklis
 
 `tools/dev-drive/New-CimmeriaDevDrive.ps1` creates a dynamically sized VHDX formatted as a Windows Dev Drive. It must run from an elevated PowerShell. It also sets `CIMMERIA_TARGET_ROOT` and `CIMMERIA_SCCACHE_DIR` for the user, and the lane then places target dirs and the sccache cache on that drive.
 
-- **Defender:** a trusted Dev Drive is scanned asynchronously, but only while Defender's performance mode is on. That is a machine-wide setting, and it can be off. `(Get-MpPreference).PerformanceModeStatus` must read `0` (Enabled). With Tamper Protection on, `Set-MpPreference` silently leaves it unchanged; turn it on in Windows Security under **Virus & threat protection → Manage settings → Dev Drive protection**. The setup script checks this and warns.
+- **Defender:** Defender scans a trusted Dev Drive asynchronously (performance mode). To confirm it, open Windows Security → **Virus & threat protection → Manage settings → Dev Drive protection**, which lists each volume. The Dev Drive should say "Asynchronous scanning is on". Don't rely on `(Get-MpPreference).PerformanceModeStatus`: it is not a per-volume reading, and on this machine it read `1` ("Disabled") while that page reported the drive as scanned asynchronously.
 - **Block cloning:** ReFS copies files within the volume by cloning blocks. `Copy-WarmTarget.ps1`, called by `mk-worktree.sh`, seeds a new worktree's target dir from a warm one in seconds, at almost no disk cost.
 - **What seeding reuses:** only third-party crates. Cargo keys workspace crates by their source path, so those rebuild once per worktree.
 
