@@ -147,6 +147,7 @@ pub(super) async fn handle_base_message(
             state_field,
             access_level,
             known_stargates,
+            tree_progress,
             character_name,
             body_set,
         } => {
@@ -182,6 +183,9 @@ pub(super) async fn handle_base_message(
                 if body_set.is_some() {
                     entity.body_set = body_set;
                 }
+                // Same reason as `known_stargates`: stamped here, not
+                // threaded into the argument-capped handler below.
+                entity.tree_progress = tree_progress;
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently

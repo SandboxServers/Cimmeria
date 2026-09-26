@@ -58,6 +58,32 @@ pub(crate) fn make_space_manager_with_player(entity_id: u32) -> SpaceManager {
     mgr
 }
 
+/// Register minimal `AbilityDef`s so the trainability predicate's
+/// "ability exists" gate passes for these ids.
+pub(crate) fn seed_ability_defs(mgr: &mut SpaceManager, ability_ids: &[i32]) {
+    for &ability_id in ability_ids {
+        mgr.ability_defs.insert(
+            ability_id,
+            cimmeria_entity::abilities::AbilityDef {
+                ability_id,
+                name: format!("TestAbility{ability_id}"),
+                cooldown: 0.0,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 0,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+    }
+}
+
 // ── ConnectedClientState fixture ──────────────────────────────────────
 //
 // `ConnectedClientState` is built up across the Phase 3 handshake

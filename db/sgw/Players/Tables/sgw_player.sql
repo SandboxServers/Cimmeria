@@ -52,6 +52,13 @@ CREATE TABLE sgw_player (
     -- bits (BSF_Dead, BSF_InCombat, BSF_MovementLock) are masked out
     -- on write so a relog is always a clean combat slate. (#412)
     state_field integer DEFAULT 0 NOT NULL,
+    -- Ability-tree provenance. trained_abilities lists trainer purchases
+    -- only (a subset of abilities); tree_points_spent is the archetype-wide
+    -- spend that opens later tree nodes. Existing characters start at
+    -- '{}' / 0: nothing is revoked or backfilled.
+    trained_abilities integer[] DEFAULT '{}'::integer[] NOT NULL,
+    tree_points_spent integer DEFAULT 0 NOT NULL,
+    CONSTRAINT tree_points_spent_sanity CHECK ((tree_points_spent >= 0)),
     CONSTRAINT alignment_sanity CHECK (((alignment >= 0) AND (alignment <= 5))),
     CONSTRAINT archetype_sanity CHECK (((archetype >= 0) AND (archetype <= 8))),
     CONSTRAINT bandolier_slot_sanity CHECK (((bandolier_slot >= 0) AND (bandolier_slot <= 3))),

@@ -153,6 +153,10 @@ pub enum BaseToCellMsg {
         /// check at `deprecated/python/cell/SGWPlayer.py:2060-2064`).
         /// Authoritative server-side value — never client-supplied.
         known_stargates: Vec<i32>,
+        /// `sgw_player.trained_abilities` + `tree_points_spent`, stamped
+        /// onto `CellEntity::tree_progress`. Ride the same SELECT as
+        /// `known_stargates`.
+        tree_progress: cimmeria_entity::cell_entity::TreeProgress,
         /// The selected character's display name, sourced from the base
         /// `ConnectedClientState.player_name`. Cached on
         /// `CellEntity::character_name` so cell-side seams (the `.`-console

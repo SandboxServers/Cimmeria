@@ -1,0 +1,4 @@
+//! Tests for the ability-tree catalog and `evaluate_train`.
+
+mod catalog_live_db;
+mod predicate;

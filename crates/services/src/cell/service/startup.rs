@@ -295,9 +295,9 @@ impl CellService {
                     tracing::warn!("Failed to load items_event_sets abilities: {e}");
                 }
             }
-            match spawner::load_archetype_ability_trees(pool).await {
+            match crate::ability_tree::AbilityTreeCatalog::load(pool).await {
                 Ok(map) => {
-                    space_mgr.archetype_ability_trees = map;
+                    space_mgr.ability_tree_catalog = map;
                 }
                 Err(e) => {
                     tracing::warn!("Failed to load archetype ability trees: {e}");
