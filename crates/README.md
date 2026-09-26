@@ -6,86 +6,147 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The 23 workspace members and their **actual** inter-crate dependencies, generated
-from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*). The 23
-comes from the `members` list in the root [Cargo.toml](../Cargo.toml): the 19
-crates under `crates/`, plus `src-tauri` and the three tool crates
-(`tools/ContentEditor`, `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/`
-target is a deliberate workspace `exclude` — it needs nightly Rust.
+The workspace members and their **actual** inter-crate dependencies (an arrow
+**A → B** means *A depends on B*). The graph is generated from `cargo metadata` by
+`tools/crate-graph/crate_graph.py`, and CI fails if it is stale. The members come
+from the `members` list in the root [Cargo.toml](../Cargo.toml): the crates under
+`crates/`, plus `src-tauri` and the tool crates (`tools/ContentEditor`,
+`tools/SceneEditor`, `tools/spec-lint`). The `fuzz/` target is a deliberate
+workspace `exclude`, because it needs nightly Rust.
+
+<!-- crate-graph:begin -->
 
 ```mermaid
-%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 flowchart TD
-    %% entry points / binaries
-    server --> adminApi["admin-api"]
-    server --> services
-    server --> discord
-    server --> observability
-    server --> common
-    app["app (src-tauri, cimmeria-app)"] --> adminApi
-    app --> services
-    app --> common
-    wireclient --> services
-    wireclient --> mercury
-    wireclient --> common
-
-    %% service + domain layer
-    adminApi --> services
-    adminApi --> contentEngine["content-engine"]
-    adminApi --> entity
-    adminApi --> commands
-    adminApi --> common
-    services --> game
-    services --> contentEngine
-    services --> entity
-    services --> mercury
-    services --> discord
-    services --> observability
-    services --> commands
-    services --> common
-    game --> entity
-    game --> commands
-    game --> common
-    contentEngine --> entity
-    contentEngine --> common
-    entity --> defs
-    entity --> mercury
-    entity --> commands
-    entity --> common
-
-    %% foundation
-    mercury --> common
-    defs --> common
-    commands --> common
-
-    %% UPK / navmesh toolchain (independent of the server spine)
-    navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
-    navmeshExtractor --> upk
-    navmeshExtractor --> occluder
-    services --> occluder
-    sceneEditor["scene-editor (tool)"] --> upkObjects
-    sceneEditor --> upk
-    upkObjects --> upk
-
-    %% standalone crates with no intra-workspace dependencies
-    subgraph standalone["Standalone (no intra-workspace deps)"]
-        supervisor
-        clientTelemetry["client-telemetry"]
-        launcher["launcher (sgw-launcher)"]
-        contentEditor["content-editor (tool)"]
-        specLint["spec-lint (tool)"]
+    subgraph grp_apps["Binaries and apps"]
+        app["app"]
+        clientLaunch["client-launch"]
+        lab["lab"]
+        server["server"]
+        supervisor["supervisor"]
+        sgwLauncher["sgw-launcher"]
     end
+    subgraph grp_api["Admin and lab APIs"]
+        adminApi["admin-api"]
+        labMcp["lab-mcp"]
+    end
+    subgraph grp_facade["Services facade"]
+        services["services"]
+    end
+    subgraph grp_cell["Cell (world simulation) track"]
+        cell["cell"]
+        cellCatalog["cell-catalog"]
+        cellCombat["cell-combat"]
+        cellConsole["cell-console"]
+        cellContent["cell-content"]
+        cellCover["cell-cover"]
+        cellInteractions["cell-interactions"]
+        cellMethods["cell-methods"]
+        cellWorld["cell-world"]
+    end
+    subgraph grp_base["Base (session) track"]
+        base["base"]
+        baseMethods["base-methods"]
+        baseSession["base-session"]
+        baseWorldEntry["base-world-entry"]
+    end
+    subgraph grp_wire["Wire contract and edge services"]
+        auth["auth"]
+        minigame["minigame"]
+        resources["resources"]
+        wire["wire"]
+        wireLog["wire-log"]
+    end
+    subgraph grp_domain["Domain and engine"]
+        commands["commands"]
+        contentEngine["content-engine"]
+        defs["defs"]
+        entity["entity"]
+        game["game"]
+        occluder["occluder"]
+    end
+    subgraph grp_foundation["Protocol and foundation"]
+        common["common"]
+        discord["discord"]
+        mercury["mercury"]
+        observability["observability"]
+    end
+    subgraph grp_tools["Tools, test clients and asset toolchain"]
+        clientTelemetry["client-telemetry"]
+        contentEditor["content-editor"]
+        navmeshExtractor["navmesh-extractor"]
+        sceneEditor["scene-editor"]
+        specLint["spec-lint"]
+        upk["upk"]
+        upkObjects["upk-objects"]
+        wireclient["wireclient"]
+    end
+    subgraph grp_test["Test-only"]
+        testSupport["test-support (dev-only)"]
+    end
+    adminApi --> services
+    app --> adminApi
+    base --> baseWorldEntry
+    baseMethods --> baseSession
+    baseSession --> cellCatalog
+    baseSession --> resources
+    baseWorldEntry --> auth
+    baseWorldEntry --> baseMethods
+    baseWorldEntry --> minigame
+    baseWorldEntry --> wireLog
+    cell --> cellConsole
+    cell --> cellMethods
+    cellCatalog --> wire
+    cellCombat --> cellWorld
+    cellConsole --> cellInteractions
+    cellContent --> cellCombat
+    cellInteractions --> cellContent
+    cellMethods --> cellInteractions
+    cellWorld --> cellCatalog
+    cellWorld --> cellCover
+    contentEngine --> entity
+    game --> commands
+    lab --> clientLaunch
+    labMcp --> adminApi
+    mercury --> common
+    minigame --> wire
+    navmeshExtractor --> upkObjects
+    resources --> wire
+    sceneEditor --> upkObjects
+    server --> labMcp
+    services --> base
+    services --> cell
+    upkObjects --> upk
+    wireLog --> wire
+    sgwLauncher --> clientLaunch
+    grp_cell --> grp_domain
+    grp_base --> grp_foundation
+    grp_wire --> grp_domain
+    grp_domain --> grp_foundation
+    grp_tools --> grp_domain
+    grp_test --> grp_foundation
 ```
 
-The DAG is rooted at **common**. **services** is the hub — it pulls in `game`,
-`content-engine`, `entity`, `mercury`, `discord`, and `observability`, and is
-what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. The
-`upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
-are an independent Unreal-package / navmesh toolchain; `supervisor`,
-`client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
-intra-workspace deps. All 19 crates in `crates/` are catalogued below; the
-diagram additionally shows the `src-tauri` app and the `tools/` editors, which
-are workspace members that live outside `crates/`.
+*Generated by `tools/crate-graph/crate_graph.py` from `cargo metadata`: 46 workspace crates, 164 direct dependency edges (35 drawn crate to crate, after omitting edges already implied by a longer path; edges into the shared "Domain and engine" and "Protocol and foundation" layers are drawn as 6 layer-to-layer arrows). Dev-dependencies are not drawn. Regenerate with `python tools/crate-graph/crate_graph.py`; `--full` draws every edge. CI fails when this block is stale.*
+
+<!-- crate-graph:end -->
+
+`cimmeria-services` has been split into an acyclic set of crates (a wire
+contract, a cell track and a base track, with `cimmeria-services` as a thin
+facade); see [docs/architecture/services-crate-split.md](../docs/architecture/services-crate-split.md)
+for the plan, the target graph and each wave's status. Both tracks are
+complete; the final wave (F) moves the cross-track tests out of the facade.
+
+The DAG is rooted at **common**. **services**, the facade over `cell` and
+`base`, is the hub the `server`, `admin-api`, `lab-mcp`, `app` and `wireclient`
+crates build on. The
+`upk` / `upk-objects` / `navmesh-extractor` / `occluder` crates (plus the
+`scene-editor` tool) are the Unreal-package, navmesh and line-of-sight toolchain;
+`supervisor`, `client-telemetry`, `content-editor` and `spec-lint` have no
+intra-workspace dependencies. `test-support` is a dev-dependency only. The table
+below catalogues the crates in `crates/`; the diagram also shows `src-tauri` and
+the `tools/` editors, which are workspace members outside `crates/`.
 
 | Crate | Package Name | Purpose |
 |---|---|---|
@@ -96,7 +157,27 @@ are workspace members that live outside `crates/`.
 | `commands` | `cimmeria-commands` | Server command dispatch framework |
 | `game` | `cimmeria-game` | Game mechanics: combat, abilities, stats, effects |
 | `content-engine` | `cimmeria-content-engine` | Data-driven content runtime: missions, dialogs, sequences |
-| `services` | `cimmeria-services` | Auth, Base, and Cell service implementations — the bulk of server logic |
+| `services` | `cimmeria-services` | The facade over the service crates, the end state of the [crate split](../docs/architecture/services-crate-split.md): the `Orchestrator` that starts auth, base and cell in order and stops them in reverse, the database pool (`database`), and re-exports of the split crates at their old paths (`cimmeria_services::{auth, audit, base, cell, mercury, firehose, wire_log, minigame, …}`), which the server, the admin API, the lab endpoint and the wire client import; those crates depend only on this one. It holds no service code, and Cargo's crate graph keeps the split acyclic (the layering guard that kept the monolith splittable is retired). Its only tests besides the orchestrator's and the database pool's are the round trips that drive both the cell and the base (`gate_round_trip_tests`, `mission_round_trip_tests`), which no crate below it can reach. |
+| `resources` | `cimmeria-resources` | Cooked-data resource cache, split out of `cimmeria-services` (wave W1b of the [crate split](../docs/architecture/services-crate-split.md)). `ResourceCache` loads the client's `data/cache/*.pak` archives at startup and applies Cimmeria's in-memory mission, item, dialog and Kismet-sequence overrides, bumping each patched category's metadata so the `versionInfoRequest` handshake re-fetches exactly the patched entries ([docs/architecture/mission-pak-overrides.md](../docs/architecture/mission-pak-overrides.md)). Also holds the inventory bag tables and the CharDef table. No production workspace dependencies; `cimmeria-services` re-exports its modules at their old paths (`base::resources`, `base::chardef`, `base::*_overrides`). |
+| `auth` | `cimmeria-auth` | Authentication service, split out of `cimmeria-services` (which re-exports it as `cimmeria_services::{auth, audit}`): the SOAP/HTTP login handshake (Phase 1 credential check, Phase 2 shard selection), TLS termination with certificate hot-reload, argon2id credential storage with on-login legacy-hash migration, login audit events (`audit::{LoginEvent, LoginEventBuffer}`) and `credential_redaction::CredentialPrefix` for log-safe SIDs and tickets. Depends only on `common` and `discord`. Its tracing targets are `cimmeria_auth::…` (`auth.log`). See [docs/protocol/login-handshake.md](../docs/protocol/login-handshake.md). |
+| `wire` | `cimmeria-wire` | The Base↔Cell wire contract and the server's Mercury message layer, split out of `services` (waves W1c and W3a): the Base↔Cell message enums (`cell::messages`: `BaseToCellMsg`, `CellToBaseMsg`, the AoI payloads and the lab query contract); the services-side Mercury glue (`mercury`: the encrypted packet builders for the login, character, world-entry and AoI phases, `append_entity_method`, the `method_idx` table, `write_wstring`/`read_wstring`), not to be confused with the `mercury` transport crate below it; the per-packet log firehoses and their samplers (`firehose`); the server→client (`cell::client_methods`) and client→server (`cell::cell_methods`) method-index tables with the `CM_*` re-exports and their log names (`cell::dispatch::{constants, names}`); the `stateField` bits (`state_field`), `SpawnRecord` (`cell::spawn_record`); and the payload serializers both services send (kismet `onSequence`, chat, mail, contact list, training points, `to_hex`, the player journal). Modules keep their `cimmeria-services` paths under a `cell::`/`base::` skeleton, and `services` re-exports each at its old path. Depends on `common`, `entity`, `game` and `mercury`, and on no service crate; every split crate may depend on it. Its tracing targets are `cimmeria_wire::…` (`protocol.log` keeps `cimmeria_wire::mercury`). |
+| `wire-log` | `cimmeria-wire-log` | The decoded wire-message stream, split out of `services` (wave W3b of the [crate split](../docs/architecture/services-crate-split.md)): one `wire.in` event per inbound bundle message and one `wire.out` event per outbound entity-method call, each with its method name and, when a schema decoder is registered (hand-written in `decoders/outbound.rs`, generated into `decoders/generated.rs` by `tools/wire_decoder_codegen.py`), a structured `decoded` field; and the per-session packet tap (`wire_log::tap`) that `lab-mcp` drains. Depends only on `wire` (for the cell-method names). `services` re-exports it as `cimmeria_services::wire_log`. Its events use the hand-named `wire.in` / `wire.out` targets (`protocol.log`). |
+| `cell-cover` | `cimmeria-cell-cover` | Server-driven NPC cover, split out of `cimmeria-services` (wave W2a of the [crate split](../docs/architecture/services-crate-split.md)): the `resources.cover_*` loader, the per-world spatial index, slot reservation, scoring, the per-tick hold / release / seek decision, peek points, and the player-side proximity detection behind the cover content triggers. Its only workspace dependencies are `common`, `entity` and `observability`. `cimmeria-services` re-exports it at `cell::cover`, beside `cell::cover::stance` (the spawn hold and Cover Stance), which stays there until the world crate is split out. Tests reach the fixture world id through the `test-support` feature. See [docs/architecture/cover-system.md](../docs/architecture/cover-system.md). |
+| `cell-catalog` | `cimmeria-cell-catalog` | The cell's DB-backed startup catalogs, split out of `services` (wave W2b of the [crate split](../docs/architecture/services-crate-split.md)): the spawner's loaders (`cell::spawner`: spawn records and entity templates, missions and objectives, dialog sets, stargates, regions, respawners, loot, item and weapon defs, ability and effect defs, eye heights, and the per-world `resources.worlds` rows with their `NavmeshMode`), the archetype `ability_tree` catalog and trainability predicate, and the shared `cell::respawner_fallback` search. Depends on `wire`, `common` and `entity`; `SpawnRecord` itself is `wire::cell::spawn_record`. Populating spaces from the records stays with `SpaceManager` (`space_manager::spawn_npcs_from_records`). `services` re-exports each module at its old path. Its tracing targets are `cimmeria_cell_catalog::…` (`spawner.log`). |
+| `minigame` | `cimmeria-minigame` | The in-process SmartFoxServer 1.x host the Flash minigame SWFs connect to, split out of `services` (wave W3c of the [crate split](../docs/architecture/services-crate-split.md)): the SFS XML codec (`minigame::protocol`, with the `sfs_vars!` macro), the one-time ticket registry and its TTL sweep (`minigame::session::SessionRegistry`), the TCP listener, handshake and per-connection lifecycle (`minigame::server`), the one seam every outcome leaves through (`CellToBaseMsg::MinigameResult` plus the Discord result event), and the games (`minigame::games`: Livewire, and a placeholder for the rest). Depends on `wire` and `discord`, and on no other split crate. `services` re-exports it at `minigame`; the base starts it (`orchestrator`) and registers tickets through it (`base::world_entry::cell_dispatch::minigame`). Its tracing targets are `cimmeria_minigame::minigame::…` (no file of its own: `server.log` and SigNoz). See [docs/gameplay/minigame-system.md](../docs/gameplay/minigame-system.md). |
+| `base-session` | `cimmeria-base-session` | The BaseApp's per-connection session layer, split out of `services` (wave B1 of the [crate split](../docs/architecture/services-crate-split.md)) and the bottom of the base track: the session types (`base::ConnectedClientState`, `PendingClientReadyInfo`, the admin-API `OnlinePlayer` snapshot, `BaseError`); the witness send helpers and reliable-send bookkeeping (`base::helpers`); the pre-`onClientReady` and first-login cinematic deferred-AoI buffer (`base::deferred_aoi*`, the hold record in `base::cinematic_aoi_hold`); the durable base→cell event outbox (`base::outbox`); tick sync and retransmits (`base::tick_sync`); cooked-data delivery (`base::cooked_data`); the `(account_id, player_id)` log correlator (`base::session_identity`); GM feedback; and the session-scoped handlers with no world-entry dependency (contact list, crafting, GM spawn, `.`-console authoring, the chat-channel registration payloads). Also two world-entry leaves the methods crate needs below it: `base::world_entry::space_registry` and `base::world_entry_appearance::builders`. Depends on `wire`, `cell-catalog` (the GM-spawn template mapper) and `resources`, and on no other service crate. `services` re-exports each module and type at its old `base::` path; tests reach `test_default_connected_client_state` through the `test-support` feature. Its tracing targets are `cimmeria_base_session::…` (`base.log` keeps `base::helpers` and `base::tick_sync`, `character.log` keeps `base::cooked_data`, `world_entry.log` keeps `base::world_entry*`). |
+| `cell-world` | `cimmeria-cell-world` | The cell's world state, split out of `services` (wave C1 of the [crate split](../docs/architecture/services-crate-split.md)): `SpaceManager` and its spaces (`cell::space_manager`: entities, AoI and witnesses, client movement validation and its telemetry, line of sight and the occluder, NPC spawning and `npc_population`, the per-entity pending-work queues), the NPC AI's state primitives (`cell::service::npc_ai::{transition, movement_stop, leash::policy, detectors}`: the single `ai_state` writer, movement stop, the leash policy and the NA02 detectors), the ring-transporter state machine, regions, wire helpers and departing-player hook (`cell::ring_transport`), the synchronous effect-script layer (`cell::effects`), the cover crate re-exported with the spawn hold and Cover Stance (`cell::cover`), NPC aggression, the faction reaction table and the health sample (`cell::combat`), the GM gate (`cell::dispatch::gm_gate`), `cell::arrival`, the playtest friction watch and `CellError`. It also defines `ContentEvents`, the trait combat raises content events through so it never calls up into the content executor. Depends on `wire`, `cell-catalog`, `cell-cover`, `content-engine`, `occluder` and `commands`, and on no higher service crate. `services` re-exports each module at its old path. The halves above it are in the crates above: `combat`, `effects` (`pulsing`) and `service::npc_ai` in `cell-combat`, `ring_transport` (`dispatch`, `runtime::{entry, tick}`) in `cell-content`, and `dispatch` in `services`. The `test-support` feature exposes `test_fixtures` (`make_space_manager*`, the occluder and arrival-mesh helpers, the `NoContentEvents` / `RecordingContentEvents` fakes) and the cross-crate test hooks. Its tracing targets are `cimmeria_cell_world::…` (`aoi.log`, `combat.log`, `spawner.log` and `dispatch.log` keep their modules). |
+| `base-methods` | `cimmeria-base-methods` | The BaseApp's DB-backed feature handlers, `base::world_entry::methods`, split out of `services` (wave B2 of the [crate split](../docs/architecture/services-crate-split.md)): player load and the world-entry and stargate queries (`player_load`, `world_entry_db`); inventory grant, move, remove, use, ammo and the equip appearance refresh (`inventory`); the vendor store, purchase, sell, buyback, repair and recharge (`vendor`); the atomic two-player trade swap (`trade`); mail forwarding, `sgw_mission` persistence, and cash, XP, level-up and ability-training progression (`mail`, `missions`, `progression`). Depends on `base-session`, `wire` and `resources` (the bag tables), and on no other service crate. `base-world-entry` re-exports `methods` at its old `base::world_entry::methods` path, where the cell dispatch, world entry and gate travel call it, and `services` re-exports that; tests reach `progression::persist_purchase` through the `test-support` feature. Its tracing targets are `cimmeria_base_methods::…` (`world_entry.log`); the hand-named `progression`, `abilities` and `trade.atomic_swap` targets are unchanged. |
+| `base-world-entry` | `cimmeria-base-world-entry` | The BaseApp's world entry, split out of `services` (wave B3 of the [crate split](../docs/architecture/services-crate-split.md)): `playCharacter` teardown, `ENABLE_ENTITIES`, `mapLoaded`, gate travel (with the arrival write and the address grant), reanchor and teleport (`base::world_entry`); the `CellToBaseMsg` dispatch that turns everything the cell sends into client packets, with the AoI emitters, the player ghost and the deferred-AoI flush (`base::world_entry::cell_dispatch`); `onClientReady`, the post-cinematic appearance recovery, `cancelMovie` and the release half of the first-login cinematic AoI hold (`base::world_entry_appearance`); and the character list, visuals and delete (`base::character`). It re-exports the `base-methods` feature handlers at `base::world_entry::methods`. Depends on `base-methods`, `base-session`, `wire`, `wire-log`, `minigame` and `auth`, and on no cell crate: it reaches the cell only through the `wire` messages. `base` calls it from the connect loop, the character creator and `BaseService` (`services` re-exported `base::{world_entry, character}` for them until wave B4). The gate round trips that also drive the cell's dial handler stay in `services`, which now names the crate only in tests, and reach `world_entry::{handle_gate_travel, persist_arrival}` through the `test-support` feature. Its tracing targets are `cimmeria_base_world_entry::…` (`world_entry.log` keeps `base::world_entry*`, `character.log` keeps `base::character`); the hand-named `aoi.*` targets are unchanged. |
+| `cell-combat` | `cimmeria-cell-combat` | The cell's combat, split out of `services` (wave C2 of the [crate split](../docs/architecture/services-crate-split.md)): ability resolution (`cell::abilities`: `useAbility`, the fire line-of-sight gate, damage application, cone AoE, the ordered death burst, loot, and the kill-credit wrapper), the QR and damage pipeline, threat and player combat state, the auto-cycle, dead-state flags and the holster timings (`cell::combat`), the async effect pulsing (`cell::effects::pulsing`, beside a re-export of the world crate's effect scripts), the NPC AI's behaviour (`cell::service::npc_ai`: the tick and retry sweep, fighting, chasing, the cover step, assist, leashing, patrol, wander, follow, investigate, surrender), and the bandolier, reload and item-sequence cell methods (`cell::cell_methods::{inventory::bandolier, player::world::{reload, item_sequence}}`). Combat and the NPC AI share one crate because death purges threat and threat recruits assisters synchronously. Kill credit, the pulse tick and the AI's flank step raise content events through the world crate's `ContentEvents` (`&dyn ContentEvents`); the content layer passes `EngineEvents`. Depends on `cell-world`, `cell-catalog`, `wire` and `discord`, and on no higher service crate. `services` re-exports each module at its old path (`cell::service::npc_ai` is a shim beside the detector and surrender tests that drive the service loop). The `test-support` feature exposes the cross-crate test hooks (`npc_ai_tick_for_test`, `resolve_death_for_test`, ...) and `test_fixtures::npc_detectors`. Its tracing targets are `cimmeria_cell_combat::…` (`combat.log` keeps `combat` and `abilities`, `aoi.log` keeps `service`). |
+| `base` | `cimmeria-base` | The BaseApp service, split out of `services` (wave B4 of the [crate split](../docs/architecture/services-crate-split.md)) and the top of the base track: `BaseService` (the Mercury UDP listener's lifecycle and the admin API's online-player snapshot); the receive loop with the encrypted-bundle scanner and the Account and cell-method arms (`base::connect_loop`); the Phase 3 login handshake and log-off (`base::login`); the SGWPlayer base-method dispatch: chat, AFK and DND, log-off and perf stats (`base::dispatch`); and `createCharacter` (`base::character_create`). Depends on `base-world-entry`, `base-session`, `wire`, `wire-log`, `minigame`, `auth` and `resources`, and on no cell crate: it reaches the cell only through the `wire` messages. It owns the `chaos-testing` feature (`BaseService::set_transport_override`, which puts a `LossyTransport` in place of the socket); `services` forwards its own `chaos-testing` feature here, which is how `wireclient`'s lossy-network test turns it on. `services` re-exports `base::BaseService` at its old path. Its tracing targets are `cimmeria_base::base::…` (`base.log` keeps the service, the connect loop and login, `dispatch.log` the dispatch, `character.log` the character creator); the encrypted-bundle scanner and the cell-method arms stay in the `cimmeria-network` index. |
+| `cell-content` | `cimmeria-cell-content` | The cell's content layer, split out of `services` (wave C3 of the [crate split](../docs/architecture/services-crate-split.md)): the content-chain bridge (`cell::content`: the DB chain loader, the `fire_*` event dispatchers and their context populators, the action executor with its deferred-action drain, and `EngineEvents`, the chain engine as the world crate's `ContentEvents`), mission accept, abandon, advance, complete and resend with the `MissionUpdate` the base persists (`cell::missions`), the ring transporter's effect dispatcher and public entry points (`cell::ring_transport`: interact, select destination, region trigger, remote player loaded and the per-tick deadline scan, beside a re-export of the world crate's ring state machine), and `send_dialog_display`, the one choke point every dialog display goes through (`cell::interactions::dialog`). The ring dispatcher fires content chains and the content executor starts ring trips, so they share this crate. Depends on `cell-combat`, `cell-world`, `cell-catalog`, `wire`, `content-engine` and `discord`, and on no higher service crate. `services` re-exports `cell::{content, missions, ring_transport}` at their old paths, and `cell-interactions`' `cell::interactions` imports `dialog` beside the interaction handlers. The content tests that drive a cell method, the gate dial or the relog hydration stay in `services` (`cell::content_tests`) and reach `load_single_chain_for_test`, `execute_actions` and `populate_mission_context` through the `test-support` feature. Its tracing targets are `cimmeria_cell_content::…` (`content.log`, `missions.log`, `spawner.log` keeps `ring_transport`, `interactions.log` keeps `interactions`). |
+| `cell-interactions` | `cimmeria-cell-interactions` | The cell's player interactions, split out of `services` (wave C4 of the [crate split](../docs/architecture/services-crate-split.md)): the `interact` and `initialResponse` dispatch with the range gate, loot, trainers, vendors and the DHD (`cell::interactions`, beside a re-export of the content crate's dialog display); the stargate dial, the gate sequences, the crossing hold and the per-tick dial and crossing drains (`cell::gate_travel`); the GM console's cross-space transfer (`cell::space_transfer`); the respawn fork the Defeat Window and the GM `gmRespawn` share, with the region registration and client-cache resync it queues after the reanchor (`cell::respawn`); the player-to-player trade session state and its outbound wire, which the departure paths cancel (`cell::trade`); and the mail requests the cell forwards to the base (`cell::mail`). It sits one layer below the cell-method handlers and the GM console, which both call it. Depends on `cell-content`, `cell-combat`, `cell-world`, `cell-catalog`, `wire`, `content-engine` and `discord`, and on no higher service crate. `services` re-exports each module at its old path (`space_transfer`, `respawn` and `trade` crate-privately, as before). The gate fan-out byte test stays in `services` and reaches `gate_travel::send_gate_sequence` through the `test-support` feature. Its tracing targets are `cimmeria_cell_interactions::…` (`interactions.log` keeps `interactions` and `mail`, `spawner.log` keeps `gate_travel`, `aoi.log` keeps `respawn::resync`). |
+| `cell-console` | `cimmeria-cell-console` | The cell's GM surfaces, split out of `services` (wave C5b of the [crate split](../docs/architecture/services-crate-split.md)): the GM `.`-console (`cell::console`: the command registry, the parser and the dispatcher with its audit log, and the command families, among them the #523 authoring commands (`savespawn`, `path_*`, ...) that emit seed SQL for a human to commit and the `.bug` playtest bookmark); the chat distribution, whose `CHAN_SAY` arm routes a GM's `.`-lines to the console (`cell::console::chat`); and the native `gm*` cell methods, SGWGmPlayer index 109+, with the single-recipient GM feedback line (`cell::console::gm`). It sits beside `cell-methods`, one layer above `cell-interactions`, whose gate travel, space transfer and respawn fork it calls. Depends on `cell-interactions`, `cell-content`, `cell-combat`, `cell-world`, `wire`, `content-engine` and `discord`, and on no higher service crate. `services` re-exports it at `cell::console`, and its chat at `cell::chat`. The NPC movement tick's `.speed` tests stay in `services` and reach `console::exec` through the `test-support` feature. Its tracing targets are `cimmeria_cell_console::…` (`interactions.log` keeps `console::chat`). |
+| `cell-methods` | `cimmeria-cell-methods` | The client-callable cell methods, split out of `services` (wave C5a of the [crate split](../docs/architecture/services-crate-split.md)): one dispatcher per BigWorld interface that decodes an exposed CellMethod call and hands it to the system that owns it (`cell::cell_methods::{being, ability_manager, combatant, inventory, missionary, contact_list, organization, mail, minigame, black_market, gate_travel}`), and the SGWPlayer's own methods under `cell::cell_methods::player`: `useAbility` and the Defeat Window respawn (`combat`), `interact`, dialogs and the dialog-choice gate (`interaction`), the trade handlers and the base handoff (`trade`), vendors and trainers (`vendor`), the auto-cycle, loot, region triggers, ring destinations and system options (`world`), crafting and social. The native GM cell methods (index 109 and up) are not here: they are `cell::console::gm` in `cell-console`, beside this crate. Depends on `cell-interactions`, `cell-content`, `cell-combat`, `cell-world`, `cell-catalog`, `wire` and `content-engine`, and on no higher service crate. `services` re-exports `cell::cell_methods` at its old path; the cell dispatch router calls it. The GM half of the `mission_abandoned` tests drives the console, so it is `cell-console`'s (`cell::console::gm::mission_abandoned_tests`). Its tracing targets are `cimmeria_cell_methods::…`; no file layer names them, so they keep `server.log` from INFO and SigNoz from DEBUG. |
+| `cell` | `cimmeria-cell` | The CellApp service, split out of `services` (wave C6 of the [crate split](../docs/architecture/services-crate-split.md)) and the top of the cell track: `CellService` (`start()` loads the startup caches and spawns the cell loop; `stop()` signals and joins it), the cell loop (`cell::service::message_loop`: the BaseApp's messages and the per-frame ticks: AoI, NPC movement, grounding and respawn, regen, reload and holster promotion, cover detection, the auto-cycle and the NPC AI's cadence), the per-message handlers (`cell::service::base_messages`: entity lifecycle, movement validation, the login-time player state and relog mission hydration, ability grants, inventory and bandolier events, GM spawns, the lab console and query), and the cell-method router (`cell::dispatch`), which sends a client's flattened method index to the per-interface dispatchers in `cell-methods` or the native GM tail in `cell-console`, behind world's GM gate. Depends on `cell-methods` and `cell-console`, the cell crates below them, `wire` and `content-engine`, and on no base crate: it reaches the base only through the `wire` messages. `services` re-exports `cell::{dispatch, CellService}` at their old paths. Its tracing targets are `cimmeria_cell::cell::…` (`aoi.log` keeps the service, `dispatch.log` the router), exported to SigNoz by a `cimmeria_cell::cell=debug` row, never a bare `cimmeria_cell`, which would prefix-match every `cimmeria_cell_*` crate. |
+| `test-support` | `cimmeria-test-support` | **Dev-dependency only.** Generic test helpers: the live-DB gate (`require_db_or_skip!`, which skips without `DATABASE_URL` and fails when it is set but unreachable), `LogCapture` for negative-log guards, the `TestTransport` re-export, and `source_scan` for workspace-wide source guards. Never depends on a service crate (that would link two copies of it into a test binary); domain fixtures stay with their types. Every crate that dev-depends on it must be listed in `tools/test-live-db.{sh,ps1}`. |
+| `workspace-hack` | `cimmeria-workspace-hack` | **Generated by `cargo hakari`** ([.config/hakari.toml](../.config/hakari.toml)); don't edit it by hand. Every gated crate depends on it so all of them request one unified feature set for shared third-party dependencies, which lets `-p` builds reuse the workspace's dependency artifacts. Regenerate after a dependency change with `cargo hakari generate && cargo hakari manage-deps --yes`; CI fails when it is stale. Hidden from the crate graph. See [build-system.md](../docs/architecture/build-system.md) §6. |
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |
 | `server` | `cimmeria-server` | **Binary entry point.** `cargo run -p cimmeria-server` |
@@ -105,11 +186,11 @@ are workspace members that live outside `crates/`.
 | `client-telemetry` | `cimmeria-client-telemetry` | **Windows-only cdylib** (`i686-pc-windows-msvc`) injected into `SGW.exe` for client-side observability. Subscribes to CME EventSignals, installs function hooks, and tees client logs to cimmeria-server's `/api/telemetry/upload-chunk`. Built and tested by its own [client-telemetry-build CI workflow](../.github/workflows/client-telemetry-build.yml). See [docs/reverse-engineering/findings/client-instrumentation-hookpoints.md](../docs/reverse-engineering/findings/client-instrumentation-hookpoints.md) for the hook anchor table. |
 | `upk` | `cimmeria-upk` | UPK (Unreal Package) file parser, plus the append-only package patcher (`patcher/`, CLI `upk_patch`) that clones placed actors between cooked map chunks |
 | `upk-objects` | `cimmeria-upk-objects` | UE3 object deserializers: `StaticMesh` (LODs + kDOP collision), `Terrain` (heightmap + hole flags), `Model` / `Polys` (BSP world geometry), `Texture2D`, bulk data, and the cross-package export index |
-| `occluder` | `cimmeria-occluder` | Collision-geometry occluder for server-side line of sight (NA27, [#784](https://github.com/SandboxServers/Cimmeria/issues/784)). It holds the `.occ` format (a tiled column grid of solid Y spans with sub-cell rectangles, plus an exact terrain heightfield, zlib per layer), the builder that rasterises triangles into it, and the eye-to-eye segment test. It is shared by `navmesh-extractor`'s `occluder_extract` so the writer and reader cannot drift. Every client world ships a paged `data/spaces/<world>.occ` (`paged`: 64 m pages, unpacked only near players), and `cimmeria-services` loads it beside the `.nav` as the NPC line-of-sight source. See [the NA27 worknote](../docs/analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md). |
+| `occluder` | `cimmeria-occluder` | Collision-geometry occluder for server-side line of sight (NA27, [#784](https://github.com/SandboxServers/Cimmeria/issues/784)). It holds the `.occ` format (a tiled column grid of solid Y spans with sub-cell rectangles, plus an exact terrain heightfield, zlib per layer), the builder that rasterises triangles into it, and the eye-to-eye segment test. It is shared by `navmesh-extractor`'s `occluder_extract` so the writer and reader cannot drift. Every client world ships a paged `data/spaces/<world>.occ` (`paged`: 64 m pages, unpacked only near players), and `cimmeria-cell-world`'s `SpaceManager` loads it beside the `.nav` as the NPC line-of-sight source. See [the NA27 worknote](../docs/analysis/npc-ai-restoration/worknotes/na27-occluder-phase1.md). |
 | `navmesh-extractor` | `cimmeria-navmesh-extractor` | Extracts UE3 `.umap` chunk collision (StaticMesh, Terrain, BSP) to `.obj` for the C++ NavBuilder Recast pipeline, with the `extract_map` CLI (coverage report, floor probe), the `nav_inspect` connectivity gate (probe reachability plus `--gaps`, the boundary-edge gap finder and bottleneck chain search) and `obj_slab`, which measures the source chunk OBJs at a gap's coordinates to classify it. Also ships `archetype_census`, which reports what the prefab-archetype set actually contains per mesh, `occluder_extract`, which builds and measures `cimmeria-occluder` files from the same collision triangles (module `occluder`: an in-memory chunk walk, an exact segment tracer and the NA16-style accuracy sweep), and `cover_extract`, which turns the chunks' `SGWSpecCoverNode` / `CoverNodeArray` markers into the world-scoped `resources.cover_*` seeds ([docs/engine/cover-extraction.md](../docs/engine/cover-extraction.md)). Owns the XRC `.nav` round-trip parser/emitter — the canonical Rust-side ground truth for the wire format `crates/entity/src/navigation/` consumes at runtime. See [README](navmesh-extractor/README.md); the measured results live in [docs/engine/castle-extraction-measurements.md](../docs/engine/castle-extraction-measurements.md) and [docs/engine/castle-navmesh-connectivity.md](../docs/engine/castle-navmesh-connectivity.md). |
 | `wireclient` | `cimmeria-wireclient` | **Headless test client.** Drives the SOAP auth leg and the Mercury phase-3 handshake, and loads JSONL session traces with a diff policy. As of NA37 (2026-09-25), `session.rs`'s `GameSession` binds a real `tokio::net::UdpSocket` and drives it through `cimmeria_mercury::test_harness::LoopbackPeer` (the Tier 2 loopback harness's Channel driver, reused against a real BaseApp) for auth → world entry → movement — enough for a real two-client AoI visibility end-to-end test, including a network-chaos variant (loss/jitter/latency/targeted drop) behind the `chaos-testing` feature. `bundle.rs` adds a structural (not semantic) server→client bundle decoder. There is still no full replay engine or Castle Cellblock script driver — see the phase table in [docs/architecture/wireclient.md](../docs/architecture/wireclient.md) before treating any later phase as shipped. Pairs with `tools/pcap_to_session.py` (JSONL exporter built atop `tools/pcap_dissect.py`). |
 | `discord` | `cimmeria-discord` | Discord notification sink. Owns the `EventKind` catalogue and per-event `EventToggles`, hot-reloadable TOML config (`config::ConfigWatcher` over [config/discord.toml.example](../config/discord.toml.example)), channel routing (`router::channel_for`), embed formatting + budget trimming (`embed::format_event`), and a rate-limited async sender (`sender::` — HTTP, mock, and token-bucket). Also exposes `DiscordLayer`, a `tracing` layer that lifts warn/error records into notifications. Typed `emit_*` helpers are the intended call surface. See [docs/architecture/discord-notifications.md](../docs/architecture/discord-notifications.md). |
-| `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry SDK's metrics API. Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
+| `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry metrics API (the `opentelemetry` API crate only; the SDK and OTLP exporter are wired up in `cimmeria-server`). Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
 | `lab-mcp` | `cimmeria-lab-mcp` | In-server MCP endpoint (streamable HTTP via `rmcp`) for the live research lab (#687, #688). Fixed tool set — drive/inspect: `server_console_list`, `server_console_exec`, `server_sessions`, `server_log_tail`, `server_content_reload`, `server_db_query`; live state (#688): `server_entity_get`, `server_entity_query`, `server_witnesses`; per-session decoded packet taps (#688): `server_packet_tap_start`, `server_packet_tap_read`, `server_packet_tap_stop` — so an agent can drive/inspect a running server from Claude Code. Live-state + witness queries answer between ticks via `BaseToCellMsg::LabQuery` (read-only, capped); packet taps hang off the `wire_log` decode seams into a bounded per-session ring. Runs on its **own** `TcpListener` — never the admin router (#439) — fail-closed on `CIMMERIA_LAB_MCP_BIND` + `CIMMERIA_LAB_MCP_TOKEN` (>=32-byte token), gated by a single shared bearer token (constant-time compare), one `lab.tool_call` audit event per call. See [docs/architecture/live-research-lab.md](../docs/architecture/live-research-lab.md). |
 | `lab` | `cimmeria-lab` | **Windows-only supervisor + stdio MCP server** for the Live Research Lab (phases 1–2). Proxies the `client_*` probe tools to the injected client bridge (`cimmeria-client-telemetry` built `--features lab-bridge`) over a token-gated framed-JSON-RPC loopback channel, and owns the SGW.exe process lifecycle: `lab_client_start`/`_stop`/`_restart`/`_status`, `lab_login` (Lua autologin), `lab_screenshot`, `lab_crash_report`, a heartbeat watchdog, and a crash-recovery journal + quarantine. `lab_timeline` (phase 6) merges the local client event ring (heartbeat today; the full `client_events_read` ring is gated on #686) with server packet-tap rows fetched from `cimmeria-lab-mcp` over HTTP, projected onto one clock via a packet-tap round-trip offset estimate. Excluded from the workspace CI jobs (like `sgw-launcher`); not in `default-members`. See [docs/architecture/live-research-lab.md](../docs/architecture/live-research-lab.md) (design) and [docs/guides/live-research-lab.md](../docs/guides/live-research-lab.md) (rulebook + operating manual). |
 
@@ -125,20 +206,21 @@ cargo run -p cimmeria-server
 # Build release binary:
 cargo build -p cimmeria-server --release
 
-# Run tests for one crate:
-cargo test -p cimmeria-services
+# Run tests for one crate (the facade, cimmeria-services, holds only the
+# orchestrator's, the database pool's and the cross-track tests):
+cargo test -p cimmeria-cell
 
-# Full workspace check (high memory on WSL — skip the GUI apps and the
-# Windows-only client-telemetry cdylib):
+# Full workspace check, with the same exclusions as CI (the GUI apps, the
+# Windows-only client-telemetry cdylib and the lab supervisor):
 cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 ```
 
-See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
+See the root [CLAUDE.md](../CLAUDE.md) for the build rules and the build lane that agents and workers run cargo through.
 
 ## Testing
 
-The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the six excluded crates below contribute the rest). 224 are live-DB regression guards — all in `cimmeria-services` — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the six excluded crates below contribute the rest). 224 are live-DB regression guards — in the crates `tools/test-live-db.sh` lists — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
 # Unit + non-DB integration:
@@ -147,19 +229,31 @@ cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor 
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo test -p cimmeria-services --lib -- --test-threads=1
+  ../tools/test-live-db.sh
 ```
 
-`--test-threads=1` is required for the live-DB run — some guards share sentinel id ranges and would collide under parallel execution. See [../TESTING.md](../TESTING.md) for the full picker, gotchas, and review checklist, and [../docs/testing/inventory/README.md](../docs/testing/inventory/README.md) for the catalogue of every test in the workspace (one file per crate).
+The live-DB run must be serialised — some guards share sentinel id ranges and would collide under parallel execution. `tools/test-live-db.sh` runs every crate with live-DB tests under the serialised `ci-live-db` nextest profile; with plain `cargo test`, pass `-- --test-threads=1`. See [../TESTING.md](../TESTING.md) for the full picker, gotchas, and review checklist, and [../docs/testing/inventory/README.md](../docs/testing/inventory/README.md) for the catalogue of every test in the workspace (one file per crate).
 
 ## Key Source Files
 
 | Path | Purpose |
 |---|---|
-| `services/src/auth/` | Authentication service — login, character select (`mod.rs`, `service.rs`, `handlers.rs`) |
-| `services/src/base/` | BaseApp service — entity persistence, player state, character creation, world entry |
-| `services/src/cell/` | CellApp service — world simulation, movement, abilities, combat, missions, gate travel |
-| `services/src/mercury/` | Mercury transport glue — AoI, protocol dispatch, world data |
+| `auth/src/auth/` | Authentication service — login, character select (`mod.rs`, `service.rs`, `handlers.rs`) |
+| `base/src/base/` | BaseApp service — the UDP listener, connect loop, login, character creation and the base-method dispatch |
+| `cell/src/cell/` | CellApp service — `CellService`, the cell loop and ticks, the base-message handlers, the cell-method router |
+| `cell-methods/src/cell/cell_methods/` | The client-callable cell methods — one dispatcher per interface, the SGWPlayer handlers |
+| `services/src/` | The facade — the orchestrator, the database pool, re-exports of the split crates |
+| `cell-console/src/cell/console/` | The GM `.`-console, the chat interceptor and the native `gm*` cell methods |
+| `cell-interactions/src/cell/` | Player interactions — the interaction dispatch, gate travel, the GM space transfer, the respawn fork, trade state, mail forwarding |
+| `cell-combat/src/cell/` | Combat — abilities, damage, death, threat, effect pulsing, the NPC AI's behaviour |
+| `cell-content/src/cell/` | Content — the content-chain executor and dispatchers, missions, the ring-transport dispatcher and entry points, the dialog display |
+| `base-session/src/base/` | BaseApp session layer — connected-client state, send helpers, deferred AoI, outbox, tick sync, cooked data, contact list, crafting |
+| `base-methods/src/base/world_entry/methods/` | BaseApp feature handlers — player load, inventory, vendors, trade, mail, missions, progression |
+| `base-world-entry/src/base/` | BaseApp world entry — play-character, map load, gate travel, reanchor, teleport, the CellToBase dispatch and AoI emitters, `onClientReady`, the character list |
+| `cell-catalog/src/cell/spawner/` | The cell's DB loaders (spawn records, templates, missions, dialogs, regions, loot, abilities, worlds) |
+| `minigame/src/minigame/` | In-process SmartFoxServer host for the Flash minigames — ticket registry, TCP server, Livewire |
+| `cell-world/src/cell/space_manager/` | `SpaceManager` — spaces, entities, AoI, movement validation, line of sight, spawning |
+| `wire/src/mercury/` | Services-side Mercury glue — AoI, login/character/world-entry packet builders, world data |
 | `mercury/src/lib.rs` | Mercury packet framing, encryption, reliability |
 | `game/src/combat/` | Combat system |
 | `game/src/inventory/`, `missions/`, `commands/`, `social/`, `world/` | Per-system game logic |

@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-Multiple paths in `crates/services/src/base/world_entry/methods/` take `pg_advisory_xact_lock(player_id, ns)` to serialize themselves against concurrent mutations on the same player. The choice of `ns` matters because PG treats `(key1, key2)` advisory locks as independent — two paths with different `ns` values do NOT block each other at the advisory layer (only the row-level FOR UPDATE locks save you, and only on rows they both touch).
+Multiple paths in `crates/base-methods/src/base/world_entry/methods/` take `pg_advisory_xact_lock(player_id, ns)` to serialize themselves against concurrent mutations on the same player. The choice of `ns` matters because PG treats `(key1, key2)` advisory locks as independent — two paths with different `ns` values do NOT block each other at the advisory layer (only the row-level FOR UPDATE locks save you, and only on rows they both touch).
 
 As of PR #438:
 

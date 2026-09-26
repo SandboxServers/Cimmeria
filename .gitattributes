@@ -1,5 +1,5 @@
 # Force consistent line endings for generated lock files to prevent
-# cross-platform conflicts between WSL (LF) and Windows (CRLF).
+# cross-platform conflicts between Linux (LF) and Windows (CRLF) checkouts.
 Cargo.lock text eol=lf
 frontend/package-lock.json text eol=lf
 
@@ -11,3 +11,8 @@ docker/** text eol=lf
 # Paged collision-geometry occluders (NA27): compressed binary, never
 # line-ending converted or diffed.
 data/spaces/*.occ binary
+
+# Shell scripts run under bash (Git Bash locally, Linux in CI); a CR at the end of a
+# line breaks them, so they stay LF on every checkout.
+*.sh text eol=lf
+.github/actions/**/*.yml text eol=lf

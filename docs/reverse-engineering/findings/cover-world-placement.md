@@ -137,7 +137,7 @@ non-uniform scale. `DrawScale3D.z` is even more informative: across all 229
 height-tagged samples, `CoverHeight == 1` paired with `DrawScale3D.z ==
 1.067` and `CoverHeight == 2` paired with `DrawScale3D.z == 1.524`, with
 **zero exceptions**. Those two numbers are exactly Cimmeria's already-shipped
-`CoverHeight` enum constants (`crates/services/src/cell/cover/types.rs`:
+`CoverHeight` enum constants (`crates/cell-cover/src/cell/cover/types.rs`:
 Mid = 1.07 m, High = 1.52 m, themselves Ghidra-confirmed against
 `DAT_018f41d4/d0/cc/c8` per `cover-system.md`) — an independent
 cross-validation of that earlier finding from a completely different

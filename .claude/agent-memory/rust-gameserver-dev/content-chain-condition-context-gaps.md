@@ -6,7 +6,7 @@ visible from the seed SQL.
 
 ## `archetype` is NOT populated on dialog chains — `neq` fails OPEN
 
-`crates/services/src/cell/content/event_dispatch/dialog.rs` (`fire_dialog_open`
+`crates/cell-content/src/cell/content/event_dispatch/dialog.rs` (`fire_dialog_open`
 / `fire_dialog_choice`) sets `dialog_id`, `button_id` and `populate_mission_context`
 — and **nothing else**. No `archetype`.
 

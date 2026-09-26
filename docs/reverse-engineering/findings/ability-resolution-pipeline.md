@@ -93,11 +93,11 @@ the runtime offsets are memory layout after initialization.
 These two layouts describe the client binary's `AbilityType`; they are not a Rust memory layout that
 Cimmeria maps or reads by offset. Cimmeria has two separate ability-data paths:
 
-- `crates/services/src/base/resources/mod.rs` loads category 2 (`CookedDataAbilities.pak`) as
-  `elementId -> raw XML bytes`. `crates/services/src/base/cooked_data.rs` sends those bytes through the existing cooked-data
+- `crates/resources/src/base/resources/mod.rs` loads category 2 (`CookedDataAbilities.pak`) as
+  `elementId -> raw XML bytes`. `crates/base-session/src/base/cooked_data.rs` sends those bytes through the existing cooked-data
   resource-fragment protocol so the client can populate its own PAK/runtime structures.
 - `crates/entity/src/abilities/defs.rs` defines Cimmeria's named-field `AbilityDef`. The startup loader
-  `crates/services/src/cell/spawner/abilities.rs::load_ability_defs` selects named columns from
+  `crates/cell-catalog/src/cell/spawner/abilities.rs::load_ability_defs` selects named columns from
   `resources.abilities` and constructs `AbilityDef`; `SpaceManager::ability_defs` then supplies that
   value to server-side ability handlers. Effect target-collection data is loaded separately into the
   named-field `EffectDef` from `resources.effects`.

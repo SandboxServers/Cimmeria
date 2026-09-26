@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-File: `crates/services/src/cell/content/executor/mod.rs`, the big `match
+File: `crates/cell-content/src/cell/content/executor/mod.rs`, the big `match
 action { ... }` inside `execute_actions` (~line 138-570).
 
 The match is **not exhaustive by variant coverage** — it ends with:

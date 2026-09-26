@@ -87,7 +87,7 @@
 -- Fixed by moving the single "Take Missions" row onto the final screen
 -- 96825, in BOTH records: the cooked entry the client renders (row 2576
 -- of CASTLE_DIALOG_PATCHES in
--- crates/services/src/base/dialog_overrides/patches_castle.rs) and this
+-- crates/resources/src/base/dialog_overrides/patches_castle.rs) and this
 -- tree's dialog_screen_buttons.sql. The two are held in step by
 -- base/dialog_overrides/patch_seed_agreement_castle.rs and by the
 -- content-engine dialog_button_linter. The same packet closed the 5861
@@ -125,7 +125,7 @@
 --    `destroy_entity`/`disconnect_entity`. Dying in Castle does NOT scrub
 --    it: `resolve_respawn_target` returns a World 8 respawner, so respawn
 --    takes the same-world in-place branch
---    (cell_methods/player/combat/respawn.rs:152+) and never destroys the
+--    (cell/respawn/mod.rs:177+) and never destroys the
 --    entity. The paths that DO scrub (logout, cross-world hop) are all
 --    followed by a `player_loaded`, which chain 1242 re-arms from.
 

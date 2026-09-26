@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 thiserror = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 # Direct Win32 calls for the suspended-launch + inject pipeline
 # (CreateProcessW(SUSPENDED) -> VirtualAllocEx -> WriteProcessMemory ->

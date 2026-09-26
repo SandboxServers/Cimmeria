@@ -1,0 +1,52 @@
+# Settings for `cargo hakari`, which maintains crates/workspace-hack
+# (cimmeria-workspace-hack). See docs/architecture/build-system.md §6.
+#
+# Why: with the split, agents build single crates (`cargo check -p <crate>`) far more than
+# the whole workspace. Each crate asks for its own feature set of shared dependencies, so a
+# `-p` build after a workspace build recompiled up to 36 third-party crates with different
+# features (measured 2026-09-26). The workspace-hack crate makes every member request the
+# unified feature set, so every build reuses the same dependency artifacts.
+#
+# After adding or changing a dependency, run:
+#     cargo hakari generate && cargo hakari manage-deps --yes
+# CI fails when either would change a file.
+# See https://docs.rs/cargo-hakari/latest/cargo_hakari/config for every option.
+
+hakari-package = "cimmeria-workspace-hack"
+
+# Format version for hakari's output. Version 4 requires cargo-hakari 0.9.22 or above.
+dep-format-version = "4"
+
+# Matches the root Cargo.toml's workspace.resolver.
+resolver = "2"
+
+# Development builds run on Windows (MSVC); CI builds on Linux runners.
+platforms = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+]
+
+# The crates CI leaves out of the gated workspace (the GUI apps, the Windows-only
+# client-telemetry cdylib and the lab supervisor). Their dependencies' features must not
+# leak into the unified set, or every crate would pull in GUI-only features that the Linux
+# CI runners can't build.
+[traversal-excludes]
+workspace-members = [
+    "cimmeria-app",
+    "cimmeria-content-editor",
+    "cimmeria-scene-editor",
+    "sgw-launcher",
+    "cimmeria-client-telemetry",
+    "cimmeria-lab",
+]
+
+# Keep them out of the generated dependency lines too.
+[final-excludes]
+workspace-members = [
+    "cimmeria-app",
+    "cimmeria-content-editor",
+    "cimmeria-scene-editor",
+    "sgw-launcher",
+    "cimmeria-client-telemetry",
+    "cimmeria-lab",
+]

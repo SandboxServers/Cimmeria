@@ -31,7 +31,7 @@ with a login-restore chain (pattern of chains 1045/1046/1065).
 ## Route B — a real lootable container window
 
 `NpcInteractionType::Loot` is a first-class static interaction type:
-`crates/services/src/cell/interactions/dispatch/interact.rs:170-182` routes it to
+`crates/cell-interactions/src/cell/interactions/dispatch/interact.rs:170-182` routes it to
 `send_loot_display` → `onLootDisplay` (flat method 114), and
 `interactions/loot.rs:87` handles `lootItem(index)` with take-all race handling
 and auto-clears `INT_NormalLoot` when the list empties.

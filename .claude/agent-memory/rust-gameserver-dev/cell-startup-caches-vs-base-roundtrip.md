@@ -7,14 +7,14 @@ metadata:
 
 # Cell startup caches beat cell→base round-trips inside the content executor
 
-`crates/services/src/cell/service/startup.rs` loads roughly twenty DB caches
+`crates/cell/src/cell/service/startup.rs` loads roughly twenty DB caches
 straight onto `SpaceManager` (`dialog_set_maps`, `mission_defs`, `stargates`,
 `ability_defs`, `effect_defs`, `item_defs`, `loot_tables`, `respawners`,
 `ring_regions`, `archetype_ability_trees`, and since Harset H03
 `spawn_templates` — every `resources.entity_templates` row as a prototype
 `SpawnRecord`). The cell **does** have a DB pool at startup.
 
-**Why this matters:** `crates/services/src/cell/messages/base_to_cell.rs` used
+**Why this matters:** `crates/wire/src/cell/messages/base_to_cell.rs` used
 to assert "the cell has no template cache", which pushes you toward copying the
 GM `.spawn` pattern (`CellToBaseMsg::GmSpawnNpc` → base query →
 `BaseToCellMsg::GmSpawnNpcReady`). Inside a **content-executor action** that is

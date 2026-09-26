@@ -89,11 +89,11 @@ In the C++ reference server, there is a natural delay between steps 5-6 and the 
 - The CellApp then calls `mapLoaded()` after the entity is fully constructed
 - This inter-service round-trip provides enough time for the client to process CREATE_CELL_PLAYER
 
-In the Rust server, VIEWPORT + CELL + POSITION body bytes are prepended to the `mapLoaded` body and fragmented as one bundle (`crates/services/src/mercury/world_data/map_loaded.rs:34-36`), matching the C++ CellApp behaviour where these share a channel bundle. Historically that meant BeingAppearance could arrive before the client had finished processing CREATE_CELL_PLAYER, firing Path 1 and dropping the appearance silently.
+In the Rust server, VIEWPORT + CELL + POSITION body bytes are prepended to the `mapLoaded` body and fragmented as one bundle (`crates/wire/src/mercury/world_data/map_loaded.rs:34-36`), matching the C++ CellApp behaviour where these share a channel bundle. Historically that meant BeingAppearance could arrive before the client had finished processing CREATE_CELL_PLAYER, firing Path 1 and dropping the appearance silently.
 
 Two mitigations are now in place, so do not treat the above as a live bug:
 
-1. **Appearance pre-warm.** `build_create_player` appends `BeingAppearance` + `onEntityTint` immediately after CREATE_BASE_PLAYER and *before* `onClientMapLoad` (`crates/services/src/mercury/world_data/phases.rs:59-91`). The client's async asset load then runs in parallel with the terrain load, rather than starting only when the `mapLoaded` bundle lands.
+1. **Appearance pre-warm.** `build_create_player` appends `BeingAppearance` + `onEntityTint` immediately after CREATE_BASE_PLAYER and *before* `onClientMapLoad` (`crates/wire/src/mercury/world_data/phases.rs:59-91`). The client's async asset load then runs in parallel with the terrain load, rather than starting only when the `mapLoaded` bundle lands.
 2. **The enter-world step waits on the client.** The server sends CREATE_BASE_PLAYER + pre-warm + `onClientMapLoad`, then waits for the client's `mapLoaded` (cell method index 25, msg_id `0x99`) before sending viewport + cell player + forced position (`phases.rs:27-35`). `build_enter_world_body` re-emits `BeingAppearance` + `onEntityTint` ahead of `createCellPlayer` (`phases.rs:132-195`).
 
 A related delivery gap does remain open for *non-player* entities — see the AoI create/appearance investigation tracked in issue #582 — but it is downstream of this player-entry path.

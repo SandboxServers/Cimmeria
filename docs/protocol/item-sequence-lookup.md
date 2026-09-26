@@ -127,7 +127,7 @@ This is a Direction=NetIn (server → client) single-integer event. The client's
 
 ### No change to the lookup path is warranted
 
-The Cimmeria `archetype_item_event_set` function and `fire_item_sequence` in `crates/services/src/cell/cell_methods/player/world/item_sequence.rs:17` faithfully mirror the original Python. The original game sends the same `seqId` (1872 for `Item_Equip`, 1873 for `Item_Unequip`) regardless of weapon. The P90→Pistol artifact is not a server data problem — it is a kismet sequence design issue in the shipped client assets: sequence 1872 was authored assuming a back-holster start pose, which looks correct for P90→anything but creates a visible from-back-reach on Pistol→anything.
+The Cimmeria `archetype_item_event_set` function and `fire_item_sequence` in `crates/cell-combat/src/cell/cell_methods/player/world/item_sequence.rs:17` faithfully mirror the original Python. The original game sends the same `seqId` (1872 for `Item_Equip`, 1873 for `Item_Unequip`) regardless of weapon. The P90→Pistol artifact is not a server data problem — it is a kismet sequence design issue in the shipped client assets: sequence 1872 was authored assuming a back-holster start pose, which looks correct for P90→anything but creates a visible from-back-reach on Pistol→anything.
 
 ### Where to look for the actual fix
 

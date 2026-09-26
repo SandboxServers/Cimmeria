@@ -12,7 +12,7 @@
 Three questions came up during implementation about *which package*
 holds the collidable BSP. All three were settled by measurement
 against the cooked tree; the tests that produce these numbers are
-`crates/navmesh-extractor/tests/bsp_castle_model_decode.rs` and
+`crates/navmesh-extractor/tests/it/bsp_castle_model_decode.rs` and
 `bsp_castle_floor_evidence.rs`.
 
 **Only 16 of the 144 `Maps/Castle` chunks carry BSP world geometry**,

@@ -14,7 +14,7 @@ last_updated: 2026-07-25
 
 The crafting system enables players to create items through blueprints, research items for expertise, reverse engineer items into components, and alloy materials into higher tiers. Crafting is gated by disciplines (learned skill trees), racial paradigms (faction-specific tech trees), and Applied Science points (discipline training currency).
 
-The Rust implementation lives in [`crates/services/src/base/crafting/`](../../crates/services/src/base/crafting/) (persistence + GM grants) and [`cell/cell_methods/player/crafting.rs`](../../crates/services/src/cell/cell_methods/player/crafting.rs) (cell methods 95–100, currently route-and-log only). The state model is `cimmeria_entity::crafting::CraftingState`.
+The Rust implementation lives in [`crates/base-session/src/base/crafting/`](../../crates/base-session/src/base/crafting/) (persistence + GM grants) and [`cell/cell_methods/player/crafting.rs`](../../crates/cell-methods/src/cell/cell_methods/player/crafting.rs) (cell methods 95–100, currently route-and-log only). The state model is `cimmeria_entity::crafting::CraftingState`.
 
 The sections below that describe `Crafter` behaviour document the **original server's design**, which Phase 2 is expected to reproduce. They are not descriptions of current runtime behaviour.
 

@@ -5,7 +5,7 @@
 /// This constant is the Rust-side anchor for a manual-coupling drift check —
 /// the live-DB test
 /// `archetype_count_matches_earchetype_enum_cardinality` (in
-/// `crates/services/src/base/world_entry/methods/player_load/meta.rs`)
+/// `crates/base-methods/src/base/world_entry/methods/player_load/meta.rs`)
 /// asserts this matches
 /// `cardinality(enum_range(NULL::resources."EArchetype"))` so that adding to
 /// the SQL enum without reviewing downstream consumers fails CI loudly
@@ -17,7 +17,7 @@
 /// 3. This constant
 /// 4. `db/resources/Archetypes/Seed/archetype_ability_tree.sql` — ability
 ///    tree rows for the new archetype (or accept empty)
-/// 5. `crates/services/src/base/chardef.rs` — CharDefId entries that
+/// 5. `crates/resources/src/base/chardef.rs` — CharDefId entries that
 ///    reference the new archetype (or accept that no character can be
 ///    created with it)
 /// 6. `crates/services/src/mercury/world_data/stats.rs::archetype_ability_tree`

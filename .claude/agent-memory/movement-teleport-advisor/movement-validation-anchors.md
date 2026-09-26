@@ -19,17 +19,17 @@ if (_DAT_01e69c90 < SQRT(dz*dz + dx*dx + dy*dy) * (1.0 / dt)) { hard_snap(); }
 
 **Top-speed data source.** Per-world from `db/resources/Worlds/Seed/worlds.sql` `run_speed` column. Every populated world uses `8.125 u/s`. The `worlds` table also carries `walk_speed`, `swim_speed`, `crouch_run_speed`, `jump_speed`, etc. (see schema in `worlds.sql`). Python source reads them as `WorldInfo.runSpeed` in `deprecated/python/common/defs/WorldInfo.py:18`.
 
-**Drift bug — still open after #478.** `crates/services/src/mercury/world_data/mod.rs:112` hardcodes `runSpeed = 6.0` in `build_world_params_args`, while DB says 8.125. #478 did NOT reconcile this — the validator uses a `MovementValidator::DEFAULT_TOP_SPEED = 8.125` constant (the higher number, safe for the warn-only speed layer) and deferred per-world sourcing + the 6.0→8.125 client-facing fix to a follow-up. When that follow-up lands, source the validator top-speed and the `world_data` runSpeed from the same `WorldInfo`/DB value.
+**Drift bug — still open after #478.** `crates/wire/src/mercury/world_data/mod.rs:112` hardcodes `runSpeed = 6.0` in `build_world_params_args`, while DB says 8.125. #478 did NOT reconcile this — the validator uses a `MovementValidator::DEFAULT_TOP_SPEED = 8.125` constant (the higher number, safe for the warn-only speed layer) and deferred per-world sourcing + the 6.0→8.125 client-facing fix to a follow-up. When that follow-up lands, source the validator top-speed and the `world_data` runSpeed from the same `WorldInfo`/DB value.
 
 **Server tick rate.** 100 ms / 10 Hz per `deprecated/cpp-config/config/BaseService.config` `<tick_rate>100</tick_rate>`. Use this as the implicit cadence assumption when calibrating tolerance.
 
 **Inbound client position seam.**
 
-- Wire: `0x03 AVATAR_UPDATE_EXPLICIT` (40 bytes), parsed at `crates/services/src/base/connect_loop/encrypted/mod.rs:214`.
-- Forwarded as `BaseToCellMsg::EntityMove`, handled in `crates/services/src/cell/service/base_messages/mod.rs:138`.
-- Final write at `crates/services/src/cell/space_manager/entities.rs::update_entity_position:147`.
+- Wire: `0x03 AVATAR_UPDATE_EXPLICIT` (40 bytes), parsed at `crates/base/src/base/connect_loop/encrypted/mod.rs:214`.
+- Forwarded as `BaseToCellMsg::EntityMove`, handled in `crates/cell/src/cell/service/base_messages/mod.rs:138`.
+- Final write at `crates/cell-world/src/cell/space_manager/entities.rs::update_entity_position:147`.
 - **Gap**: `0x02 AVATAR_UPDATE_IMPLICIT`, `0x04 WARD_IMPLICIT`, `0x05 WARD_EXPLICIT` are length-parsed but never dispatched. Separate issue; same validator will apply.
 
-**Authorized teleport bundle (canonical pattern).** `crates/services/src/base/world_entry/teleport.rs::build_teleport_bundle:151` composes `FORCED_POSITION (0x31) + onPlayerTeleport (method 116)` into one Mercury bundle. `onPlayerTeleport` is a streaming-load hint only; `FORCED_POSITION` is the authoritative snap. See [[authorized-teleport-paths]] for the full list of paths.
+**Authorized teleport bundle (canonical pattern).** `crates/base-world-entry/src/base/world_entry/teleport.rs::build_teleport_bundle:151` composes `FORCED_POSITION (0x31) + onPlayerTeleport (method 116)` into one Mercury bundle. `onPlayerTeleport` is a streaming-load hint only; `FORCED_POSITION` is the authoritative snap. See [[authorized-teleport-paths]] for the full list of paths.
 
 **Tolerance calibration methodology.** If derivation from RE alone is insufficient (it is — we have upper bound 2500 u/s and lower bound 8.125 u/s, gap is policy), ship the speed check **warn-only** first, collect SigNoz rejection logs with full `(distance, dt)` fields, compute p99.9 of legitimate `(distance / dt) / top_speed` ratios bucketed by RTT (50/200/500 ms), set the production tolerance from that distribution. Do not enforce snap-back until calibration data exists.

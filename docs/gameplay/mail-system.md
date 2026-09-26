@@ -16,7 +16,7 @@ The mail system enables asynchronous message delivery between players with suppo
 
 The `SGWMailManager` interface in `entities/defs/interfaces/SGWMailManager.def` defines the complete protocol.
 
-The Rust implementation forwards every mail request from the cell to the base, because mail needs database access and the DB pool lives on the BaseApp. [`crates/services/src/cell/mail.rs`](../../crates/services/src/cell/mail.rs) packages the request as `CellToBaseMsg::MailRequest { op: MailOp }`; [`crates/services/src/base/world_entry/methods/mail/mod.rs`](../../crates/services/src/base/world_entry/methods/mail/mod.rs) runs the query and sends the result straight back to the client.
+The Rust implementation forwards every mail request from the cell to the base, because mail needs database access and the DB pool lives on the BaseApp. [`crates/cell-interactions/src/cell/mail.rs`](../../crates/cell-interactions/src/cell/mail.rs) packages the request as `CellToBaseMsg::MailRequest { op: MailOp }`; [`crates/base-methods/src/base/world_entry/methods/mail/mod.rs`](../../crates/base-methods/src/base/world_entry/methods/mail/mod.rs) runs the query and sends the result straight back to the client.
 
 Note that the *stub* status of `sendMailMessage` applies only to the player-facing compose path. A server-generated mail helper exists — `send_mail_to_player`, used by the Black Market expiry sweep to pay sellers and deliver won items — but it lives on the **unmerged** branch `feat/571-black-market-phase1` (PR #586). On `main` there is no server-generated mail sender, so nothing writes to `sgw_gate_mail` at all and the read path below has no way to acquire rows outside of manual seeding.
 

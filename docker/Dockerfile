@@ -203,7 +203,7 @@ COPY --from=builder --chown=cimmeria:cimmeria /tmp/cimmeria-server /opt/cimmeria
 COPY --chown=cimmeria:cimmeria data/cache  /opt/cimmeria/data/cache
 COPY --chown=cimmeria:cimmeria data/spaces /opt/cimmeria/data/spaces
 # CellService reads these two XMLs at startup (entities_dir defaults to
-# "entities" relative to CWD; see crates/services/src/cell/service/mod.rs).
+# "entities" relative to CWD; see crates/cell/src/cell/service/mod.rs).
 # Everything else under entities/ — entities.xml, custom_*.xml, defs/ — is
 # build-time-only input for crates/defs/build/ and is already baked into
 # the binary, so it doesn't ship in the runtime image.

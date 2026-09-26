@@ -143,7 +143,7 @@ The two `EEffectFlag` bits that matter here:
 > `effects.script_name` is **not** original evidence. The column exists in the
 > dump DDL, but all 16 non-NULL values (`RangedPhysicalDamage`, `HealHealth`,
 > `Suppression`, …) are Cimmeria's own `EffectScript` registry keys in
-> `crates/services/src/cell/effects/registry.rs`. Do not cite it as original.
+> `crates/cell-world/src/cell/effects/registry.rs`. Do not cite it as original.
 
 ---
 
@@ -228,12 +228,12 @@ Other QR-denominated statements: effect `701` `+5 QR`; effect `4383`
 
 ### Current Rust behaviour + provenance
 
-Live path: `useAbility` → `crates/services/src/cell/combat/damage_apply/mod.rs:52`
+Live path: `useAbility` → `crates/cell-combat/src/cell/combat/damage_apply/mod.rs:52`
 `apply_damage_to_target` → `cell/combat/damage/{qr.rs, pipeline.rs}`.
 (`crates/game/src/combat/` is dead scaffolding, referenced nowhere outside its
 own module.)
 
-`crates/services/src/cell/combat/damage/qr.rs:50-73` — **FAN-GUESS**:
+`crates/cell-combat/src/cell/combat/damage/qr.rs:50-73` — **FAN-GUESS**:
 
 ```
 ranged: qr += COORDINATION.cur * 0.05      melee: qr += ENGAGEMENT.cur * 0.05
@@ -400,9 +400,9 @@ positioning input.
   `stats/stat_list.rs:68,96-99`. **ORIGINAL-DATA-BACKED** for the ids (they match
   `enumerations.xml`), **NOT IMPLEMENTED** for the behaviour.
 - `BSF_CROUCHING` is a broadcast flag only:
-  `crates/services/src/cell/cell_methods/combatant.rs:21` `BSF_CROUCHING = 1<<2`,
+  `crates/cell-methods/src/cell/cell_methods/combatant.rs:21` `BSF_CROUCHING = 1<<2`,
   `:31-43` `setCrouched`. `calculate_qr` never reads it.
-- `crates/services/src/cell/cover/types.rs:12-39` `CoverHeight`
+- `crates/cell-cover/src/cell/cover/types.rs:12-39` `CoverHeight`
   `Low = 0.71` (commented *crouch-defeatable*), `Mid = 1.07`, `High = 1.52`,
   `Los = 2.52`. These are **ORIGINAL-DATA-BACKED** — the comment cites
   *"Binary-confirmed heights via direct memory read of `DAT_018f41c8/cc/d0/d4` in
@@ -518,11 +518,11 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
 - `items.quality_id` / `tech_comp` / `tier` / `applied_science_id` exist in the
   schema (`db/resources/Items/Tables/items.sql:8,12-14`) and are read by **no**
   combat path. The only Rust `INSERT`s naming them are test fixtures
-  (`crates/services/src/base/character/request_visuals_live_db_tests.rs:117`,
-  `crates/services/src/base/console_authoring/tests.rs:93`).
+  (`crates/base-world-entry/src/base/character/request_visuals_live_db_tests.rs:117`,
+  `crates/base-session/src/base/console_authoring/tests.rs:93`).
 - `AbilityDef` (`crates/entity/src/abilities/defs.rs:101-117`) has no scaling
   fields. Base damage comes **only** from the effect NVPs
-  (`crates/services/src/cell/combat/damage_apply/mod.rs:113-134`), with an
+  (`crates/cell-combat/src/cell/combat/damage_apply/mod.rs:113-134`), with an
   unknown-ability fallback of `(15, 0)` at `:133`. **ORIGINAL-DATA-BACKED** —
   this correctly reflects §0.3, that the shipped numbers live on abilities, not
   items.
@@ -532,19 +532,19 @@ spot-checking those turns up flavour text and crafting quantities, not stats.
   NPCs now take the same base damage from the effect NVPs.
 - `applied_science_points` is wired to crafting only
   (`crates/entity/src/crafting.rs:64`); `tech_competency` appears only in
-  `crates/services/src/minigame/session.rs:51`.
+  `crates/minigame/src/minigame/session.rs:51`.
 - `crates/game/src/inventory/items.rs:5` declares
   `ItemQuality { Common..Legendary }` — dead code, and it does **not** match the
   shipped `EItemQuality` (`Fantastic/Great/Good/Normal/Poor`).
 - Level scaling is HP/Focus only:
   `crates/entity/src/stats/stat_list.rs:324-344`
   `max = base + per_level*(level-1)`, with `10` / `70` hardcoded at
-  `crates/services/src/mercury/world_data/stats.rs:21-40`.
+  `crates/wire/src/mercury/world_data/stats.rs:21-40`.
   **ORIGINAL-DATA-BACKED** — those two constants match
   `resources.archetypes.healthPerLevel` and `focusPerLevel` exactly (§5), though
   they are hardcoded rather than read from the table.
 - NPCs: `HP = 200 + level*50`, `FOCUS = 200`
-  (`crates/services/src/cell/space_manager/spawn.rs:185-192`). **FAN-GUESS.**
+  (`crates/cell-world/src/cell/space_manager/spawn.rs:185-192`). **FAN-GUESS.**
 
 ---
 
@@ -719,7 +719,7 @@ damage-type assignment.
 **IMPLEMENTED for all four AF families in the pipeline; only Physical is
 reachable in live play.**
 
-`crates/services/src/cell/combat/damage/pipeline.rs` — **FAN-GUESS**
+`crates/cell-combat/src/cell/combat/damage/pipeline.rs` — **FAN-GUESS**
 (ported from `deprecated/python/cell/AbilityManager.py` `DamageCalc`):
 
 ```
@@ -872,7 +872,7 @@ them either.
 
 **Focus → Health damage: IMPLEMENTED, but only inside the effect scripts, and
 with a formula the data does not support.**
-`crates/services/src/cell/effects/scripts.rs:608-610` (`RangedPhysicalDamage`)
+`crates/cell-world/src/cell/effects/scripts.rs:608-610` (`RangedPhysicalDamage`)
 and `:298-300` (`MeleePhysicalDamage`):
 
 ```
@@ -904,7 +904,7 @@ mechanism as the resist rolls in §4 — both rely on one effect in a sequence s
 gating its co-sequenced siblings.
 
 Player Focus pool `1570 + 70/level`
-(`crates/services/src/mercury/world_data/stats.rs`) — **ORIGINAL-DATA-BACKED**,
+(`crates/wire/src/mercury/world_data/stats.rs`) — **ORIGINAL-DATA-BACKED**,
 matches `resources.archetypes` exactly. Regen uses `FOCUS_REGEN` with `.max(1)`
 (`cell/service/ticks/regen.rs:81`).
 
@@ -990,7 +990,7 @@ the default — but two rows is thin evidence and I would not build a rule on it
 **Effect-*instance* stacking: IMPLEMENTED. Stat-*modifier* stacking and ordering:
 NOT IMPLEMENTED.**
 
-- `crates/services/src/cell/effects/pulsing/register.rs:88-113` — same
+- `crates/cell-combat/src/cell/effects/pulsing/register.rs:88-113` — same
   `effect_id` + same `invoker_id` **refreshes**
   (`existing.remaining_pulses = existing.remaining_pulses.max(remaining)`,
   `next_pulse_at = next_at`); a *different* invoker pushes a new
@@ -1096,14 +1096,14 @@ the AoE to the cover-node graph.
 **AoE target collection: IMPLEMENTED. Cover/LOS interaction: NOT IMPLEMENTED.**
 
 - Ground-target radius —
-  `crates/services/src/cell/abilities/dispatch.rs:106-136`: hostile NPCs only
+  `crates/cell-combat/src/cell/abilities/dispatch.rs:106-136`: hostile NPCs only
   (`npc.faction != HOSTILE_FACTION` skipped), same space, alive, 3-D
   `dist_sq <= radius_sq`. Radius from the first effect's `Radius` NVP, default
   `DEFAULT_GROUND_TARGET_RADIUS = 5.0` (`:23`), max range default `30.0`.
   **FAN-GUESS** for the constants — §7 shows the shipped data has only symbolic
   bands, so any metre value is invented. Full damage to every target: **no
   falloff, no LOS, no cover.**
-- Cone — `crates/services/src/cell/abilities/cone_aoe/geometry.rs:90-111`:
+- Cone — `crates/cell-combat/src/cell/abilities/cone_aoe/geometry.rs:90-111`:
   planar X/Z, `dist_sq_xz <= length_sq && dot >= cos(half_angle)`. Length and
   half-angle come from `EffectDef::tcm_range_meters` /
   `tcm_half_angle_radians` (`crates/entity/src/abilities/defs.rs:227-262`;
@@ -1118,7 +1118,7 @@ the AoE to the cover-node graph.
 - Each cone secondary rolls its own QR and takes full damage
   (`cone_aoe/fan_out.rs:119-146`). PvE only (`all_npc_entity_ids`).
 - **LOS exists but is wired only to NPC AI.**
-  `crates/services/src/cell/space_manager/spatial.rs:15-37`
+  `crates/cell-world/src/cell/space_manager/spatial.rs:15-37`
   `has_line_of_sight` → `navmesh.raycast`, returning `true` when there is no
   navmesh/space/position. Called from exactly two places, both AI:
   `cell/service/npc_ai/fight.rs:241` and `:354`. Player `useAbility` and every

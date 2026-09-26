@@ -29,7 +29,7 @@ bugs) — worth remembering for any future test that spins up a real
 `Orchestrator`/`CellService`:**
 
 1. **`entities_dir` CWD trap.** `CellService::start()`
-   (`crates/services/src/cell/service/mod.rs`) loads
+   (`crates/cell/src/cell/service/mod.rs`) loads
    `entities/spaces.xml` from the literal relative path `"entities"` —
    no `ServerConfig` field or setter overrides it. `cargo test`'s CWD
    for an integration-test binary is the *package* directory
@@ -72,7 +72,7 @@ NA34) only ran over lossless localhost, while the owner plays over the
 internet. Added `crates/wireclient/tests/two_client_castle_visibility_chaos.rs`
 plumbing a real `LossyTransport` into a real `BaseService` socket via a
 new `chaos-testing` Cargo feature +
-`BaseService::set_transport_override` seam (`crates/services/src/base/service.rs`).
+`BaseService::set_transport_override` seam (`crates/base/src/base/service.rs`).
 
 **Confirmed defect:** `Channel::receive_packet`'s in-order RX-window
 delivery gate (`crates/mercury/src/channel/channel_core.rs`) is fully
@@ -89,7 +89,7 @@ exists. This is the strongest candidate yet for the owner's original
 report, since it only manifests under real packet loss.
 
 **Fix attempted and reverted:** made the AoI cascade
-(`entered_aoi` in `crates/services/src/base/world_entry/cell_dispatch/aoi.rs`)
+(`entered_aoi` in `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs`)
 wait for `CREATE_ENTITY`'s ACK (polling the witness's TX window) before
 sending the cascade. Closed the cascade-specific hole but Mercury only
 piggybacks ACKs on the peer's own next outbound send, so an idle

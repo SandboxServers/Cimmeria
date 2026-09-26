@@ -36,7 +36,7 @@ The server-to-client half is `onDialogDisplay`, client method 105, declared in [
 | 12 | 1 | `UINT8` | `IsImmediate` | Display-versus-queue switch, read with the byte accessor `Mercury__unknown_00e57390` |
 | 13 | 4 | `INT32` | `aMissionId` | Stored, never read on the display path |
 
-Total payload 17 bytes. Cimmeria builds exactly this in `crates/services/src/cell/interactions/dialog.rs:51-56`, and hardcodes `IsImmediate = 1` at line 55.
+Total payload 17 bytes. Cimmeria builds exactly this in `crates/cell-content/src/cell/interactions/dialog.rs:51-56`, and hardcodes `IsImmediate = 1` at line 55.
 
 The client-to-server half is `dialogButtonChoice`, cell method 75, declared `<Exposed/>` at [`entities/defs/SGWPlayer.def:621-625`](../../../entities/defs/SGWPlayer.def): `INT32 DialogId, INT32 ButtonId`. It is the only thing a dialog ever sends back, and it fires on exactly two occasions — see [The two return paths](#the-two-return-paths).
 
@@ -130,7 +130,7 @@ Discard closes the old window and — only if the old dialog has zero cooked but
 
 The container at `this+0x30` is a different thing: it holds every delivered dialog, queued or displayed, and is unbounded. Nothing evicts from it except an explicit discard.
 
-**This is a live server-side defect, not a theoretical one.** Display a zero-button dialog A, then display B. The client evicts A and sends `(A, -1)` *after* the server has already re-pinned `open_dialog_id` to B, so `crates/services/src/cell/cell_methods/player/interaction/dialog.rs:36-45` rejects the choice and A's content chain never fires. The original Python server kept a dictionary of displayed dialogs rather than a single pin. Packet DU-08 in the [dialog UI redesign ledger](../../analysis/dialog-ui-redesign/work-packets.md) fixed it (#770): the server now keeps a bounded set of offered dialog ids (`crates/entity/src/cell_entity/offered_dialogs.rs`), so the late `(A, -1)` is accepted and fires A's chain.
+**This is a live server-side defect, not a theoretical one.** Display a zero-button dialog A, then display B. The client evicts A and sends `(A, -1)` *after* the server has already re-pinned `open_dialog_id` to B, so `crates/cell-methods/src/cell/cell_methods/player/interaction/dialog.rs:36-45` rejects the choice and A's content chain never fires. The original Python server kept a dictionary of displayed dialogs rather than a single pin. Packet DU-08 in the [dialog UI redesign ledger](../../analysis/dialog-ui-redesign/work-packets.md) fixed it (#770): the server now keeps a bounded set of offered dialog ids (`crates/entity/src/cell_entity/offered_dialogs.rs`), so the late `(A, -1)` is accepted and fires A's chain.
 
 **Confidence: HIGH.**
 

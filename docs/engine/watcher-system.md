@@ -75,7 +75,7 @@ mechanism of exclusion has been identified.
 
 Cimmeria does **not** implement the Watcher system — verified 2026-07-25, no watcher protocol
 code exists under `crates/`. (Files named `watcher.rs` in `crates/discord/src/config/` and
-`crates/services/src/auth/cert_watcher.rs` are filesystem-change watchers, unrelated to the
+`crates/auth/src/auth/cert_watcher.rs` are filesystem-change watchers, unrelated to the
 BigWorld system.)
 
 ---

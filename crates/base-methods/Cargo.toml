@@ -1,0 +1,51 @@
+[package]
+name = "cimmeria-base-methods"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The BaseApp's DB-backed feature handlers for the Cimmeria server emulator: player load, inventory, vendors, trade, mail, missions and progression"
+
+# Split out of cimmeria-services (wave B2 of
+# docs/architecture/services-crate-split.md), the second layer of the base
+# track: it builds on base-session, and base-world-entry and base build on it,
+# so it must never depend on a service crate above it. The module tree keeps
+# its old nesting under a `base::world_entry::methods` skeleton, and
+# cimmeria-services re-exports it at its old path.
+[dependencies]
+# The session types, the send helpers, the outbox, GM feedback, the contact
+# list's level-up fan-out, the space registry and the appearance builders.
+cimmeria-base-session = { workspace = true }
+# The Base<->Cell messages, the services-side packet builders, the mail
+# serializers and the ability-tree training-points payload.
+cimmeria-wire = { workspace = true }
+# The bag tables (`bag_max_slots`, `bag_min_slot`).
+cimmeria-resources = { workspace = true }
+cimmeria-entity = { workspace = true }
+# The XP curve and the level cap.
+cimmeria-game = { workspace = true }
+cimmeria-mercury = { workspace = true }
+# The item-used and level-up notifications.
+cimmeria-discord = { workspace = true }
+# The trade-execute outcome counters.
+cimmeria-observability = { workspace = true }
+tokio = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# Exposes the test hooks (`progression::persist_purchase`) to other crates'
+# tests. cimmeria-services turns it on through its [dev-dependencies]; a
+# production build never sees it.
+test-support = []
+
+[dev-dependencies]
+# Generic test helpers: the live-DB gate (`require_db_or_skip!`), `LogCapture`
+# and the `TestTransport` re-export, from the `#[cfg(test)] mod test_support`
+# shim in lib.rs. Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# `test_default_connected_client_state`, re-exported from the same shim.
+cimmeria-base-session = { workspace = true, features = ["test-support"] }

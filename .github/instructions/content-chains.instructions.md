@@ -108,10 +108,10 @@ the tables above do not cover:
   (`DUIST_None`) dialog.** Tutorial never draws a cooked button, so the player
   has nothing to click and nothing can fire the chain.
 
-[`crates/content-engine/tests/dialog_button_linter.rs`](../../crates/content-engine/tests/dialog_button_linter.rs)
+[`crates/content-engine/tests/it/dialog_button_linter/mod.rs`](../../crates/content-engine/tests/it/dialog_button_linter/mod.rs)
 enforces all of the above against the Castle and Castle_CellBlock chain seeds,
 alongside
-[`interact_tag_linter.rs`](../../crates/content-engine/tests/interact_tag_linter.rs)
+[`interact_tag_linter.rs`](../../crates/content-engine/tests/it/interact_tag_linter.rs)
 for the interaction-type rule at the top of this file. Both parse the seed
 directly and need no database.
 
@@ -121,7 +121,7 @@ directly and need no database.
 
 Full pattern guide, worked examples, and the baseline audit table: [`docs/content/consumable-via-onitemuse-pattern.md`](../../docs/content/consumable-via-onitemuse-pattern.md).
 
-Regression lint: `crates/content-engine/tests/onitemuse_remove_item_pairing.rs` walks every `item_use` chain in seed data. New chains must add the item id to `KNOWN_CONSUMABLES` or `KNOWN_REUSABLES` in that test — unknown ids fail CI with *"add to one of the two lists"*.
+Regression lint: `crates/content-engine/tests/it/onitemuse_remove_item_pairing.rs` walks every `item_use` chain in seed data. New chains must add the item id to `KNOWN_CONSUMABLES` or `KNOWN_REUSABLES` in that test — unknown ids fail CI with *"add to one of the two lists"*.
 
 Consumable shape:
 

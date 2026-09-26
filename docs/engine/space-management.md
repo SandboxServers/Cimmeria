@@ -82,7 +82,7 @@ Total: 16 persistent (non-instanced) spaces loaded at startup. 8 additional inst
 
 > **`spaces.xml` is the only source of the instancing flag — `worlds.flags` is dead data.**
 > `SpaceManager::is_world_instanced` reads `WorldDef.instanced`, which is parsed from the
-> `Instanced` attribute above ([`space_manager/lifecycle.rs:121`](../../crates/services/src/cell/space_manager/lifecycle.rs#L121)).
+> `Instanced` attribute above ([`space_manager/lifecycle.rs:121`](../../crates/cell-world/src/cell/space_manager/lifecycle.rs#L121)).
 > The `resources.worlds.flags` column is never read by the cell runtime; the only consumer
 > anywhere is the admin-api spaces listing, which selects it for display. Do not reach for
 > it as a substitute. The two disagree today: `Harset_CmdCenter` (world 68) has `flags = 1`
@@ -358,7 +358,7 @@ Verified against `crates/entity/src/space.rs` and `crates/entity/src/world_grid.
 (`onEntityVisible` / `onEntityInvisible`) to witnesses stored inside the grid, with
 hysteresis to damp boundary flapping. Cimmeria's grid is *pulled* — it answers "who is near
 this point?" and nothing more. Witness bookkeeping, enter/leave decisions and AoI fan-out
-live one layer up in `crates/services/src/mercury/aoi/` and `crates/services/src/cell/`, and
+live one layer up in `crates/wire/src/mercury/aoi/` and `crates/services/src/cell/`, and
 AoI radius is a **per-entity** field (`aoi_radius`, defaulting to 100.0 in
 `crates/entity/src/cell_entity/construction.rs:30`) rather than a global chunk count.
 
@@ -1016,7 +1016,7 @@ that earlier revisions of this table merged into one "Cimmeria" column.
 | **Spatial index** | `WorldGrid` — bucket grid, pull-based `query_radius` | `WorldGrid` — chunk grid, push-based witness notify | `RangeList` + `EntityCache` with LOD priorities |
 | **AoI radius** | Per-entity `aoi_radius`, default 100.0 | Global `grid_vision_distance` = 3 chunks (150 m) | Per-entity, `defaultAoIRadius` |
 | **AoI hysteresis** | **None** | Grid-level `grid_hysteresis` (1 chunk = 50 m) | Entity-level AoI radius + hysteresis area |
-| **Witness bookkeeping** | Service layer (`services/src/mercury/aoi/`, `services/src/cell/`) | Inside the grid (`WorldGridMember<T>`) | `Witness` on `RealEntity` |
+| **Witness bookkeeping** | Service layer (`wire/src/mercury/aoi/`, `services/src/cell/`) | Inside the grid (`WorldGridMember<T>`) | `Witness` on `RealEntity` |
 | **Entity replication** | None — all entities local | None | Ghost entities on adjacent CellApps within `ghostDistance` |
 | **Cross-boundary interaction** | N/A (no boundaries) | N/A | Ghosts enable interaction; messages forwarded to real |
 | **Entity offloading** | N/A | N/A | `offload()`/`onload()` with `convertRealToGhost`/`convertGhostToReal` |

@@ -5,7 +5,7 @@
 > **Confidence**: HIGH (binary RTTI + Python reference + Rust codebase cross-checked)
 > **Sources**: Ghidra `SGW.exe` decompilation; `deprecated/python/cell/Crafter.py`;
 >   `deprecated/python/cell/commands/Crafting.py`; `crates/entity/src/crafting.rs`;
->   `crates/services/src/base/crafting/`; `docs/reverse-engineering/findings/crafting-state-machine.md`;
+>   `crates/base-session/src/base/crafting/`; `docs/reverse-engineering/findings/crafting-state-machine.md`;
 >   `docs/reverse-engineering/findings/crafting-wire-formats.md`
 > **Tracking issue**: replaces #53
 

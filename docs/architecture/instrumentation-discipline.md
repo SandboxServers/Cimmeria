@@ -55,7 +55,7 @@ message → base handler) gets:
   — no `pid` / `eid` aliases.
 
 **The gold-standard reference:**
-[`crates/services/src/base/world_entry/play_character.rs:26-31`](../../crates/services/src/base/world_entry/play_character.rs#L26).
+[`crates/base-world-entry/src/base/world_entry/play_character.rs:26-31`](../../crates/base-world-entry/src/base/world_entry/play_character.rs#L26).
 
 ### Rule 2 — Every state transition gets a debug-level event with `event = "..."`
 
@@ -89,7 +89,7 @@ tracing::debug!(
   [`observability.md`](observability.md#stable-target-catalog).
 
 **Reference:** the `npc_ai` state handlers in
-[`crates/services/src/cell/service/npc_ai/mod.rs`](../../crates/services/src/cell/service/npc_ai/mod.rs)
+[`crates/cell-combat/src/cell/service/npc_ai/mod.rs`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs)
 — every `patrol_arrived`, `patrol_waypoint_set`, `investigate_routed`,
 `follow_routed` event uses this shape.
 
@@ -99,7 +99,7 @@ The cell tick loop calls `npc_ai_fight`, `npc_ai_patrol`,
 `npc_ai_wander`, ... once per NPC per tick. At 50 NPCs × 1Hz that's 50
 handler invocations per second. **Each of those handlers must NOT add
 its own `#[tracing::instrument]`** — the parent dispatcher span at
-[`npc_ai/mod.rs:79`](../../crates/services/src/cell/service/npc_ai/mod.rs#L79)
+[`npc_ai/mod.rs:79`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs#L79)
 already wraps every call. Adding a span per handler would 2× the span
 volume for no diagnostic benefit (the parent already carries
 `npc_id`/`ai_state`/`space_id`).
@@ -120,7 +120,7 @@ The dispatcher declares
 `Span::current().record(...)` in the handler fills the slot.
 
 **Reference:** the cover-detection tick at
-[`crates/services/src/cell/service/ticks/cover.rs:31-36`](../../crates/services/src/cell/service/ticks/cover.rs#L31)
+[`crates/cell/src/cell/service/ticks/cover.rs:31-36`](../../crates/cell/src/cell/service/ticks/cover.rs#L31)
 declares `fields(player_count = tracing::field::Empty, events = tracing::field::Empty)`
 and the body fills them via `Span::current().record(...)`.
 
@@ -280,7 +280,7 @@ indistinguishable from a real account in a query and matches every NPC
 in the store; `"None"` pollutes the field's value set the same way.
 Absence is the correct encoding for "this entity has no account", and
 the guards in
-[`identity_propagation.rs`](../../crates/services/src/cell/service/base_messages/tests/identity_propagation.rs)
+[`identity_propagation.rs`](../../crates/cell/src/cell/service/base_messages/tests/identity_propagation.rs)
 assert the fields are **absent** for NPCs precisely so this shortcut
 trips CI.
 

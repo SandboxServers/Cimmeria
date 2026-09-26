@@ -36,9 +36,9 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 
 1. **Variant declaration** — [crates/content-engine/src/actions.rs](../../crates/content-engine/src/actions.rs).
 2. **Loader arm** — [crates/content-engine/src/loader/action.rs](../../crates/content-engine/src/loader/action.rs) `convert_action`.
-3. **Executor arm** — the `match action` block in [crates/services/src/cell/content/executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs), forwarding to the right per-family module (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `counter.rs`, `transport.rs`, `black_market.rs`) — keep the arm itself thin.
+3. **Executor arm** — the `match action` block in [crates/cell-content/src/cell/content/executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs), forwarding to the right per-family module (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `counter.rs`, `transport.rs`, `black_market.rs`) — keep the arm itself thin.
 4. **Seed SQL** — [db/resources/Content/Seed/](../../db/resources/Content/Seed/). Edit the seed directly; never hand-write a `db/scripts/*.sql` migration.
-5. **Tests** — unit tests in [executor/tests/](../../crates/services/src/cell/content/executor/tests/) + a chain-replay test in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/).
+5. **Tests** — unit tests in [executor/tests/](../../crates/cell-content/src/cell/content/executor/tests/) + a chain-replay test in [chain_replay_tests/](../../crates/cell-content/src/cell/content/chain_replay_tests/).
 
 > **Both arms or nothing.** A loader arm without an executor arm produces an action that parses cleanly, resolves cleanly, and then silently does nothing — the failure mode that currently affects six shipped seed verbs (see [content-engine.md §3](content-engine.md)). If you add the loader arm in one PR, add the executor arm in the same PR.
 
@@ -80,7 +80,7 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 
    Boundary validation (range checks, enum parsing) goes here. Do not propagate raw DB values into the variant.
 
-3. **Add the executor arm.** In the `match action` block in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs):
+3. **Add the executor arm.** In the `match action` block in [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs):
 
    ```rust
    Action::ChangeStat { stat_id, amount, .. } => {
@@ -142,9 +142,9 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 
 5. **Test it.** Three layers:
 
-   - **Unit tests in [executor/tests/](../../crates/services/src/cell/content/executor/tests/)** — for `ChangeStat` these live in [tests/stats.rs](../../crates/services/src/cell/content/executor/tests/stats.rs): advance, clamp at max, clamp at min (negative damage), `set_to_max`, `use_ammo_stat=true` early-return.
+   - **Unit tests in [executor/tests/](../../crates/cell-content/src/cell/content/executor/tests/)** — for `ChangeStat` these live in [tests/stats.rs](../../crates/cell-content/src/cell/content/executor/tests/stats.rs): advance, clamp at max, clamp at min (negative damage), `set_to_max`, `use_ammo_stat=true` early-return.
    - **Loader unit tests in [loader/tests/action_conversion.rs](../../crates/content-engine/src/loader/tests/action_conversion.rs)** — round-trip a representative SQL row through `convert_action` and assert the variant shape.
-   - **Chain-replay test in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/)** — load the seeded chain through `load_single_chain_for_test`, fire the trigger event, assert the `ResolvedActions` shape. Pin **behavior, not chain_id** — a future renumber should not break the guard.
+   - **Chain-replay test in [chain_replay_tests/](../../crates/cell-content/src/cell/content/chain_replay_tests/)** — load the seeded chain through `load_single_chain_for_test`, fire the trigger event, assert the `ResolvedActions` shape. Pin **behavior, not chain_id** — a future renumber should not break the guard.
 
    ```rust
    #[tokio::test]
@@ -177,7 +177,7 @@ The pattern is similar to actions, with one extra step: the condition reads from
 
 1. **Variant declaration** — [crates/content-engine/src/conditions.rs](../../crates/content-engine/src/conditions.rs).
 2. **Loader arm** — [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) `convert_condition`.
-3. **Populator** — [crates/services/src/cell/content/mission_context.rs](../../crates/services/src/cell/content/mission_context.rs), if the condition reads context keys nothing else writes.
+3. **Populator** — [crates/cell-content/src/cell/content/mission_context.rs](../../crates/cell-content/src/cell/content/mission_context.rs), if the condition reads context keys nothing else writes.
 4. **Tests.**
 
 ### Step-by-step
@@ -194,7 +194,7 @@ The pattern is similar to actions, with one extra step: the condition reads from
 
 2. **Decide on the populator strategy.**
 
-   - If the condition reads a **mission-related key**, add to [mission_context.rs](../../crates/services/src/cell/content/mission_context.rs):
+   - If the condition reads a **mission-related key**, add to [mission_context.rs](../../crates/cell-content/src/cell/content/mission_context.rs):
 
      ```rust
      pub fn populate_mission_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
@@ -239,7 +239,7 @@ The pattern is similar to actions, with one extra step: the condition reads from
 
    - Unit test for the evaluator (positive match, negative match, missing-key fallback)
    - Unit test for the loader converter
-   - Unit test for the populator (verify the key is written for both populated and "should be zero" cases — see `populate_counters_context_writes_counter_keys` at [mission_context.rs:228-251](../../crates/services/src/cell/content/mission_context.rs#L228-L251))
+   - Unit test for the populator (verify the key is written for both populated and "should be zero" cases — see `populate_counters_context_writes_counter_keys` at [mission_context.rs:228-251](../../crates/cell-content/src/cell/content/mission_context.rs#L228-L251))
    - If a real mission shape uses the new condition, add a chain-replay test
 
 ### Condition checklist
@@ -263,8 +263,8 @@ Triggers are the most invasive extension shape because they need a new event-dis
 1. **Variant declaration** — [crates/content-engine/src/triggers/mod.rs](../../crates/content-engine/src/triggers/mod.rs).
 2. **Discriminant + matcher** — `TriggerType` lives beside the enum in `triggers/mod.rs`; `Trigger::trigger_type` and `Trigger::matches` live in [triggers/matching.rs](../../crates/content-engine/src/triggers/matching.rs).
 3. **Loader arm** — `convert_trigger` in [loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs).
-4. **Dispatcher** — write a `fire_<event>` function in the right family module under [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) (`cover.rs`, `dialog.rs`, `interaction.rs`, `inventory.rs`, `lifecycle.rs`, `mission.rs`, `region.rs`).
-5. **Public re-export** — add to [mod.rs](../../crates/services/src/cell/content/mod.rs).
+4. **Dispatcher** — write a `fire_<event>` function in the right family module under [event_dispatch/](../../crates/cell-content/src/cell/content/event_dispatch/) (`cover.rs`, `dialog.rs`, `interaction.rs`, `inventory.rs`, `lifecycle.rs`, `mission.rs`, `region.rs`).
+5. **Public re-export** — add to [mod.rs](../../crates/cell-content/src/cell/content/mod.rs).
 6. **Wire** — call the new `fire_<event>` from the gameplay code that observes the event.
 7. **Tests.**
 
@@ -362,8 +362,8 @@ Triggers are the most invasive extension shape because they need a new event-dis
 | Used the same key for "zero" and "missing" | `Counter == 0` matches both never-incremented and explicitly-zeroed | Populate explicitly when the value is genuinely zero (see `populate_counters_context` invariant) |
 | Two chains at the same priority on the same trigger with order-dependent actions | Intermittent failures depending on iteration order | Bump one chain's priority (see PR #237 / `a51a10d` increment-vs-completion fix) |
 | Loader silently dropped the row | Chain partially loaded; `warn!` at boot but no production observability | Read `loader.rs` warn lines at startup; add CHECK constraint on the discriminator if the type is part of a stable contract |
-| Action defined but no executor arm | Chain fires, action falls through to `debug!("Unhandled")` no-op | Audit the [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) match arms before assuming a variant works. Seventeen variants are dead today, six of them **already used by shipped seed data** (`move_entity`, `launch_ability`, `qr_combat_damage`, `apply_effect`, `remove_effect`, `fail_objective`) — the full catalog is in [content-engine.md §3](content-engine.md) |
-| `interact_tag` chain author forgot the `INT_*` flag | Right-click does nothing in-game (entity rendered as scenery) | The linter at [interact_tag_linter.rs](../../crates/content-engine/tests/interact_tag_linter.rs) should catch this; if you legitimately need to skip it, add to the allowlist with a reason comment |
+| Action defined but no executor arm | Chain fires, action falls through to `debug!("Unhandled")` no-op | Audit the [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs) match arms before assuming a variant works. Seventeen variants are dead today, six of them **already used by shipped seed data** (`move_entity`, `launch_ability`, `qr_combat_damage`, `apply_effect`, `remove_effect`, `fail_objective`) — the full catalog is in [content-engine.md §3](content-engine.md) |
+| `interact_tag` chain author forgot the `INT_*` flag | Right-click does nothing in-game (entity rendered as scenery) | The linter at [interact_tag_linter.rs](../../crates/content-engine/tests/it/interact_tag_linter.rs) should catch this; if you legitimately need to skip it, add to the allowlist with a reason comment |
 | Chain references a missing dialog/item/mission ID | Loads fine; fails at action execute time with a `warn!` | Run the validation CLI (proposed in [proposed-extensions.md](proposed-extensions.md)); for now, manually grep the seeds |
 
 ---

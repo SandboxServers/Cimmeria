@@ -187,17 +187,26 @@ fn host_name() -> String {
 ///   — explicit `target = "mercury.*"` strings in
 ///   `crates/mercury/src/instrumentation.rs`, `channel/mod.rs`,
 ///   `transport.rs`. Per-packet wire-level instrumentation.
-/// - `cimmeria_services::base::connect_loop::encrypted` —
+/// - `cimmeria_base::base::connect_loop::encrypted` —
 ///   bundle/decrypt DEBUG logs that fire per inbound packet.
-/// - `cimmeria_services::base::connect_loop::cell_arms` — cell-method
-///   dispatch debug logs.
-/// - `cimmeria_services::base::tick_sync` — tick-sync heartbeats and
-///   retransmit RTO notices.
+/// - `cimmeria_base::base::connect_loop::cell_arms` — cell-method
+///   dispatch debug logs. Both were `cimmeria_services::base::connect_loop::…`
+///   until wave B4 of the crate split moved the connect loop to
+///   `cimmeria-base`.
+/// - `cimmeria_base_session::base::tick_sync` — tick-sync heartbeats and
+///   retransmit RTO notices. It was `cimmeria_services::base::tick_sync`
+///   until wave B1 of the crate split moved it to `cimmeria-base-session`.
+///
+/// `cimmeria_mercury::` is the transport crate only. The services-side packet
+/// builders in `cimmeria_wire::mercury` (moved out of `cimmeria-services` in
+/// wave W3a of the crate split) share the module name but log per map load
+/// and per appearance or tint call, not per datagram, so they stay in
+/// `cimmeria-server` as they did before the move.
 pub fn is_network_noise_target(target: &str) -> bool {
     target.starts_with("mercury.")
-        || target == "cimmeria_services::base::connect_loop::encrypted"
-        || target == "cimmeria_services::base::connect_loop::cell_arms"
-        || target.starts_with("cimmeria_services::base::tick_sync")
+        || target == "cimmeria_base::base::connect_loop::encrypted"
+        || target == "cimmeria_base::base::connect_loop::cell_arms"
+        || target.starts_with("cimmeria_base_session::base::tick_sync")
         || target.starts_with("cimmeria_mercury::")
 }
 
@@ -499,111 +508,5 @@ impl Drop for OtelGuard {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    // OTEL env-var reads contend on a single process-global state, so
-    // serialise the test cases that touch them. `unwrap_or_else` on
-    // PoisonError keeps a panicking test from cascading into the next.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    /// Without `OTEL_EXPORTER_OTLP_ENDPOINT`, `init()` must return
-    /// `None` rather than failing — telemetry is opt-in.
-    ///
-    /// Note: we intentionally do NOT have a paired "with endpoint set,
-    /// init returns Some" test. The OTLP exporter builder (tonic-based)
-    /// needs a live tokio runtime at construction time; in a sync test
-    /// without `#[tokio::test]` the builder panics inside hyper-util.
-    /// The realistic init path is exercised by booting cimmeria-server
-    /// with `OTEL_EXPORTER_OTLP_ENDPOINT` set against a live SigNoz
-    /// (smoke test, not unit).
-    #[test]
-    fn init_returns_none_when_endpoint_unset() {
-        let _lock = ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
-        assert!(init().is_none(), "no endpoint → no layer");
-    }
-
-    /// Network-noise routing predicate — pinned for the routing logic
-    /// in `main.rs`. Add to [`is_network_noise_target`] when a new
-    /// high-volume scope appears, then add it here.
-    ///
-    /// A regression that broadens this predicate (e.g., starts matching
-    /// `cimmeria_services::base::*`) would silently route auth/world-
-    /// entry/content events into the network index, hiding them from
-    /// the operator's primary triage view. Pin every accepted prefix
-    /// AND a few high-signal scopes that MUST remain in cimmeria-server.
-    #[test]
-    fn is_network_noise_target_matches_explicit_wire_scopes() {
-        // Accepted (route to cimmeria-network):
-        assert!(is_network_noise_target("mercury.packet"));
-        assert!(is_network_noise_target("mercury.retransmit"));
-        assert!(is_network_noise_target("mercury.backpressure"));
-        assert!(is_network_noise_target(
-            "cimmeria_services::base::connect_loop::encrypted"
-        ));
-        assert!(is_network_noise_target(
-            "cimmeria_services::base::connect_loop::cell_arms"
-        ));
-        assert!(is_network_noise_target(
-            "cimmeria_services::base::tick_sync"
-        ));
-        assert!(is_network_noise_target("cimmeria_mercury::session"));
-    }
-
-    /// The identity attributes the SigNoz runbook filters on. Fails if one
-    /// is dropped or renamed (`cimmeria.deploy_env='colo'` is the first
-    /// clause of every NPC-AI query in telemetry.md §3).
-    #[test]
-    fn identity_attributes_carry_env_host_and_version() {
-        let attrs = identity_attributes("colo", "box-7", "0123abcd");
-        let get = |k: &str| {
-            attrs
-                .iter()
-                .find(|kv| kv.key.as_str() == k)
-                .map(|kv| kv.value.to_string())
-        };
-        assert_eq!(get("deployment.environment").as_deref(), Some("colo"));
-        assert_eq!(get("cimmeria.deploy_env").as_deref(), Some("colo"));
-        assert_eq!(get("host.name").as_deref(), Some("box-7"));
-        assert_eq!(get("service.version").as_deref(), Some("0123abcd"));
-        assert_eq!(attrs.len(), 4);
-    }
-
-    /// The baked SHA is never empty: a hex commit or the literal "unknown".
-    #[test]
-    fn build_sha_is_a_commit_or_unknown() {
-        assert!(
-            BUILD_SHA == "unknown"
-                || (BUILD_SHA.len() >= 7 && BUILD_SHA.chars().all(|c| c.is_ascii_hexdigit())),
-            "unexpected CIMMERIA_BUILD_SHA {BUILD_SHA:?}"
-        );
-        assert!(!host_name().is_empty());
-    }
-
-    #[test]
-    fn is_network_noise_target_does_not_match_high_signal_scopes() {
-        // Rejected (stay in cimmeria-server):
-        assert!(!is_network_noise_target(
-            "cimmeria_services::auth::handlers"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::cell::abilities::use_ability"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::cell::content::executor::dialog"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::base::world_entry::methods::inventory::grant"
-        ));
-        assert!(!is_network_noise_target(
-            "cimmeria_services::base::dispatch"
-        ));
-        // Empty / arbitrary string — defaults to "not noise" (server).
-        assert!(!is_network_noise_target(""));
-        assert!(!is_network_noise_target("unknown"));
-    }
-}
+#[path = "otel_tests.rs"]
+mod tests;

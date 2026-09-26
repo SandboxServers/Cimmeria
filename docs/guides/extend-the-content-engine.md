@@ -46,8 +46,8 @@ Every extension touches the same four file families:
 
 1. **Variant declaration** — the enum that names the new shape ([`crates/content-engine/src/actions.rs`](../../crates/content-engine/src/actions.rs), [`triggers/`](../../crates/content-engine/src/triggers/), [`conditions.rs`](../../crates/content-engine/src/conditions.rs)).
 2. **Loader arm** — parses a DB row into the variant. One file per axis under [`crates/content-engine/src/loader/`](../../crates/content-engine/src/loader/): `action.rs`, `condition.rs`, `trigger.rs`.
-3. **Executor / evaluator arm** — does the work (actions) or returns a bool (conditions) or fires the event (triggers). For actions, this is the per-domain module under [`crates/services/src/cell/content/executor/`](../../crates/services/src/cell/content/executor/) (`inventory.rs`, `mission.rs`, `dialog.rs`, `stats.rs`, …) with the dispatch arm in its `mod.rs`.
-4. **Tests** — unit tests next to the executor + a chain-replay test under [`chain_replay_tests/`](../../crates/services/src/cell/content/chain_replay_tests/) (one file per chain, e.g. `mission_638.rs`).
+3. **Executor / evaluator arm** — does the work (actions) or returns a bool (conditions) or fires the event (triggers). For actions, this is the per-domain module under [`crates/cell-content/src/cell/content/executor/`](../../crates/cell-content/src/cell/content/executor/) (`inventory.rs`, `mission.rs`, `dialog.rs`, `stats.rs`, …) with the dispatch arm in its `mod.rs`.
+4. **Tests** — unit tests next to the executor + a chain-replay test under [`chain_replay_tests/`](../../crates/cell-content/src/cell/content/chain_replay_tests/) (one file per chain, e.g. `mission_638.rs`).
 5. **Seed SQL or migration** — [`db/resources/Content/Seed/`](../../db/resources/Content/Seed/) for new seed content, or [`db/scripts/`](../../db/scripts/) for a runtime migration on existing databases. See [`write-a-database-migration.md`](write-a-database-migration.md).
 
 ---

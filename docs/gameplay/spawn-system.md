@@ -10,8 +10,8 @@ last_updated: 2026-09-25
 ## Status: Implemented (IM)
 
 Spawning is confirmed working in-game — NPCs and world objects appear in Castle
-Cellblock and are interactable. The Rust implementation lives in
-[`crates/services/src/cell/spawner/`](../../crates/services/src/cell/spawner/), split by
+Cellblock and are interactable. The Rust loaders live in
+[`crates/cell-catalog/src/cell/spawner/`](../../crates/cell-catalog/src/cell/spawner/), split by
 what is being spawned or loaded: `npcs.rs`, `regions.rs`, `respawners.rs`,
 `stargates.rs`, `dialogs.rs`, `loot.rs`, `missions.rs`, and `abilities.rs` (which also
 builds the `(event_set_id, event_id) → sequence_id` lookup). Respawn is handled by a
@@ -379,7 +379,7 @@ spawn point itself may encode the template directly via `spawn_table_name` in
 
 ## NPC Ability Bucket and Selection
 
-`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/services/src/cell/spawner/npcs.rs`](../../crates/services/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
+`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/cell-catalog/src/cell/spawner/npcs.rs`](../../crates/cell-catalog/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
 
 Examples:
 
@@ -387,7 +387,7 @@ Examples:
 - Template 15 (Cellblock Guard) → `ability_set_id = 1` → `[579]` NID guard pistol.
 - Templates without an `ability_set_id` (most props, statics) → fall back to `NPC_DEFAULT_ABILITY = 592` and rely on `class_id` filtering to keep the AI tick from firing on non-mobs.
 
-At fight-tick time, [`crates/services/src/cell/service/npc_ai/mod.rs`](../../crates/services/src/cell/service/npc_ai/mod.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `deprecated/python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
+At fight-tick time, [`crates/cell-combat/src/cell/service/npc_ai/mod.rs`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `deprecated/python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
 
 Per-ability cooldown state lives on `CellEntity::abilities.ability_cooldowns` (the `AbilityManager` keyed by `ability_id` → `CooldownEntry { expires_at }`). The leash tick (`npc_ai_leash`) calls `clear_all_cooldowns()` when the NPC returns to spawn, so a leashed-and-re-aggrod NPC starts a fresh cooldown window.
 

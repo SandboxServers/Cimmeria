@@ -8,5 +8,6 @@ description = "UE3 package parser for SGW .upk/.umap files"
 byteorder = "1"
 thiserror = "2"
 lzokay-native = "0.1"
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]

@@ -43,7 +43,7 @@ The pieces that exist today: the base service reaps idle channels on a
 **60-second inactivity timeout**, and the disconnect path already carries a
 structured `disconnect_reason` (`"client_disconnect"`, `"inactivity_timeout"`,
 `"duplicate_login"`, `"send_error"`, `"logoff"`) that every call site pins — see
-[`crates/services/src/base/helpers/mod.rs`](../../crates/services/src/base/helpers/mod.rs).
+[`crates/base-session/src/base/helpers/mod.rs`](../../crates/base-session/src/base/helpers/mod.rs).
 Duplicate-login prevention runs at character select. What is missing is any
 notion of a session that is *temporarily* gone rather than over.
 
@@ -103,7 +103,7 @@ it is still warn-only for exactly this reason, and that has worked out well
 enough to copy. See [movement-validation.md](movement-validation.md).
 
 The cell message loop ticks at 100 ms
-([`crates/services/src/cell/service/message_loop.rs`](../../crates/services/src/cell/service/message_loop.rs)),
+([`crates/cell/src/cell/service/message_loop.rs`](../../crates/cell/src/cell/service/message_loop.rs)),
 so 10 Hz is your measurement resolution.
 
 ---

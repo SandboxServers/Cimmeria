@@ -37,7 +37,7 @@
 -- Packet CA05 (Castle map recon and story-actor authoring) owns the
 -- spawnlist rows, entity templates and point sets these chains name. Until
 -- CA05 lands, the region triggers below reference `point_sets.name` rows
--- that are not seeded, and `crates/content-engine/tests/interact_tag_linter.rs
+-- that are not seeded, and `crates/content-engine/tests/it/interact_tag_linter.rs
 -- ::every_chain_region_key_matches_a_seeded_point_set` fails for exactly
 -- those two keys. That is an expected cross-packet integration gap, not a
 -- typo in this file. The contracted names, byte-exact:
@@ -84,7 +84,7 @@
 --
 -- `set_interaction_type` is GLOBAL on the entity, not per player: the arm
 -- mutates `CellEntity::interaction_type_flags` and fans the new value to
--- every witness (crates/services/src/cell/content/executor/world/mod.rs:19-65),
+-- every witness (crates/cell-content/src/cell/content/executor/world/mod.rs:19-65),
 -- and docs/content/interaction-flags.md:190 says so explicitly. In an
 -- instanced zone (the Castle_CellBlock precedent) that is harmless. In
 -- Castle, which is persistent and shared, it means:
@@ -656,7 +656,7 @@ VALUES
 --     still active for both, so this chain resolves twice and emits two
 --     `StartMinigame` messages, each carrying `on_victory_chains: [1293]`.
 --     The guard is the minigame registry: `MinigameRegistry::register`
---     (crates/services/src/minigame/session.rs) returns `None` when
+--     (crates/minigame/src/minigame/session.rs) returns `None` when
 --     `sessions` already holds an entry for the entity, so the second
 --     launch never becomes a session and can never report a victory. Its
 --     own test `duplicate_session_rejected` pins that.

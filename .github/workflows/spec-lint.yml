@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: ./.github/actions/rust-toolchain
 
       # The project's `.cargo/config.toml` pins `linker = "clang"` and
       # `rustflags = ["-C", "link-arg=-fuse-ld=mold"]` for the Linux GNU

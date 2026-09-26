@@ -24,7 +24,7 @@ All four are extended-encoding (index >= 61, sub-index = index - 61):
 | `ON_TRADE_RESULTS` | 145 | `onTradeResults` | `INT32 EntityId`, `INT32 Result` |
 
 Already defined in `crates/services/src/cell/client_methods/player.rs` lines 96–98.
-**NOT yet** in `crates/services/src/mercury/mod.rs` method_idx module — must add.
+**NOT yet** in `crates/wire/src/mercury/mod.rs` method_idx module — must add.
 
 ## Type definitions (from alias.xml lines 356–379)
 

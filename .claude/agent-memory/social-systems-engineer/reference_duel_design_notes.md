@@ -44,7 +44,7 @@ pub duel_arena_bounds: Option<DuelArenaBounds>, // [center: [f32;3], radius: f32
 
 ## File skeleton
 
-Under `crates/services/src/cell/cell_methods/player/duel/`:
+Under `crates/cell-methods/src/cell/cell_methods/player/duel/`:
 - `mod.rs` — module wiring, re-exports `dispatch` + `cancel_duel_on_disconnect`
 - `handlers.rs` — inbound dispatch (SEND_DUEL_RESPONSE=102, DUEL_FORFEIT=103, + TBD challenge method)
 - `state.rs` — state-machine helpers: `begin_challenge`, `accept_duel`, `end_duel`, `clear_duel_state`

@@ -24,12 +24,12 @@ all `<Exposed/>`):
 - `organizationRankChange(INT32 aOrganizationId, WSTRING aPlayerName, UINT8 aRank)` — RTTI `0x019be9b0`
 
 All four have **no base-dispatch arm in Rust** today; they hit the
-catch-all warn at `crates/services/src/base/dispatch.rs:333-347`.
+catch-all warn at `crates/base/src/base/dispatch/mod.rs:151-165`.
 
 ## Org / squad cell methods (rosters, text, bank, loot)
 
 `entities/defs/interfaces/OrganizationMember.def`, `<CellMethods>` with
-`<Exposed/>` (cell method index in `crates/services/src/cell/cell_methods/organization.rs:7-18`):
+`<Exposed/>` (cell method index in `crates/cell-methods/src/cell/cell_methods/organization.rs:7-18`):
 
 - `organizationInviteResponse(INT32 aRequestID, UINT8 aResponse)` — `INVITE_RESPONSE=8`, def:267-271
 - `organizationLeave(INT32 aOrganizationId)` — `LEAVE=9`, def:286-289
@@ -46,19 +46,19 @@ catch-all warn at `crates/services/src/base/dispatch.rs:333-347`.
 - `organizationTransferCash(INT32 aOrganizationId, INT32 aCash)` — `TRANSFER_CASH=19`, def:409-413
   — `aCash` is **signed**, must reject `<= 0`
 
-All twelve are stubs in `crates/services/src/cell/cell_methods/organization.rs:28-159`.
+All twelve are stubs in `crates/cell-methods/src/cell/cell_methods/organization.rs:28-159`.
 
 ## SGWPlayer cell methods (creation / duel)
 
 `entities/defs/SGWPlayer.def`, `<CellMethods>` with `<Exposed/>` (indices
-in `crates/services/src/cell/cell_methods/player/constants.rs`):
+in `crates/wire/src/cell/cell_methods/player/constants.rs`):
 
 - `onOrganizationCreation(WSTRING aOrganizationName)` — `ORG_CREATION=94`, def:877-880
 - `sendDuelResponse(INT8 aResponse)` — `SEND_DUEL_RESPONSE=102`, def:975-978
   — **no challenger id**; server must hold pending-challenge state per session
 - `duelForfeit()` — `DUEL_FORFEIT=103`, def:1015-1017 — **no args**
 
-All three are stubs in `crates/services/src/cell/cell_methods/player/social.rs:61-101`.
+All three are stubs in `crates/cell-methods/src/cell/cell_methods/player/social.rs:61-101`.
 
 ## SGWPlayer base method (duel challenge)
 

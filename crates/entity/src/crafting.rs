@@ -8,7 +8,7 @@
 //! activity mutators stubbed (those land in Phase 2/3).
 //!
 //! Persistence lives in the services crate (see
-//! `crates/services/src/base/crafting/persistence.rs`); the entity crate is
+//! `crates/base-session/src/base/crafting/persistence.rs`); the entity crate is
 //! sqlx-free by design.
 
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ use std::collections::HashMap;
 pub struct CraftingState {
     /// Disciplines the player has unlocked, in insertion order. Parallel to
     /// `sgw_player.discipline_ids` (a Postgres `integer[]`). Persistence
-    /// lives in `crates/services/src/base/crafting/persistence.rs` —
+    /// lives in `crates/base-session/src/base/crafting/persistence.rs` —
     /// `load_crafting_state` reads the array verbatim, so reload order is
     /// whatever order was on the row when last saved. (The parallel
     /// expertise rows in `sgw_player_discipline_expertise` are loaded

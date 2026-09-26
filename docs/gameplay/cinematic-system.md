@@ -9,7 +9,7 @@ last_updated: 2026-09-18
 
 > **Last updated**: 2026-09-18
 > **Status**: Partially implemented. Firing today: ability begin/end, entity death, item equip/unequip/reload/use, ring transport, stargate open (`Stargate_MakeGate`) and crossing (`Stargate_CrossGate`), content-chain `play_sequence`, and the debug console commands. Not firing: all effect-lifecycle sequences, ability interrupt/failed, DHD chevrons, `Stargate_DestroyGate`, designer slots, spawn/despawn, the visibility-safety nudge, and every NVP parameter override.
-> **Implementation**: `crates/services/src/cell/abilities/` (ability + death), `cell/cell_methods/player/world/item_sequence.rs` (item handling), `cell/ring_transport/`, `cell/gate_travel/sequences.rs` (stargate 6100/6113), `cell/console/net.rs` (debug commands), `cell/spawner/abilities.rs` (`event_set_id → sequence_id` load)
+> **Implementation**: `crates/cell-combat/src/cell/abilities/` (ability + death), `cell/cell_methods/player/world/item_sequence.rs` (item handling), `cell/ring_transport/`, `cell/gate_travel/sequences.rs` (stargate 6100/6113), `cell/console/net.rs` (debug commands), `cell/spawner/abilities.rs` (`event_set_id → sequence_id` load)
 > **Data / defs**: `entities/defs/SGWSpawnableEntity.def`, `db/resources/Events/`
 >
 > The behavioural descriptions below that name `.py` files are historical — they document the original server's intent, which the Rust implementation mirrors. Where the two diverge, the Rust code is authoritative and the divergence is called out inline.
@@ -219,7 +219,7 @@ resultEffects = {
 | 4002 | `Item_Reload` | Weapon reloaded — `cell_methods/player/world/reload.rs:255` |
 | 4003 | `Item_Use` | Item used |
 
-All four route through `fire_item_sequence` in [`cell/cell_methods/player/world/item_sequence.rs`](../../crates/services/src/cell/cell_methods/player/world/item_sequence.rs). The lookup is **archetype-keyed, not item-keyed**: `archetype_item_event_set(archetype_id)` maps every human archetype to event set 804 (`"Item handling generic event set"`, kismet `KIS-abilities_human.KIS-handling`) and Asgard (archetype 5) to 1455. The per-event sequence is then resolved from `(event_set_id, event_id)`. A missing archetype, event set, or sequence is a silent no-op with a debug log, mirroring the original `if eventSet else None` fallthrough.
+All four route through `fire_item_sequence` in [`cell/cell_methods/player/world/item_sequence.rs`](../../crates/cell-combat/src/cell/cell_methods/player/world/item_sequence.rs). The lookup is **archetype-keyed, not item-keyed**: `archetype_item_event_set(archetype_id)` maps every human archetype to event set 804 (`"Item handling generic event set"`, kismet `KIS-abilities_human.KIS-handling`) and Asgard (archetype 5) to 1455. The per-event sequence is then resolved from `(event_set_id, event_id)`. A missing archetype, event set, or sequence is a silent no-op with a debug log, mirroring the original `if eventSet else None` fallthrough.
 
 The separate `items_event_sets` table (2,767 rows) maps item → event → ability and **is** read — by `cell/abilities/resolve.rs`, for per-weapon ability resolution (`EVENT_ITEM_USE_ABILITY` 5, `EVENT_ITEM_MELEE` 6, `EVENT_ITEM_RANGED` 7). It is not the source of the `Item_*` animation lookup above.
 
@@ -267,7 +267,7 @@ These are used for zone-specific cinematics — door animations, console activat
 
 Each stargate event set contains exactly **14 sequences** (one per event type above). 14 zones have stargate event sets.
 
-Of the fourteen, the server emits exactly **two**: `Stargate_MakeGate` (6100) on the next cell tick after a successful dial (retimed NA35, 2026-09-25 — see below), and `Stargate_CrossGate` (6113) as the player enters the gate volume. Both are emitted by [`cell::gate_travel::sequences`](../../crates/services/src/cell/gate_travel/sequences.rs) to the dialer **and every witness of them**; see the [gate travel reference](gate-travel.md).
+Of the fourteen, the server emits exactly **two**: `Stargate_MakeGate` (6100) on the next cell tick after a successful dial (retimed NA35, 2026-09-25 — see below), and `Stargate_CrossGate` (6113) as the player enters the gate volume. Both are emitted by [`cell::gate_travel::sequences`](../../crates/cell-interactions/src/cell/gate_travel/sequences.rs) to the dialer **and every witness of them**; see the [gate travel reference](gate-travel.md).
 
 **Evidence-policy correction (NA35, 2026-09-25):** this section previously justified "exactly two, and no chevrons" by citing what the 2009 *server* did (`cancelDialing` sent no `Stargate_DestroyGate`, nothing drove the chevron events). The owner has since confirmed the deprecated legacy server never had working gate travel end to end, so that citation carries no authority about the 2009 *client's* expectations. The client-binary-only re-investigation (`docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md`) reaches a stronger conclusion by a different route: the DHD dial UI never reports in-progress chevron selection to the server at all (`onDialGate` carries only the finished, fully-resolved address), so a server-driven chevron broadcast is not just unattested but **structurally impossible without a client patch**. The 4-second `Stargate_MakeGate` delay and the lack of any gap before the `Stargate_CrossGate`-to-`RESET_ENTITIES` teardown are both flagged there as needing correction, not yet implemented as of this note.
 
@@ -706,7 +706,7 @@ Event set **1025** ("Mob event set") contains 16 sequences and is the default an
 
 ## Debug Console Commands
 
-Three debug commands for testing sequences in-game, implemented in [`cell/console/net.rs`](../../crates/services/src/cell/console/net.rs):
+Three debug commands for testing sequences in-game, implemented in [`cell/console/net.rs`](../../crates/cell-console/src/cell/console/net.rs):
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|

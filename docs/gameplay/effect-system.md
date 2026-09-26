@@ -31,7 +31,7 @@ The `EffectInstance` class in `deprecated/python/cell/AbilityManager.py` handles
 | Temporary vs permanent changes | NOT IMPL | No permanent/temporary distinction exists in `crates/`. A stat change is reverted only by its script's `on_remove` (AbsorbShield, Stun, RemoveCoverStance); direct HEALTH/FOCUS writes are one-way |
 | QR combat damage | DONE | `qrCombatDamage()` using shared or per-effect QR |
 | Effect scripts | DONE | Dynamic script loading via `cell.effects.<name>` |
-| Kismet sequences (init, pulse, remove, per-QR hit) | NOT IMPL | Nothing under `crates/services/src/cell/effects/` emits `onSequence`. Events 2000–2008 are never sent, so effects have no visual at all — see [cinematic-system.md](cinematic-system.md) |
+| Kismet sequences (init, pulse, remove, per-QR hit) | NOT IMPL | Nothing under `crates/cell-world/src/cell/effects/` or `crates/cell-combat/src/cell/effects/` emits `onSequence`. Events 2000–2008 are never sent, so effects have no visual at all — see [cinematic-system.md](cinematic-system.md) |
 | Client result reporting | DONE | `onEffectResults` with stat delta list |
 | Clear on death/damage/rez/bandolier | PARTIAL | No `EF_ClearOn*` flag has a Rust constant or check. On death, pulses on a dead target are skipped (the instances stay and age out) and a dying channeller's channels are cancelled (`cell/abilities/death/mod.rs`). Nothing clears effects on damage, revive, or bandolier swap |
 | Effect stacking rules | DONE | Refcounted via `state_flag_counts`; shipped in PR #420 |
@@ -138,7 +138,7 @@ BigWorldTimeComplete: FLOAT  -- Game time when effect expires
 
 - **Effect definitions**: 3,216 in `db/resources/Effects/Seed/effects.sql`
 - **Schema**: `Effect.xsd`
-- **Effect scripts**: `crates/services/src/cell/effects/scripts.rs`, with a matching `match` arm in `registry.rs`
+- **Effect scripts**: `crates/cell-world/src/cell/effects/scripts.rs`, with a matching `match` arm in `registry.rs`
 - **Stat result codes** (`EStatResultCode`): `SRC_None`, `SRC_Absorb`, `SRC_Mortal`, `SRC_Immune`
 - **Cross-cutting ADR**: [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
 

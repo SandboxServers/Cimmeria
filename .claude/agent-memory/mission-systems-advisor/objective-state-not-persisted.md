@@ -9,7 +9,7 @@ metadata:
 
 ## The write side is hardcoded empty
 
-`crates/services/src/cell/content/executor/mission.rs` sends
+`crates/cell-content/src/cell/content/executor/mission.rs` sends
 `CellToBaseMsg::MissionUpdate` from three places, and **all three** hardcode:
 
 - accept (`:84-85`)  → `completed_objective_ids: vec![]`, `active_objective_ids: vec![step_id]`
@@ -26,7 +26,7 @@ mission/step wire updates, but persists neither objective state nor a
 
 ## The read side faithfully restores the garbage
 
-`crates/services/src/cell/service/base_messages/player_init/mod.rs:168-210`
+`crates/cell/src/cell/service/base_messages/player_init/mod.rs:168-210`
 rebuilds `active_objectives` **from `saved.active_objective_ids`**, with
 `hidden: false, optional: false` hardcoded. So after a relog at step N the
 player's `MissionInstance.active_objectives == [MissionObjective{ objective_id: N }]`

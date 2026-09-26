@@ -311,7 +311,7 @@ fn extract_rust_sections(chapter: &Chapter) -> (Option<(usize, String)>, Option<
 // ---- reference extraction & resolution ---------------------------------
 
 /// Match a body-prose symbol reference like
-/// `crates/services/src/cell/combat/threat.rs::ThreatList::add`.
+/// `crates/cell-combat/src/cell/combat/threat.rs::ThreatList::add`.
 fn body_ref_regex() -> Regex {
     Regex::new(r"crates/[A-Za-z0-9_./-]+\.rs(?:::[A-Za-z_][A-Za-z0-9_]*)+").expect("static regex")
 }

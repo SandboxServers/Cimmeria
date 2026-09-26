@@ -45,7 +45,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import pcap_dissect as pd
 
 
-# ── Named entity-method indices (from crates/services/src/mercury/mod.rs:135-213) ──
+# ── Named entity-method indices (from crates/wire/src/mercury/mod.rs:135-213) ──
 # These are the SGWPlayer flattened ClientMethod indices Rust emits/parses against.
 # We use them to cross-reference observed sub_index bytes in the pcap against the
 # two candidate encodings (sub_index = method - 61 vs method - 62).

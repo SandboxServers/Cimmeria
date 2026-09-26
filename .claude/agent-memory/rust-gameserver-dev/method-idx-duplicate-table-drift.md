@@ -12,7 +12,7 @@ drifted:
   (`player.rs`, `missionary.rs`, `combatant.rs`, ...), complete, matches
   `entities/defs/*.def` and `docs/protocol/client-method-dispatch-table.md`.
   **Treat as authoritative.**
-- `crates/services/src/mercury/mod.rs::method_idx` — a partial flat copy
+- `crates/wire/src/mercury/mod.rs::method_idx` — a partial flat copy
   covering only the indices some emit path happened to need. This is the
   one that drifts.
 

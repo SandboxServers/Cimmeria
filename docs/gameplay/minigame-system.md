@@ -16,7 +16,7 @@ The minigame system provides puzzle-based mini-activities integrated into the ga
 
 The `MinigamePlayer` interface in `entities/defs/interfaces/MinigamePlayer.def` is the largest interface by method count (25 properties, 78+ methods).
 
-The original SGW minigames were Flash SWFs that connected to a **SmartFoxServer 1.x** TCP endpoint, separate from the Mercury game channel. [`crates/services/src/minigame/`](../../crates/services/src/minigame/) reimplements that server in-process: `protocol.rs` speaks the SmartFox XML packet format, `session.rs` owns the ticket registry, `server/` is the TCP listener and connection lifecycle, and `games/` holds the per-game logic behind a `MinigameInstance` trait.
+The original SGW minigames were Flash SWFs that connected to a **SmartFoxServer 1.x** TCP endpoint, separate from the Mercury game channel. [`crates/minigame/src/minigame/`](../../crates/minigame/src/minigame/) reimplements that server in-process: `protocol.rs` speaks the SmartFox XML packet format, `session.rs` owns the ticket registry, `server/` is the TCP listener and connection lifecycle, and `games/` holds the per-game logic behind a `MinigameInstance` trait.
 
 ## How a minigame actually launches
 

@@ -21,7 +21,7 @@
 //!   client session key.
 //! - **The per-packet firehoses** (`wire.firehose.*`) reach the files in
 //!   full and SigNoz as a counted 1-in-N sample on another target. See
-//!   `cimmeria_services::firehose`.
+//!   `cimmeria_wire::firehose` (re-exported as `cimmeria_services::firehose`).
 //! - Nothing else. A new file layer whose DEBUG rows [`OTEL_FILTER`] does not
 //!   cover fails `every_file_directive_reaches_an_otlp_index`.
 //!
@@ -61,6 +61,83 @@ use crate::otel;
 /// that one DEBUG sample through. `otel_filter_prefix_matching_exports_npc_ai_children`
 /// pins this behaviour, not just the string.
 ///
+/// The `cimmeria_wire::…` rows, `cimmeria_cell_catalog=debug` and
+/// `cimmeria_cell_world=debug` keep the code
+/// split out of `cimmeria-services` (docs/architecture/services-crate-split.md)
+/// at the DEBUG level `cimmeria_services=debug` gave it: a moved module's
+/// `module_path!()` target starts with the new crate's name, which the
+/// services row no longer matches. Since wave W3a that includes the
+/// services-side Mercury glue, `cimmeria_wire::mercury` (the
+/// `append_entity_method` appearance diagnostics). Wire's rows name each of
+/// its top-level modules rather than the crate: a bare `cimmeria_wire` would
+/// prefix-match `cimmeria_wire_log`, so removing wire-log's own row below
+/// would change nothing and no guard could tell it was gone (the rule the
+/// base and cell rows follow too, which `parity_tests::crate_rows` enforces
+/// for every row). The same guard fails when a new top-level wire module has
+/// no row. `cimmeria_minigame=debug`
+/// does the same for the SmartFoxServer host (wave W3c), which has no file of
+/// its own: its session and connection rows reach `server.log` from INFO and
+/// SigNoz from DEBUG.
+///
+/// `cimmeria_wire_log=debug` (wave W3b) does the same for the decoded
+/// wire-message stream; no wire row reaches it. The stream's own rows ride
+/// the hand-named `wire.in` / `wire.out` directives.
+///
+/// `cimmeria_base_session=debug` (wave B1) does the same for the BaseApp
+/// session layer: the send helpers, tick sync, the outbox, the contact list,
+/// the deferred-AoI buffer and cooked-data delivery.
+/// `cimmeria_base_methods=debug` (wave B2) does the same for the BaseApp's
+/// feature handlers: player load, inventory, vendors, trade, mail, missions
+/// and progression. `cimmeria_base_session` is not a prefix of it.
+/// `cimmeria_base_world_entry=debug` (wave B3) does the same for world entry:
+/// play-character, map load, gate travel, reanchor, teleport, the CellToBase
+/// dispatch with its AoI emitters, `onClientReady`, the cinematic AoI hold's
+/// release and the character list. Neither base row above is a prefix of it.
+/// `cimmeria_base::base=debug` (wave B4) does the same for `BaseService`, the
+/// connect loop, login, the SGWPlayer base-method dispatch and the character
+/// creator. It names the crate's one top-level module rather than the crate:
+/// a bare `cimmeria_base` would prefix-match every `cimmeria_base_*` crate,
+/// so removing one of the three rows above would change nothing and no guard
+/// could tell it was gone.
+///
+/// `cimmeria_cell_combat=debug` (wave C2) does the same for combat: ability
+/// resolution, damage and death, threat, the effect pulsing, the bandolier
+/// and reload handlers, and the NPC AI's behaviour. `cimmeria_cell_cover`
+/// shares its `cimmeria_cell_co` prefix but not the name, so neither row
+/// matches the other crate.
+///
+/// `cimmeria_cell_content=debug` (wave C3) does the same for the content
+/// layer: the chain executor and its dispatchers, missions, the ring
+/// dispatcher and entry points, and the dialog display. Neither
+/// `cimmeria_cell_combat` nor `cimmeria_cell_cover` is a prefix of it.
+///
+/// `cimmeria_cell_console=debug` (wave C5b) does the same for the GM
+/// surfaces: the `.`-console with its authoring commands, the chat
+/// interceptor and the native `gm*` cell methods. It shares the
+/// `cimmeria_cell_co` prefix with the combat, content and cover rows, but no
+/// row is a prefix of another.
+///
+/// `cimmeria_cell_interactions=debug` (wave C4) does the same for the player
+/// interactions: the NPC interaction dispatch, stargate travel, the GM space
+/// transfer, the respawn fork with its resync, the trade session state and
+/// the mail forwarding. No other crate's row is a prefix of it, and it is a
+/// prefix of none.
+///
+/// `cimmeria_cell_methods=debug` (wave C5a) does the same for the
+/// client-callable cell methods: the per-interface dispatchers and the
+/// SGWPlayer handlers (combat and respawn, interaction, trade, vendors, world,
+/// crafting, social). No file layer names them, so they reach `server.log`
+/// from INFO and SigNoz from DEBUG, as they did under `cimmeria_services`. No
+/// other crate's row is a prefix of it, and it is a prefix of none.
+///
+/// `cimmeria_cell::cell=debug` (wave C6) does the same for the cell service:
+/// `CellService`, the cell loop, the base-message handlers, the ticks and the
+/// cell-method router. Like `cimmeria_base::base` it names the crate's one
+/// top-level module rather than the crate: a bare `cimmeria_cell` would
+/// prefix-match every `cimmeria_cell_*` crate (world, combat, content, cover,
+/// catalog, interactions, methods, console), so removing any of their rows
+/// above would change nothing and no guard could tell it was gone.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -83,6 +160,31 @@ use crate::otel;
 /// quiet on a healthy link and exactly the evidence a lossy one needs.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
+                cimmeria_resources=debug,\
+                cimmeria_auth=debug,\
+                cimmeria_wire::ability_tree=debug,\
+                cimmeria_wire::base=debug,\
+                cimmeria_wire::cell=debug,\
+                cimmeria_wire::containers=debug,\
+                cimmeria_wire::firehose=debug,\
+                cimmeria_wire::hex=debug,\
+                cimmeria_wire::mercury=debug,\
+                cimmeria_wire::state_field=debug,\
+                cimmeria_wire_log=debug,\
+                cimmeria_cell_cover=debug,\
+                cimmeria_cell_catalog=debug,\
+                cimmeria_minigame=debug,\
+                cimmeria_base_session=debug,\
+                cimmeria_cell_world=debug,\
+                cimmeria_base_methods=debug,\
+                cimmeria_base_world_entry=debug,\
+                cimmeria_cell_combat=debug,\
+                cimmeria_base::base=debug,\
+                cimmeria_cell_content=debug,\
+                cimmeria_cell_console=debug,\
+                cimmeria_cell_interactions=debug,\
+                cimmeria_cell_methods=debug,\
+                cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
@@ -178,43 +280,73 @@ pub(crate) struct FileLayer {
 /// Each row starts `off` and names module paths, which is why the
 /// `wire.firehose.*` targets are listed explicitly: moving a row off its
 /// module-path target would otherwise drop it from its file.
+///
+/// A module path here must name a module that exists: when a module moves
+/// crate its `module_path!()` changes and the row silently stops matching.
+/// `stale_target_tests` fails on a path that no longer resolves.
+///
+/// A row matches by string prefix, so `world_entry.log`'s
+/// `cimmeria_base_session::base::world_entry` keeps every `world_entry*`
+/// module the session crate took from `cimmeria-services` (wave B1):
+/// `world_entry::space_registry`, `world_entry_appearance::builders` and
+/// `world_entry_chat`, which the old `cimmeria_services::base::world_entry` row
+/// matched the same way. The feature handlers under it, `world_entry::methods`,
+/// are `cimmeria_base_methods::base::world_entry::methods` since wave B2, and
+/// the rest of world entry, `world_entry_appearance` and `character` are
+/// `cimmeria_base_world_entry::base::…` since wave B3; that crate's
+/// `world_entry` row keeps `world_entry_appearance` by the same prefix match.
+///
+/// The cell modules the C4-C6 preparation moved inside `cimmeria-services`
+/// keep their files the same way: `interactions.log` names chat at
+/// `cell::console::chat`, and `aoi.log` names `cell::respawn::resync`, the
+/// client-cache resync and hotbar seed that sat under `cell::service`'s
+/// `player_init` before. The trade session state (`cell::trade`), the respawn
+/// fork and the GM handlers (`cell::console::gm`) had no file and have none.
+/// Since wave C5b the console, chat and the GM handlers are
+/// `cimmeria_cell_console::cell::console::…`; chat keeps `interactions.log`.
+/// Since wave C4 the interaction handlers, mail, gate travel and the resync
+/// are `cimmeria_cell_interactions::cell::…`, beside the content crate's
+/// dialog display in `interactions.log`. Since wave C6 the cell service (the
+/// loop, the base-message handlers and the ticks) and the cell-method router
+/// are `cimmeria_cell::cell::{service, dispatch}`, which `aoi.log` and
+/// `dispatch.log` name in place of the old `cimmeria_services::cell::…` rows.
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
-        directives: "off,cimmeria_services::auth=trace",
+        directives: "off,cimmeria_auth::auth=trace",
     },
     FileLayer {
         file: "base.log",
         directives: "off,\
-             cimmeria_services::base::service=trace,\
-             cimmeria_services::base::connect_loop=trace,\
-             cimmeria_services::base::login=trace,\
-             cimmeria_services::base::tick_sync=trace,\
-             cimmeria_services::base::helpers=trace,\
+             cimmeria_base::base::service=trace,\
+             cimmeria_base::base::connect_loop=trace,\
+             cimmeria_base::base::login=trace,\
+             cimmeria_base_session::base::tick_sync=trace,\
+             cimmeria_base_session::base::helpers=trace,\
              wire.firehose.decrypt=trace,\
              wire.firehose.udp_in=trace",
     },
     FileLayer {
         file: "world_entry.log",
         directives: "off,\
-             cimmeria_services::base::world_entry=trace,\
-             cimmeria_services::base::world_entry_player=trace,\
-             cimmeria_services::base::world_entry_appearance=trace,\
+             cimmeria_base_world_entry::base::world_entry=trace,\
+             cimmeria_base_session::base::world_entry=trace,\
+             cimmeria_base_methods::base::world_entry::methods=trace,\
              wire.firehose.aoi_position=trace",
     },
     FileLayer {
         file: "character.log",
         directives: "off,\
-             cimmeria_services::base::character=trace,\
-             cimmeria_services::base::character_create=trace,\
-             cimmeria_services::base::chardef=trace,\
-             cimmeria_services::base::cooked_data=trace,\
-             cimmeria_services::base::resources=trace",
+             cimmeria_base_world_entry::base::character=trace,\
+             cimmeria_base::base::character_create=trace,\
+             cimmeria_resources::base::chardef=trace,\
+             cimmeria_base_session::base::cooked_data=trace,\
+             cimmeria_resources::base::resources=trace",
     },
     FileLayer {
         file: "protocol.log",
         directives: "off,\
-             cimmeria_services::mercury=trace,\
+             cimmeria_wire::mercury=trace,\
              cimmeria_mercury=trace,\
              mercury.packet=info,\
              wire.in=info,wire.out=info,\
@@ -223,42 +355,51 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "aoi.log",
         directives: "off,\
-             cimmeria_services::cell::service=trace,\
-             cimmeria_services::cell::space_manager=trace",
+             cimmeria_cell::cell::service=trace,\
+             cimmeria_cell_interactions::cell::respawn::resync=trace,\
+             cimmeria_cell_world::cell::service=trace,\
+             cimmeria_cell_combat::cell::service=trace,\
+             cimmeria_cell_world::cell::space_manager=trace,\
+             cimmeria_cell_world::cell::space_manager::npc_population=off",
     },
     FileLayer {
         file: "combat.log",
         directives: "off,\
-             cimmeria_services::cell::combat=trace,\
-             cimmeria_services::cell::abilities=trace",
+             cimmeria_cell_combat::cell::combat=trace,\
+             cimmeria_cell_world::cell::combat=trace,\
+             cimmeria_cell_combat::cell::abilities=trace",
     },
     FileLayer {
         file: "content.log",
-        directives: "off,cimmeria_services::cell::content=trace",
+        directives: "off,cimmeria_cell_content::cell::content=trace",
     },
     FileLayer {
         file: "missions.log",
-        directives: "off,cimmeria_services::cell::missions=trace",
+        directives: "off,cimmeria_cell_content::cell::missions=trace",
     },
     FileLayer {
         file: "interactions.log",
         directives: "off,\
-             cimmeria_services::cell::interactions=trace,\
-             cimmeria_services::cell::chat=trace,\
-             cimmeria_services::cell::mail=trace",
+             cimmeria_cell_interactions::cell::interactions=trace,\
+             cimmeria_cell_content::cell::interactions=trace,\
+             cimmeria_cell_console::cell::console::chat=trace,\
+             cimmeria_cell_interactions::cell::mail=trace",
     },
     FileLayer {
         file: "spawner.log",
         directives: "off,\
-             cimmeria_services::cell::spawner=trace,\
-             cimmeria_services::cell::gate_travel=trace,\
-             cimmeria_services::cell::ring_transport=trace",
+             cimmeria_cell_catalog::cell::spawner=trace,\
+             cimmeria_cell_world::cell::space_manager::npc_population=trace,\
+             cimmeria_cell_interactions::cell::gate_travel=trace,\
+             cimmeria_cell_content::cell::ring_transport=trace,\
+             cimmeria_cell_world::cell::ring_transport=trace",
     },
     FileLayer {
         file: "dispatch.log",
         directives: "off,\
-             cimmeria_services::cell::dispatch=trace,\
-             cimmeria_services::base::dispatch=trace",
+             cimmeria_cell::cell::dispatch=trace,\
+             cimmeria_cell_world::cell::dispatch=trace,\
+             cimmeria_base::base::dispatch=trace",
     },
 ];
 
@@ -278,7 +419,11 @@ pub(crate) fn directive_pairs(directives: &str) -> impl Iterator<Item = (&str, &
 /// a Rust module path. For module paths the file layers are the authority on
 /// what is kept at TRACE, so [`OTEL_FILTER`]'s blanket `cimmeria_services=debug`
 /// does not become `cimmeria_services=trace`.
-fn is_custom_target(target: &str) -> bool {
+///
+/// Every workspace crate linked into the server is named `cimmeria_*`, so a
+/// target this returns `false` for is a module path or an external crate's
+/// path; `stale_target_tests` checks the former exist.
+pub(super) fn is_custom_target(target: &str) -> bool {
     !target.contains("::") && !target.starts_with("cimmeria_")
 }
 

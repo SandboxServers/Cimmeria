@@ -7,7 +7,7 @@ metadata:
 
 # Minigame implementation status (verified 2026-09-17)
 
-## Rust server side — `crates/services/src/minigame/games/mod.rs:10-25`
+## Rust server side — `crates/minigame/src/minigame/games/mod.rs:10-25`
 
 Only **two** dispatch outcomes exist:
 

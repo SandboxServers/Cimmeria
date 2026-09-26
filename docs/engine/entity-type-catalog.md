@@ -37,7 +37,7 @@ Comprehensive reference for all 18 entity types and 18 interfaces in the Stargat
 **Notes:**
 - Property, method, and interface counts are for the entity's **own** `.def` file only (not inherited). Counted as direct children of the `<Properties>` / `<CellMethods>` / `<BaseMethods>` / `<ClientMethods>` blocks. For comparison, SGWPlayer flattened over its parents and 11 interfaces is 221 properties and 514 methods.
 - Every entity def has exactly one block of each kind, so these are unambiguous counts.
-- The Python implementations referenced below now live under `deprecated/python/` — Cimmeria reimplements this logic in Rust under `crates/services/src/base/` and `crates/services/src/cell/`.
+- The Python implementations referenced below now live under `deprecated/python/` — Cimmeria reimplements this logic in Rust under the base-track crates (`crates/base/`, `crates/base-*/`) and `crates/services/src/cell/`.
 - SGWChannelManager has a base implementation only (`deprecated/python/base/SGWChannelManager.py`), with `deprecated/python/cell/SGWChannelManager.py` also present but functionally server-only (no cell methods defined).
 
 > [!WARNING]
@@ -962,5 +962,5 @@ No methods defined. State is managed externally.
 | Cell implementations (historical) | `deprecated/python/cell/*.py` (35 files) |
 | Base implementations (historical) | `deprecated/python/base/*.py` (20 files) |
 | Cell implementations (active) | `crates/services/src/cell/` |
-| Base implementations (active) | `crates/services/src/base/` |
+| Base implementations (active) | `crates/base/`, `crates/base-*/` |
 | Custom type aliases | `entities/defs/custom_alias.xml` |

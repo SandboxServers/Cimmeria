@@ -3,7 +3,7 @@
 //! A reassembled Mercury bundle (the `Bytes` [`crate::session::GameSession`]
 //! hands back from `recv_bundles`) is a back-to-back sequence of messages
 //! with **two** framing families, mirroring the client → server decoder in
-//! `crates/services/src/base/connect_loop/encrypted/mod.rs::read_client_message_payload`:
+//! `crates/base/src/base/connect_loop/encrypted/mod.rs::read_client_message_payload`:
 //!
 //! - **Static base messages** (`0x00..=0x37`, plus `0xFF`): each has a fixed
 //!   framing rule — either a `CONSTANT_LENGTH` payload with no prefix, or a

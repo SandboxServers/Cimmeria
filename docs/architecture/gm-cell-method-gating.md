@@ -17,7 +17,7 @@ fix builds on.
 `access_level` (0=Player … 4=Developer) is sourced from the
 `account.accesslevel` DB column at login and lived only on the base
 layer's `ConnectedClientState`. The cell-method dispatcher
-(`crates/services/src/cell/dispatch/router.rs`) had no access to it, so
+(`crates/cell/src/cell/dispatch/router.rs`) had no access to it, so
 **every future `gm*` handler added to the cell layer was
 unauthenticated-by-default** — a handler that did `if !is_gm { return }`
 had nothing to check against. The moment any GM handler shipped without
@@ -46,7 +46,7 @@ account.accesslevel (DB)
 
 ### 2. A single dispatch-layer gate
 
-`crates/services/src/cell/dispatch/gm_gate.rs` is the choke point.
+`crates/cell-world/src/cell/dispatch/gm_gate.rs` is the choke point.
 `dispatch_cell_method` calls `enforce_gm_gate` **before** routing to any
 interface handler:
 
@@ -69,7 +69,7 @@ interface handler:
 - **A new SGWGmPlayer method (flattened index >= 109):** nothing to do for
   gating. The `index >= SGWGMPLAYER_CELL_METHOD_BASE` range rule already
   covers the entire tail, so any new gm*/debug method is GM-gated the moment
-  it exists. Just implement the handler in `cell_methods/gm/` (or leave it
+  it exists. Just implement the handler in `console/gm/` (or leave it
   to fall through the auth-gated router warn arm until you do).
 - **A GM/debug method inside the inherited 0-108 range:** add its flattened
   index to the `matches!` in `requires_gm`. These share an interface with
@@ -123,7 +123,7 @@ cannot do at all.
 
 **No GM action audit log.** Every accepted `.`-console command is logged at
 `info` for the audit trail
-([`crates/services/src/cell/console/dispatch.rs`](../../crates/services/src/cell/console/dispatch.rs)),
+([`crates/cell-console/src/cell/console/dispatch.rs`](../../crates/cell-console/src/cell/console/dispatch.rs)),
 and login events land in the `login_audit` table, but there is no durable,
 queryable record of GM *actions* — who granted what item to whom, and when.
 The design is small: wrap the dispatch seam and write command name, actor,

@@ -73,6 +73,6 @@ tools.
 floor Y → `nav_inspect --probes` on a grid *at that Y* → ring test the finalist
 → assert it in a live-DB test that loads the real `.nav` and reads the
 coordinate back out of the seed. See
-`crates/services/src/cell/harset_placement_tests.rs`. A test that hardcodes the
+`crates/cell-world/src/cell/harset_placement_tests.rs`. A test that hardcodes the
 coordinate cannot fail when the seed row is reverted; a test that only reads the
 DB cannot fail when the coordinate is unstandable. You need both halves.

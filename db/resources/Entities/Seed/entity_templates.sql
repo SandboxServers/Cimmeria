@@ -340,7 +340,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   name_id 7586 -- beyond the packet's stated three columns, flagged in
 --                  worknotes/H11.md. `onNameIdUpdate` is only sent when
 --                  `name_id` is Some and non-zero
---                  (crates/services/src/mercury/aoi/create.rs:211-218), so
+--                  (crates/wire/src/mercury/aoi/create.rs:211-218), so
 --                  the hub Petbe currently renders with no display name at
 --                  all. 7586 is `DN_npc_mg_Petbe_Harset_Fac_fg` -> 'Petbe'.
 -- `ability_set_id` deliberately left NULL: an NPC that must never fight does
@@ -545,7 +545,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   30% health trigger needs 665 damage).
 -- faction 10 is MANDATORY, not a flavour choice: `useAbility` rejects a
 --   player single-target ability whenever `target.faction != HOSTILE_FACTION`
---   (crates/services/src/cell/abilities/use_ability/handle.rs:223-237), and no
+--   (crates/cell-combat/src/cell/abilities/use_ability/handle.rs:223-237), and no
 --   executor arm can change faction at runtime (`ModifyProperty` has no arm,
 --   there is no `set_faction`). At faction 1 the duel's
 --   `entity_health_below Rinla_Malac:30` trigger could never fire.

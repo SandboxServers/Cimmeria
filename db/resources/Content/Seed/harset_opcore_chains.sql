@@ -55,7 +55,7 @@ SET search_path = resources, pg_catalog;
 --     Praxis offer, 6527 Praxis turn-in). Their disjointness is enforced
 --     by the extra conditions marked "DISJOINTNESS" below and is pinned
 --     by `marsh_interact_chains_are_pairwise_disjoint` in
---     crates/services/src/cell/content/chain_replay_tests/mission_1361.rs.
+--     crates/cell-content/src/cell/content/chain_replay_tests/mission_1361/mod.rs.
 --     Do not remove one of those conditions without re-running that test.
 --
 --     Two chains key on 'CmdCenter_Mohkatan' (6515 step 4040, 6520 step
@@ -75,7 +75,7 @@ SET search_path = resources, pg_catalog;
 --
 --     That is why the seven `interact_tag` chains in this file carry no
 --     `set_interaction_type` action and are allowlisted in
---     crates/content-engine/tests/interact_tag_linter.rs. The bit is real;
+--     crates/content-engine/tests/it/interact_tag_linter.rs. The bit is real;
 --     it just arrives per-player instead of per-entity.
 --
 -- (C) WHEN A BEAT MUST USE THE BIND PATH INSTEAD OF `interact_tag`.

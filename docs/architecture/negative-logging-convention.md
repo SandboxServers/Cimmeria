@@ -41,7 +41,7 @@ and `expected` as paired structured fields so a single ops query
 ### Pattern C — Witness / lookup misses logged at `trace!`
 
 The `send_to_witness` family in
-[`crates/services/src/base/helpers/mod.rs`](../../crates/services/src/base/helpers/mod.rs)
+[`crates/base-session/src/base/helpers/mod.rs`](../../crates/base-session/src/base/helpers/mod.rs)
 historically logged AoI packet drops at `trace!`, making them
 invisible without `RUST_LOG=trace`. **Fix**: upgrade to `warn!` for the
 entity-to-addr miss (player-visible bug) and `debug!` for the
@@ -72,7 +72,7 @@ entity in Harset.
 | Throttle state is keyed by entity and released in `destroy_entity` | Bounded by the live entity population, and a recycled `entity_id` must not inherit a predecessor's open window — that would swallow the first reject of a fresh session, the exact row Pattern D exists to protect |
 
 The shared primitive is `LogThrottle` in
-[`crates/services/src/cell/space_manager/movement_telemetry/`](../../crates/services/src/cell/space_manager/movement_telemetry/mod.rs),
+[`crates/cell-world/src/cell/space_manager/movement_telemetry/`](../../crates/cell-world/src/cell/space_manager/movement_telemetry/mod.rs),
 parameterised on the window so each caller picks its own
 (`movement.validation_reject` uses 1 s against a 10 Hz packet rate;
 `npc_ai.path_fail` uses 5 s against the AI tick). Reuse it rather than
@@ -115,7 +115,7 @@ A third, cheap: state is released on `destroy_entity`.
 
 Never log a credential value in full, at any level: this covers SIDs, tickets, session keys, passwords and password hashes, and raw request bodies that carry them. Disk logs, the admin `/ws/logs` stream and SigNoz all keep what they receive, and a harvested SID or ticket is enough to hijack a pending login ([#440](https://github.com/SandboxServers/Cimmeria/issues/440)).
 
-Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/services/src/credential_redaction.rs`:
+Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/auth/src/credential_redaction.rs`:
 
 ```rust
 tracing::debug!(ticket_prefix = %CredentialPrefix(&ticket), "Phase 2 generated session credentials");

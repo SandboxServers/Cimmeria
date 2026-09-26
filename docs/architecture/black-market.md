@@ -77,8 +77,8 @@ Serializers are in
 `base/black_market/wire.rs`;
 the send wrappers in
 `base/black_market/send.rs`.
-Indices are pinned in `crates/services/src/mercury/mod.rs` (`method_idx`)
-and `crates/services/src/cell/client_methods/black_market.rs`.
+Indices are pinned in `crates/wire/src/mercury/mod.rs` (`method_idx`)
+and `crates/wire/src/cell/client_methods/black_market.rs`.
 
 **Names are narrow `STRING`** (4-byte LE length prefix + UTF-8 body), not
 `WSTRING`/UTF-16 as most other SGW social systems use. This is

@@ -18,11 +18,11 @@ Every rule below cites either a client source file you can read yourself, or the
 
 ## The server sends an id, not a dialog
 
-`onDialogDisplay` carries five integers — the speaker's entity id, the dialog id, a mission-flags word, a one-byte immediate flag and a mission id. No text, no button list, no screen count. The client looks the rest up in `CookedDataDialogs.pak` (`crates/services/src/cell/interactions/dialog.rs:51-56`).
+`onDialogDisplay` carries five integers — the speaker's entity id, the dialog id, a mission-flags word, a one-byte immediate flag and a mission id. No text, no button list, no screen count. The client looks the rest up in `CookedDataDialogs.pak` (`crates/cell-content/src/cell/interactions/dialog.rs:51-56`).
 
 Two consequences you will hit on your first change:
 
-- **Editing `db/resources/Dialogs/Seed/` changes nothing in game.** The seed is the server's parallel copy. It is what the content engine and the linters read; it is not what the player sees. (`crates/services/src/base/dialog_overrides.rs:1-12`)
+- **Editing `db/resources/Dialogs/Seed/` changes nothing in game.** The seed is the server's parallel copy. It is what the content engine and the linters read; it is not what the player sees. (`crates/resources/src/base/dialog_overrides/mod.rs:1-12`)
 - **The only route to the player is a cooked-entry override**, pushed at handshake through the per-key invalidation path. See [mission-pak-overrides.md](../architecture/mission-pak-overrides.md) for the mechanism. When you change a dialog, you change the seed *and* the override, and they must agree.
 
 ## Window types
@@ -129,7 +129,7 @@ Tutorials are independent: a tutorial and a normal dialog can be open together w
 
 There is no bark, subtitle or floating-text path anywhere in the dialog module. Type 0 is a modal popup, not a bark — if you use it for a one-liner you stop the player, freeze them in front of a box and make them close it.
 
-Non-modal text goes through `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`, the same route chat and GM feedback already use (`entities/defs/interfaces/Communicator.def:48-53`, `crates/services/src/cell/chat.rs:49,167`). Packet DU-03 wraps it in an authorable action; until that lands, there is no supported way to author one.
+Non-modal text goes through `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`, the same route chat and GM feedback already use (`entities/defs/interfaces/Communicator.def:48-53`, `crates/cell-console/src/cell/console/chat.rs:49,167`). Packet DU-03 wraps it in an authorable action; until that lands, there is no supported way to author one.
 
 ## What is not built yet
 

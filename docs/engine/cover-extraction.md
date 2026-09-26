@@ -138,7 +138,7 @@ After regenerating, check that:
   grouping (the desk fixture uses NA20's real coordinates) and the SQL
   rows. It builds synthetic packages with `test_support`, so it runs in CI
   without client assets.
-- `crates/services/src/cell/cover/tests.rs::nearby_never_returns_another_worlds_nodes`,
+- `crates/cell-cover/src/cell/cover/tests.rs::nearby_never_returns_another_worlds_nodes`,
   `scoring.rs::pick_best_never_picks_another_worlds_slot` and
   `service/ticks/cover.rs::cover_detection_tick_ignores_another_worlds_nodes`
   pin the per-world index.
@@ -150,5 +150,5 @@ After regenerating, check that:
 
 - [cover-world-placement.md](../reverse-engineering/findings/cover-world-placement.md): NA20 finding, the evidence for everything above
 - [navmesh-build-pipeline.md](navmesh-build-pipeline.md): the axis mapping and the extractor crate this tool lives in
-- `crates/services/src/cell/cover/`: loader, per-world spatial index, reservation, scoring, detection
+- `crates/cell-cover/src/cell/cover/`: loader, per-world spatial index, reservation, scoring, detection
 - [NPC AI work packets](../analysis/npc-ai-restoration/work-packets.md): NA21 (this), NA22 (cover behaviour)

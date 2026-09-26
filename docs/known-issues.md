@@ -59,14 +59,14 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 **Severity**: Low (security)
 **Status**: Partially fixed — the "never expire" claim is stale.
 **Description**: `TICKET_TTL` is 30 s and `SESSION_TTL` is 300 s
-(`crates/services/src/auth/mod.rs:41-45`), matching the C++ 30 s ticket
+(`crates/auth/src/auth/mod.rs:41-45`), matching the C++ 30 s ticket
 lifetime. A reaper task sweeps both maps every `REAPER_INTERVAL`
-(`crates/services/src/auth/service.rs:184-190`), and the Phase-2
+(`crates/auth/src/auth/service.rs:184-190`), and the Phase-2
 `ServerSelection` handler additionally checks `SESSION_TTL` inline
-(`crates/services/src/auth/handlers.rs:247`).
+(`crates/auth/src/auth/handlers.rs:247`).
 
 **What remains**: the Phase-3 consume path does **not** check the TTL. `handle_login`
-does a bare `map.remove(ticket)` (`crates/services/src/base/login/mod.rs:45-58`),
+does a bare `map.remove(ticket)` (`crates/base/src/base/login/mod.rs:45-58`),
 so a ticket stays usable until the reaper happens to run — up to roughly one
 reaper interval past its nominal 30 s expiry. Tracked as CAT-A-04 in
 [`security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md`](security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md).
@@ -152,7 +152,7 @@ Systems with CellMethod dispatch wired but handlers still stubbed (each logs
   state, and Team/Command persistence landed on a feature branch (#568) but
   are **not on `main`**.
 - **Minigames**: mixed. The SmartFoxServer TCP server, ticket registry, and
-  the Livewire game are implemented (`crates/services/src/minigame/`), but
+  the Livewire game are implemented (`crates/minigame/src/minigame/`), but
   most MinigamePlayer CellMethods are still stubs — `startMinigame`,
   `endCurrentMinigame`, `spectateMinigame`, `requestSpectateList`, the four
   `debug*` methods, the `minigameCall*` trio, and the help-registration pair.
@@ -165,7 +165,7 @@ Systems with CellMethod dispatch wired but handlers still stubbed (each logs
 No longer stubbed:
 
 - **Contact list** (friend/ignore): implemented and merged —
-  `crates/services/src/base/contact_list/`, with login presence push, CM
+  `crates/base-session/src/base/contact_list/`, with login presence push, CM
   55–60, and GainLevel / Death / GateTravel presence events. Server-side chat
   and AoI ignore enforcement landed separately.
 - **Black market**: 4 of 6 CellMethods implemented (`BMSearch`,

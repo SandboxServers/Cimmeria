@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-`crates/services/src/cell/cell_methods/player/social.rs:66` has an arm:
+`crates/cell-methods/src/cell/cell_methods/player/social.rs:66` has an arm:
 ```
 SPEND_APPLIED_SCIENCE_POINTS => {
     if args.len() >= 4 { ... }

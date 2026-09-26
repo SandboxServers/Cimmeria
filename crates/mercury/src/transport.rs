@@ -87,7 +87,7 @@ impl Transport for UdpTransport {
 
 /// Extension of [`Transport`] that also exposes the **inbound** side
 /// of the wire. Used by the recv loop in
-/// `crates/services/src/base/connect_loop/mod.rs` and by the
+/// `crates/base/src/base/connect_loop/mod.rs` and by the
 /// chaos-testing `LossyTransport`. Production handlers still take
 /// `&Arc<dyn Transport>` (send-only); only the recv loop holds a
 /// `BidirectionalTransport`.

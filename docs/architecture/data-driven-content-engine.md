@@ -1,7 +1,7 @@
 # Data-Driven Content Engine — original design doc
 
 > **Last updated**: 2026-03-02 (banner added 2026-05-07)
-> **Status**: **HISTORICAL DESIGN DOC.** This is the original design proposal from before the engine shipped. The implementation landed in Rust (not Python as proposed below) under [crates/content-engine/](../../crates/content-engine/) and [crates/services/src/cell/content/](../../crates/services/src/cell/content/). Read this for the *why* — what content the engine was designed to drive and why a data-driven approach was chosen. For *what's actually running today*, see [docs/content/content-engine.md](../content/content-engine.md).
+> **Status**: **HISTORICAL DESIGN DOC.** This is the original design proposal from before the engine shipped. The implementation landed in Rust (not Python as proposed below) under [crates/content-engine/](../../crates/content-engine/) and [crates/cell-content/src/cell/content/](../../crates/cell-content/src/cell/content/). Read this for the *why* — what content the engine was designed to drive and why a data-driven approach was chosen. For *what's actually running today*, see [docs/content/content-engine.md](../content/content-engine.md).
 > **Sources**: All 20 mission scripts, 5 effect scripts, 10 space scripts, `db/resources.sql` schema, `python/common/Event.py`, `python/cell/AbilityManager.py`, `python/cell/SGWMob.py`, `python/cell/Lootable.py`
 
 > **Where the design changed in implementation:**

@@ -21,56 +21,66 @@ The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agen
 - **Seeds are the source of truth.** Change seeded data in `db/resources/`; do not add `db/scripts/*.sql` migrations without asking.
 - **Prefer server-authoritative changes that need no client patch.** New opcodes, wire-crypto changes, and new client UI need a maintainer decision first.
 - **Every button press gets visible feedback on the first press**, whatever the original server did.
-- **Parallel agents: one worktree each, one test database each**, on top of the one-`cargo`-at-a-time rule below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
+- **Parallel agents: one worktree each, one test database each**, and every compiling `cargo` call goes through the build lane below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 
 ## Build rules
 
-Always target **Windows** — the server runs on Windows alongside the game client.
+Always target **Windows** — the server runs on Windows alongside the game client. Build natively on Windows, from PowerShell or Git Bash. The WSL cross-compile is retired; CI still builds and tests on Linux runners.
 
 ```bash
-# WSL/Linux: cross-compile to Windows.
-cargo build -p cimmeria-server --target x86_64-pc-windows-gnu --release
-cp target/x86_64-pc-windows-gnu/release/cimmeria-server.exe .
-
-# Windows natively:
 cargo build -p cimmeria-server --release
 cp target/release/cimmeria-server.exe .
 ```
 
-After building, copy the exe to the project root.
+After building, copy the exe to the project root. A build that went through the build lane on a Dev Drive writes to the target dir the lane prints when it starts (`$CIMMERIA_TARGET_ROOT/<worktree>/release/`), not to `target/`.
 
-### Rust build memory (WSL)
+- **One pinned toolchain.** [rust-toolchain.toml](rust-toolchain.toml) pins Rust 1.98.1 with rustfmt and clippy. rustup picks it up automatically, and CI installs the same version through [.github/actions/rust-toolchain](.github/actions/rust-toolchain/action.yml), so your clippy is CI's clippy. Bump the version in its own PR: change the file, run the pre-PR checklist, and fix the new lints in that PR.
+- **Debug info.** The dev profile keeps line tables only (`debug = "line-tables-only"`), so panics and backtraces keep file:line but a debugger sees no variables. For a debugger session, build with `cargo build --profile dev-debug`: full debug info, built into `target/dev-debug/`, so it never invalidates the normal dev build.
 
-The full link can consume ~47 GB RAM. The workspace's `[profile.dev.package."*"]` strips dep debug info to bring this down to ~8 GB, but you still need to be careful:
+The reasons behind all of this are in [docs/architecture/build-system.md](docs/architecture/build-system.md).
 
-1. **`cargo check -p cimmeria-services`** for iteration (1.5s, <2 GB). Only run full `cargo build`/`cargo test` when you actually need a binary or test results.
-2. **Never run multiple `cargo`/`rustc` processes concurrently.** Kill stale ones before starting a new build: `pkill -f rustc`.
-3. **Target specific crates** with `-p` rather than `--workspace`. Only build the workspace for final validation.
-4. Sanity-check before building: `ps aux | grep -E "cargo|rustc" | grep -v grep`.
-5. `CARGO_BUILD_JOBS=2` is set in `.bashrc` to cap parallel codegen.
+### Build lane and concurrency
+
+Several sessions and agents build on one workstation at once. Every agent or worker `cargo` call that compiles (`check`, `build`, `test`, `nextest`, `clippy`) goes through the build lane, [tools/build-lane/lane.sh](tools/build-lane/lane.sh):
+
+```bash
+bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
+bash tools/build-lane/lane.sh --exclusive cargo build --workspace ...   # workspace-wide or measurement runs
+```
+
+1. **One `cargo` per lane slot.** The lane is a machine-wide semaphore. The slot count lives in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (currently 4), `--exclusive` takes every slot, and `CARGO_BUILD_JOBS` defaults to cores ÷ slots. A slot whose holder died is freed by the next caller, so there is nothing to kill.
+2. **Iterate per crate with `-p`.** `cimmeria-services` is a small facade over about 20 crates, so check and test the crate you changed (`-p cimmeria-cell`, `-p cimmeria-cell-content`, `-p cimmeria-base-methods`, …). Build the workspace only for final validation.
+3. **The lane sets up the build environment:** a target dir per worktree (on the Dev Drive when one is set up), incremental builds for workspace crates, and sccache for third-party crates. A direct `cargo` call bypasses the slot count, which is why agents never make one.
+4. **Every lane job is logged.** `python tools/build-lane/lane_stats.py` reports on the log (`--recent 20` for the last jobs, `--html` for charts, `--csv` for a spreadsheet).
+
+Worktrees, per-worktree test databases and Dev Drive seeding: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 
 Quick reference:
 
 ```bash
-# Iteration
-cargo check -p cimmeria-services
+# Iteration: check the crate you changed. cimmeria-services is only the
+# facade now (the orchestrator, the database pool and the cross-track
+# round trips); the service code and its tests are in the split crates.
+bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
 
-# Single-crate test
-cargo test -p cimmeria-services
+# Single-crate test: name the crate you changed.
+bash tools/build-lane/lane.sh cargo test -p cimmeria-cell
 
 # Full workspace check — skip the GUI apps (Tauri editors and the egui
-# launcher), and the Windows-only client-telemetry cdylib so Linux
-# dev hosts don't need xkbcommon/xcb dev packages and the linker
-# doesn't OOM.
-cargo check --workspace \
+# launcher), and the Windows-only client-telemetry cdylib so CI's Linux
+# runners don't need xkbcommon/xcb dev packages. Same six exclusions as CI.
+bash tools/build-lane/lane.sh --exclusive cargo check --workspace \
   --exclude cimmeria-app \
   --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor \
   --exclude sgw-launcher \
   --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 
-# Kill stale builds
-pkill -f "cargo|rustc"
+# Full debug info for a debugger session (builds into target/dev-debug/)
+bash tools/build-lane/lane.sh cargo build -p cimmeria-server --profile dev-debug
+
+# What the lane has been doing
+python tools/build-lane/lane_stats.py --recent 20
 ```
 
 ## Pre-PR checklist
@@ -87,8 +97,13 @@ Run everything in the block below before pushing, or the pipeline will fail and 
 
 A sixth job in `test.yml`, `coverage`, uploads to Codecov and does not gate. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
 
+Agents run the compiling commands below through the build lane, with `--exclusive` for the workspace-wide ones (`bash tools/build-lane/lane.sh --exclusive cargo clippy …`).
+
 ```bash
 cargo fmt --all -- --check
+# The workspace-hack (cargo-hakari) must match the manifests; after a
+# dependency change, regenerate with `cargo hakari generate && cargo hakari manage-deps --yes`:
+cargo hakari generate --diff && cargo hakari manage-deps --dry-run
 cargo clippy --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
@@ -106,9 +121,14 @@ cargo nextest run --profile=ci --workspace \
 # doctests today, so this is a one-crate sanity check:
 cargo test --doc -p cimmeria-commands
 
-# Live-DB tests — start the bundled Postgres first, then:
+# Live-DB tests — start the bundled Postgres first, then run every crate
+# with live-DB tests in one serialised nextest run (the crate list lives in
+# the script; tools/test-live-db.ps1 on Windows PowerShell):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+  tools/test-live-db.sh
+# From a worktree, use the worktree's own database instead: this reloads
+# sgw_<worktree> from db/database.sql and runs the same tier in a lane slot.
+tools/build-lane/live-db-test.sh <test-name filter>
 
 # Markdown lint (warn-only — CI surfaces violations as PR annotations but
 # never blocks). Same rules as CodeRabbit's review:
@@ -134,10 +154,10 @@ tools/lint-figure-style.ps1         # Windows PowerShell
 The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/markdownlint-cli2) against [`.markdownlint-cli2.yaml`](.markdownlint-cli2.yaml) at the repo root. CI mirrors local invocation via [`DavidAnson/markdownlint-cli2-action`](.github/workflows/markdownlint.yml). First local run downloads the binary on-demand via `npx`; running `npm install` once pins the version from `package.json` for offline reuse. Phase 2 hardens the lint from warn-only to blocking — until then, fix what's easy and let reviewers nudge the rest.
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
-- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** CI floats on current stable Rust (no `rust-toolchain` pin), so its clippy is often newer than yours. Install that version side by side (`rustup toolchain install <version> --profile minimal`) and run `cargo +<version> clippy …` before pushing — see [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md) "Build and CI".
-- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
-- **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
-- **test-live-db fails** → CI runs `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
+- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site. **Passes locally but fails in CI?** That is no longer toolchain drift: [rust-toolchain.toml](rust-toolchain.toml) pins the version CI uses, so the old advice to install CI's newer clippy side by side is obsolete. Check that you ran the exact command above (`--workspace --all-targets -- -D warnings`), not a narrower `-p` run. Bumping Rust is its own PR: change `rust-toolchain.toml`, run this checklist, and fix the new lints there.
+- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`. If the failing step is **workspace-hack is current**, a dependency change didn't regenerate the hakari crate: run `cargo hakari generate && cargo hakari manage-deps --yes` (install it once with `cargo install cargo-hakari --locked`) and commit the result. See [docs/architecture/build-system.md](docs/architecture/build-system.md) §6.
+- **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
+- **test-live-db fails** → CI runs `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate in its list) against a fresh `postgres:17.9` service container loaded from `db/database.sql`. A crate with a `cimmeria-test-support` dev-dependency must be in that list, or `live_db_wrapper_lists_every_test_support_crate` fails. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 - **figure-sources-in-sync fails** → A source DSL under `docs/drafts/spec/figures/sources/` was committed more recently than its rendered SVG one directory up. Re-render the affected diagram (Prixmaviz, or the local renderer per [docs/drafts/spec/figures/sources/README.md](docs/drafts/spec/figures/sources/README.md)) and commit the regenerated SVG alongside the source change. Pairing rule: `sources/<slug>.<ext>` pairs with `<slug>.svg`.
 - **figure-style-lint fails** → A figure source, rendered SVG, or chapter convention violated the style rule catalog inside [tools/lint-figure-style.sh](tools/lint-figure-style.sh). Common causes: Mermaid `flowchart`/`sequenceDiagram` missing the `htmlLabels:false` init directive (rules M1/M2), an SVG missing the cimmeria-bg theme-aware backdrop marker (S1), Graphviz intrinsic `fill="white"` backdrop polygon not stripped (S3), non-sequential `*Figure N:*` captions (C1), generic image alt text (C2), or a dangling image reference (C3). Run the script locally to see the specific rule code and remediation hint.
 
@@ -150,7 +170,7 @@ The non-negotiables:
 - **Pick the right type.** If you change a `WHERE` clause or `rows_affected` invariant, you need a live-DB regression guard, not a unit test. If you change a serializer, you need a byte-exact wire-format test. The picker table is in TESTING.md.
 - **Reproduce the bug shape.** A regression guard must fail when the fix is reverted; if it doesn't, it's a happy-path test, not a guard. PR reviewers will check.
 - **One feature can need multiple tests.** Vendor stack changes typically need unit + wire-format + live-DB + smoke. Don't skip a layer because "the next layer up will catch it" — that's the bug shape TESTING.md exists to prevent.
-- **Live-DB tests use `require_db_or_skip!`** and run serialised. Under nextest the `ci-live-db` profile pins this with `threads-required = "num-test-threads"`; with `cargo test`, pass `-- --test-threads=1`. Sentinels fit in `i32`. Cleanup deletes by exact sentinel, not by range. See `crates/services/src/test_support.rs`.
+- **Live-DB tests use `require_db_or_skip!`** and run serialised. Under nextest the `ci-live-db` profile pins this with `threads-required = "num-test-threads"`; with `cargo test`, pass `-- --test-threads=1`. Sentinels fit in `i32`. Cleanup deletes by exact sentinel, not by range. The gate lives in `crates/test-support/` (`cimmeria-test-support`), re-exported from each crate's `crate::test_support`.
 
 ## Required documentation for every PR
 
@@ -162,12 +182,14 @@ The map of "what changed → what to update":
 |---|---|
 | The README's listed feature set, status, or structure | [README.md](README.md) |
 | The pre-PR checklist, build commands, or repo invariants | [CLAUDE.md](CLAUDE.md) and [.github/copilot-instructions.md](.github/copilot-instructions.md) |
+| The toolchain pin, cargo profiles, `.cargo/config.toml`, or the build tooling under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` or `tools/build-metrics/` | [docs/architecture/build-system.md](docs/architecture/build-system.md) (the ADR), "Build rules" in this file and [.github/copilot-instructions.md](.github/copilot-instructions.md), the worktree and lane rules in [docs/agents/development-workflow.md](docs/agents/development-workflow.md), and [docs/troubleshooting.md](docs/troubleshooting.md) if the change adds a new failure mode |
 | Test conventions, types, or gotchas | [TESTING.md](TESTING.md) (and re-link from README if a new section is added) |
 | Markdown lint rules, exclusions, or the wrapper scripts | [.markdownlint-cli2.yaml](.markdownlint-cli2.yaml), [tools/lint-md.sh](tools/lint-md.sh), [tools/lint-md.ps1](tools/lint-md.ps1), and the workflow at [.github/workflows/markdownlint.yml](.github/workflows/markdownlint.yml) |
 | Add or remove ≥5% of workspace tests in one PR (~147 tests at current 2,936 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
 | Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
-| Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) and the crate diagram in [README.md](README.md) |
-| Wire format, method indices, or message catalog | [docs/protocol/client-method-dispatch-table.md](docs/protocol/client-method-dispatch-table.md), [docs/protocol/message-catalog.md](docs/protocol/message-catalog.md), the rest of [docs/protocol/](docs/protocol/), the canonical entity definitions under [entities/defs/](entities/defs/), and the `method_idx` constants module in `crates/services/src/mercury/mod.rs` |
+| Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) (crate table). Regenerate the crate diagrams in [README.md](README.md) and crates/README.md with `python tools/crate-graph/crate_graph.py` (CI fails when they are stale); add a new crate to a layer in [tools/crate-graph/groups.toml](tools/crate-graph/groups.toml) |
+| A new crate split out of an existing one, or a module moved between crates | A new crate with live-DB tests goes in [tools/test-live-db.sh](tools/test-live-db.sh) and [.ps1](tools/test-live-db.ps1). An in-process crate also needs an `IN_PROCESS_CRATES` entry in `crates/server/src/logging/target_scan_tests.rs`, and an `OTEL_FILTER` row of its own (never a bare name that prefixes a sibling crate's, such as `cimmeria_cell`), or a `NO_OWN_ROW` entry that says why not. `crates/server/src/logging/parity_tests/crate_rows.rs` checks both. Moved tracing targets follow the move in the `FILE_LAYERS` rows of `crates/server/src/logging/filters.rs`. Update the crate table and graph as the row above says, and regenerate the workspace-hack (`cargo hakari generate && cargo hakari manage-deps --yes`). How the services split was done: [docs/architecture/services-crate-split.md](docs/architecture/services-crate-split.md). The layering guard that policed the split's planned crate DAG is retired: the crates now exist, and a new dependency edge shows up in the regenerated crate graph |
+| Wire format, method indices, or message catalog | [docs/protocol/client-method-dispatch-table.md](docs/protocol/client-method-dispatch-table.md), [docs/protocol/message-catalog.md](docs/protocol/message-catalog.md), the rest of [docs/protocol/](docs/protocol/), the canonical entity definitions under [entities/defs/](entities/defs/), and the `method_idx` constants module in `crates/wire/src/mercury/mod.rs` |
 | Mercury protocol-layer behavior (channel state, retransmit, fragmentation, keepalive, ack, RTO) or the loopback harness itself | [docs/architecture/mercury-loopback-harness.md](docs/architecture/mercury-loopback-harness.md), TESTING.md type 9, and (if the harness API surface changes) the `test_harness` module under [crates/mercury/src/test_harness/](crates/mercury/src/test_harness/) plus the `cimmeria-mercury` row in [crates/README.md](crates/README.md) |
 | Network-chaos primitives, lossy-socket wrappers, pcap-replay infra, or any new chaos scenario | [docs/architecture/network-chaos-testing.md](docs/architecture/network-chaos-testing.md), TESTING.md type 10, plus the `cimmeria-mercury` row in [crates/README.md](crates/README.md) if the L2 trait surface widens. New scenarios drop under [crates/mercury/src/test_harness/tests/chaos/](crates/mercury/src/test_harness/tests/chaos/). |
 | Wireclient (`cimmeria-wireclient`) public API, the `session_trace` JSONL schema, or the pcap exporter | [docs/architecture/wireclient.md](docs/architecture/wireclient.md), TESTING.md type 11, the `cimmeria-wireclient` row in [crates/README.md](crates/README.md), and (if the pcap exporter shape changes) [tools/pcap_to_session.py](tools/pcap_to_session.py) |
@@ -179,7 +201,7 @@ The map of "what changed → what to update":
 | Adding a new Discord notification event type, channel, or toggling default | [docs/architecture/discord-notifications.md](docs/architecture/discord-notifications.md) (design + ops), [config/discord.toml.example](config/discord.toml.example) (schema + defaults), and the `cimmeria-discord` row in [crates/README.md](crates/README.md) — add the new variant to `EventKind`, `EventToggles`, `router::channel_for`, `embed::format_event`, and one typed helper in `crates/discord/src/lib.rs` (the `event_kind_all_matches_variant_count` test pins the count so forgetting a step trips it). **If the new channel should also fire on the colo**: add a `[discord.channels.<X>]` block + `__DISCORD_<X>_WEBHOOK__` sentinel to [docker/compose.discord.yml](docker/compose.discord.yml), a matching awk arm in the render step of [.github/workflows/release-container.yml](.github/workflows/release-container.yml), and the new `DISCORD_<X>_WEBHOOK` GitHub Actions secret. Update [docs/operations/colo-deploy.md](docs/operations/colo-deploy.md#optional-discord-notifications) if the operator surface changes. |
 | Mission PAK overrides / new client-visible mission steps not in the canonical PAK | [docs/architecture/mission-pak-overrides.md](docs/architecture/mission-pak-overrides.md) and [docs/content/equip-from-inventory-pattern.md](docs/content/equip-from-inventory-pattern.md) (when the new step is part of an equip flow); cross-link from the mission's row in [docs/content/mission-chains.md](docs/content/mission-chains.md) |
 | Game systems, content chains, or content-engine actions | [docs/game-systems.md](docs/game-systems.md) and/or [docs/content/](docs/content/), plus [.github/instructions/content-chains.instructions.md](.github/instructions/content-chains.instructions.md) if review rules shift |
-| Abilities, effects, target collection, pulsing, stacking, shields, channels, stuns, or any `cell/effects/` or `cell/abilities/cone_aoe/` work | [docs/architecture/abilities-and-effects-system.md](docs/architecture/abilities-and-effects-system.md) — the cross-cutting ADR (EffectScript trait shape, refcount via state_flag_counts, channel cancellation triggers, AF_CHANNEL_ALLOWS_MOVEMENT default, absorption pool drain ordering). New scripts go in [crates/services/src/cell/effects/scripts.rs](crates/services/src/cell/effects/scripts.rs) with a matching `match` arm in [registry.rs](crates/services/src/cell/effects/registry.rs). |
+| Abilities, effects, target collection, pulsing, stacking, shields, channels, stuns, or any `cell/effects/` or `cell/abilities/cone_aoe/` work | [docs/architecture/abilities-and-effects-system.md](docs/architecture/abilities-and-effects-system.md) — the cross-cutting ADR (EffectScript trait shape, refcount via state_flag_counts, channel cancellation triggers, AF_CHANNEL_ALLOWS_MOVEMENT default, absorption pool drain ordering). New scripts go in [crates/cell-world/src/cell/effects/scripts.rs](crates/cell-world/src/cell/effects/scripts.rs) with a matching `match` arm in [registry.rs](crates/cell-world/src/cell/effects/registry.rs). |
 | Project status, gap analysis, or roadmap | [docs/project-status.md](docs/project-status.md) and [docs/gap-analysis.md](docs/gap-analysis.md). **Not** [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md) — that is a historical C++-only dependency plan, and its "CRITICAL OpenSSL" row describes the deprecated tree, never Cimmeria (Rust uses `tokio-rustls`). |
 | Cross-cutting server-only infrastructure (session lifecycle, rate limiting, world-state persistence, scheduling, currency-flow logging) | [docs/architecture/server-infrastructure-proposals.md](docs/architecture/server-infrastructure-proposals.md) for the design, [docs/gap-analysis.md](docs/gap-analysis.md) §"Server Infrastructure (Cross-Cutting)" for status. [docs/architecture/server-systems.md](docs/architecture/server-systems.md) is a superseded pointer page — do not add content to it |
 | UE3 package binary format, `.upk`/`.umap` parsing, or [`crates/upk-objects/`](crates/upk-objects/) | [docs/engine/ue3-package-format.md](docs/engine/ue3-package-format.md) and the `engine/` row in [docs/engine/README.md](docs/engine/README.md) |
@@ -210,7 +232,7 @@ Files should "do what it says on the tin" — a reader (human or LLM) should pre
 - **Split along natural seams, not arbitrary line counts.** Group methods that share state, lifecycle, or call patterns. Line count is a *signal to look for seams*, not a target.
 - **Flat names for 2–3 siblings; directory for 4+.** Prefer `inventory_grant.rs` + `inventory_move.rs` (2 siblings, flat) over `inventory/grant.rs` + `inventory/move.rs`. Promote to a directory once you cross 4 files on the same theme.
 - **Re-export discipline.** When a file becomes a directory, the new `mod.rs` should `pub use` the submodules' public types so external callers' imports don't change. Splits are internal refactors, not public-surface changes.
-- **Foresight rule.** When creating a new file you can already see will accumulate siblings (handler-per-message, method-per-feature), start it as a directory from day one. Heuristic: *if you can name 3+ logical sibling files now, make the directory now.* See `crates/services/src/base/world_entry/methods/vendor/` for the canonical example.
+- **Foresight rule.** When creating a new file you can already see will accumulate siblings (handler-per-message, method-per-feature), start it as a directory from day one. Heuristic: *if you can name 3+ logical sibling files now, make the directory now.* See `crates/base-methods/src/base/world_entry/methods/vendor/` for the canonical example.
 - **Naming.** Avoid `helpers.rs`, `utils.rs`, `misc.rs`, `extra.rs` — they hide content. Use `cooldowns.rs`, `damage_resolution.rs`, `witness_list.rs`.
 - **Module style.** The repo uses `foo/mod.rs` (not the modern `foo.rs` + `foo/` style). Stay consistent.
 

@@ -27,7 +27,7 @@
 //!   pending-logins map on receipt of `baseAppLogin`.
 //! - `IP` / `Port` — BaseApp UDP endpoint to dial.
 //!
-//! This driver makes the same requests `cimmeria_services::auth::login_smoke`
+//! This driver makes the same requests `cimmeria_auth::auth::login_smoke`
 //! exercises server-side, so a regression on either end surfaces in both
 //! suites.
 //!

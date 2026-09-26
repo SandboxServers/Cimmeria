@@ -51,7 +51,7 @@ Phase 1 of an AoI introduction (`CREATE_ENTITY` + `UPDATE_AVATAR`) is
 class-agnostic and was already correct. Phase 2 — the `createOnClient()`
 cascade that fills in everything the client renders — had exactly one
 implementation, `compose_create_entity_cascade_body` in
-[`mercury/aoi/create.rs`](../../crates/services/src/mercury/aoi/create.rs),
+[`mercury/aoi/create.rs`](../../crates/wire/src/mercury/aoi/create.rs),
 written against `NpcAoIData`: template-sourced faction, alignment, name id,
 flags, and a `level` the cell holds. A player has none of that. The cell
 passes `npc_data: None` for a player, so a witness received an entity with a
@@ -94,11 +94,11 @@ Nothing owns the whole cascade, so stop pretending one side does.
 | Half | Owner | Why it lives there |
 |---|---|---|
 | Live state — `stateField`, target, public stats, ammo type | **Cell** | The cell is the authority for combat state, health and targeting. It changes every tick |
-| Identity — name, level, archetype, alignment, `BeingAppearance` args, tint args | **Base** | The base owns `ConnectedClientState`, and `refresh_player_appearance` ([`methods/inventory/appearance.rs:36`](../../crates/services/src/base/world_entry/methods/inventory/appearance.rs)) keeps `cached_appearance_args` current across every equip, holster and bandolier change |
+| Identity — name, level, archetype, alignment, `BeingAppearance` args, tint args | **Base** | The base owns `ConnectedClientState`, and `refresh_player_appearance` ([`methods/inventory/appearance.rs:36`](../../crates/base-methods/src/base/world_entry/methods/inventory/appearance.rs)) keeps `cached_appearance_args` current across every equip, holster and bandolier change |
 
 The cell ships its half on
 `CellToBaseMsg::EnteredAoI { player_data: Option<PlayerAoIData> }`
-([`cell/messages/data.rs`](../../crates/services/src/cell/messages/data.rs)),
+([`cell/messages/data.rs`](../../crates/wire/src/cell/messages/data.rs)),
 built by `PlayerAoIData::from_entity`. `Some` exactly when the entering
 entity is a player; NPCs keep carrying `NpcAoIData` and are untouched.
 
@@ -108,14 +108,14 @@ nothing cached it for a third party to read.
 
 ### 2. Join at emit time, not at event time
 
-[`base/world_entry/cell_dispatch/player_ghost.rs`](../../crates/services/src/base/world_entry/cell_dispatch/player_ghost.rs)
+[`base/world_entry/cell_dispatch/player_ghost.rs`](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/player_ghost.rs)
 does the join. `resolve_identity` reads the observee's session out from under
 the `connected` lock; `compose_cascade_body` picks the player-ghost cascade
 when both halves are present and the NPC/bare cascade otherwise.
 
 The join happens when the packet is composed, which matters on the deferred
 path. A witness still loading its own map has its `EnteredAoI` buffered in
-[`base/deferred_aoi.rs`](../../crates/services/src/base/deferred_aoi.rs) for
+[`base/deferred_aoi.rs`](../../crates/base-session/src/base/deferred_aoi.rs) for
 seconds, and the observee can holster a weapon or swap armour in that time.
 Joining at buffer time would ship a stale body. Both call sites use the same
 function: `aoi::entered_aoi` (standalone packets) and
@@ -143,7 +143,7 @@ across a `.await`.
 self.account_id.is_none() || (self.is_player && self.archetype_id.is_some())
 ```
 
-`compute_player_aoi` ([`cell/space_manager/aoi.rs`](../../crates/services/src/cell/space_manager/aoi.rs))
+`compute_player_aoi` ([`cell/space_manager/aoi.rs`](../../crates/cell-world/src/cell/space_manager/aoi.rs))
 skips a non-introducible entity entirely — it never enters `current_aoi`, so
 the witness set is not marked and the entity is introduced properly on a
 later tick.
@@ -166,7 +166,7 @@ The base does not know who is looking: witness sets live on the cell, and a
 second copy on the base would be one more thing to leak on disconnect. So the
 base hands the finished args to the cell with
 `BaseToCellMsg::BroadcastToWitnesses { entity_id, method_index, args }`
-([`base/helpers/witness_broadcast.rs`](../../crates/services/src/base/helpers/witness_broadcast.rs)),
+([`base/helpers/witness_broadcast.rs`](../../crates/base-session/src/base/helpers/witness_broadcast.rs)),
 and the cell fans them out through `send_entity_method_to_witnesses` — the
 same path every cell-originated state change already uses — producing one
 `CellToBaseMsg::WitnessEntityMethod` per observer. The bytes broadcast are
@@ -186,7 +186,7 @@ arrive later get the same number from the introduction cascade.
 ## The cascade
 
 Composed by `compose_player_ghost_cascade_body` in
-[`mercury/aoi/player_ghost.rs`](../../crates/services/src/mercury/aoi/player_ghost.rs).
+[`mercury/aoi/player_ghost.rs`](../../crates/wire/src/mercury/aoi/player_ghost.rs).
 Every method is encoded against `IDBASE_SGW_PLAYER` (61). Order matches the
 legacy chain top to bottom.
 
@@ -232,7 +232,7 @@ Two methods the legacy chain emits that this one does not:
 
 `PLAYER_KISMET_EVENT_SET_ID` and `PLAYER_FACTION` are shared constants: the
 owning client's `mapLoaded` body
-([`mercury/world_data/map_loaded.rs`](../../crates/services/src/mercury/world_data/map_loaded.rs))
+([`mercury/world_data/map_loaded.rs`](../../crates/wire/src/mercury/world_data/map_loaded.rs))
 now reads them instead of its own literals, so what you see of yourself and
 what others see of you cannot drift.
 
@@ -316,7 +316,7 @@ ends of a failed introduction. The row is catalogued in
 | `progression::level_up_fanout_tests::*` (live-DB) | The level-up fan-out. A grant that crosses several boundaries hands the cell exactly one `onLevelUpdate` carrying the level that was persisted; a grant that crosses none sends nothing, so ordinary kill XP does not spam every witness. Live-DB because the level is only computed on the persisted-grant path |
 | `cell_entity::tests::is_introducible_gates_players_until_connected_and_initialised` | The predicate itself, across all four states: NPC, created-only, connected-not-initialised, fully initialised |
 | `base::world_entry::cell_dispatch::tests_dispatch_arms::two_player_visibility::both_arrival_directions_deliver_the_observee_identity` | NA34. The end-to-end gap the other rows leave open: TWO real sessions sharing one `connected`/`entity_to_addr` map, A already ready and B mid-load, driven through both `EnteredAoI` directions in the same tick and then B's deferred-buffer flush. Asserts each witness's wire cascade decodes to the OTHER player's real identity, never the bare cascade, in both the standalone path (A observing B) and the buffered-then-flushed path (B observing A). Revert-proven: forcing `compose_cascade_body`'s ghost branch to fall through to the bare cascade fails it on both directions |
-| `crates/wireclient/tests/two_client_castle_visibility.rs` (live-DB) | NA37, one layer deeper than NA34: the real wire path, end to end. Two real `GameSession`s in Castle, both arrival orders, GM + non-GM: each witness's decoded wire bytes carry the other's `CREATE_ENTITY` (class-flattened to `SGWPlayer` for every observee per the known gap below), a `BEING_APPEARANCE` cascade entry, a movement relay, and a `leaveAoI` on disconnect. A companion test asserts a character >100m away is *not* introduced (the negative control against a stuck-open test predicate). `two_client_castle_visibility_chaos.rs` (NA37 round 2) repeats the scenario under injected packet loss/jitter/latency (see Known gaps) |
+| `crates/wireclient/tests/it/two_client_castle_visibility.rs` (live-DB) | NA37, one layer deeper than NA34: the real wire path, end to end. Two real `GameSession`s in Castle, both arrival orders, GM + non-GM: each witness's decoded wire bytes carry the other's `CREATE_ENTITY` (class-flattened to `SGWPlayer` for every observee per the known gap below), a `BEING_APPEARANCE` cascade entry, a movement relay, and a `leaveAoI` on disconnect. A companion test asserts a character >100m away is *not* introduced (the negative control against a stuck-open test predicate). `two_client_castle_visibility_chaos.rs` (NA37 round 2) repeats the scenario under injected packet loss/jitter/latency (see Known gaps) |
 
 ## Known gaps
 
@@ -387,7 +387,7 @@ ends of a failed introduction. The row is catalogued in
     player-to-player visibility as `NT`, not `CW`.
 - **GMs are introduced as plain players.** `connect_entity` stamps
   `class_id = 0x02` (`SGWPlayer`) for every player
-  ([`cell/space_manager/entities.rs:337`](../../crates/services/src/cell/space_manager/entities.rs)),
+  ([`cell/space_manager/entities.rs:337`](../../crates/cell-world/src/cell/space_manager/entities.rs)),
   never `0x03` (`SGWGmPlayer`). Left alone on purpose: the witness method
   encoding assumes `IDBASE_SGW_PLAYER` for every player ghost, and
   `SGWGmPlayer`'s idbase has not been verified. Changing the class id

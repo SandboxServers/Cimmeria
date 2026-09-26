@@ -49,7 +49,7 @@ and `py_client.hpp`. The `Atrea` bridge API is summarised in
 | Old mechanism | Current mechanism |
 |---|---|
 | In-game `/command` GM chat commands | The client's **native** `/` console, gated server-side on `access_level`. See [gm-cell-method-gating.md](gm-cell-method-gating.md). |
-| GM commands with no native slash binding | The **`.`-prefixed dev console** — chat-intercept channel, registry dispatch, record-then-confirm authoring. See [dev-console-channel.md](dev-console-channel.md); live roster in [`crates/services/src/cell/console/registry.rs`](../../crates/services/src/cell/console/registry.rs). |
+| GM commands with no native slash binding | The **`.`-prefixed dev console** — chat-intercept channel, registry dispatch, record-then-confirm authoring. See [dev-console-channel.md](dev-console-channel.md); live roster in [`crates/cell-console/src/cell/console/registry.rs`](../../crates/cell-console/src/cell/console/registry.rs). |
 | Remote TCP Python REPL | The `cimmeria-admin-api` REST + WebSocket surface ([`crates/admin-api/`](../../crates/admin-api/)), documented in [../tools/admin-api.md](../tools/admin-api.md). |
 | `Atrea.dbQuery` / `dbPerform` ad-hoc SQL | `sqlx` against PostgreSQL, plus the admin API's typed routes. |
 

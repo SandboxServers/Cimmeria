@@ -26,7 +26,7 @@ playtest. They compose into the long-standing "NPCs face the wrong way, walk up 
 report, so fixing one alone will not make the symptom go away.
 
 **1. `pack_angle` saturates the negative half-circle to due north.**
-`crates/services/src/mercury/aoi/mod.rs:47-50` is `(radians / SCALE) as u8`. Rust's float→int `as`
+`crates/wire/src/mercury/aoi/mod.rs:47-50` is `(radians / SCALE) as u8`. Rust's float→int `as`
 is **saturating** (1.45+), so any negative quotient becomes `0u8`. NPC yaw is `dx.atan2(dz)`
 (`cell/service/ticks/npc_movement.rs:103`, `:110`, `:156`) with range `(-π, π]`, so **yaw in
 `(-π, 0)` → byte 0 → due north**; `(0, π]` → `0..128` correct. The doc comment claims it "Matches

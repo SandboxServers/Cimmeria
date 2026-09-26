@@ -1,0 +1,38 @@
+//! BeingAppearance assembly, onEntityTint, and visual resend helpers.
+//!
+//! Extracted from `world_entry.rs` — these functions build the appearance
+//! wire data and handle the post-transaction / post-cinematic resend logic.
+//!
+//! Split along three natural seams (issue #529):
+//! - [`builders`] — pure wire-arg builders (`build_appearance_args`,
+//!   `build_tint_args`) and the bundle composers, plus their byte-exact
+//!   regression guards.
+//! - [`client_ready`] — the `SGWPlayer.onClientReady` world-entry
+//!   finalization handler.
+//! - [`cinematic`] — `onPlayMovie` dispatch + the post-cinematic
+//!   appearance-recovery spam guard and the `cancelMovie` handler.
+//! - [`cinematic_aoi_hold`] — keeps entity introductions off the wire while
+//!   the first-login movie plays. The hold record itself is session state,
+//!   `base::cinematic_aoi_hold`.
+//!
+//! Re-exported here so every existing `crate::base::world_entry_appearance::*`
+//! import path stays valid.
+//!
+//! Chat-channel registration helpers (`DEFAULT_CHAT_CHANNELS`, `CHAN_TELL`,
+//! `build_chat_joined_args`, `build_welcome_message_args`) and their
+//! byte-exact tests live in `super::world_entry_chat`. They're used inside
+//! `client_ready::handle_on_client_ready` for the post-`onClientReady`
+//! `ChannelManager.playerLoggedIn` flow.
+
+mod cinematic;
+mod cinematic_aoi_hold;
+mod client_ready;
+
+// The pure wire builders are in `cimmeria-base-session` (wave B1): the inventory
+// methods resend appearance from below world entry.
+use cimmeria_base_session::base::world_entry_appearance::builders;
+
+pub(crate) use builders::{build_appearance_args, build_tint_args};
+// `pub`: `world_entry` re-exports both to the connect loop in `cimmeria-base`.
+pub use cinematic::handle_cancel_movie;
+pub use client_ready::handle_on_client_ready;

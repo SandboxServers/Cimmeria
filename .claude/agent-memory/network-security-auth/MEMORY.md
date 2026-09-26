@@ -20,7 +20,7 @@ Inline-content section status:
 
 ### Key Files
 - `crates/services/src/auth.rs` -- SOAP login (Phase 1+2), credential validation, session/ticket management
-- `crates/services/src/base.rs` -- Mercury UDP (Phase 3+), encrypted channel, tick-sync, entity lifecycle
+- `crates/base/src/base/` (connect loop, login) and `crates/base-session/src/base/tick_sync.rs` -- Mercury UDP (Phase 3+), encrypted channel, tick-sync, entity lifecycle
 - `crates/services/src/orchestrator.rs` -- Service wiring, DB pool distribution
 - `crates/common/src/config.rs` -- ServerConfig defaults
 - NOTE: `auth.rs` is now a directory `crates/services/src/auth/` (mod/service/handlers/credentials/tls/cert_watcher). Phase 1 TLS termination (#566): `tls.rs` (TlsCertStore = arc-swap ServerConfig + LiveTls{config,leaf_cert_der}, reload seam), `cert_watcher.rs` (mtime-poll hot-reload, `auth_tls_reload_interval_secs` default 30 / env AUTH_TLS_RELOAD_INTERVAL_SECS / 0 disables). credentials.rs = argon2id + plaintext-over-TLS gate (Phase 2 server half).

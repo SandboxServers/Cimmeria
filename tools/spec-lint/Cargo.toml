@@ -12,3 +12,4 @@ path = "src/main.rs"
 [dependencies]
 walkdir = "2"
 regex = "1"
+cimmeria-workspace-hack = { version = "0.1", path = "../../crates/workspace-hack" }

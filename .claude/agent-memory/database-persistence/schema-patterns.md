@@ -1,6 +1,6 @@
 # Schema Patterns & File Locations
 
-> [!WARNING] Confidence: STALE — verify against current `db/sgw/` and `crates/services/src/base/character_create.rs`
+> [!WARNING] Confidence: STALE — verify against current `db/sgw/` and `crates/base/src/base/character_create.rs`
 >
 > Triaged 2026-05-13 (Phase −0.5 step 4). The "C++ Python Reference (persistence operations)" section uses paths like `python/base/Account.py` — the mechanical pass should have rewritten these to `deprecated/python/base/Account.py`. Verify before citing. The sgw_player column inventory looks structurally accurate but Cimmeria has shipped multiple schema migrations since this was written; re-read the latest `db/sgw/Players/Tables/sgw_player.sql` before relying on the DEFAULT-vs-NOT-NULL distinctions here.
 >

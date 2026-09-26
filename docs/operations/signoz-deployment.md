@@ -25,7 +25,7 @@ view:
 2. **`service.name = cimmeria-network`** — the high-noise wire-level
    index. DEBUG and INFO only: every `mercury.packet` event, every
    bundle decrypt + cell-arms dispatch from
-   `cimmeria_services::base::connect_loop::*`, tick-sync heartbeats.
+   `cimmeria_base::base::connect_loop::*`, tick-sync heartbeats.
    Query this index when chasing wire-level issues; it never drowns the
    main view at normal severity.
 3. **`service.name = cimmeria-trace`** — TRACE-level rows only (NA25).
@@ -70,7 +70,7 @@ Routing is by level plus the target predicate
 [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)); the
 filters and the routing table are in
 [`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs),
-and `crates/server/src/logging/parity_tests.rs` fails the build if a log
+and `crates/server/src/logging/parity_tests/` fails the build if a log
 file gains a target SigNoz does not receive. The streams share one OTLP
 endpoint + collector but three `SdkLoggerProvider`s (one per resource).
 

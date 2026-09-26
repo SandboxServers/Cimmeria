@@ -7,7 +7,7 @@ metadata:
 
 Full deep-dive completed 2026-05-27 for issue #53. All evidence is from Python source + dispatch table + DB SQL, not guessed.
 
-**Why:** Crafting was never ported from Python to Rust. A 59-line stub exists at `crates/services/src/cell/cell_methods/player/crafting.rs`. This is the largest unported Python system (~533 lines in `deprecated/python/cell/Crafter.py`).
+**Why:** Crafting was never ported from Python to Rust. A 59-line stub exists at `crates/cell-methods/src/cell/cell_methods/player/crafting.rs`. This is the largest unported Python system (~533 lines in `deprecated/python/cell/Crafter.py`).
 
 **How to apply:** Use this as the authoritative reference before implementing issue #53 work.
 

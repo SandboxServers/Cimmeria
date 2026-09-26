@@ -247,10 +247,10 @@ emitter. Widths 1 and 3 and the escape above are not implemented.
 
 | Direction | Site | Widths handled |
 |---|---|---|
-| Inbound, per-`msg_id` table | `read_client_message_payload` in `crates/services/src/base/connect_loop/encrypted/mod.rs` | `CONSTANT` per message; `WORD` for `0x07` and for the wildcard, which covers every entity method |
-| Inbound, the readers themselves | `read_constant_payload` / `read_word_length_payload` in `crates/services/src/base/connect_loop/mod.rs` | 0 and 2 |
+| Inbound, per-`msg_id` table | `read_client_message_payload` in `crates/base/src/base/connect_loop/encrypted/mod.rs` | `CONSTANT` per message; `WORD` for `0x07` and for the wildcard, which covers every entity method |
+| Inbound, the readers themselves | `read_constant_payload` / `read_word_length_payload` in `crates/base/src/base/connect_loop/mod.rs` | 0 and 2 |
 | Outbound, generic bundle encoder | `Bundle::encode` in `crates/mercury/src/bundle.rs` | 2 only |
-| Outbound, `BASEMSG_REPLY_MESSAGE` | `build_connect_reply` in `crates/services/src/mercury/protocol/session.rs` | 4, written by hand |
+| Outbound, `BASEMSG_REPLY_MESSAGE` | `build_connect_reply` in `crates/wire/src/mercury/protocol/session.rs` | 4, written by hand |
 
 No entry in `ClientMessageList` declares `DWORD_LENGTH`, so the inbound
 wildcard's `WORD_LENGTH` assumption holds for every message a client can send,
@@ -309,7 +309,7 @@ whether an entity ID is on the wire:
 - Method indices 61+: `messageId = 0xBD` (extended), followed by `entityId`
   (uint32) then `index - 61` (uint8)
 
-Decoder: [crates/services/src/base/connect_loop/cell_arms.rs](../../crates/services/src/base/connect_loop/cell_arms.rs)
+Decoder: [crates/base/src/base/connect_loop/cell_arms.rs](../../crates/base/src/base/connect_loop/cell_arms.rs)
 — the `0xBD` arm reconstructs `sub_index + 61`, the direct arm computes
 `id - 0x80`, and both strip the 4-byte entity ID first.
 
@@ -318,7 +318,7 @@ Decoder: [crates/services/src/base/connect_loop/cell_arms.rs](../../crates/servi
 - `messageId = 0xC0 + index`, with no entity ID prefix
 
 Decoder: the `sgw_player_base` constants in
-[crates/services/src/base/dispatch/mod.rs](../../crates/services/src/base/dispatch/mod.rs)
+[crates/base/src/base/dispatch/mod.rs](../../crates/base/src/base/dispatch/mod.rs)
 (`CHAT_JOIN = 0xC0` at index 0 … `PERF_STATS = 0xDD` at index 29). Full table:
 [sgwplayer-base-method-dispatch-table.md](sgwplayer-base-method-dispatch-table.md).
 

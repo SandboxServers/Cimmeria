@@ -1,6 +1,6 @@
 # Ring transport FSM — traps and invariants
 
-`crates/services/src/cell/ring_transport/`. Read before touching ring travel,
+`crates/cell-content/src/cell/ring_transport/`. Read before touching ring travel,
 and before adding any FSM state that waits on something outside the FSM.
 
 ## The starvation mechanism (why unbounded states are expensive here)
@@ -15,7 +15,7 @@ Asserting `state == Idle` is a happy-path test.
 
 ## Two destroy paths in `SpaceManager`, and they are not interchangeable
 
-`crates/services/src/cell/space_manager/entities.rs`:
+`crates/cell-world/src/cell/space_manager/entities.rs`:
 
 - `disconnect_entity(&mut self, entity_id, tx)` — **async, has `tx`**. The real
   client-disconnect route (`handle_disconnect_entity`). Emits `LeftAoI` to every

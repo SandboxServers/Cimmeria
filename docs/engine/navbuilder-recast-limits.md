@@ -51,7 +51,7 @@ are byte-identical with each other, so the 6-polygon difference is the Recast
 version, not floating-point behaviour. Either Recast is fine for production;
 use the snapshot only when you need to diff against the reference binary.
 
-`tests/navbuilder_axis_roundtrip.rs` passes 3/3 against the rebuilt binary
+`tests/it/navbuilder_axis_roundtrip.rs` passes 3/3 against the rebuilt binary
 (`CIMMERIA_NAVBUILDER=<path>`).
 
 ## Recast has four fixed-width index limits, and only one checks itself
@@ -158,7 +158,7 @@ checks the extent right after the `Bounds:` line and exits 3:
 ```
 
 At `ch = 0.3` the same input is 7,104 cells and builds. Pinned by
-`tests/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`
+`tests/it/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`
 (a 2 km-deep sliver under the axis fixture), which fails against a binary
 built before the check.
 

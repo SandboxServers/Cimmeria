@@ -19,7 +19,7 @@ if entering and not region.isPointInRegion(entity.position):
 It tests `entity.position` — the **server-known** position — not the position the
 client sent in the RPC args.
 
-Cimmeria does not have this. `crates/services/src/cell/cell_methods/player/world/mod.rs`
+Cimmeria does not have this. `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs`
 TRIGGER_REGION arm parses the client's `x/y/z` into `_x/_y/_z` and discards them,
 then fires `fire_enter_region` / `fire_exit_region` and forwards to the ring FSM
 with no containment test of any kind. There is no `is_point_in_region` helper
@@ -31,7 +31,7 @@ moment a region routes to travel — e.g. Harset H01's `REGION_FLAG_STARGATE`
 anywhere in the world would fire gate passage.
 
 The bbox needed for the check already exists and is the *same shape the client
-was sent*, so server and client agree: `crates/services/src/cell/spawner/regions.rs:92-101`
+was sent*, so server and client agree: `crates/cell-catalog/src/cell/spawner/regions.rs:92-101`
 expands a single-point cylinder into 4 corners, `X/Z within ±radius`, `Y within
 [py, py+h]`. **Y is the vertical axis** (see [[arrival-coordinate-offnavmesh]]).
 The fourth corner's `py + h` asymmetry is deliberate 2009 parity — do not

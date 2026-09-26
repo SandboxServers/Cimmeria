@@ -9,7 +9,7 @@ Three traps found while filling the Castle dialog patch table (packet DU-02b, 20
 
 **`data/cache/*.pak` is committed to git.** All twenty cooked archives, including
 `CookedDataDialogs.pak` (2.7 MB), are tracked — check with `git ls-files data/cache/`.
-`crates/services/src/base/resources/tests/committed_paks.rs` has been reading that
+`crates/resources/src/base/resources/tests/committed_paks.rs` has been reading that
 directory in tests for a long time.
 
 **Why:** several docs assert the opposite — the DU-01 acceptance line in
@@ -33,7 +33,7 @@ layout. There is no red test anywhere once the dialog leaves the linter's allowl
 **How to apply:** any patch table that transforms shipped data needs a guard that applies
 every row to the **real** input, not just one asserting the patch and its parallel seed
 record agree with each other. Two records agreeing is not evidence either matches the
-third. See `crates/services/src/base/dialog_overrides/patch_seed_agreement_castle.rs`,
+third. See `crates/resources/src/base/dialog_overrides/patch_seed_agreement_castle.rs`,
 whose three tests are deliberately independent: agreement, final-screen rule, and
 applies-to-cooked-entry each fail on a different mistake.
 

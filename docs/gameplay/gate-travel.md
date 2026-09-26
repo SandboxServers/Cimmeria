@@ -14,7 +14,7 @@ last_updated: 2026-09-25
 
 Gate travel enables zone transitions via stargates and ring transporters. Stargates provide long-distance travel between worlds, while ring transporters provide local teleportation within or between nearby areas. Both systems involve multi-step sequences with animations, player visibility toggling, and movement locking.
 
-Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/services/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/services/src/cell/ring_transport/) with an 8-state finite state machine.
+Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/base-world-entry/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/cell-content/src/cell/ring_transport/) with an 8-state finite state machine.
 
 > **Where the placement is chosen.** Castle CA10 split the dial from the crossing: `onDialGate` arms a 4-second dial and the player then walks into the `REGION_FLAG_Stargate` (bit 2) volume to cross. Both that crossing and the no-gate-volume immediate fallback funnel through one function, `cell::gate_travel::perform_gate_travel`, which holds the single `validate_gate_arrival` call. There is deliberately exactly one — a second call in either caller would validate, and warn, twice per crossing.
 
@@ -24,7 +24,7 @@ A `resources.stargates` row's `x_pos` / `y_pos` / `z_pos` / `yaw` is the **starg
 
 `resources.stargates` now carries four nullable columns — `arrival_x`, `arrival_y`, `arrival_z`, `arrival_yaw` — holding an absolute "stand here on arrival" point pinned in-game. All four are set or all four are `NULL`, enforced by the `stargates_arrival_all_or_nothing` CHECK; when `NULL` the arrival falls back to the gate row, `yaw` included. No gate is pinned today. Harset's gate 3 carried a pin placed from map data (PL-A-01) from 2026-09-19 until 2026-09-25, when NPC-AI NA29 dropped it: the NA26 `harset.nav` has the gate dais, so the gate row is standable and travellers arrive on it, the way the 2009 server did (see [the ledger](../analysis/harset-rebuild/placements/A-arrival-and-travel.md#pl-a-01--the-pin-was-dropped-na29)).
 
-[`cell/arrival.rs`](../../crates/services/src/cell/arrival.rs) resolves the final placement. `validate_gate_arrival` is the gate-specific wrapper; `resolve_arrival` is the gate-agnostic core. (Ring transport calls the *validate-only* half, `check_arrival`, and never the respawner substitution — a ring pad is a pad the client is animating at, not a pin on a prop transform. See [ring-transport-system.md](ring-transport-system.md#bounded-aborts-cimmeria-not-2009).) The order is:
+[`cell/arrival.rs`](../../crates/cell-world/src/cell/arrival.rs) resolves the final placement. `validate_gate_arrival` is the gate-specific wrapper; `resolve_arrival` is the gate-agnostic core. (Ring transport calls the *validate-only* half, `check_arrival`, and never the respawner substitution — a ring pad is a pad the client is animating at, not a pin on a prop transform. See [ring-transport-system.md](ring-transport-system.md#bounded-aborts-cimmeria-not-2009).) The order is:
 
 1. The authored `arrival_*` pin, or the gate row when there is no pin.
 2. If the destination world has a **resident** navmesh, the point must pass both `NavMesh::is_point_valid` and the space AABB derived from the mesh extents. Both layers, because a point that is on-mesh but outside the AABB is hard-rejected by the very next client packet — with the correction budget already cleared by the authorised teleport, which is how a "recovery" turns into a permanent freeze one position over.
@@ -70,7 +70,7 @@ The yaw is carried through unchanged even when the position falls back to a resp
 
 ## DHD interaction
 
-Right-clicking a prop whose `interaction_type_flags` carry `INT_DHD` (bit 16) opens the dialling UI. [`cell/interactions/dhd.rs`](../../crates/services/src/cell/interactions/dhd.rs) claims the interaction, looks up the stargate belonging to the **player's current world**, and emits `onDisplayDHD` (flat index 120) with a single `UINT8` — the gate's point-of-origin glyph.
+Right-clicking a prop whose `interaction_type_flags` carry `INT_DHD` (bit 16) opens the dialling UI. [`cell/interactions/dhd.rs`](../../crates/cell-interactions/src/cell/interactions/dhd.rs) claims the interaction, looks up the stargate belonging to the **player's current world**, and emits `onDisplayDHD` (flat index 120) with a single `UINT8` — the gate's point-of-origin glyph.
 
 Three things are easy to get wrong here:
 
@@ -82,7 +82,7 @@ A DHD prop on a world with no `stargates` row logs `reason = "no_stargate_for_wo
 
 ## Dial authorization
 
-`onDialGate` carries `targetAddressId` as a raw client `INT32`, so the address book is the only thing standing between a crafted packet and a cross-world teleport into unearned content. [`cell/gate_travel/address_book.rs`](../../crates/services/src/cell/gate_travel/address_book.rs) refuses any address not in `CellEntity::known_stargates`, which the base loads from `sgw_player.known_stargates` and hands to the cell on `InitPlayerState`.
+`onDialGate` carries `targetAddressId` as a raw client `INT32`, so the address book is the only thing standing between a crafted packet and a cross-world teleport into unearned content. [`cell/gate_travel/address_book.rs`](../../crates/cell-interactions/src/cell/gate_travel/address_book.rs) refuses any address not in `CellEntity::known_stargates`, which the base loads from `sgw_player.known_stargates` and hands to the cell on `InitPlayerState`.
 
 The check is the first thing `handle_dial_gate` does after the `-1` cancel sentinel, which matters three times over:
 
@@ -98,7 +98,7 @@ The refusal reaches the player as `onErrorCode` (121): `SystemID = 0` (`ERRORCOD
 
 ## Address unlock on arrival
 
-A committed gate arrival appends the addresses the trip taught the traveller, in the same `sgw_player` UPDATE that persists the destination world and position ([`base/world_entry/gate_travel/persist_arrival.rs`](../../crates/services/src/base/world_entry/gate_travel/persist_arrival.rs)).
+A committed gate arrival appends the addresses the trip taught the traveller, in the same `sgw_player` UPDATE that persists the destination world and position ([`base/world_entry/gate_travel/persist_arrival.rs`](../../crates/base-world-entry/src/base/world_entry/gate_travel/persist_arrival.rs)).
 
 **This is new behaviour, not a restoration.** There is no unlock-on-visit anywhere in the 2009 Python: `SGWPlayer.addStargateAddress` has exactly two callers, the GM console command `giveaddress` and the Atrea authoring node `Act_StargateAddress`. Addresses were authored content. Cimmeria has no content-engine equivalent, so with the dial gate enforced this is the only grant path in the game.
 
@@ -114,11 +114,11 @@ Two ordering constraints hold this together. The write runs after every mid-tran
 
 The seed verb takes `target_id` = `resources.stargates.stargate_id`. It is the address itself — not a world id, and not the repeating `address_origin` glyph.
 
-A grant has to reach three places, and all three are emitted from [`cell/content/executor/stargate.rs`](../../crates/services/src/cell/content/executor/stargate.rs):
+A grant has to reach three places, and all three are emitted from [`cell/content/executor/stargate.rs`](../../crates/cell-content/src/cell/content/executor/stargate.rs):
 
 1. `CellEntity::known_stargates`, which is what the dial gate above enforces against.
 2. The client, via `updateStargateAddress` (client method 66: `INT32 addressId`, `UINT8 hasAddress = 1`, `UINT8 hidden = 0`). The client is handed its whole address book exactly once, by `setupStargateInfo` at map load, so without this the grant is invisible until a relog.
-3. `sgw_player.known_stargates`, through `CellToBaseMsg::GrantStargateAddress` and an idempotent append in [`base/world_entry/gate_travel/address_grant.rs`](../../crates/services/src/base/world_entry/gate_travel/address_grant.rs) — deliberately the same statement shape as the arrival append beside it, minus the origin-world union.
+3. `sgw_player.known_stargates`, through `CellToBaseMsg::GrantStargateAddress` and an idempotent append in [`base/world_entry/gate_travel/address_grant.rs`](../../crates/base-world-entry/src/base/world_entry/gate_travel/address_grant.rs) — deliberately the same statement shape as the arrival append beside it, minus the origin-world union.
 
 Legs 1 and 2 go out **before** leg 3 is confirmed. The cell's copy is the thing the dial gate reads, so making the client's copy wait on a database round trip would reopen the divergence the arrival path closes: the server accepting a dial the client's UI does not offer. A lost leg-3 write costs the address at next login and warns; a lost leg-2 send makes a granted address undialable in silence.
 

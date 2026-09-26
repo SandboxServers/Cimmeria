@@ -139,7 +139,7 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 
 ### What Cimmeria currently sends
 
-`npc_ai_leash()` in `crates/services/src/cell/service/npc_ai.rs`:
+`npc_ai_leash()` in `crates/cell-combat/src/cell/service/npc_ai.rs`:
 1. Snaps the NPC to spawn position **instantly** (direct field write, no pathfinding).
 2. Restores health to max.
 3. Resets `ai_state` to `AiState::Idle`.
@@ -157,7 +157,7 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 
 > **Superseded (2026-09-25):** there is no `movementType=1 + waypath` payload to send; see [§11](#11-correction-2026-09-25-the-client-has-no-movement-type-receiver).
 
-`npc_movement_tick()` in `crates/services/src/cell/service/ticks/npc_movement.rs`:
+`npc_movement_tick()` in `crates/cell/src/cell/service/ticks/npc_movement.rs`:
 - Moves NPCs along `nav_path` at `move_speed` per tick (100ms tick; velocity = `move_speed × 10.0` for per-second scaling).
 - Calls `space_mgr.update_entity_position()` which propagates position to witnesses via AoI `EntityMoved`.
 - Sets NPC yaw via `atan2(dx, dz)`.

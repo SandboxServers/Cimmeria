@@ -31,10 +31,10 @@ the icon disappears on relog.
 ## The loop, end to end
 
 1. `Action::StartMinigame` → `CellToBaseMsg::StartMinigame`
-   (`crates/services/src/cell/content/executor/mod.rs:203-228`).
+   (`crates/cell-content/src/cell/content/executor/mod.rs:203-228`).
 2. Base registers a 64-hex one-time ticket keyed by `entity_id` and pushes
    `onStartMinigame(URL)` where URL = `http://unused/{host}/{port}/{game}/{entityId}/{ticket}`
-   (`crates/services/src/base/world_entry/cell_dispatch/minigame.rs:36-80`).
+   (`crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs:36-80`).
 3. Client loads the SWF, connects TCP, speaks SFS 1.x:
    `<msg t='sys'><body action='login'><login z='Livewire'><nick>42</nick><pword>TICKET</pword></login></body></msg>`
    — `nick` is the entity id, `pword` is the ticket, `z` is the game name.
@@ -44,7 +44,7 @@ the icon disappears on relog.
 5. Base pushes `onEndMinigame()` and forwards `BaseToCellMsg::MinigameResult`
    (`cell_dispatch/minigame.rs:92-124`).
 6. Cell fires every `on_victory_chains` id **only when `result_code == 1`**
-   (`crates/services/src/cell/service/base_messages/minigame.rs:23-32`).
+   (`crates/cell/src/cell/service/base_messages/minigame.rs:23-32`).
 
 Result codes (RE, `findings/minigame-architecture.md:59-67`): 1 Success,
 2 Failure, 3 Interrupted, 4 Defeated. Only 1 fires chains.

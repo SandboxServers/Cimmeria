@@ -2,7 +2,7 @@
 //!
 //! The field is private so that a new `npc.ai_state = X` anywhere in the
 //! workspace is a compile error. Production code changes the state through
-//! `cimmeria_services::cell::service::npc_ai::transition::set_ai_state`,
+//! `cimmeria_cell_world::cell::service::npc_ai::transition::set_ai_state`,
 //! which logs the transition (`npc_ai.transition`, `event="state_change"`)
 //! and counts it. This crate cannot host that helper: the row carries the
 //! world name and the metric goes through `cimmeria-observability`, neither
@@ -23,7 +23,7 @@ impl CellEntity {
     /// (and that module's test-only `force_ai_state`) can write the private
     /// field. The guard test
     /// `raw_ai_state_writer_is_called_only_from_the_transition_helper` in
-    /// `crates/services/src/cell/service/npc_ai/transition.rs` fails if any
+    /// `crates/cell-world/src/cell/service/npc_ai/transition.rs` fails if any
     /// other file in the workspace names this method.
     #[doc(hidden)]
     pub fn replace_ai_state_unlogged(&mut self, to: AiState) -> AiState {

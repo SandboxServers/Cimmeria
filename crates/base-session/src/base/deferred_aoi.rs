@@ -1,0 +1,469 @@
+//! Defer cell-driven AoI dispatches until the client signals `onClientReady`.
+//!
+//! # The bug shape this guards against
+//!
+//! Between `play_character` (sending RESET_ENTITIES) and the client's
+//! `onClientReady`, the cell server starts populating the witness's
+//! AoI as soon as the player entity is spawned in the space. For a
+//! Castle_CellBlock instance with 28 NPCs that's 28 [`CellToBaseMsg::EnteredAoI`]
+//! events fired pre-`mapLoaded`, each translating into a CREATE_ENTITY +
+//! UPDATE_AVATAR packet (and a property cascade), totaling ~33+ reliable
+//! packets sent in the 3.5s window while the client is loading terrain
+//! and cannot ACK. The TX window fills before `mapLoaded` itself runs;
+//! its own burst then pressures the deferred-send queue and (pre-fix)
+//! the silent-best-effort downgrade path.
+//!
+//! # The defer gate
+//!
+//! [`should_defer`] checks whether the witness's session is still pre-
+//! `onClientReady`. While `pending_map_loaded` or `pending_client_ready`
+//! is set, AoI-class messages targeted at that witness are pushed into
+//! [`ConnectedClientState::deferred_aoi_msgs`] via [`push_deferred`]
+//! instead of dispatching immediately. When `onClientReady` fires, the
+//! caller drains the buffer with [`drain_deferred`] and re-dispatches
+//! through the normal AoI handlers — by then the client is ready to
+//! ACK at line rate, so the burst clears the TX window quickly.
+//!
+//! # Why not buffer `EntityMoved`
+//!
+//! Position updates are unreliable and short-lived; the client doesn't
+//! have the AoI'd entity yet (its `EnteredAoI` is queued in the buffer),
+//! so a position update would target an unknown entity and be dropped.
+//! The next post-`onClientReady` position frame supersedes anything we
+//! would have buffered, so dropping `EntityMoved` pre-ready is correct
+//! and cheaper than queueing.
+//!
+//! # The first-login cinematic hold
+//!
+//! A second, narrower gate covers the first-login cinematic. The client
+//! ACKs an entity introduction it receives while the fullscreen movie plays
+//! and then can fail to render it: the 2026-09-19 Castle_CellBlock repro
+//! lost a `class_id 0` static-mesh corpse this way until relog, with every
+//! create packet acknowledged first try. The cinematic-exit
+//! `CollectGarbage` already reclaims the player's own appearance (#288), so
+//! the working theory is that it also reclaims a static mesh whose entity
+//! was created mid-movie.
+//!
+//! While [`ConnectedClientState::cinematic_aoi_hold`] is set,
+//! [`should_hold_entity_traffic`] keeps every *entity-scoped* message in the
+//! same buffer until the movie is cancelled or its duration elapses — see
+//! `world_entry_appearance::cinematic_aoi_hold`. That includes the two
+//! variants the pre-ready gate leaves alone, `WitnessEntityMethod` and
+//! `EntityInvisible`: a held entity's method sent ahead of its create would
+//! reach a client that has no such entity and be dropped for good.
+//! Player-self `EntityMethodCall`s are not held; they stay on
+//! [`should_defer`] and flush at `onClientReady` via
+//! [`drain_deferred_self_methods`].
+
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+
+use crate::cell::messages::{NpcAoIData, PlayerAoIData};
+
+use super::ConnectedClientState;
+
+/// Per-session cap on the deferred-AoI buffer.
+///
+/// Symmetric with `cimmeria_mercury::consts::MAX_UNSENT_PACKETS` (1024): a
+/// healthy session reaches `onClientReady` well before the cell could push
+/// this many AoI events into the buffer. If the cap is hit, the session is
+/// either stuck mid-load or under deliberate spam — drop further pushes at
+/// WARN so the failure is observable without unbounded memory growth.
+///
+/// 512 is 4× the worst-case Castle_CellBlock first-load burst (~120 AoI
+/// events across 28 NPCs + appearance + property cascades), which gives
+/// transient-stall headroom while keeping the worst-case buffer to a
+/// few KB per session.
+pub(crate) const MAX_DEFERRED_AOI_MSGS: usize = 512;
+
+/// AoI-class cell→base messages that may be deferred when the witness
+/// hasn't signalled `onClientReady`.
+///
+/// Mirrors the relevant `CellToBaseMsg` variants but trimmed to the
+/// fields the AoI dispatch handlers need on flush, so we don't have to
+/// drag unrelated variants through the buffer.
+#[derive(Debug)]
+pub enum DeferredAoiMsg {
+    /// Buffered [`crate::cell::messages::CellToBaseMsg::EnteredAoI`].
+    EnteredAoI {
+        entity_id: u32,
+        class_id: u8,
+        position: [f32; 3],
+        direction: [f32; 3],
+        level: u32,
+        npc_data: Option<NpcAoIData>,
+        /// Cell-side live state of a player observee; joined with the
+        /// observee's session identity at flush time, not at buffer time.
+        player_data: Option<PlayerAoIData>,
+    },
+    /// Buffered [`crate::cell::messages::CellToBaseMsg::LeftAoI`].
+    LeftAoI { entity_id: u32 },
+    /// Buffered [`crate::cell::messages::CellToBaseMsg::EntityMethodCall`].
+    EntityMethodCall {
+        entity_id: u32,
+        method_index: u16,
+        args: Vec<u8>,
+    },
+    /// Buffered [`crate::cell::messages::CellToBaseMsg::WitnessEntityMethod`].
+    /// Only the cinematic hold buffers this variant.
+    WitnessEntityMethod {
+        entity_id: u32,
+        method_index: u16,
+        args: Vec<u8>,
+        entity_is_player: bool,
+    },
+    /// Buffered [`crate::cell::messages::CellToBaseMsg::EntityInvisible`].
+    /// Only the cinematic hold buffers this variant.
+    EntityInvisible { entity_id: u32 },
+}
+
+/// True iff the witness's session is still in the pre-`onClientReady`
+/// world-entry window — i.e. either `pending_map_loaded` or
+/// `pending_client_ready` is set, indicating the client has not yet
+/// finished loading terrain and signalled it's ready for AoI traffic.
+///
+/// Returns `false` when the witness has no session entry (already
+/// disconnected — the message would be dropped anyway) or when the
+/// session is past `onClientReady`.
+pub fn should_defer(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> bool {
+    let Ok(clients) = connected.lock() else {
+        return false;
+    };
+    let Some(state) = clients.get(&addr) else {
+        return false;
+    };
+    state.pending_map_loaded.is_some() || state.pending_client_ready.is_some()
+}
+
+/// True iff entity-scoped traffic for this witness must be buffered: the
+/// session is pre-`onClientReady` ([`should_defer`]) **or** inside the
+/// first-login cinematic hold.
+///
+/// Gates `EnteredAoI` / `LeftAoI` / `EntityMoved`. One lock, so both
+/// conditions are read from the same snapshot.
+pub fn should_hold_entity_traffic(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> bool {
+    let Ok(clients) = connected.lock() else {
+        return false;
+    };
+    let Some(state) = clients.get(&addr) else {
+        return false;
+    };
+    state.pending_map_loaded.is_some()
+        || state.pending_client_ready.is_some()
+        || state.cinematic_aoi_hold.is_some()
+}
+
+/// True iff the session is inside the first-login cinematic hold.
+///
+/// Gates `WitnessEntityMethod` / `EntityInvisible`, which the pre-ready
+/// window deliberately leaves ungated.
+pub fn cinematic_hold_active(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> bool {
+    let Ok(clients) = connected.lock() else {
+        return false;
+    };
+    clients
+        .get(&addr)
+        .is_some_and(|state| state.cinematic_aoi_hold.is_some())
+}
+
+/// Push `msg` into the witness's deferred-AoI buffer. Caller has already
+/// determined via [`should_defer`] that the session is pre-ready.
+///
+/// Silent no-op if the session has been removed between the check and
+/// this call — the client disconnected mid-flight and any buffered work
+/// would have been dropped by [`drain_deferred`] anyway.
+///
+/// At [`MAX_DEFERRED_AOI_MSGS`] the message is dropped with a WARN — the
+/// session is stuck mid-load or under deliberate spam and the buffer
+/// cannot grow further. Dropping pre-ready AoI is equivalent to the cell
+/// having fired the event a tick later (after onClientReady), which the
+/// client tolerates as long as the missing entity isn't load-bearing.
+pub fn push_deferred(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    msg: DeferredAoiMsg,
+) {
+    let Ok(mut clients) = connected.lock() else {
+        return;
+    };
+    let Some(state) = clients.get_mut(&addr) else {
+        return;
+    };
+    if state.deferred_aoi_msgs.len() >= MAX_DEFERRED_AOI_MSGS {
+        tracing::warn!(
+            %addr,
+            buffered = state.deferred_aoi_msgs.len(),
+            "Deferred-AoI buffer at cap; dropping message (session stuck pre-onClientReady?)"
+        );
+        return;
+    }
+    state.deferred_aoi_msgs.push(msg);
+}
+
+/// Drain and return all buffered AoI messages for this session, leaving
+/// the buffer empty. Called by `handle_on_client_ready` once the client
+/// signals it's ready to receive AoI traffic.
+///
+/// Returns an empty `Vec` if the session has no buffered messages or
+/// has been removed.
+pub fn drain_deferred(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Vec<DeferredAoiMsg> {
+    let Ok(mut clients) = connected.lock() else {
+        return Vec::new();
+    };
+    let Some(state) = clients.get_mut(&addr) else {
+        return Vec::new();
+    };
+    std::mem::take(&mut state.deferred_aoi_msgs)
+}
+
+/// Drain only the player-self [`DeferredAoiMsg::EntityMethodCall`] entries,
+/// in order, leaving entity-scoped messages buffered.
+///
+/// `handle_on_client_ready` uses this when the cinematic hold is active:
+/// mission, dialog and hotbar traffic buffered pre-ready must still reach
+/// the client at `onClientReady`, while entity introductions wait for the
+/// movie to end.
+pub fn drain_deferred_self_methods(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Vec<DeferredAoiMsg> {
+    let Ok(mut clients) = connected.lock() else {
+        return Vec::new();
+    };
+    let Some(state) = clients.get_mut(&addr) else {
+        return Vec::new();
+    };
+    let (self_methods, held): (Vec<_>, Vec<_>) = std::mem::take(&mut state.deferred_aoi_msgs)
+        .into_iter()
+        .partition(|m| matches!(m, DeferredAoiMsg::EntityMethodCall { .. }));
+    state.deferred_aoi_msgs = held;
+    self_methods
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::test_default_connected_client_state;
+
+    fn make_state_and_connected() -> (
+        SocketAddr,
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    ) {
+        let addr: SocketAddr = "127.0.0.1:9876".parse().unwrap();
+        let state = test_default_connected_client_state();
+        let mut map = HashMap::new();
+        map.insert(addr, state);
+        (addr, Arc::new(Mutex::new(map)))
+    }
+
+    /// A freshly-constructed session has neither `pending_map_loaded` nor
+    /// `pending_client_ready` set, so AoI dispatch should NOT defer.
+    /// The default-state path is the steady-state hot path; if it ever
+    /// returns true by mistake we'd silently buffer every AoI message
+    /// forever.
+    #[test]
+    fn should_defer_returns_false_for_default_session() {
+        let (addr, connected) = make_state_and_connected();
+        assert!(
+            !should_defer(&connected, addr),
+            "default session has neither pending_map_loaded nor pending_client_ready"
+        );
+    }
+
+    #[test]
+    fn should_defer_returns_true_when_pending_client_ready_set() {
+        let (addr, connected) = make_state_and_connected();
+        {
+            let mut clients = connected.lock().unwrap();
+            let state = clients.get_mut(&addr).unwrap();
+            state.pending_client_ready = Some(super::super::PendingClientReadyInfo {
+                entity_id: 2,
+                player_id: 63,
+                world_name: "Test".into(),
+                appearance_args: Vec::new(),
+                tint_args: Vec::new(),
+                first_login: 0,
+            });
+        }
+        assert!(
+            should_defer(&connected, addr),
+            "pending_client_ready set → world entry in progress → defer"
+        );
+    }
+
+    #[test]
+    fn should_defer_returns_false_for_missing_session() {
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        assert!(
+            !should_defer(&connected, addr),
+            "missing session can't defer — message is just dropped by AoI handler"
+        );
+    }
+
+    /// The cinematic hold widens the entity-traffic gate but must leave the
+    /// player-self gate alone; reverting either half shows up here. A hold
+    /// that leaked into `should_defer` would park mission and dialog traffic
+    /// behind a 13-second movie.
+    #[test]
+    fn cinematic_hold_gates_entity_traffic_but_not_self_methods() {
+        let (addr, connected) = make_state_and_connected();
+        assert!(!should_hold_entity_traffic(&connected, addr));
+        assert!(!cinematic_hold_active(&connected, addr));
+
+        connected
+            .lock()
+            .unwrap()
+            .get_mut(&addr)
+            .unwrap()
+            .cinematic_aoi_hold = Some(super::super::cinematic_aoi_hold::CinematicAoiHold {
+            token: 7,
+            started: tokio::time::Instant::now(),
+            releasing: false,
+        });
+
+        assert!(
+            should_hold_entity_traffic(&connected, addr),
+            "hold set → entity introductions buffer"
+        );
+        assert!(cinematic_hold_active(&connected, addr));
+        assert!(
+            !should_defer(&connected, addr),
+            "the hold must not defer player-self method calls"
+        );
+    }
+
+    /// Partial drain keeps order within each class and leaves the
+    /// entity-scoped entries buffered for the hold release.
+    #[test]
+    fn drain_deferred_self_methods_leaves_entity_traffic_buffered() {
+        let (addr, connected) = make_state_and_connected();
+        let self_call = |method_index| DeferredAoiMsg::EntityMethodCall {
+            entity_id: 2,
+            method_index,
+            args: Vec::new(),
+        };
+        push_deferred(&connected, addr, self_call(0x10));
+        push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: 100 });
+        push_deferred(&connected, addr, self_call(0x11));
+        push_deferred(
+            &connected,
+            addr,
+            DeferredAoiMsg::EntityInvisible { entity_id: 101 },
+        );
+
+        let drained = drain_deferred_self_methods(&connected, addr);
+        let indices: Vec<u16> = drained
+            .iter()
+            .map(|m| match m {
+                DeferredAoiMsg::EntityMethodCall { method_index, .. } => *method_index,
+                other => panic!("non-self message drained: {other:?}"),
+            })
+            .collect();
+        assert_eq!(indices, vec![0x10, 0x11], "self methods drain in order");
+
+        let held = drain_deferred(&connected, addr);
+        assert!(
+            matches!(
+                held.as_slice(),
+                [
+                    DeferredAoiMsg::LeftAoI { entity_id: 100 },
+                    DeferredAoiMsg::EntityInvisible { entity_id: 101 }
+                ]
+            ),
+            "entity-scoped entries stay buffered, in order: {held:?}"
+        );
+    }
+
+    #[test]
+    fn push_then_drain_round_trips_messages() {
+        let (addr, connected) = make_state_and_connected();
+        push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: 100 });
+        push_deferred(
+            &connected,
+            addr,
+            DeferredAoiMsg::EntityMethodCall {
+                entity_id: 100,
+                method_index: 0x10,
+                args: vec![0xAA, 0xBB],
+            },
+        );
+
+        let drained = drain_deferred(&connected, addr);
+        assert_eq!(drained.len(), 2, "both pushed messages drain in order");
+
+        // After drain, the buffer is empty — a second drain yields zero.
+        let drained_again = drain_deferred(&connected, addr);
+        assert!(
+            drained_again.is_empty(),
+            "drain consumes the buffer; subsequent drain is empty"
+        );
+    }
+
+    /// Pushing into a missing session is a silent no-op — happens when
+    /// the client disconnects between the defer check and the push.
+    /// Must not panic.
+    #[test]
+    fn push_into_missing_session_is_silent_noop() {
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: 1 });
+        // No panic; no observable side effect. The drained buffer for
+        // the (non-existent) session is empty.
+        assert!(drain_deferred(&connected, addr).is_empty());
+    }
+
+    /// At [`MAX_DEFERRED_AOI_MSGS`] the next push must be dropped (not
+    /// inserted) so a session stuck pre-`onClientReady` cannot leak
+    /// unbounded memory. Pin so a future regression that drops the cap
+    /// check surfaces here.
+    #[test]
+    fn push_deferred_drops_at_cap() {
+        let (addr, connected) = make_state_and_connected();
+        for i in 0..MAX_DEFERRED_AOI_MSGS as u32 {
+            push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: i });
+        }
+        assert_eq!(
+            connected
+                .lock()
+                .unwrap()
+                .get(&addr)
+                .unwrap()
+                .deferred_aoi_msgs
+                .len(),
+            MAX_DEFERRED_AOI_MSGS,
+            "buffer filled to cap",
+        );
+
+        // One past the cap: must NOT insert.
+        push_deferred(
+            &connected,
+            addr,
+            DeferredAoiMsg::LeftAoI { entity_id: 999_999 },
+        );
+        assert_eq!(
+            connected
+                .lock()
+                .unwrap()
+                .get(&addr)
+                .unwrap()
+                .deferred_aoi_msgs
+                .len(),
+            MAX_DEFERRED_AOI_MSGS,
+            "buffer size unchanged — over-cap push dropped, not inserted",
+        );
+    }
+}

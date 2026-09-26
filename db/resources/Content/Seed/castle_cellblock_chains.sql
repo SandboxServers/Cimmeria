@@ -103,7 +103,7 @@ SET search_path = resources, pg_catalog;
 -- (no `script_name`), then calls `register_active_effect`, which returns
 -- `false` immediately for a non-pulsing effect WITHOUT sending anything --
 -- not `onTimerUpdate`, not any other wire packet (confirmed directly against
--- `crates/services/src/cell/effects/pulsing/register.rs`'s early
+-- `crates/cell-combat/src/cell/effects/pulsing/register.rs`'s early
 -- `if !effect.is_pulsing() { return false; }`, and pinned by the live-DB
 -- test `single_shot_scriptless_effect_registers_no_active_instance` in
 -- `executor/tests/effects.rs`). Firing ability 1597 today is therefore a
@@ -323,7 +323,7 @@ VALUES
 -- as an ordinary relog does. So 1360 survives the hop for the same reason
 -- any other active mission survives a relog; see the live-DB round-trip
 -- test `frosts_letter_accept_round_trips_cell_to_base_to_db` in
--- crates/services/src/base/world_entry/methods/missions/tests.rs.
+-- crates/services/src/mission_round_trip_tests.rs.
 --
 -- Chain ID range: 1121-1130.
 
@@ -519,7 +519,7 @@ VALUES
 -- A swap here is a user-visible bug (a Tau'ri player gets the
 -- "My symbiote will cure me" Jaffa dialog and vice versa) — issue #216.
 -- The chain-replay tests in
--- `crates/services/src/cell/content/chain_replay_tests.rs`
+-- `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs`
 -- (`mission_638_*` group) regression-guard the resolved-action shape
 -- for both archetype branches.
 
@@ -815,7 +815,7 @@ VALUES (1131, 'advance_step', 639, '2343', '{}', 0, 0);
 --
 -- Self-completion guard (found in review, 2026-09-18): `player_entered_cover`
 -- is edge-triggered on every proximity enter (once=false, see
--- crates/services/src/cell/cover/detection.rs), and `Action::PlaySequence`
+-- crates/cell-cover/src/cell/cover/detection.rs), and `Action::PlaySequence`
 -- sends unconditionally with no dedup (executor/mod.rs). Without condition
 -- 2 below, a player who leans out of cover and back in before killing the
 -- drone would re-fire this chain on every re-entry, resending
@@ -907,7 +907,7 @@ VALUES
 -- an `items_event_sets` row `(2, 19, 1374, 5)` binding it to ability 1374 on
 -- event_id 5 (USE), but that table is loaded into
 -- `space_mgr.item_event_set_abilities` and read ONLY by
--- `crates/services/src/cell/abilities/resolve.rs`'s weapon-ability-resolution
+-- `crates/cell-combat/src/cell/abilities/resolve.rs`'s weapon-ability-resolution
 -- helpers (`ability_for_active_weapon` / `is_ability_granted_by_active_weapon`),
 -- both of which require the item to be sitting in the player's ACTIVE
 -- BANDOLIER SLOT. A consumable vial used from the inventory/mission-item
@@ -973,7 +973,7 @@ VALUES
 -- any non-pulsing effect (`EffectDef::is_pulsing()` requires
 -- `pulse_count == 0 || pulse_count > 1`; 1 satisfies neither) WITHOUT
 -- sending any wire packet at all -- confirmed directly against
--- `crates/services/src/cell/effects/pulsing/register.rs`'s early
+-- `crates/cell-combat/src/cell/effects/pulsing/register.rs`'s early
 -- `if !effect.is_pulsing() { return false; }`, and pinned by the live-DB
 -- test `single_shot_scriptless_effect_registers_no_active_instance` in
 -- `executor/tests/effects.rs`. VERDICT: firing 1372 today is a complete
@@ -1611,7 +1611,7 @@ VALUES (1084, 'accept_mission', 687, NULL, '{}', 0, 0);
 -- (Hallway05_Guard1/2, MessHall_Guard1/2) get two increment chains
 -- both feeding the same counter.
 --
--- Chain-replay tests in `crates/services/src/cell/content/
+-- Chain-replay tests in `crates/cell-content/src/cell/content/
 -- chain_replay_tests.rs` (`mission_681_*` and `mission_686_*` groups)
 -- pin both the per-tag increment dispatch and the threshold-reached
 -- completion so the wiring can't drift.
@@ -1840,7 +1840,7 @@ VALUES
 -- as a quest world object so the right-click cursor renders the
 -- attention-pulse. Mirrors how chain 1053 highlights Preparation_SMG1A
 -- on mission 641 accept. The matching `mission_accepted` trigger fires
--- from `crates/services/src/cell/content/executor.rs::Action::AcceptMission`
+-- from `crates/cell-content/src/cell/content/executor/mod.rs::Action::AcceptMission`
 -- right after the mission state is committed (engine extension landed
 -- alongside this chain).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

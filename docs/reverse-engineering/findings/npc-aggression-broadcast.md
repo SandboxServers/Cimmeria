@@ -87,7 +87,7 @@ Indices 0-26 are identical for SGWMob and SGWPlayer — both share the
 `SGWSpawnableEntity → SGWBeing` prefix, and that prefix's parse is a
 property of the *ancestor classes*, not the leaf entity, so it cannot
 differ between the two. (This was already documented, pre-NA33, in
-`crates/services/src/mercury/mod.rs`'s `method_idx` module comment.) From
+`crates/wire/src/mercury/mod.rs`'s `method_idx` module comment.) From
 27 the two entity types diverge: SGWPlayer continues into
 Communicator/OrganizationMember/etc., while SGWMob's `Implements` is just
 the empty-client-method `Lootable`, so SGWMob's own two methods begin
@@ -188,7 +188,7 @@ an already-connected witness saw.
 
 | Claim | Evidence |
 |---|---|
-| SGWMob indices 0-26 match SGWPlayer's | `entities/defs/SGWBeing.def`, `entities/defs/SGWSpawnableEntity.def` — ancestor classes, parsed identically regardless of leaf entity; already noted in `crates/services/src/mercury/mod.rs` pre-NA33 |
+| SGWMob indices 0-26 match SGWPlayer's | `entities/defs/SGWBeing.def`, `entities/defs/SGWSpawnableEntity.def` — ancestor classes, parsed identically regardless of leaf entity; already noted in `crates/wire/src/mercury/mod.rs` pre-NA33 |
 | Lootable contributes 0 client methods | `entities/defs/interfaces/Lootable.def:1-7` — `<ClientMethods></ClientMethods>` empty |
 | SGWMob's own methods are `onAggressionOverrideUpdate`, `onAggressionOverrideCleared`, in that order | `entities/defs/SGWMob.def:554-562` |
 | Ghidra confirms a live paired handler reading `aAggressionLevel` and storing `GameMob + 0x16c` | Ghidra decompile of `0x00d31bd0` / `0x00d31cd0`, string/RTTI search for `onAggressionOverride*` |
@@ -199,9 +199,9 @@ an already-connected witness saw.
 
 ## 2009-vs-2026 notes
 
-Cimmeria's implementation (`crates/services/src/cell/content/executor/world/mod.rs::set_aggression`,
-`crates/services/src/cell/console/net.rs::aggression`,
-`crates/services/src/cell/service/npc_ai/lifecycle/mod.rs::npc_ai_submit`)
+Cimmeria's implementation (`crates/cell-content/src/cell/content/executor/world/mod.rs::set_aggression`,
+`crates/cell-console/src/cell/console/net.rs::aggression`,
+`crates/cell-combat/src/cell/service/npc_ai/lifecycle/mod.rs::npc_ai_submit`)
 broadcasts `onAggressionOverrideUpdate`/`onAggressionOverrideCleared` on
 every runtime change, not the client-dead `onEntityProperty` property.
 This is a deliberate divergence from the *literal* legacy wire call, in
@@ -210,7 +210,7 @@ binary has a complete, functioning handler for exactly this value; the
 2009 server-side `setAggression` simply used the wrong message. No client
 patch is needed; the handler has been there since 2009.
 
-The AoI-entry replay (`crates/services/src/cell/space_manager/aoi.rs`)
+The AoI-entry replay (`crates/cell-world/src/cell/space_manager/aoi.rs`)
 mirrors `createOnClient`'s conditional send exactly: only sent when an
 override is active, nothing for a faction-derived mob. The `.aggression
 clear` console verb (new in Cimmeria; legacy's console command had no

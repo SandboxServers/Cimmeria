@@ -203,7 +203,7 @@ Two exceptions to parity, both pinned:
   occurrence also emits a sampled row on a different, exported target,
   carrying `sampled_1_in = N` and `suppressed` (occurrences since the
   previous sample), so `sum(1 + suppressed)` recovers the true count.
-  The emitters and N live in `cimmeria_services::firehose`.
+  The emitters and N live in `cimmeria_wire::firehose`.
 
 | Firehose (file) | Sample | Index | N | Why this N |
 |---|---|---|---|---|
@@ -237,13 +237,21 @@ exemptions are the `off` targets, each listed with its reason. Every crate
 directory must be classified as in- or out-of-process, so a new crate
 cannot skip the scan.
 
-`crates/server/src/logging/parity_tests.rs` builds the production filters
+`crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
 representative event at TRACE, DEBUG and INFO: an event the file keeps
 must reach exactly one OTLP index, or, for a firehose, none, with its
 sample reaching one. It also checks `server.log`'s targets, that no
 target at any level reaches two indexes, and that the guard itself
-catches a file layer added without `OTEL_FILTER` coverage.
+catches a file layer added without `OTEL_FILTER` coverage. Its
+`crate_rows` module guards the module-path rows themselves: every crate
+linked into the server has its own `OTEL_FILTER` row reaching each of its
+top-level modules (or a listed reason why not), and no row reaches the
+events of two crates. `EnvFilter` matches by string prefix, so a bare
+`cimmeria_cell` or `cimmeria_wire` row would also cover every
+`cimmeria_cell_*` crate or `cimmeria_wire_log`, and dropping one of those
+crates' own rows would then go unnoticed; the base, cell and wire rows name
+their crates' modules for that reason.
 
 ### Stable target catalog
 
@@ -287,7 +295,7 @@ at its real level and asserts all of them pass.
 | `mercury.retransmit` | INFO | `Channel::check_timeouts` | Reliable-channel retransmits |
 | `mercury.backpressure` | WARN | `Channel::send_packet` when TX window ≥ 50% full | Send-window saturation — early warning for stalled clients |
 | `mercury.rx_order` | DEBUG / WARN | `Channel::receive_parsed` on each client session's receive path | The reliable receive gate (NA38). `event`: `buffered` (DEBUG, a client packet held behind a gap), `duplicate` (DEBUG, a retransmitted packet dropped instead of dispatched twice), `out_of_window` (WARN, `reason=beyond_rx_window`, dropped unacked so the client resends it). Fields `peer`, `seq`, `expected`. `rx_stall` (WARN, `reason=reliable_gap_unfilled`, from `Channel::check_rx_stall` on the 100 ms tick) fires when one gap has blocked delivery for more than 2 s, and repeats at most every 10 s per gap. Its fields are `peer`, `expected`, `first_buffered`, `last_buffered`, `buffered`, `depth`, `stalled_ms` and `first_warning`. Counter `mercury_rx_stalls_total` counts each such gap once. Silent on a clean link |
-| `wire.in` / `wire.out` | INFO | `wire_log::{log_inbound, log_outbound_entity_method}` | Decoded entity-method calls. `wire.in` resolves cell methods by **method index** (`msg_id - 0x80`, or `61 + sub_index` for the `0xBD` sub-slot form) and carries `method_index` + `entity_method`; base methods (`0xC2+`) are `baseMethod` with their index until a base name table exists |
+| `wire.in` / `wire.out` | INFO | `cimmeria_wire_log::wire_log::{log_inbound, log_outbound_entity_method}` | Decoded entity-method calls. `wire.in` resolves cell methods by **method index** (`msg_id - 0x80`, or `61 + sub_index` for the `0xBD` sub-slot form) and carries `method_index` + `entity_method`; base methods (`0xC2+`) are `baseMethod` with their index until a base name table exists |
 | `aoi.entity_enter` / `aoi.entity_leave` | DEBUG | AoI tick witness fanout | Per-entity AoI transitions |
 | `aoi.create_emit` | DEBUG | `base::world_entry::cell_dispatch::aoi::entered_aoi` (per-entity packets); `base::world_entry::cell_dispatch::deferred_flush` (flush bundles) | Per-packet entity-introduction delivery (CREATE_ENTITY+UPDATE_AVATAR / createOnClient cascade) — fields `witness_id`, `entity_id`, `class_id`, `phase` (`create_base` \| `cascade`), `addr_resolved`, `bytes`, `seq`. The bundle path carries N entities in one send, so it reports `entered` (the folded-in NPC count) and `packets` in place of a per-entity `entity_id`. Success-side visibility for the invisible-static-NPC drop — and it only reaches SigNoz because `OTEL_FILTER` names it, see above |
 | `aoi.create_send_failed` | WARN | `base::world_entry::cell_dispatch::aoi::entered_aoi` (per-entity packets); `base::world_entry::cell_dispatch::deferred_flush` (flush bundles) | Entity-introduction packet/bundle that could NOT be delivered — `reason` (`entity_to_addr_miss` \| `client_disconnected` \| `send_error`), `phase`, `addr_resolved`. Negative-logging seam for the invisible-corpse class |
@@ -313,13 +321,13 @@ at its real level and asserts all of them pass.
 | `npc_ai.transition` | DEBUG | `cell::service::npc_ai::transition::set_ai_state_on` | `event = "state_change"`: one row per **actual** AI-state change (a write that leaves the state unchanged logs nothing). `from`, `to` (snake_case `AiState` labels), `reason` (`auto_aggro` \| `assist` (NA14) \| `threat_preempt` \| `threat_empty` \| `leash_out` \| `target_lost` \| `leash_arrived` \| `leash_snap_fallback` \| `died` \| `respawn` \| `content` \| `gm_command` \| `patrol_start` \| `wander_start` \| `patrol_no_path` \| `wander_no_radius` \| `wander_no_spawn` \| `investigate_no_poi` \| `investigate_done` \| `follow_no_target` \| `follow_target_gone`), plus `npc_id`, `tag`, `template_id`, `world`, `space_id`, `npc_to_spawn`, `threat_count`, `nav_path_len`. `CellEntity::ai_state` is a private field and this helper is its only writer, so the row is a complete per-NPC state timeline. Counter `npc_ai_transitions_total` |
 | `npc_ai.aggro` | INFO | `cell::service::npc_ai::aggro_acquired::log_aggro_acquired`, called from `combat::generate_threat` | `event = "acquired"`: one row per entry into Fighting. `cause` (`proximity` \| `damage` \| `content_threat` \| `assist`, NA14: a same-faction neighbour engaged and this NPC joined; an assist never recruits further), `from`, `target_id`, `player_id` and `account_id` (only when the target is a player), `npc_to_target`, `dy`, three-state `has_los` (`clear` \| `blocked` \| `unknown`), `aggression` (effective `EMobAggressionLevel` toward players, 1 = hostile, NA13) and `aggression_override` (unset when faction-derived), plus the common NPC fields. Replaces the unstructured "NPC aggro: preempt -> Fighting" line. Counter `npc_ai_aggro_total`. Also `event = "gm_toggle"` (INFO, no counter) when a GM sets `.aggro on|off`: `player_id`, `aggro_off`, `changed` (NA13) |
 | `content` | WARN / INFO | `cell::content::executor::world::set_aggression` | `event = "set_aggression_tag_miss"` (WARN, `reason = "tag_not_found"`): the action's tag matched no entity, so the NPC's aggression is unchanged; carries `tag`, `chain_id`, `agg_level`. `event = "set_aggression_invalid_level"` (WARN, `reason = "invalid_level"`): a level outside 0-5, nothing changed (NA13). `event = "set_aggression"` (INFO): the hit, with `from` / `to` as level labels (`faction` when there was no override). A mistyped chain tag used to be silent and read exactly like an aggro bug |
-| `spawner.npc_behaviour` | DEBUG | `cell::spawner::npcs::log_spawn_behaviour` | Resolved behaviour of each spawned NPC: `aggression`, `use_cover`, `is_stationary`, `move_speed`, `respawn_secs`, follow band, patrol / wander, `on_navmesh`, `ground_y`, `spawn_yaw_rad`, interaction flags, loot table |
+| `spawner.npc_behaviour` | DEBUG | `cell::space_manager::npc_population::log_spawn_behaviour` | Resolved behaviour of each spawned NPC: `aggression`, `use_cover`, `is_stationary`, `move_speed`, `respawn_secs`, follow band, patrol / wander, `on_navmesh`, `ground_y`, `spawn_yaw_rad`, interaction flags, loot table |
 | `player.death` | INFO | `cell::abilities::damage_apply` | First-class player death: identity, `killer` + `killer_name`, `ability_id`, world, position. The adjacent `onBeginAidWait` row now lists `respawner_ids` and its `filter` |
 | `session.start` / `session.end` | INFO | `cell::service::base_messages::player_init`, `base::helpers::destroy_client_entities` | World entry (identity, character, archetype, level, `access_level`, world, mission count) and teardown (`disconnect_reason`, `session_secs`). Client telemetry is ingested by admin-api (`launcher.ingest` / `launcher.bundle`), so liveness is a query: a `session.start` with no `launcher.*` rows for the same window means the tester has no client logs — see the *sessions vs client telemetry* saved view |
 | `player.respawn` | INFO | `cell::cell_methods::player::combat` | `callForAid` result: `state_flags_before` / `state_flags_after`, `was_dead`, `dead_flag_cleared`, health before/after/max, position from/to |
 | `dialog.display` | DEBUG | `cell::content::executor::dialog::display` | Each dialog shown with `replaced_dialog_id` and `ms_since_previous`. `fire_dialog_choice` rows now carry `button_id` |
 | `cover.flank_check` | DEBUG | `cell::cover::ai_integration` | Every flank test an NPC in a cover slot runs: slot, node position + orientation, threat position, `flanked`. Silent until an NPC actually holds a slot — check `use_cover` on `spawner.npc_behaviour` first |
-| `console.feedback` | DEBUG | `cell::cell_methods::gm::feedback::send_gm_feedback` | The text every `.`-command sent back to the GM — results and rejection reasons alike (first 400 chars) |
+| `console.feedback` | DEBUG | `cell::console::gm::feedback::send_gm_feedback` | The text every `.`-command sent back to the GM — results and rejection reasons alike (first 400 chars) |
 | `playtest.friction` | WARN | `cell::playtest_friction` | Stuck-player detectors — one event per episode, discriminated by `signal`. Episode counters: `repeat_interact_no_effect` (5 dead-end interacts on one target / 60 s), `repeat_item_use_no_chain` (2 / 120 s), `console_reject_streak` (3 / 120 s), `escort_separated` (escort > 3x `follow_max_distance` for 5 AI ticks), `escort_leader_teleported` (a followed player is about to be teleported — the escort stays behind). Time-based, re-evaluated every 2 s on movement packets (so only while the player is sending movement): `step_stalled` (step unchanged 5 min), `region_dwell_no_hint` (server-side point-in-polygon containment for 6 s with no client hint — the post-respawn Throne Room shape), `death_then_silence` (hinting client sends none for 120 s + 100 u after `callForAid`). Event-driven, fire at the gameplay event whether or not the player is moving: `dialog_displaced` (a dialog replaced < 3 s after display) and `objective_never_completed` (objective still open when a chain force-completes the mission). Raised from behaviour, not from knowing the cause |
 | `movement.movement_type` | DEBUG (`sent`, `cleared`) / TRACE (`deduped`, 1-in-53 with `sampled_1_in` + `suppressed`, `cimmeria-trace`) | `cell::abilities::messaging::broadcast_movement_type` | Every `setMovementType` outcome. The client picks mob animation from this byte, not from velocity, and `cleared` puts **nothing** on the wire — an NPC that translates afterwards renders in its prior pose. Fields: `kind`, `kind_byte`, `prior_kind`, `outcome`, `witness_count` |
 | `wire.out.avatar_update` | DEBUG (1-in-101 over all sends; `sampled_1_in`, `suppressed`) | `firehose::log_entity_moved`, from `base::world_entry::cell_dispatch::aoi::entity_moved` | The SigNoz sample of the `wire.firehose.aoi_position` firehose (NA25). What a witness was actually told about an entity: `witness_id`, `entity_id`, position, velocity, `yaw_rad`, **`yaw_byte`**, `pitch_byte`, `pos_variant`, and (NA02) `npc_moved_since_last` — `false` beside a non-zero velocity is an NPC the client animates as running while it stands still. There is no movement-type field: the client animates NPC movement from velocity alone. UPDATE_AVATAR is unreliable and never reaches `wire.out`, so this is the only record of transmitted position/facing |
@@ -516,7 +524,7 @@ datagram), ACK queueing, `EntityMove` and
 packet). They are a few fields each and arrive at about the rate of
 `mercury.packet`, which `cimmeria-network` already receives unsampled —
 roughly one `cimmeria-trace` row per datagram. If that proves too much,
-move them behind `cimmeria_services::firehose` the same way.
+move them behind `cimmeria_wire::firehose` the same way.
 
 ### Timestamps — server-receive vs. client-generate
 
@@ -607,7 +615,7 @@ left.
 pushes `SGWPlayer.perfStats` — 12 floats covering FPS min/avg/max, bytes and
 packets in/out, lag min/avg/max, resends, and appearance-job count. The handler
 at
-[`crates/services/src/base/dispatch/diagnostics.rs`](../../crates/services/src/base/dispatch/diagnostics.rs)
+[`crates/base/src/base/dispatch/diagnostics.rs`](../../crates/base/src/base/dispatch/diagnostics.rs)
 validates the 48-byte payload length and then discards the contents; its own
 comment marks the intended next step ("parse the 12 floats here and emit a
 `perf_stats` metric"). This is the cheapest remaining win in the whole

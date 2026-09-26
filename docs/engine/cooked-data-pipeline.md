@@ -11,7 +11,7 @@ last_updated: 2026-07-25
 > **RE Status**: Delivery path verified against `crates/` and `data/cache/`; the DB→PAK
 > *cooking* half is historical (original CME server) and no longer runs
 > **Sources**: `data/cache/` (21 PAKs, inspected directly), `db/resources/`,
-> `crates/services/src/base/cooked_data.rs`, `crates/services/src/base/resources.rs`,
+> `crates/base-session/src/base/cooked_data.rs`, `crates/resources/src/base/resources/mod.rs`,
 > `deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp`, `deprecated/python/`
 
 ---
@@ -26,7 +26,7 @@ last_updated: 2026-07-25
 >
 > The *delivery* pipeline (`versionInfoRequest` / `onVersionInfo` / `elementDataRequest` /
 > `BASEMSG_RESOURCE_FRAGMENT`) **is** live and is implemented in Rust at
-> `crates/services/src/base/cooked_data.rs`.
+> `crates/base-session/src/base/cooked_data.rs`.
 
 ## Overview
 
@@ -59,20 +59,20 @@ PAK Files (data/cache/*.pak)  — 21 archives, pre-cooked, committed
         |
         | ResourceCache reads ZIP entries at startup
         v
-crates/services/src/base/resources.rs  (CategoryData / ResourceCache)
+crates/resources/src/base/resources/mod.rs  (CategoryData / ResourceCache)
         |
         | plus Cimmeria-authored overrides:
-        |   crates/services/src/base/dialog_overrides.rs
-        |   crates/services/src/base/item_overrides.rs
+        |   crates/resources/src/base/dialog_overrides/mod.rs
+        |   crates/resources/src/base/item_overrides.rs
         v
-crates/services/src/base/cooked_data.rs
+crates/base-session/src/base/cooked_data.rs
         |
         | BASEMSG_RESOURCE_FRAGMENT (0x36), fragmented at MAX_CHUNK
         v
 Game Client (CookedDataCache)
 ```
 
-Kismet sequences (category 1) use the same mechanism through `crates/services/src/base/sequence_overrides.rs`. It matters more there than anywhere: a category with **no** override list answers a version mismatch with `invalidate_all = true` and pushes nothing, and the client, which never lazy-fetches, empties and persists its whole table. Never change a PAK's on-disk `MetaData` version to signal a change; add an override.
+Kismet sequences (category 1) use the same mechanism through `crates/resources/src/base/sequence_overrides.rs`. It matters more there than anywhere: a category with **no** override list answers a version mismatch with `invalidate_all = true` and pushes nothing, and the client, which never lazy-fetches, empties and persists its whole table. Never change a PAK's on-disk `MetaData` version to signal a change; add an override.
 
 Cimmeria's database layer is **`sqlx` 0.8**, not SOCI, and there is no Boost.Python
 binding — the server is a single Rust process (`crates/server/`).
@@ -167,7 +167,7 @@ client-side counterpart — the client numbers `behavior_event` as 21.
 > [!NOTE]
 > **Category 7 (`char_creation`) is deliberately not server-pushed.** It is absent from the
 > version-negotiation category map, so the client falls back to its local
-> `CookedCharCreation.pak`. See `crates/services/src/base/cooked_data.rs:246`. Do not
+> `CookedCharCreation.pak`. See `crates/base-session/src/base/cooked_data.rs:246`. Do not
 > "fix" this by adding category 7 to the map without understanding the character-creation
 > flow first.
 
@@ -253,7 +253,7 @@ To change game content on the original server:
 4. Optionally use hot-reload for live updates during development
 
 **In Cimmeria**, changing a cooked-data record means adding an override entry in the
-relevant module under `crates/services/src/base/` (`dialog_overrides.rs`,
+relevant module under `crates/resources/src/base/` (`dialog_overrides/`,
 `item_overrides.rs`, or a new sibling following the same pattern). The override layer
 replaces the PAK entry for that element ID and marks it in the invalidation set so
 `onVersionInfo` tells the client to re-fetch it. Do not edit the `.pak` files in place —
@@ -380,7 +380,7 @@ Client                          BaseApp
 
 Each `BASEMSG_RESOURCE_FRAGMENT` message (original C++:
 `deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp:293-382`; Rust:
-`crates/services/src/base/cooked_data.rs`):
+`crates/base-session/src/base/cooked_data.rs`):
 
 ```
 +--------+--------+-------+--------+--------+--------+-----------+
@@ -416,7 +416,7 @@ first fragment spends only 16 of those on headers: `BASEMSG` 1, `WORD_LEN` 2, `d
 historical 1000-byte value wasted roughly 28% of every packet. 1390 leaves a 5-byte safety
 margin under the tighter first-fragment cap of 1395. This is a pure throughput change —
 the fragment *format* is unchanged, so client compatibility is preserved. A guard test in
-`crates/services/src/mercury/protocol/tests.rs` pins the constant against the decrypt path;
+`crates/wire/src/mercury/protocol/tests.rs` pins the constant against the decrypt path;
 change both together.
 
 ### Resource Category IDs

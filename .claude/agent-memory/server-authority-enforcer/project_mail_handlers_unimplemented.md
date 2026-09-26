@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-`crates/services/src/cell/cell_methods/mail.rs` has five stubbed arms:
+`crates/cell-methods/src/cell/cell_methods/mail.rs` has five stubbed arms:
 `SEND_MAIL_MESSAGE` (44), `RETURN_MAIL_MESSAGE` (47), `TAKE_CASH_FROM_MAIL` (49),
 `TAKE_ITEM_FROM_MAIL` (50), `PAY_COD_FOR_MAIL` (51). Each logs
 `tracing::info!("UNIMPLEMENTED: …")` and returns `true` (claims to have handled

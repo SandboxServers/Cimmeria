@@ -1,7 +1,7 @@
 # Navmeshes (`data/spaces/*.nav`)
 
 One XRC `.nav` per world, loaded at space creation by
-`crates/services/src/cell/space_manager/lifecycle.rs`. The file name is the
+`crates/cell-world/src/cell/space_manager/lifecycle.rs`. The file name is the
 world name from `entities/spaces.xml`, lower-cased, with spaces turned into
 underscores. It is **not** `resources.worlds.client_map`: `SandBox` (world 2)
 plays on the `Harset_CmdCenter` client map but loads `sandbox.nav`, which is

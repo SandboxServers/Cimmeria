@@ -18,7 +18,7 @@ The `OrganizationMember` interface in `entities/defs/interfaces/OrganizationMemb
 
 ## Implementation Status
 
-The Rust server wires the argument decoding for cell methods 8–19 in [`crates/services/src/cell/cell_methods/organization.rs`](../../crates/services/src/cell/cell_methods/organization.rs) — each arm parses its payload and emits a structured `UNIMPLEMENTED` log so the fields are visible in traces. Nothing beyond that exists: no base-side handler, no `sgw_organization*` table, and none of the eighteen `onOrganization*` client methods (indices 34–51) is ever sent.
+The Rust server wires the argument decoding for cell methods 8–19 in [`crates/cell-methods/src/cell/cell_methods/organization.rs`](../../crates/cell-methods/src/cell/cell_methods/organization.rs) — each arm parses its payload and emits a structured `UNIMPLEMENTED` log so the fields are visible in traces. Nothing beyond that exists: no base-side handler, no `sgw_organization*` table, and none of the eighteen `onOrganization*` client methods (indices 34–51) is ever sent.
 
 | Feature | Status | Notes |
 |---------|--------|-------|

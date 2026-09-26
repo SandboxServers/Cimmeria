@@ -315,5 +315,5 @@ Client                                          BaseApp Server
 - Cimmeria (the C++ server this page was written against, now retired):
   [`deprecated/cpp/src/baseapp/mercury/sgw/`](../../deprecated/cpp/src/baseapp/mercury/sgw/) —
   `connect_handler.cpp`, `client_handler.cpp`, `messages.cpp`. The **active** equivalent is
-  Rust under [`crates/services/src/base/`](../../crates/services/src/base/).
+  Rust under [`crates/base/src/base/`](../../crates/base/src/base/).
 - SGW binary strings: [`bigworld-version-analysis.md`](bigworld-version-analysis.md) (ServerConnection debug strings)

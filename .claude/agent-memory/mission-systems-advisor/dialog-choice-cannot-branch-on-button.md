@@ -11,7 +11,7 @@ metadata:
 (`crates/content-engine/src/triggers/mod.rs:75`) matches on the **dialog id
 only**. Every button on that dialog fires the same chain.
 
-`fire_dialog_choice` (`crates/services/src/cell/content/event_dispatch/dialog.rs:90`)
+`fire_dialog_choice` (`crates/cell-content/src/cell/content/event_dispatch/dialog.rs:90`)
 *does* stamp `ctx.params["button_id"]` — but the only authorable condition
 types are the six keys in `crates/content-engine/src/loader/condition.rs`:
 `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`,

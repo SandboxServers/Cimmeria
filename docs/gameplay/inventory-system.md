@@ -14,7 +14,7 @@ last_updated: 2026-09-25
 
 The inventory system manages item storage, equipping, movement, and currency for player entities. Items are organized into numbered bags (containers) with fixed slot counts. Each bag may represent general storage, equipment slots, crafting storage, or mission items. Equipped items contribute visual components to the player model and trigger equip/unequip callbacks.
 
-Inventory splits across the two services: cell-side operations live in [`cell/cell_methods/inventory/`](../../crates/services/src/cell/cell_methods/inventory/) (item ops plus the bandolier/active-slot machinery), and everything that touches the database — including the entire vendor stack — lives in [`base/world_entry/methods/inventory/`](../../crates/services/src/base/world_entry/methods/inventory/) and [`base/world_entry/methods/vendor/`](../../crates/services/src/base/world_entry/methods/vendor/). Item definitions come from `db/resources/Items/`.
+Inventory splits across the two services: cell-side operations live in [`cell/cell_methods/inventory/`](../../crates/cell-methods/src/cell/cell_methods/inventory/) (item ops plus the bandolier/active-slot machinery), and everything that touches the database — including the entire vendor stack — lives in [`base/world_entry/methods/inventory/`](../../crates/base-methods/src/base/world_entry/methods/inventory/) and [`base/world_entry/methods/vendor/`](../../crates/base-methods/src/base/world_entry/methods/vendor/). Item definitions come from `db/resources/Items/`.
 
 ## Implementation Status
 
@@ -105,7 +105,7 @@ No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE
 
 `INV_Bandolier` (container id `3`) holds 4 weapon slots indexed `0..3` and is the only container that tracks an active slot. Slot count matches legacy `deprecated/python/common/Constants.py:145` (`BAG_SIZES[INV_Bandolier] = 4`); there is no fist-weapon reservation, so all four slots are real weapon slots.
 
-The wire format is **1-indexed** (slots `1..4`). Server-side everything is **0-indexed**; the cell decoder subtracts 1 on inbound `requestActiveSlotChange` / `moveItem` and the grant/sync paths add 1 on outbound `onActiveSlotUpdate`. Mismatch on the inbound side was the original cause of the "switching slots doesn't work" bug — see `crates/services/src/cell/cell_methods/inventory/bandolier.rs` and `item_ops.rs`.
+The wire format is **1-indexed** (slots `1..4`). Server-side everything is **0-indexed**; the cell decoder subtracts 1 on inbound `requestActiveSlotChange` / `moveItem` and the grant/sync paths add 1 on outbound `onActiveSlotUpdate`. Mismatch on the inbound side was the original cause of the "switching slots doesn't work" bug — see `crates/cell-combat/src/cell/cell_methods/inventory/bandolier.rs` and `item_ops.rs`.
 
 Each bandolier slot persists not only the equipped item but also its **per-slot magazine state**:
 

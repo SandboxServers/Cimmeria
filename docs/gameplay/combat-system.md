@@ -127,7 +127,7 @@ Each entry: { StatID: INT32, Delta: INT32, DamageCode: INT32, StatResultCode: IN
 
 ## Ammo Gating
 
-Ranged abilities declare a `required_ammo` cost. On every `useAbility`, the cell fire-gate ([`crates/services/src/cell/abilities.rs:259-281`](../../crates/services/src/cell/abilities.rs#L259)) checks:
+Ranged abilities declare a `required_ammo` cost. On every `useAbility`, the cell fire-gate ([`crates/cell-combat/src/cell/abilities.rs:259-281`](../../crates/cell-combat/src/cell/abilities.rs#L259)) checks:
 
 ```text
 if required_ammo > 0 && entity.is_player && active_ammo() < required_ammo:
@@ -141,7 +141,7 @@ Full server-authoritative ammo model, reload flow, persistence cadence, and clie
 
 ## Fire-Time Line of Sight
 
-The server refuses a player's targeted ability when a wall stands between the player's eyes and the target's (NA31, decision D-NA14). The check is `refuse_without_line_of_sight` in [`use_ability/fire_los.rs`](../../crates/services/src/cell/abilities/use_ability/fire_los.rs), and it runs straight after the range check. The Python reference never checked (`AbilityManager`: `# TODO: Do LOS checks on target`). The client ships the feedback text, so the original server probably did.
+The server refuses a player's targeted ability when a wall stands between the player's eyes and the target's (NA31, decision D-NA14). The check is `refuse_without_line_of_sight` in [`use_ability/fire_los.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/fire_los.rs), and it runs straight after the range check. The Python reference never checked (`AbilityManager`: `# TODO: Do LOS checks on target`). The client ships the feedback text, so the original server probably did.
 
 **When it applies.** Every condition must hold:
 
@@ -194,14 +194,14 @@ baseDamage
 
 ### The qrRand distribution (NA32)
 
-`qrRand` is drawn from `Beta(1.4 + 2qr, 1.4)` for `qr >= 0` and `Beta(1.4, 1.4 - 2qr)` for `qr < 0` ([`combat/damage/qr.rs`](../../crates/services/src/cell/combat/damage/qr.rs) `calculate_result`). The mean rises with QR: a stronger attacker crits more and misses less.
+`qrRand` is drawn from `Beta(1.4 + 2qr, 1.4)` for `qr >= 0` and `Beta(1.4, 1.4 - 2qr)` for `qr < 0` ([`combat/damage/qr.rs`](../../crates/cell-combat/src/cell/combat/damage/qr.rs) `calculate_result`). The mean rises with QR: a stronger attacker crits more and misses less.
 
 > [!NOTE]
 > These are the python reference's branches **swapped**. `AbilityManager.py:181-184` wrote `betavariate(α, α + qr * mult)` for `qr >= 0`, which pulled the mean *down* as QR rose. At QR +1.5 about 45% of rolls fell in the Miss/Glancing bands, and the `(1 + qr)` damage term only just cancelled the lower `qrRand`, so expected damage was nearly flat in QR. Every QR stat (accuracy, defense, cover) was inert on damage and inverted on the result code. The client's own units say the opposite: `accuracy` "modifies outgoing ranged and melee QR by +0.01 per point" and `defense` "modifies incoming ranged and melee QR by -0.01 per point" (`alias.xml:204-205`, [combat-formulas-client-evidence.md](../reverse-engineering/findings/combat-formulas-client-evidence.md)). At QR 0 nothing changes: the distribution is the symmetric `Beta(1.4, 1.4)` either way.
 
 ### Cover as damage reduction (NA32)
 
-A defender in cover against its attacker takes a percentage off each hit, rated by the cover node it stands at ([`combat/damage/cover_damage.rs`](../../crates/services/src/cell/combat/damage/cover_damage.rs), applied by [`abilities/damage_apply/cover_roll.rs`](../../crates/services/src/cell/abilities/damage_apply/cover_roll.rs)). The owner's rule (D-NA15a, 2026-09-25): "Cover rating should depend on material. Cement walls are better cover than lunch tables. Not all cover is created equally. It should probably range from 10-60% damage reduction. We don't want npcs in cover to be complete bullet sponges."
+A defender in cover against its attacker takes a percentage off each hit, rated by the cover node it stands at ([`combat/damage/cover_damage.rs`](../../crates/cell-combat/src/cell/combat/damage/cover_damage.rs), applied by [`abilities/damage_apply/cover_roll.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/cover_roll.rs)). The owner's rule (D-NA15a, 2026-09-25): "Cover rating should depend on material. Cement walls are better cover than lunch tables. Not all cover is created equally. It should probably range from 10-60% damage reduction. We don't want npcs in cover to be complete bullet sponges."
 
 ```text
 in cover:  final_pct = clamp(base(quality, height) + stance - penetration, 10, 60)

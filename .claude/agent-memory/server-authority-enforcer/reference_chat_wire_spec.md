@@ -86,6 +86,6 @@ can chat into channels they're not a member of. → CAT-L-03.
 ### Witness fan-out invariant
 
 `broadcast_to_witnesses` reads from `space_mgr.get_entity(sender_id).witnesses`
-(`cell/chat.rs:101-119`), which is server-computed AoI. NO client-supplied
+(`cell/console/chat.rs:101-119`), which is server-computed AoI. NO client-supplied
 target list. This is the right pattern — preserve it on any future
 per-channel broadcast addition.

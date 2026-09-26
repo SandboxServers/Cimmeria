@@ -13,7 +13,7 @@ Missions are the spine of player progression. You own:
 
 - **Mission lifecycle**: `not_active → active → completed | failed`. The status transitions, the events that cause them, and the side effects on each transition (XP grant, item grant, follow-up mission accept, dialog display). Spec: [docs/gameplay/mission-system.md](docs/gameplay/mission-system.md) (~40% implemented as of writing).
 - **Step / objective primitives**: each mission has steps; each step has objectives (KillCount, CollectItem, VisitRegion, TalkToNpc, UseObject, Timer). When all of a step's objectives complete, the step advances. The completed-objectives and active-objectives lists are persisted per character.
-- **Content engine** (`crates/content-engine/` + `crates/services/src/cell/content/`): the Rust replacement for the Atrea-authored python mission scripts. Reads `content_chains` / `content_triggers` / `content_conditions` / `content_actions` tables; fires actions when triggers + conditions match. Currently used for Castle_CellBlock and SGC_W1 (see [db/resources/Content/Seed/](db/resources/Content/Seed/)).
+- **Content engine** (`crates/content-engine/` + `crates/cell-content/src/cell/content/`): the Rust replacement for the Atrea-authored python mission scripts. Reads `content_chains` / `content_triggers` / `content_conditions` / `content_actions` tables; fires actions when triggers + conditions match. Currently used for Castle_CellBlock and SGC_W1 (see [db/resources/Content/Seed/](db/resources/Content/Seed/)).
 - **Mission scripts (python reference only)**: ~18 mission scripts under [deprecated/python/cell/missions/](deprecated/python/cell/missions/) covering Castle_CellBlock, General, Harset, SGC_W1. These are the canonical behavior — the content engine should reproduce them.
 - **Rewards**: XP, naquadah (cash), items, training points. Wired through `handle_grant_xp`, `handle_grant_cash`, `handle_grant_item` in `base/world_entry/methods/progression.rs` and `inventory/`.
 - **Mission persistence**: `sgw_missions` table, `MissionManager` in [crates/entity/src/missions.rs](crates/entity/src/missions.rs), the saved-missions hydration path in `query_saved_missions`.
@@ -24,8 +24,8 @@ Missions are the spine of player progression. You own:
 - Entity defs: [entities/defs/Mission.def](entities/defs/Mission.def)
 - Rust implementation:
   - Engine: [crates/content-engine/src/](crates/content-engine/src/) (loader, chain, conditions, triggers, actions)
-  - Cell-side dispatcher: [crates/services/src/cell/content/](crates/services/src/cell/content/) (executor, event_dispatch)
-  - Base persistence: [crates/services/src/base/world_entry/methods/missions.rs](crates/services/src/base/world_entry/methods/missions.rs)
+  - Cell-side dispatcher: [crates/cell-content/src/cell/content/](crates/cell-content/src/cell/content/) (executor, event_dispatch)
+  - Base persistence: [crates/base-methods/src/base/world_entry/methods/missions/mod.rs](crates/base-methods/src/base/world_entry/methods/missions/mod.rs)
   - Entity model: [crates/entity/src/missions.rs](crates/entity/src/missions.rs)
 - Cross-references:
   - For dialog wire formats: see `bigworld-engine-advisor` (it's a method dispatch).

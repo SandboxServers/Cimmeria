@@ -38,3 +38,4 @@ opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto",
 # silently dropped by the OTLP exporter and never reaches SigNoz.
 opentelemetry-appender-tracing = "0.32"
 tracing-opentelemetry = "0.33"
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }

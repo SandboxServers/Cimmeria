@@ -185,7 +185,7 @@ Challenge other players.
 > **Note (2026-07-25):** `/duelforfeit` and `/duelresponse` were previously marked
 > ✅ Yes. The server does receive and dispatch both, but each handler only logs
 > `UNIMPLEMENTED` and returns — no duel state changes
-> ([player/social.rs:92-103](../crates/services/src/cell/cell_methods/player/social.rs#L92-L103)).
+> ([player/social.rs:92-103](../crates/cell-methods/src/cell/cell_methods/player/social.rs#L92-L103)).
 > Reaching a handler is not the same as the handler doing its job. No part of the
 > duel system is implemented server-side.
 
@@ -587,7 +587,7 @@ design and the per-command status.
 
 > The server side is tested where marked, but a full live-client pass (typing each one in the real game and watching the result) is still pending. Treat ✅ as "the server does the right thing when the command arrives."
 >
-> **Accuracy caveat (2026-07-25):** the ✅/🚧/❌ marks in the `/`-command tables above have **not** been audited handler-by-handler. Two were checked and both were wrong — `/duelforfeit` and `/duelresponse` were marked ✅ but are `UNIMPLEMENTED` stubs (see the Dueling section); the totals here reflect that correction. Expect other rows to be optimistic in the same way, because a command that reaches a dispatch arm can still do nothing. The `.`-console section below **was** verified in full against [console/registry.rs](../crates/services/src/cell/console/registry.rs).
+> **Accuracy caveat (2026-07-25):** the ✅/🚧/❌ marks in the `/`-command tables above have **not** been audited handler-by-handler. Two were checked and both were wrong — `/duelforfeit` and `/duelresponse` were marked ✅ but are `UNIMPLEMENTED` stubs (see the Dueling section); the totals here reflect that correction. Expect other rows to be optimistic in the same way, because a command that reaches a dispatch arm can still do nothing. The `.`-console section below **was** verified in full against [console/registry.rs](../crates/cell-console/src/cell/console/registry.rs).
 
 ## See also
 

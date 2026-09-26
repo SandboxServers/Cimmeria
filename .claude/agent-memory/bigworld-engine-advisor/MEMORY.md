@@ -48,7 +48,7 @@ V5-confirmed against `findings/mercury-protocol-internals.md`. ENABLE_ENTITIES 8
 
 ### Known Bugs in Rust Rewrite — **[RE-VERIFY]**
 
-- **RESOURCE_FRAGMENT length prefix**: the path reference `mercury_ext.rs line 495` is stale — the file was refactored into `crates/services/src/mercury/protocol/resources.rs`. The u16 length-prefix fact itself is V5-confirmed and the fix has shipped (test `resource_fragment_uses_u16_length_prefix` guards it).
+- **RESOURCE_FRAGMENT length prefix**: the path reference `mercury_ext.rs line 495` is stale — the file was refactored into `crates/wire/src/mercury/protocol/resources.rs`. The u16 length-prefix fact itself is V5-confirmed and the fix has shipped (test `resource_fragment_uses_u16_length_prefix` guards it).
 
 ### Rotation Order Inconsistency in C++ Reference — **[RE-VERIFY]**
 
@@ -114,10 +114,10 @@ Sub-slot encoding details: now confirmed in `findings/entity-property-sync.md` (
 
 - Entity types: `crates/common/src/types.rs`
 - Mercury packet builder: `crates/mercury/src/packet.rs`
-- Encrypted message builders: `crates/services/src/mercury/protocol/` (the prior `mercury_ext.rs` was split)
-- BaseApp handler: `crates/services/src/base.rs`
-- Cooked data handler: `crates/services/src/base/cooked_data.rs`
-- Version info builder: `crates/services/src/mercury/protocol/` (resources / version-info submodule)
+- Encrypted message builders: `crates/wire/src/mercury/protocol/` (the prior `mercury_ext.rs` was split)
+- BaseApp handler: `crates/base/src/base/` (service, connect loop, login, dispatch)
+- Cooked data handler: `crates/base-session/src/base/cooked_data.rs`
+- Version info builder: `crates/wire/src/mercury/protocol/` (resources / version-info submodule)
 
 ### Python Game Logic
 

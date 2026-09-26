@@ -131,9 +131,12 @@ definition and the seed directly.
 
 ### 2. The enum
 
-[`crates/services/src/cell/space_manager/navmesh_mode.rs`](../../crates/services/src/cell/space_manager/navmesh_mode.rs)
+[`crates/cell-catalog/src/cell/spawner/navmesh_mode.rs`](../../crates/cell-catalog/src/cell/spawner/navmesh_mode.rs)
 holds `pub enum NavmeshMode { Enforce, Advisory }`, with `Enforce` as the
-`Default`. Alongside it:
+`Default`. It sits beside the world loader that reads it; the `impl SpaceManager`
+predicates over it are in
+[`cell/space_manager/navmesh_containment.rs`](../../crates/cell-world/src/cell/space_manager/navmesh_containment.rs).
+`space_manager::NavmeshMode` re-exports the enum. Alongside it:
 
 - `NavmeshMode::as_db_str()` — the spelling written to the column.
 - `TryFrom<&str>` — **case-sensitive and exact**. `"Advisory"`, `"ADVISORY"`
@@ -178,15 +181,15 @@ with the first.
 The mode travels with the world id, in one query, so the two can never
 arrive by paths that disagree:
 
-- [`crates/services/src/cell/spawner/worlds.rs`](../../crates/services/src/cell/spawner/worlds.rs):
+- [`crates/cell-catalog/src/cell/spawner/worlds.rs`](../../crates/cell-catalog/src/cell/spawner/worlds.rs):
   `load_world_ids` became `load_world_rows`, returning
   `HashMap<String, WorldRow>` where `WorldRow { world_id: i32, navmesh_mode: NavmeshMode }`.
   `WorldRow::enforcing(id)` is the fixture constructor.
-- [`crates/services/src/cell/space_manager/lifecycle.rs`](../../crates/services/src/cell/space_manager/lifecycle.rs):
+- [`crates/cell-world/src/cell/space_manager/lifecycle.rs`](../../crates/cell-world/src/cell/space_manager/lifecycle.rs):
   `SpaceManager::stamp_world_ids` became `stamp_world_rows`, writing both
   values onto the matching `WorldDef` (which gained a `navmesh_mode` field).
 - Called from
-  [`crates/services/src/cell/service/startup.rs`](../../crates/services/src/cell/service/startup.rs).
+  [`crates/cell/src/cell/service/startup.rs`](../../crates/cell/src/cell/service/startup.rs).
 
 ## Call sites routed through the predicate
 
@@ -195,15 +198,15 @@ taken, everywhere a navmesh could refuse a player a position:
 
 | Call site | File | What changes for an advisory world |
 |---|---|---|
-| The navmesh containment layer (the snap-back) | [`cell/space_manager/client_move.rs`](../../crates/services/src/cell/space_manager/client_move.rs) | Off-mesh positions are accepted. The predicate is consulted *before* `is_position_valid`, so an advisory world does not pay a Detour query per inbound packet for an answer nothing would act on |
-| `reject_outcome`'s `target_is_sound` test | [`cell/space_manager/client_move.rs`](../../crates/services/src/cell/space_manager/client_move.rs) | The AABB is the whole soundness test. Without this term, the first bounds- or teleport-rejected packet from a player standing in a hole would judge their own position unusable and force-relocate them onto the nearest polygon — the same snap, one code path over |
-| `resolve_recovery_position`, Detour reprojection | [`cell/space_manager/client_move.rs`](../../crates/services/src/cell/space_manager/client_move.rs) | Skipped. `get_nearest_point` is only as good as the coverage, and on `harset.nav` the nearest polygon to a point in the Command-Center corridor is on a different floor |
-| `resolve_recovery_position`, respawner fallback | [`cell/space_manager/client_move.rs`](../../crates/services/src/cell/space_manager/client_move.rs) | The authored respawner coordinate is kept rather than discarded for not being covered |
-| `resolve_recovery_position`, AABB clamp | [`cell/space_manager/client_move.rs`](../../crates/services/src/cell/space_manager/client_move.rs) | Kept. This one matters most: answering `None` here returns `CorrectionSuppressed`, leaving a player exactly where the validator refuses to move them from |
-| `check_arrival` | [`cell/arrival.rs`](../../crates/services/src/cell/arrival.rs) | An advisory destination returns `ArrivalCheck::Unvalidated` instead of `OffMesh` — "nothing could be checked", not "refused" |
-| Ring-pad warmup check | [`cell/ring_transport/runtime/tick.rs`](../../crates/services/src/cell/ring_transport/runtime/tick.rs) | Covered by the `check_arrival` change above |
-| `audit_ring_pads` startup sweep | [`cell/ring_transport/regions.rs`](../../crates/services/src/cell/ring_transport/regions.rs) | Covered by the `check_arrival` change above |
-| `respawner_fallback` | [`cell/respawner_fallback.rs`](../../crates/services/src/cell/respawner_fallback.rs) | Stays a pure function taking `Option<&NavMesh>`. Both callers now pass the *containment* flavour, so an advisory world reaches it as `None`. The mode decision belongs at the caller, not inside the pure core |
+| The navmesh containment layer (the snap-back) | [`cell/space_manager/client_move.rs`](../../crates/cell-world/src/cell/space_manager/client_move.rs) | Off-mesh positions are accepted. The predicate is consulted *before* `is_position_valid`, so an advisory world does not pay a Detour query per inbound packet for an answer nothing would act on |
+| `reject_outcome`'s `target_is_sound` test | [`cell/space_manager/client_move.rs`](../../crates/cell-world/src/cell/space_manager/client_move.rs) | The AABB is the whole soundness test. Without this term, the first bounds- or teleport-rejected packet from a player standing in a hole would judge their own position unusable and force-relocate them onto the nearest polygon — the same snap, one code path over |
+| `resolve_recovery_position`, Detour reprojection | [`cell/space_manager/client_move.rs`](../../crates/cell-world/src/cell/space_manager/client_move.rs) | Skipped. `get_nearest_point` is only as good as the coverage, and on `harset.nav` the nearest polygon to a point in the Command-Center corridor is on a different floor |
+| `resolve_recovery_position`, respawner fallback | [`cell/space_manager/client_move.rs`](../../crates/cell-world/src/cell/space_manager/client_move.rs) | The authored respawner coordinate is kept rather than discarded for not being covered |
+| `resolve_recovery_position`, AABB clamp | [`cell/space_manager/client_move.rs`](../../crates/cell-world/src/cell/space_manager/client_move.rs) | Kept. This one matters most: answering `None` here returns `CorrectionSuppressed`, leaving a player exactly where the validator refuses to move them from |
+| `check_arrival` | [`cell/arrival.rs`](../../crates/cell-world/src/cell/arrival.rs) | An advisory destination returns `ArrivalCheck::Unvalidated` instead of `OffMesh` — "nothing could be checked", not "refused" |
+| Ring-pad warmup check | [`cell/ring_transport/runtime/tick.rs`](../../crates/cell-content/src/cell/ring_transport/runtime/tick.rs) | Covered by the `check_arrival` change above |
+| `audit_ring_pads` startup sweep | [`cell/ring_transport/regions.rs`](../../crates/cell-world/src/cell/ring_transport/regions.rs) | Covered by the `check_arrival` change above |
+| `respawner_fallback` | [`cell/respawner_fallback.rs`](../../crates/cell-catalog/src/cell/respawner_fallback.rs) | Stays a pure function taking `Option<&NavMesh>`. Both callers now pass the *containment* flavour, so an advisory world reaches it as `None`. The mode decision belongs at the caller, not inside the pure core |
 
 ## What deliberately does not change
 
@@ -214,9 +217,9 @@ to *know* keeps working:
 - `find_path`
 - `line_of_sight` / `has_line_of_sight`
 - `get_navmesh_height`
-- NPC wander validity ([`cell/service/npc_ai/wander.rs`](../../crates/services/src/cell/service/npc_ai/wander.rs))
-- the `on_navmesh` field in [`cell/console/bookmark.rs`](../../crates/services/src/cell/console/bookmark.rs) (`.bug` reports)
-- the `on_navmesh` field in [`cell/spawner/npcs.rs`](../../crates/services/src/cell/spawner/npcs.rs) (`spawner.npc_behaviour`)
+- NPC wander validity ([`cell/service/npc_ai/wander.rs`](../../crates/cell-combat/src/cell/service/npc_ai/wander.rs))
+- the `on_navmesh` field in [`cell/console/bookmark.rs`](../../crates/cell-console/src/cell/console/bookmark.rs) (`.bug` reports)
+- the `on_navmesh` field in [`cell/space_manager/npc_population.rs`](../../crates/cell-world/src/cell/space_manager/npc_population.rs) (`spawner.npc_behaviour`)
 
 The other validation layers are untouched. An advisory world still
 hard-rejects NaN / `±∞` coordinates, out-of-AABB positions, and
@@ -328,7 +331,7 @@ boot log answers "which worlds are running without containment" in one row.
 ## Regression guards
 
 In
-[`crates/services/src/cell/space_manager/tests/movement_validation/advisory.rs`](../../crates/services/src/cell/space_manager/tests/movement_validation/advisory.rs),
+[`crates/cell-world/src/cell/space_manager/tests/movement_validation/advisory.rs`](../../crates/cell-world/src/cell/space_manager/tests/movement_validation/advisory.rs),
 against the real `harset.nav` (self-skipping on a fixture-less checkout):
 
 - `a_step_into_a_mesh_hole_is_accepted_in_an_advisory_world`
@@ -351,7 +354,7 @@ green. Since NA26 the step is a real reject from SigNoz, `(217.61, -41.87,
 measured Command Center hole the tests used to walk into.
 
 Two live-DB guards in
-[`crates/services/src/cell/spawner/worlds.rs`](../../crates/services/src/cell/spawner/worlds.rs)
+[`crates/cell-catalog/src/cell/spawner/worlds.rs`](../../crates/cell-catalog/src/cell/spawner/worlds.rs)
 pin the seed itself: `harset_loads_advisory_and_a_meshed_neighbour_loads_enforce`
 (the enforcing neighbour is Castle_CellBlock since NA26)
 and `only_the_documented_worlds_are_seeded_advisory`. The second is a list comparison,
@@ -359,17 +362,18 @@ not a count, on purpose — a count would not catch a loader bug that demoted
 every world.
 
 One arrival guard in
-[`crates/services/src/cell/arrival.rs`](../../crates/services/src/cell/arrival.rs):
+[`crates/cell-world/src/cell/arrival.rs`](../../crates/cell-world/src/cell/arrival.rs):
 `an_advisory_destination_is_unvalidated_not_off_mesh`, which also covers the
 two ring-transport consumers because they both call `check_arrival`.
 
-Plus the predicate's own truth table in
-[`navmesh_mode.rs`](../../crates/services/src/cell/space_manager/navmesh_mode.rs):
-`only_the_two_db_spellings_parse`,
-`an_unrecognised_column_value_falls_back_to_enforce`,
-`containment_needs_both_a_mesh_and_the_enforce_mode`,
+Plus the predicate's own truth table: the parser's in
+[`spawner/navmesh_mode.rs`](../../crates/cell-catalog/src/cell/spawner/navmesh_mode.rs)
+(`only_the_two_db_spellings_parse`,
+`an_unrecognised_column_value_falls_back_to_enforce`) and the predicate's in
+[`space_manager/navmesh_containment.rs`](../../crates/cell-world/src/cell/space_manager/navmesh_containment.rs)
+(`containment_needs_both_a_mesh_and_the_enforce_mode`,
 `unknown_ids_are_safe_in_both_directions`, and
-`an_unstamped_world_keeps_containment_enforced`.
+`an_unstamped_world_keeps_containment_enforced`).
 
 Revert-verified: weakening `enforces_navmesh_containment` to "a mesh is
 loaded" fails the advisory accept, the recovery guard, the arrival check and

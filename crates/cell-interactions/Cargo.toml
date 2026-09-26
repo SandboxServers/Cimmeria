@@ -1,0 +1,64 @@
+[package]
+name = "cimmeria-cell-interactions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The cell's player interactions for the Cimmeria server emulator: NPC interaction dispatch (dialogs, vendors, trainers, loot, the DHD), stargate travel, the GM space transfer, the respawn fork, trade session state and mail forwarding"
+
+# Split out of cimmeria-services (wave C4 of
+# docs/architecture/services-crate-split.md). Everything here relocates a
+# player or opens a UI on the content layer's behalf: gate travel and the space
+# transfer close an open trade before the player leaves, and the respawn fork,
+# which the cell methods and the GM console share, queues the client-cache
+# resync after the reanchor (§2H). It sits one layer below both of those
+# crates. The module tree keeps its old nesting (`cell::interactions`,
+# `cell::gate_travel`, `cell::space_transfer`, `cell::respawn`, `cell::trade`,
+# `cell::mail`), and cimmeria-services re-exports each module at its old path.
+[dependencies]
+# The content layer: the dialog display, the dialog-open, stargate-dialed and
+# stargate-crossed chain events, and the mission journal resend.
+cimmeria-cell-content = { workspace = true }
+# Combat: entity-method sends, the persisted state-field mask and the bandolier
+# flush before a trip.
+cimmeria-cell-combat = { workspace = true }
+# SpaceManager, arrival validation and the playtest-friction journal.
+cimmeria-cell-world = { workspace = true }
+# The spawner's catalog (stargates, respawners) and the ability-tree
+# trainability predicate.
+cimmeria-cell-catalog = { workspace = true }
+# The Base<->Cell message contract, the Mercury method indices, the client
+# method indices, the Kismet ids and the mail serializers.
+cimmeria-wire = { workspace = true }
+# The chain engine the initial-response and dial paths fire events through.
+cimmeria-content-engine = { workspace = true }
+cimmeria-entity = { workspace = true }
+# The trainer-offer counters.
+cimmeria-observability = { workspace = true }
+# The respawn notification.
+cimmeria-discord = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# Exposes the test-only hook `gate_travel::send_gate_sequence` to the gate
+# fan-out byte test that stays in cimmeria-services because it drives the
+# base's world entry too. cimmeria-services turns it on through its
+# [dev-dependencies]; a production build never sees it.
+test-support = []
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`, `seed_ability_defs`) and hooks
+# (`SpaceManager::crossing_hold`).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# `EntityId`, for the stargate fan-out's AoI set.
+cimmeria-common = { workspace = true }
+# `execute_actions`, for the address-grant test that drives a content action
+# and then the gate dial (`gate_travel::tests::stargate_grant_dial`).
+cimmeria-cell-content = { workspace = true, features = ["test-support"] }

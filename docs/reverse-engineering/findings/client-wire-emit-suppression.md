@@ -211,7 +211,7 @@ handler `LAB_00cea050` in `FUN_00cc33f0`.
 
 Audited every `return false` rejection path AND the success-commit
 path in
-`crates/services/src/cell/abilities/use_ability/mod.rs::handle_use_ability`:
+`crates/cell-combat/src/cell/abilities/use_ability/mod.rs::handle_use_ability`:
 
 | Outcome | `onTimerUpdate` emitted? | Drain ok? |
 |---|---|---|

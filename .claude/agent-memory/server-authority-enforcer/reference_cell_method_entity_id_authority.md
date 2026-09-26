@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-In `crates/services/src/base/connect_loop/cell_arms.rs:64-89,119-138`,
+In `crates/base/src/base/connect_loop/cell_arms.rs:64-89,119-138`,
 when a `0x80..0xBF` cell-method packet arrives:
 
 1. The 4-byte `entityId` prefix is parsed into `entity_id_from_client`

@@ -56,19 +56,19 @@ Counted with `grep -rnE "^[[:space:]]*#\[(tokio::)?test(\(.*\))?\]" crates/wirec
 | [`trace_load_rejects_unknown_schema_version`](../../../crates/wireclient/src/session_trace.rs#L515) | unit | Unknown `schema_version` fails the load. |
 | [`trace_load_rejects_unknown_event_field`](../../../crates/wireclient/src/session_trace.rs#L537) | unit | `deny_unknown_fields` rejects an unrecognised event key. |
 
-## `tests/auth_smoke.rs` — in-process `AuthService` round trip (3 integration tests)
+## `tests/it/auth_smoke.rs` — in-process `AuthService` round trip (3 integration tests)
 
 | Test | Kind | What it tests |
 |---|---|---|
-| [`wireclient_drives_phase1_phase2_against_inprocess_auth`](../../../crates/wireclient/tests/auth_smoke.rs#L54) | integration | Full SOAP Phase 1 + Phase 2 against an in-process `AuthService`. |
-| [`wireclient_phase1_returns_sid_cookie`](../../../crates/wireclient/tests/auth_smoke.rs#L112) | integration | Phase 1 hands back the `sid` cookie Phase 2 needs. |
-| [`wireclient_phase2_replay_with_same_sid_errors`](../../../crates/wireclient/tests/auth_smoke.rs#L133) | integration | Replaying Phase 2 with an already-used `sid` is rejected. |
+| [`wireclient_drives_phase1_phase2_against_inprocess_auth`](../../../crates/wireclient/tests/it/auth_smoke.rs#L54) | integration | Full SOAP Phase 1 + Phase 2 against an in-process `AuthService`. |
+| [`wireclient_phase1_returns_sid_cookie`](../../../crates/wireclient/tests/it/auth_smoke.rs#L112) | integration | Phase 1 hands back the `sid` cookie Phase 2 needs. |
+| [`wireclient_phase2_replay_with_same_sid_errors`](../../../crates/wireclient/tests/it/auth_smoke.rs#L133) | integration | Replaying Phase 2 with an already-used `sid` is rejected. |
 
-## `tests/trace_load.rs` — fixture load (1 integration test)
+## `tests/it/trace_load.rs` — fixture load (1 integration test)
 
 | Test | Kind | What it tests |
 |---|---|---|
-| [`loads_castle_cellblock_head_fixture`](../../../crates/wireclient/tests/trace_load.rs#L20) | integration | Loads `tests/fixtures/castle_cellblock_head.jsonl` (1 header line + 5 events) — the only trace corpus checked into the repo. |
+| [`loads_castle_cellblock_head_fixture`](../../../crates/wireclient/tests/it/trace_load.rs#L20) | integration | Loads `tests/fixtures/castle_cellblock_head.jsonl` (1 header line + 5 events) — the only trace corpus checked into the repo. |
 
 ## Gaps
 

@@ -5,14 +5,14 @@
 > **Confidence**: HIGH (wire formats, client Lua bridge); MEDIUM (presence semantics); LOW (flags bitmap internals)
 > **Sources**: `SGW.exe` Ghidra; `ContactListManager.def`; `alias.xml`;
 >   `deprecated/python/base/SGWPlayer.py`; `crates/services/src/cell/{cell_methods,client_methods}/contact_list.rs`;
->   `crates/services/src/wire_log/decoders/generated.rs`; `db/resources/Social/Types/E*.sql`;
+>   `crates/wire-log/src/wire_log/decoders/generated.rs`; `db/resources/Social/Types/E*.sql`;
 >   `db/resources/Texts/Seed/texts.sql`; `docs/reverse-engineering/findings/contact-list-wire-formats.md`
 > **Tracking issue**: replaces #71; resolves #275
 
 ## #275 answer
 
 **The `contactListFlagsUpdate` handler EXISTS** — method index 58 in
-`crates/services/src/cell/cell_methods/contact_list.rs`. It correctly parses `list_id` (i32) + `flags`
+`crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs`. It correctly parses `list_id` (i32) + `flags`
 (u32) and dispatches to a `tracing::info!` **no-op stub**. So #275's "verify handler exists" is answered
 YES; the work is to implement it, folded into this issue.
 

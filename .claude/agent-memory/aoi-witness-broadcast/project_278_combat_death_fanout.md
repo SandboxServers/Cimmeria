@@ -9,7 +9,7 @@ Implemented on branch `feat/278-witness-fanout` in worktree `Cimmeria-278`. Comm
 
 ## Emit paths converted (send_entity_method → send_entity_method_to_self_and_witnesses)
 
-All five paths are in `crates/services/src/cell/abilities/`:
+All five paths are in `crates/cell-combat/src/cell/abilities/`:
 
 1. `damage_apply/mod.rs`: `onEffectResults` for attacker — now fans to self+witnesses.
 2. `damage_apply/mod.rs`: `onEffectResults` for player target (keyed on `target_eid`) — now fans to self+witnesses of target (not just own-client).

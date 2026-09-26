@@ -7,14 +7,10 @@ description = "Entity system runtime for the Cimmeria server emulator"
 
 [dependencies]
 cimmeria-common = { workspace = true }
-cimmeria-mercury = { workspace = true }
-cimmeria-defs = { workspace = true }
-cimmeria-commands = { workspace = true }
-tokio = { workspace = true }
 bytes = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
-thiserror = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [build-dependencies]
 cc = "1"

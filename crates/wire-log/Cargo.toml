@@ -1,0 +1,22 @@
+[package]
+name = "cimmeria-wire-log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The decoded wire-message stream for the Cimmeria server emulator: per-message wire.in / wire.out log events with method names and schema decoders, and the per-session packet tap the lab MCP endpoint drains"
+
+# Split out of cimmeria-services (wave W3b of
+# docs/architecture/services-crate-split.md). The module keeps its old path
+# (`wire_log`), so cimmeria-services re-exports it as
+# `cimmeria_services::wire_log` and its callers (the bundle scanner, the
+# cell-dispatch fan-out, the lab MCP packet tap) are unchanged.
+[dependencies]
+# `cell::dispatch::cell_method_name` names inbound cell methods.
+cimmeria-wire = { workspace = true }
+# The tap's `TappedMessage` / `TapReadResult` are serialised by the lab MCP
+# endpoint; the schema decoders build `serde_json::Value`s.
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }

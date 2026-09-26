@@ -48,7 +48,7 @@ winding compensation is needed (see §1.3).
 
 ### 1.1 Evidence
 
-*Synthetic round-trip* — [`tests/navbuilder_axis_roundtrip.rs`](../../crates/navmesh-extractor/tests/navbuilder_axis_roundtrip.rs)
+*Synthetic round-trip* — [`tests/it/navbuilder_axis_roundtrip.rs`](../../crates/navmesh-extractor/tests/it/navbuilder_axis_roundtrip.rs)
 authors an L-shaped floor plus a ramp in chunk `0x000a0003` (grid X = 3,
 Z = 10), deliberately asymmetric in all three axes, and runs the real
 `NavBuilder_d.exe`:
@@ -614,7 +614,7 @@ above `bmin.y` without a diagnostic. At `ch=0.2` that is 1,638 m of vertical
 extent. Tollana has one prop at y -1728, so the whole city was clamped onto
 one ceiling and the build "succeeded" with a single 5 km² sheet at y -90.
 NavBuilder now exits 3 when `(bmax.y - bmin.y) / ch > 8191`
-(`tests/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`);
+(`tests/it/navbuilder_axis_roundtrip.rs::a_vertical_extent_past_the_13_bit_span_height_is_refused`);
 raise `ch` (Tollana ships at `ch=0.3`). `bounds=` does not crop Y.
 
 **Superseded for the big exteriors.** NA28 rebuilt the four cropped maps
@@ -667,7 +667,7 @@ counts), then follows RecastDemo's `Sample_TileMesh`:
    `bits(tiles) + bits(largest tile's polygons) ≤ 22`. Beta_Site_Evo_1 is
    13 + 8. Past it the build exits 3; use bigger tiles.
 5. Write the tiles in row-major order. The file does not depend on the
-   thread count (`tests/navbuilder_tiled.rs` builds with 1 and 4 workers
+   thread count (`tests/it/navbuilder_tiled.rs` builds with 1 and 4 workers
    and compares bytes).
 
 `tile=0` (the default) runs the old code path. Its output is byte-identical
