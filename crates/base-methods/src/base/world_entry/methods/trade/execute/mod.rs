@@ -6,12 +6,15 @@
 //! the final commit:
 //!
 //! 1. `BEGIN` a single sqlx transaction.
-//! 2. `FOR UPDATE` lock both player rows (`sgw_player`) — naquadah is here.
-//! 3. `FOR UPDATE` lock every item row each player is offering (read
-//!    type_id + stack_size + container_id + slot_id + bound/durability/etc.).
-//! 4. Re-validate cash balances and item ownership (TOCTOU window
+//! 2. Take both players' inventory advisory locks (the shared order in
+//!    `crate::base::crafting::inventory_locks`, lower `player_id` first).
+//! 3. `FOR UPDATE` lock every item row each player is offering, and
+//!    re-validate ownership, `bound` and the source bag (TOCTOU window
 //!    between cell snapshot and base commit).
-//! 5. Reserve `needed` free slots in INV_MAIN for each recipient.
+//! 4. Choose each item's destination bag from its `container_sets` and
+//!    reserve free slots there for each recipient.
+//! 5. `FOR UPDATE` lock both `sgw_player` rows (naquadah) and re-validate
+//!    the cash offers.
 //! 6. UPDATE `character_id` on each item row to the recipient + bump
 //!    container/slot to the reserved destination.
 //! 7. Debit / credit `sgw_player.naquadah`.
@@ -19,23 +22,22 @@
 //! 9. Push `onCashChanged` + `onUpdateItem` (full inventory) + final
 //!    `onTradeResults` to both clients.
 //!
-//! On any failure between (1) and (8): rollback and send
-//! `onTradeResults(Cancelled)` to both clients. **No items are lost** —
-//! the rollback undoes every UPDATE and the cash debit. The cell-side
-//! state was already cleared by the time we got here, so the players'
-//! UIs just see a "trade cancelled" notification and they can start over.
+//! On any failure between (1) and (8): rollback, send each client its
+//! `onTradeResults` code and, where the client shows nothing for that
+//! code or its generic line hides the cause, a feedback line saying why.
+//! **No items are lost** — the rollback undoes every UPDATE and the cash
+//! debit.
 //!
 //! ## Module layout
 //!
-//! - [`swap`] — the atomic-swap transaction internals (advisory lock,
-//!   item locking, slot reservation, two-phase parked-row item move,
-//!   cash debit/credit). Keeps `atomic_swap` and its helpers in one
-//!   place so the FOR-UPDATE → mutate → commit pipeline can be read
-//!   top to bottom.
-//! - [`tests`] (cfg-only) — the 4 unit test modules:
-//!   advisory-lock alignment, slot-exclusion accounting, parking
-//!   sentinel distinctness, and the asymmetric ETradeResults code
-//!   mapping. Live-DB integration tests live in `super::tests`.
+//! - [`swap`] — the atomic-swap transaction (locks, item validation,
+//!   two-phase parked-row item move, cash debit/credit).
+//! - [`placement`] — which bags a trade takes from, where each item
+//!   lands, and the slot reservation.
+//! - [`abort`] — the abort reasons, their result codes, labels and
+//!   feedback lines.
+//! - `tests` (cfg-only) — unit guards for the pure pieces. Live-DB
+//!   integration tests live in `super::tests`.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -43,8 +45,6 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_entity::trade::{
     serialize_on_trade_results, ETRADERESULTS_CANCELLED, ETRADERESULTS_COMPLETED,
-    ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_CASH,
-    ETRADERESULTS_NO_REMOTE_SPACE,
 };
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
@@ -52,14 +52,24 @@ use sqlx::PgPool;
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::vendor::helpers::send_cash_changed_to_client;
+use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::base::helpers;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
+mod abort;
+mod placement;
 mod swap;
 
 #[cfg(test)]
 mod tests;
 
+pub(super) use abort::TradeAbort;
+use abort::{
+    refusal_container, refusal_lines, trade_abort_outcome_label, trade_abort_to_results_codes,
+};
+#[cfg(test)]
+pub(super) use abort::{LOCAL_CRAFTING_BAG_FULL, LOCAL_UNTRADEABLE_ITEM, REMOTE_CRAFTING_BAG_FULL};
+use placement::ItemMove;
 use swap::atomic_swap;
 
 /// One side of a trade — the data the atomic commit needs to swap items
@@ -173,21 +183,50 @@ pub async fn handle_execute_trade(
         item_instance_ids: p2_item_instance_ids,
         cash: p2_cash,
     };
+    let p1_account = account_of(connected, entity_to_addr, p1.entity_id);
+    let p2_account = account_of(connected, entity_to_addr, p2.entity_id);
 
     match atomic_swap(&pool, &p1, &p2).await {
-        Ok(final_balances) => {
+        Ok(committed) => {
+            for m in &committed.moves {
+                let (account_id, target_account_id) = if m.from_player == p1.player_id {
+                    (p1_account, p2_account)
+                } else {
+                    (p2_account, p1_account)
+                };
+                log_item_moved(m, account_id, target_account_id);
+            }
+            tracing::info!(
+                target: "trade.atomic_swap",
+                event = "trade.completed",
+                entity_id = p1.entity_id,
+                player_id = p1.player_id,
+                account_id = p1_account,
+                target_entity_id = p2.entity_id,
+                target_player_id = p2.player_id,
+                target_account_id = p2_account,
+                p1_items = p1.item_instance_ids.len(),
+                p2_items = p2.item_instance_ids.len(),
+                p1_cash = p1.cash,
+                p2_cash = p2.cash,
+                p1_naquadah_before = committed.p1_before,
+                p1_naquadah_after = committed.balances.p1,
+                p2_naquadah_before = committed.p2_before,
+                p2_naquadah_after = committed.balances.p2,
+                "trade executed atomically"
+            );
             // After-commit notifications: cash + inventory + final
             // onTradeResults(Completed) to both clients.
             //
-            // Cash totals come from inside the tx (read AFTER the debit/
-            // credit UPDATE, before commit). Reading post-commit with a
-            // separate query would open a small race window: an
-            // unrelated transaction modifying naquadah between our
-            // commit and the read would broadcast a wrong total to the
-            // client, making the UI desync from `sgw_player.naquadah`.
+            // Cash totals come from inside the tx (computed from the
+            // balances read under FOR UPDATE, before commit). Reading
+            // post-commit with a separate query would open a small race
+            // window: an unrelated transaction modifying naquadah
+            // between our commit and the read would broadcast a wrong
+            // total to the client.
             send_cash_changed_to_client(
                 p1.entity_id,
-                final_balances.p1,
+                committed.balances.p1,
                 transport,
                 connected,
                 entity_to_addr,
@@ -195,12 +234,14 @@ pub async fn handle_execute_trade(
             .await;
             send_cash_changed_to_client(
                 p2.entity_id,
-                final_balances.p2,
+                committed.balances.p2,
                 transport,
                 connected,
                 entity_to_addr,
             )
             .await;
+            // Also refreshes each player's crafting options when a Field
+            // Crafting Tool entered or left their crafting bag.
             send_full_inventory_update(
                 p1.entity_id,
                 p1.player_id,
@@ -229,11 +270,6 @@ pub async fn handle_execute_trade(
                 ETRADERESULTS_COMPLETED,
             )
             .await;
-            tracing::info!(
-                p1_player = p1.player_id,
-                p2_player = p2.player_id,
-                "trade executed atomically"
-            );
             cimmeria_observability::counter!(
                 "trade_swaps_total",
                 "outcome" => "completed",
@@ -242,32 +278,28 @@ pub async fn handle_execute_trade(
         Err(reason) => {
             // Per the instrumentation-discipline ADR (rule 4): the
             // metric label vocab is enumerated low-cardinality, NOT
-            // player_id / entity_id. The outcome string is derived
-            // once from the abort variant; correlator fields stay on
-            // the parent span (`trade.execute`) for SigNoz drilldown.
+            // player_id / entity_id.
+            let label = trade_abort_outcome_label(&reason);
             cimmeria_observability::counter!(
                 "trade_swaps_total",
-                "outcome" => trade_abort_outcome_label(&reason),
+                "outcome" => label,
             );
-            // Map the abort variant to the Python-parity per-side
-            // ETradeResults codes. The wire shape is unchanged — each
-            // client always received an INT32 result on `onTradeResults` —
-            // but now the result is per-side asymmetric: the failing
-            // player sees `NoLocal*`, the other sees `NoRemote*`. The
-            // canonical client uses these to surface a more specific
-            // "you don't have enough cash" / "they don't have enough
-            // space" string in the trade-results dialog.
-            //
-            // Catch-all variants (DbError, PlayerMissing, DuplicateInstance,
-            // BoundItemOffered, IneligibleContainer) map to Cancelled on
-            // both sides — these are either internal faults or
-            // server-authority validations the client UI has no
-            // dedicated string for.
+            // Per-side ETradeResults codes: the failing player sees
+            // `NoLocal*`, the other `NoRemote*`; catch-all variants map
+            // to Cancelled on both sides.
             let (p1_code, p2_code) = trade_abort_to_results_codes(&reason, p1.player_id);
             tracing::warn!(
-                p1_player = p1.player_id,
-                p2_player = p2.player_id,
-                reason = %reason,
+                target: "trade.atomic_swap",
+                event = "trade.refused",
+                entity_id = p1.entity_id,
+                player_id = p1.player_id,
+                account_id = p1_account,
+                target_entity_id = p2.entity_id,
+                target_player_id = p2.player_id,
+                target_account_id = p2_account,
+                reason = label,
+                container_id = refusal_container(&reason),
+                detail = %reason,
                 p1_code,
                 p2_code,
                 "ExecuteTrade: atomic swap failed — sending asymmetric results"
@@ -282,192 +314,97 @@ pub async fn handle_execute_trade(
                 p2_code,
             )
             .await;
+            let (p1_line, p2_line) = refusal_lines(&reason, p1.player_id);
+            let ctx = FeedbackCtx {
+                transport,
+                connected,
+            };
+            for (side, line) in [(&p1, p1_line), (&p2, p2_line)] {
+                if let Some(text) = line {
+                    send_refusal_line(&ctx, entity_to_addr, side, label, text).await;
+                }
+            }
         }
     }
 }
 
-/// Final post-commit balances for both sides of a successful trade —
-/// read inside the same transaction as the cash UPDATEs so the
-/// `onCashChanged` packet can't race against a concurrent vendor /
-/// loot / mission grant on either player.
+/// Successful swap: both sides' final balances, computed inside the
+/// transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct TradeFinalBalances {
     pub(super) p1: i32,
     pub(super) p2: i32,
 }
 
-/// Per-side ETradeResults code mapping for [`TradeAbort`].
-///
-/// Returns `(p1_code, p2_code)` in p1-then-p2 order. The asymmetric
-/// `NoLocal*` / `NoRemote*` codes mirror Python `Trade.py:237-263`:
-/// the failing player sees `NoLocal*`, the other sees `NoRemote*`. The
-/// canonical client uses the asymmetry to surface a more specific
-/// trade-results dialog string ("you don't have enough cash" vs.
-/// "they don't have enough space"); both sides seeing Cancelled would
-/// render the generic teardown string for both, hiding the cause.
-///
-/// `InsufficientCash` carries a `which: "p1"|"p2"` discriminant that
-/// directly identifies the failing side. `NotEnoughSlots` carries
-/// `recipient_player_id` — the side without room — which we resolve
-/// against the caller-provided `p1_player_id` (recipient is either
-/// p1 or p2 by construction in `swap::atomic_swap`).
-///
-/// Catch-all variants (`DbError`, `PlayerMissing`, `ItemMissing`,
-/// `DuplicateInstance`, `BoundItemOffered`, `IneligibleContainer`) are
-/// internal faults or server-authority validations the client UI has
-/// no dedicated string for — both sides see Cancelled, matching the
-/// pre-asymmetric behavior.
-/// Low-cardinality outcome label for the `trade_swaps_total{outcome=...}`
-/// counter. Enumerated values only — no `player_id` / `entity_id`
-/// (rule 4 in instrumentation-discipline.md).
-fn trade_abort_outcome_label(reason: &TradeAbort) -> &'static str {
-    match reason {
-        TradeAbort::DbError(_) => "db_error",
-        TradeAbort::PlayerMissing { .. } => "player_missing",
-        TradeAbort::InsufficientCash { .. } => "insufficient_cash",
-        TradeAbort::ItemMissing { .. } => "item_missing",
-        TradeAbort::NotEnoughSlots { .. } => "insufficient_slots",
-        TradeAbort::BoundItemOffered { .. } => "bound_item",
-        TradeAbort::DuplicateInstance { .. } => "duplicate_instance",
-        TradeAbort::IneligibleContainer { .. } => "ineligible_container",
-    }
-}
-
-fn trade_abort_to_results_codes(reason: &TradeAbort, p1_player_id: i32) -> (i32, i32) {
-    match reason {
-        TradeAbort::InsufficientCash { which: "p1", .. } => {
-            (ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_REMOTE_CASH)
-        }
-        TradeAbort::InsufficientCash { which: "p2", .. } => {
-            (ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_LOCAL_CASH)
-        }
-        // `NotEnoughSlots` is only constructed from `p1.player_id` or
-        // `p2.player_id` in `swap::atomic_swap`, so the recipient
-        // always matches one of the two sides.
-        TradeAbort::NotEnoughSlots {
-            recipient_player_id,
-            ..
-        } if *recipient_player_id == p1_player_id => {
-            (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
-        }
-        TradeAbort::NotEnoughSlots { .. } => {
-            (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
-        }
-        _ => (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED),
-    }
-}
-
-/// Reason the atomic swap aborted. Mapped to per-side asymmetric
-/// `ETradeResults` codes via [`trade_abort_to_results_codes`]:
-/// `InsufficientCash {p1|p2}` → `NoLocalCash`/`NoRemoteCash`,
-/// `NotEnoughSlots {recipient_player_id}` →
-/// `NoLocalSpace`/`NoRemoteSpace`, with the remaining catch-all
-/// variants (DbError, PlayerMissing, ItemMissing, DuplicateInstance,
-/// BoundItemOffered, IneligibleContainer) staying on the generic
-/// Cancelled code — those are internal faults or server-authority
-/// rejections the client UI has no dedicated string for.
+/// What a committed swap did: the balances before and after, and every
+/// item move.
 #[derive(Debug)]
-pub(super) enum TradeAbort {
-    DbError(sqlx::Error),
-    PlayerMissing {
-        which: &'static str,
-        player_id: i32,
-    },
-    InsufficientCash {
-        which: &'static str,
-        player_id: i32,
-        has: i32,
-        wants: i32,
-    },
-    ItemMissing {
-        which: &'static str,
-        player_id: i32,
-        item_id: i32,
-    },
-    NotEnoughSlots {
-        recipient_player_id: i32,
-        needed: usize,
-    },
-    BoundItemOffered {
-        which: &'static str,
-        player_id: i32,
-        item_id: i32,
-    },
-    DuplicateInstance {
-        item_id: i32,
-    },
-    /// Item lives in a container that's not on the tradeable-container
-    /// whitelist (anything other than `INV_MAIN`). Covers the
-    /// dupe-strip-equipped-gear, mission-item-share, banker-gate-bypass,
-    /// and bandolier-ammo-sync exploits — all the same shape: the
-    /// server must independently verify *which* containers can leak
-    /// items, not just whether the row is bound or in the buyback bag.
-    IneligibleContainer {
-        which: &'static str,
-        player_id: i32,
-        item_id: i32,
-        container_id: i32,
-    },
+pub(super) struct TradeCommitted {
+    pub(super) balances: TradeFinalBalances,
+    pub(super) p1_before: i32,
+    pub(super) p2_before: i32,
+    pub(super) moves: Vec<ItemMove>,
 }
 
-impl std::fmt::Display for TradeAbort {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TradeAbort::DbError(e) => write!(f, "db error: {e}"),
-            TradeAbort::PlayerMissing { which, player_id } => {
-                write!(f, "{which} player {player_id} missing")
-            }
-            TradeAbort::InsufficientCash {
-                which,
-                player_id,
-                has,
-                wants,
-            } => write!(
-                f,
-                "{which} player {player_id} has {has} naquadah, offering {wants}"
-            ),
-            TradeAbort::ItemMissing {
-                which,
-                player_id,
-                item_id,
-            } => write!(
-                f,
-                "{which} player {player_id} doesn't own item instance {item_id}"
-            ),
-            TradeAbort::NotEnoughSlots {
-                recipient_player_id,
-                needed,
-            } => write!(
-                f,
-                "recipient {recipient_player_id} doesn't have {needed} free main-bag slots"
-            ),
-            TradeAbort::BoundItemOffered {
-                which,
-                player_id,
-                item_id,
-            } => write!(f, "{which} player {player_id} offered bound item {item_id}"),
-            TradeAbort::DuplicateInstance { item_id } => {
-                write!(f, "item instance {item_id} listed twice in proposal")
-            }
-            TradeAbort::IneligibleContainer {
-                which,
-                player_id,
-                item_id,
-                container_id,
-            } => write!(
-                f,
-                "{which} player {player_id} offered item {item_id} from \
-                 non-tradeable container {container_id} \
-                 (whitelist: only INV_MAIN)"
-            ),
-        }
-    }
+/// One INFO per item that changed hands, with the bag and slot on both
+/// ends.
+fn log_item_moved(m: &ItemMove, account_id: Option<u32>, target_account_id: Option<u32>) {
+    tracing::info!(
+        target: "trade.atomic_swap",
+        event = "trade.item_moved",
+        entity_id = m.from_entity,
+        player_id = m.from_player,
+        account_id,
+        target_entity_id = m.to_entity,
+        target_player_id = m.to_player,
+        target_account_id,
+        item_id = m.item_id,
+        type_id = m.type_id,
+        container_before = m.from_container,
+        slot_before = m.from_slot,
+        container_after = m.to_container,
+        slot_after = m.to_slot,
+        "trade: item changed hands"
+    );
 }
 
-impl From<sqlx::Error> for TradeAbort {
-    fn from(e: sqlx::Error) -> Self {
-        TradeAbort::DbError(e)
-    }
+/// The account behind `entity_id`'s session, if it is still connected.
+fn account_of(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    entity_id: u32,
+) -> Option<u32> {
+    let addr = *entity_to_addr.lock().ok()?.get(&entity_id)?;
+    let account = connected.lock().ok()?.get(&addr).map(|c| c.account_id);
+    account
+}
+
+/// Send one side its refusal line. A miss is logged by
+/// `send_feedback_line` itself, except an unmapped entity, logged here.
+async fn send_refusal_line(
+    ctx: &FeedbackCtx<'_>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    side: &TradeSide,
+    reason: &'static str,
+    text: &str,
+) {
+    let addr = entity_to_addr
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&side.entity_id).copied());
+    let Some(addr) = addr else {
+        tracing::warn!(
+            target: "trade.atomic_swap",
+            event = "trade.feedback_send_failed",
+            entity_id = side.entity_id,
+            player_id = side.player_id,
+            reason = "entity_to_addr_miss",
+            refusal = reason,
+            "trade refusal line not sent: no address for the entity"
+        );
+        return;
+    };
+    send_feedback_line(ctx, addr, text).await;
 }
 
 // ── Outbound onTradeResults ───────────────────────────────────────────────

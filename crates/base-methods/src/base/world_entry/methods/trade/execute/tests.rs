@@ -1,67 +1,98 @@
 //! Unit-level regression guards for the atomic-trade execute module.
 //!
-//! Four cfg-only modules pin internal invariants without needing a
-//! live DB:
-//! - [`advisory_lock_alignment`] — the trade tx must use the same
-//!   `pg_advisory_xact_lock` shape as the vendor stack.
+//! cfg-only modules pin internal invariants without needing a live DB:
+//! - [`tradeable_containers`] — the source-bag whitelist is exactly the
+//!   backpack and the crafting bag.
+//! - [`destination`] — where each traded item lands, by its
+//!   `container_sets`.
 //! - [`slot_exclusion_accounting`] — recipient-slot reservation must
-//!   exclude the slots the same tx is about to vacate.
+//!   exclude the slots the same tx is about to vacate, per bag.
 //! - [`parking_sentinel`] — the two-phase swap's parking step must
 //!   pick distinct negative slots so no row collides with another
 //!   parked row or with any real container slot.
 //! - [`trade_results_code_mapping`] — `TradeAbort` → per-side
-//!   asymmetric `ETradeResults` codes (Clara G7).
+//!   asymmetric `ETradeResults` codes.
+//! - [`refusal_feedback`] — the feedback line each side gets.
 //!
 //! Live-DB integration tests for the same surfaces live in
 //! `super::super::tests`.
 
-mod advisory_lock_alignment {
-    //! Static-read regression guard: trade's advisory-lock SQL form
-    //! must match the vendor stack's. Both use the two-arg form
-    //! `pg_advisory_xact_lock($1, $2)` and bind `(player_id, INV_MAIN)`
-    //! so the two paths serialize through the same lock namespace —
-    //! otherwise concurrent trade-and-vendor on the same player race
-    //! at the advisory layer (`FOR UPDATE` still saves correctness,
-    //! but the deadlock detector surfaces ABBA failures noisily
-    //! under load).
-    //!
-    //! The original trade code used the single-arg form
-    //! `pg_advisory_xact_lock(player_id, 0)`. Postgres treats
-    //! `(player_id, 0)` and `(player_id, 1)` as completely independent
-    //! locks — they don't serialize against each other.
-    //!
-    //! This is a static-read test (no DB required) so the alignment
-    //! invariant is gated in CI even when the live-DB profile is off.
+mod tradeable_containers {
+    //! The whitelist, pinned both ways: the two carried bags are in it,
+    //! and nothing else a player owns rows in is. The live-DB guards in
+    //! `super::super::super::tests::container_whitelist` run the same
+    //! containers through a real swap.
 
-    use super::super::swap::ADVISORY_LOCK_SQL;
-    use cimmeria_entity::inventory::INV_MAIN;
+    use super::super::placement::TRADEABLE_CONTAINERS;
+    use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
 
-    /// Pin the SQL string. If a future change goes back to the
-    /// single-arg `(player_id, 0)` form, this assertion trips.
     #[test]
-    fn lock_sql_is_two_arg_form() {
-        assert_eq!(
-            ADVISORY_LOCK_SQL, "SELECT pg_advisory_xact_lock($1, $2)",
-            "trade's advisory lock MUST use the two-arg form to match \
-             vendor's `pg_advisory_xact_lock(player_id, container_id)`. \
-             Single-arg form races at the advisory layer against vendor."
-        );
+    fn backpack_and_crafting_bag_are_tradeable() {
+        assert_eq!(TRADEABLE_CONTAINERS, &[INV_MAIN, INV_CRAFTING]);
     }
 
-    /// Pin that the second bind is INV_MAIN. The vendor stack always
-    /// binds the container id; for trade we lock under INV_MAIN
-    /// (since that's the only tradeable container per the whitelist).
+    /// Mission (2), bandolier (3), equipment (4-14), buyback (16) and
+    /// the vaults (17-20) stay out.
     #[test]
-    fn lock_namespace_is_inv_main_not_zero() {
-        // INV_MAIN is `1` per `entities/defs/system.xml`. The pre-fix
-        // shape was `(player_id, 0)` which collides with no real
-        // container — so the lock was effectively in its own
-        // namespace.
+    fn every_other_container_is_refused() {
+        for container in (2..=14).chain(16..=20) {
+            assert!(
+                !TRADEABLE_CONTAINERS.contains(&container),
+                "container {container} must not be a trade source"
+            );
+        }
+    }
+}
+
+mod destination {
+    use super::super::placement::trade_destination;
+    use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
+
+    /// The crafting-component shape: `{17,15}` lands in the crafting bag
+    /// whichever carried bag it was traded from; never in the bank.
+    #[test]
+    fn crafting_component_lands_in_the_crafting_bag() {
         assert_eq!(
-            INV_MAIN, 1,
-            "INV_MAIN must be 1 — if this constant changes, audit the \
-             vendor stack too: it binds the container id directly."
+            trade_destination(&[17, 15], INV_CRAFTING),
+            Some(INV_CRAFTING)
         );
+        assert_eq!(trade_destination(&[17, 15], INV_MAIN), Some(INV_CRAFTING));
+    }
+
+    #[test]
+    fn backpack_items_stay_in_the_backpack() {
+        assert_eq!(trade_destination(&[3, 1, 17], INV_MAIN), Some(INV_MAIN));
+        assert_eq!(trade_destination(&[1, 17], INV_MAIN), Some(INV_MAIN));
+        assert_eq!(trade_destination(&[], INV_MAIN), Some(INV_MAIN));
+    }
+
+    /// An item that lists no carried bag keeps the bag it was traded
+    /// from, as every backpack trade did before the crafting bag joined.
+    #[test]
+    fn item_listing_no_carried_bag_keeps_its_source_bag() {
+        assert_eq!(trade_destination(&[2], INV_MAIN), Some(INV_MAIN));
+    }
+
+    /// An unrestricted item found in the crafting bag goes to the
+    /// backpack: an empty list allows only the backpack.
+    #[test]
+    fn unrestricted_item_from_the_crafting_bag_goes_to_the_backpack() {
+        assert_eq!(trade_destination(&[], INV_CRAFTING), Some(INV_MAIN));
+    }
+
+    /// Whatever the item lists, a trade lands in 1 or 15.
+    #[test]
+    fn destination_is_always_a_tradeable_bag() {
+        let shapes: &[&[i32]] = &[&[17, 15], &[17], &[16], &[2], &[3, 1, 17], &[15, 1], &[]];
+        for sets in shapes {
+            for source in [INV_MAIN, INV_CRAFTING] {
+                let got = trade_destination(sets, source);
+                assert!(
+                    matches!(got, Some(INV_MAIN) | Some(INV_CRAFTING)),
+                    "{sets:?} from {source} gave {got:?}"
+                );
+            }
+        }
     }
 }
 
@@ -72,16 +103,16 @@ mod slot_exclusion_accounting {
     //! in the live-DB `tests::slot_reservation` module; this is the
     //! algorithmic-core proxy that runs without a live DB.
 
-    use super::super::swap::pick_free_main_slots_excluding;
+    use super::super::placement::pick_free_slots_excluding;
     use crate::base::resources::bag_max_slots;
-    use cimmeria_entity::inventory::INV_MAIN;
+    use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
 
     /// Bag is 100% full (40/40 in INV_MAIN). One of those 40 is being
     /// traded away. Without the exclusion the reservation fails
     /// (0 free); with the exclusion it succeeds (slot 39 is the
     /// vacating slot, returned as the pick).
     ///
-    /// Revert-verifier: change `pick_free_main_slots_excluding` to
+    /// Revert-verifier: change `pick_free_slots_excluding` to
     /// pass `raw_occupied` straight through to `free_inventory_slots`
     /// without subtracting `vacating`; the second assertion below
     /// fails with `None != Some([39])`.
@@ -94,7 +125,7 @@ mod slot_exclusion_accounting {
         // Sanity: with NO exclusion (vacating is empty), the
         // fully-occupied bag rejects the reservation. This is the
         // pre-fix shape — what the bug looked like in production.
-        let without_exclusion = pick_free_main_slots_excluding(&raw_occupied, &[], 1);
+        let without_exclusion = pick_free_slots_excluding(INV_MAIN, &raw_occupied, &[], 1);
         assert!(
             without_exclusion.is_none(),
             "sanity: without the exclusion (i.e., vacating list empty), \
@@ -107,14 +138,14 @@ mod slot_exclusion_accounting {
         // Post-fix behaviour: with the vacating slot excluded, the
         // 40-slot bag has 1 free slot (39 itself, since the picker
         // returns the lowest free slot in [min, max)).
-        let with_exclusion = pick_free_main_slots_excluding(&raw_occupied, &vacating, 1);
+        let with_exclusion = pick_free_slots_excluding(INV_MAIN, &raw_occupied, &vacating, 1);
         assert_eq!(
             with_exclusion,
             Some(vec![39]),
             "with the exclusion, the recipient's about-to-vacate slot \
              39 is available for the incoming item. If this returns \
              None, the exclusion was dropped from \
-             `pick_free_main_slots_excluding` — re-check the filter."
+             `pick_free_slots_excluding` — re-check the filter."
         );
     }
 
@@ -124,7 +155,7 @@ mod slot_exclusion_accounting {
     fn full_bag_two_for_two_swap_succeeds_with_exclusion() {
         let raw_occupied: Vec<i32> = (0..bag_max_slots(INV_MAIN)).collect();
         let vacating = vec![5, 17]; // two non-contiguous outgoing slots
-        let picked = pick_free_main_slots_excluding(&raw_occupied, &vacating, 2);
+        let picked = pick_free_slots_excluding(INV_MAIN, &raw_occupied, &vacating, 2);
         assert_eq!(
             picked,
             Some(vec![5, 17]),
@@ -141,12 +172,48 @@ mod slot_exclusion_accounting {
     fn partially_full_bag_doesnt_need_exclusion() {
         // 10/40 used — slots 0..=9. Plenty of room.
         let raw_occupied: Vec<i32> = (0..10).collect();
-        let picked = pick_free_main_slots_excluding(&raw_occupied, &[], 1);
+        let picked = pick_free_slots_excluding(INV_MAIN, &raw_occupied, &[], 1);
         assert_eq!(
             picked,
             Some(vec![10]),
             "with 10/40 used and no exclusions, slot 10 is the lowest \
              free slot — must be returned"
+        );
+    }
+
+    /// The crafting bag holds 100. A full crafting bag with one slot
+    /// being traded away takes exactly one incoming item; a second
+    /// does not fit.
+    #[test]
+    fn full_crafting_bag_counts_its_vacating_slot() {
+        let raw_occupied: Vec<i32> = (0..bag_max_slots(INV_CRAFTING)).collect();
+        assert_eq!(raw_occupied.len(), 100);
+        assert_eq!(
+            pick_free_slots_excluding(INV_CRAFTING, &raw_occupied, &[], 1),
+            None
+        );
+        assert_eq!(
+            pick_free_slots_excluding(INV_CRAFTING, &raw_occupied, &[63], 1),
+            Some(vec![63])
+        );
+        assert_eq!(
+            pick_free_slots_excluding(INV_CRAFTING, &raw_occupied, &[63], 2),
+            None
+        );
+    }
+
+    /// Slots 40-99 exist only in the crafting bag: a backpack pick never
+    /// returns them, and a crafting-bag pick uses them.
+    #[test]
+    fn each_bag_uses_its_own_capacity() {
+        let raw_occupied: Vec<i32> = (0..40).collect();
+        assert_eq!(
+            pick_free_slots_excluding(INV_MAIN, &raw_occupied, &[], 1),
+            None
+        );
+        assert_eq!(
+            pick_free_slots_excluding(INV_CRAFTING, &raw_occupied, &[], 1),
+            Some(vec![40])
         );
     }
 }
@@ -227,7 +294,7 @@ mod trade_results_code_mapping {
     //! `|_, _| (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)`
     //! trips every assertion below.
 
-    use super::super::{trade_abort_to_results_codes, TradeAbort};
+    use super::super::abort::{trade_abort_to_results_codes, TradeAbort};
     use cimmeria_entity::trade::{
         ETRADERESULTS_CANCELLED, ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_LOCAL_SPACE,
         ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_REMOTE_SPACE,
@@ -272,7 +339,9 @@ mod trade_results_code_mapping {
         // p2 sees NoRemoteSpace (partner is the one without room).
         let reason = TradeAbort::NotEnoughSlots {
             recipient_player_id: P1_PID,
+            container_id: 1,
             needed: 3,
+            free: 0,
         };
         assert_eq!(
             trade_abort_to_results_codes(&reason, P1_PID),
@@ -282,7 +351,9 @@ mod trade_results_code_mapping {
         // Recipient = p2 → mirrored.
         let reason = TradeAbort::NotEnoughSlots {
             recipient_player_id: P2_PID,
+            container_id: 15,
             needed: 3,
+            free: 0,
         };
         assert_eq!(
             trade_abort_to_results_codes(&reason, P1_PID),
@@ -319,6 +390,12 @@ mod trade_results_code_mapping {
                 item_id: 11,
                 container_id: 8, // INV_EQUIP or similar
             },
+            TradeAbort::NoDestination {
+                which: "p2",
+                player_id: P2_PID,
+                item_id: 12,
+                type_id: 0x7000_C5F0,
+            },
         ];
         for reason in &catch_alls {
             assert_eq!(
@@ -327,5 +404,87 @@ mod trade_results_code_mapping {
                 "catch-all {reason:?} must map to Cancelled on both sides"
             );
         }
+    }
+}
+
+mod refusal_feedback {
+    //! The shipped client shows nothing for the space and cash codes
+    //! (`Trade.lua` `onTradeResult` handles only Completed and
+    //! Cancelled), so those refusals must carry a line to each side, and
+    //! the line must name the bag that is full.
+    //!
+    //! Revert-verifier: returning `(None, None)` from `refusal_lines`
+    //! trips every assertion below.
+
+    use super::super::abort::{
+        refusal_lines, TradeAbort, LOCAL_BACKPACK_FULL, LOCAL_CRAFTING_BAG_FULL, LOCAL_NO_CASH,
+        LOCAL_UNTRADEABLE_ITEM, REMOTE_BACKPACK_FULL, REMOTE_CRAFTING_BAG_FULL, REMOTE_NO_CASH,
+        REMOTE_UNTRADEABLE_ITEM,
+    };
+
+    const P1_PID: i32 = 1000;
+    const P2_PID: i32 = 2000;
+
+    fn slots(recipient_player_id: i32, container_id: i32) -> TradeAbort {
+        TradeAbort::NotEnoughSlots {
+            recipient_player_id,
+            container_id,
+            needed: 1,
+            free: 0,
+        }
+    }
+
+    #[test]
+    fn full_crafting_bag_names_the_crafting_bag_to_both_sides() {
+        assert_eq!(
+            refusal_lines(&slots(P2_PID, 15), P1_PID),
+            (
+                Some(REMOTE_CRAFTING_BAG_FULL),
+                Some(LOCAL_CRAFTING_BAG_FULL)
+            )
+        );
+        assert_eq!(
+            refusal_lines(&slots(P1_PID, 15), P1_PID),
+            (
+                Some(LOCAL_CRAFTING_BAG_FULL),
+                Some(REMOTE_CRAFTING_BAG_FULL)
+            )
+        );
+    }
+
+    #[test]
+    fn full_backpack_names_the_backpack() {
+        assert_eq!(
+            refusal_lines(&slots(P1_PID, 1), P1_PID),
+            (Some(LOCAL_BACKPACK_FULL), Some(REMOTE_BACKPACK_FULL))
+        );
+    }
+
+    #[test]
+    fn short_cash_tells_both_sides() {
+        let reason = TradeAbort::InsufficientCash {
+            which: "p2",
+            player_id: P2_PID,
+            has: 0,
+            wants: 5,
+        };
+        assert_eq!(
+            refusal_lines(&reason, P1_PID),
+            (Some(REMOTE_NO_CASH), Some(LOCAL_NO_CASH))
+        );
+    }
+
+    #[test]
+    fn untradeable_item_tells_both_sides() {
+        let reason = TradeAbort::IneligibleContainer {
+            which: "p1",
+            player_id: P1_PID,
+            item_id: 1,
+            container_id: 17,
+        };
+        assert_eq!(
+            refusal_lines(&reason, P1_PID),
+            (Some(LOCAL_UNTRADEABLE_ITEM), Some(REMOTE_UNTRADEABLE_ITEM))
+        );
     }
 }
