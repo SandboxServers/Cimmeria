@@ -72,7 +72,7 @@ LEFT JOIN resources.items ri ON ri.item_id = inv.type_id
 
 // After the macro, so the vault reads can use it.
 mod org_vault_items;
-pub(crate) use org_vault_items::{send_org_vault_items_via, OrgVaultSend};
+pub(crate) use org_vault_items::{org_vault_update_args, send_org_vault_items_via, OrgVaultSend};
 
 /// `pub(crate)` so the duplicate copy in `player_load/core.rs` can be
 /// pinned against this one by the SQL drift-guard test
@@ -405,24 +405,7 @@ async fn send_update_item(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let mut args = Vec::with_capacity(4 + rows.len() * 48);
-    args.extend_from_slice(&(rows.len() as u32).to_le_bytes());
-    for row in rows {
-        let item = cimmeria_entity::inventory::InvItem {
-            id: row.item_id,
-            dbid: row.type_id,
-            stack_size: row.stack_size,
-            slot_id: row.slot_id + 1,
-            container_id: row.container_id,
-            is_bound: row.bound,
-            durability: row.durability,
-            ammo_types: row.ammo_type_ids.clone(),
-            cur_ammo_type: row.cur_ammo_type_id,
-            charges: row.charges,
-        };
-        item.serialize(&mut args);
-    }
-
+    let args = update_item_args(rows);
     send_to_witness_reliable(
         transport,
         connected,
@@ -441,6 +424,28 @@ async fn send_update_item(
         },
     )
     .await;
+}
+
+/// The `onUpdateItem(ARRAY<InvItem>)` args for `rows`.
+fn update_item_args(rows: &[InventoryRow]) -> Vec<u8> {
+    let mut args = Vec::with_capacity(4 + rows.len() * 48);
+    args.extend_from_slice(&(rows.len() as u32).to_le_bytes());
+    for row in rows {
+        let item = cimmeria_entity::inventory::InvItem {
+            id: row.item_id,
+            dbid: row.type_id,
+            stack_size: row.stack_size,
+            slot_id: row.slot_id + 1,
+            container_id: row.container_id,
+            is_bound: row.bound,
+            durability: row.durability,
+            ammo_types: row.ammo_type_ids.clone(),
+            cur_ammo_type: row.cur_ammo_type_id,
+            charges: row.charges,
+        };
+        item.serialize(&mut args);
+    }
+    args
 }
 
 /// Tell the player's client to drop an inventory item instance from its

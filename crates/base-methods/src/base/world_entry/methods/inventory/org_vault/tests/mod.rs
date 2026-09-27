@@ -2,7 +2,7 @@
 //! BV-07; TESTING.md types 2, 3 and 12).
 //!
 //! Sentinels (the BV-07 block): accounts and players
-//! `0x7000_B800 + 16 * block`, `block` in `0..16`; item ids (vault or
+//! `0x7000_B800 + 16 * block`, `block` in `0..17`; item ids (vault or
 //! carried) `0x7000_B900 + 4 * block + k`; entities
 //! `0x7000_B9E0 + 2 * block + i`; item types
 //! `0x7000_B980` (bankable, `{1,17}`, max stack 20), `0x7000_B981`
@@ -24,6 +24,7 @@ use sqlx::PgPool;
 use crate::base::ConnectedClientState;
 use crate::test_support::{test_default_connected_client_state, TestTransport};
 
+mod fanout;
 mod move_bits;
 mod move_shapes;
 mod moves;
@@ -51,7 +52,7 @@ impl Fx {
     /// `n` characters on one account in `block`, after removing whatever a
     /// crashed run left there.
     pub(crate) async fn new(pool: &PgPool, block: i32, n: i32) -> Fx {
-        assert!((0..16).contains(&block) && (1..16).contains(&n));
+        assert!((0..17).contains(&block) && (1..16).contains(&n));
         let account_id = BASE + 16 * block;
         let fx = Fx {
             pool: pool.clone(),

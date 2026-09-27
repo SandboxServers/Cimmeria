@@ -4,13 +4,18 @@
 
 use sqlx::{Postgres, Transaction};
 
-use super::super::super::core::{send_on_remove_item, send_org_vault_items_via, OrgVaultSend};
+use cimmeria_base_session::base::organization::handlers::{broadcast_to_org_except, OrgCtx};
+
+use super::super::super::core::{
+    org_vault_update_args, send_on_remove_item, send_org_vault_items_via, OrgVaultSend,
+};
 use super::super::after_commit::{after_commit, AppliedMove};
 use super::super::bank_rules::MoveShape;
 use super::super::MoveCtx;
 use super::apply::{Applied, Plan};
 use super::{Direction, Side};
 use crate::base::world_entry::methods::inventory::org_vault::access::OrgVaultActor;
+use crate::mercury::method_idx;
 
 /// One committed vault move, as the log and the event record it.
 #[derive(Debug, Clone, Copy)]
@@ -73,6 +78,19 @@ impl Accepted {
         ids.sort_unstable();
         ids.dedup();
         ids
+    }
+
+    /// The rows that left the vault (now in the mover's bags, or merged
+    /// away): the other members' clients must drop them.
+    fn left_vault(&self) -> Vec<i32> {
+        let p = &self.plan;
+        let occ = p.occupant.map(|o| o.item_id);
+        match (p.source_side, p.target_side, p.shape) {
+            (Side::Vault, Side::Carried, MoveShape::Whole | MoveShape::Swap) => vec![p.item_id],
+            (Side::Vault, _, MoveShape::Merge) if self.applied.source_deleted => vec![p.item_id],
+            (Side::Carried, Side::Vault, MoveShape::Swap) => occ.into_iter().collect(),
+            _ => Vec::new(),
+        }
     }
 }
 
@@ -172,7 +190,7 @@ pub(super) async fn after_org_commit(
     if let Err(e) = send_org_vault_items_via(
         a.entity_id,
         p.org_id,
-        OrgVaultSend::Ids(rows),
+        OrgVaultSend::Ids(rows.clone()),
         ctx.pool.as_ref(),
         ctx.transport,
         ctx.connected,
@@ -193,6 +211,7 @@ pub(super) async fn after_org_commit(
              back; the client shows the old vault until it reopens: {e}"
         );
     }
+    fan_out(a, actor, rows, ctx).await;
     if a.direction == Direction::Within {
         return;
     }
@@ -226,4 +245,79 @@ pub(super) async fn after_org_commit(
         ctx.entity_to_addr,
     )
     .await;
+}
+
+/// Tell every other online member of the organization what changed in the
+/// vault: `onUpdateItem` of the rows now there, and `onRemoveItem` of the
+/// rows that left, through ORG-07's `broadcast_to_org`. The mover is left
+/// out: its own client already has both, and a removal of a withdrawn item
+/// would take it out of the mover's bag. Every member's client caches the
+/// vault's rows, open window or not, so it is current on the next open.
+async fn fan_out(a: &Accepted, actor: &OrgVaultActor, rows: Vec<i32>, ctx: &MoveCtx<'_>) {
+    let p = &a.plan;
+    let org = OrgCtx {
+        db_pool: ctx.db_pool,
+        transport: ctx.transport,
+        connected: ctx.connected,
+        entity_to_addr: ctx.entity_to_addr,
+        cell_tx: ctx.cell_tx,
+    };
+    let mut updated = 0;
+    match org_vault_update_args(p.org_id, rows, ctx.pool.as_ref()).await {
+        Ok(Some(args)) => {
+            updated = broadcast_to_org_except(
+                &org,
+                p.org_id,
+                method_idx::ON_UPDATE_ITEM,
+                &args,
+                None,
+                p.player_id,
+                "vault_rows",
+            )
+            .await;
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!(
+            target: "bank",
+            event = "org_move_resync_failed",
+            account_id = actor.account_id,
+            player_id = p.player_id,
+            entity_id = a.entity_id,
+            org_id = p.org_id,
+            item_id = p.item_id,
+            reason = "fanout_read_failed",
+            "org_move_resync_failed: the other members were not sent the vault rows: {e}"
+        ),
+    }
+    let left = a.left_vault();
+    let mut removed = 0;
+    if !left.is_empty() {
+        let mut args = (left.len() as u32).to_le_bytes().to_vec();
+        for id in &left {
+            args.extend_from_slice(&id.to_le_bytes());
+        }
+        removed = broadcast_to_org_except(
+            &org,
+            p.org_id,
+            method_idx::ON_REMOVE_ITEM,
+            &args,
+            None,
+            p.player_id,
+            "vault_removed",
+        )
+        .await;
+    }
+    tracing::debug!(
+        target: "bank",
+        event = "org_vault_fanout",
+        account_id = actor.account_id,
+        player_id = p.player_id,
+        entity_id = a.entity_id,
+        org_id = p.org_id,
+        item_id = p.item_id,
+        updated_recipients = updated,
+        removed_ids = left.len(),
+        removed_recipients = removed,
+        "org_vault_fanout: the other online members were sent the vault change"
+    );
 }

@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 
-use super::{send_update_item, InventoryRow};
+use super::{send_update_item, update_item_args, InventoryRow};
 use crate::base::ConnectedClientState;
 
 /// Every row of one organization's vault, in slot order. `$1` is the org.
@@ -35,6 +35,28 @@ pub(crate) enum OrgVaultSend {
     /// These rows (a committed move, or a snap-back); ids no longer in the
     /// vault are skipped.
     Ids(Vec<i32>),
+}
+
+/// The `onUpdateItem` args for the vault rows `ids` of `org_id` (ids no
+/// longer in the vault are skipped), for a fan-out to other members; `None`
+/// when none is left.
+pub(crate) async fn org_vault_update_args<'c, E>(
+    org_id: i32,
+    ids: Vec<i32>,
+    executor: E,
+) -> Result<Option<Vec<u8>>, sqlx::Error>
+where
+    E: sqlx::PgExecutor<'c>,
+{
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    let rows: Vec<InventoryRow> = sqlx::query_as(ORG_VAULT_SOME_ITEMS_SELECT)
+        .bind(org_id)
+        .bind(ids)
+        .fetch_all(executor)
+        .await?;
+    Ok((!rows.is_empty()).then(|| update_item_args(&rows)))
 }
 
 /// Read `org_id`'s vault rows through `executor` (so a caller can read under
