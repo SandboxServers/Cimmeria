@@ -7,7 +7,7 @@
 //! sent `GrantXP` to the pet's id, which has no base session, and a mob
 //! that killed a pet sent `GrantXP` to the mob's id.
 
-use super::side_effects::{kill_xp_payout, KillXpPayout};
+use super::side_effects::{kill_xp_payout, KillXpPayout, NoKillXp};
 use super::*;
 use crate::cell::combat::HOSTILE_FACTION;
 use crate::cell::spawner::LootTableEntry;
@@ -16,17 +16,17 @@ use cimmeria_entity::cell_entity::NpcInteractionType;
 
 use super::super::loot_drop::INT_NORMAL_LOOT;
 
-const OWNER: u32 = 7;
-const OWNER_PLAYER_ID: i32 = 700;
+pub(super) const OWNER: u32 = 7;
+pub(super) const OWNER_PLAYER_ID: i32 = 700;
 /// Mob level 5 pays `kill_xp(5)` = 50 XP.
 const MOB_LEVEL: u32 = 5;
-const MOB_XP: u64 = 50;
+pub(super) const MOB_XP: u64 = 50;
 const LOOT_TABLE: i32 = 0x7000_0601;
 
 /// `OWNER` (a connected player) in the shared Castle space with one pet
 /// summoned at its side, and one hostile level-5 mob. Returns
 /// `(mgr, pet, mob)`.
-fn world() -> (SpaceManager, u32, u32) {
+pub(super) fn world() -> (SpaceManager, u32, u32) {
     let mut mgr = SpaceManager::new(1);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
@@ -47,7 +47,7 @@ fn world() -> (SpaceManager, u32, u32) {
     (mgr, pet, mob)
 }
 
-fn spawn_mob(mgr: &mut SpaceManager) -> u32 {
+pub(super) fn spawn_mob(mgr: &mut SpaceManager) -> u32 {
     let mob = mgr.allocate_npc_id();
     mgr.spawn_npc(mob, "Castle", [4.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
@@ -73,7 +73,7 @@ fn grants(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u32, u64)> {
     out
 }
 
-async fn kill(mgr: &mut SpaceManager, target: u32, attacker: u32) -> Vec<(u32, u64)> {
+pub(super) async fn kill(mgr: &mut SpaceManager, target: u32, attacker: u32) -> Vec<(u32, u64)> {
     let (tx, mut rx) = mpsc::channel(512);
     assert!(
         kill_npc_out_of_band(target, attacker, false, true, &tx, mgr).await,
@@ -175,12 +175,16 @@ fn kill_xp_payout_fails_closed_on_a_bad_scale() {
     let (mut mgr, pet, mob) = world();
     assert_eq!(
         kill_xp_payout(&mgr, OWNER, 50),
-        Some(KillXpPayout {
+        Ok(KillXpPayout {
             recipient: OWNER,
             xp: 50
         })
     );
-    assert_eq!(kill_xp_payout(&mgr, mob, 50), None, "a mob credits nobody");
+    assert_eq!(
+        kill_xp_payout(&mgr, mob, 50),
+        Err(NoKillXp::NpcAttacker),
+        "a mob credits nobody"
+    );
     for (scale, want) in [
         (1.0, Some(50)),
         (0.25, Some(13)),
@@ -196,7 +200,9 @@ fn kill_xp_payout_fails_closed_on_a_bad_scale() {
             .unwrap()
             .transfer_xp = scale;
         assert_eq!(
-            kill_xp_payout(&mgr, pet, 50).map(|p| (p.recipient, p.xp)),
+            kill_xp_payout(&mgr, pet, 50)
+                .ok()
+                .map(|p| (p.recipient, p.xp)),
             want.map(|xp| (OWNER, xp)),
             "transfer_xp = {scale}"
         );

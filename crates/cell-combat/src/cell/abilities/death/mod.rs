@@ -500,6 +500,8 @@ pub async fn resolve_death_for_test(
 mod side_effects;
 
 #[cfg(test)]
+mod pet_credit_log_tests;
+#[cfg(test)]
 mod pet_credit_tests;
 #[cfg(test)]
 mod pet_tests;

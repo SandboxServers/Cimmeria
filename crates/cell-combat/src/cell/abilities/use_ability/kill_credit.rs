@@ -159,7 +159,7 @@ pub(super) async fn credit_single_target(
     };
     let Some((credited, player_id)) = credited_player(space_mgr, entity_id) else {
         tracing::warn!(
-            entity_id, npc_tag = %tag,
+            entity_id, npc_tag = %tag, reason = "no_credited_player",
             "handle_use_ability_with_kill_credit: killer credits no player — skipping EntityDeath event"
         );
         return;
@@ -228,7 +228,7 @@ pub async fn credit_ground_deaths(
                 }
                 None => {
                     tracing::warn!(
-                        entity_id, npc_tag = %tag, dead_eid,
+                        entity_id, npc_tag = %tag, dead_eid, reason = "no_credited_player",
                         "Skipping entity_death event (ground target): killer entity has no player_id"
                     );
                 }

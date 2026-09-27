@@ -1,0 +1,143 @@
+//! Pets PT-06 telemetry: the `pets.credit` rows a kill leaves behind
+//! (TESTING.md type 12, negative-log).
+//!
+//! Each test drives a real kill through `kill_npc_out_of_band` and pins the
+//! row that answers "why did / didn't this kill pay XP?" from SigNoz: the
+//! success event on a pet kill, and one `reason` per seam that pays nothing.
+
+use tracing::Level;
+
+use super::pet_credit_tests::{kill, spawn_mob, world, MOB_XP, OWNER, OWNER_PLAYER_ID};
+use crate::test_support::{Captured, LogCapture};
+
+/// The one row on `target` with `event = <event>`.
+fn only_event(logs: &[Captured], target: &str, event: &str) -> Captured {
+    let rows: Vec<_> = logs
+        .iter()
+        .filter(|c| c.target == target && c.has_field("event", event))
+        .cloned()
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "exactly one `{event}` row on `{target}`: {logs:#?}"
+    );
+    rows.into_iter().next().unwrap()
+}
+
+fn assert_owner_identity(row: &Captured) {
+    assert!(
+        row.has_field("owner_id", &format!("Some({OWNER})"))
+            || row.has_field("owner_id", &OWNER.to_string()),
+        "{row:?}"
+    );
+    // `add_pet_owner` sets `account_id = entity_id`.
+    assert!(
+        row.has_field("account_id", &format!("Some({OWNER})")),
+        "{row:?}"
+    );
+    assert!(
+        row.has_field("player_id", &format!("Some({OWNER_PLAYER_ID})")),
+        "{row:?}"
+    );
+}
+
+/// A pet's kill logs `pet_kill_credited` at DEBUG with the pet, the owner,
+/// the owner's identity, the victim and the XP maths.
+#[tokio::test]
+async fn a_pet_kill_logs_pet_kill_credited() {
+    let (mut mgr, pet, mob) = world();
+    let capture = LogCapture::install();
+    let _ = kill(&mut mgr, mob, pet).await;
+
+    let row = only_event(&capture.all(), "pets.credit", "pet_kill_credited");
+    assert_eq!(row.level, Level::DEBUG);
+    assert!(row.has_field("pet_id", &pet.to_string()), "{row:?}");
+    assert!(row.has_field("owner_id", &OWNER.to_string()), "{row:?}");
+    assert!(row.has_field("victim_id", &mob.to_string()), "{row:?}");
+    assert!(row.has_field("xp_granted", &MOB_XP.to_string()), "{row:?}");
+    assert!(row.has_field("transfer_xp", "1.0"), "{row:?}");
+    assert_owner_identity(&row);
+}
+
+/// Seam: a mob kills a pet. DEBUG, `reason = npc_killed_pet`, carrying the
+/// dead pet's owner so the owner's support question is answerable.
+#[tokio::test]
+async fn a_mob_killing_a_pet_logs_npc_killed_pet() {
+    let (mut mgr, pet, mob) = world();
+    let capture = LogCapture::install();
+    let _ = kill(&mut mgr, pet, mob).await;
+
+    let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+    assert_eq!(row.level, Level::DEBUG);
+    assert!(row.has_field("reason", "npc_killed_pet"), "{row:?}");
+    assert!(row.has_field("pet_id", &format!("Some({pet})")), "{row:?}");
+    assert!(row.has_field("attacker", &mob.to_string()), "{row:?}");
+    assert_owner_identity(&row);
+}
+
+/// Seam: an ordinary NPC kills an ordinary NPC. DEBUG,
+/// `reason = npc_attacker`, on the module target (no pet, no owner).
+#[tokio::test]
+async fn an_npc_killing_an_npc_logs_npc_attacker() {
+    let (mut mgr, _pet, mob) = world();
+    let other = spawn_mob(&mut mgr);
+    let capture = LogCapture::install();
+    let _ = kill(&mut mgr, other, mob).await;
+
+    let logs = capture.all();
+    let rows: Vec<_> = logs
+        .iter()
+        .filter(|c| c.has_field("event", "kill_xp_not_granted"))
+        .collect();
+    assert_eq!(rows.len(), 1, "{logs:#?}");
+    let row = rows[0];
+    assert_eq!(row.level, Level::DEBUG);
+    assert!(row.has_field("reason", "npc_attacker"), "{row:?}");
+    assert_ne!(
+        row.target, "pets.credit",
+        "a plain NPC fight is not a pet row"
+    );
+}
+
+/// Seam: the pet's `transfer_xp` is not a positive finite number. WARN (a
+/// data fault no client can cause), `reason = transfer_xp_invalid`, with
+/// the offending value.
+#[tokio::test]
+async fn a_bad_transfer_xp_logs_transfer_xp_invalid_at_warn() {
+    for bad in [0.0_f32, -1.0, f32::NAN] {
+        let (mut mgr, pet, mob) = world();
+        mgr.get_entity_mut(pet)
+            .unwrap()
+            .pet
+            .as_mut()
+            .unwrap()
+            .transfer_xp = bad;
+        let capture = LogCapture::install();
+        let _ = kill(&mut mgr, mob, pet).await;
+
+        let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+        assert_eq!(row.level, Level::WARN, "transfer_xp = {bad}");
+        assert!(row.has_field("reason", "transfer_xp_invalid"), "{row:?}");
+        assert!(row.has_field("transfer_xp", &format!("{bad:?}")), "{row:?}");
+        assert!(row.has_field("pet_id", &format!("Some({pet})")), "{row:?}");
+        assert_owner_identity(&row);
+    }
+}
+
+/// Seam: the pet's owner is gone (the registry dropped it before the sweep
+/// despawned the pet). DEBUG, `reason = owner_gone`, still naming the owner
+/// the pet was summoned by.
+#[tokio::test]
+async fn an_orphaned_pet_kill_logs_owner_gone() {
+    let (mut mgr, pet, mob) = world();
+    mgr.pets.forget_pet(pet);
+    let capture = LogCapture::install();
+    let _ = kill(&mut mgr, mob, pet).await;
+
+    let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+    assert_eq!(row.level, Level::DEBUG);
+    assert!(row.has_field("reason", "owner_gone"), "{row:?}");
+    assert!(row.has_field("pet_id", &format!("Some({pet})")), "{row:?}");
+    assert_owner_identity(&row);
+}

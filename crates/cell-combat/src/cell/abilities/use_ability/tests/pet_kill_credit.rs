@@ -132,6 +132,31 @@ async fn a_pet_ground_kill_raises_entity_death_for_the_owner() {
     assert_eq!(deaths(&recorder), vec![owner_death()]);
 }
 
+/// Seam: a pet whose owner is gone kills a tagged mob. No `EntityDeath`,
+/// and a WARN with `reason = no_credited_player` (a pet outliving its
+/// registry entry is a teardown race, not something a client does).
+#[tokio::test]
+async fn an_orphaned_pet_kill_warns_no_credited_player() {
+    let (mut mgr, pet, mob) = world();
+    mgr.pets.forget_pet(pet);
+    let recorder = RecordingContentEvents::new();
+    let (tx, _rx) = mpsc::channel(512);
+    let capture = crate::test_support::LogCapture::install();
+    credit_ground_deaths(pet, vec![mob], &recorder, &tx, &mut mgr).await;
+    assert_eq!(deaths(&recorder), vec![]);
+    assert!(
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "killer entity has no player_id",
+                "no_credited_player"
+            )
+            .is_some(),
+        "{:#?}",
+        capture.all()
+    );
+}
+
 /// A plain NPC caster still credits nobody: no event, as before.
 #[tokio::test]
 async fn a_plain_npc_ground_kill_raises_no_entity_death() {

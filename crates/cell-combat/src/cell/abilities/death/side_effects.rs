@@ -70,15 +70,18 @@ pub(super) async fn send_death_sequence(
 
 /// Grant kill XP for a dead NPC to whoever `attacker_id` credits.
 ///
-/// No-op for player targets — PvP pays no XP. The recipient comes from
+/// No-op for player targets â€” PvP pays no XP. The recipient comes from
 /// [`SpaceManager::credit_recipient`] (pets PT-06, D-PT02): a player is
 /// paid itself, a pet pays its owner scaled by `PetState::transfer_xp`,
 /// and any other NPC attacker pays nobody. Before that seam a pet kill
 /// sent `GrantXP` to the pet's id (no base session, so the XP was lost)
 /// and a mob that killed a pet sent `GrantXP` to the mob's id.
 ///
-/// The `GrantXP` hop is the only thing standing between a kill and the
-/// player's level bar, so a send failure is an `error!`, not a silent drop.
+/// Telemetry: a pet's kill logs `event = "pet_kill_credited"` on
+/// `pets.credit`; every kill that pays nothing logs its `reason` (see
+/// [`NoKillXp`]). The `GrantXP` hop is the only thing standing between a
+/// kill and the player's level bar, so a send failure is an `error!`, not a
+/// silent drop.
 pub(super) async fn grant_kill_xp(
     target_eid: u32,
     attacker_id: u32,
@@ -92,18 +95,12 @@ pub(super) async fn grant_kill_xp(
         return;
     }
     let base_xp = kill_xp(target.level);
-    let Some(KillXpPayout { recipient, xp }) = kill_xp_payout(space_mgr, attacker_id, base_xp)
-    else {
-        // An NPC killed an NPC (a mob finishing a pet, a scripted fight):
-        // there is nobody to pay. Debug, not warn: this is the designed
-        // outcome, and it happens on every pet death.
-        tracing::debug!(
-            attacker = attacker_id,
-            target = target_eid,
-            base_xp,
-            "Kill XP not granted: the attacker credits no player"
-        );
-        return;
+    let KillXpPayout { recipient, xp } = match kill_xp_payout(space_mgr, attacker_id, base_xp) {
+        Ok(payout) => payout,
+        Err(no_xp) => {
+            log_no_kill_xp(no_xp, target_eid, attacker_id, base_xp, space_mgr);
+            return;
+        }
     };
     tracing::info!(
         attacker = attacker_id,
@@ -115,11 +112,35 @@ pub(super) async fn grant_kill_xp(
         xp,
         "Granting kill XP"
     );
+    if let Some(pet) = space_mgr
+        .get_entity(attacker_id)
+        .and_then(|e| e.pet.as_ref())
+    {
+        // `xp_before` is not logged: the cell holds no XP total. The base's
+        // `progression.grant_xp` span (keyed on the same `entity_id`) is
+        // where the before/after lives.
+        let id = space_mgr.player_identity(recipient);
+        tracing::debug!(
+            target: "pets.credit",
+            event = "pet_kill_credited",
+            pet_id = attacker_id,
+            owner_id = recipient,
+            account_id = ?id.account_id,
+            player_id = ?id.player_id,
+            victim_id = target_eid,
+            victim_template_id = ?target.template_id,
+            victim_level = target.level,
+            base_xp,
+            xp_granted = xp,
+            transfer_xp = pet.transfer_xp,
+            "pet kill credited to its owner"
+        );
+    }
     if let Err(e) = tx
         .send(CellToBaseMsg::GrantXP {
             entity_id: recipient,
             xp_amount: xp,
-            // Mob-kill XP is not GM-sourced — no GM feedback line.
+            // Mob-kill XP is not GM-sourced â€” no GM feedback line.
             gm_feedback_to: None,
         })
         .await
@@ -139,31 +160,149 @@ pub(super) struct KillXpPayout {
     pub(super) xp: u64,
 }
 
+/// Why a kill paid no XP. `reason()` is the stable log value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum NoKillXp {
+    /// An ordinary NPC (not a pet) killed an NPC.
+    NpcAttacker,
+    /// The attacker is a pet no longer registered to an owner (torn down
+    /// between the hit and the sweep).
+    OwnerGone,
+    /// The pet's `transfer_xp` is non-finite or not above zero.
+    TransferXpInvalid(f32),
+    /// The payout rounds to zero XP (a level-0 victim, or a tiny scale).
+    ZeroXp,
+}
+
+impl NoKillXp {
+    pub(super) fn reason(self) -> &'static str {
+        match self {
+            Self::NpcAttacker => "npc_attacker",
+            Self::OwnerGone => "owner_gone",
+            Self::TransferXpInvalid(_) => "transfer_xp_invalid",
+            Self::ZeroXp => "zero_xp",
+        }
+    }
+}
+
 /// Resolve `attacker_id` to the credited player and scale `base_xp` by the
 /// pet's `transfer_xp` when the attacker is a pet (1.0 per D-PT02; a
 /// player attacker always gets the full amount).
 ///
-/// `None` when nobody is credited, or when the scale leaves nothing to pay:
+/// `Err` when nobody is credited, or when the scale leaves nothing to pay:
 /// a template authored with `transfer_xp = 0`, or a non-finite or negative
 /// value, which fails closed to zero rather than minting XP.
 pub(super) fn kill_xp_payout(
     space_mgr: &SpaceManager,
     attacker_id: u32,
     base_xp: u64,
-) -> Option<KillXpPayout> {
-    let recipient = space_mgr.credit_recipient(attacker_id)?;
-    let scale = space_mgr
+) -> Result<KillXpPayout, NoKillXp> {
+    let pet_scale = space_mgr
         .get_entity(attacker_id)
         .and_then(|e| e.pet.as_ref())
-        .map_or(1.0, |p| p.transfer_xp);
+        .map(|p| p.transfer_xp);
+    let Some(recipient) = space_mgr.credit_recipient(attacker_id) else {
+        return Err(if pet_scale.is_some() {
+            NoKillXp::OwnerGone
+        } else {
+            NoKillXp::NpcAttacker
+        });
+    };
+    let scale = pet_scale.unwrap_or(1.0);
     let xp = if scale == 1.0 {
         base_xp
     } else if scale.is_finite() && scale > 0.0 {
         (base_xp as f64 * f64::from(scale)).round() as u64
     } else {
-        0
+        return Err(NoKillXp::TransferXpInvalid(scale));
     };
-    (xp > 0).then_some(KillXpPayout { recipient, xp })
+    if xp == 0 {
+        return Err(NoKillXp::ZeroXp);
+    }
+    Ok(KillXpPayout { recipient, xp })
+}
+
+/// Log a kill that paid no XP, with its `reason`.
+///
+/// Levels follow the negative-logging convention: DEBUG for outcomes play
+/// produces every minute (a mob kills a pet, an NPC fight, an orphaned
+/// pet's last hit), WARN only for `transfer_xp_invalid`, a data fault no
+/// client can cause. Pet-related rows go on `pets.credit` with the owner's
+/// identity; the plain NPC-kills-NPC row stays on the module target.
+fn log_no_kill_xp(
+    no_xp: NoKillXp,
+    target_eid: u32,
+    attacker_id: u32,
+    base_xp: u64,
+    space_mgr: &SpaceManager,
+) {
+    let reason = no_xp.reason();
+    let victim = space_mgr.get_entity(target_eid);
+    let victim_pet_owner = victim.and_then(|v| v.pet.as_ref()).map(|p| p.owner_id);
+    let attacker_pet_owner = space_mgr
+        .get_entity(attacker_id)
+        .and_then(|e| e.pet.as_ref())
+        .map(|p| p.owner_id);
+    // The owner whose support question this row answers: the pet killer's
+    // owner, else the dead pet's owner.
+    let owner_id = attacker_pet_owner.or(victim_pet_owner);
+    let id = owner_id.map(|o| space_mgr.player_identity(o));
+    let account_id = id.and_then(|i| i.account_id);
+    let player_id = id.and_then(|i| i.player_id);
+
+    // A mob finishing a pet is the same `NpcAttacker` outcome, named for
+    // the support question it answers.
+    let reason = if no_xp == NoKillXp::NpcAttacker && victim_pet_owner.is_some() {
+        "npc_killed_pet"
+    } else {
+        reason
+    };
+    let pet_id = if attacker_pet_owner.is_some() {
+        Some(attacker_id)
+    } else if victim_pet_owner.is_some() {
+        Some(target_eid)
+    } else {
+        None
+    };
+
+    if let NoKillXp::TransferXpInvalid(transfer_xp) = no_xp {
+        tracing::warn!(
+            target: "pets.credit",
+            event = "kill_xp_not_granted",
+            reason,
+            pet_id = ?pet_id,
+            owner_id = ?owner_id,
+            account_id = ?account_id,
+            player_id = ?player_id,
+            victim_id = target_eid,
+            base_xp,
+            transfer_xp,
+            "pet kill paid no XP: transfer_xp is not a positive finite number"
+        );
+    } else if owner_id.is_some() {
+        tracing::debug!(
+            target: "pets.credit",
+            event = "kill_xp_not_granted",
+            reason,
+            pet_id = ?pet_id,
+            owner_id = ?owner_id,
+            account_id = ?account_id,
+            player_id = ?player_id,
+            attacker = attacker_id,
+            victim_id = target_eid,
+            base_xp,
+            "kill involving a pet paid no XP"
+        );
+    } else {
+        tracing::debug!(
+            event = "kill_xp_not_granted",
+            reason,
+            attacker = attacker_id,
+            victim_id = target_eid,
+            base_xp,
+            "Kill XP not granted"
+        );
+    }
 }
 
 /// Send `onBeginAidWait` so a dead player sees the Defeat Window with the
