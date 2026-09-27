@@ -80,7 +80,7 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
     ("wireclient", "headless test client"),
     (
         "patch-wire",
-        "std-only codec with no dependencies, `tracing` included: it emits no events in any process",
+        "std-only codec with no dependencies at all, not even `tracing`: it emits no events in any process",
     ),
     (
         "test-support",

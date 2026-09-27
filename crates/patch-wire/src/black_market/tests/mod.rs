@@ -3,8 +3,8 @@
 //! - `golden`: hand-written byte strings for every method, both ways.
 //! - `robustness`: truncation at every byte, the caps, bad UTF-8, trailing
 //!   bytes, and the pull-source discipline the DLL relies on.
-//! - `def_order`: the encoders against the `.def`, `alias.xml` and the
-//!   dispatch tables, read from the repo.
+//! - `def_order`: the encoders against the `.def`, `alias.xml`, the
+//!   dispatch tables and the seeded enums, read from the repo.
 
 mod def_order;
 mod golden;

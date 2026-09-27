@@ -181,6 +181,11 @@ pub enum UIAuctionView {
     MyBids = 2,
 }
 
+impl UIAuctionView {
+    /// All three, in value order.
+    pub const ALL: [Self; 3] = [Self::SearchResults, Self::MyAuctions, Self::MyBids];
+}
+
 impl TryFrom<i32> for UIAuctionView {
     type Error = UnknownEnumValue;
 
@@ -214,6 +219,17 @@ pub enum UIAuctionTime {
     Long = 4,
     /// 5, the create form's default.
     VeryLong = 5,
+}
+
+impl UIAuctionTime {
+    /// All five, in value order.
+    pub const ALL: [Self; 5] = [
+        Self::VeryShort,
+        Self::Short,
+        Self::Medium,
+        Self::Long,
+        Self::VeryLong,
+    ];
 }
 
 impl TryFrom<u8> for UIAuctionTime {

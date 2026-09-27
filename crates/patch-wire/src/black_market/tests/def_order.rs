@@ -363,3 +363,41 @@ fn indices_match_the_dispatch_tables() {
         );
     }
 }
+
+/// The labels of a seeded Postgres enum, in declaration order.
+fn seeded_enum(file: &str) -> Vec<String> {
+    let sql = repo_file(&format!("db/resources/Social/Types/{file}"));
+    between(&sql, "AS ENUM (", ");")
+        .split(',')
+        .map(|label| label.trim().trim_matches('\'').to_string())
+        .collect()
+}
+
+/// The UI enums against the seeded server enums, which list the same
+/// values in the same order. Only the base comes from the client: its tolua
+/// constants make `UIAuctionView` 0-based and `UIAuctionTime` 1-based.
+#[test]
+fn ui_enums_follow_the_seeded_enums() {
+    let search_types = seeded_enum("EBlackMarketSearchType.sql");
+    assert_eq!(search_types, ["Search", "MyAuctions", "MyBids"]);
+    assert_eq!(UIAuctionView::ALL.len(), search_types.len());
+    for (ordinal, view) in UIAuctionView::ALL.iter().enumerate() {
+        assert_eq!(*view as i32, ordinal as i32, "{view:?} is 0-based");
+        assert_eq!(UIAuctionView::try_from(ordinal as i32), Ok(*view));
+    }
+    // The client calls the first one `SearchResults`; the rest share names.
+    for (view, label) in UIAuctionView::ALL.iter().zip(&search_types).skip(1) {
+        assert_eq!(format!("{view:?}"), *label);
+    }
+
+    let times = seeded_enum("EBlackMarketTime.sql");
+    let names: Vec<String> = UIAuctionTime::ALL
+        .iter()
+        .map(|t| format!("{t:?}"))
+        .collect();
+    assert_eq!(names, times, "same labels, same order");
+    for (ordinal, time) in UIAuctionTime::ALL.iter().enumerate() {
+        assert_eq!(*time as usize, ordinal + 1, "{time:?} is 1-based");
+        assert_eq!(UIAuctionTime::try_from(ordinal as u8 + 1), Ok(*time));
+    }
+}
