@@ -222,7 +222,8 @@ mod live_db {
         assert_eq!(pet.class, "pet");
         assert_eq!(
             pet.flags, ENTITYFLAG_PET,
-            "ENTITYFLAG_Pet and nothing else: NoPetLeveling would keep the              L50 capstone pet at the template's level 1 (D-PT02, PT-11)"
+            "ENTITYFLAG_Pet and nothing else: NoPetLeveling would keep the \
+             L50 capstone pet at the template's level 1 (D-PT02, PT-11)"
         );
         assert_eq!(pet.flags & ENTITYFLAG_NO_PET_LEVELING, 0);
         assert_eq!(
