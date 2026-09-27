@@ -124,16 +124,21 @@ async fn every_personal_open_asks_the_base_for_a_quote() {
     );
 }
 
-/// An org Banker refusal opens no vault, so it asks for no quote.
+/// An org Banker opens the organization's vault (BV-07), which has no
+/// expansion quote: the click asks the base for the org vault only.
 #[tokio::test]
-async fn a_refused_open_asks_for_no_quote() {
+async fn an_org_banker_click_asks_for_no_quote() {
     let mut mgr = two_space_manager();
     let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Team);
     let (tx, mut rx) = mpsc::channel(16);
 
     handle_interact(PLAYER, banker, &tx, &mut mgr).await;
 
-    assert!(bank_msgs(&mut rx).is_empty());
+    let sent = bank_msgs(&mut rx);
+    assert!(
+        matches!(sent.as_slice(), [BankCellToBase::OrgVaultOpen { .. }]),
+        "the org vault request and no quote: {sent:?}"
+    );
 }
 
 /// While the Expand dialog is quarantined (#943), the base's offer is
