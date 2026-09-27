@@ -82,6 +82,7 @@ pub fn spawn_offline(
 ) {
     let skipped = |reason: &'static str| {
         tracing::debug!(
+            target: "org",
             event = "session.presence_skipped",
             account_id = ended.account_id,
             player_id = ended.player_id,
