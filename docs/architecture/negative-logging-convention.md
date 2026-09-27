@@ -1,6 +1,6 @@
 # Negative-Logging Convention
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-26
 > **Status**: Convention adopted in issue #304 PR1 (2026-05-24). Applies to
 > every new patch that touches an expectation seam.
 
@@ -274,6 +274,24 @@ into the warmup tick; Interrupt never WARNs) and
 `service/tests/npc_ai/attack_sequence.rs` (`witness_count = 2` on a real
 fight tick). The seed side is linted by the live-DB
 `spawner/tests/npc_ability_animation.rs`.
+
+## Encrypted-channel decrypt rejects
+
+A datagram from a registered session that fails to decrypt is dropped
+and the session stays up. The legacy C++ `EncryptionFilter` did the
+same, and a teardown here would let anyone who can spoof the client's
+source address end the session with one garbage datagram. The seam is
+`base/connect_loop/encrypted/decrypt_reject.rs`, and it logs at `warn!`:
+
+| `reason` | Meaning | Fields |
+|---|---|---|
+| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len` |
+| `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `raw_len`, `error` |
+
+These rows carry `reason`, never `disconnect_reason`. That field is kept
+for rows that report a real teardown, such as `session.end` and
+`Client entities cleaned up`. A per-session disconnect query must not
+count dropped datagrams.
 
 ## Related
 

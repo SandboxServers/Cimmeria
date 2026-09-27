@@ -65,15 +65,11 @@ pub(crate) async fn handle_encrypted_datagram(
         Ok(p) => p,
         Err(e) => {
             // Not a session teardown — the next packet may decrypt
-            // fine. Stable `reason` field makes "spike in HMAC fails"
-            // a one-query alarm in SigNoz (key rollover gone wrong,
-            // MITM attempt, replay attack window).
-            tracing::warn!(
-                %addr,
-                disconnect_reason = "decrypt_fail",
-                error = %e,
-                "Decryption failed (bad HMAC?)"
-            );
+            // fine. The stable `reason` field makes a spike a one-query
+            // alarm in SigNoz, and a client's plaintext login retry is
+            // told apart from a real decrypt failure (see
+            // `decrypt_reject`).
+            decrypt_reject::log_decrypt_reject(addr, account_id, raw, &e);
             return Ok(());
         }
     };
@@ -626,6 +622,10 @@ fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
         .collect()
 }
 
+mod decrypt_reject;
+
+#[cfg(test)]
+mod decrypt_reject_tests;
 #[cfg(test)]
 mod rx_order_tests;
 #[cfg(test)]
