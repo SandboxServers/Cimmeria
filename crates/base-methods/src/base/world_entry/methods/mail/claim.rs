@@ -42,6 +42,7 @@ pub(super) struct LockedMail {
     pub(super) flags: i32,
     pub(super) sender_id: Option<i32>,
     pub(super) returned: bool,
+    pub(super) cod_paid: bool,
     pub(super) subject: String,
 }
 
@@ -65,7 +66,7 @@ pub(super) async fn lock_mail(
 ) -> Result<Option<LockedMail>, sqlx::Error> {
     take_inventory_locks(&mut *conn, player_id, &[INV_MAIN]).await?;
     sqlx::query_as::<_, LockedMail>(
-        "SELECT cash, flags, sender_id, returned, subject FROM sgw_gate_mail \
+        "SELECT cash, flags, sender_id, returned, cod_paid, subject FROM sgw_gate_mail \
          WHERE mail_id = $1 AND character_id = $2 FOR UPDATE",
     )
     .bind(mail_id)

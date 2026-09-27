@@ -22,6 +22,11 @@ const ALREADY_RETURNED: Refusal = Refusal {
     text: "That gate-mail message has already been returned once and cannot be \
            returned again.",
 };
+const COD_PAID: Refusal = Refusal {
+    reason: "cod_paid",
+    text: "You have already paid for this COD delivery, so it cannot be returned. \
+           Take the item instead.",
+};
 const SYSTEM_MAIL: Refusal = Refusal {
     reason: "system_mail",
     text: "That gate-mail message has no player sender to return it to.",
@@ -43,7 +48,8 @@ pub(super) struct Returned {
 /// CAT-G-06 / D-SS10: return `mail_id`, owned by `player_id`, to its stored
 /// sender, once.
 ///
-/// Refused for archived mail, mail already returned, and mail with no
+/// Refused for archived mail, mail already returned, a paid COD (the item
+/// is the payer's; the seller already has the price), and mail with no
 /// `sender_id` (server mail, or a sender whose character was deleted: the
 /// foreign key sets it NULL). The destination is the stored `sender_id`,
 /// never `sender_name`, so a mail cannot be redirected by a name. One
@@ -69,6 +75,9 @@ pub(super) async fn return_tx(
     if mail.returned {
         return Err(ALREADY_RETURNED.into());
     }
+    if mail.cod_paid {
+        return Err(COD_PAID.into());
+    }
     let sender_id = mail.sender_id.ok_or(SYSTEM_MAIL)?;
     let item = lock_escrow(&mut tx, mail_id).await?;
     let players = lock_players(&mut tx, &[player_id, sender_id]).await?;
@@ -87,7 +96,7 @@ pub(super) async fn return_tx(
         "UPDATE sgw_gate_mail SET character_id = $3, sender_id = $2, sender_name = $4, \
                 cash = $5, flags = flags & ~$6, returned = true, read_time = 0, sent_time = $7 \
          WHERE mail_id = $1 AND character_id = $2 AND sender_id = $3 \
-           AND NOT returned AND (flags & $8) = 0",
+           AND NOT returned AND NOT cod_paid AND (flags & $8) = 0",
     )
     .bind(mail_id)
     .bind(player_id)

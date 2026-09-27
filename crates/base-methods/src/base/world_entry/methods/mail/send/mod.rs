@@ -238,13 +238,18 @@ pub(super) async fn send_mail(
     .await
     {
         Ok(d) => d,
-        Err(DeliverError::Refused { refusal, balance }) => {
+        Err(DeliverError::Refused {
+            refusal,
+            balance,
+            recipient_id,
+        }) => {
             tracing::debug!(
                 target: "mail",
                 event = "mail.attachment_refused",
                 entity_id = caller.entity_id,
                 player_id = caller.player_id,
                 account_id = session.account_id,
+                target_player_id = recipient_id,
                 reason = refusal.reason,
                 item_id = send.item_id,
                 item_quantity = send.item_quantity,
@@ -261,7 +266,7 @@ pub(super) async fn send_mail(
                 reason: refusal.reason,
                 text: refusal.text.to_string(),
             };
-            return refuse(caller, session, refusal).await;
+            return refuse_about(caller, session, refusal, recipient_id).await;
         }
         Err(e) => {
             let reason = match &e {
@@ -305,6 +310,16 @@ pub(super) async fn send_mail(
     let failure_text = failure_line(&delivery.failed);
 
     if delivery.delivered.is_empty() {
+        // One resolved recipient who could not take it (a full mailbox, an
+        // Ignore) is named on the refusal; several are on their own
+        // `mail.recipient_failed` rows.
+        let mut resolved: Vec<i32> = delivery.failed.iter().filter_map(|f| f.player_id).collect();
+        resolved.sort_unstable();
+        resolved.dedup();
+        let target = match resolved.as_slice() {
+            [one] => Some(*one),
+            _ => None,
+        };
         let refusal = Refusal {
             result: MailResult::NoRecipients,
             failed_recipients: &failed_names,
@@ -312,7 +327,7 @@ pub(super) async fn send_mail(
             reason: "no_deliverable_recipients",
             text: failure_text.unwrap_or_else(|| GATE_MAIL_UNAVAILABLE.to_string()),
         };
-        return refuse(caller, session, refusal).await;
+        return refuse_about(caller, session, refusal, target).await;
     }
 
     let mail_ids: Vec<i32> = delivery.delivered.iter().map(|d| d.mail_id).collect();
@@ -426,12 +441,25 @@ async fn take_send_token(
 
 /// Log the refusal, answer `sendMailResult`, and send its feedback line.
 async fn refuse(caller: &Caller<'_>, session: SenderSession, refusal: Refusal<'_>) {
+    refuse_about(caller, session, refusal, None).await;
+}
+
+/// [`refuse`], naming the recipient once one was resolved
+/// (`target_player_id`, rule 5 of the instrumentation discipline). Absent,
+/// not 0, when the refusal came before name resolution.
+async fn refuse_about(
+    caller: &Caller<'_>,
+    session: SenderSession,
+    refusal: Refusal<'_>,
+    target_player_id: Option<i32>,
+) {
     tracing::warn!(
         target: "mail",
         event = "mail.send_refused",
         entity_id = caller.entity_id,
         player_id = caller.player_id,
         account_id = session.account_id,
+        target_player_id,
         reason = refusal.reason,
         result = refusal.result.token(),
         failed_recipients = refusal.failed_recipients.len(),

@@ -19,6 +19,11 @@ CREATE TABLE sgw_gate_mail (
     -- sender. A returned mail cannot be returned again, so a return never
     -- loops; SS-M4's expiry quarantines instead of re-returning it.
     returned boolean DEFAULT false NOT NULL,
+    -- Social-systems SS-M3: set when the recipient paid the COD. The item
+    -- is then the recipient's: a paid COD cannot be returned (the seller
+    -- would get the item and the price), and SS-M4's expiry must never
+    -- return it (it takes the quarantine path instead).
+    cod_paid boolean DEFAULT false NOT NULL,
     -- Social-systems SS-M1: a mail never carries negative cash; the send path
     -- refuses it first, and this is the backstop.
     CONSTRAINT sgw_gate_mail_cash_nonnegative_chk CHECK ((cash >= 0))

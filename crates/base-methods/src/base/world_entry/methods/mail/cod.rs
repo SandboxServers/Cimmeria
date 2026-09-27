@@ -113,7 +113,7 @@ pub(super) async fn pay_cod_tx(
         }
     }
     let Some((sender_id, payer_name)) = live else {
-        clear_cod(&mut tx, player_id, mail_id, mail.cash).await?;
+        clear_cod(&mut tx, player_id, mail_id, mail.cash, false).await?;
         tx.commit().await?;
         return Ok(CodOutcome::CancelledSenderGone { price: mail.cash });
     };
@@ -122,7 +122,7 @@ pub(super) async fn pay_cod_tx(
     let balance = debit(&mut tx, player_id, price)
         .await?
         .ok_or(NOT_ENOUGH_CASH)?;
-    clear_cod(&mut tx, player_id, mail_id, mail.cash).await?;
+    clear_cod(&mut tx, player_id, mail_id, mail.cash, true).await?;
     let body = format!(
         "{payer_name} paid {price} naquadah for the item you sent by COD (\"{}\").",
         mail.subject
@@ -153,21 +153,26 @@ pub(super) async fn pay_cod_tx(
 
 /// Clear `MAIL_COD` **and zero `cash`** on a locked COD mail, with a
 /// conditional `UPDATE` that must change one row. The delete guard keys on
-/// `cash = 0`, and a price must never become takeable gift cash.
+/// `cash = 0`, and a price must never become takeable gift cash. `paid`
+/// sets `cod_paid`: the item is now the recipient's, so the mail can no
+/// longer be returned (nor, in SS-M4, expire back to the seller). A COD
+/// cancelled because its sender is gone is not paid.
 async fn clear_cod(
     conn: &mut PgConnection,
     player_id: i32,
     mail_id: i32,
     price: i64,
+    paid: bool,
 ) -> Result<(), OpError> {
     let cleared = sqlx::query(
-        "UPDATE sgw_gate_mail SET cash = 0, flags = flags & ~$3 \
+        "UPDATE sgw_gate_mail SET cash = 0, flags = flags & ~$3, cod_paid = $5 \
          WHERE mail_id = $1 AND character_id = $2 AND (flags & $3) <> 0 AND cash = $4",
     )
     .bind(mail_id)
     .bind(player_id)
     .bind(MAIL_COD)
     .bind(price)
+    .bind(paid)
     .execute(conn)
     .await?
     .rows_affected();

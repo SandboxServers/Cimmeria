@@ -380,13 +380,28 @@ async fn send_rejects_bound_item() {
     let r = reply(c.take());
     assert_eq!(r.code, Some(MailResult::ItemNotAvailable.code()), "{r:?}");
     assert_eq!(r.lines.len(), 1);
-    assert!(capture
+    // Both refusal rows name the resolved recipient (rule 5), not only the
+    // sender.
+    let refused = capture
         .find_event(
             tracing::Level::WARN,
             "sendMailMessage refused",
-            "item_bound"
+            "item_bound",
         )
-        .is_some());
+        .expect("mail.send_refused reason=item_bound");
+    assert!(
+        refused.has_field("target_player_id", &rcpt.to_string()),
+        "{refused:?}"
+    );
+    let detail = capture
+        .all()
+        .into_iter()
+        .find(|e| e.has_field("event", "mail.attachment_refused"))
+        .expect("mail.attachment_refused");
+    assert!(
+        detail.has_field("target_player_id", &rcpt.to_string()),
+        "{detail:?}"
+    );
     assert_untouched(&pool, sender, rcpt, 500, &[bound]).await;
 
     cleanup(&pool, acct).await;

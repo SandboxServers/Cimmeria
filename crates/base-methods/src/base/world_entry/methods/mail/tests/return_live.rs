@@ -260,3 +260,88 @@ async fn return_cancels_cod_and_zeroes_price() {
 
     cleanup(&pool, BASE + 0x20).await;
 }
+
+/// Coordinator decision on the SS-M3 review (F2): a paid COD belongs to the
+/// buyer. Once paid, the mail looks like an ordinary item mail, so without
+/// `cod_paid` its recipient could return it and the seller would get both
+/// the item and the price (and SS-M4's expiry would do it unasked). The
+/// return is refused `cod_paid` with feedback; the seller is credited the
+/// price exactly once, by the payment mail; the item stays in escrow for
+/// the buyer, who can still take it. Fails when both `cod_paid` gates (the
+/// Rust check and the UPDATE's `AND NOT cod_paid`) are removed, or when the
+/// payment stops setting it.
+#[tokio::test]
+async fn return_rejects_paid_cod() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (buyer, seller, _) = three_players(&pool, BASE + 0x28, "Paid").await;
+    set_naquadah(&pool, buyer, 1_000).await;
+    let type_id = any_type_id(&pool).await;
+    let item_id = ITEMS + 0x28;
+    let mail_id = AttachedMail::from(buyer, seller, "SsmThreeRetSPaid")
+        .cod(300)
+        .item(item_id, type_id, 1)
+        .insert(&pool)
+        .await;
+
+    let b = Client::new(BASE as u32 + 0x48, buyer, 55_148, "SsmThreeRetRPaid");
+    let now = Instant::now();
+    b.op(MailOp::PayCod { mail_id }, Some(&pool), now).await;
+    b.take();
+    b.op(MailOp::Return { mail_id }, Some(&pool), now).await;
+    assert_eq!(
+        b.take(),
+        vec![Received::Feedback(
+            "You have already paid for this COD delivery, so it cannot be returned. Take \
+             the item instead."
+                .to_string()
+        )]
+    );
+    assert_refused(&capture, "return", "cod_paid", mail_id);
+    assert_eq!(mail_state(&pool, mail_id).await, Some((buyer, 0, 0, false)));
+    assert!(
+        has_escrow(&pool, mail_id).await,
+        "the item waits for the buyer"
+    );
+
+    // The seller holds exactly the one payment mail, and is credited once.
+    let seller_mail: Vec<(i32, i64)> =
+        sqlx::query_as("SELECT mail_id, cash FROM sgw_gate_mail WHERE character_id = $1")
+            .bind(seller)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(seller_mail.len(), 1, "{seller_mail:?}");
+    assert_eq!(seller_mail[0].1, 300);
+    let s = Client::new(BASE as u32 + 0x49, seller, 55_149, "SsmThreeRetSPaid");
+    s.op(
+        MailOp::TakeCash {
+            mail_id: seller_mail[0].0,
+        },
+        Some(&pool),
+        now,
+    )
+    .await;
+    assert_eq!(naquadah(&pool, seller).await, 300);
+    assert!(
+        escrow_for(&pool, seller).await.is_empty(),
+        "no item for the seller"
+    );
+
+    b.op(
+        MailOp::TakeItem {
+            mail_id,
+            container_id: -1,
+            slot_id: -1,
+        },
+        Some(&pool),
+        now,
+    )
+    .await;
+    assert_eq!(
+        inventory_rows(&pool, item_id).await,
+        vec![(buyer, INV_MAIN, 0, 1)]
+    );
+
+    cleanup(&pool, BASE + 0x28).await;
+}
