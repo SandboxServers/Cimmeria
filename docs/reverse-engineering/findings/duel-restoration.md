@@ -12,8 +12,12 @@
 
 The duel system was **never implemented server-side** in the original game either — both
 `SGWDuelMarker.py` files are skeletons (`__init__` + `super()`), and the SGWPlayer duel handlers are
-`pass`. The client side is fully shipped and confirms `duel-wire-formats.md` with **no corrections
-needed**. This is consistent with SGW's pre-launch cancellation.
+`pass`. The client side is fully shipped and, **as of this 2026-06-20 pass**, confirmed
+`duel-wire-formats.md` with no corrections needed — this is now a historical statement, not a
+current one: the SS-E1 pass (2026-09-27) later revised `duel-wire-formats.md` (the `pvpFlag` /
+`GENERICPROPERTY_PvPFlag` correction, and D-Q5's `onDuelEntitiesSet`/`Remove`/`Clear` closure), so
+treat that doc, not this line, as the up-to-date word on the wire format. This is consistent with
+SGW's pre-launch cancellation.
 
 | Aspect | % |
 |---|---|

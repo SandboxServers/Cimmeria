@@ -143,7 +143,9 @@ was re-normalized to CRLF with `sed` immediately afterward and re-verified).
    into the caller's first free main-container slot.
 4. **SS-M1/SS-M4**: `MessageAttachment.durability` follows `alias.xml`'s INT32 on the wire. The client's UI reads it as a float, and that discrepancy is unresolved until a capture settles it, as noted in
    `mail-wire-formats.md`; use the corrected layout when SS-M2 first emits a non-empty
-   `MessageAttachments` array. Mail TTL should be exactly 30 days (`sent_time + 30d`), not a
-   different fallback.
+   `MessageAttachments` array. Mail TTL should be 30 days — the 720-hour constant is HIGH
+   confidence (M-Q3) — anchored at `sent_time + 30d` as the working assumption; the exact time
+   base for that anchor is only MEDIUM confidence until a capture confirms what `ExpiresHours`
+   counts down from.
 5. **SS-D1/D2/D3**: send duel feedback strings (872–880) as literal `onPlayerCommunication`
    `CHAN_feedback` text, not a moniker-id wire path, pending stronger evidence on D-Q6.
