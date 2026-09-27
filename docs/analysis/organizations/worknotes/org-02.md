@@ -74,6 +74,37 @@ All in `crates/base-session/src/base/organization/persistence/tests/`, sentinels
 - `trigger.rs`: `leader_delete_leaves_no_leaderless_org` (promotion order, rank beats standing, Team + Command leader deleted at once, solo disband), `last_member_delete_with_vault_leaves_memberless_org` (replaces `org_vault_is_empty_sql` with `SELECT false` inside a rolled-back transaction, then checks the stub is back), `remove_member_reports_what_the_trigger_did`, `multi_row_member_delete_promotes_or_disbands_once`, and two type-5 concurrency tests, `trigger_waits_for_the_org_lock` and `kick_during_character_delete_does_not_deadlock`, which poll `pg_stat_activity` for a lock wait before releasing the holder so they cannot pass without the race.
 - `mutations.rs`: `misses_are_typed_not_ok`, `leader_rank_is_pinned`, `rank_and_permission_writes_round_trip`, `texts_are_validated_and_stored`, `loads_return_what_the_login_push_needs`.
 
+## Round 2: telemetry (owner rule, coordinator 2026-09-27)
+
+Ledger: `origin/docs/org-telemetry` (PR #878), "Telemetry (owner rule, 2026-09-27)" and the ORG-02 "Telemetry:" line; worker rules § "Telemetry — mandatory".
+
+- **Persistence events.** `persistence/observe.rs::observed` wraps every public function. On success the body logs a DEBUG `event` named after the function (target `org`) with `org_id`, `player_id` where there is one, `rows_affected`, and before/after values: `set_rank` `from_rank`/`to_rank`, `set_rank_permissions` `from_mask`/`to_mask`, `set_text` `field`/`from_units`/`to_units` (the old text comes back through an `UPDATE … FROM` self-join; only lengths are logged), `remove_member` `from_rank`/`after`. A refusal logs one WARN with `event` = the function and `reason` = `OrgStoreError::reason()`. `lock_org` and `member_access_locked` warn on their own misses (`no_such_org`, `not_a_member`); the persistence layer locks through the unlogged `lock_org_quiet`, so a miss is one WARN, not two.
+- **Trigger events: the audit table, not RAISE LOG.** `sgw_organization_events (event_id, org_id, event, reason, from_player_id, from_account_id, to_player_id, to_account_id, tx_id, at, exported_at)`, `event` ∈ `leader_changed` / `disbanded` / `left_memberless`, `reason` ∈ `character_deleted` (the `sgw_player` row was gone when the trigger ran) / `member_removed` (any other member delete, so a psql or GM delete is recorded too; the ledger named only `character_deleted`). No FKs: a disbanded org and a deleted character are what the rows describe.
+- **Account ids at delete time.** When the trigger runs on a character delete the `sgw_player` row is already gone, so it cannot look the account up. The member row now keeps an `account_id` copy (a character never changes account), read by `insert_member` with the same `FOR KEY SHARE` select that checks the player exists.
+- **Export, exactly once.** `organization/audit.rs`: every exporter is `UPDATE … SET exported_at = now() WHERE exported_at IS NULL AND … RETURNING`, so racing exporters log a row once between them. `character_delete::delete_character` reads `txid_current()` before its commit and, after it, exports that transaction's rows at INFO (`source = character_delete`), returning them in `CharacterDeletion.org_events`; `handle_delete_character` adds `org_events` to its "Character deleted" line. `remove_member` exports its transaction's rows at DEBUG inside the transaction (`source = in_transaction`; a rollback removes row and stamp together). `BaseService::start` spawns `spawn_startup_sweep` (INFO, `source = startup_sweep`). A failed export or sweep logs WARN `org_events_export` / `org_events_swept`, `reason = db_error`, and leaves the rows for the next sweep.
+- **Handler edit size.** Small: the handler already called `delete_character` (round 1); the export lives in base-session and the handler only logs the count. No need to move it to ORG-06.
+- **No counters.** `org_actions_total` counts handler actions (outcome rows); ORG-02 has no handler, so it adds none.
+
+Round 2 tests (live-DB + `LogCapture`): `audit::character_delete_exports_trigger_events_once`, `audit::startup_sweep_exports_rows_a_bare_delete_left`, `audit::remove_member_exports_its_rows_in_transaction`, `telemetry::typed_misses_log_one_warn_with_reason`, `telemetry::changes_log_debug_with_before_and_after`. Sentinel blocks 20-24.
+
+Round 2 regression proof (`live-db-test.sh base::organization::persistence::tests::telemetry base::organization::persistence::tests::audit --no-fail-fast`, restored with `git checkout -- .` after each):
+
+- WARN removed from `observed` and the post-commit export removed from `delete_character`: exit 100, `typed_misses_log_one_warn_with_reason` (no `set_rank`/`not_a_member` WARN) and `character_delete_exports_trigger_events_once` (`org_events` empty) FAILED.
+- Persistence lock switched back to the logging `lock_org` and the trigger's `leader_changed` INSERT removed: exit 100, `typed_misses_log_one_warn_with_reason` (two `lock_org` WARNs), `character_delete_exports_trigger_events_once`, `startup_sweep_exports_rows_a_bare_delete_left` and `remove_member_exports_its_rows_in_transaction` FAILED.
+
+Round 2 commands: `lane.sh cargo clippy -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-base --all-targets -- -D warnings` (0); `live-db-test.sh base::organization base::character` (0, 48 passed); the whole live-DB tier `live-db-test.sh "::"` (0, 3700 passed, 0 skipped); `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` (0, 52 passed: the target scan still sees `org` reach SigNoz); `cargo fmt --all -- --check` (0).
+
+SigNoz filters (Logs, `service.name = 'cimmeria-server'`):
+
+| What | Filter |
+|---|---|
+| Trigger results from character deletes | `scope_name = 'org' AND reason = 'character_deleted'` (then `event` = `leader_changed` / `disbanded` / `left_memberless`) |
+| Everything a given deleted character did to its orgs | `scope_name = 'org' AND from_player_id = <id>` |
+| Rows the startup sweep caught | `scope_name = 'org' AND source = 'startup_sweep'` |
+| Refused persistence writes | `scope_name = 'org' AND severity_text = 'WARN' AND reason IS NOT NULL` (narrow on `event`) |
+| Rank / mask / text changes | `scope_name = 'org' AND event IN ('set_rank', 'set_rank_permissions', 'set_text')` |
+| Export failures | `scope_name = 'org' AND event IN ('org_events_export', 'org_events_swept')` |
+
 ## Known gaps
 
 - `disband`'s `VaultNotEmpty` refusal is untested: the Rust stub always returns true. The Bank campaign's replacement should add the test.
@@ -81,10 +112,13 @@ All in `crates/base-session/src/base/organization/persistence/tests/`, sentinels
 - A character delete from any other path (a future GM tool, account deletion via the `account` cascade) should go through `delete_character` or take the same locks; a bare delete stays correct but can deadlock.
 - `load_memberships` / `load_roster` are display reads with no lock, by design; nothing may authorize from them.
 - No `updated_at` column on any table.
+- The startup-sweep call in `BaseService::start` has no test of its own; `sweep_unexported` is tested directly.
+- Persistence DEBUG events are written inside the caller's transaction, before the caller decides to commit; the handler's INFO outcome row (later packets) is the committed record.
+- `sgw_organization_events` is never pruned. It grows only with trigger results (leader changes, disbands), which are rare.
 
 ## Integration edits for the coordinator
 
-- **Ledger:** record in work-packets.md "Schema" that ranks rows exist only for the type's ranks, the Leader-row CHECK, the one-Leader partial index, `motd`/notes `NOT NULL DEFAULT ''`, and the NO ACTION rank FK. Record that `lock_org` and `member_access_locked` take `&mut Transaction<'_, Postgres>` and return `Result<_, sqlx::Error>`, and that `member_access_locked` takes the lock itself.
+- **Ledger:** record `sgw_organization_events` and the member `account_id` column in "Schema". Also record in work-packets.md "Schema" that ranks rows exist only for the type's ranks, the Leader-row CHECK, the one-Leader partial index, `motd`/notes `NOT NULL DEFAULT ''`, and the NO ACTION rank FK. Record that `lock_org` and `member_access_locked` take `&mut Transaction<'_, Postgres>` and return `Result<_, sqlx::Error>`, and that `member_access_locked` takes the lock itself.
 - **New contract surface for ORG-05/06/07/08:** `persistence::{create_org, add_member, remove_member (MemberRemoval/AfterRemoval), set_rank, set_text (OrgTextTarget), set_rank_permissions, disband, load_memberships, load_roster, load_ranks, name_available, OrgStoreError}` and `character_delete::delete_character`. ORG-05 debits the D-ORG15 cost inside the `create_org` transaction after it returns (org row locked first, then `sgw_player`).
 - **Bank campaign (cimmeria-97):** the ORG-API is at `crates/base-session/src/base/organization/api.rs`; the two vault stubs to replace are `api::org_vault_is_empty` and `org_vault_is_empty_sql` in `db/sgw/_functions.sql` (load the replacement after the vault tables). Message them when this merges.
 - `crates/base-world-entry/src/base/character/mod.rs` is touched (one call site); flag it if another packet owns that file.

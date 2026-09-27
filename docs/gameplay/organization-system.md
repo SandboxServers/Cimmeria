@@ -90,6 +90,19 @@ Every mutation takes a transaction and locks the organization row first. The glo
 
 A miss (no such organization, not a member, a rank row that does not exist) is a typed `OrgStoreError`, never `Ok`. Every refusal leaves the caller's transaction usable.
 
+### Telemetry
+
+Everything logs on the `org` target (catalog row in [observability.md](../architecture/observability.md)):
+
+- Each persistence function logs a DEBUG `event` named after itself on success, with `org_id`, `player_id` where there is one, `rows_affected`, and the before and after values of a rank (`from_rank`, `to_rank`), a mask (`from_mask`, `to_mask`) or a text (`from_units`, `to_units`; never the text).
+- Each typed refusal logs exactly one WARN, with the function as `event` and the `OrgStoreError` reason as `reason`.
+- The member-delete trigger runs inside Postgres, where tracing cannot see it. It writes each promotion, disband or memberless result to `sgw_organization_events`, with the deleted member's and the new leader's player and account ids captured at delete time (member rows keep an `account_id` copy for this). Rust logs each row exactly once and stamps `exported_at`:
+  - the character delete logs its own rows at INFO right after it commits (`source = character_delete`);
+  - `remove_member` logs its rows at DEBUG inside its transaction (`source = in_transaction`);
+  - a sweep at base startup logs anything still unstamped, such as a bare `DELETE` from psql (`source = startup_sweep`).
+
+To find a character delete that changed an organization's leader in SigNoz Logs: `service.name = 'cimmeria-server' AND scope_name = 'org' AND event = 'leader_changed' AND reason = 'character_deleted'`, then narrow on `from_player_id` or `org_id`. `org` reaches SigNoz at DEBUG (`OTEL_FILTER`), so the persistence events are there too.
+
 The default rank masks, the text caps and the name rule are project policy, not recovered data (D-ORG08, D-ORG10, D-ORG21). The live-DB tests are in `persistence/tests/`.
 
 ## Entity Definition (OrganizationMember.def)
