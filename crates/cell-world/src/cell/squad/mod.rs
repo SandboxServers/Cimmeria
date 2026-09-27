@@ -4,8 +4,8 @@
 //! are never persisted. One [`SquadRegistry`] serves every space: it is a
 //! field of [`SpaceManager`](super::space_manager::SpaceManager), the one
 //! container every cell handler already receives, so a member who gates to
-//! another world keeps their squad (PR #584's per-space manager lost it on
-//! the first gate trip, audit A-30).
+//! another world keeps their squad. A registry held per space would lose
+//! it on the first gate trip.
 //!
 //! This module is pure state: no I/O, no clock. Every time-dependent call
 //! takes `now`, so the 60 s invite expiry and the 30 s rate window are
