@@ -106,7 +106,10 @@ async fn push_login_bundle_sends_one_packet_to_the_owner() {
     let session = OneSession::new(ENTITY, 55730);
     let state = fixture_state();
 
-    assert!(push_login_bundle(ENTITY, 1, &state, session.client()).await);
+    assert_eq!(
+        push_login_bundle(ENTITY, &state, session.client()).await,
+        Ok(())
+    );
 
     assert_eq!(session.typed.len(), 1);
     assert_eq!(
@@ -115,9 +118,10 @@ async fn push_login_bundle_sends_one_packet_to_the_owner() {
     );
 }
 
-/// A push that cannot reach the client (no address for the entity) is a
-/// WARN with the reason and the identity, and `push_login_bundle` reports
-/// it; a silent drop would leave stale crafting state on screen.
+/// A single push that cannot reach the client (no address for the
+/// entity) is a `push_failed` WARN with the reason and the identity, and
+/// `push_login_bundle` reports the reason to its caller; a silent drop
+/// would leave stale crafting state on screen.
 #[tokio::test]
 async fn unsent_push_is_a_warn() {
     let capture = LogCapture::install();
@@ -128,7 +132,10 @@ async fn unsent_push_is_a_warn() {
         ..session.client()
     };
 
-    assert!(!push_login_bundle(ENTITY, 17, &fixture_state(), client).await);
+    assert_eq!(
+        push_login_bundle(ENTITY, &fixture_state(), client).await,
+        Err("entity_to_addr_miss")
+    );
     push_asp(ENTITY, 17, 3, client).await;
 
     let warns: Vec<_> = capture
@@ -136,15 +143,54 @@ async fn unsent_push_is_a_warn() {
         .into_iter()
         .filter(|c| c.target == "crafting" && c.has_field("event", "push_failed"))
         .collect();
-    assert_eq!(warns.len(), 2, "{warns:#?}");
-    assert!(warns[0].has_field("what", "login_bundle"));
-    assert!(warns[1].has_field("what", "asp"));
-    for warn in &warns {
-        assert_eq!(warn.level, tracing::Level::WARN);
-        assert!(warn.has_field("reason", "entity_to_addr_miss"));
-        assert!(warn.has_field("player_id", "17"));
-        assert!(warn.has_field("entity_id", &ENTITY.to_string()));
+    assert_eq!(warns.len(), 1, "{warns:#?}");
+    let warn = &warns[0];
+    assert_eq!(warn.level, tracing::Level::WARN);
+    assert!(warn.has_field("what", "asp"));
+    assert!(warn.has_field("reason", "entity_to_addr_miss"));
+    assert!(warn.has_field("player_id", "17"));
+    assert!(warn.has_field("entity_id", &ENTITY.to_string()));
+}
+
+/// Live DB: a login bundle that cannot be sent is `login_sync_failed` with
+/// `reason = send` and the send failure as the error class, not a
+/// `login_sync`.
+#[tokio::test]
+async fn unsent_login_bundle_is_login_sync_failed() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (TEST_BASE + 6, TEST_BASE + 7);
+    cleanup(&pool, account_id, player_id).await;
+    insert_player(&pool, account_id, player_id).await;
+    let capture = LogCapture::install();
+    let session = OneSession::new(ENTITY, 55737);
+    let empty = Arc::new(Mutex::new(HashMap::new()));
+    let client = CraftClient {
+        entity_to_addr: &empty,
+        ..session.client()
+    };
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    push_crafting_on_login(ENTITY, player_id, &db_pool, client).await;
+    cleanup(&pool, account_id, player_id).await;
+
+    let warn = capture
+        .find_event(tracing::Level::WARN, "bundle not sent", "send")
+        .expect("login_sync_failed WARN");
+    for (k, v) in [
+        ("event", "login_sync_failed"),
+        ("error_class", "entity_to_addr_miss"),
+        ("player_id", &player_id.to_string()),
+        ("entity_id", &ENTITY.to_string()),
+    ] {
+        assert!(warn.has_field(k, v), "{k}={v}: {warn:#?}");
     }
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "login_sync")),
+        "no login_sync for a bundle that was not sent"
+    );
 }
 
 /// Without a database the login sync sends nothing: there is no state to
@@ -329,11 +375,10 @@ async fn failed_login_load_is_a_warn_and_sends_nothing() {
 
     assert!(session.typed.is_empty(), "nothing sent on a failed load");
     let warn = capture
-        .find_event(tracing::Level::WARN, "crafting login sync", "load_failed")
+        .find_event(tracing::Level::WARN, "crafting login sync", "load")
         .expect("login_sync_failed WARN");
     for (k, v) in [
         ("event", "login_sync_failed"),
-        ("phase", "load_state"),
         ("player_id", "23"),
         ("entity_id", &ENTITY.to_string()),
         ("account_id", &SESSION_ACCOUNT_ID.to_string()),

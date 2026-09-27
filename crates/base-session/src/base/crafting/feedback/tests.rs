@@ -134,23 +134,23 @@ async fn coded_reject_sends_the_text_then_on_error_code() {
     );
 }
 
-/// Counter emission: one refusal adds one to
-/// `crafting_rejections_total{verb, reason}` and one to
-/// `crafting_requests_total{verb, outcome = rejected}`; a server failure
-/// counts as `outcome = failed`. Removing either `record_*` call fails it.
+/// Counter emission: every refusal, including a server failure, adds one
+/// to `crafting_rejections_total{verb, reason}` and one to
+/// `crafting_requests_total{verb, outcome = rejected}`. Removing either
+/// `record_*` call fails it.
 #[tokio::test]
 async fn reject_counts_the_rejection_and_the_request_outcome() {
     install_meter();
     let session = OneSession::new(ENTITY, 55723);
     // A verb label no other test uses, so parallel tests cannot move it.
     let verb = "research";
-    let rejections = [("verb", verb), ("reason", "not_available_yet")];
+    let not_available = [("verb", verb), ("reason", "not_available_yet")];
+    let unavailable = [("verb", verb), ("reason", "unavailable")];
     let rejected = [("verb", verb), ("outcome", "rejected")];
-    let failed = [("verb", verb), ("outcome", "failed")];
     let before = (
-        counter_total(METRIC_REJECTIONS, &rejections),
+        counter_total(METRIC_REJECTIONS, &not_available),
+        counter_total(METRIC_REJECTIONS, &unavailable),
         counter_total(METRIC_REQUESTS, &rejected),
-        counter_total(METRIC_REQUESTS, &failed),
     );
 
     let why = CraftReject::not_available(&CraftVerb::Research {
@@ -167,9 +167,17 @@ async fn reject_counts_the_rejection_and_the_request_outcome() {
     )
     .await;
 
-    assert_eq!(counter_total(METRIC_REJECTIONS, &rejections) - before.0, 1);
-    assert_eq!(counter_total(METRIC_REQUESTS, &rejected) - before.1, 1);
-    assert_eq!(counter_total(METRIC_REQUESTS, &failed) - before.2, 1);
+    assert_eq!(
+        counter_total(METRIC_REJECTIONS, &not_available) - before.0,
+        1
+    );
+    assert_eq!(counter_total(METRIC_REJECTIONS, &unavailable) - before.1, 1);
+    assert_eq!(counter_total(METRIC_REQUESTS, &rejected) - before.2, 2);
+    assert_eq!(
+        counter_total(METRIC_REQUESTS, &[("verb", verb), ("outcome", "accepted")]),
+        0,
+        "a refusal is never counted as accepted"
+    );
 }
 
 /// A refusal line that cannot be sent (no address for the entity) is a

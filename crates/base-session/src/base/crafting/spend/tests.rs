@@ -290,11 +290,11 @@ async fn spend_learns_the_discipline_and_pushes_it() {
     let capture = LogCapture::install();
     let (account_id, player_id) = player(&pool, 0, 2, &[]).await;
     let session = OneSession::new(ENTITY, 55750);
-    let completed = [
+    let accepted = [
         ("verb", "spendAppliedSciencePoints"),
-        ("outcome", "completed"),
+        ("outcome", "accepted"),
     ];
-    let completed_before = counter_total(METRIC_REQUESTS, &completed);
+    let accepted_before = counter_total(METRIC_REQUESTS, &accepted);
 
     spend(&pool, &session, player_id, 78).await;
 
@@ -308,6 +308,7 @@ async fn spend_learns_the_discipline_and_pushes_it() {
         ("player_id", player_id.to_string()),
         ("entity_id", ENTITY.to_string()),
         ("discipline_id", "78".to_string()),
+        ("expertise_before", "0".to_string()),
         ("expertise_after", "1".to_string()),
         ("asp_before", "2".to_string()),
         ("asp_after", "1".to_string()),
@@ -315,8 +316,8 @@ async fn spend_learns_the_discipline_and_pushes_it() {
         assert!(learned.has_field(k, &v), "{k}={v}: {learned:#?}");
     }
     assert!(
-        counter_total(METRIC_REQUESTS, &completed) > completed_before,
-        "crafting_requests_total{{outcome=completed}} counted"
+        counter_total(METRIC_REQUESTS, &accepted) > accepted_before,
+        "crafting_requests_total{{outcome=accepted}} counted"
     );
 
     let state = load_crafting_state(&pool, player_id).await.expect("load");

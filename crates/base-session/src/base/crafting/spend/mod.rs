@@ -109,9 +109,11 @@ pub fn check_spend(
     Ok(())
 }
 
-/// A committed learn: the ASP total either side of it.
+/// A committed learn: the discipline's expertise and the ASP total either
+/// side of it. `expertise_before` is 0 unless a stray expertise row existed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Learned {
+    pub expertise_before: i32,
     pub asp_before: i32,
     pub asp_after: i32,
 }
@@ -204,6 +206,7 @@ pub async fn spend_in_db(
     }
     tx.commit().await.map_err(SpendFailure::sql("commit"))?;
     Ok(Ok(Learned {
+        expertise_before: state.get_expertise(discipline_id).unwrap_or(0),
         asp_before: state.applied_science_points,
         asp_after,
     }))
@@ -254,6 +257,7 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
 
     match spend_in_db(pool, &catalog, player_id, discipline_id).await {
         Ok(Ok(Learned {
+            expertise_before,
             asp_before,
             asp_after,
         })) => {
@@ -265,12 +269,13 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
                 player_id,
                 entity_id,
                 discipline_id,
+                expertise_before,
                 expertise_after = LEARNED_EXPERTISE,
                 asp_before,
                 asp_after,
                 "discipline learned"
             );
-            record_request(VERB, Outcome::Completed);
+            record_request(VERB, Outcome::Accepted);
             push_discipline(
                 entity_id,
                 player_id,

@@ -13,22 +13,22 @@ use crate::base::helpers::{BundleSendOutcome, WitnessSendOutcome};
 use crate::base::session_identity::identity_for_entity;
 use crate::base::ConnectedClientState;
 
-/// `crafting_requests_total{verb, outcome}`: one per decided request.
+/// `crafting_requests_total{verb, outcome}`: one per answered request.
 pub const METRIC_REQUESTS: &str = "crafting_requests_total";
 /// `crafting_rejections_total{verb, reason}`: one per refusal.
 pub const METRIC_REJECTIONS: &str = "crafting_rejections_total";
 
-/// How a crafting request ended, the `outcome` label.
+/// How a crafting request was answered, the `outcome` label. Emitted
+/// exactly once per request, when it is answered. What happens to an
+/// accepted request later (an induction completing or failing) is not this
+/// counter's business.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
-    /// Queued for an induction; the result comes later.
+    /// Carried out or queued.
     Accepted,
-    /// Refused by a rule; the player got a line and nothing changed.
+    /// Refused, by a rule or because the server could not decide it; the
+    /// player got a line and nothing changed.
     Rejected,
-    /// Done and committed.
-    Completed,
-    /// The server could not decide it (database or catalog failure).
-    Failed,
 }
 
 impl Outcome {
@@ -36,13 +36,11 @@ impl Outcome {
         match self {
             Outcome::Accepted => "accepted",
             Outcome::Rejected => "rejected",
-            Outcome::Completed => "completed",
-            Outcome::Failed => "failed",
         }
     }
 }
 
-/// Count one decided request.
+/// Count one answered request.
 pub fn record_request(verb: &'static str, outcome: Outcome) {
     cimmeria_observability::counter!(
         METRIC_REQUESTS,
@@ -112,14 +110,10 @@ mod tests {
 
     /// The label vocabulary the dashboards group by.
     #[test]
-    fn outcome_labels_are_the_documented_four() {
-        let all = [
-            Outcome::Accepted,
-            Outcome::Rejected,
-            Outcome::Completed,
-            Outcome::Failed,
-        ]
-        .map(Outcome::as_str);
-        assert_eq!(all, ["accepted", "rejected", "completed", "failed"]);
+    fn outcome_labels_are_accepted_and_rejected() {
+        assert_eq!(
+            [Outcome::Accepted, Outcome::Rejected].map(Outcome::as_str),
+            ["accepted", "rejected"]
+        );
     }
 }

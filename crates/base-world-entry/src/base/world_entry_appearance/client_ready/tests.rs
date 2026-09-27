@@ -233,7 +233,11 @@ async fn on_client_ready_pushes_the_stored_crafting_state() {
         .await
         .expect("insert account");
     sqlx::query(
-        "INSERT INTO sgw_player (account_id, player_id, level, alignment, archetype, gender,             player_name, extra_name, world_location, bodyset, pos_x, pos_y, pos_z, skin_color_id,             discipline_ids, racial_paradigm_levels, applied_science_points, blueprint_ids)          VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale',             0.0, 0.0, 0.0, 0, '{78}', '{5,2,1,1,1}', 2, '{25}')",
+        "INSERT INTO sgw_player (account_id, player_id, level, alignment, archetype, gender, \
+            player_name, extra_name, world_location, bodyset, pos_x, pos_y, pos_z, skin_color_id, \
+            discipline_ids, racial_paradigm_levels, applied_science_points, blueprint_ids) \
+         VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+            0.0, 0.0, 0.0, 0, '{78}', '{5,2,1,1,1}', 2, '{25}')",
     )
     .bind(ACCOUNT_ID)
     .bind(PLAYER_ID)
@@ -242,7 +246,8 @@ async fn on_client_ready_pushes_the_stored_crafting_state() {
     .await
     .expect("insert player");
     sqlx::query(
-        "INSERT INTO sgw_player_discipline_expertise (player_id, discipline_id, expertise)          VALUES ($1, 78, 33)",
+        "INSERT INTO sgw_player_discipline_expertise (player_id, discipline_id, expertise) \
+         VALUES ($1, 78, 33)",
     )
     .bind(PLAYER_ID)
     .execute(&pool)

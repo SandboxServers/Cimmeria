@@ -4,7 +4,6 @@
 
 use cimmeria_cell_catalog::crafting::CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS;
 
-use crate::base::crafting::telemetry::Outcome;
 use crate::cell::messages::CraftVerb;
 
 /// Why a crafting request was refused. A new reason needs an arm in every
@@ -97,15 +96,6 @@ impl CraftReject {
             CraftReject::ParadigmTooLow { .. } => "paradigm_too_low",
             CraftReject::PrerequisiteMissing { .. } => "prerequisite_missing",
             CraftReject::PrerequisiteExpertise { .. } => "prerequisite_expertise",
-        }
-    }
-
-    /// The request's `outcome`: a server failure is `failed`, every rule
-    /// refusal `rejected`.
-    pub fn outcome(&self) -> Outcome {
-        match self {
-            CraftReject::Unavailable { .. } => Outcome::Failed,
-            _ => Outcome::Rejected,
         }
     }
 
@@ -329,9 +319,6 @@ mod tests {
                 "prerequisite_expertise",
             ]
         );
-        let outcomes: Vec<Outcome> = spend_reasons().iter().map(CraftReject::outcome).collect();
-        assert_eq!(outcomes[0], Outcome::Failed);
-        assert!(outcomes[1..].iter().all(|&o| o == Outcome::Rejected));
     }
 
     /// Each rule refusal reports the two values it compared.

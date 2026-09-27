@@ -16,7 +16,7 @@ pub use reason::{Compared, CraftReject};
 
 use crate::base::crafting::sync::CraftClient;
 use crate::base::crafting::telemetry::{
-    account_id_of, record_rejection, record_request, witness_send_failure,
+    account_id_of, record_rejection, record_request, witness_send_failure, Outcome,
 };
 use crate::base::helpers::send_to_witness_reliable;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -77,7 +77,7 @@ pub async fn reject(
         "crafting request rejected"
     );
     record_rejection(verb, reason);
-    record_request(verb, why.outcome());
+    record_request(verb, Outcome::Rejected);
 
     let text_args = feedback_text_args(&why.text());
     send_line(

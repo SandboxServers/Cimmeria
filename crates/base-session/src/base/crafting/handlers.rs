@@ -190,7 +190,13 @@ pub async fn handle_grant_applied_science(
     // Saturate at i32::MAX in SQL: `amount` has no upper bound on the cell
     // side.
     let updated: Result<Option<(i32, i32)>, sqlx::Error> = sqlx::query_as(
-        "WITH old AS (              SELECT applied_science_points AS before FROM sgw_player              WHERE player_id = $1 FOR UPDATE)          UPDATE sgw_player p          SET applied_science_points = LEAST(old.before::bigint + $2, 2147483647)::integer          FROM old WHERE p.player_id = $1          RETURNING old.before, p.applied_science_points",
+        "WITH old AS ( \
+             SELECT applied_science_points AS before FROM sgw_player \
+             WHERE player_id = $1 FOR UPDATE) \
+         UPDATE sgw_player p \
+         SET applied_science_points = LEAST(old.before::bigint + $2, 2147483647)::integer \
+         FROM old WHERE p.player_id = $1 \
+         RETURNING old.before, p.applied_science_points",
     )
     .bind(player_id)
     .bind(i64::from(amount))

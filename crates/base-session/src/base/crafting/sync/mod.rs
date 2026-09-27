@@ -110,15 +110,14 @@ pub fn build_crafting_state_bundle(entity_id: u32, state: &CraftingState) -> Cha
     bundle
 }
 
-/// Send the whole crafting state to the player's own client. Returns
-/// whether it went out; a bundle that did not is a WARN (`event =
-/// "push_failed"`).
+/// Send the whole crafting state to the player's own client. `Err` carries
+/// why it did not go out (`entity_to_addr_miss`, `client_disconnected`,
+/// `send_error`, `empty_bundle`); the caller logs it.
 pub async fn push_login_bundle(
     entity_id: u32,
-    player_id: i32,
     state: &CraftingState,
     client: CraftClient<'_>,
-) -> bool {
+) -> Result<(), &'static str> {
     let bundle = build_crafting_state_bundle(entity_id, state);
     let outcome = send_bundle_to_witness_reliable(
         client.transport,
@@ -129,11 +128,8 @@ pub async fn push_login_bundle(
     )
     .await;
     match bundle_send_failure(&outcome) {
-        None => true,
-        Some(reason) => {
-            warn_push_failed(entity_id, player_id, "login_bundle", reason, client);
-            false
-        }
+        None => Ok(()),
+        Some(reason) => Err(reason),
     }
 }
 
@@ -142,10 +138,12 @@ pub async fn push_login_bundle(
 /// whose UI has loaded.
 ///
 /// Loading applies the starting paradigm levels to a character that has
-/// none stored, so the tree draws the root disciplines as learnable. The
-/// `login_sync` event records what was sent. A failed load sends nothing
-/// (the ASP count and blueprint list from the `mapLoaded` bundle stay) and
-/// is a WARN, as is a bundle that could not be sent.
+/// none stored, so the tree draws the root disciplines as learnable. A sent
+/// bundle is a `login_sync` event recording what was sent. A failed load
+/// sends nothing (the ASP count and blueprint list from the `mapLoaded`
+/// bundle stay); it and a bundle that could not be sent are a
+/// `login_sync_failed` WARN with `reason` = `load` | `send` and the
+/// `error_class`.
 pub async fn push_crafting_on_login(
     entity_id: u32,
     player_id: i32,
@@ -156,37 +154,49 @@ pub async fn push_crafting_on_login(
         return;
     };
     let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
-    match load_crafting_state_reporting(pool, player_id).await {
-        Ok((state, defaults_applied)) => {
-            tracing::info!(
-                target: "crafting",
-                event = "login_sync",
-                account_id,
-                player_id,
-                entity_id,
-                disciplines = state.discipline_ids.len(),
-                paradigms = state.racial_paradigm_levels.len(),
-                blueprints = state.blueprint_ids.len(),
-                asp = state.applied_science_points,
-                defaults_applied,
-                "crafting state pushed at login"
-            );
-            push_login_bundle(entity_id, player_id, &state, client).await;
-        }
+    let (state, defaults_applied) = match load_crafting_state_reporting(pool, player_id).await {
+        Ok(loaded) => loaded,
         Err(e) => {
             tracing::warn!(
                 target: "crafting",
                 event = "login_sync_failed",
-                reason = "load_failed",
-                phase = "load_state",
+                reason = "load",
+                error_class = sql_error_class(&e),
+                error = %e,
                 account_id,
                 player_id,
                 entity_id,
-                error_class = sql_error_class(&e),
-                error = %e,
-                "crafting login sync: load failed -- the client keeps no                  disciplines or paradigm levels until the next world entry"
+                "crafting login sync: load failed -- the client keeps no \
+                 disciplines or paradigm levels until the next world entry"
             );
+            return;
         }
+    };
+    match push_login_bundle(entity_id, &state, client).await {
+        Ok(()) => tracing::info!(
+            target: "crafting",
+            event = "login_sync",
+            account_id,
+            player_id,
+            entity_id,
+            disciplines = state.discipline_ids.len(),
+            paradigms = state.racial_paradigm_levels.len(),
+            blueprints = state.blueprint_ids.len(),
+            asp = state.applied_science_points,
+            defaults_applied,
+            "crafting state pushed at login"
+        ),
+        Err(error_class) => tracing::warn!(
+            target: "crafting",
+            event = "login_sync_failed",
+            reason = "send",
+            error_class,
+            account_id,
+            player_id,
+            entity_id,
+            "crafting login sync: bundle not sent -- the client keeps no \
+             disciplines or paradigm levels until the next world entry"
+        ),
     }
 }
 
