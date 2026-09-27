@@ -205,9 +205,7 @@ next to it:
 </startPvPTimer>
 ```
 
-This is a genuinely new discovery not reflected in any existing finding doc. It strongly suggests
-**the real wire vehicle for the duel PvP flag is the entity's own `pvpFlag` property, synced to
-witnesses automatically the same way every other def property is**, rather than the
+This is a new discovery not reflected in any existing finding doc. It is an **unresolved possibility**, not evidence of a client-facing fanout. In SGW, `CELL_PUBLIC` maps only to `DATA_GHOSTED` (`docs/drafts/spec/entity-property-sync.md:221`; `crates/entity/src/cell_entity/entity_struct.rs:79-80`), so the declaration does not show that witnesses receive `pvpFlag`. Until the receiver and update path is traced, the candidates remain `pvpFlag` and the
 `GENERICPROPERTY_PvPFlag`/`onEntityProperty` mechanism `crates/wire/src/mercury/world_data/
 map_loaded.rs:334` currently uses to send `(4, 0)` once at world entry. `setPvPFlag`'s second
 argument ("should do strike team logic") also connects this property to the *world/organization*

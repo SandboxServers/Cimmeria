@@ -81,10 +81,8 @@ at world entry only (`world_data.rs`); no setter to 1 / no duel-time fanout exis
 
 **Correction 2026-09-27 (SS-E1, D-Q4)**: `SGWPlayer.def` also declares a dedicated `pvpFlag`
 property (`INT8`, default 0, `CELL_PUBLIC`) plus internal cell methods `setPvPFlag(INT8 flagValue,
-INT8 shouldDoStrikeTeamLogic)` and `startPvPTimer(INT8 flagValue, FLOAT timeLength)`. `CELL_PUBLIC`
-means this property auto-syncs via the standard entity-property-change wire path, not the small
-`EGenericProperty` side-channel above. This is very likely the *real* PvP-flag wire mechanism for
-duels, distinct from (and possibly superseding) `GENERICPROPERTY_PvPFlag`/`onEntityProperty`. Not
+INT8 shouldDoStrikeTeamLogic)` and `startPvPTimer(INT8 flagValue, FLOAT timeLength)`. In SGW, `CELL_PUBLIC`
+maps only to `DATA_GHOSTED` (between CellApps) and is not a client-distribution flag (`docs/drafts/spec/entity-property-sync.md:199,221`), so the declaration alone does **not** show that the client receives this property. It is an **unresolved possibility**, not the established PvP-flag vehicle: the receiver and update path for `pvpFlag` has not been traced. Also not
 resolved: whether the client's generic-property dispatch has a live case for ordinal 4 at all, or
 how client UI reads `pvpFlag` once synced. See `duel-wire-formats.md`'s SS-E1 section for detail.
 

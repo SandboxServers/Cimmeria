@@ -92,14 +92,14 @@
 | `flags` | `INT32` | 4B |
 
 **`MessageAttachment` FIXED_DICT layout** (20 bytes; confirmed by the `onMailHeaderInfo` wire
-decoder, SS-E1 M-Q4, 2026-09-27 — `durability` is a FLOAT, corrected from an earlier INT32 guess):
+decoder, SS-E1 M-Q4, 2026-09-27; the field types follow `entities/defs/alias.xml:103-111`, the client's own shipped schema):
 
 | Field | Type | Size |
 |-------|------|------|
 | `id` | `INT32` | 4B |
 | `itemId` | `INT32` | 4B |
 | `stackSize` | `INT32` | 4B |
-| `durability` | `FLOAT` | 4B |
+| `durability` | `INT32` (see the M-Q4 note: the client's UI decode reads it as a float) | 4B |
 | `charges` | `INT32` | 4B |
 
 #### `onMailHeaderRemove` — Remove Mail from List
@@ -303,10 +303,7 @@ find-header-by-id lookup — and writes `itemId/stackSize/durability/charges` on
 header record. **Confirms `MessageAttachment.id` is the mail id, used to join the attachment to
 its header row, exactly as this file's existing layout assumed.**
 
-**Correction to the byte layout above: `durability` is decoded as a `FLOAT`, not an `INT32`.**
-`id`, `itemId`, `stackSize`, `charges` are INT32; `durability` is FLOAT (read via the same
-generic property-decode helper used for the header's `sentTime`/`readTime` FLOAT fields, not the
-INT32 helper used for the other four). The layout table above has been corrected accordingly.
+**UNRESOLVED discrepancy on `durability`.** The client's UI-side decode at `0x00e15450` reads `durability` into a `float` local, through the same helper it uses for the header's FLOAT `sentTime`/`readTime`. The client's own schema, `entities/defs/alias.xml:103-111`, declares it `INT32`, and BigWorld deserializes the wire by that alias before the UI code runs. So the float read is most likely a conversion after decoding, not a FLOAT on the wire. **Until a capture of a non-empty attachment settles it, the wire layout stays INT32 per `alias.xml`**, and serializers (SS-M2) must follow the alias. Both fields are 4 bytes, so the byte offsets are unaffected either way.
 
 Evidence: `ghidra://SGW.exe@0x00e15450` (field-by-field decode, `"durability"` string decoded into
 a `float` local), `0x00e12e70` (header lookup by id).

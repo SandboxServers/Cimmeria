@@ -43,7 +43,7 @@
 | M-Q1 (`sendMailResult` text) | CLOSED — byte-exact 0–7 + default switch recovered, confirms wire byte = enum declaration ordinal | HIGH |
 | M-Q2 (`ItemId`, alias parsing) | CLOSED — `ItemId` is the item's own unique inventory id (not a type id); alias→`RecipientFlags` parsing is 100% client-side; several new client-side send-time rules recovered | HIGH |
 | M-Q3 (`ExpiresHours`) | CLOSED — no wire field; client constant `0x2d0` = 720 hours = 30 days | HIGH (constant), MEDIUM (exact time-base) |
-| M-Q4 (`MessageAttachment.id` join) | CLOSED — `id` is the mail id, used to join to the header; **correction**: `durability` is FLOAT, not INT32 | HIGH |
+| M-Q4 (`MessageAttachment.id` join) | CLOSED — `id` is the mail id, used to join to the header; `durability`: the client's UI decode reads a float, but `alias.xml` declares INT32, so this is UNRESOLVED and the wire stays INT32 per the alias | HIGH (join) / OPEN (durability) |
 | M-Q5 (`ContainerId`/`SlotId`) | CLOSED — the shipped client sends uninitialized stack garbage for both fields, not even a reliable `-1,-1`; treat as always meaningless | HIGH |
 | M-Q6 (unsolicited `onMailHeaderInfo`) | UNRESOLVED — not independently re-traced this session | — |
 | M-Q7 (`ResetCategory`/`bArchive`) | CLOSED — client keeps two lists, routes each row by its own `flags & MAIL_Archive` bit, upserts by id; `ResetCategory` clears only the requested list | HIGH |
@@ -54,7 +54,7 @@
 | D-Q1 (duel timer duration) | CLOSED — no client constant; countdown length is entirely server-driven | HIGH |
 | D-Q2 (range constants) | UNRESOLVED — not found this session | — |
 | D-Q3 (death vs. duel-end branch) | UNRESOLVED — moot: D-SS20 is owner-approved regardless | — |
-| D-Q4 (`GENERICPROPERTY_PvPFlag`) | PARTIAL — found a dedicated `pvpFlag` CELL_PUBLIC property + `setPvPFlag`/`startPvPTimer`; likely the real mechanism, client consumption unconfirmed | MEDIUM-HIGH |
+| D-Q4 (`GENERICPROPERTY_PvPFlag`) | PARTIAL — found a dedicated `pvpFlag` CELL_PUBLIC property + `setPvPFlag`/`startPvPTimer`; an unresolved possibility (`CELL_PUBLIC` is ghosting-only in SGW, so no client fanout is proven), client consumption untraced | MEDIUM-HIGH |
 | **D-Q5 (blocking)** | **CLOSED** — see below | **HIGH** |
 | D-Q6 (moniker rendering) | UNRESOLVED — `onErrorCode` ruled out; feedback-text-over-existing-channel is the best guess, not confirmed | — |
 
@@ -95,8 +95,8 @@ Full addresses and the intermediate call chain are in `duel-wire-formats.md`'s S
 
 ## Notable out-of-scope findings worth flagging
 
-- **D-Q4**: `SGWPlayer.def` declares a real `pvpFlag` CELL_PUBLIC property (auto-synced via the
-  standard entity-property-change path) plus internal `setPvPFlag`/`startPvPTimer` cell methods —
+- **D-Q4**: `SGWPlayer.def` declares a `pvpFlag` CELL_PUBLIC property (in SGW `CELL_PUBLIC` is ghosting-only, so a client
+  fanout is **not** established; the receiver path is untraced) plus internal `setPvPFlag`/`startPvPTimer` cell methods —
   not previously documented anywhere. This may mean SS-D2 should sync `pvpFlag` the way any other
   def property is synced, rather than building on `map_loaded.rs:334`'s `GENERICPROPERTY_PvPFlag`/
   `onEntityProperty` assumption. I did not confirm which mechanism the client actually reacts to
@@ -141,7 +141,7 @@ was re-normalized to CRLF with `sed` immediately afterward and re-verified).
    D-SS08's existing assumption — no change needed there, just confirms it).
 3. **SS-M3**: never interpret `ContainerId`/`SlotId` on `takeItemFromMailMessage`; always place
    into the caller's first free main-container slot.
-4. **SS-M1/SS-M4**: `MessageAttachment.durability` is FLOAT, not INT32 — already corrected in
+4. **SS-M1/SS-M4**: `MessageAttachment.durability` follows `alias.xml`'s INT32 on the wire. The client's UI reads it as a float, and that discrepancy is unresolved until a capture settles it, as noted in
    `mail-wire-formats.md`; use the corrected layout when SS-M2 first emits a non-empty
    `MessageAttachments` array. Mail TTL should be exactly 30 days (`sent_time + 30d`), not a
    different fallback.
