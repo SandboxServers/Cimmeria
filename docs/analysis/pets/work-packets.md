@@ -133,17 +133,17 @@ No summon ability, commands or AI.
 
 ### PT-S
 
-**Status:** Ready (D-PT03 decides which looks go beyond the Jaffa; the Jaffa row proceeds). **Scope title:** pet seed: the summon table, pet templates, summon VFX. **Agent:** rust-gameserver-dev; advisor npc-ai-spawn-advisor.
+**Status:** Ready (D-PT13: Straegis first). **Scope title:** pet seed: the summon table, pet templates, summon VFX. **Agent:** rust-gameserver-dev; advisor npc-ai-spawn-advisor.
 **Entries:** audit A-26, A-40..A-45; [content inventory](research/content-inventory.md) §1, §3.
 **Scope:**
 
 - the `resources.pet_summons` table and its loader into the startup cache (the `spawn_templates` pattern);
-- template 350 "Jaffa Soldier": a clone of 160 with `name_id` 8087, class `pet`, `ENTITYFLAG_Pet`, no loot, ability set 4;
-- the row `1643 → 350`;
-- event sets 1121/1122 (Goa'uld summon source/target) on ability 1643;
-- rows for Prime, Lo'taur and Straegis (351-353) are added by PT-11 once D-PT03 is answered.
+- template 350 "Straegis Fighter" pet: a clone of 78 (`MOB_StraegisFighter`), class `pet`, `ENTITYFLAG_Pet` and `NoPetLeveling`, a non-hostile faction, no loot, and a kit built from the Straegis mob abilities (1156 Disengage, 2847 Dissonance; 1240 Explode only if it does not kill the caster). Name 28894 if it has text, otherwise 27377 "Summoned Straegis Fighter";
+- the row `2826 → 350` (the duplicates 3491/3493/3495-3497 only if they are the same summon);
+- event sets 1121/1122 (Goa'uld summon source/target) on ability 2826;
+- rows for Jaffa, Prime and Lo'taur (351-353) are added by PT-11.
 
-**Acceptance:** live-DB seed guards: every `pet_summons` row points at a pet-flagged template in 350-369, every pet template is absent from `spawnlist`, and 1643 carries the event set.
+**Acceptance:** live-DB seed guards: every `pet_summons` row points at a pet-flagged template in 350-369, every pet template is absent from `spawnlist`, and 2826 carries the event set.
 
 ## Wave 1
 
@@ -172,7 +172,7 @@ No summon ability, commands or AI.
 
 **Acceptance:**
 
-- casting 1643 spawns template 350, owned by the caster;
+- casting 2826 spawns template 350, owned by the caster;
 - a second cast replaces the first pet;
 - an interrupted warmup spawns nothing;
 - a non-summon self-cast is still rejected (a revert guard on the gate).
@@ -263,11 +263,11 @@ Each is an effect script or a target redirect ("the owner's pet") and gets its o
 
 ### PT-11
 
-**Status:** BlockedDecision (D-PT03). **Scope title:** the rest of the Servant Lord roster. **Agent:** rust-gameserver-dev.
+**Status:** BlockedDependency (PT-03, PT-05). **Scope title:** the rest of the Servant Lord roster (D-PT13 order). **Agent:** rust-gameserver-dev.
 **Scope:**
 
-- templates 351-353 and `pet_summons` rows for Prime (1645), Lo'taur (1644) and Straegis (2826);
-- their kits: 1654 for Prime; 1653 and 3326-3329 for Lo'taur; the Straegis kit;
+- templates 351-353 and `pet_summons` rows for Jaffa (1643 → 351, a clone of 160, name 8087), Prime (1645, Praxis Jaffa Lieutenant look, name 28892) and Lo'taur (1644, Goa'uld servant dress, name 28891);
+- their kits: ability set 4 for the Jaffa; 1654 for Prime; 1653 and 3326-3329 for Lo'taur;
 - 1652 Double Blast on the Jaffa (PetTrained, via `knownPetAbilities`);
 - per-template stance masks;
 - a client render check of each look in UAT.
