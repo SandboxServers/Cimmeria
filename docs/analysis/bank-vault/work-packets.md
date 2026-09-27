@@ -64,6 +64,8 @@ pub enum VaultScope { Personal, Team, Command }
 
 **Expansion price (BV-05).** `resources.bank_expansion_price (to_slots smallint PRIMARY KEY, price_naquadah integer NOT NULL CHECK (price_naquadah >= 0))`, seeded with 50 through 100 at 100 naquadah each (D-BV02).
 
+**Telemetry (D-BV19).** Every packet's acceptance includes the telemetry line in its section. The worker rules spell out the fields. Each event is listed in the worknote with its target, level and fields, and pinned by a `LogCapture` test (TESTING.md type 12).
+
 **Log target.** Every packet logs under the `bank` target, with events `vault_open`, `vault_open_rejected`, `move_accepted`, `move_rejected reason=…`, `expand`, `expand_rejected reason=…`, and later `org_cash_transfer`. Follow `docs/architecture/instrumentation-discipline.md`, and add the OTEL filter rows it requires.
 
 ## Dependency graph and waves
@@ -111,6 +113,8 @@ Tests:
 
 Docs to update: `docs/gameplay/inventory-system.md` (the capacity source), `TESTING.md` if any type guidance shifts, and close #798 in the PR body.
 
+Telemetry: `move_rejected` and `grant_rejected` (WARN) carry `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, the quantity, the source and target container and slot, and a stable `reason`. A missing or forged item id on the refusal resync is a negative log. Every refusal has a `LogCapture` test.
+
 ## BV-E1 client evidence
 
 **Status: Review** (PR #867). Findings: `docs/reverse-engineering/findings/bank-vault-client.md`. Read-only. The writer is `game-archaeology-specialist`. Audit rows A-02, A-09 and A-12.
@@ -147,6 +151,8 @@ Tests:
 
 Docs to update: `docs/content/interaction-flags.md`, `docs/gameplay/inventory-system.md`, and the console command docs.
 
+Telemetry: an info span on the Banker interact and on `.bank`. Debug events `vault_session_opened` and `vault_session_closed` with `reason` (space_change, logout, re-pin), carrying `banker_id` or `gm_override`, `space_id`, the distance and the player ids. `vault_open_rejected reason=…`. A negative log when the banker lookup misses. `LogCapture` tests. The `OTEL_FILTER` row for `bank` at debug.
+
 ## BV-03 bank moves
 
 **Status: BlockedDependency (BV-02).** Audit rows A-20, A-22, A-28 and A-30; decisions D-BV04, D-BV05, D-BV07 and D-BV08.
@@ -175,6 +181,8 @@ Tests:
 
 Review by `server-authority-enforcer`.
 
+Telemetry: `move_accepted` (debug) and `move_rejected` (warn), with the source and target container and slot, `item_id`, `type_id`, the quantity, the stack sizes before and after on a split or merge, and `bank_slots`. Session and proximity refusals carry the `VaultReject` reason and the distance. The accessibility refusals on use and remove carry a `reason`. `LogCapture` tests.
+
 ## BV-04 debug-hub Banker and GM helpers
 
 **Status: BlockedDependency (BV-02).** Audit rows A-32, A-33 and A-34.
@@ -191,6 +199,8 @@ Tests:
 
 - **Seed guard (live-DB).** Template 370 has `INT_BANKER`, and spawn 470 is in the hub.
 - **Console tests** for the helpers.
+
+Telemetry: the GM helpers log `bank gm_action` with the caller and target player ids and the result. A `LogCapture` test.
 
 ## BV-05 vault expansion
 
@@ -213,6 +223,8 @@ Tests:
 
 Review by `server-authority-enforcer`.
 
+Telemetry: `expand` (info) with cash before and after, `bank_slots` before and after, the price and the player ids. `expand_rejected reason=…` (no_session, out_of_range, insufficient_cash, at_ceiling, replay). A negative log when an update affects zero rows. `LogCapture` tests.
+
 ## BV-06 personal-bank close-out and release 1
 
 **Status: BlockedDependency (BV-03, BV-04, BV-05).**
@@ -222,6 +234,8 @@ Scope:
 - Docs: `docs/gameplay/inventory-system.md` (a Bank/Vault section), `docs/gap-analysis.md`, `docs/project-status.md`, and the test inventory if the counts cross the 5% threshold.
 - Finalize the [UAT checklist](handoffs/session-resume.md#uat-checklist).
 - Post `/release` on this PR once it has merged, from PowerShell (D-BV11).
+
+Telemetry: the UAT checklist names the SigNoz query for each step. Update `docs/architecture/observability.md`'s target catalog with `bank`.
 
 ## BV-07 org vault storage and open path
 
@@ -237,6 +251,8 @@ Scope:
 - Replace cimmeria-fa's stubs `org_vault_is_empty(tx, org_id)` and `org_vault_is_empty_sql(org_id)`.
 - Fan out with `broadcast_to_org`.
 
+Telemetry: every org vault move and open carries `org_id`, `org_type`, the rank and the permission bit checked. Every refusal carries a `reason`. The bank log table rows can be correlated with the log events by the same ids.
+
 ## BV-08 org cash
 
 **Status: BlockedDependency (BV-07, ORG-07).** Decision D-BV15.
@@ -250,10 +266,16 @@ Scope:
 - Log each transfer.
 - Broadcast `onOrganizationCashUpdate` (built by `build_on_organization_cash_update`) after the commit.
 
+Telemetry: `org_cash_transfer` with the direction, the amount, the player's and the org's cash before and after, `org_id` and the player ids. Every refusal carries a `reason`. `LogCapture` tests.
+
 ## BV-09 Team vault expansion
 
 **Status: BlockedDecision.** Who pays for a +10 step: the org treasury, or the member who clicked, and which permission bit is needed? Ask the owner before Wave 4. The expected price table matches D-BV02.
 
+Telemetry: as BV-05, plus `org_id` and the payer.
+
 ## BV-10 org close-out and release 2
 
 **Status: BlockedDependency (BV-07, BV-08, BV-09).** Update the docs and `docs/gameplay/organization-system.md`, extend the UAT checklist, and post `/release` (D-BV11).
+
+Telemetry: extend the UAT checklist with a SigNoz query per org step.
