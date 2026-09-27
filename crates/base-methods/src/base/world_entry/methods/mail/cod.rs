@@ -3,7 +3,7 @@
 //! (D-SS09, CAT-G-05). The item is then taken with an ordinary take-item.
 //! Lock order and failure handling: [`super::claim`].
 
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use super::claim::{
     answer_failure, debit, lock_escrow, lock_mail, lock_players, unix_now, Balance, Op, OpError,
@@ -11,6 +11,7 @@ use super::claim::{
 };
 use super::headers::refresh_one;
 use super::MailCtx;
+use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::cell::mail::codes::flags::MAIL_COD;
 use crate::mercury::method_idx;
 
@@ -23,10 +24,9 @@ const COD_WITHOUT_ITEM: Refusal = Refusal {
     text: "That COD message holds no item, so there is nothing to pay for. \
            Return it to its sender.",
 };
-const SENDER_GONE: Refusal = Refusal {
-    reason: "sender_gone",
-    text: "The sender of that COD message no longer exists, so it cannot be paid.",
-};
+/// Told when a COD is cancelled because its sender's character is gone.
+const SENDER_GONE_TEXT: &str = "The sender of that COD message no longer exists. The COD \
+     is cancelled and nothing was charged; the item is yours to take.";
 const NOT_ENOUGH_CASH: Refusal = Refusal {
     reason: "not_enough_cash",
     text: "You do not have enough naquadah to pay this COD.",
@@ -36,6 +36,21 @@ const NOT_ENOUGH_CASH: Refusal = Refusal {
 /// original subject is cut to fit.
 const PAYMENT_SUBJECT_PREFIX: &str = "COD payment: ";
 const SUBJECT_MAX_CHARS: usize = 128;
+
+/// What a committed `payCODForMailMessage` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CodOutcome {
+    Paid(CodPaid),
+    /// The COD's sender no longer exists (their character was deleted, and
+    /// the foreign key set `sender_id` NULL), so there is nobody to pay.
+    /// The COD is cancelled instead, its price zeroed and nothing debited,
+    /// so the item becomes an ordinary take. Without this the item would be
+    /// stranded for good: pay has nobody to pay, return has nobody to
+    /// return to, and take and delete refuse an unpaid COD.
+    CancelledSenderGone {
+        price: i64,
+    },
+}
 
 /// A committed COD payment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,8 +75,9 @@ pub(super) fn payment_subject(subject: &str) -> String {
 /// CAT-G-05: pay a COD once, at the price stored on the mail.
 ///
 /// One transaction: lock the mail (the caller's), refuse unless it is an
-/// unpaid COD with an item and a live sender; lock the payer and the sender
-/// ascending; debit the payer the stored price (never a client number);
+/// unpaid COD with an item; lock the payer and the sender ascending (a
+/// sender who no longer exists cancels the COD instead, see
+/// [`CodOutcome::CancelledSenderGone`]); debit the payer the stored price (never a client number);
 /// clear `MAIL_COD` **and zero `cash`** with a conditional `UPDATE` that
 /// must change one row (the delete guard keys on `cash = 0`, and the price
 /// must never become takeable gift cash); insert the payment mail to the
@@ -74,7 +90,7 @@ pub(super) async fn pay_cod_tx(
     player_id: i32,
     mail_id: i32,
     now: i32,
-) -> Result<CodPaid, OpError> {
+) -> Result<CodOutcome, OpError> {
     let mut tx = pool.begin().await?;
     let mail = lock_mail(&mut tx, player_id, mail_id)
         .await?
@@ -82,39 +98,34 @@ pub(super) async fn pay_cod_tx(
     if !mail.cod() || mail.cash <= 0 {
         return Err(NOT_COD.into());
     }
-    let sender_id = mail.sender_id.ok_or(SENDER_GONE)?;
-    lock_escrow(&mut tx, mail_id)
-        .await?
-        .ok_or(COD_WITHOUT_ITEM)?;
-    let players = lock_players(&mut tx, &[player_id, sender_id]).await?;
-    if !players.iter().any(|p| p.player_id == sender_id) {
-        return Err(SENDER_GONE.into());
+    // Escrow before player rows (the lock order in `claim`).
+    let item = lock_escrow(&mut tx, mail_id).await?;
+    // The sender's row, if it still exists; the payer's stored name.
+    let mut live = None;
+    if let Some(sender_id) = mail.sender_id {
+        let players = lock_players(&mut tx, &[player_id, sender_id]).await?;
+        if players.iter().any(|p| p.player_id == sender_id) {
+            let payer = players
+                .into_iter()
+                .find(|p| p.player_id == player_id)
+                .ok_or(NOT_FOUND)?;
+            live = Some((sender_id, payer.player_name));
+        }
     }
-    let Some(payer) = players.iter().find(|p| p.player_id == player_id) else {
-        return Err(NOT_FOUND.into());
+    let Some((sender_id, payer_name)) = live else {
+        clear_cod(&mut tx, player_id, mail_id, mail.cash).await?;
+        tx.commit().await?;
+        return Ok(CodOutcome::CancelledSenderGone { price: mail.cash });
     };
+    item.ok_or(COD_WITHOUT_ITEM)?;
     let price = i32::try_from(mail.cash).map_err(|_| NOT_ENOUGH_CASH)?;
     let balance = debit(&mut tx, player_id, price)
         .await?
         .ok_or(NOT_ENOUGH_CASH)?;
-    let cleared = sqlx::query(
-        "UPDATE sgw_gate_mail SET cash = 0, flags = flags & ~$3 \
-         WHERE mail_id = $1 AND character_id = $2 AND (flags & $3) <> 0 AND cash = $4",
-    )
-    .bind(mail_id)
-    .bind(player_id)
-    .bind(MAIL_COD)
-    .bind(mail.cash)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected();
-    if cleared != 1 {
-        // Only reachable without the row lock: the other payment won.
-        return Err(NOT_COD.into());
-    }
+    clear_cod(&mut tx, player_id, mail_id, mail.cash).await?;
     let body = format!(
-        "{} paid {price} naquadah for the item you sent by COD (\"{}\").",
-        payer.player_name, mail.subject
+        "{payer_name} paid {price} naquadah for the item you sent by COD (\"{}\").",
+        mail.subject
     );
     let payment_mail_id: i32 = sqlx::query_scalar(
         "INSERT INTO sgw_gate_mail \
@@ -124,7 +135,7 @@ pub(super) async fn pay_cod_tx(
          RETURNING mail_id",
     )
     .bind(sender_id)
-    .bind(&payer.player_name)
+    .bind(&payer_name)
     .bind(payment_subject(&mail.subject))
     .bind(body)
     .bind(i64::from(price))
@@ -132,18 +143,45 @@ pub(super) async fn pay_cod_tx(
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(CodPaid {
+    Ok(CodOutcome::Paid(CodPaid {
         price,
         balance,
         sender_id,
         payment_mail_id,
-    })
+    }))
+}
+
+/// Clear `MAIL_COD` **and zero `cash`** on a locked COD mail, with a
+/// conditional `UPDATE` that must change one row. The delete guard keys on
+/// `cash = 0`, and a price must never become takeable gift cash.
+async fn clear_cod(
+    conn: &mut PgConnection,
+    player_id: i32,
+    mail_id: i32,
+    price: i64,
+) -> Result<(), OpError> {
+    let cleared = sqlx::query(
+        "UPDATE sgw_gate_mail SET cash = 0, flags = flags & ~$3 \
+         WHERE mail_id = $1 AND character_id = $2 AND (flags & $3) <> 0 AND cash = $4",
+    )
+    .bind(mail_id)
+    .bind(player_id)
+    .bind(MAIL_COD)
+    .bind(price)
+    .execute(conn)
+    .await?
+    .rows_affected();
+    if cleared != 1 {
+        // Only reachable without the row lock: the other payment won.
+        return Err(NOT_COD.into());
+    }
+    Ok(())
 }
 
 /// `payCODForMailMessage(MailId)`.
 pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
     match pay_cod_tx(ctx.pool, ctx.player_id, mail_id, unix_now()).await {
-        Ok(paid) => {
+        Ok(CodOutcome::Paid(paid)) => {
             tracing::info!(
                 target: "mail",
                 event = "mail.cod_paid",
@@ -163,6 +201,27 @@ pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
                 &paid.balance.after.to_le_bytes(),
             )
             .await;
+            refresh_one(ctx, mail_id).await;
+        }
+        Ok(CodOutcome::CancelledSenderGone { price }) => {
+            tracing::info!(
+                target: "mail",
+                event = "mail.cod_cancelled",
+                entity_id = ctx.entity_id,
+                player_id = ctx.player_id,
+                account_id = ctx.account_id(),
+                mail_id,
+                reason = "sender_gone",
+                price,
+                "gate-mail COD cancelled: its sender no longer exists; nothing charged",
+            );
+            if let Some(addr) = ctx.addr() {
+                let fb = FeedbackCtx {
+                    transport: ctx.transport,
+                    connected: ctx.connected,
+                };
+                send_feedback_line(&fb, addr, SENDER_GONE_TEXT).await;
+            }
             refresh_one(ctx, mail_id).await;
         }
         Err(err) => answer_failure(ctx, Op::PayCod, mail_id, err).await,

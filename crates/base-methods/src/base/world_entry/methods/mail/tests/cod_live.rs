@@ -58,9 +58,10 @@ async fn payment_mails(pool: &PgPool, sender: i32) -> Vec<(i32, i64, Option<i32>
 /// guard keys on `cash = 0`, and the price must never be takeable), and
 /// mails the 300 to the sender as server mail (`sender_id` NULL, the payer's
 /// name). The payer's client gets `onCashChanged` and the refreshed header.
-/// The second payment is refused `not_cod`. Fails when the `MAIL_COD` gate
-/// or the conditional clear is removed (a second debit and a second
-/// payment mail).
+/// The second payment is refused `not_cod`. Revert that proves it: stop
+/// zeroing `cash` in the clear and drop the `mail.cod()` gate (the second
+/// payment debits 300 again). Dropping every COD gate while still zeroing
+/// fails it too, on the second payment mail (of 0).
 #[tokio::test]
 async fn pay_cod_twice_debits_once() {
     let pool = require_db_or_skip!();
@@ -156,10 +157,12 @@ async fn pay_cod_rejects_insufficient_cash() {
     cleanup(&pool, BASE + 0x08).await;
 }
 
-/// CAT-G-05: the price comes from the stored row, not from anything the
-/// client saw or sends (`payCODForMailMessage` carries only the mail id).
-/// The row's price is changed after the mail was delivered; the payment
-/// debits and forwards the stored 450, not the 300 the header once showed.
+/// CAT-G-05: the price comes from the stored row. `payCODForMailMessage`
+/// carries only the mail id, so there is no client number to trust; what
+/// this pins is that the debit, the payment mail and the row agree at pay
+/// time. The row's price is changed after the header went out; the payment
+/// debits and forwards the stored 450, not the 300 the header showed. A
+/// revert that debits a cached or constant price fails it.
 #[tokio::test]
 async fn pay_cod_amount_read_from_row() {
     let pool = require_db_or_skip!();
@@ -254,28 +257,89 @@ async fn paid_cod_credits_sender_once_by_mail_while_offline() {
     cleanup(&pool, BASE + 0x18).await;
 }
 
-/// A COD whose sender's character was deleted (the foreign key set
-/// `sender_id` NULL) cannot be paid: there is nobody to pay. Refused
-/// `sender_gone`, nothing debited.
+/// A COD whose sender's character was deleted (the foreign key sets
+/// `sender_id` NULL) has nobody to pay and nobody to return to, and take and
+/// delete refuse an unpaid COD, so without a way out its item is stranded
+/// for good. Paying it cancels the COD instead: nothing is debited, the
+/// price is zeroed and the flag cleared, the player is told, and the item
+/// becomes an ordinary take. Fails when that branch is reverted to a plain
+/// refusal (the take after it is refused `cod_unpaid`).
 #[tokio::test]
-async fn pay_cod_refuses_when_sender_gone() {
+async fn pay_cod_with_deleted_sender_cancels_cod_and_frees_item() {
     let pool = require_db_or_skip!();
     let capture = LogCapture::install();
-    let (payer, _, mail_id, _) = cod_fixture(&pool, BASE + 0x20, "Gone").await;
-    sqlx::query("UPDATE sgw_gate_mail SET sender_id = NULL WHERE mail_id = $1")
-        .bind(mail_id)
+    let (payer, sender, mail_id, item_id) = cod_fixture(&pool, BASE + 0x20, "Gone").await;
+    sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
+        .bind(sender)
         .execute(&pool)
         .await
         .unwrap();
+    assert_eq!(
+        mail_state(&pool, mail_id).await,
+        Some((payer, 300, MAIL_COD, false))
+    );
 
     let c = Client::new(BASE as u32 + 0x60, payer, 55_125, "SsmThreeCodPGone");
-    c.op(MailOp::PayCod { mail_id }, Some(&pool), Instant::now())
-        .await;
-    assert!(matches!(&c.take()[..], [Received::Feedback(_)]));
-    assert_eq!(naquadah(&pool, payer).await, 1_000);
-    assert_refused(&capture, "pay_cod", "sender_gone", mail_id);
+    let now = Instant::now();
+    c.op(MailOp::PayCod { mail_id }, Some(&pool), now).await;
+    let seen = c.take();
+    assert_eq!(
+        seen[0],
+        Received::Feedback(
+            "The sender of that COD message no longer exists. The COD is cancelled and \
+             nothing was charged; the item is yours to take."
+                .to_string()
+        )
+    );
+    assert_eq!(naquadah(&pool, payer).await, 1_000, "nothing charged");
+    assert_eq!(mail_state(&pool, mail_id).await, Some((payer, 0, 0, false)));
+    assert!(capture.all().iter().any(|e| {
+        e.has_field("event", "mail.cod_cancelled")
+            && e.has_field("reason", "sender_gone")
+            && e.has_field("price", "300")
+            && e.has_field("mail_id", &mail_id.to_string())
+    }));
+
+    c.op(
+        MailOp::TakeItem {
+            mail_id,
+            container_id: -1,
+            slot_id: -1,
+        },
+        Some(&pool),
+        now,
+    )
+    .await;
+    assert_eq!(inventory_rows(&pool, item_id).await.len(), 1);
+    assert!(!has_escrow(&pool, mail_id).await);
 
     cleanup(&pool, BASE + 0x20).await;
+}
+
+/// Pay and return are owner-scoped like the takes: another character naming
+/// the mail id is refused `not_found_for_owner`, and nothing moves.
+#[tokio::test]
+async fn pay_and_return_refuse_another_players_mail() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (payer, sender, mail_id, _) = cod_fixture(&pool, BASE + 0x30, "Owner").await;
+    let intruder = Client::new(BASE as u32 + 0x70, sender, 55_127, "SsmThreeCodSOwner");
+    let now = Instant::now();
+    intruder
+        .op(MailOp::PayCod { mail_id }, Some(&pool), now)
+        .await;
+    intruder
+        .op(MailOp::Return { mail_id }, Some(&pool), now)
+        .await;
+    assert_refused(&capture, "pay_cod", "not_found_for_owner", mail_id);
+    assert_refused(&capture, "return", "not_found_for_owner", mail_id);
+    assert_eq!(naquadah(&pool, sender).await, 0);
+    assert_eq!(
+        mail_state(&pool, mail_id).await,
+        Some((payer, 300, MAIL_COD, false))
+    );
+
+    cleanup(&pool, BASE + 0x30).await;
 }
 
 /// A COD with no item left has nothing to sell: refused

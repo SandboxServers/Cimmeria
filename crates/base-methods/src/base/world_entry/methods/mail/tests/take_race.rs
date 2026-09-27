@@ -1,7 +1,9 @@
 //! Type 5 (concurrency): attachment ops racing on one mail pay out once
 //! (SS-M3, audit § 6 CAT-G-04). Sentinels: accounts, players and entities
-//! `0x7300_18E0` up, items `0x7300_19E0` up.
+//! `0x7300_1C00` up, items `0x7300_1C80` up.
 
+use std::future::Future;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 
 use sqlx::{Postgres, Transaction};
@@ -9,17 +11,19 @@ use sqlx::{Postgres, Transaction};
 use super::packets::Client;
 use super::*;
 
-const BASE: i32 = 0x7300_18E0;
-const ITEMS: i32 = 0x7300_19E0;
+const BASE: i32 = 0x7300_1C00;
+const ITEMS: i32 = 0x7300_1C80;
 
 /// Hold `SHARE` on both mail tables, so every write to a mail row or an
-/// escrow row blocks, until `parked` transactions are waiting behind the
-/// gate (directly, or behind one the gate holds); then release it.
+/// escrow row blocks, until every op is either waiting behind the gate
+/// (directly, or behind one the gate holds) or finished; then release it.
 ///
-/// The ops are all in flight together, each past its reads, before any of
-/// them can write: with the locks (advisory, mail row `FOR UPDATE`) they
-/// queue behind the first and each re-reads the mail after the one ahead
-/// commits; without them they all read the same untouched mail.
+/// With the locks (the owner's advisory lock, the mail row `FOR UPDATE`)
+/// the first op parks on its write and the rest queue behind it, so each
+/// re-reads the mail after the one ahead commits. Without them every op
+/// reads the same untouched mail before any can write. An op that refuses
+/// without writing (a take on an unpaid COD) finishes instead of parking,
+/// which is why finished ops count.
 async fn open_gate(pool: &PgPool) -> (Transaction<'static, Postgres>, i32) {
     let mut gate = pool.begin().await.unwrap();
     let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
@@ -37,7 +41,8 @@ async fn release_when_parked(
     pool: &PgPool,
     gate: Transaction<'static, Postgres>,
     gate_pid: i32,
-    parked: i64,
+    ops: i64,
+    done: &AtomicI64,
 ) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -53,12 +58,13 @@ async fn release_when_parked(
         .fetch_one(pool)
         .await
         .unwrap();
-        if waiting >= parked {
+        let finished = done.load(Ordering::SeqCst);
+        if waiting + finished >= ops {
             break;
         }
         assert!(
             Instant::now() < deadline,
-            "{parked} ops should be parked behind the gate (saw {waiting})"
+            "{ops} ops should be parked or finished (saw {waiting} parked, {finished} finished)"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -75,6 +81,12 @@ async fn wide_pool() -> PgPool {
         .expect("connect the race pool")
 }
 
+/// Run `op`, then count it finished.
+async fn counted(op: impl Future<Output = ()>, done: &AtomicI64) {
+    op.await;
+    done.fetch_add(1, Ordering::SeqCst);
+}
+
 fn take_item(mail_id: i32) -> MailOp {
     MailOp::TakeItem {
         mail_id,
@@ -86,9 +98,16 @@ fn take_item(mail_id: i32) -> MailOp {
 /// CAT-G-04: two take-cash and two take-item requests for one mail (500
 /// gift cash and an item), from two sessions of its owner, all in flight at
 /// once. The owner is credited 500 once, the item lands in the bag once,
-/// the escrow row and the cash are gone. Fails when the serialisation is
-/// removed (advisory lock, mail row `FOR UPDATE` and the conditional
-/// `cash > 0` zeroing): both cash takes read 500 and both credit it.
+/// the escrow row and the cash are gone.
+///
+/// Revert that proves it: remove the advisory lock, the mail row
+/// `FOR UPDATE` and the `cash > 0` predicate together; both cash takes read
+/// 500 and both credit it (2,000). The layers back each other up, so
+/// removing any one alone still passes: the conditional `UPDATE` re-checks
+/// `cash` after its row wait, and the row lock alone makes the second take
+/// re-read 0. The item half is also held by the escrowed instance keeping
+/// its id (a second restore would hit the `sgw_inventory` key) and by the
+/// escrow `DELETE`'s row count.
 #[tokio::test]
 async fn concurrent_take_cash_and_item_pays_out_once() {
     let pool = require_db_or_skip!();
@@ -114,12 +133,13 @@ async fn concurrent_take_cash_and_item_pays_out_once() {
     let now = Instant::now();
     let ops = wide_pool().await;
     let (gate, gate_pid) = open_gate(&ops).await;
+    let done = AtomicI64::new(0);
     tokio::join!(
-        ca.op(MailOp::TakeCash { mail_id }, Some(&ops), now),
-        cb.op(MailOp::TakeCash { mail_id }, Some(&ops), now),
-        ca.op(take_item(mail_id), Some(&ops), now),
-        cb.op(take_item(mail_id), Some(&ops), now),
-        release_when_parked(&ops, gate, gate_pid, 4),
+        counted(ca.op(MailOp::TakeCash { mail_id }, Some(&ops), now), &done),
+        counted(cb.op(MailOp::TakeCash { mail_id }, Some(&ops), now), &done),
+        counted(ca.op(take_item(mail_id), Some(&ops), now), &done),
+        counted(cb.op(take_item(mail_id), Some(&ops), now), &done),
+        release_when_parked(&ops, gate, gate_pid, 4, &done),
     );
     ca.take();
     cb.take();
@@ -167,12 +187,13 @@ async fn concurrent_pay_cod_and_takes_never_pay_out_the_price() {
     let now = Instant::now();
     let ops = wide_pool().await;
     let (gate, gate_pid) = open_gate(&ops).await;
+    let done = AtomicI64::new(0);
     tokio::join!(
-        ca.op(MailOp::PayCod { mail_id }, Some(&ops), now),
-        cb.op(MailOp::PayCod { mail_id }, Some(&ops), now),
-        ca.op(MailOp::TakeCash { mail_id }, Some(&ops), now),
-        cb.op(take_item(mail_id), Some(&ops), now),
-        release_when_parked(&ops, gate, gate_pid, 4),
+        counted(ca.op(MailOp::PayCod { mail_id }, Some(&ops), now), &done),
+        counted(cb.op(MailOp::PayCod { mail_id }, Some(&ops), now), &done),
+        counted(ca.op(MailOp::TakeCash { mail_id }, Some(&ops), now), &done),
+        counted(cb.op(take_item(mail_id), Some(&ops), now), &done),
+        release_when_parked(&ops, gate, gate_pid, 4, &done),
     );
     ca.take();
     cb.take();

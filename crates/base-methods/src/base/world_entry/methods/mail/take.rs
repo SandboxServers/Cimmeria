@@ -132,6 +132,11 @@ pub(super) async fn take_cash(ctx: &MailCtx<'_>, mail_id: i32) {
 }
 
 /// A committed item take.
+///
+/// Like the send's escrow move (`send/escrow.rs`), the take enqueues no
+/// `CellOutboxPayload::InventoryItemGranted`: the cell's handler for it is
+/// one debug line and a main-bag item is no cell state. If that handler
+/// ever grows behaviour, both mail paths need the payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ItemTaken {
     pub(super) item: EscrowItem,

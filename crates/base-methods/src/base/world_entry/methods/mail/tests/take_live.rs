@@ -34,8 +34,11 @@ async fn two_players(pool: &PgPool, base: i32, tag: &str) -> (i32, i32) {
 /// take credits 500 and zeroes the mail, and the client gets
 /// `onCashChanged` with the committed balance and the refreshed header
 /// (remove, then the row with `cash` 0). The second take is refused
-/// `no_cash` with feedback and changes nothing. Fails when the `cash > 0`
-/// gate is removed (a second `onCashChanged`, a second `mail.cash_taken`).
+/// `no_cash` with feedback and changes nothing. Revert that proves it: drop
+/// the `SET cash = 0` zeroing (the second take credits 500 again, 2,000).
+/// Dropping both `cash > 0` gates (the Rust check and the SQL predicate)
+/// also fails it: the second take credits 0 but answers `onCashChanged`
+/// and logs a second `mail.cash_taken`.
 #[tokio::test]
 async fn take_cash_twice_credits_once() {
     let pool = require_db_or_skip!();
@@ -95,7 +98,8 @@ async fn take_cash_twice_credits_once() {
         capture
             .all()
             .iter()
-            .filter(|e| e.has_field("event", "mail.cash_taken"))
+            .filter(|e| e.has_field("event", "mail.cash_taken")
+                && e.has_field("mail_id", &mail_id.to_string()))
             .count(),
         1
     );
@@ -105,8 +109,9 @@ async fn take_cash_twice_credits_once() {
 
 /// CAT-G-02 / D-SS09: the cash on an unpaid COD is its price, never gift
 /// cash. Take-cash is refused `cod_unpaid`, and the price stays on the mail.
-/// Fails when the `MAIL_COD` gate is removed (the recipient would be paid
-/// the price they owe).
+/// Fails when both COD gates are removed, the Rust `mail.cod()` check and
+/// the SQL `(flags & MAIL_COD) = 0` predicate (the recipient is paid the
+/// price they owe); either alone refuses.
 #[tokio::test]
 async fn take_cash_rejects_cod_mail() {
     let pool = require_db_or_skip!();
@@ -122,7 +127,14 @@ async fn take_cash_rejects_cod_mail() {
     let c = Client::new(BASE as u32 + 0x90, owner, 55_101, "SsmThreeOCod");
     c.op(MailOp::TakeCash { mail_id }, Some(&pool), Instant::now())
         .await;
-    assert!(matches!(&c.take()[..], [Received::Feedback(_)]));
+    assert_eq!(
+        c.take(),
+        vec![Received::Feedback(
+            "The naquadah on a COD message is its price, not a gift. Pay the COD to receive \
+             the item, or return the message."
+                .to_string()
+        )]
+    );
     assert_eq!(naquadah(&pool, owner).await, 0);
     assert_eq!(
         mail_state(&pool, mail_id).await,
@@ -164,8 +176,9 @@ async fn take_cash_refuses_balance_overflow() {
 }
 
 /// CAT-G-03: an item is taken once. The first take restores the escrowed
-/// instance (same id, durability and charges) into the owner's first free
-/// main slot and deletes the escrow row; the second is refused `no_item`.
+/// instance, every instance column as it was in escrow, into the owner's
+/// first free main slot and deletes the escrow row; the second is refused
+/// `no_item`.
 /// Fails when the escrow `DELETE` is removed (the second take inserts a
 /// duplicate or errors).
 #[tokio::test]
@@ -203,13 +216,32 @@ async fn take_item_twice_moves_once() {
         inventory_rows(&pool, item_id).await,
         vec![(owner, INV_MAIN, 0, 4)]
     );
-    let (durability, charges): (i32, i32) =
-        sqlx::query_as("SELECT durability, charges FROM sgw_inventory WHERE item_id = $1")
-            .bind(item_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!((durability, charges), (TEST_DURABILITY, TEST_CHARGES));
+    // Every instance column survives, including the two that live on
+    // `sgw_inventory_base` (the fixture sets each off its default).
+    type Restored = (i32, i32, i32, i32, bool, i32, i32, String, String);
+    let restored: Restored = sqlx::query_as(
+        "SELECT type_id, durability, charges, flags, bound, ammo, cur_ammo_type, \
+                ammo_type::text, ammo_types::text \
+         FROM sgw_inventory WHERE item_id = $1",
+    )
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        restored,
+        (
+            type_id,
+            TEST_DURABILITY,
+            TEST_CHARGES,
+            5,
+            true,
+            9,
+            2,
+            "Bullet_EMP".to_string(),
+            "{Bullet_Default,Bullet_EMP}".to_string()
+        )
+    );
     assert!(!has_escrow(&pool, mail_id).await);
     assert!(capture
         .all()

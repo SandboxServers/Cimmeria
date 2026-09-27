@@ -125,8 +125,9 @@ async fn return_uses_sender_id_not_name() {
 
 /// CAT-G-06 / D-SS10: a returned mail cannot be returned again, so a return
 /// can never loop. The original sender's return is refused
-/// `already_returned` and the mail stays with them. Fails when the
-/// `returned` gate is removed (the mail bounces back).
+/// `already_returned` and the mail stays with them. Fails when both
+/// `returned` gates are removed, the Rust check and the UPDATE's
+/// `AND NOT returned` (the mail bounces back); either alone refuses.
 #[tokio::test]
 async fn return_rejects_already_returned() {
     let pool = require_db_or_skip!();
@@ -161,7 +162,9 @@ async fn return_rejects_already_returned() {
 }
 
 /// CAT-G-06: server mail (no `sender_id`) has nobody to return to; refused
-/// `system_mail`, untouched. Fails when the `sender_id` check is removed.
+/// `system_mail`, untouched. Revert that proves it: fall back to any
+/// destination for a NULL `sender_id` (for example the returner); the mail
+/// is then marked returned.
 #[tokio::test]
 async fn return_rejects_system_mail() {
     let pool = require_db_or_skip!();

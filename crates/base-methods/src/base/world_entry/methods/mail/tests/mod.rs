@@ -347,7 +347,10 @@ impl<'a> AttachedMail<'a> {
     /// Insert the mail and its escrow row; returns the mail id.
     pub(super) async fn insert(&self, pool: &PgPool) -> i32 {
         let mail_id: i32 = sqlx::query_scalar(
-            "INSERT INTO sgw_gate_mail                 (character_id, sender_id, sender_name, subject, message, cash,                  sent_time, read_time, flags)              VALUES ($1, $2, $3, 'Attached', 'body', $4, 1, 0, $5) RETURNING mail_id",
+            "INSERT INTO sgw_gate_mail \
+                (character_id, sender_id, sender_name, subject, message, cash, \
+                 sent_time, read_time, flags) \
+             VALUES ($1, $2, $3, 'Attached', 'body', $4, 1, 0, $5) RETURNING mail_id",
         )
         .bind(self.owner)
         .bind(self.sender_id)
@@ -358,8 +361,15 @@ impl<'a> AttachedMail<'a> {
         .await
         .expect("insert attached mail");
         if let Some((item_id, type_id, stack_size)) = self.item {
+            // Every instance column off its default, so a restore that
+            // drops one is visible.
             sqlx::query(
-                "INSERT INTO sgw_gate_mail_item                     (mail_id, item_id, type_id, stack_size, charges, durability, flags,                      bound, ammo, cur_ammo_type, ammo_type, ammo_types,                      source_character_id, escrowed_at)                  VALUES ($1, $2, $3, $4, $5, $6, 0, false, 0, 0, 'AMMO_NONE', '{}', $7, 1)",
+                "INSERT INTO sgw_gate_mail_item \
+                    (mail_id, item_id, type_id, stack_size, charges, durability, flags, \
+                     bound, ammo, cur_ammo_type, ammo_type, ammo_types, \
+                     source_character_id, escrowed_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, 5, true, 9, 2, 'Bullet_EMP', \
+                         '{Bullet_Default,Bullet_EMP}', $7, 1)",
             )
             .bind(mail_id)
             .bind(item_id)
@@ -391,7 +401,8 @@ pub(super) async fn mail_state(pool: &PgPool, mail_id: i32) -> Option<(i32, i64,
 /// instance id (the tests expect zero or one).
 pub(super) async fn inventory_rows(pool: &PgPool, item_id: i32) -> Vec<(i32, i32, i32, i32)> {
     sqlx::query_as(
-        "SELECT character_id, container_id, slot_id, stack_size FROM sgw_inventory          WHERE item_id = $1",
+        "SELECT character_id, container_id, slot_id, stack_size FROM sgw_inventory \
+         WHERE item_id = $1",
     )
     .bind(item_id)
     .fetch_all(pool)
