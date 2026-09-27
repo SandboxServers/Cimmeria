@@ -33,7 +33,7 @@ Confidence: HIGH (Lua evidence, doc cross-reference). MEDIUM on "no dedicated na
 
 ## Q2 — Does a mid-session `onBagInfo` with a larger size for 17 resize an open vault window, or only take effect on next open? Is there a Lua event on bag-info change?
 
-**Yes — live resize, through a genuine native UI event, no reopen needed.**
+**Likely yes, but inferred.** The Vault subscribes to a native UI event that re-validates the scrollbar. This pass did **not** find the native site that raises that event, so it is not proven that a larger `onBagInfo` raises it. Treat live resize as unverified until a runtime trace or UAT confirms it.
 
 - `Vault.lua:833`: `VaultWin:subscribe( Events.InventoryUpdateContainerSize, 'VaultMod.onResizeContainer' )`.
 - `VaultMod.onResizeContainer` (`Vault.lua:419-423`):
@@ -52,7 +52,7 @@ Confidence: HIGH (Lua evidence, doc cross-reference). MEDIUM on "no dedicated na
 - **What raises it natively was not conclusively traced this pass.** The plain string at `0x019b4d78` is referenced only from a large (~69 KB decompiled) Lua-property-registration function at `0x00cc33f0` — the same shape as the `Dialog` constants table in `dialog-controller-wire-flow.md` ("not defined in any `.lua` file... registered natively"), i.e. a name-table registration, not the emit call site. The RTTI type-descriptor address had no direct code cross-references found.
 - **Best-supported inference (MEDIUM confidence, architectural, not directly observed):** this event fires from the generic container-size cache-write path itself, the same layer that produces `InventoryUpdateSlot`/`InventoryHideSlot`/`InventoryClear` for content mutations — i.e., whenever the client's cached size for any container changes (from any `onBagInfo` that changes that container's declared size), the corresponding UI event fires and any open window for that container updates in the same tick. This is consistent with `onResizeContainer` being a generic, container-agnostic pattern (it checks `containerId == Container.Vault` itself, implying the same event fires for every container's resize, not just the Vault's).
 
-**Conclusion for BV-05:** re-sending `onBagInfo` for container 17 with the new `bank_slots` value after a successful Expand purchase should resize an already-open Vault window's scrollbar immediately — no client patch, no reopen required. This is itself useful "visible feedback on the press" (see Q3).
+**Conclusion for BV-05 (conditional):** if the size-cache write raises `InventoryUpdateContainerSize`, then re-sending `onBagInfo` for container 17 with the new `bank_slots` after a successful Expand purchase resizes an already-open Vault window's scrollbar without a reopen. That link is inferred, not traced. BV-05 must therefore also send a chat or feedback line on every outcome, so the press is acknowledged even if the window only resizes when it next opens. UAT confirms which.
 
 ## Q3 — Can a Banker offer an "Expand vault" dialog button through the existing dialog system? (Most important)
 
@@ -115,7 +115,7 @@ Exactly the existing path: click → `selectActiveDialogChoice(dialogId, buttonI
 
 1. Banker `interact()` → send `onVaultOpen(banker_id, banker_pos)` immediately (client method 106). This is the primary feedback; the window opening confirms the click landed.
 2. In the same response, if `bank_slots < 100`, also send `onDialogDisplay(banker_id, expand_dialog_id, 0, 1, 0)` (client method 105) for a **single-screen, single-`button_type=4`-button** dialog whose screen text and button text both state the price (e.g. "+10 slots for 100 naquadah").
-3. On `dialogButtonChoice(expand_dialog_id, expand_button_id)`, validate cash server-side (never trust a client amount — none is sent), debit cash and raise `bank_slots` by 10 in one statement/transaction, then send `onBagInfo` re-declaring container 17 (resizes any open vault window live per Q2) and `onCashChanged`, plus a chat/feedback line confirming the result either way.
+3. On `dialogButtonChoice(expand_dialog_id, …)`, treat the choice as **untrusted**. Today's server gate only checks that the dialog id was offered. `handle_dialog_button_choice` ignores `button_id`, and `OnDialogChoice` matches only the dialog id. So a forged `dialogButtonChoice(expand_dialog_id, -1)`, or any button id, reaches the handler. The single-button UI is not an authority check. The purchase handler must therefore re-validate the active vault session and the Banker proximity, then the cash (never trust a client amount; none is sent) and the 100-slot ceiling, debit cash and raise `bank_slots` by 10 in one statement/transaction, then send `onBagInfo` re-declaring container 17 (inferred to resize an open window; see Q2) and `onCashChanged`, plus a chat/feedback line confirming the result either way.
 4. Do not depend on `onVaultOpen`'s `Position` for anything (Q4) — closing/invalidating the session on distance is entirely server-side, exactly as already scoped in BV-02/BV-03.
 
 ## Evidence and address inventory
