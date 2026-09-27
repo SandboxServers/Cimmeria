@@ -451,4 +451,6 @@ mod tests;
 #[cfg(test)]
 mod vault_concurrency_tests;
 #[cfg(test)]
+mod vault_move_shape_tests;
+#[cfg(test)]
 mod vault_move_tests;
