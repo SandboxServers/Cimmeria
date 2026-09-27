@@ -10,7 +10,8 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    aggro, bank, bookmark, crafting, duel, entity, give, give_ability, mail, mission, net, patrol, pet, placement, query, seed, server, social, spawn, squad, stats, travel,
+    aggro, bank, bookmark, crafting, duel, entity, give, give_ability, mail, mission, net, patrol,
+    pet, placement, query, seed, server, social, spawn, squad, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
