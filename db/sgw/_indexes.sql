@@ -78,6 +78,25 @@ CREATE INDEX sgw_organization_events_unexported_idx ON sgw_organization_events U
 --
 
 CREATE INDEX sgw_organization_vault_log_org_idx ON sgw_organization_vault_log USING btree (org_id, logged_at);
+-- Index: sgw_auction_expiry_idx
+-- Supports the Phase 3 expiry sweep: WHERE status = 0 AND expires_at <= now.
+--
+
+CREATE INDEX sgw_auction_expiry_idx ON sgw_auction USING btree (status, expires_at);
+
+--
+-- Index: sgw_auction_seller_idx
+-- Supports "my listings" lookups by seller.
+--
+
+CREATE INDEX sgw_auction_seller_idx ON sgw_auction USING btree (seller_id);
+
+--
+-- Index: sgw_auction_bid_sequence_idx
+-- Supports bid-history lookups for one auction.
+--
+
+CREATE INDEX sgw_auction_bid_sequence_idx ON sgw_auction_bid USING btree (sequence_id);
 
 --
 -- Index: sgw_organization_cash_log_org_idx

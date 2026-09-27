@@ -19,7 +19,7 @@ use crate::minigame::SessionRegistry;
 
 use super::world_entry::methods::mail::expiry as mail_expiry;
 use super::{
-    archetype_name, connect_loop::run_connect_loop, outbox, resources::ResourceCache,
+    archetype_name, black_market, connect_loop::run_connect_loop, outbox, resources::ResourceCache,
     world_entry::handle_cell_message, BaseError, ConnectedClientState, OnlinePlayer,
 };
 
@@ -225,6 +225,11 @@ impl BaseService {
         // `Transport` super-trait.
         let transport_for_cell: Arc<dyn Transport> = bidi_transport.clone();
         let transport_for_expiry: Arc<dyn Transport> = bidi_transport.clone();
+        // Clones for the Black Market expiry sweep, captured before the cell
+        // handler / recv loop move their copies.
+        let transport_for_bm_sweep: Arc<dyn Transport> = bidi_transport.clone();
+        let connected_for_bm_sweep = Arc::clone(&connected);
+        let entity_to_addr_for_bm_sweep = Arc::clone(&entity_to_addr);
         let connected_for_cell = Arc::clone(&connected);
         let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
         let cell_tx_for_cell = cell_tx.clone();
@@ -301,6 +306,26 @@ impl BaseService {
         // quarantined; online players it touches are told.
         if let Some(pool) = self.db_pool.clone() {
             mail_expiry::spawn_sweeper(pool, transport_for_expiry, Arc::clone(&connected));
+        }
+
+        // Spawn the Black Market expiry sweep. Settles auctions past their
+        // `expires_at`: sold → mail seller cash + buyer item; unsold → mail the
+        // item back to the seller. Requires a DB pool.
+        if let Some(pool) = self.db_pool.clone() {
+            // Boot seed: ensure the auction house has active listings to serve
+            // for end-to-end validation even before a player posts one. These
+            // are real sgw_auction rows — served by search and expired by the
+            // sweep like any player auction (idempotent; seeds only an empty
+            // house). Spawned before the sweep; benign race (future expiry).
+            black_market::seed::spawn_seed(pool.clone());
+            black_market::sweep::spawn_sweep(
+                pool,
+                transport_for_bm_sweep,
+                connected_for_bm_sweep,
+                entity_to_addr_for_bm_sweep,
+            );
+        } else {
+            tracing::debug!("Skipping black_market expiry sweep: db_pool not configured");
         }
 
         self.is_running = true;

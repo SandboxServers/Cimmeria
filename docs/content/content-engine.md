@@ -52,12 +52,6 @@ The boundary exists so the engine stays declarative. Chain authors write SQL row
 
 Implementation status (2026-09-18): **shipped and driving Castle_CellBlock and SGC_W1 end-to-end.** Since the original write-up the surface has grown to cover NPC AI direction (`SetNpcPoi` / `SetFollowTarget` / `SetNpcAiState`), cover-proximity triggers, cross-world teleport, entity spawn/despawn, and a health-threshold trigger. Note that a handful of authorable actions still have no executor arm, and five authorable trigger types have no dispatch site at all — read §3's catalogs before authoring a chain.
 
-> **Unmerged work described here.** This document was revised on the
-> `feat/571-black-market-phase1` branch. The `OpenBlackMarket` action, the
-> `open_black_market` seed verb, the `executor/black_market.rs` handler, and the
-> `chain_replay_tests/black_market.rs` guard are **part of that unmerged branch,
-> not `main`**. Everything else described here is on `main`.
-
 ---
 
 ## 2. Architecture — the two-crate split
@@ -261,11 +255,20 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `apply_effect` | `ApplyEffect` | 1 |
 | `grant_stargate_address` | `GrantStargateAddress` | 1 |
 | `send_system_mail` | `SendSystemMail` | 1 |
+| `open_black_market` | `OpenBlackMarket` | 0 |
 
-> An `open_black_market` / `OpenBlackMarket` action exists on the unmerged
-> `feat/571-black-market-phase1` branch (PR #586) and is **not** on `main`. It is
-> documented in [../architecture/black-market.md](../architecture/black-market.md);
-> do not author against it until that branch lands.
+`open_black_market` sends `onBMOpen(auctioneerEntityId)` (client method 90)
+to open the client's Black Market window. It takes no params: the executor
+arm ([`executor/black_market.rs`](../../crates/cell-content/src/cell/content/executor/black_market.rs))
+resolves the auctioneer from the interact trigger's `target_entity_id`, then
+the player's `last_interaction_target` (the same sources `DisplayDialog`
+uses), and aborts with a `warn!` when neither resolves. Pair it with a
+`set_interaction_type` (`INT_Auction`, mask 4) on the auctioneer's tag so the
+client shows the interact prompt. No seeded chain uses it yet; the auctioneer
+NPC and its chains are packet BM-07 of the
+[Black Market plan](../analysis/black-market/README.md). A stock client drops
+method 90 until the client patch ships — see
+[../architecture/black-market.md](../architecture/black-market.md).
 
 `launch_ability` and `apply_effect` do **not** route through the combat
 pipeline. They call a separate server-authoritative entry point,

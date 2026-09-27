@@ -14,10 +14,11 @@
 > - **Understated.** Whole subsystems marked "NO"/"Not implemented" do have
 >   dispatch arms today — all of Crafting, Mail, Black Market, Trading, Pets,
 >   and most Minigame rows. Check `cell_methods/` before trusting a "NO".
->   Caveat on Black Market: the six cell-method arms (indices 61-66) are on
->   `main`, but the base-side service that fulfils them
->   (`crates/services/src/base/black_market/`) is **not merged** — it lands
->   with PR #586. "Dispatched" and "served" are different claims here.
+>   Black Market's base-side service
+>   (`crates/base-session/src/base/black_market/`) landed on 2026-09-27
+>   (packet BM-01, the port of PR #586), so its four rows below now read
+>   PARTIAL: served by the server, but the client drops the replies until
+>   the client patch ships (#587).
 > - **Overstated.** The nine `Chat*` rows (`ChatList`, `ChatIgnore`,
 >   `ChatFriend`, `ChatMute`, `ChatKick`, `ChatOp`, `ChatBan`, `ChatPassword`)
 >   and `SendGMShout` are marked implemented but have no handler.
@@ -78,7 +79,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | Organizations | 15 | Implemented server-side except the unsolicited PvP leave response (cash transfer is bank-vault BV-08); not yet client-verified |
 | Mail | 9 | Not implemented |
 | Trading | 4 | Not implemented |
-| Black Market | 4 | Not implemented |
+| Black Market | 4 | Partial (server only; client patch pending) |
 | Crafting & Research | 6 | Not implemented |
 | Abilities & Training | 4 | Partial |
 | Stargates | 5 | Partial (~20%) |
@@ -241,10 +242,10 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 
 | Event Name | String Addr | Handler Addr | .def Method | Impl |
 |------------|-------------|--------------|-------------|------|
-| `Event_NetOut_BMCreateAuction` | — | TBD | SGWBlackMarketManager.createAuction | NO |
-| `Event_NetOut_BMCancelAuction` | — | TBD | SGWBlackMarketManager.cancelAuction | NO |
-| `Event_NetOut_BMPlaceBid` | — | TBD | SGWBlackMarketManager.placeBid | NO |
-| `Event_NetOut_BMSearch` | — | TBD | SGWBlackMarketManager.searchBlackMarket | NO |
+| `Event_NetOut_BMCreateAuction` | — | TBD | SGWBlackMarketManager.createAuction | PARTIAL |
+| `Event_NetOut_BMCancelAuction` | — | TBD | SGWBlackMarketManager.cancelAuction | PARTIAL |
+| `Event_NetOut_BMPlaceBid` | — | TBD | SGWBlackMarketManager.placeBid | PARTIAL |
+| `Event_NetOut_BMSearch` | — | TBD | SGWBlackMarketManager.searchBlackMarket | PARTIAL |
 
 ### Trading
 

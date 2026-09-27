@@ -4,6 +4,8 @@
 //! Each match arm forwards to a per-family handler in a sibling module:
 //!
 //! - [`bark`]      — `NpcBark`, the non-modal companion line (client method 28)
+//! - [`black_market`] — `OpenBlackMarket`, open the client Black Market window
+//!   (`onBMOpen`, client method 90)
 //! - [`mission`]   — accept/advance/complete/abandon, advance step, complete objective
 //! - [`inventory`] — grant/remove items, bandolier seeding
 //! - [`dialog`]    — display, add/remove dialog set, add dialog
@@ -36,6 +38,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 mod bark;
+mod black_market;
 mod counter;
 mod deferred;
 mod dialog;
@@ -545,6 +548,9 @@ async fn execute_one(
                     "GrantXP: cell→base send failed -- player silently loses the chain's XP reward"
                 );
             }
+        }
+        Action::OpenBlackMarket => {
+            black_market::open(entity_id, chain_id, params, tx, space_mgr).await;
         }
         Action::GrantStargateAddress { stargate_id } => {
             stargate::grant_stargate_address(

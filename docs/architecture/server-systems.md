@@ -68,10 +68,9 @@ were still true:
 - **"No server performance metrics, no anomaly alerting."** Half false. OTLP
   export and Mercury packet instrumentation ship against a SigNoz backend
   ([observability.md](observability.md)). Alerting is still genuinely absent.
-- **"The black market is entirely stubbed."** True on `main`. A full Phase 1
-  implementation lives on the unmerged `feat/571-black-market-phase1` branch
-  (PR #586) — see [black-market.md](../gameplay/black-market.md), which is
-  explicit about which half is which.
+- **"The black market is entirely stubbed."** No longer true. The Phase 1
+  server (PR #586) was ported onto `main` on 2026-09-27; the client half still
+  needs a patch — see [black-market.md](../gameplay/black-market.md).
 
 ## The framing that still holds
 

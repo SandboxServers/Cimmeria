@@ -2,17 +2,19 @@
 title: "Black Market (Auction House)"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Black Market (Auction House)
 
-> **Last updated**: 2026-07-25
-> **Status on `main`**: **Not implemented.** 94 lines of handler stubs.
-> **Status on `feat/571-black-market-phase1`** (unmerged, PR #586): Phase 1 — search / create / bid / cancel / expiry all work; item watching is still a stub.
+> **Last updated**: 2026-09-27
+> **Status on `main`**: Server implemented, not player-visible. Search / create / bid / cancel / expiry work server-side; item watching is still a stub.
 
 > [!IMPORTANT]
-> Everything this page describes as working lives on the **unmerged** branch `feat/571-black-market-phase1` (PR #586). None of it is on `main`. If you are reading `main`, see [What exists on `main`](#what-exists-on-main) — the auction house is two stub files that log and drop.
+> The server side is on `main`: packet BM-01 of the [restoration plan](../analysis/black-market/README.md) ported `feat/571-black-market-phase1` (PR #586) onto the split crates without changing its behaviour. Two things still stand between it and a player:
+>
+> - **The client drops every `onBM*` method (90–95).** The auction window opens only with the client patch the plan builds (issue #587, packets BM-03 to BM-06).
+> - **Parts of the server's wire contract do not match the client.** The plan's client-IO pass lists them as S1–S8 (`onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, 1-based durations, the time-left bucket, search paging, caller-scoped views, seller names). Packet BM-02 fixes them. Until then, the wire tables on this page describe what the server sends and reads, not what the client expects.
 
 ## Overview
 
@@ -20,33 +22,22 @@ The Black Market is the player-driven auction house system. Players list items f
 
 The `SGWBlackMarketManager` interface defines the player-side protocol. The `SGWBlackMarket` entity is a server-only BaseApp entity that handles auction persistence and search.
 
-## What exists on `main`
+## Implementation Status
 
-Two files, 94 lines total, neither of which touches a database:
-
-| File | Lines | Behaviour |
-|------|-------|-----------|
-| `cell/cell_methods/black_market.rs` | 80 | Decodes cell methods 61–66 and logs `UNIMPLEMENTED` for each |
-| `cell/client_methods/black_market.rs` | 14 | Client-method index constants (90–95) only |
-
-There is no `sgw_auction` table, no base-side handler, and no `onBM*` reply is ever sent. Note also that `main`'s `BMCreateAuction` arm reads a **16-byte** payload with a 4-byte `duration_days` field; that is wrong — see [Wire Format](#bmcreateauction-client--server) for the corrected 13-byte layout the branch uses.
-
-## Implementation Status (branch `feat/571-black-market-phase1` only)
-
-The Rust implementation is split across two layers. Client RPCs land on the cell methods (indices 61–66) in `crates/services/src/cell/cell_methods/black_market/mod.rs`, which decode the payload and forward to the base via `CellToBaseMsg::BM*` variants. The base side (`crates/services/src/base/black_market/`) owns all database, escrow, cash, and mail work and sends the `onBM*` replies (client indices 90–95) back to the requesting player.
+The Rust implementation is split across two layers. Client RPCs land on the cell methods (indices 61–66) in `crates/cell-methods/src/cell/cell_methods/black_market/mod.rs`, which decode the payload and forward to the base via `CellToBaseMsg::BlackMarket(BlackMarketCellToBase)` (routed by `crates/base-world-entry/src/base/world_entry/cell_dispatch/black_market_dispatch.rs`). The base side (`crates/base-session/src/base/black_market/`) owns all database, escrow, cash, and mail work and sends the `onBM*` replies (client indices 90–95) back to the requesting player. `BMSearchOptions` and the `onBMOpen` serializer are in `crates/wire/src/black_market.rs`, because both halves name them. The file names in the table below are relative to the base-side directory.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Search auctions | DONE | `BMSearch` (CM 61) → `base/black_market/search.rs`; `BMSearchOptions` deserialized in `types.rs` |
+| Search auctions | DONE | `BMSearch` (CM 61) → `search.rs`; `BMSearchOptions` deserialized in `cimmeria_wire::black_market` |
 | Create auction | DONE | `BMCreateAuction` (CM 62) → `create.rs`; escrows the item out of inventory |
 | Place bid | DONE | `BMPlaceBid` (CM 63) → `bid.rs`; refunds the outbid player |
 | Cancel auction | DONE | `BMCancelAuction` (CM 64) → `cancel.rs`; returns the escrowed item |
-| Expiry settlement | DONE | Periodic background sweep in `sweep.rs` — pays the seller, mails the item to the winner |
+| Expiry settlement | DONE | Periodic background sweep in `sweep.rs` — pays the seller, mails the item to the winner; the mail writes are in `payout_mail.rs` |
 | Watch items | STUB | `BMStartWatchingItem` / `BMStopWatchingItem` (CM 65/66) log `UNIMPLEMENTED` and drop |
 | Auction results display | DONE | `onBMAuctions` serialized by `wire::serialize_on_bm_auctions` |
 | Auction updates | DONE | `onBMAuctionUpdate`, `onBMAuctionRemove` in `wire.rs` / `send.rs` |
 | Error handling | PARTIAL | `onBMError` is wired, but the `EBlackMarketError` ordinals are placeholders — see [Blocked Unknowns](#blocked-unknowns) |
-| Server-side entity | DONE | `SGWBlackMarket` base-side state machine under `base/black_market/` |
+| Server-side entity | DONE | `SGWBlackMarket` base-side state machine under `crates/base-session/src/base/black_market/` |
 | Persistence | DONE | `sgw_auction` + `sgw_auction_bid` tables under `db/sgw/BlackMarket/` |
 
 ## Entity Definitions
@@ -154,7 +145,7 @@ STRING sellerName
 
 ## Blocked Unknowns
 
-Three values are still guesses, each isolated to a single named constant or function in `base/black_market/wire.rs` so the real captured value is a one-line swap:
+Three values are still guesses, each isolated to a single named constant or function in `crates/base-session/src/base/black_market/wire.rs` so the real captured value is a one-line swap:
 
 | Unknown | Current placeholder | How to settle it |
 |---------|--------------------|------------------|
@@ -164,22 +155,28 @@ Three values are still guesses, each isolated to a single named constant or func
 
 The shipped `resources."EBlackMarketError"` type only defines `InvalidSortType` and `BMUnavailable`, which do not cover the create/bid/cancel validation failures the server needs to report. `resources."EBlackMarketTime"` names five tiers (VeryShort / Short / Medium / Long / VeryLong) but carries no durations.
 
-## Auction Flow (branch only)
+## Auction Flow
 
 ```
 Seller: BMCreateAuction(itemInstanceId, buyoutPrice, auctionLength, startingPrice)
-  |-> Cell: validate item exists, remove from inventory
-  |-> Base: forward to SGWBlackMarket.createAuction()
-  |-> SGWBlackMarket: persist auction, notify watchers via onBMAuctionUpdate
+  |-> Cell: decode, forward to the base (no checks cell-side)
+  |-> Base (create.rs), one transaction: validate prices, escrow the item
+  |   (DELETE ... RETURNING from the seller's inventory), insert the listing
+  |-> Seller: onBMAuctionUpdate
 
 Buyer: BMSearch(searchOptions)
-  |-> Cell -> Base -> SGWBlackMarket.searchBlackMarket()
+  |-> Cell -> Base (search.rs): query active listings
   |-> Results: onBMAuctions(items[], totalResults, clientKey)
 
 Buyer: BMPlaceBid(sequenceId, bidAmount)
-  |-> Cell -> Base -> SGWBlackMarket.placeBid()
-  |-> Validate: bid > current, sufficient cash
-  |-> Update auction, notify: onBMAuctionUpdate
+  |-> Cell -> Base (bid.rs), one transaction: lock the listing,
+  |   validate bid > current and sufficient cash, refund the prior
+  |   bidder, hold the new bid
+  |-> Bidder: onBMAuctionUpdate
+
+Seller: BMCancelAuction(sequenceId)
+  |-> Cell -> Base (cancel.rs): return the escrowed item, refund the bidder
+  |-> Seller: onBMAuctionRemove(sequenceId)
 
 Auction expires (expiry sweep, every 30s):
   |-> Sold (a bidder exists):  seller is mailed the winning cash,
@@ -191,9 +188,9 @@ Auction expires (expiry sweep, every 30s):
 
 Settlement runs in one transaction per auction, so a crash mid-settlement cannot double-deliver. System-generated auction mail uses the sender name `Black Market`.
 
-## Persistence (branch only)
+## Persistence
 
-Two tables under [`db/sgw/BlackMarket/`](../../db/sgw/BlackMarket/). **Neither exists on `main`** — a `main` checkout has no auction schema at all:
+Two tables under [`db/sgw/BlackMarket/`](../../db/sgw/BlackMarket/):
 
 - **`sgw_auction`** — one row per listing. `sequence_id` is the primary key and the wire-visible identity the client tracks (`onBMAuctions` / `onBMAuctionUpdate` / `onBMAuctionRemove` all key on it). Carries the escrowed item snapshot (`item_id`, `item_def_id`, `stack_size`, `durability`, `charges`), pricing (`starting_price`, `buyout_price`, `current_bid`, `current_bidder`), and timing (`auction_length`, `created_at`, `expires_at` — both unix epoch seconds).
 - **`sgw_auction_bid`** — bid history, one row per accepted bid, retained for refund and audit. The live "current" bid is denormalised onto `sgw_auction`.
@@ -204,22 +201,23 @@ Two tables under [`db/sgw/BlackMarket/`](../../db/sgw/BlackMarket/). **Neither e
 
 - **Custom types**: `BMSearchOptions`, `AuctionItem` — see [Wire Format](#wire-format)
 - **Enumerations**: `EBlackMarketError`, `EBlackMarketTime`, `EBlackMarketSortType`, `EBlackMarketFilter`
-- **Database**: `sgw_auction`, `sgw_auction_bid` (branch only)
+- **Database**: `sgw_auction`, `sgw_auction_bid`
 
 ## Remaining Work
 
-0. **Merge PR #586.** Until `feat/571-black-market-phase1` lands, none of the above is on `main` and the auction house is non-functional for anyone building from the default branch. Every item below is scoped to the branch.
+0. **The client patch and the contract fixes.** The [restoration plan](../analysis/black-market/README.md) sequences them: BM-02 fixes the wire contract (S1–S8) and adds a shared codec, BM-03 to BM-06 build the client patch and its launcher delivery, BM-02b moves the payouts onto the social-systems mail API.
 1. **Error codes** — capture the real `EBlackMarketError` ordinals (see [Blocked Unknowns](#blocked-unknowns))
 2. **Auction lengths** — capture the real `auctionLength` UINT8 → duration mapping
 3. **Next-min-bid formula** — capture real `currentBid → nextMinBidPrice` pairs
 4. **Watch notifications** — `BMStartWatchingItem` / `BMStopWatchingItem` are still stubs; the push flow when a watched item is listed is unimplemented
-5. **Immediate buyout settlement** — a bid at or above a non-zero `buyout_price` is currently accepted as an ordinary high bid and left for the expiry sweep to settle. The original game settled it on the spot (`bid.rs:24-28`)
+5. **Immediate buyout settlement** — a bid at or above a non-zero `buyout_price` is currently accepted as an ordinary high bid and left for the expiry sweep to settle. The original game settled it on the spot (`bid.rs:24-28`); decision D8 in the plan settles immediately, landing with BM-02b
 
 ## Economy sink design (unbuilt)
 
 Folded in from the superseded server-systems survey. Nothing here is
-implemented on either `main` or the branch — the auction currently takes no cut
-at all.
+implemented — the auction currently takes no cut at all, and decision D5 in the
+[restoration plan](../analysis/black-market/README.md) chose a cap of 20 active
+listings per player and no fee for now.
 
 The Black Market is the natural place for Cimmeria's first real currency sink.
 Currency enters the game freely (mission rewards, cash loot, vendor sell-back)
@@ -241,4 +239,4 @@ build that first, then set these numbers against real data.
 ## Related Docs
 
 - [inventory-system.md](inventory-system.md) - Items listed and purchased
-- [mail-system.md](mail-system.md) - Delivery mechanism for won items and seller proceeds (branch only)
+- [mail-system.md](mail-system.md) - Delivery mechanism for won items and seller proceeds

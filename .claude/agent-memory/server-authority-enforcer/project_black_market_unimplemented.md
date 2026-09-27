@@ -5,6 +5,16 @@ metadata:
   type: project
 ---
 
+> **Superseded 2026-09-27.** BM-01 (the port of `feat/571-black-market-phase1`)
+> put the server on `main`: `crates/base-session/src/base/black_market/`
+> (create/bid/cancel/search, escrow, the 30 s sweep), decoded in
+> `crates/cell-methods/src/cell/cell_methods/black_market/`. Of the CAT-I
+> invariants below, still open: CAT-I-05 (search has no `LIMIT` or
+> cursor paging), the listing cap (D5: 20 per player) and the
+> `clientKey`-scoped result views. BM-02 (`docs/analysis/black-market/`)
+> covers the search bound and the views; the cap is decided (D5) but not yet
+> in a packet. The text below describes `main` before the port.
+
 The SGW Black Market / Auction House surface (`SGWBlackMarketManager`,
 CellMethod indices 61–66) is fully unimplemented in
 `crates/cell-methods/src/cell/cell_methods/black_market.rs`. Every arm

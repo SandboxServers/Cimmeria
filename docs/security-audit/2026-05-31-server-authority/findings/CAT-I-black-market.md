@@ -1,5 +1,15 @@
 # CAT-I — Black Market / Auction House (server-authority audit)
 
+> **Merged (2026-09-27).** Packet BM-01 ported `feat/571-black-market-phase1`
+> onto `main` without behaviour changes, so the "addressed" items below are
+> live. The code is in `crates/base-session/src/base/black_market/` (the file
+> paths below are relative to it); `validate.rs`, `bid.rs` and `cancel.rs` are
+> byte-identical to the branch, and their guards passed the live-DB tier at
+> merge. The line references in `wire.rs` and `search.rs` are updated to the
+> ported files. CAT-I-05 and the rest of CAT-I-02 are still open; the
+> [restoration plan](../../../analysis/black-market/README.md) schedules the
+> search bound (S7) and records the listing-cap decision (D5).
+>
 > **Status re-verification (2026-07-25)** — this category has moved from
 > "latent, post-implementation" to real code, but that code is **not yet on
 > `origin/main`**. The Black Market Phases 1–3 live on
@@ -18,14 +28,14 @@
 >   matched a row the seller owned (`validate.rs:18-31`) — and prices are
 >   floored at zero. Duration is bounded because it is an *enum*, not a
 >   raw span: `auction_length_seconds` maps any out-of-range byte to 96 h
->   (`wire.rs:48-57`). **Still open**: no listing-fee deduction and no
+>   (`wire.rs:52-61`). **Still open**: no listing-fee deduction and no
 >   per-player listing cap.
 > - **CAT-I-03 (bid): addressed.** `validate_bid` checks
 >   auction-active → not-self-bid → meets-`required_min_bid` →
 >   sufficient-funds (`validate.rs:38-58`), and the whole bid runs in one
 >   transaction with a row lock, refunding the prior bidder before holding
 >   the new bid (`bid.rs:68-232`). Caveat: `next_min_bid` is a **guessed**
->   5 %-increment formula pending x64dbg capture (`wire.rs:59-67`), so the
+>   5 %-increment formula pending x64dbg capture (`wire.rs:63-71`), so the
 >   floor may not match the client's.
 > - **CAT-I-04 (cancel): addressed.** `validate_cancel` requires the caller
 >   to be the seller and the auction to be active (`validate.rs:73`); item
@@ -33,7 +43,7 @@
 >   (`cancel.rs:39-187`).
 > - **CAT-I-05 (search): STILL OPEN.** The search query has **no `LIMIT`**
 >   and no result-size cap — `fetch_all` returns every matching row
->   (`search.rs:37-45`).
+>   (`search.rs:35-47`).
 > - **CAT-I-06 (expiry sweep): addressed.** `black_market/sweep.rs`
 >   implements the expiry pass with the COD-to-seller / item-return mail
 >   cascade via `send_mail_to_player`.

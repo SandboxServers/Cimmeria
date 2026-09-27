@@ -54,6 +54,7 @@ use crate::test_support::test_default_connected_client_state;
 
 mod aoi_defer_gate;
 mod bank_arm;
+mod black_market_arms;
 mod cinematic_hold_gate;
 mod crafting_arm;
 mod crafting_gate;

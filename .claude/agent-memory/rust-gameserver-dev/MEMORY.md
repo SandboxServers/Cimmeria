@@ -18,6 +18,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [rebase-keep-both-regex-drops-braces.md](rebase-keep-both-regex-drops-braces.md) — scripted "keep both" conflict fixes can drop a `}` mid-hunk; inspect + `cargo check` before `--continue`.
 - [resuming-a-dead-workers-wip.md](resuming-a-dead-workers-wip.md) — a `wip(...) unverified` commit may not compile; its tests encode the starting design; port hunks by hand.
 - [crate-split-extraction-traps.md](crate-split-extraction-traps.md) — moving code out of services: `pub(crate)` turns dead, `unreachable_pub` hits pub fields, layering-guard globs, live-DB list and `IN_PROCESS_CRATES` guards.
+- [pre-split-branch-port-traps.md](pre-split-branch-port-traps.md) — porting a June branch onto the split: pull cell-visible types into wire (no sqlx there), OTEL row per new wire module, taken seed ids, sentinel blocks.
 
 ## Tooling quirks
 

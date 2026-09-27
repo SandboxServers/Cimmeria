@@ -13,6 +13,8 @@
 //!   gate + emit), themselves routing into the [`aoi`] packet emitters
 //! - [`inventory_dispatch`]    — inventory / bandolier / persisted-options arms
 //! - [`vendor_dispatch`]       — vendor store + two-party trade arms
+//! - [`black_market_dispatch`] — Black Market search / create / bid / cancel
+//!   arms, routing into `base::black_market`
 //! - [`progression_dispatch`]  — mission / grant / console / spawn / mail /
 //!   minigame arms
 //! - [`item_grant_dispatch`]   — the `GrantItem` body `progression_dispatch`
@@ -46,6 +48,7 @@ mod aoi;
 mod aoi_dispatch;
 mod bandolier;
 mod bank_dispatch;
+mod black_market_dispatch;
 mod chat_dispatch;
 mod contact_list_dispatch;
 mod deferred_flush;
@@ -192,6 +195,8 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::SellVendorItems { .. }
         | CellToBaseMsg::BuybackVendorItems { .. }
         | CellToBaseMsg::ExecuteTrade { .. } => vendor_dispatch::route(msg, &ctx).await,
+
+        CellToBaseMsg::BlackMarket(bm) => black_market_dispatch::route(bm, &ctx).await,
 
         CellToBaseMsg::ListInventoryItems { .. }
         | CellToBaseMsg::MoveInventoryItem { .. }

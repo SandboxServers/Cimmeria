@@ -152,4 +152,16 @@ ALTER TABLE ONLY sgw_organization_events
 
 ALTER TABLE ONLY sgw_player
     ADD CONSTRAINT sgw_player_player_id_account_id_key UNIQUE (player_id, account_id);
+-- Name: sgw_auction_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction
+    ADD CONSTRAINT sgw_auction_pkey PRIMARY KEY (sequence_id);
+
+--
+-- Name: sgw_auction_bid_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction_bid
+    ADD CONSTRAINT sgw_auction_bid_pkey PRIMARY KEY (bid_id);
 

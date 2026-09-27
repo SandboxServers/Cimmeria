@@ -41,7 +41,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Minigames](#minigames) | IM | MinigamePlayer | `minigame/` | LOW |
 | [Mail](#mail) | NT | SGWMailManager | `cell/mail.rs`, `base/world_entry/methods/mail/` | MEDIUM |
 | [Trading](#trading) | IM | SGWPlayer | `cell/cell_methods/player/trade/`, `base/world_entry/methods/trade/` | LOW |
-| [Black Market](#black-market) | KM on `main` | SGWBlackMarketManager | stubs on `main`; Phase 1 on unmerged PR #586 | LOW |
+| [Black Market](#black-market) | IM | SGWBlackMarketManager | `base/black_market/` (base-session), `cell/cell_methods/black_market/` | LOW |
 | [Pets](#pets) | KM | (SGWPet entity) | — | LOW |
 | [Dueling](#dueling) | IM | (SGWPlayer direct) | `base/dispatch/duel.rs`, `cell/duel/` | LOW |
 | [Groups](#groups) | KM | GroupAuthority | — | MEDIUM |
@@ -256,9 +256,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Black Market
 
-**Status**: KM on `main` — 94 lines of handler stubs that log and drop (`cell/cell_methods/black_market.rs`, `cell/client_methods/black_market.rs`). No base handler, no `sgw_auction` table, no `onBM*` ever sent.
-
-Phase 1 exists on the **unmerged** branch `feat/571-black-market-phase1` (PR #586): search, create, bid, and cancel work end-to-end with item escrow, outbid refunds, and a 30-second expiry sweep that settles by mail. Item watching is still a stub there; immediate buyout falls through to the sweep; three wire constants are placeholders pending a debugger capture.
+**Status**: IM — Phase 1 is on `main` (ported from PR #586 by packet BM-01, 2026-09-27): search, create, bid, and cancel work server-side with item escrow, outbid refunds, and a 30-second expiry sweep that settles by mail. Not player-visible: the client drops every `onBM*` until the client patch ships (#587), and the wire contract has known mismatches that packet BM-02 fixes ([restoration plan](../analysis/black-market/README.md)). Item watching is still a stub; immediate buyout falls through to the sweep; three wire constants are placeholders pending a debugger capture.
 
 **Features**: Auction house for player-listed items. Search, bid, buyout, create/cancel auctions.
 **Events**: `BMSearch`, `BMCreateAuction`, `BMCancelAuction`, `BMPlaceBid` (NetOut, cell methods 61–66); `onBMOpen`, `onBMAuctions`, `onBMAuctionUpdate`, `onBMAuctionRemove`, `onBMError` (NetIn, client methods 90–95)
@@ -421,7 +419,7 @@ Phase 1 exists on the **unmerged** branch `feat/571-black-market-phase1` (PR #58
 ### Nice to Have (polish)
 
 12. **Crafting activities** — the six player-facing operations, on top of the working state layer
-13. **Black Market** — land PR #586 first (nothing is on `main`), then phase 2: item watching, immediate buyout, real error/duration constants
+13. **Black Market** — contract fixes and the client patch ([restoration plan](../analysis/black-market/README.md)), then item watching, immediate buyout, real error/duration constants
 14. **Minigames** — port Alignment and GoauldCrystals; stop falling back to auto-win on an unknown name
 15. **Trading** — two-client verification and real partner-side item detail
 16. **Pets** — pet summoning and control

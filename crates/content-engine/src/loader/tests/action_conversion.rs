@@ -46,6 +46,26 @@ fn convert_move_waypoint_action() {
 }
 
 #[test]
+fn convert_open_black_market_action() {
+    // No target_id/target_key/params — the auctioneer is resolved at
+    // execution time from the interact trigger's target_entity_id.
+    let row = DbActionRow {
+        chain_id: 5031,
+        action_type: "open_black_market".to_string(),
+        target_id: None,
+        target_key: None,
+        params: serde_json::json!({}),
+        delay_ms: 0,
+        sort_order: 0,
+    };
+    let action = convert_action(&row).expect("open_black_market must convert");
+    assert!(
+        matches!(action, Action::OpenBlackMarket),
+        "open_black_market must map to Action::OpenBlackMarket, got {action:?}"
+    );
+}
+
+#[test]
 fn convert_set_active_slot_action() {
     let row = DbActionRow {
         chain_id: 1,
