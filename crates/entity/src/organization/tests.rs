@@ -369,6 +369,9 @@ fn every_field_rejects_controls_bidi_and_zero_width() {
         TextField::OfficerNote,
         TextField::RankName,
         TextField::ChatText,
+        TextField::MailSubject,
+        TextField::MailBody,
+        TextField::MailRecipient,
     ];
     for field in fields {
         for (text, want) in [
@@ -392,11 +395,22 @@ fn every_field_rejects_controls_bidi_and_zero_width() {
 }
 
 #[test]
-fn newline_only_in_motd_and_notes() {
-    for field in [TextField::Motd, TextField::Note, TextField::OfficerNote] {
+fn newline_only_in_motd_notes_and_mail_body() {
+    for field in [
+        TextField::Motd,
+        TextField::Note,
+        TextField::OfficerNote,
+        TextField::MailBody,
+    ] {
         assert_eq!(validate(field, "line 1\nline 2").unwrap(), "line 1\nline 2");
     }
-    for field in [TextField::Name, TextField::RankName, TextField::ChatText] {
+    for field in [
+        TextField::Name,
+        TextField::RankName,
+        TextField::ChatText,
+        TextField::MailSubject,
+        TextField::MailRecipient,
+    ] {
         assert_eq!(
             validate(field, "a\nb"),
             Err(TextReject::Control('\n')),
@@ -420,6 +434,9 @@ fn non_name_fields_keep_their_text_and_enforce_caps() {
         (TextField::OfficerNote, 128),
         (TextField::RankName, 32),
         (TextField::ChatText, 255),
+        (TextField::MailSubject, 128),
+        (TextField::MailBody, 1_000),
+        (TextField::MailRecipient, 64),
     ] {
         assert!(validate(field, &"x".repeat(max)).is_ok(), "{field:?}");
         assert_eq!(
@@ -435,6 +452,16 @@ fn non_name_fields_keep_their_text_and_enforce_caps() {
         validate(TextField::RankName, ""),
         Err(TextReject::TooShort { units: 0, min: 1 })
     );
+    // D-SS12: a mail needs a subject and a recipient needs a name; an
+    // empty body is fine.
+    for field in [TextField::MailSubject, TextField::MailRecipient] {
+        assert_eq!(
+            validate(field, ""),
+            Err(TextReject::TooShort { units: 0, min: 1 }),
+            "{field:?}"
+        );
+    }
+    assert_eq!(validate(TextField::MailBody, "").unwrap(), "");
 }
 
 /// Caps count UTF-16 units, not chars: a supplementary-plane character is

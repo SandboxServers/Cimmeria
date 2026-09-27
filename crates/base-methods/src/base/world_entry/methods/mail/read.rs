@@ -2,9 +2,16 @@
 
 use super::MailCtx;
 use crate::cell::mail;
+use crate::cell::mail::codes::flags::MAIL_ARCHIVE;
 use crate::mercury::method_idx;
 
-/// `requestMailHeaders(bArchive)`: the caller's mail list.
+/// `requestMailHeaders(bArchive)`: the caller's inbox (`bArchive` 0) or
+/// archive (any other value).
+///
+/// Only the requested list is sent (audit A-08). The client keeps two lists
+/// and files each row by its own `MAIL_Archive` bit, but it clears only the
+/// requested list on a reset, so rows of the other list sent here would sit
+/// in it un-reset (SS-E1 M-Q7).
 pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
     let (entity_id, player_id) = (ctx.entity_id, ctx.player_id);
     tracing::debug!(entity_id, player_id, b_archive, "Mail: querying headers");
@@ -21,11 +28,15 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
         flags: i32,
     }
 
+    let archive_bit = if b_archive != 0 { MAIL_ARCHIVE } else { 0 };
     let rows = match sqlx::query_as::<_, MailRow>(
         "SELECT mail_id, sender_name, sender_id, subject, cash, sent_time, read_time, flags \
-         FROM sgw_gate_mail WHERE character_id = $1 ORDER BY mail_id DESC",
+         FROM sgw_gate_mail WHERE character_id = $1 AND (flags & $2) = $3 \
+         ORDER BY mail_id DESC",
     )
     .bind(player_id)
+    .bind(MAIL_ARCHIVE)
+    .bind(archive_bit)
     .fetch_all(ctx.pool)
     .await
     {
@@ -61,7 +72,11 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
         .collect();
 
     tracing::debug!(
+        target: "mail",
+        event = "mail.headers_sent",
         entity_id,
+        player_id,
+        b_archive,
         count = headers.len(),
         "Mail: sending headers to client"
     );
@@ -72,6 +87,9 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
 }
 
 /// `requestMailBody(MailId)`: one body, marking the mail read on first open.
+///
+/// `ToText` is the name stored on the recipient's `sgw_player` row (audit
+/// A-10, CAT-G-08), not whatever name the reader's session holds.
 pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
     let (entity_id, player_id) = (ctx.entity_id, ctx.player_id);
     tracing::debug!(entity_id, mail_id, "Mail: querying body");
@@ -79,10 +97,13 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
     #[derive(sqlx::FromRow)]
     struct BodyRow {
         message: String,
+        recipient_name: String,
     }
 
     let row = match sqlx::query_as::<_, BodyRow>(
-        "SELECT message FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2",
+        "SELECT m.message, p.player_name AS recipient_name \
+         FROM sgw_gate_mail m JOIN sgw_player p ON p.player_id = m.character_id \
+         WHERE m.mail_id = $1 AND m.character_id = $2",
     )
     .bind(mail_id)
     .bind(player_id)
@@ -97,9 +118,11 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
         // schema mismatches behind a benign-looking message.
         Ok(None) => {
             tracing::warn!(
+                target: "mail",
                 entity_id,
                 mail_id,
                 player_id,
+                reason = "not_found_for_owner",
                 "Mail body not found for this character_id"
             );
             return;
@@ -117,49 +140,37 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i32;
-    if let Err(e) =
-        sqlx::query("UPDATE sgw_gate_mail SET read_time = $1 WHERE mail_id = $2 AND read_time = 0")
-            .bind(now)
-            .bind(mail_id)
-            .execute(ctx.pool)
-            .await
-    {
+    if let Err(e) = mark_read(ctx.pool, mail_id, player_id, now).await {
         tracing::warn!(entity_id, mail_id, "Mail: read_time UPDATE failed: {e}");
     }
 
-    // Resolve the player_name only here: the read packet carries the
-    // recipient's display name, and the other arms don't need it.
-    let player_name = match lookup_player_name(ctx) {
-        Some(n) => n,
-        None => {
-            tracing::warn!(entity_id, "Mail: no addr for player name lookup");
-            return;
-        }
-    };
-    let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
+    let args = mail::serialize_on_mail_read(mail_id, &row.message, &row.recipient_name);
     ctx.send_to_caller(method_idx::ON_MAIL_READ, &args).await;
 }
 
-/// The caller's session `player_name`, or `None` when the entity has no
-/// client address any more.
-fn lookup_player_name(ctx: &MailCtx<'_>) -> Option<String> {
-    let addr_guard = match ctx.entity_to_addr.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    let addr = addr_guard.get(&ctx.entity_id).copied();
-    drop(addr_guard);
-    let addr = addr?;
-    let clients = match ctx.connected.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    Some(
-        clients
-            .get(&addr)
-            .and_then(|c| c.player_name.clone())
-            .unwrap_or_default(),
+/// Stamp the first read of `mail_id` by its owner `player_id`; returns the
+/// rows changed (0 or 1).
+///
+/// Owner-scoped on its own (audit A-09, CAT-G-07), not only through the
+/// owner-scoped SELECT that precedes it in [`request_body`]: a later caller
+/// that skips the SELECT must still be unable to mark another character's
+/// mail read. `AND read_time = 0` keeps the first-read time.
+pub(super) async fn mark_read(
+    pool: &sqlx::PgPool,
+    mail_id: i32,
+    player_id: i32,
+    now: i32,
+) -> Result<u64, sqlx::Error> {
+    sqlx::query(
+        "UPDATE sgw_gate_mail SET read_time = $1 \
+         WHERE mail_id = $2 AND character_id = $3 AND read_time = 0",
     )
+    .bind(now)
+    .bind(mail_id)
+    .bind(player_id)
+    .execute(pool)
+    .await
+    .map(|r| r.rows_affected())
 }
 
 /// `deleteMailMessage(MailId)`.
@@ -174,9 +185,11 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
     {
         Ok(r) if r.rows_affected() == 0 => {
             tracing::warn!(
+                target: "mail",
                 entity_id,
                 player_id,
                 mail_id,
+                reason = "not_found_for_owner",
                 "Mail: Delete affected 0 rows"
             );
         }
@@ -207,9 +220,11 @@ pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
     {
         Ok(r) if r.rows_affected() == 0 => {
             tracing::warn!(
+                target: "mail",
                 entity_id,
                 player_id,
                 mail_id,
+                reason = "not_found_for_owner",
                 "Mail: Archive affected 0 rows"
             );
         }

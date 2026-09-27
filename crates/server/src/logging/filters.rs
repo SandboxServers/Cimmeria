@@ -182,6 +182,14 @@ use crate::otel;
 /// `online_index` (SS-00) is the online name index: DEBUG `insert` /
 /// `remove` rows with the teardown `path`, and a DEBUG `lookup` row with
 /// `reason = missing | ambiguous` for every lookup that does not resolve.
+///
+/// `mail` (social-systems SS-M1, raised from `info`) is gate mail: INFO
+/// `mail.sent` with the recipients and mail ids, WARN `mail.send_refused`
+/// with `reason` and `result` for every refused send and the read-side
+/// owner misses, and DEBUG rows for the cell's decode verdict
+/// (`mail.send_decoded`, `mail.send_decode_rejected`), each failed
+/// recipient (`mail.recipient_failed`), an attachment seen
+/// (`mail.attachment_seen`) and each header list sent (`mail.headers_sent`).
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -233,7 +241,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 threat=info,\
                 auth=info,\
                 world_entry=info,\
-                vendor=info,mail=info,progression=info,inventory=info,mission=info,\
+                vendor=info,progression=info,inventory=info,mission=info,\
                 abilities=debug,\
                 crafting=debug,\
                 content.resolve=debug,\
@@ -246,6 +254,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 trade.atomic_swap=debug,\
                 org=debug,squad=debug,\
                 chat=debug,rate_limit=debug,online_index=debug,\
+                mail=debug,\
                 console.feedback=debug,\
                 client.native=debug,\
                 launcher=debug,\

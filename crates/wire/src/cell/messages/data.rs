@@ -1,5 +1,7 @@
 //! Shared data structs used by both `BaseToCellMsg` and `CellToBaseMsg`.
 
+use cimmeria_entity::organization::{TextField, TextReject};
+
 /// Mail operation types forwarded from CellService to BaseApp for DB execution.
 #[derive(Debug)]
 pub enum MailOp {
@@ -11,6 +13,74 @@ pub enum MailOp {
     Delete { mail_id: i32 },
     /// Archive a mail message.
     Archive { mail_id: i32 },
+    /// `sendMailMessage` (CM 44), decoded and length-checked by the cell.
+    /// The cell does no SQL and no name lookup.
+    Send(MailSend),
+    /// A `sendMailMessage` the cell could not accept. Forwarded rather than
+    /// answered on the cell so the base's mail-send bucket (D-SS14) charges
+    /// it like any other send, and every `sendMailResult` comes from one
+    /// place.
+    SendRejected(MailSendReject),
+}
+
+/// The decoded `sendMailMessage(INT32 RecipientFlags, ARRAY<WSTRING>
+/// Recipients, WSTRING Subject, WSTRING Body, INT32 Cash, UINT8 bCOD, INT32
+/// ItemId, INT32 ItemQuantity)` (`SGWMailManager.def:56-66`).
+///
+/// Every string already passed the D-SS12 text rules, and `recipients` holds
+/// at most `MAX_MAIL_RECIPIENTS` names exactly as the client sent them (not
+/// trimmed, not de-duplicated, not resolved). Numbers are raw: the base
+/// decides what an attachment means.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MailSend {
+    /// Alias bits (`MAIL_To*`). The client strips alias tokens out of the
+    /// To field into this mask, so it and `recipients` never overlap
+    /// (SS-E1 M-Q2).
+    pub recipient_flags: i32,
+    pub recipients: Vec<String>,
+    pub subject: String,
+    pub body: String,
+    pub cash: i32,
+    /// `bCOD`, any non-zero byte.
+    pub cod: bool,
+    /// The attached item's inventory instance id, 0 for none (SS-E1 M-Q2).
+    pub item_id: i32,
+    pub item_quantity: i32,
+}
+
+impl MailSend {
+    /// True when any attachment field is set: cash (of either sign), COD
+    /// or an item. SS-M1 refuses all of them; SS-M2 implements them.
+    pub fn has_attachment(&self) -> bool {
+        self.cash != 0 || self.cod || self.item_id != 0 || self.item_quantity != 0
+    }
+}
+
+/// Why the cell refused a `sendMailMessage` before building a [`MailSend`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MailSendReject {
+    /// The payload does not decode: `reason` is `truncated` or
+    /// `trailing_bytes`.
+    Malformed { reason: &'static str },
+    /// More recipient names than the D-SS05 cap were declared. Refused
+    /// before any name is read or allocated.
+    TooManyRecipients { declared: u32 },
+    /// A string broke the D-SS12 text rules.
+    Text {
+        field: TextField,
+        reject: TextReject,
+    },
+}
+
+impl MailSendReject {
+    /// Stable value for the `reason` log field.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            MailSendReject::Malformed { reason } => reason,
+            MailSendReject::TooManyRecipients { .. } => "too_many_recipients",
+            MailSendReject::Text { reject, .. } => reject.reason(),
+        }
+    }
 }
 
 /// NPC-specific data included in AoI enter events.

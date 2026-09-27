@@ -12,3 +12,10 @@ pub const REQUEST_MAIL_BODY: u16 = 48;
 pub const TAKE_CASH_FROM_MAIL: u16 = 49;
 pub const TAKE_ITEM_FROM_MAIL: u16 = 50;
 pub const PAY_COD_FOR_MAIL: u16 = 51;
+
+mod send;
+
+pub use send::{decode_send_mail_message, MAX_MAIL_RECIPIENTS};
+
+#[cfg(test)]
+mod tests;

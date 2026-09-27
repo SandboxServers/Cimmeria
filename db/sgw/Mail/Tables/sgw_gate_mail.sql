@@ -14,7 +14,10 @@ CREATE TABLE sgw_gate_mail (
     read_time integer NOT NULL,
     flags integer DEFAULT 0 NOT NULL,
     item_id integer,
-    sender_name character varying(128) DEFAULT ''::character varying NOT NULL
+    sender_name character varying(128) DEFAULT ''::character varying NOT NULL,
+    -- Social-systems SS-M1: a mail never carries negative cash; the send path
+    -- refuses it first, and this is the backstop.
+    CONSTRAINT sgw_gate_mail_cash_nonnegative_chk CHECK ((cash >= 0))
 );
 
 --

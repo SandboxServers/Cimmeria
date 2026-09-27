@@ -1,5 +1,6 @@
-//! Mail payloads: the `onMailHeaderInfo`, `onMailRead` and
-//! `onMailHeaderRemove` serializers and the [`MailHeader`] they carry.
+//! Mail payloads: the `onMailHeaderInfo`, `onMailRead`,
+//! `onMailHeaderRemove` and `sendMailResult` serializers, the [`MailHeader`]
+//! they carry, and the `EMailFlags` / `EMailResultCodes` values.
 //!
 //! The base builds these from its mail queries. The cell's mail handlers,
 //! which forward requests to the base, are in
@@ -8,6 +9,11 @@
 //! Reference: `python/cell/SGWPlayer.py:requestMailHeaders()`, `requestMailBody()`
 
 use crate::mercury::write_wstring;
+
+pub mod codes;
+mod send_result;
+
+pub use send_result::serialize_send_mail_result;
 
 // ── Wire format helpers for BaseApp to build mail response packets ───────────
 
@@ -104,72 +110,4 @@ pub struct MailHeader {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn serialize_empty_mail_headers() {
-        let args = serialize_on_mail_header_info(0, &[]);
-        // ResetCategory(1) + bArchive(1) + headers count(4) + attachments count(4)
-        assert_eq!(args.len(), 1 + 1 + 4 + 4);
-        assert_eq!(args[0], 0); // ResetCategory
-        assert_eq!(args[1], 0); // bArchive
-                                // Headers count = 0
-        assert_eq!(u32::from_le_bytes([args[2], args[3], args[4], args[5]]), 0);
-        // Attachments count = 0
-        assert_eq!(u32::from_le_bytes([args[6], args[7], args[8], args[9]]), 0);
-    }
-
-    #[test]
-    fn serialize_one_mail_header() {
-        let headers = vec![MailHeader {
-            id: 42,
-            from_text: "Bob".to_string(),
-            from_id: 7,
-            subject_text: "Hi".to_string(),
-            cash: 100,
-            sent_time: 1000.0,
-            read_time: 0.0,
-            flags: 0,
-        }];
-        let args = serialize_on_mail_header_info(1, &headers);
-
-        // Verify basic structure
-        assert_eq!(args[0], 0); // ResetCategory
-        assert_eq!(args[1], 1); // bArchive
-
-        // Headers count = 1
-        let count = u32::from_le_bytes([args[2], args[3], args[4], args[5]]);
-        assert_eq!(count, 1);
-
-        // First header starts at offset 6
-        let offset = 6;
-        let id = i32::from_le_bytes([
-            args[offset],
-            args[offset + 1],
-            args[offset + 2],
-            args[offset + 3],
-        ]);
-        assert_eq!(id, 42);
-    }
-
-    #[test]
-    fn serialize_mail_read() {
-        let args = serialize_on_mail_read(42, "Hello world", "Alice");
-
-        // MailId
-        let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-        assert_eq!(mail_id, 42);
-
-        // BodyText WSTRING: char_count
-        let text_len = u32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-        assert_eq!(text_len, 11); // "Hello world" = 11 chars
-    }
-
-    #[test]
-    fn serialize_mail_header_remove() {
-        let args = serialize_on_mail_header_remove(99);
-        assert_eq!(args.len(), 4);
-        assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), 99);
-    }
-}
+mod tests;

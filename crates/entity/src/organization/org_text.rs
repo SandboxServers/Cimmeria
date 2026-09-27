@@ -48,8 +48,9 @@
 use std::fmt;
 
 use super::limits::{
-    MAX_CHAT_TEXT_UNITS, MAX_MOTD_UNITS, MAX_NAME_UNITS, MAX_NOTE_UNITS, MAX_OFFICER_NOTE_UNITS,
-    MAX_RANK_NAME_UNITS, MIN_NAME_UNITS,
+    MAX_CHAT_TEXT_UNITS, MAX_MAIL_BODY_UNITS, MAX_MAIL_RECIPIENT_UNITS, MAX_MAIL_SUBJECT_UNITS,
+    MAX_MOTD_UNITS, MAX_NAME_UNITS, MAX_NOTE_UNITS, MAX_OFFICER_NOTE_UNITS, MAX_RANK_NAME_UNITS,
+    MIN_NAME_UNITS,
 };
 
 /// Which organization text a string is.
@@ -68,6 +69,16 @@ pub enum TextField {
     /// A chat line (`sendPlayerCommunication` text, social-systems D-SS12).
     /// Free text, one line, not normalised.
     ChatText,
+    /// A gate-mail subject (`sendMailMessage` CM 44, D-SS12): 1-128 units,
+    /// one line, not normalised.
+    MailSubject,
+    /// A gate-mail body (CM 44, D-SS12): up to 1,000 units; the only mail
+    /// field that may span lines.
+    MailBody,
+    /// One gate-mail recipient name as the client typed it (CM 44). The
+    /// server resolves it against `sgw_player` (D-SS13) and echoes it back
+    /// in `FailedRecipients`, so it is bounded like any other text.
+    MailRecipient,
 }
 
 impl TextField {
@@ -76,8 +87,12 @@ impl TextField {
     pub fn min_units(self) -> usize {
         match self {
             TextField::Name => MIN_NAME_UNITS,
-            TextField::RankName => 1,
-            TextField::Motd | TextField::Note | TextField::OfficerNote | TextField::ChatText => 0,
+            TextField::RankName | TextField::MailSubject | TextField::MailRecipient => 1,
+            TextField::Motd
+            | TextField::Note
+            | TextField::OfficerNote
+            | TextField::ChatText
+            | TextField::MailBody => 0,
         }
     }
 
@@ -90,14 +105,17 @@ impl TextField {
             TextField::OfficerNote => MAX_OFFICER_NOTE_UNITS,
             TextField::RankName => MAX_RANK_NAME_UNITS,
             TextField::ChatText => MAX_CHAT_TEXT_UNITS,
+            TextField::MailSubject => MAX_MAIL_SUBJECT_UNITS,
+            TextField::MailBody => MAX_MAIL_BODY_UNITS,
+            TextField::MailRecipient => MAX_MAIL_RECIPIENT_UNITS,
         }
     }
 
-    /// MOTD and notes may span lines; names and rank names may not.
+    /// MOTD, notes and a mail body may span lines; nothing else may.
     fn allows_newline(self) -> bool {
         matches!(
             self,
-            TextField::Motd | TextField::Note | TextField::OfficerNote
+            TextField::Motd | TextField::Note | TextField::OfficerNote | TextField::MailBody
         )
     }
 
@@ -109,6 +127,9 @@ impl TextField {
             TextField::OfficerNote => "officer_note",
             TextField::RankName => "rank_name",
             TextField::ChatText => "chat_text",
+            TextField::MailSubject => "mail_subject",
+            TextField::MailBody => "mail_body",
+            TextField::MailRecipient => "mail_recipient",
         }
     }
 }
