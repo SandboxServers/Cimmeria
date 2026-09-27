@@ -4,6 +4,7 @@ use cimmeria_entity::organization::{org_text, OrgPermission, OrgRank, TextField}
 use sqlx::{Postgres, Transaction};
 
 use super::super::api::permissions_from_db;
+use super::observe::{observed, units};
 use super::{lock_or_miss, OrgStoreError};
 
 /// Which organization text [`set_text`] writes.
@@ -28,6 +29,26 @@ impl OrgTextTarget {
             OrgTextTarget::RankName { .. } => TextField::RankName,
         }
     }
+
+    /// The member a note is on, for the log.
+    fn player_id(self) -> Option<i32> {
+        match self {
+            OrgTextTarget::Note { player_id } | OrgTextTarget::OfficerNote { player_id } => {
+                Some(player_id)
+            }
+            OrgTextTarget::Motd | OrgTextTarget::RankName { .. } => None,
+        }
+    }
+
+    fn miss(self) -> OrgStoreError {
+        match self {
+            OrgTextTarget::Motd => OrgStoreError::NoSuchOrg,
+            OrgTextTarget::Note { .. } | OrgTextTarget::OfficerNote { .. } => {
+                OrgStoreError::NotAMember
+            }
+            OrgTextTarget::RankName { rank } => OrgStoreError::RankNotInType(rank),
+        }
+    }
 }
 
 /// Validate `text` (D-ORG10) and store it, returning the stored form (a
@@ -44,62 +65,89 @@ pub async fn set_text(
     target: OrgTextTarget,
     text: &str,
 ) -> Result<String, OrgStoreError> {
-    let text = org_text::validate(target.field(), text)?;
-    let header = lock_or_miss(tx, org_id).await?;
-    let updated = match target {
-        OrgTextTarget::Motd => {
-            sqlx::query("UPDATE sgw_organizations SET motd = $2 WHERE org_id = $1")
+    observed("set_text", Some(org_id), target.player_id(), async {
+        let text = org_text::validate(target.field(), text)?;
+        let header = lock_or_miss(tx, org_id).await?;
+        // Each UPDATE returns the text it replaced through a self-join on
+        // the same row (RETURNING alone sees only the new values), so the
+        // log can carry both lengths. `None` means no row matched.
+        let old: Option<String> = match target {
+            OrgTextTarget::Motd => {
+                sqlx::query_scalar(
+                    "UPDATE sgw_organizations n SET motd = $2 FROM sgw_organizations o \
+                     WHERE n.org_id = $1 AND o.org_id = n.org_id RETURNING o.motd",
+                )
                 .bind(org_id)
                 .bind(&text)
-                .execute(&mut **tx)
+                .fetch_optional(&mut **tx)
                 .await?
-        }
-        OrgTextTarget::Note { player_id } => {
-            sqlx::query(
-                "UPDATE sgw_organization_members SET note = $3 \
-             WHERE org_id = $1 AND player_id = $2",
-            )
-            .bind(org_id)
-            .bind(player_id)
-            .bind(&text)
-            .execute(&mut **tx)
-            .await?
-        }
-        OrgTextTarget::OfficerNote { player_id } => {
-            sqlx::query(
-                "UPDATE sgw_organization_members SET officer_note = $3 \
-             WHERE org_id = $1 AND player_id = $2",
-            )
-            .bind(org_id)
-            .bind(player_id)
-            .bind(&text)
-            .execute(&mut **tx)
-            .await?
-        }
-        OrgTextTarget::RankName { rank } => {
-            if !rank.is_valid_for(header.org_type) {
-                return Err(OrgStoreError::RankNotInType(rank));
             }
-            sqlx::query(
-                "UPDATE sgw_organization_ranks SET name = $3 WHERE org_id = $1 AND rank = $2",
-            )
-            .bind(org_id)
-            .bind(i16::from(rank.as_u8()))
-            .bind(&text)
-            .execute(&mut **tx)
-            .await?
-        }
-    };
-    if updated.rows_affected() == 0 {
-        return Err(match target {
-            OrgTextTarget::Motd => OrgStoreError::NoSuchOrg,
-            OrgTextTarget::Note { .. } | OrgTextTarget::OfficerNote { .. } => {
-                OrgStoreError::NotAMember
+            OrgTextTarget::Note { player_id } => {
+                sqlx::query_scalar(
+                    "UPDATE sgw_organization_members n SET note = $3 \
+                     FROM sgw_organization_members o \
+                     WHERE n.org_id = $1 AND n.player_id = $2 \
+                       AND o.org_id = n.org_id AND o.player_id = n.player_id \
+                     RETURNING o.note",
+                )
+                .bind(org_id)
+                .bind(player_id)
+                .bind(&text)
+                .fetch_optional(&mut **tx)
+                .await?
             }
-            OrgTextTarget::RankName { rank } => OrgStoreError::RankNotInType(rank),
-        });
-    }
-    Ok(text)
+            OrgTextTarget::OfficerNote { player_id } => {
+                sqlx::query_scalar(
+                    "UPDATE sgw_organization_members n SET officer_note = $3 \
+                     FROM sgw_organization_members o \
+                     WHERE n.org_id = $1 AND n.player_id = $2 \
+                       AND o.org_id = n.org_id AND o.player_id = n.player_id \
+                     RETURNING o.officer_note",
+                )
+                .bind(org_id)
+                .bind(player_id)
+                .bind(&text)
+                .fetch_optional(&mut **tx)
+                .await?
+            }
+            OrgTextTarget::RankName { rank } => {
+                if !rank.is_valid_for(header.org_type) {
+                    return Err(OrgStoreError::RankNotInType(rank));
+                }
+                sqlx::query_scalar(
+                    "UPDATE sgw_organization_ranks n SET name = $3 \
+                     FROM sgw_organization_ranks o \
+                     WHERE n.org_id = $1 AND n.rank = $2 \
+                       AND o.org_id = n.org_id AND o.rank = n.rank \
+                     RETURNING COALESCE(o.name, '')",
+                )
+                .bind(org_id)
+                .bind(i16::from(rank.as_u8()))
+                .bind(&text)
+                .fetch_optional(&mut **tx)
+                .await?
+            }
+        };
+        let old = old.ok_or_else(|| target.miss())?;
+        let rank = match target {
+            OrgTextTarget::RankName { rank } => Some(rank.as_u8()),
+            _ => None,
+        };
+        tracing::debug!(
+            target: "org",
+            event = "set_text",
+            org_id,
+            player_id = target.player_id(),
+            field = target.field().name(),
+            rank,
+            from_units = units(&old),
+            to_units = units(&text),
+            rows_affected = 1u64,
+            "Organization text changed"
+        );
+        Ok(text)
+    })
+    .await
 }
 
 /// Store `permissions` as `rank`'s mask, returning the mask it replaced.
@@ -116,26 +164,41 @@ pub async fn set_rank_permissions(
     rank: OrgRank,
     permissions: OrgPermission,
 ) -> Result<OrgPermission, OrgStoreError> {
-    let header = lock_or_miss(tx, org_id).await?;
-    if !rank.is_valid_for(header.org_type) {
-        return Err(OrgStoreError::RankNotInType(rank));
-    }
-    if rank == OrgRank::LEADER {
-        return Err(OrgStoreError::LeaderPinned);
-    }
-    // The old mask comes back through a self-join on the same row: an
-    // UPDATE's RETURNING sees only the new values.
-    let old: Option<i32> = sqlx::query_scalar(
-        "UPDATE sgw_organization_ranks r SET permissions = $3 \
-         FROM sgw_organization_ranks o \
-         WHERE r.org_id = $1 AND r.rank = $2 AND o.org_id = r.org_id AND o.rank = r.rank \
-         RETURNING o.permissions",
-    )
-    .bind(org_id)
-    .bind(i16::from(rank.as_u8()))
-    .bind(permissions.to_wire())
-    .fetch_optional(&mut **tx)
-    .await?;
-    old.map(permissions_from_db)
-        .ok_or(OrgStoreError::RankNotInType(rank))
+    observed("set_rank_permissions", Some(org_id), None, async {
+        let header = lock_or_miss(tx, org_id).await?;
+        if !rank.is_valid_for(header.org_type) {
+            return Err(OrgStoreError::RankNotInType(rank));
+        }
+        if rank == OrgRank::LEADER {
+            return Err(OrgStoreError::LeaderPinned);
+        }
+        // The old mask comes back through a self-join on the same row: an
+        // UPDATE's RETURNING sees only the new values.
+        let old: Option<i32> = sqlx::query_scalar(
+            "UPDATE sgw_organization_ranks r SET permissions = $3 \
+             FROM sgw_organization_ranks o \
+             WHERE r.org_id = $1 AND r.rank = $2 AND o.org_id = r.org_id AND o.rank = r.rank \
+             RETURNING o.permissions",
+        )
+        .bind(org_id)
+        .bind(i16::from(rank.as_u8()))
+        .bind(permissions.to_wire())
+        .fetch_optional(&mut **tx)
+        .await?;
+        let old = old
+            .map(permissions_from_db)
+            .ok_or(OrgStoreError::RankNotInType(rank))?;
+        tracing::debug!(
+            target: "org",
+            event = "set_rank_permissions",
+            org_id,
+            rank = rank.as_u8(),
+            from_mask = old.bits(),
+            to_mask = permissions.bits(),
+            rows_affected = 1u64,
+            "Organization rank permissions changed"
+        );
+        Ok(old)
+    })
+    .await
 }

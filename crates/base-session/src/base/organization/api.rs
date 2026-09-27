@@ -57,7 +57,29 @@ pub struct OrgAccess {
 /// disbanded); the caller rejects. Taking the lock twice in one transaction
 /// is harmless, which is why every mutation in [`super::persistence`] takes
 /// it again itself.
+///
+/// A miss logs WARN `event = lock_org`, `reason = no_such_org` on `org`.
 pub async fn lock_org(
+    tx: &mut Transaction<'_, Postgres>,
+    org_id: i32,
+) -> Result<Option<OrgHeader>, sqlx::Error> {
+    let header = lock_org_quiet(tx, org_id).await?;
+    if header.is_none() {
+        tracing::warn!(
+            target: "org",
+            event = "lock_org",
+            org_id,
+            reason = "no_such_org",
+            "Organization lookup missed"
+        );
+    }
+    Ok(header)
+}
+
+/// [`lock_org`] without the miss log, for callers that log the miss
+/// themselves (the persistence layer's typed refusals), so one miss is one
+/// WARN.
+pub(super) async fn lock_org_quiet(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
 ) -> Result<Option<OrgHeader>, sqlx::Error> {
@@ -88,12 +110,26 @@ pub async fn lock_org(
 /// member of it; either way the caller rejects. The lock is taken here
 /// (again, if the caller already holds it), so the answer cannot be stale
 /// by the time the caller acts on it inside the same transaction.
+///
+/// A miss logs WARN `event = member_access_locked` with `reason` =
+/// `no_such_org` or `not_a_member`; a hit logs DEBUG with the rank and mask.
 pub async fn member_access_locked(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
     player_id: i32,
 ) -> Result<Option<OrgAccess>, sqlx::Error> {
-    if lock_org(tx, org_id).await?.is_none() {
+    let miss = |reason: &'static str| {
+        tracing::warn!(
+            target: "org",
+            event = "member_access_locked",
+            org_id,
+            player_id,
+            reason,
+            "Organization access lookup missed"
+        );
+    };
+    if lock_org_quiet(tx, org_id).await?.is_none() {
+        miss("no_such_org");
         return Ok(None);
     }
     let row: Option<(i16, i16, i32)> = sqlx::query_as(
@@ -106,15 +142,26 @@ pub async fn member_access_locked(
     .bind(player_id)
     .fetch_optional(&mut **tx)
     .await?;
-    row.map(|(org_type, rank, permissions)| {
-        Ok(OrgAccess {
-            org_id,
-            org_type: org_type_from_db(org_type)?,
-            rank: rank_from_db(rank)?,
-            permissions: permissions_from_db(permissions),
-        })
-    })
-    .transpose()
+    let Some((org_type, rank, permissions)) = row else {
+        miss("not_a_member");
+        return Ok(None);
+    };
+    let access = OrgAccess {
+        org_id,
+        org_type: org_type_from_db(org_type)?,
+        rank: rank_from_db(rank)?,
+        permissions: permissions_from_db(permissions),
+    };
+    tracing::debug!(
+        target: "org",
+        event = "member_access_locked",
+        org_id,
+        player_id,
+        rank = access.rank.as_u8(),
+        permissions = access.permissions.bits(),
+        "Organization access read under the lock"
+    );
+    Ok(Some(access))
 }
 
 /// `true` when the organization's vault holds no items and its treasury no

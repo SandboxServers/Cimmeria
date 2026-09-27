@@ -128,7 +128,8 @@ pub async fn handle_delete_character(
 
     // Locks the character's Teams and Commands before the delete, so the
     // member-delete trigger (leader promotion, D-ORG12) keeps the ORG-LOCK
-    // order.
+    // order, and after the commit logs what the trigger did to them (INFO on
+    // `org`: `leader_changed`, `disbanded`, `left_memberless`).
     let result = super::organization::character_delete::delete_character(
         pool.as_ref(),
         player_id,
@@ -137,9 +138,15 @@ pub async fn handle_delete_character(
     .await;
 
     match result {
-        Ok(deleted) => {
-            if deleted {
-                tracing::info!(%addr, player_id, account_id, "Character deleted");
+        Ok(deletion) => {
+            if deletion.deleted {
+                tracing::info!(
+                    %addr,
+                    player_id,
+                    account_id,
+                    org_events = deletion.org_events.len(),
+                    "Character deleted"
+                );
             } else {
                 tracing::warn!(%addr, player_id, account_id, "Character not found or not owned");
             }

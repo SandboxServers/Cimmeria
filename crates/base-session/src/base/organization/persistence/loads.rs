@@ -10,6 +10,7 @@ use cimmeria_entity::organization::{org_text, OrgPermission, OrgRank, OrgType, T
 use sqlx::PgExecutor;
 
 use super::super::api::{org_type_from_db, permissions_from_db, rank_from_db, OrgHeader};
+use super::observe::observed;
 use super::OrgStoreError;
 
 /// One organization a player belongs to, with the player's standing in it.
@@ -49,8 +50,9 @@ pub async fn load_memberships<'e>(
     executor: impl PgExecutor<'e>,
     player_id: i32,
 ) -> Result<Vec<OrgMembership>, OrgStoreError> {
-    type Row = (i32, i16, String, String, i64, i64, i16, i32);
-    let rows: Vec<Row> = sqlx::query_as(
+    observed("load_memberships", None, Some(player_id), async {
+        type Row = (i32, i16, String, String, i64, i64, i16, i32);
+        let rows: Vec<Row> = sqlx::query_as(
         "SELECT o.org_id, o.org_type, o.name, o.motd, o.cash, o.experience, m.rank, r.permissions \
          FROM sgw_organization_members m \
          JOIN sgw_organizations o ON o.org_id = m.org_id \
@@ -61,24 +63,35 @@ pub async fn load_memberships<'e>(
     .bind(player_id)
     .fetch_all(executor)
     .await?;
-    rows.into_iter()
-        .map(
-            |(org_id, org_type, name, motd, cash, experience, rank, perms)| {
-                Ok(OrgMembership {
-                    header: OrgHeader {
-                        org_id,
-                        org_type: org_type_from_db(org_type)?,
-                        name,
-                        motd,
-                        cash,
-                        experience,
-                    },
-                    rank: rank_from_db(rank)?,
-                    permissions: permissions_from_db(perms),
-                })
-            },
-        )
-        .collect()
+        rows.into_iter()
+            .map(
+                |(org_id, org_type, name, motd, cash, experience, rank, perms)| {
+                    Ok(OrgMembership {
+                        header: OrgHeader {
+                            org_id,
+                            org_type: org_type_from_db(org_type)?,
+                            name,
+                            motd,
+                            cash,
+                            experience,
+                        },
+                        rank: rank_from_db(rank)?,
+                        permissions: permissions_from_db(perms),
+                    })
+                },
+            )
+            .collect::<Result<Vec<_>, OrgStoreError>>()
+            .inspect(|ms| {
+                tracing::debug!(
+                    target: "org",
+                    event = "load_memberships",
+                    player_id,
+                    rows = ms.len(),
+                    "Organization memberships loaded"
+                )
+            })
+    })
+    .await
 }
 
 /// The organization's members, highest rank first, then by name.
@@ -86,8 +99,9 @@ pub async fn load_roster<'e>(
     executor: impl PgExecutor<'e>,
     org_id: i32,
 ) -> Result<Vec<RosterMember>, OrgStoreError> {
-    type Row = (i32, String, i32, i32, i16, String, String);
-    let rows: Vec<Row> = sqlx::query_as(
+    observed("load_roster", Some(org_id), None, async {
+        type Row = (i32, String, i32, i32, i16, String, String);
+        let rows: Vec<Row> = sqlx::query_as(
         "SELECT m.player_id, p.player_name, p.level, p.archetype, m.rank, m.note, m.officer_note \
          FROM sgw_organization_members m \
          JOIN sgw_player p ON p.player_id = m.player_id \
@@ -97,21 +111,32 @@ pub async fn load_roster<'e>(
     .bind(org_id)
     .fetch_all(executor)
     .await?;
-    rows.into_iter()
-        .map(
-            |(player_id, name, level, archetype, rank, note, officer_note)| {
-                Ok(RosterMember {
-                    player_id,
-                    name,
-                    level,
-                    archetype,
-                    rank: rank_from_db(rank)?,
-                    note,
-                    officer_note,
-                })
-            },
-        )
-        .collect()
+        rows.into_iter()
+            .map(
+                |(player_id, name, level, archetype, rank, note, officer_note)| {
+                    Ok(RosterMember {
+                        player_id,
+                        name,
+                        level,
+                        archetype,
+                        rank: rank_from_db(rank)?,
+                        note,
+                        officer_note,
+                    })
+                },
+            )
+            .collect::<Result<Vec<_>, OrgStoreError>>()
+            .inspect(|r| {
+                tracing::debug!(
+                    target: "org",
+                    event = "load_roster",
+                    org_id,
+                    rows = r.len(),
+                    "Organization roster loaded"
+                )
+            })
+    })
+    .await
 }
 
 /// The organization's rank rows, lowest rank first.
@@ -119,22 +144,34 @@ pub async fn load_ranks<'e>(
     executor: impl PgExecutor<'e>,
     org_id: i32,
 ) -> Result<Vec<RankRow>, OrgStoreError> {
-    let rows: Vec<(i16, Option<String>, i32)> = sqlx::query_as(
-        "SELECT rank, name, permissions FROM sgw_organization_ranks \
+    observed("load_ranks", Some(org_id), None, async {
+        let rows: Vec<(i16, Option<String>, i32)> = sqlx::query_as(
+            "SELECT rank, name, permissions FROM sgw_organization_ranks \
          WHERE org_id = $1 ORDER BY rank",
-    )
-    .bind(org_id)
-    .fetch_all(executor)
-    .await?;
-    rows.into_iter()
-        .map(|(rank, name, perms)| {
-            Ok(RankRow {
-                rank: rank_from_db(rank)?,
-                name,
-                permissions: permissions_from_db(perms),
+        )
+        .bind(org_id)
+        .fetch_all(executor)
+        .await?;
+        rows.into_iter()
+            .map(|(rank, name, perms)| {
+                Ok(RankRow {
+                    rank: rank_from_db(rank)?,
+                    name,
+                    permissions: permissions_from_db(perms),
+                })
             })
-        })
-        .collect()
+            .collect::<Result<Vec<_>, OrgStoreError>>()
+            .inspect(|r| {
+                tracing::debug!(
+                    target: "org",
+                    event = "load_ranks",
+                    org_id,
+                    rows = r.len(),
+                    "Organization ranks loaded"
+                )
+            })
+    })
+    .await
 }
 
 /// `true` if no organization of `org_type` has `name`'s key (D-ORG10), so
@@ -148,16 +185,27 @@ pub async fn name_available<'e>(
     org_type: OrgType,
     name: &str,
 ) -> Result<bool, OrgStoreError> {
-    if !org_type.is_persistent() {
-        return Err(OrgStoreError::NotPersistent);
-    }
-    let name = org_text::validate(TextField::Name, name)?;
-    let taken: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM sgw_organizations WHERE org_type = $1 AND name_key = $2)",
-    )
-    .bind(i16::from(org_type.as_u8()))
-    .bind(org_text::name_key(&name))
-    .fetch_one(executor)
-    .await?;
-    Ok(!taken)
+    observed("name_available", None, None, async {
+        if !org_type.is_persistent() {
+            return Err(OrgStoreError::NotPersistent);
+        }
+        let name = org_text::validate(TextField::Name, name)?;
+        let taken: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM sgw_organizations WHERE org_type = $1 AND name_key = $2)",
+        )
+        .bind(i16::from(org_type.as_u8()))
+        .bind(org_text::name_key(&name))
+        .fetch_one(executor)
+        .await?;
+        tracing::debug!(
+            target: "org",
+            event = "name_available",
+            org_type = org_type.name(),
+            name_units = name.encode_utf16().count(),
+            available = !taken,
+            "Organization name checked"
+        );
+        Ok(!taken)
+    })
+    .await
 }

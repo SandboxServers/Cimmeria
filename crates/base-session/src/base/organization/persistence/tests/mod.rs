@@ -8,8 +8,10 @@
 //! start with "Org02 " and are cleaned up by exact name key, so a crashed
 //! run cannot make the next one collide on `UNIQUE (org_type, name_key)`.
 
+mod audit;
 mod constraints;
 mod mutations;
+mod telemetry;
 mod trigger;
 
 use cimmeria_entity::organization::{org_text, OrgType, TextField};
@@ -86,6 +88,12 @@ async fn teardown(pool: &PgPool, fx: &Fixture) {
             .await
             .expect("cleanup organizations");
     }
+    // Audit rows are keyed by the exact sentinel account they name.
+    sqlx::query("DELETE FROM sgw_organization_events WHERE from_account_id = $1")
+        .bind(fx.account_id)
+        .execute(pool)
+        .await
+        .expect("cleanup organization events");
     for &player_id in &fx.players {
         sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
             .bind(player_id)

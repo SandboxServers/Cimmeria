@@ -9,7 +9,7 @@
 //! character delete never leaves a leaderless organization behind.
 //!
 //! **ORG-LOCK (D-ORG04).** Every mutation here takes a transaction and
-//! locks the organization row ([`lock_org`]) before it reads or writes
+//! locks the organization row ([`super::api::lock_org`]) before it reads or writes
 //! anything else, so a caller's authorization read
 //! ([`super::api::member_access_locked`]) and the write it authorizes see
 //! the same state. [`create_org`] is the exception only because there is no
@@ -20,10 +20,17 @@
 //! Text is validated here as well as by the callers: every name, MOTD, note
 //! and rank name goes through `org_text::validate` (D-ORG10) before it
 //! reaches the database, and the stored text is the validated one.
+//!
+//! Telemetry (target `org`): every function logs a DEBUG `event` named after
+//! itself on success, with `org_id`, `player_id` where there is one,
+//! `rows_affected`, and the before/after values of a rank, mask or text
+//! length; a refusal logs one WARN with `reason` ([`observe`]). Text is
+//! logged as its length in UTF-16 units, never the text.
 
 mod error;
 mod loads;
 mod members;
+mod observe;
 mod texts;
 
 pub use error::OrgStoreError;
@@ -38,7 +45,8 @@ use cimmeria_entity::organization::{
 };
 use sqlx::{Postgres, Transaction};
 
-use super::api::{lock_org, org_vault_is_empty, OrgHeader};
+use super::api::{lock_org_quiet, org_vault_is_empty, OrgHeader};
+use observe::{observed, units};
 
 /// A freshly created organization.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,21 +80,24 @@ pub async fn create_org(
     name: &str,
     leader_player_id: i32,
 ) -> Result<CreatedOrg, OrgStoreError> {
-    if !org_type.is_persistent() {
-        return Err(OrgStoreError::NotPersistent);
-    }
-    let name = org_text::validate(TextField::Name, name)?;
-    let mut savepoint = sqlx::Acquire::begin(&mut **tx).await?;
-    match insert_org(&mut savepoint, org_type, name, leader_player_id).await {
-        Ok(created) => {
-            savepoint.commit().await?;
-            Ok(created)
+    observed("create_org", None, Some(leader_player_id), async {
+        if !org_type.is_persistent() {
+            return Err(OrgStoreError::NotPersistent);
         }
-        Err(refused) => {
-            savepoint.rollback().await?;
-            Err(refused)
+        let name = org_text::validate(TextField::Name, name)?;
+        let mut savepoint = sqlx::Acquire::begin(&mut **tx).await?;
+        match insert_org(&mut savepoint, org_type, name, leader_player_id).await {
+            Ok(created) => {
+                savepoint.commit().await?;
+                Ok(created)
+            }
+            Err(refused) => {
+                savepoint.rollback().await?;
+                Err(refused)
+            }
         }
-    }
+    })
+    .await
 }
 
 /// The writes of [`create_org`]: the organization row, its rank rows and
@@ -126,7 +137,19 @@ async fn insert_org(
     .execute(&mut **tx)
     .await?;
 
-    members::insert_member(tx, org_id, org_type, leader_player_id, OrgRank::LEADER).await?;
+    let account_id =
+        members::insert_member(tx, org_id, org_type, leader_player_id, OrgRank::LEADER).await?;
+    tracing::debug!(
+        target: "org",
+        event = "create_org",
+        org_id,
+        org_type = org_type.name(),
+        player_id = leader_player_id,
+        account_id,
+        name_units = units(&name),
+        rows_affected = ranks.len() + 2,
+        "Organization created"
+    );
     Ok(CreatedOrg { org_id, name })
 }
 
@@ -141,32 +164,47 @@ pub async fn disband(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
 ) -> Result<Vec<i32>, OrgStoreError> {
-    lock_or_miss(tx, org_id).await?;
-    if !org_vault_is_empty(tx, org_id).await? {
-        return Err(OrgStoreError::VaultNotEmpty);
-    }
-    let members: Vec<i32> = sqlx::query_scalar(
-        "SELECT player_id FROM sgw_organization_members WHERE org_id = $1 ORDER BY player_id",
-    )
-    .bind(org_id)
-    .fetch_all(&mut **tx)
-    .await?;
-    let deleted = sqlx::query("DELETE FROM sgw_organizations WHERE org_id = $1")
+    observed("disband", Some(org_id), None, async {
+        let header = lock_or_miss(tx, org_id).await?;
+        if !org_vault_is_empty(tx, org_id).await? {
+            return Err(OrgStoreError::VaultNotEmpty);
+        }
+        let members: Vec<i32> = sqlx::query_scalar(
+            "SELECT player_id FROM sgw_organization_members WHERE org_id = $1 ORDER BY player_id",
+        )
         .bind(org_id)
-        .execute(&mut **tx)
+        .fetch_all(&mut **tx)
         .await?;
-    if deleted.rows_affected() == 0 {
-        return Err(OrgStoreError::NoSuchOrg);
-    }
-    Ok(members)
+        let deleted = sqlx::query("DELETE FROM sgw_organizations WHERE org_id = $1")
+            .bind(org_id)
+            .execute(&mut **tx)
+            .await?;
+        if deleted.rows_affected() == 0 {
+            return Err(OrgStoreError::NoSuchOrg);
+        }
+        tracing::debug!(
+            target: "org",
+            event = "disband",
+            org_id,
+            org_type = header.org_type.name(),
+            members = members.len(),
+            rows_affected = deleted.rows_affected(),
+            "Organization disbanded"
+        );
+        Ok(members)
+    })
+    .await
 }
 
-/// [`lock_org`], with a missing organization as a typed miss.
+/// `api::lock_org`, with a missing organization as a typed miss (logged
+/// once, by [`observe::observed`]).
 async fn lock_or_miss(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
 ) -> Result<OrgHeader, OrgStoreError> {
-    lock_org(tx, org_id).await?.ok_or(OrgStoreError::NoSuchOrg)
+    lock_org_quiet(tx, org_id)
+        .await?
+        .ok_or(OrgStoreError::NoSuchOrg)
 }
 
 #[cfg(test)]

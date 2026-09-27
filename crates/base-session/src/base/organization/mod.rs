@@ -12,10 +12,13 @@
 //!   `sgw_organization_members`.
 //! - [`character_delete`]: the character delete, which locks the
 //!   character's organizations before the member rows cascade.
+//! - [`audit`]: exports the member-delete trigger's `sgw_organization_events`
+//!   rows to the `org` log target.
 //!
 //! Modelled on `base::contact_list`. The handlers and the org fanout arrive
 //! with the later packets (ORG-05 to ORG-08).
 
 pub mod api;
+pub mod audit;
 pub mod character_delete;
 pub mod persistence;

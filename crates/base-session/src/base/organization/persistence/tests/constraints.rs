@@ -74,8 +74,8 @@ async fn second_team_for_same_player_is_refused() {
 
     // Raw insert: the database refuses it by the named key.
     let err = sqlx::query(
-        "INSERT INTO sgw_organization_members (org_id, player_id, org_type, rank) \
-         VALUES ($1, $2, 1, 2)",
+        "INSERT INTO sgw_organization_members (org_id, player_id, account_id, org_type, rank) \
+         VALUES ($1, $2, (SELECT account_id FROM sgw_player WHERE player_id = $2), 1, 2)",
     )
     .bind(b.org_id)
     .bind(p)
@@ -155,8 +155,8 @@ async fn member_org_type_cannot_drift() {
     let cmd = create(&pool, OrgType::Command, "Org02 Drift", fx.player(0)).await;
 
     let err = sqlx::query(
-        "INSERT INTO sgw_organization_members (org_id, player_id, org_type, rank) \
-         VALUES ($1, $2, 1, 2)",
+        "INSERT INTO sgw_organization_members (org_id, player_id, account_id, org_type, rank) \
+         VALUES ($1, $2, (SELECT account_id FROM sgw_player WHERE player_id = $2), 1, 2)",
     )
     .bind(cmd.org_id)
     .bind(fx.player(1))
@@ -264,8 +264,8 @@ async fn member_rank_must_have_a_rank_row() {
 
     for rank in [0_i16, 5] {
         let err = sqlx::query(
-            "INSERT INTO sgw_organization_members (org_id, player_id, org_type, rank) \
-             VALUES ($1, $2, 1, $3)",
+            "INSERT INTO sgw_organization_members (org_id, player_id, account_id, org_type, rank) \
+             VALUES ($1, $2, (SELECT account_id FROM sgw_player WHERE player_id = $2), 1, $3)",
         )
         .bind(team.org_id)
         .bind(fx.player(1))
@@ -329,7 +329,7 @@ async fn one_leader_and_held_ranks_are_enforced() {
     let org = create(&pool, OrgType::Team, "Org02 OneLeader", fx.player(0)).await;
 
     let err = sqlx::query(
-        "INSERT INTO sgw_organization_members (org_id, player_id, org_type, rank)          VALUES ($1, $2, 1, 8)",
+        "INSERT INTO sgw_organization_members (org_id, player_id, account_id, org_type, rank) \n         VALUES ($1, $2, (SELECT account_id FROM sgw_player WHERE player_id = $2), 1, 8)",
     )
     .bind(org.org_id)
     .bind(fx.player(1))

@@ -18,7 +18,7 @@ async fn delete_character(pool: &PgPool, fx: &Fixture, player_id: i32) {
     let deleted = delete_character_locked(pool, player_id, fx.account_id)
         .await
         .expect("character delete");
-    assert!(deleted, "character {player_id} was deleted");
+    assert!(deleted.deleted, "character {player_id} was deleted");
 }
 
 /// Organizations among `org_ids` that have members but no Leader. The
@@ -397,7 +397,8 @@ async fn kick_during_character_delete_does_not_deadlock() {
         delete
             .await
             .unwrap()
-            .expect("the character delete must not deadlock"),
+            .expect("the character delete must not deadlock")
+            .deleted,
         "the character was deleted"
     );
     assert_eq!(member_ranks(&pool, org).await, vec![(leader, 8)]);
