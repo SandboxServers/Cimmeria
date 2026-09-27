@@ -37,7 +37,7 @@ All three were answered on 2026-09-27, each with the recommendation: D-ORG15 (cr
 ## Other campaigns to coordinate with
 
 - **Social** (cimmeria-3d): owns channel-id alignment in SS-C4 (D-ORG26), which ORG-09 waits for.
-- **Bank / Vault** (cimmeria-79, formerly cimmeria-97): consumes the [ORG-API](../work-packets.md#bank-campaign-api-org-api). ORG-02 has merged; message it again when ORG-07 merges. Its BV-08 owns the CM 19 arm, and its BV-07 closes an open org vault window on `onOrganizationLeft` [36].
+- **Bank / Vault** (cimmeria-79, formerly cimmeria-97): consumes the [ORG-API](../work-packets.md#bank-campaign-api-org-api). ORG-02 has merged; message it again when ORG-07 merges. Its BV-08 owns the CM 19 arm, and its BV-07 closes an open org vault session by extending the cell arm of ORG-06's `OrgMembershipEnded` hook (sent on leave, disband and, from ORG-07, kick).
 - **Crafting** (cimmeria-23, templates 310-329, spawns 410-429): no shared files unless inventory changes.
 - **Pets** (cimmeria-b5, templates 350-369, spawns 450-469): the org work does not touch entity or AoI creation.
 - **Black market and the stasis debug hub** (cimmeria-11; hub #846 merged, templates 300-304, spawns 400-404): ORG-05 uses the slots in `docs/content/debug-hub.md`.
