@@ -771,7 +771,7 @@ last_updated: 2026-09-25
 | Invite/accept | KM | Creation | stub | `UNIMPLEMENTED: organizationInviteResponse` (organization.rs:36) |
 | Leave organization | KM | -- | stub | `UNIMPLEMENTED: organizationLeave` (organization.rs:44) |
 | Rank system (9 ranks) | KM | Creation | entity/organization/types.rs | `OrgRank` and the ranks each type uses (D-ORG07); no rank is stored or enforced yet |
-| Permission system (26 perms) | KM | Ranks | entity/organization/permissions.rs | `OrgPermission`, the Team (12) and Command (14) editable bits and the default rank table (D-ORG08); nothing enforces them yet |
+| Permission system (26 perms) | KM | Ranks | entity/organization/permissions.rs | `OrgPermission`, the Team (12) and Command (14) editable bits and the default rank table (D-ORG08; D-ORG21: every rank below Leader may deposit and read the bank log, none may withdraw); nothing enforces them yet |
 | MOTD | KM | Creation | stub | organization.rs:94 |
 | Officer notes | KM | Ranks | stub | organization.rs:108 |
 | Rank name customization | KM | Ranks | stub | organization.rs:135 |

@@ -8,7 +8,7 @@
 //! decision in `docs/analysis/organizations/README.md`.
 //!
 //! - [`types`]: `OrgType`, `OrgRank`, `OrgLeaveReason`, `SquadLootType`.
-//! - [`permissions`]: `OrgPermission` and the D-ORG08 default rank table.
+//! - [`permissions`]: `OrgPermission` and the D-ORG08 / D-ORG21 default rank table.
 //! - [`limits`]: the id-space constants (D-ORG05, D-ORG06) and the size and
 //!   text caps (D-ORG10).
 //! - [`org_text`]: the one implementation of the D-ORG10 text rules.

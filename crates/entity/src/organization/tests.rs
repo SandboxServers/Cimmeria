@@ -256,17 +256,20 @@ fn editable_bits_match_the_client_editors() {
     }
 }
 
-/// D-ORG08, as literal masks.
+/// D-ORG08 as amended by D-ORG21, as literal masks.
 #[test]
-fn default_rank_permissions_follow_d_org08() {
-    // Officer: Invite 2, Eject 16, RosterNotes 32, OfficerNotes 64,
-    // OfficerChat 256, MOTD 1024, DepositBank 65536, WithdrawBank 131072,
-    // DepositCash 262144.
-    let officer = 2 + 16 + 32 + 64 + 256 + 1024 + 65536 + 131072 + 262144;
+fn default_rank_permissions_follow_d_org08_and_d_org21() {
+    // D-ORG21: DepositBank 65536, DepositCash 262144, ViewBankLogs 1048576
+    // on every rank below Leader.
+    let bank = 65536 + 262144 + 1048576;
+    assert_eq!(bank, 1_376_256);
+    // Officer: bank + Invite 2, Eject 16, RosterNotes 32, OfficerNotes 64,
+    // OfficerChat 256, MOTD 1024.
+    let officer = 1_377_650;
     // Plus Promote 4, Demote 8, RankNames 128, AlterPerms 8388608.
-    let senior_officer = officer + 4 + 8 + 128 + 8388608;
-    // RosterNotes 32, DepositBank 65536.
-    let member = 32 + 65536;
+    let senior_officer = 9_766_398;
+    // bank + RosterNotes 32.
+    let member = 1_376_288;
     let all = 0x3FF_FFFF;
 
     let rows = |t| {
@@ -278,7 +281,7 @@ fn default_rank_permissions_follow_d_org08() {
     assert_eq!(
         rows(OrgType::Command),
         [
-            (1, 0),
+            (1, bank),
             (2, member),
             (3, member),
             (4, member),
@@ -290,6 +293,16 @@ fn default_rank_permissions_follow_d_org08() {
     );
     assert_eq!(rows(OrgType::Team), [(2, member), (3, officer), (8, all)]);
     assert!(rows(OrgType::Squad).is_empty());
+
+    // Withdrawing is opt-in: WithdrawBank 131072 and WithdrawCash 524288
+    // are on no default row below Leader.
+    for t in [OrgType::Team, OrgType::Command] {
+        for (rank, bits) in rows(t) {
+            if rank < 8 {
+                assert_eq!(bits & (131072 | 524288), 0, "{t:?} rank {rank}");
+            }
+        }
+    }
 }
 
 // ── D-ORG10 text rules ──────────────────────────────────────────────────

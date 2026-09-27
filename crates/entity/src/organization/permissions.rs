@@ -144,17 +144,23 @@ impl Not for OrgPermission {
     }
 }
 
-/// `Officer`'s default bits (D-ORG08), also Team `SeniorMember`'s.
+/// The vault bits every default rank below `Leader` holds (D-ORG21):
+/// deposit items and cash, and read the bank log. Withdrawing is opt-in, so
+/// no default row below `Leader` has `WithdrawBank` or `WithdrawCash`.
+const BANK_DEFAULT: OrgPermission = OrgPermission(
+    OrgPermission::DEPOSIT_BANK.0 | OrgPermission::DEPOSIT_CASH.0 | OrgPermission::VIEW_BANK_LOGS.0,
+);
+
+/// `Officer`'s default bits (D-ORG08, vault bits per D-ORG21), also Team
+/// `SeniorMember`'s.
 const OFFICER_DEFAULT: OrgPermission = OrgPermission(
-    OrgPermission::INVITE.0
+    BANK_DEFAULT.0
+        | OrgPermission::INVITE.0
         | OrgPermission::EJECT.0
         | OrgPermission::ROSTER_NOTES.0
         | OrgPermission::OFFICER_NOTES.0
         | OrgPermission::OFFICER_CHAT.0
-        | OrgPermission::MOTD.0
-        | OrgPermission::DEPOSIT_BANK.0
-        | OrgPermission::WITHDRAW_BANK.0
-        | OrgPermission::DEPOSIT_CASH.0,
+        | OrgPermission::MOTD.0,
 );
 
 /// `SeniorOfficer`: `Officer` plus Promote, Demote, RankNames and AlterPerms.
@@ -166,16 +172,18 @@ const SENIOR_OFFICER_DEFAULT: OrgPermission = OrgPermission(
         | OrgPermission::ALTER_PERMS.0,
 );
 
-/// `SeniorVeteran` down to `Member`.
-const MEMBER_DEFAULT: OrgPermission =
-    OrgPermission(OrgPermission::ROSTER_NOTES.0 | OrgPermission::DEPOSIT_BANK.0);
+/// `SeniorVeteran` down to `Member`: roster notes and the vault bits.
+const MEMBER_DEFAULT: OrgPermission = OrgPermission(BANK_DEFAULT.0 | OrgPermission::ROSTER_NOTES.0);
 
 /// The permissions each rank starts with when a Team or Command is created
-/// (D-ORG08), one row per rank in [`OrgRank::for_type`], lowest first.
+/// (D-ORG08 as amended by D-ORG21), one row per rank in
+/// [`OrgRank::for_type`], lowest first.
 ///
 /// Project policy, not recovered data: the client ships no defaults. Both
 /// the Rust creation path and any seed read this one table. `Leader` always
-/// holds [`OrgPermission::ALL`], and no editor may change that row.
+/// holds [`OrgPermission::ALL`], and no editor may change that row. Every
+/// other rank, `Initiate` included, may deposit and read the bank log;
+/// none may withdraw until an editor grants it (D-ORG21).
 ///
 /// Squads return no rows: they are never persisted, have no rank editor,
 /// and are authorized by leadership alone (D-ORG16).
@@ -186,7 +194,7 @@ pub fn default_rank_permissions(org_type: OrgType) -> Vec<(OrgRank, OrgPermissio
             (OrgType::Command, OrgRank::SENIOR_OFFICER) => SENIOR_OFFICER_DEFAULT,
             (OrgType::Command, OrgRank::OFFICER) => OFFICER_DEFAULT,
             (OrgType::Team, OrgRank::SENIOR_MEMBER) => OFFICER_DEFAULT,
-            (_, OrgRank::INITIATE) => OrgPermission::NONE,
+            (_, OrgRank::INITIATE) => BANK_DEFAULT,
             _ => MEMBER_DEFAULT,
         }
     };
