@@ -38,6 +38,8 @@ async fn summon_is_a_debug_event_with_owner_identity_and_template() {
     assert_eq!(c.level, Level::INFO);
     assert_owner_identity(&c);
     assert!(c.has_field("pet_id", &pet.to_string()));
+    // Rule 5 correlator: a lifecycle row's entity_id is the pet.
+    assert!(c.has_field("entity_id", &pet.to_string()));
     assert!(c.has_field("owner_id", &OWNER.to_string()));
     assert!(c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()));
     assert!(c.has_field("ability_id", "1643"));
@@ -79,6 +81,8 @@ async fn ownership_rejections_log_their_reason_at_debug() {
         .unwrap();
     assert!(not_owner.has_field("owner_id", &OWNER.to_string()));
     assert!(not_owner.has_field("account_id", &OTHER.to_string()));
+    // A command row's entity_id is the caller.
+    assert!(not_owner.has_field("entity_id", &OTHER.to_string()));
     // Success is not logged here.
     let before = logs.all().len();
     assert_eq!(mgr.owned_pet(OWNER, pet), Ok(pet));

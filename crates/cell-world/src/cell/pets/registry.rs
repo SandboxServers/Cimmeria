@@ -26,6 +26,10 @@ pub enum PetReject {
     /// The registry still lists the pet but its entity is gone. The
     /// teardown sweep scrubs these; a command in the gap is refused.
     PetGone,
+    /// The caller has the owner's entity id but is not the player who
+    /// summoned the pet: the owner was destroyed and its id reused before
+    /// the sweep removed the pet (Copilot, #870).
+    OwnerIdentityMismatch,
 }
 
 impl PetReject {
@@ -35,6 +39,7 @@ impl PetReject {
             Self::NotAPet => "not_a_pet",
             Self::NotOwner { .. } => "not_owner",
             Self::PetGone => "pet_gone",
+            Self::OwnerIdentityMismatch => "owner_identity_mismatch",
         }
     }
 }
@@ -87,6 +92,26 @@ impl PetRegistry {
             .get(&owner)
             .copied()
             .unwrap_or(PlayerIdentity::UNKNOWN)
+    }
+
+    /// Whether `live` (the identity of whoever holds `owner`'s entity id
+    /// now) is the player who summoned `owner`'s pets.
+    ///
+    /// Entity ids are reused, so the id alone cannot tell the summoner from
+    /// a later player given the same id. The summon-time capture decides:
+    /// the character (`player_id`) when it was known, otherwise the account.
+    /// A capture with neither half known cannot vouch for anyone, so it
+    /// never matches: the pet is refused commands and swept. Every summon
+    /// goes through `spawn_pet_from_template`, which captures the owner's
+    /// identity, so this only strands a pet whose owner had no session
+    /// identity at summon, which is not a real player.
+    pub fn owner_identity_matches(&self, owner: u32, live: PlayerIdentity) -> bool {
+        let captured = self.owner_identity(owner);
+        match (captured.player_id, captured.account_id) {
+            (Some(player), _) => live.player_id == Some(player),
+            (None, Some(account)) => live.account_id == Some(account),
+            (None, None) => false,
+        }
     }
 
     /// The owner of `pet`, if it is a registered pet.
@@ -147,6 +172,11 @@ impl SpaceManager {
         let result = self.pets.owned_pet(caller, claimed).and_then(|pet| {
             if self.get_entity(pet).is_none_or(|e| e.pet.is_none()) {
                 Err(PetReject::PetGone)
+            } else if !self
+                .pets
+                .owner_identity_matches(caller, self.player_identity(caller))
+            {
+                Err(PetReject::OwnerIdentityMismatch)
             } else {
                 Ok(pet)
             }
@@ -161,6 +191,7 @@ impl SpaceManager {
                 target: "pets.command",
                 event = "ownership_rejected",
                 reason = reject.reason(),
+                entity_id = caller,
                 caller_id = caller,
                 account_id = id.account_id,
                 player_id = id.player_id,

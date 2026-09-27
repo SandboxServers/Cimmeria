@@ -117,6 +117,23 @@ async fn owner_id_reused_by_an_npc_is_swept() {
     assert!(mgr.pets.is_empty(), "registry emptied");
 }
 
+/// Another player given the owner's entity id in the same space does not
+/// keep the pet alive: the sweep despawns it as `owner_gone`.
+#[tokio::test]
+async fn owner_id_reused_by_another_player_is_swept() {
+    let (mut mgr, pet) = watched_pet();
+    let (tx, mut rx) = mpsc::channel(64);
+    super::reuse_owner_id_by_another_player(&mut mgr);
+    assert!(
+        mgr.get_entity(pet).is_some(),
+        "destroy_entity alone leaves the pet"
+    );
+
+    assert_eq!(pet_owner_sweep(&tx, &mut mgr).await, 1);
+    assert!(left_aoi_witnesses(&mut rx, pet).contains(&OTHER));
+    assert_pet_gone(&mgr, pet);
+}
+
 /// D-PT08: owner death despawns the pet.
 #[tokio::test]
 async fn dead_owner_is_swept() {

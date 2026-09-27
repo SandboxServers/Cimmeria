@@ -128,6 +128,7 @@ pub(super) async fn handle(
                     target: "pets.lifecycle",
                     event = "pet_list_replay_failed",
                     reason = "cell_to_base_closed",
+                    entity_id,
                     witness_id,
                     account_id = space_mgr.player_identity(witness_id).account_id,
                     player_id = space_mgr.player_identity(witness_id).player_id,

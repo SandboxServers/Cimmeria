@@ -105,6 +105,7 @@ pub(super) async fn despawn_pet_via(
             target: "pets.lifecycle",
             decision_outcome = "despawned",
             event = "despawned",
+            entity_id = pet_id,
             pet_id,
             owner_id,
             account_id = id.account_id,
@@ -121,6 +122,7 @@ pub(super) async fn despawn_pet_via(
             target: "pets.lifecycle",
             decision_outcome = "despawn_failed",
             event = "despawn_failed",
+            entity_id = pet_id,
             pet_id,
             owner_id,
             account_id = id.account_id,
@@ -165,6 +167,7 @@ pub async fn forget_owner(
     tracing::debug!(
         target: "pets.lifecycle",
         event = "owner_forgotten",
+        entity_id = owner,
         owner_id = owner,
         account_id = id.account_id,
         player_id = id.player_id,
@@ -188,8 +191,13 @@ fn sweep_verdict(space_mgr: &SpaceManager, pet_id: u32, owner: u32) -> Option<Sw
         return Some(SweepAction::Despawn(PetDespawnReason::OwnerGone));
     };
     // Entity ids are reused: after the owner is destroyed the id can come
-    // back as an NPC in the same space. Only a player can own a pet.
-    if !owner_entity.is_player {
+    // back as an NPC, or as another player, in the same space. Only the
+    // player who summoned the pet owns it.
+    if !owner_entity.is_player
+        || !space_mgr
+            .pets
+            .owner_identity_matches(owner, owner_entity.identity())
+    {
         return Some(SweepAction::Despawn(PetDespawnReason::OwnerGone));
     }
     if space_mgr.get_entity_space_id(owner) != Some(pet_space) {
@@ -234,6 +242,7 @@ pub async fn pet_owner_sweep(
                     target: "pets.lifecycle",
                     decision_outcome = "registry_scrubbed",
                     event = "registry_scrubbed",
+                    entity_id = pet_id,
                     pet_id,
                     owner_id = owner,
                     account_id = id.account_id,

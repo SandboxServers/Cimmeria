@@ -53,6 +53,34 @@ fn space_manager_owned_pet_refuses_a_registry_entry_without_an_entity() {
     assert_eq!(mgr.owned_pet(OWNER, npc), Err(PetReject::NotAPet));
 }
 
+/// A different player given the owner's entity id cannot command the pet:
+/// the id matches the registry, the summon-time identity does not.
+#[test]
+fn owned_pet_refuses_a_player_that_reused_the_owner_id() {
+    let (mut mgr, pet) = world_with_pet();
+    assert_eq!(mgr.owned_pet(OWNER, pet), Ok(pet), "control: the summoner");
+    reuse_owner_id_by_another_player(&mut mgr);
+    assert_eq!(
+        mgr.owned_pet(OWNER, pet),
+        Err(PetReject::OwnerIdentityMismatch)
+    );
+}
+
+#[test]
+fn identity_match_uses_character_then_account_and_never_trusts_unknown() {
+    use cimmeria_entity::cell_entity::PlayerIdentity;
+    let mut reg = PetRegistry::default();
+    reg.note_owner_identity(1, PlayerIdentity::new(Some(10), Some(11)));
+    assert!(reg.owner_identity_matches(1, PlayerIdentity::new(Some(10), Some(11))));
+    assert!(!reg.owner_identity_matches(1, PlayerIdentity::new(Some(10), Some(12))));
+    assert!(!reg.owner_identity_matches(1, PlayerIdentity::UNKNOWN));
+    reg.note_owner_identity(2, PlayerIdentity::new(Some(20), None));
+    assert!(reg.owner_identity_matches(2, PlayerIdentity::new(Some(20), Some(5))));
+    assert!(!reg.owner_identity_matches(2, PlayerIdentity::new(Some(21), None)));
+    // Nothing captured: cannot vouch for anyone.
+    assert!(!reg.owner_identity_matches(3, PlayerIdentity::new(Some(30), Some(31))));
+}
+
 #[test]
 fn credit_recipient_maps_pet_to_owner_player_to_self_npc_to_none() {
     let (mut mgr, pet) = world_with_pet();

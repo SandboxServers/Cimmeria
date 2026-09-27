@@ -36,6 +36,17 @@ fn make_world() -> SpaceManager {
     mgr
 }
 
+/// Destroy `OWNER` and hand its entity id to a different player in the
+/// same space (another account and character), the id-reuse window between
+/// `destroy_entity` and the sweep (Copilot, #870).
+fn reuse_owner_id_by_another_player(mgr: &mut SpaceManager) {
+    mgr.destroy_entity(OWNER);
+    add_pet_owner(mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
+    let impostor = mgr.get_entity_mut(OWNER).unwrap();
+    impostor.account_id = Some(4242);
+    impostor.player_id = Some(4243);
+}
+
 /// A world with `OWNER` (level 12) in Agnos and one pet summoned for it.
 fn world_with_pet() -> (SpaceManager, u32) {
     let mut mgr = make_world();
