@@ -307,7 +307,7 @@ async fn deposit_refusal(
 ///   which would make its count sellable, tradable and mailable.
 /// - Any other occupant: a swap of the whole stack; a split onto it is
 ///   refused.
-async fn choose_shape(
+pub(super) async fn choose_shape(
     tx: &mut MoveTx,
     req: &MoveRequest,
     quantity: i32,

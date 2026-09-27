@@ -16,6 +16,7 @@
 use cimmeria_base_session::base::organization::api::{member_access_locked, OrgAccess};
 use cimmeria_entity::cell_entity::VaultScope;
 use cimmeria_entity::inventory::{COMMAND_VAULT_SLOTS, TEAM_VAULT_SLOTS_DEFAULT};
+use cimmeria_entity::organization::OrgPermission;
 use sqlx::{Postgres, Transaction};
 
 /// The actor of one vault action, read under the organization lock.
@@ -127,4 +128,28 @@ pub(crate) async fn team_vault_slots(
     .fetch_optional(&mut **tx)
     .await?;
     Ok(slots.map_or(TEAM_VAULT_SLOTS_DEFAULT, i32::from))
+}
+
+/// The bank bit a vault action needs, and its name for the `perm` field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BankBit {
+    Deposit,
+    Withdraw,
+}
+
+impl BankBit {
+    pub(crate) fn permission(self) -> OrgPermission {
+        match self {
+            BankBit::Deposit => OrgPermission::DEPOSIT_BANK,
+            BankBit::Withdraw => OrgPermission::WITHDRAW_BANK,
+        }
+    }
+
+    /// The `perm` field: the `EOrganizationPermission` name.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            BankBit::Deposit => "DepositBank",
+            BankBit::Withdraw => "WithdrawBank",
+        }
+    }
 }

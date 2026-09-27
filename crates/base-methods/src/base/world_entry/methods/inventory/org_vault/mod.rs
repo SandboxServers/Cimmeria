@@ -21,4 +21,5 @@ mod open;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use open::org_label;
 pub use open::{handle_org_vault_open, org_vault_bag_info, OrgVaultIo, OrgVaultOpenRequest};
