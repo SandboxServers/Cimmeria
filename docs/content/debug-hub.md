@@ -200,6 +200,7 @@ Right-click opens your personal vault (`onVaultOpen`).
   straight into the vault (the grant path refuses 17 by design); a tester
   drags items in from the main bag once BV-03 lands. See
   [commands.md](../commands.md#dev-console--commands).
+
 ## Crafting corner
 
 Four crafting stations and a crafting supplies vendor stand along the room's
