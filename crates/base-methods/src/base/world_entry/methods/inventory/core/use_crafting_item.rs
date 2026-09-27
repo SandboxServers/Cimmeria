@@ -11,11 +11,28 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::{send_full_inventory_update, send_on_remove_item};
-use crate::base::crafting::item_use::handle_crafting_item_use;
+use crate::base::crafting::item_use::{handle_crafting_item_use, is_crafting_miss};
 use crate::base::crafting::request::CraftCtx;
+use crate::base::crafting::telemetry::account_id_of;
 use crate::base::outbox;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
+
+/// Whether a `useItem` whose instance is not this player's was a crafting
+/// item: one this player already used up, or another character's. Such a
+/// use goes to [`use_crafting_item`], whose transaction refuses it with the
+/// visible "no longer in your inventory" line.
+pub(super) async fn crafting_item_miss(
+    pool: &Arc<PgPool>,
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> bool {
+    let account_id = account_id_of(entity_id, connected, entity_to_addr);
+    is_crafting_miss(pool.as_ref(), account_id, entity_id, player_id, item_id).await
+}
 
 /// Use crafting item instance `item_id`. On a committed use the consumed
 /// instance leaves the client (`onRemoveItem` when its last one went, then

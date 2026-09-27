@@ -16,9 +16,11 @@
 //! text line and consumes nothing. `target_id` is never read: the item's
 //! effect comes from the seed and always applies to the user.
 
+pub mod miss;
 pub mod rule;
 pub mod transaction;
 
+pub use miss::{is_crafting_miss, remember_consumed};
 pub use rule::{Applied, BlueprintChange, ItemEffects, MAX_RACIAL_PARADIGM_LEVEL};
 pub use transaction::{Committed, UseFailure, CARRIED_CONTAINERS};
 
@@ -160,6 +162,9 @@ pub async fn handle_crafting_item_use(
             );
             push_paradigm(entity_id, player_id, paradigm_id, level_after, client).await;
         }
+    }
+    if qty_after == 0 {
+        remember_consumed(player_id, item_id);
     }
     Some(ConsumedItem {
         item_id,

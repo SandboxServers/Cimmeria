@@ -2,7 +2,7 @@
 //! save, commit.
 
 use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use super::rule::{decide, Applied, ItemEffects};
 use crate::base::crafting::feedback::CraftReject;
@@ -13,6 +13,35 @@ use crate::base::outbox::{self, CellOutboxPayload};
 /// from the bank, the buyback list or an equipment slot is refused, so a
 /// sold item cannot be used and then bought back.
 pub const CARRIED_CONTAINERS: [i32; 2] = [INV_MAIN, INV_CRAFTING];
+
+/// The per-player advisory lock keys an item use takes, in this order,
+/// before any row: the player-wide inventory key 0, then the bags in
+/// container order (main, crafting).
+///
+/// The shared inventory order is every advisory lock first (key 0, then
+/// bags in container order), then item rows, then the player row. Key 0
+/// serializes the use with inventory moves, crafting completions and vendor
+/// purchases, which all take it first; the main-bag key does the same for
+/// trade, which takes it before `sgw_player` and the item rows. The use must
+/// lock `sgw_player` because it writes the crafting columns there; it does
+/// so after the item row, the order the vendor paths use, and only once it
+/// holds every advisory key another path could want while holding that row.
+pub const INVENTORY_LOCK_KEYS: [i32; 3] = [0, INV_MAIN, INV_CRAFTING];
+
+/// Take [`INVENTORY_LOCK_KEYS`] for `player_id` on `conn`, in order.
+pub async fn take_inventory_locks(
+    conn: &mut PgConnection,
+    player_id: i32,
+) -> Result<(), sqlx::Error> {
+    for key in INVENTORY_LOCK_KEYS {
+        sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+            .bind(player_id)
+            .bind(key)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
+}
 
 /// A committed use: the crafting change and the one item it consumed.
 #[derive(Debug)]
@@ -82,11 +111,10 @@ impl UseFailure {
 /// `Ok(Ok(_))` is a committed use; `Ok(Err(why))` a refusal, rolled back
 /// with nothing written or consumed; `Err` a failure, also rolled back.
 ///
-/// Lock order: the per-player inventory advisory lock first (the one trade,
-/// vendor and move take first, so this path cannot deadlock against them),
-/// then the item row, then `sgw_player`. The item row is re-read under its
-/// lock with the owner in the `WHERE`, so an item traded away after the
-/// caller's ownership check is refused, never consumed from its new owner.
+/// Lock order ([`INVENTORY_LOCK_KEYS`]): every advisory lock first, then the
+/// item row, then `sgw_player`. The item row is re-read under its lock with
+/// the owner in the `WHERE`, so an item traded away after the caller's
+/// ownership check is refused, never consumed from its new owner.
 pub async fn use_item_in_db(
     pool: &PgPool,
     entity_id: u32,
@@ -94,10 +122,7 @@ pub async fn use_item_in_db(
     item_id: i32,
 ) -> Result<Result<Committed, CraftReject>, UseFailure> {
     let mut tx = pool.begin().await.map_err(UseFailure::sql("begin"))?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
-        .bind(player_id)
-        .bind(INV_MAIN)
-        .execute(&mut *tx)
+    take_inventory_locks(&mut tx, player_id)
         .await
         .map_err(UseFailure::sql("advisory_lock"))?;
 

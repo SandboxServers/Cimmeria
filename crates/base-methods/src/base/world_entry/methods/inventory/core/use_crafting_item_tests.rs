@@ -3,8 +3,8 @@
 //! (never `OnItemUse`), consumed with the crafting change, and the client's
 //! inventory follows.
 //!
-//! Sentinels in the crafting `0x7000_Cxxx` block: `0x7000_CFC0..0x7000_CFC7`
-//! (account, player; the account id doubles as the entity id).
+//! Sentinels in the crafting `0x7000_Cxxx` block: `0x7000_CEC0..0x7000_CECF`
+//! (account, player pairs; the account id doubles as the entity id).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -17,10 +17,13 @@ use cimmeria_wire::crafting::racial_paradigm_level_args;
 use sqlx::PgPool;
 
 use super::handle_use_inventory_item;
+use crate::base::crafting::feedback::feedback_text_args;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
 
-const TEST_BASE: i32 = 0x7000_CFC0;
+const TEST_BASE: i32 = 0x7000_CEC0;
+/// Slappack TC1: an ordinary item, no crafting effect rows.
+const SLAPPACK: i32 = 2893;
 /// "Racial Paradigm Guide: Goa'uld" (paradigm 3).
 const GOAULD_GUIDE: i32 = 7808;
 
@@ -186,4 +189,149 @@ async fn a_guide_is_used_by_crafting_not_on_item_use() {
         ),
         "the inventory update, now empty"
     );
+}
+
+/// Insert one instance of `type_id` in bag 15 for `player_id`.
+async fn insert_owned(pool: &PgPool, player_id: i32, type_id: i32) -> i32 {
+    sqlx::query_scalar(
+        "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id) \
+         VALUES ($1, $2, 1, 0, $3) RETURNING item_id",
+    )
+    .bind(player_id)
+    .bind(type_id)
+    .bind(INV_CRAFTING)
+    .fetch_one(pool)
+    .await
+    .expect("insert item")
+}
+
+/// `useItem(item_id)` from `entity_id` through the real entry point.
+async fn use_through_entry(
+    pool: &PgPool,
+    s: &Session,
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+) {
+    handle_use_inventory_item(
+        entity_id,
+        player_id,
+        item_id,
+        0,
+        &Some(Arc::new(pool.clone())),
+        &None,
+        &s.1,
+        &s.2,
+        &s.3,
+    )
+    .await;
+}
+
+const GONE: &str = "That item is no longer in your inventory.";
+
+/// Another character's guide: the lookup by owner misses, and the use gets
+/// the crafting refusal line instead of silence. The owner keeps the guide.
+#[tokio::test]
+async fn another_characters_guide_is_refused_with_a_line() {
+    let pool = require_db_or_skip!();
+    let (user_account, user) = (TEST_BASE + 2, TEST_BASE + 3);
+    let (owner_account, owner) = (TEST_BASE + 4, TEST_BASE + 5);
+    let entity_id = user_account as u32;
+    for (a, p) in [(user_account, user), (owner_account, owner)] {
+        cleanup(&pool, a, p).await;
+        insert_player(&pool, a, p).await;
+    }
+    let item_id = insert_owned(&pool, owner, GOAULD_GUIDE).await;
+    let s = session(entity_id, 55811);
+
+    use_through_entry(&pool, &s, entity_id, user, item_id).await;
+
+    let owner_has: Option<i32> =
+        sqlx::query_scalar("SELECT character_id FROM sgw_inventory WHERE item_id = $1")
+            .bind(item_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("instance");
+    let sent = s.0.filter_to(s.4);
+    for (a, p) in [(user_account, user), (owner_account, owner)] {
+        cleanup(&pool, a, p).await;
+    }
+    assert_eq!(owner_has, Some(owner), "the owner keeps the guide");
+    assert_eq!(
+        sent,
+        vec![packet(
+            entity_id,
+            0,
+            method_idx::ON_PLAYER_COMMUNICATION,
+            &feedback_text_args(GONE)
+        )]
+    );
+}
+
+/// A second press on a guide already used up: the row is gone, and the
+/// press still gets the refusal line.
+#[tokio::test]
+async fn a_replayed_guide_use_is_refused_with_a_line() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (TEST_BASE + 6, TEST_BASE + 7);
+    let entity_id = account_id as u32;
+    cleanup(&pool, account_id, player_id).await;
+    insert_player(&pool, account_id, player_id).await;
+    let item_id = insert_owned(&pool, player_id, GOAULD_GUIDE).await;
+    let s = session(entity_id, 55812);
+
+    use_through_entry(&pool, &s, entity_id, player_id, item_id).await;
+    let after_first = s.0.filter_to(s.4).len();
+    use_through_entry(&pool, &s, entity_id, player_id, item_id).await;
+
+    let levels: Vec<i32> =
+        sqlx::query_scalar("SELECT racial_paradigm_levels FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_one(&pool)
+            .await
+            .expect("levels");
+    let sent = s.0.filter_to(s.4);
+    cleanup(&pool, account_id, player_id).await;
+    assert_eq!(levels, vec![5, 1, 2, 1, 1], "raised once");
+    assert_eq!(sent.len(), after_first + 1, "one more packet: the line");
+    assert_eq!(
+        sent[after_first],
+        packet(
+            entity_id,
+            after_first as u32,
+            method_idx::ON_PLAYER_COMMUNICATION,
+            &feedback_text_args(GONE)
+        )
+    );
+}
+
+/// Another character's ordinary item keeps the old behavior: nothing is
+/// sent and nothing is queued.
+#[tokio::test]
+async fn another_characters_ordinary_item_stays_silent() {
+    let pool = require_db_or_skip!();
+    let (user_account, user) = (TEST_BASE + 8, TEST_BASE + 9);
+    let (owner_account, owner) = (TEST_BASE + 10, TEST_BASE + 11);
+    let entity_id = user_account as u32;
+    for (a, p) in [(user_account, user), (owner_account, owner)] {
+        cleanup(&pool, a, p).await;
+        insert_player(&pool, a, p).await;
+    }
+    let item_id = insert_owned(&pool, owner, SLAPPACK).await;
+    let s = session(entity_id, 55813);
+
+    use_through_entry(&pool, &s, entity_id, user, item_id).await;
+
+    let outbox: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM cell_event_outbox WHERE entity_id = $1")
+            .bind(user_account)
+            .fetch_one(&pool)
+            .await
+            .expect("outbox");
+    let sent = s.0.filter_to(s.4);
+    for (a, p) in [(user_account, user), (owner_account, owner)] {
+        cleanup(&pool, a, p).await;
+    }
+    assert!(sent.is_empty(), "no packet: {sent:?}");
+    assert_eq!(outbox, 0);
 }

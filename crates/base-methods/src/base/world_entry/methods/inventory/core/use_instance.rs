@@ -36,7 +36,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::super::move_::handle_move_inventory_item;
-use super::use_crafting_item::use_crafting_item;
+use super::use_crafting_item::{crafting_item_miss, use_crafting_item};
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::resources::bag_max_slots;
 use crate::base::ConnectedClientState;
@@ -143,6 +143,32 @@ pub async fn handle_use_inventory_item(
     {
         Ok(Some(r)) => r,
         Ok(None) => {
+            // A crafting item that is not (or no longer) this player's gets
+            // the crafting refusal line; any other item stays a silent WARN.
+            if crafting_item_miss(
+                pool,
+                entity_id,
+                player_id,
+                item_id,
+                connected,
+                entity_to_addr,
+            )
+            .await
+            {
+                use_crafting_item(
+                    entity_id,
+                    player_id,
+                    item_id,
+                    pool,
+                    db_pool,
+                    cell_tx,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+                return;
+            }
             tracing::warn!(
                 player_id, item_id,
                 "UseInventoryItem: instance not found for this character — refusing to fire ItemUsed"

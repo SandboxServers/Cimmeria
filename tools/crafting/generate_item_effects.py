@@ -132,6 +132,23 @@ def blueprint_rows(items: dict[int, str], blueprints: set[int]) -> list[tuple[in
             raise InputError(f"{MAPPING_CSV}: header {reader.fieldnames} != {CSV_HEADER}")
         rows = list(reader)
 
+    out = validate_blueprint_rows(rows, items, blueprints)
+    seeded_items = {item_id for item_id, _, _ in out}
+    if len(seeded_items) != EXPECTED_BLUEPRINT_ITEMS or len(out) != EXPECTED_BLUEPRINT_ROWS:
+        raise InputError(
+            f"{MAPPING_CSV}: {len(seeded_items)} items / {len(out)} rows seeded, expected "
+            f"{EXPECTED_BLUEPRINT_ITEMS} / {EXPECTED_BLUEPRINT_ROWS}"
+        )
+    return sorted(out)
+
+
+def validate_blueprint_rows(
+    rows: list[dict[str, str]], items: dict[int, str], blueprints: set[int]
+) -> list[tuple[int, int, str]]:
+    """(item_id, blueprint_id, item_name) for every seeded CSV row, checked
+    against the parsed seeds: the item's own ``items.sql`` row must be a
+    "Blueprint: " item with the name the CSV gives, so a typo or a
+    reassigned item id cannot seed an unrelated item."""
     out: list[tuple[int, int, str]] = []
     seeded_items: set[int] = set()
     for r in rows:
@@ -142,8 +159,17 @@ def blueprint_rows(items: dict[int, str], blueprints: set[int]) -> list[tuple[in
             raise InputError(f"{MAPPING_CSV}: item {item_id} listed twice")
         if item_id not in items:
             raise InputError(f"{MAPPING_CSV}: item {item_id} is not in {ITEMS_SQL}")
-        if not r["item_name"].startswith("Blueprint: "):
-            raise InputError(f"{MAPPING_CSV}: item {item_id} is not a Blueprint item")
+        seed_name = items[item_id]
+        if not seed_name.startswith("Blueprint: "):
+            raise InputError(
+                f"{MAPPING_CSV}: item {item_id} is {seed_name!r} in {ITEMS_SQL}, "
+                "not a Blueprint item"
+            )
+        if seed_name != r["item_name"]:
+            raise InputError(
+                f"{MAPPING_CSV}: item {item_id} is {seed_name!r} in {ITEMS_SQL}, "
+                f"but the CSV names it {r['item_name']!r}"
+            )
         ids = [int(x) for x in r["blueprint_id"].split(";") if x]
         if not ids:
             raise InputError(f"{MAPPING_CSV}: item {item_id} names no blueprint")
@@ -153,15 +179,9 @@ def blueprint_rows(items: dict[int, str], blueprints: set[int]) -> list[tuple[in
                     f"{MAPPING_CSV}: item {item_id} names blueprint {blueprint_id}, "
                     f"not in {BLUEPRINTS_SQL}"
                 )
-            out.append((item_id, blueprint_id, r["item_name"]))
+            out.append((item_id, blueprint_id, seed_name))
         seeded_items.add(item_id)
-
-    if len(seeded_items) != EXPECTED_BLUEPRINT_ITEMS or len(out) != EXPECTED_BLUEPRINT_ROWS:
-        raise InputError(
-            f"{MAPPING_CSV}: {len(seeded_items)} items / {len(out)} rows seeded, expected "
-            f"{EXPECTED_BLUEPRINT_ITEMS} / {EXPECTED_BLUEPRINT_ROWS}"
-        )
-    return sorted(out)
+    return out
 
 
 def guide_rows(items: dict[int, str], paradigms: dict[str, int]) -> list[tuple[int, int, str]]:

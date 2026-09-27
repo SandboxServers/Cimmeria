@@ -1,14 +1,17 @@
 //! Crafting item use: the pure rule ([`rule`]), every outcome against the
 //! seeded database ([`live_db`]), failures ([`failures`]), replays and races
-//! ([`races`]), and the seed guard ([`seed`]).
+//! ([`races`]), lock order against the other inventory paths ([`locks`]),
+//! and the seed guard ([`seed`]).
 //!
 //! Live-DB sentinels, in the crafting `0x7000_Cxxx` block:
-//! `0x7000_CF80..=0x7000_CFBF`, sixteen 4-id slots (account, player, two
+//! `0x7000_CE80..=0x7000_CEBF`, sixteen 4-id slots (account, player, two
 //! item instances). The account id doubles as the entity id, so each test's
 //! outbox rows are removed by exact entity. Clear of persistence and the GM
 //! grants (`0x7000_C000..0x7000_CC0F`), sync, `.allcraft`, tools and spend
-//! (`0x7000_CD00..0x7000_CE1F`) and the world-entry test (`0x7000_CF00`,
-//! `0x7000_CF01`).
+//! (`0x7000_CD00..0x7000_CE1F`), the base-methods item-use tests
+//! (`0x7000_CEC0..0x7000_CECF`), the world-entry test (`0x7000_CF00`,
+//! `0x7000_CF01`) and the crafting transaction and vendor tests
+//! (`0x7000_CF40..0x7000_CFC2`).
 
 use std::sync::Arc;
 
@@ -26,11 +29,12 @@ use crate::test_support::{Captured, LogCaptureGuard};
 
 mod failures;
 mod live_db;
+mod locks;
 mod races;
 mod rule;
 mod seed;
 
-const TEST_BASE: i32 = 0x7000_CF80;
+const TEST_BASE: i32 = 0x7000_CE80;
 
 /// Seed items used by the tests.
 /// "Blueprint: Steel Plating (Materials Subcombine A)", teaches 25.
