@@ -659,10 +659,10 @@ last_updated: 2026-09-25
 | Client notification | CW | -- | base/world_entry/methods/progression/ | 5 wire messages |
 | XP from mob kills | CW | -- | cell/abilities/death/side_effects.rs, loot_drop.rs:118 | 10×mob_level, Cell→Base pipeline |
 | XP curve | CW | -- | game/player.rs | LEVEL_XP[21] ported from Python Constants |
-| Level cap (50) | CW | -- | game/player.rs | MAX_LEVEL = 50 and 1 training point per level (AT-07, D-AT02). Levels 21-50 of `LEVEL_XP` and the 1-point economy are PROJECT FINAL v2 values, not retail data |
+| Level cap (50) | NT | -- | game/player.rs | **Demoted 2026-09-27 (CW → NT).** No client has levelled past 20 on the new curve. MAX_LEVEL = 50 and 1 training point per level (AT-07, D-AT02). Levels 21-50 of `LEVEL_XP` and the 1-point economy are PROJECT FINAL v2 values, not retail data |
 | DB persistence | CW | -- | sqlx | sgw_player.level + .exp |
 | Stat scaling on level-up | CW | -- | entity/stats/ | scale_for_level(), full heal on level-up |
-| Training points on level-up | CW | -- | game/player.rs | 2 TP/level, 38 by level 20 |
+| Training points on level-up | NT | -- | game/player.rs | **Demoted 2026-09-27 (CW → NT).** The v2 economy replaced 2 TP/level: 1 TP at level 1 plus 1 per level, 50 by level 50 (AT-07, D-AT02). The cell tracks points and level through `ProgressionChanged` (AT-03). Not client-tested |
 | XP from missions | IM | Content / design | cell/content/executor/mod.rs:512 | **KM → IM 2026-09-25.** A delivery path now exists: `Action::GrantXP` has loader and executor arms (#618, chain-replay guard). No XP flows yet. There are zero `grant_xp` seed rows (Harset chains carry `-- GC3: grant_xp` placeholders), `reward_xp = 0` on all 1,041 missions, and completion does not read it (#310). Playtest recorded 0 mission XP. Re-verified 2026-09-25 |
 | ASP on level-up | KM | -- | -- | No ASP grant on level-up (ASP is granted only by GM `gmGiveAppliedSciencePoints`) |
 

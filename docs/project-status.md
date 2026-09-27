@@ -80,7 +80,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58.
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| XP & leveling | IM | 11 (9 CW, 1 IM, 1 KM) | Kill-XP pipeline + level scaling + training points CW. Mission XP has a `GrantXP` action (#618) but `reward_xp` is 0 on all 1,041 missions and the formula needs a maintainer decision |
+| XP & leveling | IM | 11 (7 CW, 2 NT, 1 IM, 1 KM) | Kill-XP pipeline + level scaling CW. The ability-tree campaign (2026-09-27, [ledger](analysis/ability-trees/work-packets.md)) raised the cap to 50 and moved to 1 training point per level; both are NT until the owner's UAT. It also shipped the 439-node FINAL v2 trees, the archetype-wide spend gate, trainer authority, respec, and fire-after-warmup for charged abilities. Mission XP has a `GrantXP` action (#618) but `reward_xp` is 0 on all 1,041 missions and the formula needs a maintainer decision |
 | Crafting | KM | 9 (2 IM, 7 KM) | **Phase 1 only** (#427): `CraftingState` + transactional persistence + expertise grants. Every player-facing verb (craft / research / reverse-engineer / alloy / ASP-spend / respec) still logs `UNIMPLEMENTED` |
 | Stargate travel | IM | 10 (2 CW, 4 NT, 3 IM, 1 KM) | Gate passage CW. DHD interaction, gate cancel, address discovery and multi-player gate sync are NT (#662, #663, #682); stargate open/cross events are now emitted. Return-trip state is IM |
 | Chat | NT | 10 (1 NT, 2 IM, 7 KM) | Say/emote/yell broadcast, now reaching other players via #737. All 8 canonical channels are registered and auto-joined, but nothing routes traffic on the non-spatial ones; tells and moderation unported |
