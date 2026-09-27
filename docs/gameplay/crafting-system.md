@@ -14,7 +14,7 @@ last_updated: 2026-07-25
 
 The crafting system enables players to create items through blueprints, research items for expertise, reverse engineer items into components, and alloy materials into higher tiers. Crafting is gated by disciplines (learned skill trees), racial paradigms (faction-specific tech trees), and Applied Science points (discipline training currency).
 
-The Rust implementation lives in [`crates/base-session/src/base/crafting/`](../../crates/base-session/src/base/crafting/) (persistence + GM grants) and [`cell/cell_methods/player/crafting/`](../../crates/cell-methods/src/cell/cell_methods/player/crafting/) (cell methods 95–100: argument parsing and the forward to the base). The state model is `cimmeria_entity::crafting::CraftingState`.
+The Rust implementation lives in [`crates/base-session/src/base/crafting/`](../../crates/base-session/src/base/crafting/) (persistence, GM grants, the induction engine and the consume-and-grant transaction) and [`cell/cell_methods/player/crafting/`](../../crates/cell-methods/src/cell/cell_methods/player/crafting/) (cell methods 95–100: argument parsing and the forward to the base). The state model is `cimmeria_entity::crafting::CraftingState`.
 
 The sections below that describe `Crafter` behaviour document the **original server's design**, which Phase 2 is expected to reproduce. They are not descriptions of current runtime behaviour.
 
@@ -39,8 +39,9 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Reverse engineering | STUB | The base answers "Reverse engineering is not available yet." |
 | Alloying | STUB | The base answers "Alloying is not available yet." |
 | Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
-| Timer-based induction | NOT IMPL | The original 3.0s per-operation induction has no Rust equivalent |
-| Busy state lock | NOT IMPL | No `beginBusy`/`endBusy` equivalent |
+| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. No verb submits to it yet. See [Induction engine](#induction-engine) |
+| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. No verb builds one yet |
+| Busy state lock | REPLACED | The induction queue serializes a player's crafting; there is no separate busy flag |
 | Crafting stations | DONE | The cell tracks the nearest station per verb within `MAX_INTERACT_DISTANCE` (5 units, 3-D) and reports changes to the base once a second; the forward recomputes the mask per request. CR-05. No seeded template is a station yet (CR-11 adds the debug-hub four) |
 | Field Crafting Tools | DONE | A tool in the crafting bag (container 15) covers crafting, research and reverse engineering for its science up to its `tech_comp` (D-CR21). CR-05 |
 | Station gate | DONE | Crafting, research, reverse engineering and alloying are refused with "No crafting station or tool for <verb> nearby." unless a station, a covering tool or "craft anywhere" allows them. CR-05 |
@@ -152,6 +153,39 @@ Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
        |-> Create alloy product
        |-> Gain 1 expertise in blueprint's discipline
 ```
+
+## Induction engine
+
+Every crafting verb that takes time (craft, research, reverse engineer, alloy) will run through the same engine on the base. The verbs are not wired to it yet. Unlike the original server, which consumed the components when the request arrived (so a logout or crash during the bar lost them), the Rust engine validates at the request and consumes only when the bar completes.
+
+**Queue.** Each player has one running induction and a first-in-first-out queue, ten in all. The reverse-engineering page sends up to ten requests in one burst, so all ten are accepted. The eleventh is refused with "You can have at most 10 crafting jobs at once." and an inventory resync (one resync per burst). The queue is keyed by the player entity and lives only in memory.
+
+**Bar.** When an induction becomes the running one, the player's client gets `onTimerUpdate` (client method 12) with `Type = 16` (`TIMER_CRAFT_INDUCTION`), `SourceID` = the player entity, `SecondaryID = 0`, `TotalTime = 3.0` and `BigWorldTimeComplete` = the server's game clock + 3.0. The client draws the crafting bar from that timer alone. The server waits on a monotonic deadline; it never stores the absolute game time, because the game clock restarts with the server.
+
+**Completion.** At the deadline the engine runs the job, then starts the next one. It runs a job only while the entity still belongs to a connected session playing the same character, under the world name the queue started with.
+
+**Dropped, never consumed.** The queue is dropped without consuming anything when the session ends (every disconnect path, `logOff` to character select or to desktop) and on gate travel. A job whose transaction is already running when the player leaves still finishes; the transaction is atomic either way.
+
+**The transaction.** A completing item verb runs one database transaction:
+
+1. Take the player-wide inventory lock and the per-bag locks (main bag, crafting bag, and every product's bag), then lock the player row.
+2. Lock each item instance the request named and check that it still belongs to the player and sits in the main bag (1) or the crafting bag (15).
+3. Consume each component by design across those two bags, the crafting bag first. The client names only one instance per component type, so a requirement that spans several stacks is met by design, not by the named instance. A bank stack never counts.
+4. Place each product in the first main or crafting bag its `container_sets` list. The 752 crafting components list `{17,15}` (bank first) and land in the crafting bag. A product merges into one unbound stack with room for the whole quantity, or takes free slots, one per full stack.
+5. Add expertise to disciplines the player knows, capped at 100.
+
+After the commit the client gets `onRemoveItem` for emptied stacks, one `onUpdateItem` for changed ones and `onUpdateDiscipline` for each changed discipline; the cell gets the inventory events through the outbox. If anything fails, nothing is applied and the player gets one of these lines, followed by a full inventory resync:
+
+| Why | Line |
+|---|---|
+| A named component is gone or not the player's | A component is no longer in your inventory. Nothing was used. |
+| A named component left the main and crafting bags | Components must be in your backpack or crafting bag. Nothing was used. |
+| Too few components in the two bags | You do not have enough components. Nothing was used. |
+| No room for the product | Not enough room in your bags for the result. Nothing was used. |
+| The product fits no carried bag | The result cannot be placed in your bags. Nothing was used. |
+| A database error or an invalid plan | Crafting failed. Nothing was used. |
+
+Rolls (research success, reverse-engineering recovery) go through an injectable RNG (`base/crafting/rng.rs`), so tests pin them.
 
 ## Discipline System
 
