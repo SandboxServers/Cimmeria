@@ -294,6 +294,31 @@ GENERATORS: dict[str, Generator] = {
 # ── splicing ─────────────────────────────────────────────────────────────────
 
 
+FENCE_RE = re.compile(r"^[ \t]*(```|~~~)", re.M)
+
+
+def fenced_spans(text: str) -> list[tuple[int, int]]:
+    """Character ranges of fenced code blocks."""
+    spans, start = [], None
+    for m in FENCE_RE.finditer(text):
+        if start is None:
+            start = m.start()
+        else:
+            spans.append((start, m.end()))
+            start = None
+    if start is not None:
+        spans.append((start, len(text)))
+    return spans
+
+
+def in_code(text: str, pos: int, fences: list[tuple[int, int]]) -> bool:
+    """True inside a fenced block or an inline code span (odd backticks earlier on the line)."""
+    if any(a <= pos < b for a, b in fences):
+        return True
+    line_start = text.rfind("\n", 0, pos) + 1
+    return text.count("`", line_start, pos) % 2 == 1
+
+
 @dataclass
 class Change:
     name: str
@@ -309,8 +334,11 @@ def regen_text(text: str, ctx: Context, generators: dict[str, Generator] = GENER
     """
     nl = "\r\n" if "\r\n" in text else "\n"
     changes: list[Change] = []
+    fences = fenced_spans(text)
 
     def replace(m: re.Match) -> str:
+        if in_code(text, m.start(), fences):
+            return m.group(0)  # a documented example, not a live marker
         name = m.group("name")
         if name not in generators:
             raise ValueError(f"unknown generator gen:{name}")

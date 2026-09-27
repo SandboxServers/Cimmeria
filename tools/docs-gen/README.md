@@ -43,6 +43,8 @@ table is written as a block, with a blank line on each side. Arguments follow th
 name in the opening marker: `<!-- gen:gap-pct CW+NT+IM 0 -->79%<!-- /gen:gap-pct -->`.
 The crate graph keeps its older `<!-- crate-graph:begin -->` / `<!-- crate-graph:end -->`
 markers and is rendered by [`crate-graph/crate_graph.py`](../crate-graph/README.md).
+A marker inside a fenced code block or an inline code span is an example, and is
+left alone.
 
 To add a generated number, wrap the existing number in a marker and run the script.
 Commit its output in that PR, since the PR adds the marker. Otherwise don't commit

@@ -74,6 +74,17 @@ class MarkerTests(unittest.TestCase):
         new, _ = regen.regen_text(text, self.ctx)
         self.assertNotIn("\r", new)
 
+    def test_examples_in_code_are_left_alone(self) -> None:
+        text = (
+            "Write `<!-- gen:tests-total -->1<!-- /gen:tests-total -->` like this.\n"
+            "```markdown\n<!-- gen:tests-total -->1<!-- /gen:tests-total -->\n```\n"
+            "Live: `code` <!-- gen:tests-total -->1<!-- /gen:tests-total -->\n"
+        )
+        new, changes = regen.regen_text(text, self.ctx)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(new.count("-->1<!--"), 2)
+        self.assertTrue(new.endswith("Live: `code` <!-- gen:tests-total -->2,000<!-- /gen:tests-total -->\n"))
+
     def test_unknown_generator_is_an_error(self) -> None:
         with self.assertRaises(ValueError):
             regen.regen_text("<!-- gen:nope -->1<!-- /gen:nope -->", self.ctx)
