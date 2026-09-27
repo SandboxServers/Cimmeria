@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    aggro, bookmark, crafting, entity, give, mission, net, patrol, pet, placement, query, seed,
-    server, social, spawn, stats, travel,
+    aggro, bookmark, crafting, entity, give, give_ability, mission, net, patrol, pet, placement,
+    query, seed, server, social, spawn, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -147,19 +147,48 @@ pub(crate) fn command_named_by(text: &str) -> Option<&'static Spec> {
 /// (the line is consumed, never broadcast). Returns `false` for any other
 /// `.`-text, which stays ordinary chat.
 ///
-/// The arguments are neither echoed nor logged. The refusal is logged only
-/// through the playtest-friction journal (a DEBUG line), not a WARN, so a
-/// player cannot flood the WARN stream by typing commands.
+/// The arguments are neither echoed nor logged. The refusal is one DEBUG
+/// line with `reason = "not_gm"` and the sender's identity, never a WARN, so
+/// a player cannot flood the WARN stream by typing commands.
 pub(crate) async fn refuse_non_gm_command(
     entity_id: u32,
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) -> bool {
     let Some(spec) = command_named_by(text) else {
         return false;
     };
-    // The journal entry is itself the DEBUG line (`reject = "not_gm"`).
-    crate::cell::playtest_friction::console_rejected(entity_id, spec.name, "not_gm");
+    // Not `playtest_friction::console_rejected`: its streak detector is a
+    // "GM hunting for a command" WARN, and a player must not be able to raise
+    // it by typing. `.pet` refusals join the other pet commands on
+    // `pets.command`; the rest use the console's module-path target.
+    let id = space_mgr.player_identity(entity_id);
+    let access_level = space_mgr.get_entity(entity_id).map(|e| e.access_level);
+    if spec.name == "pet" {
+        tracing::debug!(
+            target: "pets.command",
+            decision_outcome = "gm_refused",
+            reason = "not_gm",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            access_level,
+            command = spec.name,
+            "non-GM .-console command refused"
+        );
+    } else {
+        tracing::debug!(
+            decision_outcome = "refused",
+            reason = "not_gm",
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            access_level,
+            command = spec.name,
+            "non-GM .-console command refused"
+        );
+    }
     send_gm_feedback(
         entity_id,
         &format!(".{} is a GM command; you do not have GM rights", spec.name),
@@ -319,7 +348,9 @@ pub async fn exec(
             )
             .await
         }
-        "giveability" => give::give_ability(caller_id, target_id, args, tx, space_mgr).await,
+        "giveability" => {
+            give_ability::give_ability(caller_id, target_id, args, tx, space_mgr).await
+        }
         // Pets campaign PT-07
         "pet" => pet::dispatch(caller_id, args, target_id, tx, space_mgr).await,
         // Playtest bookmark

@@ -19,6 +19,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::super::super::super::gm_feedback::send_gm_feedback_to_client;
+use super::super::super::super::session_identity::identity_for_entity;
 use super::super::super::super::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
@@ -76,16 +77,37 @@ fn active_player_of(
     .and_then(|s| s.active_player_id)
 }
 
+/// Who asked, for the log lines: the GM's character as the cell sent it, and
+/// the GM's account while that entity still plays that character (Rule 5,
+/// "an actor acts on someone else": `account_id` / `player_id` name the GM,
+/// `subject_player_id` the character granted).
+fn gm_account(
+    grant: &AbilityGrant,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> Option<u32> {
+    let id = identity_for_entity(connected, entity_to_addr, grant.gm_entity_id);
+    (id.player_id == Some(grant.gm_player_id))
+        .then_some(id.account_id)
+        .flatten()
+}
+
 /// Persist a GM ability grant, tell the cell, and report to the GM.
+///
+/// Every outcome is one event with `decision_outcome`, `persisted` and the
+/// ids above: `granted` (INFO), `already_known` (DEBUG, a GM can repeat it
+/// at will), `no_database` and `session_mismatch` (WARN), `db_error`
+/// (ERROR). A cell send failure after the write is an ERROR too.
 #[tracing::instrument(
     name = "progression.gm_grant_ability",
     level = "info",
     skip_all,
     fields(
-        entity_id = grant.entity_id,
-        player_id = grant.player_id,
+        entity_id = grant.gm_entity_id,
+        player_id = grant.gm_player_id,
+        subject_entity_id = grant.entity_id,
+        subject_player_id = grant.player_id,
         ability_id = grant.ability_id,
-        gm_entity_id = grant.gm_entity_id,
     )
 )]
 pub async fn handle_gm_grant_ability(
@@ -103,14 +125,18 @@ pub async fn handle_gm_grant_ability(
         gm_entity_id,
         gm_player_id,
     } = grant;
+    let account_id = gm_account(&grant, connected, entity_to_addr);
     // The GM's entity id is recycled on relog, like the subject's: answer only
     // while that entity still plays the GM's character, or a stranger reads
     // "granted ability X".
     let tell_gm = |text: String| async move {
         if active_player_of(gm_entity_id, connected, entity_to_addr) != Some(gm_player_id) {
             tracing::debug!(
-                gm_entity_id,
-                gm_player_id,
+                decision_outcome = "feedback_dropped",
+                reason = "gm_session_gone",
+                entity_id = gm_entity_id,
+                player_id = gm_player_id,
+                ability_id,
                 "GmGrantAbility: GM session gone or reused; feedback dropped"
             );
             return;
@@ -120,8 +146,14 @@ pub async fn handle_gm_grant_ability(
 
     let Some(pool) = db_pool else {
         tracing::warn!(
-            entity_id,
-            player_id,
+            decision_outcome = "refused",
+            reason = "no_database",
+            persisted = false,
+            entity_id = gm_entity_id,
+            account_id,
+            player_id = gm_player_id,
+            subject_entity_id = entity_id,
+            subject_player_id = player_id,
             ability_id,
             "GmGrantAbility: no DB pool, dropping grant"
         );
@@ -138,10 +170,16 @@ pub async fn handle_gm_grant_ability(
     let active = active_player_of(entity_id, connected, entity_to_addr);
     if active != Some(player_id) {
         tracing::warn!(
-            entity_id,
-            player_id,
-            ability_id,
+            decision_outcome = "refused",
+            reason = "session_mismatch",
+            persisted = false,
+            entity_id = gm_entity_id,
+            account_id,
+            player_id = gm_player_id,
+            subject_entity_id = entity_id,
+            subject_player_id = player_id,
             active_player_id = ?active,
+            ability_id,
             "GmGrantAbility: session is not playing the resolved character — rejecting"
         );
         tell_gm(format!(
@@ -154,9 +192,15 @@ pub async fn handle_gm_grant_ability(
     match persist_ability_grant(pool, player_id, ability_id).await {
         Ok(true) => {}
         Ok(false) => {
-            tracing::info!(
-                entity_id,
-                player_id,
+            tracing::debug!(
+                decision_outcome = "refused",
+                reason = "already_known",
+                persisted = false,
+                entity_id = gm_entity_id,
+                account_id,
+                player_id = gm_player_id,
+                subject_entity_id = entity_id,
+                subject_player_id = player_id,
                 ability_id,
                 "GmGrantAbility: UPDATE matched 0 rows (already known, or no such player)"
             );
@@ -168,10 +212,17 @@ pub async fn handle_gm_grant_ability(
         }
         Err(e) => {
             tracing::error!(
-                entity_id,
-                player_id,
+                decision_outcome = "refused",
+                reason = "db_error",
+                persisted = false,
+                entity_id = gm_entity_id,
+                account_id,
+                player_id = gm_player_id,
+                subject_entity_id = entity_id,
+                subject_player_id = player_id,
                 ability_id,
-                "GmGrantAbility: UPDATE failed: {e}"
+                error = %e,
+                "GmGrantAbility: UPDATE failed"
             );
             tell_gm(format!(
                 ".giveability: database error; ability {ability_id} not granted"
@@ -182,11 +233,14 @@ pub async fn handle_gm_grant_ability(
     }
 
     tracing::info!(
-        entity_id,
-        player_id,
+        decision_outcome = "granted",
+        persisted = true,
+        entity_id = gm_entity_id,
+        account_id,
+        player_id = gm_player_id,
+        subject_entity_id = entity_id,
+        subject_player_id = player_id,
         ability_id,
-        gm_entity_id,
-        gm_player_id,
         "GmGrantAbility: persisted"
     );
 
@@ -201,7 +255,10 @@ pub async fn handle_gm_grant_ability(
                 .await
             {
                 tracing::error!(
-                    entity_id,
+                    decision_outcome = "mirror_send_failed",
+                    reason = "base_to_cell_closed",
+                    subject_entity_id = entity_id,
+                    subject_player_id = player_id,
                     ability_id,
                     error = %e,
                     "GmGrantAbility: base→cell send failed; the ability shows after relog"
@@ -209,7 +266,10 @@ pub async fn handle_gm_grant_ability(
             }
         }
         None => tracing::warn!(
-            entity_id,
+            decision_outcome = "mirror_send_failed",
+            reason = "no_cell_channel",
+            subject_entity_id = entity_id,
+            subject_player_id = player_id,
             ability_id,
             "GmGrantAbility: no cell channel; the ability shows after relog"
         ),

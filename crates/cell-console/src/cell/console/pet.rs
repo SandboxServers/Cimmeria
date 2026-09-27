@@ -19,7 +19,21 @@
 //!
 //! This is a GM tool, not the player path: the summon ability (PT-03) and
 //! the pet-bar commands (PT-04, with the `owned_pet` ownership guard) are the
-//! player-facing routes. Mutations log on `pets.command` at INFO.
+//! player-facing routes.
+//!
+//! # Telemetry (target `pets.command`)
+//!
+//! [`dispatch`] opens the info span `pets.command` (Rule 1). Every accept
+//! and every refusal is one event on the `pets.command` target carrying the
+//! caller's `account_id` / `player_id` (Rule 5, resolved late):
+//!
+//! - INFO `decision_outcome = gm_summoned | gm_dismissed | gm_stance_set`;
+//! - DEBUG `decision_outcome = gm_refused` with `reason` (a GM can trigger
+//!   every refusal at will, so none is a WARN);
+//! - DEBUG `decision_outcome = gm_inspected` for `info` / `list`.
+//!
+//! A line about another owner's pet adds `subject_player_id`. The despawns
+//! and the spawn themselves are logged once more on `pets.lifecycle`.
 
 use cimmeria_entity::cell_entity::{PetStance, PetState};
 use tokio::sync::mpsc;
@@ -38,6 +52,17 @@ pub(super) const USAGE: &str =
 const LIST_LIMIT: usize = 20;
 
 /// Route `.pet <sub> [arg]`.
+#[tracing::instrument(
+    name = "pets.command",
+    level = "info",
+    skip_all,
+    fields(
+        entity_id = caller_id,
+        verb = args.first().copied().unwrap_or(""),
+        account_id = space_mgr.player_identity(caller_id).account_id,
+        player_id = space_mgr.player_identity(caller_id).player_id,
+    )
+)]
 pub(super) async fn dispatch(
     caller_id: u32,
     args: &[&str],
@@ -51,8 +76,41 @@ pub(super) async fn dispatch(
         Some("stance") => stance(caller_id, args, tx, space_mgr).await,
         Some("info") => info(caller_id, target_id, tx, space_mgr).await,
         Some("list") => list(caller_id, tx, space_mgr).await,
-        _ => send_gm_feedback(caller_id, &format!("Usage: {USAGE}"), tx).await,
+        _ => {
+            refuse(
+                caller_id,
+                "unknown_verb",
+                None,
+                &format!("Usage: {USAGE}"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
     }
+}
+
+/// Log a refusal on `pets.command` and answer the GM with `text`.
+async fn refuse(
+    caller_id: u32,
+    reason: &'static str,
+    pet_id: Option<u32>,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(caller_id);
+    tracing::debug!(
+        target: "pets.command",
+        decision_outcome = "gm_refused",
+        reason,
+        entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        pet_id,
+        "GM .pet refused"
+    );
+    send_gm_feedback(caller_id, text, tx).await;
 }
 
 /// `.pet summon <id>`.
@@ -63,12 +121,8 @@ async fn summon(
     space_mgr: &mut SpaceManager,
 ) {
     let Some(id) = args.get(1).and_then(|s| s.parse::<i32>().ok()) else {
-        send_gm_feedback(
-            caller_id,
-            ".pet summon: give a template id or a summon ability id",
-            tx,
-        )
-        .await;
+        let text = ".pet summon: give a template id or a summon ability id";
+        refuse(caller_id, "bad_args", None, text, tx, space_mgr).await;
         return;
     };
     // A summon ability first: ability and template ids live in different
@@ -77,17 +131,15 @@ async fn summon(
         Some(row) => (row.template_id, id),
         None if space_mgr.spawn_templates.contains_key(&id) => (id, 0),
         None => {
-            send_gm_feedback(
-                caller_id,
-                &format!(".pet summon: {id} is neither a summon ability nor a cached template"),
-                tx,
-            )
-            .await;
+            let text =
+                format!(".pet summon: {id} is neither a summon ability nor a cached template");
+            refuse(caller_id, "unknown_id", None, &text, tx, space_mgr).await;
             return;
         }
     };
     if !space_mgr.get_entity(caller_id).is_some_and(|e| e.is_player) {
-        send_gm_feedback(caller_id, ".pet summon: only a player can own a pet", tx).await;
+        let text = ".pet summon: only a player can own a pet";
+        refuse(caller_id, "not_a_player", None, text, tx, space_mgr).await;
         return;
     }
     let class_note = match space_mgr.spawn_templates.get(&template_id) {
@@ -98,42 +150,49 @@ async fn summon(
     // Checked everything that can be checked before touching the old pet, so
     // a refused summon never leaves the GM with no pet at all.
     let replaced = dismiss_all(caller_id, tx, space_mgr).await;
-    match space_mgr.spawn_pet_from_template(caller_id, template_id, summon_ability_id) {
-        Ok(pet_id) => {
-            tracing::info!(
-                target: "pets.command",
-                decision_outcome = "gm_summoned",
-                caller_id,
-                pet_id,
-                template_id,
-                summon_ability_id,
-                replaced = replaced.len(),
-                "GM .pet summon"
-            );
-            let via = if summon_ability_id != 0 {
-                format!(" via ability {summon_ability_id}")
-            } else {
-                String::new()
-            };
-            let replaced_note = if replaced.is_empty() {
-                String::new()
-            } else {
-                format!(", replacing {replaced:?}")
-            };
-            send_gm_feedback(
-                caller_id,
-                &format!(
-                    ".pet summon: pet {pet_id} from template {template_id}{via}{class_note}{replaced_note}"
-                ),
-                tx,
-            )
-            .await;
-        }
-        // `spawn_pet_from_template` already logged the WARN with its reason.
+    let pet_id = match space_mgr.spawn_pet_from_template(caller_id, template_id, summon_ability_id)
+    {
+        Ok(pet_id) => pet_id,
+        // `spawn_pet_from_template` already logged the WARN on
+        // `pets.lifecycle` with its own reason.
         Err(e) => {
-            send_gm_feedback(caller_id, &format!(".pet summon: failed, {e}"), tx).await;
+            let text = format!(".pet summon: failed, {e}");
+            refuse(caller_id, "spawn_failed", None, &text, tx, space_mgr).await;
+            return;
         }
-    }
+    };
+    let id = space_mgr.player_identity(caller_id);
+    tracing::info!(
+        target: "pets.command",
+        decision_outcome = "gm_summoned",
+        entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        pet_id,
+        owner_id = caller_id,
+        template_id,
+        ability_id = summon_ability_id,
+        replaced = ?replaced,
+        "GM .pet summon"
+    );
+    let via = if summon_ability_id != 0 {
+        format!(" via ability {summon_ability_id}")
+    } else {
+        String::new()
+    };
+    let replaced_note = if replaced.is_empty() {
+        String::new()
+    } else {
+        format!(", replacing {replaced:?}")
+    };
+    send_gm_feedback(
+        caller_id,
+        &format!(
+            ".pet summon: pet {pet_id} from template {template_id}{via}{class_note}{replaced_note}"
+        ),
+        tx,
+    )
+    .await;
 }
 
 /// Despawn every pet `owner` has out. Returns the ids that were despawned;
@@ -157,13 +216,18 @@ async fn dismiss_all(
 async fn dismiss(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     let pets = dismiss_all(caller_id, tx, space_mgr).await;
     if pets.is_empty() {
-        send_gm_feedback(caller_id, ".pet dismiss: you have no pet out", tx).await;
+        let text = ".pet dismiss: you have no pet out";
+        refuse(caller_id, "no_pet", None, text, tx, space_mgr).await;
         return;
     }
+    let id = space_mgr.player_identity(caller_id);
     tracing::info!(
         target: "pets.command",
         decision_outcome = "gm_dismissed",
-        caller_id,
+        entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        owner_id = caller_id,
         pets = ?pets,
         "GM .pet dismiss"
     );
@@ -185,50 +249,58 @@ async fn stance(
         .and_then(|v| i8::try_from(v).ok())
         .and_then(|v| PetStance::try_from(v).ok());
     let Some(stance) = parsed else {
-        send_gm_feedback(
-            caller_id,
-            ".pet stance: give 0 (passive), 1 (defensive) or 2 (aggressive)",
-            tx,
-        )
-        .await;
+        let text = ".pet stance: give 0 (passive), 1 (defensive) or 2 (aggressive)";
+        refuse(caller_id, "bad_stance", None, text, tx, space_mgr).await;
         return;
     };
     let Some(pet_id) = space_mgr.pets.pets_of(caller_id).first().copied() else {
-        send_gm_feedback(caller_id, ".pet stance: you have no pet out", tx).await;
+        let text = ".pet stance: you have no pet out";
+        refuse(caller_id, "no_pet", None, text, tx, space_mgr).await;
         return;
     };
     let Some(pet) = space_mgr
         .get_entity_mut(pet_id)
         .and_then(|e| e.pet.as_deref_mut())
     else {
-        send_gm_feedback(caller_id, ".pet stance: your pet is gone", tx).await;
+        let text = ".pet stance: your pet is gone";
+        refuse(caller_id, "pet_gone", Some(pet_id), text, tx, space_mgr).await;
         return;
     };
     if !pet.allows(stance) {
-        let allowed = stance_labels(pet);
-        send_gm_feedback(
+        let text = format!(
+            ".pet stance: this pet cannot be {}; allowed: {}",
+            stance.label(),
+            stance_labels(pet)
+        );
+        refuse(
             caller_id,
-            &format!(
-                ".pet stance: this pet cannot be {}; allowed: {allowed}",
-                stance.label()
-            ),
+            "stance_not_allowed",
+            Some(pet_id),
+            &text,
             tx,
+            space_mgr,
         )
         .await;
         return;
     }
-    pet.stance = stance;
+    let previous = std::mem::replace(&mut pet.stance, stance);
     let owner = pet.owner_id;
+    let id = space_mgr.player_identity(caller_id);
     tracing::info!(
         target: "pets.command",
         decision_outcome = "gm_stance_set",
-        caller_id,
+        event = "stance_changed",
+        entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
         pet_id,
+        owner_id = owner,
+        from = previous.label(),
         stance = stance.label(),
         "GM .pet stance"
     );
     // Owner only: the stance highlights the owner's pet bar.
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::WitnessEntityMethod {
             witness_id: owner,
             entity_id: pet_id,
@@ -236,7 +308,18 @@ async fn stance(
             args: build_pet_stance_update(stance.wire()),
             entity_is_player: false,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(
+            target: "pets.command",
+            decision_outcome = "send_failed",
+            reason = "cell_to_base_closed",
+            pet_id,
+            owner_id = owner,
+            error = %e,
+            "GM .pet stance: onPetStanceUpdate not sent; the pet bar shows the old stance"
+        );
+    }
     send_gm_feedback(
         caller_id,
         &format!(".pet stance: pet {pet_id} is now {}", stance.label()),
@@ -282,23 +365,36 @@ async fn info(
         .filter(|&t| space_mgr.pets.is_pet(t))
         .or_else(|| space_mgr.pets.pets_of(caller_id).first().copied());
     let Some(pet_id) = subject else {
-        send_gm_feedback(
-            caller_id,
-            ".pet info: select a pet, or summon one with .pet summon",
-            tx,
-        )
-        .await;
+        let text = ".pet info: select a pet, or summon one with .pet summon";
+        refuse(caller_id, "no_pet", None, text, tx, space_mgr).await;
         return;
     };
-    let Some(entity) = space_mgr.get_entity(pet_id) else {
-        send_gm_feedback(caller_id, &format!(".pet info: pet {pet_id} is gone"), tx).await;
-        return;
-    };
-    let Some(pet) = entity.pet.as_deref() else {
-        send_gm_feedback(caller_id, &format!(".pet info: {pet_id} is not a pet"), tx).await;
+    let Some((entity, pet)) = space_mgr
+        .get_entity(pet_id)
+        .and_then(|e| e.pet.as_deref().map(|p| (e, p)))
+    else {
+        let text = format!(".pet info: pet {pet_id} is gone");
+        refuse(caller_id, "pet_gone", Some(pet_id), &text, tx, space_mgr).await;
         return;
     };
     let owner = pet.owner_id;
+    let id = space_mgr.player_identity(caller_id);
+    // Another owner's pet names that owner as the subject (Rule 5).
+    let subject_player_id = (owner != caller_id)
+        .then(|| space_mgr.player_identity(owner).player_id)
+        .flatten();
+    tracing::debug!(
+        target: "pets.command",
+        decision_outcome = "gm_inspected",
+        verb = "info",
+        entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        subject_player_id,
+        pet_id,
+        owner_id = owner,
+        "GM .pet info"
+    );
     let distance = owner_distance(space_mgr, pet_id, owner)
         .map_or_else(|| "owner not found".to_string(), |d| format!("{d:.1} u"));
     let last_teleport = pet.last_teleport_at.map_or_else(
@@ -339,6 +435,18 @@ async fn list(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut 
         .filter(|&(pet, _)| space.is_some() && space_mgr.get_entity_space_id(pet) == space)
         .collect();
     pairs.sort_unstable();
+    let id = space_mgr.player_identity(caller_id);
+    tracing::debug!(
+        target: "pets.command",
+        decision_outcome = "gm_inspected",
+        verb = "list",
+        entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        space_id = space,
+        pets = pairs.len(),
+        "GM .pet list"
+    );
     send_gm_feedback(
         caller_id,
         &format!(".pet list: {} pet(s) in this space", pairs.len()),

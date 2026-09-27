@@ -19,7 +19,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::ON_PLAYER_COMMUNICATION;
 
-const CALLER: u32 = 1;
+pub(super) const CALLER: u32 = 1;
 const WITNESS: u32 = 2;
 const FAR: u32 = 3;
 const CHAN_SAY: u8 = 0;
@@ -50,11 +50,12 @@ fn add_player(mgr: &mut SpaceManager, id: u32, world: &str) {
     let e = mgr.get_entity_mut(id).unwrap();
     e.is_player = true;
     e.player_id = Some(70 + id as i32);
+    e.account_id = Some(600 + id);
 }
 
 /// Caller (1, `access_level` as given) and a witness (2) in Agnos, a third
 /// player (3) in Harset, an NPC in Agnos; ability 2826 defined.
-fn world(access_level: u32) -> (SpaceManager, u32) {
+pub(super) fn world(access_level: u32) -> (SpaceManager, u32) {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /><Space WorldName="Harset" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /><Space WorldName="Harset" /></Spaces>"#;
@@ -75,7 +76,7 @@ fn world(access_level: u32) -> (SpaceManager, u32) {
     (mgr, npc)
 }
 
-async fn say(mgr: &mut SpaceManager, text: &str) -> Vec<CellToBaseMsg> {
+pub(super) async fn say(mgr: &mut SpaceManager, text: &str) -> Vec<CellToBaseMsg> {
     let (tx, mut rx) = mpsc::channel(64);
     handle_chat_message(
         CALLER,
@@ -92,7 +93,11 @@ async fn say(mgr: &mut SpaceManager, text: &str) -> Vec<CellToBaseMsg> {
 }
 
 /// Run a console line as the (GM) caller with `target` selected.
-async fn console(mgr: &mut SpaceManager, target: Option<u32>, text: &str) -> Vec<CellToBaseMsg> {
+pub(super) async fn console(
+    mgr: &mut SpaceManager,
+    target: Option<u32>,
+    text: &str,
+) -> Vec<CellToBaseMsg> {
     mgr.get_entity_mut(CALLER).unwrap().current_target_id = target.map(|t| t as i32);
     let (tx, mut rx) = mpsc::channel(64);
     handle_console_command(CALLER, text, &tx, mgr, &ChainEngine::new()).await;

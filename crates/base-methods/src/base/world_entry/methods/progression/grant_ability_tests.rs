@@ -20,7 +20,7 @@ use super::respec::persist_respec;
 use super::tests::{cleanup, insert_test_account, insert_test_player, make_connected_state};
 use super::{handle_gm_grant_ability, AbilityGrant};
 use crate::cell::messages::BaseToCellMsg;
-use crate::test_support::{require_db_or_skip, TestTransport};
+use crate::test_support::{require_db_or_skip, Captured, LogCapture, TestTransport};
 
 const SUBJECT: u32 = 9_301_000;
 const GM: u32 = 9_301_001;
@@ -57,6 +57,27 @@ async fn row(pool: &sqlx::PgPool, id: i32) -> Row {
     .fetch_one(pool)
     .await
     .expect("read player row")
+}
+
+/// The one `decision_outcome = outcome` event at `level`, with `reason` if
+/// given.
+fn outcome_event(
+    capture: &crate::test_support::LogCaptureGuard,
+    level: tracing::Level,
+    outcome: &str,
+    reason: Option<&str>,
+) -> Captured {
+    let all = capture.all();
+    let found: Vec<&Captured> = all
+        .iter()
+        .filter(|c| {
+            c.level == level
+                && c.has_field("decision_outcome", outcome)
+                && reason.is_none_or(|r| c.has_field("reason", r))
+        })
+        .collect();
+    assert_eq!(found.len(), 1, "want one {level} {outcome}: {all:#?}");
+    found[0].clone()
 }
 
 /// Two sessions: the subject playing `subject_player` and the GM playing
@@ -125,8 +146,20 @@ async fn giveability_persists_to_abilities_only_and_tells_the_cell_and_the_gm() 
     setup(&pool, ID, &[592, 1643], &[1643]).await;
     let s = Sessions::new(ID, GM_PLAYER);
 
+    let capture = LogCapture::install();
     let to_cell = s.grant(&pool, ID, GM_PLAYER).await;
 
+    // Rule 5: the GM is the actor, the character granted is the subject.
+    let e = outcome_event(&capture, tracing::Level::INFO, "granted", None);
+    for (k, v) in [
+        ("persisted", "true".to_string()),
+        ("player_id", GM_PLAYER.to_string()),
+        ("account_id", "0".to_string()),
+        ("subject_player_id", ID.to_string()),
+        ("ability_id", ABILITY.to_string()),
+    ] {
+        assert!(e.has_field(k, &v), "{k}={v}: {e:#?}");
+    }
     assert_eq!(
         row(&pool, ID).await,
         (vec![592, 1643, ABILITY], vec![1643], 3, 1),
@@ -163,7 +196,15 @@ async fn giveability_twice_does_not_duplicate_the_ability() {
     let s = Sessions::new(ID, GM_PLAYER);
 
     s.grant(&pool, ID, GM_PLAYER).await;
+    let capture = LogCapture::install();
     let second = s.grant(&pool, ID, GM_PLAYER).await;
+    let e = outcome_event(
+        &capture,
+        tracing::Level::DEBUG,
+        "refused",
+        Some("already_known"),
+    );
+    assert!(e.has_field("persisted", "false"), "{e:#?}");
 
     assert_eq!(row(&pool, ID).await.0, vec![592, ABILITY]);
     assert!(second.is_empty(), "a no-op grant tells the cell nothing");
@@ -185,7 +226,18 @@ async fn giveability_for_a_character_the_session_no_longer_plays_is_refused() {
     setup(&pool, ID, &[592], &[]).await;
     let s = Sessions::new(ID + 1, GM_PLAYER);
 
+    let capture = LogCapture::install();
     let to_cell = s.grant(&pool, ID, GM_PLAYER).await;
+    let e = outcome_event(
+        &capture,
+        tracing::Level::WARN,
+        "refused",
+        Some("session_mismatch"),
+    );
+    assert!(
+        e.has_field("persisted", "false") && e.has_field("subject_player_id", &ID.to_string()),
+        "{e:#?}"
+    );
 
     assert_eq!(row(&pool, ID).await.0, vec![592], "the row never moved");
     assert!(to_cell.is_empty());
@@ -202,7 +254,17 @@ async fn giveability_feedback_skips_a_recycled_gm_entity() {
     setup(&pool, ID, &[592], &[]).await;
     let s = Sessions::new(ID, GM_PLAYER + 1);
 
+    let capture = LogCapture::install();
     let to_cell = s.grant(&pool, ID, GM_PLAYER).await;
+    // The recycled entity's account is not the GM's: no `account_id` at all.
+    let e = outcome_event(&capture, tracing::Level::INFO, "granted", None);
+    assert!(!e.fields.contains_key("account_id"), "{e:#?}");
+    outcome_event(
+        &capture,
+        tracing::Level::DEBUG,
+        "feedback_dropped",
+        Some("gm_session_gone"),
+    );
 
     assert_eq!(row(&pool, ID).await.0, vec![592, ABILITY]);
     assert_eq!(to_cell.len(), 1, "the cell still mirrors the grant");

@@ -42,7 +42,8 @@
 //! - [`query`] — read-only search / inspection (`searchitem`, `players`, …).
 //! - [`stats`] — granular per-domain stat dumps (`primarystats`, …).
 //! - [`entity`] — live entity authoring (`tag`, `name`, `visible`, …).
-//! - [`give`] — player grants (`givecash`, `givexp`, `giveability`).
+//! - [`give`] — selected-target player grants (`givecash`, `givexp`).
+//! - [`give_ability`] — `giveability`, persisted through the base.
 //! - [`pet`] — pet UAT tools (`.pet summon|dismiss|stance|info|list`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
 //! - [`aggro`] — the GM's own proximity-aggro switch (`.aggro on|off`).
@@ -80,6 +81,7 @@ mod crafting;
 mod dispatch;
 mod entity;
 mod give;
+mod give_ability;
 pub mod gm;
 mod mission;
 mod net;

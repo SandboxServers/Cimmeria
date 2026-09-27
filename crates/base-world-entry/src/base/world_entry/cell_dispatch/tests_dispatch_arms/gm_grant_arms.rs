@@ -195,8 +195,12 @@ async fn gm_grant_ability_routes_to_handler_and_warns_when_no_pool() {
              If this fails the GmGrantAbility arm was removed or mis-routed.",
         );
     assert!(
-        event.has_field("player_id", "101"),
-        "GmGrantAbility warn must forward player_id: {event:#?}"
+        event.has_field("subject_player_id", "101") && event.has_field("player_id", "102"),
+        "GmGrantAbility warn must name the subject and the GM: {event:#?}"
+    );
+    assert!(
+        event.has_field("reason", "no_database") && event.has_field("persisted", "false"),
+        "GmGrantAbility warn must say why and that nothing persisted: {event:#?}"
     );
     assert!(
         event.has_field("ability_id", "2826"),

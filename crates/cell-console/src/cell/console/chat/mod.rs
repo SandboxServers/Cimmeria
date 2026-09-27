@@ -94,7 +94,7 @@ pub async fn handle_chat_message(
         // `.giveability 2826` must not echo the command to everyone nearby,
         // and the press needs visible feedback. Other `.`-text ("...",
         // ".hello") is ordinary chat and falls through to broadcast.
-        if console::refuse_non_gm_command(entity_id, text, tx).await {
+        if console::refuse_non_gm_command(entity_id, text, tx, space_mgr).await {
             return;
         }
     }

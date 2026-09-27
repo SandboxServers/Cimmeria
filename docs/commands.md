@@ -484,9 +484,10 @@ where a new `/command` can't: the client *eats* unknown `/`-input but *forwards*
 `.`-input.)
 
 **Game-Master only.** A GM's `.`-command is consumed by the server and never
-appears in anyone else's chat. A normal player typing a `.`-message just says it
-in chat like any other text. Auth is checked against your account level
-server-side. Type `.help` (or `.help <word>`) in-game for the live list.
+appears in anyone else's chat. A normal player who types a registered command
+(`.pet`, `.giveability`, ...) gets "is a GM command" back and nobody else sees
+it. Any other `.`-message is ordinary chat. Auth is checked against your account
+level server-side. Type `.help` (or `.help <word>`) in-game for the live list.
 
 ### Database persistence & the seed-commit flow
 
@@ -569,6 +570,8 @@ restart, never written to the DB):**
 | Server / maint | `.save` `.reloadmap` `.reloadres` `.removerespawner` `.loglevel` `.logclient` | ❌ Differs (see `.help`) |
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
 | Broadcast | `.announce` | ✅ Yes. `.announce <text>` reaches every online player, `.announce space <text>` only your space instance. Same line as `/gmshout`: your name, the GM flag, the server channel |
+| Grants | `.givecash` `.givexp` `.giveability` | ✅ Yes — `.giveability <abilityId>` gives the selected player (else you) the ability and **saves it to the character**: it survives relog and a trainer respec, costs no points, and refreshes the ability window at once. Pets UAT uses it for Summon Straegis (`.giveability 2826`) |
+| Pets | `.pet summon <templateId\|abilityId>` `.pet dismiss` `.pet stance <0-2>` `.pet info` `.pet list` | ✅ Yes (server side) — `summon` spawns a pet beside you at once, with no warmup, replacing your current pet; an id with a `pet_summons` row (2826) is the summon ability, anything else a template id (350). `stance` is 0 passive, 1 defensive, 2 aggressive. `info` shows the selected pet, else yours: owner, stance, abilities, toggled-off abilities, AI state, distance to its owner, last teleport. `list` shows every pet in your space with its owner. Nothing is saved: pets are per session |
 | Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
 
 A few commands (`.debug_controller`, the server/maint family) report

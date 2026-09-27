@@ -20,10 +20,10 @@ use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::{PetSummon, PetSummonCatalog, SpawnRecord};
 use crate::mercury::SGWPET_CLASS_ID;
 
-const GM: u32 = 1;
-const OTHER: u32 = 2;
+pub(super) const GM: u32 = 1;
+pub(super) const OTHER: u32 = 2;
 const FAR: u32 = 3;
-const PET_TEMPLATE: i32 = 350;
+pub(super) const PET_TEMPLATE: i32 = 350;
 const SUMMON_STRAEGIS: i32 = 2826;
 const PET_ABILITIES: [i32; 2] = [221, 1156];
 
@@ -78,12 +78,13 @@ fn add_player(mgr: &mut SpaceManager, id: u32, world: &str, pos: [f32; 3]) {
     let e = mgr.get_entity_mut(id).unwrap();
     e.is_player = true;
     e.player_id = Some(70 + id as i32);
+    e.account_id = Some(600 + id);
     e.character_name = Some(format!("Tester{id}"));
 }
 
 /// GM (1) and another player (2) in Agnos, a third player (3) in Harset;
 /// template 350 cached and 2826 mapped to it.
-fn pet_world() -> SpaceManager {
+pub(super) fn pet_world() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /><Space WorldName="Harset" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /><Space WorldName="Harset" /></Spaces>"#;
@@ -105,7 +106,7 @@ fn pet_world() -> SpaceManager {
 
 /// Run `.pet <args>` as `caller` with `target` selected; return every
 /// message sent.
-async fn pet(
+pub(super) async fn pet(
     mgr: &mut SpaceManager,
     caller: u32,
     target: Option<u32>,
@@ -137,7 +138,7 @@ fn stance_updates(msgs: &[CellToBaseMsg]) -> Vec<(u32, u32, Vec<u8>)> {
         .collect()
 }
 
-fn only_pet_of(mgr: &SpaceManager, owner: u32) -> u32 {
+pub(super) fn only_pet_of(mgr: &SpaceManager, owner: u32) -> u32 {
     let pets = mgr.pets.pets_of(owner);
     assert_eq!(pets.len(), 1, "owner {owner} must have exactly one pet");
     pets[0]

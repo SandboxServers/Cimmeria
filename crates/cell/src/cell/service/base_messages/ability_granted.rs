@@ -206,10 +206,12 @@ pub(super) async fn handle_gm_ability_granted(
         }
         None => return,
     };
+    let account_id = space_mgr.player_identity(entity_id).account_id;
     tracing::info!(
         target: "abilities",
         event = "gm_granted",
         entity_id,
+        account_id,
         player_id,
         ability_id,
         "GmAbilityGranted: cell mirrored + hotbar refresh"
