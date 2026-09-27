@@ -31,7 +31,7 @@ pub mod teardown;
 
 pub use arrival::{drain_arrivals, pet_arrival_tick, PetArrival, ARRIVAL_TIMEOUT};
 pub use create_on_client::{pet_create_on_client_events, CLIENT_DEFAULT_STANCE};
-pub use order::{engage_refusal_code, order_feedback_text, take_deferred_order, TakenOrder};
+pub use order::{order_feedback_text, order_refusal_code, take_deferred_order, TakenOrder};
 pub use owner_hooks::{on_owner_left, on_owner_reappeared, on_owner_teleported, OwnerPath};
 pub use registry::{PetRegistry, PetReject};
 pub use spawn::{stance_mask_from_flags, PetSpawnError, PET_SPAWN_OFFSET};

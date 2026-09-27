@@ -302,5 +302,6 @@ async fn fire_due_cast(
     }
     // A pet's owner order engages its target once the cast has fired
     // (pets PT-04); an interrupted warmup never gets here.
-    super::pet_order::engage_fired_order(entity_id, pc.target_id, tx, space_mgr).await;
+    super::pet_order::engage_fired_order(entity_id, pc.ability_id, pc.target_id, tx, space_mgr)
+        .await;
 }

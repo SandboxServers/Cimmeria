@@ -43,16 +43,22 @@ pub fn take_deferred_order(
     })
 }
 
-/// The `onErrorCode` `ErrorCodeID` (`EConditionHandlerFeedback`) for a
-/// refused engagement, by the `reason` `npc_ai::pet::engage_pet_target`
-/// returns: `InvalidEntity` (0) for a target that is gone, elsewhere or
-/// resetting, `NotLiving` (14) for a dead one, `RelationshipFriend` (37)
-/// for one the pet may not fight, `EntityDoesNotHavePet` (190) when the
-/// pet or its owner no longer holds.
-pub fn engage_refusal_code(reason: &str) -> u16 {
+/// The `onErrorCode` `ErrorCodeID` (`EConditionHandlerFeedback`) for an
+/// order that failed after the command accepted it: a refused engagement
+/// (the `reason` `npc_ai::pet::engage_pet_target` returns) or an
+/// interrupted warmup (an `InterruptReason` label). `InvalidEntity` (0) for
+/// a target that is gone, elsewhere or resetting, `NotLiving` (14) for a
+/// dead target or pet, `RelationshipFriend` (37) for one the pet may not
+/// fight, `LOS` (39), `OutsideWeaponRange` (42), `WeaponCooldownNotReady`
+/// (99) for an attack the pet itself broke off, `EntityDoesNotHavePet`
+/// (190) when the pet or its owner no longer holds.
+pub fn order_refusal_code(reason: &str) -> u16 {
     match reason {
-        "target_dead" => 14,
+        "target_dead" | "caster_died" => 14,
         "target_not_combatant" | "target_not_hostile" => 37,
+        "no_line_of_sight" => 39,
+        "target_out_of_range" | "out_of_range" => 42,
+        "caster_moved" | "bandolier_slot_change" | "ammo_unavailable" | "ability_unlearned" => 99,
         "not_a_pet" | "owner_gone" | "owner_identity_mismatch" => 190,
         _ => 0,
     }
@@ -78,7 +84,12 @@ pub fn order_feedback_text(reason: &str) -> &'static str {
         }
         "target_dead" => "That target is already dead.",
         "target_resetting" | "target_not_engageable" => "That target cannot be attacked right now.",
-        "out_of_range" => "Your pet is too far from that target.",
+        "out_of_range" | "target_out_of_range" => "Your pet is too far from that target.",
+        "target_lost" => "Your pet lost its target.",
+        "caster_died" => "Your pet is dead.",
+        "caster_moved" | "bandolier_slot_change" | "ammo_unavailable" | "ability_unlearned" => {
+            "Your pet's attack was interrupted."
+        }
         "no_line_of_sight" => "Your pet cannot see that target.",
         _ => "Your pet cannot do that.",
     }

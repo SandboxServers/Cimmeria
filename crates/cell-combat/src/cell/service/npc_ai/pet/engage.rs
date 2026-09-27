@@ -28,6 +28,12 @@ use super::stance::EngageWhy;
 /// soon as the fight starts.
 pub const PET_ENGAGE_THREAT: f32 = 1.0;
 
+/// Ceiling on the threat an owner's order puts on the pet's list (PT-04).
+/// The order seeds the target above everything else the pet is fighting;
+/// the cap keeps a list that some other path pushed very high from
+/// carrying the order's value with it.
+pub const OWNER_ORDER_THREAT_CAP: f32 = 1_000_000.0;
+
 /// Who is starting a pet's fight: the pet on its own, or its owner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PetEngagement {
@@ -172,7 +178,9 @@ pub fn engage_pet_target(
             // An owner's order redirects the pet (PT-04): the named target
             // goes just above everything else it is fighting, so the fight
             // handler's top-threat pick is the owner's. Bounded: repeating
-            // the order does not grow it past the others.
+            // the order does not grow it past the others, and the result is
+            // clamped to `OWNER_ORDER_THREAT_CAP`, even when the target's
+            // own entry was already above it.
             PetEngagement::OwnerOrder => {
                 let others = pet
                     .threat_list
@@ -181,7 +189,9 @@ pub fn engage_pet_target(
                     .map(|(_, &t)| t)
                     .fold(0.0_f32, f32::max);
                 let current = pet.threat_list.get(&target_id).copied().unwrap_or(0.0);
-                current.max(others + PET_ENGAGE_THREAT)
+                current
+                    .max(others + PET_ENGAGE_THREAT)
+                    .min(OWNER_ORDER_THREAT_CAP)
             }
         };
         pet.threat_list.insert(target_id, seeded);

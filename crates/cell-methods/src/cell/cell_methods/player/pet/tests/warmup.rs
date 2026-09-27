@@ -33,8 +33,9 @@ async fn warmup_cast_then(before_fire: impl FnOnce(&mut SpaceManager, u32)) -> O
 }
 
 /// What [`warmup_cast_with`] hands back: how the warmup ended, the world
-/// and the pet afterwards, and every row the warmup tick logged.
-type WarmupRun = (Outcome, SpaceManager, u32, Vec<Captured>);
+/// and the pet afterwards, every row the warmup tick logged, and what the
+/// tick sent.
+type WarmupRun = (Outcome, SpaceManager, u32, Vec<Captured>, Sent);
 
 /// [`warmup_cast_then`], also returning the world, the pet and the tick's
 /// log rows.
@@ -61,7 +62,7 @@ async fn warmup_cast_with(before_fire: impl FnOnce(&mut SpaceManager, u32)) -> W
         .fire_at = Instant::now() - Duration::from_millis(1);
 
     let capture = LogCapture::install();
-    let (tx, _rx) = mpsc::channel(512);
+    let (tx, mut rx) = mpsc::channel(512);
     let engine = ChainEngine::new();
     crate::cell::abilities::warmup_tick(
         &tx,
@@ -69,6 +70,12 @@ async fn warmup_cast_with(before_fire: impl FnOnce(&mut SpaceManager, u32)) -> W
         &crate::cell::content::EngineEvents(&engine),
     )
     .await;
+    drop(tx);
+    let mut tick_sent = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        tick_sent.push(msg);
+    }
+    let tick_sent = Sent(tick_sent);
     assert!(
         mgr.get_entity(pet).unwrap().pending_cast.is_none(),
         "the warmup resolved one way or the other"
@@ -81,7 +88,7 @@ async fn warmup_cast_with(before_fire: impl FnOnce(&mut SpaceManager, u32)) -> W
         .filter(|c| c.target == "abilities" && c.has_field("entity_id", &pet_id))
         .collect();
     if rows.iter().any(|c| c.has_field("event", "warmup_complete")) {
-        return (Outcome::Fired, mgr, pet, capture.all());
+        return (Outcome::Fired, mgr, pet, capture.all(), tick_sent);
     }
     let interrupted = rows
         .iter()
@@ -94,7 +101,7 @@ async fn warmup_cast_with(before_fire: impl FnOnce(&mut SpaceManager, u32)) -> W
             .cloned()
             .unwrap_or_default(),
     );
-    (outcome, mgr, pet, capture.all())
+    (outcome, mgr, pet, capture.all(), tick_sent)
 }
 
 /// Control: nothing changes during the warmup, and the cast fires. Without
@@ -148,7 +155,7 @@ async fn a_target_that_is_a_being_at_fire_time_is_not_hit() {
 /// an `order_engaged` row; this is the control for the guard below.
 #[tokio::test]
 async fn a_fired_warmup_engages_the_ordered_target() {
-    let (outcome, mgr, pet, rows) = warmup_cast_with(|_, _| {}).await;
+    let (outcome, mgr, pet, rows, _) = warmup_cast_with(|_, _| {}).await;
     assert_eq!(outcome, Outcome::Fired);
     let engaged: Vec<_> = rows
         .iter()
@@ -180,7 +187,7 @@ async fn a_fired_warmup_engages_the_ordered_target() {
 /// fighting a target the owner may no longer attack (Copilot, #901).
 #[tokio::test]
 async fn an_interrupted_warmup_leaves_the_pet_not_fighting() {
-    let (outcome, mgr, pet, rows) = warmup_cast_with(|mgr, _| {
+    let (outcome, mgr, pet, rows, sent) = warmup_cast_with(|mgr, _| {
         mgr.get_entity_mut(MOB).unwrap().faction = 1;
     })
     .await;
@@ -196,4 +203,98 @@ async fn an_interrupted_warmup_leaves_the_pet_not_fighting() {
         !rows.iter().any(|c| c.has_field("event", "order_engaged")),
         "an interrupted cast never reaches the engagement"
     );
+    assert_eq!(
+        e.pet.as_deref().unwrap().deferred_order,
+        None,
+        "the interrupt drops the order, so no later fire can engage it"
+    );
+    assert_eq!(
+        sent.error_codes_to(OWNER),
+        vec![(PET_ABILITY, 0)],
+        "the owner hears why, keyed by the ability id"
+    );
+    assert_eq!(sent.feedback_lines_to(OWNER), 1);
+    let row = rows
+        .iter()
+        .find(|c| c.target == "pets.command" && c.has_field("event", "order_interrupted"))
+        .unwrap_or_else(|| panic!("no order_interrupted row: {rows:#?}"));
+    assert!(row.has_field("reason", "target_lost"), "{row:?}");
+    assert!(row.has_field("player_id", &OWNER_PLAYER_ID.to_string()));
+}
+
+/// The target starts walking home (Leashing) during the warmup: the pet's
+/// fire-time check refuses it before any damage, the cast is interrupted,
+/// and the owner gets `onErrorCode` (keyed by the ability id) plus a chat
+/// line (Copilot, #901).
+#[tokio::test]
+async fn a_target_that_starts_leashing_mid_warmup_takes_no_damage() {
+    let health = |mgr: &SpaceManager| {
+        mgr.get_entity(MOB)
+            .unwrap()
+            .stats
+            .get(cimmeria_entity::stats::HEALTH)
+            .map(|s| s.cur)
+    };
+    let mut before = None;
+    let (outcome, mgr, pet, _, sent) = warmup_cast_with(|mgr, _| {
+        cimmeria_cell_combat::cell::service::npc_ai::force_ai_state(
+            mgr.get_entity_mut(MOB).unwrap(),
+            AiState::Leashing,
+        );
+        before = health(mgr);
+    })
+    .await;
+    assert_eq!(outcome, Outcome::Interrupted("target_lost".into()));
+    assert_eq!(health(&mgr), before, "no damage");
+    assert!(mgr.get_entity(MOB).unwrap().threat_list.is_empty());
+    assert!(mgr.get_entity(pet).unwrap().threat_list.is_empty());
+    assert_eq!(sent.error_codes_to(OWNER), vec![(PET_ABILITY, 0)]);
+    assert_eq!(sent.feedback_lines_to(OWNER), 1);
+}
+
+/// The owner switches the pet to Passive while an order warms up: the
+/// order is dropped, so the cast lands but the pet does not engage.
+#[tokio::test]
+async fn going_passive_mid_warmup_drops_the_order() {
+    let World { mut mgr, pet, .. } = world();
+    mgr.ability_defs.get_mut(&PET_ABILITY).unwrap().warmup = 1.0;
+    let _ = invoke(&mut mgr, OWNER, pet, PET_ABILITY, MOB).await;
+    let deferred = |mgr: &SpaceManager| {
+        mgr.get_entity(pet)
+            .unwrap()
+            .pet
+            .as_deref()
+            .unwrap()
+            .deferred_order
+    };
+    assert_eq!(deferred(&mgr), Some(MOB));
+
+    // Through the real CM 90 path, as the pet info window sends it.
+    let passive = cimmeria_entity::cell_entity::PetStance::Passive.wire();
+    let _ = stance(&mut mgr, OWNER, pet, passive).await;
+    assert_eq!(deferred(&mgr), None, "Passive drops the pending order");
+
+    mgr.get_entity_mut(pet)
+        .unwrap()
+        .pending_cast
+        .as_mut()
+        .unwrap()
+        .fire_at = Instant::now() - Duration::from_millis(1);
+    let capture = LogCapture::install();
+    let (tx, _rx) = mpsc::channel(512);
+    let engine = ChainEngine::new();
+    crate::cell::abilities::warmup_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&engine),
+    )
+    .await;
+    let e = mgr.get_entity(pet).unwrap();
+    assert!(e.pending_cast.is_none(), "the cast still fired");
+    assert!(!e.threat_list.contains_key(&MOB), "the pet did not engage");
+    assert_ne!(e.ai_state(), AiState::Fighting);
+    assert!(!capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "order_engaged")));
 }

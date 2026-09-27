@@ -40,6 +40,24 @@ async fn owner_order_casts_and_engages_the_target() {
     assert_two_sided_engagement(&mut mgr, pet, MOB).await;
 }
 
+/// An order's threat is capped at `OWNER_ORDER_THREAT_CAP`, even when the
+/// target's own entry was already above it (Copilot, #901).
+#[tokio::test]
+async fn an_order_s_threat_is_capped() {
+    use cimmeria_cell_combat::cell::service::npc_ai::pet::OWNER_ORDER_THREAT_CAP;
+    let World { mut mgr, pet, .. } = world();
+    mgr.get_entity_mut(pet)
+        .unwrap()
+        .threat_list
+        .insert(MOB, OWNER_ORDER_THREAT_CAP * 5.0);
+    let sent = invoke(&mut mgr, OWNER, pet, PET_ABILITY, MOB).await;
+    assert_eq!(sent.all_error_codes(), 0);
+    assert_eq!(
+        mgr.get_entity(pet).unwrap().threat_list[&MOB],
+        OWNER_ORDER_THREAT_CAP
+    );
+}
+
 /// A hostile-faction SGWBeing (class 0x01: a prop or story actor) is not a
 /// combatant, so the owner cannot order the pet at it, even on faction 10.
 /// Without the class check the order would pass the faction test and the

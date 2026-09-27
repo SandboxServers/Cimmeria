@@ -140,6 +140,10 @@ pub(super) async fn handle(
 
     let stance_before = state.stance;
     state.stance = resolved;
+    // Passive means the pet picks no fight. An order still warming up
+    // would engage its target when the cast fires, so it is dropped: the
+    // cast lands, the pet does not stay on the target.
+    let order_dropped = resolved == PetStance::Passive && state.deferred_order.take().is_some();
     send_to_owner(
         caller,
         pet,
@@ -162,6 +166,7 @@ pub(super) async fn handle(
         source = source.label(),
         stance_before = stance_before.label(),
         stance_after = resolved.label(),
+        order_dropped,
         "pet command: the owner changed the pet's stance"
     );
 }

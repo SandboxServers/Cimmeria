@@ -47,7 +47,10 @@ mod stance;
 mod tests;
 
 pub(in crate::cell::service::npc_ai) use disengage::rearm_after_fight;
-pub use engage::{engage_pet_target, target_state_refusal, PetEngagement, PET_ENGAGE_THREAT};
+pub use engage::{
+    engage_pet_target, target_state_refusal, PetEngagement, OWNER_ORDER_THREAT_CAP,
+    PET_ENGAGE_THREAT,
+};
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::{AiState, CellEntity, PetStance, PlayerIdentity};

@@ -38,7 +38,7 @@ use crate::cell::space_manager::SpaceManager;
 use cimmeria_cell_combat::cell::service::npc_ai::pet::{
     engage_pet_target, fight_refusal, target_state_refusal, PetEngagement,
 };
-use cimmeria_cell_world::cell::pets::engage_refusal_code;
+use cimmeria_cell_world::cell::pets::order_refusal_code;
 
 /// The range `handle_use_ability` uses when an ability's `max_range` is the
 /// `0` "server default" sentinel. Kept equal to it so this pre-check never
@@ -150,7 +150,7 @@ pub(super) async fn handle(
             // The cast just killed it: nothing to engage, nothing to report.
             Err("target_dead") => {}
             Err(reason) => {
-                let refusal = Refusal::debug(reason, engage_refusal_code(reason), ability_id);
+                let refusal = Refusal::debug(reason, order_refusal_code(reason), ability_id);
                 refuse(caller, pet_id, refusal, tx).await;
             }
         }
