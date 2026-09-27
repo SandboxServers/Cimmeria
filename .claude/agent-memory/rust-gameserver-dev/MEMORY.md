@@ -102,6 +102,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Cell systems
 
+- [grant-placement-and-loot-handback-traps.md](grant-placement-and-loot-handback-traps.md) — grants re-placed by container_sets on the base; loot hand-back only pre-commit; vendor 25 sells {17,15}; loot table 3 not all p=1.
 - [grant-paths-pick-different-containers.md](grant-paths-pick-different-containers.md) — gmGiveItem grants to bag 1; loot and content grant_item use the first `container_sets` entry (17 for crafting items).
 - [per-session-player-state-lifecycle.md](per-session-player-state-lifecycle.md) — a CellEntity field dies on every space change/logout by construction; one interact-pin chokepoint; interact range is double-gated.
 - [ability-event-sets-are-server-only.md](ability-event-sets-are-server-only.md) — ability event sets never reach the client (seed-only wiring); most mob kits deal 0 damage.
