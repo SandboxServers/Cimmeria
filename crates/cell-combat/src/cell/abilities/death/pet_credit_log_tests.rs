@@ -127,8 +127,9 @@ async fn a_bad_transfer_xp_logs_transfer_xp_invalid_at_warn() {
 }
 
 /// Seam: the registry already dropped the pet (the teardown gap before the
-/// entity goes). DEBUG, `reason = pet_unregistered`, still naming the owner
-/// the pet's state points at.
+/// entity goes). DEBUG, `reason = pet_unregistered`, still naming the
+/// `owner_id` the pet's state points at, but no `account_id` / `player_id`:
+/// `forget_pet` removed the summon-time capture, and the row never guesses.
 #[tokio::test]
 async fn an_unregistered_pet_kill_logs_pet_unregistered() {
     let (mut mgr, pet, mob) = world();
@@ -140,7 +141,9 @@ async fn an_unregistered_pet_kill_logs_pet_unregistered() {
     assert_eq!(row.level, Level::DEBUG);
     assert!(row.has_field("reason", "pet_unregistered"), "{row:?}");
     assert_pet(&row, pet);
-    assert_owner_identity(&row);
+    assert!(row.has_field("owner_id", &OWNER.to_string()), "{row:?}");
+    assert!(!row.fields.contains_key("account_id"), "{row:?}");
+    assert!(!row.fields.contains_key("player_id"), "{row:?}");
 }
 
 /// Seam: the owner's entity id now belongs to another player (id reuse
@@ -235,4 +238,53 @@ async fn an_overflowing_transfer_xp_logs_xp_overflow_at_warn() {
     assert!(row.has_field("base_xp", &MOB_XP.to_string()), "{row:?}");
     assert_pet(&row, pet);
     assert_owner_identity(&row);
+}
+
+/// **Guard (#889).** The registry dropped the pet AND the owner's entity id
+/// now belongs to another player. The `pet_unregistered` row keeps the pet
+/// and the `owner_id`, but logs no `account_id` / `player_id`: the
+/// summon-time capture is gone, and the id's current holder is not the
+/// player who summoned the pet. Reverted (fall back to the live holder of
+/// `owner_id`), the row names the impostor's ids 4242 / 4243.
+#[tokio::test]
+async fn an_unregistered_pet_kill_after_owner_id_reuse_logs_no_identity() {
+    let (mut mgr, pet, mob) = world();
+    mgr.pets.forget_pet(pet);
+    {
+        let owner = mgr.get_entity_mut(OWNER).unwrap();
+        owner.account_id = Some(4242);
+        owner.player_id = Some(4243);
+    }
+    let capture = LogCapture::install();
+    let _ = kill(&mut mgr, mob, pet).await;
+
+    let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+    assert!(row.has_field("reason", "pet_unregistered"), "{row:?}");
+    assert_pet(&row, pet);
+    assert!(row.has_field("owner_id", &OWNER.to_string()), "{row:?}");
+    assert!(!row.fields.contains_key("account_id"), "{row:?}");
+    assert!(!row.fields.contains_key("player_id"), "{row:?}");
+}
+
+/// `victim_template_id` is recorded as its value, never as a `Some(..)`
+/// debug string (#889): an `Option` field is the value when present and
+/// omitted when `None`.
+#[tokio::test]
+async fn pet_kill_credited_records_victim_template_id_as_a_value() {
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(mob).unwrap().template_id = Some(0x7000_0608);
+    let capture = LogCapture::install();
+    let _ = kill(&mut mgr, mob, pet).await;
+    let row = only_event(&capture.all(), "pets.credit", "pet_kill_credited");
+    assert!(
+        row.has_field("victim_template_id", &0x7000_0608.to_string()),
+        "{row:?}"
+    );
+
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(mob).unwrap().template_id = None;
+    let capture = LogCapture::install();
+    let _ = kill(&mut mgr, mob, pet).await;
+    let row = only_event(&capture.all(), "pets.credit", "pet_kill_credited");
+    assert!(!row.fields.contains_key("victim_template_id"), "{row:?}");
 }

@@ -80,8 +80,12 @@ pub async fn handle_grant_xp(
 
         // Saturate to prevent a pathological grant (e.g., from a corrupted
         // GrantXP message) wrapping the accumulator and producing a negative
-        // wire value or a phantom delevel.
-        let xp = prev_xp.saturating_add(xp_amount);
+        // wire value or a phantom delevel. Clamp to `i32::MAX`, the ceiling
+        // of `sgw_player.exp` (`integer`) and of the wire payload, HERE,
+        // before anything reads it: clamping only at the bind left the
+        // session holding the unclamped total while the row held
+        // `i32::MAX`, so memory and DB diverged until the next relog (#889).
+        let xp = prev_xp.saturating_add(xp_amount).min(i32::MAX as u64);
 
         // Shared with `PlayerState::grant_xp`: stops at MAX_LEVEL (50), one
         // training point per level gained (v2 economy, D-AT02).
@@ -96,9 +100,9 @@ pub async fn handle_grant_xp(
     // failure.
     match (db_pool, player_id) {
         (Some(pool), Some(player_id)) => {
-            // `sgw_player.exp` is `integer`; saturate to i32::MAX so a u64
-            // total exceeding 2^31-1 doesn't wrap negative on either the
-            // column or the wire payload (also i32).
+            // `sgw_player.exp` is `integer`. `total_xp` is already clamped to
+            // i32::MAX above, so this cast is exact; the `min` stays as a
+            // belt-and-braces guard against a future edit to that clamp.
             let exp_i32 = total_xp.min(i32::MAX as u64) as i32;
             match sqlx::query(
                 "UPDATE sgw_player \

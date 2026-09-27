@@ -131,7 +131,7 @@ pub(super) async fn grant_kill_xp(
             account_id = id.account_id,
             player_id = id.player_id,
             victim_id = target_eid,
-            victim_template_id = ?target.template_id,
+            victim_template_id = target.template_id,
             victim_level = target.level,
             base_xp,
             xp_granted = xp,
@@ -197,16 +197,17 @@ impl NoKillXp {
     }
 }
 
-/// The largest kill payout a scaled pet kill may grant: `u32::MAX`.
+/// The largest kill payout a scaled pet kill may grant: `i32::MAX`.
 ///
 /// `kill_xp` pays at most a few thousand XP, and D-PT02 ships
 /// `transfer_xp = 1.0`, so any scaled payout above this is a seed fault. The
 /// bound exists because a finite but huge `transfer_xp` (`f32::MAX`) makes
 /// the `f64` product exceed `u64`, and an `as u64` cast saturates rather
-/// than failing: the owner would be granted `u64::MAX` XP. `u32::MAX` rather
-/// than `u64::MAX` also keeps the value inside every integer width the base
-/// progression path stores XP in.
-pub(super) const MAX_KILL_XP: u64 = u32::MAX as u64;
+/// than failing: the owner would be granted `u64::MAX` XP. `i32::MAX` is
+/// the narrowest place XP is stored: `sgw_player.exp` is `integer` and the
+/// wire payload is an `INT32`, so no single payout can be larger than what
+/// the base can persist (#889).
+pub(super) const MAX_KILL_XP: u64 = i32::MAX as u64;
 
 /// Resolve `attacker_id` to the credited player and scale `base_xp` by the
 /// pet's `transfer_xp` when the attacker is a pet (1.0 per D-PT02; a
@@ -296,12 +297,13 @@ fn log_no_kill_xp(
     } else {
         None
     };
-    // The summon-time capture names the player even when the owner id has
-    // been reused; a pet the registry already dropped falls back to whoever
-    // holds the owner id now. Omitted (never 0) when neither is known.
-    let id = match (pet_id, owner_id) {
-        (Some(pet), _) if space_mgr.pets.is_pet(pet) => space_mgr.pets.summoner_identity(pet),
-        (_, Some(owner)) => space_mgr.player_identity(owner),
+    // Only the summon-time capture names the player: it survives owner-id
+    // reuse. Once the registry has dropped the pet (`forget_pet` removes
+    // the capture) the identity is unknown and the fields are omitted. Never
+    // fall back to whoever holds `owner_id` now: after a reuse that is a
+    // different player, and the row would blame them (#889).
+    let id = match pet_id {
+        Some(pet) if space_mgr.pets.is_pet(pet) => space_mgr.pets.summoner_identity(pet),
         _ => PlayerIdentity::UNKNOWN,
     };
     let (account_id, player_id) = (id.account_id, id.player_id);
