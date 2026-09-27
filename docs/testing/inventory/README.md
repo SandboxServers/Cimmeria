@@ -35,10 +35,10 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 7,718 |
-| Files with tests | 1,271 |
-| Gated in CI (every crate but CI's exclude list) | 7,300 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,326 |
+| Tests (`#[test]` / `#[tokio::test]`) | 7,721 |
+| Files with tests | 1,273 |
+| Gated in CI (every crate but CI's exclude list) | 7,303 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,329 |
 | Inventory threshold (5% of the tests) | 386 |
 
 <!-- /gen:tests-totals -->
@@ -101,8 +101,8 @@ with no file in this directory yet.
 | `crates/wire` | `cimmeria-wire` | 263 | 41 | 0 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 258 | 23 | 0 | yes | [content-engine.md](content-engine.md) |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 183 | 31 | 0 | yes | none |
+| `crates/cell-catalog` | `cimmeria-cell-catalog` | 155 | 35 | 81 | yes | none |
 | `crates/base` | `cimmeria-base` | 153 | 27 | 10 | yes | none |
-| `crates/cell-catalog` | `cimmeria-cell-catalog` | 153 | 34 | 79 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 152 | 40 | 29 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 150 | 19 | 0 | no | [launcher.md](launcher.md) |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 134 | 30 | 0 | no | none |
@@ -120,8 +120,8 @@ with no file in this directory yet.
 | `crates/patch-wire` | `cimmeria-patch-wire` | 45 | 5 | 0 | yes | none |
 | `crates/minigame` | `cimmeria-minigame` | 37 | 5 | 0 | yes | none |
 | `crates/common` | `cimmeria-common` | 36 | 4 | 0 | yes | [common.md](common.md) |
+| `crates/services` | `cimmeria-services` | 31 | 10 | 13 | yes | [services.md](services.md) |
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
-| `crates/services` | `cimmeria-services` | 30 | 9 | 12 | yes | [services.md](services.md) |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/client-launch` | `cimmeria-client-launch` | 26 | 3 | 0 | yes | none |
 | `crates/wire-log` | `cimmeria-wire-log` | 24 | 6 | 0 | yes | none |
