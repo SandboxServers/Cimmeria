@@ -28,6 +28,8 @@ cimmeria-discord = { workspace = true }
 # `mercury_rx_stalls_total` and the crafting persistence counters.
 cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
+# The crafting verbs' rolls, behind the injectable `CraftRng` seam.
+rand = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }

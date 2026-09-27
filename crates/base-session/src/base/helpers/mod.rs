@@ -449,6 +449,14 @@ pub fn destroy_client_entities(
         // Remove from entity->addr reverse index
         entity_to_addr.lock().unwrap().remove(&player_eid);
 
+        // Queued crafting inductions die with the session; nothing they
+        // would have consumed is touched.
+        crate::base::crafting::session::drop_player_inductions(
+            player_eid,
+            crate::base::crafting::session::DropReason::Logout,
+            reason,
+        );
+
         // Notify CellService to disconnect and destroy the cell entity
         if let Some(tx) = cell_tx {
             let _ = tx.try_send(BaseToCellMsg::DisconnectEntity {

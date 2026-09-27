@@ -177,6 +177,14 @@ pub async fn handle_gate_travel(
         "Gate travel: sending RESET_ENTITIES for world transition"
     );
 
+    // A world change drops the player's crafting queue without consuming
+    // anything; the running bar goes with the old world.
+    crate::base::crafting::session::drop_player_inductions(
+        entity_id,
+        crate::base::crafting::session::DropReason::WorldChange,
+        "gate_travel",
+    );
+
     // Fail closed BEFORE anything destructive. Gate travel without a known
     // active character can neither persist the destination (it would risk
     // writing another character's row on a multi-character account) nor

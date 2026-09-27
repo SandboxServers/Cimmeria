@@ -926,6 +926,7 @@ dependencies = [
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
+ "rand 0.10.2",
  "serde",
  "serde_json",
  "sqlx",

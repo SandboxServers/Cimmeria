@@ -23,6 +23,7 @@
 use super::*;
 
 mod crafting_options;
+mod crafting_queue;
 mod space_fallback;
 mod transfer;
 use crate::base::PendingClientReadyInfo;
