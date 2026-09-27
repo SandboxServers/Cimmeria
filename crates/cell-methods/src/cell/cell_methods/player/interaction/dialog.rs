@@ -46,6 +46,22 @@ pub(super) async fn handle_dialog_button_choice(
         .get_entity_mut(entity_id)
         .is_some_and(|e| e.take_offered_dialog(dialog_id));
     if !offered {
+        // The client opens some tutorial windows by itself (the inventory
+        // help, 5863), so their close (button -1) arrives for an id the
+        // server never showed. Still rejected, but it is expected client
+        // behaviour, not a forgery, so it stays out of the warning stream.
+        // Only the close: any other button on an unoffered tutorial id is
+        // not something the client sends on its own, so it still warns.
+        if button_id == -1 && space_mgr.tutorial_dialog_ids.contains(&dialog_id) {
+            tracing::debug!(
+                entity_id,
+                dialog_id,
+                button_id,
+                "dialogButtonChoice for a client-opened tutorial -- not offered by the \
+                 server, no chain fired"
+            );
+            return;
+        }
         let offered_dialog_ids = space_mgr
             .get_entity(entity_id)
             .map(|e| e.offered_dialogs())

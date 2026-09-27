@@ -22,7 +22,7 @@ This is the acceptance pass for everything the Castle Cellblock rebuild campaign
 | GC1b-0 | Engine: an NPC can follow a player; Marsh `move_speed` raised to 0.9 units/tick | #646 |
 | GC1b-1 | Marsh rides the rings to region 3 (chain 1173) | #655 |
 | GC1b-2 | Marsh follows the player topside; follow cleared at the Straegis scene (chains 1174/1175) | #655 |
-| DU-07 | Three of Col. Marsh's dialog-5019 combat lines spoken as non-modal chat barks on the escort route (chains 1176/1177/1178) | pending |
+| DU-07 | Three of Col. Marsh's dialog-5019 combat lines spoken as non-modal chat barks on the escort route (chains 1176/1177/1178) | #772 |
 
 Not covered, because it is not built: **GC1c** (lockdown energy field), **GC3** (mission-completion XP). See [Known limitations](#known-limitations--not-validated).
 
@@ -574,7 +574,7 @@ Three of Col. Marsh's companion lines from dialog **5019** are now spoken as **c
 - **Dialog 5019 opening as a window, at any point.** It is still permanently excluded — screens 96355-96357 are the out-of-scope "Future Self" time-travel content and a dialog cannot be shown in part. Barks bypass it; they do not unlock it.
 - **A fourth line.** "Crouch down when you're in cover!" (screen 96353) is deliberately unauthored — there is no placed cover data in either room for it to hang on. If you hear it, something wired it to an unrelated event.
 - **Any Future Self line** ("I don't have much time…", "We never found out who controlled the Straegis…", "O'Neill better convince those pinheads at the Pentagon…"). None of these should ever reach you.
-- **A line repeating.** The ring-arrival line (chain 1176) and the second flank line (chain 1178) fire at most once per run of their mission; the Mess Hall line (chain 1177) has the one repeat window described below. Specifically: ride the rings once and walk back and forth across each threshold a few times. The Mess Hall line has one accepted repeat window — if you back out of the room and charge in again *before killing a guard*, you will hear it a second time. That is known and accepted (the engine has no fire-once primitive; see the seed comment). Once a guard is dead, it must stay silent.
+- **A line repeating.** The ring-arrival line (chain 1176) fires at most once per run of its mission; the Mess Hall line (chain 1177) and the Hallway05 line (chain 1178) each have the one repeat window described below. Specifically: ride the rings once and walk back and forth across each threshold a few times. The two flank lines have one accepted repeat window — if you back out of the room and charge in again *before killing a guard*, you will hear the line a second time. That is known and accepted (the engine has no fire-once primitive; see the seed comment). Once a guard is dead, it must stay silent.
 - **A line after Marsh is gone.** After the Straegis scene ([T16/T17](#t16--t17--the-straegis-attack-scene-c08b-gc1a-gc1b-2)) Marsh is despawned; walk the whole route again from Region6 onward and confirm none of the three speaks.
 - **A line at the wrong moment.** The Mess Hall cue must land at the *Mess Hall*, not at the ring pad. The two rooms are about 70 units apart; if you hear lines 1 and 2 within a second of each other, the region binding is wrong.
 
@@ -965,7 +965,7 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 | T27 — Marsh's pre-departure line (GC1a) | | |
 | T28 — Marsh rings + follows topside (GC1b) | | |
 | T29 — Flank objectives 2725 / 2731 (C06, PR #671) | | |
-| T32 — Marsh's combat barks (DU-07) | | |
+| T32 — Marsh's combat barks (DU-07) | Fail | 2026-09-26 colo: lines 1 and 2 reached chat as "Col. Marsh", no window. Line 3 (chain 1178) never fired; gate fixed after the run, re-test. Relog check not run. |
 | T14 — Mess Hall (681) | | |
 | T15 — Hallway chain (682-686) | | |
 | T16 / T17 — Straegis scene (C08b + GC1a) | | |
@@ -974,10 +974,10 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 | T20 — Armory + blurb 2518 (C07) | | |
 | T21 / T22 — Castle arrival, 1360 intact | | |
 | T23 — Relog safety sweep | | |
-| T30 — 3999 read to the end, then Done (DU-02a) | | |
-| T30 — 4001 / 2299 closed with X on screen one | | |
-| T30 — the five blurbs show no buttons at all | | |
-| T31 — Straegis aftermath, 2516 then 5859, no chain fires | | |
+| T30 — 3999 read to the end, then Done (DU-02a) | Pass | 2026-09-26 colo, Tau'ri, two runs: `(3999, -1)` matched and the step advanced. 5023 (Jaffa) not run. |
+| T30 — 4001 / 2299 closed with X on screen one | Pass | 2026-09-26: 4001 close accepted 641; 2299 close accepted 639 and completed 638. 5022 (Jaffa) not run. Row 6 (2309) never displayed. |
+| T30 — the five blurbs show no buttons at all | Pass | 2026-09-26: no Accept, Decline or More Info on any dialog; 2305, 4000 and 2518 closes fired nothing. |
+| T31 — Straegis aftermath, 2516 then 5859, no chain fires | Pass | 2026-09-26: 5859 replaced 2516 after 500 ms; the late `(2516, -1)` close was accepted by the DU-08 set with no chain fired. |
 
 ## Known limitations / not validated
 

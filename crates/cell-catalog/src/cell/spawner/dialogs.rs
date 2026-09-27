@@ -1,4 +1,5 @@
-//! Dialog set map cache, monologue dialog id cache, dialog screen text cache.
+//! Dialog set map cache, monologue and tutorial dialog id caches, dialog
+//! screen text cache.
 //!
 //! - `load_dialog_set_maps` maps `dialog_set_map_id → (dialog_id, interaction_flags)`
 //!   for `add_dialog_set` content actions.
@@ -124,6 +125,29 @@ pub async fn load_monologue_dialog_ids(pool: &PgPool) -> Result<HashSet<i32>, sq
     }
 
     tracing::info!(count = ids.len(), "Loaded monologue dialog id cache");
+    Ok(ids)
+}
+
+/// Load the set of `dialog_id` values whose screen type is
+/// `DUIST_DefaultTutorial`.
+///
+/// The client opens some tutorial windows on its own (the inventory help,
+/// dialog 5863, appears when the player first opens the inventory), and
+/// closing one sends `dialogButtonChoice(id, -1)` for an id the server
+/// never displayed. The `dialogButtonChoice` gate still rejects it (no
+/// chain may fire for an unoffered id) but logs it at DEBUG rather than
+/// as a forged choice. An empty cache only restores the louder warning.
+pub async fn load_tutorial_dialog_ids(pool: &PgPool) -> Result<HashSet<i32>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT dialog_id FROM resources.dialogs          WHERE ui_screen_type::text = 'DUIST_DefaultTutorial'",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let ids: HashSet<i32> = rows.iter().map(|r| r.get("dialog_id")).collect();
+    tracing::info!(count = ids.len(), "Loaded tutorial dialog id cache");
     Ok(ids)
 }
 

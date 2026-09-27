@@ -15,7 +15,7 @@
 //! - [`mess_hall`] — chain 1177 on the `Castle_Cellblock.Region3`
 //!   crossing.
 //! - [`second_flank`] — chain 1178 on the `Castle_Cellblock.Region5`
-//!   crossing, including its co-gating with chain 1083.
+//!   crossing, walked from the Hallway04 kill that accepts mission 686.
 //! - [`seed_shape`] — relog, and the two live-DB guards over every
 //!   `npc_bark` row in the seed rather than over one chain.
 //!
@@ -135,18 +135,6 @@ fn resolve_region_enter(
         params: ctx.params.clone(),
     };
     engine.resolve_event(&event, &ctx)
-}
-
-/// Every `NpcBark` screen id the given chain resolved.
-fn bark_screens(resolved: &ResolvedActions, chain_id: i64) -> Vec<i32> {
-    resolved
-        .actions
-        .iter()
-        .filter_map(|(id, action)| match action {
-            Action::NpcBark { screen_id, .. } if *id == chain_id => Some(*screen_id),
-            _ => None,
-        })
-        .collect()
 }
 
 /// Assert the chain resolved exactly one bark, with the right screen,

@@ -3,47 +3,95 @@
 //! Screen 96354 is screen 96352 with the table taken out of it: the same
 //! play, phrased for the zone's only other flanking encounter. The region
 //! is `Castle_Cellblock.Region5`, which contains both `Hallway05_Guard`
-//! spawns and is the same region chain 1083 binds to accept mission 686.
+//! spawns.
 //!
-//! The gate here is a deliberate byte-for-byte copy of chain 1083's, and
-//! [`chain_1178_is_gated_identically_to_the_mission_accept_it_rides`] is
-//! what stops the two drifting apart: if 1083 is ever loosened, this bark
-//! starts repeating on every Region5 re-entry.
+//! The gate is mission 686 active and 687 not yet active, the same shape
+//! as chain 1177's. The first version copied chain 1083's gate (685
+//! completed, 686 NOT active), on the belief that 1083 accepts 686 on this
+//! crossing. In a real run chain 1091 has already accepted 686 when the
+//! Hallway04 guard died, a room earlier, so that gate was never open and
+//! the line never played for anyone (2026-09-26 colo UAT).
+//! [`chain_1178_barks_in_the_state_the_hallway04_kill_leaves_behind`]
+//! walks that real sequence and is the regression guard.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_content_engine::context::ExecutionContext;
+use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 
 use super::{
-    assert_refused, assert_single_bark, bark_screens, engine_with, load, resolve_region_enter,
-    CHAIN_HALLWAY05, REGION_HALLWAY05, SCREEN_HALLWAY05,
+    assert_refused, assert_single_bark, engine_with, load, resolve_region_enter, CHAIN_HALLWAY05,
+    REGION_HALLWAY05, SCREEN_HALLWAY05,
 };
 use crate::test_support::require_db_or_skip;
 
-/// The mission-accept chain 1178 rides, and must stay co-gated with.
-const CHAIN_ACCEPT_686: i64 = 1083;
+/// Kill the Hallway04 guard: completes 685 and accepts 686.
+const CHAIN_HALLWAY04_KILL: i32 = 1091;
 
-/// Happy path: crossing into Hallway05 with 685 cleared and 686 not yet
-/// accepted speaks the second flank cue.
+/// The real sequence, not a hand-picked context. Kill the Hallway04 guard
+/// with 685 active, apply what chain 1091 resolves to the mission state,
+/// then cross into Hallway05. The bark must fire.
+///
+/// Reverting the seed to the old `686 not_active` gate fails this test:
+/// 1091 has made 686 active before the player reaches Region5.
 #[tokio::test]
-async fn chain_1178_hallway05_entry_barks_the_second_flank_cue() {
+async fn chain_1178_barks_in_the_state_the_hallway04_kill_leaves_behind() {
     let pool = require_db_or_skip!();
-    let engine = engine_with(load(&pool, CHAIN_HALLWAY05).await);
+    let kill_engine = engine_with(load(&pool, CHAIN_HALLWAY04_KILL).await);
+    let bark_engine = engine_with(load(&pool, CHAIN_HALLWAY05).await);
 
-    let resolved = resolve_region_enter(
-        &engine,
-        REGION_HALLWAY05,
-        &[
-            ("mission_685_status", "completed"),
-            ("mission_686_status", "not_active"),
-        ],
+    // Step 1: the Hallway04 guard dies while 685 is active.
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "entity_tag".to_string(),
+        serde_json::json!("Hallway04_Guard"),
     );
+    ctx.set_param(
+        "mission_685_status".to_string(),
+        serde_json::json!("active"),
+    );
+    let event = TriggerEvent {
+        trigger_type: TriggerType::EntityDeath,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+    let killed = kill_engine.resolve_event(&event, &ctx);
+
+    // Step 2: carry chain 1091's mission mutations into the next context.
+    let mut state = vec![
+        ("mission_685_status", "active"),
+        ("mission_686_status", "not_active"),
+    ];
+    for (_, action) in &killed.actions {
+        match action {
+            Action::CompleteMission { mission_id: 685 } => state[0].1 = "completed",
+            Action::AcceptMission { mission_id: 686 } => state[1].1 = "active",
+            _ => {}
+        }
+    }
+    assert_eq!(
+        state,
+        [
+            ("mission_685_status", "completed"),
+            ("mission_686_status", "active")
+        ],
+        "chain 1091 must complete 685 and accept 686 on the Hallway04 kill; \
+         that is the state every player reaches Region5 in. Resolved: {:?}",
+        killed.actions,
+    );
+
+    // Step 3: cross into Hallway05 in that state (687 not yet accepted).
+    let mut params = state.clone();
+    params.push(("mission_687_status", "not_active"));
+    let resolved = resolve_region_enter(&bark_engine, REGION_HALLWAY05, &params);
     assert_single_bark(&resolved, CHAIN_HALLWAY05 as i64, SCREEN_HALLWAY05);
 }
 
-/// Adjacent wrong state — phase not yet reached. Hallway04 (mission 685)
-/// is still being fought.
+/// Adjacent wrong state — phase not yet reached. Hallway04 is still being
+/// fought, so 686 has not been accepted.
 #[tokio::test]
-async fn chain_1178_does_not_fire_before_hallway04_is_cleared() {
+async fn chain_1178_does_not_fire_before_686_is_accepted() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_HALLWAY05).await);
 
@@ -51,24 +99,53 @@ async fn chain_1178_does_not_fire_before_hallway04_is_cleared() {
         &engine,
         REGION_HALLWAY05,
         &[
-            ("mission_685_status", "active"),
             ("mission_686_status", "not_active"),
+            ("mission_687_status", "not_active"),
         ],
     );
     assert_refused(
         &resolved,
         CHAIN_HALLWAY05 as i64,
-        "mission 685 (Hallway04) is not yet complete",
+        "mission 686 (Hallway05) has not been accepted yet",
     );
 }
 
-/// Adjacent wrong state — already fired. Chain 1083 accepts 686 on this
-/// same crossing, so every later crossing, and the H52 replay that
-/// `accept_mission 686` kicks off, must find the gate shut.
+/// Adjacent wrong state — phase already passed. Chain 1094 completes 686
+/// and accepts 687 when the Hallway05 guards die, so walking back through
+/// the cleared room must stay silent.
 #[tokio::test]
-async fn chain_1178_does_not_re_bark_once_686_is_accepted() {
+async fn chain_1178_does_not_re_bark_once_hallway05_is_cleared() {
     let pool = require_db_or_skip!();
     let engine = engine_with(load(&pool, CHAIN_HALLWAY05).await);
+
+    let resolved = resolve_region_enter(
+        &engine,
+        REGION_HALLWAY05,
+        &[
+            ("mission_686_status", "completed"),
+            ("mission_687_status", "active"),
+        ],
+    );
+    assert_refused(
+        &resolved,
+        CHAIN_HALLWAY05 as i64,
+        "Hallway05 is cleared (686 completed, 687 accepted by chain 1094)",
+    );
+}
+
+/// The gate must not depend on a chain that does not run in a normal
+/// playthrough. Registering chain 1083 beside 1178 in the real state
+/// (686 already active) must still bark, and 1083 must not accept 686
+/// a second time.
+#[tokio::test]
+async fn chain_1178_does_not_depend_on_the_region5_fallback_accept() {
+    let pool = require_db_or_skip!();
+    let engine = {
+        let mut e = ChainEngine::new();
+        e.register_chain(load(&pool, 1083).await);
+        e.register_chain(load(&pool, CHAIN_HALLWAY05).await);
+        e
+    };
 
     let resolved = resolve_region_enter(
         &engine,
@@ -76,74 +153,17 @@ async fn chain_1178_does_not_re_bark_once_686_is_accepted() {
         &[
             ("mission_685_status", "completed"),
             ("mission_686_status", "active"),
+            ("mission_687_status", "not_active"),
         ],
     );
-    assert_refused(
-        &resolved,
-        CHAIN_HALLWAY05 as i64,
-        "mission 686 was accepted by chain 1083 on this same crossing",
-    );
-}
-
-/// The bark chain that shares a region key with a mission chain must
-/// share its gate exactly. If chain 1083 is ever loosened, 1178 starts
-/// repeating — the seed says so in a comment on both chains; this says so
-/// in a test.
-#[tokio::test]
-async fn chain_1178_is_gated_identically_to_the_mission_accept_it_rides() {
-    let pool = require_db_or_skip!();
-    let engine = {
-        let mut e = ChainEngine::new();
-        e.register_chain(load(&pool, CHAIN_ACCEPT_686 as i32).await);
-        e.register_chain(load(&pool, CHAIN_HALLWAY05).await);
-        e
-    };
-
-    // Every context in which 1083 accepts 686 must also bark, and vice
-    // versa. Walk the three states that matter.
-    for (params, both_fire, what) in [
-        (
-            vec![
-                ("mission_685_status", "completed"),
-                ("mission_686_status", "not_active"),
-            ],
-            true,
-            "Hallway04 cleared, 686 not yet accepted",
-        ),
-        (
-            vec![
-                ("mission_685_status", "active"),
-                ("mission_686_status", "not_active"),
-            ],
-            false,
-            "Hallway04 still contested",
-        ),
-        (
-            vec![
-                ("mission_685_status", "completed"),
-                ("mission_686_status", "active"),
-            ],
-            false,
-            "686 already accepted",
-        ),
-    ] {
-        let resolved = resolve_region_enter(&engine, REGION_HALLWAY05, &params);
-        let accepts = resolved
+    assert_single_bark(&resolved, CHAIN_HALLWAY05 as i64, SCREEN_HALLWAY05);
+    assert!(
+        !resolved
             .actions
             .iter()
-            .filter(|(id, action)| {
-                *id == CHAIN_ACCEPT_686
-                    && matches!(action, Action::AcceptMission { mission_id: 686 })
-            })
-            .count();
-        let barks = bark_screens(&resolved, CHAIN_HALLWAY05 as i64).len();
-        assert_eq!(
-            (accepts > 0, barks > 0),
-            (both_fire, both_fire),
-            "with {what}: chain 1083 accept and chain 1178 bark must agree \
-             (accepts={accepts}, barks={barks}). They are co-gated by \
-             duplicated conditions, so a divergence here means somebody \
-             edited one gate and not the other"
-        );
-    }
+            .any(|(id, a)| *id == 1083 && matches!(a, Action::AcceptMission { .. })),
+        "chain 1083 is the fallback accept and must stay shut when 686 is \
+         already active. Resolved: {:?}",
+        resolved.actions,
+    );
 }
