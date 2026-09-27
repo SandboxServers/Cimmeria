@@ -103,6 +103,23 @@ Shipped as a signed overlay patch through the launcher manifest (`crates/launche
 
 BM-01, BM-00 and BM-03 can run in parallel. BM-02b waits for the social-systems mail packets; the coordinator (cimmeria-19) will say when SS-M1 and SS-M2 merge. D8 (immediate buyout) shares the same payout path, so it lands with BM-02b.
 
+### 5.1 Telemetry acceptance
+
+Owner rule (2026-09-26): a restored system must be debuggable from telemetry alone, in SigNoz, with no repro and no debugger. Every packet follows [instrumentation-discipline.md](../../architecture/instrumentation-discipline.md), [negative-logging-convention.md](../../architecture/negative-logging-convention.md) and [observability.md](../../architecture/observability.md). A packet is not done until its line below holds.
+
+| Packet | Telemetry acceptance |
+|---|---|
+| BM-00 | Each live check records what it observed (addresses, bytes, return values) in the evidence doc. No product telemetry. |
+| BM-01 | The port keeps every log the branch had. Each BM dispatch entrypoint (cell 61–66 decode, the base create/bid/cancel/search handlers, each sweep pass) has an info span, and its player logs carry `account_id` + `player_id`. Every new log target has a pinned `OTEL_FILTER` row. |
+| BM-02 | Every state transition (listed, bid, outbid refund, cancelled, sold, expired) is a debug event `event = "bm.<transition>"`. Each carries `auction_id`, seller and bidder ids, the bid before and after, the escrowed cash before and after, and `item_def_id`. Every refusal logs an enumerated `reason=` that matches the `onBMError` id, with a `LogCapture` test per refusal seam. Search logs `client_key`, the filters, rows returned and `total_results`. A decode failure on 61–66 logs the payload length and the reason. Every `onBM*` send logs the method, the auction id or row count, and the payload size. A counter `bm.outcome{op, outcome}` uses enumerated labels only. A player who received `onBMOpen` but sent no 61–66 call in that session is logged once at logout as `bm.open_without_client_call`, the server-side sign that the client patch is missing. |
+| BM-02b | Each settlement logs the mail id it produced, the cash and item moved, and why (sold, expired, cancelled, buyout). |
+| BM-03 | The DLL writes a local log in a format the launcher's telemetry tailer can read. It records the fingerprint result per hook address, hook install success, each BM event decoded (method, size, outcome), decode errors with a reason, the Lua delivery outcome, and a count of events dropped because the overlay was missing. |
+| BM-04 | Each native send logs the method, sub-index and payload size, and every refusal (offline, bad arguments) with a reason. The server-side receive logs from BM-02 complete the round trip. |
+| BM-05 | Every overlay handler is `pcall`-guarded, and errors reach the client log that the launcher tails, tagged `[Cimmeria BM]`. |
+| BM-06 | With telemetry opted in, the launcher tails the patch DLL's log and records the DLL version and fingerprint result once per session. |
+| BM-07 | The UAT checklist names the SigNoz query for each step, backed by a saved "Black Market" view, so a failed step can be diagnosed from telemetry. |
+| BM-08 | Watch and unwatch transitions and each watch notification sent are logged with the same fields as BM-02. |
+
 ## 6. Decisions
 
 All eight were answered in session on 2026-09-26, each as recommended.
