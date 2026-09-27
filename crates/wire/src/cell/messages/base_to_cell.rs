@@ -446,4 +446,18 @@ pub enum BaseToCellMsg {
     /// Duel traffic. One nested enum, so the duel packets add variants in
     /// `duel_base_to_cell.rs` instead of here (work-packets.md § Messages).
     Duel(DuelBaseToCell),
+
+    /// Replace a player entity's cell-side Ignore set: the character names
+    /// on the player's contact-list Ignore list (flags 301), which the base
+    /// owns (D-SS15). Sent after `InitPlayerState` on every world entry
+    /// (gate travel included, so a fresh cell entity is re-seeded) and after
+    /// every change to the Ignore list (`chatIgnore` or the contact-list UI).
+    /// Spatial chat reads it to skip a witness that ignores the speaker; it
+    /// hides nobody from anyone's AoI.
+    UpdateIgnoreList {
+        entity_id: u32,
+        /// `sgw_player.player_id` of the owner, for the cell's log rows.
+        player_id: i32,
+        ignore_names: std::collections::HashSet<String>,
+    },
 }

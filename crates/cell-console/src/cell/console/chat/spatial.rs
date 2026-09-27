@@ -52,6 +52,29 @@ pub(super) async fn broadcast_to_witnesses(
         return;
     }
 
+    // D-SS15: a witness who ignores the speaker does not hear them. One
+    // direction only (a witness the speaker ignores still hears the speaker),
+    // and it filters the line, not the AoI. Applied after the empty-witness return above so the
+    // speaker's own echo below is unchanged: being ignored is not revealed.
+    let (witnesses, ignored_by): (Vec<u32>, Vec<u32>) = witnesses.into_iter().partition(|&wid| {
+        !space_mgr
+            .get_entity(wid)
+            .is_some_and(|w| w.ignore_names.contains(speaker_name))
+    });
+    if !ignored_by.is_empty() {
+        tracing::debug!(
+            target: "chat",
+            event = "chat.spatial_ignored",
+            entity_id = sender_id,
+            player_id = entity.player_id,
+            account_id = entity.account_id,
+            channel,
+            skipped = ignored_by.len(),
+            reason = "witness_ignores_speaker",
+            "spatial chat withheld from witnesses who ignore the speaker"
+        );
+    }
+
     // Serialize onPlayerCommunication args once
     let args = serialize_on_player_communication(speaker_name, speaker_flags, channel, text);
 

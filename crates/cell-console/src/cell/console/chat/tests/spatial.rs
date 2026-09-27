@@ -159,3 +159,79 @@ async fn broadcast_say_skips_npc_witnesses() {
         }
     }
 }
+
+/// Two players, `1` ("Alice") witnessing `2` ("Bob") and `3` ("Carol").
+fn three_player_space() -> crate::cell::space_manager::SpaceManager {
+    let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(cxml).unwrap();
+    for (id, x) in [(1u32, 10.0f32), (2, 15.0), (3, 20.0)] {
+        mgr.create_entity(id, "Agnos", [x, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(id);
+    }
+    let alice = mgr.get_entity_mut(1).unwrap();
+    alice.witnesses.insert(cimmeria_common::EntityId(2));
+    alice.witnesses.insert(cimmeria_common::EntityId(3));
+    mgr
+}
+
+/// Entity ids that received a message after one line from Alice (1).
+async fn recipients_of_alice(
+    mgr: &mut crate::cell::space_manager::SpaceManager,
+    channel: u8,
+) -> Vec<u32> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+    let engine = ChainEngine::new();
+    handle_chat_message(1, "Alice", 0, channel, "Hello", &tx, mgr, &engine).await;
+    let mut out = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall { entity_id, .. } = msg {
+            out.push(entity_id);
+        }
+    }
+    out.sort_unstable();
+    out
+}
+
+/// CAT-L-01 / D-SS15: Bob ignores Alice, so Bob gets none of her say, emote
+/// or yell; Carol still does, and Alice still gets her own echo. Fails when
+/// the ignore filter in `spatial::broadcast_to_witnesses` is removed.
+#[tokio::test]
+async fn spatial_chat_skips_ignoring_witness() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = three_player_space();
+    mgr.get_entity_mut(2)
+        .unwrap()
+        .ignore_names
+        .insert("Alice".to_string());
+    for channel in [CHAN_SAY, CHAN_EMOTE, CHAN_YELL] {
+        assert_eq!(
+            recipients_of_alice(&mut mgr, channel).await,
+            vec![1, 3],
+            "channel {channel}: the ignoring witness (2) must be skipped, \
+             the other witness (3) and the speaker echo (1) kept"
+        );
+    }
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "chat.spatial_ignored"))
+        .expect("the withheld line must log chat.spatial_ignored");
+    assert!(ev.has_field("reason", "witness_ignores_speaker"));
+    assert!(ev.has_field("skipped", "1"));
+}
+
+/// D-SS15 is one-directional: Alice ignoring Bob does not stop Bob hearing
+/// Alice. Guards against a symmetric filter (PR #585's shape).
+#[tokio::test]
+async fn spatial_chat_reaches_witness_the_speaker_ignores() {
+    let mut mgr = three_player_space();
+    mgr.get_entity_mut(1)
+        .unwrap()
+        .ignore_names
+        .insert("Bob".to_string());
+    assert_eq!(recipients_of_alice(&mut mgr, CHAN_SAY).await, vec![1, 2, 3]);
+}

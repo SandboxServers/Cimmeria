@@ -124,6 +124,7 @@ impl CellEntity {
             ring_source_id: None,
             destination_ring_id: None,
             counters: HashMap::new(),
+            ignore_names: HashSet::new(),
             system_options: SystemOptions::default(),
             tree_progress: TreeProgress::default(),
             respec_requested_at: None,

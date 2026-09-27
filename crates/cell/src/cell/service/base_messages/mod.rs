@@ -17,6 +17,7 @@
 //! - [`request_entity_update`] — `RequestEntityUpdate`
 //! - [`org`] — `Org` (organization traffic: the squad invite and kick)
 //! - `Duel` goes straight to `cell::duel::challenge` (SS-D1)
+//! - [`ignore`] — `UpdateIgnoreList` (the Ignore set spatial chat reads, SS-C1)
 
 use tokio::sync::mpsc;
 
@@ -29,6 +30,7 @@ use super::super::{chat, dispatch, spawner};
 mod ability_granted;
 mod bandolier;
 mod gm_spawn;
+mod ignore;
 mod inventory_events;
 mod lab_console;
 mod lab_query;
@@ -493,5 +495,10 @@ pub(super) async fn handle_base_message(
         BaseToCellMsg::Duel(duel_msg) => {
             super::super::duel::challenge::handle(duel_msg, tx, space_mgr).await;
         }
+        BaseToCellMsg::UpdateIgnoreList {
+            entity_id,
+            player_id,
+            ignore_names,
+        } => ignore::handle(entity_id, player_id, ignore_names, space_mgr),
     }
 }

@@ -727,6 +727,13 @@ pub struct CellEntity {
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
 
+    /// Character names this player ignores: the base's contact-list Ignore
+    /// list (flags 301), pushed by `BaseToCellMsg::UpdateIgnoreList` after
+    /// `InitPlayerState` and on every change. Spatial chat skips a witness
+    /// whose set holds the speaker's name (D-SS15, one-directional). Empty
+    /// for NPCs and until the first push; never persisted on the cell.
+    pub ignore_names: HashSet<String>,
+
     /// Per-session client option state populated by `updateSystemOptions`
     /// (player method index 93). Defaults to `SystemOptions::default()` on
     /// entity construction, then overwritten by either of two paths:
