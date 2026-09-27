@@ -105,11 +105,16 @@ building() {
   return 1
 }
 
-# Prints MERGED, OPEN, CLOSED, ON_MAIN or UNMERGED for a branch.
+# Prints MERGED, OPEN, CLOSED, ADVANCED, ON_MAIN or UNMERGED for a branch. ADVANCED is a
+# merged PR whose branch has local commits past the head that merged: deleting the branch
+# would lose them.
 merge_state() {
-  local br="$1" st=""
+  local br="$1" st="" head=""
   if command -v gh >/dev/null 2>&1; then
-    st="$(gh pr list --state all --head "$br" --limit 1 --json state -q '.[0].state' 2>/dev/null)"
+    read -r st head < <(gh pr list --state all --head "$br" --limit 1       --json state,headRefOid -q '.[0] | "\(.state) \(.headRefOid)"' 2>/dev/null)
+  fi
+  if [ "$st" = MERGED ] && ! git merge-base --is-ancestor "$br" "$head" 2>/dev/null; then
+    echo ADVANCED; return
   fi
   if [ -n "$st" ]; then echo "$st"; return; fi
   if git merge-base --is-ancestor "$br" origin/main 2>/dev/null; then echo ON_MAIN; else echo UNMERGED; fi
