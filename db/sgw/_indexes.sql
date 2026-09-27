@@ -27,3 +27,11 @@ CREATE INDEX "sgw_inventory_Index01" ON sgw_inventory USING btree (character_id)
 
 CREATE INDEX sgw_contact_list_member_player_name_idx ON sgw_contact_list_member USING btree (player_name);
 
+--
+-- Index: sgw_player_player_name_lower_idx
+-- Social-systems SS-M1: D-SS13's case-insensitive fallback when a gate-mail
+-- recipient name has no exact match. The mail send path queries
+-- lower(player_name) = ANY($2), which is this expression.
+--
+
+CREATE INDEX sgw_player_player_name_lower_idx ON sgw_player USING btree (lower((player_name)::text));

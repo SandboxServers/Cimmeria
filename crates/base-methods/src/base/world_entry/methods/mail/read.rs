@@ -13,8 +13,15 @@ use crate::mercury::method_idx;
 /// requested list on a reset, so rows of the other list sent here would sit
 /// in it un-reset (SS-E1 M-Q7).
 pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
-    let (entity_id, player_id) = (ctx.entity_id, ctx.player_id);
-    tracing::debug!(entity_id, player_id, b_archive, "Mail: querying headers");
+    let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    tracing::debug!(
+        target: "mail",
+        entity_id,
+        player_id,
+        account_id,
+        b_archive,
+        "Mail: querying headers"
+    );
 
     #[derive(sqlx::FromRow)]
     struct MailRow {
@@ -42,7 +49,15 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
     {
         Ok(rows) => rows,
         Err(e) => {
-            tracing::error!(entity_id, player_id, "Mail: header query failed: {e}");
+            tracing::error!(
+                target: "mail",
+                entity_id,
+                player_id,
+                account_id,
+                reason = "db_error",
+                error = %e,
+                "Mail: header query failed"
+            );
             return;
         }
     };
@@ -52,6 +67,11 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
         .map(|r| {
             let cash = i32::try_from(r.cash).unwrap_or_else(|_| {
                 tracing::warn!(
+                    target: "mail",
+                    entity_id,
+                    player_id,
+                    account_id,
+                    reason = "cash_out_of_i32_range",
                     mail_id = r.mail_id,
                     db_cash = r.cash,
                     "Mail header cash truncated to i32 range"
@@ -76,6 +96,7 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
         event = "mail.headers_sent",
         entity_id,
         player_id,
+        account_id,
         b_archive,
         count = headers.len(),
         "Mail: sending headers to client"
@@ -91,8 +112,15 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
 /// `ToText` is the name stored on the recipient's `sgw_player` row (audit
 /// A-10, CAT-G-08), not whatever name the reader's session holds.
 pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
-    let (entity_id, player_id) = (ctx.entity_id, ctx.player_id);
-    tracing::debug!(entity_id, mail_id, "Mail: querying body");
+    let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    tracing::debug!(
+        target: "mail",
+        entity_id,
+        player_id,
+        account_id,
+        mail_id,
+        "Mail: querying body"
+    );
 
     #[derive(sqlx::FromRow)]
     struct BodyRow {
@@ -122,6 +150,7 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
                 entity_id,
                 mail_id,
                 player_id,
+                account_id,
                 reason = "not_found_for_owner",
                 "Mail body not found for this character_id"
             );
@@ -129,7 +158,13 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
         }
         Err(e) => {
             tracing::error!(
-                entity_id, mail_id, player_id, error = %e,
+                target: "mail",
+                entity_id,
+                mail_id,
+                player_id,
+                account_id,
+                reason = "db_error",
+                error = %e,
                 "Mail body query failed"
             );
             return;
@@ -141,7 +176,16 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
         .unwrap_or_default()
         .as_secs() as i32;
     if let Err(e) = mark_read(ctx.pool, mail_id, player_id, now).await {
-        tracing::warn!(entity_id, mail_id, "Mail: read_time UPDATE failed: {e}");
+        tracing::warn!(
+            target: "mail",
+            entity_id,
+            player_id,
+            account_id,
+            mail_id,
+            reason = "db_error",
+            error = %e,
+            "Mail: read_time UPDATE failed"
+        );
     }
 
     let args = mail::serialize_on_mail_read(mail_id, &row.message, &row.recipient_name);
@@ -175,8 +219,15 @@ pub(super) async fn mark_read(
 
 /// `deleteMailMessage(MailId)`.
 pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
-    let (entity_id, player_id) = (ctx.entity_id, ctx.player_id);
-    tracing::debug!(entity_id, mail_id, "Mail: deleting");
+    let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    tracing::debug!(
+        target: "mail",
+        entity_id,
+        player_id,
+        account_id,
+        mail_id,
+        "Mail: deleting"
+    );
     match sqlx::query("DELETE FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2")
         .bind(mail_id)
         .bind(player_id)
@@ -189,13 +240,23 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
                 entity_id,
                 player_id,
                 mail_id,
+                account_id,
                 reason = "not_found_for_owner",
                 "Mail: Delete affected 0 rows"
             );
         }
         Ok(_) => {}
         Err(e) => {
-            tracing::error!(entity_id, player_id, mail_id, "Mail: Delete failed: {e}");
+            tracing::error!(
+                target: "mail",
+                entity_id,
+                player_id,
+                account_id,
+                mail_id,
+                reason = "db_error",
+                error = %e,
+                "Mail: Delete failed"
+            );
             return;
         }
     }
@@ -208,13 +269,21 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
 /// `archiveMailMessage(MailId)`: sets `MAIL_Archive` and drops the row from
 /// the open list.
 pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
-    let (entity_id, player_id) = (ctx.entity_id, ctx.player_id);
-    tracing::debug!(entity_id, mail_id, "Mail: archiving");
+    let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    tracing::debug!(
+        target: "mail",
+        entity_id,
+        player_id,
+        account_id,
+        mail_id,
+        "Mail: archiving"
+    );
     match sqlx::query(
-        "UPDATE sgw_gate_mail SET flags = flags | 1 WHERE mail_id = $1 AND character_id = $2",
+        "UPDATE sgw_gate_mail SET flags = flags | $3 WHERE mail_id = $1 AND character_id = $2",
     )
     .bind(mail_id)
     .bind(player_id)
+    .bind(MAIL_ARCHIVE)
     .execute(ctx.pool)
     .await
     {
@@ -224,13 +293,23 @@ pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
                 entity_id,
                 player_id,
                 mail_id,
+                account_id,
                 reason = "not_found_for_owner",
                 "Mail: Archive affected 0 rows"
             );
         }
         Ok(_) => {}
         Err(e) => {
-            tracing::error!(entity_id, player_id, mail_id, "Mail: Archive failed: {e}");
+            tracing::error!(
+                target: "mail",
+                entity_id,
+                player_id,
+                account_id,
+                mail_id,
+                reason = "db_error",
+                error = %e,
+                "Mail: Archive failed"
+            );
             return;
         }
     }

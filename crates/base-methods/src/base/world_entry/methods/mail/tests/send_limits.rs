@@ -47,11 +47,39 @@ fn refused_with(capture: &crate::test_support::LogCaptureGuard, reason: &str) ->
         .is_some()
 }
 
-/// D-SS14: burst 3. Three sends inside the window are answered; the fourth
-/// is dropped before anything else runs, logs `rate_limit.exceeded
-/// category=mail_send` at WARN and gets one feedback line and no
-/// `sendMailResult`. Fails when the bucket is unwired: the fourth send is
-/// then answered like the first three.
+/// A send that passes the bucket and is then refused with
+/// `ItemNotAvailable`, so it cannot be mistaken for a limited send.
+fn attachment_send() -> MailSend {
+    let mut send = plain_send(&["Bob"]);
+    send.cash = 5;
+    send
+}
+
+/// The reply to a limited send: `sendMailResult(NoRecipients)` with the
+/// typed names, and the flood line only when `notify`.
+fn limited_reply(with_line: bool) -> Vec<Received> {
+    let mut want = vec![Received::SendMailResult {
+        result: MailResult::NoRecipients.code(),
+        failed: vec!["Bob".to_string()],
+        failed_flags: 0,
+    }];
+    if with_line {
+        want.push(Received::Feedback(
+            "You are sending messages too quickly.".to_string(),
+        ));
+    }
+    want
+}
+
+/// D-SS14: burst 3. Three sends inside the window get past the bucket (and
+/// are then refused for their attachment, code 2). The fourth is dropped
+/// before anything else runs, logs `rate_limit.exceeded
+/// category=mail_send` at WARN, and still answers `sendMailResult` (code 1)
+/// plus the flood line, because the client disables Send on every press
+/// and only a result tells the player it did nothing. A fifth inside the
+/// 5 s notify window gets the result without a second line. Fails when the
+/// bucket is unwired (the fourth is then answered with code 2) and when the
+/// limited path stops answering `sendMailResult`.
 #[tokio::test]
 async fn mail_send_bucket_rejects_fourth_in_burst() {
     let capture = LogCapture::install();
@@ -59,7 +87,7 @@ async fn mail_send_bucket_rejects_fourth_in_burst() {
     let t0 = Instant::now();
     for i in 0..3u64 {
         c.op(
-            MailOp::Send(plain_send(&[])),
+            MailOp::Send(attachment_send()),
             None,
             t0 + Duration::from_millis(i * 100),
         )
@@ -67,24 +95,18 @@ async fn mail_send_bucket_rejects_fourth_in_burst() {
         let (code, _, _, _) = refusal(&c.take());
         assert_eq!(
             code,
-            MailResult::NoRecipients.code(),
-            "send {i} is answered"
+            MailResult::ItemNotAvailable.code(),
+            "send {i} gets past the bucket"
         );
     }
 
     c.op(
-        MailOp::Send(plain_send(&[])),
+        MailOp::Send(attachment_send()),
         None,
         t0 + Duration::from_millis(300),
     )
     .await;
-    assert_eq!(
-        c.take(),
-        vec![Received::Feedback(
-            "You are sending messages too quickly.".to_string()
-        )],
-        "the fourth send gets the flood line and nothing else"
-    );
+    assert_eq!(c.take(), limited_reply(true), "the fourth send is limited");
     let ev = capture
         .find_event(Level::WARN, "rate_limit.exceeded", "bucket_empty")
         .expect("rate_limit.exceeded at WARN");
@@ -98,15 +120,27 @@ async fn mail_send_bucket_rejects_fourth_in_burst() {
         "account_id on the event: {ev:?}"
     );
 
+    c.op(
+        MailOp::Send(attachment_send()),
+        None,
+        t0 + Duration::from_millis(400),
+    )
+    .await;
+    assert_eq!(
+        c.take(),
+        limited_reply(false),
+        "every limited press is answered; the line is throttled"
+    );
+
     // A token is back after 10 s.
     c.op(
-        MailOp::Send(plain_send(&[])),
+        MailOp::Send(attachment_send()),
         None,
         t0 + Duration::from_secs(11),
     )
     .await;
     let (code, _, _, _) = refusal(&c.take());
-    assert_eq!(code, MailResult::NoRecipients.code());
+    assert_eq!(code, MailResult::ItemNotAvailable.code());
 }
 
 /// A refusal costs a token too, so a client cannot turn a flood of bad
@@ -127,12 +161,7 @@ async fn decode_refusals_are_charged_to_the_bucket() {
     }
     c.take();
     c.op(MailOp::Send(plain_send(&["Bob"])), None, t0).await;
-    assert_eq!(
-        c.take(),
-        vec![Received::Feedback(
-            "You are sending messages too quickly.".to_string()
-        )]
-    );
+    assert_eq!(c.take(), limited_reply(true));
 }
 
 /// CAT-G-01 / D-SS05: eleven names are refused whole, from the declared
@@ -231,6 +260,16 @@ async fn send_rejects_negative_cash() {
     assert_eq!(lines.len(), 1);
     assert!(refused_with(&capture, "attachment_not_supported"));
     assert!(!refused_with(&capture, "no_db_pool"));
+    let ev = capture
+        .find_event(
+            Level::WARN,
+            "sendMailMessage refused",
+            "attachment_not_supported",
+        )
+        .unwrap();
+    for key in ["account_id", "player_id", "entity_id", "result"] {
+        assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
+    }
 }
 
 /// Every single-recipient attachment is refused with feedback until SS-M2.

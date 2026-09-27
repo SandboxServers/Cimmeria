@@ -70,6 +70,13 @@ pub(super) fn resolve_names(typed: &[String], rows: &[(i32, String)]) -> Vec<Res
         .collect()
 }
 
+/// The candidate query. `lower(player_name)` is exactly the expression of
+/// `sgw_player_player_name_lower_idx` (`db/sgw/_indexes.sql`), and
+/// `player_name` has its `UNIQUE` index, so both arms are index scans.
+pub(in super::super) const CANDIDATE_ROWS_SQL: &str =
+    "SELECT player_id, player_name FROM sgw_player \
+     WHERE player_name = ANY($1) OR lower(player_name) = ANY($2)";
+
 /// Every `sgw_player` row that could match one of `typed`, exactly or
 /// case-folded. At most `MAX_MAIL_RECIPIENTS` names reach here, so this is
 /// one small query.
@@ -78,14 +85,11 @@ pub(super) async fn candidate_rows(
     typed: &[String],
 ) -> Result<Vec<(i32, String)>, sqlx::Error> {
     let folded: Vec<String> = typed.iter().map(|n| n.to_lowercase()).collect();
-    sqlx::query_as::<_, (i32, String)>(
-        "SELECT player_id, player_name FROM sgw_player \
-         WHERE player_name = ANY($1) OR lower(player_name) = ANY($2)",
-    )
-    .bind(typed)
-    .bind(&folded)
-    .fetch_all(conn)
-    .await
+    sqlx::query_as::<_, (i32, String)>(CANDIDATE_ROWS_SQL)
+        .bind(typed)
+        .bind(&folded)
+        .fetch_all(conn)
+        .await
 }
 
 /// The recipients among `recipient_ids` who ignore `sender_id` (D-SS15:

@@ -15,9 +15,12 @@ const BASE: i32 = 0x7300_1200;
 ///
 /// The race is forced, not hoped for: the test holds `SHARE` on
 /// `sgw_gate_mail` (which lets the count run and blocks every `INSERT`)
-/// until two backends are waiting on locks. Without the row lock both sends
-/// are then parked at their `INSERT` having counted 99; with it, the second
-/// is parked at `FOR UPDATE` behind the first.
+/// until both senders are parked behind that gate. Without the row lock both
+/// sends are then parked at their `INSERT` having counted 99; with it, the
+/// second is parked at `FOR UPDATE` behind the first. Only sessions held by
+/// the gate, directly or through one waiter it holds, are counted
+/// (`pg_blocking_pids`), so an unrelated lock waiter elsewhere in the
+/// database cannot open the gate early.
 #[tokio::test]
 async fn concurrent_sends_respect_mailbox_cap() {
     let pool = require_db_or_skip!();
@@ -39,6 +42,10 @@ async fn concurrent_sends_respect_mailbox_cap() {
     let cb = Client::new(0x7300_1282, b, 54_722, "SsmOneRaceB");
     let now = Instant::now();
     let mut gate = pool.begin().await.unwrap();
+    let gate_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *gate)
+        .await
+        .unwrap();
     sqlx::query("LOCK TABLE sgw_gate_mail IN SHARE MODE")
         .execute(&mut *gate)
         .await
@@ -47,9 +54,14 @@ async fn concurrent_sends_respect_mailbox_cap() {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let waiting: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM pg_stat_activity \
-                 WHERE datname = current_database() AND wait_event_type = 'Lock'",
+                "WITH held AS (\
+                     SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))\
+                 ) \
+                 SELECT COUNT(*) FROM pg_stat_activity a \
+                 WHERE a.pid IN (SELECT pid FROM held) \
+                    OR EXISTS (SELECT 1 FROM held h WHERE h.pid = ANY(pg_blocking_pids(a.pid)))",
             )
+            .bind(gate_pid)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -58,7 +70,7 @@ async fn concurrent_sends_respect_mailbox_cap() {
             }
             assert!(
                 Instant::now() < deadline,
-                "both sends should be parked on a lock (saw {waiting})"
+                "both sends should be parked behind the gate (saw {waiting})"
             );
             tokio::time::sleep(Duration::from_millis(10)).await;
         }

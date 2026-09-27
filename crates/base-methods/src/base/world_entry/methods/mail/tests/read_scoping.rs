@@ -108,3 +108,38 @@ async fn mail_read_to_text_is_stored_recipient() {
 
     cleanup(&pool, acct).await;
 }
+
+/// Instrumentation rule 5 on the read side: a read-side miss carries
+/// `account_id`, `player_id` and `entity_id`, and so do the send path's
+/// refusals (`send_rejects_negative_cash` checks those). Here character A
+/// asks for character B's body: WARN `reason=not_found_for_owner`.
+#[tokio::test]
+async fn read_side_events_carry_account_player_and_entity() {
+    let capture = crate::test_support::LogCapture::install();
+    let pool = require_db_or_skip!();
+    let (acct, a, b) = (BASE + 30, BASE + 31, BASE + 32);
+    cleanup(&pool, acct).await;
+    insert_players(&pool, acct, &[(a, "SsmOneEvA"), (b, "SsmOneEvB")]).await;
+    let mail_b = insert_mail(&pool, b, "for B").await;
+
+    let c = Client::new(0x7300_1383, a, 54_733, "SsmOneEvA");
+    c.op(
+        MailOp::RequestBody { mail_id: mail_b },
+        Some(&pool),
+        Instant::now(),
+    )
+    .await;
+    let ev = capture
+        .find_event(
+            tracing::Level::WARN,
+            "Mail body not found",
+            "not_found_for_owner",
+        )
+        .expect("the miss is logged");
+    for key in ["account_id", "player_id", "entity_id", "mail_id"] {
+        assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
+    }
+    assert_eq!(ev.target, "mail");
+
+    cleanup(&pool, acct).await;
+}

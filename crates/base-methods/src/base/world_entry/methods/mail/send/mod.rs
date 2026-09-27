@@ -21,7 +21,7 @@
 //! and the name stored on that `sgw_player` row, read under the lock.
 
 mod deliver;
-mod recipients;
+pub(super) mod recipients;
 
 use std::net::SocketAddr;
 use std::time::Instant;
@@ -106,7 +106,11 @@ pub(super) async fn send_mail(
     pool: Option<&PgPool>,
     now: Instant,
 ) {
-    let Some(session) = take_send_token(caller, now).await else {
+    let typed: &[String] = match &request {
+        Ok(send) => &send.recipients,
+        Err(_) => &[],
+    };
+    let Some(session) = take_send_token(caller, typed, now).await else {
         return;
     };
 
@@ -291,9 +295,21 @@ pub(super) async fn send_mail(
 const GATE_MAIL_UNAVAILABLE: &str = "Gate-mail is unavailable right now. The message was not sent.";
 
 /// Take one mail-send token (D-SS14). `None` means stop: either the send
-/// was limited (logged, and the player told at most once per 5 s), or the
-/// caller has no session any more.
-async fn take_send_token(caller: &Caller<'_>, now: Instant) -> Option<SenderSession> {
+/// was limited, or the caller has no session any more.
+///
+/// A limited send still answers `sendMailResult` (`NoRecipients`, the typed
+/// names in `FailedRecipients`) on every press. The client disables its
+/// Send button when pressed and only a new compose re-enables it
+/// (`GateMail.lua` `onSendMessage` / `onCreateNewMessage`), so the result
+/// line ("Gate-mail message was not sent.") is the only thing that tells
+/// the player that press did nothing. The explanatory feedback line is
+/// throttled to once per 5 s like every other limited action. One result
+/// per received packet is no amplification.
+async fn take_send_token(
+    caller: &Caller<'_>,
+    typed: &[String],
+    now: Instant,
+) -> Option<SenderSession> {
     let Some(addr) = caller.addr() else {
         tracing::warn!(
             target: "mail",
@@ -344,6 +360,10 @@ async fn take_send_token(caller: &Caller<'_>, now: Instant) -> Option<SenderSess
     match decision {
         RateDecision::Allowed => Some(session),
         RateDecision::Limited { notify } => {
+            let args = serialize_send_mail_result(MailResult::NoRecipients, typed, 0);
+            caller
+                .send_to_caller(method_idx::SEND_MAIL_RESULT, &args)
+                .await;
             if notify {
                 feedback(caller, session, RateCategory::MailSend.feedback_text()).await;
             }

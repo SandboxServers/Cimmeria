@@ -61,6 +61,18 @@ impl Caller<'_> {
         .await;
     }
 
+    /// The caller's `account_id` from the session (rule 5 of the
+    /// instrumentation discipline), `None` once the client is gone, so the
+    /// field is omitted rather than logged as a fake 0.
+    pub(super) fn account_id(&self) -> Option<u32> {
+        let addr = self.addr()?;
+        let clients = match self.connected.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        clients.get(&addr).map(|c| c.account_id)
+    }
+
     /// The caller's client address, if the entity still has one.
     pub(super) fn addr(&self) -> Option<SocketAddr> {
         let guard = match self.entity_to_addr.lock() {

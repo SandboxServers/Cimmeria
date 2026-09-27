@@ -24,7 +24,7 @@ A server-generated mail helper also exists — `send_mail_to_player`, used by th
 
 `sendMailMessage` (CM 44) is decoded on the cell by `decode_send_mail_message` (`crates/wire/src/cell/cell_methods/mail/`): the declared recipient count is checked against the cap of 10 before any name is read, and the recipient names, subject (1-128 characters) and body (up to 1,000, newlines allowed) must pass the shared text rules. The cell forwards `MailOp::Send`, or `MailOp::SendRejected` with the reason, and the base answers every send with `sendMailResult` (CM 79). The base runs, in order:
 
-1. the mail-send flood limit: 3 sends back to back, then one every 10 seconds. An over-limit send is dropped with "You are sending messages too quickly." at most once every 5 seconds;
+1. the mail-send flood limit: 3 sends back to back, then one every 10 seconds. An over-limit send is dropped before anything else runs, but still answered with `MAILRESULT_NoRecipients` (the client shows "Gate-mail message was not sent.") on every press, because the client disables its Send button on each press and only a result tells the player the press did nothing. The explanatory line "You are sending messages too quickly." follows at most once every 5 seconds;
 2. the cell's refusal, if there was one;
 3. alias bits in `RecipientFlags` (vault, team, command): refused until the Bank and organizations campaigns land them;
 4. attachments: cash, COD or an item with two or more recipients is `MAILRESULT_AttachmentsAndMultipleRecipients`; any attachment at all is `MAILRESULT_ItemNotAvailable` until SS-M2;
@@ -49,7 +49,7 @@ A send that reaches at least one recipient is `MAILRESULT_Sent`; `FailedRecipien
 | Cash On Delivery | STUB | `payCODForMailMessage` logs `UNIMPLEMENTED` |
 | New mail notification | STUB | `onNewMail`, `notifyPlayersOfNewMail` not wired |
 | Multiple recipients | DONE | Up to 10 per text mail, de-duplicated; one row each |
-| Send result feedback | DONE | `sendMailResult` (CM 79) answers every send, with `FailedRecipients` and a feedback line on any failure |
+| Send result feedback | DONE | `sendMailResult` (CM 79) answers every send, flood-limited ones included, with `FailedRecipients`. A feedback line with the reason follows every refusal, except that the flood line is sent at most once every 5 seconds |
 
 ## Entity Definition (SGWMailManager.def)
 

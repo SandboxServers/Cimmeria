@@ -349,3 +349,37 @@ async fn schema_rejects_negative_mail_cash() {
     );
     cleanup(&pool, acct).await;
 }
+
+/// The D-SS13 case-fold arm of the recipient query can use
+/// `sgw_player_player_name_lower_idx`: with sequential scans disabled, the
+/// plan for the exact statement the send path runs names the index. Fails
+/// when the index is dropped from `db/sgw/_indexes.sql` or the query's
+/// expression stops matching it.
+#[tokio::test]
+async fn recipient_case_fold_uses_the_lower_name_index() {
+    let pool = require_db_or_skip!();
+    let mut conn = pool.acquire().await.unwrap();
+    sqlx::query("SET enable_seqscan = off")
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    let plan: Vec<String> = // A test-only EXPLAIN of a constant statement: nothing player-supplied.
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "EXPLAIN {}",
+        super::super::send::recipients::CANDIDATE_ROWS_SQL
+    )))
+    .bind(vec!["SsmOneIdx".to_string()])
+    .bind(vec!["ssmoneidx".to_string()])
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    sqlx::query("RESET enable_seqscan")
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    let plan = plan.join("\n");
+    assert!(
+        plan.contains("sgw_player_player_name_lower_idx"),
+        "the case-fold arm must use the lower(player_name) index:\n{plan}"
+    );
+}

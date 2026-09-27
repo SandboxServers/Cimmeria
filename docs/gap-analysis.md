@@ -1294,22 +1294,22 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **62** | **100** | **136** | **4** |
+| | **TOTALS** | **471** | **169** | **65** | **98** | **135** | **4** |
 
 ### Summary Percentages
 
-Recomputed 2026-09-25 directly from the rows above; the columns sum to the totals line and the totals line sums to 471.
+Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row); the columns sum to the totals line and the totals line sums to 471.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
 | Confirmed Working (CW) | 169 | 35.9% |
-| Needs Test (NT) | 60 | 12.7% |
-| Implemented (IM) | 100 | 21.2% |
-| Known/Missing (KM) | 138 | 29.3% |
+| Needs Test (NT) | 65 | 13.8% |
+| Implemented (IM) | 98 | 20.8% |
+| Known/Missing (KM) | 135 | 28.7% |
 | Needed/Unknown (NU) | 4 | 0.8% |
 
-**Code exists (CW + NT + IM)**: 329 features (69.9%)
-**Missing (KM + NU)**: 142 features (30.1%)
+**Code exists (CW + NT + IM)**: 332 features (70.5%)
+**Missing (KM + NU)**: 139 features (29.5%)
 
 **Tested end-to-end (CW)**: 169 features (35.9%).
 

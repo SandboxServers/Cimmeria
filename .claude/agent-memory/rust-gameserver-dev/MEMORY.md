@@ -135,4 +135,4 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Testing patterns
 
-- [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race: hold `LOCK TABLE ... IN SHARE MODE`, release at 2 lock waiters in pg_stat_activity.
+- [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race: hold `LOCK TABLE ... IN SHARE MODE`, release when 2 sessions are held by the gate (pg_blocking_pids).

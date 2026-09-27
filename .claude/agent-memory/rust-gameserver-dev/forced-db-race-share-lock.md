@@ -10,7 +10,7 @@ A naive `tokio::join!` of two sends on a current-thread runtime does NOT reprodu
 Deterministic recipe (`crates/base-methods/src/base/world_entry/methods/mail/tests/send_race.rs`):
 
 1. Test opens its own transaction and runs `LOCK TABLE <insert_target> IN SHARE MODE`. SHARE lets SELECT/COUNT through and blocks every INSERT (ROW EXCLUSIVE).
-2. `tokio::join!(sender_a, sender_b, release)`, where `release` polls `SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'` on the pool until it is >= 2, then commits the gate transaction.
+2. Record the gate's `pg_backend_pid()`, then `tokio::join!(sender_a, sender_b, release)`, where `release` polls on the pool until the sessions held by the gate number >= 2, then commits the gate transaction. Count only those sessions, never every lock waiter in the database (an unrelated waiter would open the gate early): `WITH held AS (SELECT pid FROM pg_stat_activity WHERE $gate = ANY(pg_blocking_pids(pid))) SELECT COUNT(*) FROM pg_stat_activity a WHERE a.pid IN (SELECT pid FROM held) OR EXISTS (SELECT 1 FROM held h WHERE h.pid = ANY(pg_blocking_pids(a.pid)))`. The second arm is needed because, with the row lock, the second sender is blocked by the first, not by the gate.
 3. Without the row lock both senders are parked at INSERT having counted N-1 (box ends at N+1, test fails). With it, the second is parked at `FOR UPDATE` behind the first (box ends at N).
 
 **Why:** the test pool (`live_db_gate`) has 4 connections: gate + A + B + the poll query uses exactly 4. Poll on the pool, not inside the gate transaction (stats views snapshot per transaction).
