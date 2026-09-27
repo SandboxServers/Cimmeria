@@ -1,0 +1,157 @@
+# SS-D1 Worknotes
+
+> Type: reference. Audience: social-systems coordinator.
+> Companions: [README.md](../README.md), [work-packets.md](../work-packets.md), [audit.md](../audit.md), [SS-00 worknote](ss-00.md).
+
+## Contract
+
+- **Packet:** SS-D1, duel challenge and response.
+- **Decisions in force:** D-SS13 (name resolution), D-SS15 (Ignore, as a seam), D-SS18 (30 s expiry, 5 s countdown), D-SS19 (20-unit challenge range, same space), D-SS21 (bucket, one open challenge per side, 60 s pair cooldown), D-SS25 (no 151/153 send).
+- **SS-E1 evidence used:** unmerged PR #875, `origin/social/se1-re`: `docs/reverse-engineering/findings/duel-wire-formats.md` § "SS-E1 client evidence" and `worknotes/ss-e1.md`. D-Q1 (the countdown length is whatever the server sends; no client constant), D-Q6 (send the duel texts as literal feedback lines; `onErrorCode` ruled out), the `onDuelChallenge` [143] and CM 102 shapes, and D-Q5 (151/153 are safe for SS-D2, but not sent here).
+- **Base:** `origin/main` @ `88d7da73a` (SS-00, #880). Branch `social/d1-duel-challenge`, worktree `.claude/worktrees/ss-d1`.
+- **Owned paths (new):**
+  - `crates/cell-world/src/cell/duel/` (`mod.rs`, `registry.rs`, `challenge.rs`, `response.rs`, `tick.rs`, `outbound.rs`, `limits.rs`, `tests/{mod,registry,challenge,response,tick}.rs`)
+  - `crates/base/src/base/dispatch/duel.rs`, `crates/base/src/base/dispatch/tests/duel_challenge.rs`
+  - `crates/wire/src/base/duel.rs` (0xD9 decoder), `crates/wire/src/cell/cell_methods/player/duel.rs` (CM 102 decoder), `crates/wire/src/cell/client_methods/duel.rs` (`build_on_duel_challenge`, the duel texts), `crates/wire/src/cell/messages/duel_base_to_cell.rs` (`DuelBaseToCell`)
+  - `crates/cell/src/cell/service/base_messages/tests/duel.rs`
+  - this file
+- **Edited:** `crates/base/src/base/dispatch/mod.rs` (contended: `mod duel;` and the one 0xD9 arm), `crates/base/src/base/dispatch/tests/mod.rs`, `crates/wire/src/{lib.rs, cell/messages/{mod.rs, base_to_cell.rs}, cell/client_methods/mod.rs, cell/cell_methods/player/mod.rs}`, `crates/cell-world/src/cell/{mod.rs, space_manager/mod.rs}` (the `duels` field), `crates/cell/src/cell/{mod.rs, service/base_messages/mod.rs, service/base_messages/tests/mod.rs, service/message_loop.rs}`, `crates/cell-methods/src/cell/{mod.rs, cell_methods/player/social.rs}` (the CM 102 arm), `crates/server/src/logging/{filters.rs, target_scan_tests.rs}`, and the docs under "Docs".
+- **Read set:** the ledger (README D-SS13/15/18/19/21/25, work-packets Contract / Contended files / SS-D1, audit A-41, A-42, A-50 and § 6 CAT-M-12/13); SS-E1's duel finding and worknote on `origin/social/se1-re`; `entities/defs/SGWPlayer.def:509-513, 970-985, 1372-1375`; `db/resources/Texts/Seed/texts.sql` (monikers 872-880); SS-00's `player_index/`, `rate_limit/`, `feedback.rs`; the organizations pattern (`OrgBaseToCell`, `base_messages/org.rs`, `dispatch/organization.rs`); `cell_methods/player/{social.rs, dispatch.rs}`; `service/message_loop.rs`; `docs/architecture/{instrumentation-discipline.md, negative-logging-convention.md}`.
+
+## Design decisions
+
+- **The registry is keyed by `player_id`** (contract). It holds the pending challenge per target, a challenger reverse index, the duels, a per-player duel index and the directed `(challenger, target)` cooldowns. Handlers resolve a player's current entity at send time (`duel::find_player`), because gate travel changes it. The registry is pure state on an injected clock; `challenge.rs`, `response.rs` and `tick.rs` send and log.
+- **`DuelId`** is a per-cell counter allocated at the challenge and kept by the duel it becomes, so every row of one challenge and its duel correlates on `duel_id`.
+- **Base order: bucket first.** The ledger lists "squad refused; the duel bucket; …". The base takes the token first, as the chat path does (`dispatch/chat.rs`), so a malformed, squad or misspelled challenge still costs a token and a flood of bad packets cannot become a flood of feedback lines. The order of the remaining checks is the ledger's.
+- **Squad duels get Cimmeria's own line** ("Squad duels are not available."), not text 874 ("You cannot start a squad duel when not in a squad"). 874 would be false for a squad member, and the base does not know squad membership. The ledger allows either.
+- **Self, space and range run on the cell, in the ledger's order**, then busy (challenger first, then target) and the pair cooldown in the registry. The registry also refuses a self-challenge, as a second layer.
+- **Cross-space uses text 877**, the same as out of range. Both mean "not close enough"; the `reason` field tells them apart in SigNoz.
+- **The cell re-checks both entities.** The base's ids can be stale by the time the message is handled (entity recycled, player mid-teardown). `connected_player` requires the entity to be connected (`space.players`) and its `player_id` to match; a mismatch on the target is refused as "not online" (`reason = target_gone`), and on the challenger the message is dropped (`reason = challenger_gone`).
+- **Response values.** 1 is accept and 0 is decline (audit A-50: Yes calls `duelResponse(true)`). Any other value, or a length other than one byte, is refused as malformed (WARN, not answered), and does **not** consume the challenge, so a garbage packet cannot cancel a real prompt.
+- **The challenge is consumed on every path that finds it**: accept, decline and a late answer. A late answer that the sweep had not yet removed is treated exactly as the sweep would treat it (878 to both, cooldown).
+- **Accept after the challenger left** (logged off, or changed space while the prompt was up): no duel, 878 to the responder, the pair cooldown starts, `event = duel.accept_refused reason = challenger_gone`.
+- **The countdown end, until SS-D2.** SS-D1 cannot engage a duel (no PvP flag, no harm gate), and an `Engaged` duel with no end path (SS-D3) would leave both players busy for the life of the cell process. So `tick::on_countdown_end` aborts the duel with 878 and `reason = engage_not_implemented`. SS-D2 replaces that one function's body. `DuelRegistry::can_harm` is true only for `DuelState::Engaged`, which nothing in SS-D1 enters.
+- **No countdown display.** SS-E1 D-Q1 found that `Event_UI_DuelTimerStart(float)` takes the duration from the wire, but no server message that fires it was traced (the `onTimerUpdate` type 14 subscriber is `SGWBeing_onBigWorldTimeComplete`, not the duel UI, per `.claude/agent-memory/game-archaeology-specialist/timer-system-extended.md`). Both players get the literal line "Duel accepted. The duel starts in 5 seconds." instead. SS-D2 should pick this up if the timer's driver is found.
+- **Texts.** Monikers 872, 873, 877 and 878 are sent verbatim as feedback lines (SS-E1 D-Q6); `moniker_texts_match_the_seed` pins each against `texts.sql`. The other lines (not online, ambiguous, ignoring, target busy, pair cooldown, challenge sent, no pending challenge, accepted, squad) are Cimmeria's, in `cimmeria_wire::cell::client_methods::duel`. `RateCategory::DuelChallenge.feedback_text()` from SS-00 is kept as the rate-limit line.
+- **The target sees nothing on a refused challenge**; only the challenger gets a line. Decline, expiry and the countdown abort tell both.
+- **`DuelBaseToCell::Challenge` also carries `account_id`** (beside the contract's `player_id` and `entity_id` for both sides), so the cell's challenge rows carry the challenger's account even when the entity lookup fails.
+- **The duel tick runs every AoI tick** (100 ms) and returns at once when the registry is idle (`is_idle`).
+
+## Telemetry (owner rule: debuggable from SigNoz alone)
+
+New log target `duel`, `duel=debug` in `OTEL_FILTER`, pinned at DEBUG and WARN in `scan_finds_known_targets`; catalog row in `docs/architecture/observability.md`. Info spans: `duel.challenge_request` (base, `peer`, `payload_len`), `duel.challenge` (cell, the ids of both players) and `duel.response` (cell, `account_id`, `player_id`, `entity_id`). No span inside the tick (rule 3).
+
+| Event | Level | Where | Fields beyond the ids | Test |
+|---|---|---|---|---|
+| `duel.challenge_refused` | DEBUG (WARN for `not_in_world`, `no_cell_channel`, `cell_channel_closed`) | base | `reason = not_in_world \| squad_duel \| target_not_online \| target_ambiguous \| target_not_in_world \| target_ignoring \| no_cell_channel \| cell_channel_closed`, `target_name` (first 64 chars), `squad_duel` | `challenge_rejects_squad_duel`, `challenge_rejects_offline_target`, `challenge_rejects_ambiguous_target` |
+| `duel.challenge_malformed` | WARN | base | `reason` from the decoder (`truncated`, `trailing_bytes`, `lone_surrogate`) | `challenge_malformed_payload_is_dropped` |
+| `duel.challenge_forwarded` | DEBUG | base | `target_entity_id` | `challenge_forwards_session_ids_to_the_cell` (forward asserted) |
+| `rate_limit.exceeded` | WARN / DEBUG | base (SS-00 helper) | `category = duel_challenge` and the bucket state | `challenge_rate_limited` |
+| `duel.challenge_refused` | DEBUG | cell | `reason = challenger_gone \| self_challenge \| target_gone \| cross_space \| out_of_range \| challenger_busy \| target_busy \| pair_cooldown`, `distance`, `range` | one test per reason in `tests/challenge.rs` |
+| `duel.challenge_sent` | DEBUG | cell | `duel_id`, `target_entity_id`, `target_account_id`, `space_id`, `distance`, `expires_in_ms` | `challenge_prompts_the_target_byte_exact` |
+| `duel.response_refused` | DEBUG (WARN for `not_a_player`) | cell | `reason = no_pending_challenge \| expired \| not_a_player`, `response`, `expired_ms_ago` | `response_without_challenge_rejected`, `response_replay_rejected`, `response_after_expiry_rejected` |
+| `duel.response_malformed` | WARN | cell | `reason = bad_length \| unknown_response`, `args_len` | `malformed_response_does_not_consume_the_challenge` |
+| `duel.declined` | DEBUG | cell | `duel_id` | `decline_tells_both_sides` |
+| `duel.accepted` | DEBUG | cell | `duel_id`, `state = start_pending`, `space_id`, `target_account_id` | `accept_starts_the_countdown_for_both` |
+| `duel.accept_refused` | DEBUG | cell | `reason = challenger_gone` | `accept_after_the_challenger_left_aborts` |
+| `duel.challenge_expired` | DEBUG | cell tick | `reason = no_answer` | `unanswered_challenge_expires_and_tells_both` |
+| `duel.aborted` | DEBUG | cell tick | `reason = engage_not_implemented`, `state`, `space_id` | `countdown_end_aborts_until_ss_d2` |
+| `duel.notify_skipped` | DEBUG | cell | `why`, `reason = player_not_in_world` | exercised by `accept_after_the_challenger_left_aborts` |
+| `duel.send_failed` | WARN | cell | `method_index`, `reason = cell_to_base_closed` | not tested (needs a closed channel mid-send) |
+
+Every row carries `player_id` (the actor; the challenger on tick rows) and `target_player_id` (the other duelist), with `account_id` and `entity_id` whenever that player is still in the world. Every row after the challenge is stored carries `duel_id`.
+
+### SigNoz queries
+
+| Question | Query |
+|---|---|
+| Why was my challenge refused? | `scope_name = 'duel' AND event = 'duel.challenge_refused' AND player_id = <challenger>`; `reason` names the check. For `rate_limit`, `scope_name = 'rate_limit' AND category = 'duel_challenge'` |
+| What happened to one challenge? | find its `duel_id` on `duel.challenge_sent`, then `scope_name = 'duel' AND duel_id = <id>`: sent, then declined / accepted / expired / aborted |
+| Did the target ever get the prompt? | `duel.challenge_sent` with `target_player_id = <target>`; the same trace carries the `EntityMethodCall` to `target_entity_id` |
+| Who answered what? | `event = 'duel.response_refused' OR event = 'duel.accepted' OR event = 'duel.declined'`, grouped by `player_id` |
+
+## Commands run
+
+All from the worktree root through the lane. Exit codes are the lane's; each log was grepped for `^error` and the `test result` / `Summary` line, per the lane-exit memory note.
+
+| Command | Result |
+|---|---|
+| `bash tools/build-lane/lane.sh cargo check -p cimmeria-cell-world` | exit 0 |
+| `bash tools/build-lane/lane.sh cargo check -p cimmeria-cell -p cimmeria-cell-methods -p cimmeria-base` | exit 0 |
+| `bash tools/build-lane/lane.sh cargo test -p cimmeria-cell-world --lib duel` | 24 passed |
+| `bash tools/build-lane/lane.sh cargo test -p cimmeria-base --lib duel` | 7 passed |
+| `bash tools/build-lane/lane.sh cargo test -p cimmeria-cell-methods --lib send_duel_response` | 1 passed |
+| `bash tools/build-lane/lane.sh cargo test -p cimmeria-cell --lib duel` | 1 passed |
+| `bash tools/build-lane/lane.sh cargo test -p cimmeria-wire --lib duel` | 8 passed |
+| `bash tools/build-lane/lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` | 52 passed (the first run failed on a malformed `OTEL_FILTER` line of mine, fixed before commit) |
+| `bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell -p cimmeria-base` | 1333 passed, 0 skipped |
+| `bash tools/build-lane/lane.sh cargo fmt --all` | exit 0, clean |
+| `bash tools/build-lane/lane.sh cargo clippy -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods -p cimmeria-base -p cimmeria-server --all-targets -- -D warnings` | exit 0, no warnings |
+
+**Live-DB:** not run. SS-D1 has no SQL and no live-DB test; nothing it touches reads the database.
+
+## Tests
+
+- Audit § 6 CAT-M-12: `challenge_rejects_self`, `challenge_rejects_cross_space`, `challenge_rejects_out_of_range`, `challenge_rejects_when_target_busy` (cell, `duel::tests::challenge`); `challenge_rate_limited`, `challenge_rejects_squad_duel` (base, `dispatch::tests::duel_challenge`). Names kept.
+- Audit § 6 CAT-M-13: `response_without_challenge_rejected`, `response_replay_rejected`, `response_after_expiry_rejected` (cell, `duel::tests::response`). Names kept.
+- Byte-exact `onDuelChallenge`: `on_duel_challenge_empty_squad_is_byte_exact`, `on_duel_challenge_with_squad_is_byte_exact` (wire) and `challenge_prompts_the_target_byte_exact` (the handler's actual send).
+- Expiry on an injected clock: `unanswered_challenge_expires_and_tells_both` (one millisecond before and at 30 s), `response_after_expiry_rejected`, `take_after_expiry_is_expired_and_starts_cooldown`.
+- Feedback on each refusal: every cell refusal test asserts the challenger's exact line and that the target is sent nothing; decline, expiry and the countdown abort assert 878 to both.
+- Extra: `challenge_rejects_when_challenger_busy`, `challenge_rejects_during_pair_cooldown`, `challenge_rejects_a_target_entity_that_no_longer_matches`, `decline_tells_both_sides`, `accept_starts_the_countdown_for_both`, `malformed_response_does_not_consume_the_challenge`, `accept_after_the_challenger_left_aborts`, `countdown_end_aborts_until_ss_d2`, seven registry unit tests, the decoders' tests, `moniker_texts_match_the_seed`, `challenge_forwards_session_ids_to_the_cell`, `challenge_rejects_offline_target`, `challenge_rejects_ambiguous_target`, `challenge_malformed_payload_is_dropped`.
+- Routing: `dispatch_routes_0xd9_to_the_duel_handler` (base), `duel_challenge_reaches_the_duel_registry` (cell `BaseToCellMsg::Duel` arm), `send_duel_response_routes_to_the_duel_handler` (CM 102 through the player router).
+- D-SS25: every cell handler test drains through `tests::drain`, which panics on method 151 or 153.
+
+## Regression proof
+
+Each mutation was applied, the named filter run, and the file restored (`/tmp/ssd1_mut.py`: copy, replace, run, move back; `git status` unchanged afterwards).
+
+| Mutation | Result |
+|---|---|
+| `take_pending_for` reads instead of removing (no consume) | 9 failed, including `response_replay_rejected`, `take_consumes_once`, `challenge_rejects_during_pair_cooldown` |
+| `take_pending_for` expiry check removed | `response_after_expiry_rejected`, `take_after_expiry_is_expired_and_starts_cooldown` failed |
+| space check removed | `challenge_rejects_cross_space` failed |
+| range check removed | `challenge_rejects_out_of_range` failed |
+| self check removed on the cell only | `challenge_rejects_self` still passed: the registry refuses it too, with the same line and `reason` |
+| self check removed on the cell **and** in the registry | `challenge_rejects_self` failed |
+| duel bucket bypassed (base) | `challenge_rate_limited` failed |
+| squad check removed (base) | `challenge_rejects_squad_duel` failed |
+| 0xD9 arm removed from `dispatch/mod.rs` | `dispatch_routes_0xd9_to_the_duel_handler` failed |
+| CM 102 arm back to a log-only stub | `send_duel_response_routes_to_the_duel_handler` failed |
+| `BaseToCellMsg::Duel` arm made a no-op | `duel_challenge_reaches_the_duel_registry` failed |
+
+## Docs
+
+- `docs/gameplay/duel-system.md`: status, the implementation table and the feature rows.
+- `docs/game-systems.md` § Dueling, `docs/gap-analysis.md` § 27 (challenge and response rows KM → IM).
+- `docs/protocol/message-catalog.md`: the Dueling rows and the coverage summary.
+- `docs/architecture/observability.md`: the `duel` target row.
+- The dispatch tables (`sgwplayer-base-method-dispatch-table.md`, `cell-method-dispatch-table.md`, `client-method-dispatch-table.md`) have no status column; their 0xD9, 102 and 143 rows were already correct and are unchanged.
+
+## Known gaps
+
+- **Ignore (D-SS15) is a seam only.** `dispatch/duel.rs::ignores` returns `false`; the refusal path behind it (`reason = target_ignoring`, `TEXT_TARGET_IGNORING`) is wired but unreachable and untested until SS-C1's cache lands.
+- **No countdown display** (see Design decisions). Both players get a text line instead.
+- **The countdown ends in "Duel aborted"** until SS-D2 engages duels.
+- **Disconnect does not clear the registry.** A pending challenge naming a player who left expires after 30 s, and a duel in the countdown ends at 5 s, so nothing is stranded. SS-D3 owns the `disconnect_entity` hook.
+- **The tick is not covered by a loop test.** `duel::tick::run` is called from `message_loop.rs`; the tests call `run_at` directly.
+- **`duel.send_failed`** (a closed cell-to-base channel) has no test.
+- D-SS18, D-SS19 and D-SS21 values are project policy, stated as such in `duel/limits.rs`.
+
+## Contended files touched
+
+- `crates/base/src/base/dispatch/mod.rs`: `mod duel;` and one arm, `cimmeria_wire::base::duel::SEND_DUEL_CHALLENGE => duel::handle_send_duel_challenge(...)`, placed before the catch-all. No constant was added to `sgw_player_base`, to keep the hunk small beside SS-C1's 0xC5 arm.
+- `crates/cell-methods/src/cell/cell_methods/player/social.rs`: only the `SEND_DUEL_RESPONSE` arm (and the `space_mgr` parameter, previously `_space_mgr`), plus one test. `DUEL_FORFEIT` is untouched (SS-D3).
+- `crates/cell-world/src/cell/space_manager/mod.rs`: one field and its initialiser. Not on the contended list.
+
+## Integration edits for the coordinator
+
+1. **SS-C1 (Ignore):** replace the body of `crates/base/src/base/dispatch/duel.rs::ignores(target, challenger_player_id)` with the Ignore-cache check on the target's `ConnectedClientState`, then add a test beside `challenge_rejects_offline_target` asserting `TEXT_TARGET_IGNORING` and `reason = target_ignoring` with no forward. The call site already reads the target's session under the same lock as the lookup.
+2. **`dispatch/mod.rs` merge order with SS-C1:** both packets add one `mod` line and one arm; the arms are independent.
+3. **SS-D2:** replace `crates/cell-world/src/cell/duel/tick.rs::on_countdown_end` with the engage (set `DuelState::Engaged`, the PvP flag, 151), and call `DuelRegistry::can_harm` from `combat::player_may_harm`. If the driver of `Event_UI_DuelTimerStart` is found, send it on accept in `response.rs`.
+4. **SS-D3:** `duelForfeit` (CM 103) in `social.rs`, and the `disconnect_entity` hook should call `DuelRegistry` to end a duel or drop a pending challenge (`end_duel`, and a new `drop_player` if needed).
+5. `cimmeria-services` does not re-export `cell::duel`; add it to `crates/services/src/cell/mod.rs` only if a facade caller needs it.
+
+## Open questions
+
+- Should a squad member's squad-duel request get text 874 once squads exist (ORG-03)? Today every squad duel gets the same Cimmeria line.
+- The 30 s, 5 s, 20-unit and 60 s values await owner confirmation (all PROPOSED in the README).
