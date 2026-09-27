@@ -1,6 +1,6 @@
 ---
 name: debug-hub-npc-authoring-traps
-description: Traps hit building the stasis-room debug hub (templates 300-304): Vendor interaction was never set, set 4 is not harmless, system_message is a stub, new dialogs need DIALOG_OVERRIDES plus pinned-id test edits, cell-methods has no sqlx.
+description: Traps hit building the stasis-room debug hub (templates 300-304): Vendor interaction was never set, set 4 is not harmless, system_message is a stub, new dialogs need DIALOG_OVERRIDES plus pinned-id test edits, cell-methods has no sqlx, the DebugHub_ tag prefix is counted, vendor purchases land in bag 1 unstacked.
 metadata:
   type: project
 ---
@@ -17,5 +17,8 @@ Found 2026-09-26 building the Castle_CellBlock stasis-room debug hub (PR on bran
 - **`cimmeria-cell-methods` has no `sqlx` dep**: a live-DB test there cannot name `PgPool`; load via a local `macro_rules!` that calls the `spawner::load_*` fns on the `require_db_or_skip!()` value.
 - **Hub placement (2026-09-27, BV-04):** the A-B line is full to corner B (pet trainer 450 is 2.1 from the B-C wall), crafting's `CraftHub_*` take the A-D side, the C-D wall is the exit. The Banker 470 went mid B-C wall, 3 in. `staged_hub` counts `DebugHub_*` spawns: 7 after BV-04.
 - **`sgw_player.player_name` is UNIQUE** (`sgw_player_player_name_key`): a name-based GM lookup has no ambiguous case, and a fixture cannot insert two characters with one name.
+- **The `DebugHub_` tag prefix is counted** (added 2026-09-27, crafting CR-11): `debug_hub_dispatch_tests::staged_hub` spawns every `DebugHub_*` spawnlist tag and asserts the count (5 on main, 6 on the pets branch). A campaign adding hub NPCs either bumps that count (and conflicts with every other campaign doing the same) or uses its own prefix; the crafting corner uses `CraftHub_*`.
+- **Hub placement is crowded:** A-B wall = 400-404 + pet trainer 450; D-A wall = crafting 410-414; black-market 238 sits past the C-D side. Check open branches' stasis-room rows before placing more.
+- **A vendor purchase always lands in bag 1** and ignores `max_stack_size` (13 of a stack-1 item become one stack of 13). A GM/crafting grant through `first_player_container` instead lands `{17,15}` items in bag 15.
 
 Related: [[content-chain-authoring-traps]], [[seed-name-id-and-asset-naming]], [[npc-range-gate-and-weapon-range-columns]].

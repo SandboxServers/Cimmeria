@@ -86,8 +86,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [dialog-button-strip-and-seed-agreement.md](dialog-button-strip-and-seed-agreement.md) — linter floors block the packet that changes them; roster pins for patch tests.
 - [container-capacity-and-grant-targets.md](container-capacity-and-grant-targets.md) — raising a `bag_max_slots` arm opens loot/content grants into it (`container_sets[1]`, 752 items prefer 17); no seeded item allows both 1 and 15.
 - [inventory-lock-keys-and-failure-injection.md](inventory-lock-keys-and-failure-injection.md) — inventory writers use different lock keys (grants merge stacks under `(player, container)`), so a read-then-send must row-lock; DB-failure injection for LogCapture guards.
-- [debug-hub-npc-authoring-traps.md](debug-hub-npc-authoring-traps.md) — Vendor interaction was never set (now derived at spawn); set 4 is not harmless; new dialogs need DIALOG_OVERRIDES + pinned-id test edits.
 - [pet-template-seed-traps.md](pet-template-seed-traps.md) — NoPetLeveling freezes a pet at template level; summons need an event set; pet kits are silent no-ops (NA43 allowlist).
+- [debug-hub-npc-authoring-traps.md](debug-hub-npc-authoring-traps.md) — Vendor interaction was never set (now derived at spawn); set 4 is not harmless; new dialogs need DIALOG_OVERRIDES + pinned-id test edits; the DebugHub_ tag count is pinned.
 - [trainer-seed-and-gm-grant-traps.md](trainer-seed-and-gm-grant-traps.md) — trainer_abilities.sql is generated; capstones need .giveability; grants persist via base; pets 350-359 vs NPCs 360-369.
 
 ## Base sessions
