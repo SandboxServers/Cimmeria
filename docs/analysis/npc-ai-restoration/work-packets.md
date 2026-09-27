@@ -589,7 +589,16 @@ CellService itself was ruled out as a source of races: `run_cell_loop`'s `tokio:
 
 ### NA40
 
-**Status:** Writing (in flight, 2026-09-26). **Scope title:** Static `InterpActor`s in the navmesh and occluder builds, following NA36's opt-in. Ledger stub; the packet's own PR fills in the scope and acceptance.
+**Status:** Review (branch `npcai/na40-static-interp-actors`, 2026-09-26). **Scope title:** Static `InterpActor`s in the navmesh and occluder builds, following NA36's opt-in: classified per actor.
+
+**Scope:**
+
+- `interp_actor::classify` replaces NA36's all-or-nothing `--include-interp-actors` switch with a decision per actor, the default for both tools (`--interp-actors classify|off`). The chunk's Kismet is followed from each `SeqAct_Interp` to the actors its groups drive and their `InterpTrackMove` keys. An actor is baked when nothing references it, or when every move leaves from and returns to its cooked pose without turning (5°) or sliding (50 cm). Doors, Stargate parts and camera heads are never baked (mesh-name net). Anything the classifier cannot read is undecided: not baked, and flagged as a collision risk by the coverage report. Every run logs its decisions to `interp_actors.tsv`.
+- Of the 738 `InterpActor`s that resolve a mesh, 572 are baked, 166 left out and none undecided. The checked-in list is [evidence/na40-interp-actor-decisions.tsv](evidence/na40-interp-actor-decisions.tsv). Without the name net, evidence alone leaves out every door and camera head except nine Castle_CellBlock cell doors no Kismet references.
+- The extractor now groups instances in a `BTreeMap`, so the OBJ triangle order, and so the `.nav` bytes, no longer change from run to run.
+- Rebuilt `.nav` and `.occ` for Harset, Dakara_E1, Menfa_Light, Menfa_Dark, Tollana, Agnos, Beta_Site_Evo_1 and Lucia; `.occ` only for Castle and Castle_CellBlock, whose `InterpActor`s change nothing in the `.nav` and whose mesh any rebuild regresses by one seeded probe.
+
+**Acceptance:** on every rebuilt map no seeded or telemetry probe the previous file accepted is rejected (Harset and Castle_CellBlock are the only maps with telemetry sets). Occluder `paged == unpaged` self-checks pass on all ten. `GLB-RingTransporter00` turned out to be one ring of a five-ring stack lying 30-34 cm high on its platform, so ring-platform tops were already walkable and still are. `cimmeria-navmesh-extractor` 449/449, including the cooked-client guard `interp_actor_castle_cellblock` (12 doors and 20 camera heads left out, 21 rings baked). The six crates whose tests read `data/spaces` pass 2,194/2,194. Full numbers: [worknotes/na40-static-interp-actors.md](worknotes/na40-static-interp-actors.md).
 
 ### NA41
 
