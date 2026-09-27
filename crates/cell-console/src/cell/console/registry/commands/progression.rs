@@ -57,4 +57,13 @@ pub(super) const SPECS: &[Spec] = &[
         Target::Player,
         "Grant experience to the target (amount)",
     ),
+    // Pets campaign PT-07: persisted through the base, like a trainer
+    // purchase but without the cost or the respec provenance.
+    spec(
+        "giveability",
+        1,
+        1,
+        Target::None,
+        "Grant an ability, saved to the character (abilityId; selected player, else you)",
+    ),
 ];

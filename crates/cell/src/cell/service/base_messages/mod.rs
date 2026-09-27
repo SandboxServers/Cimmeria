@@ -423,6 +423,17 @@ pub(super) async fn handle_base_message(
             .await;
         }
 
+        BaseToCellMsg::GmAbilityGranted {
+            entity_id,
+            player_id,
+            ability_id,
+        } => {
+            ability_granted::handle_gm_ability_granted(
+                entity_id, player_id, ability_id, tx, space_mgr,
+            )
+            .await;
+        }
+
         BaseToCellMsg::AbilitiesReset {
             entity_id,
             player_id,

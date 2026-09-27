@@ -269,6 +269,19 @@ pub enum BaseToCellMsg {
         training_points: i32,
     },
 
+    /// The base persisted a GM ability grant
+    /// ([`crate::cell::messages::CellToBaseMsg::GmGrantAbility`]). The cell
+    /// mirrors the ability into the known set (not into
+    /// `trained_abilities`) and sends `onKnownAbilitiesUpdate`, plus the
+    /// trainer re-send while a trainer is pinned. `player_id` is the
+    /// character the base wrote; the cell ignores the message when
+    /// `entity_id` now plays another character.
+    GmAbilityGranted {
+        entity_id: u32,
+        player_id: i32,
+        ability_id: i32,
+    },
+
     /// The base's answer to
     /// [`crate::cell::messages::CellToBaseMsg::ResetAbilities`]. On
     /// `Reset` the cell drops the refunded abilities, clears its tree

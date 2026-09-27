@@ -44,6 +44,10 @@ mod p47;
 mod pets;
 #[cfg(test)]
 mod ss_c2_announce;
+#[cfg(test)]
+mod pt07_giveability;
+#[cfg(test)]
+mod pt07_pet;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.

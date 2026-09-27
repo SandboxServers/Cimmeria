@@ -15,6 +15,8 @@
 //! base level-up, so the gates above read what the base debits against.
 //! `TrainingPointsGranted` does the same for a GM grant, and also sends the
 //! counter and the trainer re-send, since no base bundle carried them.
+//! `GmAbilityGranted` mirrors a GM `.giveability` grant: the known set and
+//! steps 1 and 3 above, with no provenance or point change.
 
 use tokio::sync::mpsc;
 
@@ -163,6 +165,57 @@ pub(super) async fn handle_training_points_granted(
         "TrainingPointsGranted: cell mirrored + counter refresh"
     );
     send_training_points(entity_id, training_points, tx).await;
+    resend_trainer_if_pinned(entity_id, training_points, tx, space_mgr).await;
+}
+
+/// Handle `BaseToCellMsg::GmAbilityGranted`: mirror a persisted GM
+/// `.giveability` grant (pets campaign PT-07) and send the same hotbar
+/// refresh a trainer purchase sends.
+///
+/// Unlike [`handle_ability_granted`], the ability goes into the known set
+/// only, never `trained_abilities`: the base did not write it there either,
+/// and the respec gate ("needs a trainer-bought ability") must not count a
+/// GM grant. No point counter changes, so none is sent.
+pub(super) async fn handle_gm_ability_granted(
+    entity_id: u32,
+    player_id: i32,
+    ability_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // The base checked the session before its `UPDATE`, not before this
+    // reply. If the id now belongs to another character, the ability and the
+    // hotbar refresh are not theirs.
+    let current = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);
+    if current != Some(player_id) {
+        tracing::warn!(
+            target: "abilities",
+            event = "gm_grant_player_mismatch",
+            entity_id,
+            player_id,
+            ability_id,
+            current_player_id = ?current,
+            "GmAbilityGranted: entity no longer plays the granted character — ignoring"
+        );
+        return;
+    }
+    let training_points = match space_mgr.get_entity_mut(entity_id) {
+        Some(entity) => {
+            entity.abilities.add_ability(ability_id);
+            entity.tree_progress.training_points
+        }
+        None => return,
+    };
+    tracing::info!(
+        target: "abilities",
+        event = "gm_granted",
+        entity_id,
+        player_id,
+        ability_id,
+        "GmAbilityGranted: cell mirrored + hotbar refresh"
+    );
+    send_known_abilities_update(entity_id, tx, space_mgr).await;
+    // A granted prerequisite can unlock another node on an open trainer.
     resend_trainer_if_pinned(entity_id, training_points, tx, space_mgr).await;
 }
 

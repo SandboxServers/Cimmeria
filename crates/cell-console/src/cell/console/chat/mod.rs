@@ -89,7 +89,14 @@ pub async fn handle_chat_message(
             console::handle_console_command(entity_id, text, tx, space_mgr, engine).await;
             return;
         }
-        // Non-GM `.`-text is ordinary chat — fall through to broadcast.
+        // A non-GM line that names a registered command is refused, not
+        // broadcast: a player (or a GM demoted mid-session) typing
+        // `.giveability 2826` must not echo the command to everyone nearby,
+        // and the press needs visible feedback. Other `.`-text ("...",
+        // ".hello") is ordinary chat and falls through to broadcast.
+        if console::refuse_non_gm_command(entity_id, text, tx).await {
+            return;
+        }
     }
 
     match channel {
