@@ -11,8 +11,10 @@
 //! tests also prove the seed loads.
 //!
 //! Sentinels, for this file, `refusal_tests.rs` and `quote_tests.rs`:
-//! accounts and players `0x7000_BB00..=0x7000_BBF1` (`caller(n)` is account
-//! `BASE + n`, player `BASE + n + 1`, plus `0x100` for a second character),
+//! accounts and players `0x7000_BB00..=0x7000_BD07` (`caller(n)` is account
+//! `BASE + n`, player `BASE + n + 1`; this file and `refusal_tests.rs` use
+//! `n` up to `0xE0`, `quote_tests.rs` `0x110..=0x170`, `gm_tests.rs`
+//! `0x200..=0x206`, and a second character is `player + 0x100`),
 //! entities `0x7000_BBE0..=0x7000_BBF6`, Banker `0x7000_BBD0`, speaker
 //! `0x7000_BBD1`. Skip when `DATABASE_URL` is unset.
 
@@ -177,6 +179,7 @@ pub(super) async fn expand(
         c,
         offer,
         vault,
+        cimmeria_wire::cell::messages::ExpandTrigger::Dialog,
         &Some(Arc::new(pool.clone())),
         &client.dyn_transport,
         &client.conn,
@@ -251,6 +254,7 @@ async fn a_purchase_adds_ten_slots_charges_the_price_and_redeclares_the_vault() 
             ("banker_id", &BANKER.to_string()),
             ("gm_override", "false"),
             ("distance", "2.5"),
+            ("trigger", "dialog"),
         ],
     );
     assert!(bank_rows(&capture, "expand_rejected").is_empty());

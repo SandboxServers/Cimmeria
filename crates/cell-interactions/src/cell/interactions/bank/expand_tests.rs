@@ -136,11 +136,18 @@ async fn a_refused_open_asks_for_no_quote() {
     assert!(bank_msgs(&mut rx).is_empty());
 }
 
-/// The base's offer: recorded on the session, the Expand dialog shown by
-/// the Banker (and recorded as offered, so its answer passes #479), then a
-/// chat line with the price; DEBUG `expand_offered`.
+/// While the Expand dialog is quarantined (#943), the base's offer is
+/// recorded on the session but nothing is sent: no `onDialogDisplay` for an
+/// id the client has no entry for, and no price line pointing at a button
+/// that is not there. DEBUG `expand_offer_suppressed reason=dialog_quarantined`,
+/// once. Fails if the suppression is removed (the dialog would go out).
 #[tokio::test]
-async fn an_offer_is_recorded_and_shows_the_expand_dialog_and_the_price() {
+async fn a_quarantined_dialog_is_recorded_but_not_shown() {
+    // Pins the quarantined behaviour: serving the dialog stops this
+    // compiling, so the test is updated with the flag.
+    const {
+        assert!(!cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_SERVED);
+    }
     let mut mgr = two_space_manager();
     let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Personal);
     let (tx, mut rx) = mpsc::channel(16);
@@ -151,6 +158,42 @@ async fn an_offer_is_recorded_and_shows_the_expand_dialog_and_the_price() {
     offer_vault_expansion(PLAYER, PLAYER_ID, banker, 40, 100, &tx, &mut mgr).await;
 
     assert_eq!(offer(&mgr), Some(OFFER_40));
+    assert!(
+        methods(&mut rx).is_empty(),
+        "nothing is sent while quarantined"
+    );
+    assert!(!mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .offered_dialogs()
+        .contains(&VAULT_EXPAND_DIALOG_ID));
+    one(
+        &capture,
+        "expand_offer_suppressed",
+        Level::DEBUG,
+        &[
+            ("reason", "dialog_quarantined"),
+            ("bank_slots", "40"),
+            ("price", "100"),
+        ],
+    );
+    assert!(rows(&capture, "expand_offered").is_empty());
+}
+
+/// Once served, showing an offer sends the Expand dialog by the Banker
+/// (recorded as offered, so its answer passes #479), then a chat line with
+/// the price; DEBUG `expand_offered`.
+#[tokio::test]
+async fn showing_an_offer_sends_the_expand_dialog_and_the_price() {
+    let mut mgr = two_space_manager();
+    let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Personal);
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_interact(PLAYER, banker, &tx, &mut mgr).await;
+    let _ = methods(&mut rx);
+    let capture = LogCapture::install();
+
+    show_expand_offer(PLAYER, banker, OFFER_40, &tx, &mut mgr).await;
+
     let line = "Your vault has 40 slots. 10 more cost 100 naquadah: press Expand vault in the \
                 Banker's dialog to buy them.";
     assert_eq!(
@@ -178,6 +221,80 @@ async fn an_offer_is_recorded_and_shows_the_expand_dialog_and_the_price() {
             ("bank_slots", "40"),
             ("price", "100"),
         ],
+    );
+}
+
+/// GM `.bankexpand` in a GM `.bank` session: `Expand` with no offer (the
+/// base quotes the step), an open Banker-less verdict, and
+/// `trigger=gm_console`. With no session the verdict goes closed and the
+/// base refuses it. Fails if the console path sends the session's offer or
+/// a stale verdict.
+#[tokio::test]
+async fn gm_bankexpand_sends_a_fresh_verdict_and_no_offer() {
+    use cimmeria_wire::cell::messages::ExpandTrigger;
+    let mut mgr = two_space_manager();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    gm_expand_vault(PLAYER, &tx, &mut mgr).await;
+    let msgs = bank_msgs(&mut rx);
+    let [BankCellToBase::Expand {
+        offer,
+        vault,
+        trigger,
+        ..
+    }] = msgs.as_slice()
+    else {
+        panic!("one Expand: {msgs:?}");
+    };
+    assert_eq!((*offer, *trigger), (None, ExpandTrigger::GmConsole));
+    assert_eq!(vault.personal_vault_refusal(), Some("no_vault_session"));
+
+    assert!(open_vault_gm(PLAYER, &tx, &mut mgr).await);
+    let _ = bank_msgs(&mut rx);
+    let capture = LogCapture::install();
+    gm_expand_vault(PLAYER, &tx, &mut mgr).await;
+    let msgs = bank_msgs(&mut rx);
+    let [BankCellToBase::Expand { offer, vault, .. }] = msgs.as_slice() else {
+        panic!("one Expand: {msgs:?}");
+    };
+    assert_eq!(*offer, None);
+    assert!(
+        vault.opens_personal_vault() && vault.gm_override(),
+        "{vault:?}"
+    );
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.target == "span:bank.console_expand" && c.level == Level::INFO));
+}
+
+/// A non-GM's `.bankexpand`: WARN `expand_rejected reason=not_gm
+/// trigger=gm_console`, one line, and nothing reaches the base.
+#[tokio::test]
+async fn a_non_gm_bankexpand_is_refused() {
+    let mgr = two_space_manager();
+    let (tx, mut rx) = mpsc::channel(16);
+    let capture = LogCapture::install();
+
+    refuse_non_gm_expand(PLAYER, &tx, &mgr).await;
+
+    one(
+        &capture,
+        "expand_rejected",
+        Level::WARN,
+        &[("reason", "not_gm"), ("trigger", "gm_console")],
+    );
+    assert_eq!(
+        methods(&mut rx),
+        vec![(
+            ON_PLAYER_COMMUNICATION,
+            serialize_on_player_communication(
+                "SYSTEM",
+                0,
+                CHAN_FEEDBACK,
+                ".bankexpand needs GM access. Nothing was charged."
+            )
+        )]
     );
 }
 
@@ -241,6 +358,7 @@ async fn the_answer_carries_the_offer_once_with_an_open_verdict() {
         player_id: PLAYER_ID,
         offer,
         vault: open,
+        trigger: cimmeria_wire::cell::messages::ExpandTrigger::Dialog,
     };
     assert_eq!(
         bank_msgs(&mut rx),

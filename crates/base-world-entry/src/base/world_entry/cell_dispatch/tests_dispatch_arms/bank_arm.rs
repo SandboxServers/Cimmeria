@@ -84,6 +84,7 @@ async fn bank_expand_arms_reach_the_expand_handlers() {
                 price: 100,
             }),
             vault: VaultAccess::NO_SESSION,
+            trigger: cimmeria_wire::cell::messages::ExpandTrigger::Dialog,
         },
         BankCellToBase::ExpansionQuote {
             entity_id: 4243,

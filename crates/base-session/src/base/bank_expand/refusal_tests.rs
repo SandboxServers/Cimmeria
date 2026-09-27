@@ -123,6 +123,7 @@ async fn no_pool_logs_db_unavailable() {
         c,
         offered(40),
         AT_BANKER,
+        cimmeria_wire::cell::messages::ExpandTrigger::Dialog,
         &None,
         &client.dyn_transport,
         &client.conn,
@@ -171,6 +172,7 @@ async fn price_missing_logs_its_reason_and_tells_the_player() {
     let client = in_world(c, 40910);
     let sends = Client {
         caller: c,
+        trigger: Some(cimmeria_wire::cell::messages::ExpandTrigger::Dialog),
         transport: &client.dyn_transport,
         connected: &client.conn,
     };

@@ -567,6 +567,23 @@ mod tests {
         }
     }
 
+    /// BV-05: the cell offers the Expand dialog only while
+    /// `VAULT_EXPAND_DIALOG_SERVED` says it is served, so the flag and the
+    /// two lists must agree. Lifting the quarantine without the flag leaves
+    /// the Banker silent; flipping the flag first sends a dialog id the
+    /// client has no entry for.
+    #[test]
+    fn the_expand_dialog_flag_matches_the_served_list() {
+        use cimmeria_wire::cell::vault::{VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_DIALOG_SERVED};
+        let id = VAULT_EXPAND_DIALOG_ID as u32;
+        let served = DIALOG_OVERRIDES.iter().any(|ov| ov.dialog_id == id);
+        let quarantined = QUARANTINED_DIALOG_OVERRIDES
+            .iter()
+            .any(|ov| ov.dialog_id == id);
+        assert_eq!(served, VAULT_EXPAND_DIALOG_SERVED);
+        assert_eq!(quarantined, !VAULT_EXPAND_DIALOG_SERVED);
+    }
+
     /// The debug-hub dialogs are the ones held back, and each is still
     /// defined in full so a restore is a move, not a rewrite.
     #[test]

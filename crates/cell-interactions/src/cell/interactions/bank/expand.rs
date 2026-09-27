@@ -30,9 +30,9 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::cell_entity::{ExpansionOffer, VaultScope};
-use cimmeria_wire::cell::messages::BankCellToBase;
+use cimmeria_wire::cell::messages::{BankCellToBase, ExpandTrigger};
 use cimmeria_wire::cell::vault::{
-    VAULT_EXPAND_BUTTON_ID, VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_STEP,
+    VAULT_EXPAND_BUTTON_ID, VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_DIALOG_SERVED, VAULT_EXPAND_STEP,
 };
 
 use super::rejection::send_bank_feedback;
@@ -85,8 +85,11 @@ pub(super) async fn request_expansion_quote(
     }
 }
 
-/// The base's `OfferExpansion`: record the offer on the vault session and
-/// show the Expand dialog, with a chat line naming the price.
+/// The base's `OfferExpansion`: record the offer on the vault session and,
+/// while the dialog is served ([`VAULT_EXPAND_DIALOG_SERVED`]), show it
+/// ([`show_expand_offer`]). While it is quarantined the offer is recorded
+/// and DEBUG `expand_offer_suppressed reason=dialog_quarantined` is logged
+/// once per open instead.
 ///
 /// The offer is dropped (DEBUG `expand_offer_dropped`) when the entity is
 /// gone or is another character, or when the personal vault session the
@@ -132,12 +135,53 @@ pub async fn offer_vault_expansion(
         );
         return;
     }
+    if !VAULT_EXPAND_DIALOG_SERVED {
+        // The client has no entry for 60110 while it is quarantined (#943),
+        // so a display would show nothing. The offer is still recorded, so
+        // lifting the quarantine needs no other change here.
+        tracing::debug!(
+            target: "bank",
+            event = "expand_offer_suppressed",
+            account_id = id.account_id,
+            player_id,
+            entity_id,
+            speaker_id,
+            bank_slots = from_slots,
+            price,
+            reason = "dialog_quarantined",
+            "expand_offer_suppressed: the Expand dialog is quarantined -- no dialog shown; \
+             a GM buys with .bankexpand"
+        );
+        return;
+    }
+    show_expand_offer(
+        entity_id,
+        speaker_id,
+        ExpansionOffer { from_slots, price },
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+/// Show a recorded offer: `onDialogDisplay(speaker, 60110)`, which also
+/// records the #479 offered-dialog gate, then the chat line with the price.
+/// [`offer_vault_expansion`] calls it only while the dialog is served.
+pub async fn show_expand_offer(
+    entity_id: u32,
+    speaker_id: u32,
+    offer: ExpansionOffer,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let id = space_mgr.player_identity(entity_id);
     let gm_override = speaker_id == entity_id;
+    let ExpansionOffer { from_slots, price } = offer;
     tracing::debug!(
         target: "bank",
         event = "expand_offered",
         account_id = id.account_id,
-        player_id,
+        player_id = id.player_id,
         entity_id,
         banker_id = (!gm_override).then_some(speaker_id),
         gm_override,
@@ -177,8 +221,8 @@ pub async fn answer_vault_expansion(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let id = space_mgr.player_identity(entity_id);
     if button_id != VAULT_EXPAND_BUTTON_ID {
+        let id = space_mgr.player_identity(entity_id);
         tracing::debug!(
             target: "bank",
             event = "expand_dismissed",
@@ -191,6 +235,37 @@ pub async fn answer_vault_expansion(
         );
         return;
     }
+    request_expansion(entity_id, ExpandTrigger::Dialog, tx, space_mgr).await;
+}
+
+/// GM `.bankexpand`: buy one step through the same purchase path as the
+/// dialog, with no offer (the base quotes the current step itself). The
+/// caller has passed the GM gate on the server-side `access_level`. It
+/// needs an open personal vault session, and a GM `.bank` session skips the
+/// proximity check exactly as it does for moves.
+#[tracing::instrument(
+    name = "bank.console_expand",
+    level = "info",
+    skip_all,
+    fields(entity_id)
+)]
+pub async fn gm_expand_vault(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    request_expansion(entity_id, ExpandTrigger::GmConsole, tx, space_mgr).await;
+}
+
+/// Forward one purchase request with a fresh verdict. The dialog takes the
+/// session's offer (one-shot); the console sends none.
+async fn request_expansion(
+    entity_id: u32,
+    trigger: ExpandTrigger,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let id = space_mgr.player_identity(entity_id);
     let Some(player_id) = id.player_id else {
         tracing::warn!(
             target: "bank",
@@ -198,6 +273,7 @@ pub async fn answer_vault_expansion(
             account_id = id.account_id,
             entity_id,
             reason = "player_missing",
+            trigger = trigger.as_str(),
             "expand_rejected: the entity has no character id -- nothing bought"
         );
         send_bank_feedback(
@@ -211,16 +287,20 @@ pub async fn answer_vault_expansion(
     };
     // The verdict first, then the take: both read the session as it is now.
     let vault = vault_access(entity_id, space_mgr);
-    let offer = space_mgr
-        .get_entity_mut(entity_id)
-        .and_then(|p| p.vault_session.as_mut())
-        .and_then(|s| s.expansion_offer.take());
+    let offer = match trigger {
+        ExpandTrigger::Dialog => space_mgr
+            .get_entity_mut(entity_id)
+            .and_then(|p| p.vault_session.as_mut())
+            .and_then(|s| s.expansion_offer.take()),
+        ExpandTrigger::GmConsole => None,
+    };
     let msg = CellToBaseMsg::Bank(BankCellToBase::Expand {
         entity_id,
         account_id: id.account_id,
         player_id,
         offer,
         vault,
+        trigger,
     });
     if let Err(e) = tx.send(msg).await {
         // No feedback line: it would go down the same closed channel.
@@ -231,6 +311,7 @@ pub async fn answer_vault_expansion(
             player_id,
             entity_id,
             reason = "base_channel_closed",
+            trigger = trigger.as_str(),
             bank_slots = offer.map(|o| o.from_slots),
             price = offer.map(|o| o.price),
             error = %e,
@@ -238,4 +319,32 @@ pub async fn answer_vault_expansion(
              the player cannot be told"
         );
     }
+}
+
+/// A non-GM typed `.bankexpand`: WARN `expand_rejected reason=not_gm
+/// trigger=gm_console` and a line saying why. The chat line is consumed,
+/// never broadcast.
+pub async fn refuse_non_gm_expand(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(entity_id);
+    tracing::warn!(
+        target: "bank",
+        event = "expand_rejected",
+        account_id = id.account_id,
+        player_id = id.player_id,
+        entity_id,
+        reason = "not_gm",
+        trigger = ExpandTrigger::GmConsole.as_str(),
+        "expand_rejected: .bankexpand from a player without GM access -- nothing bought"
+    );
+    send_bank_feedback(
+        entity_id,
+        ".bankexpand needs GM access. Nothing was charged.",
+        tx,
+        space_mgr,
+    )
+    .await;
 }

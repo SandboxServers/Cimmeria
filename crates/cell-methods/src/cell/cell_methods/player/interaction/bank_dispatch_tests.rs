@@ -168,6 +168,13 @@ async fn the_expand_dialog_answer_reaches_the_purchase_path_once() {
     let (tx, _rx) = mpsc::channel(64);
     crate::cell::interactions::offer_vault_expansion(PLAYER, 42, banker, 40, 100, &tx, &mut mgr)
         .await;
+    // The dialog is quarantined (#943), so the offer only records; show it
+    // as a served dialog would, which is what records the #479 offer.
+    let shown = cimmeria_entity::cell_entity::ExpansionOffer {
+        from_slots: 40,
+        price: 100,
+    };
+    crate::cell::interactions::show_expand_offer(PLAYER, banker, shown, &tx, &mut mgr).await;
 
     let sent = choose(&mut mgr, VAULT_EXPAND_DIALOG_ID, 8).await;
     let [BankCellToBase::Expand {

@@ -74,7 +74,29 @@ pub enum BankCellToBase {
         /// The cell's fresh vault-session verdict, the one a bank move
         /// takes (`vault_access`). Only a `Personal` open verdict may buy.
         vault: VaultAccess,
+        /// What asked for the purchase.
+        trigger: ExpandTrigger,
     },
+}
+
+/// What asked for a vault expansion, the `trigger` log field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpandTrigger {
+    /// The Banker's Expand dialog. It must carry the offer the dialog showed.
+    Dialog,
+    /// GM `.bankexpand`. There is no dialog, so no offer: the base quotes
+    /// the current size and price itself and buys at those.
+    GmConsole,
+}
+
+impl ExpandTrigger {
+    /// The stable `trigger` string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExpandTrigger::Dialog => "dialog",
+            ExpandTrigger::GmConsole => "gm_console",
+        }
+    }
 }
 
 impl BankCellToBase {

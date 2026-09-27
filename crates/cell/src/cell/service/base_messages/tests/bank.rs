@@ -1,6 +1,6 @@
 //! `BaseToCellMsg::Bank` routing (BV-05): the base's expansion offer
 //! reaches `interactions::offer_vault_expansion`, which records it on the
-//! vault session and shows the Expand dialog (`onDialogDisplay` [105]).
+//! vault session (the dialog itself is quarantined, #943).
 
 use super::*;
 use crate::cell::messages::BankBaseToCell;
@@ -42,12 +42,6 @@ async fn an_expansion_offer_reaches_the_vault_session() {
             price: 100
         })
     );
-    match rx.try_recv() {
-        Ok(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index,
-            ..
-        }) => assert_eq!((entity_id, method_index), (10, 105)),
-        _ => panic!("expected onDialogDisplay first"),
-    }
+    // The Expand dialog is quarantined (#943): nothing is displayed.
+    assert!(rx.try_recv().is_err());
 }

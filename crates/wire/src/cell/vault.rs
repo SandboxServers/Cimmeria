@@ -27,6 +27,15 @@ pub const VAULT_EXPAND_DIALOG_ID: i32 = 60110;
 /// the player was shown.
 pub const VAULT_EXPAND_BUTTON_ID: i32 = 8;
 
+/// Whether the client is served the Expand dialog's cooked override. It is
+/// `false` while 60110 sits in `QUARANTINED_DIALOG_OVERRIDES` (#943: pushed
+/// Cimmeria-authored dialog overrides crashed a client on map load, cause
+/// unknown). While it is `false` the Banker offers no dialog, because the
+/// client has no entry for it, and a GM buys with `.bankexpand`. Lifting the
+/// quarantine flips this and moves the entry; `cimmeria-resources` pins that
+/// the two agree.
+pub const VAULT_EXPAND_DIALOG_SERVED: bool = false;
+
 /// Slots one expansion adds (D-BV02: 40 to 100 in steps of 10). The
 /// `bank_slots_sanity` CHECK on `sgw_player` enforces the same grid.
 pub const VAULT_EXPAND_STEP: i16 = 10;

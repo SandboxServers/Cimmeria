@@ -42,6 +42,8 @@ pub fn vault_resize_bag_info_args(bank_slots: i16) -> Vec<u8> {
 /// The caller's client, for the three sends.
 pub(super) struct Client<'a> {
     pub(super) caller: ExpandCaller,
+    /// What asked for the purchase; `None` for the quote.
+    pub(super) trigger: Option<cimmeria_wire::cell::messages::ExpandTrigger>,
     pub(super) transport: &'a Arc<dyn Transport>,
     pub(super) connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 }

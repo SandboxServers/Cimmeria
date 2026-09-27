@@ -28,6 +28,8 @@ pub mod persist;
 mod sends;
 
 #[cfg(test)]
+mod gm_tests;
+#[cfg(test)]
 mod quote_tests;
 #[cfg(test)]
 mod refusal_tests;
@@ -42,7 +44,7 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_entity::cell_entity::ExpansionOffer;
 use cimmeria_mercury::transport::Transport;
-use cimmeria_wire::cell::messages::{BankBaseToCell, BaseToCellMsg};
+use cimmeria_wire::cell::messages::{BankBaseToCell, BaseToCellMsg, ExpandTrigger};
 use cimmeria_wire::cell::vault::{VaultAccess, VAULT_EXPAND_STEP};
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -176,12 +178,14 @@ pub async fn handle_expand(
     caller: ExpandCaller,
     offer: Option<ExpansionOffer>,
     vault: VaultAccess,
+    trigger: ExpandTrigger,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
     let client = Client {
         caller,
+        trigger: Some(trigger),
         transport,
         connected,
     };
@@ -200,10 +204,10 @@ pub async fn handle_expand(
 
     // The verdict and the offer first: neither needs the database, but the
     // refusal log reads the vault and the cash so it is answerable alone.
-    let early = match (vault.personal_vault_refusal(), offer) {
-        (Some(label), _) => Some(ExpandRefusal::Vault(label)),
-        (None, None) => Some(ExpandRefusal::NoOffer),
-        (None, Some(_)) => None,
+    let early = match (vault.personal_vault_refusal(), offer, trigger) {
+        (Some(label), _, _) => Some(ExpandRefusal::Vault(label)),
+        (None, None, ExpandTrigger::Dialog) => Some(ExpandRefusal::NoOffer),
+        (None, _, _) => None,
     };
     if let Some(refusal) = early {
         let snapshot = match read_expansion_state(pool, caller.player_id).await {
@@ -213,8 +217,18 @@ pub async fn handle_expand(
         reject(&client, refusal, &vault, offer, snapshot, None).await;
         return;
     }
-    let Some(offered) = offer else {
-        return; // `early` refused a missing offer above.
+    let offered = match offer {
+        Some(offered) => offered,
+        // `.bankexpand` has no dialog and so no offer: quote the step now
+        // and buy at exactly that size and price. The statement is still
+        // keyed, so a concurrent change refuses rather than overcharging.
+        None => match gm_offer(pool, caller.player_id).await {
+            Ok(offered) => offered,
+            Err((refusal, snapshot, error)) => {
+                reject(&client, refusal, &vault, None, snapshot, error.as_deref()).await;
+                return;
+            }
+        },
     };
 
     match persist_expansion(pool, caller.player_id, offered).await {
@@ -237,6 +251,7 @@ pub async fn handle_expand(
                 banker_id = vault.banker_id(),
                 gm_override = vault.gm_override(),
                 distance = vault.distance(),
+                trigger = trigger.as_str(),
                 "expand: vault expanded"
             );
             client.send_vault_size(bank_slots_after).await;
@@ -261,6 +276,35 @@ pub async fn handle_expand(
             )
             .await;
         }
+    }
+}
+
+/// The step a GM `.bankexpand` buys: the vault's current size and the
+/// next step's price, or the refusal the read already shows.
+async fn gm_offer(
+    pool: &PgPool,
+    player_id: i32,
+) -> Result<ExpansionOffer, (ExpandRefusal, Snapshot, Option<String>)> {
+    let state = match read_expansion_state(pool, player_id).await {
+        Ok(Some(state)) => state,
+        Ok(None) => return Err((ExpandRefusal::PlayerRowMissing, Snapshot::default(), None)),
+        Err(e) => {
+            return Err((
+                ExpandRefusal::QueryFailed,
+                Snapshot::default(),
+                Some(e.to_string()),
+            ))
+        }
+    };
+    if state.bank_slots >= VAULT_CEILING {
+        return Err((ExpandRefusal::AtCeiling, state.into(), None));
+    }
+    match state.next_price {
+        None => Err((ExpandRefusal::PriceMissing, state.into(), None)),
+        Some(price) => Ok(ExpansionOffer {
+            from_slots: state.bank_slots,
+            price,
+        }),
     }
 }
 
@@ -309,10 +353,18 @@ async fn reject(
         banker_id = vault.banker_id(),
         gm_override = vault.gm_override(),
         distance = vault.distance(),
+        trigger = client.trigger.map(ExpandTrigger::as_str),
         error,
         "expand_rejected: nothing bought -- the player sees a chat line saying why"
     );
-    client.send_line(&refusal.feedback(snapshot.price)).await;
+    let line = match (client.trigger, refusal) {
+        (Some(ExpandTrigger::GmConsole), ExpandRefusal::Vault(_)) => {
+            "bankexpand: open your vault first (.bank, or a Banker in range). Nothing was charged."
+                .to_string()
+        }
+        _ => refusal.feedback(snapshot.price),
+    };
+    client.send_line(&line).await;
 }
 
 /// `BankCellToBase::ExpansionQuote`: below the ceiling, send the cell the
@@ -352,6 +404,7 @@ pub async fn handle_expansion_quote(
         quote_debug(caller, &state, false, Some("at_ceiling"));
         let client = Client {
             caller,
+            trigger: None,
             transport,
             connected,
         };

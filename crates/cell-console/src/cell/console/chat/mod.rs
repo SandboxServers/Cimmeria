@@ -99,6 +99,12 @@ pub async fn handle_chat_message(
             console::bank::refuse_non_gm(entity_id, tx, space_mgr).await;
             return;
         }
+        // `.bankexpand` (BV-05) refuses on the `bank` target with its own
+        // `expand_rejected reason=not_gm` row and line.
+        if console::bank::is_bankexpand_command(text) {
+            console::bank::refuse_non_gm_expand(entity_id, tx, space_mgr).await;
+            return;
+        }
         // `.bankdump` (BV-04) takes the generic refusal below, plus its
         // `gm_action reason=not_gm` row on the `bank` target.
         if console::bank::is_bankdump_command(text) {

@@ -46,7 +46,10 @@ use cimmeria_entity::cell_entity::VaultCloseReason;
 use super::dispatch::{interact_range, InteractRangeFail};
 use crate::cell::space_manager::{log_vault_session_closed, SpaceManager};
 
-pub use expand::{answer_vault_expansion, offer_vault_expansion};
+pub use expand::{
+    answer_vault_expansion, gm_expand_vault, offer_vault_expansion, refuse_non_gm_expand,
+    show_expand_offer,
+};
 pub use open::{open_vault_at_banker, open_vault_gm, reject_banker_out_of_range};
 pub use rejection::{reject_vault_open, VaultOpenReject};
 

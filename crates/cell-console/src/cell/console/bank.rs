@@ -19,6 +19,9 @@
 //! event. With no name it lists the GM's own vault; a name is matched
 //! exactly by the base, so an offline character works too.
 //!
+//! `.bankexpand` (BV-05) buys one +10 step of the GM's own vault through
+//! the Banker dialog's purchase path, with an open vault session required.
+//!
 //! New in the Rust server; the legacy python console had no equivalent.
 
 use tokio::sync::mpsc;
@@ -129,6 +132,35 @@ pub(crate) fn log_non_gm_bankdump(entity_id: u32, space_mgr: &SpaceManager) {
         entity_id,
         "gm_action: bankdump refused"
     );
+}
+
+/// `.bankexpand`: buy one vault step for the GM through the purchase path
+/// the Banker's dialog uses (BV-05). The Expand dialog is quarantined
+/// (#943), so this is the only way to expand a vault until it is served.
+/// The result line comes from the base, after the purchase commits or is
+/// refused.
+pub(super) async fn expand(
+    caller_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    crate::cell::interactions::gm_expand_vault(caller_id, tx, space_mgr).await;
+}
+
+/// Is `text` a `.bankexpand` line? Matched on the command word only.
+pub(crate) fn is_bankexpand_command(text: &str) -> bool {
+    text.strip_prefix('.')
+        .and_then(|body| body.split_whitespace().next())
+        .is_some_and(|name| name.eq_ignore_ascii_case("bankexpand"))
+}
+
+/// A non-GM typed `.bankexpand`: the bank-specific refusal.
+pub(crate) async fn refuse_non_gm_expand(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    crate::cell::interactions::refuse_non_gm_expand(entity_id, tx, space_mgr).await;
 }
 
 /// Is `text` a `.bank` line? Matched on the command word only, so

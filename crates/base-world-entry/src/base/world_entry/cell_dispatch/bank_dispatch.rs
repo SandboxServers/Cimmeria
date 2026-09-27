@@ -60,6 +60,7 @@ pub(super) async fn route(msg: BankCellToBase, ctx: &DispatchCtx<'_>) {
             player_id,
             offer,
             vault,
+            trigger,
         } => {
             let caller = ExpandCaller {
                 entity_id,
@@ -70,6 +71,7 @@ pub(super) async fn route(msg: BankCellToBase, ctx: &DispatchCtx<'_>) {
                 caller,
                 offer,
                 vault,
+                trigger,
                 ctx.db_pool,
                 ctx.transport,
                 ctx.connected,

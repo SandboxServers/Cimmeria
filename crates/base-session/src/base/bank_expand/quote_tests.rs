@@ -2,8 +2,8 @@
 //! offer, at the ceiling the player is told the vault is full, and every
 //! outcome logs `expand_quote` with its reason.
 //!
-//! Sentinels: accounts and players `0x7000_BB80..=0x7000_BBB1`, entities
-//! `0x7000_BBF0..=0x7000_BBF5`.
+//! Sentinels: `tests::caller(0x110..=0x170)` (accounts and players
+//! `0x7000_BC10..=0x7000_BC71`), entities `0x7000_BBF0..=0x7000_BBF6`.
 
 use std::sync::Arc;
 
@@ -50,7 +50,7 @@ fn offers(rx: &mut mpsc::Receiver<BaseToCellMsg>) -> Vec<BankBaseToCell> {
 #[tokio::test]
 async fn below_the_ceiling_the_cell_is_sent_the_offer() {
     let pool = require_db_or_skip!();
-    let c = caller(0x80 + 0x10, 0x7000_BBF0);
+    let c = caller(0x100 + 0x10, 0x7000_BBF0);
     setup(&pool, c, 70, 300).await;
     let client = in_world(c, 40920);
     let (tx, mut rx) = mpsc::channel(8);
@@ -92,7 +92,7 @@ async fn below_the_ceiling_the_cell_is_sent_the_offer() {
 #[tokio::test]
 async fn at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
     let pool = require_db_or_skip!();
-    let c = caller(0x80 + 0x20, 0x7000_BBF1);
+    let c = caller(0x100 + 0x20, 0x7000_BBF1);
     setup(&pool, c, 100, 300).await;
     let client = in_world(c, 40921);
     let (tx, mut rx) = mpsc::channel(8);
@@ -122,7 +122,7 @@ async fn at_the_ceiling_there_is_no_offer_and_the_player_is_told() {
 async fn quote_failures_log_their_reason() {
     let pool = require_db_or_skip!();
 
-    let c = caller(0x80 + 0x30, 0x7000_BBF2);
+    let c = caller(0x100 + 0x30, 0x7000_BBF2);
     let client = in_world(c, 40922);
     let capture = LogCapture::install();
     quote(None, &client, c, &None).await;
@@ -135,7 +135,7 @@ async fn quote_failures_log_their_reason() {
     );
     drop(capture);
 
-    let c = caller(0x80 + 0x40, 0x7000_BBF3);
+    let c = caller(0x100 + 0x40, 0x7000_BBF3);
     cleanup(&pool, c).await;
     let capture = LogCapture::install();
     quote(Some(&pool), &client, c, &None).await;
@@ -148,7 +148,7 @@ async fn quote_failures_log_their_reason() {
     );
     drop(capture);
 
-    let c = caller(0x80 + 0x50, 0x7000_BBF4);
+    let c = caller(0x100 + 0x50, 0x7000_BBF4);
     setup(&pool, c, 40, 0).await;
     let capture = LogCapture::install();
     quote(Some(&pool), &client, c, &None).await;
@@ -173,7 +173,7 @@ async fn an_unreachable_database_logs_quote_query_failed() {
         .acquire_timeout(std::time::Duration::from_millis(200))
         .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
         .expect("lazy pool");
-    let c = caller(0x80 + 0x60, 0x7000_BBF5);
+    let c = caller(0x100 + 0x60, 0x7000_BBF5);
     let client = in_world(c, 40923);
     let capture = LogCapture::install();
 
@@ -193,7 +193,7 @@ async fn an_unreachable_database_logs_quote_query_failed() {
 /// so the row is pinned on the logging function the quote calls.
 #[test]
 fn quote_price_missing_logs_its_reason() {
-    let c = caller(0x80 + 0x70, 0x7000_BBF6);
+    let c = caller(0x100 + 0x70, 0x7000_BBF6);
     let capture = LogCapture::install();
     let state = ExpansionState {
         bank_slots: 40,
