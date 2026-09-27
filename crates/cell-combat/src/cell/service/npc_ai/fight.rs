@@ -372,7 +372,7 @@ pub(super) async fn npc_ai_fight(
     // fires through the kill-credit wrapper. A plain mob keeps the bare
     // call: it credits nobody, and the wrapper's health-below drain stays
     // on the player-driven paths.
-    let fired = if space_mgr.credit_recipient(npc_id).is_some() {
+    let fired = if space_mgr.credit_recipient_quiet(npc_id).is_some() {
         crate::cell::abilities::handle_use_ability_with_kill_credit(
             npc_id,
             chosen_ability,

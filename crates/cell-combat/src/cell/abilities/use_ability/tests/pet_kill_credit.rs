@@ -169,3 +169,55 @@ async fn a_plain_npc_ground_kill_raises_no_entity_death() {
     credit_ground_deaths(other, vec![mob], &recorder, &tx, &mut mgr).await;
     assert_eq!(deaths(&recorder), vec![]);
 }
+
+/// **Guard (#889).** A refused pet (its owner's id now belongs to another
+/// player) kills a tagged mob through the kill-credit wrapper, which asks
+/// the credit question twice: `grant_kill_xp` for XP and `credited_player`
+/// for mission credit. Exactly one `credit_refused` row results, naming the
+/// summoner, and nobody is credited. Reverted (`credited_player` on the
+/// logging `credit_recipient`), the kill writes two rows.
+#[tokio::test]
+async fn a_refused_pet_kill_of_a_tagged_mob_logs_credit_refused_once() {
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(OWNER).unwrap().player_id = Some(OWNER_PLAYER_ID + 1);
+    let recorder = RecordingContentEvents::new();
+    let (tx, mut rx) = mpsc::channel(512);
+    let events: &dyn ContentEvents = &recorder;
+    let capture = crate::test_support::LogCapture::install();
+
+    assert!(
+        handle_use_ability_with_kill_credit(pet, ABILITY_ID, mob as i32, events, &tx, &mut mgr)
+            .await,
+        "the pet's cast must commit"
+    );
+    assert_eq!(
+        mgr.get_entity(mob).unwrap().stats.get(HEALTH).unwrap().cur,
+        0,
+        "fixture: 9999 damage must kill"
+    );
+
+    let logs = capture.all();
+    let refused: Vec<_> = logs
+        .iter()
+        .filter(|c| c.target == "pets.credit" && c.has_field("event", "credit_refused"))
+        .collect();
+    assert_eq!(refused.len(), 1, "one row per refused kill: {logs:#?}");
+    let row = refused[0];
+    assert_eq!(row.level, tracing::Level::WARN);
+    assert!(
+        row.has_field("reason", "owner_identity_mismatch"),
+        "{row:?}"
+    );
+    assert!(row.has_field("pet_id", &pet.to_string()), "{row:?}");
+    assert!(
+        row.has_field("player_id", &OWNER_PLAYER_ID.to_string()),
+        "the summoner, not the id's new holder: {row:?}"
+    );
+    assert_eq!(deaths(&recorder), vec![], "no mission credit");
+    while let Ok(m) = rx.try_recv() {
+        assert!(
+            !matches!(m, CellToBaseMsg::GrantXP { .. }),
+            "no XP for a refused pet kill"
+        );
+    }
+}

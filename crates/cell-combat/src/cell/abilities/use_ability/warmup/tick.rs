@@ -231,7 +231,7 @@ async fn fire_due_cast(
     // Mission kill credit runs for a caster that credits a player: a player
     // itself, or a pet (credited to its owner, pets PT-06). A plain NPC's
     // warmed-up cast credits nobody.
-    let is_player = space_mgr.credit_recipient(entity_id).is_some();
+    let is_player = space_mgr.credit_recipient_quiet(entity_id).is_some();
 
     tracing::debug!(
         target: "abilities",

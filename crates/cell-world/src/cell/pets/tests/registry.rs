@@ -143,3 +143,34 @@ fn credit_recipient_refuses_a_reused_or_gone_owner_id() {
     mgr.destroy_entity(OWNER);
     assert_eq!(mgr.credit_recipient(pet), None, "owner gone");
 }
+
+/// PT-06 (#889): `credit_recipient_quiet` is the same decision as
+/// `credit_recipient` for a pet, its owner, an NPC and a refused pet, and
+/// never writes `credit_refused`, which only the logging wrapper does.
+#[test]
+fn credit_recipient_quiet_decides_the_same_and_logs_nothing() {
+    let (mut mgr, pet) = world_with_pet();
+    let npc = mgr.allocate_npc_id();
+    mgr.spawn_npc(npc, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    for id in [pet, OWNER, npc, 424_242] {
+        assert_eq!(mgr.credit_recipient_quiet(id), mgr.credit_recipient(id));
+    }
+    super::reuse_owner_id_by_another_player(&mut mgr);
+    let logs = crate::test_support::LogCapture::install();
+    assert_eq!(mgr.credit_recipient_quiet(pet), None, "refused, quietly");
+    assert!(
+        !logs
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "credit_refused")),
+        "{:#?}",
+        logs.all()
+    );
+    assert_eq!(mgr.credit_recipient(pet), None);
+    let refused = logs
+        .all()
+        .iter()
+        .filter(|c| c.target == "pets.credit" && c.has_field("event", "credit_refused"))
+        .count();
+    assert_eq!(refused, 1, "the logging wrapper writes one row");
+}

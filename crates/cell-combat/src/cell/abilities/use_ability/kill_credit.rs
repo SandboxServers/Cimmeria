@@ -102,7 +102,7 @@ pub(super) fn is_live_npc(space_mgr: &SpaceManager, target_id: i32) -> bool {
 /// entity, so chain conditions read the owner's mission context and
 /// `IncrementCounter` bumps the owner's counters.
 pub(crate) fn credited_player(space_mgr: &SpaceManager, attacker: u32) -> Option<(u32, i32)> {
-    let credited = space_mgr.credit_recipient(attacker)?;
+    let credited = space_mgr.credit_recipient_quiet(attacker)?;
     let player_id = space_mgr.get_entity(credited)?.player_id?;
     Some((credited, player_id))
 }

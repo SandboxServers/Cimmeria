@@ -235,36 +235,75 @@ impl SpaceManager {
     /// did not earn it, and neither does a destroyed owner. That refusal is
     /// a WARN on `pets.credit` (`event = credit_refused`,
     /// `reason = owner_identity_mismatch | owner_gone`).
+    ///
+    /// Call this once per kill resolution, where the refusal is the answer
+    /// (PT-06: `grant_kill_xp`, which every XP-paying kill reaches). Routing
+    /// gates and the second credit lookup of the same kill use
+    /// [`Self::credit_recipient_quiet`], so a refused kill leaves exactly
+    /// one `credit_refused` row.
     pub fn credit_recipient(&self, attacker: u32) -> Option<u32> {
+        match self.resolve_credit(attacker) {
+            Ok(recipient) => recipient,
+            Err(refusal) => {
+                let summoner = self.pets.summoner_identity(attacker);
+                tracing::warn!(
+                    target: "pets.credit",
+                    event = "credit_refused",
+                    reason = refusal.reason,
+                    entity_id = attacker,
+                    pet_id = attacker,
+                    owner_id = refusal.owner_id,
+                    account_id = summoner.account_id,
+                    player_id = summoner.player_id,
+                    holder_account_id = refusal.holder.account_id,
+                    holder_player_id = refusal.holder.player_id,
+                    "pet kill credit withheld: the owner's entity id no longer belongs to the summoner"
+                );
+                None
+            }
+        }
+    }
+
+    /// [`Self::credit_recipient`] without the `credit_refused` log: the
+    /// same decision, for callers that only route on it (the NPC AI and
+    /// warmup kill-credit gates, which run on every cast) or that ask again
+    /// about a kill `grant_kill_xp` has already logged (mission credit).
+    pub fn credit_recipient_quiet(&self, attacker: u32) -> Option<u32> {
+        self.resolve_credit(attacker).unwrap_or(None)
+    }
+
+    /// The credit decision. `Err` only for a pet whose owner id no longer
+    /// belongs to its summoner.
+    fn resolve_credit(&self, attacker: u32) -> Result<Option<u32>, CreditRefusal> {
         if let Some(owner) = self.pets.owner_of(attacker) {
             let live = self.player_identity(owner);
             let holder = self.get_entity(owner);
             if holder.is_some_and(|e| e.is_player) && self.pets.summoner_matches(attacker, live) {
-                return Some(owner);
+                return Ok(Some(owner));
             }
-            let reason = if holder.is_none() {
-                "owner_gone"
-            } else {
-                "owner_identity_mismatch"
-            };
-            let summoner = self.pets.summoner_identity(attacker);
-            tracing::warn!(
-                target: "pets.credit",
-                event = "credit_refused",
-                reason,
-                entity_id = attacker,
-                pet_id = attacker,
-                owner_id = owner,
-                account_id = summoner.account_id,
-                player_id = summoner.player_id,
-                holder_account_id = live.account_id,
-                holder_player_id = live.player_id,
-                "pet kill credit withheld: the owner's entity id no longer belongs to the summoner"
-            );
-            return None;
+            return Err(CreditRefusal {
+                owner_id: owner,
+                reason: if holder.is_none() {
+                    "owner_gone"
+                } else {
+                    "owner_identity_mismatch"
+                },
+                holder: live,
+            });
         }
-        self.get_entity(attacker)
+        Ok(self
+            .get_entity(attacker)
             .filter(|e| e.is_player)
-            .map(|_| attacker)
+            .map(|_| attacker))
     }
+}
+
+/// Why [`SpaceManager::credit_recipient`] refused a pet's credit.
+#[derive(Debug, Clone, Copy)]
+struct CreditRefusal {
+    owner_id: u32,
+    /// `owner_gone` | `owner_identity_mismatch`.
+    reason: &'static str,
+    /// Whoever holds the owner id now (`UNKNOWN` when nobody does).
+    holder: PlayerIdentity,
 }
