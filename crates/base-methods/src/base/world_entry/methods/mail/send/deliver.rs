@@ -60,6 +60,9 @@ pub(super) enum DeliverError {
         refusal: AttachmentRefusal,
         /// The sender's balance under the lock, for the refusal log.
         balance: Option<i32>,
+        /// The resolved recipient, when there was exactly one, for the
+        /// refusal log's `target_player_id`.
+        recipient_id: Option<i32>,
     },
     Db(sqlx::Error),
 }
@@ -221,7 +224,11 @@ pub(super) async fn deliver(
                 .collect();
         }
         (Some(attachment), [recipient_id]) => {
-            let refused = |refusal| DeliverError::Refused { refusal, balance };
+            let refused = |refusal| DeliverError::Refused {
+                refusal,
+                balance,
+                recipient_id: Some(*recipient_id),
+            };
             let source = match item_request {
                 Some(item) => Some((
                     check_source(source.as_ref(), item.quantity).map_err(refused)?,
@@ -278,6 +285,7 @@ pub(super) async fn deliver(
                      The message was not sent.",
                 ),
                 balance,
+                recipient_id: None,
             });
         }
     }

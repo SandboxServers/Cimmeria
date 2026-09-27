@@ -1,6 +1,6 @@
 ---
 name: project-mail-escrow-ss-m2
-description: SS-M2 gate-mail attachment escrow review (2026-09-27) — what was cleared, and the residual gaps the SS-M3 take/return work must close
+description: SS-M2 gate-mail escrow + SS-M3 take/COD/return review (2026-09-27) — cleared shapes and the residual gaps (COD from deleted sender is a stuck sink)
 metadata:
   type: project
 ---
@@ -11,9 +11,18 @@ Cleared: item keyed by item_id + owner + INV_MAIN allowlist + bound check, FOR U
 guarded `UPDATE ... WHERE naquadah >= cost`; split uses `stack_size > qty` + fresh seq id; COD cost to sender is postage only;
 delete guard is one conditional DELETE (cash = 0 AND no escrow row).
 
-Residual: take/return/payCOD are silent UNIMPLEMENTED stubs in cell-methods mail.rs, so SS-M2 alone makes attachments an
-unrecoverable sink; escrow row cascades on recipient character delete (sender's item/COD lost).
+SS-M3 (worktree ss-m3, reviewed 2026-09-27, mail/claim.rs is the shared lock order): take cash/item, pay COD, return CLEARED
+for dupe/double-credit/overflow/owner-scoping/redirection/deadlock. Mail row locked `WHERE mail_id AND character_id` after
+advisory locks; every write conditional + rows_affected; COD price zeroed on pay AND on return; payment mail sender_id NULL;
+return destination is stored sender_id, `returned` flag stops loops; client ContainerId/SlotId only logged.
 
-**Why:** SS-M3 inherits these invariants; the take path must re-check escrow row under lock and credit with overflow check.
-**How to apply:** when SS-M3 lands, verify take is one tx (DELETE escrow row RETURNING -> insert inventory), cash take zeroes
-`cash` with `WHERE cash = $seen`, COD pay debits recipient + credits sender atomically. See [[project-mail-handlers-unimplemented]].
+Residual after the final pass (2026-09-27): the sender-deleted COD is now cancelled on pay (buyer gets the item free,
+coordinator-approved) and `cod_paid` refuses returning a paid COD. Still open: `archiveMailMessage` (read.rs archive) ORs
+MAIL_ARCHIVE onto an unpaid COD with no check; archived mail cannot be returned, never expires (D-SS04) and cannot be
+deleted, so a buyer can lock the seller's item away for good. Vendor buyback locks its inventory rows and `sgw_player`
+before the (player, INV_MAIN) advisory key, the reverse of claim.rs, so same-player buyback vs take-cash/pay-COD can
+deadlock (Postgres aborts one; no value loss). Escrow still cascades on recipient character delete.
+
+**Why:** SS-M4 expiry sweep reuses `return_tx`; it must skip archived mail but the archive path must first refuse unpaid COD.
+**How to apply:** on SS-M4 review, check the archive-COD gate landed and that the sweep takes the claim.rs lock order.
+See [[project-mail-handlers-unimplemented]].

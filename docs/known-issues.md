@@ -156,13 +156,13 @@ Systems with CellMethod dispatch wired but handlers still stubbed (each logs
   most MinigamePlayer CellMethods are still stubs — `startMinigame`,
   `endCurrentMinigame`, `spectateMinigame`, `requestSpectateList`, the four
   `debug*` methods, the `minigameCall*` trio, and the help-registration pair.
-- **Mail send/COD/return**: 5 CellMethods still stubbed — `sendMailMessage`,
-  `payCODForMailMessage`, `returnMailMessage`, `takeCashFromMailMessage`,
-  `takeItemFromMailMessage`. Read operations work. Note the server can now
-  *originate* mail internally (the Black Market expiry sweep delivers via
-  `send_mail_to_player`); it is the client-initiated surface that is stubbed.
-
 No longer stubbed:
+
+- **Mail** (social-systems SS-M1 to SS-M3): `sendMailMessage` with text, cash,
+  an item or COD; `takeCashFromMailMessage`, `takeItemFromMailMessage`,
+  `payCODForMailMessage` and `returnMailMessage` are implemented on the base
+  (`crates/base-methods/src/base/world_entry/methods/mail/`). See
+  [gameplay/mail-system.md](gameplay/mail-system.md).
 
 - **Contact list** (friend/ignore): implemented and merged —
   `crates/base-session/src/base/contact_list/`, with login presence push, CM

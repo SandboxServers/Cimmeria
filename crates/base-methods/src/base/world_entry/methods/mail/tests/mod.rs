@@ -1,8 +1,9 @@
 //! Mail handler tests: the read side (`read`, `read_scoping`), the send
 //! path (`send_live`, `send_limits`, `send_race`), attachments and escrow
-//! (`attach_live`, `attach_race`, SS-M2) and the delete guard
-//! (`delete_guard`, SS-M2), system mail and the GM tools (`system_live`,
-//! `gm_live`, SS-U1).
+//! (`attach_live`, `attach_race`, SS-M2), the delete guard
+//! (`delete_guard`, SS-M2), the attachment ops (`take_live`, `cod_live`,
+//! `return_live`, `take_race`, `return_race`, SS-M3), and system mail and
+//! the GM tools (`system_live`, `gm_live`, SS-U1).
 //!
 //! The live-DB tests assert on SQL side effects and, where the invariant is
 //! what the client is told, on the decoded packets the handler sent.
@@ -15,16 +16,21 @@ mod attach_live;
 mod attach_race;
 mod attach_rollback;
 mod attach_vault;
+mod cod_live;
 mod delete_guard;
 mod gm_live;
 mod packets;
 mod read;
 mod read_scoping;
+mod return_live;
+mod return_race;
 mod send_ignore;
 mod send_limits;
 mod send_live;
 mod send_race;
 mod system_live;
+mod take_live;
+mod take_race;
 
 pub(super) async fn cleanup(pool: &PgPool, account_id: i32) {
     // sgw_gate_mail has no FK to account, so delete its rows by character_id
@@ -295,4 +301,145 @@ pub(super) async fn mail_count(pool: &PgPool, character_id: i32) -> i64 {
         .fetch_one(pool)
         .await
         .unwrap()
+}
+
+/// A mail as the attachment-op tests (SS-M3) set it up, inserted directly
+/// so any state can be built, including ones the send path never makes.
+#[derive(Debug, Clone)]
+pub(super) struct AttachedMail<'a> {
+    pub(super) owner: i32,
+    pub(super) sender_id: Option<i32>,
+    pub(super) sender_name: &'a str,
+    pub(super) cash: i64,
+    pub(super) flags: i32,
+    /// `(instance id, type id, stack size)` of an escrowed item.
+    pub(super) item: Option<(i32, i32, i32)>,
+}
+
+impl<'a> AttachedMail<'a> {
+    /// Plain mail from `sender` to `owner`, nothing attached yet.
+    pub(super) fn from(owner: i32, sender: i32, sender_name: &'a str) -> Self {
+        Self {
+            owner,
+            sender_id: Some(sender),
+            sender_name,
+            cash: 0,
+            flags: 0,
+            item: None,
+        }
+    }
+
+    pub(super) fn cash(mut self, cash: i64) -> Self {
+        self.cash = cash;
+        self
+    }
+
+    pub(super) fn cod(mut self, price: i64) -> Self {
+        self.cash = price;
+        self.flags |= crate::cell::mail::codes::flags::MAIL_COD;
+        self
+    }
+
+    pub(super) fn item(mut self, item_id: i32, type_id: i32, stack_size: i32) -> Self {
+        self.item = Some((item_id, type_id, stack_size));
+        self
+    }
+
+    /// Insert the mail and its escrow row; returns the mail id.
+    pub(super) async fn insert(&self, pool: &PgPool) -> i32 {
+        let mail_id: i32 = sqlx::query_scalar(
+            "INSERT INTO sgw_gate_mail \
+                (character_id, sender_id, sender_name, subject, message, cash, \
+                 sent_time, read_time, flags) \
+             VALUES ($1, $2, $3, 'Attached', 'body', $4, 1, 0, $5) RETURNING mail_id",
+        )
+        .bind(self.owner)
+        .bind(self.sender_id)
+        .bind(self.sender_name)
+        .bind(self.cash)
+        .bind(self.flags)
+        .fetch_one(pool)
+        .await
+        .expect("insert attached mail");
+        if let Some((item_id, type_id, stack_size)) = self.item {
+            // Every instance column off its default, so a restore that
+            // drops one is visible.
+            sqlx::query(
+                "INSERT INTO sgw_gate_mail_item \
+                    (mail_id, item_id, type_id, stack_size, charges, durability, flags, \
+                     bound, ammo, cur_ammo_type, ammo_type, ammo_types, \
+                     source_character_id, escrowed_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, 5, true, 9, 2, 'Bullet_EMP', \
+                         '{Bullet_Default,Bullet_EMP}', $7, 1)",
+            )
+            .bind(mail_id)
+            .bind(item_id)
+            .bind(type_id)
+            .bind(stack_size)
+            .bind(TEST_CHARGES)
+            .bind(TEST_DURABILITY)
+            .bind(self.sender_id.unwrap_or(0))
+            .execute(pool)
+            .await
+            .expect("insert escrow row");
+        }
+        mail_id
+    }
+}
+
+/// `(owner, cash, flags, returned)` of a mail, `None` once it is gone.
+pub(super) async fn mail_state(pool: &PgPool, mail_id: i32) -> Option<(i32, i64, i32, bool)> {
+    sqlx::query_as(
+        "SELECT character_id, cash, flags, returned FROM sgw_gate_mail WHERE mail_id = $1",
+    )
+    .bind(mail_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap()
+}
+
+/// `(owner, container, slot, stack)` of every inventory row with this
+/// instance id (the tests expect zero or one).
+pub(super) async fn inventory_rows(pool: &PgPool, item_id: i32) -> Vec<(i32, i32, i32, i32)> {
+    sqlx::query_as(
+        "SELECT character_id, container_id, slot_id, stack_size FROM sgw_inventory \
+         WHERE item_id = $1",
+    )
+    .bind(item_id)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+/// Does `mail_id` still hold an escrow row?
+pub(super) async fn has_escrow(pool: &PgPool, mail_id: i32) -> bool {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM sgw_gate_mail_item WHERE mail_id = $1)")
+        .bind(mail_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// Assert one `mail.op_refused` WARN for `op` / `reason` / `mail_id`,
+/// carrying the rule-5 identity fields.
+pub(super) fn assert_refused(
+    capture: &crate::test_support::LogCaptureGuard,
+    op: &str,
+    reason: &str,
+    mail_id: i32,
+) {
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|e| {
+            e.level == tracing::Level::WARN
+                && e.has_field("event", "mail.op_refused")
+                && e.has_field("op", op)
+                && e.has_field("reason", reason)
+                && e.has_field("mail_id", &mail_id.to_string())
+        })
+        .unwrap_or_else(|| panic!("mail.op_refused op={op} reason={reason} mail_id={mail_id}"));
+    for key in ["account_id", "player_id", "entity_id"] {
+        assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
+    }
 }

@@ -129,6 +129,46 @@ pub async fn handle_archive_mail(
         .await;
 }
 
+/// Forward an attachment op (take cash, take item, pay COD, return; SS-M3)
+/// to BaseApp. The mail id is all the base trusts from the payload; the
+/// caller is the cell entity's own `player_id`. `method` is the client
+/// method's name, for the span and the drop log.
+#[tracing::instrument(
+    name = "mail.attachment_op",
+    level = "info",
+    skip_all,
+    fields(entity_id, method)
+)]
+pub async fn handle_attachment_op(
+    entity_id: u32,
+    method: &'static str,
+    op: MailOp,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, method) else {
+        return;
+    };
+    if tx
+        .send(CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op,
+        })
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            target: "mail",
+            entity_id,
+            player_id,
+            method,
+            reason = "base_channel_closed",
+            "mail attachment op dropped: base channel closed",
+        );
+    }
+}
+
 /// Decode a `sendMailMessage` (CM 44) and forward it to BaseApp.
 ///
 /// The decode is bounded and applies the D-SS12 text rules
