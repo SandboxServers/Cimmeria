@@ -10,10 +10,13 @@
 //! Each test pins level, target, `decision_outcome` and `reason`, so a
 //! revert that drops a field or demotes an event fails.
 
+use cimmeria_content_engine::chain::ChainEngine;
+use tokio::sync::mpsc;
 use tracing::Level;
 
 use super::pt07_giveability::{console, say, world, CALLER};
 use super::pt07_pet::{only_pet_of, pet, pet_world, GM, OTHER, PET_TEMPLATE};
+use crate::cell::console::{exec, handle_console_command};
 use crate::test_support::{Captured, LogCapture};
 
 /// The one event on `target` with `decision_outcome` and (if given)
@@ -200,4 +203,117 @@ async fn pt07_giveability_forward_logs_info_with_the_subject() {
             && e.has_field("persisted", "false"),
         "{e:#?}"
     );
+}
+
+/// A sender whose receiver is gone, so every send fails.
+fn closed_tx() -> mpsc::Sender<crate::cell::messages::CellToBaseMsg> {
+    let (tx, rx) = mpsc::channel(8);
+    drop(rx);
+    tx
+}
+
+/// Span fields are not copied onto OTLP log records, so the `.pet stance`
+/// send failure must carry the caller's identity itself (Copilot, #908).
+#[tokio::test]
+async fn pt07_pet_stance_send_failure_logs_warn_with_caller_identity() {
+    let mut mgr = pet_world();
+    pet(&mut mgr, GM, None, &["summon", "2826"]).await;
+    let pet_id = only_pet_of(&mgr, GM).to_string();
+    let capture = LogCapture::install();
+    exec(
+        "pet",
+        GM,
+        &["stance", "0"],
+        None,
+        &closed_tx(),
+        &mut mgr,
+        &ChainEngine::new(),
+    )
+    .await;
+    let e = event(
+        &capture.all(),
+        Level::WARN,
+        PETS_COMMAND,
+        "send_failed",
+        Some("cell_to_base_closed"),
+    );
+    assert_caller_identity(&e);
+    assert!(
+        e.has_field("entity_id", "1") && e.has_field("pet_id", &pet_id),
+        "{e:#?}"
+    );
+}
+
+/// The `.giveability` send failure carries the same fields as `forwarded`.
+#[tokio::test]
+async fn pt07_giveability_send_failure_logs_warn_with_caller_identity() {
+    let (mut mgr, _npc) = world(2);
+    mgr.get_entity_mut(CALLER).unwrap().current_target_id = Some(2);
+    let capture = LogCapture::install();
+    handle_console_command(
+        CALLER,
+        ".giveability 2826",
+        &closed_tx(),
+        &mut mgr,
+        &ChainEngine::new(),
+    )
+    .await;
+    let e = event(
+        &capture.all(),
+        Level::WARN,
+        GIVEABILITY_TARGET,
+        "send_failed",
+        Some("cell_to_base_closed"),
+    );
+    assert_caller_identity(&e);
+    assert!(
+        e.has_field("entity_id", "1")
+            && e.has_field("subject_entity_id", "2")
+            && e.has_field("subject_player_id", "72")
+            && e.has_field("ability_id", "2826"),
+        "{e:#?}"
+    );
+}
+
+/// `.help pet` and `.help giveability` print the argument detail lines
+/// (Copilot, #908).
+#[tokio::test]
+async fn pt07_help_shows_pet_and_giveability_argument_detail() {
+    let mut mgr = pet_world();
+    for (cmd, want) in [
+        (
+            "pet",
+            vec![
+                "    verb (str): summon | dismiss",
+                "    [id] (int): For summon",
+            ],
+        ),
+        (
+            "giveability",
+            vec!["    abilityId (int): The ability to grant"],
+        ),
+    ] {
+        let (tx, mut rx) = mpsc::channel(64);
+        handle_console_command(
+            GM,
+            &format!(".help {cmd}"),
+            &tx,
+            &mut mgr,
+            &ChainEngine::new(),
+        )
+        .await;
+        let lines: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| super::decode_feedback(&m))
+            .collect();
+        assert!(
+            lines.iter().any(|l| l.starts_with(&format!(".{cmd}: "))),
+            "{cmd} summary: {lines:?}"
+        );
+        for w in want {
+            assert!(
+                lines.iter().any(|l| l.starts_with(w)),
+                "{cmd} {w:?}: {lines:?}"
+            );
+        }
+    }
 }

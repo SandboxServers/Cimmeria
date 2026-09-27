@@ -116,8 +116,21 @@ impl Sessions {
         player_id: i32,
         gm_player_id: i32,
     ) -> Vec<BaseToCellMsg> {
-        let transport: Arc<dyn Transport> = self.transport.clone();
         let (tx, mut rx) = mpsc::channel(4);
+        self.grant_via(pool, player_id, gm_player_id, Some(tx))
+            .await;
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    /// Run the handler with `cell_tx` as the base->cell channel.
+    async fn grant_via(
+        &self,
+        pool: &sqlx::PgPool,
+        player_id: i32,
+        gm_player_id: i32,
+        cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+    ) {
+        let transport: Arc<dyn Transport> = self.transport.clone();
         handle_gm_grant_ability(
             AbilityGrant {
                 entity_id: SUBJECT,
@@ -130,10 +143,9 @@ impl Sessions {
             &transport,
             &self.connected,
             &self.entity_to_addr,
-            &Some(tx),
+            &cell_tx,
         )
         .await;
-        std::iter::from_fn(|| rx.try_recv().ok()).collect()
     }
 }
 
@@ -296,4 +308,39 @@ async fn giveability_survives_a_respec_and_refunds_nothing() {
     assert!(trained.is_empty());
     assert_eq!((training_points, spent), (4, 0), "3 + the 1-point spend");
     cleanup(&pool, ID).await;
+}
+
+/// Span fields are not copied onto OTLP log records, so a mirror failure
+/// names the GM actor on the event itself (Copilot, #908): closed channel
+/// (ERROR) and no channel (WARN).
+#[tokio::test]
+async fn giveability_mirror_failure_names_the_gm_and_the_subject() {
+    let pool = require_db_or_skip!();
+    const ID: i32 = 0x7030_0A06;
+    let s = Sessions::new(ID, GM_PLAYER);
+    let closed = {
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+        Some(tx)
+    };
+    for (cell_tx, level, reason) in [
+        (closed, tracing::Level::ERROR, "base_to_cell_closed"),
+        (None, tracing::Level::WARN, "no_cell_channel"),
+    ] {
+        setup(&pool, ID, &[592], &[]).await;
+        let capture = LogCapture::install();
+        s.grant_via(&pool, ID, GM_PLAYER, cell_tx).await;
+        let e = outcome_event(&capture, level, "mirror_send_failed", Some(reason));
+        for (k, v) in [
+            ("entity_id", GM.to_string()),
+            ("account_id", "0".to_string()),
+            ("player_id", GM_PLAYER.to_string()),
+            ("subject_entity_id", SUBJECT.to_string()),
+            ("subject_player_id", ID.to_string()),
+            ("ability_id", ABILITY.to_string()),
+        ] {
+            assert!(e.has_field(k, &v), "{reason}: {k}={v}: {e:#?}");
+        }
+        cleanup(&pool, ID).await;
+    }
 }

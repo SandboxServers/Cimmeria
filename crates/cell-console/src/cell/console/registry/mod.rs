@@ -142,6 +142,29 @@ const ANNOUNCE_ARGS: &[ArgSpec] = &[arg(
     "Required. The line to send to every online player; start it with `space` to reach only your space",
 )];
 
+/// `.pet` (pets PT-07) has no legacy counterpart; written from
+/// `console/pet.rs`. `verb` is required (`.pet` has `min = 1`), `id` is the
+/// second word, which only `summon` and `stance` read.
+const PET_ARGS: &[ArgSpec] = &[
+    arg(
+        "verb",
+        "str",
+        "summon | dismiss | stance | info | list. summon replaces your pet at once, with no warmup; info reads the selected pet, else yours; list covers your space",
+    ),
+    arg(
+        "id",
+        "int",
+        "For summon: a summon ability id (2826) or a template id (350). For stance: 0 passive, 1 defensive, 2 aggressive",
+    ),
+];
+/// `.giveability` (pets PT-07) has no legacy counterpart; written from
+/// `console/give_ability.rs`.
+const GIVEABILITY_ARGS: &[ArgSpec] = &[arg(
+    "abilityId",
+    "int",
+    "The ability to grant to the selected player (else you); saved to the character, survives relog and respec, costs no points",
+)];
+
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
         "help" => HELP_ARGS,
@@ -149,6 +172,8 @@ pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
         "searchmission" => SEARCH_MISSION_ARGS,
         "searchtemplate" => SEARCH_TEMPLATE_ARGS,
         "announce" => ANNOUNCE_ARGS,
+        "pet" => PET_ARGS,
+        "giveability" => GIVEABILITY_ARGS,
         _ => &[],
     }
 }

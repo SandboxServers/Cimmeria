@@ -257,6 +257,9 @@ pub async fn handle_gm_grant_ability(
                 tracing::error!(
                     decision_outcome = "mirror_send_failed",
                     reason = "base_to_cell_closed",
+                    entity_id = gm_entity_id,
+                    account_id,
+                    player_id = gm_player_id,
                     subject_entity_id = entity_id,
                     subject_player_id = player_id,
                     ability_id,
@@ -268,6 +271,9 @@ pub async fn handle_gm_grant_ability(
         None => tracing::warn!(
             decision_outcome = "mirror_send_failed",
             reason = "no_cell_channel",
+            entity_id = gm_entity_id,
+            account_id,
+            player_id = gm_player_id,
             subject_entity_id = entity_id,
             subject_player_id = player_id,
             ability_id,
