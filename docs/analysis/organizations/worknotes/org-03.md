@@ -8,7 +8,7 @@
 - **Packet:** ORG-03, squad core.
 - **Decisions in force:** D-ORG03 (squads on the cell, service-wide, never persisted), D-ORG05 (squad ids from `0x4000_0000`, never reused; routing is not authorization), D-ORG06 (invites keyed by invitee `player_id` + request id, consumed on first response, 60 s, re-validated; cell request ids with bit 29 clear), D-ORG07 (squad ranks Member 2 / Leader 8), D-ORG12 (the longest-standing member inherits the lead), D-ORG16 (APPROVED: leader-only loot, 0 or 1 only; a non-leader gets an error, a line and the current [51]), D-ORG18.
 - **Audit rows read:** A-10, A-16, A-18, A-19, A-23, A-24, A-30, A-41.
-- **Base:** stacked on `origin/org/01-foundation` @ `36468911`; #871 squash-merged, so rebased with `git rebase --onto origin/main 36468911` onto `origin/main` @ `59c73019`. Branch `org/03-squad`, worktree `.claude/worktrees/org-03`, test database `sgw_org_03`.
+- **Base:** stacked on `origin/org/01-foundation` @ `36468911`; #871 squash-merged, so rebased with `git rebase --onto origin/main 36468911` onto `origin/main` @ `59c73019`, later onto `76613bf3`, and on 2026-09-27 onto `origin/main` @ `88d7da73` (SS-00, #880; see "Rebase onto 88d7da73"). Branch `org/03-squad`, worktree `.claude/worktrees/org-03`, test database `sgw_org_03`.
 - **Owned paths:**
   - `crates/cell-world/src/cell/squad/` (new: `mod.rs`, `registry.rs`, `invites.rs`, `tests.rs`), `cell/mod.rs`, `space_manager/mod.rs` (the `squads` field), `space_manager/queries.rs` (`player_entity_by_player_id`)
   - `crates/entity/src/cell_entity/entity_struct.rs`, `construction.rs` (`squad_id`)
@@ -131,6 +131,26 @@ Telemetry regression proof, on the committed tree then restored with `git checko
 Round-2 commands (all exit 0 unless noted): `lane.sh cargo test -p cimmeria-entity -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell -p cimmeria-base --lib --no-fail-fast` (base 78, cell 451, cell-methods 269, cell-world 339, entity 341); `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` (52); the seven-crate clippy with `-D warnings`; `cargo fmt --all -- --check`; the wireclient two-client test against `sgw_org_03`; the two revert runs above (exit 101 each).
 
 Process note: during the first telemetry revert run I restored with `git checkout -- crates` while the telemetry edits were still uncommitted, which discarded them; they were re-applied from the same scripts and re-tested before the revert run was repeated on a commit. Nothing from the lost state reached a commit.
+
+## Rebase onto 88d7da73 (round 3)
+
+SS-00 (#880) landed `OnlinePlayerIndex`, the rate limiter and `send_feedback_line` in `crates/base-session`, and two fields on `ConnectedClientState`. ORG-03 builds none of those fixtures, so only two text conflicts came up, both resolved by keeping both sides:
+
+- `crates/server/src/logging/target_scan_tests.rs`: ORG-03's `("squad", INFO)` / `("squad", WARN)` pins and SS-00's `chat`, `rate_limit` and `online_index` pins.
+- `docs/architecture/observability.md`: ORG-03's extended `org` / `squad` row, then SS-00's new `rate_limit`, `online_index` and `chat` rows.
+
+All from the worktree root, through `tools/build-lane/lane.sh` (`target=B:	argets/org-03`).
+
+| Command | Exit | Result |
+|---|---|---|
+| `lane.sh cargo fmt --all -- --check` | 0 | |
+| `lane.sh cargo clippy -p cimmeria-entity -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell -p cimmeria-base -p cimmeria-wireclient -p cimmeria-server --all-targets -- -D warnings` | 0 | |
+| `lane.sh cargo test -p cimmeria-entity -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell -p cimmeria-base --lib --no-fail-fast` | 0 | base 87 (78 plus SS-00's), cell 451, cell-methods 269, cell-world 339, entity 341 |
+| `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` | 0 | 52 passed |
+| `reload-db.sh` (sgw_org_03), then `DATABASE_URL=.../sgw_org_03 lane.sh cargo test -p cimmeria-wireclient --test it two_client_squad -- --test-threads=1` | 0 | 1 passed in 7.0 s, not skipped |
+| `live-db-test.sh base_messages organization squad` | 0 | 227 run, 227 passed, 3543 filtered out |
+
+Spot-check of the regression proof after the rebase, on the committed tree: the base's type > 2 gate disabled (`if false && ...`) and the `on_disconnect` call removed from the `DisconnectEntity` arm, then `lane.sh cargo test -p cimmeria-cell -p cimmeria-base --lib --no-fail-fast -- organization org:: disconnect` exited 101 with `invite_by_type_rejects_type_above_command` and `disconnect_entity_removes_the_squad_member` failing (`identity_propagation::disconnect_carries_identity_resolved_before_teardown` also failed in that threaded run; it passes with the same revert under `--test-threads=1`, so it is the known threaded LogCapture flake, not a squad dependency). Restored with `git checkout HEAD -- <the two files>`; `git status` clean.
 
 ## Known gaps
 
