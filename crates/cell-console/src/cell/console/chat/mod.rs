@@ -39,6 +39,11 @@ pub(crate) use cimmeria_wire::cell::chat::serialize_on_player_communication;
 /// Flat index 28 in SGWPlayer ClientMethods.
 const ON_PLAYER_COMMUNICATION: u16 = 28;
 
+/// The tracing target every chat log used before the split into `chat/`.
+/// Submodules pass it explicitly so SigNoz `scope_name` filters and
+/// `OTEL_FILTER` pins keep matching the pre-split target.
+const CHAT_LOG_TARGET: &str = "cimmeria_cell_console::cell::console::chat";
+
 // ── Chat distribution ──────────────────────────────────────────────────────
 
 /// Handle a chat message from a player entity.

@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::{serialize_on_player_communication, ON_PLAYER_COMMUNICATION};
+use super::{serialize_on_player_communication, CHAT_LOG_TARGET, ON_PLAYER_COMMUNICATION};
 
 /// Broadcast a chat message to all witnesses of the sender entity.
 ///
@@ -24,7 +24,7 @@ pub(super) async fn broadcast_to_witnesses(
     let entity = match space_mgr.get_entity(sender_id) {
         Some(e) => e,
         None => {
-            tracing::warn!(sender_id, "Chat: sender entity not found");
+            tracing::warn!(target: CHAT_LOG_TARGET, sender_id, "Chat: sender entity not found");
             return;
         }
     };
@@ -48,7 +48,7 @@ pub(super) async fn broadcast_to_witnesses(
         .collect();
 
     if witnesses.is_empty() {
-        tracing::trace!(sender_id, "Chat: no witnesses to broadcast to");
+        tracing::trace!(target: CHAT_LOG_TARGET, sender_id, "Chat: no witnesses to broadcast to");
         return;
     }
 
@@ -56,6 +56,7 @@ pub(super) async fn broadcast_to_witnesses(
     let args = serialize_on_player_communication(speaker_name, speaker_flags, channel, text);
 
     tracing::debug!(
+        target: CHAT_LOG_TARGET,
         sender_id,
         channel,
         witness_count = witnesses.len(),
