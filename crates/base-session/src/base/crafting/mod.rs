@@ -42,9 +42,12 @@
 //!   expertise), and the client updates after it.
 //! - [`rng`]: the injectable RNG the rolling verbs use.
 //! - [`item_use`]: using a Blueprint item or a Racial Paradigm Guide.
+//! - [`craft`]: `craft`, making a known blueprint's product from one of
+//!   its component sets.
 
 pub mod allcraft;
 pub mod alloy;
+pub mod craft;
 pub mod feedback;
 pub mod gate;
 pub mod handlers;

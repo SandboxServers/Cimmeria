@@ -176,6 +176,29 @@ pub enum CraftReject {
     CountNotMet { counts: [i64; 4] },
     /// More than one quality's elementary count was met at once.
     MultipleBuckets { counts: [i64; 4] },
+    /// `craft` for an alloy blueprint, which only `alloying` makes.
+    IsAlloy { blueprint_id: i32 },
+    /// A craft quantity outside `1..=max`.
+    BadQuantity {
+        blueprint_id: i32,
+        quantity: i32,
+        max: i32,
+    },
+    /// The submitted components match none of the blueprint's component
+    /// sets (so also every craft of a blueprint with no component set).
+    NoComponentSet {
+        blueprint_id: i32,
+        /// The distinct designs of the submitted instances, ascending.
+        type_ids: Vec<i32>,
+    },
+    /// At the request, the main and crafting bags hold fewer of a
+    /// component than the chosen set needs for the quantity asked.
+    InsufficientComponents {
+        blueprint_id: i32,
+        design_id: i32,
+        needed: i32,
+        available: i64,
+    },
 }
 
 impl CraftReject {
@@ -229,6 +252,10 @@ impl CraftReject {
             CraftReject::WrongTier { .. } => "wrong_tier",
             CraftReject::CountNotMet { .. } => "count_not_met",
             CraftReject::MultipleBuckets { .. } => "multiple_buckets",
+            CraftReject::IsAlloy { .. } => "is_alloy",
+            CraftReject::BadQuantity { .. } => "bad_quantity",
+            CraftReject::NoComponentSet { .. } => "no_component_set",
+            CraftReject::InsufficientComponents { .. } => "insufficient_components",
         }
     }
 
@@ -256,6 +283,15 @@ impl CraftReject {
                     counts[0], counts[1], counts[2], counts[3]
                 ))
             }
+            _ => None,
+        }
+    }
+
+    /// The designs a craft submitted, as the `type_ids` field of the
+    /// `rejected` event; `None` for every other reason.
+    pub fn types_submitted(&self) -> Option<String> {
+        match self {
+            CraftReject::NoComponentSet { type_ids, .. } => Some(format!("{type_ids:?}")),
             _ => None,
         }
     }
@@ -309,6 +345,10 @@ impl CraftReject {
             | CraftReject::WrongTier { .. }
             | CraftReject::CountNotMet { .. }
             | CraftReject::MultipleBuckets { .. } => None,
+            CraftReject::IsAlloy { .. }
+            | CraftReject::BadQuantity { .. }
+            | CraftReject::NoComponentSet { .. }
+            | CraftReject::InsufficientComponents { .. } => None,
         }
     }
 }

@@ -2,13 +2,13 @@
 title: "Crafting System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Crafting System
 
 > **Last updated**: 2026-09-27
-> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) research and reverse engineering (CR-08), and alloying (CR-09). Craft and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) research and reverse engineering (CR-08), alloying (CR-09) and crafting from a blueprint (CR-07). Respec is still a stub (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -34,13 +34,13 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Crafting catalog | DONE | `cimmeria_cell_catalog::crafting::CraftingCatalog`: disciplines, blueprints with their alternative component sets, and item crafting attributes, loaded once per process |
 | Spend applied-science points | DONE | `base/crafting/spend/` (CR-04), see [Learning a discipline](#learning-a-discipline) |
 | Earn applied-science points | DONE | 1 at level 1 and 1 per level gained, written with the level by the XP grant (CR-12), see [Earning applied science points](#earning-applied-science-points) |
-| Crafting (blueprint) | STUB | The base answers "Crafting is not available yet." |
+| Crafting (blueprint) | DONE | `base/crafting/craft/` (CR-07), see [Craft in Cimmeria](#craft-in-cimmeria) |
 | Research | DONE | Item and kickers checked at the request, rolled and consumed when the bar ends; +5 expertise and the blueprint on a success. CR-08 |
 | Reverse engineering | DONE | Exactly the named item is consumed when the bar ends; recovery rises with expertise (D-CR06). CR-08 |
 | Alloying | DONE | `base/crafting/alloy/` (CR-09), see [Alloying](#alloying) |
 | Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
-| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Research, reverse engineering (CR-08) and alloying (CR-09) submit to it; craft does not yet. See [Induction engine](#induction-engine) |
-| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. Research, reverse engineering (CR-08) and alloying (CR-09) build one; craft does not yet |
+| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) submit to it. See [Induction engine](#induction-engine) |
+| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. Craft (CR-07), research, reverse engineering (CR-08) and alloying (CR-09) build one |
 | Busy state lock | REPLACED | The induction queue serializes a player's crafting; there is no separate busy flag |
 | Crafting stations | DONE | The cell tracks the nearest station per verb within `MAX_INTERACT_DISTANCE` (5 units, 3-D) and reports changes to the base once a second; the forward recomputes the mask per request. CR-05. No seeded template is a station yet (CR-11 adds the debug-hub four) |
 | Field Crafting Tools | DONE | A tool in the crafting bag (container 15) covers crafting, research and reverse engineering for its science up to its `tech_comp` (D-CR21). CR-05 |
@@ -128,6 +128,34 @@ Crafter.craft(blueprintId, itemIds, quantity)
        |-> Gain 1 expertise in blueprint's discipline
 ```
 
+#### Craft in Cimmeria
+
+`base/crafting/craft/` (CR-07). The client sends `craft(blueprintId, itemIds, quantity)` (cell method 96) with one instance id per component of the set the player picked, the last stack the page found (`CraftingPage.lua:299-313`); the set id is not on the wire. After the station gate, the base checks, in this order:
+
+1. `quantity` is 1 to 100.
+2. The player knows the blueprint, and the catalog has it.
+3. It is not an alloy (those go through `alloying`).
+4. Its discipline is known (D-CR15).
+5. Every named instance is the player's and sits in the main bag (1) or the crafting bag (15).
+6. The set is the one whose designs are **exactly** the named designs. A set whose designs are only covered is not enough: many seed sets are subsets of a sibling (blueprint 412's set 1, 14 Steel Cores, is covered by set 2's Steel Core plus Titanium Cores), and the legacy "first covered set" rule would charge the wrong recipe. Where two sets have the same designs (blueprint 159 sets 1 and 2), the first the bags can pay for wins. A blueprint with no component set (21, Ambernol Vial) is never craftable.
+7. The two bags hold `quantity Ã— component.quantity` of each component, counted across stacks. The bank does not count.
+
+A passing craft is queued on the [induction engine](#induction-engine) with the blueprint as the bar's `ID`. Nothing is consumed at the request. A craft that waits behind another gets "Crafting <product> x<n> is queued behind <k> other crafting job(s)." At the end of the bar one transaction consumes the set by design, grants `blueprint.quantity Ã— quantity` of the product, checks that the blueprint and its discipline are still known (reading the player row `FOR SHARE`, so a respec that commits during the bar, or while the transaction runs, refuses the craft and rolls it back), and adds 1 expertise to the discipline (136). The named instances only choose the set: the completion does not hold the craft to them, so a later queued craft whose named stack an earlier one drained still runs from the rest. The player then reads "You crafted <product> x<n>."
+
+| Why | Line |
+|---|---|
+| `quantity` outside 1 to 100 | You can craft between 1 and 100 at a time. |
+| Blueprint not known | You do not know that blueprint. |
+| Alloy blueprint | That blueprint is an alloy. Use alloying to make it. |
+| Discipline not known (also at completion) | You must learn the blueprint's discipline first. |
+| A named instance is not the player's | A component is no longer in your inventory. Nothing was used. |
+| A named instance is outside the two bags | Components must be in your backpack or crafting bag. Nothing was used. |
+| The named designs match no set | Those components do not match any recipe of this blueprint. Nothing was used. |
+| Too few in the two bags | You do not have enough components: <have> of <need> needed. Nothing was used. |
+| The server could not read what it needs | Crafting is unavailable right now. Nothing was changed. |
+
+The craft page keeps its slots on confirm (C-33), so a request-time refusal sends only the line; a refusal at completion also resyncs the inventory. Not ported from `Crafter.py`: consuming across the whole inventory and never checking `quantity â‰¥ 1` (C-56), gaining expertise without the discipline and after the grant (C-55), consuming at the start of the bar (C-58), and the first-covered-set choice.
+
 ### Research
 
 Uses up an item, and any kickers, for a chance at expertise in one of the item's disciplines and at the blueprint that makes it. Code: `base/crafting/research/`.
@@ -182,7 +210,7 @@ Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
 
 ## Induction engine
 
-Every crafting verb that takes time (craft, research, reverse engineer, alloy) runs through the same engine on the base; research, reverse engineering and alloying use it today. Unlike the original server, which consumed the components when the request arrived (so a logout or crash during the bar lost them), the Rust engine validates at the request and consumes only when the bar completes.
+Every crafting verb that takes time (craft, research, reverse engineer, alloy) runs through the same engine on the base. Unlike the original server, which consumed the components when the request arrived (so a logout or crash during the bar lost them), the Rust engine validates at the request and consumes only when the bar completes.
 
 **Queue.** Each player has one running induction and a first-in-first-out queue, ten in all. The reverse-engineering page sends up to ten requests in one burst, so all ten are accepted. The eleventh is refused with "You can have at most 10 crafting jobs at once." and an inventory resync (one resync per burst). The queue is keyed by the player entity and lives only in memory.
 

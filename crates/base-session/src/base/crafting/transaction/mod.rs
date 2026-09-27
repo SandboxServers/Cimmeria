@@ -36,6 +36,7 @@ mod client_sync;
 mod consume;
 mod failure;
 mod grant;
+mod knowledge;
 mod learn;
 mod plan;
 
@@ -45,7 +46,7 @@ mod tests;
 pub use applied::{BlueprintsLearned, ConsumedStack, CraftApplied, ExpertiseChange, GrantedStack};
 pub use client_sync::resync_inventory;
 pub use failure::CraftTxError;
-pub use plan::{CraftTransaction, NamedItem};
+pub use plan::{CraftTransaction, NamedItem, RequiredKnowledge};
 
 use failure::{at, expect_rows, log_persist_failed};
 
@@ -109,6 +110,11 @@ async fn apply_in_tx(
     }
     if !plan.learn_blueprints.is_empty() {
         learn::teach_blueprints(tx, ids, &plan.learn_blueprints, &mut applied).await?;
+    }
+    // After learning, so a plan that does both takes the player row
+    // FOR UPDATE once instead of upgrading a share lock.
+    if let Some(required) = plan.required_knowledge {
+        knowledge::check_knowledge(tx, player_id, required).await?;
     }
     for &(discipline_id, delta) in &plan.expertise {
         let before: Option<i32> = sqlx::query_scalar(

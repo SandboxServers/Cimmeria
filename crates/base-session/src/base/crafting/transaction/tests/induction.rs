@@ -57,6 +57,7 @@ async fn logout_mid_induction_consumes_nothing() {
         grant: vec![(BANK_FIRST_PRODUCT, 1)],
         expertise: vec![],
         learn_blueprints: vec![],
+        required_knowledge: None,
     };
     let (sessions, scheduler) = engine();
 
