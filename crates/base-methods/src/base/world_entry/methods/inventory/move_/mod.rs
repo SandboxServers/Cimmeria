@@ -687,4 +687,8 @@ mod allowlist_tests;
 #[cfg(test)]
 mod concurrency_tests;
 #[cfg(test)]
+mod refusal_infra_tests;
+#[cfg(test)]
+mod refusal_resync_tests;
+#[cfg(test)]
 mod tests;

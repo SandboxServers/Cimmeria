@@ -120,3 +120,45 @@ async fn grant_into_vault_is_refused() {
 
     cleanup(&pool).await;
 }
+
+/// `grant_rejected reason=account_lookup_failed`: the database is
+/// unreachable, so the refusal cannot read the account id. The grant is
+/// still refused, and the failed lookup is logged with every correlator it
+/// has (player, entity, type, target container) and no `account_id`. No
+/// database needed: the pool can never connect.
+#[tokio::test]
+async fn grant_refusal_logs_account_lookup_failed_when_the_database_is_down() {
+    let pool = Arc::new(
+        sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(std::time::Duration::from_millis(50))
+            .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/none")
+            .expect("connect_lazy must succeed for any well-formed URL"),
+    );
+    let capture = LogCapture::install();
+
+    let refused =
+        super::validation::refuse_storage_grant(&pool, ENTITY_ID, PLAYER_ID, 4242, 17, 1).await;
+
+    assert!(
+        refused,
+        "the grant is refused whether or not the lookup works"
+    );
+    let event = capture
+        .find_event(Level::WARN, "grant_rejected", "account_lookup_failed")
+        .expect("a failed account lookup must log grant_rejected reason=account_lookup_failed");
+    assert_eq!(event.target, "bank");
+    for (key, value) in [
+        ("event", "grant_rejected".to_string()),
+        ("player_id", PLAYER_ID.to_string()),
+        ("entity_id", ENTITY_ID.to_string()),
+        ("type_id", "4242".to_string()),
+        ("target_container_id", "17".to_string()),
+    ] {
+        assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
+    }
+    assert!(
+        !event.fields.contains_key("account_id"),
+        "the account id is what failed to load"
+    );
+}

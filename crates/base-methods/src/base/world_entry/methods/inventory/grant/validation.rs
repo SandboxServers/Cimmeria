@@ -96,6 +96,9 @@ pub(super) async fn refuse_storage_grant(
                     target: "bank",
                     event = "grant_rejected",
                     player_id,
+                    entity_id,
+                    type_id,
+                    target_container_id = container_id,
                     reason = "account_lookup_failed",
                     "grant_rejected: could not read the account id: {e}"
                 );

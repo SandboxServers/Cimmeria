@@ -101,12 +101,22 @@ struct RefusalContext {
 /// then flush). No `onErrorCode` exists for "cannot move item", so the
 /// snap-back is the whole of the feedback.
 ///
-/// Both happen under the per-player move lock, the `(player_id, 0)` advisory
-/// lock every move takes before it touches a row. A move of the same item
-/// that is committing at the same moment finishes before the read, so the
-/// log and the packet both show its committed position, and no later move
-/// of it can commit until the packet has gone. Only the named item is
-/// resent, never the whole inventory: see [`send_inventory_item_update_via`].
+/// Both happen under two locks, held until the packet has gone:
+///
+/// - the per-player move lock, the `(player_id, 0)` advisory lock every move
+///   takes before it touches a row, so a move of the same item that is
+///   committing at the same moment finishes first;
+/// - a `FOR UPDATE` lock on the refused item's row. The other inventory
+///   writers do not take the move lock: a grant that merges into an existing
+///   stack locks `(player_id, container_id)`, and removes, uses, vendor sales
+///   and trades lock only the row. Every one of them row-locks the row before
+///   changing it (an `UPDATE` or `DELETE` does so itself), so a write already
+///   in flight commits before the read, and a later one waits until the
+///   packet has gone and sends its own update after it.
+///
+/// So the log and the packet both show the committed row, and no write to
+/// that row can overtake the packet. Only the named item is resent, never
+/// the whole inventory: see [`send_inventory_item_update_via`].
 ///
 /// `quantity` is the requested quantity as sent (`<= 0` means the whole
 /// stack). The caller has already rolled back any transaction it opened.
@@ -133,12 +143,12 @@ pub(super) async fn refuse_move(
         target_container_id,
         target_slot_id,
     };
-    match take_move_lock(pool, player_id).await {
+    match take_move_lock(pool, entity_id, player_id, item_id).await {
         Some(mut tx) => {
-            let context = refusal_context(&mut *tx, player_id, item_id).await;
+            let context = refusal_context(&mut *tx, entity_id, player_id, item_id).await;
             if refusal.log(&context) {
                 refusal
-                    .resend(&mut *tx, transport, connected, entity_to_addr)
+                    .resend(&mut *tx, &context, transport, connected, entity_to_addr)
                     .await;
             }
             if let Err(e) = tx.rollback().await {
@@ -155,10 +165,16 @@ pub(super) async fn refuse_move(
             }
         }
         None => {
-            let context = refusal_context(pool.as_ref(), player_id, item_id).await;
+            let context = refusal_context(pool.as_ref(), entity_id, player_id, item_id).await;
             if refusal.log(&context) {
                 refusal
-                    .resend(pool.as_ref(), transport, connected, entity_to_addr)
+                    .resend(
+                        pool.as_ref(),
+                        &context,
+                        transport,
+                        connected,
+                        entity_to_addr,
+                    )
                     .await;
             }
         }
@@ -220,6 +236,7 @@ impl Refusal {
     async fn resend<'c, E>(
         &self,
         executor: E,
+        context: &RefusalContext,
         transport: &Arc<dyn Transport>,
         connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
         entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -243,6 +260,7 @@ impl Refusal {
             tracing::warn!(
                 target: "bank",
                 event = "move_resync_skipped",
+                account_id = context.account_id,
                 player_id = self.player_id,
                 entity_id = self.entity_id,
                 item_id = self.item_id,
@@ -253,12 +271,15 @@ impl Refusal {
     }
 }
 
-/// Begin a read-only transaction holding the per-player move lock. `None`,
-/// logged, if either step fails; the caller then works without the lock,
-/// because the player must still see the snap-back.
+/// Begin a read-only transaction holding the per-player move lock and a
+/// row lock on the refused item (see [`refuse_move`]). `None`, logged, if
+/// any step fails; the caller then works without the locks, because the
+/// player must still see the snap-back.
 async fn take_move_lock(
     pool: &Arc<PgPool>,
+    entity_id: u32,
     player_id: i32,
+    item_id: i32,
 ) -> Option<sqlx::Transaction<'static, sqlx::Postgres>> {
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
@@ -267,17 +288,36 @@ async fn take_move_lock(
                 target: "bank",
                 event = "move_rejected",
                 player_id,
+                entity_id,
+                item_id,
                 reason = "move_lock_begin_failed",
                 "move_rejected: begin failed, resyncing without the move lock: {e}"
             );
             return None;
         }
     };
-    match sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
+    // The advisory lock first, then the row: the move path's order. No
+    // writer waits on `(player_id, 0)` while holding a row lock, so this
+    // cannot deadlock. An item the player does not own locks nothing, and
+    // the refusal logs that next.
+    let locked = match sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
         .bind(player_id)
         .execute(&mut *tx)
         .await
     {
+        Ok(_) => {
+            sqlx::query(
+                "SELECT 1 FROM sgw_inventory \
+                 WHERE character_id = $1 AND item_id = $2 FOR UPDATE",
+            )
+            .bind(player_id)
+            .bind(item_id)
+            .fetch_optional(&mut *tx)
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    match locked {
         Ok(_) => Some(tx),
         Err(e) => {
             let _ = tx.rollback().await; // Defensible silent: the lock query already failed and is logged next.
@@ -285,8 +325,10 @@ async fn take_move_lock(
                 target: "bank",
                 event = "move_rejected",
                 player_id,
+                entity_id,
+                item_id,
                 reason = "move_lock_failed",
-                "move_rejected: move lock failed, resyncing without it: {e}"
+                "move_rejected: move or item row lock failed, resyncing without it: {e}"
             );
             None
         }
@@ -296,7 +338,12 @@ async fn take_move_lock(
 /// The account and the refused item's current row. `type_id` is `None`
 /// when the player does not own `item_id`; every field is `None` and
 /// `lookup_failed` is set when the query fails (logged).
-async fn refusal_context<'c, E>(executor: E, player_id: i32, item_id: i32) -> RefusalContext
+async fn refusal_context<'c, E>(
+    executor: E,
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+) -> RefusalContext
 where
     E: sqlx::PgExecutor<'c>,
 {
@@ -318,6 +365,7 @@ where
                 target: "bank",
                 event = "move_rejected",
                 player_id,
+                entity_id,
                 item_id,
                 reason = "refusal_context_query_failed",
                 "move_rejected: could not read the refused item's context: {e}"

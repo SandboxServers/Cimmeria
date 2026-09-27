@@ -334,8 +334,9 @@ pub async fn send_full_inventory_update(
 /// The move refusal uses this to snap one dragged item back. A full
 /// snapshot would also carry every other row as of the read, and a grant
 /// committing between that read and the send would then be hidden on the
-/// client by the older snapshot. One row avoids that: grants never touch an
-/// existing row, and moves of the same row serialize on the move lock.
+/// client by the older snapshot. With one row, only a write to that same row
+/// can race the send, and the refusal holds the row's `FOR UPDATE` lock
+/// across it (`move_/container_policy.rs`, `take_move_lock`).
 pub(crate) async fn send_inventory_item_update_via<'c, E>(
     entity_id: u32,
     player_id: i32,
