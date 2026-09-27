@@ -100,6 +100,23 @@ async fn owner_gone_is_swept() {
     assert_pet_gone(&mgr, pet);
 }
 
+/// Entity ids are reused: the owner is destroyed and its id comes back as an
+/// NPC in the same space. The NPC is not the owner, so the pet is swept.
+#[tokio::test]
+async fn owner_id_reused_by_an_npc_is_swept() {
+    let (mut mgr, pet) = watched_pet();
+    let (tx, mut rx) = mpsc::channel(64);
+    mgr.destroy_entity(OWNER);
+    mgr.spawn_npc(OWNER, "Agnos", [11.0, 0.0, 11.0], [0.0; 3])
+        .unwrap();
+    assert!(!mgr.get_entity(OWNER).unwrap().is_player);
+
+    assert_eq!(pet_owner_sweep(&tx, &mut mgr).await, 1);
+    assert!(left_aoi_witnesses(&mut rx, pet).contains(&OTHER));
+    assert!(mgr.get_entity(pet).is_none(), "pet entity removed");
+    assert!(mgr.pets.is_empty(), "registry emptied");
+}
+
 /// D-PT08: owner death despawns the pet.
 #[tokio::test]
 async fn dead_owner_is_swept() {

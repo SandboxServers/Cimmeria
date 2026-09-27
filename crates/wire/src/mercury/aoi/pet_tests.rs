@@ -59,8 +59,7 @@ fn pet_create_entity_carries_class_0x05() {
     );
 }
 
-/// A pet's cascade contains the owner binding exactly once, right after
-/// the `DatabaseId` slot (before `onKismetEventSetUpdate` / appearance).
+/// A pet's cascade contains the owner binding exactly once.
 #[test]
 fn pet_cascade_emits_owner_binding() {
     assert_eq!(GENERICPROPERTY_PET_OWNER_ID, 5);
@@ -72,35 +71,40 @@ fn pet_cascade_emits_owner_binding() {
         Some(&pet_npc_data(Some(OWNER_ID))),
     );
     let binding = owner_binding_bytes();
-    // No speaker id, so the binding is the first message in the cascade.
-    assert_eq!(
-        &body[..binding.len()],
-        binding.as_slice(),
-        "cascade must open with onEntityProperty(PetOwnerId, owner)"
-    );
-    let rest = &body[binding.len()..];
+    let at = find(&body, &binding).expect("cascade must carry onEntityProperty(PetOwnerId, owner)");
     assert!(
-        find(rest, &binding).is_none(),
+        find(&body[at + binding.len()..], &binding).is_none(),
         "the owner binding is sent once"
     );
 }
 
-/// With a speaker id, `DatabaseId` stays first and the owner binding
-/// follows it immediately.
+/// The owner binding must come right AFTER `onEntityFlags`:
+/// `GamePet__OnOwnerIdChanged` is gated on `ENTITYFLAG_Pet` already being
+/// set, so an owner property sent before the flags is ignored and the pet
+/// never binds to `Unit.PetN` (Copilot review on #870). With a speaker id,
+/// `DatabaseId` still opens the cascade.
 #[test]
-fn pet_owner_binding_follows_database_id() {
+fn pet_owner_binding_follows_entity_flags() {
+    use crate::cell::client_methods::pet::ENTITYFLAG_PET;
     let mut npc = pet_npc_data(Some(OWNER_ID));
     npc.speaker_id = Some(77);
+    npc.entity_flags = ENTITYFLAG_PET;
     let body = compose_create_entity_cascade_body(PET_ID, SGWPET_CLASS_ID, 12, Some(&npc));
     let mut database_id = vec![0x87, 0x0C, 0x00];
     database_id.extend_from_slice(&PET_ID.to_le_bytes());
     database_id.extend_from_slice(&9i32.to_le_bytes());
     database_id.extend_from_slice(&77i32.to_le_bytes());
     assert_eq!(&body[..database_id.len()], database_id.as_slice());
+    let mut flags = vec![0x84, 0x0C, 0x00];
+    flags.extend_from_slice(&PET_ID.to_le_bytes());
+    flags.extend_from_slice(&1024u64.to_le_bytes());
+    let flags_at = find(&body, &flags).expect("onEntityFlags(ENTITYFLAG_Pet) present");
     let binding = owner_binding_bytes();
+    let after = flags_at + flags.len();
     assert_eq!(
-        &body[database_id.len()..database_id.len() + binding.len()],
-        binding.as_slice()
+        &body[after..after + binding.len()],
+        binding.as_slice(),
+        "onEntityProperty(PetOwnerId) must immediately follow onEntityFlags"
     );
 }
 

@@ -175,29 +175,6 @@ pub fn compose_create_entity_cascade_body(
         }
     }
 
-    // 1b. SGWPet: onEntityProperty(GENERICPROPERTY_PetOwnerId, ownerEntityId).
-    // `SGWPet.ownerID` is CELL_PUBLIC, and with no BigWorld property stream
-    // for NPCs this generic property is the only carrier. Sent to every
-    // witness, not just the owner: who owns a pet is public, its ability and
-    // stance lists are not (those go owner-only, `cell::pets::create_on_client`).
-    // With `ENTITYFLAG_Pet` in `onEntityFlags` below and the owner-only
-    // `onPetStanceList`, this is what binds the pet into the owner's
-    // `Unit.Pet1..4` (`docs/reverse-engineering/findings/pet-client-contract.md`).
-    if let Some(owner_id) = npc_data.and_then(|d| d.pet_owner_id) {
-        let mut args = Vec::with_capacity(8);
-        args.extend_from_slice(
-            &crate::cell::client_methods::pet::GENERICPROPERTY_PET_OWNER_ID.to_le_bytes(),
-        );
-        args.extend_from_slice(&(owner_id as i32).to_le_bytes());
-        append_entity_method(
-            &mut body,
-            method_idx::ON_ENTITY_PROPERTY,
-            idbase,
-            entity_id,
-            &args,
-        );
-    }
-
     // 2. onKismetEventSetUpdate(eventSetId)
     if let Some(d) = npc_data {
         if let Some(event_set_id) = d.event_set_id {
@@ -252,6 +229,33 @@ pub fn compose_create_entity_cascade_body(
         entity_id,
         &entity_flags.to_le_bytes(),
     );
+
+    // 6b. onEntityProperty(GENERICPROPERTY_PetOwnerId, ownerId) -- AFTER
+    // onEntityFlags: the client's owner handler (`GamePet__OnOwnerIdChanged`)
+    // is gated on `ENTITYFLAG_Pet` being set already, so an owner property
+    // sent before the flags is ignored and the pet never binds.
+    // 1b. SGWPet: onEntityProperty(GENERICPROPERTY_PetOwnerId, ownerEntityId).
+    // `SGWPet.ownerID` is CELL_PUBLIC, and with no BigWorld property stream
+    // for NPCs this generic property is the only carrier. Sent to every
+    // witness, not just the owner: who owns a pet is public, its ability and
+    // stance lists are not (those go owner-only, `cell::pets::create_on_client`).
+    // With `ENTITYFLAG_Pet` in `onEntityFlags` below and the owner-only
+    // `onPetStanceList`, this is what binds the pet into the owner's
+    // `Unit.Pet1..4` (`docs/reverse-engineering/findings/pet-client-contract.md`).
+    if let Some(owner_id) = npc_data.and_then(|d| d.pet_owner_id) {
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(
+            &crate::cell::client_methods::pet::GENERICPROPERTY_PET_OWNER_ID.to_le_bytes(),
+        );
+        args.extend_from_slice(&(owner_id as i32).to_le_bytes());
+        append_entity_method(
+            &mut body,
+            method_idx::ON_ENTITY_PROPERTY,
+            idbase,
+            entity_id,
+            &args,
+        );
+    }
 
     // 7. onVisible(1) — CRITICAL: registers entity with the client's viewport
     append_entity_method(&mut body, method_idx::ON_VISIBLE, idbase, entity_id, &[1u8]);

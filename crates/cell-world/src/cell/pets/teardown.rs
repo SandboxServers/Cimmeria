@@ -116,6 +116,11 @@ fn sweep_verdict(space_mgr: &SpaceManager, pet_id: u32, owner: u32) -> Option<Sw
     let Some(owner_entity) = space_mgr.get_entity(owner) else {
         return Some(SweepAction::Despawn(PetDespawnReason::OwnerGone));
     };
+    // Entity ids are reused: after the owner is destroyed the id can come
+    // back as an NPC in the same space. Only a player can own a pet.
+    if !owner_entity.is_player {
+        return Some(SweepAction::Despawn(PetDespawnReason::OwnerGone));
+    }
     if space_mgr.get_entity_space_id(owner) != Some(pet_space) {
         return Some(SweepAction::Despawn(PetDespawnReason::OwnerLeftSpace));
     }
