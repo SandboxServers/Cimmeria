@@ -22,9 +22,32 @@ existing `sgw_gate_mail` table.
 |---|---|
 | Wire format docs | ~90% (`filterFlags` gap below) |
 | Entity model | ~85% (SGWEscrow misclassification clarified) |
-| Server logic | ~0% |
-| DB persistence (auction tables) | ~0% (none exist) |
-| **Overall** | **~0% functional** |
+| Server logic | Phase 1 on `main` (2026-09-27): search, create, bid, cancel, expiry sweep; see [black-market.md](../../architecture/black-market.md) |
+| DB persistence (auction tables) | `sgw_auction` + `sgw_auction_bid` under `db/sgw/BlackMarket/` |
+| **Overall** | **Server implemented; not player-visible until the client patch (#587)** |
+
+## Player-reachable entry — `onBMOpen` (Phase 6a)
+
+`onBMOpen` (client method **90**, wire `INT32 entityId`) has a server path
+that needs no GM hack:
+
+- **Action → wire**: `Action::OpenBlackMarket` (content-engine verb
+  `open_black_market`) → `crates/cell-content/src/cell/content/executor/black_market.rs::open`
+  resolves the auctioneer entity id (the same `target_entity_id` source
+  `DisplayDialog` uses) and sends `onBMOpen(auctioneerEntityId)` via
+  `CellToBaseMsg::EntityMethodCall`. Serializer:
+  `cimmeria_wire::black_market::serialize_on_bm_open` (LE INT32).
+- **Auctioneer NPC**: `feat/571-black-market-phase1` placed one
+  (`BlackMarket_Auctioneer`) in the Castle_CellBlock (world 12) stasis area
+  at `(-325.0, 73.47, -206.5)`, beside the `ArmYourself_GuardBody` /
+  `ArmYourself_FrostBody` corpses, with chains 5030 (`player_loaded`, sets
+  `INT_Auction`, mask 4) and 5031 (`interact_tag`, runs `open_black_market`).
+  Its template and spawn ids (168 / 238) now belong to the Castle rebuild, so
+  the port (BM-01) left those rows out; packet BM-07 re-seeds them.
+
+A stock client drops method 90 (see
+[black-market-client-window-patch.md](black-market-client-window-patch.md)),
+so the window opens only with the client patch.
 
 ## ⚠️ Corrections to existing artifacts
 

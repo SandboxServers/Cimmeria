@@ -18,7 +18,7 @@ The `SGWMailManager` interface in `entities/defs/interfaces/SGWMailManager.def` 
 
 The Rust implementation forwards every mail request from the cell to the base, because mail needs database access and the DB pool lives on the BaseApp. [`crates/cell-interactions/src/cell/mail.rs`](../../crates/cell-interactions/src/cell/mail.rs) packages the request as `CellToBaseMsg::MailRequest { op: MailOp }`; [`crates/base-methods/src/base/world_entry/methods/mail/`](../../crates/base-methods/src/base/world_entry/methods/mail/) runs the query and sends the result straight back to the client. `mod.rs` routes each `MailOp`, `read.rs` holds the read side and `send/` the send path.
 
-Two paths write `sgw_gate_mail`: the player send path below, and the system-mail writer in `mail/system/` for mail the server sends (see [Server and GM mail](#server-and-gm-mail-ss-u1)). The Black Market branch's own helper, `send_mail_to_player` on the unmerged `feat/571-black-market-phase1` (PR #586), is to be replaced by the system-mail writer (Black Market S9, BM-02b).
+Two paths write `sgw_gate_mail`: the player send path below, and the system-mail writer in `mail/system/` for mail the server sends (see [Server and GM mail](#server-and-gm-mail-ss-u1)). The Black Market expiry sweep still writes its settlement mail through its own helper, `send_mail_to_player` in [`crates/base-session/src/base/black_market/payout_mail.rs`](../../crates/base-session/src/base/black_market/payout_mail.rs) (on `main` since BM-01); it is to be replaced by the system-mail writer (Black Market S9, BM-02b).
 
 ### Sending a text mail (SS-M1)
 

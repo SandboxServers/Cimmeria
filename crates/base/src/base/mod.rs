@@ -25,8 +25,8 @@ mod smoke_tests;
 pub use service::BaseService;
 
 pub(crate) use cimmeria_base_session::base::{
-    archetype_name, contact_list, cooked_data, feedback, helpers, mutes, outbox, player_index,
-    rate_limit, tick_sync, BaseError, ConnectedClientState, OnlinePlayer,
+    archetype_name, black_market, contact_list, cooked_data, feedback, helpers, mutes, outbox,
+    player_index, rate_limit, tick_sync, BaseError, ConnectedClientState, OnlinePlayer,
 };
 pub(crate) use cimmeria_base_world_entry::base::{character, world_entry};
 pub(crate) use cimmeria_resources::base::{chardef, resources};

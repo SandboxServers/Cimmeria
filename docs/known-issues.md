@@ -170,6 +170,7 @@ No longer stubbed:
   and AoI ignore enforcement landed separately.
 - **Black market**: 4 of 6 CellMethods implemented (`BMSearch`,
   `BMCreateAuction`, `BMPlaceBid`, `BMCancelAuction`) with an expiry sweep and
-  COD-to-seller mail cascade — but on the `feat/571-black-market-phase1`
-  branch, **not on `main`**. `BMStartWatchingItem` / `BMStopWatchingItem`
-  remain stubs.
+  COD-to-seller mail cascade, on `main` since BM-01 (2026-09-27;
+  `crates/base-session/src/base/black_market/`). `BMStartWatchingItem` /
+  `BMStopWatchingItem` remain stubs, and the client drops every `onBM*` reply
+  until the client patch ships (#587).

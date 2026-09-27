@@ -483,6 +483,11 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         "grant_stargate_address" => Some(Action::GrantStargateAddress {
             stargate_id: row.target_id?,
         }),
+        // Open the Black Market window. No target_id/target_key/params —
+        // the auctioneer entity is resolved at execution time from the
+        // interact trigger's `target_entity_id` (same source DisplayDialog
+        // uses for the dialog portrait entity).
+        "open_black_market" => Some(Action::OpenBlackMarket),
         // Entity lifecycle verbs live in a sibling module (see
         // `action_spawn`); it returns `None` for anything it doesn't own,
         // which lands us on the same "unknown action_type" path as before.

@@ -1,10 +1,10 @@
 # Black Market / Auction House
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 > **Audience**: Engineers touching the auction house, escrow, or the client-side method-binding patch
 > **Type**: ADR + reference
 > **Owner**: Social systems
-> **Status**: Implemented but **unmerged** — Phases 1–3 live on `feat/571-black-market-phase1` (PR #586, issue #571). `crates/services/src/base/black_market/` does not exist on `main`. Client-side window restoration is tracked separately by issue #587.
+> **Status**: Implemented on `main`, not player-visible. Phases 1–3 were written on `feat/571-black-market-phase1` (PR #586, issue #571) and ported onto the split crates by packet BM-01 of the [restoration plan](../analysis/black-market/README.md), with no behaviour change. The base side is `crates/base-session/src/base/black_market/`. The client drops methods 90–95 until the client patch ships (issue #587; packets BM-03 to BM-06). The plan's client-IO pass found contract mismatches in this design (S1–S8: `onBMAuctions` argument order and `clientKey`, `BMCreateAuction` field order, duration and time-left enums, search paging, caller-scoped views, seller names). Packet BM-02 fixes them; until it lands, the tables below describe what the code does, not what the client expects.
 > **Confidence**: High for the server state machine (code + tests in-branch); Medium for the wire contract (three constants are admitted guesses pending x64dbg capture); High for the client-binding diagnosis (owner-confirmed live, 2026-06-21)
 
 ## Context
@@ -52,17 +52,21 @@ decided cell-side.
 
 | Cell method | Name | Payload | Handling |
 |---|---|---|---|
-| 61 | `BMSearch` | `BMSearchOptions` (11 fields, variable) | `CellToBaseMsg::BMSearch` |
-| 62 | `BMCreateAuction` | `INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice` — **13 bytes**, `.def` order. The branch decodes `item, starting, buyout, length`, which is wrong: see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4 | `CellToBaseMsg::BMCreateAuction` |
-| 63 | `BMPlaceBid` | `INT32 sequenceId, INT32 bidAmount` — 8 bytes | `CellToBaseMsg::BMPlaceBid` |
-| 64 | `BMCancelAuction` | `INT32 sequenceId` — 4 bytes | `CellToBaseMsg::BMCancelAuction` |
+| 61 | `BMSearch` | `BMSearchOptions` (11 fields, variable) | `BlackMarketCellToBase::Search` |
+| 62 | `BMCreateAuction` | `INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice` — **13 bytes**, `.def` order. The branch decodes `item, starting, buyout, length`, which is wrong: see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4 | `BlackMarketCellToBase::CreateAuction` |
+| 63 | `BMPlaceBid` | `INT32 sequenceId, INT32 bidAmount` — 8 bytes | `BlackMarketCellToBase::PlaceBid` |
+| 64 | `BMCancelAuction` | `INT32 sequenceId` — 4 bytes | `BlackMarketCellToBase::CancelAuction` |
 | 65 | `BMStartWatchingItem` | `INT32 itemDefId` | logged `UNIMPLEMENTED`, no state |
 | 66 | `BMStopWatchingItem` | `INT32 itemDefId` | logged `UNIMPLEMENTED`, no state |
 
 Decoders live in
-`cell/cell_methods/black_market/mod.rs`;
+`crates/cell-methods/src/cell/cell_methods/black_market/mod.rs`
+(`BMSearchOptions` and its decoder are `crates/wire/src/black_market.rs`,
+because the cell and the base both name them);
 the base-side routing arms in
-`base/world_entry/cell_dispatch/black_market_dispatch.rs`.
+`crates/base-world-entry/src/base/world_entry/cell_dispatch/black_market_dispatch.rs`.
+Every base-side file named below without a path is in
+`crates/base-session/src/base/black_market/`.
 
 | Client method | Name | Args | Sent by |
 |---|---|---|---|
@@ -73,12 +77,11 @@ the base-side routing arms in
 | 94 | `onBMAuctionUpdate` | one `AuctionItem` | create, bid |
 | 95 | `onBMWatchedItemsUpdate` | `ARRAY<INT32>` | never (watch list unimplemented) |
 
-Serializers are in
-`base/black_market/wire.rs`;
-the send wrappers in
-`base/black_market/send.rs`.
-Indices are pinned in `crates/wire/src/mercury/mod.rs` (`method_idx`)
-and `crates/wire/src/cell/client_methods/black_market.rs`.
+Serializers are in `wire.rs`, except `onBMOpen`'s, which the cell sends
+and so lives in `crates/wire/src/black_market.rs`; the send wrappers are in
+`send.rs`. Indices are pinned in
+`crates/wire/src/cell/client_methods/black_market.rs` (90–95) and
+`crates/wire/src/cell/cell_methods/black_market.rs` (61–66).
 
 **Names are narrow `STRING`** (4-byte LE length prefix + UTF-8 body), not
 `WSTRING`/UTF-16 as most other SGW social systems use. This is
@@ -174,7 +177,10 @@ double-deliver: each auction commits its own item movement, mail, and
 status flip together. Payout reuses the existing `sgw_gate_mail` table
 (the same COD mechanism the original game used) — sold auctions mail cash
 to the seller and the item to the buyer; unsold auctions mail the item
-back to the seller. `settle_expired_once` carries no transport state so
+back to the seller. Every mail write goes through `payout_mail.rs`
+(`send_mail_to_player` and the subject/body texts), so packet BM-02b can
+move the payouts onto the social-systems mail API without touching the
+settlement logic. `settle_expired_once` carries no transport state so
 the live-DB test can drive it directly; the notification fan-out
 (`onBMAuctionRemove` to any online seller/buyer) is layered on top by
 `run_sweep_pass`.
@@ -214,12 +220,15 @@ one-byte integer; time columns are unix epoch seconds `INTEGER`, matching
 
 ### 9. Player entry is a content chain, not a hardcoded interaction
 
-The auctioneer (`BlackMarket_Auctioneer`, spawn 238 / template 168, in
-Castle_CellBlock) is reached through the ordinary content engine: chain
-5030 sets the `INT_Auction` interaction bit on `player_loaded` so the
-prompt survives relog, and chain 5031 fires `open_black_market` on
-`interact_tag`. The action handler
-(`cell/content/executor/black_market.rs`)
+The auctioneer is reached through the ordinary content engine: one chain
+sets the `INT_Auction` interaction bit on `player_loaded` so the prompt
+survives relog, and another fires `open_black_market` on `interact_tag`.
+The branch seeded both (chains 5030/5031) with an auctioneer NPC
+(`BlackMarket_Auctioneer`) in Castle_CellBlock. BM-01 did not port those
+seed rows: the Castle rebuild has since reassigned the branch's template
+and spawn ids (168 / 238), so the NPC, its chains and their seed guards
+are re-seeded by packet BM-07. The action handler
+(`crates/cell-content/src/cell/content/executor/black_market.rs`)
 resolves the auctioneer entity id with the same precedence
 `dialog::display` uses — chain `params["target_entity_id"]`, then the
 player's `last_interaction_target` pin — and **aborts with a warn** if
@@ -312,7 +321,7 @@ each one is blocked on evidence we do not have.
 
 ### `next_min_bid` is a guess
 
-`wire.rs:59-67`
+`wire.rs:63-71`
 computes the bid floor as a **5 % increment with a floor of +1**
 (`current + max(current / 20, 1)`). The real `nextMinBidPrice` formula is
 unknown — this is an admitted placeholder pending **x64dbg D.6**
@@ -334,7 +343,7 @@ ordinals in `wire::error_code` (pending **D.1**) and the
 
 ### Auction search has no `LIMIT` — CAT-I-05, still open
 
-`search.rs:37-45`
+`search.rs:35-47`
 runs `SELECT … FROM sgw_auction WHERE status = $1 ORDER BY sequence_id`
 with `fetch_all` — **every matching row**, no cap, no pagination, no
 per-request bound. `handle_search` then resolves a seller name per row
@@ -401,7 +410,7 @@ engine decoder work.
   under `db/sgw/BlackMarket/`. No migration script — per repo convention
   the seed in `db/` is edited directly.
 - **New background task**: the expiry sweep is spawned at base startup
-  alongside the boot seed. Both are fire-and-forget `tokio::spawn`
+  (`crates/base/src/base/service.rs`) alongside the boot seed. Both are fire-and-forget `tokio::spawn`
   spawners so the caller need not be async, and they are benign if they
   race — seeded listings carry a future `expires_at`, so the sweep's
   first pass ignores them.
@@ -412,13 +421,16 @@ engine decoder work.
 - **`sgw_gate_mail` is now written by a system path.** Auction mail has
   `sender_id = NULL` and `sender_name = "Black Market"`; any mail code
   that assumes a non-null sender must tolerate it.
-- **Reusable helpers landed**: `send_mail_to_player`,
-  `adjust_player_cash`, `escrow_item`, `return_item` are deliberately
-  generic over the executor and are the right building blocks for other
-  systems that move items and cash atomically (trade, guild bank).
+- **Reusable helpers landed**: `adjust_player_cash`, `escrow_item` and
+  `return_item` (`helpers.rs`) are deliberately generic over the executor
+  and are the right building blocks for other systems that move items and
+  cash atomically (trade, guild bank). `send_mail_to_player`
+  (`payout_mail.rs`) is too, but it is scheduled to be replaced by the
+  social-systems mail API (BM-02b), so new code should not call it.
 - **Test coverage** is in
-  `base/black_market/tests/`
-  (live-DB: create/bid/cancel, search, sweep) plus in-module unit tests
+  `crates/base-session/src/base/black_market/tests/`
+  (live-DB: create/bid/cancel, search, sweep; sentinels in the
+  `0x7000_Axxx` block) plus in-module unit tests
   for the pure validators, the wire serializers (byte-exact layout
   guards), the `BMSearchOptions` deserializer (11-field round-trip and a
   UTF-8-not-WSTRING pin), and the seed's system-seller invariants.
@@ -434,7 +446,7 @@ engine decoder work.
 
 | Area | Confidence | Basis |
 |---|---|---|
-| Cell/base split, state machine, escrow semantics | **High** | Code + unit and live-DB tests in-branch |
+| Cell/base split, state machine, escrow semantics | **High** | Code + unit and live-DB tests on `main` |
 | Inbound wire layouts (61–64) | **High** | Ghidra emitter decompiles; the 13-byte `BMCreateAuction` and 11-field `BMSearchOptions` are corrections to earlier docs |
 | Outbound `AuctionItem` field order | **High** | Matches the client's 10 field descriptors at `0xEF770400` exactly |
 | `next_min_bid`, `EBlackMarketError` ordinals, duration table | **Low** | Admitted guesses, pending x64dbg D.6 / D.1 / D.5 |

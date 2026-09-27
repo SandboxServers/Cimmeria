@@ -533,12 +533,12 @@ implementation from the wire format documentation inward.
 |--------|--------|-------|---------|-------|
 | **PvP / Dueling** | Very High | 6 methods, all `pass` | duel-wire-formats.md | SGWDuelMarker entity empty. Faction system (SGU/Praxis) provides foundation |
 | **Organizations** | High | 15+ methods, all `pass` | organization-wire-formats.md | SGWPlayerGroupAuthority empty shell. Needs DB schema |
-| **Black Market** | High | 6 methods, all `pass` | black-market-wire-formats.md | Auction listing, bidding, buyout, fees. **Phase-1 Rust implementation exists but is UNMERGED** (`feat/571-black-market-phase1`); not on `main` |
+| **Black Market** | High | 6 methods, all `pass` | black-market-wire-formats.md | Auction listing, bidding, buyout, fees. **Phase-1 Rust server on `main`** since 2026-09-27 (ported from `feat/571-black-market-phase1`); the client half needs a patch |
 | **Mail** | Medium-High | sendMailMessage = `pass` | mail-wire-formats.md | Some read-only methods partial. Needs DB table |
 | **Contact Lists** | Medium | 6 methods, all `pass` | contact-list-wire-formats.md | Friend/ignore list, online status |
 | **Groups** | Medium | All methods empty | group-wire-formats.md | SGWPlayerGroupAuthority empty shell |
 
-> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/base-methods/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/cell-interactions/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/cell-methods/src/cell/cell_methods/organization.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/wire/src/cell/client_methods/contact_list.rs)). **Black Market** is implemented but unmerged (see the row above). **Groups** and **PvP / Dueling** remain unimplemented. Read the effort estimates as historical.
+> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/base-methods/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/cell-interactions/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/cell-methods/src/cell/cell_methods/organization.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/wire/src/cell/client_methods/contact_list.rs)). **Black Market** has a server on `main` ([base/black_market/](../../crates/base-session/src/base/black_market/)) but no client binding yet (see the row above). **Groups** and **PvP / Dueling** remain unimplemented. Read the effort estimates as historical.
 
 ---
 

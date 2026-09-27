@@ -382,6 +382,8 @@
 \ir sgw/Organizations/Sequences/sgw_organization_events_org_event_id_seq.sql
 \ir sgw/Organizations/Sequences/sgw_organization_vault_log_log_id_seq.sql
 \ir sgw/Organizations/Sequences/sgw_organization_cash_log_log_id_seq.sql
+\ir sgw/BlackMarket/Sequences/sgw_auction_sequence_id_seq.sql
+\ir sgw/BlackMarket/Sequences/sgw_auction_bid_bid_id_seq.sql
 
 -- Tables
 \ir sgw/Accounts/Tables/account.sql
@@ -402,6 +404,8 @@
 \ir sgw/Organizations/Tables/sgw_organization_vault_items.sql
 \ir sgw/Organizations/Tables/sgw_organization_vault_log.sql
 \ir sgw/Organizations/Tables/sgw_organization_cash_log.sql
+\ir sgw/BlackMarket/Tables/sgw_auction.sql
+\ir sgw/BlackMarket/Tables/sgw_auction_bid.sql
 \ir sgw/Shards/Tables/shards.sql
 \ir sgw/Audit/Tables/login_audit.sql
 \ir sgw/Outbox/Tables/cell_event_outbox.sql

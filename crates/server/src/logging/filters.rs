@@ -210,6 +210,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_auth=debug,\
                 cimmeria_wire::ability_tree=debug,\
                 cimmeria_wire::base=debug,\
+                cimmeria_wire::black_market=debug,\
                 cimmeria_wire::cell=debug,\
                 cimmeria_wire::containers=debug,\
                 cimmeria_wire::crafting=debug,\

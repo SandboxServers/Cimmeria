@@ -7,7 +7,7 @@ metadata:
 
 ## Reserved system seller identifiers
 
-`SYSTEM_ACCOUNT_ID = 1` and `SYSTEM_SELLER_ID = 1` (both `i32`) are defined as `pub const` in `crates/services/src/base/black_market/seed.rs`.
+`SYSTEM_ACCOUNT_ID = 1` and `SYSTEM_SELLER_ID = 1` (both `i32`) are defined as `pub const` in `crates/base-session/src/base/black_market/seed.rs`.
 
 **Why 1 is safe:**
 - `accounts_account_id_seq` starts at 2 — value 1 is permanently unreachable.
@@ -41,6 +41,6 @@ See `db/sgw/Players/Tables/sgw_player.sql` for the full column list.
 
 ## Live-DB test location
 
-`crates/services/src/base/black_market/seed.rs` `#[cfg(test)] mod tests`:
+`crates/base-session/src/base/black_market/seed.rs` `#[cfg(test)] mod tests`:
 - `ensure_system_seller_is_idempotent_and_satisfies_fk` — idempotency + FK guard
 - `seed_auctions_use_system_seller` — regression guard (fails if real-player lookup restored)

@@ -1,6 +1,7 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
 use super::bank_cell_to_base::BankCellToBase;
+use super::black_market_cell_to_base::BlackMarketCellToBase;
 use super::chat_cell_to_base::ChatCellToBase;
 use super::content_mail_cell_to_base::ContentSystemMail;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
@@ -862,4 +863,8 @@ pub enum CellToBaseMsg {
     /// A content chain's `send_system_mail` action (SS-U3): one system mail
     /// to the chain's player, behind an optional per-player cooldown.
     ContentSystemMail(ContentSystemMail),
+    /// Black Market auction traffic (cell methods 61-64). One nested enum, so
+    /// later Black Market packets add variants in
+    /// `black_market_cell_to_base.rs` instead of here.
+    BlackMarket(BlackMarketCellToBase),
 }

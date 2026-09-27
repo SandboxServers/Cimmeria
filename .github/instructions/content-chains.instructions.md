@@ -15,6 +15,7 @@ Common masks (see `docs/content/interaction-flags.md` for the full table):
 | Mask | Constant | Use for |
 |---|---|---|
 | `2` | `INT_Banker` | Banker NPC |
+| `4` | `INT_Auction` | Black Market auctioneer (opens the auction window) |
 | `32` | `INT_RingNetwork` | Ring transporter — usable rings |
 | `128` | `INT_Trainer` | Ability trainer |
 | `256` | `INT_MinigameLivewire` | Hackable console (Livewire) |
@@ -24,6 +25,19 @@ Common masks (see `docs/content/interaction-flags.md` for the full table):
 | `16777216` | `INT_AStoryMissionActive` | "!" main-story active |
 | `33554432` | `INT_AStoryMissionTurnIn` | "?" main-story turn-in |
 | `1073741824` | `INT_MissionWorldObject` | Quest item glow |
+
+## UI-open actions (`open_black_market`)
+
+`open_black_market` (action `Action::OpenBlackMarket`) opens the client Black
+Market / auction window for the triggering player (`onBMOpen`, client method
+90). It takes no `target_id`/`target_key`/`params` — the auctioneer entity is
+resolved at execution time from the interact trigger's `target_entity_id`, so it
+**must** be fired from an `interact_tag` (or `interact_template`) chain on the
+auctioneer; firing it from a region/load trigger aborts with a `warn!` (no
+auctioneer to bind). Make the auctioneer clickable with a `set_interaction_type`
+(`INT_Auction`) on the same tag from a `player_loaded` chain (no clear, since the
+auctioneer is a permanent fixture). No seeded chain uses the verb yet: the
+auctioneer NPC and its chains are packet BM-07 of `docs/analysis/black-market/`.
 
 ## Set/clear pairing
 

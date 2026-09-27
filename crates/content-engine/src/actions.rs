@@ -466,6 +466,13 @@ pub enum Action {
         item: Option<(i32, i32)>,
         cooldown_secs: Option<u32>,
     },
+    /// Open the client Black Market / Auction House window for the
+    /// triggering player. Mirrors `DisplayDialog` in routing: the
+    /// executor sends the `onBMOpen(entityId)` client method to the
+    /// player, binding the in-world auctioneer NPC as the window's
+    /// conversation partner. Fired from an `interact_tag` chain on the
+    /// auctioneer so the feature is reachable the normal player way.
+    OpenBlackMarket,
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].

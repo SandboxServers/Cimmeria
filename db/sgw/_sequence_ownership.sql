@@ -68,3 +68,16 @@ ALTER SEQUENCE sgw_organization_vault_log_log_id_seq OWNED BY sgw_organization_v
 --
 
 ALTER SEQUENCE sgw_organization_cash_log_log_id_seq OWNED BY sgw_organization_cash_log.log_id;
+
+--
+-- Name: sgw_auction_sequence_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE sgw_auction_sequence_id_seq OWNED BY sgw_auction.sequence_id;
+
+--
+-- Name: sgw_auction_bid_bid_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE sgw_auction_bid_bid_id_seq OWNED BY sgw_auction_bid.bid_id;
+

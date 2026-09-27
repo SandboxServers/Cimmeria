@@ -34,6 +34,10 @@ pub mod ability_tree {
     mod tests;
 }
 
+/// The Black Market search options the cell forwards to the base, and the
+/// `onBMOpen` payload the cell sends.
+pub mod black_market;
+
 /// The crafting client-method payloads and the cell-to-base crafting
 /// request.
 pub mod crafting;
