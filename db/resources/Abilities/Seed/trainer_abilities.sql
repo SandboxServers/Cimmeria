@@ -3,156 +3,35 @@
 -- Dependencies: 263
 -- Data for Name: trainer_abilities; Type: TABLE DATA; Schema: resources; Owner: -
 --
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 597);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 646);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 641);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 649);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1959);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 651);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 856);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 696);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 860);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 863);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1518);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 872);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 873);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 874);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1619);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 880);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 879);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 697);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 865);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1246);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1249);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 875);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1253);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1254);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1355);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1356);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1357);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1244);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 866);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1250);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 592);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1005);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 642);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 883);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 647);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 523);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 716);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 885);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 886);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 887);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 891);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 861);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 884);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 888);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 889);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 868);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 890);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1259);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 656);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1364);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1363);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 722);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 901);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1366);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1362);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1361);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1868);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 2864);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2910);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 592);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1005);
+-- GENERATED by tools/ability_trees/generate_seed.py from sheet 12_Trainer_Server_Export of
+-- docs/analysis/ability-trees/source/SGW_All_Classes_Progression_EMULATOR_FINAL_v2_LEVEL50.xlsx
+-- (SHA-256 ad9af21448794ca1eea2bae609016b5b55ad12f2bedec542c5f3b84cf1b21dba).
+-- Do not edit by hand: change the workbook and regenerate.
+-- List 1 (debug list, entity template 25) offers every tree node of
+-- every seeded archetype. Rows of other lists are carried over unchanged.
+--
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 598);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 891);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 780);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 716);
-
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 717);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 714);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 715);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 713);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 716);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 714);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 657);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 718);
-
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 719);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 891);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 718);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 720);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1233);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 728);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 713);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 723);
 
@@ -162,183 +41,851 @@ INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHE
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 867);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1446);
-
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 722);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1879);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1476);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1445);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1446);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1475);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1458);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1445);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1476);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1477);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 597);
-
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 612);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 658);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 632);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1880);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 851);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2419);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 658);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 819);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 656);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 810);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 808);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2102);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 812);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2420);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2419);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1883);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1884);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 808);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2103);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1483);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 818);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2104);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1882);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2421);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1886);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1456);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2102);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 853);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2422);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 724);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1457);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1885);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 852);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1889);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1888);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2143);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1486);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1485);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2105);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1450);
-
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1487);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 594);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1456);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 523);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1486);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1642);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 653);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 637);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 654);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1454);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 523);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1452);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 858);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1455);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1619);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 854);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 856);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 772);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1891);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 861);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 774);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 775);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1453);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 868);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1892);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1450);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 869);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 745);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 861);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1481);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1891);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 847);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1457);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1329);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 854);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1638);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1482);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1364);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1479);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1451);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1479);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1458);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1364);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1329);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 856);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 2864);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1894);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Soldier', 1893);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 594);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 642);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 523);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 883);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 887);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 647);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 886);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 861);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 884);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 885);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 888);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1259);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 890);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1364);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 901);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 889);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1363);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 2864);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1366);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1362);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 2172);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 2173);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 3358);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1868);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 646);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 649);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 641);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 651);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1518);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 872);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 874);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 873);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 880);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 863);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 860);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1246);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 875);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1250);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1253);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1254);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 865);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1355);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1356);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1244);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 866);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1357);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 655);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 654);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 780);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 640);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 660);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 849);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 847);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 848);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 745);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 849);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 640);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 850);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 855);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 848);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 706);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 855);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 857);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 877);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 867);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1242);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1331);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 870);
-
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1724);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 859);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1332);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 871);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1358);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1242);
 
-INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 859);
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 877);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 870);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1331);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1354);
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 862);
 
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1358);
+
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Commando', 1359);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 948);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 946);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 988);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 992);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 990);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 989);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 994);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 998);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 999);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 993);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1220);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1228);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1215);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 997);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1000);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1217);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1226);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1227);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1952);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1223);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1225);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1224);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1013);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1016);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1014);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 598);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1017);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 713);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1015);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1018);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1005);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1012);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1019);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 891);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1236);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1474);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1229);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1231);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1230);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1232);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 2955);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1235);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 962);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 943);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 963);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 967);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 964);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 972);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 965);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 968);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 971);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 944);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 966);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1206);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1214);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1212);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 945);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1207);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Scientist', 1213);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 778);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 746);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1081);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 784);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 781);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 788);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 779);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1183);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1082);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 789);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 792);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 791);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1191);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1192);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 2074);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1187);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1083);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1188);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1190);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 2099);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1184);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 643);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 751);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 753);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1178);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1181);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1179);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1182);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 752);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1180);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 754);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 742);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 743);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1451);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 706);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 654);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 598);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 718);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1638);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 2848);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 777);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 802);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 809);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 811);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 817);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 677);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 678);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 679);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 680);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 681);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 682);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 683);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 684);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 685);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 686);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1552);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 815);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1193);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1194);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1197);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 2507);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 2508);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 813);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1196);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Archeologist', 1195);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1533);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1174);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1535);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1534);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1537);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1536);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1539);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1543);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1538);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1541);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1540);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1546);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3167);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1547);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1544);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1545);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1542);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3166);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3168);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3161);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3169);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3170);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3171);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3173);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1561);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1564);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1572);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1574);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1566);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1569);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1563);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1565);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1573);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1575);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1567);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1571);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1579);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1580);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1581);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3258);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3257);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3183);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3259);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3190);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3265);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1554);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1555);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1550);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1549);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1553);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1556);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1557);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 1548);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3209);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3212);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3180);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3175);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3245);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3176);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3177);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3181);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3178);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3254);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3255);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3256);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Asgard', 3246);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1984);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1734);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1731);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1481);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1482);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1735);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1733);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2001);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2008);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2029);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2026);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1640);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1641);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2028);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1905);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2025);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2058);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2042);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2027);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2841);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2043);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2104);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1917);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2262);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2430);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2263);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2265);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2264);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2126);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1723);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1727);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1728);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1724);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1726);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1725);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1736);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1626);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2072);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2070);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 649);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 874);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2064);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2061);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2062);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2063);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2065);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1997);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 1998);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2067);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2071);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Sholva', 2073);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2853);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 646);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1614);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1613);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1625);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1622);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1518);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2860);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2858);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1621);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2859);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 865);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2861);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2857);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2863);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1617);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1620);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 866);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2869);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2868);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2862);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1639);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1627);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1629);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1637);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1632);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1481);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1482);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1626);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2660);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2554);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2656);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2719);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1630);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2676);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1628);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2717);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2715);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2694);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2716);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2865);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2718);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1643);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1646);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1647);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1651);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1644);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1645);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1650);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1652);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 1654);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2824);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2852);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2775);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2795);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2823);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2827);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2846);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2839);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 774);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2069);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2826);
 
