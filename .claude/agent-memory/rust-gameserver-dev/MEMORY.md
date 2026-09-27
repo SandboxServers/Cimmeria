@@ -78,6 +78,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [dialog-set-bind-routing-and-edges.md](dialog-set-bind-routing-and-edges.md) — `target_id` is a dialog_set_MAP id; a bind fans to every entity of the template.
 - [dialog-button-strip-and-seed-agreement.md](dialog-button-strip-and-seed-agreement.md) — linter floors block the packet that changes them; roster pins for patch tests.
 - [debug-hub-npc-authoring-traps.md](debug-hub-npc-authoring-traps.md) — Vendor interaction was never set (now derived at spawn); set 4 is not harmless; new dialogs need DIALOG_OVERRIDES + pinned-id test edits.
+- [trainer-seed-and-gm-grant-traps.md](trainer-seed-and-gm-grant-traps.md) — trainer_abilities.sql is generated; capstones need .giveability; grants persist via base; pets 350-359 vs NPCs 360-369.
 
 ## Base sessions
 
