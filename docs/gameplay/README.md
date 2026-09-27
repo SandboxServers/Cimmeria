@@ -43,7 +43,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Trading](#trading) | IM | SGWPlayer | `cell/cell_methods/player/trade/`, `base/world_entry/methods/trade/` | LOW |
 | [Black Market](#black-market) | KM on `main` | SGWBlackMarketManager | stubs on `main`; Phase 1 on unmerged PR #586 | LOW |
 | [Pets](#pets) | KM | (SGWPet entity) | — | LOW |
-| [Dueling](#dueling) | KM | (SGWPlayer direct) | `cell/cell_methods/player/social.rs` (stubs) | LOW |
+| [Dueling](#dueling) | IM | (SGWPlayer direct) | `base/dispatch/duel.rs`, `cell/duel/` | LOW |
 | [Groups](#groups) | KM | GroupAuthority | — | MEDIUM |
 | [Contact Lists](#contact-lists) | CW | ContactListManager | `base/contact_list/`, `cell/cell_methods/contact_list/` | LOW |
 | [Cinematics](#cinematics) | KM | SGWSpawnableEntity | seven `onSequence` emit sites; no NVP support | MEDIUM |
@@ -281,7 +281,7 @@ Phase 1 exists on the **unmerged** branch `feat/571-black-market-phase1` (PR #58
 
 ## Dueling
 
-**Status**: KM — Not implemented. `sendDuelResponse` (CM 102) and `duelForfeit` (CM 103) are dispatched but log `UNIMPLEMENTED` and drop; no challenge method is dispatched at all.
+**Status**: IM — Challenge and response only (SS-D1). `sendDuelChallenge` (base 0xD9) is rate-limited, resolved and forwarded to the cell's `DuelRegistry`, which sends `onDuelChallenge`; `sendDuelResponse` (CM 102) accepts or declines. An accepted duel counts down and then aborts until SS-D2 engages it; `duelForfeit` (CM 103) still logs `UNIMPLEMENTED` (SS-D3). See [duel-system.md](duel-system.md).
 
 **Entity**: `SGWDuelMarker` — placed in world to define duel area
 **Events**: `DuelChallenge`, `DuelResponse`, `DuelForfeit` (NetOut), `onDuelChallenge`, `onDuelEntitiesSet`, `onDuelEntitiesRemove`, `onDuelEntitiesClear` (NetIn)

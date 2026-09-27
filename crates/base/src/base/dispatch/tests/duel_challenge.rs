@@ -330,7 +330,7 @@ async fn challenge_rejects_a_target_not_in_world_and_names_it() {
 
 /// A session with no player in the world still spends duel tokens: the
 /// bucket is taken before the identity check, so a flood of 0xD9 from
-/// character select is limited like any other (Copilot on #888). Three
+/// character select is limited like any other. Three
 /// calls: two `not_in_world` refusals, then a `rate_limit.exceeded` drop.
 #[tokio::test]
 async fn out_of_world_flood_is_rate_limited() {
