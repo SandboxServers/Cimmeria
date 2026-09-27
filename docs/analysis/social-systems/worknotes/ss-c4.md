@@ -7,14 +7,14 @@
 
 - **Packet:** SS-C4 (work-packets.md § SS-C4). By agreement between the social-systems coordinator and the organizations coordinator (cimmeria-1f), SS-C4 carries the whole D-ORG14 alignment. `world_entry_chat.rs` and the `CHAN_*` constants were released to this packet. ORG-09 keeps team/command/officer fan-out and any conditional officer registration.
 - **Decisions in force:** D-ORG14 (CONFIRMED: the client hardcodes every built-in `UIChannel.*` id as the `enumerations.xml` value), D-SS17 (one change, agreed by both coordinators), D-SS16 (GM broadcast on the server channel).
-- **Base:** `origin/main` @ `2076e482a` (SS-C1, SS-C2, SS-C3 merged). Branch `social/c4-channel-ids`.
+- **Base:** written on `origin/main` @ `2076e482a` (SS-C1, SS-C2, SS-C3 merged), rebased cleanly onto `origin/main` @ `dc1098baf` (after SS-M4 #933 and others). Branch `social/c4-channel-ids`. After the rebase: nextest on the seven touched crates 2108/2108, clippy and fmt clean.
 - **Commits:**
-  1. `440a61ec6` fix(chat): align CHAN_* with EChannel: server 8, tell 10, splash 11
-  2. `1b9806f2c` refactor(chat): social paths use the aligned CHAN_* constants
-  3. `de938bc90` fix(chat): register server 8 and tell 10 at login; welcome on CHAN_FEEDBACK (option A, superseded by 6)
-  4. `3d262e5bb` docs(chat): channel table per EChannel; GM feedback uses the wire serializer
-  5. `cffe1e6f1` docs(social): SS-C4 worknote and chat-channel agent memory
-  6. `850e1941b` fix(chat): no onChatJoined for built-in channels at login (SS-C4 option B)
+  1. `d8e2ff1e0` fix(chat): align CHAN_* with EChannel: server 8, tell 10, splash 11
+  2. `c0e64d3f6` refactor(chat): social paths use the aligned CHAN_* constants
+  3. `5cb03e629` fix(chat): register server 8 and tell 10 at login; welcome on CHAN_FEEDBACK (option A, superseded by 6)
+  4. `cb295384c` docs(chat): channel table per EChannel; GM feedback uses the wire serializer
+  5. `0adc4f5dd` docs(social): SS-C4 worknote and chat-channel agent memory
+  6. `b9fba9954` fix(chat): no onChatJoined for built-in channels at login (SS-C4 option B)
   7. this worknote update
 - **Edited:**
   - `crates/wire/src/cell/chat.rs`: the constants, `CHAN_CHAT`, three new tests.
@@ -108,7 +108,7 @@ All from the worktree, through the lane. Exit 0 unless noted.
 - `bash tools/build-lane/lane.sh cargo check -p cimmeria-wire -p cimmeria-base -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console --all-targets`.
 - `bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-base -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell -p cimmeria-content-engine`:
   - Option A: 2108 passed, 0 failed, 0 skipped. An earlier run failed one test: the scan could not parse char literals. That was fixed before the commit.
-  - Option B (after `850e1941b`): 2106 passed, 0 failed, 0 skipped. Three tests were removed with `DEFAULT_CHAT_CHANNELS` and `build_chat_joined_args`, and one was added.
+  - Option B (after `b9fba9954`): 2106 passed, 0 failed, 0 skipped. Three tests were removed with `DEFAULT_CHAT_CHANNELS` and `build_chat_joined_args`, and one was added.
 - `bash tools/build-lane/lane.sh cargo fmt --all`, then `cargo fmt --all -- --check`: clean.
 - `bash tools/build-lane/lane.sh cargo clippy -p cimmeria-wire -p cimmeria-base -p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-cell-console -p cimmeria-cell -p cimmeria-content-engine --all-targets -- -D warnings`: clean. Re-run after option B on `-p cimmeria-base-session -p cimmeria-base-world-entry -p cimmeria-wire -p cimmeria-base`: clean.
 - `cargo clippy -p cimmeria-server --all-targets -- -D warnings`: clean.
@@ -156,7 +156,7 @@ Each mutation was applied to the committed tree and tested with `cargo nextest r
 3. As a GM, send `/gmshout hello` and `.announce hello`. Every online player sees a **red line and a modal "Server Message" prompt** with an OK button. This is new: before SS-C4 nothing displayed. Also try `.announce space hello`.
 4. Send `/tell <other player> hi`. The recipient sees a purple tell in the Info tab, the sender sees their "To X" confirmation, and `/reply` works on the recipient's side.
 5. As a player, post on a refused channel if the UI lets you. The refusal line is sky blue, with no popup.
-6. On login, there are **no** "You have joined channel [N:name]" lines in the Info tab, and say, team, squad and tell all still work (option B). If the client did need registration after all, one of these channels fails to display here.
+6. (Option B) On login, there are **no** "You have joined channel [N:name]" lines in the Info tab, and say, team, squad and tell all still work (option B). If the client did need registration after all, one of these channels fails to display here.
 
 ## Integration edits for the coordinator
 
