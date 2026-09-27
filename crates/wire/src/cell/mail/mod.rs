@@ -13,7 +13,7 @@ use crate::mercury::write_wstring;
 pub mod codes;
 mod send_result;
 
-pub use send_result::serialize_send_mail_result;
+pub use send_result::{serialize_send_mail_result, SEND_MAIL_RESULT_FLAGS_BEFORE_NAMES};
 
 // ── Wire format helpers for BaseApp to build mail response packets ───────────
 
