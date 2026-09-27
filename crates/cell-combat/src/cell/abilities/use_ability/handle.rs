@@ -519,9 +519,12 @@ pub async fn handle_use_ability(
     // (which would re-acquire the immutable borrow).
     let is_player = entity.is_player;
     let auto_cycle_armed = entity.abilities.auto_cycle;
-    let has_deactivate_flag = ability_def
-        .as_ref()
-        .is_some_and(|d| d.flags & AF_DEACTIVATE_AUTO_CYCLE != 0);
+    // A `DoNotActivate_AutoCycle` (512) ability neither arms nor clears the
+    // loop: python passed `autoCycle = False` for it (`SGWPlayer.py:1177`).
+    let (has_deactivate_flag, never_arms) = ability_def.as_ref().map_or((false, false), |d| {
+        let deactivate = d.flags & AF_DEACTIVATE_AUTO_CYCLE != 0;
+        (deactivate, d.flags & AF_DO_NOT_ACTIVATE_AUTO_CYCLE != 0)
+    });
 
     // Get effect sequence ID for this ability invocation
     let effect_seq = entity.abilities.next_effect_id();
@@ -558,7 +561,7 @@ pub async fn handle_use_ability(
     // Classification was captured before the mutable borrow ended.
     // Run the actual state mutation + broadcast now that the cooldown
     // timer send is past.
-    if is_player && auto_cycle_armed {
+    if is_player && auto_cycle_armed && (has_deactivate_flag || !never_arms) {
         if has_deactivate_flag {
             if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
                 tracing::info!(
