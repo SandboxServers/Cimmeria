@@ -25,7 +25,7 @@
 //!   handler prunes a vanished target, and an emptied list leashes the mob,
 //!   whose drain takes the owner out of combat.
 
-use cimmeria_entity::cell_entity::{AiState, CellEntity};
+use cimmeria_entity::cell_entity::CellEntity;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -52,12 +52,12 @@ fn not_worth_fighting(
         return Some(why);
     }
     let owner_pos = owner.map(|o| o.position);
-    if matches!(
-        mob.ai_state(),
-        AiState::Leashing | AiState::Despawning | AiState::Dead
-    ) {
-        // It evades, is leaving, or is a corpse.
-        return Some("target_resetting");
+    // Dead, resetting, leaving, or surrendered / not engageable: the same
+    // state rule the pet's automatic engagement applies. A surrendered NPC an
+    // owner order sent the pet at is dropped here after that cast, as the
+    // pet would not keep fighting it on its own.
+    if let Some(why) = super::engage::target_state_refusal(mob, super::PetEngagement::Automatic) {
+        return Some(why);
     }
     if mob.leash.reaggro_suppressed(now) {
         // Just finished its reset: hitting it would pull it straight back.
@@ -72,11 +72,17 @@ fn not_worth_fighting(
 
 /// Whether dropping a target for `reason` also releases the pet from that
 /// target's threat list: the target stopped being fightable. A target left
-/// behind by distance (`target_far_from_owner`) keeps chasing the pet.
+/// behind by distance (`target_far_from_owner`) keeps chasing the pet, and a
+/// dead one (`target_dead`) keeps its list for kill credit; the death path
+/// already took every player, the owner included, out of combat with it.
 fn releases_target(reason: &str) -> bool {
     matches!(
         reason,
-        "target_not_combatant" | "target_not_hostile" | "target_resetting" | "target_just_reset"
+        "target_not_combatant"
+            | "target_not_hostile"
+            | "target_resetting"
+            | "target_just_reset"
+            | "target_not_engageable"
     )
 }
 

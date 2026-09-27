@@ -83,7 +83,8 @@ async fn pet_past_the_leash_from_its_owner_rearms_follow_without_walking_home() 
 }
 
 /// The target died: the fight ends in Follow, not in the walk home and not
-/// in Idle (A-29).
+/// in Idle (A-29). The pre-pass drops the corpse (`target_dead`) before the
+/// fight handler runs, so the re-arm sees an empty list.
 #[tokio::test]
 async fn pet_rearms_follow_after_its_target_dies() {
     let (mut mgr, pet) = fighting_pet([10.0, 0.0, 10.0], [10.0, 0.0, 8.0], [14.0, 0.0, 8.0]);
@@ -93,8 +94,10 @@ async fn pet_rearms_follow_after_its_target_dies() {
     tick(&mut mgr).await;
     assert_eq!(state(&mgr, pet), AiState::Follow);
     assert_eq!(mgr.get_entity(pet).unwrap().follow_target_id, Some(OWNER));
+    let drop = pets_ai_row(&logs, "pet_target_dropped").expect("drop row");
+    assert!(drop.has_field("reason", "target_dead"), "{drop:?}");
     let row = pets_ai_row(&logs, "pet_follow_rearmed").expect("rearm row");
-    assert!(row.has_field("trigger", "target_dead"), "{row:?}");
+    assert!(row.has_field("trigger", "threat_empty"), "{row:?}");
 }
 
 /// Leashing set from outside the AI (content, the GM console): the pet's

@@ -53,15 +53,7 @@ impl EngageWhy {
 /// Whether the pet can fight `mob` at all: alive, and not walking home or
 /// leaving the world. A leashing mob evades, so engaging it is pointless.
 fn fightable(mob: &CellEntity) -> bool {
-    !combat::is_dead_state(mob.state_field)
-        && mob
-            .stats
-            .get(cimmeria_entity::stats::HEALTH)
-            .is_some_and(|h| h.cur > 0)
-        && !matches!(
-            mob.ai_state(),
-            AiState::Leashing | AiState::Dead | AiState::Despawning
-        )
+    super::engage::target_state_refusal(mob, super::PetEngagement::Automatic).is_none()
 }
 
 /// The target the pet's stance engages now, nearest first within each rule,

@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::cell::combat::BSF_IN_COMBAT;
-use crate::cell::service::npc_ai::pet::engage_pet_target;
+use crate::cell::service::npc_ai::pet::{engage_pet_target, PetEngagement};
 use crate::test_support::LogCapture;
 
 /// A two-sided fight between the pet and `MOB`, the owner mirrored into it.
@@ -12,7 +12,10 @@ async fn engaged(owner: [f32; 3], pet_at: [f32; 3], mob_at: [f32; 3]) -> (SpaceM
     let (mut mgr, pet) = world_with_pet(owner);
     move_to(&mut mgr, pet, pet_at);
     add_mob(&mut mgr, MOB, mob_at, HOSTILE);
-    assert_eq!(engage_pet_target(&mut mgr, pet, MOB), Ok(()));
+    assert_eq!(
+        engage_pet_target(&mut mgr, pet, MOB, PetEngagement::Automatic),
+        Ok(())
+    );
     (mgr, pet)
 }
 
@@ -109,7 +112,10 @@ async fn a_target_left_behind_by_distance_keeps_the_pet() {
 async fn a_released_target_leaves_the_owner_while_the_fight_goes_on() {
     let (mut mgr, pet) = engaged([10.0, 0.0, 10.0], [10.0, 0.0, 8.0], [14.0, 0.0, 8.0]).await;
     add_mob(&mut mgr, MOB_2, [12.0, 0.0, 6.0], HOSTILE);
-    assert_eq!(engage_pet_target(&mut mgr, pet, MOB_2), Ok(()));
+    assert_eq!(
+        engage_pet_target(&mut mgr, pet, MOB_2, PetEngagement::Automatic),
+        Ok(())
+    );
     tick(&mut mgr).await;
     assert!(owner_in_fight_with_mob(&mgr), "precondition");
     mgr.get_entity_mut(MOB).unwrap().faction = 0;
@@ -120,4 +126,72 @@ async fn a_released_target_leaves_the_owner_while_the_fight_goes_on() {
     let o = mgr.get_entity(OWNER).unwrap();
     assert!(!o.threatened_mobs.contains(&MOB), "{:?}", o.threatened_mobs);
     assert!(o.threatened_mobs.contains(&MOB_2));
+}
+
+/// A surrendered NPC nearby: an Aggressive pet does not scan it in, so the
+/// owner is never pulled into combat with it (it used to be re-engaged every
+/// turn, and `npc_ai_submit` cleared the fight again each pass).
+#[tokio::test]
+async fn an_aggressive_pet_leaves_a_surrendered_npc_alone() {
+    let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
+    add_mob(&mut mgr, MOB, [10.0, 0.0, 16.0], HOSTILE);
+    crate::cell::service::npc_ai::force_ai_state(mgr.get_entity_mut(MOB).unwrap(), AiState::Submit);
+    set_stance(&mut mgr, pet, PetStance::Aggressive);
+
+    let logs = LogCapture::install();
+    tick(&mut mgr).await;
+    tick(&mut mgr).await;
+
+    assert_eq!(state(&mgr, pet), AiState::Follow);
+    assert!(!mob_lists_pet(&mgr, pet));
+    assert!(pets_ai_row(&logs, "pet_engaged").is_none());
+    let o = mgr.get_entity(OWNER).unwrap();
+    assert!(o.threatened_mobs.is_empty());
+    assert_eq!(o.state_field & BSF_IN_COMBAT, 0);
+}
+
+/// The target surrenders mid-fight: the pet drops it and it forgets the pet.
+#[tokio::test]
+async fn a_target_that_surrenders_is_dropped_and_forgets_the_pet() {
+    let (mut mgr, pet) = engaged([10.0, 0.0, 10.0], [10.0, 0.0, 8.0], [14.0, 0.0, 8.0]).await;
+    tick(&mut mgr).await;
+    crate::cell::service::npc_ai::force_ai_state(mgr.get_entity_mut(MOB).unwrap(), AiState::Submit);
+    // Put the pet back on the mob's list, as a fight still in flight would.
+    mgr.get_entity_mut(MOB)
+        .unwrap()
+        .threat_list
+        .insert(pet, 5.0);
+
+    let logs = LogCapture::install();
+    tick(&mut mgr).await;
+
+    assert!(!mgr.get_entity(pet).unwrap().threat_list.contains_key(&MOB));
+    assert!(!mob_lists_pet(&mgr, pet));
+    let row = pets_ai_row(&logs, "pet_target_dropped").expect("drop row");
+    assert!(row.has_field("reason", "target_not_engageable"), "{row:?}");
+}
+
+/// The target dies (killed by anyone): on the pet's next turn the corpse is
+/// off its list, the pet is back in Follow, and the owner is out of combat
+/// with it.
+#[tokio::test]
+async fn the_pets_target_dying_ends_the_fight_cleanly() {
+    let (mut mgr, pet) = engaged([10.0, 0.0, 10.0], [10.0, 0.0, 8.0], [14.0, 0.0, 8.0]).await;
+    tick(&mut mgr).await;
+    assert!(owner_in_fight_with_mob(&mgr), "precondition");
+    let (tx, _rx) = mpsc::channel(256);
+    assert!(
+        crate::cell::abilities::kill_npc_out_of_band(MOB, OWNER, true, false, &tx, &mut mgr).await
+    );
+
+    tick(&mut mgr).await;
+
+    assert_eq!(state(&mgr, pet), AiState::Follow);
+    assert!(!mgr.get_entity(pet).unwrap().threat_list.contains_key(&MOB));
+    assert!(!owner_in_fight_with_mob(&mgr));
+    assert!(!mgr
+        .get_entity(OWNER)
+        .unwrap()
+        .threatened_mobs
+        .contains(&MOB));
 }

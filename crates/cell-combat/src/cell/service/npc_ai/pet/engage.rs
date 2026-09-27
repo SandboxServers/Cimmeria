@@ -15,7 +15,7 @@
 //! mob stayed idle until the pet's first hit landed, and the owner was not
 //! mirrored into combat until then.
 
-use cimmeria_entity::cell_entity::AiState;
+use cimmeria_entity::cell_entity::{AiState, CellEntity};
 use cimmeria_entity::stats::HEALTH;
 
 use crate::cell::combat;
@@ -28,6 +28,52 @@ use super::stance::EngageWhy;
 /// soon as the fight starts.
 pub const PET_ENGAGE_THREAT: f32 = 1.0;
 
+/// Who is starting a pet's fight: the pet on its own, or its owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PetEngagement {
+    /// The pet's own decision: a stance pick (defend owner or self, the
+    /// owner's target, the Aggressive scan).
+    Automatic,
+    /// An explicit order from the owner (PT-04's attack order). Obeyed
+    /// whatever the stance, and against any target the owner could attack
+    /// itself, a surrendered (`Submit`) NPC included: `handle_use_ability`
+    /// lets a player attack one.
+    OwnerOrder,
+}
+
+/// Why `target`'s state rules out engaging it, or `None` when it is
+/// engageable. Shared by the engagement and by the stance's candidate
+/// filter, so the two cannot drift.
+///
+/// - `target_dead`: `BSF_DEAD`, no health left, or `AiState::Dead`.
+/// - `target_resetting`: walking home (it evades and takes no threat) or
+///   leaving the world.
+/// - `target_not_engageable` (automatic engagement only): surrendered
+///   (`Submit`: `npc_ai_submit` clears both sides of its fight every pass,
+///   so re-engaging it would flap the owner in and out of combat), not yet
+///   spawned, or in the error state. An owner order still reaches a
+///   surrendered NPC, as a player's own attack does.
+pub(super) fn target_state_refusal(
+    target: &CellEntity,
+    kind: PetEngagement,
+) -> Option<&'static str> {
+    if combat::is_dead_state(target.state_field)
+        || target.stats.get(HEALTH).is_none_or(|h| h.cur <= 0)
+        || target.ai_state() == AiState::Dead
+    {
+        return Some("target_dead");
+    }
+    match target.ai_state() {
+        AiState::Leashing | AiState::Despawning => Some("target_resetting"),
+        AiState::Submit | AiState::Spawning | AiState::Error
+            if kind == PetEngagement::Automatic =>
+        {
+            Some("target_not_engageable")
+        }
+        _ => None,
+    }
+}
+
 /// Engage `target_id` with the pet `pet_id`: the target lists the pet (and
 /// fights it), and the pet lists the target and is in Fighting. The one
 /// pet-engagement entry; stance engagement and an owner's attack order both
@@ -38,8 +84,8 @@ pub const PET_ENGAGE_THREAT: f32 = 1.0;
 /// - `not_a_pet`: `pet_id` carries no `PetState`;
 /// - `owner_gone` / `owner_identity_mismatch`: the owner is not the live
 ///   player who summoned the pet (`live_owner`);
-/// - `target_gone`, `target_dead`, `target_resetting` (walking home: it
-///   evades and takes no threat);
+/// - `target_gone`, and the state refusals of [`target_state_refusal`]
+///   (`target_dead`, `target_resetting`, `target_not_engageable`);
 /// - `target_not_combatant` / `target_not_hostile`: the pet may not fight it
 ///   (`fight_refusal`: a combatant `SGWMob` its owner could attack);
 /// - `target_refused_threat`: `generate_threat` would not put the pet on
@@ -47,12 +93,13 @@ pub const PET_ENGAGE_THREAT: f32 = 1.0;
 ///
 /// Stance is not checked here: the stance decides whether the pet picks a
 /// fight on its own (a Passive pet never does), while an explicit order is
-/// obeyed. Uses the `pet_stance` aggro cause, which never recruits
+/// obeyed. `kind` says which it is ([`PetEngagement`]). Uses the `pet_stance` aggro cause, which never recruits
 /// assisters. Logs nothing itself; callers log the outcome.
 pub fn engage_pet_target(
     space_mgr: &mut SpaceManager,
     pet_id: u32,
     target_id: u32,
+    kind: PetEngagement,
 ) -> Result<(), &'static str> {
     let owner_id = space_mgr
         .get_entity(pet_id)
@@ -64,16 +111,8 @@ pub fn engage_pet_target(
     if let Some(why) = super::fight_refusal(owner, target) {
         return Err(why);
     }
-    if combat::is_dead_state(target.state_field)
-        || target.stats.get(HEALTH).is_none_or(|h| h.cur <= 0)
-    {
-        return Err("target_dead");
-    }
-    if matches!(
-        target.ai_state(),
-        AiState::Leashing | AiState::Dead | AiState::Despawning
-    ) {
-        return Err("target_resetting");
+    if let Some(why) = target_state_refusal(target, kind) {
+        return Err(why);
     }
 
     // The target's side: it lists the pet and fights back.
@@ -118,7 +157,7 @@ pub(super) fn engage_stance_pick(
     target_id: u32,
     why: EngageWhy,
 ) -> bool {
-    let result = engage_pet_target(space_mgr, pet_id, target_id);
+    let result = engage_pet_target(space_mgr, pet_id, target_id, PetEngagement::Automatic);
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
     match result {
         Ok(()) => {
