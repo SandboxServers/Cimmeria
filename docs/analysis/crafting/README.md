@@ -73,6 +73,7 @@ These are PROPOSED coordinator defaults. Under the owner's autonomous-run author
 | D-CR20 | PROPOSED | The induction bar needs an absolute expiry (C-32). CR-02 makes the server's game clock consistent and gives one `game_time_secs()` for every timer sender. If CR-02 cannot land in time, the induction still completes on the server, and the inventory update plus a text line carry the result. | The bar is cosmetic; the craft result must not depend on it. |
 | D-CR21 | PROPOSED | A **Field Crafting Tool** counts only in the crafting bag (`INV_Crafting`, 15), the only inventory bag its `container_sets` allows. Its science comes from the name prefix (BMAS = Biomedical, EAS = Electronic, PSAS = Power Systems, MAS = Materials) unless CR-E2 finds a cooked-data field. A tool enables craft, research and reverse engineering for disciplines of its science whose `tech_competency` is at most the tool's `tech_comp`. Alloying needs a station. Tools are not consumed. | Owner answer D-CR05. The tools' `tech_comp` runs 5-55 in steps of 5, which lines up with the disciplines' `tech_competency` (1-50). |
 | D-CR22 | PROPOSED | Blueprint and Paradigm Guide items are used through the ordinary `useItem` path. A seed table maps each item to its blueprint or paradigm, built from the client's cooked data by CR-E2; items the client does not ship are added to the seed only if the client can render them. Using an already-known blueprint or a guide at 10 is refused with feedback, and consumes nothing. | Owner answers D-CR03 and D-CR04. Seeds are the source of truth. |
+| D-CR23 | PROPOSED | **Opening a respec is server-side.** CR-E1 found that the client sends `respecCrafting` (100) only from the Yes button of the 112 prompt, and no client UI sends a first request. So a player-usable `.respeccraft` console command sends `onCraftingRespecPrompt(0)`, records a 60 s pending respec, and the following 100 executes it. A 100 with nothing pending is refused with feedback. This refines D-CR16. | [crafting-client-ui.md](../../reverse-engineering/findings/crafting-client-ui.md) Q1. |
 
 ## Coordinator launch prompt
 
@@ -93,6 +94,5 @@ The owner runs [CR-14](work-packets.md#cr-14-owner-uat-colo-after-the-release) o
 ## Where confidence is low
 
 - The client's clock domain for `BigWorldTimeComplete` (C-13, C-32). Until CR-02 lands, the bar may not draw.
-- The respec flow: one send or two (C-37, CR-E1).
 - Whether `onErrorCode` shows any text in the client, and which of the feedback paths the player actually sees (the same open question as AT-E1 Q2).
 - The seed is Project Giza's reconstruction, while the client checks against its own cooked blueprints and disciplines. A mismatch shows up only in UAT, as a request the client refuses to send.

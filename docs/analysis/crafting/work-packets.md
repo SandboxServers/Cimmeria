@@ -219,9 +219,9 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-10
 
-**Status:** BlockedDependency (CR-E1 Q1, CR-04). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** BlockedDependency (CR-04). **Scope title:** `respecCrafting` (100, 112, 137). **Advisor:** server-authority-enforcer, database-persistence.
 
-**Scope:** `respec.rs`, per D-CR16 as corrected by CR-E1: the prompt (cost 0, D-CR02), the pending window, then one transaction that clears disciplines and expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept. Then 137 and the ASP property. Nothing to reset gets feedback. Replay-safe.
+**Scope:** `respec.rs`, per D-CR16 and D-CR23: a player-usable `.respeccraft` sends the prompt (cost 0, D-CR02), the pending window, then one transaction that clears disciplines and expertise and refunds one ASP per learned discipline. Blueprints and paradigm levels are kept. Then 137 and the ASP property. Nothing to reset gets feedback. Replay-safe.
 
 **Acceptance:** live-DB tests for the refund, the clear, and the kept blueprints and paradigms; a guard that a single send never wipes; a replay test.
 
@@ -284,5 +284,5 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 12. Put 10 items in reverse engineering and confirm: all 10 complete in turn, and components arrive.
 13. Alloy with blueprint 42 and 10 Normal tier-1 elementary components: 2× Blend (Bio-Medical Alloy) arrives.
 14. Log out during an induction and log back in: nothing was consumed.
-15. `/respeccraft` (or the respec path CR-E1 finds): the prompt shows a cost of 0; confirm; disciplines and expertise clear, ASP is refunded, and blueprints and paradigm levels stay.
+15. `.respeccraft`: the prompt shows a cost of 0; confirm; disciplines and expertise clear, ASP is refunded, and blueprints and paradigm levels stay.
 16. `.allcraft`: every tab enables anywhere, and every discipline shows 100.
