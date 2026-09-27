@@ -47,7 +47,7 @@
 
 ## Per-PR review findings
 
-- [trade-container-whitelist.md](trade-container-whitelist.md) — Trade swap must whitelist source containers (INV_MAIN only) — blacklist-only is a dupe-strip exploit
+- [trade-container-whitelist.md](trade-container-whitelist.md) — Trade swap must whitelist source containers (backpack + crafting bag since 2026-09-27) — blacklist-only is a dupe-strip exploit
 - [exploit_bind_on_acquire_unenforced.md](exploit_bind_on_acquire_unenforced.md) — BoA item flag never applied (grants insert bound=false); trade and mail move BoA items
 - [exploit_buyback_moveitem_source.md](exploit_buyback_moveitem_source.md) — moveItem never checks source container; 16->bag is free buyback; whitelist 1-15 fix drafted 2026-09-25
 - [advisory-lock-namespaces.md](advisory-lock-namespaces.md) — Advisory keys + row lock order per inventory/cash writer; trade row order unsorted (ABBA vs ascending paths)

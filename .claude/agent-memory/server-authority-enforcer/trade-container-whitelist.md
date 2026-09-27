@@ -1,6 +1,6 @@
 ---
 name: trade-container-whitelist
-description: Trade swap must whitelist source container (INV_MAIN only) — blacklist-only (INV_BUYBACK) is a dupe-strip exploit
+description: Trade swap must whitelist source containers (backpack 1 + crafting bag 15 since 2026-09-27) — blacklist-only (INV_BUYBACK) is a dupe-strip exploit
 metadata:
   type: feedback
 ---
@@ -19,5 +19,7 @@ Canonical exploit chain:
 5. Cell-side cached stats on A are stale until forced recompute → A keeps the armor stat bonuses locally while B has the actual item.
 
 Linked to [[trade-cancel-uses-completed-not-cancelled]] (the documented enum quirk) and [[trade-toctou-row-level-lock]] (the atomicity guarantee).
+
+**Update 2026-09-27 (crafting CR-17):** the whitelist is now `[INV_MAIN, INV_CRAFTING]` (`trade/execute/placement.rs` `TRADEABLE_CONTAINERS`), owner decision: crafting components (`{17,15}`) live in bag 15 and cannot sit in bag 1. Still refused: 2-14, 16, 17-20. The destination bag comes from the item's `container_sets` (`item_placement::grant_container` with the source bag as the request), never from the client; a type with no `resources.items` row is refused (`NoDestination`). The swap now takes the shared inventory lock order: both players' keys `(p,0),(p,1),(p,15)` lower player_id first, then item rows, then `sgw_player` rows ascending. Known residue: the station/tool gate is checked only when a craft is queued, so a Field Crafting Tool traded away still covers already-queued crafts (a crafting-side fix, not a trade refusal); vendor **buyback** (`vendor/buyback/mod.rs`) locks the bag-16 row and `sgw_player` before taking `(p,1)` and never takes `(p,0)`, so it can still deadlock with a trade.
 
 Spec anchor: `entities/defs/alias.xml` `LocalTradeItem` + Python `cell/Trade.py:53-58` (item validation in `_validateProposal` — the Python equivalent did check `canTrade()` per-item, not just per-bag).
