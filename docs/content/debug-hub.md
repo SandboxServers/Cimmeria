@@ -2,17 +2,17 @@
 title: "Stasis-Room Debug Hub"
 type: reference
 audience: engineers, testers
-last_updated: 2026-09-26
+last_updated: 2026-09-27
 ---
 
 # Stasis-Room Debug Hub
 
-Six NPCs in the Castle_CellBlock stasis room let a tester exercise one server
+Seven NPCs in the Castle_CellBlock stasis room let a tester exercise one server
 system each from a single spot. The stasis room is where every new character
 wakes up, so the hub is reachable a few seconds after character creation, with
 no travel and no mission state.
 
-All six are ordinary seeded spawns. Every player sees them. This was an owner
+All seven are ordinary seeded spawns. Every player sees them. This was an owner
 decision (2026-09-26): `spawnlist` has no dev or enabled column, and the owner
 chose visible-to-all over gating. Compare Harset packet H13, which deleted the
 old debug NPCs (templates 23 and 25) from the Harset gate plaza because they
@@ -36,14 +36,23 @@ a new character appears.
 | 403 | 303 | `DebugHub_LivewireTerminal` | Terminal | (-333.35, 73.47, -234.21) | 0.0464 |
 | 404 | 304 | `DebugHub_LootCrate` | Crate | (-330.72, 73.47, -235.64) | -0.2710 |
 | 450 | 360 | `DebugHub_PetTrainer` | Goa'uld Advanced Skills | (-328.08, 73.47, -237.07) | -0.4698 |
+| 470 | 370 | `DebugHub_Banker` | Storage Officer | (-325.92, 73.47, -231.18) | -1.0739 |
 
 The pet trainer (pets campaign PT-07) takes the next slot on the line after the
 crate, about 2.1 units in from the room's B-C wall. Its ids come from the pets
 block (templates 350-369, spawns 450-469), not the hub's 300-304 and 400-404.
 
+The Banker (bank campaign BV-04) is not on that line. The line is full up to
+corner B, and the crafting stations take the A-D side of the room. The Banker
+stands at the middle of the B-C wall, 3 units in from it. That puts it 8.9
+units from the respawner, at least 6.3 from every other hub NPC and 9.2 from
+the C-D exit wall. Its ids come from the bank block (templates 370-389, spawns
+470-489).
+
 The names are monikers the client PAK already ships. A new `texts.sql` id
 cannot render, so the templates reuse existing ones. No shipped moniker says
-"Pet Trainer", so template 360 shows "Goa'uld Advanced Skills" (8000).
+"Pet Trainer", so template 360 shows "Goa'uld Advanced Skills" (8000). The
+Banker uses the Omega Site banker's own name, "Storage Officer" (29462).
 
 > **Placement is unchecked in the client.** There is no navmesh or occluder
 > data for this room. The coordinates are derived from the region corners and
@@ -158,12 +167,34 @@ Servant Lord pet nodes, 2826 Summon Straegis first (the first pet, D-PT13), then
   ability set). It is not a pet: 350-359 are the pet templates and 360-369
   the pets campaign's placed NPCs.
 
+### Banker (template 370)
+
+Right-click opens your personal vault (`onVaultOpen`).
+
+- Tests the Banker open path: the vault session, pinned to this Banker, and
+  the proximity check it carries into every vault move. Any later
+  right-click on another NPC ends the session.
+- The click routes to the vault because the template carries `INT_Banker`
+  (2): `spawn_npc_from_record_into` derives `NpcInteractionType::Banker`
+  from it, with the template's `vault_scope`, here `personal`. Nothing else
+  on the template answers a click first: no trainer list, no vendor lists
+  or bits, no dialog or chain.
+- The Banker is faction 1 and cannot die. A death would replace its Banker
+  interaction with a loot window until the server restarts.
+- The window's size is the character's own `sgw_player.bank_slots`,
+  40 by default.
+- To see what a vault holds without opening it, or to check another
+  character's, a GM types `.bankdump [name]`. Nothing can grant an item
+  straight into the vault (the grant path refuses 17 by design); a tester
+  drags items in from the main bag once BV-03 lands. See
+  [commands.md](../commands.md#dev-console--commands).
+
 ## What the hub cannot test, and why
 
 | System | Why there is no hub NPC |
 |---|---|
 | Mail | The mail window opens from the client UI, not from a mailbox or NPC, so there is nothing for the hub to add. Only the read side works on the server; sending is a stub ([gap-analysis.md §24](../gap-analysis.md)). |
-| Bank | Known missing on the server. Nothing handles an `INT_Banker` click, and the organization vault is also missing ([gap-analysis.md §23](../gap-analysis.md)). |
+| Bank (partly) | The Banker (template 370) opens the personal vault. Moving items into and out of it is the bank campaign's BV-03, the vault-size purchase BV-05, and the Squad, Team and Command vaults BV-07 ([docs/analysis/bank-vault/](../analysis/bank-vault/README.md), [gap-analysis.md §23](../gap-analysis.md)). No hub NPC is an organization Banker: those need an organization, which the hub cannot give a new character. |
 | Guilds / organizations | Known missing on the server ([gap-analysis.md §23](../gap-analysis.md)). |
 | Black market | Known missing on `main` ([gap-analysis.md §25](../gap-analysis.md)). |
 | Crafting | Known missing: the crafting verbs are still stubs ([gap-analysis.md §19](../gap-analysis.md)). |
@@ -174,17 +205,18 @@ Servant Lord pet nodes, 2826 Summon Straegis first (the first pet, D-PT13), then
 
 | What | Where |
 |---|---|
-| Templates 300-304, 360 | `db/resources/Entities/Seed/entity_templates.sql` |
-| Spawns 400-404, 450 | `db/resources/Worlds/Seed/spawnlist.sql` |
+| Templates 300-304, 360, 370 | `db/resources/Entities/Seed/entity_templates.sql` |
+| Spawns 400-404, 450, 470 | `db/resources/Worlds/Seed/spawnlist.sql` |
 | Trainer list 350 | `db/resources/Abilities/Seed/trainer_ability_lists.sql`, `trainer_abilities.sql` |
 | Chains 7001-7005 | `db/resources/Content/Seed/debug_hub_chains.sql` |
 | Dialogs 100100-100103, screens 200000-200004, button 200000 | `db/resources/Dialogs/Seed/` and `DIALOG_OVERRIDES` |
 | Loot table 3 (loot rows 14-17) | `db/resources/Loot/Seed/` |
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
-| Vendor derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
+| Vendor and Banker derivation | `static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs` |
 
 Every seed row is commented `NEW CONTENT (debug hub)`, except the pet
-trainer's, which are commented `Pets campaign, PT-07`. The `trainer_abilities`
+trainer's, which are commented `Pets campaign, PT-07`, and the Banker's,
+commented `Bank and Vault campaign, BV-04`. The `trainer_abilities`
 rows carry no comment: that file is regenerated by
 `tools/ability_trees/generate_seed.py`, which keeps other lists' rows but not
 comments.
@@ -194,7 +226,8 @@ comments.
 | Guard | What it pins |
 |---|---|
 | `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns inside Region1, on the floor, at least 5 units from the respawner and 2.5 from each other; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, with every loot row at probability 1; dialog screens and buttons, and neither dialog is a monologue |
-| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction; the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else |
+| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction; the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself |
+| `cell-catalog` `spawner/tests/live_db_debug_banker.rs` | Template 370 is a personal Banker and nothing else: exactly `INT_Banker`, `vault_scope = 'personal'`, a shipped name, no trainer list or vendor lists, not faction 10; spawn 470 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_pet_trainer.rs` | Template 360's role columns and name; spawn 450 inside Region1, on the floor, clear of the respawner and the other hub NPCs; list 350 keyed to the Goa'uld only, with exactly the six pet nodes, each a Goa'uld tree node |
 | `cell-content` `chain_replay_tests/debug_hub.rs` | Chains 7001-7005 resolve and execute: the `onDialogDisplay` speakers, the `StartMinigame` message, and both chat lines |
 | `cell-world` `tests/npc_spawn.rs` | Any `INT_Vendor*` bit derives `Vendor`; no other bit derives anything |

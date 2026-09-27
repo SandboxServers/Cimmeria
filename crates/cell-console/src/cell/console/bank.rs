@@ -12,12 +12,19 @@
 //! ([`refuse_non_gm`], called from the chat interceptor): a player who
 //! reads about the command should be told why nothing opened.
 //!
+//! `.bankdump [player]` (BV-04) lists a character's personal vault
+//! (container 17) to the GM, read-only. The cell has no DB pool, so it
+//! forwards the request to the base (`BankCellToBase::GmDump`), which reads
+//! the vault, answers on the feedback channel and logs the `gm_action`
+//! event. With no name it lists the GM's own vault; a name is matched
+//! exactly by the base, so an offline character works too.
+//!
 //! New in the Rust server; the legacy python console had no equivalent.
 
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{BankCellToBase, BankSubject, CellToBaseMsg};
 use crate::cell::space_manager::SpaceManager;
 
 /// `.bank`: open the personal vault on the caller, then confirm on the
@@ -34,6 +41,94 @@ pub(super) async fn open(
         "bank: could not open the vault -- this entity is not in a space"
     };
     send_gm_feedback(caller_id, text, tx).await;
+}
+
+/// `.bankdump [player]`: hand the read to the base, which answers the GM.
+///
+/// The only refusals decided here are the ones the base cannot see: a bare
+/// `.bankdump` from an entity with no character, and a dead base channel.
+/// Each logs `gm_action action=bankdump result=refused` with its reason.
+#[tracing::instrument(name = "bank.console_dump", level = "info", skip_all, fields(entity_id = caller_id))]
+pub(super) async fn dump(
+    caller_id: u32,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let id = space_mgr.player_identity(caller_id);
+    let subject = match (args.first(), id.player_id) {
+        (Some(name), _) => BankSubject::Name((*name).to_string()),
+        (None, Some(player_id)) => BankSubject::Player(player_id),
+        (None, None) => {
+            tracing::info!(
+                target: "bank",
+                event = "gm_action",
+                action = "bankdump",
+                result = "refused",
+                reason = "caller_not_player",
+                account_id = id.account_id,
+                entity_id = caller_id,
+                "gm_action: bankdump refused"
+            );
+            send_gm_feedback(
+                caller_id,
+                "bankdump: you have no character id; name a player instead",
+                tx,
+            )
+            .await;
+            return;
+        }
+    };
+    let target_player_id = match &subject {
+        BankSubject::Player(id) => Some(*id),
+        BankSubject::Name(_) => None,
+    };
+    let msg = CellToBaseMsg::Bank(BankCellToBase::GmDump {
+        entity_id: caller_id,
+        account_id: id.account_id,
+        player_id: id.player_id,
+        subject,
+    });
+    if let Err(e) = tx.send(msg).await {
+        tracing::warn!(
+            target: "bank",
+            event = "gm_action",
+            action = "bankdump",
+            result = "refused",
+            reason = "base_channel_closed",
+            account_id = id.account_id,
+            player_id = id.player_id,
+            entity_id = caller_id,
+            target_player_id,
+            error = %e,
+            "gm_action: bankdump could not reach the base"
+        );
+    }
+}
+
+/// Is `text` a `.bankdump` line? Matched on the command word only.
+pub(crate) fn is_bankdump_command(text: &str) -> bool {
+    text.strip_prefix('.')
+        .and_then(|body| body.split_whitespace().next())
+        .is_some_and(|name| name.eq_ignore_ascii_case("bankdump"))
+}
+
+/// A non-GM typed `.bankdump`: `gm_action result=refused reason=not_gm` on
+/// the `bank` target. The caller still sends the generic "is a GM command"
+/// line, and the text is never broadcast.
+pub(crate) fn log_non_gm_bankdump(entity_id: u32, space_mgr: &SpaceManager) {
+    let id = space_mgr.player_identity(entity_id);
+    tracing::info!(
+        target: "bank",
+        event = "gm_action",
+        action = "bankdump",
+        result = "refused",
+        reason = "not_gm",
+        account_id = id.account_id,
+        player_id = id.player_id,
+        entity_id,
+        "gm_action: bankdump refused"
+    );
 }
 
 /// Is `text` a `.bank` line? Matched on the command word only, so

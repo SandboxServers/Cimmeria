@@ -1008,6 +1008,24 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   Skills'), shipped in the client's TextStrings.pak. No moniker says 'Pet Trainer'.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (360, NULL, 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL101,AR_G_Praxis.AR_GM_PT1_PT101,AR_G_Praxis.AR_GM_PT1_PT106,BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Torso_00,NPC_Goauld.NPC_GM_Letha_Head_BC}', 0, 128, 570, 1, 0, 1, 8000, NULL, NULL, NULL, 'Debug Hub - Pet Trainer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -1772406528, NULL, '{}', 350, NULL, true, NULL, NULL, NULL);
 
+-- Bank and Vault campaign, BV-04: templates 370-389 are the bank campaign's
+-- placed NPCs (docs/analysis/bank-vault/).
+-- 370 'Storage Officer', the debug hub's Banker (spawn 470,
+--   docs/content/debug-hub.md). A right-click opens the personal vault:
+--   INT_Banker (2) gives the bank cursor and makes spawn.rs derive
+--   NpcInteractionType::Banker, and vault_scope 'personal' picks the
+--   personal vault (BV-02, D-BV09). Nothing may answer the click before the
+--   Banker arm, so no trainer list, no vendor lists or bits, no dialog, no
+--   chain tag, no DHD bit. Faction 1, not 10: a death would overwrite the
+--   Banker interaction with Loot and the respawn tick never restores it.
+--   Body: template 170's SGC-uniformed human female without the SMG, a look
+--   this server already spawns in world 12 (A-34 allows a human or terminal
+--   body; no terminal static mesh for a standing banker is verified).
+--   Event set 570 as templates 300-302.
+-- moniker 29462 `DN_npc_OmegaSite_Banker` ('Storage Officer'), shipped in the
+--   client's TextStrings.pak, the Omega Site banker's own name.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, vault_scope) VALUES (370, NULL, 'BS_HumanFemale.BS_HumanFemale', '{AR_H_SGC.AR_HM_SL1_SL100,AR_H_SGC.AR_HM_ST1_ST100,BS_HumanFemale.BS_HF_Base_Boots00_00,BS_HumanFemale.BS_HF_Base_Hands00_00,BS_HumanFemale.BS_HF_Base_Legs00_00,BS_HumanFemale.BS_HF_Base_Torso00_00,BS_HumanFemale.BS_HF_Head_00}', 0, 2, 570, 1, 0, 1, 29462, NULL, NULL, NULL, 'Debug Hub - Banker', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL, 'personal');
+
 --
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210
