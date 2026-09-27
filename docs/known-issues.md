@@ -144,19 +144,26 @@ verified against the tree on 2026-07-25.
 Systems with CellMethod dispatch wired but handlers still stubbed (each logs
 `UNIMPLEMENTED:` and returns):
 
-- **Organizations** (guilds): still stubbed at the cell surface —
-  `onOrganizationCreation`, `organizationLeave`, `organizationMOTD`,
-  `organizationNote`, `organizationOfficerNote`, `organizationSetRankName`,
-  `organizationSetRankPermissions`,
-  `organizationInviteResponse`. Schema, the 9-rank/26-permission model, squad
-  state, and Team/Command persistence landed on a feature branch (#568) but
-  are **not on `main`**.
 - **Minigames**: mixed. The SmartFoxServer TCP server, ticket registry, and
   the Livewire game are implemented (`crates/minigame/src/minigame/`), but
   most MinigamePlayer CellMethods are still stubs — `startMinigame`,
   `endCurrentMinigame`, `spectateMinigame`, `requestSpectateList`, the four
   `debug*` methods, the `minigameCall*` trio, and the help-registration pair.
+
 No longer stubbed:
+
+- **Organizations** (Squads, Teams and Commands; organizations campaign
+  ORG-01 to ORG-11, #871 to #955): cell methods 8-18 and 94, base methods
+  0xCF-0xD2 and the client methods they drive are implemented. That covers
+  squad invite, loot mode, chat and the squad minimap ping, Team and Command
+  creation at the debug-hub registrars, login restore and presence, leave,
+  disband, invite, kick, rank change, MOTD, member and officer notes, the rank
+  editor, team, command and officer chat, and the GM suite. The minimap ping
+  for a Team or Command id (CM 10) answers "not available yet", and the
+  strike-team and PvP responses (CM 11, 12) are refused as unsolicited. Not
+  yet client-verified; see
+  [analysis/organizations/](analysis/organizations/README.md) and
+  [gameplay/organization-system.md](gameplay/organization-system.md).
 
 - **Mail** (social-systems SS-M1 to SS-M3): `sendMailMessage` with text, cash,
   an item or COD; `takeCashFromMailMessage`, `takeItemFromMailMessage`,
