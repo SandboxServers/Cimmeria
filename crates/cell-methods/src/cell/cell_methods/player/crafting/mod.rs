@@ -1,7 +1,7 @@
 //! Crafting cell methods 95-100: argument parsing and the forward to the
 //! base.
 //!
-//! The cell parses every argument per `entities/defs/SGWPlayer.def:914-949`
+//! The cell parses every argument per `entities/defs/SGWPlayer.def:916-948`
 //! and forwards one `CellToBaseMsg::Crafting` per request ([`forward`]). The
 //! base owns the rules, the database and the feedback
 //! (`cimmeria-base-session`'s `base::crafting`). Campaign ledger:

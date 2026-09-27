@@ -7,14 +7,14 @@ last_updated: 2026-07-25
 
 # Crafting System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-26
 > **Status**: Phase 1 only — state model, persistence, and GM grants work. All six player-facing crafting activities are stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
 The crafting system enables players to create items through blueprints, research items for expertise, reverse engineer items into components, and alloy materials into higher tiers. Crafting is gated by disciplines (learned skill trees), racial paradigms (faction-specific tech trees), and Applied Science points (discipline training currency).
 
-The Rust implementation lives in [`crates/base-session/src/base/crafting/`](../../crates/base-session/src/base/crafting/) (persistence + GM grants) and [`cell/cell_methods/player/crafting.rs`](../../crates/cell-methods/src/cell/cell_methods/player/crafting.rs) (cell methods 95–100, currently route-and-log only). The state model is `cimmeria_entity::crafting::CraftingState`.
+The Rust implementation lives in [`crates/base-session/src/base/crafting/`](../../crates/base-session/src/base/crafting/) (persistence + GM grants) and [`cell/cell_methods/player/crafting/`](../../crates/cell-methods/src/cell/cell_methods/player/crafting/) (cell methods 95–100: argument parsing and the forward to the base). The state model is `cimmeria_entity::crafting::CraftingState`.
 
 The sections below that describe `Crafter` behaviour document the **original server's design**, which Phase 2 is expected to reproduce. They are not descriptions of current runtime behaviour.
 
@@ -28,12 +28,14 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | GM expertise grant | DONE | `handle_grant_expertise` mutates, persists, and pushes `onUpdateDiscipline` (client method 136, payload `[disciplineSeqId i32][expertise i32]`) |
 | GM applied-science grant | DONE | `handle_grant_applied_science` |
 | Client discipline sync | DONE | `onUpdateDiscipline` serializer wired; fired on GM grant |
-| Spend applied-science points | STUB | Cell method decodes the discipline id and logs `UNIMPLEMENTED`; paradigm gate, prerequisite check, and DB update are Phase 2 |
-| Crafting (blueprint) | STUB | `craft` logs `UNIMPLEMENTED` |
-| Research | STUB | `research` logs `UNIMPLEMENTED` |
-| Reverse engineering | STUB | `reverseEngineer` logs `UNIMPLEMENTED` |
-| Alloying | STUB | `alloying` logs `UNIMPLEMENTED` |
-| Crafting respec | STUB | `respecCrafting` logs `UNIMPLEMENTED` |
+| Request path (methods 95-100) | DONE | The cell parses every argument, including the `ARRAY<ItemID>`s, and forwards a `CellToBaseMsg::Crafting(CraftRequest)`; the base logs it at target `crafting` (`event = "request"`). Crafting campaign CR-01 |
+| Crafting catalog | DONE | `cimmeria_cell_catalog::crafting::CraftingCatalog`: disciplines, blueprints with their alternative component sets, and item crafting attributes, loaded once per process |
+| Spend applied-science points | STUB | The base answers "Learning disciplines is not available yet." |
+| Crafting (blueprint) | STUB | The base answers "Crafting is not available yet." |
+| Research | STUB | The base answers "Research is not available yet." |
+| Reverse engineering | STUB | The base answers "Reverse engineering is not available yet." |
+| Alloying | STUB | The base answers "Alloying is not available yet." |
+| Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
 | World-entry state load | NOT IMPL | `load_crafting_state` exists and is live-DB tested, but nothing on the login path calls it yet |
 | Timer-based induction | NOT IMPL | The original 3.0s per-operation induction has no Rust equivalent |
 | Busy state lock | NOT IMPL | No `beginBusy`/`endBusy` equivalent |

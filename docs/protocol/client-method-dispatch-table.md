@@ -302,6 +302,34 @@ SGWEntity (0 own, 0 interfaces with client methods)
 | 155 | `onPlayMovie` | `WSTRING MovieName, UINT8 FullScreen` |
 | 156 | `onCancelMovie` | `WSTRING MovieName, INT32 EntityId` |
 
+#### Crafting payloads (112, 136-140)
+
+The server-side serializers are in `crates/wire/src/crafting/client_methods.rs`, each byte-exact tested. Integers are little-endian; an `ARRAY` is a `u32` element count followed by the elements.
+
+| Index | Argument bytes |
+|-------|----------------|
+| 112 | `i32 CostToRespec` (4 bytes) |
+| 136 | `i32 aDisciplineSeqId, i32 aExpertise` (8 bytes) |
+| 137 | none (0 bytes) |
+| 138 | `i32 aRacialParadigmId, i8 aLevel` (5 bytes) |
+| 139 | `u32 count, count × i32 blueprint id` |
+| 140 | `CraftingOptions`: four `CraftingInfo`, each `u32 n, n × i32 items` then `u32 m, m × i32 entities` |
+
+`CraftingOptions` is a `FIXED_DICT`, which goes on the wire as its fields in declaration order with no header. The order in [`entities/defs/alias.xml`](../../entities/defs/alias.xml) (`CraftingOptions`, `CraftingInfo`) is:
+
+| Offset (all lists empty) | Field |
+|---|---|
+| 0 | `crafting.items` |
+| 4 | `crafting.entities` |
+| 8 | `research.items` |
+| 12 | `research.entities` |
+| 16 | `reverseEngineering.items` |
+| 20 | `reverseEngineering.entities` |
+| 24 | `alloying.items` |
+| 28 | `alloying.entities` |
+
+With every list empty the payload is 32 zero bytes, which disables every crafting tab. `items` names usable tools (item ids) and `entities` usable machines (entity ids); the client keeps only the last id of each list ([crafting audit C-35](../analysis/crafting/audit.md)). The order above comes from the def file; the client unpacker (`0x00e49180` → `0x00e47250`) has not yet been checked against it (crafting packet CR-E1, question 2).
+
 ---
 
 ## Wire Encoding

@@ -365,7 +365,7 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 | Contact Lists | 5 | Implemented |
 | Mail | 4 | Not implemented |
 | Stargates | 8 | Partial (~20%) |
-| Crafting | 6 | Not implemented |
+| Crafting | 6 | Parsed and forwarded to the base; answered "not available yet" (crafting CR-01) |
 | Black Market | 5 | Not implemented |
 | Minigames | 12 | Not implemented |
 | Dueling | 4 | Not implemented |

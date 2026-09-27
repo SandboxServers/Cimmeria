@@ -121,3 +121,13 @@ line were silently misrouted to the wrong client.
 - `npc_ai::stationary_no_los_or_range_emits_structured_decision_log` is a
   pre-existing parallel-only flake (global tracing `LogCapture` race); passes in
   isolation and under `--test-threads=1`. Not caused by feedback changes.
+
+## Player-facing (non-GM) feedback reuses the same line
+
+`send_gm_feedback_to_client` has no GM gate, so it is also the player-visible
+text path: crafting CR-01's `base::crafting::feedback::reject` uses it for
+every refused crafting press (D-CR14). `gm_feedback::feedback_line_args(text)`
+returns the method-28 argument bytes, so a byte-exact test can build the
+expected packet with `build_player_entity_method_packet(&[0;32], 0, &[], id, 28, ..)`
+against a `test_default_connected_client_state` session. `onErrorCode` alone is
+not known to render anything, so never make it the only feedback.
