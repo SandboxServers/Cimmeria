@@ -49,6 +49,8 @@ mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
 mod step_region_replay;
+mod vault_session_end;
+pub use vault_session_end::log_vault_session_closed;
 /// Test hook: the spawn-time `use_cover` default (`spawn::resolve_use_cover`),
 /// for the live-DB seed guards above this crate.
 #[cfg(any(test, feature = "test-support"))]

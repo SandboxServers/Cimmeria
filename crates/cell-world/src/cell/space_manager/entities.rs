@@ -158,6 +158,13 @@ impl SpaceManager {
         if self.get_entity(entity_id).is_some_and(|e| e.is_player) {
             self.ring_transporters.note_player_gone(entity_id);
         }
+        // A vault session lives on the entity and dies with it (bank-vault
+        // D-BV05). A logout has already ended it in `disconnect_entity`, so
+        // a player destroy that still finds one is a move to another space.
+        self.end_vault_session(
+            entity_id,
+            cimmeria_entity::cell_entity::VaultCloseReason::SpaceChange,
+        );
         // CA10: an armed stargate dial dies with the space membership —
         // without this, `gate_dial_tick` would emit `Stargate_MakeGate`
         // for an entity that is no longer in any space.
@@ -393,6 +400,12 @@ impl SpaceManager {
         // would strand the traveller (see
         // `RingTransporterManager::forget_source_side`).
         crate::cell::ring_transport::forget_player(entity_id, tx, self).await;
+        // The vault session ends with the connection, labelled `logout`
+        // before `destroy_entity` below would call it a space change.
+        self.end_vault_session(
+            entity_id,
+            cimmeria_entity::cell_entity::VaultCloseReason::Logout,
+        );
         // CA10: same rationale — a disconnect mid-dial must not leave a
         // pending gate-open queued against a dead session.
         self.pending_gate_dials.remove(&entity_id);

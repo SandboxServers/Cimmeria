@@ -107,6 +107,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         assist_radius: None,
         aggression_override: None,
         use_cover: None,
+        vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();
@@ -171,6 +172,7 @@ fn record_with_flags(interaction_type: i64) -> crate::cell::spawner::SpawnRecord
         assist_radius: None,
         aggression_override: None,
         use_cover: None,
+        vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
     }
 }
 
@@ -211,7 +213,7 @@ fn spawn_npc_from_record_derives_vendor_from_every_vendor_bit() {
     }
 }
 
-/// No vendor bit, no static interaction: the trainer, minigame, quest and
+/// No vendor or banker bit, no static interaction: the trainer, minigame, quest and
 /// loot bits are all dispatched elsewhere, and deriving one of them here
 /// would shadow that dispatch.
 #[test]
@@ -234,4 +236,56 @@ fn spawn_npc_from_record_derives_nothing_without_a_vendor_bit() {
             "flags {flags} carry no vendor bit and must derive nothing",
         );
     }
+}
+
+/// `INT_BANKER` derives `Banker` with the template's `vault_scope`, for each
+/// scope. Fails if the banker branch of `static_interaction_for_flags` is
+/// removed (a banker-only template then derives nothing).
+#[test]
+fn spawn_npc_from_record_derives_banker_with_its_vault_scope() {
+    use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope};
+    use cimmeria_entity::interaction_flags::INT_BANKER;
+    for scope in [VaultScope::Personal, VaultScope::Team, VaultScope::Command] {
+        let mut mgr = make_manager();
+        let record = crate::cell::spawner::SpawnRecord {
+            vault_scope: scope,
+            ..record_with_flags(INT_BANKER)
+        };
+        mgr.spawn_npc_from_record(600, &record).unwrap();
+        assert_eq!(
+            mgr.get_entity(600).unwrap().interaction_type,
+            Some(NpcInteractionType::Banker { scope }),
+        );
+    }
+}
+
+/// Precedence: a template with both `INT_BANKER` and a vendor bit is a
+/// Banker (BV-02, documented on `static_interaction_for_flags`). And
+/// `vault_scope` means nothing without the banker bit: a vendor with a
+/// non-default scope is still just a Vendor.
+#[test]
+fn banker_bit_wins_over_vendor_bits_and_scope_needs_the_banker_bit() {
+    use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope};
+    use cimmeria_entity::interaction_flags::{INT_BANKER, INT_VENDOR_GENERAL};
+
+    let mut mgr = make_manager();
+    mgr.spawn_npc_from_record(600, &record_with_flags(INT_BANKER | INT_VENDOR_GENERAL))
+        .unwrap();
+    assert_eq!(
+        mgr.get_entity(600).unwrap().interaction_type,
+        Some(NpcInteractionType::Banker {
+            scope: VaultScope::Personal
+        }),
+    );
+
+    let mut mgr = make_manager();
+    let record = crate::cell::spawner::SpawnRecord {
+        vault_scope: VaultScope::Team,
+        ..record_with_flags(INT_VENDOR_GENERAL)
+    };
+    mgr.spawn_npc_from_record(600, &record).unwrap();
+    assert_eq!(
+        mgr.get_entity(600).unwrap().interaction_type,
+        Some(NpcInteractionType::Vendor),
+    );
 }

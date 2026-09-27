@@ -337,6 +337,27 @@ unreachable pool or a lock held under a short `lock_timeout`), and
 `move_lock_release_failed` have no guard: each needs the connection to
 fail after both locks were taken on it, which nothing can inject.
 
+## Vault open refusals and send seams (BV-02)
+
+Target `bank`, WARN, on the cell. Every row carries `account_id` and
+`player_id` (omitted, not zeroed, when the cell does not know them) and
+`entity_id`. Each refusal also sends the player a `CHAN_FEEDBACK` chat line,
+because `onErrorCode` has no Lua consumer in the shipped client (AT-E1).
+
+| `event` | `reason` | Fields |
+|---|---|---|
+| `vault_open_rejected` | `out_of_range` (a Banker click from beyond the interact distance, or from another space), `org_vault_not_available` (a `team` or `command` Banker), `not_gm` (`.bank` from a player), `banker_missing` (the Banker vanished between the range gate and the arm) | `banker_id`, `distance` (absent when the Banker is in another space or gone) |
+| `vault_open_send_failed` | `base_channel_closed` (the `onVaultOpen` send to the base failed: the session is open but the window never appeared) | `banker_id`, `error` |
+| `bank_feedback_send_failed` | `base_channel_closed` (a refusal line could not be queued) | `error` |
+
+A lookup miss on the player's own entity is not a `bank` event, because no
+player decision was made and there is nobody to tell: it is a WARN on the
+crate's own target, `cimmeria_cell_interactions`, with
+`reason = player_entity_missing`, `entity_id` and `banker_id`. The `LogCapture`
+guards are in `cell-interactions` `cell/interactions/bank/telemetry_tests.rs`
+(one per reason and seam) and `cell-console` `console/tests/bv02_bank.rs`
+(`not_gm`).
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

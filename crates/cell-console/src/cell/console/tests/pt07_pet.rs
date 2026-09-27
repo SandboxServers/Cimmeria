@@ -69,6 +69,7 @@ fn pet_record(template_id: i32) -> SpawnRecord {
         assist_radius: None,
         aggression_override: None,
         use_cover: Some(false),
+        vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
     }
 }
 

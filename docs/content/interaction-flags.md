@@ -49,7 +49,7 @@ These set the "verb" on the right-click cursor. Set when an NPC becomes interact
 
 | Bit | Mask | Constant | Use for |
 |-----|------|----------|---------|
-| 1 | `2` | `INT_Banker` | Banker NPC right-click → bank UI |
+| 1 | `2` | `INT_Banker` | Banker NPC right-click → vault window (see [Bankers](#bankers)) |
 | 2 | `4` | `INT_Auction` | Auction-house NPC |
 | 3 | `8` | `INT_Pvp` | PvP queue NPC |
 | 4 | `16` | `INT_Dhd` | Dial-Home Device (stargate) |
@@ -63,6 +63,16 @@ These set the "verb" on the right-click cursor. Set when an NPC becomes interact
 | 12 | `4096` | `INT_MinigameConverse` | Converse-style minigame |
 
 **Pitfall**: a hackable switch needs its specific minigame bit (`256` for Livewire, `512` for Activate, etc.). Use whichever matches the `start_minigame` action's `target_key` in the same chain.
+
+#### Bankers
+
+On the server, `INT_Banker` on a template's `interaction_type` makes the spawned NPC a Banker, and the template's `vault_scope` column says which vault it opens: `personal` (the default), `team` or `command` (`static_interaction_for_flags` in `crates/cell-world/src/cell/space_manager/spawn.rs`). `vault_scope` is ignored without the banker bit.
+
+- A **personal** Banker opens the player's own vault (container 17): a right-click within the interact distance sends `onVaultOpen` and opens a vault session pinned to that Banker. The open path is in [the inventory system doc](../gameplay/inventory-system.md#opening-the-vault).
+- A **team** or **command** Banker is refused with a chat line ("The Team vault is not available yet.") until the organization vaults land.
+- A click on any Banker from beyond the interact distance is refused with a chat line too, unlike other NPCs, whose too-far clicks stay silent.
+- **Precedence.** `INT_Banker` wins over the vendor bits (bits 13-21) on a template that carries both. Anything that answers a click before the static interaction still answers first: a `trainer_ability_list_id`, an `interact_tag` / `interact_template` chain, a per-player dialog bind, and `INT_Dhd`. A Banker should carry none of those, and should not be killable (faction 10), because a death overwrites the interaction with loot and the respawn tick does not restore it.
+- Like the vendor derivation, it runs at spawn only: OR-ing `INT_Banker` in later with `set_interaction_type` changes the cursor but does not open a vault.
 
 ### 2. Vendor sub-categories — bits 13-21
 

@@ -119,6 +119,11 @@ pub struct SpawnRecord {
     /// stationary NPC or a prop never does, whatever the column says
     /// (NA22, `SGWMob.def` `useCover`).
     pub use_cover: Option<bool>,
+    /// `entity_templates.vault_scope` (bank-vault D-BV09): which vault a
+    /// Banker opens. Read only when `interaction_type` carries `INT_BANKER`;
+    /// the column defaults to `personal`, so every other template carries
+    /// `Personal` and ignores it.
+    pub vault_scope: cimmeria_entity::cell_entity::VaultScope,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.

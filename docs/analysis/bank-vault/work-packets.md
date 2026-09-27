@@ -152,7 +152,7 @@ Answer, with Ghidra addresses and Lua lines, in `docs/reverse-engineering/findin
 
 ## BV-02 Banker open path
 
-**Status: BlockedDependency (BV-01).** Audit rows A-01, A-02, A-24 to A-27; decisions D-BV03, D-BV05, D-BV09 and D-BV10.
+**Status: Review** (PR #921). Audit rows A-01, A-02, A-24 to A-27; decisions D-BV03, D-BV05, D-BV09 and D-BV10.
 
 Scope:
 

@@ -70,6 +70,7 @@ pub mod cell {
     pub mod messages;
     pub mod player_journal;
     pub mod spawn_record;
+    pub mod vault;
 }
 
 pub mod containers;

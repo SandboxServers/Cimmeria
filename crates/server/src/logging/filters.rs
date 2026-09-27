@@ -194,6 +194,12 @@ use crate::otel;
 /// (`sendDuelChallenge`) and the cell (the registry, the response, the
 /// tick): DEBUG rows for every refusal (`reason=`) and state transition,
 /// WARN for a payload that does not decode.
+/// `bank` (bank-vault campaign, `docs/analysis/bank-vault/`, telemetry
+/// contract D-BV19) is the vault target on both halves of the split: the
+/// cell's `vault_session_opened` / `vault_session_closed` (DEBUG) and
+/// `vault_open_rejected` (WARN), and the base's `move_rejected` /
+/// `grant_rejected` (WARN). It is `debug` because the session transitions
+/// are DEBUG and the owner debugs bank issues from SigNoz alone.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -260,6 +266,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 chat=debug,rate_limit=debug,online_index=debug,\
                 mail=debug,\
                 duel=debug,\
+                bank=debug,\
                 console.feedback=debug,\
                 client.native=debug,\
                 launcher=debug,\

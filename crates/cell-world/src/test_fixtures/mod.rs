@@ -17,11 +17,14 @@
 //!   a cached pet template and a ready owner (issue #570); [`make_pet_world`]
 //!   and [`watched_pet_world`] build the pet lifecycle world, and the
 //!   `drain_*_for` / [`assert_pet_fully_gone`] helpers read its results.
+//! - [`npc_spawn_record`]: a template-shaped `SpawnRecord` for spawning an
+//!   NPC through the real spawn-time derivations.
 
 mod content_events;
 pub mod occluder_fixtures;
 mod pets;
 mod space_manager;
+mod spawn_record;
 
 pub use content_events::{NoContentEvents, RecordedContentEvent, RecordingContentEvents};
 pub use pets::{
@@ -30,5 +33,6 @@ pub use pets::{
     PET_FIXTURE_ABILITIES, PET_FIXTURE_OTHER, PET_FIXTURE_OWNER, PET_FIXTURE_TEMPLATE_ID,
 };
 pub use space_manager::{make_space_manager, make_space_manager_with_player, seed_ability_defs};
+pub use spawn_record::npc_spawn_record;
 
 pub use crate::cell::arrival::{test_fixture_mesh, test_insert_navmesh_space};

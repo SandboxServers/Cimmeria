@@ -14,7 +14,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Working environment
 
 - [concurrent-claude-sessions.md](concurrent-claude-sessions.md) — other sessions on the repo: work in `.claude/worktrees/<slug>/`, junction `external/`; team agents share one scratchpad, so namespace helper scripts.
-- [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha may not be an ancestor; find the fork point by message. Cargo.lock re-dirties.
+- [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha may not be an ancestor; find the fork point by message. Cargo.lock re-dirties. origin/main moves mid-run: re-fetch before every push.
 - [resuming-a-dead-workers-wip.md](resuming-a-dead-workers-wip.md) — a `wip(...) unverified` commit may not compile; its tests encode the starting design; port hunks by hand.
 - [crate-split-extraction-traps.md](crate-split-extraction-traps.md) — moving code out of services: `pub(crate)` turns dead, `unreachable_pub` hits pub fields, layering-guard globs, live-DB list and `IN_PROCESS_CRATES` guards.
 
@@ -98,6 +98,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Cell systems
 
 - [grant-paths-pick-different-containers.md](grant-paths-pick-different-containers.md) — gmGiveItem grants to bag 1; loot and content grant_item use the first `container_sets` entry (17 for crafting items).
+- [per-session-player-state-lifecycle.md](per-session-player-state-lifecycle.md) — a CellEntity field dies on every space change/logout by construction; one interact-pin chokepoint; interact range is double-gated.
 - [ability-event-sets-are-server-only.md](ability-event-sets-are-server-only.md) — ability event sets never reach the client (seed-only wiring); most mob kits deal 0 damage.
 - [client-action-bar-is-client-side.md](client-action-bar-is-client-side.md) — hotbar bindings are a client Lua saved var; server "hotbar" = `onKnownAbilitiesUpdate`.
 - [npc-range-gate-and-weapon-range-columns.md](npc-range-gate-and-weapon-range-columns.md) — four item range columns; range gated in two places; bogus melee `max_range`.
