@@ -382,8 +382,9 @@ attempt at method 28 produced garbled `"[] says"` chat (§10).
 All three are **rejected, not defaulted through** — a bad row is dropped at
 load with a `warn!` naming the chain. The failure modes here are not "the
 line is missing" but "the line is visibly wrong": a blank `speaker` renders
-as the client's empty-name prefix, and an unregistered channel pops its red
-unknown-channel splash.
+as the client's empty-name prefix, the server channel (8) opens the client's
+modal "Server Message" prompt, and an id the client has no channel for (7)
+shows nothing.
 
 The line goes to the **triggering player only** — not the say-chat witness
 fan-out and not the sender echo. A bark is per-player mission feedback;

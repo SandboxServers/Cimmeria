@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn decode_feedback_text_round_trips_serializer() {
         // Reproduce the on-wire feedback layout: speaker "SYSTEM", flags 0,
-        // channel 9, text "spawned npc 42".
+        // channel 9 (`CHAN_feedback`), text "spawned npc 42".
         let text = "spawned npc 42";
         let speaker: Vec<u16> = "SYSTEM".encode_utf16().collect();
         let text_u16: Vec<u16> = text.encode_utf16().collect();

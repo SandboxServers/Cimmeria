@@ -23,7 +23,7 @@ Six Communicator base methods do something — `chatJoin` (0xC0), `chatLeave` (0
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Spatial channels (say / emote / yell) | DONE | `cell/console/chat/spatial.rs` broadcasts `onPlayerCommunication` to every player AoI witness of the speaker, except a witness who ignores the speaker. The speaker always gets their own echo, even with nobody in range (the client does not echo say locally) |
-| Channel registration on login | DONE | 8 channels pushed at `onClientReady` — see [System Channels](#system-channels) |
+| Channel registration on login | DONE | 8 `onChatJoined` at `onClientReady`, ids per `EChannel` (SS-C4) — see [System Channels](#system-channels) |
 | DND status | DONE | `chatSetDNDMessage` sets/clears the flag; a message of 2+ characters sets DND, shorter clears it; the stored text is truncated to 128 Unicode scalar values |
 | Speaker flags | PARTIAL | Only `GM` (0x01, from `access_level > 0`) and `DND` (0x04) are computed. No platoon-leader flag |
 | Flood limit | DONE (not client-tested) | Every line is checked against a per-player bucket on the base before it reaches the cell: 5 back to back, then one a second. GameMaster and above are exempt. See [Flood limit and length cap](#flood-limit-and-length-cap) |
@@ -33,7 +33,7 @@ Six Communicator base methods do something — `chatJoin` (0xC0), `chatLeave` (0
 | GM console passthrough | DONE | A `.`-prefixed say from a GM is routed to the console handler; from a non-GM it falls through as ordinary chat |
 | Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. Channels are auto-joined at login; there is no join/leave state to change |
 | AFK status | DONE (not client-tested) | `chatSetAFKMessage` stores the away message under the DND rules (2+ characters sets it, 128-scalar bound). It is not a speaker flag; a tell to an away player is answered with it. See [Tells and Ignore](#tells-and-ignore) |
-| Non-spatial channels (team / squad / command / server) | NOT IMPL | Registered with the client so the UI shows them, but the cell has no group/organization backing (team/squad/command) or is server-broadcast-only (server) to distribute the message; the sender gets a feedback line (`onPlayerCommunication` on the feedback channel) instead of a silent drop — see [System Channels](#system-channels) |
+| Non-spatial channels (team / squad / command / server) | NOT IMPL | The client knows these channels without registration, but the cell has no group/organization backing (team/squad/command) or is server-broadcast-only (server) to distribute the message; the sender gets a feedback line (`onPlayerCommunication` on the feedback channel) instead of a silent drop — see [System Channels](#system-channels) |
 | Player-to-player tell | DONE (not client-tested) | Handled on the base, never forwarded to the cell: the client sends tells on channel 10 and the recipient gets them on 10. See [Tells and Ignore](#tells-and-ignore) |
 | User channels | NOT IMPL | No create / delete / password / member list |
 | Channel operator system | NOT IMPL | `chatOp` answers with a feedback line |
@@ -99,22 +99,27 @@ DND text is capped server-side at 128 Unicode scalar values, not UTF-8 bytes or 
 
 ## System Channels
 
-Eight channels are registered with the client at `onClientReady` (`DEFAULT_CHAT_CHANNELS` in `base/world_entry_chat.rs`). Sending on an **unregistered** channel id makes the client raise its red unknown-channel splash popup, so the server must stay inside this set:
+Every built-in channel id is an `EChannel` value from `entities/defs/enumerations.xml`, and the client compiles the same values in as literals (`UIChannel.Say` … `UIChannel.Splash`; [ORG-E1 Q5](../reverse-engineering/findings/organization-restoration.md), decision [D-ORG14](../analysis/organizations/README.md#decisions)). The client needs no registration to send or show a line on any of them. The Rust constants are `CHAN_*` in `crates/wire/src/cell/chat.rs`, pinned against the XML by `chan_constants_match_enumerations_xml`. SS-C4 (2026-09-27) moved them onto the enum; before that the server used 7 for server, 9 for tell and 10 for splash.
 
-| Channel | Id | Registered | Server behaviour |
-|---------|----|------------|------------------|
-| say | 0 | yes | Spatial fanout to AoI witnesses |
-| emote | 1 | yes | Spatial fanout to AoI witnesses |
-| yell | 2 | yes | Spatial fanout to AoI witnesses (same radius as say today — no wider range implemented) |
-| team | 3 | yes | No group backing yet — sender gets a "not supported yet" feedback line instead of a silent drop |
-| squad | 4 | yes | No group backing yet — sender gets a "not supported yet" feedback line instead of a silent drop |
-| command | 5 | yes | No organization backing yet — sender gets a "not supported yet" feedback line instead of a silent drop |
-| officer | 6 | **no** | Not registered; would trigger the unknown-channel popup. A player message that somehow arrives with this id still gets routed through the same feedback path (which always replies on the registered feedback channel, never channel 6 itself) |
-| server | 7 | yes | Server-to-client broadcasts only (`CHANNEL_FLAG_DisallowPlayerMessages` in the legacy `ChatChannelManager`). A player who tries to speak here gets a feedback line explaining the channel is system-only — legacy only logged this server-side and left the client in silence |
-| tell | 9 | yes | Used server-to-client for the welcome message and GM feedback. There is no dedicated feedback channel (8 is unregistered), so GM feedback — and now the "channel not supported" reply for team/squad/command/officer/server/tell — rides `tell` |
-| splash | — | **no** | Not registered |
+| Channel | Id | Registered at login | Client display (`ChatWindow.lua`) | Server behaviour |
+|---------|----|---------------------|-----------------------------------|------------------|
+| say | 0 | yes | White, Info tab | Spatial fanout to AoI witnesses |
+| emote | 1 | yes | Yellow | Spatial fanout to AoI witnesses |
+| yell | 2 | yes | Light red | Spatial fanout to AoI witnesses (same radius as say today — no wider range implemented) |
+| team | 3 | yes | Violet | Forwarded to the cell; no team backing yet, so the sender gets a "not supported yet" feedback line |
+| squad | 4 | yes | Turquoise | Relayed to the speaker's squad by the cell (ORG-03) |
+| command | 5 | yes | Green | Forwarded to the cell; no command backing yet, so the sender gets a "not supported yet" feedback line |
+| officer | 6 | no | Green | Forwarded to the cell like command. The client accepts 6 without registration (ORG-E1 Q5) |
+| server | 8 | yes | Bright red line **and a modal "Server Message" prompt** | Server-to-client broadcasts only: `/gmshout` and `.announce` ([GM broadcast](#gm-broadcast)). A player line on 8 is refused at the base |
+| feedback | 9 | no | Sky blue, Info tab | Server-to-client system lines to one player: the login welcome, GM feedback, every refusal line. A player line on 9 is refused at the base |
+| tell | 10 | yes | Purple (red for a GM speaker) | Player-to-player, handled on the base ([Tells and Ignore](#tells-and-ignore)) |
+| splash | 11 | no | Green | Nothing sends it yet. A player line on 11 is refused at the base |
 
-> **Id conflict (2026-09-27).** `EChannel` in `entities/defs/enumerations.xml:113-128` numbers the channels server 8, feedback 9, tell 10, splash 11 and user channels from 12, with 7 unused; the legacy `deprecated/python/base/Chat.py:144-154` builds every channel from those values. The ids in this table are what the Rust server registers today (`DEFAULT_CHAT_CHANNELS`), not the enum. Whether the client hardcodes any `EChannel` id, or takes every id from `onChatJoined`, is still to be checked; the organizations campaign changes the registered ids only with that evidence ([decision D-ORG14](../analysis/organizations/README.md#decisions), [audit A-40](../analysis/organizations/audit.md)). ORG-E1 has since found that the client hardcodes the enum values, so a player's `/tell` arrives on **10**, not 9. The tell path uses 10 in both directions through its own constant (`dispatch/tell.rs::TELL_CHANNEL`); the registration and the `CHAN_*` constants change once, in ORG-09 (D-SS17).
+Id 7 is not an `EChannel` value. The client has no `ChatMod.ChannelMap` entry for it, so a line on 7 calls a nil function in the chat Lua and shows nothing; `/gmshout` sent on 7 until SS-C4. No server-to-client send may use 7, pinned by `no_chan_constant_is_seven` and `no_player_communication_call_uses_a_literal_channel`.
+
+**Registration.** At `onClientReady` the server sends one `onChatJoined(name, id)` for each entry of `DEFAULT_CHAT_CHANNELS` (`crates/base-session/src/base/world_entry_chat.rs`): say 0, emote 1, yell 2, team 3, squad 4, command 5, server 8, tell 10. That list is pinned against `enumerations.xml` by `default_chat_channels_match_enumerations_xml`, and each login logs `chat.channels_registered` (DEBUG, `chat` target, `channel_ids`, `account_id`, `player_id`, `entity_id`). This burst departs from the legacy server, which sent `onChatJoined` only for user channels (id 12 and up) and put the id minus 12 in its `ChannelID` field (`deprecated/python/base/SGWPlayer.py:162-163`). The client's `ChatMod.onChannelJoined` treats every join as a user channel (`channelId = UIChannel.Chat + displayId`, with a "You have joined channel" line), so the built-in entries are not what makes those channels work; see the SS-C4 worknote for the open question.
+
+**Welcome line.** The login welcome ("Welcome to Stargate Worlds. Your player id is: N.") goes out on feedback (9), the channel the legacy `cell/SGWPlayer.py:541` names with a literal 9. It is not sent on server (8), because the client would open its modal prompt on every login.
 
 ## Channel Flags
 
@@ -153,7 +158,7 @@ The numbers are project policy, not recovered client data. The cap may come down
 
 SS-C3 (2026-09-27), security finding CAT-L-03 and decision D-SS26 in `docs/analysis/social-systems/README.md`. Both gates run in `sendPlayerCommunication` on the base, after the flood limit and before the text rules, so a refused line still costs a chat token.
 
-**Channel allowlist.** The ids are the `EChannel` values the client sends (D-ORG14), which differ from the registered ids in [System Channels](#system-channels) for server and tell. A player may speak on:
+**Channel allowlist.** The ids are the `EChannel` values the client sends (D-ORG14), the same `CHAN_*` constants as [System Channels](#system-channels). A player may speak on:
 
 | Channel | Id | What happens |
 |---|---|---|
@@ -167,7 +172,7 @@ Everything else is refused at the base with one feedback line, and nothing reach
 |---|---|---|---|
 | server, feedback, splash | 8, 9, 11 | "That channel is for system messages only. Players cannot post there." | `system_channel` |
 | a user channel | 12 and up | "Custom chat channels are not available yet." | `user_channel` |
-| an id `EChannel` does not name | 7 | "That chat channel does not exist." | `unknown_channel` |
+| an id `EChannel` does not name | 7 (the only one below 12) | "That chat channel does not exist." | `unknown_channel` |
 
 The refusal logs `chat.channel_rejected` (WARN) with `channel`, `reason` and the player's ids.
 
@@ -203,7 +208,7 @@ A GameMaster (access level 2) or higher can send one line to many players (SS-C2
 | `.announce <text>` | Every online player | For a client without the slash binding. The typed words are re-joined with single spaces |
 | `.announce space <text>` | The GM's space instance | `space` is matched in any case and only as the first word |
 
-Every recipient gets `onPlayerCommunication(<GM's character name>, SPEAKER_GM, CHAN_SERVER, text)`, the GM included, so the GM sees the line as the players do. The channel is whatever `CHAN_SERVER` holds (7 today; the organizations campaign owns that id, D-ORG14). The space scope is sent by the cell, which knows the players in the GM's space; the global scope goes through the base, which sends it to every session in the online name index that has a player entity (character select and mid-world-entry sessions are skipped).
+Every recipient gets `onPlayerCommunication(<GM's character name>, SPEAKER_GM, CHAN_SERVER, text)` with `CHAN_SERVER` = 8, the GM included, so the GM sees the line as the players do. The client shows it as a bright red line and opens a modal "Server Message" prompt with an OK button (`ChatWindow.lua:160-162`). Until SS-C4 it went out on 7, which the client does not display. The space scope is sent by the cell, which knows the players in the GM's space; the global scope goes through the base, which sends it to every session in the online name index that has a player entity (character select and mid-world-entry sessions are skipped).
 
 The GM gate runs before anything else: cell method 222 is in the SGWGmPlayer tail, so a caller below GameMaster gets `onErrorCode` and the shout goes nowhere (`gm_gate`, security finding CAT-L-06). The text follows the chat rules above (255 UTF-16 units at most, no control or format characters) and blank text is refused; each refusal tells the GM why. There is no flood limit on GM broadcasts, the same exemption GMs have on ordinary chat.
 

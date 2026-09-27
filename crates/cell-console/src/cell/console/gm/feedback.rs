@@ -9,53 +9,18 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
+
 use crate::cell::messages::CellToBaseMsg;
 use crate::mercury::method_idx::ON_PLAYER_COMMUNICATION;
 
-/// GM-feedback chat channel. The 2009 client only registers the channels in the
-/// base's `DEFAULT_CHAT_CHANNELS` (say/emote/yell/team/squad/command/server=7/
-/// tell=9); there is **no** dedicated feedback channel. Sending on an
-/// *unregistered* channel — the old value `8` — makes the client fall back to
-/// its **red unknown-channel splash popup**. So GM feedback rides the registered
-/// `tell` channel (`9`), the same one the base's inline welcome message uses; it
-/// renders as a normal, non-error, non-popup line.
-const CHAN_FEEDBACK: u8 = 9;
-
-/// Serialize `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`.
-///
-/// Wire shape (byte-identical to the chat broadcaster's serializer):
-/// - Speaker: WSTRING (u32 char_count + N×2B UTF-16LE)
-/// - SpeakerFlags: UINT8
-/// - Channel: UINT8
-/// - Text: WSTRING (u32 char_count + N×2B UTF-16LE)
-fn serialize_on_player_communication(
-    speaker: &str,
-    speaker_flags: u8,
-    channel: u8,
-    text: &str,
-) -> Vec<u8> {
-    let speaker_utf16: Vec<u16> = speaker.encode_utf16().collect();
-    let text_utf16: Vec<u16> = text.encode_utf16().collect();
-
-    let capacity = 4 + speaker_utf16.len() * 2 + 1 + 1 + 4 + text_utf16.len() * 2;
-    let mut args = Vec::with_capacity(capacity);
-
-    args.extend_from_slice(&(speaker_utf16.len() as u32).to_le_bytes());
-    for &ch in &speaker_utf16 {
-        args.extend_from_slice(&ch.to_le_bytes());
-    }
-    args.push(speaker_flags);
-    args.push(channel);
-    args.extend_from_slice(&(text_utf16.len() as u32).to_le_bytes());
-    for &ch in &text_utf16 {
-        args.extend_from_slice(&ch.to_le_bytes());
-    }
-    args
-}
-
 /// Send a single feedback line to the GM only (no witness fan-out).
 ///
-/// Speaker is `"SYSTEM"`, flags `0`, channel `CHAN_FEEDBACK`.
+/// Speaker is `"SYSTEM"`, flags `0`, channel `CHAN_FEEDBACK` (9), the
+/// client's feedback channel: an ordinary Info-tab line. Not the server
+/// channel (8), which the client shows as a modal "Server Message" prompt
+/// (`ChatWindow.lua:160-162`); that prompt is what earlier comments here
+/// called the "red unknown-channel splash popup".
 pub async fn send_gm_feedback(caller_entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
     // The only record of what a `.`-command told the GM (`.location`'s
     // position, `.searchmission`'s hits, every rejection reason).
@@ -115,10 +80,9 @@ mod tests {
         assert_eq!(args[flags_off], 0, "speaker flags must be 0");
         assert_eq!(
             args[flags_off + 1],
-            CHAN_FEEDBACK,
-            "channel must be feedback (9), not server (8)"
+            9,
+            "channel must be CHAN_feedback (9), not server (8) or tell (10)"
         );
-        assert_eq!(CHAN_FEEDBACK, 9, "feedback must use CHAN_feedback=9");
         // Text WSTRING char count follows speaker + flags + channel.
         let text_len_off = flags_off + 2;
         assert_eq!(
