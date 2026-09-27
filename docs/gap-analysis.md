@@ -732,7 +732,7 @@ last_updated: 2026-09-25
 | Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Per-player token bucket on every player channel, burst 5 then 1 line/s (D-SS14), GameMaster and above exempt; lines over 255 UTF-16 units or with control, bidi or zero-width characters refused (D-SS12, through the D-ORG10 `org_text` rules). Both run on the base before the cell forward; the player gets one feedback line (at most one per 5 s) and SigNoz a `rate_limit.exceeded` / `chat.rejected` event. Type-12 guards; no in-client test on record |
 | Profanity filter | KM | -- | -- | No filtering |
 | Mute system | KM | -- | -- | No per-player muting |
-| GM broadcast | KM | Admin | -- | No system-wide message tool. GM feedback rides the `tell` channel to the caller only (cell/console/chat/feedback.rs) |
+| GM broadcast | NT | -- | cell-console/src/cell/console/gm/shout.rs, base-session/src/base/gm_broadcast.rs | **New 2026-09-27 (SS-C2).** `/gmshout` (CM 222) and `.announce [space] <text>`: the GM's name, `SPEAKER_GM`, `CHAN_SERVER`, to the GM's space (cell) or every online player (base, online index). GameMaster and above via the dispatch gate; D-SS12 text rules. Type-8 and type-12 guards; no in-client test on record |
 
 ### 22. Trading --- IM (ported 2026-06; was KM)
 
@@ -1221,7 +1221,7 @@ The GM command surface shipped in June via the client's **native `/` console**: 
 | Teleport command | CW | -- | cell/console/gm/travel.rs, cell/console/travel/ | Native `gmGotoXYZ` / `gmGoto` / `gmSummon` / `gmGotoLocation` / `gmDHD`, plus the dot commands `.gotoxyz` / `.goto` / `.summon` / `.gotolocation` / `.gotospace` (P26, P44-P46, #644, #749). `.gotoxyz` confirmed in the 2026-09-18 colo playtest (appendix-session-timeline.md line 148, "Works as designed"). Re-verified 2026-09-25 |
 | Item grant | CW | -- | cell/console/gm/give.rs | `gmGiveItem`, alongside give-xp / give-cash / remove-item / give-expertise / give-ASP; base-side confirmation. Owner-confirmed 2026-06-20. Dot `.giveitem` (P06) not yet built |
 | Action logging | NT | -- | cell/console/dispatch.rs:47-116, cell/playtest_friction.rs | **Promoted 2026-09-25 (was IM).** Accepted commands log with `account_id` / `player_id` / `access_level` (#644) and relay to the Discord GM channel; rejections (unknown command, argc, bad target) now log with a `reason` (#676), closing playtest gap G7. The accepted-command audit reconstructed the 2026-09-18 playtest; rejection logging not yet seen in a session |
-| Announcement broadcast | KM | Chat | -- | -- |
+| Announcement broadcast | NT | -- | cell/console/gm/shout.rs | `/gmshout` and `.announce` (SS-C2); see §21 "GM broadcast" |
 
 ### Metrics / Telemetry --- CW
 
@@ -1269,7 +1269,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 18 | XP and Leveling | 11 | 9 | 0 | 1 | 1 | 0 |
 | 19 | Crafting | 9 | 0 | 0 | 4 | 5 | 0 |
 | 20 | Stargate Travel | 10 | 2 | 4 | 3 | 1 | 0 |
-| 21 | Chat | 10 | 0 | 2 | 2 | 6 | 0 |
+| 21 | Chat | 10 | 0 | 3 | 2 | 5 | 0 |
 | 22 | Trading | 8 | 0 | 0 | 8 | 0 | 0 |
 | 23 | Organizations / Guilds | 15 | 0 | 0 | 0 | 15 | 0 |
 | 24 | Mail | 13 | 0 | 2 | 2 | 8 | 1 |
@@ -1292,9 +1292,9 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | -- | Economy Sinks / Faucets | 7 | 0 | 4 | 0 | 3 | 0 |
 | -- | World State Persistence | 6 | 1 | 1 | 1 | 3 | 0 |
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
-| -- | Admin / GM Tools | 13 | 4 | 1 | 5 | 3 | 0 |
+| -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **60** | **100** | **138** | **4** |
+| | **TOTALS** | **471** | **169** | **62** | **100** | **136** | **4** |
 
 ### Summary Percentages
 

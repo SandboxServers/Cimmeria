@@ -175,7 +175,9 @@ use crate::otel;
 /// path's decisions and the per-player flood limits. `rate_limit` logs
 /// `rate_limit.exceeded` at WARN for a drop that notifies the player (at
 /// most one per category per player per 5 s) and at DEBUG for the silent
-/// drops between; `chat` logs the D-SS12 text-rule refusals. Both are
+/// drops between; `chat` logs the D-SS12 text-rule refusals and (SS-C2)
+/// the GM broadcast: `chat.gm_broadcast` (INFO audit row),
+/// `chat.gm_broadcast_delivered` and `chat.gm_broadcast_rejected`. Both are
 /// `debug` so the suppressed drops reach SigNoz during flood triage.
 /// `online_index` (SS-00) is the online name index: DEBUG `insert` /
 /// `remove` rows with the teardown `path`, and a DEBUG `lookup` row with
