@@ -92,6 +92,8 @@ You are the coordinator for the organizations campaign. Implement [work-packets.
 
 ## UAT milestone
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#organizations).
+
 The owner runs [ORG-UAT](work-packets.md#org-uat-owner-two-client-uat-colo) on the colo after the release, with two clients (two accounts). Every step has a solo fallback through GM commands so a single tester can still exercise the server side. The coordinator reads SigNoz afterwards for the `org` and `squad` targets.
 
 ## Where confidence is low

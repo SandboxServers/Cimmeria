@@ -63,6 +63,8 @@ You are the Claude Code coordinator for the ability-tree campaign. Implement [wo
 
 ## UAT milestone
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#ability-trees).
+
 A single milestone: the owner runs [AT-06](work-packets.md#at-06-owner-uat-colo-after-the-release) on the colo after the `/release` deploy, as GM, and uses `.bug <note>` at each oddity. The coordinator reads SigNoz afterwards for the `abilities` target: `train_requested`, `train_rejected reason=…`, `granted` and `train_raw_cost_zero`.
 
 ## Where confidence is low
