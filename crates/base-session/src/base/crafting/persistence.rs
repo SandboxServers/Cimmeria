@@ -332,10 +332,11 @@ mod tests {
     use super::*;
     use crate::test_support::require_db_or_skip;
 
-    /// Sentinel base for the crafting persistence tests. Stepped well
-    /// past the player_load sentinels (0x7000_1000 range) so concurrent
-    /// live-DB runs don't collide on account/player ids. Fits in i32.
-    const TEST_BASE: i32 = 0x7000_2000;
+    /// Sentinel base for the crafting persistence tests, in the crafting
+    /// campaign's `0x7000_Cxxx` block. The tests use `TEST_BASE ..
+    /// TEST_BASE + 0xB55`; `handlers.rs` starts at `0x7000_CC00`. (It was
+    /// `0x7000_2000`, which `engine_loader.rs` also uses; issue #800.)
+    const TEST_BASE: i32 = 0x7000_C000;
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         // Expertise rows cascade on sgw_player delete, but we delete
