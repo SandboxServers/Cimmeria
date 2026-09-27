@@ -1,6 +1,6 @@
 ---
 name: project-mail-escrow-ss-m2
-description: SS-M2 gate-mail attachment escrow review (2026-09-27) — what was cleared, and the residual gaps the SS-M3 take/return work must close
+description: SS-M2 gate-mail escrow + SS-M3 take/COD/return review (2026-09-27) — cleared shapes and the residual gaps (COD from deleted sender is a stuck sink)
 metadata:
   type: project
 ---
@@ -11,9 +11,15 @@ Cleared: item keyed by item_id + owner + INV_MAIN allowlist + bound check, FOR U
 guarded `UPDATE ... WHERE naquadah >= cost`; split uses `stack_size > qty` + fresh seq id; COD cost to sender is postage only;
 delete guard is one conditional DELETE (cash = 0 AND no escrow row).
 
-Residual: take/return/payCOD are silent UNIMPLEMENTED stubs in cell-methods mail.rs, so SS-M2 alone makes attachments an
-unrecoverable sink; escrow row cascades on recipient character delete (sender's item/COD lost).
+SS-M3 (worktree ss-m3, reviewed 2026-09-27, mail/claim.rs is the shared lock order): take cash/item, pay COD, return CLEARED
+for dupe/double-credit/overflow/owner-scoping/redirection/deadlock. Mail row locked `WHERE mail_id AND character_id` after
+advisory locks; every write conditional + rows_affected; COD price zeroed on pay AND on return; payment mail sender_id NULL;
+return destination is stored sender_id, `returned` flag stops loops; client ContainerId/SlotId only logged.
 
-**Why:** SS-M3 inherits these invariants; the take path must re-check escrow row under lock and credit with overflow check.
-**How to apply:** when SS-M3 lands, verify take is one tx (DELETE escrow row RETURNING -> insert inventory), cash take zeroes
-`cash` with `WHERE cash = $seen`, COD pay debits recipient + credits sender atomically. See [[project-mail-handlers-unimplemented]].
+Residual (flagged): COD whose sender character was deleted (FK SET NULL) can be neither paid, returned, taken nor deleted,
+so escrow is stranded forever. Paying a COD then returning hands the sender item + price (self-harm, UX).
+Escrow still cascades on recipient character delete.
+
+**Why:** SS-M4 expiry sweep reuses `return_tx`; it must handle the sender-gone COD case instead of quarantining silently.
+**How to apply:** on SS-M4 review, check the sender_id-NULL COD path and that the sweep takes the same lock order.
+See [[project-mail-handlers-unimplemented]].
