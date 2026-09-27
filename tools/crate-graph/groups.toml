@@ -36,7 +36,7 @@ prefixes = ["cimmeria-base-"]
 [[group]]
 id = "wire"
 title = "Wire contract and edge services"
-crates = ["cimmeria-wire", "cimmeria-wire-log", "cimmeria-minigame", "cimmeria-auth", "cimmeria-resources"]
+crates = ["cimmeria-wire", "cimmeria-wire-log", "cimmeria-patch-wire", "cimmeria-minigame", "cimmeria-auth", "cimmeria-resources"]
 
 [[group]]
 id = "domain"

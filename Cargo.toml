@@ -55,6 +55,7 @@ members = [
     "crates/cell-console",
     "crates/cell-methods",
     "crates/cell",
+    "crates/patch-wire",
 ]
 default-members = [
     "crates/common",
@@ -91,6 +92,7 @@ default-members = [
     "crates/cell-console",
     "crates/cell-methods",
     "crates/cell",
+    "crates/patch-wire",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -256,6 +258,7 @@ cimmeria-cell-interactions = { path = "crates/cell-interactions" }
 cimmeria-cell-console = { path = "crates/cell-console" }
 cimmeria-cell-methods = { path = "crates/cell-methods" }
 cimmeria-cell = { path = "crates/cell" }
+cimmeria-patch-wire = { path = "crates/patch-wire" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

@@ -79,6 +79,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
     ("upk-objects", "offline asset tooling"),
     ("wireclient", "headless test client"),
     (
+        "patch-wire",
+        "std-only codec with no dependencies, `tracing` included: it emits no events in any process",
+    ),
+    (
         "test-support",
         "dev-dependency only (test helpers); never linked into the server binary",
     ),
