@@ -17,6 +17,9 @@
 //! - [`live_db_mail_clerk`]: live-DB guards for the debug hub's Gate Mail
 //!   Clerk (social-systems SS-U3): template 390's role columns and dialog
 //!   100104.
+//! - [`live_db_crafting_hub`]: the same for the hub's crafting corner
+//!   (stations 310-313, the supplies vendor 314, spawns 410-414, buy list
+//!   310): the craft flags, placement and the supplies list.
 //! - [`live_db_ability_animation_links`]: live-DB guards that weapon-bound
 //!   damage abilities carry the weapon family's event set, so their hits
 //!   animate.
@@ -43,6 +46,7 @@
 mod live_db_ability_animation_links;
 mod live_db_castle_seed;
 mod live_db_content_loaders;
+mod live_db_crafting_hub;
 mod live_db_debug_banker;
 mod live_db_debug_hub;
 mod live_db_loaders;

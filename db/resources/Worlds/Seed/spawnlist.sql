@@ -938,15 +938,15 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- As for 400-404, there is no navmesh or occluder data for this room: the
 -- placement still needs an in-client check.
 --
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (414, -341.67, 73.472, -226.29, 1.6889, 12, 314, 'DebugHub_CraftingSupplies', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (414, -341.67, 73.472, -226.29, 1.6889, 12, 314, 'CraftHub_Supplies', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (410, -340.43, 73.472, -224.01, 1.9913, 12, 310, 'DebugHub_CraftStation_BioMedical', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (410, -340.43, 73.472, -224.01, 1.9913, 12, 310, 'CraftHub_Station_BioMedical', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (411, -339.2, 73.472, -221.72, 2.3079, 12, 311, 'DebugHub_CraftStation_Electronics', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (411, -339.2, 73.472, -221.72, 2.3079, 12, 311, 'CraftHub_Station_Electronics', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (412, -337.96, 73.472, -219.44, 2.583, 12, 312, 'DebugHub_CraftStation_PowerSystems', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (412, -337.96, 73.472, -219.44, 2.583, 12, 312, 'CraftHub_Station_PowerSystems', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (413, -336.72, 73.472, -217.15, 2.7937, 12, 313, 'DebugHub_CraftStation_Materials', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (413, -336.72, 73.472, -217.15, 2.7937, 12, 313, 'CraftHub_Station_Materials', NULL);
 
 --
 -- TOC entry 3335 (class 0 OID 0)
