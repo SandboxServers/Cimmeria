@@ -1279,7 +1279,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 25 | Black Market | 10 | 0 | 0 | 0 | 9 | 1 |
 | 26 | Contact Lists | 10 | 10 | 0 | 0 | 0 | 0 |
 | 27 | Dueling | 6 | 0 | 0 | 3 | 3 | 0 |
-| 28 | Pets | 7 | 0 | 0 | 0 | 7 | 0 |
+| 28 | Pets | 7 | 0 | 6 | 1 | 0 | 0 |
 | 29 | Minigames | 9 | 5 | 0 | 1 | 3 | 0 |
 | 30 | Groups / Parties | 7 | 0 | 0 | 0 | 7 | 0 |
 | 31 | Content Engine | 11 | 6 | 2 | 1 | 2 | 0 |
