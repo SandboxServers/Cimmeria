@@ -133,3 +133,44 @@ async fn presence_send_failure_warns_with_reason() {
     assert!(row.has_field("online_members", "1"), "{row:?}");
     fx.teardown().await;
 }
+
+/// Audit A-35: a character that drops without `logOff` (here an inactivity
+/// timeout) is announced offline to its contact-list watchers too: CM 89
+/// `LoggedInStatus` with the offline value. Before ORG-06 only `logOff`
+/// told them.
+#[tokio::test]
+async fn contact_list_watchers_hear_a_teardown() {
+    use crate::base::contact_list::persistence::{add_members, ensure_system_lists};
+    use cimmeria_wire::base::contact_list::wire::{
+        build_on_contact_list_event, DATA_OFFLINE, EVENT_LOGGED_IN_STATUS,
+    };
+
+    let pool = require_db_or_skip!();
+    let fx = Fixture::new(&pool, 12, 2, &[]).await;
+    let (friends, _) = ensure_system_lists(&pool, fx.player_id(1)).await.unwrap();
+    add_members(&pool, fx.player_id(1), friends, &[fx.name(0)])
+        .await
+        .unwrap();
+    fx.online(0);
+    fx.online(1);
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    destroy_client_entities(
+        &fx.connected,
+        &entity_manager,
+        fx.addr(0),
+        &None,
+        &fx.entity_to_addr,
+        &fx.transport,
+        &fx.db_pool,
+        "inactivity_timeout",
+    );
+    fx.wait_for_packets(1, 1).await;
+    assert_eq!(
+        fx.calls_to(1),
+        vec![(
+            89,
+            build_on_contact_list_event(&fx.name(0), EVENT_LOGGED_IN_STATUS, DATA_OFFLINE)
+        )]
+    );
+    fx.teardown().await;
+}
