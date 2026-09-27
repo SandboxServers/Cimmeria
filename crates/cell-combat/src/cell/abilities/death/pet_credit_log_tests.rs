@@ -312,3 +312,54 @@ async fn pet_kill_credited_records_victim_template_id_as_a_value() {
     let row = only_event(&capture.all(), "pets.credit", "pet_kill_credited");
     assert!(!row.fields.contains_key("victim_template_id"), "{row:?}");
 }
+
+/// **Guard (#889).** The 1.0 fast path is capped too: a pet at the
+/// default `transfer_xp = 1.0` kills a victim whose level makes `kill_xp`
+/// alone exceed `MAX_KILL_XP` (`10 * u32::MAX`). No `GrantXP`, one WARN
+/// `xp_overflow` row on `pets.credit`. Reverted (the cap only on the scaled
+/// path), a 42,949,672,950 XP `GrantXP` goes to the owner.
+#[tokio::test]
+async fn a_huge_victim_level_at_scale_one_logs_xp_overflow() {
+    let (mut mgr, pet, mob) = world();
+    mgr.get_entity_mut(mob).unwrap().level = u32::MAX;
+    let capture = LogCapture::install();
+    assert_eq!(kill(&mut mgr, mob, pet).await, vec![], "no GrantXP");
+
+    let row = only_event(&capture.all(), "pets.credit", "kill_xp_not_granted");
+    assert_eq!(row.level, Level::WARN);
+    assert!(row.has_field("reason", "xp_overflow"), "{row:?}");
+    assert!(
+        row.has_field("base_xp", &(10 * u64::from(u32::MAX)).to_string()),
+        "{row:?}"
+    );
+    assert!(
+        row.has_field("max_kill_xp", &(i32::MAX as u64).to_string()),
+        "{row:?}"
+    );
+    assert!(row.has_field("attacker", &pet.to_string()), "{row:?}");
+    assert_pet(&row, pet);
+    assert_owner_identity(&row);
+}
+
+/// **Guard (#889).** The same cap on a player's own kill: no `GrantXP`, and
+/// one WARN `xp_overflow` row on the module target, not `pets.credit` (no
+/// pet is involved).
+#[tokio::test]
+async fn a_player_kill_of_a_huge_level_victim_logs_xp_overflow_off_pets() {
+    let (mut mgr, _pet, mob) = world();
+    mgr.get_entity_mut(mob).unwrap().level = u32::MAX;
+    let capture = LogCapture::install();
+    assert_eq!(kill(&mut mgr, mob, OWNER).await, vec![], "no GrantXP");
+
+    let logs = capture.all();
+    let rows: Vec<_> = logs
+        .iter()
+        .filter(|c| c.has_field("event", "kill_xp_not_granted"))
+        .collect();
+    assert_eq!(rows.len(), 1, "{logs:#?}");
+    let row = rows[0];
+    assert_eq!(row.level, Level::WARN);
+    assert!(row.has_field("reason", "xp_overflow"), "{row:?}");
+    assert!(row.has_field("attacker", &OWNER.to_string()), "{row:?}");
+    assert_ne!(row.target, "pets.credit", "{row:?}");
+}

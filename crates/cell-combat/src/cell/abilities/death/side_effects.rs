@@ -197,13 +197,14 @@ impl NoKillXp {
     }
 }
 
-/// The largest kill payout a scaled pet kill may grant: `i32::MAX`.
+/// The largest single kill payout: `i32::MAX`, for every kill, pet or
+/// player, whatever the scale.
 ///
-/// `kill_xp` pays at most a few thousand XP, and D-PT02 ships
-/// `transfer_xp = 1.0`, so any scaled payout above this is a seed fault. The
-/// bound exists because a finite but huge `transfer_xp` (`f32::MAX`) makes
-/// the `f64` product exceed `u64`, and an `as u64` cast saturates rather
-/// than failing: the owner would be granted `u64::MAX` XP. `i32::MAX` is
+/// Two inputs can exceed it. `kill_xp` is `10 * level` in `u64`, so a
+/// victim with a corrupt huge level pays more than the base can store even
+/// at scale 1.0. And a finite but huge `transfer_xp` (`f32::MAX`) makes the
+/// `f64` product exceed `u64`, where an `as u64` cast saturates rather than
+/// failing: the owner would be granted `u64::MAX` XP. `i32::MAX` is
 /// the narrowest place XP is stored: `sgw_player.exp` is `integer` and the
 /// wire payload is an `INT32`, so no single payout can be larger than what
 /// the base can persist (#889).
@@ -215,9 +216,10 @@ pub(super) const MAX_KILL_XP: u64 = i32::MAX as u64;
 ///
 /// `Err` when nobody is credited, or when the scale leaves nothing to pay:
 /// a template authored with `transfer_xp = 0`, or a non-finite or negative
-/// value, which fails closed to zero rather than minting XP. A finite scale
-/// whose payout would exceed [`MAX_KILL_XP`] also fails closed
-/// (`XpOverflow`), checked on the `f64` product before the integer cast.
+/// value, which fails closed to zero rather than minting XP. Any payout
+/// above [`MAX_KILL_XP`] also fails closed (`XpOverflow`) on every path,
+/// the 1.0 fast path included: a scaled payout is checked on the `f64`
+/// product before the integer cast, and every payout on the integer after.
 pub(super) fn kill_xp_payout(
     space_mgr: &SpaceManager,
     attacker_id: u32,
@@ -248,6 +250,11 @@ pub(super) fn kill_xp_payout(
     } else {
         return Err(NoKillXp::TransferXpInvalid(scale));
     };
+    // The 1.0 fast path skips the `f64` check above; `kill_xp` of a huge
+    // victim level can exceed the cap on its own (#889).
+    if xp > MAX_KILL_XP {
+        return Err(NoKillXp::XpOverflow(scale));
+    }
     if xp == 0 {
         return Err(NoKillXp::ZeroXp);
     }
@@ -259,8 +266,9 @@ pub(super) fn kill_xp_payout(
 /// Levels follow the negative-logging convention: DEBUG for outcomes play
 /// produces every minute (a mob kills a pet, an NPC fight, an orphaned
 /// pet's last hit), WARN only for `transfer_xp_invalid` and `xp_overflow`,
-/// data faults no client can cause. Pet-related rows go on `pets.credit` with the owner's
-/// identity; the plain NPC-kills-NPC row stays on the module target.
+/// data faults no client can cause. Rows about a pet go on `pets.credit`
+/// with the owner's identity; rows with no pet (an NPC fight, a player
+/// kill that overflows) stay on the module target.
 /// `CreditRefused` logs nothing: `credit_recipient` already wrote its WARN.
 fn log_no_kill_xp(
     no_xp: NoKillXp,
@@ -308,7 +316,11 @@ fn log_no_kill_xp(
     };
     let (account_id, player_id) = (id.account_id, id.player_id);
 
-    if let NoKillXp::TransferXpInvalid(transfer_xp) | NoKillXp::XpOverflow(transfer_xp) = no_xp {
+    let bad_data = match no_xp {
+        NoKillXp::TransferXpInvalid(t) | NoKillXp::XpOverflow(t) => Some(t),
+        _ => None,
+    };
+    if let (Some(transfer_xp), Some(_)) = (bad_data, attacker_pet_owner) {
         tracing::warn!(
             target: "pets.credit",
             event = "kill_xp_not_granted",
@@ -318,11 +330,24 @@ fn log_no_kill_xp(
             owner_id,
             account_id,
             player_id,
+            attacker = attacker_id,
             victim_id = target_eid,
             base_xp,
             transfer_xp,
             max_kill_xp = MAX_KILL_XP,
             "pet kill paid no XP: transfer_xp is out of range (not positive and finite, or the payout overflows)"
+        );
+    } else if bad_data.is_some() {
+        // A player's (scale 1.0) kill whose `kill_xp` alone overflows: a
+        // corrupt victim level. No pet, so the module target.
+        tracing::warn!(
+            event = "kill_xp_not_granted",
+            reason,
+            attacker = attacker_id,
+            victim_id = target_eid,
+            base_xp,
+            max_kill_xp = MAX_KILL_XP,
+            "Kill XP not granted: the payout exceeds the XP ceiling"
         );
     } else if owner_id.is_some() {
         tracing::debug!(
