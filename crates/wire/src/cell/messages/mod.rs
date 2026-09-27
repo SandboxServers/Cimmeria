@@ -13,11 +13,14 @@
 //!   enums carried by `CellToBaseMsg::Org` and `BaseToCellMsg::Org`.
 //! - `chat_cell_to_base` — the nested chat enum carried by
 //!   `CellToBaseMsg::Chat`.
+//! - `duel_base_to_cell` — the nested duel enum carried by
+//!   `BaseToCellMsg::Duel`.
 
 mod base_to_cell;
 mod cell_to_base;
 mod chat_cell_to_base;
 mod data;
+mod duel_base_to_cell;
 mod lab;
 mod org_base_to_cell;
 mod org_cell_to_base;
@@ -31,6 +34,7 @@ pub use chat_cell_to_base::ChatCellToBase;
 pub use data::{
     MailOp, MailSend, MailSendReject, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission,
 };
+pub use duel_base_to_cell::DuelBaseToCell;
 pub use lab::{
     LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,
     LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
