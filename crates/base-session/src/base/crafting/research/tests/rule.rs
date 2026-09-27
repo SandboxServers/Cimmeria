@@ -328,6 +328,9 @@ fn research_reasons_are_the_documented_labels() {
     for (why, label) in reasons {
         assert_eq!(why.reason(), label);
         assert!(why.text().ends_with("Nothing was used."), "{}", why.text());
+        // A string continuation that lost its backslash leaves a run of
+        // spaces in the middle of the line.
+        assert!(!why.text().contains("  "), "{:?}", why.text());
         assert_eq!(why.error_code(), None);
         let c = why.compared();
         assert_eq!((c.item_id, c.type_id), (Some(1), Some(2)));
