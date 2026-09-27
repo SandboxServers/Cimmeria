@@ -22,6 +22,7 @@ mod registered_pet_kill_credit;
 mod sequence;
 mod sequence_phases;
 mod summon;
+mod summon_live_db;
 mod target_validity;
 mod warmup;
 mod warmup_interrupt;
