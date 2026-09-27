@@ -22,6 +22,7 @@
 //! and [`make_socket`] from here.
 use super::*;
 
+mod space_fallback;
 mod transfer;
 use crate::base::PendingClientReadyInfo;
 use crate::test_support::TestTransport;

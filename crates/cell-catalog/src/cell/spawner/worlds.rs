@@ -121,6 +121,30 @@ mod live_db_tests {
         );
     }
 
+    /// The seven historical CellBlock worlds load from the real seed under
+    /// the ids the base sends in `onClientMapLoad` (the cell stamps these
+    /// onto `spaces.xml` worlds; a missing row would leave a world with no
+    /// id, which fails every content-engine `world` condition closed), and
+    /// the stock CellBlock keeps its own id.
+    #[tokio::test]
+    async fn historical_cellblocks_load_under_their_wire_world_ids() {
+        use cimmeria_wire::mercury::world_data::historical_cellblocks::HISTORICAL_CELLBLOCKS;
+
+        let pool = require_db_or_skip!();
+        let rows = load_world_rows(&pool).await.expect("load_world_rows");
+        for world in &HISTORICAL_CELLBLOCKS {
+            let row = rows.get(world.world).unwrap_or_else(|| {
+                panic!(
+                    "resources.worlds must carry {} ({})",
+                    world.world, world.world_id
+                )
+            });
+            assert_eq!(row.world_id, world.world_id, "{}", world.world);
+            assert_eq!(row.navmesh_mode, NavmeshMode::Advisory, "{}", world.world);
+        }
+        assert_eq!(rows["Castle_CellBlock"].world_id, 12);
+    }
+
     /// The column's default does the work for every row the seed never
     /// mentions it on. The advisory rows are exactly the worlds whose
     /// `data/spaces/*.nav` nobody has walked under containment, each with
@@ -139,6 +163,11 @@ mod live_db_tests {
     ///   must not start snapping players back before anyone has walked it.
     ///   `SandBox` (2) is in the list because its client map is
     ///   Harset_CmdCenter and it loads a copy of that mesh.
+    /// - The seven historical CellBlock worlds (1201–1207, `CellBlock43` …
+    ///   `CellBlock63`): map archaeology with no mesh at all. The stock
+    ///   `castle_cellblock.nav` does not match their older geometry, so
+    ///   advisory keeps a mesh dropped in later from gating anyone before it
+    ///   has been walked.
     ///
     /// `Castle_CellBlock` (12) is the one meshed world left on `enforce`:
     /// its mesh was rebuilt on 2026-09-19 and has been walked since.
@@ -160,6 +189,13 @@ mod live_db_tests {
                 "Agnos_Library",
                 "Beta_Site_Evo_1",
                 "Castle",
+                "CellBlock43",
+                "CellBlock55",
+                "CellBlock57",
+                "CellBlock58",
+                "CellBlock60",
+                "CellBlock62",
+                "CellBlock63",
                 "Dakara_E1",
                 "Dakara_E1_StoryRm",
                 "Harset",

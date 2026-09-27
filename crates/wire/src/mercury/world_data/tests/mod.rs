@@ -7,6 +7,7 @@ use super::*;
 
 mod bandolier;
 mod entity_encoding;
+mod historical_cellblocks;
 mod map_loaded;
 mod player_creation;
 mod stargates;

@@ -6,7 +6,7 @@
 //! on identical override content produce the same value (no re-invalidation
 //! churn) and any edit produces a different one (the client refetches).
 //!
-//! Two invariants are shared by all four:
+//! Two invariants are shared by all of them:
 //!
 //! * `& 0xFFFF` keeps the bump small enough to stay well inside `u32` on top
 //!   of the QA-build MetaData values.
@@ -120,6 +120,25 @@ pub(super) fn compute_sequence_metadata_bump(
         ov.sequence_id.hash(&mut hasher);
         ov.event_id.hash(&mut hasher);
         ov.kismet_script_name.hash(&mut hasher);
+    }
+    ((hasher.finish() as u32) & 0xFFFF) | 0x1
+}
+
+/// Companion bump for the world info category. Hashes every field of each
+/// generated `COOKED_WORLD_INFO` entry, so identical override content gives
+/// an identical version across server starts and any edit changes it.
+pub(super) fn compute_world_info_metadata_bump(
+    overrides: &[crate::base::world_info_overrides::WorldInfoOverride],
+) -> u32 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for ov in overrides {
+        ov.world_id.hash(&mut hasher);
+        ov.world.hash(&mut hasher);
+        ov.client_map.hash(&mut hasher);
+        ov.flags.hash(&mut hasher);
+        ov.min_per_day.hash(&mut hasher);
+        ov.min_to_real_min.hash(&mut hasher);
     }
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }

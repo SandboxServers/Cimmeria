@@ -57,6 +57,11 @@ pub mod world_entry_appearance {
 #[cfg(test)]
 mod resource_fragment_tests;
 
+/// The category-12 version handshake on the wire, against the committed
+/// PAKs. Test-only.
+#[cfg(test)]
+mod version_info_tests;
+
 // Cooked-data delivery serves the resource cache (`cimmeria-resources`).
 use cimmeria_resources::base::resources;
 

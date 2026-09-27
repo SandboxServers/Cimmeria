@@ -3,6 +3,7 @@
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
+pub mod historical_cellblocks;
 mod map_loaded;
 mod phases;
 mod stats;
@@ -39,6 +40,9 @@ pub(crate) use super::{
 
 /// Look up the world_id for a world name (from db/resources/Worlds/Seed/worlds.sql).
 pub(crate) fn world_id_for_name(world_name: &str) -> i32 {
+    if let Some(world) = historical_cellblocks::historical_cellblock(world_name) {
+        return world.world_id;
+    }
     match world_name {
         "CombatSim" => 1,
         "SandBox" => 2,
@@ -86,7 +90,15 @@ pub(crate) fn world_id_for_name(world_name: &str) -> i32 {
 
 /// Look up the client terrain path for a world name (client_map from worlds.sql).
 /// Most worlds use the same name; a few differ.
+///
+/// The historical CellBlock worlds always differ (`CellBlock43` loads
+/// `C43485_CellBlock`), so they resolve explicitly and never reach the
+/// `world_name` default, which would ask the client for a package that
+/// does not exist.
 pub(crate) fn client_map_for_world(world_name: &str) -> &str {
+    if let Some(world) = historical_cellblocks::historical_cellblock(world_name) {
+        return world.client_map;
+    }
     match world_name {
         "CombatSim" => "Combat_Terrain_Test",
         "SandBox" => "Harset_CmdCenter",

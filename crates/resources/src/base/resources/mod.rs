@@ -174,13 +174,22 @@ const CATEGORY_DIALOGS: u32 = 5;
 /// be pushed via the cooked-data invalidation handshake.
 const CATEGORY_KISMET_SEQUENCES: u32 = 1;
 
+/// Category id for `CookedWorldInfo.pak` (see [`CATEGORY_PAKS`]).
+/// `onClientMapLoad` names a `WorldID`; the client's world table comes from
+/// this catalogue, so a world id the shipped PAK lacks must be pushed via the
+/// cooked-data invalidation handshake.
+const CATEGORY_WORLD_INFO: u32 = 12;
+
+mod apply_overrides;
 mod metadata_bump;
 
-// Visible to this module and its `tests` child, which exercises each bump
-// helper directly. Not re-exported past `resources`.
+// For the `tests` child, which exercises each bump helper directly through
+// `super::super::*`; `apply_overrides` imports them itself. Not re-exported
+// past `resources`.
+#[cfg(test)]
 use metadata_bump::{
     compute_dialog_metadata_bump, compute_item_metadata_bump, compute_metadata_bump,
-    compute_sequence_metadata_bump,
+    compute_world_info_metadata_bump,
 };
 
 impl ResourceCache {
@@ -239,6 +248,9 @@ impl ResourceCache {
         // Kismet sequences category (1) — disjoint from the others.
         let sequence_overridden = Self::apply_sequence_overrides(&mut categories);
         overridden_elements.extend(sequence_overridden);
+        // World info category (12) — disjoint from the others.
+        let world_info_overridden = Self::apply_world_info_overrides(&mut categories);
+        overridden_elements.extend(world_info_overridden);
 
         Ok(Self {
             categories: Arc::new(categories),
@@ -246,326 +258,7 @@ impl ResourceCache {
         })
     }
 
-    /// Patch the freshly-loaded `CookedDataItems` category with
-    /// Cimmeria's icon + stack-size overrides, bumping the category
-    /// metadata so the client's next `versionInfoRequest` sees a
-    /// fresh value and triggers the per-key invalidation handshake.
-    ///
-    /// Same shape as [`Self::apply_mission_overrides`] — the cooked
-    /// data wire path is category-agnostic; only the per-category
-    /// override registry differs.
-    fn apply_item_overrides(categories: &mut HashMap<u32, CategoryData>) -> HashMap<u32, Vec<u32>> {
-        use super::item_overrides::{apply_override, ITEM_OVERRIDES};
-
-        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
-        let Some(items) = categories.get_mut(&CATEGORY_ITEMS) else {
-            tracing::warn!(
-                category = CATEGORY_ITEMS,
-                "CookedDataItems not loaded; skipping item overrides"
-            );
-            return overridden;
-        };
-
-        let mut applied: Vec<u32> = Vec::with_capacity(ITEM_OVERRIDES.len());
-        for ov in ITEM_OVERRIDES {
-            let Some(original) = items.elements.get(&ov.item_id) else {
-                tracing::warn!(
-                    item_id = ov.item_id,
-                    "item override skipped: entry not present in PAK",
-                );
-                continue;
-            };
-            match apply_override(original, ov) {
-                Some(patched) => {
-                    items.elements.insert(ov.item_id, patched);
-                    applied.push(ov.item_id);
-                    tracing::info!(
-                        item_id = ov.item_id,
-                        new_icon = ?ov.new_icon_location,
-                        new_max_stack_size = ?ov.new_max_stack_size,
-                        "Applied Cimmeria item override",
-                    );
-                }
-                None => {
-                    tracing::warn!(
-                        item_id = ov.item_id,
-                        "item override skipped: XML shape did not match — keeping unpatched entry",
-                    );
-                }
-            }
-        }
-
-        if !applied.is_empty() {
-            let bump = compute_item_metadata_bump(ITEM_OVERRIDES);
-            items.metadata = items.metadata.wrapping_add(bump);
-            applied.sort_unstable();
-            tracing::info!(
-                category = CATEGORY_ITEMS,
-                count = applied.len(),
-                bump,
-                bumped_metadata = items.metadata,
-                "Cimmeria item overrides applied; metadata bumped",
-            );
-            overridden.insert(CATEGORY_ITEMS, applied);
-        }
-
-        overridden
-    }
-
-    /// Patch the freshly-loaded `CookedDataDialogs` category with
-    /// Cimmeria's dialog overrides, bumping the category metadata so the
-    /// client's next `versionInfoRequest` triggers the per-key
-    /// invalidation handshake.
-    ///
-    /// Two kinds run here, in this order:
-    ///
-    /// 1. **Full regenerations** (`DIALOG_OVERRIDES`). Each emits a whole
-    ///    `<COOKED_DIALOG>` from Rust-authored text, so it works whether
-    ///    or not the dialog id was present in the PAK: a corrected
-    ///    existing dialog (Frost's 3995) and a brand-new one (the Guard
-    ///    corpse's 3996) are both just an `elements.insert`. There's no
-    ///    "entry not present" skip and no shape failure — generation is
-    ///    infallible.
-    /// 2. **Patches** (`DIALOG_PATCH_TABLES`). Each transforms the entry
-    ///    the client already shipped, so it CAN fail: a missing dialog
-    ///    id, a missing `OnlyOn` screen, or a cooked shape that no longer
-    ///    parses all warn and skip, leaving the canonical bytes intact.
-    ///    See [`super::dialog_overrides::apply_dialog_patches`].
-    ///
-    /// Regenerations run first so a patch could in principle transform a
-    /// regenerated entry; nothing does that today, and a unit test keeps
-    /// the two tables disjoint.
-    fn apply_dialog_overrides(
-        categories: &mut HashMap<u32, CategoryData>,
-    ) -> HashMap<u32, Vec<u32>> {
-        use super::dialog_overrides::{
-            apply_dialog_patches, generate_dialog_xml, no_patches_registered, DIALOG_OVERRIDES,
-            DIALOG_PATCH_TABLES,
-        };
-
-        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
-        if DIALOG_OVERRIDES.is_empty() && no_patches_registered() {
-            return overridden;
-        }
-
-        let Some(dialogs) = categories.get_mut(&CATEGORY_DIALOGS) else {
-            tracing::warn!(
-                category = CATEGORY_DIALOGS,
-                "CookedDataDialogs not loaded; skipping dialog overrides"
-            );
-            return overridden;
-        };
-
-        let mut applied: Vec<u32> = Vec::with_capacity(DIALOG_OVERRIDES.len());
-        for ov in DIALOG_OVERRIDES {
-            let was_present = dialogs.elements.contains_key(&ov.dialog_id);
-            let patched = generate_dialog_xml(ov);
-            dialogs.elements.insert(ov.dialog_id, patched);
-            applied.push(ov.dialog_id);
-            tracing::info!(
-                dialog_id = ov.dialog_id,
-                replaced_existing = was_present,
-                "Applied Cimmeria dialog override",
-            );
-        }
-
-        applied.extend(apply_dialog_patches(
-            &mut dialogs.elements,
-            DIALOG_PATCH_TABLES,
-        ));
-
-        // Every patch may have been skipped (all targets absent), in which
-        // case nothing changed and bumping would make every client refetch
-        // entries that are byte-identical to what they hold.
-        if applied.is_empty() {
-            return overridden;
-        }
-
-        let bump = compute_dialog_metadata_bump(DIALOG_OVERRIDES, DIALOG_PATCH_TABLES);
-        dialogs.metadata = dialogs.metadata.wrapping_add(bump);
-        applied.sort_unstable();
-        // A dialog that is both regenerated and patched would otherwise be
-        // named twice in `InvalidKeys`.
-        applied.dedup();
-        tracing::info!(
-            category = CATEGORY_DIALOGS,
-            count = applied.len(),
-            bump,
-            bumped_metadata = dialogs.metadata,
-            "Cimmeria dialog overrides applied; metadata bumped",
-        );
-        overridden.insert(CATEGORY_DIALOGS, applied);
-
-        overridden
-    }
-
-    /// Mutate the freshly-loaded `CookedDataMissions` category to include
-    /// Cimmeria's added mission steps, bumping the category metadata so
-    /// the client's version check sees a fresh value and triggers the
-    /// per-key invalidation handshake.
-    ///
-    /// Returns the overridden-elements map keyed by category id. An entry
-    /// with an empty vec is omitted; absence of a category means
-    /// `handle_version_info_request` falls through to the legacy
-    /// "echo or invalidate-all" path for that category.
-    fn apply_mission_overrides(
-        categories: &mut HashMap<u32, CategoryData>,
-    ) -> HashMap<u32, Vec<u32>> {
-        use super::mission_overrides::{
-            apply_override, apply_step_text_override, MISSION_OVERRIDES, STEP_TEXT_OVERRIDES,
-        };
-
-        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
-
-        let Some(missions) = categories.get_mut(&CATEGORY_MISSIONS) else {
-            tracing::warn!(
-                category = CATEGORY_MISSIONS,
-                "CookedDataMissions not loaded; skipping mission overrides"
-            );
-            return overridden;
-        };
-
-        let mut applied: Vec<u32> =
-            Vec::with_capacity(MISSION_OVERRIDES.len() + STEP_TEXT_OVERRIDES.len());
-        for ov in MISSION_OVERRIDES {
-            let Some(original) = missions.elements.get(&ov.mission_id) else {
-                tracing::warn!(
-                    mission_id = ov.mission_id,
-                    "mission override skipped: entry not present in PAK",
-                );
-                continue;
-            };
-            match apply_override(original, ov) {
-                Some(patched) => {
-                    missions.elements.insert(ov.mission_id, patched);
-                    // A mission can have multiple overrides (e.g. 622 injects
-                    // both the Guard-search and equip steps); list its id once
-                    // so InvalidKeys names each patched entry a single time.
-                    if !applied.contains(&ov.mission_id) {
-                        applied.push(ov.mission_id);
-                    }
-                    tracing::info!(
-                        mission_id = ov.mission_id,
-                        "Applied Cimmeria mission override",
-                    );
-                }
-                None => {
-                    tracing::warn!(
-                        mission_id = ov.mission_id,
-                        "mission override skipped: XML shape did not match — keeping unpatched entry",
-                    );
-                }
-            }
-        }
-
-        // Step-text overrides patch existing `<StepDisplayLogText>` content
-        // in-place. Run after MISSION_OVERRIDES so a patched mission XML
-        // (with new injected steps) can have one of its existing step
-        // captions corrected in the same pass.
-        for ov in STEP_TEXT_OVERRIDES {
-            let Some(original) = missions.elements.get(&ov.mission_id) else {
-                tracing::warn!(
-                    mission_id = ov.mission_id,
-                    step_id = ov.step_id,
-                    "step text override skipped: mission entry not present in PAK",
-                );
-                continue;
-            };
-            match apply_step_text_override(original, ov) {
-                Some(patched) => {
-                    missions.elements.insert(ov.mission_id, patched);
-                    if !applied.contains(&ov.mission_id) {
-                        applied.push(ov.mission_id);
-                    }
-                    tracing::info!(
-                        mission_id = ov.mission_id,
-                        step_id = ov.step_id,
-                        "Applied Cimmeria step text override",
-                    );
-                }
-                None => {
-                    tracing::warn!(
-                        mission_id = ov.mission_id,
-                        step_id = ov.step_id,
-                        "step text override skipped: XML shape did not match — keeping unpatched entry",
-                    );
-                }
-            }
-        }
-
-        if !applied.is_empty() {
-            let bump = compute_metadata_bump(MISSION_OVERRIDES, STEP_TEXT_OVERRIDES);
-            missions.metadata = missions.metadata.wrapping_add(bump);
-            applied.sort_unstable();
-            tracing::info!(
-                category = CATEGORY_MISSIONS,
-                count = applied.len(),
-                bump,
-                bumped_metadata = missions.metadata,
-                "Cimmeria mission overrides applied; metadata bumped",
-            );
-            overridden.insert(CATEGORY_MISSIONS, applied);
-        }
-
-        overridden
-    }
-
     /// Load a single PAK file (ZIP archive) into a CategoryData.
-    /// Add Cimmeria's Kismet sequences to the freshly-loaded
-    /// `CookedDataKismetSeqEvent` category and bump its metadata so a client's
-    /// next `versionInfoRequest` takes the per-key handshake.
-    ///
-    /// This is also what keeps category 1 off the destructive path: with no
-    /// override list, a version mismatch answers `invalidate_all = true` and
-    /// pushes nothing, and the client empties its whole sequence table.
-    fn apply_sequence_overrides(
-        categories: &mut HashMap<u32, CategoryData>,
-    ) -> HashMap<u32, Vec<u32>> {
-        use super::sequence_overrides::{generate_sequence_xml, SEQUENCE_OVERRIDES};
-
-        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
-        if SEQUENCE_OVERRIDES.is_empty() {
-            return overridden;
-        }
-
-        let Some(sequences) = categories.get_mut(&CATEGORY_KISMET_SEQUENCES) else {
-            tracing::warn!(
-                category = CATEGORY_KISMET_SEQUENCES,
-                "CookedDataKismetSeqEvent not loaded; skipping sequence overrides"
-            );
-            return overridden;
-        };
-
-        let mut applied: Vec<u32> = Vec::with_capacity(SEQUENCE_OVERRIDES.len());
-        for ov in SEQUENCE_OVERRIDES {
-            let was_present = sequences.elements.contains_key(&ov.sequence_id);
-            sequences
-                .elements
-                .insert(ov.sequence_id, generate_sequence_xml(ov));
-            applied.push(ov.sequence_id);
-            tracing::info!(
-                sequence_id = ov.sequence_id,
-                event_id = ov.event_id,
-                replaced_existing = was_present,
-                "Applied Cimmeria Kismet sequence override",
-            );
-        }
-
-        let bump = compute_sequence_metadata_bump(SEQUENCE_OVERRIDES);
-        sequences.metadata = sequences.metadata.wrapping_add(bump);
-        applied.sort_unstable();
-        tracing::info!(
-            category = CATEGORY_KISMET_SEQUENCES,
-            count = applied.len(),
-            bump,
-            bumped_metadata = sequences.metadata,
-            "Cimmeria Kismet sequence overrides applied; metadata bumped",
-        );
-        overridden.insert(CATEGORY_KISMET_SEQUENCES, applied);
-
-        overridden
-    }
-
     fn load_pak(pak_path: &str) -> Result<CategoryData, String> {
         let file =
             std::fs::File::open(pak_path).map_err(|e| format!("Failed to open {pak_path}: {e}"))?;
