@@ -734,6 +734,11 @@ pub struct CellEntity {
     /// for NPCs and until the first push; never persisted on the cell.
     pub ignore_names: HashSet<String>,
 
+    /// The `UpdateIgnoreList` version `ignore_names` came from. A push with
+    /// a version at or below this is stale and dropped. 0 until the first
+    /// push, so a fresh entity (gate travel) takes any version.
+    pub ignore_version: u64,
+
     /// Per-session client option state populated by `updateSystemOptions`
     /// (player method index 93). Defaults to `SystemOptions::default()` on
     /// entity construction, then overwritten by either of two paths:

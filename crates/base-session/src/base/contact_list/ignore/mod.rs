@@ -40,13 +40,10 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
 
 use sqlx::PgPool;
-use tokio::sync::mpsc;
 
 use crate::base::ConnectedClientState;
-use crate::cell::messages::BaseToCellMsg;
 
 /// `sgw_contact_list.flags` of the system Ignore list (the EMoniker text id
 /// `ensure_system_lists` creates it with; Friends is 300).
@@ -69,6 +66,12 @@ pub fn fold_name(name: &str) -> String {
 pub struct IgnoreCache {
     folded: HashSet<String>,
     player_ids: HashSet<i32>,
+    /// The last resync version handed out, and the newest one applied
+    /// ([`resync_ignore_cache`]). A resync takes its version before it
+    /// reads the database, so the highest version always read after the last
+    /// commit; an older one that finishes later is dropped.
+    issued: u64,
+    applied: u64,
 }
 
 impl IgnoreCache {
@@ -81,7 +84,33 @@ impl IgnoreCache {
         Self {
             folded: names.iter().map(|n| fold_name(n)).collect(),
             player_ids,
+            issued: 0,
+            applied: 0,
         }
+    }
+
+    /// Hand out the next resync version. Take it before reading the
+    /// database.
+    pub fn begin_sync(&mut self) -> u64 {
+        self.issued += 1;
+        self.issued
+    }
+
+    /// Replace the list with what the resync `version` read, unless a newer
+    /// resync has already been applied. Returns whether it was applied.
+    pub fn apply_sync(
+        &mut self,
+        version: u64,
+        names: &HashSet<String>,
+        player_ids: HashSet<i32>,
+    ) -> bool {
+        if version <= self.applied {
+            return false;
+        }
+        self.folded = names.iter().map(|n| fold_name(n)).collect();
+        self.player_ids = player_ids;
+        self.applied = version;
+        true
     }
 
     /// Whether `speaker` is on the list, case-insensitively.
@@ -170,6 +199,39 @@ where
     .fetch_all(executor)
     .await?;
     Ok(rows.into_iter().collect())
+}
+
+/// How [`add_ignore_entry`] ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IgnoreAdd {
+    /// Inserted; the list held `before` entries first.
+    Added { list_id: i32, before: usize },
+    /// Already on the list, compared case-insensitively; the stored spelling.
+    Duplicate(String),
+    /// The list already holds [`MAX_IGNORE_LIST_MEMBERS`] entries.
+    Full,
+}
+
+/// Add `name` to `player_id`'s Ignore list, atomically capped at
+/// [`MAX_IGNORE_LIST_MEMBERS`] and unique case-insensitively: the list row
+/// is locked for the read-check-insert, so overlapping adds (two
+/// `chatIgnore`s, or one and a contact-list UI edit) cannot both pass the
+/// cap or add the same name twice. The caller announces an `Added` with
+/// `handlers::announce_added_members`.
+pub async fn add_ignore_entry(
+    pool: &PgPool,
+    player_id: i32,
+    name: &str,
+) -> Result<IgnoreAdd, sqlx::Error> {
+    use crate::base::contact_list::persistence::{add_member_capped, CappedAdd};
+    let list_id = ensure_ignore_list(pool, player_id).await?;
+    Ok(
+        match add_member_capped(pool, player_id, list_id, name, MAX_IGNORE_LIST_MEMBERS).await? {
+            CappedAdd::Added { before } => IgnoreAdd::Added { list_id, before },
+            CappedAdd::Duplicate(stored) => IgnoreAdd::Duplicate(stored),
+            CappedAdd::Full => IgnoreAdd::Full,
+        },
+    )
 }
 
 /// Every name on `player_id`'s Ignore list(s).
@@ -270,141 +332,8 @@ pub async fn resolve_character(pool: &PgPool, typed: &str) -> Result<CharacterLo
     )
 }
 
-/// What [`resync_ignore_cache`] needs from the base.
-#[derive(Clone, Copy)]
-pub struct IgnoreSyncCtx<'a> {
-    pub db_pool: &'a Option<Arc<PgPool>>,
-    pub connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    pub cell_tx: &'a Option<mpsc::Sender<BaseToCellMsg>>,
-}
-
-/// Reload `player_id`'s Ignore list from the database, store it on the
-/// session at `addr`, and push it to the cell entity `entity_id`. `path`
-/// names the caller in the log (`world_entry`, `chat_ignore`,
-/// `contact_list`). Returns the new set, or `None` when nothing could be
-/// loaded (no pool, DB error), in which case the old copies are kept.
-pub async fn resync_ignore_cache(
-    ctx: IgnoreSyncCtx<'_>,
-    addr: SocketAddr,
-    player_id: i32,
-    entity_id: u32,
-    path: &'static str,
-) -> Option<HashSet<String>> {
-    // For the failure logs before the session is re-read below.
-    let session_account_id = ctx
-        .connected
-        .lock()
-        .unwrap()
-        .get(&addr)
-        .map(|c| c.account_id);
-    let Some(pool) = ctx.db_pool else {
-        tracing::warn!(
-            target: "chat",
-            event = "chat.ignore_sync_failed",
-            %addr,
-            player_id,
-            account_id = session_account_id,
-            entity_id,
-            path,
-            reason = "no_db_pool",
-            "Ignore list not loaded: no DB pool; tells and spatial chat ignore nobody",
-        );
-        return None;
-    };
-    let loaded = match load_ignore_names(pool, player_id).await {
-        Ok(n) => load_ignored_player_ids(pool, player_id)
-            .await
-            .map(|ids| (n, ids)),
-        Err(e) => Err(e),
-    };
-    let (names, ignored_ids) = match loaded {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(
-                target: "chat",
-                event = "chat.ignore_sync_failed",
-                %addr,
-                player_id,
-                account_id = session_account_id,
-                entity_id,
-                path,
-                reason = "db_error",
-                error = %e,
-                "Ignore list reload failed; the previous copy is kept",
-            );
-            return None;
-        }
-    };
-
-    let (account_id, synced) = {
-        let mut clients = ctx.connected.lock().unwrap();
-        match clients.get_mut(&addr) {
-            // Only the session still playing this character takes the set: a
-            // logOff to character select between the load and here must not
-            // hand char A's list to char B.
-            Some(c) if c.active_player_id == Some(player_id) => {
-                let before = c.ignore.len();
-                c.ignore = IgnoreCache::with_player_ids(names.clone(), ignored_ids);
-                (Some(c.account_id), Some((c.account_id, before)))
-            }
-            Some(c) => (Some(c.account_id), None),
-            None => (None, None),
-        }
-    };
-    let Some((session_account_id, before)) = synced else {
-        tracing::debug!(
-            target: "chat",
-            event = "chat.ignore_sync_failed",
-            %addr,
-            player_id,
-            account_id,
-            entity_id,
-            path,
-            reason = "session_changed",
-            "Ignore list reloaded for a session that no longer plays this character; dropped",
-        );
-        return None;
-    };
-
-    tracing::debug!(
-        target: "chat",
-        event = "chat.ignore_synced",
-        %addr,
-        player_id,
-        account_id,
-        entity_id,
-        path,
-        before,
-        after = names.len(),
-        "Ignore list cached on the base session and pushed to the cell",
-    );
-
-    if let Some(tx) = ctx.cell_tx {
-        if let Err(e) = tx
-            .send(BaseToCellMsg::UpdateIgnoreList {
-                entity_id,
-                player_id,
-                account_id: session_account_id,
-                ignore_names: names.clone(),
-            })
-            .await
-        {
-            tracing::warn!(
-                target: "chat",
-                event = "chat.ignore_sync_failed",
-                %addr,
-                player_id,
-                account_id,
-                entity_id,
-                path,
-                reason = "cell_send_failed",
-                error = %e,
-                "UpdateIgnoreList base->cell send failed; spatial chat keeps the old set",
-            );
-        }
-    }
-    Some(names)
-}
+mod resync;
+pub use resync::{resync_ignore_cache, IgnoreSyncCtx};
 
 #[cfg(test)]
 mod tests;

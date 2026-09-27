@@ -33,15 +33,16 @@ use tokio::sync::mpsc;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::read_wstring;
 
-use super::super::contact_list::handlers::{handle_add_members, handle_remove_members};
+use super::super::contact_list::handlers::{announce_added_members, handle_remove_members};
 use super::super::contact_list::ignore::{
-    ensure_ignore_list, fold_name, load_ignore_names, match_name, resolve_character,
-    CharacterLookup, NameMatch, MAX_IGNORE_LIST_MEMBERS,
+    add_ignore_entry, ensure_ignore_list, load_ignore_names, match_name, resolve_character,
+    CharacterLookup, IgnoreAdd, NameMatch, MAX_IGNORE_LIST_MEMBERS,
 };
 use super::super::feedback::{send_feedback_line, FeedbackCtx};
 use super::super::rate_limit::limits::CHAT_EXEMPT_ACCESS_LEVEL;
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
+use cimmeria_entity::organization::org_text::{validate, TextField};
 
 /// Longest prefix of a typed name echoed back or logged.
 const SHOWN_NAME_CHARS: usize = 64;
@@ -51,6 +52,7 @@ pub(super) const IGNORE_SELF_TEXT: &str = "You cannot ignore yourself.";
 pub(super) const IGNORE_UNAVAILABLE_TEXT: &str =
     "Your Ignore list cannot be changed right now. Try again later.";
 pub(super) const IGNORE_BAD_REQUEST_TEXT: &str = "That Ignore request could not be read.";
+pub(super) const IGNORE_BAD_NAME_TEXT: &str = "That is not a valid character name.";
 
 pub(super) fn ignore_full_text() -> String {
     format!("Your Ignore list is full ({MAX_IGNORE_LIST_MEMBERS} names). Remove someone first.")
@@ -180,6 +182,16 @@ pub(super) async fn handle_chat_ignore(
         send_feedback_line(&feedback, addr, IGNORE_NO_TARGET_TEXT).await;
         return;
     }
+    // A character name: at most 64 UTF-16 units (`sgw_player.player_name` is
+    // varchar(64)) and no control, bidi or format characters, the same
+    // bound a gate-mail recipient name gets (D-SS12). `read_wstring` has
+    // already checked the declared length against the packet before
+    // allocating, so this is the semantic bound, before any database work.
+    if let Err(reject) = validate(TextField::MailRecipient, &typed) {
+        refuse(reject.reason(), &typed, None);
+        send_feedback_line(&feedback, addr, IGNORE_BAD_NAME_TEXT).await;
+        return;
+    }
     let Some(pool) = db_pool.as_deref() else {
         refuse("no_db_pool", &typed, None);
         send_feedback_line(&feedback, addr, IGNORE_UNAVAILABLE_TEXT).await;
@@ -251,17 +263,9 @@ pub(super) async fn handle_chat_ignore(
             send_feedback_line(&feedback, addr, IGNORE_SELF_TEXT).await;
             return;
         }
-        if current.iter().any(|n| fold_name(n) == fold_name(&name)) {
-            refuse("already_ignored", &name, Some(target_player_id));
-            let text = format!("{name} is already on your Ignore list.");
-            send_feedback_line(&feedback, addr, &text).await;
-            return;
-        }
-        if current.len() >= MAX_IGNORE_LIST_MEMBERS {
-            refuse("list_full", &name, Some(target_player_id));
-            send_feedback_line(&feedback, addr, &ignore_full_text()).await;
-            return;
-        }
+        // The duplicate and cap checks are not made here, on the snapshot:
+        // `add_ignore_entry` makes them in the database under the list's row
+        // lock, so overlapping adds cannot both pass them (PR #893 review).
         (name, Some(target_player_id))
     } else {
         match match_name(current.iter().map(String::as_str), &typed) {
@@ -292,23 +296,57 @@ pub(super) async fn handle_chat_ignore(
         }
     };
 
-    // The member ops echo CM 87/88 and, because this is the Ignore list,
-    // reload the session and cell copies before returning.
-    let changed = if add {
-        handle_add_members(
-            caller.entity_id,
-            caller.player_id,
-            list_id,
-            vec![name.clone()],
-            db_pool,
-            transport,
-            connected,
-            entity_to_addr,
-            cell_tx,
-        )
-        .await
+    // On an add, `add_ignore_entry` makes the duplicate and cap checks and
+    // the insert in one locked transaction; `announce_added_members` then
+    // echoes CM 87 and reloads the session and cell copies. A remove goes
+    // through the member op, which echoes CM 88 and reloads them too.
+    let (before, after) = if add {
+        match add_ignore_entry(pool, caller.player_id, &name).await {
+            Ok(IgnoreAdd::Added { list_id, before }) => {
+                announce_added_members(
+                    caller.entity_id,
+                    caller.player_id,
+                    list_id,
+                    std::slice::from_ref(&name),
+                    db_pool,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                    cell_tx,
+                )
+                .await;
+                (before, before + 1)
+            }
+            Ok(IgnoreAdd::Duplicate(stored)) => {
+                refuse("already_ignored", &name, target_player_id);
+                let text = format!("{stored} is already on your Ignore list.");
+                send_feedback_line(&feedback, addr, &text).await;
+                return;
+            }
+            Ok(IgnoreAdd::Full) => {
+                refuse("list_full", &name, target_player_id);
+                send_feedback_line(&feedback, addr, &ignore_full_text()).await;
+                return;
+            }
+            Err(e) => {
+                tracing::error!(
+                    target: "chat",
+                    event = "chat.ignore_refused",
+                    %addr,
+                    player_id = caller.player_id,
+                    account_id = caller.account_id,
+                    entity_id = caller.entity_id,
+                    target_player_id,
+                    reason = "db_error",
+                    error = %e,
+                    "chatIgnore: the Ignore insert failed",
+                );
+                send_feedback_line(&feedback, addr, IGNORE_UNAVAILABLE_TEXT).await;
+                return;
+            }
+        }
     } else {
-        handle_remove_members(
+        let removed = handle_remove_members(
             caller.entity_id,
             caller.player_id,
             list_id,
@@ -319,17 +357,16 @@ pub(super) async fn handle_chat_ignore(
             entity_to_addr,
             cell_tx,
         )
-        .await
+        .await;
+        if removed.is_empty() {
+            // The member op logged the DB outcome; the player still hears back.
+            refuse("write_failed", &name, target_player_id);
+            send_feedback_line(&feedback, addr, IGNORE_UNAVAILABLE_TEXT).await;
+            return;
+        }
+        (current.len(), current.len().saturating_sub(1))
     };
-    if changed.is_empty() {
-        // The member op logged the DB outcome; the player still hears back.
-        refuse("write_failed", &name, target_player_id);
-        send_feedback_line(&feedback, addr, IGNORE_UNAVAILABLE_TEXT).await;
-        return;
-    }
 
-    let before = current.len();
-    let after = if add { before + 1 } else { before - 1 };
     tracing::info!(
         target: "chat",
         event = if add { "chat.ignore_added" } else { "chat.ignore_removed" },

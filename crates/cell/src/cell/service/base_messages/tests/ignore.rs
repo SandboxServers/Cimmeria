@@ -25,12 +25,13 @@ async fn update_ignore_list_replaces_the_cell_entity_set() {
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
 
-    for set in [names(&["Spammer", "Jerk"]), names(&["Jerk"])] {
+    for (version, set) in [(1, names(&["Spammer", "Jerk"])), (2, names(&["Jerk"]))] {
         handle_base_message(
             BaseToCellMsg::UpdateIgnoreList {
                 entity_id: 7,
                 player_id: 70,
                 account_id: 700,
+                version,
                 ignore_names: set.clone(),
             },
             &tx,
@@ -68,6 +69,7 @@ async fn update_ignore_list_for_missing_entity_logs_reason() {
             entity_id: 404,
             player_id: 70,
             account_id: 700,
+            version: 1,
             ignore_names: names(&["X"]),
         },
         &tx,
@@ -111,6 +113,7 @@ async fn update_ignore_list_for_another_players_entity_is_dropped() {
             entity_id: 7,
             player_id: 70,
             account_id: 700,
+            version: 1,
             ignore_names: names(&["Pest"]),
         },
         &tx,
@@ -133,4 +136,45 @@ async fn update_ignore_list_for_another_players_entity_is_dropped() {
         ev.has_field("account_id", "700"),
         "the message owner's account"
     );
+}
+
+/// Pushes from different base tasks can arrive out of order. The cell keeps
+/// the newest version: v2 then a late v1 leaves v2's set, and the late one
+/// logs `reason = stale_version`. Fails when the handler applies every push.
+#[tokio::test]
+async fn update_ignore_list_drops_an_older_version() {
+    let capture = LogCapture::install();
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(cxml).unwrap();
+    mgr.create_entity(7, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(7).unwrap().player_id = Some(70);
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    for (version, set) in [(2, names(&["Newer"])), (1, names(&["Older"]))] {
+        handle_base_message(
+            BaseToCellMsg::UpdateIgnoreList {
+                entity_id: 7,
+                player_id: 70,
+                account_id: 700,
+                version,
+                ignore_names: set,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+    }
+    assert_eq!(mgr.get_entity(7).unwrap().ignore_names, names(&["Newer"]));
+    assert_eq!(mgr.get_entity(7).unwrap().ignore_version, 2);
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.has_field("event", "chat.ignore_set_dropped")
+            && c.has_field("reason", "stale_version")));
 }

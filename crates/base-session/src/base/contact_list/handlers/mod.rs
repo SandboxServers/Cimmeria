@@ -32,7 +32,7 @@ pub(crate) mod presence_fanout;
 // Re-export the public surface so callers (cell_dispatch, login path, etc.)
 // can import from `handlers::*` without knowing the split.
 pub use header_ops::{handle_create, handle_delete, handle_flags_update, handle_rename};
-pub use member_ops::{handle_add_members, handle_remove_members};
+pub use member_ops::{announce_added_members, handle_add_members, handle_remove_members};
 pub use presence_fanout::{fanout_contact_event, fanout_login_status};
 
 /// Push all contact lists + members to the player's client on world entry.

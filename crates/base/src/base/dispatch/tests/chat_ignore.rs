@@ -11,8 +11,8 @@ use std::collections::HashSet;
 use sqlx::PgPool;
 
 use super::super::ignore::{
-    ignore_full_text, IGNORE_BAD_REQUEST_TEXT, IGNORE_NO_TARGET_TEXT, IGNORE_SELF_TEXT,
-    IGNORE_UNAVAILABLE_TEXT,
+    ignore_full_text, IGNORE_BAD_NAME_TEXT, IGNORE_BAD_REQUEST_TEXT, IGNORE_NO_TARGET_TEXT,
+    IGNORE_SELF_TEXT, IGNORE_UNAVAILABLE_TEXT,
 };
 use super::super::*;
 use crate::base::contact_list::ignore::{load_ignore_names, MAX_IGNORE_LIST_MEMBERS};
@@ -24,7 +24,7 @@ use crate::test_support::{
 const OWNER_PORT: u16 = 54900;
 const OWNER_EID: u32 = 9100;
 
-struct Harness {
+pub(super) struct Harness {
     addr: SocketAddr,
     transport: Arc<TestTransport>,
     dyn_transport: Arc<dyn Transport>,
@@ -36,7 +36,7 @@ struct Harness {
 }
 
 impl Harness {
-    fn new(player_id: i32, db_pool: Option<Arc<PgPool>>) -> Self {
+    pub(super) fn new(player_id: i32, db_pool: Option<Arc<PgPool>>) -> Self {
         let addr = SocketAddr::from(([127, 0, 0, 1], OWNER_PORT));
         let mut s = test_default_connected_client_state();
         s.player_name = Some(format!("ssc1-owner-{player_id}"));
@@ -78,7 +78,7 @@ impl Harness {
     /// One `chatIgnore` call. The chat bucket is refilled first: these tests
     /// exercise the list rules, and `chat_ignore_spends_a_chat_token` pins
     /// the bucket on its own.
-    async fn ignore(&self, name: &str, flag: u8) {
+    pub(super) async fn ignore(&self, name: &str, flag: u8) {
         self.connected
             .lock()
             .unwrap()
@@ -92,7 +92,7 @@ impl Harness {
     }
 
     /// Every packet to the owner as `(method, args)`, oldest first; clears.
-    fn take(&self) -> Vec<(u16, Vec<u8>)> {
+    pub(super) fn take(&self) -> Vec<(u16, Vec<u8>)> {
         let enc = cimmeria_mercury::encryption::MercuryEncryption::from_session_key([0u8; 32]);
         let out = self
             .transport
@@ -120,7 +120,7 @@ impl Harness {
 
     /// The text of the last feedback line (`onPlayerCommunication` from
     /// "SYSTEM").
-    fn last_feedback(packets: &[(u16, Vec<u8>)]) -> String {
+    pub(super) fn last_feedback(packets: &[(u16, Vec<u8>)]) -> String {
         let (_, args) = packets
             .iter()
             .rev()
@@ -153,7 +153,7 @@ impl Harness {
     }
 }
 
-fn refused(capture: &crate::test_support::LogCaptureGuard, reason: &str) -> bool {
+pub(super) fn refused(capture: &crate::test_support::LogCaptureGuard, reason: &str) -> bool {
     capture
         .all()
         .iter()
@@ -185,6 +185,15 @@ async fn chat_ignore_refusals_before_the_database() {
     h.ignore("", 1).await;
     assert_eq!(Harness::last_feedback(&h.take()), IGNORE_NO_TARGET_TEXT);
     assert!(refused(&capture, "no_target"));
+
+    // A name the text rules refuse (a bidi override), and one longer than a
+    // character name can be: refused before any database work.
+    h.ignore("\u{202E}Bob", 1).await;
+    assert_eq!(Harness::last_feedback(&h.take()), IGNORE_BAD_NAME_TEXT);
+    assert!(refused(&capture, "bidi_control"));
+    h.ignore(&"x".repeat(65), 1).await;
+    assert_eq!(Harness::last_feedback(&h.take()), IGNORE_BAD_NAME_TEXT);
+    assert!(refused(&capture, "too_long"));
 
     h.ignore("Bob", 1).await;
     assert_eq!(Harness::last_feedback(&h.take()), IGNORE_UNAVAILABLE_TEXT);
@@ -239,9 +248,9 @@ async fn chat_ignore_spends_a_chat_token() {
 
 // ── live DB ────────────────────────────────────────────────────────────────
 
-const TEST_BASE: i32 = 0x7300_C200;
+pub(super) const TEST_BASE: i32 = 0x7300_C200;
 
-async fn cleanup(pool: &PgPool, ids: &[(i32, i32)]) {
+pub(super) async fn cleanup(pool: &PgPool, ids: &[(i32, i32)]) {
     for &(account_id, player_id) in ids {
         let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
             .bind(player_id)
@@ -254,7 +263,7 @@ async fn cleanup(pool: &PgPool, ids: &[(i32, i32)]) {
     }
 }
 
-async fn insert_player(pool: &PgPool, account_id: i32, player_id: i32, name: &str) {
+pub(super) async fn insert_player(pool: &PgPool, account_id: i32, player_id: i32, name: &str) {
     sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
         .bind(account_id)
         .bind(format!("ss-c1-chat-ignore-{account_id}"))

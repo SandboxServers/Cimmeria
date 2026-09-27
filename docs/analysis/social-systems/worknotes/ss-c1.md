@@ -220,6 +220,40 @@ Rebased onto `origin/main` after SS-M1 (#894) and SS-D1 (#888) merged.
 | `live-db-test.sh ignore` / `tell` / `mail` | 48 / 20 / 59 passed, 0 failed |
 | clippy `-D warnings` on the 10 crates plus base-methods; `cargo fmt --all -- --check` | clean |
 
+## Review round 6 (PR #893): the Ignore cap race and the summary audit
+
+**1. Cap and duplicate checks were made on a snapshot (Copilot finding, real).** `chatIgnore` loaded the list, checked "already there" and "100 names" on that copy, then inserted through the member ops. Two overlapping adds (two `chatIgnore`s, or one and a contact-list UI add, which arrive on different tasks) could both see 99 and both insert, and a name differing only in case slipped past.
+
+- **Fix:** `persistence::add_member_capped` makes both checks and the insert in one transaction.
+  - It first locks the owner's list row `FOR UPDATE`; that `lock_owned_list` query is also the ownership check.
+  - It then checks for the name case-insensitively (`Duplicate`, which returns the stored spelling), counts the entries (`Full` at the cap), and inserts with `ON CONFLICT DO NOTHING`.
+- `persistence::add_members`, the UI path, now takes the same row lock in a transaction, so a UI add serialises with `chatIgnore` too.
+- `db/sgw/_indexes.sql` gains `sgw_contact_list_member_list_lower_name_key`, a unique index on `(list_id, lower(player_name))`, edited in place with no migration. The seed has no conflicting rows.
+- `chatIgnore` now calls `contact_list::ignore::add_ignore_entry`. It maps `Duplicate` to `already_ignored`, `Full` to `list_full` and a DB error to `db_error`, each with feedback. It then announces through the new shared `handlers::announce_added_members` (the CM 87 echo, online status and the Ignore resync), which `handle_add_members` also uses.
+- Guards:
+  - `chat_ignore_race::concurrent_ignore_adds_respect_the_cap` (type 5). The race is forced the way SS-M1's is: a `SHARE` lock on `sgw_contact_list_member` lets both adds count but not insert, until both are parked. With `FOR UPDATE` removed the list ends at 101 and the test FAILED.
+  - `chat_ignore_race::chat_ignore_refuses_a_case_folded_duplicate` (live DB). It FAILED with the case-insensitive existence check made exact.
+
+**2(a). Away-message validation (real).** The AFK and DND texts were bounded to 128 scalars but never checked by the text rules, and the tell auto-reply shows them to other players. `chat::away_message_allowed` now applies the D-SS12 / D-ORG10 character rules through `org_text::validate(TextField::ChatText, ..)`. `TooLong` is ignored, because the away message's own bound is 128 scalars, which can be up to 256 UTF-16 units, and truncation stays as CAT-L-02 decided. A refusal logs `chat.away_rejected` (WARN, `kind`, `reason`), sends "Your away message contains a character that cannot be sent. It was not set." and keeps the previous message. Guard: `chat_dnd_limit::away_messages_follow_the_chat_character_rules`, which FAILED with the check bypassed. The existing DND bound tests still pass.
+
+**2(b). The 0xC5 decoder (partly real).**
+- Already fine: `read_wstring` checks that the declared character count fits in the packet before it allocates, so a hostile length cannot allocate more than the packet carries. A flag byte other than 0 or 1 was already refused (`bad_flag`).
+- The gap: the typed name had no semantic bound before database work. It is now checked by `validate(TextField::MailRecipient, ..)`: at most 64 UTF-16 units, the width of `sgw_player.player_name`, and no forbidden characters, the same bound a gate-mail recipient gets. A refusal gives "That is not a valid character name." with `reason` taken from the reject. Guard: extended `chat_ignore_refusals_before_the_database`, which covers a bidi override and 65 characters.
+
+**2(c). Resync ordering (real).**
+- The resync runs from the client-packet task (`onClientReady`, `chatIgnore`) and from the cell-message task (contact-list UI edits). Two resyncs can overlap, and the one that read the database first can finish last. It would then overwrite the session copy and push a stale set to the cell. The `mpsc` to the cell is FIFO per sender, but the two tasks are different senders.
+- **Fix:** `IgnoreCache::begin_sync` hands out a per-session version before the database read, and `apply_sync` writes only a version newer than the last applied; an older one logs `chat.ignore_sync_failed reason = stale_version` and is not pushed. `UpdateIgnoreList` carries the version, and `CellEntity::ignore_version` keeps the newest; the cell drops an older push (`chat.ignore_set_dropped reason = stale_version`).
+- Why the newest version is always right: every resync starts after the change it follows has committed, so the highest version read after the last commit. A new cell entity after gate travel starts at 0 and takes any version.
+- Guards: `ignore_cache_applies_only_the_newest_resync` (unit) and `update_ignore_list_drops_an_older_version` (cell). Both FAILED with the version check removed.
+
+**Splits.** `contact_list/ignore/mod.rs` reached 509 lines, so the resync moved to `ignore/resync.rs` (re-exported, so callers are unchanged). The two race tests moved from `dispatch/tests/chat_ignore.rs` (577 lines) to `chat_ignore_race.rs`.
+
+| Command | Result |
+|---|---|
+| `lane.sh cargo nextest run --no-fail-fast -p cimmeria-wire -p cimmeria-entity -p cimmeria-cell -p cimmeria-cell-console -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-base-methods --lib` | 2044 passed |
+| `live-db-test.sh ignore` / `tell` / `mail` / `contact_list` | 52 / 20 / 59 / 57 passed, 0 failed |
+| clippy `-D warnings` on the 10 crates; `cargo fmt --all -- --check` | clean |
+
 ## Known gaps
 
 1. **Mute (SS-C3).** `tell.rs` has a `TODO(SS-C3)` where a muted sender is refused.

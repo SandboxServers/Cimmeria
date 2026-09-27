@@ -10,6 +10,7 @@ use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
 
+use super::feedback;
 use super::ConnectedClientState;
 
 mod chat;
@@ -137,11 +138,19 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         sgw_player_base::CHAT_SET_AFK => {
-            chat::handle_chat_set_afk(payload, addr, connected);
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            chat::handle_chat_set_afk(payload, addr, &feedback).await;
         }
 
         sgw_player_base::CHAT_SET_DND => {
-            chat::handle_chat_set_dnd(payload, addr, connected);
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            chat::handle_chat_set_dnd(payload, addr, &feedback).await;
         }
 
         sgw_player_base::CHAT_IGNORE => {

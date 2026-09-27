@@ -272,11 +272,16 @@ pub(super) fn handle_chat_leave(payload: &[u8], addr: SocketAddr) {
 /// AFK is NOT a speaker flag: `entities/defs/enumerations.xml` has no
 /// `SPEAKER_AFK` token, and `python/base/Chat.py::getSpeakerFlags` only checks
 /// `accessLevel > 0` / `dndMessage is not None`.
-pub(super) fn handle_chat_set_afk(
+///
+/// Other players read the message in the tell auto-reply, so it must pass
+/// the D-SS12 / D-ORG10 character rules; a message that does not is refused
+/// with a feedback line and the previous state is kept.
+pub(super) async fn handle_chat_set_afk(
     payload: &[u8],
     addr: SocketAddr,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    feedback: &FeedbackCtx<'_>,
 ) {
+    let connected = feedback.connected;
     let message = match read_wstring(payload, 0) {
         Ok((s, _)) => s,
         Err(e) => {
@@ -292,6 +297,9 @@ pub(super) fn handle_chat_set_afk(
     };
     let active = message.chars().count() > 1;
     let stored: String = message.chars().take(MAX_DND_MESSAGE_CHARS).collect();
+    if active && !away_message_allowed(feedback, addr, "afk", &stored).await {
+        return;
+    }
     let mut clients = connected.lock().unwrap();
     if let Some(c) = clients.get_mut(&addr) {
         c.afk_message = active.then_some(stored);
@@ -312,12 +320,14 @@ pub(super) fn handle_chat_set_afk(
 ///
 /// Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an empty or 1-char
 /// message clears DND; anything longer sets it. The stored text is truncated
-/// to 128 Unicode scalar values.
-pub(super) fn handle_chat_set_dnd(
+/// to 128 Unicode scalar values, and must pass the same character rules as
+/// the AFK message (it is sent back to anyone who tells this player).
+pub(super) async fn handle_chat_set_dnd(
     payload: &[u8],
     addr: SocketAddr,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    feedback: &FeedbackCtx<'_>,
 ) {
+    let connected = feedback.connected;
     // chatSetDNDMessage(WSTRING message)
     //
     // Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an
@@ -364,6 +374,9 @@ pub(super) fn handle_chat_set_dnd(
         }
         None => message,
     };
+    if message_chars > 1 && !away_message_allowed(feedback, addr, "dnd", &message).await {
+        return;
+    }
     let mut clients = connected.lock().unwrap();
     if let Some(c) = clients.get_mut(&addr) {
         c.dnd_message = if message_chars > 1 {
@@ -377,4 +390,47 @@ pub(super) fn handle_chat_set_dnd(
             "chatSetDNDMessage",
         );
     }
+}
+
+/// Feedback for an AFK or DND message with a character the text rules forbid.
+pub(super) const AWAY_BAD_CHARACTER_TEXT: &str =
+    "Your away message contains a character that cannot be sent. It was not set.";
+
+/// The D-SS12 / D-ORG10 character rules on an away message, which is
+/// already bounded to 128 scalars, so only the character rules refuse it. A refusal logs `chat.away_rejected` with `reason` and sends one
+/// feedback line; the caller keeps the previous state.
+async fn away_message_allowed(
+    feedback: &FeedbackCtx<'_>,
+    addr: SocketAddr,
+    kind: &'static str,
+    text: &str,
+) -> bool {
+    // The character rules run before the length check inside `validate`, so
+    // a `TooLong` means the characters passed. The length is the away
+    // message's own 128-scalar bound (up to 256 UTF-16 units), applied by the
+    // caller, not the 255-unit chat-line cap.
+    let reject = match validate(TextField::ChatText, text) {
+        Ok(_) | Err(TextReject::TooLong { .. }) => return true,
+        Err(reject) => reject,
+    };
+    let (player_id, account_id, entity_id) = feedback
+        .connected
+        .lock()
+        .unwrap()
+        .get(&addr)
+        .map(|c| (c.active_player_id, Some(c.account_id), c.player_entity_id))
+        .unwrap_or_default();
+    tracing::warn!(
+        target: "chat",
+        event = "chat.away_rejected",
+        %addr,
+        player_id,
+        account_id,
+        entity_id,
+        kind,
+        reason = reject.reason(),
+        "away message refused: it breaks the chat text rules; previous state kept",
+    );
+    send_feedback_line(feedback, addr, AWAY_BAD_CHARACTER_TEXT).await;
+    false
 }

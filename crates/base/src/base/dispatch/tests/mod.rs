@@ -15,11 +15,13 @@
 //! - [`duel_challenge`]: `sendDuelChallenge` (0xD9): the duel bucket, squad
 //!   refusal, the online lookup and the forward (SS-D1).
 //! - [`tell`]: tells on the base, fan-out and refusals (SS-C1).
-//! - [`chat_ignore`]: `chatIgnore` refusals that need no database (SS-C1).
+//! - [`chat_ignore`]: `chatIgnore` refusals and list edits (SS-C1).
+//! - [`chat_ignore_race`]: the cap and duplicate checks under the list lock.
 
 mod chat_dnd_limit;
 mod chat_flood_limit;
 mod chat_ignore;
+mod chat_ignore_race;
 mod chat_speaker_flags;
 mod crafting_teardown;
 mod duel_challenge;

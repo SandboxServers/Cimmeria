@@ -499,7 +499,15 @@ pub(super) async fn handle_base_message(
             entity_id,
             player_id,
             account_id,
+            version,
             ignore_names,
-        } => ignore::handle(entity_id, player_id, account_id, ignore_names, space_mgr),
+        } => ignore::handle(
+            entity_id,
+            player_id,
+            account_id,
+            version,
+            ignore_names,
+            space_mgr,
+        ),
     }
 }

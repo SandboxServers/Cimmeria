@@ -73,37 +73,13 @@ pub async fn handle_add_members(
                 count = added.len(),
                 "ContactList: members added"
             );
-            let args = build_on_contact_list_add_members(list_id, &added);
-            send_to_witness_reliable(
-                transport,
-                connected,
-                entity_to_addr,
-                entity_id,
-                |key, version, seq, acks| {
-                    build_player_entity_method_packet(
-                        key,
-                        seq,
-                        acks,
-                        entity_id,
-                        method_idx::ON_CONTACT_LIST_ADD_MEMBERS,
-                        &args,
-                        version,
-                    )
-                },
-            )
-            .await;
-
-            // Light up any just-added contact who is ALREADY online, so the
-            // adder sees them online immediately. Mirrors the login reverse
-            // sync (`notify_online_contacts`); without it, a freshly-added
-            // online friend stays dim until one side relogs.
-            super::notify_online_contacts(entity_id, &added, transport, connected, entity_to_addr)
-                .await;
-            resync_if_ignore_list(
+            announce_added_members(
                 entity_id,
                 player_id,
                 list_id,
+                &added,
                 db_pool,
+                transport,
                 connected,
                 entity_to_addr,
                 cell_tx,
@@ -138,6 +114,62 @@ pub async fn handle_add_members(
         }
     }
     Vec::new()
+}
+
+/// What a successful member add tells everyone: the `onContactListAddMembers`
+/// (CM 87) echo to the owner, online status for any added contact already
+/// online, and, when the list is the Ignore list, the session and cell
+/// Ignore copies reloaded. Shared by the contact-list UI path and
+/// `chatIgnore`, which inserts through [`persistence::add_member_capped`].
+///
+/// [`persistence::add_member_capped`]: crate::base::contact_list::persistence::add_member_capped
+#[allow(clippy::too_many_arguments)]
+pub async fn announce_added_members(
+    entity_id: u32,
+    player_id: i32,
+    list_id: i32,
+    added: &[String],
+    db_pool: &Option<Arc<PgPool>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+) {
+    let args = build_on_contact_list_add_members(list_id, added);
+    send_to_witness_reliable(
+        transport,
+        connected,
+        entity_to_addr,
+        entity_id,
+        |key, version, seq, acks| {
+            build_player_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_CONTACT_LIST_ADD_MEMBERS,
+                &args,
+                version,
+            )
+        },
+    )
+    .await;
+
+    // Light up any just-added contact who is ALREADY online, so the
+    // adder sees them online immediately. Mirrors the login reverse
+    // sync (`notify_online_contacts`); without it, a freshly-added
+    // online friend stays dim until one side relogs.
+    super::notify_online_contacts(entity_id, added, transport, connected, entity_to_addr).await;
+    resync_if_ignore_list(
+        entity_id,
+        player_id,
+        list_id,
+        db_pool,
+        connected,
+        entity_to_addr,
+        cell_tx,
+    )
+    .await;
 }
 
 /// Handle `ContactListRemoveMembers` — delete members and echo CM 88. Returns

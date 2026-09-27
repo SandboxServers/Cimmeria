@@ -210,27 +210,22 @@ pub(crate) async fn load_list_header(
 }
 
 /// Add member names to a contact list. Ignores duplicates via ON CONFLICT DO
-/// NOTHING. Returns the names that were actually inserted (not already present).
+/// NOTHING (the primary key, and the case-insensitive
+/// `sgw_contact_list_member_list_lower_name_key`). Returns the names that
+/// were actually inserted (not already present).
 ///
-/// Uses a single batched INSERT with an UNNEST array binding to avoid
-/// per-name round-trips for large requests.
+/// Runs in one transaction that first locks the owner's list row
+/// (`FOR UPDATE`, which is also the ownership check), so it serialises with
+/// [`add_member_capped`]: a UI add cannot slip between `chatIgnore`'s count
+/// and its insert.
 pub(crate) async fn add_members(
     pool: &PgPool,
     player_id: i32,
     list_id: i32,
     names: &[String],
 ) -> Result<Vec<String>, sqlx::Error> {
-    // Verify ownership in one query before touching member rows.
-    let owned: Option<i32> = sqlx::query_scalar(
-        "SELECT list_id FROM sgw_contact_list WHERE list_id = $1 AND player_id = $2",
-    )
-    .bind(list_id)
-    .bind(player_id)
-    .fetch_optional(pool)
-    .await?;
-    if owned.is_none() {
-        return Err(sqlx::Error::RowNotFound);
-    }
+    let mut tx = pool.begin().await?;
+    lock_owned_list(&mut tx, player_id, list_id).await?;
 
     if names.is_empty() {
         return Ok(Vec::new());
@@ -238,17 +233,98 @@ pub(crate) async fn add_members(
 
     // Single batched INSERT; RETURNING gives us only the rows actually written.
     let added: Vec<String> = sqlx::query_scalar(
-        "INSERT INTO sgw_contact_list_member (list_id, player_name) \
-         SELECT $1, name FROM UNNEST($2::text[]) AS t(name) \
-         ON CONFLICT DO NOTHING \
-         RETURNING player_name",
+        "INSERT INTO sgw_contact_list_member (list_id, player_name)          SELECT $1, name FROM UNNEST($2::text[]) AS t(name)          ON CONFLICT DO NOTHING          RETURNING player_name",
     )
     .bind(list_id)
     .bind(names)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     Ok(added)
+}
+
+/// Lock `list_id` if `player_id` owns it; `RowNotFound` otherwise.
+async fn lock_owned_list(
+    tx: &mut sqlx::PgConnection,
+    player_id: i32,
+    list_id: i32,
+) -> Result<(), sqlx::Error> {
+    let owned: Option<i32> = sqlx::query_scalar(
+        "SELECT list_id FROM sgw_contact_list WHERE list_id = $1 AND player_id = $2 FOR UPDATE",
+    )
+    .bind(list_id)
+    .bind(player_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    match owned {
+        Some(_) => Ok(()),
+        None => Err(sqlx::Error::RowNotFound),
+    }
+}
+
+/// How [`add_member_capped`] ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CappedAdd {
+    /// Inserted; `before` is how many entries the list held first.
+    Added { before: usize },
+    /// The list already holds this name, compared case-insensitively; the
+    /// stored spelling.
+    Duplicate(String),
+    /// The list already holds `cap` entries.
+    Full,
+}
+
+/// Add one name to a list only if it is not there yet (case-insensitively)
+/// and the list holds fewer than `cap` entries, atomically: the owner's
+/// list row is locked `FOR UPDATE` for the read-check-insert, so two
+/// overlapping adds (two `chatIgnore`s, or one and a contact-list UI add)
+/// serialise and the second sees the first's row. The unique index on
+/// `(list_id, lower(player_name))` backs the duplicate check.
+/// `RowNotFound` when `player_id` does not own `list_id`.
+pub(crate) async fn add_member_capped(
+    pool: &PgPool,
+    player_id: i32,
+    list_id: i32,
+    name: &str,
+    cap: usize,
+) -> Result<CappedAdd, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    lock_owned_list(&mut tx, player_id, list_id).await?;
+
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT player_name FROM sgw_contact_list_member          WHERE list_id = $1 AND lower(player_name) = lower($2) LIMIT 1",
+    )
+    .bind(list_id)
+    .bind(name)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(stored) = existing {
+        return Ok(CappedAdd::Duplicate(stored));
+    }
+
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sgw_contact_list_member WHERE list_id = $1")
+            .bind(list_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let before = usize::try_from(count).unwrap_or(usize::MAX);
+    if before >= cap {
+        return Ok(CappedAdd::Full);
+    }
+
+    let inserted: Option<String> = sqlx::query_scalar(
+        "INSERT INTO sgw_contact_list_member (list_id, player_name) VALUES ($1, $2)          ON CONFLICT DO NOTHING RETURNING player_name",
+    )
+    .bind(list_id)
+    .bind(name)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if inserted.is_none() {
+        return Ok(CappedAdd::Duplicate(name.to_string()));
+    }
+    tx.commit().await?;
+    Ok(CappedAdd::Added { before })
 }
 
 /// Remove member names from a contact list. Returns the names that were

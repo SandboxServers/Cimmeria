@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 
 use super::*;
 use crate::base::contact_list::persistence::{add_members, ensure_system_lists};
+use crate::cell::messages::BaseToCellMsg;
 use crate::test_support::{require_db_or_skip, test_default_connected_client_state};
 
 fn set(v: &[&str]) -> HashSet<String> {
@@ -47,6 +48,22 @@ fn session_ignores_reads_the_recipient_cache_only() {
     assert!(!session_ignores(&clients, b, "Spammer"));
     let gone: SocketAddr = "127.0.0.1:54702".parse().unwrap();
     assert!(!session_ignores(&clients, gone, "Spammer"));
+}
+
+/// Out-of-order resyncs: the version is taken before the database read, and
+/// an older read that finishes after a newer one is not applied.
+#[test]
+fn ignore_cache_applies_only_the_newest_resync() {
+    let mut cache = IgnoreCache::default();
+    let older = cache.begin_sync();
+    let newer = cache.begin_sync();
+    assert!(cache.apply_sync(newer, &set(&["Now"]), [2].into()));
+    assert!(
+        !cache.apply_sync(older, &set(&["Before"]), [1].into()),
+        "a stale read must not overwrite a newer one"
+    );
+    assert!(cache.ignores("now") && !cache.ignores("Before"));
+    assert!(cache.ignores_player(2) && !cache.ignores_player(1));
 }
 
 // ── live DB ────────────────────────────────────────────────────────────────
@@ -209,8 +226,10 @@ async fn resync_ignore_cache_updates_session_and_cell() {
             entity_id,
             player_id: pid,
             account_id,
+            version,
             ignore_names,
         }) => {
+            assert!(version >= 1, "every push carries a resync version");
             assert_eq!((entity_id, pid), (9001, player_id));
             assert_eq!(
                 account_id, 0x7300_C1AA,

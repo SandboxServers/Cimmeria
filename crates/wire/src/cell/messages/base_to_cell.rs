@@ -462,6 +462,10 @@ pub enum BaseToCellMsg {
         /// The owner's account, for the cell's log rows: on the
         /// `entity_missing` path there is no entity to read it from.
         account_id: u32,
+        /// The base's resync version for this player, increasing per
+        /// session. Pushes from different base tasks can arrive out of
+        /// order; the cell keeps the highest version it has applied.
+        version: u64,
         ignore_names: std::collections::HashSet<String>,
     },
 }
