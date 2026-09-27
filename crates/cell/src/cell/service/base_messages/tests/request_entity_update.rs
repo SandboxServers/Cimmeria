@@ -289,10 +289,13 @@ async fn request_entity_update_truncates_request_above_cap() {
 /// after its `EnteredAoI`, exactly like the AoI tick. Without it a client
 /// that re-requests its own pet gets the entity back with an empty pet bar.
 /// The second request, from a player who does not own the pet, must get the
-/// `EnteredAoI` and nothing else (the lists are the owner's alone).
+/// `EnteredAoI` and nothing else (the lists are the owner's alone). The
+/// third, after the owner's entity id was handed to another player before
+/// the sweep (Copilot, #870), must get nothing owner-only either: the id
+/// matches `pet.owner_id` but the live identity is not the summoner's.
 #[tokio::test]
 async fn request_entity_update_replays_pet_lists_to_the_owner_only() {
-    use cimmeria_entity::cell_entity::{PetStance, PetState, ALL_STANCES_MASK};
+    use cimmeria_entity::cell_entity::{PetStance, PetState, PlayerIdentity, ALL_STANCES_MASK};
     use cimmeria_wire::cell::client_methods::pet::{
         ON_PET_ABILITY_LIST, ON_PET_STANCE_LIST, ON_PET_STANCE_UPDATE,
     };
@@ -312,6 +315,8 @@ async fn request_entity_update_replays_pet_lists_to_the_owner_only() {
             .unwrap();
         let w = mgr.get_entity_mut(id).unwrap();
         w.is_player = true;
+        w.account_id = Some(id * 10);
+        w.player_id = Some(id as i32 * 100);
         w.witnesses.insert(EntityId(PET as i32));
     }
     mgr.create_entity(PET, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
@@ -324,10 +329,21 @@ async fn request_entity_update_replays_pet_lists_to_the_owner_only() {
         p.pet = Some(Box::new(state));
     }
     mgr.pets.register(OWNER, PET);
+    // What `spawn_pet_from_template` captures at summon.
+    mgr.pets.note_owner_identity(
+        OWNER,
+        PlayerIdentity::new(Some(OWNER * 10), Some(OWNER as i32 * 100)),
+    );
     let engine = ChainEngine::new();
 
     let mut per_witness = Vec::new();
-    for witness_id in [OWNER, OTHER] {
+    for (round, witness_id) in [OWNER, OTHER, OWNER].into_iter().enumerate() {
+        if round == 2 {
+            // The owner's id now belongs to a different account and character.
+            let impostor = mgr.get_entity_mut(OWNER).unwrap();
+            impostor.account_id = Some(4242);
+            impostor.player_id = Some(4243);
+        }
         let (tx, mut rx) = mpsc::channel(16);
         handle_base_message(
             BaseToCellMsg::RequestEntityUpdate {
@@ -387,5 +403,10 @@ async fn request_entity_update_replays_pet_lists_to_the_owner_only() {
         per_witness[1],
         vec!["entered".to_string()],
         "a non-owner gets the entity and none of the lists"
+    );
+    assert_eq!(
+        per_witness[2],
+        vec!["entered".to_string()],
+        "a player holding a reused owner id gets the entity and none of the lists"
     );
 }

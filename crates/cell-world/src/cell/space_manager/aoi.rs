@@ -171,11 +171,15 @@ impl SpaceManager {
                         //
                         // `onPetAbilityList` / `onPetStanceList` /
                         // `onPetStanceUpdate`, to the owner only; empty for any
-                        // other witness or entity. The same helper runs on the
-                        // `requestEntityUpdate` re-emit, so both intro paths agree.
-                        events.extend(crate::cell::pets::pet_create_on_client_events(
-                            player_id, other,
-                        ));
+                        // other witness or entity, and for a player who only
+                        // reused the owner's entity id. The same helper runs on
+                        // the `requestEntityUpdate` re-emit, so both intro paths
+                        // agree.
+                        if let Some(witness) = space.entities.get(&player_id) {
+                            events.extend(crate::cell::pets::pet_create_on_client_events(
+                                witness, other, &self.pets,
+                            ));
+                        }
 
                         // ── dynamicUpdate: standalone InteractionType update ──
                         //

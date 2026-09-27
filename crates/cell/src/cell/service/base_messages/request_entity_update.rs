@@ -121,8 +121,9 @@ pub(super) async fn handle(
             return;
         }
         // A re-emitted pet needs its owner-only lists again, after the
-        // EnteredAoI (the same replay the AoI tick does, A-23).
-        for msg in pet_create_on_client_events(witness_id, other) {
+        // EnteredAoI (the same replay the AoI tick does, A-23). Only the
+        // summoner gets them, not a player holding a reused owner id.
+        for msg in pet_create_on_client_events(witness, other, &space_mgr.pets) {
             if let Err(e) = tx.send(msg).await {
                 tracing::warn!(
                     target: "pets.lifecycle",

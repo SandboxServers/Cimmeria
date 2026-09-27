@@ -91,3 +91,14 @@ fn credit_recipient_maps_pet_to_owner_player_to_self_npc_to_none() {
     assert_eq!(mgr.credit_recipient(npc), None);
     assert_eq!(mgr.credit_recipient(424_242), None);
 }
+
+/// Copilot, #870: a pet's kill credit must not reach another player who was
+/// given the owner's entity id before the sweep, nor a destroyed owner.
+#[test]
+fn credit_recipient_refuses_a_reused_or_gone_owner_id() {
+    let (mut mgr, pet) = world_with_pet();
+    super::reuse_owner_id_by_another_player(&mut mgr);
+    assert_eq!(mgr.credit_recipient(pet), None, "reused id");
+    mgr.destroy_entity(OWNER);
+    assert_eq!(mgr.credit_recipient(pet), None, "owner gone");
+}

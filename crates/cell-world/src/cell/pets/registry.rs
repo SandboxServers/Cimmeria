@@ -208,9 +208,40 @@ impl SpaceManager {
     /// nobody. The one seam PT-06 routes `grant_kill_xp` and kill credit
     /// through, so a pet kill reaches its owner and an NPC never gets
     /// `GrantXP`.
+    ///
+    /// A pet whose owner's entity id now belongs to someone else (the
+    /// id-reuse window before the sweep) credits nobody: the id's new holder
+    /// did not earn it, and neither does a destroyed owner. That refusal is
+    /// a WARN on `pets.credit` (`event = credit_refused`,
+    /// `reason = owner_identity_mismatch | owner_gone`).
     pub fn credit_recipient(&self, attacker: u32) -> Option<u32> {
         if let Some(owner) = self.pets.owner_of(attacker) {
-            return Some(owner);
+            let live = self.player_identity(owner);
+            let holder = self.get_entity(owner);
+            if holder.is_some_and(|e| e.is_player) && self.pets.owner_identity_matches(owner, live)
+            {
+                return Some(owner);
+            }
+            let reason = if holder.is_none() {
+                "owner_gone"
+            } else {
+                "owner_identity_mismatch"
+            };
+            let summoner = self.pets.owner_identity(owner);
+            tracing::warn!(
+                target: "pets.credit",
+                event = "credit_refused",
+                reason,
+                entity_id = attacker,
+                pet_id = attacker,
+                owner_id = owner,
+                account_id = summoner.account_id,
+                player_id = summoner.player_id,
+                holder_account_id = live.account_id,
+                holder_player_id = live.player_id,
+                "pet kill credit withheld: the owner's entity id no longer belongs to the summoner"
+            );
+            return None;
         }
         self.get_entity(attacker)
             .filter(|e| e.is_player)

@@ -148,6 +148,30 @@ fn non_default_stance_is_replayed_after_the_lists() {
     assert_eq!(pushes[2], (OWNER, ON_PET_STANCE_UPDATE, vec![2]));
 }
 
+/// Copilot, #870: the owner is destroyed and, before the sweep, another
+/// player is given its entity id and meets the old pet. That player holds
+/// `pet.owner_id` but is not the summoner, so it gets the `EnteredAoI` (the
+/// pet is a visible entity) and none of the owner-only lists: a stance list
+/// would bind someone else's pet into its `Unit.Pet` slots.
+#[test]
+fn reused_owner_id_gets_the_pet_but_not_its_lists() {
+    let (mut mgr, pet) = world_with_pet();
+    super::reuse_owner_id_by_another_player(&mut mgr);
+
+    let events = mgr.compute_aoi_changes();
+
+    assert!(
+        events.iter().any(|e| matches!(e,
+            CellToBaseMsg::EnteredAoI { witness_id, entity_id, .. }
+                if *witness_id == OWNER && *entity_id == pet)),
+        "the id's new holder still meets the pet as an entity"
+    );
+    assert!(
+        pet_pushes(&events, pet).is_empty(),
+        "no owner-only list may reach a player who only reused the owner's id"
+    );
+}
+
 /// An ordinary NPC produces no pet pushes for anyone.
 #[test]
 fn ordinary_npc_sends_no_pet_lists() {

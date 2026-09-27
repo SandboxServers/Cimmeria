@@ -107,6 +107,51 @@ async fn swept_despawn_of_a_gone_owner_still_names_the_owner() {
     assert!(c.has_field("template_id", &PET_FIXTURE_TEMPLATE_ID.to_string()));
 }
 
+/// The reused-id intro refusal is a WARN naming the summoner (Rule 5) and
+/// the id's new holder; the ordinary non-owner witness logs nothing.
+#[tokio::test]
+async fn reused_owner_id_intro_warns_with_both_identities() {
+    let (mut mgr, pet) = world_with_pet();
+    add_pet_owner(&mut mgr, OTHER, "Agnos", [12.0, 0.0, 12.0], 5);
+    super::reuse_owner_id_by_another_player(&mut mgr);
+    let logs = LogCapture::install();
+    let _ = mgr.compute_aoi_changes();
+    let refused: Vec<Captured> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("event", "pet_list_replay_refused"))
+        .collect();
+    assert_eq!(
+        refused.len(),
+        1,
+        "one refusal, none for OTHER: {refused:#?}"
+    );
+    let c = &refused[0];
+    assert_eq!(c.level, Level::WARN);
+    assert_eq!(c.target, "pets.lifecycle");
+    assert!(c.has_field("reason", "owner_identity_mismatch"));
+    assert_owner_identity(c);
+    assert!(c.has_field("witness_account_id", "4242"));
+    assert!(c.has_field("witness_player_id", "4243"));
+    assert!(c.has_field("entity_id", &pet.to_string()));
+    assert!(c.has_field("witness_id", &OWNER.to_string()));
+}
+
+/// Kill credit from a pet whose owner id was reused is withheld with a WARN.
+#[tokio::test]
+async fn reused_owner_id_credit_refusal_warns() {
+    let (mut mgr, pet) = world_with_pet();
+    super::reuse_owner_id_by_another_player(&mut mgr);
+    let logs = LogCapture::install();
+    assert_eq!(mgr.credit_recipient(pet), None);
+    let c = event(&logs, "pets.credit", "credit_refused").expect("credit_refused WARN");
+    assert_eq!(c.level, Level::WARN);
+    assert!(c.has_field("reason", "owner_identity_mismatch"));
+    assert_owner_identity(&c);
+    assert!(c.has_field("holder_player_id", "4243"));
+    assert!(c.has_field("pet_id", &pet.to_string()));
+}
+
 #[tokio::test]
 async fn disconnect_logs_despawn_and_owner_forgotten() {
     let (mut mgr, pet) = world_with_pet();
