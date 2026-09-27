@@ -10,8 +10,7 @@
 //! - [`parking_sentinel`] — the two-phase swap's parking step must
 //!   pick distinct negative slots so no row collides with another
 //!   parked row or with any real container slot.
-//! - [`trade_results_code_mapping`] — `TradeAbort` → per-side
-//!   asymmetric `ETradeResults` codes.
+//! - [`refusal_result_code`] — every refusal is `Cancelled` on the wire.
 //! - [`refusal_feedback`] — the feedback line each side gets.
 //!
 //! Live-DB integration tests for the same surfaces live in
@@ -280,138 +279,26 @@ mod parking_sentinel {
     }
 }
 
-mod trade_results_code_mapping {
-    //! Unit-level regression guard for the per-side asymmetric
-    //! `ETradeResults` code mapping.
-    //!
-    //! The mapping returns Python-parity `NoLocal*`/`NoRemote*` codes
-    //! (Trade.py:237-263) so the canonical client can surface a
-    //! specific trade-results dialog string ("you don't have enough
-    //! cash" vs. "they don't have enough space") rather than the
-    //! generic teardown notification.
-    //!
-    //! Revert-verifier: replacing `trade_abort_to_results_codes` with
-    //! `|_, _| (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)`
-    //! trips every assertion below.
+mod refusal_result_code {
+    //! Every refusal is `Cancelled` (2) on the wire: the shipped client's
+    //! trade window closes on 1 and 2 only. The byte-exact live-DB guard
+    //! is `super::super::super::tests::crafting_bag::
+    //! full_destination_crafting_bag_refuses_the_whole_trade`.
 
-    use super::super::abort::{trade_abort_to_results_codes, TradeAbort};
-    use cimmeria_entity::trade::{
-        ETRADERESULTS_CANCELLED, ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_LOCAL_SPACE,
-        ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_REMOTE_SPACE,
-    };
-
-    const P1_PID: i32 = 1000;
-    const P2_PID: i32 = 2000;
+    use super::super::abort::REFUSAL_RESULT;
+    use cimmeria_entity::trade::ETRADERESULTS_CANCELLED;
 
     #[test]
-    fn insufficient_cash_p1_maps_to_no_local_cash_and_no_remote_cash() {
-        let reason = TradeAbort::InsufficientCash {
-            which: "p1",
-            player_id: P1_PID,
-            has: 5,
-            wants: 10,
-        };
-        assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID),
-            (ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_REMOTE_CASH),
-            "p1 short on cash: p1 sees NoLocalCash, p2 sees NoRemoteCash"
-        );
-    }
-
-    #[test]
-    fn insufficient_cash_p2_maps_to_no_remote_cash_and_no_local_cash() {
-        let reason = TradeAbort::InsufficientCash {
-            which: "p2",
-            player_id: P2_PID,
-            has: 0,
-            wants: 100,
-        };
-        assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID),
-            (ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_LOCAL_CASH),
-            "p2 short on cash: p1 sees NoRemoteCash, p2 sees NoLocalCash"
-        );
-    }
-
-    #[test]
-    fn not_enough_slots_resolves_recipient_against_player_ids() {
-        // Recipient = p1 → p1 sees NoLocalSpace (their bag is full),
-        // p2 sees NoRemoteSpace (partner is the one without room).
-        let reason = TradeAbort::NotEnoughSlots {
-            recipient_player_id: P1_PID,
-            container_id: 1,
-            needed: 3,
-            free: 0,
-        };
-        assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID),
-            (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
-        );
-
-        // Recipient = p2 → mirrored.
-        let reason = TradeAbort::NotEnoughSlots {
-            recipient_player_id: P2_PID,
-            container_id: 15,
-            needed: 3,
-            free: 0,
-        };
-        assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID),
-            (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
-        );
-    }
-
-    /// Catch-all variants (DbError, PlayerMissing, ItemMissing,
-    /// DuplicateInstance, BoundItemOffered, IneligibleContainer) are
-    /// either internal faults or server-authority validations the
-    /// client UI has no dedicated string for — both sides see
-    /// Cancelled.
-    #[test]
-    fn catch_all_variants_map_to_cancelled_on_both_sides() {
-        let catch_alls = [
-            TradeAbort::PlayerMissing {
-                which: "p1",
-                player_id: P1_PID,
-            },
-            TradeAbort::ItemMissing {
-                which: "p2",
-                player_id: P2_PID,
-                item_id: 7,
-            },
-            TradeAbort::DuplicateInstance { item_id: 42 },
-            TradeAbort::BoundItemOffered {
-                which: "p1",
-                player_id: P1_PID,
-                item_id: 99,
-            },
-            TradeAbort::IneligibleContainer {
-                which: "p1",
-                player_id: P1_PID,
-                item_id: 11,
-                container_id: 8, // INV_EQUIP or similar
-            },
-            TradeAbort::NoDestination {
-                which: "p2",
-                player_id: P2_PID,
-                item_id: 12,
-                type_id: 0x7000_C5F0,
-            },
-        ];
-        for reason in &catch_alls {
-            assert_eq!(
-                trade_abort_to_results_codes(reason, P1_PID),
-                (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED),
-                "catch-all {reason:?} must map to Cancelled on both sides"
-            );
-        }
+    fn refusals_are_cancelled() {
+        assert_eq!(REFUSAL_RESULT, ETRADERESULTS_CANCELLED);
+        assert_eq!(REFUSAL_RESULT, 2);
     }
 }
 
 mod refusal_feedback {
-    //! The shipped client shows nothing for the space and cash codes
-    //! (`Trade.lua` `onTradeResult` handles only Completed and
-    //! Cancelled), so those refusals must carry a line to each side, and
-    //! the line must name the bag that is full.
+    //! Every refusal is a bare `Cancelled` on the wire, so the cause must
+    //! reach each side as a feedback line, naming whose bag is full or
+    //! whose naquadah is short.
     //!
     //! Revert-verifier: returning `(None, None)` from `refusal_lines`
     //! trips every assertion below.

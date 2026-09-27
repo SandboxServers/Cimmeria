@@ -20,7 +20,8 @@ use std::time::Duration;
 use cimmeria_entity::inventory::{
     INV_AUCTION, INV_BUYBACK, INV_COMMAND_BANK, INV_CRAFTING, INV_HEAD, INV_MAIN, INV_TEAM_BANK,
 };
-use cimmeria_mercury::encryption::MercuryEncryption;
+use cimmeria_entity::trade::serialize_on_trade_results;
+use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tracing::Level;
@@ -29,6 +30,7 @@ use super::{cleanup, insert_account_and_player, insert_item, naquadah_of, owner_
 use crate::base::crafting::inventory_locks::take_inventory_locks;
 use crate::base::world_entry::methods::trade::handle_execute_trade;
 use crate::base::ConnectedClientState;
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{
     require_db_or_skip, test_default_connected_client_state, LogCapture, TestTransport,
 };
@@ -166,6 +168,41 @@ fn sent_text(transport: &TestTransport, addr: &str, text: &str) -> bool {
         .any(|pt| pt.windows(needle.len()).any(|w| w == needle.as_slice()))
 }
 
+/// The `onTradeResults` codes (1-6) sent to `addr`, each matched
+/// byte-for-byte against the packet the server builds for
+/// `(entity_id, partner, code)` at the observed sequence number.
+fn trade_results_sent(
+    transport: &TestTransport,
+    addr: &str,
+    entity_id: u32,
+    partner_entity_id: u32,
+) -> Vec<i32> {
+    let key = [0u8; 32];
+    let enc = MercuryEncryption::from_session_key(key);
+    let mut codes = Vec::new();
+    for packet in transport.filter_to(addr.parse().unwrap()) {
+        let Ok(pt) = enc.decrypt(&packet) else {
+            continue;
+        };
+        let seq = u32::from_le_bytes(pt[pt.len() - 4..].try_into().unwrap());
+        for code in 1..=6 {
+            let expected = build_player_entity_method_packet(
+                &key,
+                seq,
+                &[],
+                entity_id,
+                method_idx::ON_TRADE_RESULTS,
+                &serialize_on_trade_results(partner_entity_id as i32, code),
+                EncryptionVersion::V1,
+            );
+            if enc.decrypt(&expected).ok().as_deref() == Some(pt.as_slice()) {
+                codes.push(code);
+            }
+        }
+    }
+    codes
+}
+
 async fn run_trade(
     pool: &PgPool,
     f: Ids,
@@ -268,9 +305,13 @@ async fn crafting_component_lands_in_the_recipients_crafting_bag() {
 /// both items stay put, no naquadah moves, and each player gets a line
 /// naming the crafting bag.
 ///
+/// Both clients get `onTradeResults(Cancelled)`, byte-exact: the client's
+/// trade window closes only on Completed or Cancelled.
+///
 /// Revert-verifier: forcing the destination to `INV_MAIN` makes the trade
 /// succeed into B's empty backpack; dropping the refusal lines leaves
-/// both clients with nothing but a space code their UI ignores.
+/// both clients without the cause; sending the space codes (3/4) again
+/// fails the result-code assertions.
 #[tokio::test]
 async fn full_destination_crafting_bag_refuses_the_whole_trade() {
     let pool = require_db_or_skip!();
@@ -306,6 +347,17 @@ async fn full_destination_crafting_bag_refuses_the_whole_trade() {
     assert_eq!(naquadah_of(&pool, f.player_a).await, 500);
     assert_eq!(naquadah_of(&pool, f.player_b).await, 500);
 
+    // Cancelled (2) to both sides, never a space code the client ignores.
+    assert_eq!(
+        trade_results_sent(&sent, ADDR_A, f.entity_a, f.entity_b),
+        vec![2],
+        "A gets exactly one onTradeResults, Cancelled"
+    );
+    assert_eq!(
+        trade_results_sent(&sent, ADDR_B, f.entity_b, f.entity_a),
+        vec![2],
+        "B gets exactly one onTradeResults, Cancelled"
+    );
     assert!(
         sent_text(
             &sent,

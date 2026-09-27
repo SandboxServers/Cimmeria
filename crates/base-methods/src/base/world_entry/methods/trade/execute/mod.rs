@@ -64,9 +64,7 @@ mod swap;
 mod tests;
 
 pub(super) use abort::TradeAbort;
-use abort::{
-    refusal_container, refusal_lines, trade_abort_outcome_label, trade_abort_to_results_codes,
-};
+use abort::{refusal_container, refusal_lines, trade_abort_outcome_label, REFUSAL_RESULT};
 #[cfg(test)]
 pub(super) use abort::{LOCAL_CRAFTING_BAG_FULL, LOCAL_UNTRADEABLE_ITEM, REMOTE_CRAFTING_BAG_FULL};
 use placement::ItemMove;
@@ -284,10 +282,10 @@ pub async fn handle_execute_trade(
                 "trade_swaps_total",
                 "outcome" => label,
             );
-            // Per-side ETradeResults codes: the failing player sees
-            // `NoLocal*`, the other `NoRemote*`; catch-all variants map
-            // to Cancelled on both sides.
-            let (p1_code, p2_code) = trade_abort_to_results_codes(&reason, p1.player_id);
+            // The session already ended on the cell before the hand-off
+            // (`request_execute_trade` clears both players' trade state), so
+            // Cancelled is the truth, and it is the only failure code the
+            // client's trade window closes on.
             tracing::warn!(
                 target: "trade.atomic_swap",
                 event = "trade.refused",
@@ -300,9 +298,8 @@ pub async fn handle_execute_trade(
                 reason = label,
                 container_id = refusal_container(&reason),
                 detail = %reason,
-                p1_code,
-                p2_code,
-                "ExecuteTrade: atomic swap failed — sending asymmetric results"
+                result = REFUSAL_RESULT,
+                "ExecuteTrade: atomic swap failed — sending Cancelled to both"
             );
             send_results_to_both(
                 transport,
@@ -310,8 +307,8 @@ pub async fn handle_execute_trade(
                 entity_to_addr,
                 p1.entity_id,
                 p2.entity_id,
-                p1_code,
-                p2_code,
+                REFUSAL_RESULT,
+                REFUSAL_RESULT,
             )
             .await;
             let (p1_line, p2_line) = refusal_lines(&reason, p1.player_id);

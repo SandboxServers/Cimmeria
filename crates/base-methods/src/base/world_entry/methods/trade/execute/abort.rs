@@ -1,27 +1,16 @@
 //! Why an atomic swap aborted, and what each player is told.
 //!
-//! Each abort maps to a per-side `ETradeResults` code
-//! ([`trade_abort_to_results_codes`]), a low-cardinality metric / log
-//! label ([`trade_abort_outcome_label`]), and the feedback line each
-//! player gets ([`refusal_lines`]). The line is needed because the
-//! shipped client's trade window only reacts to `Completed` and
-//! `Cancelled` (`Trade.lua` `TradeMod.onTradeResult`): the four
-//! space / cash codes reach it and show nothing.
+//! Every abort sends `onTradeResults(Cancelled)` to both players
+//! ([`REFUSAL_RESULT`]), and carries a low-cardinality metric / log label
+//! ([`trade_abort_outcome_label`]) and the feedback line each player gets
+//! ([`refusal_lines`]), which is where the cause reaches the player.
 
 use cimmeria_entity::inventory::INV_CRAFTING;
-use cimmeria_entity::trade::{
-    ETRADERESULTS_CANCELLED, ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_LOCAL_SPACE,
-    ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_REMOTE_SPACE,
-};
+use cimmeria_entity::trade::ETRADERESULTS_CANCELLED;
 
-/// Reason the atomic swap aborted. Mapped to per-side asymmetric
-/// `ETradeResults` codes via [`trade_abort_to_results_codes`]:
-/// `InsufficientCash {p1|p2}` → `NoLocalCash`/`NoRemoteCash`,
-/// `NotEnoughSlots {recipient_player_id}` →
-/// `NoLocalSpace`/`NoRemoteSpace`, with the remaining catch-all
-/// variants staying on the generic Cancelled code — those are internal
-/// faults or server-authority rejections the client UI has no dedicated
-/// string for.
+/// Reason the atomic swap aborted. Every variant is `Cancelled` on the
+/// wire ([`REFUSAL_RESULT`]); the variant picks the log label and the
+/// feedback lines.
 #[derive(Debug)]
 pub(in super::super) enum TradeAbort {
     DbError(sqlx::Error),
@@ -171,41 +160,15 @@ pub(super) fn trade_abort_outcome_label(reason: &TradeAbort) -> &'static str {
     }
 }
 
-/// Per-side ETradeResults code mapping for [`TradeAbort`].
+/// The `onTradeResults` code both players get for any refusal.
 ///
-/// Returns `(p1_code, p2_code)` in p1-then-p2 order. The asymmetric
-/// `NoLocal*` / `NoRemote*` codes mirror Python `Trade.py:237-263`:
-/// the failing player sees `NoLocal*`, the other sees `NoRemote*`.
-///
-/// `InsufficientCash` carries a `which: "p1"|"p2"` discriminant that
-/// directly identifies the failing side. `NotEnoughSlots` carries
-/// `recipient_player_id` — the side without room — which we resolve
-/// against the caller-provided `p1_player_id` (recipient is either
-/// p1 or p2 by construction in `swap::atomic_swap`).
-///
-/// Catch-all variants are internal faults or server-authority
-/// validations the client UI has no dedicated string for — both sides
-/// see Cancelled.
-pub(super) fn trade_abort_to_results_codes(reason: &TradeAbort, p1_player_id: i32) -> (i32, i32) {
-    match reason {
-        TradeAbort::InsufficientCash { which: "p1", .. } => {
-            (ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_REMOTE_CASH)
-        }
-        TradeAbort::InsufficientCash { which: "p2", .. } => {
-            (ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_LOCAL_CASH)
-        }
-        TradeAbort::NotEnoughSlots {
-            recipient_player_id,
-            ..
-        } if *recipient_player_id == p1_player_id => {
-            (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
-        }
-        TradeAbort::NotEnoughSlots { .. } => {
-            (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
-        }
-        _ => (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED),
-    }
-}
+/// The shipped client closes the trade window only for `Completed` (1) and
+/// `Cancelled` (2) (`Trade.lua` `TradeMod.onTradeResult`, no else branch).
+/// The specific codes (3-6, `NoLocalSpace` .. `NoRemoteCash`) reach it and
+/// do nothing, leaving the window open and locked on a session the server
+/// has already ended. So every refusal is `Cancelled` on both sides, and
+/// the cause travels in the feedback line ([`refusal_lines`]).
+pub(super) const REFUSAL_RESULT: i32 = ETRADERESULTS_CANCELLED;
 
 pub(in super::super) const LOCAL_BACKPACK_FULL: &str =
     "Trade cancelled: your backpack does not have room for the items you would receive.";
