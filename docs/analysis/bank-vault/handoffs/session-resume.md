@@ -15,7 +15,7 @@
 | BV-03 | Done | #935 (`dfb0b0f8d`) | Deposit and withdraw, and the use and removal gate |
 | BV-04 | Done | #931 (`1c6bed3cc`) | The debug-hub Banker and `.bankdump` |
 | BV-05 | Done | #947 (`6607fbdc2`) | Expansion. Server side and GM `.bankexpand`; the player-facing Expand dialog is quarantined (D-BV35) |
-| BV-06 | Review | this PR | Close-out docs and the UAT queries. The coordinator posts `/release` after it merges (release 1) |
+| BV-06 | Review | #950 | Close-out docs and the UAT queries. The coordinator posts `/release` after it merges (release 1) |
 | BV-07 | Writing | | The org vaults. Branch `bank/bv07-org-vault`. Builds on ORG-02 (#881) and ORG-06 (#941); ORG-07 is not needed |
 | BV-08 | BlockedDependency (BV-07) | | Org cash. The CM 19 cell forward comes with org ORG-07 |
 | BV-09 | BlockedDependency (BV-07) | | No longer BlockedDecision: the owner settled the payer (D-BV28) |

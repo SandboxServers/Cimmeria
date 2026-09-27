@@ -264,7 +264,7 @@ Telemetry: emit `expand` and `expand_rejected` as the catalog specifies. A zero-
 
 ## BV-06 personal-bank close-out and release 1
 
-**Status: Review** (branch `docs/bank-vault-bv06-closeout`, docs only). The guard audit's result is in [session-resume.md § Known gaps](handoffs/session-resume.md#known-gaps-carried-forward): every catalog event from BV-01 to BV-05 has a `LogCapture` guard on `main` except the reasons listed there.
+**Status: Review** (PR #950, branch `docs/bank-vault-bv06-closeout`, docs only). The guard audit's result is in [session-resume.md § Known gaps](handoffs/session-resume.md#known-gaps-carried-forward): every catalog event from BV-01 to BV-05 has a `LogCapture` guard on `main` except the reasons listed there.
 
 Scope:
 
