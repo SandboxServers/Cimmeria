@@ -3,8 +3,8 @@
 //!
 //! - the **channel allowlist** (CAT-L-03): a player may speak on say, emote,
 //!   yell, tell, and the organization channels (team, squad, command,
-//!   officer), which are forwarded to the cell for the organizations
-//!   campaign to handle. The system channels (server, feedback, splash),
+//!   officer). Squad is forwarded to the cell (ORG-04); team, command and
+//!   officer are handled on the base (ORG-09, `chat.rs`). The system channels (server, feedback, splash),
 //!   user channels (12 and up, none of which this server registers) and
 //!   every id `EChannel` does not name are refused with feedback;
 //! - the **mute gate** (D-SS26): a player a GM muted gets a feedback line

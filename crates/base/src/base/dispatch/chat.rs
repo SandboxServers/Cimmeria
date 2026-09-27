@@ -3,14 +3,20 @@
 //! Extracted from `dispatch.rs` — the chat-family arms of
 //! `dispatch_sgw_player_base_method`: `sendPlayerCommunication`, `chatJoin`,
 //! `chatLeave`, `chatSetAFKMessage`, and `chatSetDNDMessage`. The tell
-//! channel branches off to `tell.rs` after the flood and text gates.
+//! channel branches off to `tell.rs` after the flood and text gates, and the
+//! team, command and officer channels to the base's organization chat
+//! (ORG-09, `organization::handlers::chat`): membership lives in the base,
+//! so those lines never reach the cell.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use cimmeria_base_session::base::organization::handlers::chat::{self as org_chat, ChatSpeaker};
+use cimmeria_base_session::base::organization::handlers::OrgCtx;
 use cimmeria_mercury::transport::Transport;
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -28,6 +34,16 @@ use super::speaker_flags;
 use super::tell::{self, TellSender};
 
 const MAX_DND_MESSAGE_CHARS: usize = 128;
+
+/// The base state `sendPlayerCommunication` reads beyond the speaker's
+/// session: the cell forward, and the organization chat's entity map and
+/// database (ORG-09).
+#[derive(Clone, Copy)]
+pub(super) struct ChatRoutes<'a> {
+    pub cell_tx: &'a Option<mpsc::Sender<BaseToCellMsg>>,
+    pub entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    pub db_pool: &'a Option<Arc<PgPool>>,
+}
 
 /// `sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)`.
 ///
@@ -52,7 +68,7 @@ pub(super) async fn handle_send_player_communication(
     addr: SocketAddr,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    routes: ChatRoutes<'_>,
 ) {
     send_player_communication_at(
         payload,
@@ -60,7 +76,7 @@ pub(super) async fn handle_send_player_communication(
         addr,
         transport,
         connected,
-        cell_tx,
+        routes,
         Instant::now(),
     )
     .await;
@@ -74,9 +90,10 @@ pub(super) async fn send_player_communication_at(
     addr: SocketAddr,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    routes: ChatRoutes<'_>,
     now: Instant,
 ) {
+    let cell_tx = routes.cell_tx;
     // sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)
     if payload.is_empty() {
         return;
@@ -160,12 +177,21 @@ pub(super) async fn send_player_communication_at(
     };
 
     let text_units = text.encode_utf16().count();
+    let org_speaker = ChatSpeaker {
+        addr,
+        name: speaker,
+        flags: speaker_flags_value,
+        account_id: Some(account_id),
+        player_id,
+        entity_id: player_eid,
+    };
     let squad_refusal = |reason: &'static str, log_row: bool| {
         if channel == CHAN_SQUAD {
             squad_chat_rejected(
                 reason, log_row, account_id, player_id, player_eid, text_units,
             );
         }
+        org_chat::log_refused_before_relay(channel, reason, log_row, &org_speaker, text_units);
     };
 
     if let RateDecision::Limited { notify } = decision {
@@ -226,6 +252,19 @@ pub(super) async fn send_player_communication_at(
             account_id,
         };
         tell::handle_tell(&feedback, sender, &target, &text, now).await;
+        return;
+    }
+
+    // Team, command and officer: the base holds the membership (ORG-09).
+    if org_chat::org_channel(channel).is_some() {
+        let ctx = OrgCtx {
+            db_pool: routes.db_pool,
+            transport,
+            connected,
+            entity_to_addr: routes.entity_to_addr,
+            cell_tx,
+        };
+        org_chat::relay_org_chat(&ctx, org_speaker, channel, &text).await;
         return;
     }
 

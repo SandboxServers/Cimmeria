@@ -29,6 +29,9 @@
 //! - [`targets`]: resolving the second player by name; [`answer`]: the
 //!   refusal lines.
 //!
+//! ORG-09 adds [`chat`]: team (3), command (5) and officer (6) chat to the
+//! online members ([`relay_org_chat`]).
+//!
 //! Every mutation follows ORG-LOCK (D-ORG04): one transaction, the
 //! organization row locked first, authorization read inside it. Fanout runs
 //! after the commit. Campaign ledger: `docs/analysis/organizations/`.
@@ -46,6 +49,7 @@ use crate::cell::messages::BaseToCellMsg;
 
 pub mod answer;
 pub mod broadcast;
+pub mod chat;
 pub mod disband;
 pub mod fanout;
 pub mod gm;
@@ -60,6 +64,7 @@ pub mod targets;
 pub mod telemetry;
 
 pub use broadcast::broadcast_to_org;
+pub use chat::{org_channel, relay_org_chat, ChatSpeaker};
 pub use disband::{gm_disband, GmCaller, GM_ACCESS_LEVEL};
 pub use gm::{gm_join, gm_rank};
 pub use invite::{handle_invite, InviteInto};

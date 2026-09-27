@@ -160,8 +160,10 @@ pub async fn handle_chat_message(
             .await;
         }
         _ => {
-            // Every other registered channel (team/command/officer/
-            // tell) was never distributed on the cell in the legacy server
+            // Team, command and officer are handled on the base (ORG-09,
+            // `base::organization::handlers::chat`) and tells too (SS-C1),
+            // so none of them reaches here from a client. Any other channel
+            // was never distributed on the cell in the legacy server
             // either: `python/cell/SGWPlayer.py::processPlayerCommunication`
             // only special-cases say/emote/yell and falls through to
             // `self.onError("Speaking on channel %d is not supported yet!")`

@@ -25,6 +25,7 @@ mod chat_dnd_limit;
 mod chat_flood_limit;
 mod chat_ignore;
 mod chat_ignore_race;
+mod chat_org_refusals;
 mod chat_speaker_flags;
 mod chat_squad_refusals;
 mod communicator_unsupported;

@@ -9,10 +9,12 @@
 //! of 16: ORG-06 owns `0x7000_4C00..=0x7000_4DFF` (32 blocks, names
 //! `Org06P<n>`, [`Fixture::new`]); ORG-07 owns `0x7000_4F00..=0x7000_4FFF`
 //! and `0x7000_5200..=0x7000_53EF` (47 blocks in all, names `Org07P<n>`,
-//! [`Fixture::org07`]). Organizations are
-//! cleaned by exact name key ("Org06 ..." / "Org07 ..." names).
+//! [`Fixture::org07`]); ORG-09 owns `0x7000_5600..=0x7000_56FF` (16 blocks,
+//! names `Org09P<n>`, [`Fixture::org09`]). Organizations are cleaned by
+//! exact name key ("Org06 ..." / "Org07 ..." / "Org09 ..." names).
 
 mod broadcast;
+mod chat;
 mod disband;
 mod gm;
 mod invite;
@@ -50,6 +52,8 @@ const BASE: i32 = 0x7000_4C00;
 /// ORG-07's sentinel blocks (see the module docs).
 const BASE_ORG07: i32 = 0x7000_4F00;
 const BASE_ORG07_HIGH: i32 = 0x7000_5200;
+/// ORG-09's sentinel block (see the module docs).
+const BASE_ORG09: i32 = 0x7000_5600;
 
 /// One decoded client-method call: `(method index, args)`.
 type Call = (u16, Vec<u8>);
@@ -90,6 +94,13 @@ impl Fixture {
         let slot = if block < 16 { block } else { block + 32 };
         debug_assert_eq!(BASE_ORG07 + 48 * 16, BASE_ORG07_HIGH);
         Self::at(pool, BASE_ORG07, "Org07P", slot, n, org_names).await
+    }
+
+    /// [`Fixture::new`] in ORG-09's range: block `block` (0..16), names
+    /// `Org09P<i>`.
+    async fn org09(pool: &PgPool, block: i32, n: i32, org_names: &[&str]) -> Self {
+        assert!((0..16).contains(&block));
+        Self::at(pool, BASE_ORG09, "Org09P", block, n, org_names).await
     }
 
     async fn at(
