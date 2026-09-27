@@ -164,6 +164,17 @@ const GIVEABILITY_ARGS: &[ArgSpec] = &[arg(
     "int",
     "The ability to grant to the selected player (else you); saved to the character, survives relog and respec, costs no points",
 )];
+/// The duel GM tools (SS-U2) have no legacy docstring either.
+const DUEL_STATUS_ARGS: &[ArgSpec] = &[arg(
+    "name",
+    "str",
+    "Optional. The character whose duel to show (exact case); yours when omitted",
+)];
+const DUEL_END_ARGS: &[ArgSpec] = &[arg(
+    "name",
+    "str",
+    "Required. The character whose duel or duel challenge to end (exact case)",
+)];
 
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
@@ -174,6 +185,8 @@ pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
         "announce" => ANNOUNCE_ARGS,
         "pet" => PET_ARGS,
         "giveability" => GIVEABILITY_ARGS,
+        "duel_status" => DUEL_STATUS_ARGS,
+        "duel_end" => DUEL_END_ARGS,
         _ => &[],
     }
 }

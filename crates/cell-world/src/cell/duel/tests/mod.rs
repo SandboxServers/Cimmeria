@@ -10,12 +10,14 @@
 //!   and the AoI replay (SS-D2).
 //! - [`interactable`]: the D-SS25 guard, an interactable NPC stays
 //!   interactable across a duel.
+//! - [`gm`]: the GM abort and status read (SS-U2).
 //!
 //! Every handler test drains through [`drain`], which keeps entity-method
 //! calls to a player's own client and witness routings apart.
 
 mod challenge;
 mod engage;
+mod gm;
 mod interactable;
 mod outbound;
 mod registry;

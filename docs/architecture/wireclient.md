@@ -1,6 +1,6 @@
 # ADR: `wireclient` — headless wire-level test client for end-to-end validation
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 > **Audience**: Engineers writing end-to-end tests for the SGW server emulator
 > **Type**: Architecture decision record
 > **Owner**: Network / test-infra
@@ -59,6 +59,13 @@ ORG-01). Both return framed message bytes for `send_bundle`, and both take
 `cell_method(25, id, &[])` and `base_method(0xD8, &[])` produce the same
 bytes as `map_loaded(id)` and `on_client_ready()`; the unit tests in
 `session.rs` pin both encodings and the 60/61 boundary.
+
+`GameSession::enter_world(player_id, timeout)` (SS-U2,
+[`world_entry.rs`](../../crates/wireclient/src/world_entry.rs)) is the
+character-select and world-entry sequence as a library call, returning an
+error instead of panicking. The integration tests' `enter_castle` wraps
+it, and the crate's one binary, [`sparbot`](#sparbot-a-duel-partner-for-solo-testing),
+uses it to put a second player in the world.
 
 ## TL;DR
 
@@ -130,6 +137,11 @@ crates/wireclient/
 │   │                     #   Channel, world-entry builders (Phase 1.5 + a
 │   │                     #   slice of Phase 2/4 — auth/char-select/world-entry
 │   │                     #   only, no entity mirror or script driver yet)
+│   ├── world_entry.rs    # GameSession::enter_world: char select + world
+│   │                     #   entry as one call (SS-U2)
+│   ├── sparbot.rs        # The duel test partner: duel builders, the
+│   │                     #   Sparbot state machine, the keep-alive run loop
+│   ├── bin/sparbot.rs    # The `sparbot` binary (SS-U2)
 │   ├── bundle.rs         # decode_bundle(): structural (msg_id/entity_id/
 │   │                     #   class_id/method_index) server->client bundle
 │   │                     #   decoder -- NOT the Phase 3 semantic decoder,
@@ -147,6 +159,8 @@ crates/wireclient/
     │   │                                      #   arrival orders (NA37)
     │   ├── two_client_castle_visibility_chaos.rs  # Live-DB: the same scenario
     │   │                                      #   under injected loss/latency
+    │   ├── sparbot_duel.rs                    # sparbot vs cimmeria-wire, and a
+    │   │                                      #   live-DB duel accept (SS-U2)
     │   ├── two_client_squad.rs                # Live-DB: /squadinvite, accept,
     │   │                                      #   both join, leave (ORG-03)
     │   └── support/mod.rs                     # Shared server bring-up + world-entry driver
@@ -290,6 +304,106 @@ New corpora are added by:
 3. Adding the JSONL to the test corpus directory and a smoke module to
    `crates/wireclient/tests/it/` (declared in its `main.rs`).
 
+## sparbot: a duel partner for solo testing
+
+`sparbot` (SS-U2) is a small binary in this crate that logs a second
+account into the world and acts as a duel opponent, so one tester can
+exercise duels alone. It accepts every duel challenge addressed to it,
+stands still, and forfeits a set time after accepting. It is a test tool:
+it has no invariant enforcement, does not move, and ignores everything
+except duel challenges and the lines the server sends it.
+
+### What it does on the wire
+
+| Step | Message |
+|---|---|
+| Log in and enter the world | SOAP Phase 1 and 2, `baseAppLogin`, then [`GameSession::enter_world`](../../crates/wireclient/src/world_entry.rs) |
+| Keep the session alive | `AUTHENTICATE` (0x01), unreliable, every 250 ms. The server drops a client it has not heard from for 60 s (`base-session` `tick_sync.rs`), and its reliable sends wait for acks the bot only sends piggybacked on an outbound packet. The real client sends `AUTHENTICATE` on every tick while idle, so this is what an idle client looks like |
+| A challenge arrives | `onDuelChallenge` (client method 143) on the bot's own entity |
+| Accept | `sendDuelResponse(1)` (cell method 102) |
+| Forfeit, `--forfeit-after` seconds after the accept | `duelForfeit()` (cell method 103). Until SS-D3 the server only logs `UNIMPLEMENTED: duelForfeit`; the bot logs the send either way. If the server sends "Duel aborted" first, the bot does not forfeit |
+| Stop | After `--run-for`, on Ctrl-C, or when the server has been silent for 15 s. On the way out it sends `DISCONNECT`, so the character leaves the world at once |
+
+The indices and texts are pinned against the server's own `cimmeria-wire`
+constants and decoders by `tests/it/sparbot_duel.rs::sparbot_wire_matches_the_server`.
+
+### How to duel yourself on a local server
+
+1. **Pick a second account and character.** Any account other than the
+   one you play works; the local seed accounts in
+   `db/sgw/Accounts/Seed/account.sql` all use the password `test`. The
+   bot does not need GM rights. Give that account a character with the
+   real client once, and leave it in the world you will test in: the bot
+   enters wherever the character last was. Find its id with:
+
+   ```sql
+   SELECT p.player_id, p.player_name, p.world_location
+   FROM sgw_player p JOIN account a USING (account_id)
+   WHERE a.account_name = '<second account>';
+   ```
+
+2. **Start the bot** with the local server running:
+
+   ```bash
+   SPARBOT_USER=<second account> SPARBOT_PASSWORD=<password> \
+     cargo run -p cimmeria-wireclient --bin sparbot -- --player-id <id>
+   ```
+
+   It prints `in the world; waiting for duel challenges` with its entity
+   id.
+
+3. **Bring it to you.** As a GM in the same world, `.summon <bot name>`
+   moves it next to you. The challenge range is 20 units.
+
+4. **Challenge it** with `/duel <bot name>` (the client sends
+   `sendDuelChallenge`). The bot accepts at once; you both see "Duel accepted. The duel
+   starts in 5 seconds." Check a duel's state with `.duel_status <bot
+   name>`, and end it from the GM side with `.duel_end <bot name>`.
+
+5. **Stop the bot** with Ctrl-C. It logs out and prints how many
+   challenges it accepted and forfeits it sent.
+
+Options (every one can also come from an environment variable,
+`SPARBOT_<OPTION>`, such as `SPARBOT_FORFEIT_AFTER`; a flag wins):
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--user`, `--password` | required | The bot's account. Never built in; prefer the environment variables so the password stays out of your shell history |
+| `--player-id` | required | The character to play (`sgw_player.player_id`) |
+| `--auth-url` | `http://127.0.0.1:8081` | The auth server |
+| `--shard` | `Test` | The shard name sent at server selection |
+| `--forfeit-after` | `30` | Seconds from the accept to the forfeit; `0` never forfeits |
+| `--run-for` | `0` | Seconds to stay in the world; `0` runs until Ctrl-C |
+
+`RUST_LOG` sets the log filter (default `sparbot=info,warn`). The bot's
+own events are `sparbot.in_world`, `sparbot.challenge_accepted`,
+`sparbot.forfeit_sent`, `sparbot.server_line` (every feedback line, such as
+"Duel aborted") and `sparbot.session_lost` (`reason = server_silent |
+send_failed`). The server's side of the same duel is in SigNoz under
+`scope_name = 'duel'`, correlated by `duel_id`.
+
+### Limits
+
+- **Stand-in behaviour until SS-D2 and SS-D3.** Today a duel's countdown
+  ends in "Duel aborted" (SS-D2 engages it), and the forfeit has no effect
+  (SS-D3 implements it). The bot needs no change for either: it already
+  sends the forfeit and reports every line it gets.
+- **Same-space `.summon` only.** A same-space `.summon` is a position snap
+  the bot needs nothing for. A cross-world `.summon` or a gate trip starts
+  the world-entry handshake again, which the bot does not answer, so the
+  character is left loading. Log the bot's character into your world
+  instead.
+- **Against the colo** the bot needs an account the owner provides for
+  it, and the colo's auth URL (`--auth-url`). The UDP socket binds every
+  interface when the BaseApp address is not loopback, but the bot has only
+  been run against local servers.
+- **Keep-alive proof.** `sparbot_session_outlives_the_inactivity_reap`
+  holds a session for 70 s, past the server's 60 s reap, then has the bot
+  accept a challenge. It is `#[ignore]`d because of its length; run it
+  with `--ignored` after touching the run loop. With the heartbeat
+  disabled it fails: the session is reaped and the bot stops with
+  `ServerSilent`.
+
 ## Phasing & status
 
 | Phase | Work | Status |
@@ -301,6 +415,7 @@ New corpora are added by:
 | 4 | Castle Cellblock script (steps 1–8, 10, 12–20) | Pending |
 | 5 | Combat at step 9 + server-side LOS parity check | Pending |
 | 6 | `#[cfg(test)]` force-victory hook | Pending |
+| SS-U2 | `sparbot` binary + `GameSession::enter_world` | **Done** (2026-09-27) — see [sparbot](#sparbot-a-duel-partner-for-solo-testing); `tests/it/sparbot_duel.rs` (one wire pin, one live-DB accept, one ignored 70 s keep-alive run) |
 | 7 | nextest `wireclient-e2e` profile + CI workflow | Pending — `two_client_castle_visibility.rs` is live-DB-gated (skips without `DATABASE_URL`) and is **not** wired into `.github/workflows/test.yml`'s `ci-live-db` job yet (that job runs the lib tests of the crates in `tools/test-live-db.sh` only); run it manually per the header comment in the test file until this phase lands |
 
 ## Risks & open questions

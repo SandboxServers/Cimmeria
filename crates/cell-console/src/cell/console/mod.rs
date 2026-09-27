@@ -59,6 +59,7 @@
 //!   (`location`, `rotation`).
 //! - [`social`] — the GM broadcast (`announce`), the console twin of the
 //!   native `/gmshout`.
+//! - [`duel`] — duel GM tools (`duel_status`, `duel_end`).
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -79,6 +80,7 @@ mod bookmark;
 pub mod chat;
 mod crafting;
 mod dispatch;
+mod duel;
 mod entity;
 mod give;
 mod give_ability;

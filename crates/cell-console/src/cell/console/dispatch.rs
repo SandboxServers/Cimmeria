@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    aggro, bookmark, crafting, entity, give, give_ability, mission, net, patrol, pet, placement,
-    query, seed, server, social, spawn, stats, travel,
+    aggro, bookmark, crafting, duel, entity, give, give_ability, mission, net, patrol, pet,
+    placement, query, seed, server, social, spawn, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -385,6 +385,9 @@ pub async fn exec(
         }
         // Social: the GM broadcast
         "announce" => social::announce(caller_id, args, tx, space_mgr).await,
+        // Social: duel GM tools (SS-U2)
+        "duel_status" => duel::duel_status(caller_id, args, tx, space_mgr).await,
+        "duel_end" => duel::duel_end(caller_id, args, tx, space_mgr).await,
         // G. server / maintenance
         "save" | "reloadmap" | "reloadres" | "removerespawner" | "loglevel" | "logclient" => {
             server::dispatch(name, caller_id, args, target_id, tx, space_mgr).await

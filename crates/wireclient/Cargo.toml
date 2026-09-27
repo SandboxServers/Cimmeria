@@ -33,6 +33,11 @@ reqwest = { workspace = true }
 # Hex-encoded session keys come down from the auth server as 64-char strings;
 # decode here before handing to `cimmeria_mercury::MercuryEncryption`.
 hex = "0.4"
+
+# The `sparbot` binary (SS-U2): its log output, and the uppercase-hex
+# SHA-1 of the typed password that SOAP Phase 1 carries.
+tracing-subscriber = { workspace = true }
+sha1 = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
@@ -49,4 +54,6 @@ cimmeria-services = { path = "../services", features = ["chaos-testing"] }
 # same insert-and-clean-up-by-exact-sentinel convention as
 # `crates/services/src/test_support.rs`'s live-DB guards.
 sqlx = { workspace = true }
-tracing-subscriber = { workspace = true }
+# Pins the sparbot's duel indices and texts against the server's own
+# constants (`tests/it/sparbot_duel.rs`).
+cimmeria-wire = { workspace = true }
