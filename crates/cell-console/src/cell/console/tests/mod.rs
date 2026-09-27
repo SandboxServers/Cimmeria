@@ -29,6 +29,8 @@ mod na13_aggro;
 #[cfg(test)]
 mod org04_squad;
 #[cfg(test)]
+mod org05_org_create;
+#[cfg(test)]
 mod org06_disband;
 #[cfg(test)]
 mod p02;
