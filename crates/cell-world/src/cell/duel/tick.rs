@@ -23,7 +23,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::find_player;
-use super::outbound::send_line;
+use super::outbound::{send_line, Recipient};
 use super::registry::DuelId;
 use super::response::abort_both;
 
@@ -80,9 +80,13 @@ async fn on_countdown_end(
         reason = "engage_not_implemented",
         "duel countdown ended: engaging is SS-D2, so the duel is aborted"
     );
-    for player_id in [duel.challenger, duel.target] {
+    for (player_id, other) in [
+        (duel.challenger, duel.target),
+        (duel.target, duel.challenger),
+    ] {
         if let Some(p) = find_player(mgr, player_id) {
-            send_line(tx, p.entity_id, TEXT_DUEL_ABORTED, Some(duel_id)).await;
+            let to = Recipient::at(&p, player_id, Some(other));
+            send_line(tx, to, TEXT_DUEL_ABORTED, Some(duel_id)).await;
         }
     }
 }

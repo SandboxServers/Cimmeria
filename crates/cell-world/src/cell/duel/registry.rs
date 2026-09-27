@@ -118,9 +118,17 @@ pub struct DuelRegistry {
 }
 
 impl DuelRegistry {
-    /// `true` when there is nothing for the tick to do.
+    /// `true` when there is nothing for the tick to do. A running pair
+    /// cooldown counts: the tick is what prunes it ([`Self::expire_pending`]),
+    /// so an idle short-circuit that ignored cooldowns would keep every
+    /// cooldown since the last challenge for the life of the cell process.
     pub fn is_idle(&self) -> bool {
-        self.pending.is_empty() && self.duels.is_empty()
+        self.pending.is_empty() && self.duels.is_empty() && self.cooldowns.is_empty()
+    }
+
+    /// How many directed pair cooldowns are stored, expired or not.
+    pub fn cooldown_count(&self) -> usize {
+        self.cooldowns.len()
     }
 
     /// `player_id` has a challenge out, one to answer, or a duel.

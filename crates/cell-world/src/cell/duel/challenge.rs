@@ -16,7 +16,7 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::connected_player;
 use super::limits::CHALLENGE_RANGE;
-use super::outbound::{send_challenge_prompt, send_line};
+use super::outbound::{send_challenge_prompt, send_line, Recipient};
 use super::registry::ChallengeRefusal;
 
 /// Handle one duel message from the base, on the wall clock.
@@ -145,10 +145,16 @@ async fn challenge(
         expires_in_ms = (pending.expires_at - now).as_millis() as u64,
         "duel challenge pending: target prompted"
     );
-    send_challenge_prompt(tx, target.entity_id, challenger.entity_id, pending.duel_id).await;
+    send_challenge_prompt(
+        tx,
+        Recipient::at(&target, req.target_player_id, Some(req.player_id)),
+        challenger.entity_id,
+        pending.duel_id,
+    )
+    .await;
     send_line(
         tx,
-        challenger.entity_id,
+        Recipient::at(&challenger, req.player_id, Some(req.target_player_id)),
         TEXT_CHALLENGE_SENT,
         Some(pending.duel_id),
     )
@@ -177,5 +183,11 @@ async fn refuse(
         range = CHALLENGE_RANGE,
         "duel challenge refused"
     );
-    send_line(tx, req.entity_id, text, None).await;
+    let to = Recipient {
+        entity_id: req.entity_id,
+        account_id: Some(req.account_id),
+        player_id: req.player_id,
+        other_player_id: Some(req.target_player_id),
+    };
+    send_line(tx, to, text, None).await;
 }

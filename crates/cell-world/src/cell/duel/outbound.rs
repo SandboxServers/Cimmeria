@@ -13,41 +13,66 @@ use cimmeria_wire::cell::client_methods::duel::{build_on_duel_challenge, ON_DUEL
 use crate::cell::messages::CellToBaseMsg;
 
 use super::registry::DuelId;
+use super::PlayerAt;
+
+/// Who a duel send goes to, with the identity its failure log needs
+/// (instrumentation discipline rule 5): the recipient's entity, account and
+/// player, and the other duelist, if there is one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Recipient {
+    pub entity_id: u32,
+    pub account_id: Option<u32>,
+    pub player_id: i32,
+    /// The other duelist's `player_id`, logged as `target_player_id`.
+    pub other_player_id: Option<i32>,
+}
+
+impl Recipient {
+    /// `player`, playing `player_id`, with `other` as the other duelist.
+    pub(super) fn at(player: &PlayerAt, player_id: i32, other: Option<i32>) -> Self {
+        Recipient {
+            entity_id: player.entity_id,
+            account_id: player.account_id,
+            player_id,
+            other_player_id: other,
+        }
+    }
+}
 
 /// Queue one `onPlayerCommunication("SYSTEM", 0, CHAN_FEEDBACK, text)` to
-/// `entity_id`'s own client.
+/// the recipient's own client.
 pub(super) async fn send_line(
     tx: &mpsc::Sender<CellToBaseMsg>,
-    entity_id: u32,
+    to: Recipient,
     text: &str,
     duel_id: Option<DuelId>,
 ) {
     let args = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
-    send(tx, entity_id, ON_PLAYER_COMMUNICATION, args, duel_id).await;
+    send(tx, to, ON_PLAYER_COMMUNICATION, args, duel_id).await;
 }
 
 /// Queue `onDuelChallenge(challenger, [])` [143] to the target: the client's
 /// Yes/No prompt. The squad list is empty, squad duels being refused.
 pub(super) async fn send_challenge_prompt(
     tx: &mpsc::Sender<CellToBaseMsg>,
-    target_entity_id: u32,
+    to: Recipient,
     challenger_entity_id: u32,
     duel_id: DuelId,
 ) {
     let args = build_on_duel_challenge(challenger_entity_id as i32, &[]);
-    send(tx, target_entity_id, ON_DUEL_CHALLENGE, args, Some(duel_id)).await;
+    send(tx, to, ON_DUEL_CHALLENGE, args, Some(duel_id)).await;
 }
 
 async fn send(
     tx: &mpsc::Sender<CellToBaseMsg>,
-    entity_id: u32,
+    to: Recipient,
     method_index: u16,
     args: Vec<u8>,
     duel_id: Option<DuelId>,
 ) {
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
+            entity_id: to.entity_id,
             method_index,
             args,
         })
@@ -57,7 +82,10 @@ async fn send(
         tracing::warn!(
             target: "duel",
             event = "duel.send_failed",
-            entity_id,
+            account_id = to.account_id,
+            player_id = to.player_id,
+            entity_id = to.entity_id,
+            target_player_id = to.other_player_id,
             method_index,
             duel_id,
             reason = "cell_to_base_closed",

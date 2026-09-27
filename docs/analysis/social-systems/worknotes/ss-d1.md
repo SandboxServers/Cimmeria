@@ -57,7 +57,7 @@ New log target `duel`, `duel=debug` in `OTEL_FILTER`, pinned at DEBUG and WARN i
 | `duel.challenge_expired` | DEBUG | cell tick | `reason = no_answer` | `unanswered_challenge_expires_and_tells_both` |
 | `duel.aborted` | DEBUG | cell tick | `reason = engage_not_implemented`, `state`, `space_id` | `countdown_end_aborts_until_ss_d2` |
 | `duel.notify_skipped` | DEBUG | cell | `why`, `reason = player_not_in_world` | exercised by `accept_after_the_challenger_left_aborts` |
-| `duel.send_failed` | WARN | cell | `method_index`, `reason = cell_to_base_closed` | not tested (needs a closed channel mid-send) |
+| `duel.send_failed` | WARN | cell | the recipient's `account_id`, `player_id`, `entity_id`, the other duelist as `target_player_id`, `method_index`, `duel_id`, `reason = cell_to_base_closed` | `send_failure_logs_the_recipient_and_the_other_duelist` (receiver dropped, so every send fails) |
 
 Every row carries `player_id` (the actor; the challenger on tick rows) and `target_player_id` (the other duelist), with `account_id` and `entity_id` whenever that player is still in the world. Every row after the challenge is stored carries `duel_id`.
 
@@ -119,6 +119,13 @@ Each mutation was applied, the named filter run, and the file restored (`/tmp/ss
 | CM 102 arm back to a log-only stub | `send_duel_response_routes_to_the_duel_handler` failed |
 | `BaseToCellMsg::Duel` arm made a no-op | `duel_challenge_reaches_the_duel_registry` failed |
 
+### PR #888 review follow-up
+
+- **Copilot finding (`outbound.rs`):** `duel.send_failed` carried only `entity_id` and `duel_id`. Every send now takes an `outbound::Recipient` (entity, account, player, and the other duelist), built by each caller from state it already has, and the failure row logs all of them. Guard: `tests/outbound.rs::send_failure_logs_the_recipient_and_the_other_duelist` drops the receiver so both challenge sends fail, then checks each row's `account_id`, `player_id`, `entity_id` and `target_player_id`.
+- **Cooldown pruning:** `expire_pending` already dropped expired cooldowns, but `DuelRegistry::is_idle` ignored the cooldown map, so the wall-clock `tick::run` short-circuited once the last challenge or duel was gone and a cooldown stayed until the next challenge anywhere on the cell. `is_idle` now counts cooldowns, so the tick keeps running until each has expired and been pruned. `cooldown_count()` was added for the tests. The other maps (`pending`, `pending_from`, `duels`, `in_duel`) are removed on consume, expiry and `end_duel`, and a player's entries are covered by the 30 s expiry and the 5 s countdown. Guards: `registry::expired_cooldowns_are_pruned` and `tick::wall_clock_tick_prunes_an_expired_cooldown`.
+- **Regression proof:** each mutation was run with `cargo test -p cimmeria-cell-world --lib duel`. `is_idle` without the cooldown clause failed both cooldown tests. Removing the `cooldowns.retain` prune failed both. Dropping `account_id`/`player_id` from the failure row failed the outbound test, and so did dropping `target_player_id`.
+- **Commands:** `lane.sh cargo fmt --all` (clean); `lane.sh cargo test -p cimmeria-cell-world --lib duel` (27 passed); `lane.sh cargo clippy -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods --all-targets -- -D warnings` (clean); `lane.sh cargo nextest run -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods duel` (29 passed).
+
 ## Docs
 
 - `docs/gameplay/duel-system.md`: status, the implementation table and the feature rows.
@@ -134,7 +141,6 @@ Each mutation was applied, the named filter run, and the file restored (`/tmp/ss
 - **The countdown ends in "Duel aborted"** until SS-D2 engages duels.
 - **Disconnect does not clear the registry.** A pending challenge naming a player who left expires after 30 s, and a duel in the countdown ends at 5 s, so nothing is stranded. SS-D3 owns the `disconnect_entity` hook.
 - **The tick is not covered by a loop test.** `duel::tick::run` is called from `message_loop.rs`; the tests call `run_at` directly.
-- **`duel.send_failed`** (a closed cell-to-base channel) has no test.
 - D-SS18, D-SS19 and D-SS21 values are project policy, stated as such in `duel/limits.rs`.
 
 ## Contended files touched

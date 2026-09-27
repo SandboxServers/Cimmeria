@@ -4,12 +4,14 @@
 //! - [`challenge`]: the cell-side challenge checks (audit CAT-M-12) and the
 //!   byte-exact prompt.
 //! - [`response`]: `sendDuelResponse` (CAT-M-13) and the accept.
-//! - [`tick`]: expiry and the countdown end on an injected clock.
+//! - [`tick`]: expiry, the countdown end and cooldown pruning.
+//! - [`outbound`]: the send-failure row names its recipient.
 //!
 //! Every handler test drains through [`drain`], which fails on any
 //! `onDuelEntitiesSet` [151] or `Clear` [153] (D-SS25).
 
 mod challenge;
+mod outbound;
 mod registry;
 mod response;
 mod tick;

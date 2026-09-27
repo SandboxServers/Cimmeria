@@ -137,3 +137,22 @@ fn start_duel_is_start_pending_and_cannot_harm() {
     assert!(r.end_duel(d.duel_id).is_some());
     assert!(!r.is_busy(1) && !r.is_busy(2) && r.is_idle());
 }
+
+/// Cooldowns do not outlive their 60 s: the sweep drops each one at its
+/// expiry, and the registry reports busy (not idle) while one is stored, so
+/// the tick keeps running until it is gone.
+#[test]
+fn expired_cooldowns_are_pruned() {
+    let mut r = DuelRegistry::default();
+    let t0 = Instant::now();
+    let p = r.open_challenge(1, 2, t0).unwrap();
+    r.take_pending_for(2, t0).unwrap();
+    r.decline(&p, t0);
+    assert_eq!(r.cooldown_count(), 1);
+    assert!(!r.is_idle(), "a stored cooldown keeps the tick running");
+    r.expire_pending(t0 + PAIR_COOLDOWN - Duration::from_millis(1));
+    assert_eq!(r.cooldown_count(), 1);
+    r.expire_pending(t0 + PAIR_COOLDOWN);
+    assert_eq!(r.cooldown_count(), 0);
+    assert!(r.is_idle());
+}

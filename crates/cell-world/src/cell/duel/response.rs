@@ -20,7 +20,7 @@ use cimmeria_wire::cell::client_methods::duel::{
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::outbound::send_line;
+use super::outbound::{send_line, Recipient};
 use super::registry::{PendingChallenge, ResponseRefusal};
 use super::{connected_player, find_player};
 
@@ -112,7 +112,13 @@ async fn respond(
                 reason = "no_pending_challenge",
                 "sendDuelResponse with no challenge addressed to the caller"
             );
-            send_line(tx, entity_id, TEXT_NO_PENDING_CHALLENGE, None).await;
+            send_line(
+                tx,
+                Recipient::at(&responder, responder_pid, None),
+                TEXT_NO_PENDING_CHALLENGE,
+                None,
+            )
+            .await;
             return;
         }
         Err(ResponseRefusal::Expired(p)) => {
@@ -190,12 +196,18 @@ async fn respond(
             );
             send_line(
                 tx,
-                challenger.entity_id,
+                Recipient::at(&challenger, pending.challenger, Some(responder_pid)),
                 TEXT_DUEL_ACCEPTED,
                 Some(duel.duel_id),
             )
             .await;
-            send_line(tx, entity_id, TEXT_DUEL_ACCEPTED, Some(duel.duel_id)).await;
+            send_line(
+                tx,
+                Recipient::at(&responder, responder_pid, Some(pending.challenger)),
+                TEXT_DUEL_ACCEPTED,
+                Some(duel.duel_id),
+            )
+            .await;
         }
     }
 }
@@ -208,9 +220,20 @@ pub(super) async fn abort_both(
     pending: &PendingChallenge,
     why: &'static str,
 ) {
-    for player_id in [pending.challenger, pending.target] {
+    for (player_id, other) in [
+        (pending.challenger, pending.target),
+        (pending.target, pending.challenger),
+    ] {
         match find_player(mgr, player_id) {
-            Some(p) => send_line(tx, p.entity_id, TEXT_DUEL_ABORTED, Some(pending.duel_id)).await,
+            Some(p) => {
+                send_line(
+                    tx,
+                    Recipient::at(&p, player_id, Some(other)),
+                    TEXT_DUEL_ABORTED,
+                    Some(pending.duel_id),
+                )
+                .await
+            }
             None => tracing::debug!(
                 target: "duel",
                 event = "duel.notify_skipped",
