@@ -212,7 +212,7 @@ impl Refusal {
             target_container_id = self.target_container_id,
             target_slot_id = self.target_slot_id,
             reason = self.reason,
-            "move_rejected: container is not player-movable; item stays put, client resynced"
+            "move_rejected: container is not player-movable; item stays put (snap-back follows unless move_resync_skipped)"
         );
         if context.type_id.is_some() || context.lookup_failed {
             // Ownership unknown after a failed lookup: try the resend, which
