@@ -128,15 +128,22 @@ async fn a_released_target_leaves_the_owner_while_the_fight_goes_on() {
     assert!(o.threatened_mobs.contains(&MOB_2));
 }
 
-/// A surrendered NPC nearby: an Aggressive pet does not scan it in, so the
-/// owner is never pulled into combat with it (it used to be re-engaged every
-/// turn, and `npc_ai_submit` cleared the fight again each pass).
+/// A surrendered NPC the owner still has selected: `npc_ai_submit` has
+/// disarmed it (aggression Neutral), so the Aggressive scan skips it, but
+/// the owner's-target rule does not ask for aggression. Without the state
+/// rule the pet re-engaged it every turn (and `npc_ai_submit` cleared the
+/// fight again each pass), flapping the owner in and out of combat.
 #[tokio::test]
-async fn an_aggressive_pet_leaves_a_surrendered_npc_alone() {
+async fn an_aggressive_pet_leaves_a_surrendered_owner_target_alone() {
     let (mut mgr, pet) = world_with_pet([10.0, 0.0, 10.0]);
     add_mob(&mut mgr, MOB, [10.0, 0.0, 16.0], HOSTILE);
-    crate::cell::service::npc_ai::force_ai_state(mgr.get_entity_mut(MOB).unwrap(), AiState::Submit);
+    let mob = mgr.get_entity_mut(MOB).unwrap();
+    crate::cell::service::npc_ai::force_ai_state(mob, AiState::Submit);
+    mob.aggro.override_level = Some(cimmeria_entity::cell_entity::MobAggression::Neutral);
     set_stance(&mut mgr, pet, PetStance::Aggressive);
+    let owner = mgr.get_entity_mut(OWNER).unwrap();
+    owner.state_field |= BSF_IN_COMBAT;
+    owner.current_target_id = Some(MOB as i32);
 
     let logs = LogCapture::install();
     tick(&mut mgr).await;
@@ -145,9 +152,11 @@ async fn an_aggressive_pet_leaves_a_surrendered_npc_alone() {
     assert_eq!(state(&mgr, pet), AiState::Follow);
     assert!(!mob_lists_pet(&mgr, pet));
     assert!(pets_ai_row(&logs, "pet_engaged").is_none());
-    let o = mgr.get_entity(OWNER).unwrap();
-    assert!(o.threatened_mobs.is_empty());
-    assert_eq!(o.state_field & BSF_IN_COMBAT, 0);
+    assert!(!mgr
+        .get_entity(OWNER)
+        .unwrap()
+        .threatened_mobs
+        .contains(&MOB));
 }
 
 /// The target surrenders mid-fight: the pet drops it and it forgets the pet.
