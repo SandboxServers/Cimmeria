@@ -48,7 +48,7 @@ New log target `duel`, `duel=debug` in `OTEL_FILTER`, pinned at DEBUG and WARN i
 | `duel.challenge_forwarded` | DEBUG | base | `target_entity_id` | `challenge_forwards_session_ids_to_the_cell` (forward asserted) |
 | `rate_limit.exceeded` | WARN / DEBUG | base (SS-00 helper) | `category = duel_challenge` and the bucket state | `challenge_rate_limited` |
 | `duel.challenge_refused` | DEBUG | cell | `reason = challenger_gone \| self_challenge \| target_gone \| cross_space \| out_of_range \| challenger_busy \| target_busy \| pair_cooldown`, `distance`, `range` | one test per reason in `tests/challenge.rs` |
-| `duel.challenge_sent` | DEBUG | cell | `duel_id`, `target_entity_id`, `target_account_id`, `space_id`, `distance`, `expires_in_ms` | `challenge_prompts_the_target_byte_exact` |
+| `duel.challenge_sent` | DEBUG | cell | logged only after the prompt was queued; `duel_id`, `target_entity_id`, `target_account_id`, `space_id`, `distance`, `expires_in_ms` | `challenge_prompts_the_target_byte_exact` |
 | `duel.response_refused` | DEBUG (WARN for `not_a_player`) | cell | `reason = no_pending_challenge \| expired \| not_a_player`, `response`, `expired_ms_ago` | `response_without_challenge_rejected`, `response_replay_rejected`, `response_after_expiry_rejected` |
 | `duel.response_malformed` | WARN | cell | `reason = bad_length \| unknown_response`, `args_len`, and `target_player_id` + `duel_id` of the challenge addressed to the caller, if any | `malformed_response_does_not_consume_the_challenge` |
 | `duel.declined` | DEBUG | cell | `duel_id` | `decline_tells_both_sides` |
@@ -67,8 +67,8 @@ Every row carries `player_id` (the actor; the challenger on tick rows) and `targ
 | Question | Query |
 |---|---|
 | Why was my challenge refused? | `scope_name = 'duel' AND event = 'duel.challenge_refused' AND player_id = <challenger>`; `reason` names the check. For `rate_limit`, `scope_name = 'rate_limit' AND category = 'duel_challenge'` |
-| What happened to one challenge? | find its `duel_id` on `duel.challenge_sent`, then `scope_name = 'duel' AND duel_id = <id>`: sent, then declined / accepted / expired / aborted |
-| Did the target ever get the prompt? | `duel.challenge_sent` with `target_player_id = <target>`; the same trace carries the `EntityMethodCall` to `target_entity_id` |
+| What happened to one challenge? | find its `duel_id` on `duel.challenge_sent` (or on `duel.challenge_undelivered`, if the prompt could not be queued; a challenge logs exactly one of the two), then `scope_name = 'duel' AND duel_id = <id>`: sent, then declined / accepted / expired / aborted |
+| Did the target ever get the prompt? | `duel.challenge_sent` with `target_player_id = <target>` means the prompt was queued to the base; `duel.challenge_undelivered` means it was not and the challenge was withdrawn; the same trace carries the `EntityMethodCall` to `target_entity_id` |
 | Who answered what? | `event = 'duel.response_refused' OR event = 'duel.accepted' OR event = 'duel.declined'`, grouped by `player_id` |
 
 ## Commands run
@@ -136,6 +136,14 @@ Each mutation was applied, the named filter run, and the file restored (`/tmp/ss
 - **Regression proof** (each mutation run with the duel filter): no withdrawal on a failed prompt failed `undelivered_prompt_withdraws_the_challenge`. `notify_skipped` without `target_player_id` failed `accept_after_the_challenger_left_aborts`. `response_malformed` without it failed `malformed_response_does_not_consume_the_challenge`. `is_client_ready` forced true failed both loading tests, and so did `is_client_ready` without the `pending_*` checks.
 - **Tooling note:** the mutation script restored files from a `.bak` copy whose mtime was older than the mutated build, so cargo kept the mutated binary and the next full run failed. The script now touches the restored file. Every result above comes from a run that recompiled the mutated file. The final verification was run after touching every restored file.
 - **Commands (after the rebase):** `lane.sh cargo fmt --all -- --check` (clean); `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods -p cimmeria-base` (1398 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-server`, `--all-targets -- -D warnings` (clean); `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` (52 passed).
+
+### PR #888 review round 3
+
+- **Bucket before identity (`dispatch/duel.rs`).** The not-in-world guard returned before `rate_limits.check`, so a session without a player in the world (character select, mid-teardown) could send 0xD9 without spending tokens. The duel bucket is now taken first, using the session's optional ids for the `rate_limit.exceeded` fields, then a session with no active player is refused (`not_in_world`). Guard: `out_of_world_flood_is_rate_limited` (three calls give two `not_in_world` refusals and one `rate_limit.exceeded category=duel_challenge`). With the old order it failed: all three refused, no rate-limit row.
+- **Resolved target on refusals.** `target_loading` and `target_not_in_world` now carry `Some(target.player_id)` into `refuse`, so the row logs `target_player_id`. Guards: `challenge_rejects_a_target_still_loading` (extended) and the new `challenge_rejects_a_target_not_in_world_and_names_it`. Each failed when its id was put back to `None`.
+- **`duel.challenge_sent` after the prompt is queued.** It was logged before `send_challenge_prompt`, so a failed send produced both `challenge_sent` and `challenge_undelivered`. It is now logged only after a successful queue, so each challenge logs exactly one of the two. `undelivered_prompt_withdraws_the_challenge` now asserts that no `challenge_sent` row exists; logging it early again failed that test and `challenge_prompts_the_target_byte_exact`. The SigNoz queries above were updated.
+- **Rebased** onto `origin/main` @ `a53c6c3c8` (SS-C2, #887). Two conflicts, both adjacent-line additions: the `messages/mod.rs` module doc (SS-C2's `chat_cell_to_base` line and this packet's `duel_base_to_cell` line, both kept) and the `observability.md` target table (SS-C2's `chat` row and the `duel` row, both kept once each).
+- **Commands (after the rebase, restored files touched first):** `lane.sh cargo fmt --all -- --check` (clean); `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell -p cimmeria-cell-methods -p cimmeria-base` (1403 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-server`, `--all-targets -- -D warnings` (clean); `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` (52 passed).
 
 ## Docs
 

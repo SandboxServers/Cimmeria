@@ -130,21 +130,6 @@ async fn challenge(
         }
     };
 
-    tracing::debug!(
-        target: "duel",
-        event = "duel.challenge_sent",
-        duel_id = pending.duel_id,
-        account_id = req.account_id,
-        player_id = req.player_id,
-        entity_id = req.entity_id,
-        target_player_id = req.target_player_id,
-        target_entity_id = target.entity_id,
-        target_account_id = target.account_id,
-        space_id = challenger.space_id,
-        distance,
-        expires_in_ms = (pending.expires_at - now).as_millis() as u64,
-        "duel challenge pending: target prompted"
-    );
     let delivered = send_challenge_prompt(
         tx,
         Recipient::at(&target, req.target_player_id, Some(req.player_id)),
@@ -178,6 +163,23 @@ async fn challenge(
         .await;
         return;
     }
+    // Logged only once the prompt is queued: a failed send logs
+    // `duel.challenge_undelivered` instead, never both.
+    tracing::debug!(
+        target: "duel",
+        event = "duel.challenge_sent",
+        duel_id = pending.duel_id,
+        account_id = req.account_id,
+        player_id = req.player_id,
+        entity_id = req.entity_id,
+        target_player_id = req.target_player_id,
+        target_entity_id = target.entity_id,
+        target_account_id = target.account_id,
+        space_id = challenger.space_id,
+        distance,
+        expires_in_ms = (pending.expires_at - now).as_millis() as u64,
+        "duel challenge pending: target prompted"
+    );
     send_line(
         tx,
         challenger_to,

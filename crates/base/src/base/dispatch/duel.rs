@@ -84,37 +84,30 @@ pub(super) async fn send_duel_challenge_at(
         connected,
     };
 
-    // Identity and the bucket, under one lock.
-    let (actor, decision, challenger_ready) = {
+    // The bucket, then the identity, under one lock. The token is taken
+    // before anything else is checked, so a session with no player in the
+    // world cannot flood 0xD9 for free either.
+    let (actor, decision, challenger_ready, session) = {
         let mut clients = connected.lock().unwrap();
         let Some(c) = clients.get_mut(&addr) else {
             return;
         };
-        let (Some(player_id), Some(entity_id)) = (c.active_player_id, c.player_entity_id) else {
-            tracing::warn!(
-                target: "duel",
-                event = "duel.challenge_refused",
-                %addr,
-                account_id = c.account_id,
-                player_id = c.active_player_id,
-                entity_id = c.player_entity_id,
-                reason = "not_in_world",
-                "sendDuelChallenge from a session with no player in the world"
-            );
-            return;
-        };
-        let actor = Actor {
-            player_id,
-            account_id: c.account_id,
-            entity_id,
+        let session = (c.account_id, c.active_player_id, c.player_entity_id);
+        let actor = match (c.active_player_id, c.player_entity_id) {
+            (Some(player_id), Some(entity_id)) => Some(Actor {
+                player_id,
+                account_id: c.account_id,
+                entity_id,
+            }),
+            _ => None,
         };
         let decision = c.rate_limits.check(RateCategory::DuelChallenge, now);
         if let RateDecision::Limited { notify } = decision {
             let rate_actor = RateActor {
                 addr,
-                player_id: Some(player_id),
+                player_id: c.active_player_id,
                 account_id: c.account_id,
-                entity_id: Some(entity_id),
+                entity_id: c.player_entity_id,
             };
             log_exceeded(
                 RateCategory::DuelChallenge,
@@ -124,7 +117,7 @@ pub(super) async fn send_duel_challenge_at(
                 now,
             );
         }
-        (actor, decision, is_client_ready(c))
+        (actor, decision, is_client_ready(c), session)
     };
 
     if let RateDecision::Limited { notify } = decision {
@@ -133,6 +126,21 @@ pub(super) async fn send_duel_challenge_at(
         }
         return;
     }
+
+    let Some(actor) = actor else {
+        let (account_id, player_id, entity_id) = session;
+        tracing::warn!(
+            target: "duel",
+            event = "duel.challenge_refused",
+            %addr,
+            account_id,
+            player_id,
+            entity_id,
+            reason = "not_in_world",
+            "sendDuelChallenge from a session with no player in the world"
+        );
+        return;
+    };
 
     let call = match decode_send_duel_challenge(payload) {
         Ok(call) => call,
@@ -189,25 +197,31 @@ pub(super) async fn send_duel_challenge_at(
             NameLookup::Found(target) => {
                 let target_state = clients.get(&target.addr);
                 match target_state.and_then(|t| t.player_entity_id) {
-                    Some(_) if !target_state.is_some_and(is_client_ready) => {
-                        Err(("target_loading", TEXT_TARGET_LOADING))
-                    }
+                    Some(_) if !target_state.is_some_and(is_client_ready) => Err((
+                        "target_loading",
+                        TEXT_TARGET_LOADING,
+                        Some(target.player_id),
+                    )),
                     Some(target_entity_id) => Ok((
                         target.player_id,
                         target_entity_id,
                         target_state.is_some_and(|t| ignores(t, actor.player_id)),
                     )),
-                    None => Err(("target_not_in_world", TEXT_TARGET_NOT_ONLINE)),
+                    None => Err((
+                        "target_not_in_world",
+                        TEXT_TARGET_NOT_ONLINE,
+                        Some(target.player_id),
+                    )),
                 }
             }
-            NameLookup::Ambiguous => Err(("target_ambiguous", TEXT_TARGET_AMBIGUOUS)),
-            NameLookup::NotFound => Err(("target_not_online", TEXT_TARGET_NOT_ONLINE)),
+            NameLookup::Ambiguous => Err(("target_ambiguous", TEXT_TARGET_AMBIGUOUS, None)),
+            NameLookup::NotFound => Err(("target_not_online", TEXT_TARGET_NOT_ONLINE, None)),
         }
     };
     let (target_player_id, target_entity_id, ignored) = match resolved {
         Ok(t) => t,
-        Err((reason, text)) => {
-            refuse(reason, None);
+        Err((reason, text, target_player_id)) => {
+            refuse(reason, target_player_id);
             send_feedback_line(&feedback, addr, text).await;
             return;
         }

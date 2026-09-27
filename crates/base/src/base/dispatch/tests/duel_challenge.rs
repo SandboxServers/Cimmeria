@@ -139,6 +139,15 @@ fn refused(capture: &LogCaptureGuard, reason: &str) -> bool {
     })
 }
 
+/// A `duel.challenge_refused` row with `reason` that names the target.
+fn refused_naming(capture: &LogCaptureGuard, reason: &str, target_player_id: &str) -> bool {
+    capture.all().iter().any(|c| {
+        c.has_field("event", "duel.challenge_refused")
+            && c.has_field("reason", reason)
+            && c.has_field("target_player_id", target_player_id)
+    })
+}
+
 /// The forward carries both players' ids from the session map. The payload
 /// holds only a name (typed in the wrong case here, resolved per D-SS13)
 /// and the squad byte.
@@ -288,6 +297,65 @@ async fn challenge_rejects_a_target_still_loading() {
     assert!(h.forwarded().is_empty());
     assert_eq!(h.feedback(), vec![TEXT_TARGET_LOADING.to_string()]);
     assert!(refused(&capture, "target_loading"));
+    assert!(
+        refused_naming(&capture, "target_loading", "8"),
+        "the refusal names the resolved target"
+    );
+}
+
+/// The name resolved to a listed session with no player entity: refused as
+/// not online, and the row still names the resolved target.
+#[tokio::test]
+async fn challenge_rejects_a_target_not_in_world_and_names_it() {
+    let capture = LogCapture::install();
+    let mut h = Harness::new();
+    let target: SocketAddr = TARGET.parse().unwrap();
+    h.connected
+        .lock()
+        .unwrap()
+        .get_mut(&target)
+        .unwrap()
+        .player_entity_id = None;
+    h.challenge("Teal'c", 0, Instant::now()).await;
+    assert!(h.forwarded().is_empty());
+    assert_eq!(h.feedback(), vec![TEXT_TARGET_NOT_ONLINE.to_string()]);
+    assert!(refused_naming(&capture, "target_not_in_world", "8"));
+}
+
+/// A session with no player in the world still spends duel tokens: the
+/// bucket is taken before the identity check, so a flood of 0xD9 from
+/// character select is limited like any other (Copilot on #888). Three
+/// calls: two `not_in_world` refusals, then a `rate_limit.exceeded` drop.
+#[tokio::test]
+async fn out_of_world_flood_is_rate_limited() {
+    let capture = LogCapture::install();
+    let mut h = Harness::new();
+    {
+        let mut clients = h.connected.lock().unwrap();
+        let c = clients.get_mut(&h.addr).unwrap();
+        c.player_entity_id = None;
+        c.listed_online = false;
+    }
+    let t0 = Instant::now();
+    for i in 0..3u64 {
+        h.challenge("Teal'c", 0, t0 + Duration::from_millis(i * 100))
+            .await;
+    }
+    assert!(h.forwarded().is_empty());
+    let not_in_world = capture
+        .all()
+        .iter()
+        .filter(|c| {
+            c.has_field("event", "duel.challenge_refused") && c.has_field("reason", "not_in_world")
+        })
+        .count();
+    assert_eq!(not_in_world, 2, "the third call is dropped by the bucket");
+    let ev = capture
+        .find_event(Level::WARN, "rate_limit.exceeded", "bucket_empty")
+        .expect("rate_limit.exceeded WARN");
+    assert!(ev.has_field("category", "duel_challenge"));
+    assert!(ev.has_field("player_id", "7"));
+    assert!(ev.has_field("account_id", "70"));
 }
 
 /// A payload that does not decode is logged at WARN and not answered.

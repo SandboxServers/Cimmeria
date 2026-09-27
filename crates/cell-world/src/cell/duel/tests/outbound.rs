@@ -42,6 +42,13 @@ async fn undelivered_prompt_withdraws_the_challenge() {
     ] {
         assert!(ev.has_field(k, v), "row lacks {k}={v}: {ev:?}");
     }
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "duel.challenge_sent")),
+        "an undelivered challenge must not also log duel.challenge_sent"
+    );
 }
 
 /// The challenge sends two things: the prompt to the target and the
