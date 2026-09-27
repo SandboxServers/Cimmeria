@@ -1,0 +1,200 @@
+//! `EOrganizationPermission` bit flags and the default rank permissions.
+
+use std::ops::{BitAnd, BitOr, BitOrAssign, Not};
+
+use super::types::{OrgRank, OrgType};
+
+/// `EOrganizationPermission` (`enumerations.xml:1907`, UINT32): 26 flag bits.
+///
+/// Carried as an `INT32` mask by `organizationSetRankPermissions` (CM 16)
+/// and `onOrganizationRankUpdate` [49]. [`OrgPermission::from_wire`] keeps
+/// only the defined bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct OrgPermission(u32);
+
+impl OrgPermission {
+    pub const NONE: OrgPermission = OrgPermission(0);
+    /// `EORG_PERM_DoNotUse`. Defined but meaningless; only `Leader`'s
+    /// all-bits row carries it.
+    pub const DO_NOT_USE: OrgPermission = OrgPermission(1);
+    pub const INVITE: OrgPermission = OrgPermission(2);
+    pub const PROMOTE: OrgPermission = OrgPermission(4);
+    pub const DEMOTE: OrgPermission = OrgPermission(8);
+    pub const EJECT: OrgPermission = OrgPermission(16);
+    pub const ROSTER_NOTES: OrgPermission = OrgPermission(32);
+    pub const OFFICER_NOTES: OrgPermission = OrgPermission(64);
+    pub const RANK_NAMES: OrgPermission = OrgPermission(128);
+    pub const OFFICER_CHAT: OrgPermission = OrgPermission(256);
+    pub const EMAIL_LISTS: OrgPermission = OrgPermission(512);
+    pub const MOTD: OrgPermission = OrgPermission(1024);
+    pub const HISTORY_LOG: OrgPermission = OrgPermission(2048);
+    pub const CALENDAR: OrgPermission = OrgPermission(4096);
+    pub const RECRUIT_DESC: OrgPermission = OrgPermission(8192);
+    pub const ADJECTIVES: OrgPermission = OrgPermission(16384);
+    pub const INSIGNIA: OrgPermission = OrgPermission(32768);
+    pub const DEPOSIT_BANK: OrgPermission = OrgPermission(65536);
+    pub const WITHDRAW_BANK: OrgPermission = OrgPermission(131072);
+    pub const DEPOSIT_CASH: OrgPermission = OrgPermission(262144);
+    pub const WITHDRAW_CASH: OrgPermission = OrgPermission(524288);
+    pub const VIEW_BANK_LOGS: OrgPermission = OrgPermission(1048576);
+    pub const LEADER_CHAT: OrgPermission = OrgPermission(2097152);
+    pub const ALLIANCE_CHAT: OrgPermission = OrgPermission(4194304);
+    pub const ALTER_PERMS: OrgPermission = OrgPermission(8388608);
+    /// `EORG_PERM_TransferLeader`. No editor exposes it and no transfer
+    /// feature exists, so it stays outside [`OrgPermission::editable_for`]
+    /// (D-ORG08).
+    pub const TRANSFER_LEADER: OrgPermission = OrgPermission(16777216);
+    pub const ALLIANCE_CMDS: OrgPermission = OrgPermission(33554432);
+
+    /// All 26 defined bits: `Leader`'s pinned row (D-ORG08).
+    pub const ALL: OrgPermission = OrgPermission(0x3FF_FFFF);
+
+    /// The bits a Team's rank editor exposes (`Team.lua`
+    /// `TeamMod.teamPermissions[1..12]`, audit A-12).
+    const TEAM_EDITABLE: OrgPermission = OrgPermission(
+        Self::INVITE.0
+            | Self::PROMOTE.0
+            | Self::DEMOTE.0
+            | Self::EJECT.0
+            | Self::OFFICER_NOTES.0
+            | Self::RANK_NAMES.0
+            | Self::MOTD.0
+            | Self::DEPOSIT_BANK.0
+            | Self::WITHDRAW_BANK.0
+            | Self::DEPOSIT_CASH.0
+            | Self::WITHDRAW_CASH.0
+            | Self::ALTER_PERMS.0,
+    );
+
+    /// Team's twelve plus `OfficerChat` and `EmailLists` (`Command.lua`
+    /// `CommandMod.commandPermissions[1..14]`).
+    const COMMAND_EDITABLE: OrgPermission =
+        OrgPermission(Self::TEAM_EDITABLE.0 | Self::OFFICER_CHAT.0 | Self::EMAIL_LISTS.0);
+
+    /// Build from raw bits, keeping only the 26 defined ones.
+    pub const fn from_bits_truncate(bits: u32) -> OrgPermission {
+        OrgPermission(bits & Self::ALL.0)
+    }
+
+    /// Build from the `INT32` wire mask. Undefined bits (including the sign
+    /// bit) are dropped.
+    pub const fn from_wire(mask: i32) -> OrgPermission {
+        Self::from_bits_truncate(mask as u32)
+    }
+
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
+    /// The mask as the `INT32` the wire carries. Never negative: the top
+    /// defined bit is 25.
+    pub const fn to_wire(self) -> i32 {
+        self.0 as i32
+    }
+
+    /// `true` if every bit of `other` is set in `self`.
+    pub const fn contains(self, other: OrgPermission) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// The bits the client's rank editor for `org_type` can change: 14 for
+    /// Command, 12 for Team, none for Squad (squads have no rank editor).
+    /// A new mask from the client is clamped to this set (D-ORG09 (6)).
+    pub const fn editable_for(org_type: OrgType) -> OrgPermission {
+        match org_type {
+            OrgType::Squad => Self::NONE,
+            OrgType::Team => Self::TEAM_EDITABLE,
+            OrgType::Command => Self::COMMAND_EDITABLE,
+        }
+    }
+}
+
+impl BitOr for OrgPermission {
+    type Output = OrgPermission;
+
+    fn bitor(self, rhs: OrgPermission) -> OrgPermission {
+        OrgPermission(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign for OrgPermission {
+    fn bitor_assign(&mut self, rhs: OrgPermission) {
+        self.0 |= rhs.0;
+    }
+}
+
+impl BitAnd for OrgPermission {
+    type Output = OrgPermission;
+
+    fn bitand(self, rhs: OrgPermission) -> OrgPermission {
+        OrgPermission(self.0 & rhs.0)
+    }
+}
+
+/// Complement within the 26 defined bits.
+impl Not for OrgPermission {
+    type Output = OrgPermission;
+
+    fn not(self) -> OrgPermission {
+        OrgPermission(!self.0 & Self::ALL.0)
+    }
+}
+
+/// `Officer`'s default bits (D-ORG08), also Team `SeniorMember`'s.
+const OFFICER_DEFAULT: OrgPermission = OrgPermission(
+    OrgPermission::INVITE.0
+        | OrgPermission::EJECT.0
+        | OrgPermission::ROSTER_NOTES.0
+        | OrgPermission::OFFICER_NOTES.0
+        | OrgPermission::OFFICER_CHAT.0
+        | OrgPermission::MOTD.0
+        | OrgPermission::DEPOSIT_BANK.0
+        | OrgPermission::WITHDRAW_BANK.0
+        | OrgPermission::DEPOSIT_CASH.0,
+);
+
+/// `SeniorOfficer`: `Officer` plus Promote, Demote, RankNames and AlterPerms.
+const SENIOR_OFFICER_DEFAULT: OrgPermission = OrgPermission(
+    OFFICER_DEFAULT.0
+        | OrgPermission::PROMOTE.0
+        | OrgPermission::DEMOTE.0
+        | OrgPermission::RANK_NAMES.0
+        | OrgPermission::ALTER_PERMS.0,
+);
+
+/// `SeniorVeteran` down to `Member`.
+const MEMBER_DEFAULT: OrgPermission =
+    OrgPermission(OrgPermission::ROSTER_NOTES.0 | OrgPermission::DEPOSIT_BANK.0);
+
+/// The permissions each rank starts with when a Team or Command is created
+/// (D-ORG08), one row per rank in [`OrgRank::for_type`], lowest first.
+///
+/// Project policy, not recovered data: the client ships no defaults. Both
+/// the Rust creation path and any seed read this one table. `Leader` always
+/// holds [`OrgPermission::ALL`], and no editor may change that row.
+///
+/// Squads return no rows: they are never persisted, have no rank editor,
+/// and are authorized by leadership alone (D-ORG16).
+pub fn default_rank_permissions(org_type: OrgType) -> Vec<(OrgRank, OrgPermission)> {
+    let for_rank = |rank: OrgRank| -> OrgPermission {
+        match (org_type, rank) {
+            (_, OrgRank::LEADER) => OrgPermission::ALL,
+            (OrgType::Command, OrgRank::SENIOR_OFFICER) => SENIOR_OFFICER_DEFAULT,
+            (OrgType::Command, OrgRank::OFFICER) => OFFICER_DEFAULT,
+            (OrgType::Team, OrgRank::SENIOR_MEMBER) => OFFICER_DEFAULT,
+            (_, OrgRank::INITIATE) => OrgPermission::NONE,
+            _ => MEMBER_DEFAULT,
+        }
+    };
+    if !org_type.is_persistent() {
+        return Vec::new();
+    }
+    OrgRank::for_type(org_type)
+        .iter()
+        .map(|&rank| (rank, for_rank(rank)))
+        .collect()
+}

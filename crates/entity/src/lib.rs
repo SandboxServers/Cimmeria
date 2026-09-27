@@ -23,6 +23,7 @@ pub mod missions;
 pub mod movement;
 pub mod movement_validation;
 pub mod navigation;
+pub mod organization;
 pub mod properties;
 pub mod space;
 pub mod stats;
