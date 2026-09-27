@@ -65,6 +65,23 @@ async fn gm_disband_cascades_and_tells_online_members() {
     );
     assert_eq!(fx.calls_to(0), vec![left.clone()]);
     assert_eq!(fx.calls_to(1), vec![left]);
+    assert_eq!(
+        fx.memberships_ended(),
+        vec![
+            (
+                fx.player_id(0),
+                fx.entity(0),
+                cmd,
+                OrgLeaveReason::Disbanded
+            ),
+            (
+                fx.player_id(1),
+                fx.entity(1),
+                cmd,
+                OrgLeaveReason::Disbanded
+            ),
+        ]
+    );
     let lines = feedback_lines(&fx.calls_to(3));
     assert_eq!(lines.len(), 1);
     assert!(lines[0].contains("3 member(s), 2 online told"), "{lines:?}");

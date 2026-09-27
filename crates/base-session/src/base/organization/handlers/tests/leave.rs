@@ -69,6 +69,10 @@ async fn leader_leave_is_rejected_while_members_remain() {
     let r = handle_leave(&fx.ctx(), &fx.player(0), team).await;
     assert_eq!(r, Err(OrgReject::LeaderCannotLeave));
     assert_row(&capture, "rejected", Some("leader_cannot_leave"));
+    assert!(
+        fx.memberships_ended().is_empty(),
+        "a refused leave ends nothing"
+    );
     assert_eq!(
         fx.member_ids(team).await,
         vec![fx.player_id(0), fx.player_id(1)]
@@ -121,6 +125,17 @@ async fn member_leave_removes_and_fans_out() {
         .all()
         .iter()
         .any(|c| c.level == Level::DEBUG && c.has_field("event", "member_left")));
+    // The Bank's hook: the cell hears the membership ended, for the leaver
+    // only.
+    assert_eq!(
+        fx.memberships_ended(),
+        vec![(
+            fx.player_id(1),
+            fx.entity(1),
+            team,
+            OrgLeaveReason::Requested
+        )]
+    );
     fx.teardown().await;
 }
 

@@ -23,6 +23,7 @@ fn org_ctx<'a>(ctx: &DispatchCtx<'a>) -> OrgCtx<'a> {
         transport: ctx.transport,
         connected: ctx.connected,
         entity_to_addr: ctx.entity_to_addr,
+        cell_tx: ctx.cell_tx,
     }
 }
 

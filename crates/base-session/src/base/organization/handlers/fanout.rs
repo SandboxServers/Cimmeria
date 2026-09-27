@@ -6,10 +6,12 @@
 //! active `player_id` and a player entity. A session mid world entry is not
 //! online yet; it gets the whole state from its own login push instead.
 
+use cimmeria_entity::organization::OrgLeaveReason;
 use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 
 use super::OrgCtx;
 use crate::base::helpers::send_bundle_to_witness_reliable;
+use crate::cell::messages::{BaseToCellMsg, OrgBaseToCell};
 
 /// One online member's session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +99,50 @@ pub async fn send_to_members(
         }
     }
     sent
+}
+
+/// Tell the cell that `member` stopped being a member of `org_id`
+/// (`OrgMembershipEnded`, the Bank's vault-session hook). Sent beside every
+/// `onOrganizationLeft` [36] to an online player. A closed cell channel is
+/// WARN `org.send_failed` (`what = membership_ended`,
+/// `reason = cell_unreachable`); no channel at all (a base with no cell) is
+/// DEBUG.
+pub async fn membership_ended(
+    ctx: &OrgCtx<'_>,
+    member: OnlineMember,
+    org_id: i32,
+    reason: OrgLeaveReason,
+) {
+    let Some(tx) = ctx.cell_tx else {
+        tracing::debug!(
+            target: "org",
+            event = "org.membership_ended_skipped",
+            org_id,
+            target_player_id = member.player_id,
+            reason = "no_cell_channel",
+            "no cell to tell that a membership ended"
+        );
+        return;
+    };
+    let msg = BaseToCellMsg::Org(OrgBaseToCell::OrgMembershipEnded {
+        player_id: member.player_id,
+        entity_id: member.entity_id,
+        org_id,
+        reason,
+    });
+    if tx.send(msg).await.is_err() {
+        tracing::warn!(
+            target: "org",
+            event = "org.send_failed",
+            what = "membership_ended",
+            org_id,
+            target_account_id = member.account_id,
+            target_player_id = member.player_id,
+            entity_id = member.entity_id,
+            reason = "cell_unreachable",
+            "the cell could not be told that a membership ended"
+        );
+    }
 }
 
 /// `text` on the player's feedback channel (the line every refusal owes,

@@ -254,3 +254,43 @@ async fn init_player_state_replays_the_squad() {
     assert_eq!(squad_calls, [(12, 35), (12, 38), (12, 37), (12, 51)]);
     assert_eq!(mgr.get_entity(12).unwrap().squad_id, Some(SID));
 }
+
+/// ORG-06's Bank hook: `OrgMembershipEnded` reaches the `Org` arm, which
+/// logs `org.membership_ended` (the arm the Bank's BV-07 extends) and sends
+/// nothing to any client.
+#[tokio::test]
+async fn membership_ended_reaches_the_org_arm() {
+    use cimmeria_entity::organization::OrgLeaveReason;
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = make_space_manager();
+    let (tx, mut rx) = mpsc::channel(64);
+    player(&mut mgr, 11, 1, "Alice");
+    let ended = OrgBaseToCell::OrgMembershipEnded {
+        player_id: 1,
+        entity_id: 11,
+        org_id: 5,
+        reason: OrgLeaveReason::Disbanded,
+    };
+    handle_base_message(
+        BaseToCellMsg::Org(ended),
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+        &[],
+    )
+    .await;
+    assert!(calls(&mut rx).is_empty());
+    let ev = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "org.membership_ended"))
+        .expect("org.membership_ended");
+    assert_eq!(
+        (ev.level, ev.target.as_str()),
+        (tracing::Level::DEBUG, "org")
+    );
+    assert!(
+        ev.has_field("org_id", "5") && ev.has_field("live_entity", "true"),
+        "{ev:?}"
+    );
+}

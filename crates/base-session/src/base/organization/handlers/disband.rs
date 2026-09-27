@@ -11,7 +11,7 @@ use cimmeria_wire::cell::client_methods::organization::{
     build_on_organization_left, ON_ORGANIZATION_LEFT,
 };
 
-use super::fanout::{feedback, online_members, send_to_members};
+use super::fanout::{feedback, membership_ended, online_members, send_to_members};
 use super::telemetry::{OrgReject, Row};
 use super::OrgCtx;
 use crate::base::organization::api::{OrgAccess, SystemActor};
@@ -39,6 +39,9 @@ pub(super) async fn fan_out_disband(
         "organization_left_disbanded",
     )
     .await;
+    for &m in &recipients {
+        membership_ended(ctx, m, org_id, OrgLeaveReason::Disbanded).await;
+    }
     tracing::debug!(
         target: "org",
         event = "disbanded",

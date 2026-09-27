@@ -34,5 +34,26 @@ pub(super) async fn handle(
         } => {
             squad::handle_kick(player_id, entity_id, org_id, &target_name, tx, space_mgr).await;
         }
+        OrgBaseToCell::OrgMembershipEnded {
+            player_id,
+            entity_id,
+            org_id,
+            reason,
+        } => {
+            // The Bank campaign's BV-07 extends this arm to close an open
+            // Team or Command vault session for this player.
+            let live = space_mgr.player_identity(entity_id);
+            tracing::debug!(
+                target: "org",
+                event = "org.membership_ended",
+                account_id = live.account_id,
+                player_id,
+                entity_id,
+                org_id,
+                reason = reason.as_u8(),
+                live_entity = live.player_id == Some(player_id),
+                "a player left a Team or Command"
+            );
+        }
     }
 }

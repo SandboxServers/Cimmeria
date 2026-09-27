@@ -7,6 +7,8 @@
 //! (`ConnectedClientState`), never from the client payload, and never a
 //! privilege bit.
 
+use cimmeria_entity::organization::OrgLeaveReason;
+
 /// Organization messages sent from BaseApp to CellApp.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OrgBaseToCell {
@@ -28,6 +30,20 @@ pub enum OrgBaseToCell {
         org_id: i32,
         target_name: String,
     },
+
+    /// An online player stopped being a member of a Team or Command (ORG-06):
+    /// the base sends it beside every `onOrganizationLeft` [36] to an online
+    /// player (a leave, a disband, and from ORG-07 a kick), after the
+    /// commit. The cell logs `org.membership_ended`; the Bank campaign's
+    /// BV-07 extends that arm to close an open organization vault session.
+    /// `player_id` is the member's character, so the cell can tell a stale
+    /// entity id from a live one.
+    OrgMembershipEnded {
+        player_id: i32,
+        entity_id: u32,
+        org_id: i32,
+        reason: OrgLeaveReason,
+    },
 }
 
 impl OrgBaseToCell {
@@ -43,6 +59,11 @@ impl OrgBaseToCell {
                 player_id,
                 entity_id,
                 ..
+            }
+            | OrgBaseToCell::OrgMembershipEnded {
+                player_id,
+                entity_id,
+                ..
             } => (player_id, entity_id),
         }
     }
@@ -52,6 +73,7 @@ impl OrgBaseToCell {
         match self {
             OrgBaseToCell::SquadInvite { .. } => "squad_invite",
             OrgBaseToCell::SquadKick { .. } => "squad_kick",
+            OrgBaseToCell::OrgMembershipEnded { .. } => "org_membership_ended",
         }
     }
 }

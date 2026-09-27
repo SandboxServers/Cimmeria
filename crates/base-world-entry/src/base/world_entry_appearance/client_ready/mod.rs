@@ -464,6 +464,7 @@ pub async fn handle_on_client_ready(
             transport,
             connected,
             entity_to_addr,
+            cell_tx,
         },
         &cimmeria_base_session::base::organization::handlers::OrgPlayer {
             account_id: Some(account_id),

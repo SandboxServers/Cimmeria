@@ -59,6 +59,8 @@ pub async fn announce_session_end(
         transport,
         connected,
         entity_to_addr,
+        // Going offline ends no membership.
+        cell_tx: &None,
     };
     let player = OrgPlayer {
         account_id: Some(ended.account_id),

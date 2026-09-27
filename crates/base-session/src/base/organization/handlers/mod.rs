@@ -24,8 +24,10 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
+use tokio::sync::mpsc;
 
 use crate::base::ConnectedClientState;
+use crate::cell::messages::BaseToCellMsg;
 
 pub mod disband;
 pub mod fanout;
@@ -50,6 +52,9 @@ pub struct OrgCtx<'a> {
     pub transport: &'a Arc<dyn Transport>,
     pub connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     pub entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    /// For `OrgMembershipEnded` (the Bank's vault-session hook). `None` in
+    /// paths that never end a membership (presence) and in tests.
+    pub cell_tx: &'a Option<mpsc::Sender<BaseToCellMsg>>,
 }
 
 /// The acting member, from the base's own session state.

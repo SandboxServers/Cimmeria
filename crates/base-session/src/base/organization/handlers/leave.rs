@@ -25,7 +25,9 @@ use cimmeria_wire::cell::client_methods::organization::{
 use sqlx::{Postgres, Transaction};
 
 use super::disband::fan_out_disband;
-use super::fanout::{feedback, online_members, send_to_members, send_to_player};
+use super::fanout::{
+    feedback, membership_ended, online_members, send_to_members, send_to_player, OnlineMember,
+};
 use super::push::push_org_state;
 use super::telemetry::{OrgReject, Row};
 use super::{OrgCtx, OrgPlayer};
@@ -150,6 +152,12 @@ pub async fn handle_leave(
             "onOrganizationLeft could not be sent to the leaver"
         );
     }
+    let me = OnlineMember {
+        player_id: player.player_id,
+        entity_id: player.entity_id,
+        account_id: player.account_id.unwrap_or_default(),
+    };
+    membership_ended(ctx, me, org_id, OrgLeaveReason::Requested).await;
     match d.outcome {
         LeaveOutcome::Left => {
             let others: Vec<i32> = d

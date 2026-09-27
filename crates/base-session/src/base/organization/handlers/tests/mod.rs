@@ -23,12 +23,15 @@ use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::parse_incoming;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
+use tokio::sync::mpsc;
 
 use super::{OrgCtx, OrgPlayer};
 use crate::base::organization::api::{OrgAccess, SystemActor};
 use crate::base::organization::persistence::{add_member, create_org};
 use crate::base::ConnectedClientState;
+use crate::cell::messages::{BaseToCellMsg, OrgBaseToCell};
 use crate::test_support::{test_default_connected_client_state, TestTransport};
+use cimmeria_entity::organization::OrgLeaveReason;
 
 const BASE: i32 = 0x7000_4C00;
 
@@ -46,6 +49,8 @@ struct Fixture {
     transport: Arc<dyn Transport>,
     connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+    cell_rx: Mutex<mpsc::Receiver<BaseToCellMsg>>,
 }
 
 impl Fixture {
@@ -55,6 +60,7 @@ impl Fixture {
         assert!((0..32).contains(&block) && (1..16).contains(&n));
         let account_id = BASE + block * 16;
         let typed = Arc::new(TestTransport::new());
+        let (cell_tx, cell_rx) = mpsc::channel(64);
         let fx = Self {
             pool: pool.clone(),
             db_pool: Some(Arc::new(pool.clone())),
@@ -68,6 +74,8 @@ impl Fixture {
             typed,
             connected: Arc::new(Mutex::new(HashMap::new())),
             entity_to_addr: Arc::new(Mutex::new(HashMap::new())),
+            cell_tx: Some(cell_tx),
+            cell_rx: Mutex::new(cell_rx),
         };
         fx.teardown().await;
         sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
@@ -103,7 +111,27 @@ impl Fixture {
             transport: &self.transport,
             connected: &self.connected,
             entity_to_addr: &self.entity_to_addr,
+            cell_tx: &self.cell_tx,
         }
+    }
+
+    /// Every `OrgMembershipEnded` sent to the cell so far, as
+    /// `(player_id, entity_id, org_id, reason)`.
+    fn memberships_ended(&self) -> Vec<(i32, u32, i32, OrgLeaveReason)> {
+        let mut rx = self.cell_rx.lock().unwrap();
+        let mut out = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let BaseToCellMsg::Org(OrgBaseToCell::OrgMembershipEnded {
+                player_id,
+                entity_id,
+                org_id,
+                reason,
+            }) = msg
+            {
+                out.push((player_id, entity_id, org_id, reason));
+            }
+        }
+        out
     }
 
     fn name(&self, i: usize) -> String {
