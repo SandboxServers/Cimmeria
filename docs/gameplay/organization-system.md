@@ -148,6 +148,8 @@ The same hook tells contact-list watchers (CM 89 `LoggedInStatus`, offline). Bef
 
 `.org_disband <orgId>` is a GM console command. The cell forwards it (`OrgCellToBase::GmDisband`); the base re-reads the caller's access level from its own session (GameMaster or above), locks the organization, and refuses while the vault holds anything. It also disbands a memberless organization (D-ORG20's recovery case) once its vault is empty. Every online member gets `onOrganizationLeft` [36] with `Disbanded`, and the GM gets a line with the member count.
 
+Beside every `onOrganizationLeft` [36] to an online player (a leave, a disband), the base sends the cell `OrgBaseToCell::OrgMembershipEnded { player_id, entity_id, org_id, reason }` after the commit. The cell logs `org.membership_ended`; the Bank campaign's BV-07 extends that arm to close an open Team or Command vault session, and ORG-07 sends it on a kick too.
+
 The vault predicate is still the stub that returns true. The Bank campaign replaces `api::org_vault_is_empty`; until then, the tests drive the refusal through a test-only override of the stub.
 
 ### Telemetry (ORG-06)
