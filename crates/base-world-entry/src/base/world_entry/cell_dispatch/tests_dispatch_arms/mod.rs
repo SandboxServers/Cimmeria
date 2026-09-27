@@ -32,6 +32,8 @@
 //!   with a visible feedback line.
 //! - [`fallible_handlers`] — `GateTravel` / `ReanchorPlayer` error-log
 //!   seams.
+//! - [`gm_broadcast_arm`]  — `Chat(GmBroadcast)` fans out to the online
+//!   index and logs the delivery.
 //! - [`passthrough`]       — `SpaceData` / `MissionUpdate` / `MailRequest`
 //!   / `GrantXP` / `TeleportPlayer` routing (handler short-circuits on
 //!   no-pool / no-addr — pinned via `LogCapture`).
@@ -50,6 +52,7 @@ mod aoi_defer_gate;
 mod cinematic_hold_gate;
 mod crafting_arm;
 mod fallible_handlers;
+mod gm_broadcast_arm;
 mod gm_grant_arms;
 mod org_arms;
 mod passthrough;

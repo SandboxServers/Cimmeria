@@ -30,6 +30,7 @@ pub mod crafting;
 pub mod deferred_aoi;
 pub mod deferred_aoi_lifecycle;
 pub mod feedback;
+pub mod gm_broadcast;
 pub mod gm_feedback;
 pub mod gm_spawn;
 pub mod helpers;
