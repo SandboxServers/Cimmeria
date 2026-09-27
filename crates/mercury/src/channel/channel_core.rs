@@ -22,6 +22,40 @@ use crate::unpacker::FragmentAssembler;
 use super::rto::{Rto, RtoConfig};
 use super::state::{ChannelState, RxEntry, TxEntry};
 
+/// True if `a` is sequence-before-or-equal `b` in Mercury's 28-bit modular
+/// sequence space (`SEQUENCE_MASK = 0x0FFF_FFFF`).
+///
+/// Shared by [`Channel::process_acks`]'s cumulative-ACK drain and
+/// [`Channel::register_sent_packet`]'s sorted insert — both need the same
+/// "is this seq at or before that one, allowing for wraparound" comparator.
+/// A plain `a <= b` on the raw `u32`s breaks the moment either operand
+/// wraps past `NULL_SEQUENCE`; masking the difference to the 28-bit half
+/// range (`0x0800_0000`) interprets wraparound correctly. See the
+/// worked example in `process_acks`'s original `covered` closure (NA39).
+fn seq_mod_leq(a: u32, b: u32) -> bool {
+    let a = a & crate::packet::SEQUENCE_MASK;
+    let b = b & crate::packet::SEQUENCE_MASK;
+    let diff = a.wrapping_sub(b) & crate::packet::SEQUENCE_MASK;
+    diff == 0 || diff > 0x0800_0000
+}
+
+/// Insert `entry` into `deque` at the position that keeps it sorted by
+/// `packet.sequence` (oldest/lowest at the front), per [`seq_mod_leq`].
+///
+/// Scans backward from the tail rather than the head: the overwhelming
+/// common case is that sends reach `register_sent_packet` in allocation
+/// order, so the new entry belongs at the back and this is O(1). Only a
+/// genuine cross-task race (see the call sites) pays the O(n) scan, and
+/// `tx_window`/`unsent_packets` are small (32 / 1024 cap) even then.
+fn insert_tx_entry_sorted(deque: &mut VecDeque<TxEntry>, entry: TxEntry) {
+    let seq = entry.packet.sequence;
+    let mut idx = deque.len();
+    while idx > 0 && !seq_mod_leq(deque[idx - 1].packet.sequence, seq) {
+        idx -= 1;
+    }
+    deque.insert(idx, entry);
+}
+
 /// A reliable UDP channel to a single remote peer.
 ///
 /// Manages sliding TX/RX windows, ACK tracking, and retransmission.
@@ -276,7 +310,23 @@ impl Channel {
         };
 
         if self.tx_window.len() < consts::TX_WINDOW_SIZE {
-            self.tx_window.push_back(entry);
+            // Sorted insert, not `push_back` (NA39). The services layer
+            // reserves a sequence number (an atomic fetch-add under a
+            // briefly-held, *different* lock) and only calls back in here
+            // after the async socket send completes — a gap wide enough
+            // for a second, genuinely concurrent task (base's recv-loop,
+            // a `tokio::spawn`ed fan-out, cell's witness dispatch) to
+            // reserve a LATER sequence for the same witness and still
+            // win the race to `register_sent_packet`. `push_back` would
+            // then leave `tx_window` non-monotonic, which silently
+            // breaks `process_acks`'s front-only cumulative drain (it
+            // stops at the first "not yet covered" front entry — an
+            // out-of-order higher seq parked at the front blocks the
+            // drain of an already-acked lower seq behind it forever,
+            // starving the TX window over time). Sorting on insert keeps
+            // the "oldest sequence at front" invariant `process_acks`
+            // depends on regardless of registration order.
+            insert_tx_entry_sorted(&mut self.tx_window, entry);
             self.last_sent = now;
             return Ok(());
         }
@@ -297,7 +347,9 @@ impl Channel {
                 entry.packet.sequence,
             )));
         }
-        self.unsent_packets.push_back(entry);
+        // Same sorted-insert rationale as the tx_window branch above —
+        // `process_acks` drains this queue front-only too.
+        insert_tx_entry_sorted(&mut self.unsent_packets, entry);
         // Update `last_sent` even on the queued path — the bytes went out
         // on the wire, so for keepalive-timing purposes the channel was
         // active in the send direction.
@@ -415,15 +467,20 @@ impl Channel {
         //                  → STOP (wrong — front IS <= ack post-wrap)
         //     28-bit cmp:  diff = 0x0FFF_FFFD & MASK = 0x0FFF_FFFD;
         //                  0x0FFF_FFFD > 0x0800_0000 = true → DRAIN (correct)
-        let covered = |seq: u32| -> bool {
-            let seq_masked = seq & crate::packet::SEQUENCE_MASK;
-            let diff = seq_masked.wrapping_sub(ack_seq_masked) & crate::packet::SEQUENCE_MASK;
-            diff == 0 || diff > 0x0800_0000
-        };
+        let covered = |seq: u32| -> bool { seq_mod_leq(seq, ack_seq_masked) };
 
         // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
         // The tx_window is ordered by sequence (oldest at front), so we can
         // drain from the front until we hit a sequence beyond the ACK.
+        // That ordering is actively maintained by `register_sent_packet`'s
+        // sorted insert (NA39) — it is NOT simply "callers happen to
+        // register in allocation order". A cross-task race between
+        // sequence reservation (an atomic fetch-add under a different
+        // lock) and this Channel's registration can and does register
+        // out of allocation order in production; without the sorted
+        // insert, a higher out-of-order sequence parked at the front
+        // would block this front-only drain from ever reaching an
+        // already-acked lower sequence sitting behind it.
         while let Some(front) = self.tx_window.front() {
             if covered(front.packet.sequence) {
                 // Drain the entry and — if it was never retransmitted —

@@ -195,6 +195,43 @@ One gap is left: the client also dedups unreliable packets (a separate
 structure at `ChannelInternal+0x128`). The harness does not model that
 dedup.
 
+### Send path: TX-window registration order (NA39)
+
+`Channel::register_sent_packet` — the services layer's entry point for
+mirroring a legacy-path reliable send into the channel's retransmit
+bookkeeping — used to `push_back` onto `tx_window`/`unsent_packets`
+unconditionally, on the documented (but previously unenforced)
+assumption that callers always register in the sequence order they
+allocated in.
+
+That assumption does not hold across tasks. The services layer reserves
+a sequence number with an atomic fetch-add under one lock
+(`ConnectedClientState::next_seq`,
+[`crates/base-session/src/base/helpers/mod.rs`](../../crates/base-session/src/base/helpers/mod.rs))
+and only calls back into `Channel` (a *different* lock) after the async
+socket send completes. A second, genuinely concurrent task targeting the
+same witness — base's recv-loop, a `tokio::spawn`ed fan-out (contact-list
+presence, level-up), or cell's witness dispatch draining `cell_rx` — can
+reserve a later sequence and still win the race to register first.
+`process_acks`'s cumulative-ACK drain only inspects `tx_window`'s front
+and stops at the first not-yet-covered entry (see its doc comment); an
+out-of-order higher sequence parked at the front silently blocks the
+drain of an already-acked lower sequence sitting behind it, and that
+entry never leaves the window.
+
+`register_sent_packet` now inserts at the position that keeps both
+deques sorted by sequence (`channel_core::insert_tx_entry_sorted`,
+using the same 28-bit modular comparator `process_acks` drains with),
+so the invariant holds regardless of registration order. See
+`crates/mercury/src/channel/tests/channel_lifecycle.rs`'s
+`register_sent_packet_tolerates_out_of_order_registration` and its two
+neighbors, and
+[`docs/analysis/npc-ai-restoration/worknotes/na39-cross-task-ordering.md`](../analysis/npc-ai-restoration/worknotes/na39-cross-task-ordering.md)
+for the full investigation. This is a `Channel`-internal fix — no
+harness API changed, and `LoopbackPeer` was never affected (it drives
+`send_packet`, not `register_sent_packet`, so its own `next_tx_seq`
+allocation and TX-window insertion were always the same call).
+
 ### Encryption integration
 
 `LoopbackSession::connected(Some(enc))` accepts a
