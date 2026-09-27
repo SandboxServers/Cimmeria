@@ -19,6 +19,10 @@
 //!    countdown has run out ([`engage`]) and runs the safety ends
 //!    ([`end::sweep`]).
 //!
+//! [`gm`] serves the GM `.duel_status` and `.duel_end` console commands
+//! (SS-U2): a read of one player's entry, and a GM abort. An engaged duel
+//! ends through [`end::end_engaged`] with `EndReason::GmAborted`.
+//!
 //! # The harm gate
 //!
 //! [`DuelRegistry::can_harm`] is true only for the two players of one
@@ -38,6 +42,7 @@ mod combat;
 mod effects;
 pub mod end;
 mod engage;
+pub mod gm;
 pub mod limits;
 mod outbound;
 pub mod registry;
@@ -50,7 +55,8 @@ mod tests;
 pub use end::{end_engaged, EndReason};
 pub use outbound::send_player_line;
 pub use registry::{
-    ChallengeRefusal, Duel, DuelId, DuelRegistry, DuelState, PendingChallenge, ResponseRefusal,
+    ChallengeRefusal, Duel, DuelId, DuelRegistry, DuelState, GmAborted, PendingChallenge,
+    ResponseRefusal,
 };
 
 use cimmeria_common::Vector3;

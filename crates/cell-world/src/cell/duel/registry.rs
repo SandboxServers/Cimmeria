@@ -39,6 +39,16 @@ pub enum DuelState {
     Engaged { until: Instant },
 }
 
+impl DuelState {
+    /// Stable value for a `state` log field and the GM status line.
+    pub fn name(self) -> &'static str {
+        match self {
+            DuelState::StartPending { .. } => "countdown",
+            DuelState::Engaged => "engaged",
+        }
+    }
+}
+
 /// One accepted duel.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Duel {
@@ -105,6 +115,38 @@ pub enum ResponseRefusal {
     /// and the sweep had not removed it yet. It is removed now and the
     /// cooldown starts, exactly as the sweep would have done.
     Expired(PendingChallenge),
+}
+
+/// What [`DuelRegistry::gm_abort`] removed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GmAborted {
+    Duel(Duel),
+    Challenge(PendingChallenge),
+}
+
+impl GmAborted {
+    pub fn duel_id(&self) -> DuelId {
+        match self {
+            GmAborted::Duel(d) => d.duel_id,
+            GmAborted::Challenge(p) => p.duel_id,
+        }
+    }
+
+    /// The two players, challenger first.
+    pub fn players(&self) -> (i32, i32) {
+        match self {
+            GmAborted::Duel(d) => (d.challenger, d.target),
+            GmAborted::Challenge(p) => (p.challenger, p.target),
+        }
+    }
+
+    /// Stable value for the `stage` log field.
+    pub fn stage(&self) -> &'static str {
+        match self {
+            GmAborted::Duel(d) => d.state.name(),
+            GmAborted::Challenge(_) => "challenge",
+        }
+    }
 }
 
 /// Every pending challenge and duel on this cell.
@@ -258,6 +300,28 @@ impl DuelRegistry {
     /// prompt never reached the target, so the pair did nothing to cool off.
     pub fn cancel_pending(&mut self, target: i32) -> Option<PendingChallenge> {
         self.remove_pending(target)
+    }
+
+    /// The challenge `challenger` has out, if any.
+    pub fn challenge_from(&self, challenger: i32) -> Option<&PendingChallenge> {
+        self.pending_from
+            .get(&challenger)
+            .and_then(|target| self.pending.get(target))
+    }
+
+    /// GM abort (`.duel_end`, SS-U2): remove whatever `player_id` is part
+    /// of, a duel or a challenge in either direction, without a cooldown.
+    /// A GM ending it is not the pair declining. `None` when the player is
+    /// in nothing. The busy check makes the three cases exclusive.
+    pub fn gm_abort(&mut self, player_id: i32) -> Option<GmAborted> {
+        if let Some(&duel_id) = self.in_duel.get(&player_id) {
+            return self.end_duel(duel_id).map(GmAborted::Duel);
+        }
+        if let Some(p) = self.remove_pending(player_id) {
+            return Some(GmAborted::Challenge(p));
+        }
+        let target = *self.pending_from.get(&player_id)?;
+        self.remove_pending(target).map(GmAborted::Challenge)
     }
 
     /// Record a decline: the pair cooldown starts (D-SS21).
