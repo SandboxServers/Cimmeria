@@ -56,9 +56,11 @@ Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` 
   - `queue_dropped` (`reason = logout | world_change`, `jobs_dropped`);
   - `options_changed` (the station entity ids and tool item ids per section);
   - `learned`, `respec_prompted`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values);
-  - `login_sync` (what the login sent), `asp_granted` and `gm_allcraft` (GM grants, before and after), `loot_restored` (a refused loot grant put back on the corpse).
+  - `login_sync` (what the login sent), `asp_granted`, `gm_allcraft` and `gm_craftkit` (GM grants, before and after), `asp_earned` (level-up grant: `level_before` / `level_after`, `asp_before` / `asp_after`);
+  - already on `main` from CR-01: `malformed`, `no_player`, `forward_failed` (WARN, cell side), `catalog_loaded`, `catalog_load_failed`;
+  - negative seams: `persist_failed` (WARN).
 
-  This is the complete event list. A packet that needs another event adds it here, in the same PR, before using it.
+  This is the complete list of events under the `crafting` target. A packet that needs another adds it here, in the same PR, before using it. CR-16's grant-path events (`grant_container_chosen`, `loot_restored`) belong to the inventory grant path's own target, not `crafting`.
 - **Negative seams.** Every expectation seam logs its failure at the level the convention sets, and has a `LogCapture` test (TESTING.md type 12): a transaction with `rows_affected == 0`, a catalog or inventory lookup miss, a failed client send (`let _ = send` is not allowed), a rollback (`persist_failed` WARN with `phase` and the SQL error class). A DB write that changes fewer rows than it should logs the paired `rows_affected` and `expected` fields, and names its sub-step `phase`, as the convention requires.
 - **Metrics.** Enumerated labels only (rule 4), each with one emission point so a request is never counted twice:
   - `crafting_requests_total{verb, outcome}`, emitted once per request when it is answered: `outcome` in `accepted | rejected`;
@@ -190,7 +192,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - Then 136 and the ASP property.
 - Every rejection sends feedback: 214 `NotEnoughAppliedSciencePoints` where it fits, text otherwise (D-CR14).
 
-**Telemetry:** `event=learned` with `discipline_id`, `expertise_after`, `asp_before` / `asp_after`; `event=rejected` with `reason` in `no_asp | unknown_discipline | already_known | paradigm_too_low | prerequisite_missing | prerequisite_expertise` plus the values compared (for example `paradigm_level` and `required_level`).
+**Telemetry:** `event=learned` with `discipline_id`, `expertise_before` (0 on a first learn) / `expertise_after`, `asp_before` / `asp_after`; `event=rejected` with `reason` in `no_asp | unknown_discipline | already_known | paradigm_too_low | prerequisite_missing | prerequisite_expertise` plus the values compared (for example `paradigm_level` and `required_level`).
 
 **Acceptance:** a live-DB test per rejection reason and for the success path; a replay test; a guard that fails when the prerequisite check is removed.
 
@@ -282,7 +284,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - `.craftkit <blueprint> [count]` and `.learnblueprint <id>` (D-CR17).
 - Add the stations to `docs/content/debug-hub.md`.
 
-**Telemetry:** the seed guard is the test; the stations and vendor need no new events beyond CR-05's `options_changed`. `.craftkit` logs what it granted.
+**Telemetry:** the seed guard is the test; the stations and vendor need no new events beyond CR-05's `options_changed`. `.craftkit` logs `event=gm_craftkit` with `blueprint_id`, `count`, and each granted item as `type_id:qty:bag:slot`.
 
 **Acceptance:** a live-DB seed guard that the templates carry the flags and the spawns sit in world 12; the vendor list resolves; a `.craftkit` test.
 
@@ -292,7 +294,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 **Scope:** per D-CR01: `grant_xp` adds the levels gained to `applied_science_points` in the same statement that raises the level, and pushes the property; new characters start with 1.
 
-**Telemetry:** `grant_xp` logs `asp_before` / `asp_after` next to the level change, in the same event or a sibling event with the same `player_id`.
+**Telemetry:** `grant_xp` emits `event=asp_earned` (target `crafting`) with the full identity (`account_id`, `player_id`, `entity_id`), `level_before` / `level_after` and `asp_before` / `asp_after`.
 
 **Acceptance:** a live-DB test that a level-up grants ASP atomically with the level; a guard that fails when the grant is removed.
 
@@ -318,7 +320,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes the item from the corpse on the cell **before** the base accepts the grant, so a refused grant destroys the item. Remove from the corpse only after the base confirms, or restore it on refusal.
 
-**Telemetry:** the grant logs the chosen container and why (`container_sets`, `skipped_storage`); the loot path logs `loot_restored` when a refused grant puts the item back.
+**Telemetry:** under the grant path's existing target, `event=grant_container_chosen` with the full identity, `type_id`, `container_sets`, `skipped_storage`, the chosen `container_id` and slot, and the stack quantity before and after; `event=loot_restored` when a refused grant puts the item back on the corpse (`corpse_id`, `type_id`, `qty`). Add both to that target's row in `docs/architecture/observability.md`.
 
 **Acceptance:** a live-DB test that a `{17,15}` component granted by loot, by the content engine and by a GM lands in bag 15; a test that a refused loot grant leaves the item on the corpse; a guard that fails when the fall-through is removed; the BV-01 refusal test still passes for a storage-only item.
 
@@ -329,6 +331,8 @@ Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes 
 **Status:** BlockedDependency (every packet above that the owner has not deferred). **Scope title:** Close-out, UAT checklist and release.
 
 **Scope:** `docs/gameplay/crafting-system.md`, `docs/gap-analysis.md` §19, `docs/project-status.md`, the crafting findings (C-60), CAT-F paths (C-64); close or update #567, #723 and #465; write the CR-14 checklist into `handoffs/session-resume.md`; `/release` on the last merged PR.
+
+**Telemetry:** check that the `crafting` row of `docs/architecture/observability.md` lists every event and metric in the telemetry contract, and run each CR-14 query once against a local server to prove it returns the rows it promises. Fix the query table or the code where they disagree.
 
 ### CR-14: owner UAT (colo, after the release)
 
@@ -360,7 +364,8 @@ Run as GM in the stasis-room debug hub, and use `.bug <note>` at each oddity.
 | 3 | `event IN ('learned', 'rejected')` | ASP before and after, or the refusal `reason` and the values compared |
 | 5, 6 | `event = 'options_changed'` | The station and tool ids the client was given, and why |
 | 7, 8 | `event IN ('blueprint_learned', 'paradigm_raised', 'rejected')` | Item use results |
-| 9-13 | `job_id = <id>`, after finding the id with `event = 'queued'` | The whole life of one craft: queue, induction, completion or failure, items before and after |
+| 9-11, 13 | `job_id = <id>`, after finding the id with `event = 'queued'` | The whole life of one craft: queue, induction, completion or failure, items before and after |
+| 12 | `verb = 'reverse_engineer' AND event IN ('queued', 'completed')` over the step's time window | Ten `queued` rows and ten `completed` rows, one `job_id` each |
 | 10 | `event = 'rejected' AND reason = 'insufficient_components'` | The refusal and the counts compared |
 | 14 | `event = 'queue_dropped'` | Jobs dropped at logout, with nothing consumed |
 | 15 | `event IN ('respec_prompted', 'respec')` | The respec, and the ASP refunded |
