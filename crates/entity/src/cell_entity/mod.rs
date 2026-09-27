@@ -75,7 +75,7 @@ pub use identity::PlayerIdentity;
 pub use leash_state::{ChaseRoute, LeashState};
 pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use pending_cast::PendingCast;
-pub use pet::{PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
+pub use pet::{PetBuff, PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;
 

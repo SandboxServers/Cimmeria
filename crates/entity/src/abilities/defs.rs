@@ -10,6 +10,10 @@
 // ── Ability flags (from python/Atrea/enums.py) ────────────────────────────
 
 pub const AF_USE_WEAPON_RANGE: u32 = 4;
+/// `Toggled` (`entities/defs/enumerations.xml` `EAbilityFlags`): the
+/// ability is switched on by one press and off by the next. The server
+/// honours it for the owner pet buffs (pets PT-08, 2824 Holy Warrior).
+pub const AF_TOGGLED: u32 = 8;
 pub const AF_RESPONSE: u32 = 16;
 /// `DoNotActivate_AutoCycle`: the ability never starts or joins the
 /// auto-cycle loop (python `SGWPlayer.py:1177`).
@@ -71,6 +75,12 @@ pub const EF_MENTAL_RESIST_ROLL: u32 = 64; // category: target rolls resist
 pub const EF_SUPPRESSION: u32 = 76; // category: movement slow + accuracy debuff
 pub const EF_EXTRA_DAMAGE: u32 = 512; // category: bonus damage on second pulse
 pub const EF_DOT: u32 = 516; // category: damage-over-time (pulses)
+/// `EF_AlwaysPersist` (`entities/defs/enumerations.xml` `EEffectFlag`, a
+/// real client bit, unlike the category values above): the effect of a
+/// passive ability, held for as long as the ability is known. The server
+/// applies such an effect when the ability is learned and removes it when
+/// the ability is unlearned (pets PT-08, 4968 "Pet Summon Speed increase").
+pub const EF_ALWAYS_PERSIST: u32 = 524_288;
 
 // ── Timer types (sent via onTimerUpdate) ──────────────────────────────────
 

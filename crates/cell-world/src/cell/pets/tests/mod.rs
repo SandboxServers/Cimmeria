@@ -7,6 +7,7 @@ use crate::test_fixtures::{add_pet_owner, seed_pet_template, PET_FIXTURE_TEMPLAT
 mod arrival;
 mod class_filters;
 mod create_on_client;
+mod owner_buffs;
 mod owner_hooks;
 mod owner_hooks_telemetry;
 mod registry;
