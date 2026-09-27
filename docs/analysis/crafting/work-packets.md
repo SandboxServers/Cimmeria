@@ -83,7 +83,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-01
 
-**Status:** Review (#862). **Scope title:** Catalog, constants, serializers, argument parsing, request message. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
+**Status:** Integrated (#862). **Scope title:** Catalog, constants, serializers, argument parsing, request message. **Depends:** none. **Advisor:** database-persistence, testing-validation-engineer.
 
 **Scope:**
 
@@ -98,7 +98,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-E1
 
-**Status:** Review (#858). **Scope title:** Client evidence for the crafting UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra, read-only on the client; the client Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only, plus Ghidra comment fixes.
+**Status:** Integrated (#858). **Scope title:** Client evidence for the crafting UI. **Depends:** none. **Writer:** game-archaeology-specialist (Ghidra, read-only on the client; the client Lua under `..\SGW\Stargate Worlds-QA\Working\SGWGame\Content\UI`). Documentation only, plus Ghidra comment fixes.
 
 **Questions, each answered with an address or file:line:**
 
@@ -140,7 +140,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-03
 
-**Status:** BlockedDependency (CR-01). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
+**Status:** Writing (with CR-04, branch `craft/cr03-login-sync-spend`). **Scope title:** Login sync, ASP display and paradigm defaults. **Advisor:** aoi-witness-broadcast.
 
 **Scope:**
 
@@ -152,7 +152,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-04
 
-**Status:** BlockedDependency (CR-01). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
+**Status:** Writing (with CR-03). **Scope title:** `spendAppliedSciencePoints` (95). **Advisor:** server-authority-enforcer, database-persistence.
 
 **Scope:**
 
@@ -164,7 +164,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 ### CR-05
 
-**Status:** BlockedDependency (CR-01); the tool rule waits on CR-E2 Q3 only for the science field. **Scope title:** Stations, tools, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer, items-systems-advisor.
+**Status:** Writing (branch `craft/cr05-stations-tools`). **Scope title:** Stations, tools, crafting options and "craft anywhere". **Advisor:** aoi-witness-broadcast, server-authority-enforcer, items-systems-advisor.
 
 **Scope:**
 
