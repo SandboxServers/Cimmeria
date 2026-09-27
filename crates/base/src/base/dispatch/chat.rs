@@ -18,6 +18,7 @@ use crate::mercury::read_wstring;
 
 use super::super::feedback::{send_feedback_line, FeedbackCtx};
 use cimmeria_entity::organization::org_text::{validate, TextField, TextReject};
+use cimmeria_wire::cell::chat::CHAN_SQUAD;
 
 use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_UNITS};
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
@@ -158,7 +159,20 @@ pub(super) async fn send_player_communication_at(
         connected,
     };
 
+    let text_units = text.encode_utf16().count();
+    let squad_refusal = |reason: &'static str, log_row: bool| {
+        if channel == CHAN_SQUAD {
+            squad_chat_rejected(
+                reason, log_row, account_id, player_id, player_eid, text_units,
+            );
+        }
+    };
+
     if let RateDecision::Limited { notify } = decision {
+        // The row follows the feedback throttle: a flooding client gets one
+        // `squad.chat` row per notice, not one per dropped packet. The
+        // counter sees every drop.
+        squad_refusal("rate_limited", notify);
         if notify {
             send_feedback_line(&feedback, addr, RateCategory::Chat.feedback_text()).await;
         }
@@ -190,12 +204,13 @@ pub(super) async fn send_player_communication_at(
             account_id,
             entity_id = player_eid,
             channel,
-            text_units = text.encode_utf16().count(),
+            text_units,
             max_units = MAX_CHAT_TEXT_UNITS,
             reason = reject.reason(),
             detail = %reject,
             "sendPlayerCommunication rejected: text breaks the chat text rules, not forwarded",
         );
+        squad_refusal("text_invalid", true);
         send_feedback_line(&feedback, addr, chat_reject_text(&reject)).await;
         return;
     }
@@ -241,6 +256,41 @@ pub(super) async fn send_player_communication_at(
                 .await;
         }
     }
+}
+
+/// The `squad.chat` outcome row (ORG-04) for a squad line the base refused
+/// before the cell forward, so a squad line's refusal is found under the
+/// same event as the cell's `not_in_squad` and `ok` rows. `log_row` is false
+/// for a rate-limited drop whose feedback is throttled; the counter still
+/// counts it.
+fn squad_chat_rejected(
+    reason: &'static str,
+    log_row: bool,
+    account_id: u32,
+    player_id: Option<i32>,
+    entity_id: Option<u32>,
+    text_units: usize,
+) {
+    if log_row {
+        tracing::info!(
+            target: "squad",
+            event = "squad.chat",
+            outcome = "rejected",
+            reason,
+            account_id,
+            player_id,
+            entity_id,
+            recipients = 0,
+            text_units,
+            "squad chat rejected"
+        );
+    }
+    cimmeria_observability::counter!(
+        "squad_actions_total",
+        "action" => "chat",
+        "outcome" => "rejected",
+        "reason" => reason,
+    );
 }
 
 /// Feedback for a chat line over [`MAX_CHAT_TEXT_UNITS`].

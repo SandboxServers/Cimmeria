@@ -81,7 +81,7 @@ Chat channels, emotes, friends, and private messages.
 | `/password` | Set or clear a channel password | ❌ Not yet | `<channel> <password>` | `/password trade s3cret` |
 | `/petition` | File a support petition | ❌ Not yet | `<text>` | `/petition stuck in geometry` |
 | `/say` | Say something in local (spatial) chat | ✅ Yes | `<text>` — the message | `/say hello there` |
-| `/squad` | Talk in squad chat | ❌ Not yet | `<text>` | `/squad regroup` |
+| `/squad` | Talk in squad chat | 🚧 Server side (ORG-04), not client-tested. Reaches every squad member in any space; outside a squad you get "You are not in a squad." | `<text>` | `/squad regroup` |
 | `/team` | Talk in team chat | ❌ Not yet | `<text>` | `/team push left` |
 | `/tell` | Send a private message | ❌ Not yet | `<player> <text>` | `/tell Jack on my way` |
 | `/unban` | Lift a channel ban | ❌ Not yet | `<channel> <player>` | `/unban trade Spammer` |
@@ -576,6 +576,7 @@ restart, never written to the DB):**
 | Duels | `.duel_status` `.duel_end` | ✅ Yes. `.duel_status [name]` shows a player's duel or duel challenge (yours with no name): the other player, the duel number, the stage and the seconds left. `.duel_end <name>` ends that duel or challenge in any stage, sends both players "Duel aborted", and starts no challenge cooldown. For a second duelist when testing alone, see `sparbot` in [the wireclient doc](architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing) |
 | Bank | `.bank` | ✅ Yes. Opens your own personal vault wherever you stand, with no Banker; any later right-click on an NPC closes the session. A player without GM access who types `.bank` is told it needs GM access, and the line is not said aloud |
 | Mail | `.mail` `.mailbox` `.mail_expire` | ✅ Yes (`.mail_expire` refused until mail expiry lands). `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>] [<subject>]` sends yourself (or `<name>`, online or not) a mail with minted cash and a minted item, no postage; the options come first in any order, the first other word starts the subject, and a number right after the type id is the quantity. With `cod <n>` the mail is a COD mail from your character, so the payment comes back to you; it needs an item and no cash. `.mailbox [name]` shows a mailbox's open and archived mail, its system mail, and what is in escrow |
+| Squads | `.squad_invite <name>` `.squad_join <name>` `.squad_info [name]` | ✅ Yes (server side) — `.squad_invite` is `/squadinvite` from you. `.squad_join` puts you straight into that player's squad with no invite, founding one they lead if they have none (you must not be in a squad). `.squad_info` lists your squad, or the named player's: id, size, loot mode, and each member's rank, level and entity. Squads are never saved |
 | Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
 
 A few commands (`.debug_controller`, the server/maint family) report

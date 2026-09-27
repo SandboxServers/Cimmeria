@@ -18,7 +18,7 @@ use tracing::Level;
 const ADDR: &str = "127.0.0.1:54600";
 const PLAYER_EID: u32 = 4321;
 
-struct Harness {
+pub(super) struct Harness {
     addr: SocketAddr,
     transport: Arc<TestTransport>,
     dyn_transport: Arc<dyn Transport>,
@@ -28,7 +28,7 @@ struct Harness {
 }
 
 impl Harness {
-    fn new(access_level: u32) -> Self {
+    pub(super) fn new(access_level: u32) -> Self {
         let addr: SocketAddr = ADDR.parse().unwrap();
         let mut state = test_default_connected_client_state();
         state.player_entity_id = Some(PLAYER_EID);
@@ -47,7 +47,12 @@ impl Harness {
     }
 
     async fn say(&self, text: &str, now: Instant) {
-        let mut payload = vec![0u8]; // say
+        self.speak(0, text, now).await; // say
+    }
+
+    /// `sendPlayerCommunication` on `channel` with no target.
+    pub(super) async fn speak(&self, channel: u8, text: &str, now: Instant) {
+        let mut payload = vec![channel];
         crate::mercury::write_wstring(&mut payload, "");
         crate::mercury::write_wstring(&mut payload, text);
         send_player_communication_at(
@@ -63,7 +68,7 @@ impl Harness {
     }
 
     /// Every line forwarded to the cell so far.
-    fn forwarded(&mut self) -> Vec<String> {
+    pub(super) fn forwarded(&mut self) -> Vec<String> {
         let mut out = Vec::new();
         while let Ok(msg) = self.cell_rx.try_recv() {
             match msg {

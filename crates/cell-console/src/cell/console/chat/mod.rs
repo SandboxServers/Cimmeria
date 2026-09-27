@@ -6,6 +6,7 @@
 //! Reference: `python/cell/SGWPlayer.py:processPlayerCommunication()`
 //!
 //! - [`spatial`]: the say/emote/yell broadcast to the speaker's player witnesses;
+//! - [`squad`]: squad chat to every member of the speaker's squad (ORG-04);
 //! - [`feedback`]: the one-line refusal sent back to the speaker.
 
 use cimmeria_content_engine::chain::ChainEngine;
@@ -17,6 +18,7 @@ use crate::cell::space_manager::SpaceManager;
 
 mod feedback;
 mod spatial;
+mod squad;
 
 use feedback::send_channel_feedback;
 use spatial::broadcast_to_witnesses;
@@ -120,6 +122,10 @@ pub async fn handle_chat_message(
             )
             .await;
         }
+        CHAN_SQUAD => {
+            squad::relay_to_squad(entity_id, speaker_name, speaker_flags, text, tx, space_mgr)
+                .await;
+        }
         CHAN_SERVER => {
             // `python/base/Chat.py::ChatChannelManager.__init__` creates the
             // "server" channel with `CHANNEL_FLAG_DisallowPlayerMessages` --
@@ -143,7 +149,7 @@ pub async fn handle_chat_message(
             .await;
         }
         _ => {
-            // Every other registered channel (team/squad/command/officer/
+            // Every other registered channel (team/command/officer/
             // tell) was never distributed on the cell in the legacy server
             // either: `python/cell/SGWPlayer.py::processPlayerCommunication`
             // only special-cases say/emote/yell and falls through to

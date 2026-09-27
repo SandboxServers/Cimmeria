@@ -16,7 +16,7 @@ pub(crate) use cimmeria_cell_interactions::cell::{
 // The GM gate is world's `cell::dispatch`; the router beside it in
 // `cimmeria-services` sits above this crate.
 pub(crate) use cimmeria_cell_world::cell::{
-    dispatch, duel, pets, playtest_friction, space_manager,
+    dispatch, duel, pets, playtest_friction, space_manager, squad,
 };
 pub(crate) use cimmeria_wire::cell::{client_methods, messages, player_journal};
 // The spawner's records and catalog entries, which only the tests build.

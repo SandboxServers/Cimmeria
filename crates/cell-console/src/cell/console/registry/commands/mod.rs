@@ -31,6 +31,7 @@ mod progression;
 mod query;
 mod social;
 mod spawn;
+mod squad;
 mod stats;
 mod travel;
 
@@ -50,6 +51,7 @@ const GROUPS: &[&[Spec]] = &[
     social::SPECS,
     pet::SPECS,
     bank::SPECS,
+    squad::SPECS,
 ];
 
 /// Total registered commands across every family.

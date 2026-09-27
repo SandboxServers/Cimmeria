@@ -26,6 +26,7 @@ mod chat_flood_limit;
 mod chat_ignore;
 mod chat_ignore_race;
 mod chat_speaker_flags;
+mod chat_squad_refusals;
 mod communicator_unsupported;
 mod crafting_teardown;
 mod duel_challenge;

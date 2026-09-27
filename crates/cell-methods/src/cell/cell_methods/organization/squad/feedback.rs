@@ -5,7 +5,7 @@
 //! text for an organization error code (ORG-E1 Q4). The wording is project
 //! policy: the client ships no squad error strings (audit A-14).
 
-use crate::cell::squad::{InviteReject, KickReject, LootReject, ResponseReject};
+use crate::cell::squad::{ForceJoinReject, InviteReject, KickReject, LootReject, ResponseReject};
 
 pub(super) fn invite_rejected(reject: InviteReject, target: &str) -> String {
     match reject {
@@ -55,6 +55,20 @@ pub(super) fn loot_rejected(reject: LootReject) -> &'static str {
     }
 }
 
+pub(super) fn gm_join_rejected(reject: ForceJoinReject, target: &str) -> String {
+    match reject {
+        ForceJoinReject::SelfTarget => "You cannot join your own squad.".into(),
+        ForceJoinReject::AlreadyInSquad => "You are already in a squad. Leave it first.".into(),
+        ForceJoinReject::SquadFull => format!("{target}'s squad is full."),
+        ForceJoinReject::SquadIdsExhausted => "Squads are unavailable.".into(),
+    }
+}
+
+pub(super) fn gm_joined(target: &str) -> String {
+    format!("You joined {target}'s squad.")
+}
+
+pub(super) const PING_NOT_IN_SQUAD: &str = "You are not in a squad, so nobody sees your ping.";
 pub(super) const INVITE_INVALID: &str = "That invitation is no longer valid.";
 pub(super) const INVITE_EXPIRED: &str = "That invitation has expired.";
 pub(super) const NOT_IN_THAT_SQUAD: &str = "You are not in that squad.";

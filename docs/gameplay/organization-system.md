@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Organization System
 
 > **Last updated**: 2026-09-27
-> **Status**: Squads work (ORG-03): invite, accept, leave, kick, loot mode, disconnect and gate travel, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands are not implemented yet: their calls are decoded and answered with "not available yet", with no persistence, roster or fanout. The organizations campaign ([docs/analysis/organizations/](../analysis/organizations/README.md)) builds them on the same wire contract.
+> **Status**: Squads work (ORG-03, ORG-04): invite, accept, leave, kick, loot mode, disconnect, gate travel, squad chat, the minimap ping and the GM `.squad_*` commands, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands are not implemented yet: their calls are decoded and answered with "not available yet", with no persistence, roster or fanout. The organizations campaign ([docs/analysis/organizations/](../analysis/organizations/README.md)) builds them on the same wire contract.
 
 ## Overview
 
@@ -34,7 +34,7 @@ There is no `sgw_organization*` table yet.
 | Organization types | DEFINED | Command, Squad, Team in entity defs; typed models in `cimmeria_entity::organization` |
 | Invite response | PARTIAL | `organizationInviteResponse` (CM 8): squads DONE; a base-issued request id (Team, Command) is answered "not available yet" |
 | Leave | PARTIAL | `organizationLeave` (CM 9): squads DONE; a Team or Command id is answered "not available yet" |
-| Minimap ping | STUB | `BroadcastMinimapPing` (CM 10) decodes, logs, drops |
+| Minimap ping | PARTIAL | `BroadcastMinimapPing` (CM 10): squads validated (own squad, one a second) and logged, never relayed, since no client method shows another member's ping (ORG-E1 Q3, ORG-04); a Team or Command id is answered "not available yet" |
 | Strike team (PvP) | STUB | `strikeTeamResponse` (CM 11) decodes, logs, drops |
 | PvP leave confirmation | STUB | `pvpOrganizationLeaveResponse` (CM 12) decodes, logs, drops |
 | MOTD | STUB | `organizationMOTD` (CM 13) decodes the org id and the MOTD, logs, drops |

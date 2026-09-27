@@ -9,9 +9,9 @@ description = "The cell's GM surfaces for the Cimmeria server emulator: the `.`-
 # Split out of cimmeria-services (wave C5b of
 # docs/architecture/services-crate-split.md). The chat interceptor calls the
 # console, and the console calls the native GM handlers, so the three are one
-# crate (§2H). It sits beside cimmeria-cell-methods, not above it: the respawn
-# fork both share is cimmeria-cell-interactions', so the two crates compile in
-# parallel. The module tree keeps its old nesting (`cell::console`,
+# crate (§2H). C5b put it beside cimmeria-cell-methods (the respawn fork both
+# share is cimmeria-cell-interactions'); since ORG-04 it sits one step above,
+# because the `.squad_*` commands call the squad handlers there. The module tree keeps its old nesting (`cell::console`,
 # `cell::console::{chat, gm}`), and cimmeria-services re-exports it at
 # `cell::console` and `cell::chat`.
 [dependencies]
@@ -29,6 +29,10 @@ cimmeria-cell-world = { workspace = true }
 # The Base<->Cell message contract, the Mercury method indices, the chat
 # channel ids and the client method indices.
 cimmeria-wire = { workspace = true }
+# The squad handlers the `.squad_*` commands reuse (ORG-04): the invite
+# checks and the join fanout live beside the squad cell methods. The only
+# console -> cell-methods edge; cell-methods never names the console.
+cimmeria-cell-methods = { workspace = true }
 # The chain engine every handler threads through.
 cimmeria-content-engine = { workspace = true }
 cimmeria-common = { workspace = true }

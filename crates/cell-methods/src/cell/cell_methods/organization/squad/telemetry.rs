@@ -19,8 +19,8 @@ use cimmeria_entity::organization::{OrgLeaveReason, OrgRank, SquadLootType};
 
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::squad::{
-    count_action, Departure, ExpiredInvite, InviteReject, KickReject, LootReject, ResponseReject,
-    TakeMiss,
+    count_action, Departure, ExpiredInvite, ForceJoinReject, InviteReject, KickReject, LootReject,
+    PingReject, ResponseReject, TakeMiss,
 };
 
 /// A squad action: one span and one outcome row each.
@@ -31,6 +31,8 @@ pub(super) enum Action {
     Leave,
     Kick,
     LootMode,
+    /// CM 10 `BroadcastMinimapPing` (ORG-04).
+    Ping,
 }
 
 impl Action {
@@ -42,6 +44,7 @@ impl Action {
             Action::Leave => "leave",
             Action::Kick => "kick",
             Action::LootMode => "loot_mode",
+            Action::Ping => "ping",
         }
     }
 
@@ -53,6 +56,7 @@ impl Action {
             Action::Leave => "squad.leave",
             Action::Kick => "squad.kick",
             Action::LootMode => "squad.loot_mode",
+            Action::Ping => "squad.ping",
         }
     }
 }
@@ -170,6 +174,27 @@ impl Reason {
     }
 }
 
+impl From<PingReject> for Reason {
+    fn from(r: PingReject) -> Self {
+        match r {
+            PingReject::NotInSquad => Reason::NotInSquad,
+            PingReject::WrongSquad => Reason::WrongSquad,
+            PingReject::RateLimited => Reason::RateLimited,
+        }
+    }
+}
+
+impl From<ForceJoinReject> for Reason {
+    fn from(r: ForceJoinReject) -> Self {
+        match r {
+            ForceJoinReject::SelfTarget => Reason::SelfTarget,
+            ForceJoinReject::AlreadyInSquad => Reason::AlreadyInSquad,
+            ForceJoinReject::SquadFull => Reason::SquadFull,
+            ForceJoinReject::SquadIdsExhausted => Reason::IdsExhausted,
+        }
+    }
+}
+
 impl From<LootReject> for Reason {
     fn from(r: LootReject) -> Self {
         match r {
@@ -236,6 +261,9 @@ pub(super) struct Outcome {
     pub target: Option<PlayerIdentity>,
     pub squad_id: Option<i32>,
     pub request_id: Option<i32>,
+    /// Clients the action reached, for the actions that fan out or
+    /// deliberately do not (the ping always logs 0).
+    pub recipients: Option<usize>,
 }
 
 impl Outcome {
@@ -247,6 +275,7 @@ impl Outcome {
             target: None,
             squad_id: None,
             request_id: None,
+            recipients: None,
         }
     }
 
@@ -274,6 +303,7 @@ impl Outcome {
             target_player_id = target.player_id,
             squad_id = self.squad_id,
             request_id = self.request_id,
+            recipients = self.recipients,
             "squad action {}",
             outcome
         );
