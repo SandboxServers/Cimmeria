@@ -149,7 +149,7 @@ STRING sellerName
 
 ### BMCreateAuction (client → server)
 
-13 bytes, not 16: `INT32 itemInstanceId, INT32 startingPrice, INT32 buyoutPrice, UINT8 auctionLength`. The client packs `auctionLength` as a single byte; reading it as an INT32 both over-reads by 3 bytes and corrupts the duration.
+13 bytes, not 16, in `.def` order: `INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice`. `auctionLength` is a single byte holding the 1-based `UIAuctionTime` value; the create form sends 3, 4 or 5. Reading it as an INT32 over-reads by 3 bytes and corrupts the duration. An earlier version of this section gave the emitter's property-insertion order (`item, starting, buyout, length`), which is not the wire order; see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4.
 
 ## Blocked Unknowns
 
