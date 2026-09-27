@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Organization System
 
 > **Last updated**: 2026-09-27
-> **Status**: Not implemented; the wire contract is in place. Every inbound organization call is decoded in full and answered or logged, and every outbound organization method has a serializer, but no gameplay behaviour exists yet: no persistence, no roster, no fanout. The organizations campaign ([docs/analysis/organizations/](../analysis/organizations/README.md)) builds it on this contract.
+> **Status**: Squads work (ORG-03): invite, accept, leave, kick, loot mode, disconnect and gate travel, as cell state; see [group-system.md § Squads](group-system.md#squads-org-03). Teams and Commands are not implemented yet: their calls are decoded and answered with "not available yet", with no persistence, roster or fanout. The organizations campaign ([docs/analysis/organizations/](../analysis/organizations/README.md)) builds them on the same wire contract.
 
 ## Overview
 
@@ -18,21 +18,22 @@ The `OrganizationMember` interface in `entities/defs/interfaces/OrganizationMemb
 
 ## Implementation Status
 
-What exists after the campaign's contract packet (ORG-01):
+What exists after the campaign's contract packet (ORG-01) and the squad core (ORG-03):
 
 - **Models** in `cimmeria_entity::organization` ([`crates/entity/src/organization/`](../../crates/entity/src/organization/)): `OrgType`, `OrgRank` with the ranks each type uses, the 26 `OrgPermission` bits with the 12 (Team) and 14 (Command) bits the client's rank editors expose, `OrgLeaveReason`, `SquadLootType`, the id-space constants, the default rank permissions and `org_text`, the one implementation of the text rules (lengths, forbidden characters, the name normaliser and its uniqueness key). Every enum value is pinned against `entities/defs/enumerations.xml`.
 - **Inbound decoders** in `cimmeria-wire`: cell methods 8–19 and SGWPlayer cell method 94 `onOrganizationCreation` ([`crates/wire/src/cell/cell_methods/organization/`](../../crates/wire/src/cell/cell_methods/organization/)), and base methods 0xCF–0xD2 ([`crates/wire/src/base/organization.rs`](../../crates/wire/src/base/organization.rs)). Each bounds a `WSTRING`'s declared length by the bytes left before allocating, and rejects truncation, trailing bytes and unpaired surrogates. CM 10 rejects a non-finite coordinate, and CM 19's signed amount decodes to a `CashDir` (positive deposits, negative withdraws, zero is rejected). CM 13, 14, 15, 17 and 94 used to drop their text; they now read it.
-- **Dispatch.** The cell arms ([`crates/cell-methods/src/cell/cell_methods/organization.rs`](../../crates/cell-methods/src/cell/cell_methods/organization.rs), and CM 94 in `player/social.rs`) decode, log `UNIMPLEMENTED` at DEBUG on the `org` target (the text length, never the text), and answer every well-formed call with `onErrorCode` and the same feedback line as the base. The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) decodes and answers every well-formed call with `onErrorCode` and a feedback chat line, "Organizations are not available yet.", so the press is not silent.
-- **Outbound serializers** for client methods 34–51, `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) in [`crates/wire/src/cell/client_methods/organization/`](../../crates/wire/src/cell/client_methods/organization/) and `player.rs`, each byte-tested. Nothing sends them yet.
-- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`, routed to logged no-ops on both sides.
+- **Dispatch.** The cell router ([`crates/cell-methods/src/cell/cell_methods/organization/`](../../crates/cell-methods/src/cell/cell_methods/organization/)) decodes cell methods 8–19 and routes on the id each carries (D-ORG05, D-ORG06): CM 8 with a cell-issued request id, CM 9 with a squad-range org id, and CM 18 go to the squad handlers in `squad/`; everything else, and CM 94 in `player/social.rs`, logs `UNIMPLEMENTED` at DEBUG on the `org` target (the text length, never the text) and is answered with `onErrorCode` and the feedback line "Organizations are not available yet." (`forward.rs`, which ORG-07 turns into a forward to the base). The base arm for 0xCF–0xD2 ([`crates/base/src/base/dispatch/organization.rs`](../../crates/base/src/base/dispatch/organization.rs)) forwards `organizationInviteByType` type 0 and `organizationKick` with a squad id to the cell, refuses a type above 2, and answers every other well-formed call with the same pair, so the press is not silent.
+- **Outbound serializers** for client methods 34–51, `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) in [`crates/wire/src/cell/client_methods/organization/`](../../crates/wire/src/cell/client_methods/organization/) and `player.rs`, each byte-tested. The squad handlers send 34–40 and 51.
+- **Cell↔base messages** `CellToBaseMsg::Org(OrgCellToBase)` and `BaseToCellMsg::Org(OrgBaseToCell)`. `SquadInvite` and `SquadKick` reach the cell's squad handlers; `OrgCellToBase` is still a logged no-op on the base.
+- **Squads** ([group-system.md § Squads](group-system.md#squads-org-03)): the service-wide `SquadRegistry` on `SpaceManager` and `CellEntity::squad_id`.
 
 There is no `sgw_organization*` table yet.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Organization types | DEFINED | Command, Squad, Team in entity defs; typed models in `cimmeria_entity::organization` |
-| Invite response | STUB | `organizationInviteResponse` (CM 8) decodes, logs, drops |
-| Leave | STUB | `organizationLeave` (CM 9) decodes, logs, drops |
+| Invite response | PARTIAL | `organizationInviteResponse` (CM 8): squads DONE; a base-issued request id (Team, Command) is answered "not available yet" |
+| Leave | PARTIAL | `organizationLeave` (CM 9): squads DONE; a Team or Command id is answered "not available yet" |
 | Minimap ping | STUB | `BroadcastMinimapPing` (CM 10) decodes, logs, drops |
 | Strike team (PvP) | STUB | `strikeTeamResponse` (CM 11) decodes, logs, drops |
 | PvP leave confirmation | STUB | `pvpOrganizationLeaveResponse` (CM 12) decodes, logs, drops |
@@ -41,11 +42,11 @@ There is no `sgw_organization*` table yet.
 | Officer note | STUB | `organizationOfficerNote` (CM 15) decodes the org id, the member name and the note, logs, drops |
 | Rank permissions | STUB | `organizationSetRankPermissions` (CM 16) decodes, logs, drops |
 | Custom rank names | STUB | `organizationSetRankName` (CM 17) decodes the org id, rank and name, logs, drops |
-| Loot mode | STUB | `squadSetLootMode` (CM 18) decodes, logs, drops |
+| Loot mode | DONE | `squadSetLootMode` (CM 18): the leader only, 0 or 1, then `onSquadLootType` to every member |
 | Cash management | STUB | `organizationTransferCash` (CM 19) decodes, logs, drops |
 | Creation | STUB | `onOrganizationCreation` (SGWPlayer CM 94) decodes the name, logs, drops. `launchOrganizationCreation` (135) and `onOrganizationCreationResult` (134) have serializers, never sent |
-| Invite issue / kick / rank change | STUB | Base methods 0xCF–0xD2 decode, log, and answer with `onErrorCode` and a feedback line |
-| Roster info | NOT IMPL | `onOrganizationRosterInfo` (CM 38) has a serializer, never sent |
+| Invite issue / kick / rank change | PARTIAL | 0xD0 type 0 (squad invite) and 0xD1 with a squad id (squad kick) are DONE; a type above 2 is refused; 0xCF, 0xD2 and the Team and Command forms answer with `onErrorCode` and a feedback line |
+| Roster info | PARTIAL | `onOrganizationRosterInfo` (38) is sent for squads only |
 | Experience tracking | NOT IMPL | `onOrganizationExperienceUpdate` (CM 44) never sent |
 | Persistence | NOT IMPL | No organization tables in `db/sgw/` |
 | Organization vault | NOT IMPL | Only `onClearOrgVaultInventory` reference |

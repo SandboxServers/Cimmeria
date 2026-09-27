@@ -92,7 +92,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58.
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| Organizations / guilds | KM | 15 (all KM) | Contract only (ORG-01, 2026-09-27): models, bounded decoders, client-method serializers and cell↔base message plumbing; no behaviour. DB schema is ORG-02 |
+| Organizations / guilds | KM | 17 (3 NT, 14 KM) | Squads work (ORG-03, 2026-09-27): invite, accept, leave, kick, loot mode, disconnect and gate travel, tested with two wire clients but not a real client. Teams and Commands are the ORG-01 contract only; DB schema is ORG-02 |
 | Mail | NT | 13 (5 NT, 7 KM, 1 NU) | **Plain send landed (SS-M1, 2026-09-27), not yet client-tested.** Text mail to up to 10 recipients (offline ones included), with a flood limit, a 100-message mailbox cap and a reason for every refusal. The inbox and archive lists are now separate. Sending with an attachment or COD is refused with a result code and a feedback line until SS-M2. Taking cash, taking an item, paying COD and return-to-sender are still stubs that log `UNIMPLEMENTED` (SS-M3) |
 | Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 is on the unmerged `feat/571-black-market-phase1` (PR #586), and the client window additionally needs a client patch (#587) |
 | Dueling | KM | 6 (2 IM, 4 KM) | Challenge and response implemented (SS-D1); engaged duel, forfeit, defeat conditions and the duel marker still to do |
