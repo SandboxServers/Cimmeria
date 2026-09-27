@@ -19,5 +19,6 @@ mod support;
 mod trace_load;
 mod two_client_castle_visibility;
 mod two_client_castle_visibility_chaos;
+mod two_client_mail_cod;
 mod two_client_squad;
 mod two_client_tell;
