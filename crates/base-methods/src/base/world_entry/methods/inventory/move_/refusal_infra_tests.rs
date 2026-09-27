@@ -24,7 +24,8 @@ use tracing::Level;
 use super::allowlist_tests::{
     assert_fields, cleanup_all, connected_client, insert_synth_item_type, SYNTH_TYPE_ID,
 };
-use super::container_policy::{refuse_move, Movable, MoveEnd};
+use super::bank_rules::MoveRefusal;
+use super::container_policy::{refuse_move, MoveEnd};
 use super::tests::{insert_account_and_player, insert_item};
 use super::*;
 use crate::test_support::{require_db_or_skip, LogCapture};
@@ -55,8 +56,11 @@ async fn refusal_with_the_database_down_logs_each_failed_step() {
     let capture = LogCapture::install();
 
     refuse_move(
-        MoveEnd::Target,
-        Movable::VaultSession,
+        MoveRefusal::VaultSession {
+            end: MoveEnd::Target,
+            reason: "no_vault_session",
+        },
+        &VaultAccess::NO_SESSION,
         entity_id,
         player_id,
         item_id,
@@ -137,8 +141,11 @@ async fn refusal_under_a_held_lock(
     let (transport, dyn_transport, addr, e2a, conn) = connected_client(entity_id, port);
     let capture = LogCapture::install();
     refuse_move(
-        MoveEnd::Target,
-        Movable::VaultSession,
+        MoveRefusal::VaultSession {
+            end: MoveEnd::Target,
+            reason: "no_vault_session",
+        },
+        &VaultAccess::NO_SESSION,
         entity_id,
         player_id,
         item,
@@ -168,11 +175,7 @@ async fn refusal_under_a_held_lock(
     );
     assert!(
         capture
-            .find_event(
-                Level::WARN,
-                "move_rejected",
-                "target_container_needs_vault_session"
-            )
+            .find_event(Level::WARN, "move_rejected", "no_vault_session")
             .is_some(),
         "the refusal itself is still logged"
     );

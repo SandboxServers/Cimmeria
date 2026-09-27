@@ -217,7 +217,12 @@ async fn open_personal_vault(
 /// (the entity is in no space). It logs under this crate's own target,
 /// which `OTEL_FILTER` exports at DEBUG and above.
 fn log_player_entity_missing(entity_id: u32, banker_id: Option<u32>) {
+    // Under `bank`, like every other open refusal, so a support query on
+    // the target finds it. No `account_id` / `player_id`: they are read from
+    // the entity that is missing.
     tracing::warn!(
+        target: "bank",
+        event = "vault_open_rejected",
         entity_id,
         banker_id,
         reason = "player_entity_missing",

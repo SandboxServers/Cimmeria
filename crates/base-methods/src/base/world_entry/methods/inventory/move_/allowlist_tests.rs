@@ -205,11 +205,13 @@ async fn move_out_of_buyback_is_refused_and_no_row_changes() {
     cleanup_all(&pool, account_id, player_id).await;
 }
 
-/// The vault (17) now has a capacity of 100, so the slot-range check alone
-/// would accept it. Until BV-03 wires the vault session, the allowlist must
-/// still refuse every move into it.
+/// The vault (17) has a capacity of 100, so the slot-range check alone
+/// would accept it. A move into it with no vault session (the default
+/// `handle_move_inventory_item` carries none) is refused with
+/// `reason=no_vault_session` (BV-03 guard: "a move with no session is
+/// rejected").
 #[tokio::test]
-async fn move_into_vault_is_still_refused() {
+async fn move_into_vault_without_a_session_is_refused() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x10;
     let player_id = TEST_BASE + 0x11;
@@ -244,12 +246,8 @@ async fn move_into_vault_is_still_refused() {
         "a move into the vault without a vault session must leave the row in (1, 0)"
     );
     let event = capture
-        .find_event(
-            Level::WARN,
-            "move_rejected",
-            "target_container_needs_vault_session",
-        )
-        .expect("refusal must log move_rejected with reason=target_container_needs_vault_session");
+        .find_event(Level::WARN, "move_rejected", "no_vault_session")
+        .expect("refusal must log move_rejected with reason=no_vault_session");
     assert_eq!(event.target, "bank");
     // Refused at the target end, before the move path reads the source row:
     // the refusal reads the source position itself.
@@ -267,8 +265,9 @@ async fn move_into_vault_is_still_refused() {
             ("source_slot_id", "0".into()),
             ("target_container_id", "17".into()),
             ("target_slot_id", "0".into()),
+            ("vault_end", "target".into()),
         ],
-        &[],
+        &["banker_id", "distance", "bank_slots"],
     );
     assert!(
         transport.send_count_to(addr) > 0,
@@ -402,10 +401,10 @@ async fn move_into_buyback_logs_target_not_player_movable() {
     cleanup_all(&pool, account_id, player_id).await;
 }
 
-/// `move_rejected reason=source_container_needs_vault_session`: a row
+/// `move_rejected reason=no_vault_session vault_end=source`: a row
 /// already in the vault (17), moved out without a vault session.
 #[tokio::test]
-async fn move_out_of_vault_logs_source_needs_vault_session() {
+async fn move_out_of_vault_without_a_session_is_refused() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 0x90;
     let player_id = TEST_BASE + 0x91;
@@ -436,12 +435,8 @@ async fn move_out_of_vault_logs_source_needs_vault_session() {
 
     assert_eq!(row_of(&pool, player_id, item).await, Some((17, 7, 1, 0)));
     let event = capture
-        .find_event(
-            Level::WARN,
-            "move_rejected",
-            "source_container_needs_vault_session",
-        )
-        .expect("a move out of the vault must log reason=source_container_needs_vault_session");
+        .find_event(Level::WARN, "move_rejected", "no_vault_session")
+        .expect("a move out of the vault must log reason=no_vault_session");
     assert_eq!(event.target, "bank");
     assert_fields(
         &event,
@@ -458,8 +453,9 @@ async fn move_out_of_vault_logs_source_needs_vault_session() {
             ("source_slot_id", "7".into()),
             ("target_container_id", "1".into()),
             ("target_slot_id", "0".into()),
+            ("vault_end", "source".into()),
         ],
-        &[],
+        &["banker_id", "distance"],
     );
     assert_eq!(transport.send_count_to(addr), 1, "one-item snap-back");
 

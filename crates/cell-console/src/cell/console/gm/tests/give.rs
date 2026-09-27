@@ -205,7 +205,10 @@ async fn gm_remove_item_emits_remove_and_rejects_nonpositive() {
             item_id,
             quantity,
             notify_gm,
+            vault,
         } => {
+            // The GM has no `.bank` session open, so its vault stays shut.
+            assert_eq!(vault.reason(), Some("no_vault_session"));
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(item_id, 42);

@@ -7,7 +7,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{vault_access, SpaceManager};
 
 /// Determine the inventory container for an item from the DB-loaded map.
 /// Falls back to INV_Main (1) if the item has no explicit container_sets entry.
@@ -154,7 +154,11 @@ pub(super) async fn remove(
     chain_id: i64,
     params: &HashMap<String, Value>,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
+    // A banked item (17) is removable only with a vault session open, the
+    // same verdict a player's own `removeItem` carries (BV-03).
+    let vault = vault_access(entity_id, space_mgr);
     // Prefer the originating inventory `instance_id` if the
     // chain context carries one (set by `fire_item_use` —
     // the OnItemUse dispatch path). This is the difference
@@ -194,6 +198,7 @@ pub(super) async fn remove(
                 quantity: count,
                 // Content-chain remove is not GM-sourced — no GM feedback line.
                 notify_gm: false,
+                vault,
             })
             .await
         }
@@ -211,6 +216,7 @@ pub(super) async fn remove(
                 player_id,
                 type_id: item_id,
                 count,
+                vault,
             })
             .await
         }

@@ -20,6 +20,89 @@ pub fn build_vault_open_args(entity_id: i32, position: [f32; 3]) -> Vec<u8> {
     args
 }
 
+/// The vault-session verdict the cell attaches to every inventory request it
+/// forwards to the base (`moveItem`, `useItem`, `removeItem`, content
+/// `RemoveItem`, `gmRemoveItem`). Bank campaign BV-03, D-BV05.
+///
+/// The session and the positions live in the cell and the inventory
+/// transaction runs on the base, so the cell takes the verdict when it
+/// forwards the request: every request gets its own check, including a
+/// fresh proximity check against the pinned Banker. The base consults it only
+/// when the request touches the personal vault (17), and ignores it
+/// otherwise.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum VaultAccess {
+    /// A session is open in the player's space and passed its check.
+    Open {
+        /// The pinned Banker; `None` for a GM `.bank` session, which skips
+        /// the proximity check.
+        banker_id: Option<u32>,
+        /// Player to Banker distance at the check; `None` for a GM session.
+        distance: Option<f32>,
+    },
+    /// No session, or the session failed its check.
+    Closed {
+        /// `VaultReject::reason()`: `no_vault_session`,
+        /// `vault_session_other_space`, `banker_gone`, `banker_other_space`,
+        /// `banker_out_of_range` or `player_missing`.
+        reason: &'static str,
+        /// The pinned Banker, when a session named one.
+        banker_id: Option<u32>,
+        /// The distance, when the refusal is `banker_out_of_range`.
+        distance: Option<f32>,
+    },
+}
+
+impl VaultAccess {
+    /// No vault session: the verdict for in-process callers that never
+    /// reach the vault (right-click auto-equip) and the default in tests.
+    pub const NO_SESSION: VaultAccess = VaultAccess::Closed {
+        reason: "no_vault_session",
+        banker_id: None,
+        distance: None,
+    };
+
+    /// Whether container 17 may be touched by this request.
+    pub fn is_open(&self) -> bool {
+        matches!(self, VaultAccess::Open { .. })
+    }
+
+    /// The refusal label, `None` when open.
+    pub fn reason(&self) -> Option<&'static str> {
+        match self {
+            VaultAccess::Open { .. } => None,
+            VaultAccess::Closed { reason, .. } => Some(reason),
+        }
+    }
+
+    /// The pinned Banker, when there is one.
+    pub fn banker_id(&self) -> Option<u32> {
+        match self {
+            VaultAccess::Open { banker_id, .. } | VaultAccess::Closed { banker_id, .. } => {
+                *banker_id
+            }
+        }
+    }
+
+    /// The Banker distance measured by the check, when there was one.
+    pub fn distance(&self) -> Option<f32> {
+        match self {
+            VaultAccess::Open { distance, .. } | VaultAccess::Closed { distance, .. } => *distance,
+        }
+    }
+
+    /// An open GM `.bank` session (no Banker, no proximity check).
+    pub fn gm_override(&self) -> bool {
+        matches!(
+            self,
+            VaultAccess::Open {
+                banker_id: None,
+                ..
+            }
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

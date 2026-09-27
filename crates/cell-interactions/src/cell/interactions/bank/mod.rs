@@ -34,7 +34,7 @@
 mod open;
 mod rejection;
 
-use cimmeria_entity::cell_entity::{CellEntity, VaultCloseReason};
+use cimmeria_entity::cell_entity::VaultCloseReason;
 
 use super::dispatch::{interact_range, InteractRangeFail};
 use crate::cell::space_manager::{log_vault_session_closed, SpaceManager};
@@ -42,76 +42,9 @@ use crate::cell::space_manager::{log_vault_session_closed, SpaceManager};
 pub use open::{open_vault_at_banker, open_vault_gm, reject_banker_out_of_range};
 pub use rejection::{reject_vault_open, VaultOpenReject};
 
-/// Why a bank move is refused. The label ([`VaultReject::reason`]) is the
-/// `reason` field BV-03 logs with `move_rejected`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum VaultReject {
-    /// No vault window is open.
-    NoSession,
-    /// The session was opened in another space than the player is in now.
-    /// A space change destroys the entity that held it, so this is a
-    /// belt-and-braces check.
-    SessionInOtherSpace,
-    /// The pinned Banker no longer exists (despawned).
-    BankerGone,
-    /// The pinned Banker is in another space than the player.
-    BankerInOtherSpace,
-    /// The player walked out of the interact distance of the Banker.
-    BankerOutOfRange {
-        /// The distance, in world units.
-        dist: f32,
-    },
-    /// The player entity is not in any space.
-    PlayerMissing,
-}
-
-impl VaultReject {
-    /// Stable `reason` label for the `bank` log target.
-    pub fn reason(self) -> &'static str {
-        match self {
-            VaultReject::NoSession => "no_vault_session",
-            VaultReject::SessionInOtherSpace => "vault_session_other_space",
-            VaultReject::BankerGone => "banker_gone",
-            VaultReject::BankerInOtherSpace => "banker_other_space",
-            VaultReject::BankerOutOfRange { .. } => "banker_out_of_range",
-            VaultReject::PlayerMissing => "player_missing",
-        }
-    }
-}
-
-/// May `player` move an item into or out of its vault right now?
-///
-/// Pure: no logging, no sends. The rule (D-BV05):
-/// - a vault session must be open, opened in the space the player is in;
-/// - with a Banker (`banker_id` is `Some`), the Banker must still exist, be
-///   in the player's space, and be within `MAX_INTERACT_DISTANCE`: the same
-///   [`interact_range`] rule the opening `interact` passed;
-/// - a GM `.bank` session (`banker_id` is `None`) skips the proximity check.
-///
-/// It does not look at `session.scope`; the caller knows which container it
-/// is moving and checks the scope that container needs.
-pub fn vault_move_allowed(
-    player: &CellEntity,
-    space_mgr: &SpaceManager,
-) -> Result<(), VaultReject> {
-    let session = player
-        .vault_session
-        .as_ref()
-        .ok_or(VaultReject::NoSession)?;
-    if i64::from(session.space_id) != i64::from(player.space_id.0) {
-        return Err(VaultReject::SessionInOtherSpace);
-    }
-    let Some(banker_id) = session.banker_id else {
-        return Ok(());
-    };
-    let player_id = player.entity_id.0 as u32;
-    interact_range(player_id, banker_id, space_mgr).map_err(|fail| match fail {
-        InteractRangeFail::PlayerMissing => VaultReject::PlayerMissing,
-        InteractRangeFail::TargetMissing => VaultReject::BankerGone,
-        InteractRangeFail::OtherSpace => VaultReject::BankerInOtherSpace,
-        InteractRangeFail::TooFar { dist } => VaultReject::BankerOutOfRange { dist },
-    })
-}
+// The move rule and its reject enum live in `cimmeria-cell-world` so every
+// crate that forwards an inventory request can take the verdict (BV-03).
+pub use crate::cell::space_manager::{vault_access, vault_move_allowed, VaultReject};
 
 /// Pin `target` as the player's interaction target, ending a vault session
 /// pinned elsewhere (D-BV05) with `vault_session_closed reason=re_pin`.

@@ -242,3 +242,65 @@ async fn gm_open_sends_vault_open_for_self_with_a_bankerless_session() {
     assert_eq!(s.banker_id, None);
     assert_eq!(allowed(&mgr), Ok(()));
 }
+
+/// `vault_access`, the verdict BV-03 attaches to every forwarded inventory
+/// request: each `VaultReject` passes through as its reason label, with the
+/// Banker and (out of range) the distance; an open session carries the
+/// Banker and its distance, a GM session neither. A missing player entity
+/// is `player_missing`.
+#[tokio::test]
+async fn vault_access_maps_every_verdict() {
+    use cimmeria_wire::cell::vault::VaultAccess;
+
+    let mut mgr = two_space_manager();
+    let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Personal);
+    let space = mgr.get_entity_space_id(PLAYER).unwrap();
+    let open = |banker_id: Option<u32>, space_id: u32| VaultSession {
+        scope: VaultScope::Personal,
+        banker_id,
+        space_id,
+        opened_at: std::time::Instant::now(),
+    };
+
+    assert_eq!(vault_access(PLAYER, &mgr), VaultAccess::NO_SESSION);
+    assert_eq!(
+        vault_access(4242, &mgr).reason(),
+        Some("player_missing"),
+        "no entity"
+    );
+
+    mgr.get_entity_mut(PLAYER).unwrap().vault_session = Some(open(Some(banker), space));
+    let near = vault_access(PLAYER, &mgr);
+    assert!(near.is_open() && !near.gm_override(), "{near:?}");
+    assert_eq!(near.banker_id(), Some(banker));
+    assert!(near.distance().is_some_and(|d| (d - 2.0).abs() < 0.01));
+
+    mgr.update_entity_position(PLAYER, [12.0, 0.0, 0.0], [0; 3], [0.0; 3]);
+    let far = vault_access(PLAYER, &mgr);
+    assert_eq!(far.reason(), Some("banker_out_of_range"));
+    assert!(far.distance().is_some_and(|d| (d - 10.0).abs() < 0.01));
+
+    mgr.get_entity_mut(PLAYER).unwrap().vault_session = Some(open(None, space));
+    let gm = vault_access(PLAYER, &mgr);
+    assert!(gm.is_open() && gm.gm_override(), "{gm:?}");
+    assert_eq!((gm.banker_id(), gm.distance()), (None, None));
+
+    mgr.get_entity_mut(PLAYER).unwrap().vault_session = Some(open(None, space + 1000));
+    assert_eq!(
+        vault_access(PLAYER, &mgr).reason(),
+        Some("vault_session_other_space")
+    );
+
+    let elsewhere = spawn_banker(&mut mgr, "Harset", [12.0, 0.0, 0.0], VaultScope::Personal);
+    mgr.get_entity_mut(PLAYER).unwrap().vault_session = Some(open(Some(elsewhere), space));
+    assert_eq!(
+        vault_access(PLAYER, &mgr).reason(),
+        Some("banker_other_space")
+    );
+
+    mgr.get_entity_mut(PLAYER).unwrap().vault_session = Some(open(Some(banker), space));
+    mgr.destroy_entity(banker);
+    let gone = vault_access(PLAYER, &mgr);
+    assert_eq!(gone.reason(), Some("banker_gone"));
+    assert_eq!(gone.banker_id(), Some(banker));
+}

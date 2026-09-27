@@ -1,6 +1,7 @@
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
+use cimmeria_wire::cell::vault::VaultAccess;
 
 use super::super::dispatch::dispatch;
 use super::super::USE_ITEM;
@@ -81,6 +82,10 @@ async fn use_item_forwards_to_base_while_alive() {
             player_id: 100,
             item_id: 7001,
             target_id: 0,
+            vault: VaultAccess::Closed {
+                reason: "no_vault_session",
+                ..
+            },
         }
     ));
 }

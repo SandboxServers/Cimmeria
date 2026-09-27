@@ -1,20 +1,37 @@
+//! `moveItem`: move an inventory item between containers and slots, with a
+//! split, a merge into a same-type stack, or a swap with the occupant.
+//!
+//! - [`mod.rs`](self): the entry points, the target checks, the move locks
+//!   and the locked source read.
+//! - [`finish`]: the vault rules, the choice of write, the commit.
+//! - [`apply`]: the four writes.
+//! - [`after_commit`]: resync, cell notification, bandolier, appearance.
+//! - [`container_policy`]: the player-movable allowlist and the refusal path.
+//! - [`bank_rules`]: the personal vault's rules (BV-03).
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_entity::inventory::INV_BANK;
 use cimmeria_mercury::transport::Transport;
+use cimmeria_wire::cell::vault::VaultAccess;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
+use tracing::Instrument;
 
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
-use super::grant::item_allows_container;
 use crate::cell::messages::BaseToCellMsg;
-use after_commit::{after_commit, AppliedMove};
-use container_policy::{refusal, refuse_move, MoveEnd};
+use container_policy::{container_refusal, refuse_move, MoveEnd};
+
+pub(crate) use container_policy::player_accessible;
 
 mod after_commit;
+mod apply;
+mod bank_rules;
 mod container_policy;
+mod finish;
 
 #[derive(sqlx::FromRow)]
 struct InventoryInstanceRow {
@@ -27,20 +44,40 @@ struct InventoryInstanceRow {
     charges: i32,
 }
 
-/// Move an inventory item between containers/slots, optionally swapping with occupant.
-#[tracing::instrument(
-    name = "inventory.move_item",
-    level = "info",
-    skip_all,
-    fields(
-        entity_id,
-        player_id,
-        item_id,
-        target_container_id,
-        target_slot_id,
-        quantity
-    )
-)]
+/// The row already sitting in the target slot, locked for the move.
+#[derive(Debug, Clone, Copy, sqlx::FromRow)]
+struct Occupant {
+    item_id: i32,
+    type_id: i32,
+    stack_size: i32,
+}
+
+/// One `moveItem` request, as the cell forwarded it.
+#[derive(Debug, Clone, Copy)]
+struct MoveRequest {
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+    target_container_id: i32,
+    target_slot_id: i32,
+    /// As sent: `<= 0` means the whole stack.
+    quantity: i32,
+}
+
+/// What every step of a move needs to reach the database, the cell and the
+/// client.
+struct MoveCtx<'a> {
+    pool: &'a Arc<PgPool>,
+    db_pool: &'a Option<Arc<PgPool>>,
+    cell_tx: &'a Option<mpsc::Sender<BaseToCellMsg>>,
+    transport: &'a Arc<dyn Transport>,
+    connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
+}
+
+/// Move an item with no vault session: a move into or out of the vault (17)
+/// is refused. For in-process callers that never reach the vault
+/// (right-click auto-equip moves between 1 and 3).
 pub async fn handle_move_inventory_item(
     entity_id: u32,
     player_id: i32,
@@ -54,6 +91,53 @@ pub async fn handle_move_inventory_item(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    handle_move_inventory_item_with_vault(
+        entity_id,
+        player_id,
+        item_id,
+        target_container_id,
+        target_slot_id,
+        quantity,
+        VaultAccess::NO_SESSION,
+        db_pool,
+        cell_tx,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+}
+
+/// Move an inventory item between containers/slots, optionally splitting,
+/// merging or swapping with the occupant. `vault` is the cell's verdict on
+/// this move (BV-03): a move into or out of the vault (17) needs it open.
+#[tracing::instrument(
+    name = "inventory.move_item",
+    level = "info",
+    skip_all,
+    fields(
+        entity_id,
+        player_id,
+        item_id,
+        target_container_id,
+        target_slot_id,
+        quantity
+    )
+)]
+pub async fn handle_move_inventory_item_with_vault(
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+    target_container_id: i32,
+    target_slot_id: i32,
+    quantity: i32,
+    vault: VaultAccess,
+    db_pool: &Option<Arc<PgPool>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
     let pool = match db_pool {
         Some(p) => p,
         None => {
@@ -61,25 +145,86 @@ pub async fn handle_move_inventory_item(
             return;
         }
     };
+    let req = MoveRequest {
+        entity_id,
+        player_id,
+        item_id,
+        target_container_id,
+        target_slot_id,
+        quantity,
+    };
+    let ctx = MoveCtx {
+        pool,
+        db_pool,
+        cell_tx,
+        transport,
+        connected,
+        entity_to_addr,
+    };
+    // The bank branch of `moveItem` gets its own info span (D-BV19). A
+    // withdrawal is only known once the source row is read, so `move_item`
+    // opens the span there.
+    if target_container_id == INV_BANK {
+        move_item(req, &vault, &ctx)
+            .instrument(bank_move_span(&req, &vault))
+            .await;
+    } else {
+        move_item(req, &vault, &ctx).await;
+    }
+}
+
+/// `bank.move_item`: the info span around a move that touches the vault.
+fn bank_move_span(req: &MoveRequest, vault: &VaultAccess) -> tracing::Span {
+    tracing::info_span!(
+        target: "bank",
+        "bank.move_item",
+        entity_id = req.entity_id,
+        player_id = req.player_id,
+        item_id = req.item_id,
+        target_container_id = req.target_container_id,
+        target_slot_id = req.target_slot_id,
+        vault_open = vault.is_open(),
+        banker_id = vault.banker_id(),
+    )
+}
+
+async fn refuse(
+    req: &MoveRequest,
+    refusal: bank_rules::MoveRefusal,
+    vault: &VaultAccess,
+    ctx: &MoveCtx<'_>,
+) {
+    refuse_move(
+        refusal,
+        vault,
+        req.entity_id,
+        req.player_id,
+        req.item_id,
+        req.quantity,
+        req.target_container_id,
+        req.target_slot_id,
+        ctx.pool,
+        ctx.transport,
+        ctx.connected,
+        ctx.entity_to_addr,
+    )
+    .await;
+}
+
+async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
+    let MoveRequest {
+        player_id,
+        item_id,
+        target_container_id,
+        target_slot_id,
+        quantity,
+        ..
+    } = req;
 
     // D-BV07 allowlist, target end. Checked before the slot range: 17-20
     // have a capacity now, so the range check alone would accept them.
-    if let Some(verdict) = refusal(target_container_id) {
-        refuse_move(
-            MoveEnd::Target,
-            verdict,
-            entity_id,
-            player_id,
-            item_id,
-            quantity,
-            target_container_id,
-            target_slot_id,
-            pool,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
+    if let Some(refusal) = container_refusal(MoveEnd::Target, target_container_id, vault) {
+        refuse(&req, refusal, vault, ctx).await;
         return;
     }
 
@@ -89,7 +234,9 @@ pub async fn handle_move_inventory_item(
     // translating client-side 1-indexed slot IDs into the 0-indexed values
     // this handler operates on, so a `target_slot_id < min_slot` here means
     // the client genuinely asked for a slot below the container's allowed
-    // range (forged packet, off-by-one bug elsewhere).
+    // range (forged packet, off-by-one bug elsewhere). For the vault this is
+    // only the ceiling (100); the player's own `bank_slots` is checked inside
+    // the transaction ([`finish`]).
     //
     // Quantity validation is deferred to AFTER the source row is read.
     // The SGW client's drag-to-equip / drag-to-bag UI sends
@@ -112,7 +259,7 @@ pub async fn handle_move_inventory_item(
         return;
     }
 
-    let mut tx = match pool.begin().await {
+    let mut tx = match ctx.pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
             tracing::error!(player_id, item_id, "MoveInventoryItem: begin failed: {e}");
@@ -171,14 +318,6 @@ pub async fn handle_move_inventory_item(
         return;
     }
 
-    // The id we report on `InventoryItemMoveApplied`. Defaults to the source
-    // row's id (still valid for full moves and swaps, where the same row's
-    // container/slot is updated in place). The split branch overwrites this
-    // with the freshly INSERTed row's id, since for a split the conceptually
-    // "moved" instance is the new row in the target slot, not the decremented
-    // source stack.
-    let mut applied_item_id = item_id;
-
     // Read source row inside the tx with FOR UPDATE so concurrent moves observe
     // a consistent snapshot. Without this, the swap path could lose updates.
     let source = match sqlx::query_as::<_, InventoryInstanceRow>(
@@ -211,36 +350,50 @@ pub async fn handle_move_inventory_item(
         }
     };
 
+    // A withdrawal: the rest of the move runs in the bank span. A deposit
+    // already runs in it (see `handle_move_inventory_item_with_vault`).
+    if source.container_id == INV_BANK && target_container_id != INV_BANK {
+        locked_move(req, vault, ctx, tx, source)
+            .instrument(bank_move_span(&req, vault))
+            .await;
+    } else {
+        locked_move(req, vault, ctx, tx, source).await;
+    }
+}
+
+/// The move from the locked source row on: the source-end allowlist, the
+/// quantity, the source container lock, then [`finish::finish_move`].
+async fn locked_move(
+    req: MoveRequest,
+    vault: &VaultAccess,
+    ctx: &MoveCtx<'_>,
+    mut tx: sqlx::Transaction<'static, sqlx::Postgres>,
+    source: InventoryInstanceRow,
+) {
+    let MoveRequest {
+        player_id,
+        item_id,
+        target_container_id,
+        target_slot_id,
+        ..
+    } = req;
+
     // D-BV07 allowlist, source end. The source container is only
     // known from the locked row, so this sits after the FOR UPDATE read.
-    if let Some(verdict) = refusal(source.container_id) {
+    if let Some(refusal) = container_refusal(MoveEnd::Source, source.container_id, vault) {
         let _ = tx.rollback().await;
-        refuse_move(
-            MoveEnd::Source,
-            verdict,
-            entity_id,
-            player_id,
-            item_id,
-            quantity,
-            target_container_id,
-            target_slot_id,
-            pool,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
+        refuse(&req, refusal, vault, ctx).await;
         return;
     }
 
     // Resolve the whole-stack sentinel (client sends `quantity = -1`
     // for drag-to-equip / drag-to-bag — see the deferred-validation
-    // note in the entry block above). Any non-positive value is
-    // treated as "move the whole stack."
-    let quantity = if quantity <= 0 {
+    // note in `move_item`). Any non-positive value is treated as
+    // "move the whole stack."
+    let quantity = if req.quantity <= 0 {
         source.stack_size
     } else {
-        quantity
+        req.quantity
     };
 
     if quantity > source.stack_size {
@@ -282,323 +435,7 @@ pub async fn handle_move_inventory_item(
         }
     }
 
-    if !item_allows_container(pool, source.type_id, target_container_id).await {
-        let _ = tx.rollback().await;
-        tracing::warn!(
-            player_id,
-            item_id,
-            type_id = source.type_id,
-            target_container_id,
-            "MoveInventoryItem: item cannot be moved into target container"
-        );
-        return;
-    }
-
-    // Fetch both `item_id` and `type_id` for the occupant in one FOR-UPDATE
-    // query; the row is locked here for the rest of the tx, so the swap arm
-    // below can rely on the cached `type_id` instead of re-locking the same
-    // row just to read its type.
-    let occupied: Option<(i32, i32)> = match sqlx::query_as::<_, (i32, i32)>(
-        "SELECT item_id, type_id FROM sgw_inventory \
-         WHERE character_id = $1 AND container_id = $2 AND slot_id = $3 AND item_id <> $4 LIMIT 1 FOR UPDATE",
-    )
-    .bind(player_id)
-    .bind(target_container_id)
-    .bind(target_slot_id)
-    .bind(item_id)
-    .fetch_optional(&mut *tx)
-    .await
-    {
-        Ok(result) => result,
-        Err(e) => {
-            let _ = tx.rollback().await;
-            tracing::error!(player_id, target_container_id, target_slot_id, "MoveInventoryItem: occupied slot query failed: {e}");
-            return;
-        }
-    };
-
-    if quantity < source.stack_size {
-        if occupied.is_some() {
-            let _ = tx.rollback().await;
-            tracing::warn!(
-                player_id,
-                item_id,
-                target_container_id,
-                target_slot_id,
-                "MoveInventoryItem: cannot split onto occupied slot"
-            );
-            return;
-        }
-
-        let update = sqlx::query(
-            "UPDATE sgw_inventory SET stack_size = stack_size - $1 \
-             WHERE character_id = $2 AND item_id = $3 AND stack_size > $1",
-        )
-        .bind(quantity)
-        .bind(player_id)
-        .bind(item_id)
-        .execute(&mut *tx)
-        .await;
-
-        let update_rows = match update {
-            Ok(r) => r.rows_affected(),
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(
-                    player_id,
-                    item_id,
-                    "MoveInventoryItem: split decrement failed: {e}"
-                );
-                return;
-            }
-        };
-        if update_rows != 1 {
-            let _ = tx.rollback().await;
-            tracing::warn!(
-                player_id,
-                item_id,
-                quantity,
-                "MoveInventoryItem: split decrement matched 0 rows (concurrent modification?)"
-            );
-            return;
-        }
-
-        // RETURNING the new row's id so `applied_item_id` can describe the
-        // freshly-created instance rather than the source stack we just
-        // decremented — that's what `InventoryItemMoveApplied` consumers
-        // expect when they read "this is the moved item."
-        let inserted: Result<Option<(i32,)>, _> = sqlx::query_as(
-            "INSERT INTO sgw_inventory \
-             (character_id, type_id, stack_size, slot_id, container_id, bound, durability, charges) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
-             RETURNING item_id",
-        )
-        .bind(player_id)
-        .bind(source.type_id)
-        .bind(quantity)
-        .bind(target_slot_id)
-        .bind(target_container_id)
-        .bind(source.bound)
-        .bind(source.durability)
-        .bind(source.charges)
-        .fetch_optional(&mut *tx)
-        .await;
-
-        match inserted {
-            Ok(Some((new_id,))) => {
-                applied_item_id = new_id;
-                if let Err(e) = tx.commit().await {
-                    tracing::error!(
-                        player_id,
-                        item_id,
-                        "MoveInventoryItem: split commit failed: {e}"
-                    );
-                    return;
-                }
-            }
-            Ok(None) => {
-                let _ = tx.rollback().await;
-                tracing::warn!(
-                    player_id,
-                    item_id,
-                    "MoveInventoryItem: split insert returned no row"
-                );
-                return;
-            }
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(player_id, item_id, "MoveInventoryItem: split failed: {e}");
-                return;
-            }
-        }
-    } else if let Some((occupied_item_id, occupied_item_type)) = occupied {
-        if !item_allows_container(pool, occupied_item_type, source.container_id).await {
-            let _ = tx.rollback().await;
-            tracing::warn!(
-                player_id,
-                item_id,
-                occupied_item_id,
-                occupied_item_type,
-                source_container_id = source.container_id,
-                "MoveInventoryItem: occupied item cannot be swapped into source container"
-            );
-            return;
-        }
-
-        // Three-step swap to keep each statement boundary collision-free
-        // against the sgw_inventory_unique_slot UNIQUE INDEX on
-        // (character_id, container_id, slot_id):
-        //   1. Park source at slot_id = -1 in its current container.
-        //   2. Move occupant into source's original slot (now vacated).
-        //   3. Move source from the sentinel slot into the target.
-        //
-        // A two-step swap (occupant→source's-slot, source→target) would have
-        // both rows colliding on (source.container_id, source.slot_id) at the
-        // end of statement 1. The sentinel slot=-1 is safe because:
-        //  - bag_max_slots() never reserves negative slots, so grant/purchase
-        //    paths cannot land there.
-        //  - The (player_id, 0) advisory lock above serializes against other
-        //    moves on this player, so no concurrent move can also be parking
-        //    a different row at -1 in the same container for the same player.
-        const SWAP_SENTINEL_SLOT: i32 = -1;
-
-        let park_source = sqlx::query(
-            "UPDATE sgw_inventory SET slot_id = $1 \
-             WHERE character_id = $2 AND item_id = $3",
-        )
-        .bind(SWAP_SENTINEL_SLOT)
-        .bind(player_id)
-        .bind(item_id)
-        .execute(&mut *tx)
-        .await;
-        match park_source {
-            Ok(r) if r.rows_affected() == 1 => {}
-            Ok(_) => {
-                let _ = tx.rollback().await;
-                tracing::warn!(
-                    player_id,
-                    item_id,
-                    "MoveInventoryItem: park-source matched 0 rows"
-                );
-                return;
-            }
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(
-                    player_id,
-                    item_id,
-                    "MoveInventoryItem: park-source failed: {e}"
-                );
-                return;
-            }
-        }
-
-        let move_occupied = sqlx::query(
-            "UPDATE sgw_inventory SET container_id = $1, slot_id = $2 \
-             WHERE character_id = $3 AND item_id = $4",
-        )
-        .bind(source.container_id)
-        .bind(source.slot_id)
-        .bind(player_id)
-        .bind(occupied_item_id)
-        .execute(&mut *tx)
-        .await;
-
-        let move_occupied_rows = match move_occupied {
-            Ok(r) => r.rows_affected(),
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(
-                    player_id,
-                    item_id,
-                    "MoveInventoryItem: swap-occupied failed: {e}"
-                );
-                return;
-            }
-        };
-        if move_occupied_rows != 1 {
-            let _ = tx.rollback().await;
-            tracing::warn!(
-                player_id,
-                item_id,
-                occupied_item_id,
-                "MoveInventoryItem: swap-occupied matched 0 rows"
-            );
-            return;
-        }
-
-        let move_source = sqlx::query(
-            "UPDATE sgw_inventory SET container_id = $1, slot_id = $2 \
-             WHERE character_id = $3 AND item_id = $4",
-        )
-        .bind(target_container_id)
-        .bind(target_slot_id)
-        .bind(player_id)
-        .bind(item_id)
-        .execute(&mut *tx)
-        .await;
-
-        match move_source {
-            Ok(r) if r.rows_affected() == 1 => {
-                if let Err(e) = tx.commit().await {
-                    tracing::error!(
-                        player_id,
-                        item_id,
-                        "MoveInventoryItem: swap commit failed: {e}"
-                    );
-                    return;
-                }
-            }
-            Ok(_) => {
-                let _ = tx.rollback().await;
-                tracing::warn!(
-                    player_id,
-                    item_id,
-                    "MoveInventoryItem: swap-source matched 0 rows"
-                );
-                return;
-            }
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(player_id, item_id, "MoveInventoryItem: swap failed: {e}");
-                return;
-            }
-        }
-    } else {
-        let result = sqlx::query(
-            "UPDATE sgw_inventory SET container_id = $1, slot_id = $2 \
-             WHERE character_id = $3 AND item_id = $4",
-        )
-        .bind(target_container_id)
-        .bind(target_slot_id)
-        .bind(player_id)
-        .bind(item_id)
-        .execute(&mut *tx)
-        .await;
-
-        match result {
-            Ok(r) if r.rows_affected() == 1 => {
-                if let Err(e) = tx.commit().await {
-                    tracing::error!(
-                        player_id,
-                        item_id,
-                        "MoveInventoryItem: simple commit failed: {e}"
-                    );
-                    return;
-                }
-            }
-            Ok(_) => {
-                let _ = tx.rollback().await;
-                tracing::warn!(player_id, item_id, "MoveInventoryItem: no rows updated");
-                return;
-            }
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(player_id, item_id, "MoveInventoryItem: update failed: {e}");
-                return;
-            }
-        }
-    }
-
-    after_commit(
-        AppliedMove {
-            entity_id,
-            player_id,
-            item_id,
-            applied_item_id,
-            type_id: source.type_id,
-            source_container_id: source.container_id,
-            target_container_id,
-            swapped_item_id: occupied.map(|(id, _)| id),
-        },
-        pool,
-        db_pool,
-        cell_tx,
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await;
+    finish::finish_move(req, quantity, vault, ctx, tx, source).await;
 }
 
 #[cfg(test)]
@@ -611,3 +448,7 @@ mod refusal_infra_tests;
 mod refusal_resync_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod vault_concurrency_tests;
+#[cfg(test)]
+mod vault_move_tests;

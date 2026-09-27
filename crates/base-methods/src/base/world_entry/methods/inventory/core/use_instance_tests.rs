@@ -6,6 +6,7 @@
 //!
 //! Skip cleanly when `DATABASE_URL` is unset.
 
+use cimmeria_wire::cell::vault::VaultAccess;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -199,7 +200,16 @@ async fn slappack_use_fires_on_item_use_not_auto_equip() {
     let cell_tx: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
 
     handle_use_inventory_item(
-        entity_id, player_id, item_id, 0, &db_pool, &cell_tx, &transport, &conn, &e2a,
+        entity_id,
+        player_id,
+        item_id,
+        0,
+        VaultAccess::NO_SESSION,
+        &db_pool,
+        &cell_tx,
+        &transport,
+        &conn,
+        &e2a,
     )
     .await;
 
@@ -254,7 +264,16 @@ async fn pistol_use_routes_to_auto_equip_not_on_item_use() {
     let cell_tx: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
 
     handle_use_inventory_item(
-        entity_id, player_id, item_id, 0, &db_pool, &cell_tx, &transport, &conn, &e2a,
+        entity_id,
+        player_id,
+        item_id,
+        0,
+        VaultAccess::NO_SESSION,
+        &db_pool,
+        &cell_tx,
+        &transport,
+        &conn,
+        &e2a,
     )
     .await;
 
@@ -303,7 +322,16 @@ async fn pistol_in_bandolier_use_routes_to_auto_unequip() {
     let cell_tx: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
 
     handle_use_inventory_item(
-        entity_id, player_id, item_id, 0, &db_pool, &cell_tx, &transport, &conn, &e2a,
+        entity_id,
+        player_id,
+        item_id,
+        0,
+        VaultAccess::NO_SESSION,
+        &db_pool,
+        &cell_tx,
+        &transport,
+        &conn,
+        &e2a,
     )
     .await;
 

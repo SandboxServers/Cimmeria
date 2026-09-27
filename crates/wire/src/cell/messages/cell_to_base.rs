@@ -6,6 +6,7 @@ use super::content_mail_cell_to_base::ContentSystemMail;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
+use crate::cell::vault::VaultAccess;
 use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft, GmCraftGrant};
 
 /// Messages sent from CellApp to BaseApp.
@@ -291,6 +292,8 @@ pub enum CellToBaseMsg {
         target_container_id: i32,
         target_slot_id: i32,
         quantity: i32,
+        /// The cell's vault-session verdict for this move (BV-03).
+        vault: VaultAccess,
     },
 
     /// Remove quantity from an inventory item instance.
@@ -305,6 +308,9 @@ pub enum CellToBaseMsg {
         item_id: i32,
         quantity: i32,
         notify_gm: bool,
+        /// The cell's vault-session verdict: an item in the vault (17) is
+        /// removable only with a session open (BV-03).
+        vault: VaultAccess,
     },
 
     /// Remove `count` of an item by **design id** (`type_id`) — chains know
@@ -318,6 +324,9 @@ pub enum CellToBaseMsg {
         player_id: i32,
         type_id: i32,
         count: i32,
+        /// The cell's vault-session verdict: the vault (17) is searched
+        /// only with a session open (BV-03).
+        vault: VaultAccess,
     },
 
     /// Consume one charge/stack of an inventory item instance, then fire the
@@ -335,6 +344,9 @@ pub enum CellToBaseMsg {
         player_id: i32,
         item_id: i32,
         target_id: i32,
+        /// The cell's vault-session verdict: an item in the vault (17) is
+        /// usable only with a session open (BV-03).
+        vault: VaultAccess,
     },
 
     /// Repair an owned inventory item instance by a durability ratio.

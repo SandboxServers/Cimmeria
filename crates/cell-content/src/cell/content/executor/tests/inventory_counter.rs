@@ -36,7 +36,10 @@ async fn remove_item_action_emits_remove_inventory_by_type() {
             player_id,
             type_id,
             count,
+            vault,
         } => {
+            // Player 1 has no vault session, so the vault is not searched.
+            assert_eq!(vault.reason(), Some("no_vault_session"));
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 42);
             assert_eq!(type_id, 19);

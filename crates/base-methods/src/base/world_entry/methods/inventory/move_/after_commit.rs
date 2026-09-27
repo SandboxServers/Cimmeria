@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use super::super::super::player_load::core::EQUIPMENT_CONTAINERS;
 use super::super::super::vendor::helpers::sync_bandolier_after_inventory_change_with_options;
 use super::super::appearance::refresh_player_appearance;
-use super::super::core::send_full_inventory_update;
+use super::super::core::{send_full_inventory_update, send_on_remove_item};
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
@@ -32,6 +32,8 @@ pub(super) struct AppliedMove {
     pub target_container_id: i32,
     /// The occupant a swap moved into the source slot.
     pub swapped_item_id: Option<i32>,
+    /// A whole-stack merge deleted the source row (`item_id`).
+    pub source_deleted: bool,
 }
 
 /// Run every post-commit side effect of `applied`, in the order the move
@@ -54,7 +56,14 @@ pub(super) async fn after_commit(
         source_container_id,
         target_container_id,
         swapped_item_id,
+        source_deleted,
     } = applied;
+
+    // The full update below only sends rows that exist, so a row the merge
+    // deleted would stay on the client's screen without its own removal.
+    if source_deleted {
+        send_on_remove_item(entity_id, item_id, transport, connected, entity_to_addr).await;
+    }
 
     let total_items = send_full_inventory_update(
         entity_id,
