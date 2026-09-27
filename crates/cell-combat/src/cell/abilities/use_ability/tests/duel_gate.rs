@@ -202,7 +202,9 @@ async fn bystander_untouchable_during_duel() {
 /// duelist. Fails if the duel rule ever leaks to pets.
 #[tokio::test]
 async fn duel_opponent_cannot_harm_partner_pet() {
-    use crate::cell::combat::{area_candidates, may_hit_in_area, player_may_attack};
+    use crate::cell::combat::{
+        area_candidates, may_hit_in_area, player_may_attack, player_may_attack_pve,
+    };
     use crate::cell::service::npc_ai::pet::{fight_refusal, threat_refusal};
     use crate::test_support::{add_pet_owner, make_pet_world, PET_FIXTURE_TEMPLATE_ID};
 
@@ -262,6 +264,11 @@ async fn duel_opponent_cannot_harm_partner_pet() {
         !may_hit_in_area(attacker, pet_e, &mgr.duels),
         "the area rule"
     );
+    assert!(!player_may_attack_pve(attacker, pet_e), "the no-duel rule");
+    assert!(
+        !area_candidates(&mgr, A).contains(&pet),
+        "the partner's pet is an area candidate"
+    );
     assert!(
         area_candidates(&mgr, A).contains(&B),
         "the partner is a candidate"
@@ -281,6 +288,16 @@ async fn duel_opponent_cannot_harm_partner_pet() {
         health(&mgr, pet),
         FULL,
         "the AoE splashed the partner's pet"
+    );
+    // Cone: A fires at a hostile mob just past the pet; the cone reaches the
+    // pet's spot but must not collect it.
+    mgr.spawn_npc(MOB, "Agnos", [6.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(MOB).unwrap().faction = crate::cell::combat::HOSTILE_FACTION;
+    let hits = collect_cone_targets(&mgr, A, MOB, 10.0, std::f32::consts::FRAC_PI_4);
+    assert!(
+        !hits.contains(&pet),
+        "the cone collected the partner's pet: {hits:?}"
     );
 
     // The pet does not take up its owner's duel against A.

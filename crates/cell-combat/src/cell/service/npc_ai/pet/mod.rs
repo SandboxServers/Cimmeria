@@ -118,9 +118,9 @@ pub fn fight_refusal(owner: &CellEntity, target: &CellEntity) -> Option<&'static
     if target.is_player || target.class_id != crate::mercury::SGWMOB_CLASS_ID {
         return Some("target_not_combatant");
     }
-    // Players are refused above, so the duel half of the rule never applies:
-    // a pet never joins its owner's duel. An empty registry says so.
-    if !combat::player_may_attack(owner, target, &crate::cell::duel::DuelRegistry::default()) {
+    // The no-duel form of the rule: a pet never joins its owner's duel (the
+    // default until the owner decides otherwise), so no duel can widen it.
+    if !combat::player_may_attack_pve(owner, target) {
         return Some("target_not_hostile");
     }
     None

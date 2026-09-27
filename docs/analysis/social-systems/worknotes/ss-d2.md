@@ -29,7 +29,7 @@ No Ghidra instance was reachable (`mcp__ghidra__list_instances` returned none), 
 ## Design decisions
 
 - **The harm gate is one function.** `player_may_attack(attacker, target, &DuelRegistry)`: an NPC target keeps the old rule (hostile faction, not a pet); a player target needs an engaged pair in the same space (`can_harm`). The single-target launch and the warmup re-check call it directly. The ground-AoE and cone collectors now scan `combat::area_candidates` (every NPC plus the caster's engaged partner) and filter with `combat::may_hit_in_area` (`player_may_attack` for a player caster, the old hostile-faction rule for an NPC caster), so the only player a collector can ever see is the partner. Bystanders, NPC-versus-duelist and duelist-versus-NPC behaviour are unchanged.
-- **Pets.** `pet::fight_refusal` refuses player targets before it calls the rule, so the pet caller passes an empty registry (`DuelRegistry::default()`): a pet never joins its owner's duel, and no pet file needed threading. This is the only edit in a pets file.
+- **Pets.** `pet::fight_refusal` calls the no-duel form, `player_may_attack_pve` (follow-up 2 below): a pet never joins its owner's duel, and no pet file needed threading. This is the only edit in a pets file.
 - **The engage checks both duelists are still in the duel's space.** If either left during the countdown, nothing is flagged, the duel is dropped and whoever is still in the world hears 878 (`duel.engage_refused`, `reason = duelist_gone`, `gone = challenger | target | both`).
 - **Engage order, per duelist:** 151, the flag (self and witnesses), the combat source, the "The duel has begun." line (Cimmeria's wording; there is no moniker).
 - **The combat source** is the opponent's entity id in `threatened_mobs`, the set `BSF_InCombat` derives from, so the bit clears at the end only when no mob still holds the player (`duel/combat.rs`, restating `enter/exit_player_combat` because those live in `cell-combat`, which depends on `cell-world`). The state field goes to self and witnesses, as the mob path does. `generate_threat` still ignores player targets, so duel hits add no threat.
@@ -131,6 +131,24 @@ Two coordinator notes after the first push.
 
 Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-cell-combat duel_gate` (3 passed); `lane.sh cargo nextest run -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-wire` (1633 passed, 0 skipped); `lane.sh cargo clippy -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell --all-targets -- -D warnings` (clean); `lane.sh cargo fmt --all` (clean).
 
+## Follow-up 2: the explicit no-duel rule for pets, and the pet guard's proof
+
+- **`combat::player_may_attack_pve(attacker, target)`** (`aggression.rs`) is the no-duel form of the rule: a hostile-faction NPC that is not a pet, never a player, never a pet. It is also the NPC half of `player_may_attack`, which calls it, so the two cannot drift. `pet::fight_refusal` now calls it instead of `player_may_attack(owner, target, &DuelRegistry::default())`: "a pet never duels" is explicit, and no registry is built per pet tick. Keep that call inside `fight_refusal` after PT-04 (#901), so one change covers pet AI, pet commands (CM 88, `player/pet/invoke.rs`) and the warmup's pet path.
+- **`duel_opponent_cannot_harm_partner_pet`** now also covers the cone (A fires at a hostile mob just past B's pet; the cone must not collect the pet), the no-duel rule, and that the pet is not an area candidate. It checks: the rule, the area rule, the no-duel rule, the candidate list, A's single-target launch, a ground AoE centred on the pet, the cone, and B's pet refusing A as a fight target, as a threat source and on its threat list.
+- **Revert proof** (each applied, the guard run, the file restored byte for byte):
+
+| Mutation | Result |
+|---|---|
+| `may_hit_in_area` also admits any entity whose pet owner is one of the caster's engaged duelists | FAILED at "the area rule" |
+| `player_may_attack` admits any pet while the attacker is in an engaged duel | FAILED at "the rule" |
+| the same `may_hit_in_area` leak **and** `area_candidates` adding the opponent's pets, with the direct predicate assertion disabled | FAILED at "the cone collected the partner's pet: [100000]" |
+
+  The ground AoE on the pet stays unhit under that last mutation because its primary target, the pet, is refused by gate 1 before any secondary is collected; pets are also not in `all_npc_entity_ids` (SGWMob class only), so a collector leak needs both the candidate and the rule to leak.
+- **`player_may_attack` / `player_may_attack_pve` callers on this branch (before #901):** `use_ability/handle.rs:256` (single target), `use_ability/warmup/tick.rs:165` (warmup re-check), `aggression.rs:136` (`may_hit_in_area`, used by `dispatch/mod.rs` and `cone_aoe/geometry.rs`), `aggression.rs:109` (`player_may_attack` → `_pve` for NPC targets), `npc_ai/pet/mod.rs:123` (`fight_refusal`, `_pve`). Re-list after the #901 rebase, which adds `warmup/pet_order.rs` and `player/pet/invoke.rs` as `fight_refusal` callers.
+- **Merge order:** #901 (PT-04) lands first; then rebase onto `main` (the player condition in `warmup/tick.rs` is back to main's text there, so the one-line replacement applies) and push with `--force-with-lease`.
+
+Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-cell-methods` (1868 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-services`, `--all-targets -- -D warnings` (clean); `lane.sh cargo fmt --all -- --check` (clean).
+
 ## Docs
 
 - `docs/reverse-engineering/findings/duel-wire-formats.md`: the SS-D2 receiver trace (D-Q4 resolved, D-Q1 driver), both headings updated.
@@ -156,7 +174,7 @@ Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-cell-combat duel_gate`
 - `crates/cell-combat/src/cell/abilities/use_ability/warmup/tick.rs`: the inline `target.is_player || faction != HOSTILE_FACTION` re-check replaced by `player_may_attack(caster, target, &space_mgr.duels)` (one condition and its comment). **Pets PR #901 (PT-04) edits this file too.**
 - `crates/cell-combat/src/cell/abilities/dispatch/mod.rs`: `collect_ground_targets` takes the attacker id and uses `area_candidates` + `may_hit_in_area`.
 - `crates/cell-combat/src/cell/abilities/cone_aoe/geometry.rs` (and the `cone_aoe/mod.rs` doc): the same for the cone.
-- `crates/cell-combat/src/cell/service/npc_ai/pet/mod.rs` (pets campaign's file): one call, `player_may_attack(owner, target, &DuelRegistry::default())`, with a comment.
+- `crates/cell-combat/src/cell/service/npc_ai/pet/mod.rs` (pets campaign's file): one call, `player_may_attack_pve(owner, target)`, with a comment.
 - `crates/wire/src/cell/client_methods/pet_def_tests.rs` (pets campaign's file): `flattened_client_methods`, `index_of` and `enum_value` made `pub(super)` so the duel pin can reuse them.
 
 ## Other files touched
@@ -167,10 +185,12 @@ Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-cell-combat duel_gate`
 
 ## Integration edits for the coordinator
 
-- Before merging, tell the pets coordinator (cimmeria-b5) about the `warmup/tick.rs`, `pet/mod.rs` and `pet_def_tests.rs` edits above (PR #901 touches `warmup/tick.rs`; the conflict is one condition).
+- Before merging, tell the pets coordinator (now cimmeria-e4) about the `warmup/tick.rs`, `pet/mod.rs` and `pet_def_tests.rs` edits above (PR #901 touches `warmup/tick.rs`; the conflict is one condition).
 - `docs/gap-analysis.md` and `docs/project-status.md` totals: other campaigns move the same totals line; recompute from the rows on merge.
 - Ledger: SS-D2 → Review; D-SS23's provisional wording can be settled (the vehicle is `onEntityProperty(4, v)`); SS-E1 D-Q4 and the D-Q1 driver are closed by this packet; SS-D3 should call `duel::end_engaged` and add its reasons to `EndReason`.
 - The branch is rebased onto `851d8796b`. The only conflict was the gap-analysis totals (crafting moved three rows); resolved by recomputing from the rows.
+
+- SS-U2 (#910): whichever of #910 and this branch merges second routes `DuelRegistry::gm_abort` on an `Engaged` duel through `duel::end_engaged(..., EndReason::GmAborted)` (details in "Follow-up: pets stay out of duels, and the SS-U2 GM end"), and adds the `DuelState::Engaged { .. }` arm to `DuelState::name`.
 
 ## Open questions
 

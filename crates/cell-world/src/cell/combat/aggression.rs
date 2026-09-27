@@ -106,7 +106,18 @@ pub fn player_may_attack(
             _ => false,
         };
     }
-    target.pet.is_none() && target.faction == super::faction_reaction::HOSTILE_FACTION
+    player_may_attack_pve(attacker, target)
+}
+
+/// [`player_may_attack`] with no duel: the rule for a caller that must never
+/// admit a player target, whoever is dueling. Pets use it (a pet never joins
+/// its owner's duel, the default until the owner decides otherwise), and it
+/// is also the NPC half of [`player_may_attack`], so the two cannot drift.
+/// A hostile-faction NPC that is not a pet; never a player, never a pet.
+pub fn player_may_attack_pve(_attacker: &CellEntity, target: &CellEntity) -> bool {
+    !target.is_player
+        && target.pet.is_none()
+        && target.faction == super::faction_reaction::HOSTILE_FACTION
 }
 
 /// Whether an area ability (ground AoE, cone) cast by `attacker` may hit
