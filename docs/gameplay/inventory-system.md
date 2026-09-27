@@ -38,7 +38,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
 | Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined; blocked on the organization system |
 | Personal vault window | DONE | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Deposits and withdrawals: [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
-| Vault expansion | PARTIAL (server done; client dialog quarantined) | +10 slots per purchase at a Banker, 40 to 100, priced by `resources.bank_expansion_price`. The Expand dialog override is not served until the #943 crash is explained; see [Expanding the vault](#expanding-the-vault) |
+| Vault expansion | PARTIAL (server done; GM `.bankexpand` only) | +10 slots per purchase, 40 to 100, priced by `resources.bank_expansion_price`. The Banker's Expand dialog is not served until the #943 crash is explained; see [Expanding the vault](#expanding-the-vault) |
 
 ### Vendor caveat
 
@@ -211,7 +211,7 @@ The personal vault starts at 40 slots and grows to 100 in steps of 10, each step
 
 The offer is dropped (`expand_offer_dropped`) if the session ended or moved to another speaker before it arrived.
 
-> **Not reachable from the client yet.** Dialog 60110's override is held in `QUARANTINED_DIALOG_OVERRIDES` ([`dialog_overrides/mod.rs`](../../crates/resources/src/base/dialog_overrides/mod.rs)) with the debug-hub dialogs: pushing Cimmeria-authored dialog overrides crashed a client on map load (#943), and 60110 shares two of the suspect fields (a screen id above 200000, a Generic button). Until the quarantine lifts, the client has no entry for 60110, shows no dialog, and nothing can be bought from the UI; the chat line with the price still arrives. The server side below is complete and tested.
+> **Players cannot buy yet; GMs can.** Dialog 60110's override is held in `QUARANTINED_DIALOG_OVERRIDES` ([`dialog_overrides/mod.rs`](../../crates/resources/src/base/dialog_overrides/mod.rs)) with the debug-hub dialogs: pushing Cimmeria-authored dialog overrides crashed a client on map load (#943), and 60110 shares two of the suspect fields (a screen id above 200000, a Generic button). While `VAULT_EXPAND_DIALOG_SERVED` is `false`, the Banker records the offer but sends no dialog and no price line (`expand_offer_suppressed reason=dialog_quarantined`, DEBUG). A GM buys a step with `.bankexpand` ([commands.md](../commands.md)), which runs the same purchase with `trigger=gm_console`: it needs an open vault session (a `.bank` session skips proximity), sends no offer, and the base quotes the current size and price and buys at exactly those. Lifting the quarantine is a move between the two lists plus the flag, pinned together by `the_expand_dialog_flag_matches_the_served_list`.
 
 **The purchase.** Pressing the button sends `dialogButtonChoice(60110, 8)`. The #479 gate checks only that the dialog was shown, so the button is not an authority check. The cell routes the answer by dialog id to the purchase path, never to a content chain. There it takes the offer (one-shot) and a **fresh** vault verdict, `vault_access`, the rule every bank move takes, and forwards both as `BankCellToBase::Expand`. A close (`-1`) is never a purchase. The base then:
 
@@ -231,7 +231,7 @@ A zero-row purchase is classified by a follow-up read, replay key first. Every r
 | `price_missing` | no price row for the step |
 | `player_row_missing`, `db_unavailable`, `query_failed` | infrastructure |
 
-A purchase logs `expand` (INFO, `bank`) with `bank_slots_before`/`after`, `price`, `cash_before`/`after`, and the Banker (`banker_id`, `distance`) or `gm_override=true`. The cell side runs in the INFO span `bank.expand`, the purchase in `bank.expand_purchase`, the quote in `bank.expansion_quote`.
+A purchase logs `expand` (INFO, `bank`) with `bank_slots_before`/`after`, `price`, `cash_before`/`after`, the Banker (`banker_id`, `distance`) or `gm_override=true`, and `trigger` (`dialog` or `gm_console`); `expand_rejected` carries `trigger` too, and a non-GM's `.bankexpand` is `expand_rejected reason=not_gm`. The cell side runs in the INFO span `bank.expand` (dialog) or `bank.console_expand` (`.bankexpand`), the purchase in `bank.expand_purchase`, the quote in `bank.expansion_quote`.
 
 ## Flush Update Order
 
