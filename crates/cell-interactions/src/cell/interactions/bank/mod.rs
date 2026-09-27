@@ -68,6 +68,8 @@ pub fn pin_interaction_target(space_mgr: &mut SpaceManager, entity_id: u32, targ
 }
 
 #[cfg(test)]
+mod expand_tests;
+#[cfg(test)]
 mod telemetry_tests;
 #[cfg(test)]
 mod tests;
