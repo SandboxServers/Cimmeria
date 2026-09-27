@@ -127,6 +127,8 @@ The stasis room holds a row of NPCs, each for testing one system, a few seconds'
 | Organization Registrar (SGC uniform) | Found a Team | Ready |
 | Organization Registrar (armour) | Found a Command | Ready |
 | Storage Officer | Banker: opens your personal vault | Ready |
+| Storage Officer (Cellblock guard uniform) | Team Banker: opens your Team's vault; needs a Team | Ready; steps pending BV-10 |
+| Storage Officer (plain crew clothes) | Command Banker: opens your Command's vault; needs a Command | Ready; steps pending BV-10 |
 | Sgt. Harriman | Gate Mail Clerk: sends you a test mail | Known broken (K2) |
 | Common Materials Components | Crafting supplies vendor (1 naquadah each) | Not ready for UAT (crafting) |
 | BioMedical / Electronics / Power Systems / Materials Crafting Station | Crafting stations; stand within 5 units and open J | Not ready for UAT (crafting) |
@@ -298,7 +300,7 @@ Source: the crafting coordinator's provisional list (2026-09-27), [crafting work
 
 Your personal vault (bank container 17), opened at a Banker, with deposit, withdraw, stack handling and paid expansion from 40 to 100 slots.
 
-**Status:** Ready for the personal bank (release 1 is deployed). Known broken: the player-facing Expand offer (K3), so steps 11-12 use the GM command. **Org vaults: pending BV-10**, which adds the Team and Command steps and their Bankers to the hub.
+**Status:** Ready for the personal bank (release 1 is deployed). Known broken: the player-facing Expand offer (K3), so steps 11-12 use the GM command. **Org vaults: pending BV-10**, which adds the Team and Command steps. Their Bankers are in the hub (BV-10a); how to set up a Team or Command to test them is in the [debug hub doc](../content/debug-hub.md#team-and-command-bankers-templates-371-and-372).
 
 **Prerequisites:** a fresh GM character with some naquadah, a stackable item and a mission item. Location: the **Storage Officer** in the debug hub (middle of the right-hand wall). Step 13 needs a non-GM character too.
 
