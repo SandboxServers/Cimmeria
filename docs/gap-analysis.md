@@ -7,7 +7,7 @@ last_updated: 2026-09-27
 
 # Gameplay Systems Gap Analysis
 
-> **Last updated**: 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
+> **Last updated**: 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
 > **Purpose**: Map every gameplay system's Rust implementation against what's needed for a complete server
 > **Status**: Source of truth for project completion tracking
 > **Measured against**: `main`. Work living only on an unmerged feature branch is called out explicitly in the affected section and is **not** counted as implemented.
@@ -717,10 +717,10 @@ last_updated: 2026-09-27
 - **Confidence**: MEDIUM-HIGH (code re-read 2026-09-25; the social-systems campaign's chat packets SS-00, SS-C1 to SS-C4 re-read at close-out 2026-09-27)
 - **Documentation**: [gameplay/chat-system.md](gameplay/chat-system.md), [reverse-engineering/findings/chat-wire-formats.md](reverse-engineering/findings/chat-wire-formats.md), [analysis/social-systems/](analysis/social-systems/README.md) (campaign ledger and owner UAT)
 - **Rust code**: [`crates/cell-console/src/cell/console/chat/`](../crates/cell-console/src/cell/console/chat/mod.rs) (spatial fanout, squad relay, the Ignore filter), [`crates/base/src/base/dispatch/`](../crates/base/src/base/dispatch/) (`chat.rs`, `chat_gates.rs`, `tell.rs`, `ignore.rs`, `communicator_unsupported.rs`), [`crates/base-session/src/base/`](../crates/base-session/src/base/) (`rate_limit/`, `mutes/`, `player_index/`, `gm_broadcast.rs`, `contact_list/ignore/`), [`crates/cell-console/src/cell/console/gm/shout.rs`](../crates/cell-console/src/cell/console/gm/shout.rs), and the `CHAN_*` constants in [`crates/wire/src/cell/chat.rs`](../crates/wire/src/cell/chat.rs)
-- **Recent PRs**: #880 (SS-00 flood limit and text rules), #885 (`chat/` split), #887 (SS-C2 GM broadcast), #893 (SS-C1 tells and Ignore), #925 (SS-C3 channel allowlist, GM mute, feedback for 0xC6-0xCE), #937 (SS-C4 channel ids match the client, no built-in channel registration), #922 (organizations ORG-04 squad chat), #739 (DND bounded to 128 characters, CAT-L-02), #737 (players witness each other)
+- **Recent PRs**: #880 (SS-00 flood limit and text rules), #885 (`chat/` split), #887 (SS-C2 GM broadcast), #893 (SS-C1 tells and Ignore), #925 (SS-C3 channel allowlist, GM mute, feedback for 0xC6-0xCE), #937 (SS-C4 channel ids match the client, no built-in channel registration), #922 (organizations ORG-04 squad chat), #951 (organizations ORG-09 team, command and officer chat), #739 (DND bounded to 128 characters, CAT-L-02), #737 (players witness each other)
 - **Open issues**: #471 (security audit CAT-L, chat / contact list; L-01, L-03, L-06 and the `chatIgnore` part of L-07 are covered by the campaign)
 - **In-client record**: the 2026-09-18 colo playtest logged 20 say-channel sends from the real client, all `.`-prefixed GM console lines ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 123). That proves client-to-server say routing. It does not prove witness rendering of ordinary chat. Every campaign row below waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
-- **Path forward**: the owner's SS-UAT (two clients for tells, Ignore and `.mute`); team, command and officer delivery (organizations campaign); user channels and channel moderation.
+- **Path forward**: the owner's SS-UAT (two clients for tells, Ignore and `.mute`) and ORG-UAT steps 2 and 9 (squad, team, command and officer lines); user channels and channel moderation.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -728,7 +728,7 @@ last_updated: 2026-09-27
 | Direct tells | NT | -- | base/dispatch/tell.rs | **New 2026-09-27 (SS-C1).** Channel 10 is handled on the base: the target resolves through the online index (D-SS13), the recipient gets `onPlayerCommunication` on 10 and the sender `onTellSent`; not online, ambiguous, self, ignored-by-recipient and a muted sender (SS-C3) each answer with a feedback line. Type-8 fan-out tests and a two-client wireclient test (type 11, not in CI); no in-client test on record |
 | Ignore enforcement | NT | -- | base/dispatch/ignore.rs, base-session/src/base/contact_list/ignore/ | **New 2026-09-27 (SS-C1).** `chatIgnore` (0xC5) edits the contact-list Ignore list (flags 301); the list is cached on the base session and the cell entity; tells and say/emote/yell from an ignored player do not reach the ignoring player (one way, no AoI hiding, D-SS15). Live-DB and type-8 guards; no in-client test on record |
 | User channels | KM | -- | -- | requestCreateChannel not ported; a player line on a user channel (id 12 and up) is refused at the base with feedback (SS-C3) |
-| Pre-defined channels | IM | Orgs | wire/src/cell/chat.rs, base/dispatch/chat_gates.rs, cell/console/chat/ | **Corrected 2026-09-27 (SS-C4).** The built-in channels are hardcoded in the client with the `EChannel` ids (say 0 to splash 11, server 8, feedback 9, tell 10; D-ORG14), so none is registered at login, which matches the legacy server; `CHAN_*` is pinned against `enumerations.xml`. The base refuses player lines on server, feedback and splash, on user channels and on unnamed ids (CAT-L-03, SS-C3). Squad lines are relayed (ORG-04); team, command and officer answer "not supported yet" until the organizations campaign routes them |
+| Pre-defined channels | NT | -- | wire/src/cell/chat.rs, base/dispatch/chat_gates.rs, cell/console/chat/, base-session/organization/handlers/chat.rs | **Corrected 2026-09-27 (SS-C4).** The built-in channels are hardcoded in the client with the `EChannel` ids (say 0 to splash 11, server 8, feedback 9, tell 10; D-ORG14), so none is registered at login, which matches the legacy server; `CHAN_*` is pinned against `enumerations.xml`. The base refuses player lines on server, feedback and splash, on user channels and on unnamed ids (CAT-L-03, SS-C3). Squad lines are relayed on the cell (ORG-04, #922); team (3), command (5) and officer (6) lines are handled on the base and reach the online members of the speaker's Team or Command, officer only for `OfficerChat` holders in a Command (ORG-09, #951, D-ORG27). Fan-out and negative-log tests; no in-client test on record |
 | AFK / DND status | NT | -- | base/dispatch/chat.rs, base/dispatch/tell.rs | `dnd_message` sets `SPEAKER_DND` on outgoing messages, matching `Chat.py::getSpeakerFlags`; stored text truncated to 128 chars (#739). Since SS-C1 `chatSetAFKMessage` stores its message too, and a tell to an away player is answered with the DND (else AFK) text on the tell channel. The 2026-09-18 playtest logged one `chatSetDNDMessage: WSTRING decode failed` WARN (appendix-session-timeline.md line 124), not yet explained |
 | Channel ops | KM | -- | -- | setPlayerOp not ported; `chatOp`, `chatMute`, `chatKick`, `chatBan` and `chatPassword` answer with a "not available yet" feedback line (SS-C3) |
 | Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Per-player token bucket on every player channel, burst 5 then 1 line/s (D-SS14), GameMaster and above exempt; lines over 255 UTF-16 units or with control, bidi or zero-width characters refused (D-SS12, through the D-ORG10 `org_text` rules). Both run on the base before the cell forward; the player gets one feedback line (at most one per 5 s) and SigNoz a `rate_limit.exceeded` / `chat.rejected` event. Type-12 guards; no in-client test on record |
@@ -758,34 +758,38 @@ last_updated: 2026-09-27
 
 ## Stub-Only Systems
 
-### 23. Organizations / Guilds --- KM
+### 23. Organizations / Guilds --- NT (Squads, Teams and Commands work server-side; awaiting the owner's two-client UAT)
 
-- **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
-- **Documentation**: [gameplay/organization-system.md](gameplay/organization-system.md), [reverse-engineering/findings/organization-wire-formats.md](reverse-engineering/findings/organization-wire-formats.md)
-- **Rust code**: the contract only, no behaviour (organizations campaign ORG-01, 2026-09-27). Models in [`crates/entity/src/organization/`](../crates/entity/src/organization/) (types, ranks, the 26 permission bits and the per-type editable sets, default rank permissions, id spaces, `org_text` text rules). Decoders for cell methods 8-19 and 94 in [`crates/wire/src/cell/cell_methods/organization/`](../crates/wire/src/cell/cell_methods/organization/) and for base methods 0xCF-0xD2 in [`crates/wire/src/base/organization.rs`](../crates/wire/src/base/organization.rs); serializers for client methods 34-51, 134 and 135 in [`crates/wire/src/cell/client_methods/organization/`](../crates/wire/src/cell/client_methods/organization/). The cell arms (CM 8-19, 94) and the base arm (0xCF-0xD2) decode, log at DEBUG and answer every well-formed call with `onErrorCode` and a feedback line (CM 13, 14, 15, 17 and 94 now read their text). `CellToBaseMsg::Org` / `BaseToCellMsg::Org` exist. **Squads work (ORG-03, 2026-09-27)**: a service-wide `SquadRegistry` on `SpaceManager` ([`crates/cell-world/src/cell/squad/`](../crates/cell-world/src/cell/squad/)) and the handlers in [`crates/cell-methods/src/cell/cell_methods/organization/squad/`](../crates/cell-methods/src/cell/cell_methods/organization/squad/): invite (base 0xD0 type 0, forwarded to the cell), accept and decline (CM 8), leave (CM 9), the leader's kick (0xD1 with a squad id), loot mode (CM 18), disconnect and the gate-arrival replay; see [gameplay/group-system.md § Squads](gameplay/group-system.md#squads-org-03). No `sgw_organization` table under `db/sgw/`.
-- **Recent PRs**: ORG-01 (branch `org/01-foundation`), ORG-03 (branch `org/03-squad`)
-- **Open issues**: #568 (implement organization / squad / guild system)
-- **Path forward**: the organizations campaign ([analysis/organizations/](analysis/organizations/README.md)): schema and the bank API (ORG-02), squads (ORG-03, ORG-04), creation, login restore and membership (ORG-05 to ORG-07), texts, ranks and chat (ORG-08, ORG-09).
+- **Confidence**: HIGH (code read at the organizations close-out, ORG-11, 2026-09-27, against `main` at `c328d0cbc`). Every row below is covered by unit, wire-format, live-DB, fan-out and negative-log tests, and two wireclient tests (`two_client_squad`, `two_client_command_invite`); **nothing is client-verified yet**.
+- **Documentation**: [gameplay/organization-system.md](gameplay/organization-system.md), [gameplay/group-system.md](gameplay/group-system.md#squads-org-03), [reverse-engineering/findings/organization-wire-formats.md](reverse-engineering/findings/organization-wire-formats.md), [analysis/organizations/](analysis/organizations/README.md) (campaign ledger, worknotes, open owner questions and known gaps), [guides/organizations-uat.md](guides/organizations-uat.md) (the owner's UAT)
+- **Rust code**: models in [`crates/entity/src/organization/`](../crates/entity/src/organization/); wire in [`crates/wire/src/cell/cell_methods/organization/`](../crates/wire/src/cell/cell_methods/organization/), [`crates/wire/src/base/organization.rs`](../crates/wire/src/base/organization.rs) and [`crates/wire/src/cell/client_methods/organization/`](../crates/wire/src/cell/client_methods/organization/); squads on the cell in [`crates/cell-world/src/cell/squad/`](../crates/cell-world/src/cell/squad/) and [`crates/cell-methods/src/cell/cell_methods/organization/`](../crates/cell-methods/src/cell/cell_methods/organization/) (the id-range router, `squad/`, `creation/`); Teams and Commands on the base in [`crates/base-session/src/base/organization/`](../crates/base-session/src/base/organization/) (`persistence/`, `creation/`, `handlers/`, and the ORG-API in `api.rs`); the registrar in [`crates/cell-interactions/src/cell/interactions/org_registrar.rs`](../crates/cell-interactions/src/cell/interactions/org_registrar.rs); the schema in [`db/sgw/Organizations/`](../db/sgw/Organizations/)
+- **Recent PRs**: #871 (ORG-01 contract), #881 (ORG-02 schema and ORG-API), #886 (ORG-03 squads), #922 (ORG-04 squad chat), #942 (ORG-05 creation), #941 (ORG-06 login restore, leave, presence), #945 (ORG-07 invite, kick, rank), #954 (ORG-08 MOTD, notes, rank editor), #951 (ORG-09 org chat), #952 (ORG-10 GM suite and UAT guide)
+- **Open issues**: #568 (implement organization / squad / guild system; closed by the coordinator at the close-out)
+- **Path forward**: the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo) after the release; the [owner questions](analysis/organizations/README.md#open-questions-for-the-owner) and [follow-ups](analysis/organizations/README.md#known-gaps-and-follow-ups); vaults and the treasury in the Bank campaign (BV-07, BV-08).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Organization creation | KM | DB schema | decoded | CM 94 `onOrganizationCreation` (`player/social.rs`, `ORG_CREATION` arm): decoded; answered with `onErrorCode` and a feedback line (ORG-05) |
-| Squad invite/accept | NT | -- | cell_methods/organization/squad/invite.rs | Name resolved across spaces; composite-key, single-use, 60 s invites re-validated on accept; limits 5/30 s per inviter, 5 pending per invitee. Unit, fanout and negative-log tests plus the two-client wireclient test `two_client_squad`; not tried with a real client. No ignore-list check (the cell has no copy) |
+| Organization creation | NT | -- | cell-interactions/org_registrar.rs, base-session/organization/creation/ | **ORG-05.** A Team or Command registrar in the stasis-room debug hub opens the naming dialog (135) for an eligible player; CM 94 founds the organization against that offer (5 minutes, 3 attempts) under the D-ORG10 name rules and answers 134, then the founder's state push. Free (D-ORG15). GM `.org_create`. Whether the client right-clicks the registrar is unverified |
+| Squad invite/accept | NT | -- | cell_methods/organization/squad/invite.rs | Name resolved across spaces; composite-key, single-use, 60 s invites re-validated on accept; limits 5/30 s per inviter, 5 pending per invitee. The base checks the invitee's Ignore list first (ORG-07). Unit, fanout and negative-log tests plus the two-client wireclient test `two_client_squad`; not tried with a real client |
 | Squad leave, kick, disconnect | NT | -- | cell_methods/organization/squad/membership.rs | Own squad only; leader-only kick; longest-standing member promoted; a squad of one dissolves; `DisconnectEntity` removes with `Logout`; gate travel keeps the squad and replays it on arrival |
-| Invite/accept (Team, Command) | KM | Creation | decoded | CM 8 with a base-issued request id and base 0xCF/0xD0 types 1-2: decoded; answered with `onErrorCode` and a feedback line (ORG-07) |
-| Leave organization (Team, Command) | KM | -- | decoded | CM 9 with a Team or Command id: decoded; answered with `onErrorCode` and a feedback line (ORG-06) |
-| Rank system (9 ranks) | KM | Creation | entity/organization/types.rs | `OrgRank` and the ranks each type uses (D-ORG07); no rank is stored or enforced yet |
-| Permission system (26 perms) | KM | Ranks | entity/organization/permissions.rs | `OrgPermission`, the Team (12) and Command (14) editable bits and the default rank table (D-ORG08; D-ORG21: every rank below Leader may deposit and read the bank log, none may withdraw); nothing enforces them yet |
-| MOTD | KM | Creation | decoded | CM 13, text now read (ORG-08) |
-| Officer notes | KM | Ranks | decoded | CM 15, both strings now read (ORG-08) |
-| Rank name customization | KM | Ranks | decoded | CM 17, name now read (ORG-08) |
-| Permission editing | KM | Ranks | decoded | CM 16; `OrgPermission::apply_edit` defines the edit rule (D-ORG22, ORG-08) |
-| Cash transfer to bank | KM | Creation | decoded | CM 19 decodes to `CashDir`; the Bank campaign implements it in BV-08, after ORG-07 brings the CM 19 cell forward |
-| Organization vault | KM | Creation, Inventory | -- | INV_TeamBank, INV_CommandBank. In progress: Bank and Vault packet BV-07 (org-owned storage, Team and Command Banker arms, ORG-LOCK deposits and withdrawals), building on ORG-02 and ORG-06; the personal bank it extends is done (§12) |
-| Squad loot mode | NT | -- | cell_methods/organization/squad/loot.rs | Leader only, 0 or 1; a refusal re-sends the current mode (D-ORG16) |
-| Minimap ping | KM | -- | decoded | CM 10, non-finite coordinates rejected (ORG-04) |
-| Strike teams | KM | -- | decoded | CM 11; rejected as unsolicited in ORG-07 |
-| PvP org leave | KM | -- | decoded | CM 12; rejected as unsolicited in ORG-07 |
+| Invite/accept (Team, Command) | NT | -- | base-session/organization/handlers/invite.rs, invite_response.rs | **ORG-07.** 0xCF and 0xD0 types 1-2: the inviter holds `Invite` under ORG-LOCK, and the target is online, not ignoring the inviter and in no organization of that type (D-ORG18); CM 8 with a base request id is consumed once and re-validated under ORG-LOCK. Two-client wireclient test `two_client_command_invite` |
+| Leave organization (Team, Command) | NT | -- | base-session/organization/handlers/leave.rs | **ORG-06.** CM 9: a Leader cannot leave while others remain (D-ORG12); the last member leaving disbands, after the vault check (D-ORG20) |
+| Kick (Team, Command) | NT | -- | base-session/organization/handlers/kick.rs | **ORG-07.** 0xD1 under D-ORG09 (1)-(2); [36] `Kicked` to the member and [39] to the rest; `OrgMembershipEnded` to the cell for the bank |
+| Login restore and presence | NT | -- | base-session/organization/handlers/push.rs, presence.rs | **ORG-06.** Every world entry re-sends each Team and Command (joined, name, MOTD, cash, experience, ranks, rank names, roster, then [37] per online member); login and every disconnect path announce online and offline. `/ReloadOrganizations` (164) re-runs the push (ORG-10) |
+| Disband | NT | -- | base-session/organization/handlers/disband.rs | **ORG-06.** The last member leaving and GM `.org_disband`, both refused while the vault is not empty; the vault predicate is a stub that returns true until the Bank campaign replaces it. A deleted Leader's organization promotes the next member or disbands, through a database trigger (ORG-02) |
+| Rank system (9 ranks) | NT | -- | base-session/organization/handlers/rank.rs, entity/organization/types.rs | **ORG-07.** 0xD2 rank change under D-ORG09: the right bit for the direction, strictly above the target and the new rank, never `Leader`, only the type's ranks (D-ORG07); [40] to the online members. 0xD2 with a squad id answers "not available yet" (no `/squadpromote`) |
+| Permission system (26 perms) | NT | -- | entity/organization/permissions.rs, base-session/organization/api.rs | Default rank table (D-ORG08 as amended by D-ORG21); every Team and Command action is authorized inside its transaction from `member_access_locked` (ORG-LOCK). The values are project policy, not recovered data |
+| MOTD | NT | -- | base-session/organization/handlers/texts.rs | **ORG-08.** CM 13 with `MOTD`, and CM 14 (the member's own note, `RosterNotes`), D-ORG10 text; [45] and [46] to every online member. No rate limit on either |
+| Officer notes | NT | -- | base-session/organization/handlers/officer_notes.rs | **ORG-08.** CM 15 with `OfficerNotes`; the target resolves among that organization's members only and must rank below the actor; [47] only to members holding `OfficerNotes` |
+| Rank name customization | NT | -- | base-session/organization/handlers/rank_editor.rs | **ORG-08.** CM 17 with `RankNames`, D-ORG09 (2)-(3), D-ORG23 names; [50] to every online member. The Leader cannot rename rank 8, and a lower rank can be named "Leader" (both owner questions) |
+| Permission editing | NT | -- | base-session/organization/handlers/rank_editor.rs | **ORG-08.** CM 16 with `AlterPerms` through `OrgPermission::apply_edit` (D-ORG22), the `Leader` row refused; [49] to every online member. GM `.org_set_perms` takes the same path |
+| Cash transfer to bank | KM | Bank | cell_methods/organization/ | CM 19 for a Team or Command id is forwarded to the base as `TransferCash` and answered "not available yet" with feedback; the Bank campaign's BV-08 replaces that arm |
+| Organization vault | KM | Bank | -- | INV_TeamBank, INV_CommandBank. In progress in the Bank and Vault campaign (BV-07, PRs #948 and #949, open at this edition), on the ORG-API; the personal bank it extends is done (§12) |
+| Squad loot mode | NT | Loot | cell_methods/organization/squad/loot.rs | Leader only, 0 or 1; a refusal re-sends the current mode (D-ORG16). The mode is stored and shown to every member, but no loot path reads it yet |
+| Minimap ping | IM | -- | cell_methods/organization/squad/ping.rs | CM 10 for squads: validated (own squad, one a second) and logged, never relayed, because no client method shows another member's ping (ORG-E1 Q3). A Team or Command id answers "not available yet" |
+| Strike teams | KM | -- | decoded | CM 11 refused as unsolicited, since no strike-team request is ever issued (CAT-M-16); there is no strike-team feature |
+| PvP org leave | KM | -- | decoded | CM 12 refused as unsolicited (CAT-M-17) |
+| GM organization commands | NT | -- | cell-console/src/cell/console/, base-session/organization/handlers/gm*.rs | **ORG-04, ORG-05, ORG-06, ORG-07, ORG-10.** `.squad_invite`, `.squad_join`, `.squad_info`, `.org_create`, `.org_disband`, `.org_join`, `.org_rank`, `.org_info`, `.org_list`, `.org_set_perms` and `/ReloadOrganizations` (164); GameMaster-gated, and each logs `org.gm_action` (D-ORG13) |
 
 ### 24. Mail --- NT (send, attachments with escrow, take, COD, return, notification and 30-day expiry all implemented; awaiting the owner's in-client UAT)
 
@@ -923,22 +927,22 @@ last_updated: 2026-09-27
 | Contact system | KM | -- | cell/cell_methods/minigame.rs | `minigameContactRequest` logs `UNIMPLEMENTED` |
 | Minigame server (SmartFox 1.x) | CW | -- | minigame/server/ | **IM → CW 2026-09-25.** In-process SFS listener (`API_VERSION = 154`) completed handshake and play with the real Flash SWF 12 times (playtest). Open hardening, not function: no read timeout or connection cap, and re-auth of a connected ticket is still accepted (#532, #470). Re-verified 2026-09-25 |
 
-### 30. Groups / Parties --- KM
+### 30. Groups / Parties --- NT (the squad is the group; see §23)
 
-- **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
+- **Confidence**: HIGH (code read at the organizations close-out, ORG-11, 2026-09-27)
 - **Documentation**: [gameplay/group-system.md](gameplay/group-system.md), [reverse-engineering/findings/group-wire-formats.md](reverse-engineering/findings/group-wire-formats.md)
-- **Rust code**: None. The unwired 97-line `Group` / `LootMode` sketch in `crates/game/src/social/groups.rs` was deleted by #699 (closing issue #614); `crates/game/src/social/` no longer exists. `squadSetLootMode` logs `UNIMPLEMENTED` (cell_methods/organization.rs:140-143).
-- **Recent PRs**: #699 (deleted the unused social module)
+- **Rust code**: the group is the Squad organization, implemented as cell state without `GroupAuthority` (D-ORG03): [`crates/cell-world/src/cell/squad/`](../crates/cell-world/src/cell/squad/) and [`crates/cell-methods/src/cell/cell_methods/organization/squad/`](../crates/cell-methods/src/cell/cell_methods/organization/squad/). These rows share their code and tests with §23's squad rows. The unwired 97-line `Group` / `LootMode` sketch in `crates/game/src/social/groups.rs` was deleted by #699 (closing issue #614).
+- **Recent PRs**: #886 (ORG-03 squad core), #922 (ORG-04 squad chat), #699 (deleted the unused social module)
 - **Open issues**: #568 (organizations, including the Squad type)
-- **Path forward**: Implement as a lightweight Squad-type Organization on top of #568.
+- **Path forward**: the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo) steps 1-4; member info updates, loot distribution by mode, and the combat-assist hooks.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Group creation | KM | -- | -- | EORG_TYPE_Squad = 0 |
-| Group invite | KM | -- | -- | -- |
-| Group leave | KM | -- | -- | -- |
-| Member info sync | KM | -- | -- | 9 EMEMBER_INFO types defined |
-| Loot mode setting | KM | Loot | stub | squadSetLootMode, organization.rs:143 |
+| Group creation | NT | -- | cell-world/src/cell/squad/ | A squad is founded on the first accepted `/squadinvite` (ORG-03); `EORG_TYPE_Squad = 0` |
+| Group invite | NT | -- | cell_methods/organization/squad/invite.rs | Same code as §23 "Squad invite/accept" |
+| Group leave | NT | -- | cell_methods/organization/squad/membership.rs | Same code as §23 "Squad leave, kick, disconnect" |
+| Member info sync | KM | -- | -- | 9 EMEMBER_INFO types defined; the squad roster carries level and archetype as a snapshot at join, and nothing re-sends them |
+| Loot mode setting | IM | Loot | cell_methods/organization/squad/loot.rs | The leader sets RoundRobin or FreeForAll and every member sees it (ORG-03); no loot path reads the mode yet |
 | Group combat assist | KM | Combat, NPC AI | -- | onGroupMateEnteredCombat. (NPC-side same-room assist aggro, #789, is NPC-to-NPC and unrelated) |
 | Threat transfer | KM | NPC AI | -- | onGroupMateThreatTransfer |
 
@@ -1277,16 +1281,16 @@ Recomputed 2026-09-27 directly from the feature rows above, by script: every mat
 | 18 | XP and Leveling | 12 | 7 | 3 | 1 | 1 | 0 |
 | 19 | Crafting | 9 | 0 | 0 | 8 | 1 | 0 |
 | 20 | Stargate Travel | 10 | 2 | 4 | 3 | 1 | 0 |
-| 21 | Chat | 11 | 0 | 7 | 1 | 3 | 0 |
+| 21 | Chat | 11 | 0 | 8 | 0 | 3 | 0 |
 | 22 | Trading | 8 | 0 | 0 | 8 | 0 | 0 |
-| 23 | Organizations / Guilds | 17 | 0 | 3 | 0 | 14 | 0 |
+| 23 | Organizations / Guilds | 21 | 0 | 16 | 1 | 4 | 0 |
 | 24 | Mail | 17 | 0 | 15 | 0 | 2 | 0 |
 | 25 | Black Market | 10 | 0 | 0 | 0 | 9 | 1 |
 | 26 | Contact Lists | 10 | 10 | 0 | 0 | 0 | 0 |
 | 27 | Dueling | 6 | 0 | 0 | 5 | 1 | 0 |
 | 28 | Pets | 7 | 0 | 6 | 1 | 0 | 0 |
 | 29 | Minigames | 9 | 5 | 0 | 1 | 3 | 0 |
-| 30 | Groups / Parties | 7 | 0 | 0 | 0 | 7 | 0 |
+| 30 | Groups / Parties | 7 | 0 | 3 | 1 | 3 | 0 |
 | 31 | Content Engine | 11 | 6 | 2 | 1 | 2 | 0 |
 | 32 | Mercury Bundle / ChannelBundle | 5 | 5 | 0 | 0 | 0 | 0 |
 | 33 | Observability Pipeline | 13 | 10 | 3 | 0 | 0 | 0 |
@@ -1302,35 +1306,37 @@ Recomputed 2026-09-27 directly from the feature rows above, by script: every mat
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **482** | **167** | **93** | **108** | **111** | **3** |
+| | **TOTALS** | **486** | **167** | **110** | **109** | **97** | **3** |
 
 ### Summary Percentages
 
-Recomputed 2026-09-27 at the social-systems close-out (SS-99), directly from the matrix rows above, which were themselves recounted from the feature tables; the columns sum to the totals line and the totals line sums to 482.
+Recomputed 2026-09-27 at the social-systems close-out (SS-99), and again the same day at the organizations close-out (ORG-11), directly from the matrix rows above, which were themselves recounted from the feature tables by script; the columns sum to the totals line and the totals line sums to 486.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
-| Confirmed Working (CW) | 167 | 34.6% |
-| Needs Test (NT) | 93 | 19.3% |
-| Implemented (IM) | 108 | 22.4% |
-| Known/Missing (KM) | 111 | 23.0% |
+| Confirmed Working (CW) | 167 | 34.4% |
+| Needs Test (NT) | 110 | 22.6% |
+| Implemented (IM) | 109 | 22.4% |
+| Known/Missing (KM) | 97 | 20.0% |
 | Needed/Unknown (NU) | 3 | 0.6% |
 
-**Code exists (CW + NT + IM)**: 368 features (76.3%)
-**Missing (KM + NU)**: 114 features (23.7%)
+**Code exists (CW + NT + IM)**: 386 features (79.4%)
+**Missing (KM + NU)**: 100 features (20.6%)
 
-**Tested end-to-end (CW)**: 167 features (34.6%).
+**Tested end-to-end (CW)**: 167 features (34.4%).
 
 ### Since 2026-09-25
 
 | | CW | NT | IM | KM | NU | Total |
 |---|---:|---:|---:|---:|---:|---:|
 | 2026-09-25 | 169 | 58 | 98 | 142 | 4 | 471 |
-| 2026-09-27 | 167 | 93 | 108 | 111 | 3 | 482 |
-| **Delta** | **-2** | **+35** | **+10** | **-31** | **-1** | **+11** |
+| 2026-09-27 (social close-out) | 167 | 93 | 108 | 111 | 3 | 482 |
+| 2026-09-27 (organizations close-out) | 167 | 110 | 109 | 97 | 3 | 486 |
+| **Delta** (2026-09-25 to now) | **-2** | **+52** | **+11** | **-45** | **-1** | **+15** |
 
 - **Social systems (mail, chat, 1v1 duels).** The social-systems campaign ([ledger](analysis/social-systems/README.md), PRs #873 to #937) moved Chat to 7 NT / 1 IM / 3 KM (tells, Ignore, flood limit, GM broadcast, GM mute), Mail to 15 NT / 2 KM with four new rows (server-generated mail, GM mail tools, quarantined-mail recovery, vault and organization aliases), and Dueling to 5 IM / 1 KM. Rate Limiting's chat row also covers the mail and duel buckets. Every one of these rows waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
 - **Other campaigns.** Crafting (CR-07 to CR-09), pets, organizations (ORG-03, ORG-04) and the ability-tree campaign changed feature rows in their sections. Four of those sections had been edited without their matrix row: World Entry (10 → 12 rows), XP and Leveling (11 → 12 rows, two CW rows now NT until the ability-tree UAT), Organizations (15 → 17 rows, 3 NT) and Anti-Cheat (7 → 8 rows). The close-out recount brought those matrix rows back in line with their tables.
+- **Organizations (Squads, Teams, Commands).** The organizations campaign ([ledger](analysis/organizations/README.md), PRs #861 to #954) moved §23 from 3 NT / 14 KM to 16 NT / 1 IM / 4 KM, with four new rows (kick, login restore and presence, disband, GM commands); the four KM rows left are the Bank campaign's cash and vault, and the two strike-team responses, which are refused because no strike-team feature exists. §30 now counts the squad as the group (3 NT / 1 IM / 3 KM), and §21's pre-defined channels row is NT now that team, command and officer lines are delivered (ORG-09). Every one of these rows waits on the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo).
 
 ### What moved since 2026-07-25
 

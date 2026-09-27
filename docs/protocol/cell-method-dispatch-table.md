@@ -141,6 +141,8 @@ Source: `entities/defs/interfaces/OrganizationMember.def`
 | 18 | squadSetLootMode | YES | INT32 lootMode |
 | 19 | organizationTransferCash | YES | INT32 orgId, INT32 cash |
 
+Handled in `crates/cell-methods/src/cell/cell_methods/organization/` (organizations campaign, closed out 2026-09-27), which routes on the id each call carries (D-ORG05, D-ORG06). Squads stay on the cell: CM 8 with a cell request id, CM 9, CM 10 (validated and logged, never relayed) and CM 18 (ORG-03, ORG-04). Team and Command ids go to the base: CM 8 with a base request id (ORG-07), CM 9 (ORG-06) and CM 13-17 (ORG-08). CM 10 with a Team or Command id and CM 19 (forwarded as `TransferCash`, the Bank campaign's BV-08) answer "not available yet". CM 11 and 12 are refused as unsolicited (CAT-M-16, M-17). SGWPlayer CM 94 `onOrganizationCreation` goes to the ORG-05 creation handler. Behaviour: [organization-system.md](../gameplay/organization-system.md); none of it is client-verified yet.
+
 ### MinigamePlayer (interface) -- 15 exposed
 
 Source: `entities/defs/interfaces/MinigamePlayer.def`

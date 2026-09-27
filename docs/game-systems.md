@@ -111,7 +111,7 @@ Three tiers of player organizations:
 
 Features include: rank system with customizable names and permissions, MOTD, member/officer notes, organization bank and XP, and PvP organization support.
 
-**Data:** Entity definitions complete (23KB of properties). **Server:** Not implemented. Twelve inbound cell methods (indices 8–19) decode their payloads and log `UNIMPLEMENTED`; there is no base-side handler, no organization table in `db/sgw/`, and none of the eighteen `onOrganization*` client methods is ever sent. Blocked on the group system, which is definition-only. See [organization-system.md](gameplay/organization-system.md).
+**Data:** Entity definitions complete (23KB of properties). **Server:** implemented by the organizations campaign (2026-09-27, [ledger](analysis/organizations/README.md)), and **not yet client-verified**; the owner's two-client [UAT](guides/organizations-uat.md) is next. Squads live on the cell, never persisted: invite, accept, leave, leader-only kick and loot mode, disconnect, gate travel and squad chat (ORG-03, ORG-04). Teams and Commands live on the base, backed by `db/sgw/Organizations/`: founding at a registrar NPC, login restore with online and offline presence, invite, kick and rank change under the organization lock, leave and disband, MOTD, member and officer notes, the rank editor, and team, command and officer chat (ORG-02, ORG-05 to ORG-09), with GM `.squad_*` and `.org_*` commands (ORG-10). Not there yet: the Team and Command vaults and the treasury (the Bank and Vault campaign), organization experience (always 0), strike teams, and applying the squad loot mode to loot. See [organization-system.md](gameplay/organization-system.md) and [group-system.md](gameplay/group-system.md).
 
 ## Black Market (Auction House)
 
@@ -139,7 +139,7 @@ In-game mail with:
 - Channel management: join, leave, kick, ban, mute, password
 - AFK and DND status messages
 
-**Server:** Say, emote, and yell fan out to AoI witnesses, and since #737 (players in a shared world see each other) those witnesses include other players. The social-systems campaign (2026-09-27) added tells with AFK and DND replies, `chatIgnore` and a one-way Ignore filter (SS-C1), a flood limit and text rules (SS-00), GM broadcast through `/gmshout` and `.announce` (SS-C2), a channel allowlist, GM `.mute` / `.unmute` and a feedback line for every unimplemented Communicator method (SS-C3), and channel ids that match the client's, with no channel registration at login (SS-C4). Squad chat works (ORG-04). Still missing: team, command and officer delivery, user channels, channel moderation and petitions. Nothing here has been checked with two real clients yet. See [chat-system.md](gameplay/chat-system.md).
+**Server:** Say, emote, and yell fan out to AoI witnesses, and since #737 (players in a shared world see each other) those witnesses include other players. The social-systems campaign (2026-09-27) added tells with AFK and DND replies, `chatIgnore` and a one-way Ignore filter (SS-C1), a flood limit and text rules (SS-00), GM broadcast through `/gmshout` and `.announce` (SS-C2), a channel allowlist, GM `.mute` / `.unmute` and a feedback line for every unimplemented Communicator method (SS-C3), and channel ids that match the client's, with no channel registration at login (SS-C4). Squad chat (ORG-04) and team, command and officer chat (ORG-09) work. Still missing: user channels, channel moderation and petitions. Nothing here has been checked with two real clients yet. See [chat-system.md](gameplay/chat-system.md).
 
 ## Pets
 
