@@ -158,7 +158,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 - CAT-G-07 and CAT-G-08 (audit A-09, A-10); the `bArchive` filter per SS-E1 M-Q7 (audit A-08).
 - Correct `mail-wire-formats.md` (the result codes and `MessageAttachment`, audit A-06 and A-12) and `gap-analysis.md` §24.
 
-**Acceptance:** `sendMailResult` byte-exact; live-DB tests for delivery to an offline recipient, partial failure (one unknown name, one good), the 10-name cap, the full-mailbox refusal, and `read_time_update_scoped_to_owner`; `mail_read_to_text_is_stored_recipient`; the enum pins.
+**Acceptance:** `sendMailResult` byte-exact; live-DB tests for delivery to an offline recipient, partial failure (one unknown name, one good), the 10-name cap, the full-mailbox refusal, and `read_time_update_scoped_to_owner`; a type 5 test, `concurrent_sends_respect_mailbox_cap`, in which two senders race to fill a recipient's 100th slot and exactly one succeeds (it fails when the per-recipient lock is removed); `mail_read_to_text_is_stored_recipient`; the enum pins.
 
 ### SS-C1: Tells and Ignore
 
@@ -211,7 +211,9 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 - Send with cash, item or COD, one recipient only (D-SS05), in one transaction (D-SS06): lock the sender's row, check `cash >= 0`, `bCOD` rules (D-SS09), the item's ownership, container, `bound` flag and quantity; debit cash plus postage (D-SS02); move the whole row, or split the requested quantity into a new row, into escrow; insert the mail. Commit, then send the sender `onCashChanged` and an inventory update built from values read inside the transaction.
 - Headers carry the attachment (`MessageAttachment`, SS-E1 M-Q4) and the COD flag.
 
-**Acceptance:** every CAT-G-01 test in audit § 6; live-DB tests that a rolled-back send leaves cash, inventory and mail untouched; a type 5 test that two sends of the same item move it once; `MessageAttachment` byte-exact; a test that the escrowed item is absent from `INVENTORY_ITEM_SELECT` for both players.
+- **Deleting attached mail.** From this packet on, `deleteMailMessage` (CM 46) refuses to delete a mail that still holds an item, gift cash or an unpaid COD. The row and its escrow row are untouched, and the player gets feedback that the attachment must be taken or the mail returned first. Mail with nothing attached deletes as today. This closes the path where the existing delete arm, which keys only on `mail_id` and `character_id`, would destroy escrowed value or orphan an escrow row.
+
+**Acceptance:** every CAT-G-01 test in audit § 6; `delete_refused_while_attachment_present` and `no_orphaned_escrow_after_delete` (live DB; each fails when the delete guard is reverted); live-DB tests that a rolled-back send leaves cash, inventory and mail untouched; a type 5 test that two sends of the same item move it once; `MessageAttachment` byte-exact; a test that the escrowed item is absent from `INVENTORY_ITEM_SELECT` for both players.
 
 ### SS-C3: Channel allowlist, moderation basics, feedback for the rest
 
