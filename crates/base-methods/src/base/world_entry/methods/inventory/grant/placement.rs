@@ -100,6 +100,44 @@ mod tests {
         assert_eq!(place(vec![3, 1, 17], 1, None).container_id, 1);
     }
 
+    /// The grant placement and the use/remove accessibility rule agree:
+    /// wherever a grant lands (every request 1-20 against every seeded
+    /// `container_sets` shape and the storage/buyback-first shapes), the
+    /// player can use and remove the item there without a vault session.
+    /// A grant that would land in 16-20 is refused instead.
+    #[test]
+    fn every_grant_target_is_player_accessible_without_a_vault_session() {
+        use super::super::super::move_::player_accessible;
+        use cimmeria_wire::cell::vault::VaultAccess;
+
+        let shapes: &[&[i32]] = &[
+            &[3, 1, 17],
+            &[2],
+            &[17, 15],
+            &[1, 17],
+            &[1, 7, 17],
+            &[1, 11, 17],
+            &[],
+            &[3],
+            &[17],
+            &[16],
+            &[16, 17, 15],
+            &[17, 1, 15],
+            &[18, 19, 20],
+        ];
+        for sets in shapes {
+            for requested in 1..=20 {
+                let p = place(sets.to_vec(), requested, None);
+                let refused = (16..=20).contains(&p.container_id);
+                assert!(
+                    refused || player_accessible(p.container_id, &VaultAccess::NO_SESSION),
+                    "{sets:?} asked for {requested} landed in {}",
+                    p.container_id
+                );
+            }
+        }
+    }
+
     #[test]
     fn container_sets_format() {
         assert_eq!(format_container_sets(&[17, 15]), "{17,15}");
