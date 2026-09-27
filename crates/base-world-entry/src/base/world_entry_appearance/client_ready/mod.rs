@@ -18,7 +18,7 @@ use crate::cell::messages::BaseToCellMsg;
 
 use super::super::helpers::send_bundle_to_witness_reliable;
 use super::super::world_entry::handle_map_loaded;
-use super::super::world_entry_chat::build_welcome_message_args;
+use super::super::world_entry_chat::{build_welcome_message_args, DEFAULT_CHAT_CHANNELS};
 use super::super::ConnectedClientState;
 use super::builders::build_on_client_ready_burst_bundle;
 use super::cinematic::send_cinematic;
@@ -437,6 +437,19 @@ pub async fn handle_on_client_ready(
     let bundle =
         build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+    // One row per login naming the channel ids the client was told about,
+    // so a "my tells land in the wrong tab" report can be checked against
+    // what this server registered (SS-C4, D-ORG14).
+    tracing::debug!(
+        target: "chat",
+        event = "chat.channels_registered",
+        account_id,
+        player_id = pending.player_id,
+        entity_id,
+        channel_ids = ?DEFAULT_CHAT_CHANNELS.iter().map(|&(_, id)| id).collect::<Vec<u8>>(),
+        channel_count = DEFAULT_CHAT_CHANNELS.len(),
+        "onClientReady: chat channels registered with the client",
+    );
 
     // Push contact lists (Friends / Ignore + any custom lists) to the client.
     // Runs after the burst bundle so the entity is fully live on the client

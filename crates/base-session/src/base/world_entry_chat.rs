@@ -7,30 +7,38 @@
 //! surface; the wire-emit side stays next to the rest of the
 //! `onClientReady` finalisation.
 
+use cimmeria_wire::cell::chat::{
+    CHAN_COMMAND, CHAN_EMOTE, CHAN_FEEDBACK, CHAN_SAY, CHAN_SERVER, CHAN_SQUAD, CHAN_TEAM,
+    CHAN_TELL, CHAN_YELL,
+};
+
 use crate::mercury::write_wstring;
 
 /// Default chat channels registered on every world-entry `onClientReady`.
 ///
-/// Each entry is `(channel_name, channel_id)`. The id values come from
-/// `python/common/Constants.py` and the channel set + ordering matches
-/// `python/base/SGWPlayer.py onClientReady -> ChannelManager.playerLoggedIn`.
-/// Pulled out as a module constant so it's covered by a byte-exact test
-/// in [`tests`] and so a future configuration knob (per-archetype
-/// channel sets, for example) has a single source to read from.
-pub(crate) const DEFAULT_CHAT_CHANNELS: &[(&str, u8)] = &[
-    ("say", 0),
-    ("emote", 1),
-    ("yell", 2),
-    ("team", 3),
-    ("squad", 4),
-    ("command", 5),
-    ("server", 7),
-    ("tell", 9),
+/// Each entry is `(channel_name, channel_id)`, with the id taken from the
+/// `CHAN_*` constants, which follow `EChannel` in `enumerations.xml`
+/// (D-ORG14). SS-C4 moved server from 7 to 8 and tell from 9 to 10; the
+/// names and the order are unchanged.
+///
+/// Where this departs from the legacy python: `python/base/Chat.py`
+/// `playerLoggedIn` joins the server channel on the server side only, and
+/// `SGWPlayer.onChannelJoined` calls the client's `onChatJoined` only for
+/// user channels (id >= `CHAN_chat`, 12), with the id minus 12. The client
+/// hardcodes every built-in id (ORG-E1 Q5), so none of these entries is
+/// what makes a channel work; officer (6) works without one. The burst is
+/// kept as it was, with correct ids, and pinned against the XML by
+/// [`tests::default_chat_channels_match_enumerations_xml`].
+pub const DEFAULT_CHAT_CHANNELS: &[(&str, u8)] = &[
+    ("say", CHAN_SAY),
+    ("emote", CHAN_EMOTE),
+    ("yell", CHAN_YELL),
+    ("team", CHAN_TEAM),
+    ("squad", CHAN_SQUAD),
+    ("command", CHAN_COMMAND),
+    ("server", CHAN_SERVER),
+    ("tell", CHAN_TELL),
 ];
-
-/// `onPlayerCommunication`'s "tell" channel id (matches `CHAN_TELL` in
-/// `python/common/Constants.py` and `SGWPlayer.py:541`).
-pub(crate) const CHAN_TELL: u8 = 9;
 
 /// Build the `onChatJoined(WSTRING channelName, UINT8 channelID)` wire args.
 ///
@@ -47,13 +55,18 @@ pub(crate) fn build_chat_joined_args(channel_name: &str, channel_id: u8) -> Vec<
 ///
 /// Wire format: `[wstring speaker][u8 speaker_flags=0][u8 channel][wstring text]`.
 /// The text is `"Welcome to Stargate Worlds. Your player id is: {entity_id}."`
-/// pinned by [`tests`]; matches the python reference at `SGWPlayer.py:541`.
+/// pinned by [`tests`]; matches the python reference at `SGWPlayer.py:541`,
+/// which sends a literal channel 9. That is `CHAN_feedback`, an ordinary
+/// line in the Info tab. It is not the server channel (8): the client opens
+/// a modal "Server Message" prompt for every line on 8, which would greet
+/// every login with a dialog. The byte has been 9 all along; before SS-C4 it
+/// was named `CHAN_TELL`.
 pub fn build_welcome_message_args(speaker: &str, entity_id: u32) -> Vec<u8> {
     let welcome = format!("Welcome to Stargate Worlds. Your player id is: {entity_id}.");
     let mut buf = Vec::with_capacity(16 + (speaker.len() + welcome.len()) * 2);
     write_wstring(&mut buf, speaker);
     buf.push(0u8); // SpeakerFlags
-    buf.push(CHAN_TELL);
+    buf.push(CHAN_FEEDBACK);
     write_wstring(&mut buf, &welcome);
     buf
 }
@@ -62,14 +75,14 @@ pub fn build_welcome_message_args(speaker: &str, entity_id: u32) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    /// `DEFAULT_CHAT_CHANNELS` must match the original python
-    /// `SGWPlayer.py onClientReady -> ChannelManager.playerLoggedIn`
-    /// channel set exactly — same names, same ids, same order. A
-    /// regression that adds, drops, or reorders entries silently
-    /// changes the wire-burst shape on every world entry; pinning
-    /// the full slice catches it.
+    /// The registered set, pinned twice: by literal bytes, so the exact
+    /// login burst is visible here, and against `EChannel` parsed out of
+    /// `enumerations.xml`, so a constant that drifts from the client's
+    /// hardcoded id fails (D-ORG14). The literal list differs from the
+    /// python reference on purpose (server 8 and tell 10, not 7 and 9); see
+    /// the [`DEFAULT_CHAT_CHANNELS`] doc for why the burst exists at all.
     #[test]
-    fn default_chat_channels_matches_sgwplayer_channel_set() {
+    fn default_chat_channels_match_enumerations_xml() {
         let expected: &[(&str, u8)] = &[
             ("say", 0),
             ("emote", 1),
@@ -77,25 +90,27 @@ mod tests {
             ("team", 3),
             ("squad", 4),
             ("command", 5),
-            ("server", 7),
-            ("tell", 9),
+            ("server", 8),
+            ("tell", 10),
         ];
-        assert_eq!(
-            DEFAULT_CHAT_CHANNELS, expected,
-            "DEFAULT_CHAT_CHANNELS drifted from the SGWPlayer.py reference set",
-        );
-        // CHAN_TELL constant must agree with the "tell" entry in the slice;
-        // the welcome message in `handle_on_client_ready` reads from
-        // CHAN_TELL while the channel-join loop reads from the slice.
-        let tell_entry = DEFAULT_CHAT_CHANNELS
-            .iter()
-            .find(|(name, _)| *name == "tell")
-            .expect("'tell' channel must be in DEFAULT_CHAT_CHANNELS");
-        assert_eq!(
-            tell_entry.1, CHAN_TELL,
-            "CHAN_TELL ({}) must equal the 'tell' entry's id ({}) in DEFAULT_CHAT_CHANNELS",
-            CHAN_TELL, tell_entry.1
-        );
+        assert_eq!(DEFAULT_CHAT_CHANNELS, expected);
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../entities/defs/enumerations.xml");
+        let xml = std::fs::read_to_string(&path).expect("read enumerations.xml");
+        let start = xml.find("<EChannel>").expect("EChannel block");
+        let block = &xml[start..start + xml[start..].find("</EChannel>").unwrap()];
+        for &(name, id) in DEFAULT_CHAT_CHANNELS {
+            let tag = format!("<Name>CHAN_{name}</Name><Value>");
+            let at = block
+                .find(&tag)
+                .unwrap_or_else(|| panic!("no EChannel token CHAN_{name}"))
+                + tag.len();
+            let xml_id: u8 = block[at..at + block[at..].find('<').unwrap()]
+                .parse()
+                .unwrap();
+            assert_eq!(id, xml_id, "channel {name}: registered id vs EChannel");
+        }
     }
 
     /// `build_chat_joined_args` wire layout: `[wstring channel_name][u8
@@ -111,12 +126,12 @@ mod tests {
         ];
         assert_eq!(buf, expected, "byte-exact wire layout for 'say'/0");
 
-        let buf = build_chat_joined_args("tell", 9);
+        let buf = build_chat_joined_args("tell", 10);
         let expected: &[u8] = &[
-            4, 0, 0, 0, b't', 0, b'e', 0, b'l', 0, b'l', 0, // wstring "tell"
-            9, // channel_id
+            4, 0, 0, 0, b't', 0, b'e', 0, b'l', 0, b'l', 0,  // wstring "tell"
+            10, // channel_id
         ];
-        assert_eq!(buf, expected, "byte-exact wire layout for 'tell'/9");
+        assert_eq!(buf, expected, "byte-exact wire layout for 'tell'/10");
     }
 
     /// All 8 channels in `DEFAULT_CHAT_CHANNELS` must produce well-formed
@@ -149,12 +164,12 @@ mod tests {
     }
 
     /// `build_welcome_message_args` wire layout:
-    /// `[wstring speaker][u8 0=flags][u8 9=CHAN_TELL][wstring text]`.
+    /// `[wstring speaker][u8 0=flags][u8 9=CHAN_feedback][wstring text]`.
     /// Pin the full byte sequence so a regression that drops the
     /// flags byte, picks a different channel, or rewrites the welcome
     /// text fails here.
     #[test]
-    fn build_welcome_message_args_emits_speaker_flags_chan_tell_then_text() {
+    fn build_welcome_message_args_emits_speaker_flags_chan_feedback_then_text() {
         let buf = build_welcome_message_args("S", 7);
         // Expected text: "Welcome to Stargate Worlds. Your player id is: 7."
         // (50 chars, all BMP, so 50 UTF-16 code units, 100 bytes).
@@ -163,8 +178,9 @@ mod tests {
         expected.extend_from_slice(&1u32.to_le_bytes());
         expected.extend_from_slice(&[b'S', 0]);
         expected.push(0u8); // SpeakerFlags
-        expected.push(9u8); // CHAN_TELL
-                            // text wstring
+        expected.push(9u8); // CHAN_feedback, as the python's literal 9
+
+        // text wstring
         let text = "Welcome to Stargate Worlds. Your player id is: 7.";
         let utf16: Vec<u16> = text.encode_utf16().collect();
         expected.extend_from_slice(&(utf16.len() as u32).to_le_bytes());
@@ -230,8 +246,8 @@ mod tests {
         assert_eq!(buf[after_speaker], 0, "SpeakerFlags must be 0");
         assert_eq!(
             buf[after_speaker + 1],
-            CHAN_TELL,
-            "Channel must be CHAN_TELL"
+            CHAN_FEEDBACK,
+            "Channel must be CHAN_FEEDBACK"
         );
     }
 }

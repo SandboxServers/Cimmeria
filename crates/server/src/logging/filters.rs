@@ -181,7 +181,8 @@ use crate::otel;
 /// (SS-C3) the channel allowlist, the GM mutes and the unsupported
 /// Communicator methods: `chat.channel_rejected`, `chat.gm_mute` /
 /// `chat.gm_unmute` (INFO audit rows), their `_refused` rows,
-/// `chat.method_unsupported`, and the DEBUG `chat.muted_refused`. Both are
+/// `chat.method_unsupported`, and the DEBUG `chat.muted_refused`; and
+/// (SS-C4) the DEBUG `chat.channels_registered` row per login. Both are
 /// `debug` so the suppressed drops and the muted lines reach SigNoz.
 /// `online_index` (SS-00) is the online name index: DEBUG `insert` /
 /// `remove` rows with the teardown `path`, and a DEBUG `lookup` row with
