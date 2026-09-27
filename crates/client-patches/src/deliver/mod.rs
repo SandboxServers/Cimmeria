@@ -103,6 +103,15 @@ fn record(counters: &Counters, method: ClientMethod, handler: &str, outcome: &De
                 log::line(format_args!("{name} dropped: no Lua stack space (#{n})"));
             }
         }
+        Delivery::SetupError { status, message } => {
+            let n = bump(&counters.handler_failed);
+            if is_log_worthy(n) {
+                let short: String = message.chars().take(200).collect();
+                log::line(format_args!(
+                    "{name} dropped: setting up the Lua call raised an error (status {status}): {short} (#{n})"
+                ));
+            }
+        }
         Delivery::HandlerError { status, message } => {
             let n = bump(&counters.handler_failed);
             if is_log_worthy(n) {

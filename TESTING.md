@@ -2,11 +2,11 @@
 
 > **Audience**: Engineers writing or reviewing tests in the Cimmeria workspace.
 > **Type**: Reference + how-to.
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
 > **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**. CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` and `cimmeria-client-patches` cdylibs, leaving **2,691 tests actually gated on every PR**. Of those, 224 are live-DB regression guards (`require_db_or_skip!`, in the crates `tools/test-live-db.sh` lists) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~147 tests at the current 2,936 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate with live-DB tests) against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently has **6,019 `#[test]` / `#[tokio::test]` cases across 950 files** (counted with `python tools/extract_tests.py`). CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` and `cimmeria-client-patches` cdylibs, leaving **5,604 tests actually gated on every PR**. Of those, 811 are live-DB regression guards (`require_db_or_skip!`, in the crates `tools/test-live-db.sh` lists) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~301 tests at the current 6,019 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate with live-DB tests) against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 
@@ -402,7 +402,7 @@ cargo nextest run --profile=ci --workspace \
 cargo test --doc -p cimmeria-commands
 ```
 
-The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects 2,691 of the workspace's 2,936 tests, of which the 224 live-DB guards self-skip without `DATABASE_URL`.
+The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects 5,604 of the workspace's 6,019 tests, of which the 811 live-DB guards self-skip without `DATABASE_URL`.
 
 `cargo test --workspace ...` still works for quick sanity checks if you don't have nextest installed, but CI uses nextest and that's what the JUnit upload to Codecov Test Analytics expects.
 

@@ -21,7 +21,7 @@
 //! 3. **Delivers** on the main thread ([`deliver`]): a detour on
 //!    `FEngineLoop::Tick` drains the queue into the UI Lua through the
 //!    `lua51.dll` C API, calling `CimmeriaBM.onOpen(...)` and its siblings
-//!    under `lua_pcall`.
+//!    inside `lua_cpcall`.
 //!
 //! Sending (the cell methods 61–66) is not here yet.
 //!

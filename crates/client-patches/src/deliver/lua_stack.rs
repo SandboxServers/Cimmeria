@@ -4,21 +4,29 @@
 //! `SGW.exe` it is the client's `lua51.dll`; in tests it is a small stack
 //! simulator, so the stack discipline is tested on the host:
 //!
+//! - Everything that touches the Lua heap runs inside `lua_cpcall`: the
+//!   lookups, the argument tables and strings, and the handler call. Those
+//!   API calls can raise an allocation error, and outside a protected call
+//!   Lua has nothing to unwind to, so it calls its panic function and the
+//!   client exits. Inside, the error ends the `lua_cpcall` and the call is
+//!   reported as [`Delivery::SetupError`].
 //! - The overlay table and its function are looked up with `lua_rawget`,
-//!   so no metamethod runs outside `lua_pcall`.
-//! - The handler runs under `lua_pcall` only, never `lua_call`.
+//!   so no metamethod runs.
+//! - The handler runs under a nested `lua_pcall`, never `lua_call`, so its
+//!   own errors are told apart from a failure to set the call up.
 //! - The stack top is restored whatever happens: delivered, overlay
-//!   missing, handler missing, or the handler raised an error.
-//!
-//! Outside `lua_pcall` the client's Lua has no error handler to unwind to:
-//! an error there (only an allocation failure is possible in what is done
-//! here) goes to Lua's panic function, as it would for the game's own API
-//! calls. It does not unwind through the DLL.
+//!   missing, handler missing, the handler raised an error, or setting up
+//!   the call raised one.
 
 use super::plan::{call_slots, LuaCall, LuaValue, TABLE};
 
-/// `LUA_GLOBALSINDEX`: the stock Lua 5.1 value, present in the client's
-/// `index2adr`.
+/// `LUA_GLOBALSINDEX`: the stock Lua 5.1 value, which the client uses too.
+/// The client's tolua++ `tolua_beginmodule`/`tolua_module` (`0x00403bb0`,
+/// `0x00403bf0`) push the globals with `lua_pushvalue(L, -0x2712)`, that is
+/// -10002. The `-10000` in its other tolua++ helpers (`0x00402a20`,
+/// `0x004035a0`) is `LUA_REGISTRYINDEX`: they read `tolua_ubox`,
+/// `tolua_super` and `luaL_getmetatable` names, which tolua++ keeps in the
+/// registry.
 pub const LUA_GLOBALSINDEX: i32 = -10002;
 
 /// `LUA_TSTRING`.
@@ -55,6 +63,11 @@ pub trait LuaStack {
     fn raw_get(&mut self, table: i32);
     /// `lua_pcall` with no message handler; returns the status.
     fn pcall(&mut self, args: i32, results: i32) -> i32;
+    /// `lua_cpcall`: run `body` against this state in protected mode and
+    /// return the status. An error raised by an API call inside `body`
+    /// unwinds out of `body` to here, so `body` does not finish; the error
+    /// value is then on top of the stack.
+    fn protected(&mut self, body: &mut dyn FnMut(&mut Self)) -> i32;
     /// The string at `index`, if it is one (`lua_tolstring` on a string).
     fn string_at(&mut self, index: i32) -> Option<String>;
 }
@@ -78,14 +91,39 @@ pub enum Delivery {
         /// The error value, if it was a string.
         message: String,
     },
+    /// Setting the call up raised an error before the handler ran: in
+    /// practice, Lua ran out of memory building the arguments.
+    SetupError {
+        /// The `lua_cpcall` status.
+        status: i32,
+        /// The error value, if it was a string.
+        message: String,
+    },
 }
 
 /// Make `call` and put the stack back as it was.
 pub fn deliver<L: LuaStack>(lua: &mut L, call: &LuaCall) -> Delivery {
     let top = lua.top();
-    let outcome = call_handler(lua, call);
+    let mut outcome = None;
+    let status = lua.protected(&mut |lua| outcome = Some(call_handler(lua, call)));
+    let outcome = match outcome {
+        Some(outcome) if status == 0 => outcome,
+        _ => Delivery::SetupError {
+            status,
+            message: error_message(lua),
+        },
+    };
     lua.set_top(top);
     outcome
+}
+
+/// The error value on top of the stack, as a string.
+fn error_message<L: LuaStack>(lua: &mut L) -> String {
+    if lua.type_at(-1) == LUA_TSTRING {
+        lua.string_at(-1).unwrap_or_default()
+    } else {
+        String::from("(error value is not a string)")
+    }
 }
 
 fn call_handler<L: LuaStack>(lua: &mut L, call: &LuaCall) -> Delivery {
@@ -109,11 +147,7 @@ fn call_handler<L: LuaStack>(lua: &mut L, call: &LuaCall) -> Delivery {
     if status == 0 {
         return Delivery::Delivered;
     }
-    let message = if lua.type_at(-1) == LUA_TSTRING {
-        lua.string_at(-1).unwrap_or_default()
-    } else {
-        String::from("(error value is not a string)")
-    };
+    let message = error_message(lua);
     Delivery::HandlerError { status, message }
 }
 

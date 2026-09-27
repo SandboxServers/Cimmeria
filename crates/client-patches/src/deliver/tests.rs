@@ -161,6 +161,51 @@ fn no_stack_space_pushes_nothing() {
     assert_stack_restored(&lua);
 }
 
+/// Running out of Lua memory while the arguments are built is caught by the
+/// protected call: nothing runs, the stack is restored, and the client is
+/// not taken down. The fake panics on any allocation outside a protected
+/// call, so a delivery that builds anything before entering one fails here.
+#[test]
+fn allocation_errors_while_building_are_contained() {
+    let mut lua = with_junk(FakeLua::with_overlay(ALL_HANDLERS));
+    lua.alloc_budget = Some(0);
+    assert_eq!(
+        deliver(&mut lua, &plan(&auctions())),
+        Delivery::SetupError {
+            status: 4,
+            message: "not enough memory".into()
+        }
+    );
+    assert!(lua.calls.is_empty());
+    assert_stack_restored(&lua);
+}
+
+/// Wherever the allocation error lands, from the first lookup to the last
+/// field of the last record, the call either fails cleanly or is delivered
+/// whole, and the stack is always restored.
+#[test]
+fn allocation_errors_anywhere_leave_the_stack_restored() {
+    let mut delivered_at = None;
+    for budget in 0..200 {
+        let mut lua = with_junk(FakeLua::with_overlay(ALL_HANDLERS));
+        lua.alloc_budget = Some(budget);
+        match deliver(&mut lua, &plan(&auctions())) {
+            Delivery::SetupError { status: 4, .. } => assert!(lua.calls.is_empty()),
+            Delivery::Delivered => {
+                assert_eq!(lua.calls.len(), 1);
+                delivered_at.get_or_insert(budget);
+            }
+            other => panic!("budget {budget}: {other:?}"),
+        }
+        assert_stack_restored(&lua);
+    }
+    let first = delivered_at.expect("a large enough budget delivers");
+    assert!(
+        first > 20,
+        "building a two-item page takes many allocations"
+    );
+}
+
 #[test]
 fn drain_respects_the_frame_budget() {
     let queue = EventQueue::new(64);

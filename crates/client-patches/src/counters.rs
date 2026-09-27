@@ -26,7 +26,8 @@ pub struct Counters {
     pub dropped_no_overlay: AtomicU64,
     /// Calls dropped because `CimmeriaBM` has no function for them.
     pub dropped_no_handler: AtomicU64,
-    /// Calls whose Lua handler raised an error.
+    /// Calls whose Lua handler raised an error, or that could not be set
+    /// up: no stack space, or Lua ran out of memory building the arguments.
     pub handler_failed: AtomicU64,
 }
 

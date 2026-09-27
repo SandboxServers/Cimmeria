@@ -1,8 +1,16 @@
 //! A small Lua stack simulator for the delivery tests. It models only what
 //! [`LuaStack`] exposes, with the same index rules as the C API, and
 //! records every handler call.
+//!
+//! It also models where an allocation error can go. Every call that can
+//! allocate on the Lua heap panics unless it runs inside
+//! [`LuaStack::protected`], which is how the real client's Lua would reach
+//! its panic function and exit. With [`FakeLua::alloc_budget`] set, the
+//! allocation after the budget raises a Lua error, which unwinds to the
+//! enclosing `protected` the way `lua_cpcall` catches it.
 
 use std::collections::BTreeMap;
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 
 use super::lua_stack::{LuaStack, LUA_GLOBALSINDEX};
 
@@ -24,6 +32,12 @@ pub(super) struct Table {
     items: BTreeMap<i32, V>,
 }
 
+/// The panic payload that stands in for a raised Lua error.
+struct LuaRaise;
+
+/// `LUA_ERRMEM`.
+const LUA_ERRMEM: i32 = 4;
+
 pub(super) struct FakeLua {
     pub(super) stack: Vec<V>,
     tables: Vec<Table>,
@@ -33,6 +47,10 @@ pub(super) struct FakeLua {
     pub(super) raise: Option<V>,
     /// Free slots `check_stack` will grant beyond the current top.
     pub(super) room: i32,
+    /// How many more allocations succeed; `None` for no limit.
+    pub(super) alloc_budget: Option<usize>,
+    /// How many `protected` calls are running.
+    protected_depth: u32,
 }
 
 impl FakeLua {
@@ -44,6 +62,8 @@ impl FakeLua {
             calls: Vec::new(),
             raise: None,
             room: 64,
+            alloc_budget: None,
+            protected_depth: 0,
         }
     }
 
@@ -86,6 +106,19 @@ impl FakeLua {
         match &self.stack[self.slot(index)] {
             V::Table(id) => *id,
             other => panic!("index {index} is {other:?}, not a table"),
+        }
+    }
+
+    /// An API call that can allocate on the Lua heap.
+    fn allocates(&mut self) {
+        assert!(
+            self.protected_depth > 0,
+            "the Lua heap was touched outside a protected call"
+        );
+        match &mut self.alloc_budget {
+            Some(0) => std::panic::panic_any(LuaRaise),
+            Some(n) => *n -= 1,
+            None => {}
         }
     }
 
@@ -141,6 +174,7 @@ impl LuaStack for FakeLua {
     }
 
     fn check_stack(&mut self, extra: i32) -> bool {
+        self.allocates();
         extra <= self.room
     }
 
@@ -159,21 +193,25 @@ impl LuaStack for FakeLua {
     }
 
     fn push_string(&mut self, value: &str) {
+        self.allocates();
         self.stack.push(V::Str(value.to_string()));
     }
 
     fn create_table(&mut self, _array: i32, _record: i32) {
+        self.allocates();
         let id = self.new_table();
         self.stack.push(V::Table(id));
     }
 
     fn set_field(&mut self, table: i32, key: &str) {
+        self.allocates();
         let id = self.table_id(table);
         let value = self.pop();
         self.tables[id].fields.insert(key.to_string(), value);
     }
 
     fn raw_set_index(&mut self, table: i32, n: i32) {
+        self.allocates();
         let id = self.table_id(table);
         let value = self.pop();
         self.tables[id].items.insert(n, value);
@@ -210,6 +248,22 @@ impl LuaStack for FakeLua {
                     .push(V::Str(format!("attempt to call {other:?}")));
                 2
             }
+        }
+    }
+
+    fn protected(&mut self, body: &mut dyn FnMut(&mut Self)) -> i32 {
+        let base = self.stack.len();
+        self.protected_depth += 1;
+        let ran = catch_unwind(AssertUnwindSafe(|| body(self)));
+        self.protected_depth -= 1;
+        self.stack.truncate(base);
+        match ran {
+            Ok(()) => 0,
+            Err(payload) if payload.is::<LuaRaise>() => {
+                self.stack.push(V::Str("not enough memory".into()));
+                LUA_ERRMEM
+            }
+            Err(payload) => resume_unwind(payload),
         }
     }
 

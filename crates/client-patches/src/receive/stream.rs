@@ -6,7 +6,7 @@ use core::ffi::c_void;
 use cimmeria_patch_wire::{ByteSource, SourceExhausted};
 
 use crate::addresses::{ISTREAM_REMAINING_LENGTH, ISTREAM_RETRIEVE};
-use crate::memory::{is_readable, MemoryReader, ProcessMemory};
+use crate::memory::{MemoryReader, ProcessMemory};
 
 /// `const void* BinaryIStream::retrieve(int n)`: the next `n` bytes, consumed.
 type RetrieveFn = unsafe extern "thiscall" fn(this: *mut c_void, n: i32) -> *const u8;
@@ -68,11 +68,9 @@ impl ByteSource for ClientStream {
         let n = i32::try_from(out.len()).map_err(|_| SourceExhausted)?;
         // SAFETY: `open`'s contract, and `n` bytes are known to remain.
         let p = unsafe { (self.retrieve)(self.this, n) };
-        if p.is_null() || !is_readable(p as usize, out.len()) {
+        if p.is_null() || !ProcessMemory.read_into(p as usize, out) {
             return Err(SourceExhausted);
         }
-        // SAFETY: `out.len()` readable bytes at `p`, checked above.
-        unsafe { core::ptr::copy_nonoverlapping(p, out.as_mut_ptr(), out.len()) };
         Ok(())
     }
 }

@@ -7,7 +7,7 @@
 
 ## When to update
 
-A PR that adds or removes **≥5% of the workspace test count** (~147 tests against the current 2,936 baseline) updates the matching per-crate file under `docs/testing/inventory/` and the totals in [README.md](README.md) in the same PR. Smaller drifts get folded in by periodic sweep updates — a batched sweep every few weeks is cheaper than reviewing inventory churn on every PR. Renamed a test? Pick it up in the next sweep unless the PR is already in the ≥5% bucket.
+A PR that adds or removes **≥5% of the workspace test count** (~301 tests against the current 6,019 baseline) updates the matching per-crate file under `docs/testing/inventory/` and the totals in [README.md](README.md) in the same PR. Smaller drifts get folded in by periodic sweep updates — a batched sweep every few weeks is cheaper than reviewing inventory churn on every PR. Renamed a test? Pick it up in the next sweep unless the PR is already in the ≥5% bucket.
 
 Sweeps are scripted: run [`tools/extract_tests.py --write`](#how-to-regenerate). The catalogue has nonetheless drifted well past the ≥5% threshold — 1,351 rows against 2,936 tests as of 2026-07-25 — because for a long stretch the generator was not in the repo at all. That is fixed; the backfill sweep is still outstanding.
 

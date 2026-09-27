@@ -3,8 +3,8 @@
 //! Every pointer the DLL follows comes from the game and may be null,
 //! stale, or not yet set up (the hooks go in before the world loads). The
 //! [`MemoryReader`] trait is the only way the portable logic reads memory:
-//! in `SGW.exe` it is [`ProcessMemory`], which checks every page with
-//! `VirtualQuery` before copying; in tests it is a fake map of regions.
+//! in `SGW.exe` it is [`ProcessMemory`], which copies through
+//! `ReadProcessMemory`; in tests it is a fake map of regions.
 
 /// Bounded reads of another component's memory. A read that is not fully
 /// readable returns `None`; it never faults.
@@ -27,25 +27,59 @@ pub trait MemoryReader {
     }
 }
 
-/// The live process, with every read validated page by page.
+/// The live process. Reads go through `ReadProcessMemory` on the current
+/// process, which fails instead of faulting.
+///
+/// A `VirtualQuery` check followed by a plain copy is not enough: another
+/// thread can free or reprotect the page between the two, and the access
+/// violation that follows is a structured exception, which `catch_unwind`
+/// does not catch. The kernel's copy reports a page that went away as a
+/// failed call. The `VirtualQuery` walk is kept in front as a cheap reject,
+/// and because it refuses guard pages, which a read would otherwise trip.
 #[cfg(all(windows, target_arch = "x86"))]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProcessMemory;
 
 #[cfg(all(windows, target_arch = "x86"))]
+impl ProcessMemory {
+    /// Fill `out` from `addr`. `false`, with `out` unspecified, if any byte
+    /// is unreadable.
+    pub fn read_into(&self, addr: usize, out: &mut [u8]) -> bool {
+        is_readable(addr, out.len()) && os_copy(addr, out)
+    }
+}
+
+#[cfg(all(windows, target_arch = "x86"))]
 impl MemoryReader for ProcessMemory {
     fn read_bytes(&self, addr: usize, len: usize) -> Option<Vec<u8>> {
-        if !is_readable(addr, len) {
-            return None;
-        }
         let mut out = vec![0u8; len];
-        // SAFETY: every page of [addr, addr + len) was just checked to be
-        // committed and readable.
-        unsafe {
-            core::ptr::copy_nonoverlapping(addr as *const u8, out.as_mut_ptr(), len);
-        }
-        Some(out)
+        self.read_into(addr, &mut out).then_some(out)
     }
+}
+
+/// `ReadProcessMemory` on this process: the whole of `out`, or `false`. It
+/// never faults, whatever `addr` points at.
+#[cfg(all(windows, target_arch = "x86"))]
+fn os_copy(addr: usize, out: &mut [u8]) -> bool {
+    use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    if out.is_empty() {
+        return true;
+    }
+    let mut copied = 0usize;
+    // SAFETY: `out` is a writable buffer of `out.len()` bytes. The source is
+    // only read by the kernel, which validates it.
+    let ok = unsafe {
+        ReadProcessMemory(
+            GetCurrentProcess(),
+            addr as *const core::ffi::c_void,
+            out.as_mut_ptr().cast(),
+            out.len(),
+            &mut copied,
+        )
+    };
+    ok != 0 && copied == out.len()
 }
 
 /// Page protections that allow reading.
@@ -57,11 +91,12 @@ const READABLE: u32 = windows_sys::Win32::System::Memory::PAGE_READONLY
     | windows_sys::Win32::System::Memory::PAGE_EXECUTE_READWRITE
     | windows_sys::Win32::System::Memory::PAGE_EXECUTE_WRITECOPY;
 
-/// Whether every byte of `[addr, addr + len)` is committed and readable.
-/// Walks the range region by region with `VirtualQuery`, which reads page
-/// metadata only, never the pages.
+/// Whether every byte of `[addr, addr + len)` is committed and readable
+/// right now. Walks the range region by region with `VirtualQuery`, which
+/// reads page metadata only, never the pages. A point-in-time answer: the
+/// copy itself must still be one that cannot fault.
 #[cfg(all(windows, target_arch = "x86"))]
-pub fn is_readable(addr: usize, len: usize) -> bool {
+fn is_readable(addr: usize, len: usize) -> bool {
     use windows_sys::Win32::System::Memory::{
         VirtualQuery, MEMORY_BASIC_INFORMATION, MEM_COMMIT, PAGE_GUARD,
     };
@@ -169,5 +204,47 @@ mod tests {
         assert_eq!(mem.read_bytes(0, 4), None);
         assert_eq!(mem.read_bytes(0x10, 4), None, "the null page is unmapped");
         assert_eq!(mem.read_bytes(usize::MAX - 1, 4), None, "wraps");
+    }
+
+    /// The copy itself survives a page that is no longer readable, which is
+    /// what a page freed or reprotected after the `VirtualQuery` check looks
+    /// like. A plain pointer copy here would raise an access violation.
+    #[cfg(all(windows, target_arch = "x86"))]
+    #[test]
+    fn os_copy_fails_on_a_page_that_went_away() {
+        use windows_sys::Win32::System::Memory::{
+            VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
+            PAGE_NOACCESS, PAGE_READWRITE,
+        };
+
+        const PAGE: usize = 4096;
+        // SAFETY: a fresh private page, used only by this test.
+        let page = unsafe {
+            VirtualAlloc(
+                core::ptr::null(),
+                PAGE,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_READWRITE,
+            )
+        } as usize;
+        assert_ne!(page, 0);
+        // SAFETY: the page is committed read-write.
+        unsafe { (page as *mut u8).write_bytes(0x5A, PAGE) };
+        let mut out = [0u8; 8];
+        assert!(os_copy(page, &mut out));
+        assert_eq!(out, [0x5A; 8]);
+
+        let mut old = 0u32;
+        // SAFETY: the page is ours.
+        assert_ne!(
+            unsafe { VirtualProtect(page as *const _, PAGE, PAGE_NOACCESS, &mut old) },
+            0
+        );
+        assert!(!os_copy(page, &mut out), "reprotected after the check");
+        assert_eq!(ProcessMemory.read_bytes(page, 8), None);
+
+        // SAFETY: the page is ours and nothing refers to it any more.
+        assert_ne!(unsafe { VirtualFree(page as *mut _, 0, MEM_RELEASE) }, 0);
+        assert!(!os_copy(page, &mut out), "freed after the check");
     }
 }

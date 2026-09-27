@@ -66,11 +66,14 @@ harness is `cimmeria_client_patches-<hash>.exe`.
 
 Safety rules:
 
-- Every client pointer is read through `VirtualQuery`-checked reads, so a
-  bad pointer means "not ours", never a fault.
+- Every client pointer is read through `ReadProcessMemory` on the DLL's own
+  process, behind a `VirtualQuery` pre-check, so a bad pointer, or a page
+  freed by another thread mid-read, means "not ours", never a fault.
 - There is a `catch_unwind` at every Rust-owned FFI edge.
 - The queue lock is never held while calling into the game.
-- Lua runs only on the main thread, and handlers only under `lua_pcall`.
+- Lua runs only on the main thread, and every Lua call, including building
+  the arguments, inside `lua_cpcall`; handlers run under a nested
+  `lua_pcall`.
 
 The dispatcher and `Tick` detours use the `thiscall-unwind` ABI. A C++
 exception from the original function then reaches the game's own handler
@@ -123,8 +126,11 @@ How the calls are made:
 - **Lookup is raw.** `CimmeriaBM` and each function are read with
   `lua_rawget`, so no metamethod runs outside a protected call. The functions
   must be plain fields of the table, not inherited through `__index`.
-- **Every call runs under `lua_pcall`.** An error is logged with its message
-  and does not propagate. The Lua stack is restored whatever happens.
+- **Every call runs protected.** The lookups and the argument tables are
+  built inside `lua_cpcall`, so running out of Lua memory drops the call
+  instead of exiting the client, and the handler runs under `lua_pcall`.
+  Either error is logged with its message and does not propagate. The Lua
+  stack is restored whatever happens.
 - **A missing overlay drops the call.** If `CimmeriaBM` is not a table, or it
   lacks the function, the call is dropped and counted. The DLL keeps no Lua
   state, so the overlay should request what it needs when it opens, for

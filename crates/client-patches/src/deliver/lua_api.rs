@@ -5,7 +5,15 @@
 //! `wchar_t*` (UTF-16), lengths count characters, and `lua_Number` is
 //! `double`. The names below were read from its export table. All are
 //! `__cdecl` (`YA` in the mangling).
+//!
+//! Being C++, it raises Lua errors as C++ exceptions: it imports
+//! `_CxxThrowException` and `__CxxFrameHandler3`, carries RTTI for
+//! `lua_longjmp*`, and imports no `longjmp`. So the exports are declared
+//! `C-unwind`: an allocation error inside [`FfiLua::protected`] unwinds
+//! through the Rust frames between `lua_cpcall` and the failing call,
+//! running their destructors, and `lua_cpcall` catches it.
 
+use core::cell::Cell;
 use core::ffi::c_void;
 
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
@@ -14,18 +22,21 @@ use super::lua_stack::LuaStack;
 
 type State = *mut c_void;
 
-type GetTop = unsafe extern "C" fn(State) -> i32;
-type SetTop = unsafe extern "C" fn(State, i32);
-type CheckStack = unsafe extern "C" fn(State, i32) -> i32;
-type Type = unsafe extern "C" fn(State, i32) -> i32;
-type PushInteger = unsafe extern "C" fn(State, i32);
-type PushString = unsafe extern "C" fn(State, *const u16);
-type CreateTable = unsafe extern "C" fn(State, i32, i32);
-type SetField = unsafe extern "C" fn(State, i32, *const u16);
-type RawGet = unsafe extern "C" fn(State, i32);
-type RawSetI = unsafe extern "C" fn(State, i32, i32);
-type PCall = unsafe extern "C" fn(State, i32, i32, i32) -> i32;
-type ToLString = unsafe extern "C" fn(State, i32, *mut u32) -> *const u16;
+type GetTop = unsafe extern "C-unwind" fn(State) -> i32;
+type SetTop = unsafe extern "C-unwind" fn(State, i32);
+type CheckStack = unsafe extern "C-unwind" fn(State, i32) -> i32;
+type Type = unsafe extern "C-unwind" fn(State, i32) -> i32;
+type PushInteger = unsafe extern "C-unwind" fn(State, i32);
+type PushString = unsafe extern "C-unwind" fn(State, *const u16);
+type CreateTable = unsafe extern "C-unwind" fn(State, i32, i32);
+type SetField = unsafe extern "C-unwind" fn(State, i32, *const u16);
+type RawGet = unsafe extern "C-unwind" fn(State, i32);
+type RawSetI = unsafe extern "C-unwind" fn(State, i32, i32);
+type PCall = unsafe extern "C-unwind" fn(State, i32, i32, i32) -> i32;
+type ToLString = unsafe extern "C-unwind" fn(State, i32, *mut u32) -> *const u16;
+/// The C function `lua_cpcall` runs.
+type CFunction = unsafe extern "C-unwind" fn(State) -> i32;
+type CPCall = unsafe extern "C-unwind" fn(State, CFunction, *mut c_void) -> i32;
 
 /// The exports delivery calls, resolved once at start-up.
 pub(crate) struct LuaApi {
@@ -41,13 +52,14 @@ pub(crate) struct LuaApi {
     rawseti: RawSetI,
     pcall: PCall,
     tolstring: ToLString,
+    cpcall: CPCall,
 }
 
 /// The DLL, as `GetModuleHandleW` wants it.
 const MODULE: &str = "lua51.dll";
 
 /// `(C API name, mangled export name)`, in [`LuaApi`] field order.
-pub(crate) const EXPORTS: [(&str, &str); 12] = [
+pub(crate) const EXPORTS: [(&str, &str); 13] = [
     ("lua_gettop", "?lua_gettop@@YAHPAUlua_State@@@Z"),
     ("lua_settop", "?lua_settop@@YAXPAUlua_State@@H@Z"),
     ("lua_checkstack", "?lua_checkstack@@YAHPAUlua_State@@H@Z"),
@@ -63,6 +75,7 @@ pub(crate) const EXPORTS: [(&str, &str); 12] = [
         "lua_tolstring",
         "?lua_tolstring@@YAPB_WPAUlua_State@@HPAI@Z",
     ),
+    ("lua_cpcall", "?lua_cpcall@@YAHPAUlua_State@@P6AH0@ZPAX@Z"),
 ];
 
 /// Why the API could not be resolved.
@@ -113,6 +126,7 @@ impl LuaApi {
                 rawseti: t::<usize, RawSetI>(found[9]),
                 pcall: t::<usize, PCall>(found[10]),
                 tolstring: t::<usize, ToLString>(found[11]),
+                cpcall: t::<usize, CPCall>(found[12]),
             })
         }
     }
@@ -128,6 +142,39 @@ fn wide(s: &str) -> Vec<u16> {
         .take_while(|&c| c != 0)
         .chain(Some(0))
         .collect()
+}
+
+/// Aborts the process if dropped while a Rust panic unwinds. It stops a Rust
+/// panic from unwinding into `lua_cpcall`, whose C++ `catch (...)` would
+/// swallow it. A Lua error unwinding through it is a foreign exception, not
+/// a panic, so it passes.
+struct AbortOnPanic;
+
+impl Drop for AbortOnPanic {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            std::process::abort();
+        }
+    }
+}
+
+thread_local! {
+    /// The body [`FfiLua::protected`] is running, for [`protected_entry`].
+    /// A thread-local rather than `lua_cpcall`'s userdata argument, so the
+    /// entry needs no `lua_touserdata`.
+    static PROTECTED_BODY: Cell<*mut c_void> = const { Cell::new(core::ptr::null_mut()) };
+}
+
+/// The C function `lua_cpcall` calls: runs the body `protected` stored.
+unsafe extern "C-unwind" fn protected_entry(_state: State) -> i32 {
+    let _guard = AbortOnPanic;
+    let body = PROTECTED_BODY.with(|slot| slot.replace(core::ptr::null_mut()));
+    if !body.is_null() {
+        // SAFETY: `protected` stored a pointer to its `&mut dyn FnMut()`,
+        // which outlives this call, and took nothing else from it.
+        unsafe { (*body.cast::<&mut dyn FnMut()>())() };
+    }
+    0
 }
 
 /// The UI `lua_State` driven through [`LuaApi`]. Main thread only.
@@ -184,6 +231,19 @@ impl LuaStack for FfiLua<'_> {
 
     fn pcall(&mut self, args: i32, results: i32) -> i32 {
         unsafe { (self.api.pcall)(self.state, args, results, 0) }
+    }
+
+    fn protected(&mut self, body: &mut dyn FnMut(&mut Self)) -> i32 {
+        let (cpcall, state) = (self.api.cpcall, self.state);
+        let mut run = || body(self);
+        let mut run: &mut dyn FnMut() = &mut run;
+        let slot = (&mut run as *mut &mut dyn FnMut()).cast::<c_void>();
+        let outer = PROTECTED_BODY.with(|s| s.replace(slot));
+        // `lua_cpcall` calls `protected_entry` on this thread before it
+        // returns, and catches any Lua error raised inside.
+        let status = unsafe { cpcall(state, protected_entry, core::ptr::null_mut()) };
+        PROTECTED_BODY.with(|s| s.set(outer));
+        status
     }
 
     fn string_at(&mut self, index: i32) -> Option<String> {

@@ -51,7 +51,8 @@ on every launch, whether or not telemetry is on.
   through untouched.
 - **Thread discipline.** The network thread only reads bytes and queues
   typed values. Lua and engine calls happen on the main thread, in the
-  `FEngineLoop::Tick` detour. Lua runs under `lua_pcall` only.
+  `FEngineLoop::Tick` detour. Every Lua call, including building the
+  arguments, runs inside `lua_cpcall`, and the handler under `lua_pcall`.
 
 ## How it fits together
 
