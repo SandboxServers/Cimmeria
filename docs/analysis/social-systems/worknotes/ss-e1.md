@@ -112,12 +112,18 @@ Full addresses and the intermediate call chain are in `duel-wire-formats.md`'s S
 
 ## Commands run
 
-Documentation only; no compiling commands were run. All work was Ghidra MCP calls against the
+Documentation only; no compiling commands were run. The primary traces were Ghidra MCP calls against the
 already-open `SGW.exe` program, plus `grep`/`find` against the client Lua tree and this repo's
 `entities/defs/`. `pwsh tools/lint-md.ps1` was not run this session (Windows PowerShell tool,
 not exercised — the CRLF line-ending discipline was checked manually with `file`/`cat -A` after
 every edit instead, since the `Edit` tool silently rewrites touched lines to LF; each edited file
 was re-normalized to CRLF with `sed` immediately afterward and re-verified).
+
+**Provenance of the review follow-up.** The later PR #875 review round (the `sendMailResult` wire
+order in M-Q1) had no live Ghidra instance or `SGW.exe`. That verdict rests on architecture evidence
+already in the tree: the generic dispatcher `Client_NetIn_EntityMethodDispatch @ 0x00c6f8f0` in
+`black-market-client-window-patch.md`. The specific handler was not re-disassembled. Every other verdict
+in this worknote comes from the primary traces.
 
 ## Known gaps
 

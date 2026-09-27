@@ -119,8 +119,9 @@ INT32 charges
 
 The server always writes `attachmentCount = 0` today — attachment claim
 (`takeItemFromMailMessage` / `takeCashFromMailMessage`) is unimplemented, so the client is never
-given an attachment record to act on. The wire layout above is settled; only the server-side
-population of it remains to be built.
+given an attachment record to act on. The wire layout above is recovered except for `durability`, whose INT32-versus-float
+representation is still unresolved (the wire follows `alias.xml`'s INT32 until a capture settles
+it); the server-side population of it remains to be built.
 
 ### onMailRead
 

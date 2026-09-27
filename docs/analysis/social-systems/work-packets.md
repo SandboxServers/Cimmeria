@@ -238,7 +238,7 @@ Answer each with an address or file:line and a verdict, into `docs/reverse-engin
 
 ### SS-D2: PvP flag and the harm gate
 
-**Status:** BlockedDependency (SS-D1; SS-E1 D-Q4 and D-Q5). **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
+**Status:** BlockedDependency (SS-D1). The PvP-flag vehicle stays open under SS-E1 D-Q4 and is resolved by this packet's receiver trace; D-Q5 is closed. **Advisor:** `combat-systems-advisor`, `aoi-witness-broadcast`, `server-authority-enforcer`.
 
 **Scope:**
 
