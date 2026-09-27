@@ -13,6 +13,7 @@ pub(super) use crate::test_support::TestTransport;
 mod attach_live;
 mod attach_race;
 mod attach_rollback;
+mod attach_vault;
 mod delete_guard;
 mod packets;
 mod read;

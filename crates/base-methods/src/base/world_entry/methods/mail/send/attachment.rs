@@ -80,11 +80,27 @@ pub(in super::super) const ITEM_NOT_FOUND: AttachmentRefusal = AttachmentRefusal
     "item_not_owned",
     "The attached item is no longer in your bags. The message was not sent.",
 );
-/// Equipped, bandolier, mission, crafting, bank and buyback items stay put.
+/// Equipped, bandolier, mission and crafting items stay put.
 pub(in super::super) const ITEM_NOT_IN_MAIN_BAG: AttachmentRefusal = AttachmentRefusal::new(
     MailResult::ItemNotAvailable,
     "item_not_in_main_bag",
     "Only items in your main bag can be sent by gate-mail. The message was not sent.",
+);
+/// A vault item (personal 17, auction 18, team 19, command 20). Owner
+/// decision 2026-09-27 (Bank campaign): vendors, trade, crafting and mail
+/// see only the backpack.
+pub(in super::super) const ITEM_IN_VAULT: AttachmentRefusal = AttachmentRefusal::new(
+    MailResult::ItemNotAvailable,
+    "item_in_vault",
+    "Items in a vault cannot be sent by gate-mail. Move it to your backpack first. \
+     The message was not sent.",
+);
+/// A buyback item (16): still the vendor's until bought back.
+pub(in super::super) const ITEM_IN_BUYBACK: AttachmentRefusal = AttachmentRefusal::new(
+    MailResult::ItemNotAvailable,
+    "item_in_buyback",
+    "Items on a vendor's buyback list cannot be sent by gate-mail. \
+     The message was not sent.",
 );
 pub(in super::super) const ITEM_BOUND: AttachmentRefusal = AttachmentRefusal::new(
     MailResult::ItemNotAvailable,

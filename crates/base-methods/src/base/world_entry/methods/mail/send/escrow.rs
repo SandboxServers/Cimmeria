@@ -20,12 +20,12 @@
 //! is no cell state. If that handler ever grows behaviour, this path needs
 //! the payload too.
 
-use cimmeria_entity::inventory::INV_MAIN;
+use cimmeria_entity::inventory::{INV_BANK, INV_BUYBACK, INV_COMMAND_BANK, INV_MAIN};
 use sqlx::PgConnection;
 
 use super::attachment::{
-    AttachmentRefusal, ItemRequest, ITEM_BOUND, ITEM_NOT_FOUND, ITEM_NOT_IN_MAIN_BAG,
-    ITEM_QUANTITY_EXCEEDS_STACK, NOT_ENOUGH_CASH,
+    AttachmentRefusal, ItemRequest, ITEM_BOUND, ITEM_IN_BUYBACK, ITEM_IN_VAULT, ITEM_NOT_FOUND,
+    ITEM_NOT_IN_MAIN_BAG, ITEM_QUANTITY_EXCEEDS_STACK, NOT_ENOUGH_CASH,
 };
 use crate::base::crafting::inventory_locks::take_inventory_locks;
 
@@ -59,15 +59,21 @@ pub(super) async fn lock_source_item(
 
 /// CAT-G-01 / D-SS08: the item is the sender's, in the main bag (the trade
 /// allowlist, `trade/execute/swap.rs` `TRADEABLE_CONTAINERS`, so equipped,
-/// bandolier, mission, crafting, bank and buyback items are all refused),
-/// not bound, and holds at least the quantity asked for.
+/// bandolier, mission, crafting, vault and buyback items are all refused),
+/// not bound, and holds at least the quantity asked for. Vault (17-20) and
+/// buyback (16) items get their own reason and line: the owner's rule
+/// (2026-09-27) is that mail, like vendors, trade and crafting, sees only
+/// the backpack.
 pub(super) fn check_source(
     source: Option<&SourceItem>,
     quantity: i32,
 ) -> Result<&SourceItem, AttachmentRefusal> {
     let source = source.ok_or(ITEM_NOT_FOUND)?;
-    if source.container_id != INV_MAIN {
-        return Err(ITEM_NOT_IN_MAIN_BAG);
+    match source.container_id {
+        INV_MAIN => {}
+        INV_BANK..=INV_COMMAND_BANK => return Err(ITEM_IN_VAULT),
+        INV_BUYBACK => return Err(ITEM_IN_BUYBACK),
+        _ => return Err(ITEM_NOT_IN_MAIN_BAG),
     }
     if source.bound {
         return Err(ITEM_BOUND);

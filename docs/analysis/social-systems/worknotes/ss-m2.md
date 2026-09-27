@@ -126,9 +126,17 @@ Each revert was applied with a script, the `mail` live-DB tier run against `sgw_
 5. No wireclient (type 11) session: two-client mail stays for SS-M3's "A sends B a COD item" test.
 6. The advisory lock's job against other inventory writers (crafting, vendor, trade on the same player) has no cross-system race test; the mail-vs-mail races are covered.
 
+## Owner constraint: backpack only (relayed 2026-09-27)
+
+The Bank campaign's owner decision (vendors, trade, crafting and mail see only the backpack) arrived after the first push. What changed:
+
+- `check_source` (`send/escrow.rs`) already refused everything outside the main bag. Vault items (17 personal, 18 auction, 19 team, 20 command) now get `reason = item_in_vault` and "Items in a vault cannot be sent by gate-mail. Move it to your backpack first. The message was not sent."; buyback (16) gets `reason = item_in_buyback` and its own line. Both answer `MAILRESULT_ItemNotAvailable`.
+- Guard: `send_rejects_banked_item` (live DB, `tests/attach_vault.rs`), all five containers: refused, the specific reason logged, the feedback line, nothing debited, no mail, no escrow, and each item still in its own container. **Proof:** with the container check bypassed it FAILED (the first vault item was mailed, code 0 not 2); restored, it passed. `live-db-test.sh mail` after the change: 75 run, 75 passed.
+- Nothing in SS-M2 puts an item back into an inventory. The return-side rule (a take, a return, a COD delivery lands in the backpack, never 17-20) is SS-M3's; it is written into `mail-system.md` and integration edit 3 below. BV-01's grant guard (#872) is not relied on.
+
 ## Integration edits for the coordinator
 
 1. `docs/gap-analysis.md`: the TOTALS line and percentages are recomputed on top of `e0d5cecf7`; any packet merged before this one that also moved rows needs them recomputed again.
 2. `work-packets.md` contract: `sgw_gate_mail_item` columns as in the SQL file; `sgw_gate_mail.item_id` stays NULL (the escrow table is the one copy). SS-M3's take and return, and SS-M4's expiry, should delete or move the escrow row in the same transaction as the mail change, and must never attach an item to an existing mail.
-3. Tell SS-M3: `deliver` holds the send lock order (advisory, item row, player rows); take-item needs the recipient's main-bag slot reservation (`reserve_main_slots_excluding` shape, `pg_advisory_xact_lock(player, INV_MAIN)`) and a `i32` overflow check on the credit (`cash` is `bigint`, `naquadah` is `integer`). A paid COD must zero `cash` (the delete guard keys on `cash = 0`).
+3. Tell SS-M3: every item it puts back (take, return, COD delivery) goes to the backpack (`INV_MAIN`), never 17-20, per the owner's backpack-only rule; SS-M3 picks and documents the full-backpack overflow (the packet's current answer: leave it in escrow and give feedback). `deliver` holds the send lock order (advisory, item row, player rows); take-item needs the recipient's main-bag slot reservation (`reserve_main_slots_excluding` shape, `pg_advisory_xact_lock(player, INV_MAIN)`) and a `i32` overflow check on the credit (`cash` is `bigint`, `naquadah` is `integer`). A paid COD must zero `cash` (the delete guard keys on `cash = 0`).
 4. Tell the Bank campaign (cimmeria-97) and Crafting (cimmeria-af): mail is a second path that removes main-bag items in its own transaction (`mail/send/escrow.rs`), taking `take_inventory_locks(player, [INV_MAIN])` first.
