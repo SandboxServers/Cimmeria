@@ -33,6 +33,7 @@ use cimmeria_entity::stats::{SPEED_ATTACK, SPEED_DEPLOY, SPEED_GRENADE};
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use crate::mercury::game_clock;
 
 use super::super::messaging::send_entity_method;
 use super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
@@ -196,7 +197,8 @@ pub(super) async fn begin_warmup(
             entity_id as i32,
             0,
             warmup_secs,
-            0.0, // same TODO as the cooldown timer: bigWorldTimeComplete
+            // Absolute, on the client's game clock, like the cooldown timer.
+            game_clock::game_time_secs() + warmup_secs,
         );
         send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await; // 12 = onTimerUpdate
     }

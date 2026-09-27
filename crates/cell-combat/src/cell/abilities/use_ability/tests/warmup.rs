@@ -12,6 +12,7 @@ use cimmeria_entity::abilities::{serialize_timer_update, EffectDef};
 
 use super::*;
 use crate::cell::abilities::resolve_warmups;
+use crate::mercury::game_clock::game_time_secs;
 
 pub(super) const WARMUP_ABILITY: i32 = 50;
 pub(super) const INSTANT_ABILITY: i32 = 51;
@@ -101,6 +102,22 @@ pub(super) fn warmup_mgr() -> SpaceManager {
 
 /// `(entity_id, method_index, args)` of every entity-method message, in
 /// send order, whether addressed to the entity or routed to a witness.
+/// `BigWorldTimeComplete`, bytes 17..21 of `onTimerUpdate`'s 21-byte args.
+pub(super) fn timer_expiry(args: &[u8]) -> f32 {
+    f32::from_le_bytes(args[17..21].try_into().unwrap())
+}
+
+/// The timer's expiry is absolute on the game clock: `duration` after a
+/// clock reading taken between `before` and `after` (CR-02). A relative
+/// expiry or the old `0.0` falls outside the window.
+pub(super) fn assert_absolute_expiry(args: &[u8], duration: f32, before: f32, after: f32) {
+    let expiry = timer_expiry(args);
+    assert!(
+        (before + duration..=after + duration).contains(&expiry),
+        "BigWorldTimeComplete {expiry} is not game time [{before}, {after}] + {duration}"
+    );
+}
+
 pub(super) fn calls(msgs: &[CellToBaseMsg]) -> Vec<(u32, u16, Vec<u8>)> {
     msgs.iter()
         .filter_map(|m| match m {
@@ -204,8 +221,12 @@ async fn warmup_wire_is_begin_at_launch_then_end_at_fire() {
     let mut mgr = warmup_mgr();
     let (tx, mut rx) = mpsc::channel(256);
 
+    let before = game_time_secs();
     assert!(handle_use_ability(1, WARMUP_ABILITY, 2, &tx, &mut mgr).await);
+    let after = game_time_secs();
     let launch = calls(&drain(&mut rx));
+    assert_absolute_expiry(&launch[0].2, COOLDOWN_SECS + WARMUP_SECS, before, after);
+    assert_absolute_expiry(&launch[2].2, WARMUP_SECS, before, after);
     let effect_seq = mgr
         .get_entity(1)
         .unwrap()
@@ -228,13 +249,27 @@ async fn warmup_wire_is_begin_at_launch_then_end_at_fire() {
         (
             1,
             ON_TIMER_UPDATE,
-            serialize_timer_update(WARMUP_ABILITY, 2, 1, 0, COOLDOWN_SECS + WARMUP_SECS, 0.0),
+            serialize_timer_update(
+                WARMUP_ABILITY,
+                2,
+                1,
+                0,
+                COOLDOWN_SECS + WARMUP_SECS,
+                timer_expiry(&launch[0].2),
+            ),
         ),
         (1, method_idx::ON_SEQUENCE, begin),
         (
             1,
             ON_TIMER_UPDATE,
-            serialize_timer_update(WARMUP_ABILITY, 1, 1, 0, WARMUP_SECS, 0.0),
+            serialize_timer_update(
+                WARMUP_ABILITY,
+                1,
+                1,
+                0,
+                WARMUP_SECS,
+                timer_expiry(&launch[2].2),
+            ),
         ),
     ];
     assert_eq!(launch, expected, "launch burst");
@@ -267,16 +302,19 @@ async fn warmup_wire_is_begin_at_launch_then_end_at_fire() {
 /// **No-change guard.** A zero-warmup ability's wire is what it was before
 /// AT-10: cooldown timer, `Ability_End`, then the damage, all in the launch
 /// pass, with no `Ability_Begin` and no warmup timer. The timer and
-/// `Ability_End` are compared byte for byte. This test passes on the pre-fix
-/// code too; that is the point.
+/// `Ability_End` are compared byte for byte, except that since CR-02 the
+/// timer's `BigWorldTimeComplete` is the absolute game-clock expiry.
 #[tokio::test]
 async fn zero_warmup_wire_is_unchanged() {
     let mut mgr = warmup_mgr();
     let (tx, mut rx) = mpsc::channel(256);
 
+    let before = game_time_secs();
     assert!(handle_use_ability(1, INSTANT_ABILITY, 2, &tx, &mut mgr).await);
+    let after = game_time_secs();
     let msgs = drain(&mut rx);
     let c = calls(&msgs);
+    assert_absolute_expiry(&c[0].2, COOLDOWN_SECS, before, after);
 
     let effect_seq = 1i32; // first `next_effect_id()` on a fresh manager
     let mut end = Vec::new();
@@ -294,7 +332,14 @@ async fn zero_warmup_wire_is_unchanged() {
         (
             1,
             ON_TIMER_UPDATE,
-            serialize_timer_update(INSTANT_ABILITY, 2, 1, 0, COOLDOWN_SECS, 0.0)
+            serialize_timer_update(
+                INSTANT_ABILITY,
+                2,
+                1,
+                0,
+                COOLDOWN_SECS,
+                timer_expiry(&c[0].2)
+            )
         ),
         "first: the plain cooldown timer"
     );

@@ -17,6 +17,7 @@ use cimmeria_entity::abilities::{
 use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
+use crate::mercury::game_clock;
 
 use super::super::messaging::send_entity_method;
 
@@ -505,14 +506,18 @@ pub async fn handle_use_ability(
     );
 
     // ── Send cooldown timer to attacker ──
-
+    //
+    // `BigWorldTimeComplete` is absolute, on the clock the client was told
+    // at login: the client's cooldown manager (`FUN_00c6d1c0`) shows
+    // `complete - clock`, clamped to 0, so a 0.0 here showed no cooldown.
+    // Python: `now + abilityCooldown + abilityWarmup` (AbilityManager.py:605).
     let timer_args = serialize_timer_update(
         ability_id,
         TIMER_ABILITY_COOLDOWN,
         entity_id as i32,
         0,
         charged_secs,
-        0.0, // TODO: bigWorldTimeComplete = gameTime + cooldown
+        game_clock::game_time_secs() + charged_secs,
     );
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
