@@ -527,3 +527,82 @@ async fn no_orphaned_escrow_after_sweep() {
 
     cleanup(&pool, BASE + 0x40).await;
 }
+
+/// Paying a COD restarts the mail's 30 days (security review of SS-M4,
+/// MEDIUM): the item is now the payer's, so a COD paid a moment before it
+/// expires is not quarantined out of their reach. Fails if `clear_cod`
+/// leaves `expires_at` as it was.
+#[tokio::test]
+async fn paid_cod_restarts_its_expiry() {
+    let pool = require_db_or_skip!();
+    let (owner, sender) = two_players(&pool, BASE + 0x48, "Rest").await;
+    set_naquadah(&pool, owner, 500).await;
+    let type_id = any_type_id(&pool).await;
+    let mail_id = AttachedMail::from(owner, sender, "SsmFourExpSRest")
+        .cod(100)
+        .item(ITEMS + 20, type_id, 1)
+        .insert(&pool)
+        .await;
+    set_expiry_state(&pool, mail_id, Some(NOW), false, false).await;
+    let o = Client::new(BASE as u32 + 0x43, owner, 55_203, "SsmFourExpORest");
+
+    let before = unix_now();
+    o.op(MailOp::PayCod { mail_id }, Some(&pool), Instant::now())
+        .await;
+    let row = expiry_row(&pool, mail_id).await.unwrap();
+    let at = row.expires_at.expect("still expires");
+    assert!(
+        (before + MAIL_TTL_SECS..=unix_now() + MAIL_TTL_SECS).contains(&at),
+        "30 days from the payment: {row:?}"
+    );
+
+    let summary = sweep_mailbox(&pool, owner, NOW, None).await;
+    assert_eq!(summary.scanned, 0, "no longer due: {summary:?}");
+    let row = expiry_row(&pool, mail_id).await.unwrap();
+    assert!(!row.quarantined && row.character_id == owner, "{row:?}");
+    assert!(
+        has_escrow(&pool, mail_id).await,
+        "the item is still takeable"
+    );
+
+    cleanup(&pool, BASE + 0x48).await;
+}
+
+/// A COD price is not value. An unpaid COD with no item and nobody to
+/// return it to (its sender's character is gone, `sender_id` NULL) is
+/// deleted when it expires, not quarantined empty for a GM.
+#[tokio::test]
+async fn expired_itemless_cod_with_no_sender_is_deleted() {
+    let pool = require_db_or_skip!();
+    let base = BASE + 0x50;
+    cleanup(&pool, base).await;
+    let owner = base + 1;
+    insert_players(&pool, base, &[(owner, "SsmFourExpNoS")]).await;
+    let mail_id = AttachedMail {
+        owner,
+        sender_id: None,
+        sender_name: "Gone",
+        cash: 70,
+        flags: MAIL_COD,
+        item: None,
+    }
+    .insert(&pool)
+    .await;
+    set_expiry_state(&pool, mail_id, Some(NOW), false, false).await;
+
+    let summary = sweep_mailbox(&pool, owner, NOW, None).await;
+
+    assert_eq!(
+        (summary.deleted, summary.quarantined),
+        (1, 0),
+        "{summary:?}"
+    );
+    assert_eq!(expiry_row(&pool, mail_id).await, None);
+    assert_eq!(
+        naquadah(&pool, owner).await,
+        0,
+        "the price is nobody's cash"
+    );
+
+    cleanup(&pool, base).await;
+}

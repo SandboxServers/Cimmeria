@@ -110,7 +110,7 @@ pub(super) async fn mark_read(
 ) -> Result<u64, sqlx::Error> {
     sqlx::query(
         "UPDATE sgw_gate_mail SET read_time = $1 \
-         WHERE mail_id = $2 AND character_id = $3 AND read_time = 0",
+         WHERE mail_id = $2 AND character_id = $3 AND read_time = 0 AND NOT quarantined",
     )
     .bind(now)
     .bind(mail_id)

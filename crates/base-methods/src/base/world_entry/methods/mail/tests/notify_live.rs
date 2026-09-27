@@ -313,3 +313,45 @@ async fn every_delivery_path_notifies_the_online_recipient() {
 
     cleanup(&pool, base).await;
 }
+
+/// A quarantined mail leaves an online owner's list with a line that says
+/// why (security review of SS-M4, LOW): without it an item they could see
+/// vanishes unexplained.
+#[tokio::test]
+async fn quarantine_tells_the_online_owner() {
+    let pool = require_db_or_skip!();
+    let base = BASE + 0x40;
+    cleanup(&pool, base).await;
+    let owner = base + 1;
+    insert_players(&pool, base, &[(owner, "SsmFourNtfQ")]).await;
+    let room = Room::new();
+    let seat = room.seat(base as u32 + 0x10, owner, 55_260, "SsmFourNtfQ", true);
+    let mail_id = AttachedMail {
+        owner,
+        sender_id: None,
+        sender_name: "Black Market",
+        cash: 15,
+        flags: 0,
+        item: None,
+    }
+    .insert(&pool)
+    .await;
+    set_expiry_state(&pool, mail_id, Some(1_000), false, false).await;
+
+    sweep_mailbox(&pool, owner, 1_000, Some(&room.fb())).await;
+
+    let got = room.take(&[seat]);
+    assert_eq!(
+        got[0],
+        vec![
+            Received::Other(method_idx::ON_MAIL_HEADER_REMOVE),
+            Received::Feedback(
+                "Your gate-mail \"Attached\" expired and could not be returned. It is held, \
+                 with its attachments, for a GM to recover."
+                    .into()
+            ),
+        ]
+    );
+
+    cleanup(&pool, base).await;
+}

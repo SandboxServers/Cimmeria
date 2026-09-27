@@ -176,3 +176,58 @@ async fn sweep_racing_take_item_moves_it_once() {
 
     cleanup(&pool, base).await;
 }
+
+/// The expiry sweep racing the payment of the COD it would return: the
+/// payer pays first and parks, then the sweep runs. The paid COD is never
+/// returned to the seller (who would then hold the item and the price):
+/// the payer is debited once, the seller gets one payment mail, and the
+/// mail stays the payer's with its item and a fresh expiry.
+#[tokio::test]
+async fn sweep_racing_pay_cod_never_returns_a_paid_cod() {
+    let pool = require_db_or_skip!();
+    let base = BASE + 0x10;
+    cleanup(&pool, base).await;
+    let (payer, seller) = (base + 1, base + 2);
+    insert_players(
+        &pool,
+        base,
+        &[(payer, "SsmFourRacePP"), (seller, "SsmFourRacePS")],
+    )
+    .await;
+    set_naquadah(&pool, payer, 1_000).await;
+    let type_id = any_type_id(&pool).await;
+    let item_id = ITEMS + 2;
+    let mail_id = AttachedMail::from(payer, seller, "SsmFourRacePS")
+        .cod(300)
+        .item(item_id, type_id, 1)
+        .insert(&pool)
+        .await;
+    set_expiry_state(&pool, mail_id, Some(NOW), false, false).await;
+
+    let c = Client::new(base as u32 + 0x10, payer, 55_212, "SsmFourRacePP");
+    let ops = wide_pool().await;
+    let (gate, gate_pid) = open_gate(&ops).await;
+    let pay = c.op(MailOp::PayCod { mail_id }, Some(&ops), Instant::now());
+    take_then_sweep(&ops, gate, gate_pid, payer, pay).await;
+    c.take();
+
+    assert_eq!(naquadah(&pool, payer).await, 700, "debited once");
+    let seller_mail: Vec<(i64, Option<i32>)> =
+        sqlx::query_as("SELECT cash, sender_id FROM sgw_gate_mail WHERE character_id = $1")
+            .bind(seller)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        seller_mail,
+        vec![(300, None)],
+        "one payment mail, nothing returned"
+    );
+    let row = expiry_row(&pool, mail_id).await.unwrap();
+    assert_eq!(row.character_id, payer, "{row:?}");
+    assert!(!row.returned && !row.quarantined, "{row:?}");
+    assert!(row.expires_at.is_some_and(|at| at > NOW), "{row:?}");
+    assert!(has_escrow(&pool, mail_id).await);
+
+    cleanup(&pool, base).await;
+}

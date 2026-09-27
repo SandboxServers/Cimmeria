@@ -38,7 +38,10 @@ use sqlx::PgPool;
 
 use super::claim::{unix_now, OpError};
 use super::notify::{notify_delivered, Delivery};
-use crate::base::feedback::{send_to_current_player, FeedbackCtx};
+use crate::base::feedback::{
+    send_to_current_player, serialize_on_player_communication, FeedbackCtx, CHAN_FEEDBACK,
+    FEEDBACK_SPEAKER,
+};
 use crate::base::player_index::OnlinePlayerIndex;
 use crate::base::ConnectedClientState;
 use crate::cell::mail;
@@ -46,6 +49,15 @@ use crate::cell::mail::codes::flags::MAIL_ARCHIVE;
 use crate::mercury::method_idx;
 
 pub(super) use terminal::{expire_one, ExpireOutcome, Expired, ExpiryPath};
+
+/// The owner's line when their mail is quarantined: without it an item
+/// they could see vanishes with no explanation.
+fn quarantined_text(subject: &str) -> String {
+    format!(
+        "Your gate-mail \"{subject}\" expired and could not be returned. It is held, with \
+         its attachments, for a GM to recover."
+    )
+}
 
 /// A mail's life before the sweep takes it: 720 hours, the client's own
 /// Expires constant (`0x2d0`, SS-E1 M-Q3).
@@ -277,6 +289,22 @@ async fn tell(pool: &PgPool, ctx: &FeedbackCtx<'_>, expired: &Expired) {
             &mail::serialize_on_mail_header_remove(expired.mail_id),
         )
         .await;
+        if let ExpiryPath::Quarantined { .. } = expired.path {
+            let line = serialize_on_player_communication(
+                FEEDBACK_SPEAKER,
+                0,
+                CHAN_FEEDBACK,
+                &quarantined_text(&expired.subject),
+            );
+            send_to_current_player(
+                ctx,
+                owner.addr,
+                expired.owner,
+                method_idx::ON_PLAYER_COMMUNICATION,
+                &line,
+            )
+            .await;
+        }
     }
     if let ExpiryPath::Returned { to_player_id } = expired.path {
         notify_delivered(

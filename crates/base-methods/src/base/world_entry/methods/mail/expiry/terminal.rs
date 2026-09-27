@@ -31,7 +31,7 @@ impl ExpiryPath {
 }
 
 /// A committed expiry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in super::super) struct Expired {
     pub(in super::super) mail_id: i32,
     /// The mailbox it expired from.
@@ -48,10 +48,12 @@ pub(in super::super) struct Expired {
     pub(in super::super) cod_cancelled: i64,
     /// The escrowed instance it still carries, if any.
     pub(in super::super) item_id: Option<i32>,
+    /// For the owner's line when it is quarantined.
+    pub(in super::super) subject: String,
 }
 
 /// What [`expire_one`] did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in super::super) enum ExpireOutcome {
     Expired(Expired),
     /// Nothing changed. `reason`: `not_found_for_owner` (gone, moved to
@@ -68,7 +70,10 @@ pub(in super::super) enum ExpireOutcome {
 /// and each side re-reads what the other committed. The due check is made
 /// under that lock, so a mail archived since the scan is skipped. Then:
 ///
-/// 1. **Nothing attached** (no escrow row, no cash, no COD): deleted.
+/// 1. **Nothing attached** (no escrow row, no gift cash): deleted, unless it
+///    is an unpaid COD that can still go back to its sender (path 1, per
+///    D-SS04). A COD price is not value: a COD with no item and nobody to
+///    return it to is deleted, not quarantined empty.
 /// 2. **Returnable** (never returned, not a paid COD, a `sender_id`):
 ///    [`return_locked`], SS-M3's return, in this transaction. An unpaid COD
 ///    is cancelled there with its price zeroed, so the price never becomes
@@ -97,6 +102,7 @@ pub(in super::super) async fn expire_one(
     let item = lock_escrow(&mut tx, mail_id).await?;
     let cod = mail.cod();
     let gift_cash = if cod { 0 } else { mail.cash };
+    let returnable = !mail.returned && !mail.cod_paid && mail.sender_id.is_some();
     let mut expired = Expired {
         mail_id,
         owner,
@@ -106,17 +112,20 @@ pub(in super::super) async fn expire_one(
         cash: gift_cash,
         cod_cancelled: if cod { mail.cash } else { 0 },
         item_id: item.map(|i| i.item_id),
+        subject: mail.subject.clone(),
     };
 
-    if item.is_none() && gift_cash == 0 && !cod {
+    if item.is_none() && gift_cash == 0 && !(cod && returnable) {
+        // `cash` here is 0, or the price of an unpaid COD nobody can pay.
         let deleted = sqlx::query(
             "DELETE FROM sgw_gate_mail m \
-             WHERE m.mail_id = $1 AND m.character_id = $2 AND m.cash = 0 \
-               AND NOT m.quarantined \
+             WHERE m.mail_id = $1 AND m.character_id = $2 \
+               AND (m.cash = 0 OR (m.flags & $3) <> 0) AND NOT m.quarantined \
                AND NOT EXISTS (SELECT 1 FROM sgw_gate_mail_item i WHERE i.mail_id = m.mail_id)",
         )
         .bind(mail_id)
         .bind(owner)
+        .bind(MAIL_COD)
         .execute(&mut *tx)
         .await?
         .rows_affected();

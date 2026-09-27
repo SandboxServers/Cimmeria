@@ -93,7 +93,7 @@ pub(super) async fn gm_expire(
         subject_player_id = owner,
         mail_id,
         expires_at = now,
-        path = expired.map(|e| e.path.name()),
+        path = expired.as_ref().map(|e| e.path.name()),
         "GM .mail_expire made a mail due",
     );
     let line = match expired.map(|e| e.path) {
