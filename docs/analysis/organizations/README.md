@@ -1,7 +1,7 @@
 # Organizations: Squads, Teams and Commands
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and the owner.
-> Updated: 2026-09-27. Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [RE findings](../../reverse-engineering/findings/organization-restoration.md), [wire formats](../../reverse-engineering/findings/organization-wire-formats.md), [documentation index](../../readme.md).
+> Updated: 2026-09-27 (ORG-11 close-out: feature-complete server-side, awaiting the release and the owner's UAT; see [Close-out state](#close-out-state-org-11)). Companions: [audit](audit.md), [work packets](work-packets.md), [session resume](handoffs/session-resume.md), [UAT guide](../../guides/organizations-uat.md), [RE findings](../../reverse-engineering/findings/organization-restoration.md), [wire formats](../../reverse-engineering/findings/organization-wire-formats.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -74,6 +74,8 @@ Against `main` @ `70795027`. The [audit](audit.md) has the file:line evidence fo
 | D-ORG24 | **APPROVED** (owner rule, relayed 2026-09-27) | **Telemetry is an acceptance criterion.** Every packet ships the spans, outcome rows, reasons, identity fields, transitions, negative-seam tests and metrics in [work-packets.md § Telemetry](work-packets.md#telemetry-owner-rule-2026-09-27), so any failed organization action can be explained from SigNoz alone. | Owner rule for every restored system. |
 | D-ORG25 | **APPROVED** (owner, relayed 2026-09-27) | **Copilot reviews are suspended.** Amends D-ORG01: the review spend is exhausted, so a PR squash-merges on green CI plus the coordinator's own review of the diff. Rebase and re-test first when its CI predates `main`, as before. | Owner instruction. The rest of D-ORG01 stands. |
 | D-ORG26 | **APPROVED** (agreed with the social coordinator, 2026-09-27) | **The D-ORG14 channel-id alignment moves to the social campaign's SS-C4**, which owns `world_entry_chat.rs` and the `CHAN_*` constants from then on. ORG-09 keeps only the team (3), command (5) and officer (6) fanout (officer requires `OfficerChat`; no channel needs registering), and waits for SS-C4 to merge. | SS-C4 already edits every social local that carries the old ids (the allowlist, the tell channel, `CHAN_SERVER`); one packet doing the whole swap avoids two PRs contending for the same constants. |
+| D-ORG27 | **APPROVED** (coordinator, 2026-09-27; shipped in ORG-09, #951) | **Officer chat (6) is the speaker's Command only.** A line on 6 reaches the online members of the speaker's Command whose rank holds `OfficerChat`, and the speaker must hold it too. A Team has no officer channel, even though the default mask of a Team's `SeniorMember` carries the `OfficerChat` bit (it copies `Officer`'s bits under D-ORG08). | `OfficerChat` is in the Command rank editor only (audit A-12), the officer ranks (6 and 7) exist only in a Command, and the legacy enum has `MAIL_ToCommandOfficers = 32` with no Team twin (`deprecated/python/Atrea/enums.py:739`). Whether a Team should get one is an [owner question](#open-questions-for-the-owner). |
+| D-ORG28 | **APPROVED** (agreed with the Bank campaign, 2026-09-27; amends D-ORG04's lock order) | **The bank's lock order.** A path that holds an organization and would wait on a member's `sgw_player` row takes, in order: its advisory inventory locks, the acting character's `sgw_player` row `FOR KEY SHARE` (several in `player_id` order), `lock_org`, then the item rows `FOR UPDATE`. The bank's write to the acting character's row stays a plain `UPDATE`, never `SELECT … FOR UPDATE`, so it cannot block `add_member`'s `FOR KEY SHARE` on a joining character. No organization-campaign path waits on a member's player row while holding the organization. The authoritative text is the "Lock order" section of `crates/base-session/src/base/organization/api.rs`, and the [ORG-API](work-packets.md#bank-campaign-api-org-api) `lock_org` bullet matches it. | D-ORG04's "the org row first" deadlocks against a character delete, which takes the player row and then the organization (`sgw_player_before_delete_lock_orgs`); a character can be deleted while in the world (an admin account delete), so no path may assume a member's row is safe to wait on. The bank's BV-07 PRs, [#948](https://github.com/SandboxServers/Cimmeria/pull/948) and [#949](https://github.com/SandboxServers/Cimmeria/pull/949), follow this order; both were still open at close-out. |
 
 PROPOSED rows are adopted at their defaults under D-ORG01 unless the owner objects. The owner approved the recommendation on all three questions (D-ORG15, D-ORG16 and D-ORG18) on 2026-09-27. A change is recorded as a new row, never by editing an old one.
 
@@ -99,3 +101,60 @@ ORG-E1 answered the client questions ([worknote](worknotes/org-e1.md)). What rem
 - How the `/squadpromote`, `/teampromote` and `/commandpromote` slash commands reach the wire. They are inferred to share the rank-change path (`organizationRankChange`), but that is not confirmed.
 - Where the client gets readable error text. `onErrorCode` text comes from a cooked-data category (`ErrorTextType`) that the server would have to stream, and Cimmeria serves none. Until that exists, rejection feedback is a re-send of the true state plus a line on the feedback channel, never `onErrorCode` alone.
 - Every value in D-ORG08, D-ORG10 and D-ORG21 is project policy, not recovered data, and the docs must say so.
+
+## Close-out state (ORG-11)
+
+Every feature packet has merged: ORG-E1 [#861](https://github.com/SandboxServers/Cimmeria/pull/861), ORG-01 [#871](https://github.com/SandboxServers/Cimmeria/pull/871), ORG-02 [#881](https://github.com/SandboxServers/Cimmeria/pull/881), ORG-03 [#886](https://github.com/SandboxServers/Cimmeria/pull/886), ORG-04 [#922](https://github.com/SandboxServers/Cimmeria/pull/922), ORG-05 [#942](https://github.com/SandboxServers/Cimmeria/pull/942), ORG-06 [#941](https://github.com/SandboxServers/Cimmeria/pull/941), ORG-07 [#945](https://github.com/SandboxServers/Cimmeria/pull/945), ORG-08 [#954](https://github.com/SandboxServers/Cimmeria/pull/954), ORG-09 [#951](https://github.com/SandboxServers/Cimmeria/pull/951) and ORG-10 [#952](https://github.com/SandboxServers/Cimmeria/pull/952). The ledger PRs were #855, #857, #878 and #936. Squads, Teams and Commands are **feature-complete server-side and not yet client-verified**: nothing here has run in a real client, and every status doc says so. What remains is the release and the owner's [ORG-UAT](work-packets.md#org-uat-owner-two-client-uat-colo), run from [organizations-uat.md](../../guides/organizations-uat.md). The vaults and the treasury are the Bank campaign's (BV-07, BV-08).
+
+### Worknotes
+
+| Packet | Worknote | What it holds |
+|---|---|---|
+| ORG-E1 | [org-e1.md](worknotes/org-e1.md) | Client evidence: roster ids, the squad natives, the minimap ping, error text, channel ids, squad frames |
+| ORG-01 | [org-01.md](worknotes/org-01.md) | Models, wire builders and decoders, message plumbing, the authority-review round |
+| ORG-02 | [org-02.md](worknotes/org-02.md) | Schema, the leader trigger, persistence, the ORG-API, the delete-order triggers |
+| ORG-03 | [org-03.md](worknotes/org-03.md) | The squad registry, invites, leave, kick, loot mode, world-entry replay |
+| ORG-04 | [org-04.md](worknotes/org-04.md) | Squad chat, the minimap ping, the `.squad_*` commands |
+| ORG-05 | [org-05.md](worknotes/org-05.md) | Creation, the registrar NPCs, `.org_create` |
+| ORG-06 | [org-06.md](worknotes/org-06.md) | Login restore, presence, leave, disband, `OrgMembershipEnded` |
+| ORG-07 | [org-07.md](worknotes/org-07.md) | Invite, kick, rank change, `broadcast_to_org`, the forward router |
+| ORG-08 | [org-08.md](worknotes/org-08.md) | MOTD, notes, the rank editor, the order guard |
+| ORG-09 | [org-09.md](worknotes/org-09.md) | Team, command and officer chat |
+| ORG-10 | [org-10.md](worknotes/org-10.md) | The GM suite, `gmReloadOrganizations`, the UAT guide |
+
+## Open questions for the owner
+
+None of these blocks the UAT. Each has a working default on `main`; the question is whether to keep it.
+
+1. **May the Leader rename rank 8?** D-ORG09 (3) says nobody edits their own rank's name, so the server refuses it with feedback, but the client's Command editor offers it ([org-08.md](worknotes/org-08.md) "Known gaps", [org-01.md](worknotes/org-01.md)).
+2. **Should renaming a lower rank to "Leader" be refused?** Today a Senior Officer holding `RankNames` can rename Member to "Leader", which impersonates the real Leader in every roster. The coordinator recommends refusing it as a small follow-up (reviewer finding S6, [org-08.md](worknotes/org-08.md)).
+3. **Should a Team get an officer channel?** A Team's `SeniorMember` holds `OfficerChat` by default, but D-ORG27 gives Teams no officer channel, so the bit does nothing there. Either drop the bit from the Team default or give Teams a channel ([org-09.md](worknotes/org-09.md)).
+4. **Should a player be able to invite an offline character?** Today it is refused (`target_not_found`), because the invite needs a session to hold it and to show the prompt ([org-07.md](worknotes/org-07.md)).
+
+## Known gaps and follow-ups
+
+Factual state at close-out, each with the worknote that records it. None is a regression; most need a real client to settle.
+
+**Needs a real client (ORG-UAT watches for these):**
+
+- Whether the client sends `interact` for an `INT_Organization` registrar on right-click, and whether the Team and Command naming windows stay open or close on a refused 134 `(0, n)` ([org-05.md](worknotes/org-05.md); UAT step 5).
+- Whether the client echoes its own squad line locally, which would show it twice ([org-04.md](worknotes/org-04.md); UAT step 2). The same question applies to team, command and officer lines ([org-09.md](worknotes/org-09.md)).
+- Whether `/commandinvite` and `/teaminvite` use 0xD0 with type 2 and 1 or 0xCF with the org id (both are handled), and how the Command window reacts to [39] `Kicked` and [40] ([org-07.md](worknotes/org-07.md)).
+- Whether the rank editor sends CM 16 with the full editable mask, how the client applies [49] and [50], and whether an empty [47] clears a note ([org-08.md](worknotes/org-08.md); UAT step 8).
+- Whether `/ReloadOrganizations` sends CM 164 with no arguments, and whether a second push redraws an open Command window ([org-10.md](worknotes/org-10.md); UAT step 10).
+
+**Server-side follow-ups:**
+
+- **No shared read snapshot in the login push.** `push_org_state` reads memberships, ranks and the roster as three pool reads, so a revoke committing between them can show one push notes from a rank read taken just before it. One `FOR SHARE` or `REPEATABLE READ` read would close it (reviewer S1, [org-08.md](worknotes/org-08.md)). A leave racing a login restore can likewise send a roster that still lists the leaver until the next world entry ([org-06.md](worknotes/org-06.md)).
+- **No rate limit on CM 13 and CM 14.** Every write needs a permission bit and an unchanged text is a no-op, but a member can loop distinct notes, one transaction and one [46] fanout per call (reviewer S2, [org-08.md](worknotes/org-08.md)).
+- **Officer chat authorizes from a display read.** ORG-09 reads memberships without the organization lock, so a demotion that is committing can let one more officer line through ([org-09.md](worknotes/org-09.md), decision 3). ORG-07 had asked for the permission to be read under the lock ([org-07.md](worknotes/org-07.md)).
+- **No `/squadpromote`.** The 0xD2 path for squads is unconfirmed (ORG-E1 follow-up 1), so 0xD2 with a squad id answers "not available yet" ([org-03.md](worknotes/org-03.md), [org-07.md](worknotes/org-07.md)).
+- **Gate transit.** An inviter in gate transit cannot found a squad (`InviterOffline`) and misses the [37] for a newcomer until their world-entry replay ([org-03.md](worknotes/org-03.md)); a member in transit misses squad chat lines, since nothing is queued ([org-04.md](worknotes/org-04.md)). A held Team or Command invite is not re-sent after the invitee's gate travel ([org-07.md](worknotes/org-07.md)).
+- **`gate_travel::abandon_unspaced_session`** removes a session without `destroy_client_entities`, so neither the organization nor the contact-list offline fanout runs; the others see the character online until its next login or logout ([org-06.md](worknotes/org-06.md)).
+- **Squad loot mode is stored and shown, not applied.** CM 18 sets the mode and every member gets [51], but no loot path reads it yet (checked on `main` at close-out).
+- **Squad roster level and archetype** are a snapshot taken at join; a level-up is not re-sent until a rejoin or a world-entry replay ([org-03.md](worknotes/org-03.md)).
+- **A kicked or departed member keeps officer notes** on their client until they close the window ([org-08.md](worknotes/org-08.md)).
+- **`.org_list` stops at 50** organizations with no paging, and `gmReloadOrganizations` cannot clear a stale window for an organization the GM has left ([org-10.md](worknotes/org-10.md)).
+- **The memberless-organization branch has no live-DB test**; it needs the Bank's real vault predicate in place of the SQL stub ([org-07.md](worknotes/org-07.md), [org-02.md](worknotes/org-02.md)).
+- **Files over the 700-line cap.** `crates/entity/src/cell_entity/entity_struct.rs` is 775 lines and `crates/base-session/src/base/helpers/mod.rs` is 898 on `main`; both were over the cap before the campaign touched them, and each needs a split of its own ([org-03.md](worknotes/org-03.md), [org-06.md](worknotes/org-06.md)).
+- **`onErrorCode` has no readable text** for organization errors (ORG-E1 Q4 and Q7), so every refusal also sends a feedback line. Confirming what the client does with the code needs an x64dbg capture of a live refusal ([org-e1.md](worknotes/org-e1.md)).
