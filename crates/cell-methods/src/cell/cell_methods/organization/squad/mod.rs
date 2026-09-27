@@ -16,7 +16,9 @@
 //!
 //! State is the service-wide `SpaceManager::squads` (D-ORG03); every
 //! refusal answers with `onErrorCode` and a feedback line, so no press is
-//! silent. Logs use the `squad` target.
+//! silent. Logs use the `squad` target: one INFO span and one INFO outcome
+//! row per action, DEBUG transitions, WARN on negative seams
+//! (`telemetry`).
 
 use tokio::sync::mpsc;
 
@@ -24,11 +26,17 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::squad::SquadMember;
 
+use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
+use cimmeria_wire::cell::client_methods::player::{
+    build_on_error_code, CONDITION_FEEDBACK_INVALID_ENTITY, ERRORCODE_SYSTEM_ABILITY, ON_ERROR_CODE,
+};
+
 mod fanout;
 mod feedback;
 mod invite;
 mod loot;
 mod membership;
+mod telemetry;
 mod world_entry;
 
 pub use invite::{handle_invite, respond};
@@ -71,15 +79,21 @@ fn forwarded_actor(
     member
 }
 
-/// Refuse with `onErrorCode(0, instance_id, 0)` and `text`.
-async fn reject(
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    entity_id: u32,
-    method_index: u16,
-    instance_id: i32,
-    text: &str,
-) {
-    super::forward::send_error_and_line(entity_id, method_index, instance_id, text, tx).await;
+/// Refuse with `onErrorCode(0, instance_id, 0)` and `text` on the
+/// feedback channel. A dropped send logs WARN `squad.send_failed`.
+async fn reject(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, instance_id: i32, text: &str) {
+    fanout::send(
+        tx,
+        entity_id,
+        ON_ERROR_CODE,
+        build_on_error_code(
+            ERRORCODE_SYSTEM_ABILITY,
+            instance_id,
+            CONDITION_FEEDBACK_INVALID_ENTITY,
+        ),
+    )
+    .await;
+    confirm(tx, entity_id, text).await;
 }
 
 /// A confirmation line on the feedback channel, with no error code.
@@ -93,6 +107,7 @@ async fn confirm(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &str) {
             target: "squad",
             event = "squad.send_failed",
             entity_id,
+            method_index = ON_PLAYER_COMMUNICATION,
             reason = "cell_to_base_closed",
             "squad confirmation line could not be queued"
         );

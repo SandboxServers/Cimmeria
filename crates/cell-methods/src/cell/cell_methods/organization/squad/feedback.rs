@@ -27,7 +27,6 @@ pub(super) fn invite_rejected(reject: InviteReject, target: &str) -> String {
 
 pub(super) fn response_rejected(reject: ResponseReject, inviter: &str) -> String {
     match reject {
-        ResponseReject::UnknownRequest => "That invitation is no longer valid.".into(),
         ResponseReject::InviteeInSquad => "You are already in a squad.".into(),
         ResponseReject::SquadGone => "That squad no longer exists.".into(),
         ResponseReject::InviterLeft | ResponseReject::InviterNotLeader => {
@@ -56,6 +55,8 @@ pub(super) fn loot_rejected(reject: LootReject) -> &'static str {
     }
 }
 
+pub(super) const INVITE_INVALID: &str = "That invitation is no longer valid.";
+pub(super) const INVITE_EXPIRED: &str = "That invitation has expired.";
 pub(super) const NOT_IN_THAT_SQUAD: &str = "You are not in that squad.";
 pub(super) const INVITE_SELF: &str = "You cannot invite yourself.";
 pub(super) const NOT_READY: &str = "Squads are not available until you have entered the world.";

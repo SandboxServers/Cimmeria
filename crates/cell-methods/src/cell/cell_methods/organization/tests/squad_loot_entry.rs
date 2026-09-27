@@ -52,8 +52,8 @@ async fn loot_mode_rejects_non_leader() {
     assert_eq!(sent.len(), 3, "only the caller hears");
     assert!(squad_event(
         &capture,
-        Level::DEBUG,
-        "squad.loot_rejected",
+        Level::INFO,
+        "squad.loot_mode",
         "not_leader"
     ));
     assert_eq!(
@@ -82,9 +82,9 @@ async fn loot_mode_rejects_out_of_range() {
     }
     assert!(squad_event(
         &capture,
-        Level::WARN,
-        "squad.loot_rejected",
-        "out_of_range"
+        Level::INFO,
+        "squad.loot_mode",
+        "loot_mode_invalid"
     ));
     assert_eq!(
         mgr.squads.squad(SID).unwrap().loot(),

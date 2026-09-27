@@ -19,6 +19,7 @@ mod router;
 mod squad_invite;
 mod squad_loot_entry;
 mod squad_membership;
+mod squad_telemetry;
 
 /// One captured client-method call.
 pub(super) type Sent = (u32, u16, Vec<u8>);
@@ -57,6 +58,11 @@ pub(super) fn line(text: &str) -> Vec<u8> {
     serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text)
 }
 
+/// The account the fixture gives character `player_id`.
+pub(super) fn account_of(player_id: i32) -> u32 {
+    1000 + player_id as u32
+}
+
 /// A connected, initialised player: entity `entity_id`, character
 /// `player_id`, named `name`.
 pub(super) fn add_player(mgr: &mut SpaceManager, entity_id: u32, player_id: i32, name: &str) {
@@ -65,6 +71,7 @@ pub(super) fn add_player(mgr: &mut SpaceManager, entity_id: u32, player_id: i32,
     mgr.connect_entity(entity_id);
     let e = mgr.get_entity_mut(entity_id).unwrap();
     e.player_id = Some(player_id);
+    e.account_id = Some(account_of(player_id));
     e.character_name = Some(name.to_string());
     e.level = 12;
     e.archetype_id = Some(3);
@@ -154,7 +161,7 @@ pub(super) fn seed_squad(mgr: &mut SpaceManager, leader: u32, members: &[u32]) -
     sid
 }
 
-/// The captured event named `event` at `level` with `reason`, on the
+/// A `rejected` outcome row named `event` at `level` with `reason`, on the
 /// `squad` target.
 pub(super) fn squad_event(
     capture: &LogCaptureGuard,
@@ -166,6 +173,7 @@ pub(super) fn squad_event(
         c.level == level
             && c.target == "squad"
             && c.has_field("event", event)
+            && c.has_field("outcome", "rejected")
             && c.has_field("reason", reason)
     })
 }

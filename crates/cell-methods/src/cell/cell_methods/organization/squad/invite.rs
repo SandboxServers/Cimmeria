@@ -7,18 +7,15 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{PlayerNameLookup, SpaceManager};
-use crate::cell::squad::ResponseReject;
+use crate::cell::squad::TakeMiss;
 
 use cimmeria_entity::organization::OrgType;
-use cimmeria_wire::base::organization::ORGANIZATION_INVITE_BY_TYPE;
-use cimmeria_wire::cell::cell_methods::organization::INVITE_RESPONSE;
 use cimmeria_wire::cell::client_methods::organization::{
     build_on_organization_invite, ON_ORGANIZATION_INVITE,
 };
 
+use super::telemetry::{self as tm, Action, Outcome, Reason};
 use super::{actor, confirm, fanout, feedback, forwarded_actor, reject};
-
-const INVITE: u16 = ORGANIZATION_INVITE_BY_TYPE as u16;
 
 /// `organizationInviteByType(0, target_name)`, forwarded by the base with
 /// the inviter's ids from its session.
@@ -32,6 +29,13 @@ const INVITE: u16 = ORGANIZATION_INVITE_BY_TYPE as u16;
 ///
 /// On success the target gets `onOrganizationInvite` [34] and the inviter a
 /// confirmation line.
+#[tracing::instrument(
+    name = "squad.invite",
+    level = "info",
+    target = "squad",
+    skip_all,
+    fields(player_id = player_id, entity_id = entity_id)
+)]
 pub async fn handle_invite(
     player_id: i32,
     entity_id: u32,
@@ -40,71 +44,64 @@ pub async fn handle_invite(
     space_mgr: &mut SpaceManager,
 ) {
     let Some(inviter) = forwarded_actor(space_mgr, player_id, entity_id) else {
-        return;
+        return Outcome::new(Action::Invite, entity_id, tm::claimed(player_id))
+            .rejected(Reason::ActorMismatch);
     };
-    let instance = space_mgr.squads.squad_of(player_id).unwrap_or(0);
-    let refuse = |reason: &'static str| {
-        tracing::debug!(
-            target: "squad",
-            event = "squad.invite_rejected",
-            player_id,
-            entity_id,
-            reason,
-            "squad invite refused"
-        );
+    let mut out = Outcome::new(
+        Action::Invite,
+        entity_id,
+        tm::of_entity(space_mgr, entity_id),
+    );
+    out.squad_id = space_mgr.squads.squad_of(player_id);
+    let instance = out.squad_id.unwrap_or(0);
+    let resolved = match space_mgr.find_online_player_by_name(target_name) {
+        PlayerNameLookup::Found { entity_id: t, .. } if t == entity_id => {
+            Err((Reason::SelfTarget, feedback::INVITE_SELF.to_owned()))
+        }
+        PlayerNameLookup::Found { entity_id: t, .. } => Ok(t),
+        PlayerNameLookup::InTransition { .. } => Err((
+            Reason::TargetInTransition,
+            feedback::target_travelling(target_name),
+        )),
+        PlayerNameLookup::NotFound => Err((
+            Reason::TargetNotFound,
+            feedback::target_not_found(target_name),
+        )),
+        PlayerNameLookup::Ambiguous { .. } => Err((
+            Reason::TargetAmbiguous,
+            feedback::target_ambiguous(target_name),
+        )),
     };
-    let target_entity = match space_mgr.find_online_player_by_name(target_name) {
-        PlayerNameLookup::Found { entity_id, .. } => entity_id,
-        PlayerNameLookup::InTransition { .. } => {
-            refuse("target_in_transition");
-            let text = feedback::target_travelling(target_name);
-            return reject(tx, entity_id, INVITE, instance, &text).await;
-        }
-        PlayerNameLookup::NotFound => {
-            refuse("target_not_found");
-            let text = feedback::target_not_found(target_name);
-            return reject(tx, entity_id, INVITE, instance, &text).await;
-        }
-        PlayerNameLookup::Ambiguous { entity_ids } => {
-            tracing::warn!(
-                target: "squad",
-                event = "squad.invite_rejected",
-                player_id,
-                entity_id,
-                reason = "target_ambiguous",
-                ?entity_ids,
-                "squad invite refused: the name matches more than one entity"
-            );
-            let text = feedback::target_ambiguous(target_name);
-            return reject(tx, entity_id, INVITE, instance, &text).await;
+    let target_entity = match resolved {
+        Ok(t) => t,
+        Err((reason, text)) => {
+            out.rejected(reason);
+            return reject(tx, entity_id, instance, &text).await;
         }
     };
-    if target_entity == entity_id {
-        refuse("self");
-        return reject(tx, entity_id, INVITE, instance, feedback::INVITE_SELF).await;
-    }
+    out.target = Some(tm::of_entity(space_mgr, target_entity));
     let Some(target) = actor(space_mgr, target_entity) else {
         // `character_name` is player-only, so this is a player entity that
         // has not finished `InitPlayerState`, or a corrupt row.
-        refuse("target_not_player");
+        out.rejected(Reason::NotAPlayer);
         let text = feedback::target_not_found(target_name);
-        return reject(tx, entity_id, INVITE, instance, &text).await;
+        return reject(tx, entity_id, instance, &text).await;
     };
-    match space_mgr
-        .squads
-        .invite(player_id, &inviter.name, target.player_id, Instant::now())
-    {
+    let result =
+        space_mgr
+            .squads
+            .invite(player_id, &inviter.name, target.player_id, Instant::now());
+    tm::invites_expired(space_mgr);
+    match result {
         Ok(issued) => {
-            tracing::debug!(
-                target: "squad",
-                event = "squad.invite_sent",
-                player_id,
-                entity_id,
-                target_player_id = target.player_id,
-                request_id = issued.request_id,
-                squad_id = issued.squad_id,
-                "squad invite sent"
+            out.request_id = Some(issued.request_id);
+            tm::invite_created(
+                issued.request_id,
+                issued.squad_id,
+                out.actor,
+                out.target.unwrap_or_default(),
             );
+            out.ok();
             // Squads have no name; the client's squad invite window shows
             // the inviter's.
             fanout::send(
@@ -123,9 +120,9 @@ pub async fn handle_invite(
             confirm(tx, entity_id, &feedback::invite_sent(&target.name)).await;
         }
         Err(r) => {
-            refuse(r.reason());
+            out.rejected(r.into());
             let text = feedback::invite_rejected(r, &target.name);
-            reject(tx, entity_id, INVITE, instance, &text).await;
+            reject(tx, entity_id, instance, &text).await;
         }
     }
 }
@@ -135,6 +132,13 @@ pub async fn handle_invite(
 /// The invite is looked up under the caller's own `player_id` and the
 /// request id together and consumed by this response whatever it is
 /// (D-ORG06); an accept is then re-validated before anyone joins.
+#[tracing::instrument(
+    name = "squad.invite_response",
+    level = "info",
+    target = "squad",
+    skip_all,
+    fields(entity_id = entity_id, request_id = request_id, accept = accept)
+)]
 pub async fn respond(
     entity_id: u32,
     request_id: i32,
@@ -142,41 +146,43 @@ pub async fn respond(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    let mut out = Outcome::new(
+        Action::InviteResponse,
+        entity_id,
+        tm::of_entity(space_mgr, entity_id),
+    );
+    out.request_id = Some(request_id);
     let Some(invitee) = actor(space_mgr, entity_id) else {
-        return reject(tx, entity_id, INVITE_RESPONSE, 0, feedback::NOT_READY).await;
+        out.rejected(Reason::NotReady);
+        return reject(tx, entity_id, 0, feedback::NOT_READY).await;
     };
     let player_id = invitee.player_id;
-    let Some(invite) = space_mgr
+    let taken = space_mgr
         .squads
-        .take_invite(player_id, request_id, Instant::now())
-    else {
-        // Never issued to this player, already answered, or expired. A
-        // real client answers only invites it was shown, inside the
-        // window, so this is a replay, a forged id or a very late answer.
-        tracing::warn!(
-            target: "squad",
-            event = "squad.response_rejected",
-            player_id,
-            entity_id,
-            request_id,
-            accept,
-            reason = ResponseReject::UnknownRequest.reason(),
-            "squad invite response matches no pending invite for this player"
-        );
-        let text = feedback::response_rejected(ResponseReject::UnknownRequest, "");
-        return reject(tx, entity_id, INVITE_RESPONSE, 0, &text).await;
+        .take_invite(player_id, request_id, Instant::now());
+    tm::invites_expired(space_mgr);
+    let invite = match taken {
+        Ok(invite) => invite,
+        Err(miss) => {
+            // Never issued to this player, already answered, expired, or
+            // another player's id. A real client answers only invites it
+            // was shown, so all but the late answer are replays or forgeries.
+            out.rejected(miss.into());
+            let text = if miss == TakeMiss::Expired {
+                feedback::INVITE_EXPIRED
+            } else {
+                feedback::INVITE_INVALID
+            };
+            return reject(tx, entity_id, 0, text).await;
+        }
     };
+    let inviter_id = tm::of_player(space_mgr, invite.inviter_player_id);
+    out.target = Some(inviter_id);
+    out.squad_id = invite.squad_id;
+    tm::invite_consumed(request_id, invite.squad_id, accept, out.actor, inviter_id);
 
     if !accept {
-        tracing::debug!(
-            target: "squad",
-            event = "squad.invite_declined",
-            player_id,
-            entity_id,
-            request_id,
-            inviter_player_id = invite.inviter_player_id,
-            "squad invite declined"
-        );
+        out.ok();
         if let Some(inviter_entity) = space_mgr.player_entity_by_player_id(invite.inviter_player_id)
         {
             confirm(
@@ -193,37 +199,20 @@ pub async fn respond(
         .player_entity_by_player_id(invite.inviter_player_id)
         .and_then(|eid| actor(space_mgr, eid));
     match space_mgr.squads.accept(&invite, invitee, inviter) {
-        Ok(out) => {
-            tracing::info!(
-                target: "squad",
-                event = "squad.joined",
-                player_id,
-                entity_id,
-                squad_id = out.squad_id,
-                created = out.created,
-                inviter_player_id = invite.inviter_player_id,
-                "player joined a squad"
-            );
-            let newcomers: &[i32] = if out.created {
+        Ok(joined) => {
+            out.squad_id = Some(joined.squad_id);
+            out.ok();
+            let newcomers: &[i32] = if joined.created {
                 &[invite.inviter_player_id, player_id]
             } else {
                 &[player_id]
             };
-            fanout::announce_join(tx, space_mgr, out.squad_id, newcomers).await;
+            fanout::announce_join(tx, space_mgr, joined.squad_id, joined.created, newcomers).await;
         }
         Err(r) => {
-            tracing::debug!(
-                target: "squad",
-                event = "squad.response_rejected",
-                player_id,
-                entity_id,
-                request_id,
-                accept,
-                reason = r.reason(),
-                "squad invite accept failed re-validation"
-            );
+            out.rejected(r.into());
             let text = feedback::response_rejected(r, &invite.inviter_name);
-            reject(tx, entity_id, INVITE_RESPONSE, 0, &text).await;
+            reject(tx, entity_id, 0, &text).await;
         }
     }
 }

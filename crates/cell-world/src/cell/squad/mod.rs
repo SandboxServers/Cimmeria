@@ -25,7 +25,9 @@ use std::time::Duration;
 mod invites;
 mod registry;
 
-pub use invites::{InviteReject, IssuedInvite, PendingInvite, ResponseReject};
+pub use invites::{
+    ExpiredInvite, InviteReject, IssuedInvite, PendingInvite, ResponseReject, TakeMiss,
+};
 pub use registry::{Departure, JoinOutcome, KickReject, LootReject, Squad, SquadRegistry};
 
 #[cfg(test)]
@@ -42,6 +44,18 @@ pub const INVITE_RATE_MAX: usize = 5;
 
 /// Pending invites one player may hold at once.
 pub const MAX_PENDING_PER_INVITEE: usize = 5;
+
+/// Count one squad action on `squad_actions_total`. Every label is from a
+/// closed set (the action, `ok` / `rejected`, and the refusal reason or
+/// `none`); never an id.
+pub fn count_action(action: &'static str, outcome: &'static str, reason: &'static str) {
+    cimmeria_observability::counter!(
+        "squad_actions_total",
+        "action" => action,
+        "outcome" => outcome,
+        "reason" => reason,
+    );
+}
 
 /// A member's roster snapshot, taken from their `CellEntity` when they
 /// join. The roster (`RosterInfo`) shows name, level and archetype; the

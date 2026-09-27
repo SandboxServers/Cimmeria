@@ -184,26 +184,31 @@ async fn invite_refuses_unresolvable_targets() {
             "Nobody",
             "No player named Nobody is online.",
             "target_not_found",
-            Level::DEBUG,
+            Level::INFO,
         ),
         (
             "Gone",
             "Gone is travelling. Try again in a moment.",
             "target_in_transition",
-            Level::DEBUG,
+            Level::INFO,
         ),
         (
             "Twin",
             "More than one player is called Twin; the invitation was not sent.",
             "target_ambiguous",
-            Level::WARN,
+            Level::INFO,
         ),
-        ("Alice", "You cannot invite yourself.", "self", Level::DEBUG),
+        (
+            "Alice",
+            "You cannot invite yourself.",
+            "self_target",
+            Level::INFO,
+        ),
         (
             "Fresh",
             "No player named Fresh is online.",
-            "target_not_player",
-            Level::DEBUG,
+            "not_a_player",
+            Level::INFO,
         ),
     ];
     for (name, text, reason, level) in cases {
@@ -212,7 +217,7 @@ async fn invite_refuses_unresolvable_targets() {
         assert_eq!(sent.len(), 2, "{name}: exactly the refusal pair");
         assert_eq!(to(&sent, 11), rejection(0, text), "{name}");
         assert!(
-            squad_event(&capture, level, "squad.invite_rejected", reason),
+            squad_event(&capture, level, "squad.invite", reason),
             "{name}: {reason} at {level}"
         );
     }
@@ -237,9 +242,9 @@ async fn invite_refuses_a_squadded_target() {
     );
     assert!(squad_event(
         &capture,
-        Level::DEBUG,
-        "squad.invite_rejected",
-        "target_in_squad"
+        Level::INFO,
+        "squad.invite",
+        "already_in_squad"
     ));
 }
 
@@ -264,9 +269,9 @@ async fn invite_response_rejects_foreign_request_id() {
     );
     assert!(squad_event(
         &capture,
-        Level::WARN,
-        "squad.response_rejected",
-        "unknown_request"
+        Level::INFO,
+        "squad.invite_response",
+        "invite_foreign"
     ));
     assert_eq!(mgr.squads.squad_count(), 0);
     assert_eq!(mgr.squads.pending_requests(3, Instant::now()), [cara_req]);
@@ -312,9 +317,9 @@ async fn invite_response_rejects_replay() {
         .all()
         .iter()
         .filter(|c| {
-            c.level == Level::WARN
-                && c.has_field("event", "squad.response_rejected")
-                && c.has_field("reason", "unknown_request")
+            c.level == Level::INFO
+                && c.has_field("event", "squad.invite_response")
+                && c.has_field("reason", "invite_unknown")
         })
         .count();
     assert_eq!(unknown, 2);
@@ -342,8 +347,8 @@ async fn squad_accept_rejects_when_full() {
     assert_eq!(to(&sent, 17), rejection(0, "That squad is full."));
     assert!(squad_event(
         &capture,
-        Level::DEBUG,
-        "squad.response_rejected",
+        Level::INFO,
+        "squad.invite_response",
         "squad_full"
     ));
     assert_eq!(mgr.squads.squad(SID).unwrap().members().len(), 6);

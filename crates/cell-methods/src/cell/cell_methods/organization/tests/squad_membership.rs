@@ -110,9 +110,9 @@ async fn squad_leave_rejects_foreign_squad_id() {
     );
     assert!(squad_event(
         &capture,
-        Level::WARN,
-        "squad.leave_rejected",
-        "foreign_squad_id"
+        Level::INFO,
+        "squad.leave",
+        "wrong_squad"
     ));
     assert_eq!(mgr.squads.squad(mine).unwrap().members().len(), 2);
     assert_eq!(mgr.squads.squad(theirs).unwrap().members().len(), 2);
@@ -149,7 +149,7 @@ async fn kick_refusals_change_nothing() {
             "Cara",
             "Only the squad leader can remove members.",
             "not_leader",
-            Level::DEBUG,
+            Level::INFO,
         ),
         (
             1,
@@ -158,7 +158,7 @@ async fn kick_refusals_change_nothing() {
             "Dan",
             "Dan is not in your squad.",
             "target_not_in_squad",
-            Level::DEBUG,
+            Level::INFO,
         ),
         (
             1,
@@ -166,8 +166,8 @@ async fn kick_refusals_change_nothing() {
             sid,
             "Alice",
             "Leave the squad instead of removing yourself.",
-            "self_kick",
-            Level::DEBUG,
+            "self_target",
+            Level::INFO,
         ),
         // Dan names Alice's squad.
         (
@@ -176,15 +176,15 @@ async fn kick_refusals_change_nothing() {
             sid,
             "Bob",
             "You are not in that squad.",
-            "not_in_that_squad",
-            Level::WARN,
+            "not_in_squad",
+            Level::INFO,
         ),
     ];
     for (pid, e, org, target, text, reason, level) in cases {
         squad::handle_kick(pid, e, org, target, &tx, &mut mgr).await;
         assert_eq!(to(&drain(&mut rx), e), rejection(org, text), "{reason}");
         assert!(
-            squad_event(&capture, level, "squad.kick_rejected", reason),
+            squad_event(&capture, level, "squad.kick", reason),
             "{reason}"
         );
     }

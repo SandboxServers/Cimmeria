@@ -19,6 +19,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::squad::{Departure, Squad, SquadMember};
 
+use super::telemetry;
+
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::organization::{OrgLeaveReason, OrgRank, OrgType};
 use cimmeria_wire::cell::client_methods::organization::{
@@ -172,6 +174,7 @@ pub(super) async fn announce_join(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     squad_id: i32,
+    created: bool,
     newcomers: &[i32],
 ) {
     for &pid in newcomers {
@@ -180,6 +183,19 @@ pub(super) async fn announce_join(
     let Some(squad) = space_mgr.squads.squad(squad_id).cloned() else {
         return;
     };
+    if created {
+        telemetry::squad_created(
+            squad_id,
+            telemetry::of_player(space_mgr, squad.leader_player_id()),
+        );
+    }
+    for &pid in newcomers {
+        telemetry::member_joined(
+            squad_id,
+            telemetry::of_player(space_mgr, pid),
+            squad.rank_of(pid),
+        );
+    }
     for m in squad.members() {
         let Some(eid) = space_mgr.player_entity_by_player_id(m.player_id) else {
             continue;
@@ -266,6 +282,11 @@ pub(super) async fn announce_departure(
     // names their entity: the DisconnectEntity arm runs this before the
     // teardown.
     let departed_id = member_id(space_mgr, d.departed.player_id);
+    telemetry::departure(
+        space_mgr,
+        d,
+        telemetry::of_player(space_mgr, d.departed.player_id),
+    );
     tell_left(tx, space_mgr, d.departed.player_id, sid, d.reason).await;
     for m in &d.remaining {
         let Some(eid) = space_mgr.player_entity_by_player_id(m.player_id) else {
@@ -298,24 +319,11 @@ pub(super) async fn announce_departure(
             )
             .await;
         }
-        tracing::info!(
-            target: "squad",
-            event = "squad.leader_promoted",
-            squad_id = sid,
-            player_id = leader,
-            "squad leader left; the longest-standing member leads"
-        );
     }
     if d.disbanded {
         for m in &d.remaining {
             tell_left(tx, space_mgr, m.player_id, sid, OrgLeaveReason::Disbanded).await;
         }
-        tracing::info!(
-            target: "squad",
-            event = "squad.disbanded",
-            squad_id = sid,
-            "squad of one dissolved"
-        );
     }
 }
 

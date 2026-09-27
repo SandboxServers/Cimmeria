@@ -150,6 +150,8 @@ pub struct SquadRegistry {
     /// transit): `player_id -> (squad_id, reason)`. Delivered on their next
     /// world entry.
     pub(super) owed_left: HashMap<i32, (i32, OrgLeaveReason)>,
+    /// Invites that expired since the last `drain_expired`.
+    pub(super) expired: Vec<super::invites::ExpiredInvite>,
 }
 
 impl Default for SquadRegistry {
@@ -168,6 +170,7 @@ impl SquadRegistry {
             next_request_id: Some(1),
             sent: HashMap::new(),
             owed_left: HashMap::new(),
+            expired: Vec::new(),
         }
     }
 

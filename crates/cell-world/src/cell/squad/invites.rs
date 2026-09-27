@@ -26,6 +26,37 @@ pub struct PendingInvite {
     pub expires_at: Instant,
 }
 
+/// An invite that reached its expiry unanswered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExpiredInvite {
+    pub invitee_player_id: i32,
+    pub request_id: i32,
+    pub inviter_player_id: i32,
+    pub squad_id: Option<i32>,
+}
+
+impl ExpiredInvite {
+    fn of(invitee_player_id: i32, request_id: i32, inv: &PendingInvite) -> Self {
+        Self {
+            invitee_player_id,
+            request_id,
+            inviter_player_id: inv.inviter_player_id,
+            squad_id: inv.squad_id,
+        }
+    }
+}
+
+/// Why a response found no invite to consume.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TakeMiss {
+    /// Never issued under this id, or already answered.
+    Unknown,
+    /// Issued to this player, but past its 60 s.
+    Expired,
+    /// The id is another player's pending invite.
+    Foreign,
+}
+
 /// A successfully issued invite: what `onOrganizationInvite` [34] carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IssuedInvite {
@@ -69,9 +100,6 @@ impl InviteReject {
 /// response found no invite.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResponseReject {
-    /// No invite under `(invitee, request id)`: never issued to this
-    /// player, already answered, or expired.
-    UnknownRequest,
     InviteeInSquad,
     /// The squad the invite named no longer exists.
     SquadGone,
@@ -89,7 +117,6 @@ pub enum ResponseReject {
 impl ResponseReject {
     pub fn reason(self) -> &'static str {
         match self {
-            ResponseReject::UnknownRequest => "unknown_request",
             ResponseReject::InviteeInSquad => "invitee_in_squad",
             ResponseReject::SquadGone => "squad_gone",
             ResponseReject::InviterLeft => "inviter_left",
@@ -105,7 +132,14 @@ impl SquadRegistry {
     /// Drop every invite that has expired by `now`. Every invite call runs
     /// this first, so an expired invite neither answers nor counts.
     pub fn purge_expired(&mut self, now: Instant) {
-        self.invites.retain(|_, inv| now < inv.expires_at);
+        let expired = &mut self.expired;
+        self.invites.retain(|&(invitee, request_id), inv| {
+            let live = now < inv.expires_at;
+            if !live {
+                expired.push(ExpiredInvite::of(invitee, request_id, inv));
+            }
+            live
+        });
         self.sent.retain(|_, times| {
             while times
                 .front()
@@ -189,15 +223,38 @@ impl SquadRegistry {
 
     /// Consume the invite `invitee_player_id` holds under `request_id`.
     /// The first response, accept or decline, removes it; a second finds
-    /// nothing. A request id issued to another player finds nothing either.
+    /// nothing. A request id issued to another player finds nothing either,
+    /// and leaves that player's invite in place.
+    ///
+    /// The miss says why, for the outcome log: the entry expired (it is
+    /// dropped and recorded as expired), the id belongs to another invitee,
+    /// or nothing is known under it (never issued, or already answered).
     pub fn take_invite(
         &mut self,
         invitee_player_id: i32,
         request_id: i32,
         now: Instant,
-    ) -> Option<PendingInvite> {
+    ) -> Result<PendingInvite, TakeMiss> {
+        let key = (invitee_player_id, request_id);
+        let miss = match self.invites.get(&key) {
+            Some(inv) if now < inv.expires_at => None,
+            Some(_) => Some(TakeMiss::Expired),
+            None if self.invites.keys().any(|&(_, id)| id == request_id) => Some(TakeMiss::Foreign),
+            None => Some(TakeMiss::Unknown),
+        };
+        // Purge after the lookup, so an expired entry reports as expired
+        // rather than unknown.
         self.purge_expired(now);
-        self.invites.remove(&(invitee_player_id, request_id))
+        match miss {
+            None => Ok(self.invites.remove(&key).expect("checked live above")),
+            Some(m) => Err(m),
+        }
+    }
+
+    /// The invites that expired since the last call, for the
+    /// `invite_expired` transition log.
+    pub fn drain_expired(&mut self) -> Vec<ExpiredInvite> {
+        std::mem::take(&mut self.expired)
     }
 
     /// The request ids of the unexpired invites `invitee_player_id` holds

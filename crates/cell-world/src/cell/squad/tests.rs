@@ -134,7 +134,7 @@ fn accept_revalidates_the_inviter_and_the_squad() {
         expires_at: now + INVITE_TTL,
     };
     reg.leave(2).unwrap();
-    assert!(reg.take_invite(9, i.request_id, now).is_none());
+    assert!(reg.take_invite(9, i.request_id, now).is_err());
     assert_eq!(
         reg.accept(&inv, m(9), Some(m(1))),
         Err(ResponseReject::SquadGone)
@@ -242,6 +242,8 @@ fn invite_rate_limit_slides() {
     reg.invite(2, "P2", 31, just_before).unwrap();
 }
 
+/// Answerable until just before 60 s; at 60 s the miss says `Expired`,
+/// and the expiry is recorded once for the transition log.
 #[test]
 fn invite_expires_at_sixty_seconds() {
     let t0 = Instant::now();
@@ -249,8 +251,25 @@ fn invite_expires_at_sixty_seconds() {
     let a = reg.invite(1, "P1", 2, t0).unwrap();
     let b = reg.invite(3, "P3", 2, t0).unwrap();
     let edge = t0 + INVITE_TTL - Duration::from_millis(1);
-    assert!(reg.take_invite(2, a.request_id, edge).is_some());
-    assert!(reg.take_invite(2, b.request_id, t0 + INVITE_TTL).is_none());
+    assert!(reg.take_invite(2, a.request_id, edge).is_ok());
+    assert_eq!(
+        reg.take_invite(2, b.request_id, t0 + INVITE_TTL),
+        Err(TakeMiss::Expired)
+    );
+    assert_eq!(
+        reg.drain_expired(),
+        [ExpiredInvite {
+            invitee_player_id: 2,
+            request_id: b.request_id,
+            inviter_player_id: 3,
+            squad_id: None,
+        }]
+    );
+    assert!(reg.drain_expired().is_empty());
+    assert_eq!(
+        reg.take_invite(2, b.request_id, t0 + INVITE_TTL),
+        Err(TakeMiss::Unknown)
+    );
 }
 
 /// Expired invites stop counting toward the invitee cap.
@@ -275,14 +294,20 @@ fn invites_are_single_use_and_keyed_by_invitee() {
     let mut reg = SquadRegistry::new();
     let a = reg.invite(1, "P1", 2, now).unwrap();
     let c = reg.invite(1, "P1", 3, now).unwrap();
-    // 3 answers 2's request id: nothing, and 2's invite survives.
-    assert!(reg.take_invite(3, a.request_id, now).is_none());
+    // 3 answers 2's request id: a foreign miss, and 2's invite survives.
+    assert_eq!(
+        reg.take_invite(3, a.request_id, now),
+        Err(TakeMiss::Foreign)
+    );
     assert_eq!(reg.pending_for(2, now), 1);
     // Decline (take and drop) consumes; a replay finds nothing.
-    assert!(reg.take_invite(2, a.request_id, now).is_some());
-    assert!(reg.take_invite(2, a.request_id, now).is_none());
+    assert!(reg.take_invite(2, a.request_id, now).is_ok());
+    assert_eq!(
+        reg.take_invite(2, a.request_id, now),
+        Err(TakeMiss::Unknown)
+    );
     // 3's own invite is untouched.
-    assert!(reg.take_invite(3, c.request_id, now).is_some());
+    assert!(reg.take_invite(3, c.request_id, now).is_ok());
 }
 
 #[test]
@@ -405,17 +430,17 @@ fn remove_player_drops_membership_and_both_sides_of_invites() {
     let d = reg.remove_player(1).unwrap();
     assert_eq!(d.reason, OrgLeaveReason::Logout);
     assert_eq!(d.new_leader, Some(2));
-    assert!(reg.take_invite(7, sent.request_id, now).is_none());
-    assert!(reg.take_invite(8, kept.request_id, now).is_none());
+    assert!(reg.take_invite(7, sent.request_id, now).is_err());
+    assert!(reg.take_invite(8, kept.request_id, now).is_err());
     assert_eq!(reg.take_owed_left(1), None);
     // A squadless player's invites go too, sent and held; nobody else's.
     let sent = reg.invite(9, "P9", 10, now).unwrap();
     let held = reg.invite(11, "P11", 9, now).unwrap();
     let other = reg.invite(11, "P11", 12, now).unwrap();
     assert!(reg.remove_player(9).is_none());
-    assert!(reg.take_invite(10, sent.request_id, now).is_none());
-    assert!(reg.take_invite(9, held.request_id, now).is_none());
-    assert!(reg.take_invite(12, other.request_id, now).is_some());
+    assert!(reg.take_invite(10, sent.request_id, now).is_err());
+    assert!(reg.take_invite(9, held.request_id, now).is_err());
+    assert!(reg.take_invite(12, other.request_id, now).is_ok());
 }
 
 #[test]
