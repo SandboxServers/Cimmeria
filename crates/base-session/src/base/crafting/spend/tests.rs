@@ -462,6 +462,40 @@ async fn spend_without_a_database_is_refused_visibly() {
     );
 }
 
+/// The request entry point routes `Spend` here, not to the "not available
+/// yet" line CR-01 answered it with.
+#[tokio::test]
+async fn craft_request_routes_spend_to_the_spend_handler() {
+    use crate::base::crafting::request::handle_craft_request;
+    use crate::cell::messages::{CraftRequest, CraftVerb};
+
+    let session = OneSession::new(ENTITY, 55760);
+    let ctx = CraftCtx {
+        db_pool: &None,
+        cell_tx: &None,
+        transport: &session.transport,
+        connected: &session.connected,
+        entity_to_addr: &session.entity_to_addr,
+    };
+    handle_craft_request(
+        CraftRequest {
+            entity_id: ENTITY,
+            player_id: 1,
+            verb: CraftVerb::Spend { discipline_id: 78 },
+            allowed: 0,
+        },
+        &ctx,
+    )
+    .await;
+    assert_eq!(
+        session.typed.filter_to(session.addr),
+        vec![refusal(
+            0,
+            "Learning disciplines is unavailable right now. Nothing was changed."
+        )]
+    );
+}
+
 /// The paradigm-level map the defaults build is keyed like the catalog's
 /// `racial_paradigm_id` (1-5), which `check_spend` indexes by.
 #[test]
