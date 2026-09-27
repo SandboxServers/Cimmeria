@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
-use super::{load_ignore_names, load_ignored_player_ids};
+use super::load_ignore_snapshot;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
@@ -78,13 +78,7 @@ pub async fn resync_ignore_cache(
         );
         return None;
     };
-    let loaded = match load_ignore_names(pool, player_id).await {
-        Ok(n) => load_ignored_player_ids(pool, player_id)
-            .await
-            .map(|ids| (n, ids)),
-        Err(e) => Err(e),
-    };
-    let (names, ignored_ids) = match loaded {
+    let (names, ignored_ids) = match load_ignore_snapshot(pool, player_id).await {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(

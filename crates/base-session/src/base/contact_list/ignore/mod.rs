@@ -21,11 +21,15 @@
 //!
 //! # Queries for other packets
 //!
-//! - [`session_ignores`]: an online recipient's cached answer, lock held by
-//!   the caller. Tells use it.
-//! - [`player_ignores`]: the database answer for any recipient, online or
-//!   not. Mail send (SS-M1) and duel challenges (SS-D1) use it; the cache
-//!   may be absent for an offline recipient.
+//! - [`session_ignores`]: an online recipient's cached answer by name, lock
+//!   held by the caller. Tells use it.
+//! - [`IgnoreCache::ignores_player`]: the cached answer by `player_id`.
+//!   Duel challenges use it (`dispatch::duel::ignores`, SS-D1).
+//! - [`recipients_ignoring`]: the batched database answer for many
+//!   recipients, online or not, on any executor. Mail send uses it inside its
+//!   send transaction, under the recipients' row locks (SS-M1).
+//! - [`player_ignores`]: the single-recipient database answer, for any other
+//!   caller that needs an offline recipient.
 //!
 //! Names compare case-insensitively, the D-SS13 case fold: an entry the
 //! contact-list window stored as "bob" still ignores "Bob". `sgw_player`
@@ -33,10 +37,6 @@
 //! characters that differ only in case; the owner accepted that (it is the
 //! safe direction for an Ignore). `chatIgnore` still stores the canonical
 //! name it resolved, never the typed spelling.
-//!
-//! - [`IgnoreCache::ignores_player`]: the cached answer by `player_id`,
-//!   for callers that hold the other player's id rather than a name (the
-//!   SS-D1 duel seam `dispatch::duel::ignores`).
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -191,7 +191,10 @@ where
         return Ok(HashSet::new());
     }
     let rows: Vec<i32> = sqlx::query_scalar(
-        "SELECT DISTINCT cl.player_id FROM sgw_contact_list_member m          JOIN sgw_contact_list cl USING (list_id)          WHERE cl.player_id = ANY($1) AND cl.flags = $2            AND lower(m.player_name) = lower($3)",
+        "SELECT DISTINCT cl.player_id FROM sgw_contact_list_member m \
+         JOIN sgw_contact_list cl USING (list_id) \
+         WHERE cl.player_id = ANY($1) AND cl.flags = $2 \
+         AND lower(m.player_name) = lower($3)",
     )
     .bind(recipient_ids)
     .bind(IGNORE_LIST_FLAGS)
@@ -251,20 +254,32 @@ pub async fn load_ignore_names(
     Ok(rows.into_iter().collect())
 }
 
-/// The `player_id`s of the characters whose names match (case-insensitively)
-/// an entry on `player_id`'s Ignore list.
-pub async fn load_ignored_player_ids(
+/// `player_id`'s Ignore list as one snapshot: the stored names, and the
+/// `player_id`s of the characters they match case-insensitively. One query,
+/// so the two sets always describe the same list (a change committed between
+/// two separate reads could otherwise leave a name without its id, or an id
+/// without its name). A name no character has contributes no id.
+pub async fn load_ignore_snapshot(
     pool: &PgPool,
     player_id: i32,
-) -> Result<HashSet<i32>, sqlx::Error> {
-    let rows: Vec<i32> = sqlx::query_scalar(
-        "SELECT DISTINCT p.player_id FROM sgw_contact_list_member m          JOIN sgw_contact_list cl USING (list_id)          JOIN sgw_player p ON lower(p.player_name) = lower(m.player_name)          WHERE cl.player_id = $1 AND cl.flags = $2",
+) -> Result<(HashSet<String>, HashSet<i32>), sqlx::Error> {
+    let rows: Vec<(String, Option<i32>)> = sqlx::query_as(
+        "SELECT m.player_name, p.player_id FROM sgw_contact_list_member m \
+         JOIN sgw_contact_list cl USING (list_id) \
+         LEFT JOIN sgw_player p ON lower(p.player_name) = lower(m.player_name) \
+         WHERE cl.player_id = $1 AND cl.flags = $2",
     )
     .bind(player_id)
     .bind(IGNORE_LIST_FLAGS)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().collect())
+    let mut names = HashSet::new();
+    let mut ids = HashSet::new();
+    for (name, id) in rows {
+        names.insert(name);
+        ids.extend(id);
+    }
+    Ok((names, ids))
 }
 
 /// "X is not accepting your messages.": the one refusal line for a tell,

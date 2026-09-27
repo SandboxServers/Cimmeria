@@ -15,7 +15,9 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use crate::base::contact_list::ignore::{resync_ignore_cache, IgnoreSyncCtx, IGNORE_LIST_FLAGS};
-use crate::base::contact_list::persistence::{add_members, load_list_header, remove_members};
+use crate::base::contact_list::persistence::{
+    add_members_bounded, load_list_header, remove_members,
+};
 use crate::base::contact_list::wire::{
     build_on_contact_list_add_members, build_on_contact_list_remove_members,
     MAX_MEMBERS_PER_REQUEST,
@@ -64,7 +66,22 @@ pub async fn handle_add_members(
         names.truncate(MAX_MEMBERS_PER_REQUEST);
     }
 
-    match add_members(pool, player_id, list_id, &names).await {
+    let outcome = add_members_bounded(pool, player_id, list_id, &names).await;
+    if let Ok(result) = &outcome {
+        if !result.over_cap.is_empty() {
+            refuse_over_cap(
+                entity_id,
+                player_id,
+                list_id,
+                result,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
+    }
+    match outcome.map(|r| r.added) {
         Ok(added) if !added.is_empty() => {
             tracing::info!(
                 entity_id,
@@ -330,4 +347,46 @@ async fn resync_if_ignore_list(
         cell_tx,
     };
     resync_ignore_cache(ctx, addr, player_id, entity_id, "contact_list").await;
+}
+
+/// Feedback when a contact-list UI add would push the Ignore list past
+/// `MAX_IGNORE_LIST_MEMBERS`: the names that fit were added (and are
+/// announced by the caller); the rest are refused here, with one line and a
+/// `chat.ignore_refused reason = list_full` row.
+async fn refuse_over_cap(
+    entity_id: u32,
+    player_id: i32,
+    list_id: i32,
+    result: &crate::base::contact_list::persistence::MembersAdded,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    use crate::base::contact_list::ignore::MAX_IGNORE_LIST_MEMBERS;
+    use crate::base::feedback::{send_feedback_line, FeedbackCtx};
+
+    let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+    let account_id = addr.and_then(|a| connected.lock().unwrap().get(&a).map(|c| c.account_id));
+    tracing::debug!(
+        target: "chat",
+        event = "chat.ignore_refused",
+        entity_id,
+        player_id,
+        account_id,
+        list_id,
+        added = result.added.len(),
+        refused = result.over_cap.len(),
+        reason = "list_full",
+        "contact-list add stopped at the Ignore cap",
+    );
+    let Some(addr) = addr else { return };
+    let text = format!(
+        "Your Ignore list is full ({MAX_IGNORE_LIST_MEMBERS} names). {} of the names were not added.",
+        result.over_cap.len()
+    );
+    let ctx = FeedbackCtx {
+        transport,
+        connected,
+    };
+    send_feedback_line(&ctx, addr, &text).await;
 }

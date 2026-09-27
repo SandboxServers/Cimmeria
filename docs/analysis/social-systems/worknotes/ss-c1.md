@@ -258,6 +258,22 @@ Rebased onto `origin/main` after SS-M1 (#894) and SS-D1 (#888) merged.
 
 Rebased onto `origin/main` again after other campaigns merged. The only conflict was `docs/gap-analysis.md`: the TOTALS line and the summary block, which crafting CR-08 had also changed. I recomputed both from the matrix rows: 472 / CW 169 / NT 68 / IM 101 / KM 130 / NU 4 (35.8 / 14.4 / 21.4 / 27.5 / 0.8%; code exists 338, 71.6%). This supersedes the earlier 472 / 169 / 68 / 99 / 132 / 4 figure. After the rebase: nextest on the 8 crates 2190 passed; `live-db-test.sh` ignore 54, tell 22, mail 59, contact_list 57, all passed; fmt and clippy clean.
 
+## Review round 7 (PR #893, five Copilot findings)
+
+1. **UI batch past the cap.** `persistence::add_members_bounded` replaces the batched insert on the contact-list UI path. It takes the list row lock like before and now reads the list's flags from that lock. On the Ignore list (flags 301) it inserts names one by one against the count and puts every name past `MAX_IGNORE_LIST_MEMBERS` into `over_cap`. Other lists keep the single batched insert. `handle_add_members` sends one feedback line for the refused names ("Your Ignore list is full (100 names). N of the names were not added."), logs `chat.ignore_refused reason = list_full` with `added` and `refused` counts, and announces only what was inserted. `add_members` stays as a test-only wrapper. Guard: `contact_list_ui_batch_cannot_push_the_ignore_list_past_the_cap` (live DB). With 98 on the list, a 5-name batch adds 2 and the list stays at 100; a second batch adds nothing. It FAILED (103) with the cap check disabled.
+2. **Two snapshots in the resync.** `load_ignore_snapshot` reads the names and the fold-matched `player_id`s in one query (a `LEFT JOIN sgw_player`), so both sets always describe the same list. `load_ignored_player_ids` is gone. Test: `load_ignore_snapshot_reads_names_and_ids_together` (a name with no character adds no id). That test proves the shape, not the atomicity: the atomicity comes from the single statement, which a test cannot tell apart from two reads with nothing committed in between.
+3. **Away message truncated before the check.** Both handlers now run `away_message_allowed` on the whole decoded text, then cut it to 128 scalars. Guard: `away_message_with_a_forbidden_character_past_128_is_refused` (bidi at scalar 130, AFK and DND both refused, two feedback lines). It FAILED with the check moved back after the cut.
+4. **Tell target unchecked.** `handle_tell` validates the target with `TextField::MailRecipient` (64 units, no forbidden characters) before the lookup. A refusal sends the fixed "That is not a valid character name." and logs `chat.tell_refused` with `reason` and `target_units`, never the text. Guard: `tell_to_an_invalid_target_name_is_refused_without_echo` (bidi, a BEL control character, 65 characters). It FAILED with the validation bypassed.
+5. **Doc comment.** The query list in `contact_list/ignore/mod.rs` now names each consumer correctly: tells use `session_ignores`, duels `IgnoreCache::ignores_player`, mail `recipients_ignoring` (batched, inside the send transaction), and `player_ignores` is the single-recipient DB check.
+
+Also: four SQL strings in `persistence/mod.rs` and `ignore/mod.rs` had lost their `\` line continuations in an earlier scripted edit. The SQL was still valid, but they are re-wrapped now.
+
+| Command | Result |
+|---|---|
+| `lane.sh cargo nextest run --no-fail-fast -p cimmeria-wire -p cimmeria-entity -p cimmeria-cell -p cimmeria-cell-console -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-base-methods --lib` | 2194 passed |
+| `live-db-test.sh ignore` / `tell` / `mail` / `contact_list` | 56 / 23 / 59 / 59 passed, 0 failed |
+| clippy `-D warnings` on the 10 crates; `cargo fmt --all -- --check` | clean |
+
 ## Known gaps
 
 1. **Mute (SS-C3).** `tell.rs` has a `TODO(SS-C3)` where a muted sender is refused.

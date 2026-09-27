@@ -196,3 +196,48 @@ async fn away_messages_follow_the_chat_character_rules() {
         .iter()
         .all(|c| c.has_field("reason", "bidi_control")));
 }
+
+/// PR #893 review: the character rules run on the whole decoded message,
+/// before the 128-scalar cut. A bidi override at scalar 130 refuses the
+/// message; checked after the cut, it would be dropped and the rest stored.
+#[tokio::test]
+async fn away_message_with_a_forbidden_character_past_128_is_refused() {
+    let addr: SocketAddr = "127.0.0.1:54408".parse().unwrap();
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(5151);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let test_transport = Arc::new(TestTransport::default());
+    let transport: Arc<dyn Transport> = test_transport.clone();
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    let text = format!("{}\u{202E}tail", "a".repeat(130));
+    for method in [sgw_player_base::CHAT_SET_AFK, sgw_player_base::CHAT_SET_DND] {
+        let mut payload = Vec::new();
+        crate::mercury::write_wstring(&mut payload, &text);
+        dispatch_sgw_player_base_method(
+            method,
+            &payload,
+            &Some("Tester".to_string()),
+            addr,
+            &transport,
+            [0; 32],
+            &connected,
+            &entity_manager,
+            &None,
+            &entity_to_addr,
+            &None,
+        )
+        .await
+        .expect("away update must not error");
+    }
+    {
+        let g = connected.lock().unwrap();
+        assert_eq!(g[&addr].afk_message, None, "AFK refused, not truncated");
+        assert_eq!(g[&addr].dnd_message, None, "DND refused, not truncated");
+    }
+    assert_eq!(
+        test_transport.filter_to(addr).len(),
+        2,
+        "two feedback lines"
+    );
+}

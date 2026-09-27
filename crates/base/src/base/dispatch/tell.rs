@@ -29,6 +29,7 @@ use super::super::feedback::{
 };
 use super::super::player_index::{NameLookup, OnlinePlayerIndex};
 use super::speaker_flags;
+use cimmeria_entity::organization::org_text::{validate, TextField};
 
 /// The tell channel byte the client sends and renders. `EChannel` tell is 10
 /// in `enumerations.xml`, and the client hardcodes the same literal (ORG-E1
@@ -41,6 +42,8 @@ pub(super) const TELL_CHANNEL: u8 = 10;
 pub(super) const TELL_NO_TARGET_TEXT: &str = "Who do you want to send a tell to?";
 /// Feedback for a tell addressed to the sender.
 pub(super) const TELL_SELF_TEXT: &str = "You cannot send a tell to yourself.";
+/// Feedback for a target that is not a possible character name.
+pub(super) const TELL_BAD_NAME_TEXT: &str = "That is not a valid character name.";
 
 /// Longest prefix of a typed target name echoed back in feedback or logged.
 /// Character names are far shorter; this bounds a hostile one.
@@ -160,6 +163,27 @@ pub(super) async fn handle_tell(
     if target.is_empty() {
         refuse("no_target", None);
         send_feedback_line(ctx, sender.addr, TELL_NO_TARGET_TEXT).await;
+        return;
+    }
+
+    // The target is client text that feedback lines echo and logs carry, so
+    // it gets the character-name rules first (64 UTF-16 units, no control,
+    // bidi or format characters), the same bound `chatIgnore` and gate-mail
+    // recipients get. A refusal echoes nothing back and logs only the
+    // length, never the text.
+    if let Err(reject) = validate(TextField::MailRecipient, target) {
+        tracing::debug!(
+            target: "chat",
+            event = "chat.tell_refused",
+            addr = %sender.addr,
+            player_id = sender.player_id,
+            account_id = sender.account_id,
+            entity_id = sender.entity_id,
+            target_units = target.encode_utf16().count(),
+            reason = reject.reason(),
+            "tell refused: the target is not a valid character name",
+        );
+        send_feedback_line(ctx, sender.addr, TELL_BAD_NAME_TEXT).await;
         return;
     }
 

@@ -10,8 +10,8 @@ use std::time::Instant;
 
 use super::super::chat::send_player_communication_at;
 use super::super::tell::{
-    after_resolve_hook, ambiguous_text, not_online_text, TELL_CHANNEL, TELL_NO_TARGET_TEXT,
-    TELL_SELF_TEXT,
+    after_resolve_hook, ambiguous_text, not_online_text, TELL_BAD_NAME_TEXT, TELL_CHANNEL,
+    TELL_NO_TARGET_TEXT, TELL_SELF_TEXT,
 };
 use super::super::*;
 use crate::base::contact_list::ignore::{not_accepting_text, IgnoreCache};
@@ -395,4 +395,37 @@ async fn tell_to_recipient_who_left_the_world_before_the_send_is_refused() {
         .expect("chat.tell_refused logged");
     assert!(ev.has_field("reason", "recipient_not_in_world"));
     assert!(ev.has_field("target_player_id", "802"));
+}
+
+/// PR #893 review: the target is client text. A name with a control or bidi
+/// character, or longer than a character name can be, is refused before the
+/// lookup with a fixed line that does not echo it, and the log carries only
+/// its length. Fails when the target is not validated (the not-online line
+/// would echo it).
+#[tokio::test]
+async fn tell_to_an_invalid_target_name_is_refused_without_echo() {
+    for (target, reason) in [
+        ("Bob\u{202E}", "bidi_control"),
+        ("Bo\u{0007}b", "control_char"),
+        (&*"x".repeat(65), "too_long"),
+    ] {
+        let capture = LogCapture::install();
+        let mut h = Harness::three();
+        h.alice_tells(target, "hi").await;
+        let line = h.alice_feedback();
+        assert_eq!(line, TELL_BAD_NAME_TEXT, "target {target:?}");
+        assert!(!line.contains(target));
+        assert!(h.to(BOB).is_empty() && h.to(CAROL).is_empty());
+        h.assert_never_forwarded();
+        let ev = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("event", "chat.tell_refused"))
+            .expect("chat.tell_refused logged");
+        assert!(ev.has_field("reason", reason), "{reason} for {target:?}");
+        assert!(
+            !ev.fields.contains_key("target_name"),
+            "the invalid name is not logged"
+        );
+    }
 }

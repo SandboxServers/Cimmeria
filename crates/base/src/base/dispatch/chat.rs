@@ -296,10 +296,12 @@ pub(super) async fn handle_chat_set_afk(
         }
     };
     let active = message.chars().count() > 1;
-    let stored: String = message.chars().take(MAX_DND_MESSAGE_CHARS).collect();
-    if active && !away_message_allowed(feedback, addr, "afk", &stored).await {
+    // Check the whole decoded text before the bound cuts it: a forbidden
+    // character past scalar 128 must refuse the message, not vanish.
+    if active && !away_message_allowed(feedback, addr, "afk", &message).await {
         return;
     }
+    let stored: String = message.chars().take(MAX_DND_MESSAGE_CHARS).collect();
     let mut clients = connected.lock().unwrap();
     if let Some(c) = clients.get_mut(&addr) {
         c.afk_message = active.then_some(stored);
@@ -359,6 +361,10 @@ pub(super) async fn handle_chat_set_dnd(
         }
     };
     let message_chars = message.chars().count();
+    // Check the whole decoded text before the bound cuts it (see AFK).
+    if message_chars > 1 && !away_message_allowed(feedback, addr, "dnd", &message).await {
+        return;
+    }
     let message = match message.char_indices().nth(MAX_DND_MESSAGE_CHARS) {
         Some((cut, _)) => {
             tracing::debug!(
@@ -374,9 +380,6 @@ pub(super) async fn handle_chat_set_dnd(
         }
         None => message,
     };
-    if message_chars > 1 && !away_message_allowed(feedback, addr, "dnd", &message).await {
-        return;
-    }
     let mut clients = connected.lock().unwrap();
     if let Some(c) = clients.get_mut(&addr) {
         c.dnd_message = if message_chars > 1 {
@@ -396,8 +399,9 @@ pub(super) async fn handle_chat_set_dnd(
 pub(super) const AWAY_BAD_CHARACTER_TEXT: &str =
     "Your away message contains a character that cannot be sent. It was not set.";
 
-/// The D-SS12 / D-ORG10 character rules on an away message, which is
-/// already bounded to 128 scalars, so only the character rules refuse it. A refusal logs `chat.away_rejected` with `reason` and sends one
+/// The D-SS12 / D-ORG10 character rules on an away message, applied to the
+/// whole decoded text before it is cut to 128 scalars. Length is not this
+/// check's business: the caller bounds the stored text. A refusal logs `chat.away_rejected` with `reason` and sends one
 /// feedback line; the caller keeps the previous state.
 async fn away_message_allowed(
     feedback: &FeedbackCtx<'_>,
@@ -406,9 +410,9 @@ async fn away_message_allowed(
     text: &str,
 ) -> bool {
     // The character rules run before the length check inside `validate`, so
-    // a `TooLong` means the characters passed. The length is the away
-    // message's own 128-scalar bound (up to 256 UTF-16 units), applied by the
-    // caller, not the 255-unit chat-line cap.
+    // a `TooLong` means the characters passed. The length rule is the away
+    // message's own 128-scalar truncation, applied by the caller, not the
+    // 255-unit chat-line cap.
     let reject = match validate(TextField::ChatText, text) {
         Ok(_) | Err(TextReject::TooLong { .. }) => return true,
         Err(reject) => reject,

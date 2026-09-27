@@ -320,3 +320,122 @@ async fn contact_list_ui_edit_of_ignore_list_resyncs_session_and_cell() {
     ));
     cleanup(&pool, account_id, player_id).await;
 }
+
+/// PR #893 review: the contact-list UI adds up to 100 names per request, so
+/// without a cap on its path two batches could take the Ignore list well past
+/// `MAX_IGNORE_LIST_MEMBERS`. With 98 on the list, a 5-name batch adds 2,
+/// the other 3 are refused with one feedback line, and the list stops at 100;
+/// a second batch adds nothing. Fails when `add_members_bounded` ignores the
+/// cap (the list ends at 103).
+#[tokio::test]
+async fn contact_list_ui_batch_cannot_push_the_ignore_list_past_the_cap() {
+    use crate::base::contact_list::handlers::handle_add_members;
+    use crate::test_support::TestTransport;
+    use cimmeria_mercury::transport::Transport;
+
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (TEST_BASE + 40, TEST_BASE + 41);
+    cleanup(&pool, account_id, player_id).await;
+    insert_player(&pool, account_id, player_id, "ssc1-owner-cap").await;
+    let (_friends, ignore) = ensure_system_lists(&pool, player_id).await.unwrap();
+    let filler: Vec<String> = (0..MAX_IGNORE_LIST_MEMBERS - 2)
+        .map(|i| format!("cap-filler-{i}"))
+        .collect();
+    sqlx::query(
+        "INSERT INTO sgw_contact_list_member (list_id, player_name) \
+         SELECT $1, n FROM UNNEST($2::text[]) AS t(n)",
+    )
+    .bind(ignore)
+    .bind(&filler)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let addr: SocketAddr = "127.0.0.1:54730".parse().unwrap();
+    let entity_id = 9003;
+    let mut state = test_default_connected_client_state();
+    state.active_player_id = Some(player_id);
+    state.player_entity_id = Some(entity_id);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let test_transport = Arc::new(TestTransport::default());
+    let transport: Arc<dyn Transport> = test_transport.clone();
+    let db_pool = Some(Arc::new(pool.clone()));
+    let (tx, _rx) = mpsc::channel(8);
+    let cell_tx = Some(tx);
+
+    let batch: Vec<String> = (1..=5).map(|i| format!("cap-new-{i}")).collect();
+    let added = handle_add_members(
+        entity_id,
+        player_id,
+        ignore,
+        batch.clone(),
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &cell_tx,
+    )
+    .await;
+    assert_eq!(
+        added,
+        vec!["cap-new-1".to_string(), "cap-new-2".to_string()]
+    );
+    let count = |pool: PgPool| async move {
+        let n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM sgw_contact_list_member WHERE list_id = $1")
+                .bind(ignore)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        n
+    };
+    assert_eq!(count(pool.clone()).await, MAX_IGNORE_LIST_MEMBERS as i64);
+    assert!(
+        !test_transport.filter_to(addr).is_empty(),
+        "the refused names get a feedback line (and the added ones their echo)"
+    );
+
+    let again = handle_add_members(
+        entity_id,
+        player_id,
+        ignore,
+        vec!["cap-more".to_string()],
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &cell_tx,
+    )
+    .await;
+    assert!(again.is_empty(), "a full list takes nothing more");
+    assert_eq!(count(pool.clone()).await, MAX_IGNORE_LIST_MEMBERS as i64);
+    cleanup(&pool, account_id, player_id).await;
+}
+
+/// The resync's one-query snapshot: every stored name, and the ids of the
+/// characters they fold-match; a name with no character adds no id.
+#[tokio::test]
+async fn load_ignore_snapshot_reads_names_and_ids_together() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (TEST_BASE + 50, TEST_BASE + 51);
+    let (other_account, other_id) = (TEST_BASE + 52, TEST_BASE + 53);
+    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, other_account, other_id).await;
+    insert_player(&pool, account_id, player_id, "ssc1-owner-snap").await;
+    insert_player(&pool, other_account, other_id, "SsC1SnapReal").await;
+    let (_friends, ignore) = ensure_system_lists(&pool, player_id).await.unwrap();
+    add_members(
+        &pool,
+        player_id,
+        ignore,
+        &["ssc1snapreal".to_string(), "ssc1-nobody".to_string()],
+    )
+    .await
+    .unwrap();
+    let (names, ids) = load_ignore_snapshot(&pool, player_id).await.unwrap();
+    assert_eq!(names, set(&["ssc1snapreal", "ssc1-nobody"]));
+    assert_eq!(ids, HashSet::from([other_id]));
+    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, other_account, other_id).await;
+}
