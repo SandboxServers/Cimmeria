@@ -10,7 +10,7 @@
 //! - [`handle_expansion_quote`] (`BankCellToBase::ExpansionQuote`): a vault
 //!   opened. Below the ceiling, tell the cell the current size and the next
 //!   step's price, so it can record the offer and show the dialog. At the
-//!   ceiling, offer nothing.
+//!   ceiling, offer nothing and say the vault is full.
 //! - [`handle_expand`] (`BankCellToBase::Expand`): the player pressed the
 //!   button. Check the cell's fresh verdict and the offer (size and
 //!   price), then buy in one statement ([`persist::persist_expansion`]). On success, re-declare the
@@ -314,9 +314,9 @@ async fn reject(
 }
 
 /// `BankCellToBase::ExpansionQuote`: below the ceiling, send the cell the
-/// offer. At the ceiling nothing is offered and nothing is said: the vault
-/// window opening is the click's feedback, and a "full" line on every
-/// Banker visit would be noise.
+/// offer. At the ceiling nothing is offered, and the player is told the
+/// vault is full: the packet asks for feedback at 100 slots, and without
+/// it the missing Expand dialog looks like a fault.
 #[tracing::instrument(
     name = "bank.expansion_quote",
     level = "info",
@@ -328,6 +328,8 @@ pub async fn handle_expansion_quote(
     speaker_id: u32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
     let state = match db_pool.as_deref() {
         None => Err(("db_unavailable", None)),
@@ -346,6 +348,14 @@ pub async fn handle_expansion_quote(
     };
     if state.bank_slots >= VAULT_CEILING {
         quote_debug(caller, &state, false, Some("at_ceiling"));
+        let client = Client {
+            caller,
+            transport,
+            connected,
+        };
+        client
+            .send_line(&ExpandRefusal::AtCeiling.feedback(None))
+            .await;
         return;
     }
     let Some(price) = state.next_price else {

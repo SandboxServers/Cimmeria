@@ -44,7 +44,15 @@ pub(super) async fn route(msg: BankCellToBase, ctx: &DispatchCtx<'_>) {
                 account_id,
                 player_id,
             };
-            handle_expansion_quote(caller, speaker_id, ctx.db_pool, ctx.cell_tx).await
+            handle_expansion_quote(
+                caller,
+                speaker_id,
+                ctx.db_pool,
+                ctx.cell_tx,
+                ctx.transport,
+                ctx.connected,
+            )
+            .await
         }
         BankCellToBase::Expand {
             entity_id,
