@@ -68,7 +68,7 @@ Restored after each; `git status` clean.
 
 ## Test catalogue
 
-All in `crates/base-session/src/base/organization/persistence/tests/`, sentinels `0x7000_4800..=0x7000_49FF` (blocks of 16, 20 of 32 used), organizations cleaned by exact id or exact name key.
+All in `crates/base-session/src/base/organization/persistence/tests/`, sentinels `0x7000_4800..=0x7000_49FF` (blocks of 16, 20 of 32 used; round 3 widens the range to `0x7000_4BFF`, 64 blocks), organizations cleaned by exact id or exact name key.
 
 - `constraints.rs`: `create_org_writes_every_rank_row`, `second_team_for_same_player_is_refused`, `duplicate_name_key_is_refused`, `member_org_type_cannot_drift`, `org_id_outside_base_range_is_refused`, `cash_and_rank_masks_are_range_checked`, `member_rank_must_have_a_rank_row`, `disband_cascades_ranks_and_members`, `one_leader_and_held_ranks_are_enforced`.
 - `trigger.rs`: `leader_delete_leaves_no_leaderless_org` (promotion order, rank beats standing, Team + Command leader deleted at once, solo disband), `last_member_delete_with_vault_leaves_memberless_org` (replaces `org_vault_is_empty_sql` with `SELECT false` inside a rolled-back transaction, then checks the stub is back), `remove_member_reports_what_the_trigger_did`, `multi_row_member_delete_promotes_or_disbands_once`, and two type-5 concurrency tests, `trigger_waits_for_the_org_lock` and `kick_during_character_delete_does_not_deadlock`, which poll `pg_stat_activity` for a lock wait before releasing the holder so they cannot pass without the race.
@@ -81,13 +81,13 @@ Ledger: `origin/docs/org-telemetry` (PR #878), "Telemetry (owner rule, 2026-09-2
 - **Persistence events.** `persistence/observe.rs::observed` wraps every public function. On success the body logs a DEBUG `event` named after the function (target `org`) with `org_id`, `player_id` where there is one, `rows_affected`, and before/after values: `set_rank` `from_rank`/`to_rank`, `set_rank_permissions` `from_mask`/`to_mask`, `set_text` `field`/`from_units`/`to_units` (the old text comes back through an `UPDATE … FROM` self-join; only lengths are logged), `remove_member` `from_rank`/`after`. A refusal logs one WARN with `event` = the function and `reason` = `OrgStoreError::reason()`. `lock_org` and `member_access_locked` warn on their own misses (`no_such_org`, `not_a_member`); the persistence layer locks through the unlogged `lock_org_quiet`, so a miss is one WARN, not two.
 - **Trigger events: the audit table, not RAISE LOG.** `sgw_organization_events (org_event_id, org_id, event, reason, from_player_id, from_account_id, to_player_id, to_account_id, tx_id, at, exported_at)`, `event` ∈ `leader_changed` / `disbanded` / `left_memberless`, `reason` ∈ `character_deleted` (the `sgw_player` row was gone when the trigger ran) / `member_removed` (any other member delete, so a psql or GM delete is recorded too; the ledger named only `character_deleted`). No FKs: a disbanded org and a deleted character are what the rows describe.
 - **Account ids at delete time.** When the trigger runs on a character delete the `sgw_player` row is already gone, so it cannot look the account up. The member row now keeps an `account_id` copy (a character never changes account), read by `insert_member` with the same `FOR KEY SHARE` select that checks the player exists.
-- **Export, at least once.** `organization/audit.rs`: every exporter selects its unstamped rows `FOR UPDATE SKIP LOCKED` (two exporters never log the same row concurrently), logs them, then stamps `exported_at` and commits. A crash between the log and the commit re-sends the row at the next startup sweep, so every exported event carries the row's `org_event_id` (its own sequence) as the dedup key (coordinator addition, 2026-09-27). `character_delete::delete_character` reads `txid_current()` before its commit and, after it, exports that transaction's rows at INFO (`source = character_delete`), returning them in `CharacterDeletion.org_events`; `handle_delete_character` adds `org_events` to its "Character deleted" line. `remove_member` exports its transaction's rows at DEBUG inside the transaction (`source = in_transaction`; a rollback removes row and stamp together). `BaseService::start` spawns `spawn_startup_sweep` (INFO, `source = startup_sweep`). A failed export or sweep logs WARN `org_events_export` / `org_events_swept`, `reason = db_error`, and leaves the rows for the next sweep.
+- **Export, at least once.** `organization/audit.rs`: every exporter selects its unstamped rows `FOR UPDATE SKIP LOCKED` (two exporters never log the same row concurrently), logs them, then stamps `exported_at` and commits. A crash between the log and the commit re-sends the row at the next startup sweep, so every exported event carries the row's `org_event_id` (its own sequence) as the dedup key (coordinator addition, 2026-09-27). `character_delete::delete_character` reads `txid_current()` before its commit and, after it, exports that transaction's rows at INFO (`source = character_delete`), returning them in `CharacterDeletion.org_events`; `handle_delete_character` adds `org_events` to its "Character deleted" line. `remove_member` exports its transaction's rows at DEBUG inside the transaction (`source = in_transaction`; a rollback removes row and stamp together). *Superseded in round 3: `remove_member` returns its `tx_id` and the leave or kick handler exports after commit, at INFO, `source = member_removal`.* `BaseService::start` spawns `spawn_startup_sweep` (INFO, `source = startup_sweep`). A failed export or sweep logs WARN `org_events_export` / `org_events_swept`, `reason = db_error`, and leaves the rows for the next sweep.
 - **Handler edit size.** Small: the handler already called `delete_character` (round 1); the export lives in base-session and the handler only logs the count. No need to move it to ORG-06.
 - **No counters.** `org_actions_total` counts handler actions (outcome rows); ORG-02 has no handler, so it adds none.
 
 `startup_sweep_exports_rows_a_bare_delete_left` also resets a row's stamp (standing in for a crash between the log and the stamp commit) and checks the next sweep re-sends it with the same `org_event_id`.
 
-Round 2 tests (live-DB + `LogCapture`): `audit::character_delete_exports_trigger_events_once`, `audit::startup_sweep_exports_rows_a_bare_delete_left`, `audit::remove_member_exports_its_rows_in_transaction`, `telemetry::typed_misses_log_one_warn_with_reason`, `telemetry::changes_log_debug_with_before_and_after`. Sentinel blocks 20-24.
+Round 2 tests (live-DB + `LogCapture`): `audit::character_delete_exports_trigger_events_once`, `audit::startup_sweep_exports_rows_a_bare_delete_left`, `audit::remove_member_exports_its_rows_in_transaction` (round 3: `remove_member_rows_export_after_commit`), `telemetry::typed_misses_log_one_warn_with_reason`, `telemetry::changes_log_debug_with_before_and_after`. Sentinel blocks 20-24.
 
 Round 2 regression proof (`live-db-test.sh base::organization::persistence::tests::telemetry base::organization::persistence::tests::audit --no-fail-fast`, restored with `git checkout -- .` after each):
 
@@ -108,11 +108,40 @@ SigNoz filters (Logs, `service.name = 'cimmeria-server'`):
 | Export failures | `scope_name = 'org' AND event IN ('org_events_export', 'org_events_swept')` |
 | Trigger results, one row each (dedup the at-least-once export) | the first filter, grouped by or distinct on `org_event_id` |
 
+## Round 3: PR #881 review (Copilot threads on `ca4757fe`)
+
+Resumed after a restart killed the round-3 worker: its unpushed `a8aa4410` (authorize-inside-the-lock, SQL member/rank guards, lock-order triggers) was kept, its uncommitted mutation-test diff discarded, and the branch rebased onto `origin/main` @ `88d7da73` (SS-00 #880; one conflict, the `org` / `squad` catalog row in `observability.md`, resolved by keeping SS-00's new rows and this branch's `org` row).
+
+| Thread | Disposition |
+|---|---|
+| `audit.rs`: stamp before log | Fixed in `cec900b7` (rebased `02e1a111`): lock `FOR UPDATE SKIP LOCKED`, log, stamp, commit. Guard added this round: `audit::export_logs_before_the_stamp_can_commit`. |
+| `character_delete.rs:56`: join vs delete deadlock | Fixed in `a8aa4410` (rebased `f07c91de`): the `sgw_player` BEFORE DELETE trigger reads memberships after the player row is locked, and `insert_member` checks membership before its `FOR KEY SHARE`. Guard: `authority::duplicate_join_during_character_delete_does_not_deadlock`. |
+| `sgw_organization_ranks.sql`: per-type ranks in the DB | Fixed in `a8aa4410`: `org_type` column, composite FK to `(org_id, org_type)`, `sgw_organization_ranks_rank_in_type_check`. Guard: `authority::rank_rows_are_per_type_in_sql`. |
+| `_foreign_keys.sql:135`: account cascade | Fixed in `a8aa4410` for a single character; this round adds the `account` BEFORE DELETE trigger (`org_account_before_delete`): a multi-character account delete locked organizations character by character, out of `org_id` order, and deadlocked (40P01, reproduced) against a single-character delete of a member of both. Guards: `authority::account_delete_cascade_keeps_the_lock_order`, `authority::account_delete_locks_all_its_characters_orgs_in_order`. |
+| `character_delete.rs:53`: ownership before locks | Fixed in `a8aa4410`: the first statement locks only an owned `sgw_player` row. Guard: `authority::foreign_account_delete_takes_no_locks`. |
+| `loads.rs:89/134/169`: `rows` vs `rows_affected` | Fixed in `a8aa4410`. Guard added this round in `telemetry::changes_log_debug_with_before_and_after`. |
+
+Sentinels grow to `0x7000_4800..=0x7000_4BFF` (64 blocks of 16); blocks 32-34 are new. The lock-wait helpers moved to `persistence/tests/mod.rs`.
+
+Round 3 regression proof: each mutation applied alone, `live-db-test.sh <test>` run (the DB reloaded each time, so SQL mutations take effect), then `git checkout HEAD -- crates db`. Every run exited 100 with its test FAILED:
+
+| Mutation | Test | Failure |
+|---|---|---|
+| `log_rows` moved after the stamping `UPDATE` in `audit::export` | `export_logs_before_the_stamp_can_commit` | "the event must be logged before its stamp is written" |
+| `account_before_delete_lock_orgs` trigger commented out | `account_delete_locks_all_its_characters_orgs_in_order` | 40P01 deadlock in `org_player_before_delete()` |
+| `StaleAccess` check disabled (`&& false`) | `access_is_tied_to_its_transaction` | assertion at `authority.rs:44` |
+| members `BEFORE UPDATE` trigger commented out | `member_identity_and_leader_rank_are_immutable_in_sql` | assertion at `authority.rs:123` |
+| rank CHECK loosened to `rank BETWEEN 1 AND 8` | `rank_rows_are_per_type_in_sql` | Team rank 5 inserted (`rows_affected: 1`) |
+| unfiltered org pre-lock added to `delete_character` | `foreign_account_delete_takes_no_locks` | timed out waiting on the org lock |
+| `FOR KEY SHARE` moved before the membership check in `insert_member` | `duplicate_join_during_character_delete_does_not_deadlock` | 40P01 deadlock |
+| `rows_affected` renamed `rows` in `loads.rs` | `changes_log_debug_with_before_and_after` | assertion at `telemetry.rs:138` |
+
+Round 3 commands: `lane.sh cargo check -p cimmeria-base-session --all-targets` (0); `lane.sh cargo clippy -p cimmeria-base-session --all-targets -- -D warnings` (0); `lane.sh cargo fmt --all` then `-- --check` (0); `live-db-test.sh organization` (0, 89 passed, none skipped).
+
 ## Known gaps
 
 - `disband`'s `VaultNotEmpty` refusal is untested: the Rust stub always returns true. The Bank campaign's replacement should add the test.
-- `delete_character` reads memberships before locking; an org the character joins in that window is not pre-locked (its trigger then runs with the old lock order). Narrow, and no worse than before.
-- A character delete from any other path (a future GM tool, account deletion via the `account` cascade) should go through `delete_character` or take the same locks; a bare delete stays correct but can deadlock.
+- ~~`delete_character` reads memberships before locking~~ and ~~a character delete from any other path can deadlock~~: fixed in round 3 by the `sgw_player` and `account` BEFORE DELETE triggers.
 - `load_memberships` / `load_roster` are display reads with no lock, by design; nothing may authorize from them.
 - No `updated_at` column on any table.
 - The startup-sweep call in `BaseService::start` has no test of its own; `sweep_unexported` is tested directly.
