@@ -324,6 +324,16 @@ crate; the NavBuilder-side write-up is
   with the flag on; every other map defaults to off until someone does
   the same per-map check (see the flag-usage table in
   [navmesh-build-pipeline.md §11](../../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)).
+  **NA40 (2026-09-26) replaced the flag with a per-actor decision**
+  (`interp_actor` module, `--interp-actors classify|off`, default
+  `classify`): the chunk's Kismet is followed to each actor's Matinee
+  move tracks, an actor is baked only when nothing moves it or every
+  move leaves from and returns to its cooked pose without turning or
+  sliding, and doors, Stargate parts and camera heads are never baked.
+  Undecided actors stay a flagged collision risk, and every run logs its
+  decisions to `interp_actors.tsv`. The "ring-transport platforms" turn
+  out to be the rings, which lie 30-34 cm high on their platforms. See
+  [navmesh-build-pipeline.md §12](../../docs/engine/navmesh-build-pipeline.md#12-per-actor-interpactor-classification-na40-2026-09-26).
 - **`Polys` is never read.** BSP collision comes from `UModel`'s node
   tree, so this is believed correct rather than known correct.
 - **Terrain coordinate cross-check** — the height-vs-known-outdoor-point

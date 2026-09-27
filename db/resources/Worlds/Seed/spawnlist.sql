@@ -32,6 +32,10 @@
 -- hold-position-and-fire branch, which is correct for a sentry anyway.
 -- It gates fight-time pathing ONLY -- patrol, wander and follow never
 -- read it -- so it is not a movement lock. Revisit after GH1.
+-- (2026-09-26: both premises are dated. NA26/NA28 rebuilt harset.nav and
+-- added harset_cmdcenter.nav for world 68, NA15 replaced the freeze with
+-- hold-then-home, and NA29 made five world-57 rows mobile. The rows that
+-- stay stationary do so per D-H06.)
 --
 -- Ring switches (template 3), the DHD (1) and the merchant basket (164)
 -- are props that can never enter combat, so they stay NULL; a delay on
@@ -564,9 +568,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- z[62,70] that is the only way onto her dais: "face the way a visitor
 -- arrives", which is the Castle lesson this packet must not repeat.
 --
--- All rows are `is_stationary = true`. World 68 has no navmesh at all, so an
--- NPC that tried to path would hit the `no_path` branch and freeze
--- (decision D-H06, same reasoning as the plaza sentries). Every row is
+-- All rows are `is_stationary = true`. When these rows were written, world
+-- 68 had no navmesh at all, so an NPC that tried to path would hit the
+-- `no_path` branch and freeze (decision D-H06, same reasoning as the plaza
+-- sentries). NA26 (2026-09-25) added data/spaces/harset_cmdcenter.nav; the
+-- rows stay stationary because they are talk NPCs with nowhere to go. Every row is
 -- non-hostile by template (faction 1 or 3, never 10) per D-H03/D-H04: 68 is
 -- a shared council room and nothing here is ever a kill target.
 -- `respawn_secs = 30` on every row for consistency with the 14 existing
@@ -851,11 +857,141 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (313, -160.5, -28.25, 232.6, 5.0039, 57, 244, 'Harset_PetbeQuarters', NULL, false, 30);
 
 --
+-- NEW CONTENT (debug hub): spawns 400-404, the debug hub in the
+-- Castle_CellBlock stasis room (world 12), templates 300-304. Full write-up:
+-- docs/content/debug-hub.md. The ids start at 400 because the Harset rebuild
+-- reserves 300-399.
+--
+-- ALWAYS SEEDED, BY OWNER DECISION. These are plain rows that every player
+-- sees, in the room every new character wakes up in. `spawnlist` has no
+-- dev/enabled column, and the owner chose visible-to-all over gating. Contrast
+-- Harset packet H13 (header of this file), which deleted spawns 1 and 42
+-- (templates 23 and 25) from the Harset gate plaza because they stood in the
+-- player's face on arrival. These stand along the room's A-B wall instead.
+--
+-- Placement. The room is point set 2032 `Castle_Cellblock.Region1`, corners
+-- A(-347.17, -230.14) B(-327.67, -240.70) C(-318.89, -224.51) D(-338.39,
+-- -213.94) in XZ, D being the raised exit threshold. The five sit on a line
+-- 3 units in from the A-B wall, 3 units apart, at the respawner's floor height
+-- (respawner 8 'Stasis Chamber' is at y = 73.472). The slot closest to the
+-- respawner is left empty, so the nearest NPC is 5.5 units from where a new
+-- character appears. Headings face the room centre (-333.03, -227.32),
+-- yaw = atan2(dx, dz). There is no navmesh or occluder data for this room:
+-- the placement still needs an in-client check.
+--
+-- Only the crate is a mob that can die, so only it carries respawn_secs,
+-- is_stationary and an aggression override (NEUTRAL, 3: no proximity aggro).
+-- Its tag is unique so no entity_dead_tag chain or kill objective can match.
+--
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (400, -343.9, 73.472, -228.49, 1.4638, 12, 300, 'DebugHub_Vendor', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (401, -341.26, 73.472, -229.92, 1.2651, 12, 301, 'DebugHub_Trainer', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (402, -338.63, 73.472, -231.35, 0.9473, 12, 302, 'DebugHub_DialogNpc', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (403, -333.35, 73.472, -234.21, 0.0464, 12, 303, 'DebugHub_LivewireTerminal', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, aggression_override) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL, true, 30, 3);
+
+-- Pets campaign, PT-07: spawn 450, the debug hub's pet trainer (template 360,
+-- docs/content/debug-hub.md). Pets own spawns 450-469. It takes the next slot
+-- on the hub line after the crate: 3 units in from the A-B wall, 3 units past
+-- spawn 404, about 2.1 units in from the B-C wall and 10.9 from the respawner.
+-- Heading faces the room centre, yaw = atan2(dx, dz). It cannot die, so no
+-- respawn_secs, is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (450, -328.08, 73.472, -237.07, -0.4698, 12, 360, 'DebugHub_PetTrainer', NULL);
+
+-- Bank and Vault campaign, BV-04: spawn 470, the debug hub's Banker (template
+-- 370, docs/content/debug-hub.md). The bank campaign owns spawns 470-489. The
+-- A-B line is full up to the B corner and the crafting corner (CraftHub_*,
+-- 410-414) takes the A-D side, so the Banker stands at the middle of the B-C
+-- wall, 3 units in: 8.9 units from the respawner, at least 6.3 from every
+-- other hub NPC, 9.2 from the C-D exit wall. Heading faces the room centre,
+-- yaw = atan2(dx, dz). It cannot die, so no respawn_secs, is_stationary or
+-- aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (470, -325.92, 73.472, -231.18, -1.0739, 12, 370, 'DebugHub_Banker', NULL);
+
+-- BV-10a: spawns 471 and 472, the debug hub's Team and Command Bankers
+-- (templates 371 and 372, docs/content/debug-hub.md). The B-C wall line
+-- (3 units in) is full from B to the mail clerk (450, 430, 470, 490) and has
+-- one slot left past 490, 2.4 units from the C-D wall; the A-B line is full,
+-- crafting takes the D-A wall. So the org Bankers stand in a second row, 6
+-- units in from the B-C wall, each in the gap between two wall NPCs so that
+-- none hides another from the room centre: 471 between the Banker and the
+-- mail clerk (11.1 along from B), 472 past the mail clerk (14.9 along). In
+-- XZ: 471 is 3.55 from 470 and from 490, 3.8 from 472, 5.0 from 431 and 6.6
+-- from the respawner; 472 is 3.55 from 490, 6.4 from 470, 3.5 from the C-D
+-- wall and 9.0 from the respawner. Headings face the room centre (-333.03,
+-- -227.32), yaw = atan2(dx, dz). They cannot die, so no respawn_secs,
+-- is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (471, -327.65, 73.472, -228.09, -1.4294, 12, 371, 'DebugHub_TeamBanker', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (472, -325.84, 73.472, -224.74, -1.9148, 12, 372, 'DebugHub_CommandBanker', NULL);
+
+-- Social-systems campaign, SS-U3: spawn 490, the debug hub's Gate Mail Clerk
+-- (template 390, docs/content/debug-hub.md). Social owns spawns 490-499;
+-- 491-499 stay reserved. The A-B line is full (its only open slot, next to the
+-- respawner, stays empty on purpose), the crafting corner takes the D-A wall and
+-- the Banker (470) the middle of the B-C wall. So the clerk stands on the B-C
+-- wall past the Banker, towards C: 3 units in from it and 13 units along it
+-- from B, which is 3.8 from the Banker, 5.4 from the C-D exit wall and 10.1
+-- from the respawner. Heading faces the room centre, yaw = atan2(dx, dz). He
+-- cannot die, so no respawn_secs, is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (490, -324.11, 73.472, -227.84, -1.5123, 12, 390, 'DebugHub_MailClerk', NULL);
+
+-- Organizations campaign, ORG-05: spawns 430 and 431, the debug hub's Team and
+-- Command registrars (templates 330 and 331, docs/content/debug-hub.md).
+-- Organizations own spawns 430-449; 432-449 stay reserved. The A-B line is full,
+-- the crafting corner takes the D-A wall, and the Banker (470) and the mail
+-- clerk (490) the B-C wall from its middle towards C. So the registrars stand
+-- as a pair between the pet trainer (450) and the Banker: the Team registrar on
+-- the B-C wall, 3 units in from it and 6.1 along it from B, and the Command
+-- registrar 3 units further into the room, level with it. That is 3.0 apart,
+-- at least 3.1 from every other NPC (the Banker, the pet trainer and
+-- the crate) and 6.1 from the
+-- respawner. Heading faces the room centre, yaw = atan2(dx, dz). They cannot
+-- die, so no respawn_secs, is_stationary or aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (430, -327.40, 73.472, -233.91, -0.7086, 12, 330, 'DebugHub_TeamRegistrar', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (431, -330.04, 73.472, -232.48, -0.5276, 12, 331, 'DebugHub_CommandRegistrar', NULL);
+
+--
+-- NEW CONTENT (debug hub, crafting): spawns 410-414, the crafting stations
+-- (templates 310-313) and the crafting supplies vendor (314) in the stasis
+-- room. The crafting campaign owns spawns 410-429. Always seeded, like
+-- 400-404 (same owner decision, docs/content/debug-hub.md).
+--
+-- Placement. The A-B wall holds 400-404 and the pet trainer, so these stand
+-- along the D-A wall, D(-338.39, -213.94) to A(-347.17, -230.14): 3 units in
+-- from it, at 6.0, 8.6, 11.2, 13.8 and 16.4 units from A (2.6 apart, the
+-- vendor nearest A), at the respawner's floor height (y 73.472). The nearest
+-- is 7.4 units from the respawner and 3.1 from the hub vendor (400). Headings
+-- face the room centre (-333.03, -227.32), yaw = atan2(dx, dz). The station
+-- reach is 5 units, so a player standing between two stations reaches both.
+-- As for 400-404, there is no navmesh or occluder data for this room: the
+-- placement still needs an in-client check.
+--
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (414, -341.67, 73.472, -226.29, 1.6889, 12, 314, 'CraftHub_Supplies', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (410, -340.43, 73.472, -224.01, 1.9913, 12, 310, 'CraftHub_Station_BioMedical', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (411, -339.2, 73.472, -221.72, 2.3079, 12, 311, 'CraftHub_Station_Electronics', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (412, -337.96, 73.472, -219.44, 2.583, 12, 312, 'CraftHub_Station_PowerSystems', NULL);
+
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (413, -336.72, 73.472, -217.15, 2.7937, 12, 313, 'CraftHub_Station_Materials', NULL);
+
+--
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
 
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 349, true);
+-- Past every seeded row and every reserved campaign spawn block (debug hub
+-- 400-404, crafting 410-429, organizations 430-449, pets 450-469, bank
+-- 470-489, social 490-499), so a row inserted without a spawn_id (the
+-- `.savespawn` seed SQL) never takes a used or reserved id. Raise the floor
+-- when a new block is reserved above 499; live_db_spawnlist_sequence.rs
+-- and live_db_seed_sequences.rs guard it. `last_value` keeps a reload from
+-- ever lowering it. Same form as the crafting CR-11 footers.
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 499), true);
 

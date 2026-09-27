@@ -63,8 +63,108 @@ pub fn aggression_toward_players(npc: &CellEntity) -> MobAggression {
 
 /// Whether `npc` aggroes players on sight. This is the Idle admission test
 /// in `npc_ai_tick` and the first gate of the auto-aggro scan.
+///
+/// A pet is never hostile to players, whatever its faction or override
+/// (pets PT-05, D-PT06): it fights for its owner, so it must not run the
+/// player proximity scan or be recruited as an assister. The owner's faction
+/// already reads neutral; this also covers a content `set_aggression` aimed at
+/// a pet.
 pub fn is_hostile_to_players(npc: &CellEntity) -> bool {
-    aggression_toward_players(npc).is_hostile()
+    npc.pet.is_none() && aggression_toward_players(npc).is_hostile()
+}
+
+/// Whether the player `attacker` may damage `target`: THE player hostility
+/// rule, the one the #444 single-target gate (`handle_use_ability`, the
+/// warmup re-check) enforces, and the one a pet obeys on its owner's behalf
+/// (pets PT-05: a pet fights only what its owner could).
+///
+/// - **An NPC target:** an NPC of [`HOSTILE_FACTION`] that is not a pet.
+///   Never a pet (whatever its faction), never a vendor, quest giver or
+///   neutral NPC, whatever its aggression override.
+/// - **A player target:** only the attacker's opponent in an engaged duel,
+///   in the same space, at the two entities the engage recorded
+///   ([`DuelRegistry::can_harm`], social systems SS-D2; the entity check is
+///   SS-D3's, so the gate and the non-lethal clamp cover the same hits).
+///   Every other player, a bystander included, is untouchable. The duel
+///   registry is the only authority: the PvP flag the client sees is never
+///   read back (D-SS23), so a stuck flag cannot make anyone attackable.
+///
+/// Every caller inherits this rule: the single-target launch, the warmup
+/// re-check, the ground-AoE and cone candidate filters, and a pet acting for
+/// its owner.
+///
+/// [`HOSTILE_FACTION`]: super::faction_reaction::HOSTILE_FACTION
+/// [`DuelRegistry::can_harm`]: crate::cell::duel::DuelRegistry::can_harm
+pub fn player_may_attack(
+    attacker: &CellEntity,
+    target: &CellEntity,
+    duels: &crate::cell::duel::DuelRegistry,
+) -> bool {
+    if target.is_player {
+        return match (attacker.player_id, target.player_id) {
+            (Some(a), Some(t)) => {
+                attacker.is_player
+                    && attacker.space_id == target.space_id
+                    && duels.can_harm_entities(
+                        a,
+                        attacker.entity_id.0 as u32,
+                        t,
+                        target.entity_id.0 as u32,
+                    )
+            }
+            _ => false,
+        };
+    }
+    player_may_attack_pve(attacker, target)
+}
+
+/// [`player_may_attack`] with no duel: the rule for a caller that must never
+/// admit a player target, whoever is dueling. Pets use it (a pet never joins
+/// its owner's duel, the default until the owner decides otherwise), and it
+/// is also the NPC half of [`player_may_attack`], so the two cannot drift.
+/// A hostile-faction NPC that is not a pet; never a player, never a pet.
+pub fn player_may_attack_pve(_attacker: &CellEntity, target: &CellEntity) -> bool {
+    !target.is_player
+        && target.pet.is_none()
+        && target.faction == super::faction_reaction::HOSTILE_FACTION
+}
+
+/// Whether an area ability (ground AoE, cone) cast by `attacker` may hit
+/// `candidate`: the area-target filter both collectors share.
+///
+/// A player caster obeys [`player_may_attack`], so a duel partner is a
+/// candidate and every other player is not. An NPC caster keeps the
+/// collectors' historical rule, a hostile-faction non-player, unchanged by
+/// duels (SS-D2 scope: NPC-vs-player behaviour does not move).
+pub fn may_hit_in_area(
+    attacker: &CellEntity,
+    candidate: &CellEntity,
+    duels: &crate::cell::duel::DuelRegistry,
+) -> bool {
+    if attacker.is_player {
+        player_may_attack(attacker, candidate, duels)
+    } else {
+        !candidate.is_player && candidate.faction == super::faction_reaction::HOSTILE_FACTION
+    }
+}
+
+/// The entities an area ability cast by `attacker_id` scans: every NPC, plus
+/// the caster's engaged duel opponent when there is one. Players other than
+/// that opponent are never scanned, so no filter mistake can reach them.
+/// Callers still apply their space, alive and geometry tests, and
+/// [`may_hit_in_area`].
+pub fn area_candidates(
+    space_mgr: &crate::cell::space_manager::SpaceManager,
+    attacker_id: u32,
+) -> Vec<u32> {
+    let mut out = space_mgr.all_npc_entity_ids();
+    let opponent = space_mgr
+        .get_entity(attacker_id)
+        .filter(|a| a.is_player)
+        .and_then(|a| a.player_id)
+        .and_then(|pid| crate::cell::duel::engaged_opponent_entity(space_mgr, pid));
+    out.extend(opponent);
+    out
 }
 
 /// The override a content or console `level` sets.

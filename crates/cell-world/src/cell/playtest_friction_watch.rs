@@ -73,6 +73,9 @@ pub(crate) struct PlayerWatch {
     travelled_since_respawn: f32,
     silence_reported: bool,
     last_dialog: Option<(i32, Instant)>,
+    /// The player closed or answered `last_dialog` (its `dialogButtonChoice`
+    /// was accepted), so whatever is displayed next did not displace it.
+    last_dialog_answered: bool,
 }
 
 impl PlayerWatch {
@@ -90,10 +93,20 @@ impl PlayerWatch {
         self.silence_reported = false;
     }
 
+    /// The player's choice for `dialog_id` was accepted. Only the dialog
+    /// currently on record counts: an older one answered late (the client's
+    /// eviction close, F13) says nothing about the one that replaced it.
+    pub(crate) fn note_dialog_answered(&mut self, dialog_id: i32) {
+        if self.last_dialog.is_some_and(|(id, _)| id == dialog_id) {
+            self.last_dialog_answered = true;
+        }
+    }
+
     pub(crate) fn note_dialog(&mut self, dialog_id: i32, now: Instant) -> Option<Friction> {
         let out = match self.last_dialog {
             Some((prev, at))
                 if prev != dialog_id
+                    && !self.last_dialog_answered
                     && now.saturating_duration_since(at) < DIALOG_DISPLACED_WITHIN =>
             {
                 Some(Friction::DialogDisplaced {
@@ -105,12 +118,14 @@ impl PlayerWatch {
             _ => None,
         };
         self.last_dialog = Some((dialog_id, now));
+        self.last_dialog_answered = false;
         out
     }
 
     /// Re-evaluate the time-based signals. `missions` is
     /// `(mission_id, current_step_id)` for every active, non-hidden mission;
-    /// `regions_inside` is every region the server believes contains `pos`.
+    /// `regions_inside` is every region the client's own hit test puts `pos`
+    /// inside ([`regions_client_should_hint`]).
     pub(crate) fn evaluate(
         &mut self,
         now: Instant,
@@ -301,16 +316,30 @@ pub fn player_tick(
     let world = space_mgr
         .get_entity_world_name(entity_id)
         .unwrap_or_default();
-    let regions: Vec<(u32, String)> = space_mgr
-        .regions_for_world(&world)
-        .into_iter()
-        .filter(|r| region_contains_xz(&r.points, pos[0], pos[2]))
-        .map(|r| (r.runtime_id, r.tag.clone()))
-        .collect();
+    let regions = regions_client_should_hint(&space_mgr.regions_for_world(&world), pos);
     let fired = with_watch(entity_id, |w| w.evaluate(now, pos, &missions, &regions));
     for f in &fired {
         emit(entity_id, f);
     }
+}
+
+/// The regions `region_dwell_no_hint` may complain about at `pos`: the ones
+/// registered with the client (`REGION_FLAG_CLIENT_HINTED`) whose volume the
+/// client's own hit test puts `pos` inside. An XZ-only test here reported
+/// Castle_Cellblock Region6/Region12 for players on the floor above them,
+/// where the client correctly stays silent (2026-09-26 colo logs).
+pub(crate) fn regions_client_should_hint(
+    regions: &[&crate::cell::space_manager::RegionData],
+    pos: [f32; 3],
+) -> Vec<(u32, String)> {
+    regions
+        .iter()
+        .filter(|r| r.flags & crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED != 0)
+        .filter(|r| {
+            crate::cell::spawner::client_would_hint_region(&r.points, r.height, r.radius, pos)
+        })
+        .map(|r| (r.runtime_id, r.tag.clone()))
+        .collect()
 }
 
 /// The client reported a region edge (`triggerClientHintedGenericRegion`).
@@ -339,7 +368,15 @@ pub fn dialog_shown(entity_id: u32, dialog_id: i32) {
     }
 }
 
+/// The player closed or answered `dialog_id` (its choice passed the #479 gate).
+pub fn dialog_answered(entity_id: u32, dialog_id: i32) {
+    with_watch(entity_id, |w| w.note_dialog_answered(dialog_id));
+}
+
 /// A mission is being completed by a chain while objectives are still open.
+/// `open` holds only objectives some chain completes on its own; turn-in
+/// objectives that only `CompleteMission` closes are filtered out by the
+/// caller (`content::executor::mission::report_objectives_left_open`).
 pub fn objectives_never_completed(entity_id: u32, mission_id: i32, open: &[(i32, bool)]) {
     for &(objective_id, optional) in open {
         tracing::warn!(
@@ -396,6 +433,7 @@ pub fn forget(entity_id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell::space_manager::RegionData;
 
     fn secs(t0: Instant, s: u64) -> Instant {
         t0 + Duration::from_secs(s)
@@ -528,6 +566,104 @@ mod tests {
         );
         assert_eq!(w.note_dialog(5859, t0 + Duration::from_millis(700)), None);
         assert_eq!(w.note_dialog(1, secs(t0, 10)), None);
+    }
+
+    /// Seeded Castle_Cellblock regions (point_set_points 2034/2037/2043,
+    /// height 0, flags 1) as the loader hands them over.
+    fn cellblock_region(runtime_id: u32, tag: &str, points: [[f32; 3]; 4]) -> RegionData {
+        RegionData {
+            runtime_id,
+            db_set_id: 0,
+            tag: tag.to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 0.0,
+            radius: 0.0,
+            flags: crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED,
+            points: points.to_vec(),
+        }
+    }
+
+    /// 2026-09-26 colo: entity 2 at (-129.338, 39.552, -96.1) -- the room up
+    /// the ramp west of the Mess Hall -- drew `client_region_hint_missing` for
+    /// Region6 and Region12, whose ceilings are 29.96 and 31.90. The client
+    /// stays silent there by design, so the watcher must not expect a hint.
+    /// Down on their floor (y 24.67) it still must.
+    #[test]
+    fn dwell_candidates_follow_the_clients_ceiling_not_just_xz() {
+        let r6 = cellblock_region(
+            19,
+            "Castle_Cellblock.Region6",
+            [
+                [-115.08, 24.64, -146.42],
+                [-115.08, 24.64, -75.2],
+                [-148.85, 24.64, -75.2],
+                [-148.85, 29.96, -146.42],
+            ],
+        );
+        let r12 = cellblock_region(
+            25,
+            "Castle_Cellblock.Region12",
+            [
+                [-148.81, 24.64, -93.8],
+                [-148.81, 24.64, -146.72],
+                [-115.18, 24.64, -146.72],
+                [-115.18, 31.9, -93.8],
+            ],
+        );
+        let mut unhinted = r12.clone();
+        unhinted.runtime_id = 99;
+        unhinted.flags = 0;
+        let regions = [&r6, &r12, &unhinted];
+
+        assert!(
+            regions_client_should_hint(&regions, [-129.338, 39.552, -96.1]).is_empty(),
+            "upper floor: above both ceilings, the client sends nothing"
+        );
+        let below: Vec<u32> = regions_client_should_hint(&regions, [-129.338, 24.67, -96.1])
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(
+            below,
+            vec![19, 25],
+            "on their floor, both are expected; the unregistered one never is"
+        );
+    }
+
+    /// Colo 2026-09-26: the player closed 2299, whose `dialog_choice` chain
+    /// (1019) displayed 2298 in the same millisecond. That is the player
+    /// moving on, not a displacement. Same shape: 4001 -> 4000.
+    #[test]
+    fn dialog_answered_by_the_player_is_not_displaced_by_its_follow_up() {
+        let t0 = Instant::now();
+        let mut w = PlayerWatch::default();
+        assert_eq!(w.note_dialog(2299, t0), None);
+        w.note_dialog_answered(2299);
+        assert_eq!(w.note_dialog(2298, t0 + Duration::from_millis(1421)), None);
+
+        // The answered flag covers exactly one follow-up: 2298 itself was
+        // not answered, so a third dialog on its heels is still flagged.
+        assert!(w
+            .note_dialog(4000, t0 + Duration::from_millis(1600))
+            .is_some());
+    }
+
+    /// 2516 -> 5859: the server displays 5859 first, and 2516's close only
+    /// arrives afterwards (the client's eviction). A late answer for the
+    /// displaced dialog must not suppress anything.
+    #[test]
+    fn late_answer_for_an_evicted_dialog_does_not_mask_the_displacement() {
+        let t0 = Instant::now();
+        let mut w = PlayerWatch::default();
+        assert_eq!(w.note_dialog(2516, t0), None);
+        assert!(w
+            .note_dialog(5859, t0 + Duration::from_millis(500))
+            .is_some());
+        w.note_dialog_answered(2516);
+        assert!(!w.last_dialog_answered);
+        assert!(w
+            .note_dialog(2518, t0 + Duration::from_millis(900))
+            .is_some());
     }
 
     #[test]

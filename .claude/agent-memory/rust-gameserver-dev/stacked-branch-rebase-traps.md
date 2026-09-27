@@ -38,6 +38,16 @@ Two more things that recur on these rebases:
   `git checkout -- Cargo.lock` immediately before `git add`, not once at the
   start. Never stage it from a packet branch.
 
+**`origin/main` moves under you mid-run** (BV-02, 2026-09-27: four times in
+one rebase-and-verify session). Other sessions fetch into the shared object
+store, so `origin/main` advances without your own `git fetch`. The symptom is
+`git diff --stat origin/main` suddenly listing thousands of deletions in files
+you never touched: your branch is behind, not destructive. Before every push,
+`git fetch && git log --oneline HEAD..origin/main`; if it is non-empty, rebase
+again, re-run the crates the new commits touched plus the full live-DB tier,
+and record the final base sha in the worknote. A new `SpawnRecord` or
+registry literal in a sibling's commit is the usual build break.
+
 **Forward-compat on test match arms:** when a test destructures a
 `content_engine::Action` variant to assert the fields a chain owns, use `..`
 rather than an exhaustive pattern. Sibling packets add loader-defaulted fields

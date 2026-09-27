@@ -46,7 +46,7 @@ Source: `entities/defs/interfaces/SGWBeing.def`
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
 | 0 | setTargetID | YES | INT32 targetId |
-| 1 | setMovementType | YES | UINT8 aMovementType (`EMobMovementType`: Cover=0, CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5, Avoid=6). Bidirectional via the BigWorld Exposed convention — the server fans the same method index out to AoI witnesses (and the entity's own client) on NPC AI state transitions. See `crate::cell::abilities::messaging::broadcast_movement_type` (#48 / #270). |
+| 1 | setMovementType | YES | UINT8 aMovementType (`EMobMovementType`: Cover=0, CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5, Avoid=6). Client to server only. The server sends no movement type back: witness method index 1 on every NPC type is `onSequence`, and the client has no NetIn `SetMovementType` handler. NPC state entries record the value in `last_movement_type` for telemetry and send nothing (`crate::cell::abilities::messaging::broadcast_movement_type`, NA10 #779). The client animates NPC gait from `EntityMoved` velocity. |
 | - | onPetSpawn | no | |
 | - | onPetDeath | no | |
 | - | onPetDetection | no | |
@@ -141,6 +141,8 @@ Source: `entities/defs/interfaces/OrganizationMember.def`
 | 18 | squadSetLootMode | YES | INT32 lootMode |
 | 19 | organizationTransferCash | YES | INT32 orgId, INT32 cash |
 
+Handled in `crates/cell-methods/src/cell/cell_methods/organization/` (organizations campaign, closed out 2026-09-27), which routes on the id each call carries (D-ORG05, D-ORG06). Squads stay on the cell: CM 8 with a cell request id, CM 9, CM 10 (validated and logged, never relayed) and CM 18 (ORG-03, ORG-04). Team and Command ids go to the base: CM 8 with a base request id (ORG-07), CM 9 (ORG-06) and CM 13-17 (ORG-08). CM 10 with a Team or Command id and CM 19 (forwarded as `TransferCash`, the Bank campaign's BV-08) answer "not available yet". CM 11 and 12 are refused as unsolicited (CAT-M-16, M-17). SGWPlayer CM 94 `onOrganizationCreation` goes to the ORG-05 creation handler. Behaviour: [organization-system.md](../gameplay/organization-system.md); none of it is client-verified yet.
+
 ### MinigamePlayer (interface) -- 15 exposed
 
 Source: `entities/defs/interfaces/MinigamePlayer.def`
@@ -206,7 +208,7 @@ Source: `entities/defs/interfaces/SGWMailManager.def`
 | 47 | returnMailMessage | YES | INT32 mailId |
 | 48 | requestMailBody | YES | INT32 mailId |
 | 49 | takeCashFromMailMessage | YES | INT32 mailId |
-| 50 | takeItemFromMailMessage | YES | INT32 mailId, INT32 containerId, INT32 slotId |
+| 50 | takeItemFromMailMessage | YES | INT32 mailId, INT32 containerId, INT32 slotId (containerId and slotId are uninitialised in the shipped client; the handler logs and ignores them and the server picks the first free main-bag slot (SS-M3). See `mail-wire-formats.md` M-Q5) |
 | 51 | payCODForMailMessage | YES | INT32 mailId |
 | - | onNewMail | no | |
 
@@ -368,6 +370,8 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | - | cancelPvPTimer | no | | 1101 |
 | 108 | cancelMovie | YES | WSTRING movieName | 1104 |
 
+**Pet commands (88-90).** The `entityId` in all three is a **client-supplied pet id**. The server resolves it through `SpaceManager::owned_pet(caller, entityId)` before anything else and refuses another player's pet, an NPC or a stale id, with `onErrorCode` to the caller (pets PT-04, CAT-C-11 / #462). Every pet-bar click in the shipped client sends 88; nothing in the client Lua calls 89. The small pet bar sends a 1-based slot number as the `stance` of 90, not a stance id, and the server maps the slot through the stance list it sent. Handlers and refusal codes: [pet-system.md](../gameplay/pet-system.md#owner-commands-pt-04).
+
 ---
 
 ## Summary
@@ -402,6 +406,7 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | 52 | abandonMission | 0xB4 | Mission abandon |
 | 68 | useAbility | 0xBD+7 | Combat ability use (extended) |
 | 70 | respawn | 0xBD+9 | Death respawn (extended) |
+| 72 | resetMyAbilities | 0xBD+11 | Trainer respec, no args; gated on a pinned trainer in range (AT-08, [ability-system.md](../gameplay/ability-system.md#respec)) |
 | 74 | interact | 0xBD+13 | NPC interaction (extended) |
 | 83 | setAutoCycle | 0xBD+22 | Auto-attack toggle (extended) |
 | 108 | cancelMovie | 0xBD+47 | Cinematic finished (extended) |
@@ -479,17 +484,17 @@ beyond the 3 verified handlers above.
   [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
 - **NEW** — no primitive; build from scratch (high effort).
 
-**Tally (of 117):** 38 DONE · 0 REUSE · 35 ADAPT · 44 NEW.
+**Tally (of 117):** 40 DONE · 0 REUSE · 35 ADAPT · 42 NEW.
 
 > [!NOTE]
-> All 38 DONE methods are dispatched from the single `match` in
+> All 40 DONE methods are dispatched from the single `match` in
 > [crates/cell-console/src/cell/console/gm/mod.rs](../../crates/cell-console/src/cell/console/gm/mod.rs)
-> (lines 190-260). A grep for `GM_*` constants finds only **35** of them --
+> (the `dispatch` fn). A grep for `GM_*` constants finds only **37** of them --
 > the other three are declared without the prefix because the `.def` method
 > names themselves have no `gm` prefix: `LIST_ABILITIES = 123`
 > (`listAbilities`, `SGWGmPlayer.def:135`), `DESPAWN_MOB = 213`
 > (`despawnMob`, `:605`), and `TEST_LOS = 216` (`testLOS`, `:619`).
-> The 38-vs-35 difference is a **naming artifact, not a dispatch gap** -- there
+> The 40-vs-37 difference is a **naming artifact, not a dispatch gap** -- there
 > is no second dispatch site.
 
 > **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
@@ -560,7 +565,7 @@ beyond the 3 verified handlers above.
 | 134 | `gmGiveCash(INT32 amount)` | `/GiveNaqahdah` | `cell/console/gm/give.rs` → `GrantCash` | **DONE** |
 | 135 | `gmRemoveItem(ItemID id, INT16 qty)` | — | `cell/console/gm/give.rs` → `RemoveInventoryItem` | **DONE** |
 | 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `progression/mod.rs:400 handle_train_ability` (debits a point; need no-debit variant) | ADAPT |
-| 137 | `gmGiveTrainingPoints(INT32 n)` | — | — (no grant fn; XP path touches the field) | NEW |
+| 137 | `gmGiveTrainingPoints(INT32 n)` | — | `cell/console/gm/give_training_points.rs` → `CellToBaseMsg::GrantTrainingPoints` → `progression/grant_training_points.rs handle_grant_training_points` (one guarded `UPDATE ... RETURNING`, refused past `i32::MAX`) → `BaseToCellMsg::TrainingPointsGranted` (cell mirrors `tree_progress.training_points`, sends `onEntityProperty(TrainingPoints)`, re-sends a pinned trainer) | **DONE** |
 | 138 | `gmGiveRespawner(INT32 mobID)` | `/GiveRespawner` | — (respawner persistence not implemented) | NEW |
 | 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `cell/console/gm/give.rs handle_give_expertise` → `CellToBaseMsg::GrantExpertise` → `base/crafting/handlers.rs handle_grant_expertise` (load/clamp/save + `onUpdateDiscipline` 136) | **DONE** |
 | 140 | `gmGiveAppliedSciencePoints(INT32 pts)` | — | `cell/console/gm/give.rs handle_give_applied_science` → `CellToBaseMsg::GrantAppliedSciencePoints` → `base/crafting/handlers.rs handle_grant_applied_science` (persist-only; no outbound ASP client method) | **DONE** |
@@ -602,7 +607,7 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 164 | `gmReloadOrganizations()` | `/ReloadOrganizations` | — (org methods are stubs; no def hot-reload) | NEW |
+| 164 | `gmReloadOrganizations()` | `/ReloadOrganizations` | `cell/console/gm/organizations.rs` → `OrgCellToBase::GmReload` → `base::organization::handlers::gm_inspect::gm_reload` (re-runs the world-entry push, `push_org_state`, for each of the caller's Teams and Commands; ORG-10) | **DONE** |
 | 165 | `gmReloadInventory()` | `/ReloadInventory` | — (no inventory-def hot-reload) | NEW |
 | 166 | `gmUsers()` | `/Users`, `/Who` | **`gm/query.rs` → `all_player_entity_ids` + feedback (space-scoped; all-shard via base round-trip is future)** | **DONE** |
 | 167 | `gmSetHideGM(UINT8 on)` | `/SetHideGM` | — (`bHideGM` not implemented; `access_level` read-only at login) | NEW |
@@ -690,7 +695,7 @@ beyond the 3 verified handlers above.
 | 219 | `onXRayEyes(UINT8 on)` | — | client-side presentation only; no server state | NEW |
 | 220 | `onInvisible(UINT8 on)` | — | `mercury/aoi/leave.rs:18 build_entity_invisible` (wire only); no visibility-toggle state | NEW |
 | 221 | `onPhysics(UINT8 on)` | `/gmsetfly`, `/gmsetghost` | `cell/console/gm/physics.rs` → `CellEntity::movement_unrestricted` bypass in `space_manager/entities.rs apply_client_position_update_at`. Both slash commands route through this one method identically; client toggles its own pawn physics locally/instantly regardless of the server round-trip. **Wire polarity is inverted**: `on=0` (physics off, GM flying/ghosting) → bypass ON; `on=1` (physics restored) → bypass OFF. | **DONE** |
-| 222 | `sendGMShout(UINT8 global, WSTRING text)` | — | `cell/console/chat.rs:101 broadcast_to_witnesses` (need space/all-shard variant) | ADAPT |
+| 222 | `sendGMShout(UINT8 global, WSTRING text)` | `/gmshout` | `cell/console/gm/shout.rs` → `broadcast`: space scope sent by the cell, global scope through the base (`ChatCellToBase::GmBroadcast` → `base/gm_broadcast.rs`); also backs `.announce` (SS-C2, D-SS16) | **DONE** |
 | 223 | `regenerateCoverLinks(FLOAT normLimit, UINT32 maxLinks, FLOAT maxDist)` | — | `cover/loader.rs:88` static-load only; no regen algorithm | NEW |
 | 224 | `changeCoverWeight(6×FLOAT)` | — | `cover/scoring.rs:38 CoverWeights` (compile-time const; needs RwLock) | ADAPT |
 | 225 | `changeCoverStanceWeight(WSTRING stance, 6×WSTRING)` | — | — (no stance-weight system) | NEW |

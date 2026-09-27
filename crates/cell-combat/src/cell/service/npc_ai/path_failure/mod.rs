@@ -39,6 +39,9 @@ use crate::cell::space_manager::SpaceManager;
 
 #[cfg(test)]
 mod tests;
+mod unrouted;
+
+pub(in crate::cell::service) use unrouted::UnroutedMove;
 
 /// Minimum gap between two emitted `npc_ai.path_fail` rows for the same
 /// NPC. Longer than the movement-reject window (1 s) because the AI tick
@@ -138,10 +141,10 @@ impl PathFailReason {
 /// player-visible symptoms with two different first questions, so the
 /// caller — the only code that knows — passes it in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PathFallback {
+pub(in crate::cell::service) enum PathFallback {
     /// `nav_path` was cleared and the raw destination pushed as a single
     /// waypoint. The NPC walks straight at it, through whatever geometry
-    /// is in the way.
+    /// is in the way. Since NA41 only a space with no navmesh does this.
     DirectWaypoint,
     /// Nothing was enqueued. Whatever path the NPC already had is still
     /// in place, so it keeps walking a stale route — or stands still, if
@@ -160,6 +163,14 @@ pub(super) enum PathFallback {
     /// The destination was off the mesh: the NPC routes to the nearest
     /// on-mesh point to it instead (NA15, audit S14).
     NearestOnMesh,
+    /// No route, so the NPC slid toward the destination across the mesh
+    /// (`moveAlongSurface`) and walks a route to where the slide stopped: a
+    /// wall or the edge of its own island (NA41).
+    SurfaceClamped,
+    /// No route and no slide worth walking: the NPC stopped with zero
+    /// velocity and holds, keeping its state, until a later tick routes
+    /// (NA41).
+    Held,
 }
 
 impl PathFallback {
@@ -171,6 +182,8 @@ impl PathFallback {
             PathFallback::PathCleared => "path_cleared",
             PathFallback::SnappedToMesh => "snapped_to_mesh",
             PathFallback::NearestOnMesh => "nearest_on_mesh",
+            PathFallback::SurfaceClamped => "surface_clamped",
+            PathFallback::Held => "held_no_route",
         }
     }
 }
@@ -276,7 +289,8 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
     // actually did, not on why the pathfinder failed. The two are
     // independent: `fight` leaves the path alone on a degenerate repath
     // *and* on an outright no-path, while `patrol` / `wander` /
-    // `investigate` / `follow` push the raw destination in both cases.
+    // `investigate` / `follow` slide across the mesh or hold (NA41), and
+    // push the raw destination only where there is no mesh.
     let message = match fallback {
         PathFallback::PathUnchanged => format!(
             "npc_ai.path_fail: {state} got no usable navmesh route and enqueued nothing \
@@ -292,13 +306,24 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
              is on another mesh island, so the NPC walks to the edge of its own and stops short"
         ),
         PathFallback::PathCleared => format!(
-            "npc_ai.path_fail: {state} got a route with no usable leg -- the stale route              was cleared and the NPC holds where it stands"
+            "npc_ai.path_fail: {state} got a route with no usable leg -- the stale route \
+             was cleared and the NPC holds where it stands"
         ),
         PathFallback::SnappedToMesh => format!(
-            "npc_ai.path_fail: {state} could not start a route from where the NPC stood              -- it was snapped onto the nearest navmesh polygon and the route retried"
+            "npc_ai.path_fail: {state} could not start a route from where the NPC stood \
+             -- it was snapped onto the nearest navmesh polygon and the route retried"
         ),
         PathFallback::NearestOnMesh => format!(
-            "npc_ai.path_fail: {state}'s destination is off the navmesh -- the NPC routes              to the nearest on-mesh point to it instead"
+            "npc_ai.path_fail: {state}'s destination is off the navmesh -- the NPC routes \
+             to the nearest on-mesh point to it instead"
+        ),
+        PathFallback::SurfaceClamped => format!(
+            "npc_ai.path_fail: {state} got no usable navmesh route -- the NPC slides toward \
+             the destination across the mesh and stops at the wall or island edge"
+        ),
+        PathFallback::Held => format!(
+            "npc_ai.path_fail: {state} got no usable navmesh route and cannot slide any \
+             closer -- the NPC stops and holds, keeping its state, until a later tick routes"
         ),
     };
 

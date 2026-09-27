@@ -134,6 +134,14 @@ pub async fn handle_on_client_ready(
             // without trusting any client byte (#475 / CAT-N-03).
             Some(c) => {
                 let pending = c.pending_client_ready.take();
+                // The client has created its player entity: list it in the
+                // online name index (tells, duel challenges) until logOff or
+                // teardown. Only a pending finalization lists, and only once:
+                // gate travel re-runs this step for a character still listed.
+                if pending.is_some() && !c.listed_online {
+                    c.listed_online = true;
+                    cimmeria_base_session::base::player_index::log_listed(addr, c, "world_entry");
+                }
                 let aoi_hold = pending
                     .as_ref()
                     .filter(|p| p.first_login != 0)
@@ -393,7 +401,9 @@ pub async fn handle_on_client_ready(
     }
 
     // Bundle the post-onClientReady burst: BeingAppearance resend +
-    // onEntityTint resend + 8× onChatJoined + onPlayerCommunication welcome.
+    // onEntityTint resend + onPlayerCommunication welcome. No onChatJoined:
+    // the client hardcodes every built-in channel (SS-C4, D-ORG14; see the
+    // `world_entry_chat` module doc).
     //
     // **Transaction-state audit** (see
     // [docs/architecture/mercury-bundle.md](../../../docs/architecture/mercury-bundle.md)):
@@ -407,12 +417,12 @@ pub async fn handle_on_client_ready(
     //
     // Pre-bundle: 11 reliable packets (1 appearance + 1 tint + 8 chat-joined
     // + 1 welcome), each consuming a TX-window slot. Post-bundle: 1 reliable
-    // packet (the burst body is ~700 B, well under FRAGMENT_BODY_SIZE=1300),
+    // packet; since SS-C4 it holds 3 messages, well under FRAGMENT_BODY_SIZE,
     // pinned by [`super::builders::tests::on_client_ready_burst_bundles_to_single_packet`].
     //
     // `speaker` resolution mirrors the pre-bundle path: prefer the session's
-    // `player_name`, fall back to "Server" (a real DEFAULT_CHAT_CHANNELS
-    // entry) with a WARN so the unexpected missing-name case stays visible.
+    // `player_name`, fall back to "Server" with a WARN so the unexpected
+    // missing-name case stays visible.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
     let speaker = player_name.as_deref().unwrap_or_else(|| {
@@ -443,6 +453,72 @@ pub async fn handle_on_client_ready(
         entity_to_addr,
     )
     .await;
+
+    // Teams and Commands (ORG-06): each organization's header, ranks and
+    // roster, then its online members marked Online; and the other online
+    // members told this character is online. Every world entry, so gate
+    // travel refreshes the entity id their rosters hold.
+    cimmeria_base_session::base::organization::handlers::restore_on_login(
+        &cimmeria_base_session::base::organization::handlers::OrgCtx {
+            db_pool,
+            transport,
+            connected,
+            entity_to_addr,
+            cell_tx,
+        },
+        &cimmeria_base_session::base::organization::handlers::OrgPlayer {
+            account_id: Some(account_id),
+            player_id: pending.player_id,
+            entity_id,
+        },
+    )
+    .await;
+
+    // Crafting state: disciplines, paradigm levels, blueprints, the ASP
+    // total and the crafting options (140: the window's machine and tool),
+    // owner-only, in one bundle. After the burst for the same reason as the
+    // contact lists: the entity is live and the crafting UI has loaded. Sent
+    // on every onClientReady, so a world change resends it too.
+    crate::base::crafting::sync::push_crafting_on_login(
+        entity_id,
+        pending.player_id,
+        db_pool,
+        crate::base::crafting::sync::CraftClient {
+            transport,
+            connected,
+            entity_to_addr,
+        },
+    )
+    .await;
+
+    // Cache this character's Ignore list on the session (tells) and push it
+    // to the cell entity (spatial chat), D-SS15. Here, after InitPlayerState,
+    // so every world entry re-seeds it: gate travel creates a fresh cell
+    // entity whose set would otherwise be empty.
+    super::super::contact_list::ignore::resync_ignore_cache(
+        super::super::contact_list::ignore::IgnoreSyncCtx {
+            db_pool,
+            connected,
+            cell_tx,
+        },
+        addr,
+        pending.player_id,
+        entity_id,
+        "world_entry",
+    )
+    .await;
+
+    // Gate-mail expiry for this player's own mailbox (SS-M4, D-SS04), so
+    // mail that expired while they were away has taken its path before
+    // they can open the mailbox.
+    if let Some(pool) = db_pool {
+        super::super::world_entry::methods::mail::expiry::spawn_login_sweep(
+            Arc::clone(pool),
+            Arc::clone(transport),
+            Arc::clone(connected),
+            pending.player_id,
+        );
+    }
 
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.

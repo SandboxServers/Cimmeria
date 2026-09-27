@@ -130,6 +130,8 @@ Keep the 500/700 line caps. `castle_chains.sql` is data and exempt, but split by
 
 ## Validation And UAT Gates
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#castle-world-8).
+
 Tests must fail when the seed rows or executor arm are removed. Chain-replay tests assert exact resolved action lists for the matching and the adjacent non-matching state and, per PR #618's extension of TESTING.md type 6, push the actions through `execute_actions` where an arm is involved. Executor arms need a unit test on the side effect. Wire-emitting packets (gate events) need a byte-exact wire-format test. Live-DB tests use `require_db_or_skip!` and serialized execution.
 
 | Milestone | User-assisted in-client acceptance; all pending |

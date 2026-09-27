@@ -86,6 +86,10 @@ impl Orchestrator {
     /// Initializes all services in a stopped state. Call [`start_all`] to
     /// begin accepting connections.
     pub fn new(config: ServerConfig) -> Self {
+        // Start the game clock at server start, not at the first login: the
+        // tick sync and every timer expiry count from this instant.
+        crate::mercury::game_clock::init();
+
         tracing::trace!("Constructing AuthService");
         let auth = AuthService::new(&config);
         tracing::trace!("Constructing BaseService");

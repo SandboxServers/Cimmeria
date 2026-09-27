@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use cimmeria_navmesh_extractor::interp_actor::InterpActorMode;
 use cimmeria_occluder::BuildParams;
 
 /// Parsed `--flag value` pairs for one mode.
@@ -66,17 +67,12 @@ impl Flags {
         }
     }
 
-    /// `true` or `false`, literally — no `1`/`0`/`yes`/`no` aliases, so a
-    /// typo is a hard error rather than a silent default.
-    pub fn bool_or(&self, key: &str, default: bool) -> Result<bool, String> {
-        match self.opt(key) {
-            None => Ok(default),
-            Some("true") => Ok(true),
-            Some("false") => Ok(false),
-            Some(v) => Err(format!(
-                "{}: --{key} wants true or false, got {v:?}",
-                self.mode
-            )),
+    /// `--interp-actors off|classify`, default `classify` (NA40). Any
+    /// other value is a hard error rather than a silent default.
+    pub fn interp_actors(&self) -> Result<InterpActorMode, String> {
+        match self.opt("interp-actors") {
+            None => Ok(InterpActorMode::default()),
+            Some(v) => InterpActorMode::parse(v).map_err(|e| format!("{}: --{e}", self.mode)),
         }
     }
 
@@ -157,30 +153,26 @@ mod tests {
         assert_eq!(f.build_params().unwrap().terrain_pitch, Some(1.0));
     }
 
-    /// NA36 follow-up: `--include-interp-actors` defaults off, takes an
-    /// explicit `true`/`false` (this parser's flags always take a
-    /// value), and a typo'd value is a hard error rather than a silent
-    /// default — the whole point of gating InterpActor is that a
-    /// forgotten or mistyped flag must not silently bake doors closed.
+    /// NA40: `--interp-actors` defaults to `classify`, takes `off` to
+    /// reproduce a pre-NA36 build, and a typo'd value is a hard error
+    /// rather than a silent default. NA36's `--include-interp-actors`
+    /// is gone, and passing it is an unknown-flag error.
     #[test]
-    fn include_interp_actors_defaults_off_and_rejects_a_typo() {
-        let f = Flags::parse("m", &s(&[]), &["include-interp-actors"]).unwrap();
-        assert!(!f.bool_or("include-interp-actors", false).unwrap());
+    fn interp_actors_defaults_to_classify_and_rejects_a_typo() {
+        let f = Flags::parse("m", &s(&[]), &["interp-actors"]).unwrap();
+        assert_eq!(f.interp_actors().unwrap(), InterpActorMode::Classify);
 
-        let f = Flags::parse(
+        let f = Flags::parse("m", &s(&["--interp-actors", "off"]), &["interp-actors"]).unwrap();
+        assert_eq!(f.interp_actors().unwrap(), InterpActorMode::Off);
+
+        let f = Flags::parse("m", &s(&["--interp-actors", "true"]), &["interp-actors"]).unwrap();
+        assert!(f.interp_actors().is_err());
+
+        assert!(Flags::parse(
             "m",
             &s(&["--include-interp-actors", "true"]),
-            &["include-interp-actors"],
+            &["interp-actors"]
         )
-        .unwrap();
-        assert!(f.bool_or("include-interp-actors", false).unwrap());
-
-        let f = Flags::parse(
-            "m",
-            &s(&["--include-interp-actors", "yes"]),
-            &["include-interp-actors"],
-        )
-        .unwrap();
-        assert!(f.bool_or("include-interp-actors", false).is_err());
+        .is_err());
     }
 }

@@ -70,6 +70,7 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         assist_radius: None,
         aggression_override: None,
         use_cover: None,
+        vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
     }
 }
 
@@ -95,6 +96,8 @@ fn class_id_mapping() {
     assert_eq!(class_id_for_class("spawnable"), 0x00);
     assert_eq!(class_id_for_class("being"), 0x01);
     assert_eq!(class_id_for_class("mob"), 0x04);
+    // Pet templates (`class = 'pet'`, pets PT-S) build a GamePet.
+    assert_eq!(class_id_for_class("pet"), 0x05);
     assert_eq!(class_id_for_class("unknown"), 0x04); // fallback
 }
 

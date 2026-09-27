@@ -93,6 +93,18 @@ pub enum AiTransitionReason {
     FollowNoTarget,
     /// The follow target no longer resolves (despawned / disconnected).
     FollowTargetGone,
+    /// A follower finished its leash (reset in place) and its follow target
+    /// is still in the space, so it goes back to Follow instead of Idle: an
+    /// escort survives a fight (NA42, handoff §17/§18).
+    FollowResumed,
+    /// A pet's stance engaged a target on its own: something attacking its
+    /// owner, its owner's target, or a hostile NPC near it (pets PT-05,
+    /// D-PT09).
+    PetEngage,
+    /// A pet was (re-)armed to follow its owner: after summon, after a fight
+    /// in place of the leash home, or out of a state a pet never keeps
+    /// (pets PT-05, D-PT07).
+    PetFollow,
 }
 
 impl AiTransitionReason {
@@ -121,6 +133,9 @@ impl AiTransitionReason {
             Self::InvestigateDone => "investigate_done",
             Self::FollowNoTarget => "follow_no_target",
             Self::FollowTargetGone => "follow_target_gone",
+            Self::FollowResumed => "follow_resumed",
+            Self::PetEngage => "pet_engage",
+            Self::PetFollow => "pet_follow",
         }
     }
 }
@@ -319,6 +334,9 @@ mod tests {
             AiTransitionReason::LeashSnapFallback.label(),
             "leash_snap_fallback"
         );
+        assert_eq!(AiTransitionReason::FollowResumed.label(), "follow_resumed");
+        assert_eq!(AiTransitionReason::PetEngage.label(), "pet_engage");
+        assert_eq!(AiTransitionReason::PetFollow.label(), "pet_follow");
         assert_eq!(AiState::Investigating.label(), "investigating");
     }
 

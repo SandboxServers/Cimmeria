@@ -17,6 +17,9 @@ pub mod recharge;
 pub mod repair;
 pub mod sell;
 
+#[cfg(test)]
+mod lock_order_tests;
+
 pub use buyback::handle_buyback_vendor_items;
 pub use purchase::handle_purchase_vendor_items;
 pub use recharge::handle_recharge_inventory_items;

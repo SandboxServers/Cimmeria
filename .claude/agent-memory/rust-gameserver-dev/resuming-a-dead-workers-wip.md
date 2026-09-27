@@ -37,6 +37,23 @@ file in the tree as a modify/delete conflict. Taking "ours" resurrects a
 dead file; taking "theirs" drops the packet. Re-read the new structure, place
 each hunk where it now belongs, `git rm` the old path.
 
+**Check a handover's line-ending claim with bytes, not `grep`.** With
+`core.autocrlf=true` most blobs here are LF (git strips the CR on add), a few
+docs are stored CRLF, and a CRLF blob is never converted. So an LF working
+file is harmless when its blob is LF and a whole-file diff when its blob is
+CRLF. Count with Python on `git cat-file -p HEAD:<f>` output
+(`blob.count(b"
+")` against `blob.count(b"
+")`) and compare with the
+base branch's blob; `grep -c $'$'` through the Bash tool gave wrong counts
+on this machine. A large `--stat` that survives `--ignore-cr-at-eol` is a
+real rewrite, not churn.
+
+**A reload that fails with "the database system is starting up"** is the
+shared :5433 server restarting under another session, not your schema.
+Poll `external/postgresql_server/bin/pg_isready.exe -h localhost -p 5433`
+and rerun.
+
 Related: [[revert-verification-loses-uncommitted-fmt]],
 [[vacuous-guard-and-sentinel-collision-review]],
 [[stacked-branch-rebase-traps]].

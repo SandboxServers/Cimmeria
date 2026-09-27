@@ -9,9 +9,7 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use super::super::meta::{
-    default_player_load_data, query_archetype_ability_tree, query_bandolier_items,
-};
+use super::super::meta::{default_player_load_data, player_ability_tree, query_bandolier_items};
 use super::inventory_items::query_inventory_items;
 use super::{CONTAINER_BANDOLIER, EQUIPMENT_CONTAINERS};
 use crate::mercury::PlayerLoadData;
@@ -54,6 +52,8 @@ pub async fn query_player_load_data(
         // Server-synced client options — see SystemOptions docs.
         auto_reload: bool,
         reload_on_activate: bool,
+        /// `smallint` in the schema.
+        bank_slots: i16,
     }
 
     match sqlx::query_as::<_, PlayerRow>(
@@ -61,7 +61,7 @@ pub async fn query_player_load_data(
          bodyset, components, exp, naquadah, known_stargates, abilities, \
          training_points, applied_science_points, blueprint_ids, first_login, \
          access_level, skin_color_id, bandolier_slot, \
-         auto_reload, reload_on_activate \
+         auto_reload, reload_on_activate, bank_slots \
          FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
@@ -170,16 +170,7 @@ pub async fn query_player_load_data(
                 "Player load data: final appearance after visual merge"
             );
 
-            let ability_tree = query_archetype_ability_tree(pool.as_ref(), row.archetype)
-                .await
-                .unwrap_or_else(|| {
-                    tracing::warn!(
-                        player_id,
-                        archetype = row.archetype,
-                        "Using fallback ability tree for player load"
-                    );
-                    crate::mercury::archetype_ability_tree(row.archetype)
-                });
+            let ability_tree = player_ability_tree(pool.as_ref(), row.archetype, player_id).await;
             // Stage C: bandolier_items now carries clip_size + cur_ammo_type
             // for every populated slot, so the old `query_active_weapon_stats`
             // (which only fetched the active slot's clip + default ammo) is
@@ -213,6 +204,7 @@ pub async fn query_player_load_data(
                 items,
                 auto_reload: row.auto_reload,
                 reload_on_activate: row.reload_on_activate,
+                bank_slots: i32::from(row.bank_slots),
             }
         }
         Ok(None) => {

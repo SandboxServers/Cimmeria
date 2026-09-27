@@ -161,7 +161,7 @@ Two properties that are easy to break:
 The same primitive backs `npc_ai.path_fail` — see
 [`npc_ai/path_failure`](../../crates/cell-combat/src/cell/service/npc_ai/path_failure/mod.rs),
 whose row additionally carries `fallback` (`direct_waypoint` |
-`path_unchanged`) because what the handler *did* about the failure is
+`path_unchanged` | `surface_clamped` | `held_no_route` | ...) because what the handler *did* about the failure is
 not derivable from why it failed.
 
 ### State release

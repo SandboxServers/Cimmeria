@@ -12,6 +12,8 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::session_presence::{spawn_offline, EndedSession};
+
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::ConnectedClientState;
@@ -34,14 +36,54 @@ pub(super) async fn handle_log_off(
     // version (the logoff / reset-entities packets below must be built with the
     // version this session speaks) and the player_name (needed for the
     // contact-list offline fanout).
-    let (entity_id, enc_version, player_name) = {
-        let clients = connected.lock().unwrap();
-        let c = clients.get(&addr);
-        (
-            c.and_then(|c| c.player_entity_id),
-            c.map(|c| c.enc_version).unwrap_or_default(),
-            c.and_then(|c| c.player_name.clone()),
-        )
+    //
+    // Both variants unlist the character from the online name index here:
+    // a full exit keeps the session (and `player_name`) until the client's
+    // disconnect reaps it, but the character has already left the world and
+    // must not be reachable by tells or duel challenges in that window.
+    let path = if disconnect != 0 {
+        "logoff_full_exit"
+    } else {
+        "logoff_character_select"
+    };
+    let (entity_id, enc_version, ended) = {
+        let mut clients = connected.lock().unwrap();
+        match clients.get_mut(&addr) {
+            Some(c) => {
+                cimmeria_base_session::base::player_index::log_unlisted(addr, c, path);
+                // Only a character that was in the world is announced
+                // offline, and only here: clearing the flag stops the
+                // teardown of a full exit from announcing it again.
+                let ended = match (c.listed_online, c.active_player_id, c.player_entity_id) {
+                    (true, Some(player_id), Some(entity_id)) => Some(EndedSession {
+                        account_id: c.account_id,
+                        player_id,
+                        entity_id,
+                        player_name: c.player_name.clone(),
+                    }),
+                    _ => None,
+                };
+                c.listed_online = false;
+                // The character leaves the world: the Team and Command
+                // invites it holds go too (D-ORG06). The session survives a
+                // return to character select, so this is not the teardown's
+                // job alone.
+                let dropped = c.org_invites.clear_for_logoff();
+                if dropped > 0 {
+                    tracing::debug!(
+                        target: "org",
+                        event = "invite_cleared",
+                        reason = path,
+                        account_id = c.account_id,
+                        player_id = c.active_player_id,
+                        dropped,
+                        "held organization invites dropped on logOff"
+                    );
+                }
+                (c.player_entity_id, c.enc_version, ended)
+            }
+            None => (None, Default::default(), None),
+        }
     };
 
     if let Some(entity_id) = entity_id {
@@ -74,27 +116,21 @@ pub(super) async fn handle_log_off(
 
         // Remove entity→addr mapping
         entity_to_addr.lock().unwrap().remove(&entity_id);
+
+        // Logging off drops any queued crafting without consuming it.
+        cimmeria_base_session::base::crafting::session::drop_player_inductions(
+            entity_id,
+            cimmeria_base_session::base::crafting::session::DropReason::Logout,
+            "log_off",
+        );
     }
 
-    // Fan out offline status to contact-list watchers. Fire-and-forget via
-    // tokio::spawn so the logout response (loggedOff / RESET_ENTITIES) is
-    // not blocked on the DB query + per-watcher sends.
-    if let Some(name) = player_name {
-        let pool_c = db_pool.clone();
-        let transport_c = transport.clone();
-        let connected_c = connected.clone();
-        let entity_to_addr_c = entity_to_addr.clone();
-        tokio::spawn(async move {
-            crate::base::contact_list::handlers::fanout_login_status(
-                &name,
-                false, // offline
-                &pool_c,
-                &transport_c,
-                &connected_c,
-                &entity_to_addr_c,
-            )
-            .await;
-        });
+    // Fan out offline status to contact-list watchers and organization
+    // members (ORG-06). Fire-and-forget on its own task so the logout
+    // response (loggedOff / RESET_ENTITIES) is not blocked on the DB
+    // queries + per-recipient sends.
+    if let Some(ended) = ended {
+        spawn_offline(ended, path, db_pool, transport, connected, entity_to_addr);
     }
 
     if disconnect != 0 {
@@ -136,6 +172,10 @@ pub(super) async fn handle_log_off(
                 // explicitly. Mirrors the other per-character
                 // fields cleared on return-to-character-select.
                 c.dnd_message = None;
+                // AFK and the Ignore cache are per-character too; the next
+                // character's `onClientReady` loads its own list.
+                c.afk_message = None;
+                c.ignore = Default::default();
             }
         }
 

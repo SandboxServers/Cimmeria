@@ -1,6 +1,6 @@
 ---
 name: dialog-chain-authoring-rules
-description: Hard runtime constraints on display_dialog / dialog_choice / add_dialog_set chain authoring — speaker resolution, the open_dialog_id gate, the NULL-dialog_set trap, and the flag ladder. Verified 2026-09-17.
+description: Hard runtime constraints on display_dialog / dialog_choice / add_dialog_set chain authoring — speaker resolution, the open_dialog_id gate, the NULL-dialog_set trap, the flag ladder, client-raised tutorials and per-dialog speaker labels. Verified 2026-09-17, extended 2026-09-26.
 metadata:
   type: project
 ---
@@ -179,3 +179,23 @@ But conditions are evaluated at **resolve** time, not at fire time
 (`docs/content/content-engine.md` §4), so a deferred action carries **no gate**
 and runs unconditionally when it elapses. Never defer an action that would be
 wrong if the player advanced past that state during the delay.
+
+## 6. Client-raised tutorials, one speaker label per dialog (verified 2026-09-26)
+
+- **Tutorial dialogs (`DUIST_DefaultTutorial`, ids 5863-5894) are raised by the
+  client**, not the server: `Inventory.lua` etc. call native
+  `triggerTutorialDialogId(UITutorial.*)`. Zero buttons, so each close sends
+  `(id, -1)` although never offered. 5863 = "Items and Inventory" (inventory
+  toggle). The #479 gate rejects it (correct, no chain); PR #826 makes that close
+  log at DEBUG instead of the forgery WARN.
+  Never key a `dialog_choice` chain on a tutorial id.
+- **The speaker label is per DIALOG, not per screen.** `Dialog.lua:42` /
+  `Blurb.lua:19` set the name from `unitName(Unit.Dialog)` (the wire EntityId).
+  No Lua getter exposes the cooked per-screen `SpeakerID`. So mixed dialogs
+  (3999, 4001, 2299: NPC screens + speaker-0 player lines) show the NPC's name
+  on the player's lines. No server-side fix; needs RE of the native
+  next/prev handler to see if SpeakerID re-pins slot 0x11, else a client patch.
+- The `dialog_displaced` friction signal ignores a follow-up displayed after the
+  previous dialog's choice was accepted (2299 -> 2298, 4001 -> 4000 were false
+  positives). 2516 -> 5859 is a real displacement (deferred chains 1161/1172),
+  parked as an owner decision in DU-02a.

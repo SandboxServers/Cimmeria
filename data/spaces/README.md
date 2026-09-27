@@ -36,6 +36,20 @@ whole, none of them cropped. For those rows "verts / polys / edges" are
 summed over the tiles and "spans" is the largest tile's, which is what the
 24-bit cap applies to.
 
+**NA40 (2026-09-26) classifies every `InterpActor` per actor** (the
+chunk's Kismet and Matinee move tracks, with doors, Stargate parts and
+camera heads never baked; see
+[navmesh-build-pipeline.md §12](../../docs/engine/navmesh-build-pipeline.md#12-per-actor-interpactor-classification-na40-2026-09-26)
+and [the NA40 worknote](../../docs/analysis/npc-ai-restoration/worknotes/na40-static-interp-actors.md)).
+It rebuilt `harset`, `dakara_e1`, `menfa_light`, `menfa_dark`, `tollana`,
+`agnos`, `beta_site_evo_1` and `lucia` (`.nav` and `.occ`) with the same
+parameters as above, and `castle` and `castle_cellblock` (`.occ` only)
+against their kept meshes. No seeded or telemetry probe the previous
+files accepted is rejected. Harset loses the six security-camera heads
+NA36 baked. The other maps gain ring-transport rings, street lamps,
+floating lights and parked Humvees. The paragraph below is NA36's
+history; its `--include-interp-actors` flag no longer exists.
+
 `harset.nav` was re-extracted and rebuilt by NA36 on 2026-09-25 with the
 same parameters as NA26, from a fixed extractor that additionally walks
 `KActor` / `FracturedStaticMeshActor` exports unconditionally, and
@@ -63,20 +77,20 @@ column as a comparison between meshes, not as a coverage figure.
 
 | File | cs / mse / crop | verts / polys / edges | spans | comps | size | build | probes | mode |
 |---|---|---|---|---|---|---|---|---|
-| `agnos.nav` | 0.45 / 2.5 / chunk grid, 2,173 tiles | 187,678 / 78,567 / 226,311 | 74 K | 6,075 | 10.6 MB | 36 s | none seeded | advisory |
+| `agnos.nav` | 0.45 / 2.5 / chunk grid, 2,173 tiles | 187,682 / 78,571 / 226,320 | 74 K | 6,076 | 10.6 MB | 36 s | none seeded | advisory |
 | `agnos_library.nav` | 0.3 / 1.3 / chunk grid | 4,283 / 2,228 / 6,074 | 4.5 M | 57 | 0.25 MB | 4 s | none seeded | advisory |
-| `beta_site_evo_1.nav` | 0.3 / 2.5 / chunk grid, 4,353 tiles | 150,161 / 71,141 / 192,554 | 76 K | 1,119 | 13.4 MB | 32 s | 7/7 | advisory |
+| `beta_site_evo_1.nav` | 0.3 / 2.5 / chunk grid, 4,353 tiles | 150,162 / 71,138 / 192,554 | 76 K | 1,119 | 13.4 MB | 32 s | 7/7 | advisory |
 | `castle.nav` | 0.3 / 2.5 / chunk grid | 40,068 / 19,815 / 55,101 | — | 549 | 3.4 MB | — | 62/78 | advisory |
 | `castle_cellblock.nav` | 0.3 / 1.3 / ±400 | 3,039 / 1,658 / — | — | 17 | 0.18 MB | — | 46/92 | **enforce** |
 | `dakara_e1.nav` | 0.3 / 3.0 / chunk grid, 2,773 tiles | 79,838 / 36,238 / 98,047 | 47 K | 699 | 7.3 MB | 23 s | 3/3 | advisory |
 | `dakara_e1_storyrm.nav` | 0.3 / 1.3 / chunk grid | 239 / 115 / 325 | 0.1 M | 6 | 15 KB | 0.1 s | none seeded | advisory |
-| `harset.nav` | 0.3 / 1.3 / chunk grid | 29,772 / 15,289 / 42,385 | 8.6 M | 372 | 1.9 MB | 9 s | 51/67 | advisory |
+| `harset.nav` | 0.3 / 1.3 / chunk grid | 29,768 / 15,287 / 42,379 | 8.6 M | 372 | 1.9 MB | 9 s | 51/67 | advisory |
 | `harset_cmdcenter.nav`, `sandbox.nav` | 0.3 / 1.3 / chunk grid | 1,130 / 570 / 1,580 | 0.4 M | 14 | 64 KB | 0.6 s | 14/20 | advisory |
 | `harset_market.nav` | 0.3 / 1.3 / chunk grid | 1,352 / 683 / 1,897 | 1.2 M | 29 | 76 KB | 0.8 s | 3/5 | advisory |
 | `harset_storagerm.nav` | 0.3 / 1.3 / chunk grid | 1,195 / 560 / 1,618 | 0.2 M | 16 | 65 KB | 0.5 s | 5/5 | advisory |
 | `ihpet_crater_dark.nav` | 0.3 / 2.5 / chunk grid | 29,770 / 14,838 / 40,970 | 16.7 M | 370 | 2.6 MB | 20 s | 3/3 | advisory |
 | `ihpet_crater_light.nav` | 0.3 / 2.5 / `-300,-1300,800,40` | 30,059 / 15,126 / 41,563 | 16.1 M | 371 | 2.6 MB | 19 s | 3/3 | advisory |
-| `lucia.nav` | 0.45 / 2.5 / chunk grid, 2,711 tiles | 142,195 / 67,365 / 184,582 | 54 K | 1,955 | 11.9 MB | 47 s | 25/26 | advisory |
+| `lucia.nav` | 0.45 / 2.5 / chunk grid, 2,711 tiles | 142,304 / 67,409 / 184,721 | 54 K | 1,955 | 11.9 MB | 47 s | 25/26 | advisory |
 | `menfa_dark.nav` | 0.3 / 2.5 / chunk grid, 1,901 tiles | 102,017 / 47,485 / 128,529 | 100 K | 864 | 7.0 MB | 26 s | 32/36 | advisory |
 | `menfa_light.nav` | 0.3 / 2.5 / chunk grid, 1,906 tiles | 86,659 / 40,244 / 108,998 | 100 K | 785 | 6.2 MB | 15 s | 0/1 (gate prefab origin) | advisory |
 | `omega_site.nav` | 0.3 / 1.3 / chunk grid | 24,621 / 12,892 / 35,542 | 3.8 M | 247 | 1.7 MB | 7 s | 15/15 | advisory |
@@ -84,7 +98,7 @@ column as a comparison between meshes, not as a coverage figure.
 | `sgc.nav` | 0.3 / 1.3 / chunk grid | 1,064 / 506 / 1,412 | 0.2 M | 21 | 57 KB | 0.5 s | 2/2 | advisory |
 | `sgc_w1.nav` | 0.3 / 1.3 / chunk grid | 3,091 / 1,508 / 4,195 | 0.5 M | 68 | 0.17 MB | 1.1 s | 22/28 | advisory |
 | `sewer_falls.nav` | 0.3 / 1.3 / chunk grid | 13,317 / 6,831 / 18,727 | 9.7 M | 139 | 0.77 MB | 7.5 s | none seeded | advisory |
-| `tollana.nav` | 0.45 / 2.5 / chunk grid, 1,554 tiles, `ch=0.3` | 96,197 / 45,497 / 124,613 | 115 K | 1,215 | 5.8 MB | 30 s | 5/5 | advisory |
+| `tollana.nav` | 0.45 / 2.5 / chunk grid, 1,554 tiles, `ch=0.3` | 96,191 / 45,493 / 124,603 | 115 K | 1,215 | 5.8 MB | 30 s | 5/5 | advisory |
 | `tollana_curia.nav` | 0.3 / 1.3 / chunk grid | 64 / 33 / 95 | 0.1 M | 1 | 4 KB | 0.1 s | none seeded | advisory |
 
 Recast's caps, for reading the table: spans ≤ 16,777,215, contour vertices
@@ -283,7 +297,7 @@ player standing at the world's first entry point on the grid.
 | Tollana (tiled mesh) | 19.32 M | 0.00 M | 5/5 | 554/1215 | 23.2 | 183.6 | 23.3 | 1292 | 183.5 | 5.3 (22) | 438 / 1298 | 2.06 |
 | Tollana_Curia | 0.02 M | 0.00 M | 0/0 (none; all kept) | 1/1 | 0.0 | 0.0 | 0.0 | 9 | 0.0 | - (no entry point) | - | - |
 
-The `.occ` files total 131.4 MB, and `data/spaces` about 209 MB. Omega_Site_CmdCenter used to fill a
+The `.occ` files total 131.4 MB, and `data/spaces` about 209 MB. NA40 rebuilt ten of them (the ten worlds with a baked `InterpActor`), which brought the total to 130.9 MB and `data/spaces` to 207.8 MB; the rows above are the NA27 build, and the NA40 sizes are in [its worknote](../../docs/analysis/npc-ai-restoration/worknotes/na40-static-interp-actors.md#size). Omega_Site_CmdCenter used to fill a
 4.7 km grid from a few enormous triangles; clipping them to the explorable
 area took it from 682 MB to 6.4 MB of RAM. Query cost is the mean of 2,000
 random eye-height segments within 30 m of the player, with warm pages.

@@ -1,31 +1,35 @@
 //! NA36 — the walker resolves `KActor` / `FracturedStaticMeshActor`
 //! exports unconditionally through the same code path as
-//! `StaticMeshActor`, `InterpActor` only when opted in, and still
-//! ignores classes outside that family.
+//! `StaticMeshActor`, and still ignores classes outside that family.
+//! NA40 — `InterpActor` is walked unless the mode is `Off`, and then
+//! baked per actor (the decision itself is tested in
+//! `interp_actor::evidence_tests`).
 //!
 //! Package-backed, like `archetype_walk_tests.rs`: a real synthetic
 //! `.umap` + `.upk` through the real parser, no cooked client tree.
 //! Evidence for *why* `InterpActor` is gated: `docs/engine/
-//! navmesh-build-pipeline.md` §11 — in this content `InterpActor` is
-//! disproportionately doors, gates, lifts and elevators, and baking a
-//! mover's cooked (usually closed) pose into a `.nav`/`.occ` risks
-//! sealing a doorway or blocking sight through one that is actually
-//! open at runtime.
+//! navmesh-build-pipeline.md` §11-12 — baking a mover's cooked
+//! (usually closed) pose into a `.nav`/`.occ` risks sealing a doorway
+//! or blocking sight through one that is actually open at runtime.
 
 use cimmeria_upk::Package;
 
+use crate::interp_actor::InterpActorMode;
 use crate::staticmesh::{
-    collect_static_mesh_instances, is_mesh_actor_class, ArchetypeCache, MESH_ACTOR_CLASSES,
-    OPT_IN_MESH_ACTOR_CLASSES,
+    collect_static_mesh_instances, is_mesh_actor_class, ArchetypeCache,
+    CLASSIFIED_MESH_ACTOR_CLASSES, MESH_ACTOR_CLASSES,
 };
 use crate::test_support::{index_over, mesh_package, scratch_dir, ChunkFixture, StaticMeshPayload};
 
+const MODES: [InterpActorMode; 2] = [InterpActorMode::Off, InterpActorMode::Classify];
+
 fn walk_one_actor_of_class(
     class_name: &str,
-    include_interp_actors: bool,
+    interp_actors: InterpActorMode,
 ) -> crate::staticmesh::ActorWalk {
     let dir = scratch_dir(&format!(
-        "mesh-actor-class-{class_name}-{include_interp_actors}"
+        "mesh-actor-class-{class_name}-{}",
+        interp_actors.label()
     ));
     mesh_package(
         &dir,
@@ -50,27 +54,41 @@ fn walk_one_actor_of_class(
         &pkg,
         Some(&index),
         &mut ArchetypeCache::default(),
-        include_interp_actors,
+        interp_actors,
     )
 }
 
 #[test]
-fn mesh_actor_classes_is_the_three_unconditional_classes_interp_actor_is_opt_in() {
+fn mesh_actor_classes_is_the_three_unconditional_classes_interp_actor_is_classified() {
     assert_eq!(
         MESH_ACTOR_CLASSES,
         &["StaticMeshActor", "KActor", "FracturedStaticMeshActor"]
     );
-    assert_eq!(OPT_IN_MESH_ACTOR_CLASSES, &["InterpActor"]);
+    assert_eq!(CLASSIFIED_MESH_ACTOR_CLASSES, &["InterpActor"]);
 }
 
 #[test]
-fn k_actor_resolves_its_mesh_like_a_static_mesh_actor_regardless_of_the_flag() {
-    for include_interp_actors in [false, true] {
-        let walk = walk_one_actor_of_class("KActor", include_interp_actors);
+fn k_actor_resolves_its_mesh_like_a_static_mesh_actor_in_every_mode() {
+    for mode in MODES {
+        let walk = walk_one_actor_of_class("KActor", mode);
+        assert_eq!(walk.actors_total, 1, "{mode:?}");
+        assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
         assert_eq!(
-            walk.actors_total, 1,
-            "include_interp_actors={include_interp_actors}"
+            walk.instances[0].mesh_ref,
+            ("Fx-Props".to_string(), "Fx-Lamp00".to_string())
         );
+        assert!(
+            walk.interp_actors.is_empty(),
+            "only InterpActor is classified"
+        );
+    }
+}
+
+#[test]
+fn fractured_static_mesh_actor_resolves_its_mesh_like_a_static_mesh_actor_in_every_mode() {
+    for mode in MODES {
+        let walk = walk_one_actor_of_class("FracturedStaticMeshActor", mode);
+        assert_eq!(walk.actors_total, 1, "{mode:?}");
         assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
         assert_eq!(
             walk.instances[0].mesh_ref,
@@ -79,41 +97,26 @@ fn k_actor_resolves_its_mesh_like_a_static_mesh_actor_regardless_of_the_flag() {
     }
 }
 
+/// `Off` is the pre-NA36 extraction: `InterpActor` is completely
+/// invisible — not even into a `SkipReason`, exactly the shape of every
+/// other non-family class.
 #[test]
-fn fractured_static_mesh_actor_resolves_its_mesh_like_a_static_mesh_actor_regardless_of_the_flag() {
-    for include_interp_actors in [false, true] {
-        let walk = walk_one_actor_of_class("FracturedStaticMeshActor", include_interp_actors);
-        assert_eq!(
-            walk.actors_total, 1,
-            "include_interp_actors={include_interp_actors}"
-        );
-        assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
-        assert_eq!(
-            walk.instances[0].mesh_ref,
-            ("Fx-Props".to_string(), "Fx-Lamp00".to_string())
-        );
-    }
-}
-
-/// The whole point of NA36's follow-up: `InterpActor` must be
-/// completely invisible — not even into a `SkipReason`, exactly the
-/// pre-fix shape for every other non-family class — when the caller
-/// does not opt in. This is the default the CLI and `ExtractOptions`
-/// both ship with.
-#[test]
-fn interp_actor_is_invisible_by_default() {
-    let walk = walk_one_actor_of_class("InterpActor", false);
+fn interp_actor_is_invisible_when_the_mode_is_off() {
+    let walk = walk_one_actor_of_class("InterpActor", InterpActorMode::Off);
     assert_eq!(
         walk.actors_total, 0,
-        "an InterpActor export must not be counted at all when include_interp_actors is false"
+        "an InterpActor export must not be counted at all when the mode is Off"
     );
     assert!(walk.instances.is_empty());
+    assert!(walk.interp_actors.is_empty());
 }
 
-/// ...and resolves exactly like a `StaticMeshActor` once opted in.
+/// Under the default mode an `InterpActor` nothing in its chunk
+/// references resolves exactly like a `StaticMeshActor`, and its
+/// decision is logged.
 #[test]
-fn interp_actor_resolves_its_mesh_when_opted_in() {
-    let walk = walk_one_actor_of_class("InterpActor", true);
+fn an_unreferenced_interp_actor_resolves_its_mesh_under_the_default_mode() {
+    let walk = walk_one_actor_of_class("InterpActor", InterpActorMode::default());
     assert_eq!(walk.actors_total, 1);
     assert_eq!(walk.skips.total(), 0, "{:?}", walk.skips);
     assert_eq!(walk.instances.len(), 1);
@@ -122,28 +125,36 @@ fn interp_actor_resolves_its_mesh_when_opted_in() {
         ("Fx-Props".to_string(), "Fx-Lamp00".to_string())
     );
     assert_eq!(walk.instances[0].transform.location, [12.0, 34.0, 56.0]);
+    assert_eq!(walk.interp_actors.len(), 1);
+    assert_eq!(walk.interp_actors[0].mesh, "Fx-Lamp00");
+    assert!(walk.interp_actors[0].decision.is_included());
 }
 
 #[test]
 fn is_mesh_actor_class_matches_the_walker_exactly() {
     for class in ["StaticMeshActor", "KActor", "FracturedStaticMeshActor"] {
-        assert!(is_mesh_actor_class(class, false), "{class} (flag off)");
-        assert!(is_mesh_actor_class(class, true), "{class} (flag on)");
+        for mode in MODES {
+            assert!(is_mesh_actor_class(class, mode), "{class} ({mode:?})");
+        }
     }
-    assert!(!is_mesh_actor_class("InterpActor", false));
-    assert!(is_mesh_actor_class("InterpActor", true));
-    assert!(!is_mesh_actor_class("Pawn", false));
-    assert!(!is_mesh_actor_class("Pawn", true));
+    assert!(!is_mesh_actor_class("InterpActor", InterpActorMode::Off));
+    assert!(is_mesh_actor_class(
+        "InterpActor",
+        InterpActorMode::Classify
+    ));
+    for mode in MODES {
+        assert!(!is_mesh_actor_class("Pawn", mode));
+    }
 }
 
 #[test]
-fn a_class_outside_the_mesh_actor_family_is_still_ignored_regardless_of_the_flag() {
+fn a_class_outside_the_mesh_actor_family_is_still_ignored_in_every_mode() {
     // `Pawn` is not StaticMeshActor-shaped in any cooked SGW chunk; the
     // walker must keep skipping it entirely, exactly as it does today
-    // for `Pawn`, `Light`, `PathNode`, etc. — and `include_interp_actors`
+    // for `Pawn`, `Light`, `PathNode`, etc. — and the InterpActor mode
     // must not accidentally widen the filter to anything else.
-    for include_interp_actors in [false, true] {
-        let walk = walk_one_actor_of_class("Pawn", include_interp_actors);
+    for mode in MODES {
+        let walk = walk_one_actor_of_class("Pawn", mode);
         assert_eq!(walk.actors_total, 0);
         assert!(walk.instances.is_empty());
     }
@@ -157,5 +168,5 @@ fn a_class_outside_the_mesh_actor_family_is_still_ignored_regardless_of_the_flag
 #[test]
 fn static_mesh_collection_actor_is_not_in_the_mesh_actor_family_yet() {
     assert!(!MESH_ACTOR_CLASSES.contains(&"StaticMeshCollectionActor"));
-    assert!(!OPT_IN_MESH_ACTOR_CLASSES.contains(&"StaticMeshCollectionActor"));
+    assert!(!CLASSIFIED_MESH_ACTOR_CLASSES.contains(&"StaticMeshCollectionActor"));
 }

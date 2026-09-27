@@ -21,12 +21,22 @@
 /// The ability-tree payloads both the base and the cell send.
 pub mod ability_tree {
     pub mod points_property;
+    pub mod respec;
 
     pub use points_property::{training_points_property_args, GENERICPROPERTY_TRAINING_POINTS};
+    pub use respec::{
+        respec_error_code_args, RespecOutcome, RESPEC_COST_NAQUADAH,
+        RESPEC_FEEDBACK_NOTHING_TRAINED, RESPEC_FEEDBACK_NOT_AT_TRAINER,
+        RESPEC_FEEDBACK_NOT_ENOUGH_NAQUADAH,
+    };
 
     #[cfg(test)]
     mod tests;
 }
+
+/// The crafting client-method payloads and the cell-to-base crafting
+/// request.
+pub mod crafting;
 
 /// Base-side wire serializers.
 pub mod base {
@@ -34,6 +44,10 @@ pub mod base {
     pub mod contact_list {
         pub mod wire;
     }
+    /// `sendDuelChallenge` (0xD9) and its decoder.
+    pub mod duel;
+    /// The organization base methods (0xCF-0xD2) and their decoders.
+    pub mod organization;
 }
 
 /// Cell-side method indices, payload serializers and the Base↔Cell messages.
@@ -56,6 +70,7 @@ pub mod cell {
     pub mod messages;
     pub mod player_journal;
     pub mod spawn_record;
+    pub mod vault;
 }
 
 pub mod containers;

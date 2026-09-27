@@ -95,6 +95,10 @@ pub enum MoveSource {
     /// Snapped onto the nearest polygon because a path could not start from
     /// where it stood (NA15).
     MeshSnap,
+    /// Moved beside its owner: after the owner teleported within the space
+    /// (pets PT-02, `cell::pets::on_owner_teleported`), or because the pet
+    /// fell too far behind (pets PT-05, D-PT07).
+    PetTeleport,
 }
 
 impl MoveSource {
@@ -107,6 +111,7 @@ impl MoveSource {
             Self::Content => "content",
             Self::Spawn => "spawn",
             Self::MeshSnap => "mesh_snap",
+            Self::PetTeleport => "pet_teleport",
         }
     }
 }

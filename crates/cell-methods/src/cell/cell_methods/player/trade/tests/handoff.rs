@@ -93,6 +93,32 @@ async fn both_confirm_triggers_execute_trade_hand_off() {
     // Cell-side state is cleared regardless of base outcome.
     assert!(mgr.get_entity(1).unwrap().trade_partner_entity_id.is_none());
     assert!(mgr.get_entity(2).unwrap().trade_partner_entity_id.is_none());
+    assert!(mgr.get_entity(1).unwrap().trade_proposal.is_none());
+    assert!(mgr.get_entity(2).unwrap().trade_proposal.is_none());
+
+    // The session really ended: the base answers any refusal with
+    // `onTradeResults(Cancelled)`, which closes both trade windows, so
+    // the same two players must be able to open a new trade at once.
+    dispatch(
+        1,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            2,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    assert_eq!(
+        mgr.get_entity(1).unwrap().trade_partner_entity_id,
+        Some(2),
+        "a new trade opens after the hand-off"
+    );
+    assert_eq!(mgr.get_entity(2).unwrap().trade_partner_entity_id, Some(1));
 }
 
 /// Regression guard for the security review on the trading PR.

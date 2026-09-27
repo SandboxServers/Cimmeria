@@ -171,6 +171,13 @@ ALTER TABLE ONLY body_component_visuals
     ADD CONSTRAINT component_visuals_pkey PRIMARY KEY (component_name, index);
 
 --
+-- Name: bank_expansion_price_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY bank_expansion_price
+    ADD CONSTRAINT bank_expansion_price_pkey PRIMARY KEY (to_slots);
+
+--
 -- TOC entry 2946 (class 2606 OID 63221)
 -- Name: containers_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace: 
 --
@@ -457,6 +464,13 @@ ALTER TABLE ONLY monikers
 
 ALTER TABLE ONLY paths
     ADD CONSTRAINT paths_pkey PRIMARY KEY (path_id, index);
+
+--
+-- Name: pet_summons_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY pet_summons
+    ADD CONSTRAINT pet_summons_pkey PRIMARY KEY (ability_id);
 
 --
 -- TOC entry 3007 (class 2606 OID 63287)

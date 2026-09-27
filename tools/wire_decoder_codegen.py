@@ -185,10 +185,37 @@ def make_primitive_arg(type_tok: str, name: str) -> Arg:
 
 
 def parse_dispatch_table(path: Path) -> list[Method]:
-    """Extract all `| idx | name | args |` rows from the dispatch table."""
+    """Extract all `| idx | name | args |` rows from the dispatch table.
+
+    The doc's method-index column is per-entity-type (SGWPlayer, SGWMob,
+    SGWPet, ...), but `decode_<index>()` is one flat, entity-agnostic Rust
+    function name keyed only on the numeric index. Only the file's first
+    (SGWPlayer) table shares that global index space with the generated
+    functions — SGWMob's and SGWPet's tables reuse small numbers (0-31-ish)
+    that collide with real SGWPlayer method names at the same index.
+    Confirmed by testing against a version of this function without the
+    section-boundary check: SGWPet's `onPetStanceList`/`onPetStanceUpdate`
+    (its own indices 30/31) each emit a second `fn decode_30`/`decode_31`,
+    duplicating SGWPlayer's real `onTellSent`/`onChatJoined` at those same
+    indices — a hard compile error (E0428, duplicate definition).
+    SGWMob's `onAggressionOverrideUpdate` (index 27, real SGWPlayer method
+    27 has an unsupported schema and was already skipped, so this only
+    silently mislabels rather than colliding) and `onAggressionOverrideCleared`
+    (index 28, would collide with SGWPlayer's real `onPlayerCommunication`
+    but currently dodges the codegen's row regex purely because its args
+    column isn't backtick-quoted — a fragile accident, not a guarantee)
+    round out the same failure class. So: stop at the first secondary
+    per-entity dispatch-table section
+    (`## <Entity> Client Method Dispatch Table`, e.g. "## SGWMob Client
+    Method Dispatch Table") — everything after that heading belongs to a
+    different entity's index space and must never reach the codegen.
+    """
+    section_boundary = re.compile(r"^## .*Client Method Dispatch Table")
     pattern = re.compile(r"^\|\s*(\d+)\s*\|\s*`([^`]+)`\s*\|\s*`([^`]*)`\s*\|?")
     methods: list[Method] = []
     for line in path.read_text(encoding="utf-8").splitlines():
+        if section_boundary.match(line):
+            break
         m = pattern.match(line)
         if not m:
             continue

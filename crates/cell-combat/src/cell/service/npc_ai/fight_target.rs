@@ -19,6 +19,9 @@ use super::leash::policy as leash_policy;
 pub(super) struct Engagement {
     pub target_id: u32,
     pub target_pos: Vector3,
+    /// What the leash measures from: the spawn point, or for a pet its
+    /// owner's position (pets PT-05). A pet never leashes toward
+    /// `spawn_position`.
     pub spawn_pos: Option<Vector3>,
     pub npc_pos: Vector3,
     pub is_stationary: bool,
@@ -73,10 +76,11 @@ pub(super) async fn select_target(
         let npc_pos = npc.position;
         let aoi_radius = npc.aoi_radius;
         let lost_since = npc.leash.target_lost_since;
+        let leash_anchor = super::pet::leash_anchor(space_mgr, npc);
         let engagement = |target_id, target_pos| Engagement {
             target_id,
             target_pos,
-            spawn_pos: npc.spawn_position,
+            spawn_pos: leash_anchor,
             npc_pos,
             is_stationary: npc.is_stationary,
             use_cover: npc.use_cover,

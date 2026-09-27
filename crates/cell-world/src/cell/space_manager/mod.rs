@@ -31,10 +31,13 @@ mod crossing_hold_state;
 mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
+mod interact_range;
+pub use interact_range::{interact_range, InteractRangeFail, MAX_INTERACT_DISTANCE};
 mod lab_snapshots;
 mod lifecycle;
 mod movement_telemetry;
 mod navmesh_containment;
+pub mod npc_identity;
 mod npc_population;
 pub use npc_population::{spawn_instance_npcs_from_records, spawn_npcs_from_records};
 // Moved to `test_fixtures`; re-exported at its old path.
@@ -48,6 +51,10 @@ mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
 mod step_region_replay;
+mod vault_access;
+pub use vault_access::{vault_access, vault_move_allowed, VaultReject};
+mod vault_session_end;
+pub use vault_session_end::log_vault_session_closed;
 /// Test hook: the spawn-time `use_cover` default (`spawn::resolve_use_cover`),
 /// for the live-DB seed guards above this crate.
 #[cfg(any(test, feature = "test-support"))]
@@ -279,6 +286,11 @@ pub struct SpaceManager {
     /// `cell/spawner/templates.rs` for why the round-trip is wrong for a
     /// chain's ordered action list.
     pub spawn_templates: HashMap<i32, super::spawner::SpawnRecord>,
+    /// Summon ability → pet template (`resources.pet_summons`), loaded at
+    /// startup by [`super::spawner::load_pet_summons`]. The ability pipeline
+    /// asks `pet_summons.pet_summon_for(ability_id)` whether a fired ability
+    /// summons a pet; the template itself comes from `spawn_templates`.
+    pub pet_summons: super::spawner::PetSummonCatalog,
     /// Ring transporter region definitions keyed by `region_id` (cross-world unique).
     /// Loaded once at startup from `resources.ring_transport_regions`.
     pub ring_regions: HashMap<i32, super::ring_transport::RingRegion>,
@@ -288,6 +300,10 @@ pub struct SpaceManager {
     /// Live ring transporter state machines keyed by `region_id`.
     /// Built from `ring_regions` at startup; one entry per ring pad.
     pub ring_transporters: super::ring_transport::RingTransporterManager,
+    /// Owner <-> pet maps (issue #570, PT-01): the ownership source of truth
+    /// for every client command that names a pet. Scrubbed by
+    /// `destroy_entity` / `destroy_space`; see `cell::pets`.
+    pub pets: super::pets::PetRegistry,
     /// NPCs with a pending `ai_retry_at` deadline. Updated whenever
     /// `npc_ai_fight` schedules a launch-failure retry and whenever
     /// `npc_ai_retry_sweep` consumes one. The retry sweep iterates
@@ -298,6 +314,11 @@ pub struct SpaceManager {
     /// double-check filter — the set is a "candidate" pointer set, not
     /// the source of truth.
     pub pending_ai_retries: std::collections::HashSet<u32>,
+    /// Casters holding a `pending_cast` (an ability in its warmup, AT-10).
+    /// The warmup tick walks this set instead of every entity. Like
+    /// `pending_ai_retries` it is a candidate set: an entry whose entity
+    /// is gone or whose `pending_cast` is `None` is dropped by the tick.
+    pub pending_casts: std::collections::HashSet<u32>,
     /// Server-authoritative movement validator. Consulted by
     /// `apply_client_position_update` on every inbound client position:
     /// bounds + navmesh + teleport hard-reject, speed warn-only. Holds a
@@ -316,6 +337,13 @@ pub struct SpaceManager {
     /// one slot per NPC — see `cell::service::npc_ai::dispatch`. Released in
     /// `destroy_entity`.
     pub zero_health_npc_log: LogThrottle,
+    /// Gates the NPC attack-animation WARNs (`abilities.sequence`
+    /// `no_event_set` / `no_end_sequence` / `no_witnesses`), keyed by
+    /// **ability id**, not entity: the missing sequence is a fact about the
+    /// ability's seed row, so every NPC firing it repeats one fact. Bounded
+    /// by the ability table, so nothing is released per entity. See
+    /// `cell::abilities::use_ability::sequence`.
+    pub ability_sequence_log: LogThrottle,
     /// NPC AI detector state (NA02): stuck / stale / floating / leash-loop
     /// trackers and their WARN throttles. Reporting only; released in
     /// `destroy_entity` and `destroy_space`. See
@@ -407,6 +435,17 @@ pub struct SpaceManager {
     /// already holds is the exclusive token. See
     /// `content::event_dispatch::step_activation`.
     pub step_region_replay: StepRegionReplayGuard,
+    /// Pending duel challenges, duels and their cooldowns, keyed by
+    /// `player_id` (SS-D1). See `cell::duel`.
+    pub duels: super::duel::DuelRegistry,
+    /// Every squad on this cell and the pending squad invites (ORG-03,
+    /// D-ORG03). Service-wide, not per space, so a member who gates to
+    /// another world keeps their squad. Keyed by `player_id`, never entity
+    /// id; see `cell::squad`.
+    pub squads: super::squad::SquadRegistry,
+    /// Open organization-registrar offers awaiting a name (ORG-05), keyed
+    /// by `player_id`; see `cell::org_creation`.
+    pub org_creations: super::org_creation::PendingCreations,
 }
 
 impl SpaceManager {
@@ -441,13 +480,17 @@ impl SpaceManager {
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
             spawn_templates: HashMap::new(),
+            pet_summons: super::spawner::PetSummonCatalog::default(),
             ring_regions: HashMap::new(),
             ring_point_set_to_region: HashMap::new(),
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
+            pets: super::pets::PetRegistry::default(),
             pending_ai_retries: std::collections::HashSet::new(),
+            pending_casts: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
+            ability_sequence_log: LogThrottle::default(),
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
             occluder_residency: HashMap::new(),
@@ -461,8 +504,11 @@ impl SpaceManager {
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
             step_region_replay: StepRegionReplayGuard::default(),
+            duels: super::duel::DuelRegistry::default(),
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
+            squads: super::squad::SquadRegistry::new(),
+            org_creations: super::org_creation::PendingCreations::new(),
         }
     }
 }

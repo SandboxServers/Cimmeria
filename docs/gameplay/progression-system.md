@@ -212,9 +212,9 @@ Training points (TP) gate ability learning. A player spends one TP to permanentl
 training_points INTEGER DEFAULT 0
 ```
 
-### Earning: Not Implemented
+### Earning
 
-No code grants training points on level-up. `giveTrainingPoints(points)` exists and is functional, but it is never called by the leveling path. Points must be manually inserted into the database for testing.
+A new character starts with 1 TP (`STARTING_TRAINING_POINTS`, bound by `createCharacter` in `crates/base/src/base/character_create.rs`; the column default is still 0). Each level gained adds `TRAINING_POINTS_PER_LEVEL` (1): `apply_level_ups` in `crates/game/src/player.rs` counts the levels, and `handle_grant_xp` (`crates/base-methods/src/base/world_entry/methods/progression/mod.rs`) persists the new total with the XP and level, sends it in the XP bundle (`onEntityProperty`, via `training_points_property_args`) and mirrors it to the cell (`ProgressionChanged`). An unspent character at level `L` holds `L` points, 50 at the cap. GM grants (`gmGiveTrainingPoints`, `progression/grant_training_points.rs`) come on top.
 
 ### Spending
 
@@ -242,7 +242,13 @@ If any check fails, the client receives an error message and no points are spent
 
 ### Respec
 
-Not implemented. The respec handler returns `player.onError('Not implemented yet!')`. There is no mechanism to refund spent training points or unlearn abilities.
+The 2009 Python handler only returned `player.onError('Not implemented yet!')`.
+
+**Rust (ability-tree campaign, AT-08).** `resetMyAbilities` (cell method 72) works at a trainer the player has interacted with and is still in range of. It removes only trainer-bought abilities (`trained_abilities`), so starter and quest grants stay. It refunds exactly `tree_points_spent` training points, resets the spend to 0, and charges 1000 naquadah (decision D-AT10). Everything happens in one guarded `UPDATE`.
+
+A respec with nothing trainer-bought, including a replay, changes nothing and costs nothing. A player with too little naquadah keeps everything. Every refusal gets `onErrorCode` plus a re-send of the trainer window. After a respec the spend is 0 and the points are back, so a branch root can be bought again at once.
+
+Action-bar buttons are client-side state the server cannot edit, so a button bound to a refunded ability stays on the bar until the player clears it. See [ability-system.md](ability-system.md#respec).
 
 ### Utility Methods
 
@@ -272,9 +278,9 @@ Applied science points (ASP) gate discipline learning. Disciplines are crafting 
 applied_science_points INTEGER DEFAULT 0
 ```
 
-### Earning: Not Implemented
+### Earning
 
-No code grants applied science points on level-up. The grant methods exist and are functional but are never called by the leveling path. Points must be manually set in the database.
+A new character starts with 1 ASP (`createCharacter` binds `STARTING_APPLIED_SCIENCE_POINTS`; the column default is still 0, and the seeded characters hold 1). Each level gained adds 1 more: `handle_grant_xp` writes the new XP, level, training points and ASP in one statement, counting the levels gained against the level stored in the row, then pushes the new ASP total to the client. An unspent character at level `L` holds `L` points, 50 at the cap. GM grants (`gmGiveAppliedSciencePoints`) come on top. Details: [crafting-system.md](crafting-system.md#earning-applied-science-points).
 
 ### Spending
 
@@ -337,7 +343,7 @@ def consumeAppliedSciencePoints(self, points):
 | Stat scaling per level (health, focus) | Not implemented |
 | Training point spending (ability learn) | Implemented (per-node cost and archetype-wide spend gate since AT-03) |
 | Training point granting on level-up | Not implemented |
-| Ability respec | Not implemented |
+| Ability respec | Implemented (AT-08: trainer-gated, refunds the spend, 1000 naquadah) |
 | Applied science point spending (disciplines) | Implemented |
 | Applied science point granting on level-up | Not implemented |
 | Discipline expertise progression | Implemented |
@@ -364,11 +370,11 @@ def setLevel(self, level):
 
 **2. Training points on level-up**
 
-Call `giveTrainingPoints(n)` inside the level-up block in `giveExperience()`. The exact formula is unknown; 1 TP per level is a reasonable baseline. Some games grant additional points at milestone levels.
+Done: 1 TP at level 1 and 1 per level gained (see [Earning](#earning)). The original formula is unknown.
 
 **3. Applied science points on level-up**
 
-Grant ASP at defined level thresholds (e.g., every 5 levels). The original design intent is unknown.
+Done: 1 ASP at level 1 and 1 per level gained (owner decision D-CR01; see [Earning](#earning-1) under Applied Science Points). The original design intent is unknown.
 
 **4. XP from mob kills**
 
@@ -384,7 +390,7 @@ If derived stats (accuracy rating, defense rating) are intended to scale with pr
 
 **7. Respec implementation**
 
-Ability respec requires refunding training points equal to the number of non-default abilities learned, then clearing the player's ability list back to archetype defaults. Applied science respec similarly requires refunding ASP and clearing learned disciplines (with expertise loss).
+Ability respec is implemented (AT-08, see [Respec](#respec)). It refunds the archetype-wide spend and removes only trainer-bought abilities, not every non-default one. Applied science respec requires refunding ASP and clearing learned disciplines (with expertise loss).
 
 **8. Soft caps and diminishing returns**
 

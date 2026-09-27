@@ -21,6 +21,8 @@ mod filters;
 #[cfg(test)]
 mod parity_tests;
 #[cfg(test)]
+mod pets_target_tests;
+#[cfg(test)]
 mod stale_target_tests;
 #[cfg(test)]
 mod target_scan_tests;
@@ -392,6 +394,10 @@ mod tests {
             // Covers `npc_ai.transition`, `npc_ai.aggro` and every other
             // `npc_ai.*` target by prefix -- see the behavioural test below.
             "npc_ai=debug",
+            // Pets (#570): `pets.lifecycle` (INFO summon/despawn, DEBUG
+            // registry scrub), `pets.command`, `pets.ai`, `pets.credit` and
+            // `pets.buff` by prefix -- see `pets_target_tests`.
+            "pets=debug",
             // `content` WARN rows (`set_aggression_tag_miss`) and INFO
             // rows would pass at the default `info`; named so the target
             // is explicit and a later global raise cannot drop it.

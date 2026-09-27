@@ -32,6 +32,7 @@ use crate::test_support::TestTransport;
 
 mod commit;
 mod container_whitelist;
+mod crafting_bag;
 mod no_db;
 mod slot_reservation;
 

@@ -68,6 +68,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "runs inside SGW.exe; its rows reach the server only as `client.native` replays",
     ),
     (
+        "client-patches",
+        "runs inside SGW.exe; logs to OutputDebugString and a file beside SGW.exe, never to the server",
+    ),
+    (
         "launcher",
         "the player's launcher; its rows reach the server only as `launcher.*` replays",
     ),
@@ -78,6 +82,10 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
     ("upk", "offline asset tooling"),
     ("upk-objects", "offline asset tooling"),
     ("wireclient", "headless test client"),
+    (
+        "patch-wire",
+        "std-only codec with no dependencies at all, not even `tracing`: it emits no events in any process",
+    ),
     (
         "test-support",
         "dev-dependency only (test helpers); never linked into the server binary",
@@ -303,6 +311,44 @@ fn scan_finds_known_targets() {
         // Emitted only by crates/base-methods (wave B2).
         ("trade.atomic_swap", Level::DEBUG),
         ("progression", Level::WARN),
+        // Emitted by crates/base-session (the crafting request and its
+        // rejection, CR-01) and crates/cell-methods (malformed requests).
+        ("crafting", Level::INFO),
+        ("crafting", Level::WARN),
+        // The organizations campaign (ORG-01): the base-method arm in
+        // crates/base, the cell arm's squad no-ops in crates/cell and the
+        // cell-method arms in crates/cell-methods (DEBUG, WARN on malformed).
+        ("org", Level::DEBUG),
+        ("org", Level::WARN),
+        ("squad", Level::DEBUG),
+        // ORG-03's squad handlers in crates/cell-methods: spans and outcome
+        // rows at INFO, the actor-mismatch and dropped-send seams at WARN.
+        ("squad", Level::INFO),
+        ("squad", Level::WARN),
+        // The social-systems campaign (SS-00): the chat length-cap refusal and
+        // the flood limit's drops, both in crates/base (the SGWPlayer chat
+        // arm), the rate_limit helper itself in crates/base-session.
+        ("chat", Level::WARN),
+        // SS-C2: the GM broadcast's audit and delivery rows, in
+        // crates/cell-console and crates/base-world-entry.
+        ("chat", Level::INFO),
+        ("rate_limit", Level::WARN),
+        ("rate_limit", Level::DEBUG),
+        ("online_index", Level::DEBUG),
+        // SS-M1: gate mail, in crates/base-methods (the send path and the
+        // read-side misses) and crates/cell-interactions (the CM 44 decode).
+        ("mail", Level::INFO),
+        ("mail", Level::WARN),
+        ("mail", Level::DEBUG),
+        // SS-D1: the base challenge arm (crates/base) and the cell duel
+        // registry, response and tick (crates/cell-world).
+        ("duel", Level::DEBUG),
+        ("duel", Level::WARN),
+        // The bank-vault campaign (BV-02, D-BV19): `vault_session_opened` /
+        // `vault_session_closed` (DEBUG, crates/cell-interactions and
+        // crates/cell-world) and `vault_open_rejected` (WARN).
+        ("bank", Level::DEBUG),
+        ("bank", Level::WARN),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),
@@ -362,4 +408,22 @@ fn every_crate_is_classified() {
         unclassified.is_empty(),
         "classify these crates as in- or out-of-process: {unclassified:?}"
     );
+}
+
+/// Bank-vault D-BV19: the `bank` target's DEBUG session transitions
+/// (`vault_session_opened` / `vault_session_closed`) and WARN refusals each
+/// reach exactly one OTLP log index. Fails if the `bank=debug` row leaves
+/// `OTEL_FILTER` (the DEBUG rows then reach no index), independently of
+/// whether the source scan still finds a DEBUG `bank` site.
+#[test]
+fn bank_target_reaches_otlp_at_debug_and_warn() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    for level in [Level::DEBUG, Level::WARN] {
+        let sinks = sinks_for(&dispatch, &hits, "bank", level);
+        let n = OTLP_LOG_SINKS
+            .iter()
+            .filter(|s| sinks.contains(**s))
+            .count();
+        assert_eq!(n, 1, "bank at {level} must reach one OTLP index: {sinks:?}");
+    }
 }

@@ -52,6 +52,8 @@ mod tick;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timer_expiry_tests;
 
 pub use channel_cancel::{
     cancel_channels_for_invoker_ability, cancel_channels_from_attacker,

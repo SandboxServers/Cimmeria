@@ -17,17 +17,15 @@ use crate::cell::space_manager::SpaceManager;
 pub use initial_response::handle_initial_response;
 pub use interact::handle_interact;
 
-/// Maximum distance for NPC interaction (world units).
-/// From `python/common/Constants.py: MAX_INTERACT_DISTANCE = 5`.
-///
-/// `pub(super)` so the sibling `loot` module can re-validate looting
-/// distance against the same bound the initial `interact` enforces
-/// (#446 — the loot handler must re-check range on every take, not just
-/// trust the interact-time `looting_entity` pin).
-pub(super) const MAX_INTERACT_DISTANCE: f32 = 5.0;
+// The range rule lives in `cimmeria-cell-world` so the vault verdict (BV-03)
+// can be taken below this crate. `MAX_INTERACT_DISTANCE` stays `pub(super)`
+// here so the sibling `loot` module re-validates looting distance against the
+// same bound the initial `interact` enforces (#446).
+pub(super) use crate::cell::space_manager::MAX_INTERACT_DISTANCE;
+pub use crate::cell::space_manager::{interact_range, InteractRangeFail};
 
-/// Does `entity_id` exist, does `target_entity_id` exist, and are they
-/// within `MAX_INTERACT_DISTANCE` of each other?
+/// Does `entity_id` exist, does `target_entity_id` exist, are they in the
+/// same space, and are they within `MAX_INTERACT_DISTANCE` of each other?
 ///
 /// [`handle_interact`] performs this check inline because it needs the
 /// positions and interaction data anyway. This standalone version exists
@@ -52,43 +50,41 @@ pub fn interact_target_in_range(
     target_entity_id: u32,
     space_mgr: &SpaceManager,
 ) -> bool {
-    let player_pos = match space_mgr.get_entity(entity_id) {
-        Some(e) => e.position,
-        None => {
+    match interact_range(entity_id, target_entity_id, space_mgr) {
+        Ok(()) => true,
+        Err(InteractRangeFail::PlayerMissing) => {
             tracing::info!(
                 entity_id,
                 target_entity_id,
                 "interact: player entity not found"
             );
-            return false;
+            false
         }
-    };
-    let target_pos = match space_mgr.get_entity(target_entity_id) {
-        Some(e) => e.position,
-        None => {
+        Err(InteractRangeFail::TargetMissing) => {
             tracing::info!(
                 entity_id,
                 target_entity_id,
                 "interact: target entity not found"
             );
-            return false;
+            false
         }
-    };
-
-    // Compare squared distances so the common (in-range) path does no
-    // sqrt. This runs on every interact, including the right-click spam
-    // of ordinary play. The sqrt is paid only on the rejection branch,
-    // where it buys a log line an operator can read in world units.
-    let dist_sq = player_pos.distance_squared_to(&target_pos);
-    if dist_sq > MAX_INTERACT_DISTANCE * MAX_INTERACT_DISTANCE {
-        tracing::info!(
-            entity_id,
-            target_entity_id,
-            dist = dist_sq.sqrt(),
-            max = MAX_INTERACT_DISTANCE,
-            "interact: too far away"
-        );
-        return false;
+        Err(InteractRangeFail::OtherSpace) => {
+            tracing::info!(
+                entity_id,
+                target_entity_id,
+                "interact: target is in another space"
+            );
+            false
+        }
+        Err(InteractRangeFail::TooFar { dist }) => {
+            tracing::info!(
+                entity_id,
+                target_entity_id,
+                dist,
+                max = MAX_INTERACT_DISTANCE,
+                "interact: too far away"
+            );
+            false
+        }
     }
-    true
 }

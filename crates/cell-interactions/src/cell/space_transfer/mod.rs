@@ -406,6 +406,9 @@ async fn execute_transfer(
         }
     }
 
+    // SS-D3: a gate travel ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+    // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+    cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, entity_id).await;
     // ── Phase 3: enqueue, and only tear down once the send is confirmed. ──
     // A closed base channel must not leave the player removed cell-side with
     // no transfer in flight — that is the "un-spaced" state.
@@ -447,6 +450,17 @@ async fn execute_transfer(
     // nothing" contract above still holds: by this point the transfer is
     // committed.
     super::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
+    // Same for pets: they stay behind (D-PT01), and go before the destroy
+    // so an instance torn down with the traveller cannot swallow them
+    // without a `LeftAoI`.
+    cimmeria_cell_world::cell::pets::on_owner_left(
+        entity_id,
+        cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+        cimmeria_cell_world::cell::pets::OwnerPath::SpaceTransfer,
+        tx,
+        space_mgr,
+    )
+    .await;
     space_mgr.destroy_entity(entity_id);
 
     tracing::info!(

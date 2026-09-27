@@ -1,6 +1,6 @@
 ---
 name: ontimerupdate-wire-and-clock
-description: onTimerUpdate (client method 12) canonical 21-byte layout, the absolute BigWorldTimeComplete semantics, and every emit path in the Rust tree
+description: onTimerUpdate (client method 12) canonical 21-byte layout, the client game clock (ticks / hertz), absolute BigWorldTimeComplete semantics, and every emit path in the Rust tree
 metadata:
   type: project
 ---
@@ -57,34 +57,37 @@ client anchors on `TICK_SYNC` specifically is an inference, not documented evide
 `CooldownManager_HandleOnTimerUpdate` gate: `if SourceID != this->entityId { return; }` — a zero
 or wrong SourceID silently discards for types 0–3.
 
-## Server game clock
+## Server game clock (fixed by CR-02, 2026-09-26)
 
-Two messages carry it, both from `crates/wire/src/mercury/protocol/session.rs`:
+The client's clock is `TICK_SYNC.gameTime / hertz` seconds (`FUN_00c6e220` ->
+`FUN_00dd6c60`; handlers `0x00dd62a0` hertz, `0x00dd6d00` tickSync, `0x00dd6820`
+setGameTime, which keeps only the low 16 bits). `tickRate` in TICK_SYNC is **ms per
+tick**. So UPDATE_FREQ=10 + tickRate=100 + a 10 Hz loop advancing 1 per send always
+agreed; an older version of this note called it "10x slow", which was wrong (and PR
+#718 built a 100-ticks-per-second clock on that misreading).
 
-- `build_time_sync` (login, called from `base/login/mod.rs:132`) packs
-  `UPDATE_FREQUENCY_NOTIFICATION = 10` (ms/tick ⇒ tickRate 100), `TICK_SYNC {ticks: 0, rate: 100}`,
-  and `SET_GAME_TIME {0}`. **All hardcoded zero.**
-- `build_ongoing_tick_sync` (the 100 ms loop in `base/tick_sync.rs::run_tick_loop`) sends
-  `{gameTime, tickRate: 100}`.
+The real defect was a per-session epoch: each session counted from 0 at its login.
+Now `crates/wire/src/mercury/game_clock/` holds one server-wide epoch; login and every
+heartbeat send `game_ticks()`, and every timer start sends
+`game_time_secs() + duration`. Details and evidence:
+`docs/reverse-engineering/findings/system-protocol-wire-formats.md` "The client game clock".
 
-Trap: the declared tickRate is 100 ticks/s but the loop fires at 10 Hz, so a per-iteration `+1`
-counter runs 10× slower than the rate the client was told. Any absolute-time work has to fix
-that and `SET_GAME_TIME` together, or the client's clock and the emitted expiries live in
-different domains.
-
-## Every emit path in the Rust tree (as of 2026-09-19)
+## Every emit path in the Rust tree (as of CR-02, 2026-09-26)
 
 | Site | Type | `BigWorldTimeComplete` sent |
 |---|---|---|
-| `cell/abilities/use_ability/handle.rs` (~:471) | 2 | `0.0` (TODO on main) |
-| `cell/cell_methods/player/world/reload.rs:216-222` | 2 | `0.0` |
-| `cell/effects/pulsing/register.rs:144-150` | 5 | `total_time` (relative) |
-| `cell/effects/pulsing/tick.rs:185` | 5 | `0.0` (clear) |
-| `cell/effects/pulsing/channel_cancel.rs:138, :320` | 5 | `0.0` (clear) |
-| `cell/console/net.rs` `.net_timer` | caller | `total_time` (relative) |
+| `cell-combat/.../use_ability/handle.rs` | 2 | `game_time_secs() + cooldown + warmup` |
+| `cell-combat/.../use_ability/warmup/mod.rs` | 1 | `game_time_secs() + warmup` |
+| `cell-combat/.../use_ability/warmup/interrupt.rs` | 1, 2 | `0.0` (clear) |
+| `cell-combat/.../player/world/reload.rs` | 2 | `game_time_secs() + warmup + cooldown` |
+| `cell-combat/.../effects/pulsing/register.rs` | 5 | `game_time_secs() + duration` |
+| `cell-combat/.../effects/pulsing/tick.rs`, `channel_cancel.rs` | 5 | `0.0` (clear) |
+| `cell-console/.../console/net.rs` `.net_timer` | caller | `game_time_secs() + total` |
 
-Anyone "making cooldowns absolute" must cover the reload path too — it is timer type 2, same
-class, and is easy to miss because it does not go through the ability handler.
+Client behaviour worth knowing: `CooldownManager` (`FUN_00c6d1c0`) clamps
+`complete - clock` to 0, and the `EffectSet` handler (`0x00e09160`) creates a new
+effect entry only when `clock < complete`, so a past expiry draws no icon at all.
+Type 8 (category cooldown, one per `monikerId`) is still never sent.
 
 ## Wire-log decoders
 

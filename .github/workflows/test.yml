@@ -22,6 +22,7 @@ env:
     --exclude cimmeria-scene-editor
     --exclude sgw-launcher
     --exclude cimmeria-client-telemetry
+    --exclude cimmeria-client-patches
     --exclude cimmeria-lab
   # Pinned to keep CI byte-identical with what setup.ps1 hydrates locally
   # (bootstrap/CimmeriaBootstrap/Data/Dependencies.psd1). Bumping requires
@@ -84,11 +85,16 @@ jobs:
       - uses: actions/checkout@v7
       - name: build-lane job log tests
         run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
+      - name: docs-gen tests
+        run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
       - uses: ./.github/actions/rust-toolchain
-      # README.md and crates/README.md embed a crate graph generated from
-      # `cargo metadata`; fail when a Cargo.toml change left it stale.
-      - name: crate graph is current
-        run: python3 tools/crate-graph/crate_graph.py --check
+      # Generated doc blocks (test counts, crate graph, ...) are regenerated on
+      # main by regen-docs.yml after the merge, so a stale block never fails a PR.
+      # This only lists what the merge will change.
+      - name: generated doc blocks (informational)
+        run: |
+          python3 tools/docs-gen/regen.py --check \
+            || echo "::notice::regen-docs will update the generated doc blocks listed above after this merges"
       # crates/workspace-hack unifies third-party features so `-p` builds reuse
       # the workspace's dependency artifacts (docs/architecture/build-system.md
       # §6). Fail when a dependency change didn't regenerate it: fix with

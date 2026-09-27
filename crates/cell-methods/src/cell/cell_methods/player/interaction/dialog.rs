@@ -4,6 +4,7 @@
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_ID;
 use tokio::sync::mpsc;
 
 /// Handle `dialogButtonChoice(dialog_id, button_id)`. Args are the raw
@@ -46,15 +47,18 @@ pub(super) async fn handle_dialog_button_choice(
         .is_some_and(|e| e.take_offered_dialog(dialog_id));
     if !offered {
         // The client opens some tutorial windows by itself (the inventory
-        // help, 5863), so their close arrives for an id the server never
-        // showed. Still rejected, but it is expected client behaviour,
-        // not a forgery, so it stays out of the warning stream.
-        if space_mgr.tutorial_dialog_ids.contains(&dialog_id) {
+        // help, 5863), so their close (button -1) arrives for an id the
+        // server never showed. Still rejected, but it is expected client
+        // behaviour, not a forgery, so it stays out of the warning stream.
+        // Only the close: any other button on an unoffered tutorial id is
+        // not something the client sends on its own, so it still warns.
+        if button_id == -1 && space_mgr.tutorial_dialog_ids.contains(&dialog_id) {
             tracing::debug!(
                 entity_id,
                 dialog_id,
                 button_id,
-                "dialogButtonChoice for a client-opened tutorial -- not offered by the                  server, no chain fired"
+                "dialogButtonChoice for a client-opened tutorial -- not offered by the \
+                 server, no chain fired"
             );
             return;
         }
@@ -70,6 +74,21 @@ pub(super) async fn handle_dialog_button_choice(
             "dialogButtonChoice rejected -- dialog was never offered to this player \
              (forged/replayed choice or stale client state); chain not fired (#479)"
         );
+        return;
+    }
+
+    // The player has closed or answered this dialog. Tell the stuck-player
+    // detector BEFORE the chain runs: a follow-up the chain displays now is
+    // the player moving on, not a dialog replaced before it could be read.
+    crate::cell::playtest_friction::dialog_answered(entity_id, dialog_id);
+
+    // The Banker's Expand dialog (BV-05) buys vault space; it has no chain.
+    // Passing the gate above only proves the dialog was shown: the purchase
+    // path re-checks the vault session, the proximity, the cash and the
+    // ceiling itself.
+    if dialog_id == VAULT_EXPAND_DIALOG_ID {
+        crate::cell::interactions::answer_vault_expansion(entity_id, button_id, tx, space_mgr)
+            .await;
         return;
     }
 

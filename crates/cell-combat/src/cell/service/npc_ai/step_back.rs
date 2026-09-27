@@ -259,6 +259,54 @@ mod tests {
         assert_eq!(decide(true, 4.0, 5.0, None, now), StepBackCall::Step);
     }
 
+    /// NA41: an NPC standing off the mesh in a meshed world has no surface to
+    /// slide along. It gets no step (the cornered branch), not the raw point
+    /// 5 u straight back through whatever is behind it. A meshless world
+    /// still gets the raw point.
+    ///
+    /// Revert-proof: the old `.unwrap_or(raw)` returns the raw point here.
+    #[test]
+    fn an_off_mesh_npc_in_a_meshed_world_gets_no_raw_step() {
+        fn space(with_mesh: bool) -> SpaceManager {
+            let mut mgr = SpaceManager::new(1);
+            mgr.parse_spaces_xml(
+                r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+            )
+            .unwrap();
+            mgr.create_startup_spaces(
+                r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" /></Spaces>"#,
+            )
+            .unwrap();
+            if with_mesh {
+                let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../data/spaces/castle_cellblock.nav");
+                let sid = mgr.space_id_for_world("Castle_CellBlock").unwrap();
+                mgr.spaces.get_mut(&sid).unwrap().navmesh =
+                    Some(cimmeria_entity::navigation::NavMesh::load(&p).unwrap());
+            }
+            // Beside the mess hall's west wall: more than 3 u from any polygon.
+            mgr.create_entity(200, "Castle_CellBlock", [-124.25, 34.6, -105.59], [0.0; 3])
+                .unwrap();
+            mgr
+        }
+        let npc = Vector3::new(-124.25, 34.6, -105.59);
+        let target = Vector3::new(-123.25, 34.6, -105.59);
+
+        let meshed = space(true);
+        assert!(
+            !meshed.is_position_valid(200, &npc),
+            "control: off the mesh"
+        );
+        assert_eq!(
+            step_back_waypoint_on_mesh(&meshed, 200, npc, target, 5.0),
+            None
+        );
+
+        let raw = step_back_waypoint_on_mesh(&space(false), 200, npc, target, 5.0)
+            .expect("no mesh: the raw point");
+        assert!((raw.x - (target.x - 5.0)).abs() < 1e-4, "{raw:?}");
+    }
+
     #[test]
     fn cooldown_gates_the_next_step() {
         let t0 = Instant::now();

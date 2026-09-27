@@ -21,7 +21,9 @@ const INVESTIGATE_DWELL_SECS: f32 = 5.0;
 ///   could have cleared the POI mid-tick).
 /// - **POI + nav_path non-empty** → walking, no-op.
 /// - **POI + nav_path empty + no dwell** → first entry; pathfind to
-///   POI and queue.
+///   POI and queue. With no usable route,
+///   [`super::path_failure::UnroutedMove`] slides the NPC across the mesh
+///   toward it or holds (NA41).
 /// - **POI + nav_path empty + future dwell** → at the POI, pausing.
 /// - **POI + nav_path empty + elapsed dwell** → done, clear POI +
 ///   investigate_until, drop to Idle.
@@ -42,9 +44,9 @@ pub(super) async fn npc_ai_investigate(
         None => return,
     };
 
-    // No-POI drop fires BEFORE the CombatAdvance broadcast so the
-    // wire doesn't see a movement-type for an NPC that's about to
-    // leave Investigating this tick.
+    // No-POI drop fires BEFORE the CombatAdvance movement type is recorded,
+    // so `last_movement_type` never reads it for an NPC that leaves
+    // Investigating this tick.
     let Some(poi_pos) = poi else {
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.investigate_until = None;
@@ -65,9 +67,10 @@ pub(super) async fn npc_ai_investigate(
         .snap_to_navmesh(npc_id, &poi_pos)
         .unwrap_or(poi_pos);
 
-    // Use CombatAdvance as the closest movement-type — no dedicated
-    // "investigating" byte exists in EMobMovementType, and the
-    // animation it implies (alert advance) is the right hint.
+    // Record CombatAdvance as the closest movement type: EMobMovementType
+    // has no "investigating" value. This only fills the
+    // `last_movement_type` telemetry cache. Nothing goes on the wire, and
+    // the client picks the gait from the `EntityMoved` velocity (NA10).
     crate::cell::abilities::broadcast_movement_type(
         npc_id,
         Some(MobMovementType::CombatAdvance),
@@ -147,38 +150,52 @@ pub(super) async fn npc_ai_investigate(
             std::time::Instant::now(),
         );
         let (path, status) = (routed.waypoints, routed.status);
-        if path.as_ref().is_none_or(|p| p.len() <= 1) {
-            // Previously silent — see `patrol.rs` for the same shape,
-            // and for why the `Option` survives until after
-            // classification.
-            let reason = super::path_failure::PathFailReason::classify(
-                space_mgr,
-                npc_id,
-                status,
-                path.as_deref(),
-            );
-            super::path_failure::report_path_failure(
-                space_mgr,
-                super::path_failure::PathFailure {
-                    npc_id,
-                    state: "investigate",
-                    decision_outcome: "investigate_no_path",
-                    from: npc_pos,
-                    to: poi_pos,
-                    reason,
-                    fallback: super::path_failure::PathFallback::DirectWaypoint,
-                    target_id: None,
-                },
-                std::time::Instant::now(),
-            );
-        }
-        let path = path.unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.investigate_until = None;
-            if path.len() > 1 {
-                super::replace_nav_path_on(npc, path.into_iter().skip(1));
-            } else {
-                super::replace_nav_path_on(npc, [poi_pos]);
+        }
+        match path {
+            Some(path) if path.len() > 1 => {
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    super::replace_nav_path_on(npc, path.into_iter().skip(1));
+                }
+            }
+            path => {
+                // No usable route: slide across the mesh or hold on a
+                // meshed world, straight line only on a meshless one
+                // (NA41). See `patrol.rs` for why the `Option` survives
+                // until here.
+                let reason = super::path_failure::PathFailReason::classify(
+                    space_mgr,
+                    npc_id,
+                    status,
+                    path.as_deref(),
+                );
+                let unrouted =
+                    super::path_failure::UnroutedMove::plan(space_mgr, npc_id, npc_pos, poi_pos);
+                super::path_failure::report_path_failure(
+                    space_mgr,
+                    super::path_failure::PathFailure {
+                        npc_id,
+                        state: "investigate",
+                        decision_outcome: "investigate_no_path",
+                        from: npc_pos,
+                        to: poi_pos,
+                        reason,
+                        fallback: unrouted.fallback(),
+                        target_id: None,
+                    },
+                    std::time::Instant::now(),
+                );
+                let held = unrouted.is_hold();
+                unrouted.apply(space_mgr, npc_id);
+                if held {
+                    // As close as it can get: investigate from here. The
+                    // next tick sees it at the POI, dwells and goes back to
+                    // Idle, instead of retrying the same POI forever.
+                    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                        npc.poi = Some(npc_pos);
+                    }
+                }
             }
         }
         // Pathfind queued — the next tick will observe nav_empty=false

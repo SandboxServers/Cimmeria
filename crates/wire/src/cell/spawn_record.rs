@@ -119,18 +119,29 @@ pub struct SpawnRecord {
     /// stationary NPC or a prop never does, whatever the column says
     /// (NA22, `SGWMob.def` `useCover`).
     pub use_cover: Option<bool>,
+    /// `entity_templates.vault_scope` (bank-vault D-BV09): which vault a
+    /// Banker opens. Read only when `interaction_type` carries `INT_BANKER`;
+    /// the column defaults to `personal`, so every other template carries
+    /// `Personal` and ignores it.
+    pub vault_scope: cimmeria_entity::cell_entity::VaultScope,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
 ///
-/// The class_id is the entity type index from `entities/entities.xml`:
+/// The class_id is the client's `clientIndex`: the `entities/entities.xml`
+/// order with `<ServerOnly/>` entries skipped
+/// (`docs/protocol/client-verified-wire-formats.md`):
 ///   0 = SGWSpawnableEntity, 1 = SGWBeing, 2 = SGWPlayer, 3 = SGWGmPlayer,
-///   4 = SGWMob, 5 = SGWPet, 6 = SGWDuelMarker, 7 = SGWBlackMarket
+///   4 = SGWMob, 5 = SGWPet, 6 = SGWDuelMarker, 7 = Account
+///   (`SGWBlackMarket` is `<ServerOnly/>` and has no wire id)
 pub fn class_id_for_class(class: &str) -> u8 {
     match class {
         "spawnable" => 0x00, // SGWSpawnableEntity
         "being" => 0x01,     // SGWBeing
         "mob" => 0x04,       // SGWMob
-        _ => 0x04,           // Default to SGWMob
+        // A pet template (`class = 'pet'`, PT-S). Only a summon ever spawns
+        // one; pet templates are never placed in `spawnlist`.
+        "pet" => crate::mercury::SGWPET_CLASS_ID,
+        _ => 0x04, // Default to SGWMob
     }
 }

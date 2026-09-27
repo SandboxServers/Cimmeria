@@ -17,12 +17,13 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg, MailOp};
 
 use super::super::super::ConnectedClientState;
-use super::super::methods::progression::TrainRequest;
-use super::super::methods::{
-    handle_grant_cash, handle_grant_item, handle_grant_xp, handle_mail_request,
-    handle_mission_update,
+use super::super::methods::progression::{
+    AbilityGrant, RespecRequest, TrainRequest, TrainingPointsGrant,
 };
-use super::{minigame, DispatchCtx};
+use super::super::methods::{
+    handle_grant_cash, handle_grant_xp, handle_mail_request, handle_mission_update,
+};
+use super::{item_grant_dispatch, minigame, DispatchCtx};
 
 /// Route the mission / grant / console / spawn / mail / minigame family of
 /// `CellToBaseMsg`.
@@ -111,6 +112,24 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             )
             .await
         }
+        CellToBaseMsg::ResetAbilities {
+            entity_id,
+            player_id,
+            cost,
+        } => {
+            reset_abilities(
+                RespecRequest {
+                    entity_id,
+                    player_id,
+                    cost,
+                },
+                ctx.db_pool,
+                ctx.connected,
+                ctx.cell_tx,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
         CellToBaseMsg::GrantItem {
             entity_id,
             player_id,
@@ -118,14 +137,16 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             container_id,
             count,
             notify_gm,
+            loot,
         } => {
-            grant_item(
+            item_grant_dispatch::grant_item(
                 entity_id,
                 player_id,
                 item_id,
                 container_id,
                 count,
                 notify_gm,
+                loot,
                 ctx.db_pool,
                 ctx.cell_tx,
                 ctx.transport,
@@ -149,6 +170,50 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+            )
+            .await
+        }
+        CellToBaseMsg::GrantTrainingPoints {
+            entity_id,
+            player_id,
+            amount,
+            gm_feedback_to,
+        } => {
+            super::super::methods::progression::handle_grant_training_points(
+                TrainingPointsGrant {
+                    entity_id,
+                    player_id,
+                    amount,
+                    gm_feedback_to,
+                },
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
+            )
+            .await
+        }
+        CellToBaseMsg::GmGrantAbility {
+            entity_id,
+            player_id,
+            ability_id,
+            gm_entity_id,
+            gm_player_id,
+        } => {
+            super::super::methods::progression::handle_gm_grant_ability(
+                AbilityGrant {
+                    entity_id,
+                    player_id,
+                    ability_id,
+                    gm_entity_id,
+                    gm_player_id,
+                },
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
@@ -375,31 +440,19 @@ pub(super) async fn train_ability(
     .await;
 }
 
-/// `CellToBaseMsg::GrantItem`.
-pub(super) async fn grant_item(
-    entity_id: u32,
-    player_id: i32,
-    item_id: i32,
-    container_id: i32,
-    count: i32,
-    notify_gm: bool,
+/// `CellToBaseMsg::ResetAbilities`.
+pub(super) async fn reset_abilities(
+    request: RespecRequest,
     db_pool: &Option<Arc<PgPool>>,
-    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    handle_grant_item(
-        entity_id,
-        player_id,
-        item_id,
-        container_id,
-        count,
-        notify_gm,
+    super::super::methods::progression::handle_reset_abilities(
+        request,
         db_pool,
-        cell_tx,
-        transport,
         connected,
+        cell_tx,
         entity_to_addr,
     )
     .await;

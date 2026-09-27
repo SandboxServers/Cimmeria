@@ -14,6 +14,9 @@
 //! - [`npc_state`]        — set aggression, generate threat, NPC POI /
 //!   follow-target / AI-state actions.
 //! - [`negative_logging`] — cell→base send-failure WARN guards.
+//! - [`mail`]             — `Action::SendSystemMail` (SS-U3): the firings
+//!   that send nothing, with their `reason=` rows.
+//! - [`pets`]             — pets PT-02 at the content transport call sites.
 //! - [`stargate`]         — `Action::GrantStargateAddress`: the three legs
 //!   of a grant and client method 66's byte layout. The refused-then-
 //!   accepted dial the packet exists for drives the gate dial, so it is in
@@ -35,9 +38,11 @@ pub(super) use tokio::sync::mpsc;
 mod deferred;
 mod effects;
 mod inventory_counter;
+mod mail;
 mod mission;
 mod negative_logging;
 mod npc_state;
+mod pets;
 mod stargate;
 mod stats;
 mod teleport;

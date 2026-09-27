@@ -32,14 +32,14 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
         "report",
         "write-dir",
         "coverage-nav",
-        "include-interp-actors",
+        "interp-actors",
     ];
     allowed.extend(super::BUILD_KNOBS);
     let f = Flags::parse("measure", rest, &allowed)?;
     let cooked = f.path("cooked-root")?;
     let map = f.req("map")?.to_string();
     let index = super::load_index(&f.path("index")?)?;
-    let include_interp_actors = f.bool_or("include-interp-actors", false)?;
+    let interp_actors = f.interp_actors()?;
     let base = f.build_params()?;
     let cells = f.f32_list_or("cells", &[0.25, 0.5, 1.0])?;
     let clearances = f.f32_list_or(
@@ -52,7 +52,7 @@ pub(crate) fn run(rest: &[String]) -> Result<u8, String> {
     let stats = for_each_chunk(
         &cooked.join("Maps").join(&map),
         Some(&index),
-        include_interp_actors,
+        interp_actors,
         |c| {
             tris.extend(c.geometry.iter().map(|t| (*t, Source::Geometry)));
             tris.extend(c.terrain.iter().map(|t| (*t, Source::Terrain)));

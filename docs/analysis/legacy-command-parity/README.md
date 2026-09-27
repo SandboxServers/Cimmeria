@@ -108,6 +108,8 @@ The coordinator imports notes and handoff with the implementation, updates statu
 
 ## Validation And UAT Gates
 
+Also in the unified guide: [guides/unified-uat.md](../../guides/unified-uat.md#gm-console-command-parity).
+
 Tests must fail when the fix is reverted. Assert exact final state, IDs, recipient counts and bytes, not merely feedback presence or successful dispatch. Use the [TESTING.md picker](../../../TESTING.md): unit/command tests for parsing, live-DB for persistence and rollback, wire-format plus fan-out for client-visible changes, lifecycle/relog tests for durable state. Use existing fixtures and relationship assertions, not hardcoded seed IDs. Live-DB tests use `require_db_or_skip!`, exact `i32` sentinel cleanup, and serialized execution. The wireclient has only the capabilities currently implemented; do not assume full replay support from a planned API.
 
 Future iteration uses `cargo check -p cimmeria-services` on Windows in the reserved lane. Run packet-specific tests, then the current CLAUDE pre-PR gates when preparing a PR. Workspace commands exclude `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher` and `cimmeria-client-telemetry`. Full server builds target Windows and copy the server executable to the root per CLAUDE. None of those runtime commands are part of this documentation session. Lint only touched Markdown with `tools/lint-md.ps1 --no-globs <paths>`; explicit paths alone still include the repository configuration's additive glob.

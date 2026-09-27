@@ -10,11 +10,19 @@ use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
 
+use super::feedback;
 use super::ConnectedClientState;
 
 mod chat;
+mod chat_gates;
+mod communicator_unsupported;
 mod diagnostics;
+mod duel;
+mod ignore;
+mod organization;
+mod organization_squad;
 mod session;
+mod tell;
 
 /// `ESpeakerFlags` bitfield constants from `entities/defs/enumerations.xml`.
 ///
@@ -43,6 +51,29 @@ pub(crate) mod sgw_player_base {
     pub(crate) const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
     pub(crate) const CHAT_SET_AFK: u8 = 0xC3;
     pub(crate) const CHAT_SET_DND: u8 = 0xC4;
+    /// `chatIgnore(WSTRING aPlayerName, UINT8 aFlag)`: 1 adds the name to
+    /// the caller's contact-list Ignore list, 0 removes it
+    /// (`Communicator.def`). Handled in `dispatch/ignore.rs`.
+    pub(crate) const CHAT_IGNORE: u8 = 0xC5;
+    /// Communicator base methods 0xC6-0xCE, not implemented on this server.
+    /// Each answers with its own feedback line (SS-C3, D-SS26), in
+    /// `dispatch/communicator_unsupported.rs`.
+    pub(crate) const CHAT_FRIEND: u8 = 0xC6;
+    pub(crate) const CHAT_LIST: u8 = 0xC7;
+    pub(crate) const CHAT_MUTE: u8 = 0xC8;
+    pub(crate) const CHAT_KICK: u8 = 0xC9;
+    pub(crate) const CHAT_OP: u8 = 0xCA;
+    pub(crate) const CHAT_BAN: u8 = 0xCB;
+    pub(crate) const CHAT_PASSWORD: u8 = 0xCC;
+    pub(crate) const PETITION: u8 = 0xCD;
+    pub(crate) const ANNOUNCE_PETITION: u8 = 0xCE;
+    /// OrganizationMember base methods 0xCF-0xD2 (`organizationInvite`,
+    /// `organizationInviteByType`, `organizationKick`,
+    /// `organizationRankChange`). Handled in `dispatch/organization.rs`.
+    pub(crate) const ORGANIZATION_INVITE: u8 =
+        cimmeria_wire::base::organization::ORGANIZATION_INVITE;
+    pub(crate) const ORGANIZATION_RANK_CHANGE: u8 =
+        cimmeria_wire::base::organization::ORGANIZATION_RANK_CHANGE;
     /// SGWPlayer.elementDataRequest(UINT16 categoryId, UINT32 key) — cache
     /// miss request for a server resource. Same wire shape as the
     /// pre-world-entry 0xC1 cache flow (handled in `cooked_data.rs`),
@@ -102,8 +133,19 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match msg_id {
         sgw_player_base::SEND_PLAYER_COMMUNICATION => {
-            chat::handle_send_player_communication(payload, player_name, addr, connected, cell_tx)
-                .await;
+            chat::handle_send_player_communication(
+                payload,
+                player_name,
+                addr,
+                transport,
+                connected,
+                chat::ChatRoutes {
+                    cell_tx,
+                    entity_to_addr,
+                    db_pool,
+                },
+            )
+            .await;
         }
 
         sgw_player_base::CHAT_JOIN => {
@@ -115,11 +157,48 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         sgw_player_base::CHAT_SET_AFK => {
-            chat::handle_chat_set_afk(addr);
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            chat::handle_chat_set_afk(payload, addr, &feedback).await;
         }
 
         sgw_player_base::CHAT_SET_DND => {
-            chat::handle_chat_set_dnd(payload, addr, connected);
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            chat::handle_chat_set_dnd(payload, addr, &feedback).await;
+        }
+
+        sgw_player_base::CHAT_IGNORE => {
+            ignore::handle_chat_ignore(
+                payload,
+                addr,
+                transport,
+                connected,
+                entity_to_addr,
+                cell_tx,
+                db_pool,
+                std::time::Instant::now(),
+            )
+            .await;
+        }
+
+        sgw_player_base::CHAT_FRIEND..=sgw_player_base::ANNOUNCE_PETITION => {
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            communicator_unsupported::handle_unsupported_communicator(
+                msg_id,
+                payload.len(),
+                &feedback,
+                addr,
+                std::time::Instant::now(),
+            )
+            .await;
         }
 
         sgw_player_base::LOG_OFF => {
@@ -146,6 +225,25 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
         sgw_player_base::PERF_STATS => {
             diagnostics::handle_perf_stats(payload, addr);
+        }
+
+        sgw_player_base::ORGANIZATION_INVITE..=sgw_player_base::ORGANIZATION_RANK_CHANGE => {
+            organization::handle_org_base_method(
+                msg_id,
+                payload,
+                addr,
+                transport,
+                connected,
+                entity_to_addr,
+                cell_tx,
+                db_pool,
+            )
+            .await;
+        }
+
+        // sendDuelChallenge(WSTRING playerName, INT8 squadDuel) (SS-D1).
+        cimmeria_wire::base::duel::SEND_DUEL_CHALLENGE => {
+            duel::handle_send_duel_challenge(payload, addr, transport, connected, cell_tx).await;
         }
 
         _ => {

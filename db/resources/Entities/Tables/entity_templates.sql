@@ -125,6 +125,14 @@ CREATE TABLE entity_templates (
     -- and a melee-only NPC is skipped at fight time, whatever this says.
     -- See docs/architecture/cover-system.md.
     use_cover boolean,
+    -- Which vault a Banker opens (bank-vault D-BV09): the personal vault
+    -- (container 17), or the Team (19) or Command (20) organization vault.
+    -- Read only when `interaction_type` carries INT_BANKER (bit value 2);
+    -- every other template ignores it. The legacy EInteractionType banker
+    -- numbering is not used. See docs/content/interaction-flags.md.
+    vault_scope text DEFAULT 'personal' NOT NULL,
+    CONSTRAINT entity_templates_vault_scope_known
+        CHECK (vault_scope IN ('personal', 'team', 'command')),
     CONSTRAINT entity_templates_leash_distance_positive
         CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive

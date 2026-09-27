@@ -153,14 +153,15 @@ Organizations are persistent player groups — squads, guilds, and strike teams.
 | `aPlayerName` | `WSTRING` | 4B len + N×2B | Target player |
 | `aRank` | `UINT8` | 1B | New rank value |
 
-### Additional Base Method (SGWPlayer.def)
+### Creation (SGWPlayer.def, cell method 94)
 
-#### `organizationCreation` — Create New Organization
+#### `onOrganizationCreation` — Name a New Organization
 
 | Field | Type | Wire Encoding | Notes |
 |-------|------|---------------|-------|
-| `aOrgType` | `UINT8` | 1B | Organization type |
-| `aName` | `WSTRING` | 4B len + N×2B | Organization name |
+| `aOrganizationName` | `WSTRING` | 4B len + N×2B | Organization name |
+
+This is an exposed **cell** method (`SGWPlayer.def:877-880`), not a base method. The organization type is not on the wire: the client sends it from whichever creation dialog `launchOrganizationCreation` opened (`CreateTeamWin` or `CreateCommandWin`), so the server must remember the type it offered. An earlier version of this document described a base method `organizationCreation(UINT8 aOrgType, WSTRING aName)`; no such method exists in the `.def` (corrected 2026-09-27).
 
 ---
 
@@ -376,4 +377,5 @@ Organizations are persistent player groups — squads, guilds, and strike teams.
 4. **Cash uses UINT64**: Organization treasury and XP use 8-byte unsigned integers, supporting large values.
 5. **Rank permissions**: Stored as INT32 bitmasks. Rank IDs and names are sent as parallel arrays.
 6. **PvP flag changes** that would force org leaves trigger a confirmation flow: `onPvPOrganizationLeaveRequest` → `pvpOrganizationLeaveResponse`.
-7. **Minimap pings**: Squad members can ping map locations via `BroadcastMinimapPing`, received by other members via the `receivedMinimapPing` cell method (not exposed — server-distributed).
+7. **Minimap pings — corrected 2026-09-26 (ORG-E1 Q3, static Ghidra)**: Squad members can ping map locations via `BroadcastMinimapPing` [CM10] (native `shareMinimapPingWithSquadmates`), but **no `receivedMinimapPing` (or any other `Event_NetIn_*` minimap-ping) client method exists anywhere in the binary** — only the outbound `Event_NetOut_BroadcastMinimapPing` does. The client's own marker (`createLocalMinimapPing`) is local-only prediction on the sender's screen. There is currently no wire path for other squad members to receive a ping; treat `BroadcastMinimapPing` as accept-and-validate-only until/unless a future client patch adds one.
+8. **`squadKick`/`squadLeave`/`squadInvite`/`squadInviteAccept`/`squadInviteDecline` — confirmed 2026-09-26 (ORG-E1 Q2, static Ghidra, closes audit A-21)**: none of these Squad-prefixed Lua natives sends a squad-specific wire message. `Squad`, `Team` and `Command` each embed a distinct `Organization`-subclass sub-object inline on the local player (offsets `+0x6c`/`+0x70`/`+0x74`), and the `squadX`/`teamX`/`commandX` natives all resolve to the *same virtual slot* on their respective sub-object: `squadKick` = `organizationKick(orgId, name)` (base method, same slot as `teamKick`/`commandKick`), `squadLeave` = `organizationLeave(orgId)` (cell method 9, same slot as `teamLeave`/`commandLeave`), `squadInviteAccept`/`squadInviteDecline` = `organizationInviteResponse` (cell method 8). `orgId` is supplied by whichever sub-object the call was made on, not by a distinct wire shape. `squadPromote` has **no Lua native at all** — only a `/squadpromote` slash command exists (mirrored by `/teampromote` and `/commandpromote`), so rank promotion was never wired to a UI button for any org type in the shipped client.

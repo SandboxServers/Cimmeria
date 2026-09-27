@@ -135,6 +135,13 @@ while :; do
   sleep 5; waited=$((waited+5))
 done
 
+# rm-worktree.sh marks a worktree before it checks the slots; this checks for the mark
+# after taking a slot and writing its `what` (rm-worktree.sh counts a slot without one as
+# busy), so a build never starts in a worktree that is being deleted.
+if [ -d "$LOCKDIR/retiring.$NAME" ]; then
+  echo "[lane] $NAME is being retired by rm-worktree.sh; not building" >&2; exit 75
+fi
+
 t_start="$(now_us)"
 echo "[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*" >&2
 

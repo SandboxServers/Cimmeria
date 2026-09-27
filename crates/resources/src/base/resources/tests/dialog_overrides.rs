@@ -85,8 +85,24 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
     assert_eq!(
         ids.as_slice(),
         &[3995u32, 3996u32],
-        "overridden_elements must name both dialog ids in ascending order",
+        "overridden_elements must name every regenerated dialog id (the two          mission-622 corpses) in ascending order, and no quarantined one",
     );
+
+    // The debug-hub dialogs are quarantined (client map-load crash,
+    // 2026-09-27): they are neither inserted into the catalogue nor named in
+    // the versionInfo InvalidKeys, so no client is sent them.
+    for q in crate::base::dialog_overrides::QUARANTINED_DIALOG_OVERRIDES {
+        assert!(
+            !dialogs.elements.contains_key(&q.dialog_id),
+            "quarantined dialog {} must not be inserted into the served catalogue",
+            q.dialog_id,
+        );
+        assert!(
+            !ids.contains(&q.dialog_id),
+            "quarantined dialog {} must not be named in overridden_elements",
+            q.dialog_id,
+        );
+    }
 }
 
 /// Defensive path: dialogs category absent (PAK missing) → no-op return,

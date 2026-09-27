@@ -8611,13 +8611,30 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (100002, 8, 100012, 2, 'Accept');
 
+-- NEW CONTENT (debug hub): the one button of dialog 60100, on its FINAL
+-- screen (200001) so a player who pages to the end always has something to
+-- press. Type 4 (Generic 1) draws the authored text and brings no inert
+-- Decline, as type 2 (Accept) would. Clicking it sends ButtonID 8.
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200000, 8, 200001, 4, 'Send my choice');
+
+-- Social-systems campaign, SS-U3: the Gate Mail Clerk's button, on dialog
+-- 60104's only (so final) screen. Generic 1 (type 4), ButtonID 8; chain 7011
+-- fires on the choice.
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200001, 8, 200005, 4, 'Send me a mail');
+
+-- Bank and Vault campaign, BV-05: the Expand vault button, on dialog 60110's
+-- only screen. Generic 1 (type 4) so the label is drawn; ButtonID 8. The
+-- server does not trust the button: the purchase re-checks the session,
+-- the Banker's range, the cash and the ceiling.
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (200010, 8, 200010, 4, 'Expand vault');
+
 --
 -- TOC entry 3307 (class 0 OID 0)
 -- Dependencies: 303
 -- Name: dialog_screen_buttons_2_screen_button_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 100002, true);
+SELECT pg_catalog.setval('dialog_screen_buttons_2_screen_button_id_seq', 200010, true);
 
 --
 -- TOC entry 3308 (class 0 OID 0)

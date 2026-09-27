@@ -37,3 +37,12 @@ share one object store, so the newer commit is already local — no fetch
 needed.
 
 Cleanup when the PR merges: `git worktree remove <path>`. The worktree pattern is already used heavily in this repo (see `git worktree list` — 30+ active worktrees for parallel feature branches).
+
+**The session scratchpad is shared by every agent in the team.** Parallel
+packet workers launched from one coordinator get the same scratchpad
+directory, so a helper script with a generic name (`rep.py`, `p1.py`) can be
+overwritten by another worker between two of your calls. The symptom is an
+edit script that prints success but changes nothing (CR-03, 2026-09-26: a
+`rep.py` rewritten to read stdin applied zero edits). Keep helpers in a
+per-packet subdirectory (`scratchpad/<worktree>/`) and check `git status`
+after scripted edits.

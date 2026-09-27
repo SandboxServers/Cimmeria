@@ -2,11 +2,11 @@
 
 > **Audience**: Engineers writing or reviewing tests in the Cimmeria workspace.
 > **Type**: Reference + how-to.
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
 > **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**. CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` cdylib, leaving **2,691 tests actually gated on every PR**. Of those, 224 are live-DB regression guards (`require_db_or_skip!`, in the crates `tools/test-live-db.sh` lists) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~147 tests at the current 2,936 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate with live-DB tests) against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace's `#[test]` / `#[tokio::test]` cases are counted by `python tools/extract_tests.py`; the current totals, per crate and gated in CI, are generated into [docs/testing/inventory/README.md](docs/testing/inventory/README.md#workspace-totals). CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`), the Windows-only `cimmeria-client-telemetry` and `cimmeria-client-patches` cdylibs and `cimmeria-lab`, and every other crate's tests are gated on every PR. Among them are the live-DB regression guards (`require_db_or_skip!`, in the crates `tools/test-live-db.sh` lists) and 3 end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (the threshold is in the workspace totals) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `tools/test-live-db.sh` (`cargo nextest run --profile=ci-live-db --lib` over every crate with live-DB tests) against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 
@@ -226,7 +226,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 > consumer. See the [wireclient ADR](docs/architecture/wireclient.md) phase table
 > before treating any given phase as shipped.
 
-**Where**: `crates/wireclient/` — 32 unit/lib tests across 6 files (`src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `src/bundle.rs` (6)) plus 9 integration tests in one `tests/it/` binary: `tests/it/auth_smoke.rs` (3), `tests/it/trace_load.rs` (1), `tests/it/two_client_castle_visibility.rs` (2, live-DB only), `tests/it/two_client_castle_visibility_chaos.rs` (3, live-DB only). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
+**Where**: `crates/wireclient/` — 32 unit/lib tests across 6 files (`src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `src/bundle.rs` (6)) plus 10 integration tests in one `tests/it/` binary: `tests/it/auth_smoke.rs` (3), `tests/it/trace_load.rs` (1), `tests/it/two_client_castle_visibility.rs` (2, live-DB only), `tests/it/two_client_castle_visibility_chaos.rs` (3, live-DB only), `tests/it/two_client_squad.rs` (1, live-DB only: a squad invite, accept and leave between two clients, using `GameSession::base_method` and `cell_method`). SS-U2 adds `src/sparbot.rs` (6) and `tests/it/sparbot_duel.rs` (3: a no-DB pin of the duel wire against `cimmeria-wire`, a live-DB duel accept, and a 70 s keep-alive run that is `#[ignore]`d for its length). Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`.
 
 **What works today:**
 
@@ -389,23 +389,24 @@ This section is mined from review comments since the test push began. Each item 
 
 ## Running the test suite
 
-### Locally (no DB — covers ~2,520 tests)
+### Locally (no DB)
 
 ```bash
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
-  --exclude cimmeria-client-telemetry
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches \
+  --exclude cimmeria-lab
 # nextest can't run doctests; cimmeria-commands is the only crate
 # with runnable ones today.
 cargo test --doc -p cimmeria-commands
 ```
 
-The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects 2,691 of the workspace's 2,936 tests, of which the 224 live-DB guards self-skip without `DATABASE_URL`.
+The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects the CI-gated tests in the [workspace totals](docs/testing/inventory/README.md#workspace-totals), and the live-DB guards among them self-skip without `DATABASE_URL`.
 
 `cargo test --workspace ...` still works for quick sanity checks if you don't have nextest installed, but CI uses nextest and that's what the JUnit upload to Codecov Test Analytics expects.
 
-### Locally (live DB — adds the 247 `require_db_or_skip!` guards + 3 smokes)
+### Locally (live DB — adds the `require_db_or_skip!` guards + 3 smokes)
 
 Start the bundled Postgres on port 5433 (via `setup.ps1`'s bootstrap), then:
 

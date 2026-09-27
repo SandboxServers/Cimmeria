@@ -185,6 +185,9 @@ async fn location(
         space_mgr.note_authorized_teleport(target);
 
         if is_player {
+            // SS-D3: a teleport ends the traveller's duel (`EDUEL_DEFEAT_Teleport`)
+            // and withdraws a challenge or countdown; `every_travel_site_ends_the_duel`.
+            cimmeria_cell_world::cell::duel::on_travel(tx, space_mgr, target).await;
             if let Err(err) = tx
                 .send(CellToBaseMsg::TeleportPlayer {
                     entity_id: target,
@@ -205,6 +208,14 @@ async fn location(
                 );
                 return;
             }
+            // A pet out with the moved player comes along (pets PT-02).
+            cimmeria_cell_world::cell::pets::on_owner_teleported(
+                target,
+                cimmeria_cell_world::cell::pets::OwnerPath::ConsoleLocation,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
     }
 

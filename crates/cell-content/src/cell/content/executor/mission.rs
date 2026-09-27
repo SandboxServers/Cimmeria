@@ -139,6 +139,7 @@ pub(super) async fn complete(
         .map(|m| m.status);
     let transitioned_from_active = prior_status == Some(MISSION_ACTIVE);
 
+    report_objectives_left_open(entity_id, mission_id, space_mgr, engine);
     crate::cell::missions::complete_mission_direct(entity_id, mission_id, tx, space_mgr).await;
     // Serialized AFTER complete_mission_direct so we capture the
     // post-bump `repeats` (`MissionInstance::complete` increments), the
@@ -178,6 +179,42 @@ pub(super) async fn complete(
             "Content: complete called on non-active mission — skipping mission_completed event"
         );
     }
+}
+
+/// Stuck-player signal `objective_never_completed`, raised just before a
+/// chain's `CompleteMission` force-completes whatever is still open.
+///
+/// Only objectives that some chain completes on its own
+/// ([`ChainEngine::has_objective_completer`]) are reported. The rest are
+/// turn-in objectives: nothing but `CompleteMission` / `AdvanceStep` can
+/// close them, exactly as `missions.complete(id)` closes the final step's
+/// objective in the Atrea scripts (`ArmYourself.py`). Reporting those made
+/// the signal fire on every mission of the Cellblock arc (37 WARNs across
+/// 3 players on the 2026-09-26 colo run, one per mission per player) and
+/// buried the objectives it exists to catch — e.g. the non-gating flank
+/// objective 2731, which chain 1142 completes only when the flank happens.
+fn report_objectives_left_open(
+    entity_id: u32,
+    mission_id: i32,
+    space_mgr: &SpaceManager,
+    engine: &ChainEngine,
+) {
+    use cimmeria_entity::missions::{MISSION_ACTIVE, STATUS_ACTIVE};
+    let Some(mission) = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+        .filter(|m| m.status == MISSION_ACTIVE)
+    else {
+        return;
+    };
+    let open: Vec<(i32, bool)> = mission
+        .active_objectives
+        .iter()
+        .filter(|o| o.status == STATUS_ACTIVE)
+        .filter(|o| engine.has_objective_completer(mission_id, o.objective_id))
+        .map(|o| (o.objective_id, o.optional))
+        .collect();
+    crate::cell::playtest_friction::objectives_never_completed(entity_id, mission_id, &open);
 }
 
 /// `Action::AdvanceStep` — move a mission to a new step and persist.

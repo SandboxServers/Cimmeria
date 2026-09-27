@@ -158,6 +158,13 @@ impl SpaceManager {
         if self.get_entity(entity_id).is_some_and(|e| e.is_player) {
             self.ring_transporters.note_player_gone(entity_id);
         }
+        // A vault session lives on the entity and dies with it (bank-vault
+        // D-BV05). A logout has already ended it in `disconnect_entity`, so
+        // a player destroy that still finds one is a move to another space.
+        self.end_vault_session(
+            entity_id,
+            cimmeria_entity::cell_entity::VaultCloseReason::SpaceChange,
+        );
         // CA10: an armed stargate dial dies with the space membership —
         // without this, `gate_dial_tick` would emit `Stargate_MakeGate`
         // for an entity that is no longer in any space.
@@ -166,6 +173,12 @@ impl SpaceManager {
         // down mid-hold must not have a deferred `perform_gate_travel` run
         // against it on a later tick.
         self.cancel_crossing_hold(entity_id);
+        // A pet removed on any path (despawn, death sweep, GM) leaves the
+        // owner map. A destroyed *owner* is not handled here: this method
+        // has no `tx` for its pets' `LeftAoI`, so `pets::pet_owner_sweep`
+        // despawns them on the next AoI tick (and `disconnect_entity` does it
+        // at once through `pets::forget_owner`).
+        self.pets.forget_pet(entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -387,6 +400,12 @@ impl SpaceManager {
         // would strand the traveller (see
         // `RingTransporterManager::forget_source_side`).
         crate::cell::ring_transport::forget_player(entity_id, tx, self).await;
+        // The vault session ends with the connection, labelled `logout`
+        // before `destroy_entity` below would call it a space change.
+        self.end_vault_session(
+            entity_id,
+            cimmeria_entity::cell_entity::VaultCloseReason::Logout,
+        );
         // CA10: same rationale — a disconnect mid-dial must not leave a
         // pending gate-open queued against a dead session.
         self.pending_gate_dials.remove(&entity_id);
@@ -394,6 +413,17 @@ impl SpaceManager {
         // leave a deferred `perform_gate_travel` queued against a dead
         // session.
         self.cancel_crossing_hold(entity_id);
+        // SS-D3: an engaged duel ends with this player as the loser
+        // (`EDUEL_DEFEAT_Connection`), and a challenge or countdown is
+        // withdrawn, while the entity still exists: the partner's flag,
+        // `onDuelEntitiesClear` and combat pair are cleared and they hear
+        // "You won the duel" now, not on the sweep's next tick. The open
+        // trade is cancelled by the caller (`handle_disconnect_entity`).
+        crate::cell::duel::on_disconnect(tx, self, entity_id).await;
+        // Pets leave with their owner, visibly (`LeftAoI` to every witness),
+        // before the owner's own AoI teardown below. The self-healing sweep
+        // would get them a tick later; this makes the common path immediate.
+        crate::cell::pets::forget_owner(entity_id, tx, self).await;
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);

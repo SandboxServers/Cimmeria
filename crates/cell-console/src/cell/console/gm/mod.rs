@@ -19,15 +19,19 @@
 //!
 //! Handlers are grouped by family into submodules:
 //! - [`give`] — grant/remove (xp, item, cash).
+//! - [`give_training_points`] — training-point grant.
 //! - [`stats`] — set health/focus current+max.
 //! - [`missions`] — assign/clear/advance + list/full/details.
 //! - [`travel`] — goto-xyz / goto-location / goto / summon / DHD dial.
 //! - [`world`] — kill / despawn / respawn / set-target.
 //! - [`spawn`] — spawn-by-cmd (cell↔base template round-trip).
 //! - [`query`] — inspection/show + users + test-LOS (report via [`feedback`]).
+//! - [`organizations`] — `gmReloadOrganizations` (forwarded to the base).
 //! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
 //! - [`physics`] — `onPhysics` movement-validator bypass (backs
 //!   `/gmsetfly`, `/gmsetghost`).
+//! - [`shout`] — `sendGMShout` GM broadcast (backs `/gmshout`; `.announce`
+//!   calls the same [`shout::broadcast`]).
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
@@ -35,9 +39,12 @@
 
 pub mod feedback;
 mod give;
+mod give_training_points;
 mod missions;
+mod organizations;
 mod physics;
 mod query;
+pub(crate) mod shout;
 mod spawn;
 mod stats;
 mod travel;
@@ -84,6 +91,13 @@ pub const GM_GIVE_CASH: u16 = 134;
 /// `gmRemoveItem(ItemID itemID, INT16 quantity)` — def line 196. Offset 26.
 /// `ItemID` resolves to INT32 (`entities/defs/alias.xml`).
 pub const GM_REMOVE_ITEM: u16 = 135;
+
+// -- Training points (137) ---------------------------------------------------
+/// `gmGiveTrainingPoints(INT32 aNumTrainingPoints)` — def line 207. Offset 28.
+/// Grants ability-tree training points to the caller. Routes through
+/// `CellToBaseMsg::GrantTrainingPoints` → `progression::handle_grant_training_points`
+/// → `BaseToCellMsg::TrainingPointsGranted`.
+pub const GM_GIVE_TRAINING_POINTS: u16 = 137;
 
 // -- Crafting grants (139, 140) -----------------------------------------------
 /// `gmGiveExpertise(INT32 aDisciplineId, INT32 aExpertise)` — offset 30.
@@ -147,7 +161,12 @@ pub const GM_SHOW_MOB_COUNT: u16 = 128;
 /// FanMMORPG `.info`.
 pub const GM_SHOW_PLAYER: u16 = 131;
 
-// -- Admin / social (166) -----------------------------------------------------
+// -- Admin / social (164, 166) ------------------------------------------------
+/// `gmReloadOrganizations()` — def line 355. Offset 55. Re-sends the caller's
+/// own Team and Command state (the world-entry push); the stock
+/// `/ReloadOrganizations` console binding. Routes through
+/// `OrgCellToBase::GmReload` (ORG-10).
+pub const GM_RELOAD_ORGANIZATIONS: u16 = 164;
 /// `gmUsers()` — def line 363. Offset 57. Lists players in the caller's space
 /// (the stock `/Users` / `/Who` console binding).
 pub const GM_USERS: u16 = 166;
@@ -189,6 +208,12 @@ pub const TEST_LOS: u16 = 216;
 /// [`physics::handle_physics`].
 pub const GM_PHYSICS: u16 = 221;
 
+// -- GM broadcast (222) ---------------------------------------------------------
+/// `sendGMShout(UINT8 isGlobal, WSTRING Text)` — def line 650. Offset 113.
+/// Backs `/gmshout`. `isGlobal = 0` reaches the GM's space, anything else
+/// every online player (D-SS16). See [`shout::handle_send_gm_shout`].
+pub const GM_SEND_GM_SHOUT: u16 = 222;
+
 /// Dispatch an SGWGmPlayer own cell method (flattened index >= 109).
 ///
 /// Returns `true` if the index was handled, `false` if it's an unimplemented
@@ -208,6 +233,9 @@ pub async fn dispatch(
         GM_GIVE_ITEM => give::handle_give_item(entity_id, args, tx, space_mgr).await,
         GM_GIVE_CASH => give::handle_give_cash(entity_id, args, tx, space_mgr).await,
         GM_REMOVE_ITEM => give::handle_remove_item(entity_id, args, tx, space_mgr).await,
+        GM_GIVE_TRAINING_POINTS => {
+            give_training_points::handle_give_training_points(entity_id, args, tx, space_mgr).await
+        }
         GM_GIVE_EXPERTISE => give::handle_give_expertise(entity_id, args, tx, space_mgr).await,
         GM_GIVE_APPLIED_SCIENCE_POINTS => {
             give::handle_give_applied_science(entity_id, args, tx, space_mgr).await
@@ -248,6 +276,10 @@ pub async fn dispatch(
         GM_SPAWN_BY_CMD => spawn::handle_spawn_by_cmd(entity_id, args, tx, space_mgr).await,
         // -- query (report text via the feedback channel) --
         GM_USERS => query::handle_users(entity_id, tx, space_mgr).await,
+        // -- organizations --
+        GM_RELOAD_ORGANIZATIONS => {
+            organizations::handle_reload_organizations(entity_id, tx, space_mgr).await
+        }
         TEST_LOS => query::handle_test_los(entity_id, args, tx, space_mgr).await,
         GM_SHOW_TARGET_LOCATION => {
             query::handle_show_target_location(entity_id, tx, space_mgr).await
@@ -263,6 +295,8 @@ pub async fn dispatch(
         GM_DEBUG_MOB_DATA => query::handle_debug_mob_data(entity_id, args, tx, space_mgr).await,
         // -- physics bypass --
         GM_PHYSICS => physics::handle_physics(entity_id, args, tx, space_mgr).await,
+        // -- GM broadcast --
+        GM_SEND_GM_SHOUT => shout::handle_send_gm_shout(entity_id, args, tx, space_mgr).await,
         // Any other 109+ index is an unimplemented (but authorized) gm*
         // method — let the router fall through to its warn arm.
         _ => false,

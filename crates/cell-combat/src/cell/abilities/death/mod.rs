@@ -123,6 +123,17 @@ pub(super) async fn apply_death_transition(
     )
     .await;
 
+    // A cast the dying entity was warming up never fires (python
+    // `AbilityManager.onDead` → `interruptAbility`). Same spot as the
+    // channel cancel, so its interrupt lands before the death sequence.
+    let _ = super::use_ability::interrupt_pending_cast(
+        target_eid,
+        super::use_ability::InterruptReason::CasterDied,
+        tx,
+        space_mgr,
+    )
+    .await;
+
     // 1. Attacker side: clear targeting reticle.
     if attacker_is_player {
         send_entity_method(
@@ -300,7 +311,9 @@ pub(super) async fn apply_death_transition(
 /// - `attacker_is_player` — drives the `onTargetUpdate(0)` reticle drop.
 ///   A GM `.kill` passes `false` because the GM was never targeting
 ///   through the combat HUD.
-/// - `grant_xp` — pay kill XP to `attacker_id`. Combat and DoT kills pass
+/// - `grant_xp` — pay kill XP to the player `attacker_id` credits (itself,
+///   or a pet's owner; nobody for a plain NPC — see
+///   `side_effects::grant_kill_xp`). Combat and DoT kills pass
 ///   `true`; a GM `.kill` passes `false` so an admin command can't mint
 ///   levels. Ignored for player targets (PvP pays no XP).
 ///
@@ -418,6 +431,21 @@ pub(super) async fn resolve_death(
         // the dead-state broadcast above instead of racing it.
         crate::cell::service::npc_ai::purge_dead_player_from_threat(target_eid, tx, space_mgr)
             .await;
+        // SS-D3: a duelist killed by anyone else loses the duel (the
+        // partner's damage never gets here: it is clamped at 1 HP, D-SS20).
+        // The partner hears "You won the duel"; a challenge or countdown is
+        // withdrawn.
+        cimmeria_cell_world::cell::duel::on_death(tx, space_mgr, target_eid, attacker_id).await;
+        // D-PT08: the owner's pets go with the owner's death, now rather than
+        // on the next pet sweep. The owner sees them leave (its client stays).
+        cimmeria_cell_world::cell::pets::on_owner_left(
+            target_eid,
+            cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerDead,
+            cimmeria_cell_world::cell::pets::OwnerPath::OwnerDeath,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     true
@@ -476,5 +504,11 @@ pub async fn resolve_death_for_test(
 
 mod side_effects;
 
+#[cfg(test)]
+mod pet_credit_log_tests;
+#[cfg(test)]
+mod pet_credit_tests;
+#[cfg(test)]
+mod pet_tests;
 #[cfg(test)]
 mod tests;

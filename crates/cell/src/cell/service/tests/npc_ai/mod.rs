@@ -48,6 +48,8 @@
 //!   its 2 u comfort range (not melee, stationary or in cover; flanked
 //!   yes), the 3 s cooldown, the dead-zone hold, and the landing and the
 //!   cornered case on the real `castle_cellblock.nav`.
+//! - [`attack_sequence`] — NA43 / handoff §26 test 20: a fight tick sends
+//!   each AoI witness the NPC's Ability_End `onSequence`.
 //! - [`stop_hygiene`]  — NA10: a stopped NPC is broadcast with zero
 //!   velocity, and the leash snap keeps the spatial grid in sync.
 //! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
@@ -56,7 +58,11 @@
 //!   death, a healed corpse still counts as dead, and the respawned player is
 //!   not re-acquired by the retry sweep.
 //! - [`being_follower`] — NA24: a `being`-class follower (Col Marsh) is
-//!   ticked and walks; an Idle or Fighting being (a prop) is not.
+//!   ticked and walks; an Idle or Fighting being (a prop) is not. NA42: a
+//!   damaged being takes no threat and stays in Follow.
+//! - [`follow_resume`] — NA42 on the real `castle_cellblock.nav`: a mob
+//!   escort hit mid-follow fights, leashes in place and resumes Follow with
+//!   its target kept; with its leader gone it clears the target and idles.
 //!
 //! Uses a non-instanced `Castle` fixture rather than the parent
 //! `make_test_space_mgr` (Castle_CellBlock, instanced) so the NPC and
@@ -76,16 +82,21 @@ mod ability_range;
 mod aggression;
 mod aggro_castle;
 mod assist;
+mod assist_barracks;
 mod assist_castle;
+mod attack_sequence;
 mod being_follower;
 mod dead_player_drop;
+mod follow_resume;
 mod leash_reset;
 mod leash_walk;
 mod melee_reach;
+mod no_route;
 mod occluder_los;
 mod occluder_los_eye_heights;
 mod off_mesh_sentry;
 mod path_robustness;
+mod pet_kill_credit;
 mod selector;
 mod state_machine;
 mod stationary_facing;

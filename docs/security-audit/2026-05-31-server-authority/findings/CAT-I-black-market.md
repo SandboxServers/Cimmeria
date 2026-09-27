@@ -475,16 +475,19 @@ server-side properties:
    that scope must be applied server-side by joining caller
    faction against listing faction; client-supplied
    `filterFlags` cannot be the only gate.
-3. **`clientKey` is a client-asserted pagination cursor** —
-   the emit packs `clientKey` (likely a per-search
-   correlation id the server hands back in
-   `Event_NetIn_BMAuctions` so subsequent paged calls can be
-   matched against the cached result set). The server must
-   not trust the `clientKey` value to point at any session's
-   cache other than the caller's own. If the cache is keyed
-   by `(clientKey)` alone (not `(character_id, clientKey)`),
-   a colluder can read another player's result page — minor
-   leak but real.
+3. **`clientKey` selects the view, and the name filters must
+   not be trusted.** *Corrected 2026-09-26*: this item used to
+   call `clientKey` a pagination or cache correlation id. The
+   client uses it as the view the reply fills
+   (`EBlackMarketSearchType`: 0 Search, 1 MyAuctions,
+   2 MyBids), and `onBMAuctions` echoes it back. See
+   [black-market-client-io.md](../../../reverse-engineering/findings/black-market-client-io.md)
+   §4. The pagination cursor is `sequenceId` + `bForward`, and
+   the CAT-I-05 guidance on that cursor still applies. For views
+   1 and 2 the client fills `sellerName` / `bidderName` with the
+   caller's own name. The server must filter those views by the
+   caller's own player id and ignore the strings. Otherwise a
+   forged `bidderName` lists another player's active bids.
 4. **`itemName` / `sellerName` / `bidderName` are wide
    strings**: the wire emit packs them as `wchar_t*` (per
    `FUN_0043d380` at offsets `puVar1 + 0` (seller),

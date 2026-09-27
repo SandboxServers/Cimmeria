@@ -180,6 +180,12 @@ Allocation source: [docs/analysis/castle-rebuild/work-packets.md](../../docs/ana
 "Worker Input And Ownership". `1200` is left unused as a gap between the
 two zones' blocks; effect chains start at 2001.
 
+### Stasis-room debug hub — `debug_hub_chains.sql` (7001-7099)
+
+The Castle_CellBlock debug NPCs ([docs/content/debug-hub.md](../../docs/content/debug-hub.md)).
+No mission, no conditions, and the cursor bits are permanent template
+defaults, so the interact chains are allowlisted in `interact_tag_linter.rs`.
+
 ## Linked references
 
 - `docs/content/content-engine.md` — **runtime reference**: architecture, vocabulary, schema, lifecycle, observability, performance.

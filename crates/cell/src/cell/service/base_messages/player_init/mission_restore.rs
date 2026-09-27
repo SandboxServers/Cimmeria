@@ -17,7 +17,7 @@
 //! and `sgw_mission` needs no schema change.
 
 use cimmeria_entity::missions::{
-    MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED,
+    MissionInstance, MissionObjective, MISSION_ACTIVE, STATUS_ACTIVE, STATUS_COMPLETED,
 };
 
 use crate::cell::messages::SavedMission;
@@ -61,14 +61,33 @@ fn restore_objectives(space_mgr: &SpaceManager, saved: &SavedMission) -> Vec<Mis
         .unwrap_or_default();
 
     if defs.is_empty() {
+        // A finished row is the expected case here, not a data gap:
+        // `MissionInstance::complete` clears the step, so every completed
+        // or failed mission is saved with `current_step_id = NULL` while
+        // its final step's objectives stay in the array. The flags can no
+        // longer affect anything (no objective of a finished mission is
+        // ever completed again), so only an ACTIVE mission whose step is
+        // unseeded is worth a WARN. Pre-fix every relog warned once per
+        // finished mission (99 on the 2026-09-26 colo run, all
+        // `current_step_id = None`, all completed Cellblock missions).
         if !saved.active_objective_ids.is_empty() {
-            tracing::warn!(
-                mission_id = saved.mission_id,
-                current_step_id = ?saved.current_step_id,
-                objectives = saved.active_objective_ids.len(),
-                "Restoring mission objectives without a step definition — \
-                 hidden/optional flags default to false"
-            );
+            if saved.status == MISSION_ACTIVE {
+                tracing::warn!(
+                    mission_id = saved.mission_id,
+                    current_step_id = ?saved.current_step_id,
+                    objectives = saved.active_objective_ids.len(),
+                    reason = "active_mission_step_undefined",
+                    "Restoring mission objectives without a step definition — \
+                     hidden/optional flags default to false"
+                );
+            } else {
+                tracing::debug!(
+                    mission_id = saved.mission_id,
+                    status = saved.status,
+                    objectives = saved.active_objective_ids.len(),
+                    "Restoring a finished mission's final-step objectives verbatim"
+                );
+            }
         }
         return saved
             .active_objective_ids
@@ -318,6 +337,50 @@ mod tests {
         assert_eq!(objs.len(), 1);
         assert_eq!(objs[0].objective_id, 999_999);
         assert_eq!((objs[0].hidden, objs[0].optional), (false, false));
+    }
+
+    /// A completed row (`current_step_id = NULL`, final-step objectives
+    /// still in the array) is the normal shape of every finished mission
+    /// and must not WARN on each relog; an ACTIVE mission whose step is
+    /// unseeded is a real data gap and still must.
+    #[test]
+    fn only_an_active_mission_without_a_step_definition_warns() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+        let mgr = mgr_with_defs();
+        let mut finished = saved(vec![90622], vec![3238, 90622]);
+        finished.mission_id = 622;
+        finished.status = 2;
+        finished.current_step_id = None;
+        let restored = build_restored_missions(&[finished], &mgr);
+        assert_eq!(
+            restored[0].active_objectives.len(),
+            1,
+            "the finished row still restores its saved roster verbatim",
+        );
+        assert!(
+            capture
+                .find_message(Level::WARN, "without a step definition")
+                .is_none(),
+            "a completed mission's NULL step is expected; got {:#?}",
+            capture.all(),
+        );
+
+        let mut unseeded = saved(vec![999_999], vec![]);
+        unseeded.current_step_id = Some(4242); // not in the cache
+        build_restored_missions(&[unseeded], &mgr);
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "without a step definition",
+                    "active_mission_step_undefined"
+                )
+                .is_some(),
+            "an ACTIVE mission on an unseeded step must still WARN",
+        );
     }
 
     /// `repeats`, `status`, `completed_steps` and the mission-level

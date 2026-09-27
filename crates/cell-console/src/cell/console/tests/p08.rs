@@ -130,6 +130,7 @@ fn record_from_request(
         assist_radius: None,
         aggression_override: None,
         use_cover: None,
+        vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
     }
 }
 

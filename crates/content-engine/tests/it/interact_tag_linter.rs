@@ -256,6 +256,12 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("sgc_w1_chains.sql", 3020) // SGCW1_AirmanBody: lootable body template default
         | ("sgc_w1_chains.sql", 3023) // SGC_W1_NaqBomb: mission-object template default
         | ("sgc_w1_chains.sql", 3028) // SGC_W1_ElevatorButton2: bit set by sibling chain
+        // debug_hub_chains.sql — both NPCs are reusable and belong to no
+        // mission, so the cursor bit is a permanent template default rather
+        // than a set/clear pair.
+        | ("debug_hub_chains.sql", 7001) // DebugHub_DialogNpc: template 302 default INT_NonAStoryMissionAvaliable
+        | ("debug_hub_chains.sql", 7004) // DebugHub_LivewireTerminal: template 303 default INT_MinigameLivewire
+        | ("debug_hub_chains.sql", 7010) // DebugHub_MailClerk: template 390 default INT_NonAStoryMissionAvaliable (SS-U3)
         // space_castle_cellblock_chains.sql — baseline
         | ("space_castle_cellblock_chains.sql", 5014) // Preparation_ColMarsh: dialog NPC template default
         | ("space_castle_cellblock_chains.sql", 5015) // Preparation_ColMarsh: dialog NPC template default

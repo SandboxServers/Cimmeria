@@ -1,6 +1,14 @@
 //! Per-frame engine drivers: `FEngineLoop::Tick` (main game loop)
 //! and `FFullScreenMovieBink::Tick` (cinematic playback). Both are
 //! heavily sampled — their value is cadence, not per-call detail.
+//!
+//! Both detours, and the trampolines they call, use the
+//! `thiscall-unwind` ABI. UE3 reports fatal errors by throwing a C++
+//! exception, and `Tick` sets up the frame that catches it. The
+//! exception unwinds through every detour chained on `Tick`: this one
+//! and, when it is loaded, `cimmeria-client-patches`' detour. A plain
+//! `thiscall` frame aborts the process on a foreign unwind, so the
+//! engine's handler would never run.
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::ffi::c_void;
@@ -76,14 +84,15 @@ pub(super) unsafe fn install_bink_tick(producer: &Producer) {
 /// Detour for `FEngineLoop::Tick(void)`.
 ///
 /// Signature: `extern "thiscall" fn(*mut FEngineLoop)` — `this` in
-/// ECX, no stack args, no return value.
+/// ECX, no stack args, no return value. Declared `thiscall-unwind`; see
+/// the module docs.
 ///
 /// **Hot path discipline:** runs at 30-120 Hz on the main game
 /// thread. Sampled at 1/100 via `TICK_SAMPLER` so the wire rate
 /// is bounded to ~0.3-1.2 emits/sec.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn engine_tick_detour(this: *mut c_void) {
+unsafe extern "thiscall-unwind" fn engine_tick_detour(this: *mut c_void) {
     let _ = std::panic::catch_unwind(|| {
         if TICK_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
@@ -106,7 +115,8 @@ unsafe extern "thiscall" fn engine_tick_detour(this: *mut c_void) {
     }
 
     if let Some(t) = TICK_TRAMPOLINE.get() {
-        let original: unsafe extern "thiscall" fn(*mut c_void) = unsafe { std::mem::transmute(*t) };
+        let original: unsafe extern "thiscall-unwind" fn(*mut c_void) =
+            unsafe { std::mem::transmute(*t) };
         original(this);
     }
     // No trampoline → don't call anything. Skipping a Tick is
@@ -124,7 +134,7 @@ unsafe extern "thiscall" fn engine_tick_detour(this: *mut c_void) {
 /// for ~1 emit/sec during cinematics.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
-unsafe extern "thiscall" fn bink_tick_detour(this: *mut c_void, delta_seconds: f32) {
+unsafe extern "thiscall-unwind" fn bink_tick_detour(this: *mut c_void, delta_seconds: f32) {
     let _ = std::panic::catch_unwind(|| {
         if BINK_TICK_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
@@ -137,7 +147,7 @@ unsafe extern "thiscall" fn bink_tick_detour(this: *mut c_void, delta_seconds: f
     });
 
     if let Some(t) = BINK_TICK_TRAMPOLINE.get() {
-        let original: unsafe extern "thiscall" fn(*mut c_void, f32) =
+        let original: unsafe extern "thiscall-unwind" fn(*mut c_void, f32) =
             unsafe { std::mem::transmute(*t) };
         original(this, delta_seconds);
     }
@@ -162,5 +172,23 @@ mod tests {
         // 1/30 — Bink frame cadence.
         let bink_emits: usize = (0..30).filter(|_| BINK_TICK_SAMPLER.should_emit()).count();
         assert_eq!(bink_emits, 1, "bink sampler should emit 1/30");
+    }
+
+    /// An exception thrown by the original `Tick` unwinds through the
+    /// detour to whoever catches it, as UE3's handler must. A Rust panic
+    /// stands in for the C++ exception: on MSVC both are SEH unwinds. With
+    /// a plain `thiscall` detour the process aborts here instead.
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn an_exception_from_the_original_tick_unwinds_through_the_detour() {
+        unsafe extern "thiscall-unwind" fn throwing_tick(_this: *mut c_void) {
+            panic!("engine error");
+        }
+        TICK_TRAMPOLINE
+            .set(throwing_tick as *const () as usize)
+            .expect("only this test sets the trampoline");
+        let caught =
+            std::panic::catch_unwind(|| unsafe { engine_tick_detour(core::ptr::null_mut()) });
+        assert!(caught.is_err());
     }
 }

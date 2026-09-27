@@ -8,12 +8,19 @@
 //! - [`movement`] — `EntityMove` (client-authoritative position update + snap-back)
 //! - [`player_init`] — `InitPlayerState` (mission/ability/bandolier restore)
 //! - [`ability_granted`] — `AbilityGranted` (hotbar refresh + trainer resend)
+//! - [`respec`] — `AbilitiesReset` (trainer respec mirror + burst, AT-08)
 //! - [`inventory_events`] — `InventoryItemMoveApplied` / `InventoryItemRemoved` /
 //!   `InventoryItemGranted` / `ItemUsed`
 //! - [`bandolier`] — `UpdateBandolierItem` + `SyncBandolierItems` (weapon display)
 //! - [`minigame`] — `MinigameResult`
 //! - [`gm_spawn`] — `GmSpawnNpcReady`
 //! - [`request_entity_update`] — `RequestEntityUpdate`
+//! - `LootGrantRefused` goes straight to `cell::interactions` (the item goes
+//!   back on its corpse)
+//! - [`org`] — `Org` (organization traffic: the squad invite and kick)
+//! - [`bank`] — `Bank` (the Team and Command vault grant, BV-07)
+//! - `Duel` goes straight to `cell::duel::challenge` (SS-D1)
+//! - [`ignore`] — `UpdateIgnoreList` (the Ignore set spatial chat reads, SS-C1)
 
 use tokio::sync::mpsc;
 
@@ -25,15 +32,19 @@ use super::super::{chat, dispatch, spawner};
 
 mod ability_granted;
 mod bandolier;
+mod bank;
 mod gm_spawn;
+mod ignore;
 mod inventory_events;
 mod lab_console;
 mod lab_query;
 pub(in crate::cell::service) mod lifecycle;
 mod minigame;
 mod movement;
+mod org;
 pub(crate) mod player_init;
 mod request_entity_update;
+mod respec;
 
 #[cfg(test)]
 mod tests;
@@ -221,6 +232,12 @@ pub(super) async fn handle_base_message(
                 engine,
             )
             .await;
+            // A gate arrival re-creates the player: re-send their squad
+            // (ORG-03). After the handler above, which stamps `player_id`.
+            super::super::cell_methods::organization::squad::on_world_entry(
+                entity_id, player_id, tx, space_mgr,
+            )
+            .await;
         }
 
         BaseToCellMsg::AdvanceRingDestination {
@@ -405,6 +422,38 @@ pub(super) async fn handle_base_message(
             );
         }
 
+        BaseToCellMsg::TrainingPointsGranted {
+            entity_id,
+            training_points,
+        } => {
+            ability_granted::handle_training_points_granted(
+                entity_id,
+                training_points,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::GmAbilityGranted {
+            entity_id,
+            player_id,
+            ability_id,
+        } => {
+            ability_granted::handle_gm_ability_granted(
+                entity_id, player_id, ability_id, tx, space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::AbilitiesReset {
+            entity_id,
+            player_id,
+            outcome,
+        } => {
+            respec::handle_abilities_reset(entity_id, player_id, outcome, tx, space_mgr).await;
+        }
+
         BaseToCellMsg::ItemUsed {
             entity_id,
             instance_id,
@@ -444,5 +493,50 @@ pub(super) async fn handle_base_message(
             )
             .await;
         }
+
+        BaseToCellMsg::LootGrantRefused {
+            entity_id,
+            player_id,
+            source,
+            design_id,
+            quantity,
+            container_id,
+            reason,
+        } => {
+            crate::cell::interactions::handle_loot_grant_refused(
+                entity_id,
+                player_id,
+                source,
+                design_id,
+                quantity,
+                container_id,
+                reason,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::Org(org_msg) => org::handle(org_msg, tx, space_mgr).await,
+
+        BaseToCellMsg::Bank(bank_msg) => bank::handle(bank_msg, tx, space_mgr).await,
+
+        BaseToCellMsg::Duel(duel_msg) => {
+            super::super::duel::challenge::handle(duel_msg, tx, space_mgr).await;
+        }
+        BaseToCellMsg::UpdateIgnoreList {
+            entity_id,
+            player_id,
+            account_id,
+            version,
+            ignore_names,
+        } => ignore::handle(
+            entity_id,
+            player_id,
+            account_id,
+            version,
+            ignore_names,
+            space_mgr,
+        ),
     }
 }

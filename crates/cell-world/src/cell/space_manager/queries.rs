@@ -221,11 +221,17 @@ impl SpaceManager {
     }
 
     /// Collect all NPC entity IDs (class_id=0x04, not players) across all spaces.
+    ///
+    /// Pets (SGWPet, 0x05) are deliberately **not** here (A-22). The callers
+    /// are the player AoE and cone target sweeps, the respawn tick, cover
+    /// stance, the detectors sweep and GM queries: an owner's AoE must never
+    /// hit its own pet, and the respawn tick must never resurrect one. Code
+    /// that needs pets asks `SpaceManager::pets`.
     pub fn all_npc_entity_ids(&self) -> Vec<u32> {
         let mut ids = Vec::new();
         for space in self.spaces.values() {
             for entity in space.entities.values() {
-                if !entity.is_player && entity.class_id == 0x04 {
+                if !entity.is_player && entity.class_id == crate::mercury::SGWMOB_CLASS_ID {
                     ids.push(entity.entity_id.0 as u32);
                 }
             }
@@ -243,10 +249,9 @@ impl SpaceManager {
     /// movement tick. Most `being` templates are props (crates, consoles,
     /// corpses, elevator buttons) that sit in `Idle` with no route, and stay
     /// excluded. `Fighting` and `Leashing` are deliberately not admitted for
-    /// a being: `generate_threat` moves any shot NPC into `Fighting`, and a
-    /// prop must never get a fight pass (it would fire the default ability).
-    // TODO: a following being pulled into `Fighting` by damage freezes there,
-    // as it did before NA24; it needs a combat-capable class to fight back.
+    /// a being: a prop must never get a fight pass (it would fire the default
+    /// ability). Nothing puts a being there anyway: `generate_threat` refuses
+    /// a being (NA42), so a following being that is hit stays in `Follow`.
     pub fn ai_driven_npc_entity_ids(&self) -> Vec<u32> {
         use cimmeria_entity::cell_entity::AiState;
         let mut ids = Vec::new();
@@ -256,7 +261,11 @@ impl SpaceManager {
                     continue;
                 }
                 let admitted = match e.class_id {
-                    0x04 => true,
+                    crate::mercury::SGWMOB_CLASS_ID => true,
+                    // Pets think and move like mobs (A-22): without this they
+                    // would never follow, fight or leash. PT-05 layers the
+                    // owner-relative behaviour on top.
+                    crate::mercury::SGWPET_CLASS_ID => true,
                     0x01 => matches!(
                         e.ai_state(),
                         AiState::Follow
@@ -281,6 +290,9 @@ impl SpaceManager {
     /// `entity_id`, excluding `entity_id` itself. Restricted to one space so
     /// instanced copies of a world never see each other. The NA14 assist
     /// fan-out's candidate set.
+    ///
+    /// Pets (0x05) are excluded on purpose (A-22): a hostile mob calling for
+    /// help must not recruit a player's pet.
     pub fn npc_ids_in_space_of(&self, entity_id: u32) -> Vec<u32> {
         let Some(space) = self
             .entity_space
@@ -292,7 +304,9 @@ impl SpaceManager {
         space
             .entities
             .iter()
-            .filter(|(&eid, e)| eid != entity_id && !e.is_player && e.class_id == 0x04)
+            .filter(|(&eid, e)| {
+                eid != entity_id && !e.is_player && e.class_id == crate::mercury::SGWMOB_CLASS_ID
+            })
             .map(|(&eid, _)| eid)
             .collect()
     }
@@ -385,6 +399,25 @@ impl SpaceManager {
                 PlayerNameLookup::Ambiguous { entity_ids }
             }
         }
+    }
+
+    /// The live entity of the character `player_id`, if they are online and
+    /// bound to a space.
+    ///
+    /// Scans only each space's `players` set, so it is O(online players).
+    /// A player in gate transit (entity torn down, or re-created but not yet
+    /// connected) is `None`. The squad fanout resolves member entities
+    /// through here on every event rather than caching an id, because
+    /// entity ids are recycled and gate travel re-creates the entity.
+    pub fn player_entity_by_player_id(&self, player_id: i32) -> Option<u32> {
+        self.spaces.values().find_map(|space| {
+            space.players.iter().copied().find(|eid| {
+                space
+                    .entities
+                    .get(eid)
+                    .is_some_and(|e| e.is_player && e.player_id == Some(player_id))
+            })
+        })
     }
 
     /// Collect every entity id across all spaces, regardless of

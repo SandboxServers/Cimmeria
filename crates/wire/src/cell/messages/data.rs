@@ -1,5 +1,7 @@
 //! Shared data structs used by both `BaseToCellMsg` and `CellToBaseMsg`.
 
+use cimmeria_entity::organization::{TextField, TextReject};
+
 /// Mail operation types forwarded from CellService to BaseApp for DB execution.
 #[derive(Debug)]
 pub enum MailOp {
@@ -11,6 +13,91 @@ pub enum MailOp {
     Delete { mail_id: i32 },
     /// Archive a mail message.
     Archive { mail_id: i32 },
+    /// `sendMailMessage` (CM 44), decoded and length-checked by the cell.
+    /// The cell does no SQL and no name lookup.
+    Send(MailSend),
+    /// A `sendMailMessage` the cell could not accept. Forwarded rather than
+    /// answered on the cell so the base's mail-send bucket (D-SS14) charges
+    /// it like any other send, and every `sendMailResult` comes from one
+    /// place.
+    SendRejected(MailSendReject),
+    /// `takeCashFromMailMessage(MailId)` (CM 49).
+    TakeCash { mail_id: i32 },
+    /// `takeItemFromMailMessage(MailId, ContainerId, SlotId)` (CM 50).
+    /// `container_id` and `slot_id` are carried for the log only: the
+    /// shipped client sends uninitialised stack values in them (SS-E1
+    /// M-Q5), so the base picks the destination itself and never reads
+    /// them.
+    TakeItem {
+        mail_id: i32,
+        container_id: i32,
+        slot_id: i32,
+    },
+    /// `payCODForMailMessage(MailId)` (CM 51). The price is read from the
+    /// stored mail, never from the client.
+    PayCod { mail_id: i32 },
+    /// `returnMailMessage(MailId)` (CM 47).
+    Return { mail_id: i32 },
+}
+
+/// The decoded `sendMailMessage(INT32 RecipientFlags, ARRAY<WSTRING>
+/// Recipients, WSTRING Subject, WSTRING Body, INT32 Cash, UINT8 bCOD, INT32
+/// ItemId, INT32 ItemQuantity)` (`SGWMailManager.def:56-66`).
+///
+/// Every string already passed the D-SS12 text rules, and `recipients` holds
+/// at most `MAX_MAIL_RECIPIENTS` names exactly as the client sent them (not
+/// trimmed, not de-duplicated, not resolved). Numbers are raw: the base
+/// decides what an attachment means.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MailSend {
+    /// Alias bits (`MAIL_To*`). The client strips alias tokens out of the
+    /// To field into this mask, so it and `recipients` never overlap
+    /// (SS-E1 M-Q2).
+    pub recipient_flags: i32,
+    pub recipients: Vec<String>,
+    pub subject: String,
+    pub body: String,
+    pub cash: i32,
+    /// `bCOD`, any non-zero byte.
+    pub cod: bool,
+    /// The attached item's inventory instance id, 0 for none (SS-E1 M-Q2).
+    pub item_id: i32,
+    pub item_quantity: i32,
+}
+
+impl MailSend {
+    /// True when any attachment field is set: cash (of either sign), COD
+    /// or an item. The base validates and escrows them (SS-M2).
+    pub fn has_attachment(&self) -> bool {
+        self.cash != 0 || self.cod || self.item_id != 0 || self.item_quantity != 0
+    }
+}
+
+/// Why the cell refused a `sendMailMessage` before building a [`MailSend`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MailSendReject {
+    /// The payload does not decode: `reason` is `truncated` or
+    /// `trailing_bytes`.
+    Malformed { reason: &'static str },
+    /// More recipient names than the D-SS05 cap were declared. Refused
+    /// before any name is read or allocated.
+    TooManyRecipients { declared: u32 },
+    /// A string broke the D-SS12 text rules.
+    Text {
+        field: TextField,
+        reject: TextReject,
+    },
+}
+
+impl MailSendReject {
+    /// Stable value for the `reason` log field.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            MailSendReject::Malformed { reason } => reason,
+            MailSendReject::TooManyRecipients { .. } => "too_many_recipients",
+            MailSendReject::Text { reject, .. } => reject.reason(),
+        }
+    }
 }
 
 /// NPC-specific data included in AoI enter events.
@@ -42,6 +129,66 @@ pub struct NpcAoIData {
     pub body_set: Option<String>,
     /// Body components (for `BeingAppearance` — humanoid entities with body parts).
     pub components: Vec<String>,
+    /// Live `CellEntity::state_field`. Python `SGWBeing.createOnClient`
+    /// sends `onStateFieldUpdate(self.stateField)`
+    /// (`deprecated/python/cell/SGWBeing.py:507`): a mob that is already a
+    /// corpse when a witness first sees it (it walked back into range, it
+    /// relogged, it reanchored after its own death) must arrive dead, or the
+    /// client builds a standing, full-health guard that never fights back.
+    pub state_field: u32,
+    /// Live HEALTH/FOCUS (`SGWBeing.sendStats` sends live values); `None`
+    /// keeps the cascade's template defaults. Boxed so the deferred-AoI
+    /// buffer enum stays under clippy's `large_enum_variant` bound.
+    pub vitals: Option<Box<NpcVitals>>,
+    /// Owning player's entity id when the NPC is a pet (class 0x05). The
+    /// cascade sends it as `onEntityProperty(GENERICPROPERTY_PetOwnerId,
+    /// owner)` to every witness, since `SGWPet.ownerID` is CELL_PUBLIC.
+    pub pet_owner_id: Option<u32>,
+}
+
+/// Live HEALTH and FOCUS of an NPC, each as `[min, cur, max]` — the
+/// `StatUpdate` field order (`entities/defs/alias.xml`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NpcVitals {
+    pub health: [i32; 3],
+    pub focus: [i32; 3],
+}
+
+impl NpcAoIData {
+    /// Snapshot everything the NPC `createOnClient()` cascade needs from a
+    /// live cell entity — the template-driven identity plus the live
+    /// state/health a witness must be introduced with.
+    pub fn from_entity(entity: &cimmeria_entity::cell_entity::CellEntity) -> Self {
+        use cimmeria_entity::stats::{FOCUS, HEALTH};
+        let triple = |id| {
+            entity
+                .stats
+                .get(id)
+                .map_or([0; 3], |s| [s.min, s.cur, s.max])
+        };
+        Self {
+            name_id: entity.name_id,
+            faction: entity.faction,
+            alignment: entity.alignment,
+            entity_flags: entity.entity_flags,
+            // Send the BASE interaction type in the cascade (not merged).
+            // Dynamic per-player flags are sent as a separate
+            // InteractionType update, matching the C++ server's
+            // createOnClient(base) → dynamicUpdate(merged) flow.
+            interaction_type: entity.interaction_type_flags,
+            speaker_id: entity.speaker_id,
+            event_set_id: entity.event_set_id,
+            static_mesh: entity.static_mesh.clone(),
+            body_set: entity.body_set.clone(),
+            components: entity.components.clone(),
+            state_field: entity.state_field,
+            vitals: Some(Box::new(NpcVitals {
+                health: triple(HEALTH),
+                focus: triple(FOCUS),
+            })),
+            pet_owner_id: entity.pet.as_ref().map(|p| p.owner_id),
+        }
+    }
 }
 
 /// Live cell-side state of a **player** included in AoI enter events.

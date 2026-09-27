@@ -1,7 +1,10 @@
 //! `BaseToCellMsg` — messages sent from BaseApp to CellApp.
 
+use super::bank_base_to_cell::BankBaseToCell;
 use super::data::SavedMission;
+use super::duel_base_to_cell::DuelBaseToCell;
 use super::lab::{LabQuery, LabQueryResult};
+use super::org_base_to_cell::OrgBaseToCell;
 
 /// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
 /// lines the command produced (decoded from the single-recipient
@@ -256,6 +259,45 @@ pub enum BaseToCellMsg {
         training_points: i32,
     },
 
+    /// The base persisted a GM training-point grant
+    /// ([`crate::cell::messages::CellToBaseMsg::GrantTrainingPoints`]).
+    /// `training_points` is the `RETURNING` value. Unlike
+    /// `ProgressionChanged`, nothing else told the client, so the cell
+    /// mirrors the points, sends the counter property and (with a trainer
+    /// pinned) re-sends `onTrainerOpen`.
+    TrainingPointsGranted {
+        entity_id: u32,
+        training_points: i32,
+    },
+
+    /// The base persisted a GM ability grant
+    /// ([`crate::cell::messages::CellToBaseMsg::GmGrantAbility`]). The cell
+    /// mirrors the ability into the known set (not into
+    /// `trained_abilities`) and sends `onKnownAbilitiesUpdate`, plus the
+    /// trainer re-send while a trainer is pinned. `player_id` is the
+    /// character the base wrote; the cell ignores the message when
+    /// `entity_id` now plays another character.
+    GmAbilityGranted {
+        entity_id: u32,
+        player_id: i32,
+        ability_id: i32,
+    },
+
+    /// The base's answer to
+    /// [`crate::cell::messages::CellToBaseMsg::ResetAbilities`]. On
+    /// `Reset` the cell drops the refunded abilities, clears its tree
+    /// progress and sends the respec burst. On a refusal it sends the
+    /// rejection feedback. Either way the row is already final.
+    ///
+    /// `player_id` is the character the base reset. The cell ignores the
+    /// message when `entity_id` now belongs to another character (a relog
+    /// that reused the id while the `UPDATE` ran).
+    AbilitiesReset {
+        entity_id: u32,
+        player_id: i32,
+        outcome: crate::ability_tree::RespecOutcome,
+    },
+
     /// Inventory item was used by the player (in response to
     /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).
     /// The cell fires the `OnItemUse` content event with `type_id` (item
@@ -395,5 +437,54 @@ pub enum BaseToCellMsg {
         record: Box<crate::cell::spawn_record::SpawnRecord>,
         space_id: u32,
         requester_entity_id: u32,
+    },
+
+    /// A loot grant the base refused before anything committed. The cell
+    /// puts the item back on `source.corpse_id` and tells the looter.
+    LootGrantRefused {
+        entity_id: u32,
+        player_id: i32,
+        source: super::LootGrantSource,
+        design_id: i32,
+        quantity: i32,
+        /// The container the grant was going to (after the fall-through).
+        container_id: i32,
+        reason: super::GrantRefusal,
+    },
+
+    /// Organization traffic (Squads, Teams, Commands). One nested enum, so
+    /// organization packets add variants in `org_base_to_cell.rs` instead
+    /// of here (work-packets.md § Messages).
+    Org(OrgBaseToCell),
+
+    /// Duel traffic. One nested enum, so the duel packets add variants in
+    /// `duel_base_to_cell.rs` instead of here (work-packets.md § Messages).
+    Duel(DuelBaseToCell),
+
+    /// Bank and vault traffic (the vault-expansion offer, BV-05; the Team
+    /// and Command vault grant, BV-07). One nested enum, so bank packets add
+    /// variants in `bank_base_to_cell.rs` instead of here.
+    Bank(BankBaseToCell),
+
+    /// Replace a player entity's cell-side Ignore set: the character names
+    /// on the player's contact-list Ignore list (flags 301), which the base
+    /// owns (D-SS15). Sent after `InitPlayerState` on every world entry
+    /// (gate travel included, so a fresh cell entity is re-seeded) and after
+    /// every change to the Ignore list (`chatIgnore` or the contact-list UI).
+    /// Spatial chat reads it to skip a witness that ignores the speaker; it
+    /// hides nobody from anyone's AoI.
+    UpdateIgnoreList {
+        entity_id: u32,
+        /// `sgw_player.player_id` of the owner. The cell applies the set only
+        /// to an entity that still belongs to this player.
+        player_id: i32,
+        /// The owner's account, for the cell's log rows: on the
+        /// `entity_missing` path there is no entity to read it from.
+        account_id: u32,
+        /// The base's resync version for this player, increasing per
+        /// session. Pushes from different base tasks can arrive out of
+        /// order; the cell keeps the highest version it has applied.
+        version: u64,
+        ignore_names: std::collections::HashSet<String>,
     },
 }

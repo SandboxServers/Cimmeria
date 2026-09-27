@@ -61,6 +61,28 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (100, 2008, 'Hea
 --     over 25 seconds. Matches the effect's `effect_desc` exactly.
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (200, 1383, 'HealPercentage', '3.00');
 
+-- Pets PT-08 (ids 350-359): magnitudes for the owner abilities that act on
+-- pets. The 2009 rows shipped no NVPs, so each value is the one in the
+-- effect's own description (crates/cell-world/src/cell/effects/pet_scripts.rs):
+--   4220 Holy Warrior "Toggled: +100 Accuracy -100 Defense" (PetStatBuff)
+--   4121 To The Death "Accuracy +400" for its 60 s pulse_duration (PetStatBuff)
+--   350  Lord's Concentration (new server-only row, D-PT17) +50 interruptRes (PetStatBuff)
+--   3211 Repair Turret: Percentage "Heal 20% of target's Health pool" (the ability
+--        tooltip says 15%; the effect row is what executes) (HealPetHealth)
+--   3230 Repair Turret: Regenerate "+5% 15 Ticks": 15 pulses x 5% (HealPetHealth)
+--   3350 Repair Turret: Full "+100% Health": 10 pulses x 10% (HealPetHealth)
+--   4968 Heed Our Calling "Pet Summon Speed increase": speedPet +100, so a
+--        SpeedPet summon's warmup scales to 0 ("Summons Chosen Pet Instantly",
+--        D-PT10) (PetSummonSpeed)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (350, 4220, 'Accuracy', '100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (351, 4220, 'Defense', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (352, 4121, 'Accuracy', '400');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (353, 350, 'InterruptResistance', '50');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (354, 3211, 'HealPercentage', '20.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (355, 3230, 'HealPercentage', '5.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (356, 3350, 'HealPercentage', '10.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (357, 4968, 'SpeedPet', '100');
+
 --
 -- TOC entry 3313 (class 0 OID 0)
 -- Dependencies: 305

@@ -421,3 +421,48 @@ fn resolve_event_filtered_refuses_chains_the_predicate_rejects() {
         "only the mission-gated chain survives the filter"
     );
 }
+
+/// The stuck-player detector's "turn-in objective" test: only an enabled
+/// chain's `CompleteObjective` for the exact mission/objective pair counts.
+#[test]
+fn has_objective_completer_matches_exact_pair_on_enabled_chains_only() {
+    let mut engine = ChainEngine::new();
+    engine.register_chain(make_chain(
+        1141,
+        Trigger::OnEntityCreated { entity_type: None },
+        vec![Action::CompleteObjective {
+            mission_id: 681,
+            objective_id: 2725,
+        }],
+        0,
+    ));
+    let mut disabled = make_chain(
+        1142,
+        Trigger::OnEntityCreated { entity_type: None },
+        vec![Action::CompleteObjective {
+            mission_id: 686,
+            objective_id: 2731,
+        }],
+        0,
+    );
+    disabled.enabled = false;
+    engine.register_chain(disabled);
+    engine.register_chain(make_chain(
+        1004,
+        Trigger::OnEntityCreated { entity_type: None },
+        vec![Action::CompleteMission { mission_id: 622 }],
+        0,
+    ));
+
+    assert!(engine.has_objective_completer(681, 2725));
+    assert!(
+        !engine.has_objective_completer(681, 2724),
+        "other objective"
+    );
+    assert!(!engine.has_objective_completer(999, 2725), "other mission");
+    assert!(!engine.has_objective_completer(686, 2731), "disabled chain");
+    assert!(
+        !engine.has_objective_completer(622, 90622),
+        "CompleteMission is not a per-objective completer"
+    );
+}

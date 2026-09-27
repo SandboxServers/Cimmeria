@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use cimmeria_mercury::transport::Transport;
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -14,7 +15,7 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUE
 use crate::auth::PendingLogin;
 use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
-use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync};
+use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync, game_clock};
 
 use super::helpers::{destroy_client_entities, to_hex};
 use super::tick_sync::run_tick_loop;
@@ -41,6 +42,7 @@ pub(crate) async fn handle_login(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
     enc_version: EncryptionVersion,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let login = {
@@ -130,6 +132,8 @@ pub(crate) async fn handle_login(
                 old_addr,
                 cell_tx,
                 entity_to_addr,
+                transport,
+                db_pool,
                 "duplicate_login",
             );
         }
@@ -145,8 +149,8 @@ pub(crate) async fn handle_login(
     tracing::trace!(%addr, len = reply.len(), hex = %to_hex(&reply), "UDP_OUT connect_reply");
     transport.send_to(&reply, addr).await?;
 
-    // time-sync bundle at seq=2.
-    let sync = build_time_sync(&key, 2, enc_version);
+    // time-sync bundle at seq=2, carrying the server's current game time.
+    let sync = build_time_sync(&key, 2, game_clock::game_ticks(), enc_version);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
     transport.send_to(&sync, addr).await?;
 
@@ -179,6 +183,8 @@ pub(crate) async fn handle_login(
                 account_name: Some(login.account_name.clone()),
                 access_level: login.access_level,
                 dnd_message: None,
+                afk_message: None,
+                ignore: Default::default(),
                 char_list_sent: false,
                 world_entry_sent: false,
                 pending_player_entity_id: None,
@@ -201,6 +207,9 @@ pub(crate) async fn handle_login(
                 cancelled,
                 cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
                 cinematic_aoi_hold: None,
+                listed_online: false,
+                rate_limits: Default::default(),
+                org_invites: Default::default(),
                 player_name: None,
                 player_level: None,
                 player_archetype: None,
@@ -211,6 +220,7 @@ pub(crate) async fn handle_login(
                 active_player_id: None,
                 pending_destination_ring_id: None,
                 channel: Mutex::new(new_client_channel(addr)),
+                crafting_options: Default::default(),
             },
         );
         arcs
@@ -246,6 +256,7 @@ pub(crate) async fn handle_login(
         Arc::clone(entity_manager),
         cell_tx.clone(),
         Arc::clone(entity_to_addr),
+        db_pool.clone(),
     ));
 
     Ok(())
@@ -406,6 +417,10 @@ pub(crate) async fn handle_log_off(
         addr,
         cell_tx,
         entity_to_addr,
+        transport,
+        // Account-side logOff is from character select: no character is in
+        // the world, so there is no offline presence to look up.
+        &None,
         "logoff",
     );
 

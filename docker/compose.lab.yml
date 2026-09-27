@@ -18,6 +18,24 @@
 #   export CIMMERIA_LAB_MCP_TOKEN=<32+ byte random token>
 #   docker compose -f compose.yml -f compose.lab.yml up -d
 #
+# CIMMERIA_WG_IP must be an address the colo host itself owns (Docker
+# cannot publish on an IP the host doesn't have) that the dev box can
+# reach over the VPN. Never 0.0.0.0 or the public address.
+#
+# Generating the token. Never commit it: it goes only in the colo's
+# environment (or /opt/cimmeria/.env, chmod 0600) and in the dev box's
+# CIMMERIA_LAB_MCP_TOKEN user env var, which .mcp.json expands.
+#
+#   PowerShell (dev box; works in Windows PowerShell 5.1 and pwsh 7),
+#   32 random bytes -> 64 hex chars, meets the 32-byte minimum:
+#     $b = New-Object byte[] 32; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })
+#
+#   Store it for the dev box's .mcp.json (new terminals pick it up):
+#     [Environment]::SetEnvironmentVariable('CIMMERIA_LAB_MCP_TOKEN', '<token>', 'User')
+#
+#   Linux equivalent on the colo box:
+#     openssl rand -hex 32
+#
 # Both variables are required. The `:?` markers below make compose refuse
 # to start if either is unset, so you cannot accidentally bind the lab
 # port to all interfaces or start it without a token.

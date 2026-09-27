@@ -19,6 +19,7 @@
 //! - `regions` — generic region (AreaSet) loading.
 //! - `abilities` — ability/effect defs + event-set sequence map.
 //! - `loot` — loot tables + item container map + weapon defs.
+//! - `pet_summons` — summon ability → pet template (`resources.pet_summons`).
 //! - `templates` — prototype `SpawnRecord` per `entity_templates` row, for
 //!   the content engine's `spawn_entity` action (no `spawnlist` row exists
 //!   for a mission-scoped spawn).
@@ -33,6 +34,7 @@ mod loot;
 mod missions;
 mod navmesh_mode;
 mod npcs;
+mod pet_summons;
 mod regions;
 mod respawners;
 mod stargates;
@@ -46,8 +48,9 @@ mod tests;
 pub use abilities::{
     archetype_item_event_set, load_ability_defs, load_effect_defs, load_event_set_sequences,
     load_item_event_set_abilities, load_template_trainer_lists, load_trainer_abilities,
-    EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ITEM_EQUIP, EVENT_ITEM_MELEE, EVENT_ITEM_RANGED,
-    EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE, EVENT_ITEM_USE_ABILITY,
+    EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ABILITY_INTERRUPT, EVENT_ITEM_EQUIP,
+    EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE,
+    EVENT_ITEM_USE_ABILITY,
 };
 pub use dialogs::{
     load_dialog_screen_text, load_dialog_set_maps, load_monologue_dialog_ids,
@@ -58,6 +61,7 @@ pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTable
 pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, MissionObjectiveDef};
 pub use navmesh_mode::NavmeshMode;
 pub use npcs::{class_id_for_class, load_spawns_from_db, SpawnRecord};
+pub use pet_summons::{load_pet_summons, PetSummon, PetSummonCatalog};
 // Reused by the base-side GM spawn handler
 // (`base::gm_spawn::load_spawn_record_for_template` in cimmeria-base-session).
 pub use npcs::load_patrol_points;
@@ -67,6 +71,9 @@ pub use regions::{
 // Exact XZ containment, re-exported for the playtest-friction watcher and
 // the `.bug` bookmark, which reach it via `playtest_friction`.
 pub use regions::region_contains_xz;
+// The client's own region hit test, for the friction watcher's
+// `region_dwell_no_hint` candidates.
+pub use regions::client_would_hint_region;
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;

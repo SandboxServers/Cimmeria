@@ -220,5 +220,20 @@ async fn create_character_persists_session_access_level() {
         "a new character must start with 1 training point (v2 economy)"
     );
 
+    // Likewise one Applied Science Point: the column defaults to 0, so
+    // dropping the `applied_science_points` column or its `$18` bind reads
+    // back Some(0).
+    let asp: Option<i32> =
+        sqlx::query_scalar("SELECT applied_science_points FROM sgw_player WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("query persisted applied_science_points");
+    assert_eq!(
+        asp,
+        Some(1),
+        "a new character must start with 1 Applied Science Point"
+    );
+
     cleanup(&pool, account_id).await;
 }

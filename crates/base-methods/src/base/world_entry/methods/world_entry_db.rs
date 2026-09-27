@@ -132,10 +132,14 @@ pub async fn query_world_entry(
     .await
     {
         Ok(Some(row)) => {
-            let player_eid = alloc_entity();
+            // Kept whole so a refused entry below can hand the id back.
+            let player_entity = entity_manager.lock().unwrap().create_entity("SGWPlayer");
+            let player_eid = player_entity.0 as u32;
             let pos = [row.pos_x, row.pos_y, row.pos_z];
 
-            let space_id = if let Some(tx) = cell_tx {
+            // `None` only comes from the fallback table, for a world that must
+            // fail closed (see `resolve_space_id_fallback`).
+            let resolved_space_id = if let Some(tx) = cell_tx {
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 match tx
                     .send(BaseToCellMsg::CreateEntity {
@@ -154,7 +158,7 @@ pub async fn query_world_entry(
                     .await
                 {
                     Ok(_) => match reply_rx.await {
-                        Ok(sid) => sid,
+                        Ok(sid) => Some(sid),
                         Err(_) => {
                             tracing::warn!(world = %row.world_location, "CellService oneshot dropped -- using fallback");
                             resolve_space_id_fallback(&row.world_location)
@@ -174,6 +178,19 @@ pub async fn query_world_entry(
                     "query_world_entry: cell_tx is None at world entry — falling back to hardcoded space id table; this is likely a service-startup ordering bug"
                 );
                 resolve_space_id_fallback(&row.world_location)
+            };
+            // The cell did not place the entity and the saved world has no
+            // safe stand-in space: refuse the entry rather than hand the
+            // client a space the entity is not in.
+            let Some(space_id) = resolved_space_id else {
+                tracing::error!(
+                    player_id, account_id, entity_id = player_eid,
+                    world = %row.world_location, reason = "no_safe_space_fallback",
+                    "World entry refused: the cell did not place the entity and this world \
+                     has no fallback space — returning sentinel entity id"
+                );
+                entity_manager.lock().unwrap().destroy_entity(player_entity);
+                return default_entry_with_eid(NO_ENTITY_ID);
             };
 
             let world_stargates = query_world_stargates(db_pool, &row.world_location).await;
@@ -238,6 +255,7 @@ pub async fn query_world_stargates(db_pool: &Option<Arc<PgPool>>, world_name: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::require_db_or_skip;
     use std::time::Duration;
     use tokio::time::timeout;
 
@@ -308,6 +326,119 @@ mod tests {
             .unwrap();
         assert_ne!(entry.player_entity_id, NO_ENTITY_ID);
         assert_eq!(entry.world_name, "CombatSim");
+    }
+
+    /// Sentinel ids for the historical-CellBlock login guards. Neighbours:
+    /// 0x7000_1C00 below, 0x7000_2000 above.
+    const HISTORICAL_LOGIN_BASE: i32 = 0x7000_1D00;
+
+    async fn seed_player_in(pool: &PgPool, account_id: i32, player_id: i32, world: &str) {
+        sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool)
+            .await
+            .expect("pre-clean sentinel account");
+        sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+            .bind(account_id)
+            .bind(format!("historical-login-{account_id}"))
+            .execute(pool)
+            .await
+            .expect("INSERT sentinel account");
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah\
+             ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', $4, 'BS_HumanMale.BS_HumanMale', \
+                       -334.231, 73.472, -228.026, 0, 0)",
+        )
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("historical-login-{player_id}"))
+        .bind(world)
+        .execute(pool)
+        .await
+        .expect("INSERT sentinel sgw_player");
+    }
+
+    /// Log in with the cell dropping the `CreateEntity` reply, the way it
+    /// does when the create fails. Returns the entry and the manager.
+    async fn login_with_failed_cell_create(
+        pool: PgPool,
+        account_id: i32,
+        player_id: i32,
+    ) -> (WorldEntryInfo, Arc<std::sync::Mutex<EntityManager>>) {
+        let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
+        let (cell_tx, mut cell_rx) = mpsc::channel(4);
+        let task_mgr = Arc::clone(&mgr);
+        let handle = tokio::spawn(async move {
+            let db = Some(Arc::new(pool));
+            let cell_tx = Some(cell_tx);
+            query_world_entry(&db, account_id as u32, player_id, 0, &task_mgr, &cell_tx).await
+        });
+        let msg = timeout(Duration::from_secs(5), cell_rx.recv())
+            .await
+            .expect("CreateEntity must not hang")
+            .expect("CreateEntity expected");
+        let BaseToCellMsg::CreateEntity { reply_tx, .. } = msg else {
+            panic!("expected CreateEntity");
+        };
+        drop(reply_tx);
+        let entry = timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("query_world_entry must not hang")
+            .unwrap();
+        (entry, mgr)
+    }
+
+    /// A character saved in a historical CellBlock world whose cell create
+    /// fails must not be admitted into the stock CellBlock space (the
+    /// unknown-world fallback). Entry is refused and the id handed back.
+    #[tokio::test]
+    async fn historical_cellblock_login_fails_closed_when_the_cell_create_fails() {
+        let pool = require_db_or_skip!();
+        let account_id = HISTORICAL_LOGIN_BASE;
+        let player_id = HISTORICAL_LOGIN_BASE + 1;
+        seed_player_in(&pool, account_id, player_id, "CellBlock43").await;
+
+        let (entry, mgr) = login_with_failed_cell_create(pool.clone(), account_id, player_id).await;
+
+        sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(&pool)
+            .await
+            .expect("cleanup sentinel account");
+        assert_eq!(
+            entry.player_entity_id, NO_ENTITY_ID,
+            "entry must be refused, not placed in space {}",
+            entry.space_id
+        );
+        assert_eq!(
+            mgr.lock().unwrap().entity_count(),
+            0,
+            "the refused entry's entity id must be released"
+        );
+    }
+
+    /// Control for the guard above: a stock world keeps its fallback space,
+    /// so the refusal is scoped to the worlds that have no safe one.
+    #[tokio::test]
+    async fn stock_cellblock_login_keeps_its_fallback_space_when_the_cell_create_fails() {
+        let pool = require_db_or_skip!();
+        let account_id = HISTORICAL_LOGIN_BASE + 2;
+        let player_id = HISTORICAL_LOGIN_BASE + 3;
+        seed_player_in(&pool, account_id, player_id, "Castle_CellBlock").await;
+
+        let (entry, _) = login_with_failed_cell_create(pool.clone(), account_id, player_id).await;
+
+        sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(&pool)
+            .await
+            .expect("cleanup sentinel account");
+        assert_ne!(entry.player_entity_id, NO_ENTITY_ID);
+        assert_eq!(entry.space_id, DEFAULT_SPACE_ID);
+        assert_eq!(entry.world_name, "Castle_CellBlock");
     }
 
     #[tokio::test]

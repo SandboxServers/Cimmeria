@@ -15,12 +15,14 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use crate::cell::messages::CellToBaseMsg;
+use cimmeria_wire::cell::vault::VaultAccess;
 
 use super::super::super::ConnectedClientState;
 use super::super::methods::{
-    handle_move_inventory_item, handle_recharge_inventory_items, handle_remove_inventory_item,
-    handle_remove_inventory_item_by_type, handle_repair_inventory_item,
-    handle_repair_inventory_items, handle_use_inventory_item, send_full_inventory_resync,
+    handle_move_inventory_item_with_vault, handle_recharge_inventory_items,
+    handle_remove_inventory_item, handle_remove_inventory_item_by_type,
+    handle_repair_inventory_item, handle_repair_inventory_items, handle_use_inventory_item,
+    send_full_inventory_resync,
 };
 use super::{bandolier, position, state_field, system_options, DispatchCtx};
 
@@ -52,6 +54,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             target_container_id,
             target_slot_id,
             quantity,
+            vault,
         } => {
             move_inventory_item(
                 entity_id,
@@ -60,6 +63,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 target_container_id,
                 target_slot_id,
                 quantity,
+                vault,
                 ctx.db_pool,
                 ctx.cell_tx,
                 ctx.transport,
@@ -74,6 +78,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             item_id,
             quantity,
             notify_gm,
+            vault,
         } => {
             remove_inventory_item(
                 entity_id,
@@ -81,6 +86,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 item_id,
                 quantity,
                 notify_gm,
+                vault,
                 ctx.db_pool,
                 ctx.cell_tx,
                 ctx.transport,
@@ -94,12 +100,14 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             player_id,
             item_id,
             target_id,
+            vault,
         } => {
             use_inventory_item(
                 entity_id,
                 player_id,
                 item_id,
                 target_id,
+                vault,
                 ctx.db_pool,
                 ctx.cell_tx,
                 ctx.transport,
@@ -113,12 +121,14 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             player_id,
             type_id,
             count,
+            vault,
         } => {
             remove_inventory_item_by_type(
                 entity_id,
                 player_id,
                 type_id,
                 count,
+                vault,
                 ctx.db_pool,
                 ctx.cell_tx,
                 ctx.transport,
@@ -287,19 +297,21 @@ pub(super) async fn move_inventory_item(
     target_container_id: i32,
     target_slot_id: i32,
     quantity: i32,
+    vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    handle_move_inventory_item(
+    handle_move_inventory_item_with_vault(
         entity_id,
         player_id,
         item_id,
         target_container_id,
         target_slot_id,
         quantity,
+        vault,
         db_pool,
         cell_tx,
         transport,
@@ -316,6 +328,7 @@ pub(super) async fn remove_inventory_item(
     item_id: i32,
     quantity: i32,
     notify_gm: bool,
+    vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -328,6 +341,7 @@ pub(super) async fn remove_inventory_item(
         item_id,
         quantity,
         notify_gm,
+        vault,
         db_pool,
         cell_tx,
         transport,
@@ -343,6 +357,7 @@ pub(super) async fn use_inventory_item(
     player_id: i32,
     item_id: i32,
     target_id: i32,
+    vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -354,6 +369,7 @@ pub(super) async fn use_inventory_item(
         player_id,
         item_id,
         target_id,
+        vault,
         db_pool,
         cell_tx,
         transport,
@@ -369,6 +385,7 @@ pub(super) async fn remove_inventory_item_by_type(
     player_id: i32,
     type_id: i32,
     count: i32,
+    vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -380,6 +397,7 @@ pub(super) async fn remove_inventory_item_by_type(
         player_id,
         type_id,
         count,
+        vault,
         db_pool,
         cell_tx,
         transport,

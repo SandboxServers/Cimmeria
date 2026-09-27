@@ -28,6 +28,12 @@ mod play_character;
 mod reanchor_player;
 mod teleport;
 
+#[cfg(test)]
+mod crafting_options_world_entry_tests;
+/// SS-00: the online name index across world entry and reanchor.
+#[cfg(test)]
+mod player_index_lifecycle_tests;
+
 // The space registry is in `cimmeria-base-session` (wave B1): base-methods
 // resolves world names through it from below world entry.
 pub(crate) use cimmeria_base_session::base::world_entry::space_registry;

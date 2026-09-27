@@ -39,16 +39,16 @@ Source: `entities/defs/interfaces/Communicator.def`
 | 2 | 0xC2 | sendPlayerCommunication | UINT8 channel, WSTRING target, WSTRING text |
 | 3 | 0xC3 | chatSetAFKMessage | WSTRING message |
 | 4 | 0xC4 | chatSetDNDMessage | WSTRING message |
-| 5 | 0xC5 | chatIgnore | WSTRING playerName |
-| 6 | 0xC6 | chatFriend | WSTRING playerName |
-| 7 | 0xC7 | chatList | UINT8 channelId |
-| 8 | 0xC8 | chatMute | WSTRING playerName, UINT8 channelId |
-| 9 | 0xC9 | chatKick | WSTRING playerName, UINT8 channelId |
-| 10 | 0xCA | chatOp | WSTRING playerName, UINT8 channelId |
-| 11 | 0xCB | chatBan | WSTRING playerName, UINT8 channelId |
-| 12 | 0xCC | chatPassword | UINT8 channelId, WSTRING password |
-| 13 | 0xCD | petition | WSTRING text |
-| 14 | 0xCE | announcePetition | WSTRING text |
+| 5 | 0xC5 | chatIgnore | WSTRING aPlayerName, UINT8 aFlag (1 ignore, 0 stop ignoring). Handled: `dispatch/ignore.rs` (SS-C1) |
+| 6 | 0xC6 | chatFriend | WSTRING aPlayerName, WSTRING aPlayerNick, UINT8 aFlag. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 7 | 0xC7 | chatList | UINT8 aChannelID. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 8 | 0xC8 | chatMute | UINT8 aChannelID, WSTRING aPlayerName, UINT8 aFlag. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3); the GM mute is `.mute` |
+| 9 | 0xC9 | chatKick | UINT8 aChannelID, WSTRING aPlayerName. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 10 | 0xCA | chatOp | UINT8 aChannelID, WSTRING aPlayerName. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 11 | 0xCB | chatBan | UINT8 aChannelID, WSTRING aPlayerName, UINT8 aFlag. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 12 | 0xCC | chatPassword | UINT8 aChannelID, WSTRING aChannelPassword. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 13 | 0xCD | petition | WSTRING aMessage. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 14 | 0xCE | announcePetition | WSTRING aMessage. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
 
 ### OrganizationMember — 4 exposed (indices 15-18)
 
@@ -56,10 +56,14 @@ Source: `entities/defs/interfaces/OrganizationMember.def`
 
 | Index | Wire | Method | Args |
 |-------|------|--------|------|
-| 15 | 0xCF | organizationInvite | WSTRING playerName, INT32 orgId |
-| 16 | 0xD0 | organizationInviteByType | WSTRING playerName, INT32 orgType |
-| 17 | 0xD1 | organizationKick | WSTRING playerName, INT32 orgId |
-| 18 | 0xD2 | organizationRankChange | WSTRING playerName, INT32 orgId, INT32 rank |
+| 15 | 0xCF | organizationInvite | INT32 aOrganizationId, WSTRING aPlayerName |
+| 16 | 0xD0 | organizationInviteByType | UINT8 aOrganizationType, WSTRING aPlayerName |
+| 17 | 0xD1 | organizationKick | INT32 aOrganizationId, WSTRING aPlayerName |
+| 18 | 0xD2 | organizationRankChange | INT32 aOrganizationId, WSTRING aPlayerName, UINT8 aRank |
+
+Argument order and types are from `OrganizationMember.def:418-449` (corrected 2026-09-27; this table previously listed the name first and every numeric field as `INT32`).
+
+Handled in `crates/base/src/base/dispatch/organization.rs`. Squads: 0xD0 with type 0 (after the base's Ignore check) and 0xD1 with a squad-range id are forwarded to the cell (ORG-03, `organization_squad.rs`). Teams and Commands: 0xCF, 0xD0 with type 1 or 2, 0xD1 and 0xD2 go to the base handlers under ORG-LOCK (ORG-07, [organization-system.md § Invite, kick and rank change](../gameplay/organization-system.md#invite-kick-and-rank-change-org-07)). A type above 2 is refused; 0xD2 with a squad id answers "not available yet".
 
 ### MinigamePlayer — 1 exposed (index 19)
 

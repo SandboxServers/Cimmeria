@@ -2,16 +2,16 @@
 title: "Gameplay Systems Gap Analysis"
 type: explanation
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-09-27
 ---
 
 # Gameplay Systems Gap Analysis
 
-> **Last updated**: 2026-09-25 (re-verification pass against `main` at `acbcc22e`; about 160 PRs merged since the 2026-07-25 edition)
+> **Last updated**: 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
 > **Purpose**: Map every gameplay system's Rust implementation against what's needed for a complete server
 > **Status**: Source of truth for project completion tracking
 > **Measured against**: `main`. Work living only on an unmerged feature branch is called out explicitly in the affected section and is **not** counted as implemented.
-> **Workspace scale**: **5,333 `#[test]` / `#[tokio::test]` attributes (4,975 gated in CI)** across **812 files**, **775 `require_db_or_skip!` live-DB guards** (774 in `cimmeria-services`, 1 in `cimmeria-content-engine`), **3 PL/pgSQL end-to-end smokes**, with a **first-class content engine** the original Python codebase did not have. CI excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, `cimmeria-client-telemetry` and `cimmeria-lab`, which is the whole of the 5,333 → 4,975 difference. Counted on `main` by a grep of test attributes, so the figures are comparable run to run but include a few attributes inside comments.
+> **Workspace scale** (2026-09-27, `python tools/extract_tests.py`): **7,337 test functions (6,919 gated in CI)** across **1,192 files** in 49 workspace members, **1,133 live-DB tests** (`require_db_or_skip!`, spread over 13 crates since the services split), **3 PL/pgSQL end-to-end smokes**, with a **first-class content engine** the original Python codebase did not have. CI excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, `cimmeria-client-telemetry`, `cimmeria-client-patches` and `cimmeria-lab`, which is the whole of the 7,337 → 6,919 difference. The 2026-09-25 edition's grep counted 5,333 attributes (4,975 in CI); the extractor counts test functions, so the two are close but not identical methods.
 >
 > **Evidence bar for CW in this edition**: a written record of an in-client test (playtest report, UAT worknote, PR body or comment, issue comment, or a recorded confirmation). Rows that very likely work in-client but have no such record stay NT or IM.
 >
@@ -188,8 +188,9 @@ last_updated: 2026-09-25
 | Player entity creation | CW | -- | base/world_entry/methods/player_load | Creates the SGWPlayer entity, two-stage base + cell |
 | Map load sequence | CW | -- | base/world_entry/ | All 30+ client setup messages. See the cold-client direct-login callout above: the server sequence matches healthy entries, and the cause is unknown |
 | Stat sync to client | CW | -- | base/world_entry/methods/player_load | All stats sent on entry |
-| Ability tree sync | CW | -- | base/world_entry/methods/player_load | 3 trees per archetype |
+| Ability tree sync | CW | -- | ability_tree/tree_info.rs, base/world_entry/methods/player_load | 3 trees per archetype, built from the shared `AbilityTreeCatalog` (AT-02); no Rust fallback tree. **Seed replaced 2026-09-26 (AT-05):** the Soldier/Commando stub became the FINAL v2 import, 439 nodes across 7 archetypes (Jaffa has none, D-AT04), pinned by `ability_tree::tests::seed_live_db`. No in-client pass with the new trees yet: branches now reach 25 nodes and levels up to 50 |
 | Ability-tree purchase (spend gate, per-node cost) | NT | -- | ability_tree/gates/spend.rs, base/world_entry/methods/progression/train_ability.rs | AT-03 (2026-09-26): archetype-wide spend gate, per-node `skill_point_cost`, one guarded `UPDATE` (live-DB replay guard), point counter refreshed after each purchase. The cell's player level is now loaded at world entry and follows level-ups; before this, every player trained as level 1. No client run yet |
+| Ability respec (trainer) | NT | -- | cell/cell_methods/player/vendor/respec.rs, base/world_entry/methods/progression/respec.rs, cell/service/base_messages/respec.rs | **New 2026-09-26 (AT-08).** `resetMyAbilities` (CM 72) was an `UNIMPLEMENTED` log. It now works only at a pinned trainer in range. One guarded `UPDATE` removes the trainer-bought abilities, refunds `tree_points_spent`, resets the spend and charges 1000 naquadah. A replay is free, and too little naquadah changes nothing (live-DB guards). Every refusal sends `onErrorCode` and the trainer re-send. Known gap: the client action bar has no server hook. Its bindings are a client-side saved variable (`GActionProfiles`), so buttons for refunded abilities stay until the player clears them. Pressing one now gets `onErrorCode` 167 instead of silence. A client Lua patch that clears the bar would be an owner decision. No client run yet |
 | Zone transition | NT | -- | base/world_entry/gate_travel/ | **Changed 2026-09-25 (was IM).** The single-player hop is proven in-client: P1's Cellblock → Castle cross-world teleport was "CONFIRMED clean", with 16 missions reloaded and no errors (playtest README §3, 7:23 PM). The earlier IM reason, "multi-player sync incomplete", is now addressed in code: #737 introduces arriving players with the `SGWPlayer` ghost cascade once their client has loaded, and #640 (P45) adds a cross-space transfer primitive. Neither has a two-client run, hence NT rather than CW. Re-verified 2026-09-25 |
 | Forced position handling | CW | -- | services/cell/cell_methods | BASEMSG_FORCED_POSITION authoritative move. #644 bounded the snap-back recovery: nearest navmesh point, then respawner, then AABB clamp, with a 5-correction budget |
 | World-entry observability | CW | -- | base/world_entry/ | OTLP spans across the whole pipeline |
@@ -346,12 +347,12 @@ last_updated: 2026-09-25
 | In-combat state lifecycle | CW | -- | cell/combat/state.rs, threat/player_combat.rs | BSF_InCombat per-player threat tracking. Leash now drains player combat (#785) |
 | Threat list | IM | -- | cell/combat/threat/aggro.rs:147 | `generate_threat` is exercised in-client: 50 player-initiated aggros in the [2026-09-18 playtest](analysis/playtests/2026-09-18-colo-castle/README.md). Proximity and assist sources were added (#787/#789), and dead players are dropped (#791, UAT-1 finding 4). **Still no threat decay**, and #791 has not been re-UAT'd. Re-verified 2026-09-25 |
 | Single-target abilities | IM | -- | cell/abilities/use_ability/handle.rs | TCM_Single. Kills in-client are recorded both ways (playtest README 7:37, UAT-1), but the shoot animation does not play ([UAT-1](analysis/npc-ai-restoration/worknotes/uat-1.md) finding 10, the pre-existing combat-animation issue) |
-| AoE abilities (radius) | IM | -- | cell/abilities/dispatch.rs | PR #420. A `TCM_AERadius` effect on a single-target ability still does not fan out (ADR follow-up) |
+| AoE abilities (radius) | IM | -- | cell/abilities/dispatch/mod.rs | PR #420. A `TCM_AERadius` effect on a single-target ability still does not fan out (ADR follow-up) |
 | AoE abilities (cone) | IM | -- | cell/abilities/cone_aoe/ | PR #420 |
 | Group targeting | KM | Groups | -- | TCM_Group. No code, and **no seeded effect uses it**: the seed has only TCM_Single, TCM_AERadius and TCM_AECone (entity/abilities/defs.rs:40-48) |
 | Aura targeting | KM | -- | -- | TCM_Aura. No code, and no seeded effect uses it |
-| Ability warmup | IM | -- | cell/abilities/use_ability/handle.rs:528 | Ability_Begin sequence on warmup, and speed modifiers are applied |
-| Ability cooldowns | CW | -- | entity/abilities/manager.rs:303 | Per-ability and per-moniker timers. The SourceID emit paths were verified (#722). Open follow-up: #271/#718 (absolute `bigWorldTimeComplete`) |
+| Ability warmup | IM | -- | cell/abilities/use_ability/warmup/ | **Corrected 2026-09-26 (AT-10).** Before AT-10 only the `Ability_Begin` animation existed: the cast fired and dealt its damage in the launch pass, and the speed stats were never read. Now a warmup ability parks a pending cast and fires from the 100 ms tick after the warmup, with the speed-stat modifiers. Interrupts on death, slot change, movement and fire-time target/range/LoS/ammo checks, with `Ability_Interrupt` and a cooldown refund. Unit and wire tested; not client-exercised |
+| Ability cooldowns | CW | -- | entity/abilities/manager.rs:303 | Per-ability and per-moniker timers. The SourceID emit paths were verified (#722). Cooldown, warmup, reload and effect timers send an absolute `BigWorldTimeComplete` on the one server game clock (CR-02, closes the #271 gap). Category (type 8) timers are still not sent |
 | Position/facing checks | KM | -- | -- | **Corrected 2026-09-25 (was IM).** `use_ability/handle.rs` has no front/flank/rear or facing test, and neither does any file under `cell/abilities/` or `cell/combat/`. "Flank" exists only as the cover mission trigger `player_flanked_npc` (#671). Re-verified 2026-09-25 |
 | Weapon range checks | IM | -- | cell/abilities/use_ability/handle.rs:239 | Only max range is enforced (default 30 u, error code 42). **No min-range check** on the player path. Re-verified 2026-09-25 |
 | Ammo consumption | CW | -- | cell/abilities/use_ability/handle.rs:366 | Decrements under the bandolier discipline |
@@ -431,9 +432,10 @@ last_updated: 2026-09-25
 - **Confidence**: HIGH (re-read 2026-09-25)
 - **Documentation**: [gameplay/inventory-system.md](gameplay/inventory-system.md), [reverse-engineering/findings/inventory-wire-formats.md](reverse-engineering/findings/inventory-wire-formats.md), [reverse-engineering/findings/inventory-state-machine.md](reverse-engineering/findings/inventory-state-machine.md), [content/equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md), [content/consumable-via-onitemuse-pattern.md](content/consumable-via-onitemuse-pattern.md)
 - **Rust code**: [`crates/base-methods/src/base/world_entry/methods/inventory/`](../crates/base-methods/src/base/world_entry/methods/inventory/) — **5,585 lines** across `core/`, `grant/`, `move_/`, `ammo.rs`, `appearance.rs` + live-DB regression guards; [`crates/cell-methods/src/cell/cell_methods/inventory/`](../crates/cell-methods/src/cell/cell_methods/inventory/) (cell-side item ops + bandolier / active slot); [`crates/game/src/inventory/`](../crates/game/src/inventory/) (370 lines); [`crates/entity/src/inventory.rs`](../crates/entity/src/inventory.rs) (318 lines)
-- **Recent PRs**: #405 (server-side stacking + Slappack PAK override), #399 (Slappack stacks to 10), #214 (bandolier + content + UI sync), #250 (equip-from-inventory pattern), #409 (full inventory re-init bundle on respawn); since 2026-07-25: #756 (reanchor also replays hotbar, active slot, journal and `state_field` after the inventory snapshot), #791 (`useItem` refused while dead with `onErrorCode(NotLiving)`), #731 (`OnItemUse` / `remove_item` pairing lint for consumable chains), #743 (bandolier guards exercise production helpers), #697 (bandolier ammo doc correction), #609 (store methods moved to 109/110 — see §15; voids pre-2026-07-26 buyback testing)
+- **Recent PRs**: #405 (server-side stacking + Slappack PAK override), #399 (Slappack stacks to 10), #214 (bandolier + content + UI sync), #250 (equip-from-inventory pattern), #409 (full inventory re-init bundle on respawn); since 2026-07-25: #756 (reanchor also replays hotbar, active slot, journal and `state_field` after the inventory snapshot), #791 (`useItem` refused while dead with `onErrorCode(NotLiving)`), #731 (`OnItemUse` / `remove_item` pairing lint for consumable chains), #743 (bandolier guards exercise production helpers), #697 (bandolier ammo doc correction), #609 (store methods moved to 109/110 — see §15; voids pre-2026-07-26 buyback testing); the Bank and Vault campaign's personal bank, 2026-09-27: #872 (one capacity table, `bank_slots`, the player-movable allowlist, closes #798), #921 (Banker open path and GM `.bank`), #927 (the `move_/` split) and #935 (vault moves, use and removal), #931 (debug-hub Banker and `.bankdump`), #947 (vault expansion)
+- **Personal bank**: server-side done and awaiting the owner's UAT on the colo after release 1 ([ledger](analysis/bank-vault/README.md), [UAT checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)). A Banker click or GM `.bank` opens container 17 with a vault session; every move into or out of it re-checks the session and the Banker's range; the vault starts at 40 slots and grows to 100 in +10 steps. Players cannot buy a step yet: the Expand dialog is quarantined after the #943 dialog-override crash, so only GM `.bankexpand` buys. BV-03 also turned stack merging back on for every container (D-BV25). Mechanics: [inventory-system.md § The personal bank](gameplay/inventory-system.md#the-personal-bank-vault). The organization vaults are in progress (BV-07, see §Organizations).
 - **In-client evidence**: 2026-09-18 colo playtest ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) rows 00:03:14, 00:09:21, 00:24:38, 00:37:25) — item grant, equip-from-inventory (mission 622 completed on `item_equipped 55`), SMG grant + equip, Slappack use + consume, full inventory resync on reanchor.
-- **Path forward**: Durability wear (nothing lowers `durability`; only vendor repair raises it); bind-on-pickup / bind-on-equip triggers (the `bound` flag is honored but only ever set by character-creation seed rows); client smoke of the vendor → buyback loop after #609.
+- **Path forward**: Durability wear (nothing lowers `durability`; only vendor repair raises it); bind-on-pickup / bind-on-equip triggers (the `bound` flag is honored but only ever set by character-creation seed rows); client smoke of the vendor → buyback loop after #609; the personal bank's UAT, and serving the Expand dialog once #943's crashing field is known.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -482,7 +484,7 @@ last_updated: 2026-09-25
 - **Rust code**: [`crates/cell-interactions/src/cell/interactions/loot.rs`](../crates/cell-interactions/src/cell/interactions/loot.rs) (519 lines incl. tests), [`crates/cell-combat/src/cell/abilities/loot_drop.rs`](../crates/cell-combat/src/cell/abilities/loot_drop.rs) (311 lines), [`crates/game/src/inventory/loot.rs`](../crates/game/src/inventory/loot.rs) (prototype; `instantiate_loot_drop` is still `todo!()` at :77 and unused by the live path)
 - **Recent PRs**: #446 (looter distance re-validated per `lootItem`), #491; since 2026-07-25: #649 (mission 1360 Frost's Letter accepted from the Frost loot dialog — content, not loot mechanics), #638 (`GrantCash` feedback-recipient split touches the loot cash grant)
 - **In-client evidence**: 2026-09-18 colo playtest, [appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 121: 26 lootable kills; Health Slappack rolled on 26/26 (`probability = 1`), naquadah on 17/26 (`probability = 0.8`, 5–50); tester complaint "too many slap-packs" (README line 85) and a looted Slappack used at 00:24:38.
-- **Path forward**: Loot table content (2 tables / 4 loot rows in `db/resources/Loot/Seed/`, table 1 marked DEPRECATED); per-roll debug logging (playtest gap G9); per-player eligibility and group-loot modes after Groups; mission-gated loot.
+- **Path forward**: Loot table content (3 tables / 8 loot rows in `db/resources/Loot/Seed/`, table 1 marked DEPRECATED, table 3 the stasis-room debug crate's); per-roll debug logging (playtest gap G9); per-player eligibility and group-loot modes after Groups; mission-gated loot.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -494,7 +496,7 @@ last_updated: 2026-09-25
 | Per-player eligibility | KM | Groups | -- | No eligibility list anywhere in `crates/` (re-checked 2026-09-25). Looting is gated on distance only (PR #446) |
 | Group loot modes | KM | Groups | -- | No RoundRobin/FreeForAll logic in `crates/` |
 | Mission-gated loot | KM | Missions | -- | No missionId filtering in loot_drop.rs / loot.rs |
-| Loot table content | KM | -- | -- | 2 loot tables, 4 loot rows seeded; one is DEPRECATED. Castle mission items are explicit `add_item` grants by design |
+| Loot table content | KM | -- | -- | 3 loot tables, 8 loot rows seeded; one is DEPRECATED. Table 3 (2026-09-26) is the stasis-room debug crate's, every row at probability 1, for testing cash drops and Loot All ([content/debug-hub.md](content/debug-hub.md)). Castle mission items are explicit `add_item` grants by design |
 
 ### 15. Stores / Vendors --- NT
 
@@ -503,8 +505,8 @@ last_updated: 2026-09-25
 - **Rust code**: [`crates/base-methods/src/base/world_entry/methods/vendor/`](../crates/base-methods/src/base/world_entry/methods/vendor/) — **7,453 lines** across `buyback/`, `paid_recharge/`, `paid_repair/`, `purchase/`, `sell/`, `data/` submodules plus `store.rs`, `repair.rs`, `recharge.rs`, `serializers.rs`
 - **End-to-end smoke**: [`tools/vendor_store_smoke.sql`](../tools/vendor_store_smoke.sql) (server-side PL/pgSQL, no client)
 - **Recent PRs**: #214 (vendor sync), live-DB regression guards across each operation; since 2026-07-25: **#609** (store open/update were emitted on SGWPlayer indices 80/81 — Missionary's `onMissionUpdate`/`onStepUpdate` — and now go out on the correct 109/110; the PR states "the vendor UI could never have worked" and prior manual vendor testing "is void"), #737 (vendor emit path touched by the shared-world AoI change)
-- **Content state**: `item_lists.sql` holds exactly two test lists, and template 25 ("Interaction Debug NPC - DO NOT USE") is the only vendor template. Harset packet H13 removed its only spawn, so **no world spawns a vendor today**; `.spawn 25` is the only route ([harset-rebuild/worknotes/H13.md](analysis/harset-rebuild/worknotes/H13.md) lines 182–190).
-- **Path forward**: First in-client smoke on post-#609 code (`.spawn 25`, open store, buy / sell / buyback / repair / recharge) would move most rows to CW; real vendor lists and placed vendor NPCs (Harset GH2); client-initiated `repairItemRequest` (CM 40) is still a log-only stub (cell/cell_methods/inventory/item_ops.rs:229).
+- **Content state**: `item_lists.sql` holds exactly two test lists. Harset packet H13 removed template 25's only spawn ([harset-rebuild/worknotes/H13.md](analysis/harset-rebuild/worknotes/H13.md) lines 182–190). **Update 2026-09-26 (debug hub):** the Castle_CellBlock stasis room now spawns a vendor-only NPC, template 300, with template 25's lists ([content/debug-hub.md](content/debug-hub.md)). Building it found that nothing ever set `NpcInteractionType::Vendor`, so a template with vendor lists and no trainer list could never open a store. Template 25 only opened one because its trainer list answered the click first. `spawn_npc_from_record_into` now derives Vendor from any `INT_Vendor*` bit. No client run yet.
+- **Path forward**: First in-client smoke on post-#609 code (the stasis-room debug vendor, or `.spawn 300`: open store, buy / sell / buyback / repair / recharge) would move most rows to CW; real vendor lists and placed vendor NPCs (Harset GH2); client-initiated `repairItemRequest` (CM 40) is still a log-only stub (cell/cell_methods/inventory/item_ops.rs:229).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -658,34 +660,35 @@ last_updated: 2026-09-25
 | Client notification | CW | -- | base/world_entry/methods/progression/ | 5 wire messages |
 | XP from mob kills | CW | -- | cell/abilities/death/side_effects.rs, loot_drop.rs:118 | 10×mob_level, Cell→Base pipeline |
 | XP curve | CW | -- | game/player.rs | LEVEL_XP[21] ported from Python Constants |
-| Level cap (50) | CW | -- | game/player.rs | MAX_LEVEL = 50 and 1 training point per level (AT-07, D-AT02). Levels 21-50 of `LEVEL_XP` and the 1-point economy are PROJECT FINAL v2 values, not retail data |
+| Level cap (50) | NT | -- | game/player.rs | **Demoted 2026-09-27 (CW → NT).** No client has levelled past 20 on the new curve. MAX_LEVEL = 50 and 1 training point per level (AT-07, D-AT02). Levels 21-50 of `LEVEL_XP` and the 1-point economy are PROJECT FINAL v2 values, not retail data |
 | DB persistence | CW | -- | sqlx | sgw_player.level + .exp |
 | Stat scaling on level-up | CW | -- | entity/stats/ | scale_for_level(), full heal on level-up |
-| Training points on level-up | CW | -- | game/player.rs | 2 TP/level, 38 by level 20 |
+| Training points on level-up | NT | -- | game/player.rs | **Demoted 2026-09-27 (CW → NT).** The v2 economy replaced 2 TP/level: 1 TP at level 1 plus 1 per level, 50 by level 50 (AT-07, D-AT02). The cell tracks points and level through `ProgressionChanged` (AT-03). Not client-tested |
+| GM training-point grant | NT | -- | cell/console/gm/give_training_points.rs, base/world_entry/methods/progression/grant_training_points.rs | **Added 2026-09-26.** Native `gmGiveTrainingPoints` (cell method 137) grants to the caller: one guarded `UPDATE ... RETURNING` (refused past `i32::MAX`), then `TrainingPointsGranted` mirrors the points on the cell, sends the counter property and re-sends an open trainer. Unit and live-DB tested; not client-tested |
 | XP from missions | IM | Content / design | cell/content/executor/mod.rs:512 | **KM → IM 2026-09-25.** A delivery path now exists: `Action::GrantXP` has loader and executor arms (#618, chain-replay guard). No XP flows yet. There are zero `grant_xp` seed rows (Harset chains carry `-- GC3: grant_xp` placeholders), `reward_xp = 0` on all 1,041 missions, and completion does not read it (#310). Playtest recorded 0 mission XP. Re-verified 2026-09-25 |
 | ASP on level-up | KM | -- | -- | No ASP grant on level-up (ASP is granted only by GM `gmGiveAppliedSciencePoints`) |
 
-### 19. Crafting --- KM (Phase 1 landed; the crafting *verbs* are still stubs)
+### 19. Crafting --- IM (state, login sync, discipline learning, craft, research, reverse engineering and alloying landed; respec is still a stub)
 
-- **Confidence**: HIGH (code re-read 2026-09-25; no crafting runtime change since 2026-07-25)
+- **Confidence**: HIGH (code re-read 2026-09-27, after the crafting campaign's CR-01 to CR-09, CR-12 and CR-15 runtime changes)
 - **Documentation**: [gameplay/crafting-system.md](gameplay/crafting-system.md), [reverse-engineering/findings/crafting-wire-formats.md](reverse-engineering/findings/crafting-wire-formats.md), [reverse-engineering/findings/crafting-state-machine.md](reverse-engineering/findings/crafting-state-machine.md)
-- **Rust code**: [`crates/entity/src/crafting.rs`](../crates/entity/src/crafting.rs) (191 — `CraftingState`), [`crates/base-session/src/base/crafting/`](../crates/base-session/src/base/crafting/) (1,103 — handlers.rs 440, persistence.rs 645, mod.rs 18), [`crates/cell-methods/src/cell/cell_methods/player/crafting.rs`](../crates/cell-methods/src/cell/cell_methods/player/crafting.rs) (232 — method routing), [`crates/cell-console/src/cell/console/crafting.rs`](../crates/cell-console/src/cell/console/crafting.rs) (136)
+- **Rust code**: [`crates/entity/src/crafting.rs`](../crates/entity/src/crafting.rs) (191 — `CraftingState`), [`crates/base-session/src/base/crafting/`](../crates/base-session/src/base/crafting/) (persistence, GM grants, `sync/` login and state pushes, `spend/` discipline learning, `request.rs`, `feedback/`, the station `gate.rs`, `tools.rs`, `options.rs` (140), `allcraft.rs`, the `session/` induction engine, the `transaction/` consume-and-grant, `rng.rs`, `item_use/` Blueprint items and Paradigm Guides, `research/` and `reverse_engineer/` with `induction_verb.rs` and `item_lookup.rs`, `alloy/`, `craft/`), [`crates/cell-catalog/src/item_placement.rs`](../crates/cell-catalog/src/item_placement.rs) (first carried bag from `container_sets`), [`crates/cell/src/cell/service/ticks/crafting_stations.rs`](../crates/cell/src/cell/service/ticks/crafting_stations.rs) (the cell's station tracking), [`crates/cell-methods/src/cell/cell_methods/player/crafting/`](../crates/cell-methods/src/cell/cell_methods/player/crafting/) (argument parsing and the forward to the base), [`crates/cell-catalog/src/crafting/`](../crates/cell-catalog/src/crafting/) (`CraftingCatalog` and the crafting enumerations), [`crates/wire/src/crafting/`](../crates/wire/src/crafting/) (serializers for 112 and 136-140, `CraftRequest`), [`crates/cell-console/src/cell/console/crafting.rs`](../crates/cell-console/src/cell/console/crafting.rs) (136)
 - **Recent PRs**: **#427 (Phase 1 — `CraftingState` + persistence + ASP dispatch fix, #53)**, #521 (GM crafting grants), #728 (docs only, 2026-09-25: records the method-138 racial-paradigm wire schema `INT32 paradigmId + INT8 level` and confirms Rust has no progression, emission, or login sync for it; follow-up #723)
 - **Open issues**: #567 (crafting activity handlers), #723 (racial-paradigm progression + client sync), #465 (security audit CAT-F)
-- **State of play**: Phase 1 shipped the *state* layer. `sgw_player.discipline_ids`, `blueprint_ids`, `applied_science_points` and `racial_paradigm_levels` load and save transactionally, and GM grant commands drive expertise. Every player-facing crafting verb still logs `UNIMPLEMENTED` (cell_methods/player/crafting.rs:33-84).
-- **Path forward**: Phase 2 (#567): ASP-spend validation (paradigm gate + prerequisite expertise + DB UPDATE), then the craft / research / reverse-engineer / alloy flows. #723: emit method 138 on paradigm change and at login.
+- **State of play**: Phase 1 shipped the *state* layer. `sgw_player.discipline_ids`, `blueprint_ids`, `applied_science_points` and `racial_paradigm_levels` load and save transactionally, and GM grant commands drive expertise. Crafting campaign CR-01 (2026-09-26) added the catalog, the byte-exact serializers and the request path: the cell parses every argument of methods 95-100 and forwards a `CraftRequest`, and the base answers every verb with a "not available yet" line (`base/crafting/request.rs`). CR-03 pushes the whole crafting state at world entry (136, 138, 139, the ASP total), makes the GM ASP grant push the total, and starts every character at Common 5 and the other paradigms at 1 (D-CR03). CR-04 implements `spendAppliedSciencePoints`: one locked transaction checks the catalog, known, ASP, paradigm level and prerequisites at expertise 50, and every refusal is a visible line (214 as `onErrorCode` for no ASP). CR-05 added the station gate in front of crafting, research, reverse engineering and alloying: crafting stations (by `ENTITYFLAG_Craft_*`, tracked by the cell), Field Crafting Tools in the crafting bag (D-CR21), `onUpdateCraftingOptions` (140) in the login bundle and on change, and the GM `.allcraft` with "craft anywhere" (D-CR17). CR-11 seeds four crafting stations (templates 310-313, every `ENTITYFLAG_Craft_*` bit) and a crafting supplies vendor (314, the UAT components, kickers, tools, guides and Blueprint item 6483 at 1 naquadah) in the stasis-room debug hub ([debug-hub.md](content/debug-hub.md#crafting-corner)), and the GM `.craftkit <blueprint> [count]` (component set 1 through the crafting transaction) and `.learnblueprint <id>`, completing D-CR17's tooling. CR-06 added the induction engine (one running induction per player, ten held, the type-16 bar with an absolute expiry, the queue dropped without consuming on logout, disconnect and gate travel) and the consume-and-grant transaction (named-instance re-check, consumption by design from bags 1 and 15, products placed in the first carried bag, rollback plus feedback and resync on any refusal). CR-08 is the first verb on them: research checks the item and its kickers at the request (researchable, one kicker per applied science, never the item's own), then at the end of the bar rolls `100 − expertise + 5 × kickers` over the known disciplines below the item's tech competency, consumes exactly the item and kickers, adds 5 expertise on a success and teaches the blueprints that make the item whose discipline is known (139). Reverse engineering picks a blueprint and component set uniformly, recovers `floor(roll × min(1, max(expertise, 1) / tc) × quantity)` per component with at least one unit (D-CR06), and consumes exactly the named instance; the page's burst of ten queues ten inductions. CR-09 adds alloying: at the request the blueprint must be a known alloy with its discipline known, the current-tier item its component, every elementary item one tier lower, and exactly one quality's count met by summed stack quantity (Normal 10, Good 5, Great 2, Fantastic 1); at the end of the bar the component is consumed by design, exactly the counted elementary stacks are consumed, and 2 of the product and 1 expertise are granted. Craft stays KM until CR-07. CR-12 grants ASP by levelling (D-CR01): new characters start with 1 and the XP grant adds one per level gained in the same statement that raises the level, then pushes the total. CR-15 makes Blueprint items and Racial Paradigm Guides usable: `useItem` on an item in `resources.crafting_item_effects` (193 Blueprint items, the five guides) teaches the blueprint (139) or raises the paradigm by one to at most 10 (138), consuming the item in the same transaction; a use that would change nothing is refused with a line and consumes nothing. CR-07 adds `craft`: validated at the request (blueprint and discipline known, not an alloy, quantity 1 to 100, the named designs exactly one component set, enough in bags 1 and 15), queued, and applied at the end of the bar in one transaction that re-checks the blueprint and discipline under a share lock on the player row (alloying now uses the same check), with +1 expertise and a success line.
+- **Path forward**: the crafting campaign (`docs/analysis/crafting/`): respec (CR-10), then an in-client pass over every verb (CR-14). Blueprint and Paradigm Guide items landed (CR-15). #723: method 138 is sent at login (CR-03) and after a Paradigm Guide is used (CR-15).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Craft from blueprint | KM | -- | stub | `CRAFT` arm parses `craft_id` then logs `UNIMPLEMENTED: craft` (cell_methods/player/crafting.rs:48). Re-verified 2026-09-25 |
-| Research item | KM | -- | stub | `UNIMPLEMENTED: research` (crafting.rs:60) |
-| Reverse engineer | KM | -- | stub | `UNIMPLEMENTED: reverseEngineer` (crafting.rs:65) |
-| Alloy | KM | -- | stub | `UNIMPLEMENTED: alloying` (crafting.rs:72) |
-| Discipline learning | KM | -- | stub | `spendAppliedSciencePoints` routes but does not mutate: "Phase 1: route only" (crafting.rs:24-33) |
-| Expertise system (0-100) | IM | -- | entity/crafting.rs, base/crafting/handlers.rs:36 | **Corrected 2026-07-25.** `set_expertise` with an explicit `[0,100]` clamp, first-grant discipline registration, transactional save, and an `onUpdateDiscipline` client push (handlers.rs:86-140). Driven only by GM grants; no in-client record |
-| Racial paradigm gating | KM | -- | state only | `racial_paradigm_levels` loads/saves as a `{paradigm_id → level}` map (persistence.rs:132-152) but **no gate function consumes it**, and method 138 is never emitted (#728 audit, #723). Re-verified 2026-09-25 |
-| Blueprint management | IM | -- | base/crafting/persistence.rs:91 | **Corrected 2026-07-25.** `blueprint_ids` round-trips through `load_crafting_state` / `save_crafting_state`; no acquire/dedupe verbs yet |
-| Crafting respec | KM | -- | stub | `UNIMPLEMENTED: respecCrafting` (crafting.rs:84) |
+| Craft from blueprint | IM | -- | base/crafting/craft/ | **KM → IM 2026-09-27.** Behind the station gate (CR-05): blueprint and discipline known, not an alloy, quantity 1-100, the named designs pick exactly one component set, bags 1 and 15 hold enough; queued on the induction engine, consumed by design at completion after an in-transaction knowledge check, `blueprint.quantity × quantity` granted, +1 expertise (136), success line. Every refusal is a line. Live-DB tested end to end on blueprint 412 sets 1 and 2 (CR-07). No in-client record yet |
+| Research item | IM | -- | base/crafting/research/ | **KM → IM 2026-09-27 (CR-08).** Behind the station gate (CR-05). Item and kicker rules at the request, each refusal a visible line; roll, consumption, +5 expertise and the blueprint (139) when the bar ends. Live-DB tested with pinned rolls; no in-client record |
+| Reverse engineer | IM | -- | base/crafting/reverse_engineer/ | **KM → IM 2026-09-27 (CR-08).** Behind the station gate (CR-05). Recovery rises with expertise (D-CR06), exactly the named instance is consumed, a burst of ten completes ten times. Live-DB tested with pinned rolls; no in-client record |
+| Alloy | IM | -- | base/crafting/alloy/ | **KM → IM 2026-09-27 (CR-09).** Behind the station gate; tools never cover alloying (CR-05). Blueprint, discipline, component, tier and the one-quality count rule (by summed stack quantity) at the request, each refusal a visible line plus a resync; knowledge re-checked, then the component by design and exactly the counted elementary stacks consumed, 2 of the product and +1 expertise when the bar ends. Live-DB tested end to end with blueprint 42 and per refusal; no in-client record |
+| Discipline learning | IM | -- | base/crafting/spend/ | `spendAppliedSciencePoints` learns at expertise 1 for one ASP in one `FOR UPDATE` transaction; every refusal is a visible line; replay-safe; no blueprints (D-CR04). Live-DB tested per refusal (CR-04). ASP comes from levelling: 1 at level 1, +1 per level gained, written with the level (CR-12). No in-client record yet |
+| Expertise system (0-100) | IM | -- | entity/crafting.rs, base/crafting/handlers.rs:36 | **Corrected 2026-07-25.** `set_expertise` with an explicit `[0,100]` clamp, first-grant discipline registration, transactional save, and an `onUpdateDiscipline` client push (handlers.rs:86-140). Driven only by GM grants, including `.allcraft` (CR-05: every discipline at 100, every blueprint, every paradigm at 7, persisted and pushed, plus craft anywhere for the session); no in-client record |
+| Racial paradigm gating | IM | -- | base/crafting/spend/, sync/ | The spend gate checks the discipline's paradigm level. Characters start at Common 5 and the rest at 1 (D-CR03, applied on load and by the column default), and 138 is sent for all five at world entry (CR-03). A Racial Paradigm Guide raises its paradigm by one, to at most 10, and pushes 138 (CR-15) |
+| Blueprint management | IM | -- | base/crafting/persistence/mod.rs, base/crafting/item_use/ | **Corrected 2026-07-25.** `blueprint_ids` round-trips through `load_crafting_state` / `save_crafting_state`. Using a Blueprint item teaches its blueprint(s) without duplicates and pushes 139 (CR-15); research does not teach yet (CR-08). No in-client record |
+| Crafting respec | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
 
 ### 20. Stargate Travel --- IM
 
@@ -711,26 +714,27 @@ last_updated: 2026-09-25
 
 ### 21. Chat --- NT
 
-- **Confidence**: MEDIUM-HIGH (code re-read 2026-09-25)
-- **Documentation**: [gameplay/chat-system.md](gameplay/chat-system.md), [reverse-engineering/findings/chat-wire-formats.md](reverse-engineering/findings/chat-wire-formats.md)
-- **Rust code**: [`crates/cell-console/src/cell/console/chat.rs`](../crates/cell-console/src/cell/console/chat.rs) (454), [`crates/base/src/base/dispatch/chat.rs`](../crates/base/src/base/dispatch/chat.rs) (219), [`crates/base-session/src/base/world_entry_chat.rs`](../crates/base-session/src/base/world_entry_chat.rs) (237): 910 lines including tests
-- **Recent PRs**: #739 (stored DND message bounded to 128 characters, security finding CAT-L-02), #737 (players in a shared world now witness each other, so say/emote/yell can reach another player; not two-client validated), #769 (content-engine `npc_bark` speaks NPC lines over `onPlayerCommunication` on the say channel, a content feature that reuses the chat wire, not player chat)
-- **Open issues**: #471 (security audit CAT-L, chat / contact list, 9 findings)
-- **In-client record**: the 2026-09-18 colo playtest logged 20 say-channel sends from the real client, all `.`-prefixed GM console lines, which chat.rs:88-97 intercepts before broadcast ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 123). That proves client-to-server say routing. It does not prove witness rendering of ordinary chat.
-- **Path forward**: message *routing* on the non-spatial channels (they are registered but carry no traffic), direct tells, and moderation tools (mute, flood protection). A two-client say/emote/yell check now that #737 has landed.
+- **Confidence**: MEDIUM-HIGH (code re-read 2026-09-25; the social-systems campaign's chat packets SS-00, SS-C1 to SS-C4 re-read at close-out 2026-09-27)
+- **Documentation**: [gameplay/chat-system.md](gameplay/chat-system.md), [reverse-engineering/findings/chat-wire-formats.md](reverse-engineering/findings/chat-wire-formats.md), [analysis/social-systems/](analysis/social-systems/README.md) (campaign ledger and owner UAT)
+- **Rust code**: [`crates/cell-console/src/cell/console/chat/`](../crates/cell-console/src/cell/console/chat/mod.rs) (spatial fanout, squad relay, the Ignore filter), [`crates/base/src/base/dispatch/`](../crates/base/src/base/dispatch/) (`chat.rs`, `chat_gates.rs`, `tell.rs`, `ignore.rs`, `communicator_unsupported.rs`), [`crates/base-session/src/base/`](../crates/base-session/src/base/) (`rate_limit/`, `mutes/`, `player_index/`, `gm_broadcast.rs`, `contact_list/ignore/`), [`crates/cell-console/src/cell/console/gm/shout.rs`](../crates/cell-console/src/cell/console/gm/shout.rs), and the `CHAN_*` constants in [`crates/wire/src/cell/chat.rs`](../crates/wire/src/cell/chat.rs)
+- **Recent PRs**: #880 (SS-00 flood limit and text rules), #885 (`chat/` split), #887 (SS-C2 GM broadcast), #893 (SS-C1 tells and Ignore), #925 (SS-C3 channel allowlist, GM mute, feedback for 0xC6-0xCE), #937 (SS-C4 channel ids match the client, no built-in channel registration), #922 (organizations ORG-04 squad chat), #951 (organizations ORG-09 team, command and officer chat), #739 (DND bounded to 128 characters, CAT-L-02), #737 (players witness each other)
+- **Open issues**: #471 (security audit CAT-L, chat / contact list; L-01, L-03, L-06 and the `chatIgnore` part of L-07 are covered by the campaign)
+- **In-client record**: the 2026-09-18 colo playtest logged 20 say-channel sends from the real client, all `.`-prefixed GM console lines ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 123). That proves client-to-server say routing. It does not prove witness rendering of ordinary chat. Every campaign row below waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
+- **Path forward**: the owner's SS-UAT (two clients for tells, Ignore and `.mute`) and ORG-UAT steps 2 and 9 (squad, team, command and officer lines); user channels and channel moderation.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Say/emote/yell (AoI) | NT | AoI | cell/console/chat.rs:99-110, 126-190 | Witness broadcast plus sender echo. Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
-| Direct tells | KM | -- | -- | `sendPlayerCommunication` parses the `target` WSTRING, logs it, and forwards every message to the cell as a spatial broadcast (base/dispatch/chat.rs:22-108) |
-| User channels | KM | -- | -- | requestCreateChannel not ported |
-| Pre-defined channels | IM | -- | base/world_entry_chat.rs:20-29 | **Corrected 2026-07-25.** All 8 canonical channels (say/emote/yell/team/squad/command/server=7/tell=9) are auto-joined on world entry and pushed as `onChatJoined` (world_entry_appearance/builders.rs:89). `chatJoin` is acknowledged as a no-op (dispatch/chat.rs:113-125). **No cross-player routing on the non-spatial channels yet** |
-| AFK / DND status | IM | -- | base/dispatch/chat.rs:82-90, 147-219 | `dnd_message` sets `SPEAKER_DND` on outgoing messages, matching `Chat.py::getSpeakerFlags`; stored text truncated to 128 chars (#739). `chatSetAFKMessage` is acknowledged but the auto-reply is not implemented (dispatch/chat.rs:134-145). The 2026-09-18 playtest logged one `chatSetDNDMessage: WSTRING decode failed` WARN (appendix-session-timeline.md line 124), not yet explained |
-| Channel ops | KM | -- | -- | setPlayerOp not ported |
-| Chat flood protection | KM | -- | -- | No rate limiting |
+| Say/emote/yell (AoI) | NT | AoI | cell/console/chat/mod.rs, chat/spatial.rs | Witness broadcast plus sender echo; a witness who ignores the speaker is skipped (SS-C1). Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
+| Direct tells | NT | -- | base/dispatch/tell.rs | **New 2026-09-27 (SS-C1).** Channel 10 is handled on the base: the target resolves through the online index (D-SS13), the recipient gets `onPlayerCommunication` on 10 and the sender `onTellSent`; not online, ambiguous, self, ignored-by-recipient and a muted sender (SS-C3) each answer with a feedback line. Type-8 fan-out tests and a two-client wireclient test (type 11, not in CI); no in-client test on record |
+| Ignore enforcement | NT | -- | base/dispatch/ignore.rs, base-session/src/base/contact_list/ignore/ | **New 2026-09-27 (SS-C1).** `chatIgnore` (0xC5) edits the contact-list Ignore list (flags 301); the list is cached on the base session and the cell entity; tells and say/emote/yell from an ignored player do not reach the ignoring player (one way, no AoI hiding, D-SS15). Live-DB and type-8 guards; no in-client test on record |
+| User channels | KM | -- | -- | requestCreateChannel not ported; a player line on a user channel (id 12 and up) is refused at the base with feedback (SS-C3) |
+| Pre-defined channels | NT | -- | wire/src/cell/chat.rs, base/dispatch/chat_gates.rs, cell/console/chat/, base-session/organization/handlers/chat.rs | **Corrected 2026-09-27 (SS-C4).** The built-in channels are hardcoded in the client with the `EChannel` ids (say 0 to splash 11, server 8, feedback 9, tell 10; D-ORG14), so none is registered at login, which matches the legacy server; `CHAN_*` is pinned against `enumerations.xml`. The base refuses player lines on server, feedback and splash, on user channels and on unnamed ids (CAT-L-03, SS-C3). Squad lines are relayed on the cell (ORG-04, #922); team (3), command (5) and officer (6) lines are handled on the base and reach the online members of the speaker's Team or Command, officer only for `OfficerChat` holders in a Command (ORG-09, #951, D-ORG27). Fan-out and negative-log tests; no in-client test on record |
+| AFK / DND status | NT | -- | base/dispatch/chat.rs, base/dispatch/tell.rs | `dnd_message` sets `SPEAKER_DND` on outgoing messages, matching `Chat.py::getSpeakerFlags`; stored text truncated to 128 chars (#739). Since SS-C1 `chatSetAFKMessage` stores its message too, and a tell to an away player is answered with the DND (else AFK) text on the tell channel. The 2026-09-18 playtest logged one `chatSetDNDMessage: WSTRING decode failed` WARN (appendix-session-timeline.md line 124), not yet explained |
+| Channel ops | KM | -- | -- | setPlayerOp not ported; `chatOp`, `chatMute`, `chatKick`, `chatBan` and `chatPassword` answer with a "not available yet" feedback line (SS-C3) |
+| Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Per-player token bucket on every player channel, burst 5 then 1 line/s (D-SS14), GameMaster and above exempt; lines over 255 UTF-16 units or with control, bidi or zero-width characters refused (D-SS12, through the D-ORG10 `org_text` rules). Both run on the base before the cell forward; the player gets one feedback line (at most one per 5 s) and SigNoz a `rate_limit.exceeded` / `chat.rejected` event. Type-12 guards; no in-client test on record |
 | Profanity filter | KM | -- | -- | No filtering |
-| Mute system | KM | -- | -- | No per-player muting |
-| GM broadcast | KM | Admin | -- | No system-wide message tool. GM feedback rides the `tell` channel to the caller only (cell/console/chat.rs:33-40) |
+| Mute system | NT | -- | base-session/src/base/mutes/, base/src/base/dispatch/chat_gates.rs, cell-console/src/cell/console/social.rs | **New 2026-09-27 (SS-C3).** GM `.mute <name> <minutes> [reason]` and `.unmute <name>` (GameMaster and above, D-SS26): a muted player's chat and tells are refused with the time left. Keyed by `player_id`, so it holds across relog and gate travel but not across a server restart, and an alt escapes it (an owner question). Type-12 guards and an injected-clock expiry test; no in-client test on record |
+| GM broadcast | NT | -- | cell-console/src/cell/console/gm/shout.rs, base-session/src/base/gm_broadcast.rs | **New 2026-09-27 (SS-C2).** `/gmshout` (CM 222) and `.announce [space] <text>`: the GM's name, `SPEAKER_GM`, `CHAN_SERVER`, to the GM's space (cell) or every online player (base, online index). GameMaster and above via the dispatch gate; D-SS12 text rules. Sent on 7 until SS-C4, which the client does not display; on 8 it shows a red line and the modal "Server Message" prompt. Type-8 and type-12 guards; no in-client test on record |
 
 ### 22. Trading --- IM (ported 2026-06; was KM)
 
@@ -754,58 +758,68 @@ last_updated: 2026-09-25
 
 ## Stub-Only Systems
 
-### 23. Organizations / Guilds --- KM
+### 23. Organizations / Guilds --- NT (Squads, Teams and Commands work server-side; awaiting the owner's two-client UAT)
 
-- **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
-- **Documentation**: [gameplay/organization-system.md](gameplay/organization-system.md), [reverse-engineering/findings/organization-wire-formats.md](reverse-engineering/findings/organization-wire-formats.md)
-- **Rust code**: [`crates/cell-methods/src/cell/cell_methods/organization.rs`](../crates/cell-methods/src/cell/cell_methods/organization.rs) (162), [`crates/wire/src/cell/client_methods/organization.rs`](../crates/wire/src/cell/client_methods/organization.rs) (38): 200 lines of handler stubs. All 12 inbound cell methods (indices 8-19) decode their arguments and log `UNIMPLEMENTED`. `onOrganizationCreation` logs `UNIMPLEMENTED` at cell_methods/player/social.rs:62. No `sgw_organization` table under `db/sgw/`.
-- **Recent PRs**: none since 2026-07-25
-- **Open issues**: #568 (implement organization / squad / guild system)
-- **Path forward**: DB schema (`sgw_organization` table) + full org lifecycle (#568).
-
-| Feature | Status | Blocks | Code | Evidence / Notes |
-|---------|--------|--------|------|------------------|
-| Organization creation | KM | DB schema | stub | `UNIMPLEMENTED: onOrganizationCreation` (cell_methods/player/social.rs:62) |
-| Invite/accept | KM | Creation | stub | `UNIMPLEMENTED: organizationInviteResponse` (organization.rs:36) |
-| Leave organization | KM | -- | stub | `UNIMPLEMENTED: organizationLeave` (organization.rs:44) |
-| Rank system (9 ranks) | KM | Creation | -- | EORG_RANK_None through Leader |
-| Permission system (26 perms) | KM | Ranks | -- | Bitmask in enums |
-| MOTD | KM | Creation | stub | organization.rs:94 |
-| Officer notes | KM | Ranks | stub | organization.rs:108 |
-| Rank name customization | KM | Ranks | stub | organization.rs:135 |
-| Permission editing | KM | Ranks | stub | organization.rs:122 |
-| Cash transfer to bank | KM | Creation | stub | organization.rs:155 |
-| Organization vault | KM | Creation, Inventory | -- | INV_TeamBank, INV_CommandBank |
-| Squad loot mode | KM | Groups | stub | organization.rs:143 |
-| Minimap ping | KM | -- | stub | organization.rs:60 |
-| Strike teams | KM | -- | stub | organization.rs:73 |
-| PvP org leave | KM | -- | stub | organization.rs:86 |
-
-### 24. Mail --- IM (read side only; sending, attachments and COD are stubs)
-
-- **Confidence**: HIGH (code read line by line 2026-09-25). **The previous edition over-stated this section.** Send, attachment, take-cash, take-item, return and COD all route to `UNIMPLEMENTED` log lines; only the read side (headers, body, delete, archive) touches the database.
-- **Documentation**: [gameplay/mail-system.md](gameplay/mail-system.md), [reverse-engineering/findings/mail-wire-formats.md](reverse-engineering/findings/mail-wire-formats.md)
-- **Rust code**: [`crates/base-methods/src/base/world_entry/methods/mail/`](../crates/base-methods/src/base/world_entry/methods/mail/) (939 lines: mod.rs 316, tests.rs 623 live-DB), [`crates/cell-interactions/src/cell/mail.rs`](../crates/cell-interactions/src/cell/mail.rs) (412, cell-to-base hop + wire serializers), [`crates/cell-methods/src/cell/cell_methods/mail.rs`](../crates/cell-methods/src/cell/cell_methods/mail.rs) (99, dispatch of cell methods 43-51), [`crates/wire/src/cell/client_methods/mail.rs`](../crates/wire/src/cell/client_methods/mail.rs) (10)
-- **Recent PRs**: none since 2026-07-25
-- **Open issues**: #72 (mail: send, receive, attachments, COD)
-- **Note**: nothing on `main` writes to `sgw_gate_mail`. The only server-side sender, the Black Market expiry sweep's `send_mail_to_player`, is on the unmerged `feat/571-black-market-phase1` branch ([game-systems.md](game-systems.md) Mail section agrees).
-- **Path forward**: `sendMailMessage` with sender-side item/cash escrow, then take-item / take-cash, COD payment, return-to-sender, a `bArchive` filter on the header query, and new-mail fanout to an online recipient.
+- **Confidence**: HIGH (code read at the organizations close-out, ORG-11, 2026-09-27, against `main` at `c328d0cbc`). Every row below is covered by unit, wire-format, live-DB, fan-out and negative-log tests, and two wireclient tests (`two_client_squad`, `two_client_command_invite`); **nothing is client-verified yet**.
+- **Documentation**: [gameplay/organization-system.md](gameplay/organization-system.md), [gameplay/group-system.md](gameplay/group-system.md#squads-org-03), [reverse-engineering/findings/organization-wire-formats.md](reverse-engineering/findings/organization-wire-formats.md), [analysis/organizations/](analysis/organizations/README.md) (campaign ledger, worknotes, open owner questions and known gaps), [guides/organizations-uat.md](guides/organizations-uat.md) (the owner's UAT)
+- **Rust code**: models in [`crates/entity/src/organization/`](../crates/entity/src/organization/); wire in [`crates/wire/src/cell/cell_methods/organization/`](../crates/wire/src/cell/cell_methods/organization/), [`crates/wire/src/base/organization.rs`](../crates/wire/src/base/organization.rs) and [`crates/wire/src/cell/client_methods/organization/`](../crates/wire/src/cell/client_methods/organization/); squads on the cell in [`crates/cell-world/src/cell/squad/`](../crates/cell-world/src/cell/squad/) and [`crates/cell-methods/src/cell/cell_methods/organization/`](../crates/cell-methods/src/cell/cell_methods/organization/) (the id-range router, `squad/`, `creation/`); Teams and Commands on the base in [`crates/base-session/src/base/organization/`](../crates/base-session/src/base/organization/) (`persistence/`, `creation/`, `handlers/`, and the ORG-API in `api.rs`); the registrar in [`crates/cell-interactions/src/cell/interactions/org_registrar.rs`](../crates/cell-interactions/src/cell/interactions/org_registrar.rs); the schema in [`db/sgw/Organizations/`](../db/sgw/Organizations/)
+- **Recent PRs**: #871 (ORG-01 contract), #881 (ORG-02 schema and ORG-API), #886 (ORG-03 squads), #922 (ORG-04 squad chat), #942 (ORG-05 creation), #941 (ORG-06 login restore, leave, presence), #945 (ORG-07 invite, kick, rank), #954 (ORG-08 MOTD, notes, rank editor), #951 (ORG-09 org chat), #952 (ORG-10 GM suite and UAT guide)
+- **Open issues**: #568 (implement organization / squad / guild system; closed by the coordinator at the close-out)
+- **Path forward**: the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo) after the release; the [owner questions](analysis/organizations/README.md#open-questions-for-the-owner) and [follow-ups](analysis/organizations/README.md#known-gaps-and-follow-ups); vaults and the treasury in the Bank campaign (BV-07, BV-08).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Open mailbox (headers) | IM | -- | base/world_entry/methods/mail/mod.rs:67-141 | `SELECT ... FROM sgw_gate_mail WHERE character_id = $1`, then `onMailHeaderInfo`. **The query ignores `b_archive`**, so archived mail still lists in the inbox. Live-DB test `mail_inserted_for_character_b_is_queryable_via_request_headers_select`. Re-verified 2026-09-25 |
-| Read mail body | NT | -- | mail/mod.rs:143-226 | Ownership-checked `SELECT message`, stamps `read_time` once, sends `onMailRead`. Live-DB tests for read-time stamping and cross-character isolation (tests.rs:383-536). Re-verified 2026-09-25 |
-| Send mail | KM | -- | stub | `sendMailMessage` (CM 44) logs `UNIMPLEMENTED` (cell_methods/mail.rs:33-36); no INSERT path exists. The earlier "live-DB tests" note was wrong: the tests seed rows by hand. Re-verified 2026-09-25 |
-| Delete mail | NT | -- | mail/mod.rs:228-268 | Ownership-checked DELETE, zero-row WARN, `onMailHeaderRemove`. Live-DB test `delete_only_affects_target_character_not_account_siblings`. Re-verified 2026-09-25 |
-| Archive mail | IM | -- | mail/mod.rs:270-313 | Sets `flags \| 1` (idempotent, live-DB tested), but the header query never filters on it, so archiving has no visible effect beyond removing the row until the next refresh |
-| Attach item | KM | Send, Inventory | stub | Nothing to attach to: `sendMailMessage` is a stub. Re-verified 2026-09-25 |
-| Attach gold | KM | Send | stub | Same. `cash` is read back in headers but never written by the server |
-| Cash on Delivery | KM | Send, Receive | stub | `payCODForMailMessage` (CM 51) logs `UNIMPLEMENTED` (cell_methods/mail.rs:90-95) |
-| Take item from mail | KM | Inventory | stub | `takeItemFromMailMessage` (CM 50) parses mail/container/slot then logs `UNIMPLEMENTED` (cell_methods/mail.rs:74-88). Re-verified 2026-09-25 |
-| Take cash from mail | KM | -- | stub | `takeCashFromMailMessage` (CM 49) logs `UNIMPLEMENTED` (cell_methods/mail.rs:67-72). Re-verified 2026-09-25 |
-| Return to sender | KM | Send | stub | `returnMailMessage` (CM 47) logs `UNIMPLEMENTED` (cell_methods/mail.rs:52-58) |
-| New mail notification | KM | Send | -- | No fanout when recipient online |
-| Mail expiry/TTL | NU | DB | -- | No TTL in schema |
+| Organization creation | NT | -- | cell-interactions/org_registrar.rs, base-session/organization/creation/ | **ORG-05.** A Team or Command registrar in the stasis-room debug hub opens the naming dialog (135) for an eligible player; CM 94 founds the organization against that offer (5 minutes, 3 attempts) under the D-ORG10 name rules and answers 134, then the founder's state push. Free (D-ORG15). GM `.org_create`. Whether the client right-clicks the registrar is unverified |
+| Squad invite/accept | NT | -- | cell_methods/organization/squad/invite.rs | Name resolved across spaces; composite-key, single-use, 60 s invites re-validated on accept; limits 5/30 s per inviter, 5 pending per invitee. The base checks the invitee's Ignore list first (ORG-07). Unit, fanout and negative-log tests plus the two-client wireclient test `two_client_squad`; not tried with a real client |
+| Squad leave, kick, disconnect | NT | -- | cell_methods/organization/squad/membership.rs | Own squad only; leader-only kick; longest-standing member promoted; a squad of one dissolves; `DisconnectEntity` removes with `Logout`; gate travel keeps the squad and replays it on arrival |
+| Invite/accept (Team, Command) | NT | -- | base-session/organization/handlers/invite.rs, invite_response.rs | **ORG-07.** 0xCF and 0xD0 types 1-2: the inviter holds `Invite` under ORG-LOCK, and the target is online, not ignoring the inviter and in no organization of that type (D-ORG18); CM 8 with a base request id is consumed once and re-validated under ORG-LOCK. Two-client wireclient test `two_client_command_invite` |
+| Leave organization (Team, Command) | NT | -- | base-session/organization/handlers/leave.rs | **ORG-06.** CM 9: a Leader cannot leave while others remain (D-ORG12); the last member leaving disbands, after the vault check (D-ORG20) |
+| Kick (Team, Command) | NT | -- | base-session/organization/handlers/kick.rs | **ORG-07.** 0xD1 under D-ORG09 (1)-(2); [36] `Kicked` to the member and [39] to the rest; `OrgMembershipEnded` to the cell for the bank |
+| Login restore and presence | NT | -- | base-session/organization/handlers/push.rs, presence.rs | **ORG-06.** Every world entry re-sends each Team and Command (joined, name, MOTD, cash, experience, ranks, rank names, roster, then [37] per online member); login and every disconnect path announce online and offline. `/ReloadOrganizations` (164) re-runs the push (ORG-10) |
+| Disband | NT | -- | base-session/organization/handlers/disband.rs | **ORG-06.** The last member leaving and GM `.org_disband`, both refused while the vault is not empty; the vault predicate is a stub that returns true until the Bank campaign replaces it. A deleted Leader's organization promotes the next member or disbands, through a database trigger (ORG-02) |
+| Rank system (9 ranks) | NT | -- | base-session/organization/handlers/rank.rs, entity/organization/types.rs | **ORG-07.** 0xD2 rank change under D-ORG09: the right bit for the direction, strictly above the target and the new rank, never `Leader`, only the type's ranks (D-ORG07); [40] to the online members. 0xD2 with a squad id answers "not available yet" (no `/squadpromote`) |
+| Permission system (26 perms) | NT | -- | entity/organization/permissions.rs, base-session/organization/api.rs | Default rank table (D-ORG08 as amended by D-ORG21); every Team and Command action is authorized inside its transaction from `member_access_locked` (ORG-LOCK). The values are project policy, not recovered data |
+| MOTD | NT | -- | base-session/organization/handlers/texts.rs | **ORG-08.** CM 13 with `MOTD`, and CM 14 (the member's own note, `RosterNotes`), D-ORG10 text; [45] and [46] to every online member. No rate limit on either |
+| Officer notes | NT | -- | base-session/organization/handlers/officer_notes.rs | **ORG-08.** CM 15 with `OfficerNotes`; the target resolves among that organization's members only and must rank below the actor; [47] only to members holding `OfficerNotes` |
+| Rank name customization | NT | -- | base-session/organization/handlers/rank_editor.rs | **ORG-08.** CM 17 with `RankNames`, D-ORG09 (2)-(3), D-ORG23 names; [50] to every online member. The Leader cannot rename rank 8, and a lower rank can be named "Leader" (both owner questions) |
+| Permission editing | NT | -- | base-session/organization/handlers/rank_editor.rs | **ORG-08.** CM 16 with `AlterPerms` through `OrgPermission::apply_edit` (D-ORG22), the `Leader` row refused; [49] to every online member. GM `.org_set_perms` takes the same path |
+| Cash transfer to bank | KM | Bank | cell_methods/organization/ | CM 19 for a Team or Command id is forwarded to the base as `TransferCash` and answered "not available yet" with feedback; the Bank campaign's BV-08 replaces that arm |
+| Organization vault | KM | Bank | -- | INV_TeamBank, INV_CommandBank. In progress in the Bank and Vault campaign (BV-07: storage and the Banker open merged as #948; moves are #949, open at this edition), on the ORG-API; the personal bank it extends is done (§12) |
+| Squad loot mode | NT | Loot | cell_methods/organization/squad/loot.rs | Leader only, 0 or 1; a refusal re-sends the current mode (D-ORG16). The mode is stored and shown to every member, but no loot path reads it yet |
+| Minimap ping | IM | -- | cell_methods/organization/squad/ping.rs | CM 10 for squads: validated (own squad, one a second) and logged, never relayed, because no client method shows another member's ping (ORG-E1 Q3). A Team or Command id answers "not available yet" |
+| Strike teams | KM | -- | decoded | CM 11 refused as unsolicited, since no strike-team request is ever issued (CAT-M-16); there is no strike-team feature |
+| PvP org leave | KM | -- | decoded | CM 12 refused as unsolicited (CAT-M-17) |
+| GM organization commands | NT | -- | cell-console/src/cell/console/, base-session/organization/handlers/gm*.rs | **ORG-04, ORG-05, ORG-06, ORG-07, ORG-10.** `.squad_invite`, `.squad_join`, `.squad_info`, `.org_create`, `.org_disband`, `.org_join`, `.org_rank`, `.org_info`, `.org_list`, `.org_set_perms` and `/ReloadOrganizations` (164); GameMaster-gated, and each logs `org.gm_action` (D-ORG13) |
+
+### 24. Mail --- NT (send, attachments with escrow, take, COD, return, notification and 30-day expiry all implemented; awaiting the owner's in-client UAT)
+
+- **Confidence**: HIGH (code read and live-DB tested 2026-09-27, social-systems SS-M1 to SS-M4, SS-U1 and SS-U3). Every player mail operation works end to end on the server and is refused with a result code and a feedback line everywhere it cannot proceed. One two-client wireclient run (COD round trip, type 11) exists; nothing is confirmed in the real client yet.
+- **Documentation**: [gameplay/mail-system.md](gameplay/mail-system.md), [reverse-engineering/findings/mail-wire-formats.md](reverse-engineering/findings/mail-wire-formats.md), [analysis/social-systems/](analysis/social-systems/README.md) (campaign ledger, worknotes and owner UAT)
+- **Rust code**: [`crates/base-methods/src/base/world_entry/methods/mail/`](../crates/base-methods/src/base/world_entry/methods/mail/) (`mod.rs` router, `read.rs`, `headers.rs`, `send/`, `claim.rs` with `take.rs`, `cod.rs` and `return_.rs`, `notify.rs`, `expiry/`, `system/`, `content.rs`, `gm/`, `tests/`), [`crates/cell-interactions/src/cell/mail.rs`](../crates/cell-interactions/src/cell/mail.rs) (cell-to-base hop), [`crates/cell-methods/src/cell/cell_methods/mail.rs`](../crates/cell-methods/src/cell/cell_methods/mail.rs) (dispatch of cell methods 43-51), [`crates/wire/src/cell/cell_methods/mail/`](../crates/wire/src/cell/cell_methods/mail/) (CM 44 decoder), [`crates/wire/src/cell/mail/`](../crates/wire/src/cell/mail/) (serializers, `sendMailResult`, `EMailFlags` / `EMailResultCodes`)
+- **Recent PRs**: #894 (SS-M1 plain send, read-side fixes), #912 (SS-M2 attachments, postage, escrow, delete guard), #926 (SS-M3 take, COD, return), #929 (SS-U1 system-mail writer, `.mail` / `.mailbox`), #933 (SS-M4 notification, expiry, quarantine), #934 (SS-U3 `send_system_mail` content action and the Gate Mail Clerk)
+- **Open issues**: #72 (mail: send, receive, attachments, COD; covered by the campaign, to close after the owner's UAT)
+- **Note**: two paths write `sgw_gate_mail` on `main`: the player send path and the system-mail writer (`mail/system/`), which the COD payment, returns, the GM `.mail`, the content action and expiry use. The Black Market sweep's own `send_mail_to_player` is on the unmerged `feat/571-black-market-phase1` branch and is to be replaced by the system-mail writer (BM-02b).
+- **Path forward**: the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release); a GM `.mail_release` for quarantined mail; the owner questions in the [session resume](analysis/social-systems/handoffs/session-resume.md#owner-questions) (escrow on a deleted recipient, mail as storage). Vault and organization aliases belong to the Bank and organizations campaigns (D-SS07).
+
+| Feature | Status | Blocks | Code | Evidence / Notes |
+|---------|--------|--------|------|------------------|
+| Open mailbox (headers) | NT | -- | mail/read.rs `request_headers`, mail/headers.rs | Owner-scoped `SELECT`, filtered by `bArchive` so the inbox and the archive each get only their own rows (audit A-08, SS-E1 M-Q7); quarantined mail is never listed; the full list sets `ResetCategory` 1 so server-side removals drop out (SS-M4). Live-DB guard `request_headers_archive_filter_returns_requested_category` |
+| Read mail body | NT | -- | mail/read.rs `request_body`, `mark_read` | Ownership-checked `SELECT`, stamps `read_time` once through an owner-scoped `UPDATE` (CAT-G-07, `read_time_update_scoped_to_owner`), and `onMailRead.ToText` is the recipient's stored name (CAT-G-08, `mail_read_to_text_is_stored_recipient`) |
+| Send mail | NT | -- | mail/send/ | Mail-send bucket (burst 3, 1 per 10 s), up to 10 recipients for a text mail resolved against `sgw_player` (exact, then a unique case fold), de-duplicated, a 100-open-message cap per recipient counted under a `FOR UPDATE` row lock, one row per recipient, `sendMailResult` with `FailedRecipients` plus a feedback line naming each failure; an ignoring recipient is refused (D-SS15). Live-DB, type 5 and type 12 tests in `mail/tests/` |
+| Delete mail | NT | -- | mail/read.rs `delete` | Ownership-checked DELETE, zero-row WARN `reason=not_found_for_owner`, `onMailHeaderRemove`. A mail still holding an item, gift cash or an unpaid COD is refused with feedback and kept (SS-M2). Live-DB tests `delete_only_affects_target_character_not_account_siblings`, `delete_refused_while_attachment_present`, `no_orphaned_escrow_after_delete` |
+| Archive mail | NT | -- | mail/read.rs `archive` | Sets `flags \| 1` (idempotent, live-DB tested) and clears `expires_at`; an unpaid COD cannot be archived (SS-M3) |
+| Attach item | NT | -- | mail/send/escrow.rs | One recipient; the sender's unbound item from the main bag or the crafting bag (15), or part of its stack, moves into `sgw_gate_mail_item` in the send transaction, 25 naquadah postage; vaults and buyback are refused. Live-DB tests `send_debits_cash_and_postage_atomically`, `send_rejects_item_not_owned`, `send_rejects_bound_item`, `send_rejects_banked_item`, `send_rolls_back_after_item_moved`, `escrowed_item_absent_from_inventory_select`; type 5 `concurrent_sends_move_item_once` |
+| Attach gold | NT | -- | mail/send/ | Gift cash plus postage debited in the send transaction; `MAILRESULT_NotEnoughCash` when short. Negative cash is refused before SQL (`send_rejects_negative_cash`, and a `CHECK (cash >= 0)`) |
+| Cash on Delivery | NT | -- | mail/send/, mail/cod.rs | **SS-M3.** Pay (CM 51) debits the stored price, clears the COD with its price zeroed, sets `cod_paid`, and mails the price to the sender as server mail; a COD whose sender was deleted is cancelled on pay and becomes a free take (an owner question). Tests `pay_cod_twice_debits_once`, `pay_cod_rejects_insufficient_cash`, `pay_cod_amount_read_from_row`, `paid_cod_credits_sender_once_by_mail_while_offline`; type 11 `cod_item_round_trip_between_two_clients` |
+| Take item from mail | NT | -- | mail/take.rs | **SS-M3, SS-M4.** The server places the item by its type's `container_sets` (main bag or crafting bag) in the first free slot; the client's `ContainerId` / `SlotId` are ignored (SS-E1 M-Q5); a full bag keeps the escrow row and says so. Tests `take_places_a_crafting_component_in_the_crafting_bag`, `take_refuses_a_full_crafting_bag_and_keeps_escrow` |
+| Take cash from mail | NT | -- | mail/take.rs | **SS-M3.** Once, never from an unpaid COD, overflow-checked; type 5 `concurrent_take_cash_and_item_pays_out_once` |
+| Return to sender | NT | -- | mail/return_.rs | **SS-M3.** To the stored `sender_id`, once; never archived, server mail or a paid COD; an unpaid COD is cancelled. Tests `return_uses_sender_id_not_name`, `return_rejects_already_returned`, `return_rejects_system_mail` |
+| New mail notification | NT | -- | mail/notify.rs | **SS-M4 (D-SS11).** After every delivery commits, an online recipient gets a feedback line and a one-row `onMailHeaderInfo` upsert, mailbox open or closed. Type 8 `notification_reaches_only_the_online_recipient`, `every_delivery_path_notifies_the_online_recipient` |
+| Mail expiry/TTL | NT | -- | mail/expiry/ | **SS-M4 (D-SS04).** 30 days (`expires_at`, the client's 720-hour constant); a 5-minute base sweep and a login sweep return, delete or quarantine, one transaction per mail under the attachment ops' lock order. Live-DB `expired_cod_returns_without_its_price`, `expired_returned_mail_is_quarantined_not_deleted`, `no_orphaned_escrow_after_sweep`; type 5 `sweep_racing_take_cash_pays_out_once` |
+| Server-generated mail | NT | -- | mail/system/, mail/content.rs | **SS-U1, SS-U3.** One writer, `send_system_mail(_tx)`: cash, a minted item or a server-held instance, no postage, no COD, not returnable, exempt from the cap. The `send_system_mail` content action adds a per-player cooldown (`sgw_player_content_cooldown`); the debug hub's Gate Mail Clerk uses it. Live-DB and chain-replay tests (`mail_clerk_button_sends_exactly_one_mail`, `content_mail_sends_once_then_refuses_inside_the_cooldown`) |
+| GM mail tools | NT | -- | mail/gm/, cell-console/src/cell/console/mail.rs | **SS-U1, SS-M4.** `.mail` (cash, item, COD from the GM), `.mailbox` (counts, escrow, quarantined mail, next expiry) and `.mail_expire` (expires a mail at once by the sweep's path). Parse, live-DB and non-GM rejection tests, including `gm_mail_expire_expires_the_mail_now` |
+| Quarantined mail recovery | KM | -- | -- | D-SS04 keeps an expired mail that can no longer go back, with its escrow row, for a GM to recover by id; `.mailbox` counts them, but no `.mail_release` exists yet (follow-up) |
+| Vault / organization aliases | KM | Bank, Orgs | mail/send/mod.rs `resolve_recipient_flags` | Every `MAIL_To*` bit is refused with `MAILRESULT_NoRecipients` and a feedback line (D-SS07); the Bank and organizations campaigns replace the one seam |
 
 ### 25. Black Market (Auction House) --- KM
 
@@ -817,7 +831,7 @@ last_updated: 2026-09-25
 >
 > **Client-side blocker too.** The client never binds the BM client methods into its player dispatch map, so a server-sent `onBMOpen` (method 90) is silently dropped. The window opens only with the runtime patch described in the client-window-patch finding; launcher integration is open issue #587. Merging #586 alone will not produce a usable in-client black market.
 
-- **Path forward**: Rebase and land #586; integrate the client-window patch in the launcher (#587); then buyout, my-auctions / my-bids views, listing fees, and transaction mail (depends on Mail sending, §24).
+- **Path forward**: Rebase and land #586; integrate the client-window patch in the launcher (#587); then buyout, my-auctions / my-bids views, listing fees, and transaction mail through the system-mail writer (§24, BM-02b).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -830,7 +844,7 @@ last_updated: 2026-09-25
 | View my bids | KM | Listing | stub | -- |
 | Auction expiry | KM | Scheduler | -- | Timer-based cleanup (exists only on #586) |
 | Listing fees | NU | Economy | -- | Standard MMO pattern |
-| Transaction mail | KM | Mail | -- | Results via mail |
+| Transaction mail | KM | BM-02b | -- | Results via mail. The mail side exists on `main` (the system-mail writer, SS-U1); the Black Market branch still has to call it |
 
 ### 26. Contact Lists --- CW (shipped 2026-06-20; was KM)
 
@@ -855,42 +869,42 @@ last_updated: 2026-09-25
 | Death events | CW | -- | cell/abilities/death/mod.rs:71-98 | Cell→Base `ContactListPresenceEvent` with `EVENT_DEATH = 4`; **player deaths only**. NPC deaths skip the fanout to avoid flooding the channel during combat |
 | Gate-travel events | CW | -- | base/world_entry/gate_travel/mod.rs:416 | `EVENT_GATE_TRAVEL = 8`; `dataValue` carries the destination world id |
 
-### 27. Dueling --- KM
+### 27. Dueling --- IM (1v1 duels implemented end to end; awaiting the owner's in-client UAT)
 
-- **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
-- **Documentation**: [gameplay/duel-system.md](gameplay/duel-system.md), [reverse-engineering/findings/duel-wire-formats.md](reverse-engineering/findings/duel-wire-formats.md)
-- **Rust code**: **No dedicated duel module.** `sendDuelResponse` (CM 102) and `duelForfeit` (CM 103) log `UNIMPLEMENTED` in `cell_methods/player/social.rs:92-101`. Client-method constants for `onDuelChallenge` (143) and `onDuelEntitiesSet/Remove/Clear` (151-153) exist in `cell/client_methods/player.rs:93-114` but nothing emits them.
-- **Recent PRs**: none since 2026-07-25
-- **Open issues**: #569 (implement duel system)
-- **Path forward**: 5-state machine port; 7 defeat-condition enum (#569).
-
-| Feature | Status | Blocks | Code | Evidence / Notes |
-|---------|--------|--------|------|------------------|
-| Duel challenge | KM | -- | -- | State: ResponsePending. No challenge method is dispatched |
-| Duel response | KM | -- | stub | social.rs:92-97 |
-| Duel start | KM | Combat | -- | StartPending → Engaged |
-| Duel forfeit | KM | -- | stub | social.rs:100-101 |
-| Defeat conditions | KM | Combat | -- | 7 types |
-| Duel marker entity | KM | -- | -- | SGWDuelMarker not ported |
-
-### 28. Pets --- KM
-
-- **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
-- **Documentation**: [gameplay/pet-system.md](gameplay/pet-system.md), [reverse-engineering/findings/pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md)
-- **Rust code**: No dedicated pet module. `petInvokeAbility`, `petAbilityToggle` and `petChangeStance` decode their args and log `UNIMPLEMENTED` (`cell_methods/player/social.rs:15-55`). The pet entity extends SGWMob in Python; no Rust equivalent.
-- **Recent PRs**: none since 2026-07-25
-- **Open issues**: #570 (implement pet / companion system)
-- **Path forward**: Pet entity (extends spawner mob), Follow AI state, command handling (#570). The NPC follow tick now covers being-class followers (#791), which a pet port could reuse.
+- **Confidence**: HIGH (code read and tested 2026-09-27, social-systems SS-D1 to SS-D3 and SS-U2)
+- **Documentation**: [gameplay/duel-system.md](gameplay/duel-system.md), [reverse-engineering/findings/duel-wire-formats.md](reverse-engineering/findings/duel-wire-formats.md), [analysis/social-systems/](analysis/social-systems/README.md) (campaign ledger and owner UAT)
+- **Rust code**: `base/dispatch/duel.rs` (0xD9) and the cell `DuelRegistry` in [`crates/cell-world/src/cell/duel/`](../crates/cell-world/src/cell/duel/) (challenge, response, engage, end, forfeit, paths, tick, GM). SS-D1 added the challenge and the answer (`onDuelChallenge` 143). SS-D2 added the countdown display (`onTimerUpdate` type 14), the engage (`onDuelEntitiesSet` 151, the PvP flag as `onEntityProperty(4, v)` to both duelists and their witnesses, the partner as a combat source) and the harm gate (`combat::player_may_attack`, used by all four hostility gates; a pet never joins a duel). SS-D3 added every end path through `end_engaged` (879 to the winner, a line to the loser): forfeit (CM 103, engaged only, else 880), the non-lethal 1 HP clamp in the ability and effect-pulse paths (D-SS20), death from anyone else, disconnect, every teleport and gate travel, and range (40 units for 5 s, D-SS19), each logged with the client's `EDuelDefeatReason`. SS-U2 added the `sparbot` wireclient duel partner and GM `.duel_status` / `.duel_end`.
+- **Recent PRs**: #888 (SS-D1), #911 (SS-D2), #924 (SS-D3), #910 (SS-U2)
+- **Open issues**: #569 (implement duel system; covered by the campaign, to close after the owner's UAT)
+- **Path forward**: the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) steps 11-13. Squad duels are out of scope and refused with feedback. Every duel number (30 s challenge, 5 s countdown, 20-unit challenge range, 40-unit arena with a 5 s grace, 60 s pair cooldown, 10-minute limit) is project policy awaiting owner confirmation.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Pet ability list sync | KM | -- | -- | -- |
-| Pet stance list sync | KM | -- | -- | -- |
-| Invoke pet ability | KM | Combat | stub | social.rs:15-25 |
-| Toggle pet ability | KM | -- | stub | social.rs:31-41 |
-| Change pet stance | KM | -- | stub | social.rs:47-55 |
-| Pet following | KM | NPC AI (Follow) | -- | Needs a pet owner; the follow state itself exists for escort NPCs |
-| Pet combat AI | KM | NPC AI | -- | Inherits SGWMob |
+| Duel challenge | IM | -- | base/dispatch/duel.rs; cell/duel/challenge.rs | SS-D1: rate limit, online lookup, Ignore, self, space, range, busy and pair-cooldown checks; not yet client-tested |
+| Duel response | IM | -- | cell/duel/response.rs | SS-D1: accept, decline, expiry; SS-D2: the accept starts both clients' countdown (`onTimerUpdate` type 14) |
+| Duel start | IM | -- | cell/duel/engage.rs; cell/duel/end.rs; combat/aggression.rs | SS-D2: StartPending → Engaged, 151 to both, PvP flag to both and their witnesses (replayed on AoI enter), combat pair, the four-gate harm rule. Unit, type 8 and type 11 tested; not yet client-tested |
+| Duel forfeit | IM | -- | cell/duel/forfeit.rs | SS-D3: engaged only (880 otherwise), the caller loses, 879 to the partner. Unit, type 12 and type 11 tested (`forfeit_rejected_when_not_engaged`); not yet client-tested |
+| Defeat conditions | IM | -- | cell/duel/end.rs, paths.rs; damage_apply; effects/pulsing/tick.rs | SS-D3: Health (the 1 HP clamp, or a third-party death), Connection, Range, Teleport, Forfeit. LeftSquad and InDuel have no path while squad duels are refused. Unit and type 8 tested (`every_end_path_clears_pvp_flag`, `lethal_partner_hit_clamps_to_one_hp`, `no_loot_xp_or_corpse_after_a_clamped_end`, `range_ends_duel`); not yet client-tested |
+| Duel marker entity | KM | -- | -- | `SGWDuelMarker` not ported and not needed: the registry holds the state and the arena is checked on the duel tick (D-SS24) |
+
+### 28. Pets --- NT (was KM)
+
+- **Confidence**: HIGH (code re-read 2026-09-27 for the pets campaign close-out, PT-13)
+- **Documentation**: [gameplay/pet-system.md](gameplay/pet-system.md), [reverse-engineering/findings/pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md), [reverse-engineering/findings/pet-client-contract.md](reverse-engineering/findings/pet-client-contract.md), campaign ledger [analysis/pets/](analysis/pets/README.md)
+- **Rust code**: The pets campaign restored pets server-side; every packet has merged, and the owner's in-game UAT is pending. The PT-01 foundation is in `crates/cell-world/src/cell/pets/`: pet state, owner registry, spawn, the owner-only ability and stance list sync on AoI entry, and teardown. PT-02 ties the pet to its owner on every lifecycle path (despawn on logout, death and any trip out of the space; move beside the owner on a same-space teleport; a pet corpse despawns after 10 s). PT-06 routes kill XP and mission kill credit through `SpaceManager::credit_recipient`, so a pet's kill pays and credits its owner and a mob that kills a pet earns nothing. PT-03 lets a player summon a pet by casting its summon ability: 2826 Summon Straegis spawns template 350 after the 6 s warmup, one pet per owner, with visible feedback on every refusal. PT-11 seeds the rest of the Servant Lord roster: 1643 Summon Jaffa spawns template 351, 1645 Summon Prime 352 and 1644 Summon Lo'taur 353, each at its owner's level with all three stances. Of their pet-kit abilities only the staff auto attack (584) deals damage; 1652, 1654, 1653 and 3326-3329 have no damage values and no effect script. A pet-bar order for an ability with no visible result is refused with feedback, and the pet AI skips such abilities, so the Lo'taur holds fire: it cannot heal (friendly-target pet abilities are unsupported). Template 350 no longer carries `NoPetLeveling`, so the Straegis takes its owner's level. PT-04 implements the pet-bar commands in `crates/cell-methods/src/cell/cell_methods/player/pet/`: `petInvokeAbility` (88), `petAbilityToggle` (89) and `petChangeStance` (90, which also maps the small pet bar's slot numbers). Each command first resolves the pet through `SpaceManager::owned_pet` (CAT-C-11 / #462), and every refusal sends the owner an `onErrorCode` and a chat line. PT-05 adds the pet AI in `crates/cell-combat/src/cell/service/npc_ai/pet/`: follow the owner with a teleport back, the three stances, defend-owner, the owner-anchored leash and the owner's combat state. PT-08 makes the owner's own pet abilities act on the owner's pet (`use_ability/owner_pet/`): Holy Warrior, To The Death, Lord's Concentration and the Repair Turret heals, plus the Heed Our Calling passive that makes a summon instant (also through GM `.giveability`). PT-07 adds the GM tooling: `.pet summon|dismiss|stance|info|list`, `.giveability` and a pet trainer in the stasis-room debug hub. Not done: pet persistence (PT-10, not planned: pets are per session, D-PT01), turrets (PT-12, blocked: the client ships no turret model), a Lo'taur that heals, the no-op kit abilities, and pet leveling past the owner's level at summon.
+- **Recent PRs**: pets campaign #863 (PT-E1), #865 (PT-S), #870 (PT-01), #892 (PT-02), #889 (PT-06), #890 (PT-03), #896 (PT-05), #901 (PT-04), #908 (PT-07), #918 (PT-11), #920 (PT-08)
+- **Open issues**: #570 (implement pet / companion system; open until the owner's UAT). Follow-ups: #906 (an instant-cast ability can hit a target in another space), #919 (ability ranges look like centimetres but are compared as world units; a Jaffa fires 1652 from any distance), #891 (LogCapture tests flake under plain `cargo test`)
+- **Path forward**: The owner's in-game UAT (checklist in [analysis/pets/handoffs/session-resume.md](analysis/pets/handoffs/session-resume.md)). Then an ally-target branch in the pet AI so the Lo'taur can heal, effects for the no-op kit abilities, the `knownPetAbilities` path for pet-trained abilities, and a model decision for turrets.
+
+| Feature | Status | Blocks | Code | Evidence / Notes |
+|---------|--------|--------|------|------------------|
+| Pet ability list sync | NT | -- | `cell/pets/create_on_client.rs` | `onPetAbilityList` to the owner only, on AoI entry and on `requestEntityUpdate` (PT-01); re-sent after a toggle (PT-04). Not yet client-tested |
+| Pet stance list sync | NT | -- | `cell/pets/create_on_client.rs` | `onPetStanceList` to the owner only, filtered by the template's stance flags, plus `onPetStanceUpdate` when the stance is not Defensive (PT-01). Not yet client-tested |
+| Invoke pet ability | NT | Combat | `cell_methods/player/pet/invoke.rs` | PT-04: ownership guard, then bar, toggle, cooldown, target, range and line-of-sight checks; the pet casts and engages the target. An ability with no visible result is refused (PT-11). Every refusal gives feedback. Not yet client-tested |
+| Toggle pet ability | NT | -- | `cell_methods/player/pet/toggle.rs` | PT-04: updates the toggled-off list and re-sends the bar; the AI skips a toggled-off ability (PT-05). The shipped client never calls CM 89 (A-06) |
+| Change pet stance | NT | -- | `cell_methods/player/pet/stance.rs` | PT-04: a stance id or a 1-based slot (the small pet bar's A-07 bug), then `onPetStanceUpdate` to the owner. Not yet client-tested |
+| Pet following | NT | NPC AI (Follow) | `npc_ai/pet/owner_follow.rs` | Follow band 2-5 u, teleport past 40 u or across a floor, once per 5 s (PT-05). Not yet client-tested |
+| Pet combat AI | IM | NPC AI | `npc_ai/pet/` | Stances, defend-owner, owner-anchored leash, owner combat state (PT-05). Known gaps: the Lo'taur holds fire (no ally-target branch), most kit abilities do nothing (PT-11), mobs engage a pet only once it has hit them, and the owner enters combat on the pet's next AI turn. Not yet client-tested |
 
 ### 29. Minigames --- IM (was KM)
 
@@ -913,22 +927,22 @@ last_updated: 2026-09-25
 | Contact system | KM | -- | cell/cell_methods/minigame.rs | `minigameContactRequest` logs `UNIMPLEMENTED` |
 | Minigame server (SmartFox 1.x) | CW | -- | minigame/server/ | **IM → CW 2026-09-25.** In-process SFS listener (`API_VERSION = 154`) completed handshake and play with the real Flash SWF 12 times (playtest). Open hardening, not function: no read timeout or connection cap, and re-auth of a connected ticket is still accepted (#532, #470). Re-verified 2026-09-25 |
 
-### 30. Groups / Parties --- KM
+### 30. Groups / Parties --- NT (the squad is the group; see §23)
 
-- **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
+- **Confidence**: HIGH (code read at the organizations close-out, ORG-11, 2026-09-27)
 - **Documentation**: [gameplay/group-system.md](gameplay/group-system.md), [reverse-engineering/findings/group-wire-formats.md](reverse-engineering/findings/group-wire-formats.md)
-- **Rust code**: None. The unwired 97-line `Group` / `LootMode` sketch in `crates/game/src/social/groups.rs` was deleted by #699 (closing issue #614); `crates/game/src/social/` no longer exists. `squadSetLootMode` logs `UNIMPLEMENTED` (cell_methods/organization.rs:140-143).
-- **Recent PRs**: #699 (deleted the unused social module)
+- **Rust code**: the group is the Squad organization, implemented as cell state without `GroupAuthority` (D-ORG03): [`crates/cell-world/src/cell/squad/`](../crates/cell-world/src/cell/squad/) and [`crates/cell-methods/src/cell/cell_methods/organization/squad/`](../crates/cell-methods/src/cell/cell_methods/organization/squad/). These rows share their code and tests with §23's squad rows. The unwired 97-line `Group` / `LootMode` sketch in `crates/game/src/social/groups.rs` was deleted by #699 (closing issue #614).
+- **Recent PRs**: #886 (ORG-03 squad core), #922 (ORG-04 squad chat), #699 (deleted the unused social module)
 - **Open issues**: #568 (organizations, including the Squad type)
-- **Path forward**: Implement as a lightweight Squad-type Organization on top of #568.
+- **Path forward**: the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo) steps 1-4; member info updates, loot distribution by mode, and the combat-assist hooks.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Group creation | KM | -- | -- | EORG_TYPE_Squad = 0 |
-| Group invite | KM | -- | -- | -- |
-| Group leave | KM | -- | -- | -- |
-| Member info sync | KM | -- | -- | 9 EMEMBER_INFO types defined |
-| Loot mode setting | KM | Loot | stub | squadSetLootMode, organization.rs:143 |
+| Group creation | NT | -- | cell-world/src/cell/squad/ | A squad is founded on the first accepted `/squadinvite` (ORG-03); `EORG_TYPE_Squad = 0` |
+| Group invite | NT | -- | cell_methods/organization/squad/invite.rs | Same code as §23 "Squad invite/accept" |
+| Group leave | NT | -- | cell_methods/organization/squad/membership.rs | Same code as §23 "Squad leave, kick, disconnect" |
+| Member info sync | KM | -- | -- | 9 EMEMBER_INFO types defined; the squad roster carries level and archetype as a snapshot at join, and nothing re-sends them |
+| Loot mode setting | IM | Loot | cell_methods/organization/squad/loot.rs | The leader sets RoundRobin or FreeForAll and every member sees it (ORG-03); no loot path reads the mode yet |
 | Group combat assist | KM | Combat, NPC AI | -- | onGroupMateEnteredCombat. (NPC-side same-room assist aggro, #789, is NPC-to-NPC and unrelated) |
 | Threat transfer | KM | NPC AI | -- | onGroupMateThreatTransfer |
 
@@ -1126,13 +1140,13 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 
 ### Rate Limiting --- KM
 
-- **Confidence**: HIGH (code searched 2026-09-25: no chat, action, trade or login throttle anywhere in `crates/services`)
+- **Confidence**: HIGH (code searched 2026-09-25: no chat, action, trade or login throttle anywhere in `crates/services`; chat limit added 2026-09-27 by SS-00)
 - **Recent PRs**: #740 (dev-session token mint and refresh quotas, closes #441)
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
 | Ability cooldown enforcement | CW | -- | cell/abilities/ | Per-ability timers |
-| Chat flood protection | KM | -- | -- | No rate limit on messages |
+| Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Base-side token bucket (burst 5, 1/s) before the cell forward, not the cell-tick design in `server-infrastructure-proposals.md` §2, and enforced from day one (D-SS14). The same `rate_limit` module holds the mail-send (burst 3, 1/10 s) and duel-challenge (burst 2, 1/15 s) buckets, wired by SS-M1 and SS-D1 (see §24 and §27). No in-client test on record |
 | Action throttling | KM | -- | -- | No per-action rate tracking |
 | Trade request spam | KM | Trade | -- | No request cooldown |
 | Login attempt limiting | KM | -- | -- | No brute-force protection on the auth service |
@@ -1154,6 +1168,7 @@ Four layers of server-authoritative movement validation landed in PRs #437 and #
 | Teleport detection | IM | -- | entity/movement_validation/mod.rs:24-29 | Hard reject on the dual distance-AND-implied-speed gate. Recovery path rewritten by #644 after the playtest rubber-band loop; not re-tested in client since |
 | Damage sanity check | KM | -- | -- | No max-damage cap |
 | Action-at-distance exploit | IM | -- | cell/abilities/use_ability/handle.rs:238-262 | `useAbility` rejects targets beyond the ability's `max_range` (30.0 default) with `OutsideWeaponRange`. Player-side LOS is still *not* checked on this path; the #797 occluder LoS serves NPC AI only |
+| Ability-trainer authority | IM | -- | ability_tree/gates/trainer.rs; cell/interactions/trainer_authority.rs; cell/cell_methods/player/vendor/train_feedback.rs | **New 2026-09-26 (AT-04).** `trainAbility` used to train from anywhere. It now needs a pinned, live trainer whose list offers the node to the archetype, within `interact_target_in_range`. Rejections send `onErrorCode` (6/9/167/43) and then re-send `onTrainerOpen`. `interact_target_in_range` also rejects a target in another space, which closes the same hole for `interact`. Unit and wire tests only; not client-validated, and whether the client renders `onErrorCode` is unresolved (AT-E1 Q2) |
 
 ### Economy Sinks / Faucets --- IM
 
@@ -1202,7 +1217,7 @@ Re-read 2026-09-25. Every vendor-priced sink and faucet depends on a store windo
 - **Recent PRs**: #609 (GM gate extended to the minigame debug quartet, CM 20-23), #635-#640 and #642 (legacy dot-command parity packets P01-P05, P08, P18, P26, P44-P47), #644 (case-insensitive world lookup, `.gotospace`, account identity on console logs), #749 (`.summon` always brings the player to the caller), #787 (`.aggro` toggle), #676 (`.bug` playtest bookmark; rejected console commands now logged), #724 (admin API binds loopback by default), #740 (dev-session quotas)
 - **Open issues**: #439 (admin API has no authentication; the loopback bind is step 1 only), #473 (security audit CAT-N, 40 GM findings)
 
-The GM command surface shipped in June via the client's **native `/` console**: the `SGWGmPlayer` class flip (PR #473, merged in #518 on 2026-06-17) makes a GM enter the world as entity class `0x03`, which unlocks the client's built-in GM command tail. Owner-confirmed working 2026-06-20. The **legacy dot-command parity campaign** has integrated 12 of 49 P packets (P01-P05, P08, P18, P26, P44-P47); P49 is implemented and awaiting UAT; P06, P07 and P48 are Ready; the other P packets wait on dependencies and all 14 G design groups (G01-G14) are BlockedDesign ([work-packets.md](analysis/legacy-command-parity/work-packets.md)). None of the six milestone UATs (M1-M6) has run. Ban/mute is still missing.
+The GM command surface shipped in June via the client's **native `/` console**: the `SGWGmPlayer` class flip (PR #473, merged in #518 on 2026-06-17) makes a GM enter the world as entity class `0x03`, which unlocks the client's built-in GM command tail. Owner-confirmed working 2026-06-20. The **legacy dot-command parity campaign** has integrated 12 of 49 P packets (P01-P05, P08, P18, P26, P44-P47); P49 is implemented and awaiting UAT; P06, P07 and P48 are Ready; the other P packets wait on dependencies and all 14 G design groups (G01-G14) are BlockedDesign ([work-packets.md](analysis/legacy-command-parity/work-packets.md)). None of the six milestone UATs (M1-M6) has run. A GM mute (`.mute` / `.unmute`) landed with the social-systems campaign (SS-C3); ban is still missing.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -1211,14 +1226,14 @@ The GM command surface shipped in June via the client's **native `/` console**: 
 | Native GM console (SGWGmPlayer) | CW | -- | cell/console/gm/ | 6,070 lines across give / stats / missions / travel / spawn / query / world / feedback + tests. PRs #473 / #516 / #518 / #521 / #524. Owner-confirmed 2026-06-20 |
 | Access level system | CW | -- | cell/dispatch/gm_gate.rs | `enforce_gm_gate` refuses the whole gated method range; #609 added the minigame debug methods 20-23 to the allow-list. Owner-confirmed 2026-06-20 |
 | Python console | KM | -- | -- | C++ console not ported (intentional security) |
-| Console commands | IM | -- | crates/commands/ | Generic command framework (registry / parser / permissions). **Not** the active dot roster: the live path is cell/console/chat.rs → cell/console/ (legacy-command-parity README, "Architecture Guardrails") |
+| Console commands | IM | -- | crates/commands/ | Generic command framework (registry / parser / permissions). **Not** the active dot roster: the live path is cell/console/chat/ → cell/console/ (legacy-command-parity README, "Architecture Guardrails") |
 | Dev/authoring `.`-console | IM | -- | cell/console/ | 12,730 lines, 89 registered dot commands. 12 of 49 parity packets integrated, milestone UATs pending. In-client record: the 2026-09-18 playtest ran `.speed`, `.gotoxyz`, `.location` and `.searchmission` successfully (12 of 20 accepted; appendix-session-timeline.md lines 76, 83, 123, 148). Re-verified 2026-09-25 |
 | Player info lookup | IM | -- | admin-api/routes/players.rs, cell/console/query.rs | Plus `gmShowPlayer` / `gmUsers` / `testLOS`, and `.info` / `.players` (P02, P04; `.players` now CellApp-wide) |
-| Ban/mute system | KM | -- | -- | No `GM_BAN` / `GM_MUTE` index and no handler anywhere in `crates/`. The admin API has a `/players/{id}/kick` route only |
+| Ban/mute system | KM | -- | -- | No `GM_BAN` / `GM_MUTE` index and no ban anywhere in `crates/`; the admin API has a `/players/{id}/kick` route only. A GM chat mute exists as `.mute` / `.unmute` (SS-C3, see §21 "Mute system"), held in memory and not saved across a restart |
 | Teleport command | CW | -- | cell/console/gm/travel.rs, cell/console/travel/ | Native `gmGotoXYZ` / `gmGoto` / `gmSummon` / `gmGotoLocation` / `gmDHD`, plus the dot commands `.gotoxyz` / `.goto` / `.summon` / `.gotolocation` / `.gotospace` (P26, P44-P46, #644, #749). `.gotoxyz` confirmed in the 2026-09-18 colo playtest (appendix-session-timeline.md line 148, "Works as designed"). Re-verified 2026-09-25 |
 | Item grant | CW | -- | cell/console/gm/give.rs | `gmGiveItem`, alongside give-xp / give-cash / remove-item / give-expertise / give-ASP; base-side confirmation. Owner-confirmed 2026-06-20. Dot `.giveitem` (P06) not yet built |
 | Action logging | NT | -- | cell/console/dispatch.rs:47-116, cell/playtest_friction.rs | **Promoted 2026-09-25 (was IM).** Accepted commands log with `account_id` / `player_id` / `access_level` (#644) and relay to the Discord GM channel; rejections (unknown command, argc, bad target) now log with a `reason` (#676), closing playtest gap G7. The accepted-command audit reconstructed the 2026-09-18 playtest; rejection logging not yet seen in a session |
-| Announcement broadcast | KM | Chat | -- | -- |
+| Announcement broadcast | NT | -- | cell/console/gm/shout.rs | `/gmshout` and `.announce` (SS-C2); see §21 "GM broadcast" |
 
 ### Metrics / Telemetry --- CW
 
@@ -1242,7 +1257,7 @@ The GM command surface shipped in June via the client's **native `/` console**: 
 
 ## Summary Completion Matrix
 
-Recomputed 2026-09-25 directly from the feature rows above.
+Recomputed 2026-09-27 directly from the feature rows above, by script: every matrix row equals the count of its section's feature rows.
 
 | # | System | Total | CW | NT | IM | KM | NU |
 |---|--------|-------|----|----|----|----|-----|
@@ -1251,7 +1266,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 3 | Game Data Pipeline | 9 | 6 | 2 | 0 | 1 | 0 |
 | 4 | Database Persistence | 8 | 6 | 0 | 0 | 2 | 0 |
 | 5 | Character Creation | 11 | 4 | 4 | 1 | 2 | 0 |
-| 6 | World Entry and Spaces | 10 | 7 | 2 | 1 | 0 | 0 |
+| 6 | World Entry and Spaces | 12 | 7 | 4 | 1 | 0 | 0 |
 | 7 | Movement and Navigation | 11 | 1 | 3 | 7 | 0 | 0 |
 | 8 | Entity Lifecycle | 10 | 6 | 2 | 1 | 1 | 0 |
 | 9 | Combat and Abilities | 24 | 6 | 0 | 14 | 4 | 0 |
@@ -1263,19 +1278,19 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 15 | Stores / Vendors | 8 | 1 | 6 | 1 | 0 | 0 |
 | 16 | NPC AI and Behavior | 26 | 8 | 6 | 9 | 3 | 0 |
 | 17 | Spawn System | 23 | 7 | 0 | 1 | 14 | 1 |
-| 18 | XP and Leveling | 11 | 9 | 0 | 1 | 1 | 0 |
-| 19 | Crafting | 9 | 0 | 0 | 2 | 7 | 0 |
+| 18 | XP and Leveling | 12 | 7 | 3 | 1 | 1 | 0 |
+| 19 | Crafting | 9 | 0 | 0 | 8 | 1 | 0 |
 | 20 | Stargate Travel | 10 | 2 | 4 | 3 | 1 | 0 |
-| 21 | Chat | 10 | 0 | 1 | 2 | 7 | 0 |
+| 21 | Chat | 11 | 0 | 8 | 0 | 3 | 0 |
 | 22 | Trading | 8 | 0 | 0 | 8 | 0 | 0 |
-| 23 | Organizations / Guilds | 15 | 0 | 0 | 0 | 15 | 0 |
-| 24 | Mail | 13 | 0 | 2 | 2 | 8 | 1 |
+| 23 | Organizations / Guilds | 21 | 0 | 16 | 1 | 4 | 0 |
+| 24 | Mail | 17 | 0 | 15 | 0 | 2 | 0 |
 | 25 | Black Market | 10 | 0 | 0 | 0 | 9 | 1 |
 | 26 | Contact Lists | 10 | 10 | 0 | 0 | 0 | 0 |
-| 27 | Dueling | 6 | 0 | 0 | 0 | 6 | 0 |
-| 28 | Pets | 7 | 0 | 0 | 0 | 7 | 0 |
+| 27 | Dueling | 6 | 0 | 0 | 5 | 1 | 0 |
+| 28 | Pets | 7 | 0 | 6 | 1 | 0 | 0 |
 | 29 | Minigames | 9 | 5 | 0 | 1 | 3 | 0 |
-| 30 | Groups / Parties | 7 | 0 | 0 | 0 | 7 | 0 |
+| 30 | Groups / Parties | 7 | 0 | 3 | 1 | 3 | 0 |
 | 31 | Content Engine | 11 | 6 | 2 | 1 | 2 | 0 |
 | 32 | Mercury Bundle / ChannelBundle | 5 | 5 | 0 | 0 | 0 | 0 |
 | 33 | Observability Pipeline | 13 | 10 | 3 | 0 | 0 | 0 |
@@ -1284,31 +1299,44 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 36 | Tauri Admin App + Tools | 13 | 2 | 2 | 6 | 3 | 0 |
 | 37 | Ring Transport | 9 | 3 | 4 | 2 | 0 | 0 |
 | -- | Session Management | 7 | 0 | 0 | 4 | 3 | 0 |
-| -- | Rate Limiting | 6 | 1 | 1 | 0 | 4 | 0 |
-| -- | Anti-Cheat Validation | 7 | 1 | 0 | 5 | 1 | 0 |
+| -- | Rate Limiting | 6 | 1 | 2 | 0 | 3 | 0 |
+| -- | Anti-Cheat Validation | 8 | 1 | 0 | 6 | 1 | 0 |
 | -- | Economy Sinks / Faucets | 7 | 0 | 4 | 0 | 3 | 0 |
 | -- | World State Persistence | 6 | 1 | 1 | 1 | 3 | 0 |
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
-| -- | Admin / GM Tools | 13 | 4 | 1 | 5 | 3 | 0 |
+| -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **58** | **98** | **142** | **4** |
+| | **TOTALS** | **<!-- gen:gap-count total -->486<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->110<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->109<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->97<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
 
 ### Summary Percentages
 
-Recomputed 2026-09-25 directly from the rows above; the columns sum to the totals line and the totals line sums to 471.
+The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` after every merge; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->486<!-- /gen:gap-count --> features.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
-| Confirmed Working (CW) | 169 | 35.9% |
-| Needs Test (NT) | 58 | 12.3% |
-| Implemented (IM) | 98 | 20.8% |
-| Known/Missing (KM) | 142 | 30.1% |
-| Needed/Unknown (NU) | 4 | 0.8% |
+| Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->34.4%<!-- /gen:gap-pct --> |
+| Needs Test (NT) | <!-- gen:gap-count NT -->110<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->22.6%<!-- /gen:gap-pct --> |
+| Implemented (IM) | <!-- gen:gap-count IM -->109<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->22.4%<!-- /gen:gap-pct --> |
+| Known/Missing (KM) | <!-- gen:gap-count KM -->97<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->20.0%<!-- /gen:gap-pct --> |
+| Needed/Unknown (NU) | <!-- gen:gap-count NU -->3<!-- /gen:gap-count --> | <!-- gen:gap-pct NU -->0.6%<!-- /gen:gap-pct --> |
 
-**Code exists (CW + NT + IM)**: 325 features (69.0%)
-**Missing (KM + NU)**: 146 features (31.0%)
+**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->386<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->79.4%<!-- /gen:gap-pct -->)
+**Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->100<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->20.6%<!-- /gen:gap-pct -->)
 
-**Tested end-to-end (CW)**: 169 features (35.9%).
+**Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->34.4%<!-- /gen:gap-pct -->).
+
+### Since 2026-09-25
+
+| | CW | NT | IM | KM | NU | Total |
+|---|---:|---:|---:|---:|---:|---:|
+| 2026-09-25 | 169 | 58 | 98 | 142 | 4 | 471 |
+| 2026-09-27 (social close-out) | 167 | 93 | 108 | 111 | 3 | 482 |
+| 2026-09-27 (organizations close-out) | 167 | 110 | 109 | 97 | 3 | 486 |
+| **Delta** (2026-09-25 to now) | **-2** | **+52** | **+11** | **-45** | **-1** | **+15** |
+
+- **Social systems (mail, chat, 1v1 duels).** The social-systems campaign ([ledger](analysis/social-systems/README.md), PRs #873 to #937) moved Chat to 7 NT / 1 IM / 3 KM (tells, Ignore, flood limit, GM broadcast, GM mute), Mail to 15 NT / 2 KM with four new rows (server-generated mail, GM mail tools, quarantined-mail recovery, vault and organization aliases), and Dueling to 5 IM / 1 KM. Rate Limiting's chat row also covers the mail and duel buckets. Every one of these rows waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
+- **Other campaigns.** Crafting (CR-07 to CR-09), pets, organizations (ORG-03, ORG-04) and the ability-tree campaign changed feature rows in their sections. Four of those sections had been edited without their matrix row: World Entry (10 → 12 rows), XP and Leveling (11 → 12 rows, two CW rows now NT until the ability-tree UAT), Organizations (15 → 17 rows, 3 NT) and Anti-Cheat (7 → 8 rows). The close-out recount brought those matrix rows back in line with their tables.
+- **Organizations (Squads, Teams, Commands).** The organizations campaign ([ledger](analysis/organizations/README.md), PRs #861 to #954) moved §23 from 3 NT / 14 KM to 16 NT / 1 IM / 4 KM, with four new rows (kick, login restore and presence, disband, GM commands); the four KM rows left are the Bank campaign's cash and vault, and the two strike-team responses, which are refused because no strike-team feature exists. §30 now counts the squad as the group (3 NT / 1 IM / 3 KM), and §21's pre-defined channels row is NT now that team, command and officer lines are delivered (ORG-09). Every one of these rows waits on the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo).
 
 ### What moved since 2026-07-25
 
@@ -1341,7 +1369,7 @@ The headline percentages barely moved, for two opposite reasons. About 160 PRs l
 
 Every column is the sum of that edition's own rows, not the headline it printed. The 2026-05-27 totals line said 437 / CW 139 / KM 184 / NU 5, and the 2026-07-25 totals line said 443 / CW 159 / KM 128; neither matched its tables.
 
-The shape of "done" as of this pass: Mercury, observability and the content engine are firmly done. Two zones (Castle Cellblock and Castle) have been played end to end in a client, and a third (Harset) has been rebuilt but not yet played. The NPC AI restoration campaign (NA00-NA33) replaced the aggro, leash, cover and line-of-sight logic, and every world now has a navmesh (#794). The biggest gap has shifted from *missing code* to *missing client tests*: 58 rows are merged and waiting for a tester. The long-tail social systems (organizations, dueling, pets, groups) are still stubs, mail can only read, and the black market is still queued behind an unmerged branch.
+The shape of "done" as of this pass: Mercury, observability and the content engine are firmly done. Two zones (Castle Cellblock and Castle) have been played end to end in a client, and a third (Harset) has been rebuilt but not yet played. The NPC AI restoration campaign (NA00-NA33) replaced the aggro, leash, cover and line-of-sight logic, and every world now has a navmesh (#794). The biggest gap has shifted from *missing code* to *missing client tests*: 58 rows are merged and waiting for a tester. The long-tail social systems (organizations, dueling, pets, groups) are still stubs, mail can only read, and the black market is still queued behind an unmerged branch. (2026-09-27: mail, chat and 1v1 duels, pets and squads have since landed server-side; see [Since 2026-09-25](#since-2026-09-25).)
 
 ---
 
@@ -1349,15 +1377,15 @@ The shape of "done" as of this pass: Mercury, observability and the content engi
 
 Re-ranked 2026-09-25.
 
-1. **Client-test the September landings** — 58 rows are NT: the NPC AI changes merged after UAT-1, gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position, and vendors (untested since #609). This is the cheapest way to move the headline number
+1. **Client-test the September landings** — 93 rows are NT (2026-09-27): the NPC AI changes merged after UAT-1, gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position, vendors (untested since #609), and the social-systems rows (mail, chat, duels; [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release)). This is the cheapest way to move the headline number
 2. **Effect-script content coverage** — the framework works but the long tail of the 3,216 effect rows still needs scripts, and the clear-on-damage / clear-on-revive / clear-on-bandolier-swap flags are not implemented. `cell/effects/scripts.rs` is 1,648 lines
 3. **AoI invisible-entity defect** — a witness can be correctly introduced to an entity and still not render it (Castle Cellblock GuardBody corpse). The 2026-09-19 repro put the drop inside the client, after a fully ACKed delivery, and fixed the `OTEL_FILTER` gap that had kept `aoi.create_emit` out of SigNoz. The first-login cinematic hold ships as the experiment on the one remaining lead; this needs an in-game repro to confirm or kill it, not more code
 4. **Mission rewards** — the `GrantXP` action exists (#618), but `mission.reward_xp` is 0 in every seed row and the reward formula needs a maintainer decision. Mission cash and item rewards are not dispatched at all (#310)
-5. **Crafting Phase 2** — state and persistence landed (#427); every player-facing verb still logs `UNIMPLEMENTED`
+5. **Crafting Phase 2** — state, persistence, the login sync, discipline learning, research, reverse engineering and alloying landed (#427, CR-03, CR-04, CR-08, CR-09); craft and respec still answer "not available yet"
 6. **Multi-zone end-to-end** — Castle Cellblock and Castle have been played in a client (2026-09-18 colo playtest); Harset is rebuilt but unplayed; the other spaces have navmeshes but no content campaign
-7. **Two-client verification** — trading, player-to-player introduction (#737) and chat between players have never been exercised with two clients
+7. **Two-client verification** — trading, player-to-player introduction (#737), chat between players, mail and duels have never been exercised with two real clients. The social-systems [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) is the script for the last three
 
-Quality-of-life items (organizations, mail polish, black market, dueling, pets, remaining minigame ports, groups) are still gated on the above but each can be picked up independently. GM tooling and contact lists have left this list.
+Quality-of-life items (organizations, black market, remaining minigame ports, groups) are still gated on the above but each can be picked up independently. GM tooling and contact lists have left this list, and so have mail, chat and 1v1 duels (the social-systems campaign, merged 2026-09-27, awaiting the owner's UAT) and pets (restored server-side 2026-09-27, awaiting the owner's in-game UAT).
 
 ---
 
@@ -1365,15 +1393,14 @@ Quality-of-life items (organizations, mail polish, black market, dueling, pets, 
 
 ### Documentation Exists but Rust Doesn't (port pending)
 
-Corrected 2026-07-25 — trading and contact lists have left this table.
+Corrected 2026-07-25 — trading and contact lists have left this table. Dueling left it on 2026-09-27 (social-systems SS-D1 to SS-D3).
 
 | System | Gameplay Doc | Wire Format Doc | Rust Code Status |
 |--------|-------------|----------------|-------------------|
-| Crafting | crafting-system.md | crafting-wire-formats.md | State + persistence ported (#427); all crafting verbs still stubs |
+| Crafting | crafting-system.md | crafting-wire-formats.md | State, persistence, login sync, ASP spend, craft, research, reverse engineering and alloying ported (#427, CR-03, CR-04, CR-07, CR-08, CR-09); respec is still a stub |
 | Organizations | organization-system.md | organization-wire-formats.md | 200 lines stubs — unchanged |
 | Black Market | black-market.md | black-market-wire-formats.md | 94 lines stubs on `main`; full Phase 1 waiting on `feat/571-black-market-phase1` |
-| Dueling | duel-system.md | duel-wire-formats.md | Not ported |
-| Pets | pet-system.md | pet-wire-formats.md | Not ported |
+| Pets | pet-system.md | pet-wire-formats.md | Restored server-side by the pets campaign (PT-E1 to PT-11, #570); owner in-game UAT pending. Not done: persistence (not planned, D-PT01), turrets (no client model), a Lo'taur that heals |
 | Groups | group-system.md | group-wire-formats.md | Not ported |
 
 ### Rust Code Exists but Doc Lags
@@ -1401,10 +1428,10 @@ Re-ranked 2026-09-25. #5 (speed-hack detection) is implemented but deliberately 
 
 | Rank | System | Impact | Status | Notes |
 |------|--------|--------|--------|-------|
-| 1 | Crafting verbs | HIGH — entire skill tree unplayable | KM | Phase 1 state landed (#427); craft / research / RE / alloy / ASP-spend all log `UNIMPLEMENTED` |
+| 1 | Crafting verbs | HIGH — no item can be crafted | KM | State (#427), login sync (CR-03), ASP spend (CR-04), research and reverse engineering (CR-08) and alloying (CR-09) landed; craft answers "not available yet" |
 | 2 | AoI entity-introduction drop | HIGH — entities silently invisible | IM | Known-open. Address-gate hypothesis disproved 2026-06-20; Mercury delivery retired 2026-09-19 (every create ACKed first try), so the drop is client-side. `aoi.create_emit` now actually exports to SigNoz. The first-login cinematic hold (#747) is the experiment on the n=1 cinematic lead, and as of 2026-09-25 nobody has recorded an in-game look since it shipped |
 | 3 | Organizations / guilds | MEDIUM — no persistent social layer | KM | 200 lines of stubs, no schema |
-| 4 | Rate Limiting | MEDIUM — exploitable | KM | No throttle on chat / trade-request / login. Trading shipped without a request cooldown, so this got *worse* |
+| 4 | Rate Limiting | MEDIUM — exploitable | KM | Chat, mail sends and duel challenges are limited since the social-systems campaign (SS-00, SS-M1, SS-D1, 2026-09-27); trade requests and login are still unthrottled. Trading shipped without a request cooldown, so this got *worse* |
 | 5 | Speed-hack enforcement | MEDIUM — detection lands, action doesn't | IM | Layer is live but warn-only by design pending tolerance calibration from SigNoz |
 | 6 | Damage sanity checking | MEDIUM — no max-damage cap | KM | The one anti-cheat layer with no implementation at all |
 | 7 | Mission rewards | MEDIUM — missions pay nothing | KM | `GrantXP` action exists (#618) but no seed rows use it and `reward_xp` is 0 everywhere; cash and item rewards are never dispatched (#310) |

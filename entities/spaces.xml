@@ -8,6 +8,13 @@
 	<Space WorldName="Beta_Site_Evo_1" Instanced="false" MinX="-1600" MaxX="2600" MinY="-3000" MaxY="3000" />
 	<Space WorldName="Castle" Instanced="false" MinX="0" MaxX="2400" MinY="0" MaxY="2400" />
 	<Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="CellBlock43" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="CellBlock55" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="CellBlock57" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="CellBlock58" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="CellBlock60" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="CellBlock62" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="CellBlock63" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
 	<Space WorldName="Dakara_E1" Instanced="false" MinX="-2000" MaxX="2000" MinY="-2000" MaxY="2000" />
 	<Space WorldName="Dakara_E1_StoryRm" Instanced="true" MinX="0" MaxX="200" MinY="0" MaxY="200" />
 	<Space WorldName="Harset" Instanced="false" MinX="-1000" MaxX="800" MinY="-800" MaxY="800" />

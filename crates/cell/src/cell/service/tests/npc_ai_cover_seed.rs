@@ -166,6 +166,7 @@ pub(super) fn mess_hall_guard() -> SpawnRecord {
         assist_radius: None,
         aggression_override: None,
         use_cover: Some(true),
+        vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
     }
 }
 

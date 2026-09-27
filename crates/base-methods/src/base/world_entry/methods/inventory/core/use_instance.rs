@@ -21,6 +21,11 @@
 //! authoritative signal the move handler already uses
 //! (`item_allows_container`), so reading it here keeps both sides
 //! consistent.
+//!
+//! Crafting items (a Blueprint item or a Racial Paradigm Guide, any type
+//! with `resources.crafting_item_effects` rows) bypass `OnItemUse` too: the
+//! crafting subsystem decides the use and consumes the item in the same
+//! transaction ([`super::use_crafting_item`]).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -30,11 +35,14 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
-use super::super::move_::handle_move_inventory_item;
+use super::super::move_::{handle_move_inventory_item, player_accessible};
+use super::access::{refuse_inaccessible, AccessOp};
+use super::use_crafting_item::{crafting_item_miss, use_crafting_item};
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::resources::bag_max_slots;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
+use cimmeria_wire::cell::vault::VaultAccess;
 
 // Re-export the canonical container ids the auto-equip router cares
 // about. Defined once in `cimmeria_entity::inventory`; re-named locally
@@ -83,6 +91,7 @@ pub async fn handle_use_inventory_item(
     player_id: i32,
     item_id: i32,
     target_id: i32,
+    vault: VaultAccess,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -111,6 +120,7 @@ pub async fn handle_use_inventory_item(
         type_id: i32,
         container_id: i32,
         is_bandolier_eligible: bool,
+        is_crafting_item: bool,
     }
     // `$3` is the canonical bandolier container id, bound from the
     // `CONTAINER_BANDOLIER` re-export rather than inlined in the SQL
@@ -120,7 +130,9 @@ pub async fn handle_use_inventory_item(
     // disagreeing.
     let row: InstanceRow = match sqlx::query_as::<_, InstanceRow>(
         "SELECT inv.type_id, inv.container_id, \
-                ($3 = ANY(ri.container_sets)) AS is_bandolier_eligible \
+                ($3 = ANY(ri.container_sets)) AS is_bandolier_eligible, \
+                EXISTS (SELECT 1 FROM resources.crafting_item_effects e \
+                        WHERE e.item_id = inv.type_id) AS is_crafting_item \
          FROM sgw_inventory inv \
          JOIN resources.items ri ON ri.item_id = inv.type_id \
          WHERE inv.character_id = $1 AND inv.item_id = $2 \
@@ -134,6 +146,32 @@ pub async fn handle_use_inventory_item(
     {
         Ok(Some(r)) => r,
         Ok(None) => {
+            // A crafting item that is not (or no longer) this player's gets
+            // the crafting refusal line; any other item stays a silent WARN.
+            if crafting_item_miss(
+                pool,
+                entity_id,
+                player_id,
+                item_id,
+                connected,
+                entity_to_addr,
+            )
+            .await
+            {
+                use_crafting_item(
+                    entity_id,
+                    player_id,
+                    item_id,
+                    pool,
+                    db_pool,
+                    cell_tx,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+                return;
+            }
             tracing::warn!(
                 player_id, item_id,
                 "UseInventoryItem: instance not found for this character — refusing to fire ItemUsed"
@@ -146,6 +184,25 @@ pub async fn handle_use_inventory_item(
         }
     };
     let type_id = row.type_id;
+
+    // Only an item the player can reach may be used (BV-03): not one in
+    // buyback, and one in the vault only with a vault session open.
+    if !player_accessible(row.container_id, &vault) {
+        refuse_inaccessible(
+            AccessOp::Use,
+            entity_id,
+            player_id,
+            item_id,
+            row.container_id,
+            &vault,
+            pool,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        return;
+    }
 
     // Right-click auto-equip / auto-unequip: bandolier-eligible items
     // bypass the `OnItemUse` event entirely and route to the move path
@@ -209,6 +266,24 @@ pub async fn handle_use_inventory_item(
             target_container,
             target_slot,
             1, // quantity — weapons are stack=1
+            db_pool,
+            cell_tx,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        return;
+    }
+
+    // Crafting items: the crafting use decides and consumes. `target_id`
+    // plays no part; the effect always applies to the user.
+    if row.is_crafting_item {
+        use_crafting_item(
+            entity_id,
+            player_id,
+            item_id,
+            pool,
             db_pool,
             cell_tx,
             transport,

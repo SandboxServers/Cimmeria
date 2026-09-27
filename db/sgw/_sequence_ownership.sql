@@ -44,3 +44,21 @@ ALTER SEQUENCE sgw_inventory_item_id_seq OWNED BY sgw_inventory.item_id;
 
 ALTER SEQUENCE sgw_contact_list_list_id_seq OWNED BY sgw_contact_list.list_id;
 
+
+--
+-- Name: sgw_organizations_org_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE sgw_organizations_org_id_seq OWNED BY sgw_organizations.org_id;
+
+--
+-- Name: sgw_organization_events_org_event_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE sgw_organization_events_org_event_id_seq OWNED BY sgw_organization_events.org_event_id;
+
+--
+-- Name: sgw_organization_vault_log_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE sgw_organization_vault_log_log_id_seq OWNED BY sgw_organization_vault_log.log_id;

@@ -38,6 +38,11 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_GIVE_ITEM, 109 + 24, "gmGiveItem (def line 185)");
     assert_eq!(GM_GIVE_CASH, 109 + 25, "gmGiveCash (def line 191)");
     assert_eq!(GM_REMOVE_ITEM, 109 + 26, "gmRemoveItem (def line 196)");
+    assert_eq!(
+        GM_GIVE_TRAINING_POINTS,
+        109 + 28,
+        "gmGiveTrainingPoints (def line 207)"
+    );
     assert_eq!(GM_GIVE_EXPERTISE, 109 + 30, "gmGiveExpertise (offset 30)");
     assert_eq!(
         GM_GIVE_APPLIED_SCIENCE_POINTS,
@@ -52,6 +57,11 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_SET_TARGET, 109 + 47, "gmSetTarget (def line 302)");
     assert_eq!(GM_DHD, 109 + 50, "gmDHD (def line 325)");
     assert_eq!(GM_USERS, 109 + 57, "gmUsers (def line 363)");
+    assert_eq!(
+        GM_RELOAD_ORGANIZATIONS,
+        109 + 55,
+        "gmReloadOrganizations (def line 355)"
+    );
     assert_eq!(TEST_LOS, 109 + 107, "testLOS (def line 619)");
     assert_eq!(
         GM_SHOW_TARGET_LOCATION,
@@ -90,6 +100,7 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_KILL_TARGET, 109 + 81, "gmKillTarget (def line 482)");
     assert_eq!(DESPAWN_MOB, 109 + 104, "despawnMob (def line 605)");
     assert_eq!(GM_PHYSICS, 109 + 112, "onPhysics (def line 645)");
+    assert_eq!(GM_SEND_GM_SHOUT, 109 + 113, "sendGMShout (def line 650)");
 }
 
 /// All implemented indices sit in the GM tail (109 or above), so the
@@ -107,6 +118,7 @@ fn implemented_indices_are_in_gm_tail() {
         GM_GIVE_ITEM,
         GM_GIVE_CASH,
         GM_REMOVE_ITEM,
+        GM_GIVE_TRAINING_POINTS,
         GM_GIVE_EXPERTISE,
         GM_GIVE_APPLIED_SCIENCE_POINTS,
         GM_SPAWN_BY_CMD,
@@ -123,6 +135,7 @@ fn implemented_indices_are_in_gm_tail() {
         GM_KILL_TARGET,
         DESPAWN_MOB,
         GM_USERS,
+        GM_RELOAD_ORGANIZATIONS,
         TEST_LOS,
         GM_SHOW_TARGET_LOCATION,
         GM_SHOW_ROTATION,
@@ -139,6 +152,7 @@ fn implemented_indices_are_in_gm_tail() {
         GM_SUMMON,
         GM_DEBUG_MOB_DATA,
         GM_PHYSICS,
+        GM_SEND_GM_SHOUT,
     ] {
         assert!(
             idx >= GM_TAIL_BASE,
@@ -222,10 +236,14 @@ async fn unimplemented_gm_index_returns_false() {
 }
 
 mod give;
+mod give_training_points;
 mod missions;
+mod organizations;
 mod physics;
 mod query;
+mod shout;
 mod spawn;
 mod stats;
 mod travel;
+mod travel_pets;
 mod world;

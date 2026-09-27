@@ -146,6 +146,8 @@ mod tests {
             account_name: None,
             access_level: 0,
             dnd_message: None,
+            afk_message: None,
+            ignore: Default::default(),
             char_list_sent: false,
             world_entry_sent: false,
             pending_player_entity_id: None,
@@ -168,6 +170,9 @@ mod tests {
             cancelled: Arc::new(AtomicBool::new(false)),
             cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
             cinematic_aoi_hold: None,
+            listed_online: false,
+            rate_limits: Default::default(),
+            org_invites: Default::default(),
             player_name: None,
             player_level: None,
             player_archetype: None,
@@ -180,6 +185,7 @@ mod tests {
             channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
                 "127.0.0.1:9999".parse().unwrap(),
             )),
+            crafting_options: Default::default(),
         }
     }
 

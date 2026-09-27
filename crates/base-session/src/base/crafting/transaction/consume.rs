@@ -1,0 +1,253 @@
+//! The input half of the crafting transaction: check the player, re-check
+//! the named instances, consume them exactly or by design.
+
+use sqlx::{Postgres, Transaction};
+
+use super::failure::{at, expect_rows};
+use super::{ConsumedStack, CraftApplied, CraftTxError, NamedItem, CRAFTING_INPUT_BAGS};
+use crate::base::crafting::feedback::CraftReject;
+use crate::base::crafting::telemetry::JobIds;
+
+/// Check the player's row exists, without locking it. The transaction
+/// writes nothing on `sgw_player`, and the vendor stack (purchase, sell,
+/// repair, buyback) locks inventory rows before the player row: holding
+/// the player row here while waiting for an inventory row would close a
+/// deadlock cycle with any of them. A second completion for the same
+/// player is serialized by the player-wide advisory lock instead.
+pub(super) async fn check_player(
+    tx: &mut Transaction<'_, Postgres>,
+    player_id: i32,
+) -> Result<(), CraftTxError> {
+    let found: Option<i32> =
+        sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(at("check_player"))?;
+    match found {
+        Some(_) => Ok(()),
+        None => Err(CraftTxError::Invalid {
+            phase: "check_player",
+            reason: "player_missing",
+        }),
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct NamedRow {
+    item_id: i32,
+    character_id: i32,
+    type_id: i32,
+    stack_size: i32,
+    container_id: i32,
+}
+
+/// Lock the named instances and check each still belongs to the player,
+/// is of the design the plan expects, and sits in the main or crafting
+/// bag. The request was validated when it was queued; this is the
+/// re-check at completion, three seconds later. Returns the locked rows
+/// for [`consume_instance`].
+pub(super) async fn check_named_items(
+    tx: &mut Transaction<'_, Postgres>,
+    player_id: i32,
+    named: &[NamedItem],
+) -> Result<Vec<NamedStack>, CraftTxError> {
+    if named.is_empty() {
+        return Ok(Vec::new());
+    }
+    let item_ids: Vec<i32> = named.iter().map(|n| n.item_id).collect();
+    let rows: Vec<NamedRow> = sqlx::query_as(
+        "SELECT item_id, character_id, type_id, stack_size, container_id FROM sgw_inventory \
+         WHERE item_id = ANY($1) ORDER BY item_id FOR UPDATE",
+    )
+    .bind(&item_ids)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(at("check_named"))?;
+    let mut locked = Vec::with_capacity(named.len());
+    for n in named {
+        let item_id = n.item_id;
+        let Some(row) = rows
+            .iter()
+            .find(|r| r.item_id == item_id && r.character_id == player_id)
+        else {
+            return Err(CraftReject::ComponentMissing { item_id }.into());
+        };
+        if row.type_id != n.design_id {
+            return Err(CraftReject::ComponentMismatch {
+                item_id,
+                expected_design_id: n.design_id,
+                type_id: row.type_id,
+            }
+            .into());
+        }
+        if !CRAFTING_INPUT_BAGS.contains(&row.container_id) {
+            return Err(CraftReject::ComponentNotInCraftingBags {
+                item_id,
+                container_id: row.container_id,
+            }
+            .into());
+        }
+        locked.push(NamedStack {
+            item_id,
+            type_id: row.type_id,
+            stack_size: row.stack_size,
+            container_id: row.container_id,
+        });
+    }
+    Ok(locked)
+}
+
+/// A named instance as [`check_named_items`] locked it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct NamedStack {
+    item_id: i32,
+    type_id: i32,
+    stack_size: i32,
+    container_id: i32,
+}
+
+/// Take `quantity` from exactly the named instance `item_id`, never from
+/// another stack of its design. Fewer than `quantity` on the instance
+/// refuses the transaction; a stack taken to nothing is deleted.
+pub(super) async fn consume_instance(
+    tx: &mut Transaction<'_, Postgres>,
+    ids: &JobIds,
+    named: &mut [NamedStack],
+    item_id: i32,
+    quantity: i32,
+    applied: &mut CraftApplied,
+) -> Result<(), CraftTxError> {
+    let Some(stack) = named.iter_mut().find(|s| s.item_id == item_id) else {
+        // `check_shape` guarantees every exact consumption is named.
+        return Err(CraftTxError::Invalid {
+            phase: "consume_named",
+            reason: "unnamed_instance",
+        });
+    };
+    if stack.stack_size < quantity {
+        return Err(CraftReject::NotEnoughComponents {
+            design_id: stack.type_id,
+            needed: quantity,
+            available: i64::from(stack.stack_size),
+        }
+        .into());
+    }
+    let player_id = ids.player_id;
+    let done = if quantity == stack.stack_size {
+        sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1 AND item_id = $2")
+            .bind(player_id)
+            .bind(item_id)
+            .execute(&mut **tx)
+            .await
+    } else {
+        sqlx::query(
+            "UPDATE sgw_inventory SET stack_size = stack_size - $1 \
+             WHERE character_id = $2 AND item_id = $3",
+        )
+        .bind(quantity)
+        .bind(player_id)
+        .bind(item_id)
+        .execute(&mut **tx)
+        .await
+    }
+    .map_err(at("consume_named"))?;
+    expect_rows(ids, "consume_named", done, 1)?;
+    applied.consumed.push(ConsumedStack {
+        item_id,
+        type_id: stack.type_id,
+        container_id: stack.container_id,
+        before: stack.stack_size,
+        after: stack.stack_size - quantity,
+    });
+    stack.stack_size -= quantity;
+    Ok(())
+}
+
+#[derive(sqlx::FromRow)]
+struct StackRow {
+    item_id: i32,
+    stack_size: i32,
+    container_id: i32,
+}
+
+/// Consume `quantity` of `design_id` from the main and crafting bags, the
+/// crafting bag first (where the crafting pages stage components), each
+/// bag in slot order. Each stack touched is recorded with its before and
+/// after size; a stack consumed to nothing is deleted. Fewer than
+/// `quantity` in both bags refuses the whole transaction.
+pub(super) async fn consume_design(
+    tx: &mut Transaction<'_, Postgres>,
+    ids: &JobIds,
+    design_id: i32,
+    quantity: i32,
+    applied: &mut CraftApplied,
+) -> Result<(), CraftTxError> {
+    let player_id = ids.player_id;
+    if quantity <= 0 {
+        // A verb that computed a non-positive cost has a bug (an overflow,
+        // a forged count); skipping the cost would grant for free.
+        return Err(CraftTxError::Invalid {
+            phase: "consume",
+            reason: "invalid_quantity",
+        });
+    }
+    let stacks: Vec<StackRow> = sqlx::query_as(
+        "SELECT item_id, stack_size, container_id FROM sgw_inventory \
+         WHERE character_id = $1 AND type_id = $2 AND container_id = ANY($3) \
+         ORDER BY array_position($3, container_id), slot_id FOR UPDATE",
+    )
+    .bind(player_id)
+    .bind(design_id)
+    .bind(CRAFTING_INPUT_BAGS.as_slice())
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(at("consume"))?;
+
+    // Summed in i64: a corrupt inventory could hold more than i32::MAX.
+    let available: i64 = stacks.iter().map(|s| i64::from(s.stack_size)).sum();
+    if available < i64::from(quantity) {
+        return Err(CraftReject::NotEnoughComponents {
+            design_id,
+            needed: quantity,
+            available,
+        }
+        .into());
+    }
+
+    let mut remaining = quantity;
+    for stack in stacks {
+        if remaining <= 0 {
+            break;
+        }
+        let take = remaining.min(stack.stack_size);
+        let done = if take == stack.stack_size {
+            sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1 AND item_id = $2")
+                .bind(player_id)
+                .bind(stack.item_id)
+                .execute(&mut **tx)
+                .await
+        } else {
+            sqlx::query(
+                "UPDATE sgw_inventory SET stack_size = stack_size - $1 \
+                 WHERE character_id = $2 AND item_id = $3",
+            )
+            .bind(take)
+            .bind(player_id)
+            .bind(stack.item_id)
+            .execute(&mut **tx)
+            .await
+        }
+        .map_err(at("consume"))?;
+        expect_rows(ids, "consume", done, 1)?;
+        remaining -= take;
+        applied.consumed.push(ConsumedStack {
+            item_id: stack.item_id,
+            type_id: design_id,
+            container_id: stack.container_id,
+            before: stack.stack_size,
+            after: stack.stack_size - take,
+        });
+    }
+    Ok(())
+}

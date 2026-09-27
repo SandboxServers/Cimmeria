@@ -15,9 +15,26 @@ use crate::cell::space_manager::SpaceManager;
 #[cfg(test)]
 mod bookmark;
 #[cfg(test)]
+mod bv02_bank;
+#[cfg(test)]
+mod bv04_bankdump;
+mod bv05_bankexpand;
+#[cfg(test)]
+mod cr05_allcraft;
+#[cfg(test)]
+mod craft_grants;
+#[cfg(test)]
 mod gm_audit_identity;
 #[cfg(test)]
 mod na13_aggro;
+#[cfg(test)]
+mod org04_squad;
+#[cfg(test)]
+mod org05_org_create;
+#[cfg(test)]
+mod org06_disband;
+mod org07_join_rank;
+mod org10_gm_suite;
 #[cfg(test)]
 mod p02;
 #[cfg(test)]
@@ -38,6 +55,22 @@ mod p38;
 mod p46;
 #[cfg(test)]
 mod p47;
+#[cfg(test)]
+mod pets;
+#[cfg(test)]
+mod pt07_giveability;
+#[cfg(test)]
+mod pt07_pet;
+#[cfg(test)]
+mod pt07_telemetry;
+#[cfg(test)]
+mod ss_c2_announce;
+#[cfg(test)]
+mod ss_c3_mute;
+#[cfg(test)]
+mod ss_u1_mail;
+#[cfg(test)]
+mod ss_u2_duel;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.

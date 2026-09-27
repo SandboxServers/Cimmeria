@@ -21,15 +21,23 @@ Defined on `SGWPet.def` (entity type, parent: `SGWMob`).
 
 | Field | Type | Wire Encoding |
 |-------|------|---------------|
-| `stanceList` | `ARRAY<INT32>` | 4B count + N×4B |
+| `stanceList` | `ARRAY<INT8>` | 4B count + N×1B |
+
+> **Correction (2026-09-27, PT-E1)**: previously documented as `ARRAY<INT32>`. `SGWPet.def:88`
+> declares `ARRAY<INT8>` — confirmed against the binary in
+> [`pet-client-contract.md`](pet-client-contract.md) §1.
 
 #### `onPetStanceUpdate` — Current Stance Changed
 
 | Field | Type | Size |
 |-------|------|------|
-| `stance` | `INT32` | 4B |
+| `stance` | `INT8` | 1B |
 
-**Total wire size**: 1B header + 4B = **5 bytes**
+**Total wire size**: 1B header + 1B = **2 bytes**
+
+> **Correction (2026-09-27, PT-E1)**: previously documented as `INT32` (5 bytes total).
+> `SGWPet.def:92` declares `INT8` — confirmed against the binary in
+> [`pet-client-contract.md`](pet-client-contract.md) §1.
 
 ### Client → Server (via SGWPlayer.def — separate from pet entity)
 

@@ -22,6 +22,8 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
+pub mod bank_dump;
+pub mod bank_expand;
 pub mod cinematic_aoi_hold;
 pub mod console_authoring;
 pub mod contact_list;
@@ -29,11 +31,18 @@ pub mod cooked_data;
 pub mod crafting;
 pub mod deferred_aoi;
 pub mod deferred_aoi_lifecycle;
+pub mod feedback;
+pub mod gm_broadcast;
 pub mod gm_feedback;
 pub mod gm_spawn;
 pub mod helpers;
+pub mod mutes;
+pub mod organization;
 pub mod outbox;
+pub mod player_index;
+pub mod rate_limit;
 pub mod session_identity;
+pub mod session_presence;
 pub mod tick_sync;
 pub mod world_entry_chat;
 
@@ -56,6 +65,11 @@ pub mod world_entry_appearance {
 /// table and the fragment builder. Test-only.
 #[cfg(test)]
 mod resource_fragment_tests;
+
+/// The category-12 version handshake on the wire, against the committed
+/// PAKs. Test-only.
+#[cfg(test)]
+mod version_info_tests;
 
 // Cooked-data delivery serves the resource cache (`cimmeria-resources`).
 use cimmeria_resources::base::resources;
@@ -157,6 +171,15 @@ pub struct ConnectedClientState {
     /// and the Python reference (`python/base/Chat.py::getSpeakerFlags`)
     /// only checks `accessLevel > 0` and `dndMessage is not None`.
     pub dnd_message: Option<String>,
+    /// AFK auto-reply. `Some(_)` while the player is away: a tell to them is
+    /// still delivered, and the sender gets this text back on the tell
+    /// channel. Set/cleared by `chatSetAFKMessage` (0xC3) with the same
+    /// empty-or-1-char-clears rule as DND; not a speaker flag.
+    pub afk_message: Option<String>,
+    /// This character's contact-list Ignore list, cached for the tell path
+    /// (D-SS15). Loaded at `onClientReady` and reloaded after every Ignore
+    /// change; see [`contact_list::ignore`].
+    pub ignore: contact_list::ignore::IgnoreCache,
     pub char_list_sent: bool,
     pub world_entry_sent: bool,
     pub pending_player_entity_id: Option<u32>,
@@ -245,6 +268,21 @@ pub struct ConnectedClientState {
     /// of falling back to "lowest player_id for the account" — which is
     /// wrong on multi-character accounts.
     pub active_player_id: Option<i32>,
+    /// Whether this session is listed in the name index
+    /// ([`player_index::OnlinePlayerIndex`]) that tells, mail notification
+    /// and duel challenges resolve names against. Set when world entry
+    /// reaches `onClientReady` (the client has created the player entity);
+    /// cleared by `logOff` on both variants. A session removed from the map
+    /// is unlisted by definition, so the teardown paths need no call of
+    /// their own.
+    pub listed_online: bool,
+    /// Per-category token buckets (chat, mail send, duel challenge). Dies
+    /// with the session. See [`rate_limit`].
+    pub rate_limits: rate_limit::PlayerRateState,
+    /// Team and Command invites this character holds, and the invites it
+    /// recently sent (D-ORG06, ORG-07). Dies with the session; `logOff`
+    /// clears the held ones. See [`organization::invites`].
+    pub org_invites: organization::invites::OrgInviteState,
     /// Cross-world ring transport carry-through. Set in
     /// `handle_gate_travel` when the cell `Effect::TeleportCrossWorld`
     /// passes a ring id; consumed in
@@ -280,6 +318,10 @@ pub struct ConnectedClientState {
     /// and `check_timeouts` all need `&mut self` and run from different
     /// code paths (receive loop, per-send-site call sites, retransmit tick).
     pub channel: Mutex<Channel>,
+
+    /// Crafting stations, tools and "craft anywhere" behind this session's
+    /// `onUpdateCraftingOptions`, and the options last sent.
+    pub crafting_options: crafting::options::CraftingSessionOptions,
 }
 
 impl ConnectedClientState {

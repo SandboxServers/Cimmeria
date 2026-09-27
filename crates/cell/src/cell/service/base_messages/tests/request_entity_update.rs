@@ -284,3 +284,129 @@ async fn request_entity_update_truncates_request_above_cap() {
         "request of {SPAM_COUNT} ids must be truncated to the {CAP}-id cap, got {entered}"
     );
 }
+
+/// Pets PT-01 (A-23): the re-emit path replays a pet's owner-only lists
+/// after its `EnteredAoI`, exactly like the AoI tick. Without it a client
+/// that re-requests its own pet gets the entity back with an empty pet bar.
+/// The second request, from a player who does not own the pet, must get the
+/// `EnteredAoI` and nothing else (the lists are the owner's alone). The
+/// third, after the owner's entity id was handed to another player before
+/// the sweep (Copilot, #870), must get nothing owner-only either: the id
+/// matches `pet.owner_id` but the live identity is not the summoner's.
+#[tokio::test]
+async fn request_entity_update_replays_pet_lists_to_the_owner_only() {
+    use cimmeria_entity::cell_entity::{PetStance, PetState, PlayerIdentity, ALL_STANCES_MASK};
+    use cimmeria_wire::cell::client_methods::pet::{
+        ON_PET_ABILITY_LIST, ON_PET_STANCE_LIST, ON_PET_STANCE_UPDATE,
+    };
+
+    const OWNER: u32 = 1;
+    const OTHER: u32 = 2;
+    const PET: u32 = 42;
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#,
+    )
+    .unwrap();
+    for (id, x) in [(OWNER, 0.0), (OTHER, 1.0)] {
+        mgr.create_entity(id, "Agnos", [x, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let w = mgr.get_entity_mut(id).unwrap();
+        w.is_player = true;
+        w.account_id = Some(id * 10);
+        w.player_id = Some(id as i32 * 100);
+        w.witnesses.insert(EntityId(PET as i32));
+    }
+    mgr.create_entity(PET, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    {
+        let p = mgr.get_entity_mut(PET).unwrap();
+        p.class_id = 0x05;
+        let mut state = PetState::new(OWNER, vec![592], ALL_STANCES_MASK, 0);
+        state.stance = PetStance::Aggressive;
+        p.pet = Some(Box::new(state));
+    }
+    // With the summoner's identity, as `spawn_pet_from_template` captures it.
+    mgr.pets.register(
+        OWNER,
+        PET,
+        PlayerIdentity::new(Some(OWNER * 10), Some(OWNER as i32 * 100)),
+    );
+    let engine = ChainEngine::new();
+
+    let mut per_witness = Vec::new();
+    for (round, witness_id) in [OWNER, OTHER, OWNER].into_iter().enumerate() {
+        if round == 2 {
+            // The owner's id now belongs to a different account and character.
+            let impostor = mgr.get_entity_mut(OWNER).unwrap();
+            impostor.account_id = Some(4242);
+            impostor.player_id = Some(4243);
+        }
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_base_message(
+            BaseToCellMsg::RequestEntityUpdate {
+                witness_id,
+                entity_ids: vec![PET],
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+        let mut seen = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::EnteredAoI {
+                    witness_id: w,
+                    entity_id,
+                    npc_data,
+                    ..
+                } => {
+                    assert_eq!((w, entity_id), (witness_id, PET));
+                    assert_eq!(
+                        npc_data.and_then(|d| d.pet_owner_id),
+                        Some(OWNER),
+                        "the re-emitted cascade keeps the owner binding"
+                    );
+                    seen.push("entered".to_string());
+                }
+                CellToBaseMsg::WitnessEntityMethod {
+                    witness_id: w,
+                    entity_id,
+                    method_index,
+                    args,
+                    ..
+                } => {
+                    assert_eq!((w, entity_id), (witness_id, PET));
+                    seen.push(format!("{method_index}:{args:?}"));
+                }
+                _ => {}
+            }
+        }
+        per_witness.push(seen);
+    }
+
+    assert_eq!(
+        per_witness[0],
+        vec![
+            "entered".to_string(),
+            format!("{ON_PET_ABILITY_LIST}:[1, 0, 0, 0, 80, 2, 0, 0]"),
+            format!("{ON_PET_STANCE_LIST}:[3, 0, 0, 0, 0, 1, 2]"),
+            format!("{ON_PET_STANCE_UPDATE}:[2]"),
+        ],
+        "owner: EnteredAoI, the two lists, then the non-default stance"
+    );
+    assert_eq!(
+        per_witness[1],
+        vec!["entered".to_string()],
+        "a non-owner gets the entity and none of the lists"
+    );
+    assert_eq!(
+        per_witness[2],
+        vec!["entered".to_string()],
+        "a player holding a reused owner id gets the entity and none of the lists"
+    );
+}

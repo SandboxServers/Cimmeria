@@ -28,8 +28,16 @@
 //!   `EntityMethodCall` / `EntityMethodCallBatch` pre/post-ready behavior.
 //! - [`cinematic_hold_gate`] — the same arms, plus `WitnessEntityMethod` /
 //!   `EntityInvisible`, under the first-login cinematic AoI hold.
+//! - [`crafting_arm`]      — `Crafting` logs the request and answers it
+//!   with a visible feedback line.
+//! - [`crafting_gate`]     — the station gate, "craft anywhere", station
+//!   reports and the `.allcraft` access check.
+//! - [`crafting_gm_grant`] — `.craftkit` and `.learnblueprint` reach their
+//!   own handlers, which re-check the caller's access level.
 //! - [`fallible_handlers`] — `GateTravel` / `ReanchorPlayer` error-log
 //!   seams.
+//! - [`gm_broadcast_arm`]  — `Chat(GmBroadcast)` fans out to the online
+//!   index and logs the delivery.
 //! - [`passthrough`]       — `SpaceData` / `MissionUpdate` / `MailRequest`
 //!   / `GrantXP` / `TeleportPlayer` routing (handler short-circuits on
 //!   no-pool / no-addr — pinned via `LogCapture`).
@@ -45,9 +53,15 @@ use crate::base::PendingClientReadyInfo;
 use crate::test_support::test_default_connected_client_state;
 
 mod aoi_defer_gate;
+mod bank_arm;
 mod cinematic_hold_gate;
+mod crafting_arm;
+mod crafting_gate;
+mod crafting_gm_grant;
 mod fallible_handlers;
+mod gm_broadcast_arm;
 mod gm_grant_arms;
+mod org_arms;
 mod passthrough;
 mod two_player_visibility;
 mod witness_broadcast;

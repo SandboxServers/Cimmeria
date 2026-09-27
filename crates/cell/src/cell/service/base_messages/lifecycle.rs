@@ -6,6 +6,8 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_cell_world::cell::pets;
+
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner;
@@ -238,6 +240,14 @@ pub(super) async fn handle_disconnect_entity(
     // disconnect mid-trade has to notify the surviving partner.
     crate::cell::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr)
         .await;
+    // Squad (ORG-03): leave with `Logout`, promote or disband, and drop the
+    // player's pending invites. Before the teardown, so the remaining
+    // members' `onMemberLeftOrganization` still names the entity. Only this
+    // arm: `DestroyEntity` is also the gate-travel teardown, and a squad
+    // survives a world change.
+    crate::cell::cell_methods::organization::squad::on_disconnect(entity_id, tx, space_mgr).await;
+    // ORG-05: an open registrar offer ends with the session.
+    crate::cell::cell_methods::organization::creation::on_disconnect(entity_id, space_mgr);
     // Persist the last known world + position BEFORE the teardown below
     // removes the entity. This is the only write of `sgw_player.pos_*` on
     // the way out of a session: gate travel and the GM teleport write their
@@ -266,6 +276,17 @@ pub(in crate::cell::service) async fn flush_and_destroy(
     space_mgr: &mut SpaceManager,
 ) {
     flush_bandolier_ammo_for_entity(entity_id, tx, space_mgr).await;
+    // Pets leave with their owner, visibly, before the owner goes: the
+    // destroy may take an instanced space (and the pet in it) down with it,
+    // and `destroy_entity` itself has no `tx` for the pet's `LeftAoI`.
+    pets::on_owner_left(
+        entity_id,
+        pets::PetDespawnReason::OwnerGone,
+        pets::OwnerPath::BaseDestroy,
+        tx,
+        space_mgr,
+    )
+    .await;
     space_mgr.destroy_entity(entity_id);
 }
 

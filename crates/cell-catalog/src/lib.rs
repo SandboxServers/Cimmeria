@@ -9,6 +9,10 @@
 //!   (`world_id`, `NavmeshMode`).
 //! - [`ability_tree`]: the archetype ability-tree catalog and the one
 //!   trainability predicate the trainer window and the purchase gate share.
+//! - [`crafting`]: the crafting catalog (disciplines, blueprints with their
+//!   component sets, item crafting attributes) and the crafting enumerations.
+//! - [`item_placement`]: which carried bag a granted item lands in, from its
+//!   `container_sets` (storage containers are never a grant target).
 //! - [`cell::respawner_fallback`]: the nearest-valid-respawner search the
 //!   arrival and movement-recovery paths share.
 //!
@@ -22,6 +26,8 @@
 #![warn(unreachable_pub)]
 
 pub mod ability_tree;
+pub mod crafting;
+pub mod item_placement;
 
 /// The cell-side catalogs, under the `cell::` path they had in
 /// `cimmeria-services`.

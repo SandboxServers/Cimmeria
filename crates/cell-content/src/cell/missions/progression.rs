@@ -412,19 +412,11 @@ pub async fn complete_mission_direct(
         }
     };
 
-    // Objectives still open here were never completed through play -- the
-    // chain is about to force them. Report before the force-complete hides it.
-    let never_completed: Vec<(i32, bool)> = mission
-        .active_objectives
-        .iter()
-        .filter(|o| o.status == STATUS_ACTIVE)
-        .map(|o| (o.objective_id, o.optional))
-        .collect();
-    crate::cell::playtest_friction::objectives_never_completed(
-        entity_id,
-        mission_id,
-        &never_completed,
-    );
+    // Objectives still open here are force-completed below. The stuck-player
+    // report on that ("objective_never_completed") is made by the content
+    // executor before it calls in here, because only it holds the chain
+    // engine that tells a turn-in objective from one whose trigger never
+    // fired -- see `content::executor::mission::report_objectives_left_open`.
 
     // Complete all objectives. The flags ride along so the wire frames
     // below can report them (the client renders optional objectives

@@ -882,6 +882,7 @@ dependencies = [
  "cimmeria-game",
  "cimmeria-mercury",
  "cimmeria-minigame",
+ "cimmeria-observability",
  "cimmeria-resources",
  "cimmeria-test-support",
  "cimmeria-wire",
@@ -897,6 +898,7 @@ name = "cimmeria-base-methods"
 version = "0.1.0"
 dependencies = [
  "cimmeria-base-session",
+ "cimmeria-cell-catalog",
  "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-game",
@@ -925,6 +927,7 @@ dependencies = [
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
+ "rand 0.10.2",
  "serde",
  "serde_json",
  "sqlx",
@@ -1024,6 +1027,7 @@ dependencies = [
  "cimmeria-cell-combat",
  "cimmeria-cell-content",
  "cimmeria-cell-interactions",
+ "cimmeria-cell-methods",
  "cimmeria-cell-world",
  "cimmeria-common",
  "cimmeria-content-engine",
@@ -1144,6 +1148,15 @@ dependencies = [
  "cimmeria-workspace-hack",
  "tempfile",
  "thiserror 2.0.20",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "cimmeria-client-patches"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-patch-wire",
+ "minhook-sys",
  "windows-sys 0.61.2",
 ]
 
@@ -1376,6 +1389,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-patch-wire"
+version = "0.1.0"
+
+[[package]]
 name = "cimmeria-resources"
 version = "0.1.0"
 dependencies = [
@@ -1560,11 +1577,13 @@ dependencies = [
  "cimmeria-common",
  "cimmeria-mercury",
  "cimmeria-services",
+ "cimmeria-wire",
  "cimmeria-workspace-hack",
  "hex",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
+ "sha1 0.11.0",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",

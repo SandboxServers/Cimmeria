@@ -39,3 +39,12 @@ replacing a Rust `"...,\` continuation line joined it to the next line
 (spaces and all), which is exactly the malformed-directive case above.
 **How to apply:** edit Rust string-continuation lines with the Edit tool,
 not a scripted heredoc. See also [[python-write-mangles-utf8-and-crlf]].
+
+**A target's OTEL level is a floor for every emitter** (2026-09-27, SS-U3).
+`content` ships at INFO, so a `debug!(target: "content", ...)` anywhere,
+even a new base-side one, fails
+`target_scan_tests::every_source_target_reaches_signoz_at_its_level`.
+**How to apply:** check the target's row in `OTEL_FILTER` before picking a
+level; put a DEBUG line on a target that ships at DEBUG (e.g. `mail`) or
+raise it to INFO/WARN. Run `cargo nextest run -p cimmeria-server logging`
+whenever a crate starts logging on an existing target.

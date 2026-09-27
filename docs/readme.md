@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 285 (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 2,936 across 461 files (2,691 gated in CI) |
-| Live-DB regression guards | 224 |
+| Documentation files | <!-- gen:docs-md-count -->599<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->7,721<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,273<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->7,303<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,329<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -70,10 +70,18 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [Harset Rebuild](analysis/harset-rebuild/README.md) | Audit of the Harset hub rebuild spreadsheet (worlds 57/68/69/70, 36 missions) against the three surviving scripts, the seed, the content engine and the navmesh; the Cellblock-branch and open-PR plumbing Harset depends on; proposed decisions and a parallel packet ledger |
 | [Dialog UI Redesign](analysis/dialog-ui-redesign/work-packets.md) | Client-grounded contract for dialog window types, buttons, close events and lures (CEGUI Lua, Ghidra trace of SGW.exe, cooked PAK census, colo telemetry), plus the parallel packet ledger for the Castle_CellBlock and Castle dialog cleanup, Radio lures and non-modal Marsh barks |
 | [NPC AI Restoration](analysis/npc-ai-restoration/README.md) | Evidence-backed audit of NPC aggro, leash/reset, grounding, stuck movement and cover in Castle_CellBlock and Castle (code, Ghidra, 7 days of colo SigNoz), owner decisions, a telemetry-first plan and a packet ledger |
+| [Organizations](analysis/organizations/README.md) | Restoration plan for Squads, Teams and Commands (the client ships the full UI; the 2009 server never implemented it): code and client evidence audit, owner decisions, the org API the Bank campaign builds on, a packet ledger, per-packet worknotes, and a two-client UAT script. Closed out 2026-09-27 (ORG-11): feature-complete server-side, awaiting the owner's UAT, with the open owner questions and known gaps in its README |
+| [Bank and Vault](analysis/bank-vault/README.md) | Restoration plan for the personal vault (container 17, Banker NPC, 40-to-100 expansion) and the Team/Command organization vaults and treasury: client and server audit, owner decisions, and a packet ledger with dependency waves |
+| [Social Systems](analysis/social-systems/README.md) | Campaign ledger (complete 2026-09-27, awaiting the owner's UAT) for mail (send, attachments, take, COD, return, expiry), chat (tells, GM broadcast, Ignore, flood limits, mutes) and 1v1 dueling: evidence audit with the CAT-G/L/M security criteria mapped to packets, owner decisions and open questions, the packet ledger, and the owner's UAT checklist |
 | [Ability Trees](analysis/ability-trees/README.md) | Compatibility audit of the owner's EMULATOR FINAL v2 class progression (7 archetypes, 21 branches, 439 nodes, level cap 50) against the existing trainer path, owner decisions, and a packet ledger ordered for parallel fan-out |
+| [Pets Restoration](analysis/pets/README.md) | Evidence audit of the SGWPet system (client contract, server integration map, content inventory), owner decisions, UAT tooling and a packet ledger to restore summoned pets starting with the Goa'uld Servant Lord Jaffa |
+| [Black Market Restoration](analysis/black-market/README.md) | Path to a shippable client patch for the auction house: the server contract fixes on the stale `feat/571` branch, a Rust patch DLL (sending through `startEntityMessage`, receiving through the dispatcher hook, delivery through the Lua C API), a patched BM Lua and layout, work packets, and owner decisions |
+| [Crafting and Applied Science](analysis/crafting/README.md) | Audit of the half-ported crafting system (state layer done, all six verbs stubbed) against the client UI, the legacy `Crafter.py` and the seed, owner decisions on ASP, respec, paradigms, blueprints and stations, and a packet ledger with an in-game UAT checklist |
 | [SGW Handoff Pack v1.2](analysis/sgw-handoff-pack-v1.2/README.md) | External class / skill-tree / combat / world handoff pack, its Phase 0 compatibility and gap report against the live schema, runtime, combat pipeline and world seeds, the five domain audits behind it, and the proposed Phase 1 trainer + learned-abilities patch plan |
 | [Colo Playtest 2026-09-18](analysis/playtests/2026-09-18-colo-castle/README.md) | First external playtest of the Castle_CellBlock + Castle rebuild: Discord conversation aligned with SigNoz telemetry, per-claim verdicts, ranked NPC facing / grounding / pathing / leash / follow root causes, and the telemetry seams needed to make the next session diagnosable from logs |
+| [Historical CellBlocks](analysis/historical-cellblocks/README.md) | Seven recoverable historical states of the Castle CellBlock map (builds 43485–63682) as empty, instanced worlds 1201–1207 for side-by-side comparison with stock world 12: the world contract, the server wiring and category-12 world-info push, the client patch and its streaming-filename fix, and the risks the in-client UAT has to settle |
 | [CellBlock to Castle Ring Transport](analysis/ring-transport-cellblock-castle/README.md) | Audit of mission 688's CellBlock → Castle transfer against the cooked client maps (both pads are placed but un-wired ring stations), and a gated feasibility plan for a client map patch that clones a ring rig into the two chunks |
+| [Open-Issue Triage 2026-09-25](analysis/issue-triage-2026-09-25/README.md) | Evidence-backed verdict (keep / rewrite / close / needs-owner) and priority for all 123 open GitHub issues against main, with ready-to-post comments and replacement bodies, owner answers, and the execution checklist for the follow-up session |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
@@ -119,6 +127,7 @@ Content-level audit of all game data plus the cradle-to-grave reference for the 
 | [interaction-flags.md](content/interaction-flags.md) | `EInteractionNotificationType` bitmask reference for `set_interaction_type` actions | Complete |
 | [dialog-ui-client-contract.md](content/dialog-ui-client-contract.md) | **REFERENCE** — the 2009 dialog window's real behaviour and the authoring rules that follow: window types, drawable button types, close semantics + the two hard rules, lure delivery, one-dialog-at-a-time eviction | Complete |
 | [equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md) | **EXPLANATION** — chain shape for granting weapons via a manual equip step instead of force-equipping into the bandolier (mission 622 / 641 worked examples) | Complete |
+| [debug-hub.md](content/debug-hub.md) | **REFERENCE** — the five stasis-room debug NPCs in Castle_CellBlock: what each tests, placement, and what the hub cannot test | Complete |
 | [consumable-via-onitemuse-pattern.md](content/consumable-via-onitemuse-pattern.md) | **EXPLANATION** — when `item_use` should pair with `remove_item` (consumables) vs omit it (reusable tools); baseline audit + regression lint | Complete |
 | [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, vocabulary, schema, lifecycle, observability, performance | Complete |
 | [extending-the-engine.md](content/extending-the-engine.md) | **HOW-TO** — add a new trigger / condition / action variant | Complete |
@@ -215,7 +224,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 38 documents.
+How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->41<!-- /gen:section-table-rows --> documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -250,6 +259,7 @@ How the Cimmeria emulator itself is structured. 38 documents.
 | [observability.md](architecture/observability.md) | ADR for server-side observability: OTLP exporter, Mercury packet instrumentation, SigNoz overlay, target catalog, `decision_outcome` enum | Complete |
 | [dev-session-telemetry.md](architecture/dev-session-telemetry.md) | Dev-session telemetry pipeline: the `/auth/dev-session` HMAC token, launcher `telemetry/` capture, storage layout | Complete |
 | [client-telemetry.md](architecture/client-telemetry.md) | Client-side telemetry architecture: from-scratch instrumentation hookpoints in the launcher, capture surface, transport | Complete |
+| [client-patches.md](architecture/client-patches.md) | ADR for `cimmeria-client-patches`, the always-injected DLL for client fixes gameplay needs (separate from telemetry): build fingerprint gate, claim-by-name receive hooks on the dispatcher's drop path, main-thread delivery to the UI Lua, MinHook chaining with the telemetry DLL, the shared `cimmeria-patch-wire` codec | Accepted |
 | [discord-notifications.md](architecture/discord-notifications.md) | Discord notification design + ops: `EventKind` catalogue, channel routing, embed formatting, default toggles | Complete |
 | [atrea-editor-bridge.md](architecture/atrea-editor-bridge.md) | ADR for the Atrea Editor bridge — an MCP server exposing the in-game UnrealEd surface | Complete |
 | [live-research-lab.md](architecture/live-research-lab.md) | ADR (Proposed) for the live research lab: inbound bridge in the client-telemetry DLL (Lua eval, memory, dynamic hooks, native calls), the `cimmeria-lab` supervisor (lifecycle, autologin, screenshots, crash recovery), and the token-gated in-server MCP endpoint (console passthrough, live entity queries, packet taps) | Proposed |
@@ -361,6 +371,8 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [live-research-lab.md](guides/live-research-lab.md) | **How-to + rulebook.** The "ask the running game" path: the experiment loop, the seven research rules, the merged `lab_timeline` window, and the free SigNoz Lua-VM check. Operating manual for the ADR at [architecture/live-research-lab.md](architecture/live-research-lab.md) | Complete |
 | [reading-decompiled-code.md](guides/reading-decompiled-code.md) | Tips for reading Ghidra decompiler output, common patterns, pitfalls | Complete |
 | [sgw-live-debugging.md](guides/sgw-live-debugging.md) | Live debugging SGW.exe with x32dbg + log breakpoints — manual fallback when MCP-driven flows fail; pybag incompatibility documented | Complete |
+| [organizations-uat.md](guides/organizations-uat.md) | **How-to (UAT script).** The owner's two-client acceptance test for Squads, Teams and Commands, with a one-client GM fallback per step, what to watch for, the log rows each step writes and the SigNoz query that shows them | Complete |
+| [unified-uat.md](guides/unified-uat.md) | **How-to (UAT script).** One in-game acceptance test for every restored system (pets, organizations, crafting, bank, mail/chat/duels, black market, NPC AI, ability trees, dialog UI, the Cellblock, Castle and Harset zones, historical cellblocks, ring transport, GM command parity), written for a non-programmer tester: common setup, the debug hub, current known issues, a suggested test order, per-system steps with their campaign step ids and SigNoz queries, and a results template. Each campaign ledger stays canonical | Complete |
 | [autonomous-agent-kickoff.md](guides/autonomous-agent-kickoff.md) | **Kickoff prompt for unattended AI agents.** Issue selection and claim protocol, per-worktree build and DB discipline, draft-until-green PR flow with Cadacious as reviewer, budgets and escalation. Two marked deviations from the `CLAUDE.md` pre-PR checklist | Complete |
 
 Two former-guides files moved to their correct homes in #344: [evidence-standards.md](reverse-engineering/evidence-standards.md) is now under `reverse-engineering/` (it's the standards reference for the RE process), and [entity-def-guide.md](engine/entity-def-guide.md) is now under `engine/` (it's reference doc on entity definition files).

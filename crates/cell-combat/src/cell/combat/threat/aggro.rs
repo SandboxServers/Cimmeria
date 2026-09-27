@@ -26,6 +26,10 @@ pub enum AggroCause {
     /// target, and this NPC joined (NA14, D-NA04). A deliberate deviation
     /// from legacy: the 2009 server had no assist.
     Assist,
+    /// A pet's stance picked this target (pets PT-05, D-PT09): something
+    /// attacking its owner, its owner's target, or a hostile NPC near an
+    /// Aggressive pet. Seeded on the pet, never recruits.
+    PetStance,
 }
 
 impl AggroCause {
@@ -50,6 +54,7 @@ impl AggroCause {
             Self::Damage => "damage",
             Self::ContentThreat => "content_threat",
             Self::Assist => "assist",
+            Self::PetStance => "pet_stance",
         }
     }
 }
@@ -109,6 +114,10 @@ pub const NPC_MELEE_RANGE: f32 = 3.0;
 // The default NPC attack ability lives with the other NPC combat defaults,
 // in cimmeria-cell-world, because spawning grants it.
 pub use crate::cell::combat::aggression::NPC_DEFAULT_ABILITY;
+
+/// `CellEntity::class_id` of an SGWBeing: props and non-combat story actors.
+/// [`generate_threat`] refuses them.
+pub(crate) const BEING_CLASS_ID: u8 = 0x01;
 
 /// How long after leaving combat the weapon stays drawn before
 /// auto-holstering. Tuned to absorb the gap between killing one mob and
@@ -196,6 +205,33 @@ pub fn generate_threat(
     let preemptable = match space_mgr.get_entity(target_id) {
         None => return None,
         Some(target) if target.is_player => return None,
+        // A being (SGWBeing, class 0x01) never enters combat (NA42). Most
+        // beings are props, the rest are story actors such as Col Marsh, and
+        // none has an ability set to fight back with. Before this a hit
+        // preempted a following Marsh into Fighting, a state the AI tick
+        // never admits for a being, so he froze there for good. No threat,
+        // no preemption and no player combat: he stays in Follow.
+        Some(target) if target.class_id == BEING_CLASS_ID => {
+            tracing::debug!(
+                target: "npc_ai.aggro",
+                event = "being_refused",
+                npc_id = target_id,
+                attacker_id,
+                ai_state = target.ai_state().label(),
+                cause = cause.label(),
+                "threat refused: a being never enters combat"
+            );
+            return None;
+        }
+        // A pet takes threat only from what its owner could attack, and a
+        // Passive pet from nothing, even when hit (pets PT-05, D-PT09): no
+        // threat and no preemption, so it keeps following its owner.
+        Some(target) if npc_ai::pet::threat_refusal(space_mgr, target, attacker_id).is_some() => {
+            let reason = npc_ai::pet::threat_refusal(space_mgr, target, attacker_id)
+                .unwrap_or("passive_stance");
+            npc_ai::pet::log_threat_refusal(space_mgr, target, attacker_id, reason, cause.label());
+            return None;
+        }
         Some(target) if target.ai_state() == AiState::Leashing => {
             // NA02's `damage_ignored` row is the one trace of the evade.
             npc_ai::detectors::leash::on_damage_while_leashing(
@@ -239,6 +275,10 @@ pub fn generate_threat(
     // This replaces the old unstructured "preempt -> Fighting" line.
     if let Some(from) = entered_from {
         npc_ai::log_aggro_acquired(space_mgr, target_id, attacker_id, from, cause);
+        // A pet's stance engagement logs its own `engaged` row.
+        if cause != AggroCause::PetStance {
+            npc_ai::pet::log_fight_entered(space_mgr, target_id, attacker_id, from, cause.label());
+        }
     }
 
     let entered_combat =

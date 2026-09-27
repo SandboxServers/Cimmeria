@@ -22,6 +22,15 @@ deviation from legacy (2009 had none, D-NA04).
 shoots one now gets threat on BOTH. `auto_cycle_tick_refires_at_live_current_target`
 broke this way (NPCs 50/75 were 2 u apart); fixed by pinning the bystander NEUTRAL.
 
+**UAT tuning (2026-09-26, branch fix/colo-escort-and-rally):** template 24 (NID
+Guard, every Cellblock guard) seeds `assist_radius = 26`. Barracks guards
+(spawns 25/26/36) are 13.1/19.3/25.0 u apart, so 10 u rallied nobody. On
+`castle_cellblock.occ` the three barracks guards see each other; Hallway01/02/03
+(18.6/20.5 u) are occluder-Blocked, so 26 u does not link them. Production
+assist LoS comes from the occluder when a world ships one, not the navmesh.
+The live-DB guard `barracks_guards_assist_radius_covers_the_room` replaced
+`no_seeded_template_sets_an_assist_radius_yet` and pins "only template 24 tunes".
+
 **How to apply:** when a test asserts "NPC X has no threat" next to a shot neighbour,
 pin X NEUTRAL (`aggro.override_level`) or move it >10 u / change faction. The damage
 gate reads faction==10, not aggression, so a NEUTRAL pin does not mask mis-aimed hits.

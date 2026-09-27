@@ -505,13 +505,16 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
     // before the window function (e.g. excluding item-prereq rows
     // inside the WHERE) would re-rank surviving rows and the test
     // would address the wrong entry. Mirror the handler's structure
-    // exactly: window first, filter outside.
+    // exactly: window first, filter outside. The entry must also be an
+    // item a purchase places in container 1 (it lists the main bag and not
+    // the crafting bag), because the race is over container 1's slots.
     let (vendor_template_id, store_index, expected_price): (i32, i32, i32) = sqlx::query_as(
         "WITH ordered AS ( \
             SELECT et.template_id, \
                    (ROW_NUMBER() OVER (PARTITION BY et.template_id ORDER BY ili.item_id) - 1)::INT \
                        AS store_index, \
                    ili.item_id AS list_item_id, \
+                   ili.design_id, \
                    ili.naquadah \
             FROM resources.entity_templates et \
             JOIN resources.item_list_items ili ON ili.item_list_id = et.buy_item_list \
@@ -520,6 +523,11 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
          SELECT template_id, store_index, naquadah \
          FROM ordered \
          WHERE naquadah > 0 \
+           AND EXISTS ( \
+               SELECT 1 FROM resources.items ri \
+               WHERE ri.item_id = ordered.design_id \
+                 AND 1 = ANY(ri.container_sets) AND NOT 15 = ANY(ri.container_sets) \
+           ) \
            AND NOT EXISTS ( \
                SELECT 1 FROM resources.item_list_prices ilp \
                WHERE ilp.item_id = ordered.list_item_id \

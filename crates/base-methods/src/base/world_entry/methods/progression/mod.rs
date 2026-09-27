@@ -10,6 +10,7 @@ use cimmeria_game::player::{apply_level_ups, max_exp_for_level};
 
 use super::super::super::contact_list::handlers::fanout_contact_event;
 use super::super::super::contact_list::wire::EVENT_GAIN_LEVEL;
+use super::super::super::crafting::sync::{push_asp, CraftClient};
 use super::super::super::gm_feedback::send_gm_feedback_to_client;
 use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
@@ -25,6 +26,8 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 /// Matches the Python `giveExperience()` flow: add XP, send updates, fire
 /// level-up events. Persists exp/level/training_points to `sgw_player` before
 /// emitting wire packets so a relog after a grant doesn't roll the player back.
+/// The same statement adds one Applied Science Point per level gained, and the
+/// new ASP total follows the XP bundle (see `asp_earning`).
 #[tracing::instrument(
     name = "progression.grant_xp",
     level = "info",
@@ -58,7 +61,7 @@ pub async fn handle_grant_xp(
     // a failed grant onto the next successful one: the next GrantXP would
     // saturate-add on top of the unpersisted value and then write the
     // combined sum, effectively persisting the grant we tried to drop.
-    let (player_id, total_xp, new_level, training_points, levels_gained, player_name) = {
+    let (account_id, player_id, total_xp, new_level, training_points, levels_gained, player_name) = {
         // Tolerate poison instead of panicking — another thread crashing the
         // mutex shouldn't stop XP grants from continuing on the recovered state.
         let map = match connected.lock() {
@@ -80,46 +83,78 @@ pub async fn handle_grant_xp(
 
         // Saturate to prevent a pathological grant (e.g., from a corrupted
         // GrantXP message) wrapping the accumulator and producing a negative
-        // wire value or a phantom delevel.
-        let xp = prev_xp.saturating_add(xp_amount);
+        // wire value or a phantom delevel. Clamp to `i32::MAX`, the ceiling
+        // of `sgw_player.exp` (`integer`) and of the wire payload, HERE,
+        // before anything reads it: clamping only at the bind left the
+        // session holding the unclamped total while the row held
+        // `i32::MAX`, so memory and DB diverged until the next relog (#889).
+        let xp = prev_xp.saturating_add(xp_amount).min(i32::MAX as u64);
 
         // Shared with `PlayerState::grant_xp`: stops at MAX_LEVEL (50), one
         // training point per level gained (v2 economy, D-AT02).
         let gained = apply_level_ups(&mut level, &mut tp, xp);
 
-        (player_id, xp, level, tp, gained, state.player_name.clone())
+        (
+            state.account_id,
+            player_id,
+            xp,
+            level,
+            tp,
+            gained,
+            state.player_name.clone(),
+        )
     };
 
     // Persist first. On DB failure we return WITHOUT mutating in-memory
     // state and WITHOUT emitting wire packets — the next GrantXP will then
     // recompute from the truly persisted values rather than compounding the
     // failure.
+    // The Applied Science Points a level-up earned: `(player_id, total)` to
+    // push once the XP bundle is out.
+    let mut asp_push: Option<(i32, i32)> = None;
     match (db_pool, player_id) {
         (Some(pool), Some(player_id)) => {
-            // `sgw_player.exp` is `integer`; saturate to i32::MAX so a u64
-            // total exceeding 2^31-1 doesn't wrap negative on either the
-            // column or the wire payload (also i32).
+            // `sgw_player.exp` is `integer`. `total_xp` is already clamped to
+            // i32::MAX above, so this cast is exact; the `min` stays as a
+            // belt-and-braces guard against a future edit to that clamp.
             let exp_i32 = total_xp.min(i32::MAX as u64) as i32;
-            match sqlx::query(
-                "UPDATE sgw_player \
-                    SET exp = $1, level = $2, training_points = $3 \
-                  WHERE player_id = $4",
+            match asp_earning::persist_grant(
+                pool.as_ref(),
+                player_id,
+                exp_i32,
+                new_level as i32,
+                training_points as i32,
             )
-            .bind(exp_i32)
-            .bind(new_level as i32)
-            .bind(training_points as i32)
-            .bind(player_id)
-            .execute(pool.as_ref())
             .await
             {
-                Ok(r) if r.rows_affected() == 0 => {
+                Ok(None) => {
                     tracing::warn!(
-                        entity_id, player_id, total_xp, new_level,
+                        event = "persist_failed",
+                        phase = "grant_xp_update",
+                        reason = "rows_affected_zero",
+                        rows_affected = 0,
+                        expected = 1,
+                        account_id,
+                        entity_id,
+                        player_id,
+                        total_xp,
+                        new_level,
                         "GrantXP: 0 rows updated (player_id missing from sgw_player); dropping wire emit"
                     );
                     return;
                 }
-                Ok(_) => {}
+                Ok(Some(grant)) => {
+                    if grant.earned_asp(new_level as i32) {
+                        asp_earning::log_asp_earned(
+                            account_id,
+                            player_id,
+                            entity_id,
+                            new_level as i32,
+                            &grant,
+                        );
+                        asp_push = Some((player_id, grant.asp_after));
+                    }
+                }
                 Err(e) => {
                     tracing::error!(
                         entity_id,
@@ -237,6 +272,18 @@ pub async fn handle_grant_xp(
         &levels_gained,
     );
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+
+    // The discipline trainer shows the ASP property live and replaces its
+    // count with the value, so push the new total (not the points earned).
+    // `push_asp` logs its own failed send.
+    if let Some((player_id, asp_total)) = asp_push {
+        let client = CraftClient {
+            transport,
+            connected,
+            entity_to_addr,
+        };
+        push_asp(entity_id, player_id, asp_total, client).await;
+    }
 
     // The cell's trainer gates read level and training points; mirror the
     // persisted values so a node that just opened is trainable without a
@@ -496,7 +543,14 @@ pub async fn handle_grant_cash(
     }
 }
 
+mod asp_earning;
+mod grant_ability;
+mod grant_training_points;
+mod respec;
 mod train_ability;
+pub use grant_ability::{handle_gm_grant_ability, AbilityGrant};
+pub use grant_training_points::{handle_grant_training_points, TrainingPointsGrant};
+pub use respec::{handle_reset_abilities, RespecRequest};
 pub use train_ability::{handle_train_ability, TrainRequest};
 // The trainer's one-statement DB write. A test hook: besides this crate's
 // tests, the AT-01 hydrate round-trip in `cimmeria-services`
@@ -507,11 +561,19 @@ pub use train_ability::{handle_train_ability, TrainRequest};
 pub use train_ability::{persist_purchase, PurchaseResult};
 
 #[cfg(test)]
+mod asp_earning_tests;
+#[cfg(test)]
+mod grant_ability_tests;
+#[cfg(test)]
+mod grant_training_points_tests;
+#[cfg(test)]
 mod level_cap_tests;
 #[cfg(test)]
 mod level_up_fanout_tests;
 #[cfg(test)]
 mod progression_changed_tests;
+#[cfg(test)]
+mod respec_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

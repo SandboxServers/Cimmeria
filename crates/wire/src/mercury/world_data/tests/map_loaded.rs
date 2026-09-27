@@ -65,6 +65,7 @@ fn build_map_loaded_produces_multiple_packets() {
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 42,
@@ -203,12 +204,13 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
         first_login: 0,
         access_level: 0,
         skin_color_id: 0,
-        ability_tree: archetype_ability_tree(2),
+        ability_tree: super::fixture_ability_tree(),
         items,
         active_bandolier_slot: 0,
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -271,12 +273,13 @@ fn build_map_loaded_each_packet_decrypts_within_limit() {
         first_login: 0,
         access_level: 0,
         skin_color_id: 5,
-        ability_tree: archetype_ability_tree(2),
+        ability_tree: super::fixture_ability_tree(),
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -334,12 +337,13 @@ fn build_map_loaded_contains_setup_world_params_and_player_data_loaded() {
         first_login: 0,
         access_level: 0,
         skin_color_id: 5,
-        ability_tree: archetype_ability_tree(2),
+        ability_tree: super::fixture_ability_tree(),
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -411,12 +415,13 @@ fn build_map_loaded_uses_mercury_fragmentation() {
         first_login: 0,
         access_level: 0,
         skin_color_id: 5,
-        ability_tree: archetype_ability_tree(2),
+        ability_tree: super::fixture_ability_tree(),
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
         auto_reload: true,
         reload_on_activate: false,
+        bank_slots: cimmeria_entity::inventory::BANK_SLOTS_DEFAULT,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,

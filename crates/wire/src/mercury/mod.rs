@@ -5,6 +5,7 @@
 //! - [`build_time_sync`]               — three time-sync messages in one packet (Phase 3).
 //! - [`build_char_list`]               — game-state + character list (Phase 4, dynamic count).
 //! - [`build_ongoing_tick_sync`]       — single tick-sync for the 100 ms heartbeat.
+//! - [`game_clock`]                    — the one server game clock both of those carry, and timer expiries use.
 //! - [`build_create_player`]           — createBasePlayer + onClientMapLoad (player creation + map load).
 //! - [`build_enter_world`]             — viewport + cell + position (world entry, after client loads terrain).
 //! - [`build_char_create_failed`]      — `onCharacterCreateFailed` error response.
@@ -21,6 +22,7 @@ use cimmeria_mercury::packet::{FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE
 // ── Submodules ───────────────────────────────────────────────────────────────
 
 pub mod aoi;
+pub mod game_clock;
 pub mod protocol;
 pub mod types;
 pub mod world_data;
@@ -48,8 +50,8 @@ pub use aoi::{
 };
 
 pub use world_data::{
-    archetype_ability_tree, archetype_stats, build_create_player, build_enter_world,
-    build_enter_world_body, build_map_loaded, build_map_loaded_body, build_on_player_data_loaded,
+    archetype_stats, build_create_player, build_enter_world, build_enter_world_body,
+    build_map_loaded, build_map_loaded_body, build_on_player_data_loaded,
     build_setup_world_parameters, fragment_count, fragment_map_loaded,
 };
 
@@ -161,6 +163,13 @@ pub const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// `docs/architecture/gm-cell-method-gating.md` and
 /// `docs/protocol/cell-method-dispatch-table.md` for the full derivation.
 pub const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
+/// SGWMob entity class ID (clientIndex 4): every ordinary NPC.
+pub const SGWMOB_CLASS_ID: u8 = 0x04;
+/// SGWPet entity class ID (clientIndex 5). CREATE_ENTITY with this byte makes
+/// the client build a `GamePet`; its client methods are numbered by
+/// [`crate::cell::client_methods::pet`]. Pets are NPCs in every other
+/// respect (idbase 62, no BigWorld property stream).
+pub const SGWPET_CLASS_ID: u8 = 0x05;
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;
 
@@ -252,6 +261,20 @@ pub mod method_idx {
     pub const ON_AGGRESSION_OVERRIDE_UPDATE: u16 = 27;
     pub const ON_AGGRESSION_OVERRIDE_CLEARED: u16 = 28;
 
+    // OrganizationMember interface (34–51) — SGWPlayer only. Re-exported
+    // from `cell::client_methods::organization`, the authoritative table,
+    // rather than copied: this module has drifted before (the fabricated
+    // "SGWVendorStore 80/81" rows), and an alias cannot.
+    pub use crate::cell::client_methods::organization::{
+        ON_MEMBER_JOINED_ORGANIZATION, ON_MEMBER_LEFT_ORGANIZATION,
+        ON_MEMBER_RANK_CHANGED_ORGANIZATION, ON_ORGANIZATION_CASH_UPDATE,
+        ON_ORGANIZATION_EXPERIENCE_UPDATE, ON_ORGANIZATION_INVITE, ON_ORGANIZATION_JOINED,
+        ON_ORGANIZATION_LEFT, ON_ORGANIZATION_MOTD_UPDATE, ON_ORGANIZATION_NAME_UPDATE,
+        ON_ORGANIZATION_NOTE_UPDATE, ON_ORGANIZATION_OFFICER_NOTE_UPDATE,
+        ON_ORGANIZATION_RANK_NAME_UPDATE, ON_ORGANIZATION_RANK_UPDATE, ON_ORGANIZATION_ROSTER_INFO,
+        ON_PVP_ORGANIZATION_LEAVE_REQUEST, ON_SQUAD_LOOT_TYPE, ON_STRIKE_TEAM_UPDATE,
+    };
+
     // GateTravel interface (65–68)
     pub const SETUP_STARGATE_INFO: u16 = 65;
 
@@ -307,6 +330,9 @@ pub mod method_idx {
     pub const ON_EXP_UPDATE: u16 = 131;
     pub const ON_MAX_EXP_UPDATE: u16 = 132;
     pub const ON_RING_TRANSPORTER_LIST: u16 = 133;
+    pub use crate::cell::client_methods::player::{
+        LAUNCH_ORGANIZATION_CREATION, ON_ORGANIZATION_CREATION_RESULT,
+    };
     pub const ON_UPDATE_DISCIPLINE: u16 = 136;
     pub const ON_UPDATE_KNOWN_CRAFTS: u16 = 139;
     pub const ON_ABILITY_TREE_INFO: u16 = 141;
@@ -459,6 +485,34 @@ pub fn encrypt_packet(plaintext: &[u8], key: &[u8; 32], version: EncryptionVersi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The org entries in `method_idx` (ORG-01), as literals from
+    /// `docs/protocol/client-method-dispatch-table.md`. 134 and 135 sit past
+    /// idbase 61, so they go out with the extended encoding.
+    #[test]
+    fn method_idx_org_entries_are_pinned() {
+        use method_idx::*;
+        assert_eq!(ON_ORGANIZATION_INVITE, 34);
+        assert_eq!(ON_ORGANIZATION_JOINED, 35);
+        assert_eq!(ON_ORGANIZATION_LEFT, 36);
+        assert_eq!(ON_MEMBER_JOINED_ORGANIZATION, 37);
+        assert_eq!(ON_ORGANIZATION_ROSTER_INFO, 38);
+        assert_eq!(ON_MEMBER_LEFT_ORGANIZATION, 39);
+        assert_eq!(ON_MEMBER_RANK_CHANGED_ORGANIZATION, 40);
+        assert_eq!(ON_STRIKE_TEAM_UPDATE, 41);
+        assert_eq!(ON_PVP_ORGANIZATION_LEAVE_REQUEST, 42);
+        assert_eq!(ON_ORGANIZATION_NAME_UPDATE, 43);
+        assert_eq!(ON_ORGANIZATION_EXPERIENCE_UPDATE, 44);
+        assert_eq!(ON_ORGANIZATION_MOTD_UPDATE, 45);
+        assert_eq!(ON_ORGANIZATION_NOTE_UPDATE, 46);
+        assert_eq!(ON_ORGANIZATION_OFFICER_NOTE_UPDATE, 47);
+        assert_eq!(ON_ORGANIZATION_CASH_UPDATE, 48);
+        assert_eq!(ON_ORGANIZATION_RANK_UPDATE, 49);
+        assert_eq!(ON_ORGANIZATION_RANK_NAME_UPDATE, 50);
+        assert_eq!(ON_SQUAD_LOOT_TYPE, 51);
+        assert_eq!(ON_ORGANIZATION_CREATION_RESULT, 134);
+        assert_eq!(LAUNCH_ORGANIZATION_CREATION, 135);
+    }
 
     /// Direct encoding for method indices < 61. Wire layout:
     /// `[(index | 0x80): u8] [word_len: u16 LE] [entity_id: u32 LE] [args]`

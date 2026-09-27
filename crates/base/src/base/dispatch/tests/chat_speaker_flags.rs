@@ -370,6 +370,9 @@ async fn logoff_disconnect_zero_clears_dnd_message_for_next_character() {
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(entity_id);
     state.dnd_message = Some("char A is busy".to_string());
+    state.afk_message = Some("char A is away".to_string());
+    state.ignore =
+        crate::base::contact_list::ignore::IgnoreCache::new(["CharAsPest".to_string()].into());
     let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
     let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
@@ -412,10 +415,22 @@ async fn logoff_disconnect_zero_clears_dnd_message_for_next_character() {
         "disconnect=0 (return-to-character-select) must clear dnd_message \
          so char A's DND state does not leak into char B on the same connection",
     );
+    // SS-C1: AFK and the Ignore cache are per-character too.
+    let g = connected.lock().unwrap();
+    let c = g.get(&addr).unwrap();
+    assert_eq!(
+        c.afk_message, None,
+        "char A's AFK must not reply for char B"
+    );
+    assert!(
+        c.ignore.is_empty(),
+        "char A's Ignore list must not filter char B"
+    );
 }
 
-/// Test 9: the `CHAT_SET_AFK` handler is log-only and must not
-/// crash or mutate connection state for any payload shape. AFK is
+/// Test 9: the `CHAT_SET_AFK` handler must not crash or touch the
+/// speaker-flag state (DND, access level, entity) for any payload shape;
+/// it only stores `afk_message` (SS-C1, pinned in `chat_dnd_limit`). AFK is
 /// intentionally NOT wired into `speaker_flags` (no `SPEAKER_AFK`
 /// token exists in `entities/defs/enumerations.xml`). This guard
 /// pins both invariants so a future "AFK should set a flag" change
@@ -475,6 +490,6 @@ async fn chat_set_afk_handler_is_log_only_and_preserves_state() {
     assert_eq!(
         snapshot,
         (Some(9999), Some("on a raid".to_string()), 1),
-        "chatSetAFKMessage is log-only and must not mutate connection state",
+        "chatSetAFKMessage must not mutate the speaker-flag state",
     );
 }

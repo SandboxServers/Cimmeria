@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use super::feedback::send_gm_feedback;
 use super::{forward_to_base, read_i32};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{vault_access, SpaceManager};
 use crate::mercury::read_wstring;
 
 /// Upper bound on a single `gmGiveItem` grant. The audit required the chat-
@@ -164,8 +164,10 @@ pub(super) async fn handle_give_item(
     );
 
     // Reuse the canonical grant primitive — base persists to sgw_inventory and
-    // emits onUpdateItem. Container defaults to INV_Main; the base side
-    // re-homes weapons/ammo to the bandolier via the item_containers cache.
+    // emits onUpdateItem. The request is INV_Main; the base keeps it when the
+    // item allows the main bag and otherwise places the item by its
+    // `container_sets` (a `{17,15}` crafting component lands in the crafting
+    // bag).
     // `notify_gm: true` — the base sends the definitive feedback line after the
     // inventory write commits. No optimistic "requested" line here.
     forward_to_base(
@@ -177,6 +179,7 @@ pub(super) async fn handle_give_item(
             container_id: INV_MAIN,
             count,
             notify_gm: true,
+            loot: None,
         },
         "gmGiveItem",
     )
@@ -500,6 +503,9 @@ pub(super) async fn handle_remove_item(
             item_id,
             quantity: i32::from(quantity),
             notify_gm: true,
+            // The GM's own vault is reachable only with `.bank` (or a Banker)
+            // open, like any player's (BV-03).
+            vault: vault_access(entity_id, space_mgr),
         },
         "gmRemoveItem",
     )

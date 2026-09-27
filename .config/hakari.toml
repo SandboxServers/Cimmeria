@@ -27,7 +27,7 @@ platforms = [
 ]
 
 # The crates CI leaves out of the gated workspace (the GUI apps, the Windows-only
-# client-telemetry cdylib and the lab supervisor). Their dependencies' features must not
+# client-telemetry and client-patches cdylibs, and the lab supervisor). Their dependencies' features must not
 # leak into the unified set, or every crate would pull in GUI-only features that the Linux
 # CI runners can't build.
 [traversal-excludes]
@@ -37,10 +37,14 @@ workspace-members = [
     "cimmeria-scene-editor",
     "sgw-launcher",
     "cimmeria-client-telemetry",
+    "cimmeria-client-patches",
     "cimmeria-lab",
 ]
 
-# Keep them out of the generated dependency lines too.
+# Keep them out of the generated dependency lines too. cimmeria-patch-wire is here as well,
+# although CI builds it with the rest of the workspace: it is linked into the client-patch
+# DLL inside SGW.exe and must stay free of dependencies, and the workspace-hack would pull
+# tokio, hyper and sqlx into it. It has no dependencies, so it has no features to unify.
 [final-excludes]
 workspace-members = [
     "cimmeria-app",
@@ -48,5 +52,7 @@ workspace-members = [
     "cimmeria-scene-editor",
     "sgw-launcher",
     "cimmeria-client-telemetry",
+    "cimmeria-client-patches",
     "cimmeria-lab",
+    "cimmeria-patch-wire",
 ]

@@ -14,6 +14,8 @@ last_updated: 2026-09-19
 
 When a player double-clicks an inventory item, the base handler fires a cell-side `OnItemUse` content-engine event **without consuming the stack**. Whether the item is removed is entirely the chain author's decision via `Action::RemoveItem`. This page explains when to pair the two, when to omit removal, and how the regression lint keeps new chains honest.
 
+Two kinds of item never reach `OnItemUse`: bandolier-eligible items (weapons) are auto-equipped instead, and crafting items (Blueprint items and Racial Paradigm Guides, the types listed in `resources.crafting_item_effects`) are used by the crafting subsystem, which consumes them itself ([crafting-system.md](../gameplay/crafting-system.md#blueprint-items-and-racial-paradigm-guides)). Do not author an `item_use` chain for a crafting item: it would never fire, and a live-DB guard (`crafting::item_use::tests::seed`) fails if one exists.
+
 If you only need the recipe, jump to [The chain shape](#the-chain-shape).
 
 ## Why the base does not auto-consume

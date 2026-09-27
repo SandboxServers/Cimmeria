@@ -333,7 +333,13 @@ async fn one_shot_kill_does_not_strand_attacker_bsf_in_combat() {
 async fn lethal_hit_against_player_target_emits_on_begin_aid_wait() {
     let mut mgr = make_mgr_player_vs_npc();
     // Promote the NPC target to a player so the death path takes the
-    // player-target branch.
+    // player-target branch, and make the attacker an NPC: only a third
+    // party kills a player (a duel partner's hit is held at 1 HP, and any
+    // other player-on-player hit is refused at apply time, SS-D3).
+    if let Some(a) = mgr.get_entity_mut(1) {
+        a.is_player = false;
+        a.player_id = None;
+    }
     if let Some(t) = mgr.get_entity_mut(2) {
         t.is_player = true;
         t.player_id = Some(200);
@@ -568,6 +574,16 @@ async fn spectator_receives_effect_results_and_stat_update_from_pvp_hit() {
     mgr.connect_entity(2);
     mgr.connect_entity(3);
     let _ = mgr.compute_aoi_changes();
+    // A player may hit a player only as the engaged duel partner: the harm
+    // gate runs again at apply time (SS-D3).
+    let now = std::time::Instant::now();
+    mgr.duels.open_challenge(100, 200, now).unwrap();
+    let space = mgr.get_entity_space_id(1).unwrap();
+    let p = mgr.duels.take_pending_for(200, now).unwrap();
+    let duel = mgr
+        .duels
+        .start_duel(&p, space, cimmeria_common::Vector3::new(0.0, 0.0, 0.0), now);
+    mgr.duels.engage(duel.duel_id, [1, 2], now).unwrap();
 
     let ability = make_ability(7, vec![100]);
     mgr.ability_defs.insert(7, ability.clone());

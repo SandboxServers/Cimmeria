@@ -12,6 +12,8 @@
 //! - `EntityMethodCallBatch` — buffer pre-ready, unrolling N calls into
 //!   N individual buffer entries (the flush path replays them via the
 //!   per-call handler).
+//! - `WitnessEntityMethod` — buffer pre-ready when it is about another
+//!   entity (that entity's create is buffered too); self-traffic flows.
 
 use super::super::*;
 use super::one_session;
@@ -322,4 +324,89 @@ async fn entity_method_call_batch_pre_ready_unrolls_into_individual_buffer_entri
             other => panic!("entry {i}: expected EntityMethodCall, got {other:?}"),
         }
     }
+}
+
+/// Pre-`onClientReady`, a `WitnessEntityMethod` about ANOTHER entity must
+/// buffer behind that entity's buffered create. The owner-only pet lists
+/// (pets PT-01) are replayed right after `EnteredAoI`; sent ungated, they
+/// reach a loading owner before the pet exists and are dropped, so the pet
+/// bar never fills (Copilot review on #870).
+#[tokio::test]
+async fn witness_method_about_another_entity_buffers_pre_client_ready() {
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let witness_id = 703u32;
+    let (addr, connected, entity_to_addr) = one_session(witness_id, /*pre_ready=*/ true);
+
+    handle_cell_message(
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id: 803,
+            method_index: 29,
+            args: vec![0, 0, 0, 0],
+            entity_is_player: false,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    assert!(
+        typed_transport.is_empty(),
+        "nothing reaches the wire pre-ready"
+    );
+    let clients = connected.lock().unwrap();
+    let buf = &clients.get(&addr).unwrap().deferred_aoi_msgs;
+    assert!(
+        matches!(
+            buf.as_slice(),
+            [DeferredAoiMsg::WitnessEntityMethod {
+                entity_id: 803,
+                method_index: 29,
+                ..
+            }]
+        ),
+        "the method must be buffered behind the create: {buf:?}"
+    );
+}
+
+/// Negative: the witness's own entity is never buffered, so self-traffic
+/// still flows pre-ready.
+#[tokio::test]
+async fn witness_method_about_self_is_not_buffered_pre_client_ready() {
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let witness_id = 704u32;
+    let (addr, connected, entity_to_addr) = one_session(witness_id, /*pre_ready=*/ true);
+
+    handle_cell_message(
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id: witness_id,
+            method_index: 3,
+            args: vec![0, 0, 0, 0],
+            entity_is_player: true,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let clients = connected.lock().unwrap();
+    assert!(
+        clients.get(&addr).unwrap().deferred_aoi_msgs.is_empty(),
+        "self-traffic must not be buffered"
+    );
 }

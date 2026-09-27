@@ -154,6 +154,17 @@ pub fn ephemeral_port() -> u16 {
     port
 }
 
+/// A free **UDP** port, for the BaseApp's Mercury socket. An
+/// [`ephemeral_port`] is a free TCP port, and on a Windows host with
+/// Hyper-V UDP port exclusions (`netsh interface ipv4 show
+/// excludedportrange protocol=udp`) the TCP allocator can hand out ports
+/// inside an excluded UDP range for long stretches, so every bind fails
+/// with `WSAEACCES` (10013). Asking the UDP stack avoids that.
+pub fn ephemeral_udp_port() -> u16 {
+    let socket = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind ephemeral UDP socket");
+    socket.local_addr().expect("local_addr").port()
+}
+
 pub struct RunningServer {
     pub orchestrator: Orchestrator,
     pub auth_url: String,
@@ -219,7 +230,7 @@ pub async fn start_server(db_url: &str) -> RunningServer {
     const MAX_ATTEMPTS: usize = 5;
     let mut last_err = None;
     for _ in 0..MAX_ATTEMPTS {
-        let config = base_config(db_url, ephemeral_port());
+        let config = base_config(db_url, ephemeral_udp_port());
         let auth_url = format!("http://127.0.0.1:{}", config.logon_port);
         let orchestrator = Orchestrator::new(config);
         match orchestrator.start_all().await {
@@ -294,54 +305,14 @@ pub async fn bind_base_socket() -> (Arc<dyn BidirectionalTransport>, u16) {
 // ── World-entry driver ───────────────────────────────────────────────────
 
 /// Drive a `GameSession` through auth, character select, and world entry
-/// exactly as the real client sends it: `AUTHENTICATE` + `ENABLE_ENTITIES`
-/// (char list) -> `playCharacter` -> `ENABLE_ENTITIES` (create player) ->
-/// `mapLoaded` -> `onClientReady`. Returns the session with
-/// `player_entity_id` populated from the server's `CREATE_BASE_PLAYER`
-/// reply. `recv_timeout` is the per-step wait bound -- callers running
-/// under injected loss/latency should pass something much larger than the
-/// lossless-network default (5s) to give retransmit + jitter room to
-/// still land within the test's patience.
-///
-/// Waits for `count` **meaningful** bundles, skipping any bundle that
-/// decodes to nothing but `tickSync` (msg_id `0x0D`) heartbeats. Under
-/// injected latency/jitter, a periodic tickSync can complete its
-/// (randomized) delay and land in the inbox ahead of a delayed reply that
-/// was sent earlier, which breaks a naive "the next bundle is always the
-/// expected reply" assumption -- `enter_castle_with_timeout`'s own
-/// sequencing (send one client message, expect exactly one specific kind
-/// of reply next) depends on this filter to stay correct once packets can
-/// arrive out of their send order.
-async fn recv_meaningful_bundles(
-    session: &GameSession,
-    count: usize,
-    timeout: Duration,
-) -> Vec<bytes::Bytes> {
-    let start = tokio::time::Instant::now();
-    let mut out = Vec::with_capacity(count);
-    while out.len() < count {
-        let elapsed = start.elapsed();
-        if elapsed >= timeout {
-            break;
-        }
-        let bundles = session.recv_bundles(1, timeout - elapsed).await;
-        if bundles.is_empty() {
-            break;
-        }
-        for b in bundles {
-            let msgs = decode_bundle(&b);
-            let is_trivial_tick_sync = !msgs.is_empty() && msgs.iter().all(|m| m.msg_id == 0x0D);
-            if !is_trivial_tick_sync {
-                out.push(b);
-                if out.len() >= count {
-                    break;
-                }
-            }
-        }
-    }
-    out
-}
-
+/// exactly as the real client sends it ([`GameSession::enter_world`]).
+/// Returns the session with `player_entity_id` populated from the server's
+/// `CREATE_BASE_PLAYER` reply. `recv_timeout` is the per-step wait bound --
+/// callers running under injected loss/latency should pass something much
+/// larger than the lossless-network default (5s) to give retransmit +
+/// jitter room to still land within the test's patience. `enter_world`
+/// skips bundles that are only `tickSync`, which under injected jitter can
+/// land ahead of the reply a step is waiting for.
 pub async fn enter_castle_with_timeout(
     auth_url: &str,
     creds: &Credentials,
@@ -352,58 +323,10 @@ pub async fn enter_castle_with_timeout(
     let mut session = GameSession::connect(auth_url, creds, SHARD, request_id)
         .await
         .expect("GameSession::connect (auth + Mercury handshake)");
-
-    let mut post_handshake = GameSession::authenticate();
-    post_handshake.extend_from_slice(&GameSession::enable_entities());
     session
-        .send_bundle(&post_handshake, true)
+        .enter_world(player_id, recv_timeout)
         .await
-        .expect("send AUTHENTICATE + ENABLE_ENTITIES (char list)");
-    let char_list = recv_meaningful_bundles(&session, 1, recv_timeout).await;
-    assert_eq!(
-        char_list.len(),
-        1,
-        "expected the character-list reply bundle"
-    );
-
-    session
-        .send_bundle(&GameSession::play_character(player_id), true)
-        .await
-        .expect("send playCharacter");
-    let reset = recv_meaningful_bundles(&session, 1, recv_timeout).await;
-    assert_eq!(reset.len(), 1, "expected RESET_ENTITIES");
-
-    session
-        .send_bundle(&GameSession::enable_entities(), true)
-        .await
-        .expect("send ENABLE_ENTITIES (create player)");
-    let create_player = recv_meaningful_bundles(&session, 1, recv_timeout).await;
-    assert_eq!(create_player.len(), 1, "expected CREATE_BASE_PLAYER bundle");
-    let own_id = decode_bundle(&create_player[0])
-        .into_iter()
-        .find(|m| m.msg_id == 0x05)
-        .and_then(|m| m.entity_id)
-        .unwrap_or_else(|| {
-            panic!("CREATE_BASE_PLAYER bundle carried no entity_id: {create_player:?}")
-        });
-    session.player_entity_id = Some(own_id);
-
-    session
-        .send_bundle(&GameSession::map_loaded(own_id), true)
-        .await
-        .expect("send mapLoaded");
-    let enter_world = recv_meaningful_bundles(&session, 2, recv_timeout).await;
-    assert_eq!(
-        enter_world.len(),
-        2,
-        "expected VIEWPORT+CELL+FORCED_POSITION plus the entity-data bundle"
-    );
-
-    session
-        .send_bundle(&GameSession::on_client_ready(), true)
-        .await
-        .expect("send onClientReady");
-
+        .unwrap_or_else(|e| panic!("world entry as player {player_id}: {e}"));
     session
 }
 

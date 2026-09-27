@@ -1,6 +1,13 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
+use super::bank_cell_to_base::BankCellToBase;
+use super::chat_cell_to_base::ChatCellToBase;
+use super::content_mail_cell_to_base::ContentSystemMail;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
+use super::mail_gm_cell_to_base::MailGmCellToBase;
+use super::org_cell_to_base::OrgCellToBase;
+use crate::cell::vault::VaultAccess;
+use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft, GmCraftGrant};
 
 /// Messages sent from CellApp to BaseApp.
 #[derive(Debug)]
@@ -208,12 +215,29 @@ pub enum CellToBaseMsg {
         tree_index: i32,
     },
 
+    /// Respec (`resetMyAbilities`, AT-08): remove and refund every
+    /// trainer-bought ability, reset the spend, and charge `cost` naquadah,
+    /// all in one guarded `UPDATE`.
+    ///
+    /// The cell has already checked that the player stands at a pinned
+    /// trainer in range. The base decides the rest from the row: whether
+    /// anything is trainer-bought and whether the player can pay. It always
+    /// answers with [`crate::cell::messages::BaseToCellMsg::AbilitiesReset`],
+    /// except when the session no longer plays `player_id`.
+    ResetAbilities {
+        entity_id: u32,
+        player_id: i32,
+        /// Naquadah to charge: `ability_tree::RESPEC_COST_NAQUADAH`.
+        cost: i32,
+    },
+
     /// Grant an item to a player and persist to `sgw_inventory`.
     ///
     /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
     /// `entity_id` after the write commits. Only the GM `gmGiveItem` path sets
     /// this; non-GM senders (loot pickup, content-chain `Action::GrantItem`)
-    /// leave it false.
+    /// leave it false. `loot` is set only by loot pickup: a refused grant is
+    /// answered with `BaseToCellMsg::LootGrantRefused` so the item goes back.
     GrantItem {
         entity_id: u32,
         player_id: i32,
@@ -221,6 +245,7 @@ pub enum CellToBaseMsg {
         container_id: i32,
         count: i32,
         notify_gm: bool,
+        loot: Option<super::LootGrantSource>,
     },
 
     /// Open a vendor store for a player using the vendor template lists.
@@ -269,6 +294,8 @@ pub enum CellToBaseMsg {
         target_container_id: i32,
         target_slot_id: i32,
         quantity: i32,
+        /// The cell's vault-session verdict for this move (BV-03).
+        vault: VaultAccess,
     },
 
     /// Remove quantity from an inventory item instance.
@@ -283,6 +310,9 @@ pub enum CellToBaseMsg {
         item_id: i32,
         quantity: i32,
         notify_gm: bool,
+        /// The cell's vault-session verdict: an item in the vault (17) is
+        /// removable only with a session open (BV-03).
+        vault: VaultAccess,
     },
 
     /// Remove `count` of an item by **design id** (`type_id`) — chains know
@@ -296,6 +326,9 @@ pub enum CellToBaseMsg {
         player_id: i32,
         type_id: i32,
         count: i32,
+        /// The cell's vault-session verdict: the vault (17) is searched
+        /// only with a session open (BV-03).
+        vault: VaultAccess,
     },
 
     /// Consume one charge/stack of an inventory item instance, then fire the
@@ -313,6 +346,9 @@ pub enum CellToBaseMsg {
         player_id: i32,
         item_id: i32,
         target_id: i32,
+        /// The cell's vault-session verdict: an item in the vault (17) is
+        /// usable only with a session open (BV-03).
+        vault: VaultAccess,
     },
 
     /// Repair an owned inventory item instance by a durability ratio.
@@ -467,6 +503,42 @@ pub enum CellToBaseMsg {
         amount: i32,
     },
 
+    /// Grant training points and persist to the database
+    /// (`gmGiveTrainingPoints`). The base adds `amount` to
+    /// `sgw_player.training_points` in one guarded `UPDATE`, refreshes its
+    /// point cache, answers the cell with
+    /// [`crate::cell::messages::BaseToCellMsg::TrainingPointsGranted`] (which
+    /// mirrors the points and sends the client counter), and sends the
+    /// feedback line to `gm_feedback_to`. `amount` is validated `> 0`
+    /// cell-side; the base re-checks it.
+    GrantTrainingPoints {
+        entity_id: u32,
+        player_id: i32,
+        amount: i32,
+        gm_feedback_to: Option<u32>,
+    },
+
+    /// Grant one ability and persist it (the GM `.giveability` console
+    /// command, pets campaign PT-07). **Only `cimmeria-cell-console` builds
+    /// this**: the base does not re-check GM rights, it trusts that the
+    /// console's channel gate (`is_gm` on the server-side `access_level`)
+    /// already ran.
+    ///
+    /// The base appends `ability_id` to `sgw_player.abilities` in one guarded
+    /// `UPDATE` (a no-op when already known), never to `trained_abilities`,
+    /// so a trainer respec keeps it and refunds nothing for it. It answers
+    /// the cell with
+    /// [`crate::cell::messages::BaseToCellMsg::GmAbilityGranted`] and sends
+    /// the outcome line to the GM, but only while `gm_entity_id`'s session
+    /// still plays `gm_player_id` (an entity id is recycled on relog).
+    GmGrantAbility {
+        entity_id: u32,
+        player_id: i32,
+        ability_id: i32,
+        gm_entity_id: u32,
+        gm_player_id: i32,
+    },
+
     /// Grant applied-science points and persist to the database
     /// (`gmGiveAppliedSciencePoints`). One-way sink, mirroring `GrantCash`:
     /// the base loads the `CraftingState`, adds `amount` to
@@ -479,6 +551,22 @@ pub enum CellToBaseMsg {
         player_id: i32,
         amount: i32,
     },
+
+    /// A crafting request from the client (methods 95-100), parsed and
+    /// station-gated by the cell. The base validates it against the
+    /// `CraftingCatalog` and the player's state, and answers every outcome,
+    /// rejections included, with visible feedback.
+    Crafting(CraftRequest),
+
+    /// The crafting stations in range of a player changed. The base
+    /// rebuilds `onUpdateCraftingOptions`.
+    CraftingStations(CraftingStations),
+
+    /// `.allcraft` for a player; see [`GmAllCraft`].
+    GmAllCraft(GmAllCraft),
+
+    /// `.craftkit` or `.learnblueprint` for a player; see [`GmCraftGrant`].
+    GmCraftGrant(GmCraftGrant),
 
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol
@@ -752,4 +840,26 @@ pub enum CellToBaseMsg {
         p2_item_instance_ids: Vec<i32>,
         p2_cash: i32,
     },
+
+    /// Organization traffic (Squads, Teams, Commands). One nested enum, so
+    /// organization packets add variants in `org_cell_to_base.rs` instead
+    /// of here (work-packets.md § Messages).
+    Org(OrgCellToBase),
+
+    /// Chat traffic (the GM broadcast today). One nested enum, so chat
+    /// packets add variants in `chat_cell_to_base.rs` instead of here.
+    Chat(ChatCellToBase),
+
+    /// The GM mail tools (`.mail`, `.mailbox`, SS-U1). One nested enum, so
+    /// they never touch `MailOp`, which the mail packets own.
+    MailGm(MailGmCellToBase),
+
+    /// Bank and vault traffic (the GM `.bankdump`, the vault expansion).
+    /// One nested enum, so bank packets add variants in
+    /// `bank_cell_to_base.rs` instead of here.
+    Bank(BankCellToBase),
+
+    /// A content chain's `send_system_mail` action (SS-U3): one system mail
+    /// to the chain's player, behind an optional per-player cooldown.
+    ContentSystemMail(ContentSystemMail),
 }

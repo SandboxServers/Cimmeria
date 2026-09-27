@@ -37,6 +37,7 @@ impl CellEntity {
             interaction_type: None,
             npc_name: None,
             character_name: None,
+            squad_id: None,
             missions: MissionManager::new(),
             player_id: None,
             account_id: None,
@@ -75,6 +76,7 @@ impl CellEntity {
             pending_slot_swap_at: None,
             pending_slot_swap_target: None,
             last_aoe_deaths: Vec::new(),
+            pending_cast: None,
             active_effects: Vec::new(),
             holster_animation_complete_at: None,
             ai_state: AiState::Idle,
@@ -111,6 +113,7 @@ impl CellEntity {
             next_loot_index: 1,
             looting_entity: None,
             last_interaction_target: None,
+            vault_session: None,
             offered_dialog_ids: VecDeque::new(),
             vendor_entity: None,
             trade_partner_entity_id: None,
@@ -122,8 +125,13 @@ impl CellEntity {
             ring_source_id: None,
             destination_ring_id: None,
             counters: HashMap::new(),
+            ignore_names: HashSet::new(),
+            ignore_version: 0,
             system_options: SystemOptions::default(),
             tree_progress: TreeProgress::default(),
+            respec_requested_at: None,
+            pet: None,
+            crafting_stations: Default::default(),
         }
     }
 }

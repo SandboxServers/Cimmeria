@@ -15,6 +15,7 @@ use crate::test_support::{make_space_manager, seed_ability_defs, LogCapture};
 const PLAYER: u32 = 1;
 const ARCH: i32 = 3;
 const NODE: i32 = 5101;
+const TRAINER: u32 = 200;
 
 /// A level-10 player with `points` training points and `spent` spend, and
 /// one node: branch 2, cost 2, gated on 4 points, raw cost `raw_cost`.
@@ -29,7 +30,17 @@ fn fixture(points: i32, spent: i32, raw_cost: i32) -> SpaceManager {
         p.level = 10;
         p.tree_progress.training_points = points;
         p.tree_progress.tree_points_spent = spent;
+        p.last_interaction_target = Some(TRAINER);
     }
+    // A reachable trainer offering the node, so only the spend gates decide
+    // (AT-04's trainer gates run after them).
+    mgr.spawn_npc(TRAINER, "Agnos", [3.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(t) = mgr.get_entity_mut(TRAINER) {
+        t.template_id = Some(25);
+    }
+    mgr.template_trainer_lists.insert(25, 1);
+    mgr.trainer_abilities.insert((1, ARCH), vec![NODE]);
     seed_ability_defs(&mut mgr, &[NODE]);
     let mut node = TreeNode::with_defaults(ARCH, 2, NODE, 5, vec![]);
     node.skill_point_cost = 2;
@@ -39,10 +50,13 @@ fn fixture(points: i32, spent: i32, raw_cost: i32) -> SpaceManager {
     mgr
 }
 
+/// The `TrainAbility` forwarded to the base, if any. A rejection's
+/// `onErrorCode` and trainer re-send (AT-04) are skipped.
 async fn buy(mgr: &mut SpaceManager) -> Option<CellToBaseMsg> {
     let (tx, mut rx) = mpsc::channel(4);
     handle_train_ability(PLAYER, NODE, &tx, mgr).await;
-    rx.try_recv().ok()
+    std::iter::from_fn(|| rx.try_recv().ok())
+        .find(|m| matches!(m, CellToBaseMsg::TrainAbility { .. }))
 }
 
 #[tokio::test]

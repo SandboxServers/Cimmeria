@@ -17,6 +17,7 @@ use cimmeria_entity::stats::HEALTH;
 use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
+use cimmeria_cell_world::cell::duel;
 
 use super::messaging::{
     flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
@@ -65,6 +66,37 @@ pub(super) async fn apply_damage_to_target(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // The harm gate again, at apply time (SS-D3 review). The launch and the
+    // collectors check it, but a multi-hit ability collects every cone's
+    // targets up front and then applies them in turn: the first cone's hit
+    // can end a duel (the non-lethal clamp) before the second lands, and
+    // nothing else would stop the second from killing the ex-partner as a
+    // normal death. Re-checking here closes the class (cones, AoE
+    // secondaries, any future multi-hit). Player on player only: a self-cast
+    // and every NPC path are unchanged.
+    if let Some(reason) = player_hit_refusal(space_mgr, entity_id, target_eid) {
+        let (a, t) = (
+            space_mgr.player_identity(entity_id),
+            space_mgr.player_identity(target_eid),
+        );
+        tracing::debug!(
+            target: "duel",
+            event = "duel.hit_refused",
+            account_id = a.account_id,
+            player_id = a.player_id,
+            entity_id,
+            target_player_id = t.player_id,
+            target_entity_id = target_eid,
+            ability_id,
+            reason,
+            "player-on-player damage refused at apply time: not an engaged duel pair"
+        );
+        if needs_ammo_stat_send {
+            flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
+        }
+        return;
+    }
+
     // We need both attacker and target stats. Since we can't borrow two
     // entities mutably at once, we snapshot the attacker stats first.
     let attacker_stats = match space_mgr.get_entity(entity_id) {
@@ -198,6 +230,27 @@ pub(super) async fn apply_damage_to_target(
             &mut target.stats,
         );
     }
+
+    // D-SS20: a duel partner's hit never kills. HEALTH at or below 0 is
+    // held at 1 here, before `target_died` reads it and before the stat
+    // flush, so the client sees 1 and nothing below reaches the death path.
+    // The duel ends at the bottom of this function, after every other
+    // step of this resolution (a script bleed, a registered DoT) has been
+    // clamped or registered, so the end strips them too.
+    let mut duel_clamp = duel::clamp_partner_lethal(
+        space_mgr,
+        entity_id,
+        target_eid,
+        clamp_source("ability", ability_id),
+    );
+    let Some(target) = space_mgr.get_entity_mut(target_eid) else {
+        // Cannot happen (the target was just written), but a held hit must
+        // still end its duel.
+        if let Some(hit) = duel_clamp {
+            duel::finish_clamped(tx, space_mgr, hit).await;
+        }
+        return;
+    };
 
     // Did the *direct* damage kill? The state mutations and the whole
     // death burst are deferred to `death::resolve_death` below so the
@@ -372,6 +425,15 @@ pub(super) async fn apply_damage_to_target(
             };
             crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
         }
+        // D-SS20 again: a script's own HEALTH write (a bleed) from the
+        // partner is held at 1 too, before the flush below and before the
+        // effect-driven death sweep reads it.
+        duel_clamp = duel_clamp.or(duel::clamp_partner_lethal(
+            space_mgr,
+            entity_id,
+            target_eid,
+            clamp_source("ability_script", ability_id),
+        ));
         // Flush any stat changes the scripts produced so the client sees
         // the heal/buff alongside the existing damage update.
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
@@ -455,6 +517,42 @@ pub(super) async fn apply_damage_to_target(
             )
             .await;
         }
+    }
+
+    // ── Duel end (non-lethal, D-SS20) ──
+    //
+    // Last, so the end strips every effect this resolution registered on
+    // the loser: a DoT registered above must not outlive the duel.
+    if let Some(hit) = duel_clamp {
+        duel::finish_clamped(tx, space_mgr, hit).await;
+    }
+}
+
+/// `Some(reason)` when `attacker` and `target` are two different players
+/// and the harm gate (`combat::player_may_attack`) no longer admits the
+/// hit, for instance because an earlier hit of the same ability ended their
+/// duel.
+fn player_hit_refusal(
+    space_mgr: &SpaceManager,
+    attacker: u32,
+    target: u32,
+) -> Option<&'static str> {
+    if attacker == target {
+        return None;
+    }
+    let (Some(a), Some(t)) = (space_mgr.get_entity(attacker), space_mgr.get_entity(target)) else {
+        return None;
+    };
+    (a.is_player && t.is_player && !combat::player_may_attack(a, t, &space_mgr.duels))
+        .then_some("not_duel_opponent")
+}
+
+/// The `duel.lethal_clamped` source for a clamp in this function.
+fn clamp_source(path: &'static str, ability_id: i32) -> duel::ClampSource {
+    duel::ClampSource {
+        path,
+        ability_id: Some(ability_id),
+        effect_id: None,
     }
 }
 

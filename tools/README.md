@@ -46,6 +46,7 @@ Scripts for reverse-engineering the game client (UE3/BigWorld binaries).
 | `frag_debug.py` / `frag_debug2.py` | Debug Mercury packet fragmentation |
 | `investigate_corruption.py` | Investigate packet/data corruption patterns |
 | `re_parity.py` | LLM-free structural parity check for reverse-engineered functions — compares a reconstruction against Ghidra decompile/disasm (11 parity signals + objective call/control-flow gap verifier). Drives the `/re-verify` reverser/checker loop. Run `python tools/re_parity.py --selftest`. |
+| `re/ghidra-headless/Probe.java` | Read-only headless-Ghidra probe of `SGW.exe` (decompile, xrefs, string and function-name search, vtable dumps) run through `analyzeHeadless.bat -noanalysis -readOnly`, for when the Ghidra MCP bridge is unavailable. Java, not Python: see [re/ghidra-headless/README.md](re/ghidra-headless/README.md). |
 
 These scripts run standalone with Python 3.x — they don't need the server running.
 
@@ -54,6 +55,7 @@ These scripts run standalone with Python 3.x — they don't need the server runn
 | Script | Purpose |
 |---|---|
 | `extract_tests.py` | Regenerate the test inventory under [`docs/testing/inventory/`](../docs/testing/inventory/). Walks the workspace `members` from the root `Cargo.toml`, catalogues every `#[test]` / `#[tokio::test]` with the line its `fn` is actually on and whether the body is a live-DB guard, and preserves the hand-curated table columns across regeneration. `--check` and `--verify-links` are drift gates that exit non-zero and write nothing; only `--write` modifies the repo. Stock Python 3, no dependencies. See [maintenance.md](../docs/testing/inventory/maintenance.md). |
+| `ability_trees/generate_seed.py` | Validate the canonical ability-tree workbook and regenerate `archetype_ability_tree.sql`, `trainer_abilities.sql` and the committed JSON export. `--check` exits 1 on drift. Needs openpyxl unless run with `--from-json`. See [ability_trees/README.md](ability_trees/README.md). |
 
 ## Build Tooling
 
@@ -64,6 +66,7 @@ How the Rust workspace is built on developer and agent machines. Why each piece 
 | `build-lane/lane.sh` | The build lane: a machine-wide semaphore every agent `cargo` call goes through (`bash tools/build-lane/lane.sh [--exclusive] cargo …`). Sets the job count, sccache, and a target dir per worktree, and logs every job. |
 | `build-lane/lane_stats.py` | Reports on the lane's job log (`--recent`, `--html`, `--csv`). |
 | `build-lane/mk-worktree.sh` | Creates a buildable worktree under `.claude/worktrees/`: junctions `external/` in and seeds the target dir on a Dev Drive. |
+| `build-lane/rm-worktree.sh` | Retires a worktree once its PR merges (`<name>`, or `--merged` for every merged, idle one): deletes its target dir and `sgw_<worktree>` database, unlinks `external/` without following the junction, and removes the worktree and branch. Refuses while a lane job builds there. |
 | `build-lane/reload-db.sh` / `build-lane/live-db-test.sh` | Reload the worktree's own test database (`sgw_<worktree>`); run the live-DB tier against it in a lane slot. |
 | `dev-drive/New-CimmeriaDevDrive.ps1` | Creates a Windows Dev Drive for build output (run elevated). |
 | `dev-drive/Copy-WarmTarget.ps1` | Seeds a new worktree's target dir from a warm one by ReFS block cloning. |
@@ -81,7 +84,7 @@ Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../C
 | `lint-figure-style.sh` / `lint-figure-style.ps1` | Figure style + format lint — Mermaid init directives, theme backdrops, caption numbering (blocking in CI) |
 | `test-live-db.sh` / `test-live-db.ps1` | The live-DB test tier: runs the lib tests of every crate in its list in one `--profile=ci-live-db` nextest invocation (blocking in CI; `--llvm-cov` for the coverage job). Needs `DATABASE_URL`. |
 
-`crate-graph/crate_graph.py` (Python 3.11+) generates the crate dependency graph in `README.md` and `crates/README.md` from `cargo metadata`; `--check` runs in CI and fails when a `Cargo.toml` change left the diagram stale. See [crate-graph/README.md](crate-graph/README.md).
+`docs-gen/regen.py` (Python 3.11+) owns every generated number and block in the Markdown: test counts, the RE findings count, the gap-analysis totals, and the crate graph. The `regen-docs` workflow runs it on `main` after every merge and commits what changed; PRs don't. See [docs-gen/README.md](docs-gen/README.md). `crate-graph/crate_graph.py` renders the crate dependency graph in `README.md` and `crates/README.md` from `cargo metadata` and still runs on its own; see [crate-graph/README.md](crate-graph/README.md).
 
 `spec-lint/` is a small Rust crate (`cargo run -p spec-lint`) used for spec-document linting.
 

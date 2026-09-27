@@ -19,6 +19,9 @@ cimmeria-base-session = { workspace = true }
 # The Base<->Cell messages, the services-side packet builders, the mail
 # serializers and the ability-tree training-points payload.
 cimmeria-wire = { workspace = true }
+# The ability-tree catalog player load builds `onAbilityTreeInfo` from; the
+# cell's trainer reads the same process-wide snapshot (`shared_catalog`).
+cimmeria-cell-catalog = { workspace = true }
 # The bag tables (`bag_max_slots`, `bag_min_slot`).
 cimmeria-resources = { workspace = true }
 cimmeria-entity = { workspace = true }

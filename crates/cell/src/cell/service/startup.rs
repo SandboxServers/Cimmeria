@@ -52,6 +52,20 @@ impl CellService {
             vec![]
         };
 
+        // Ability definitions load before the startup spawn: each NPC's
+        // `spawner.npc_behaviour` row reads its abilities' event sets from
+        // them (NA44), and without them every startup NPC logged 0.
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_ability_defs(pool).await {
+                Ok(defs) => {
+                    space_mgr.ability_defs = defs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load ability defs: {e}");
+                }
+            }
+        }
+
         let npc_count =
             super::super::space_manager::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
         tracing::info!(npc_count, "NPC population initialized");
@@ -224,16 +238,9 @@ impl CellService {
             }
         }
 
-        // Load ability + effect definitions from DB
+        // Load effect definitions and the other combat caches from DB
+        // (ability definitions load before the startup spawn, above).
         if let Some(ref pool) = self.db_pool {
-            match spawner::load_ability_defs(pool).await {
-                Ok(defs) => {
-                    space_mgr.ability_defs = defs;
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to load ability defs: {e}");
-                }
-            }
             // Eye heights for line of sight (NA31). Read at query time, so
             // the NPCs spawned above pick them up too.
             match spawner::load_body_set_eye_heights(pool).await {
@@ -310,13 +317,26 @@ impl CellService {
                     tracing::warn!("Failed to load items_event_sets abilities: {e}");
                 }
             }
-            match crate::ability_tree::AbilityTreeCatalog::load(pool).await {
-                Ok(map) => {
-                    space_mgr.ability_tree_catalog = map;
+            // The shared snapshot: the base's `onAbilityTreeInfo` reads the
+            // same one, so the trainer and the client's tree always agree.
+            match crate::ability_tree::shared_catalog(pool).await {
+                Ok(catalog) => {
+                    space_mgr.ability_tree_catalog = (*catalog).clone();
                 }
                 Err(e) => {
                     tracing::warn!("Failed to load archetype ability trees: {e}");
                 }
+            }
+            // The crafting catalog, loaded once for the whole process: the
+            // base validates every crafting verb against this same snapshot
+            // (D-CR18). Loading it here surfaces a broken seed at boot.
+            if let Err(e) = cimmeria_cell_catalog::crafting::shared_crafting_catalog(pool).await {
+                tracing::warn!(
+                    target: "crafting",
+                    event = "catalog_load_failed",
+                    error = %e,
+                    "Failed to load the crafting catalog"
+                );
             }
             match spawner::load_trainer_abilities(pool).await {
                 Ok(map) => {
@@ -370,6 +390,19 @@ impl CellService {
                     tracing::error!(
                         "Failed to load entity templates: {e} -- every content \
                          spawn_entity action will refuse for this process lifetime"
+                    );
+                }
+            }
+            // Summon ability → pet template. Not fatal: with no catalog every
+            // summon ability fails as a non-damage ability does today.
+            match spawner::load_pet_summons(pool).await {
+                Ok(catalog) => {
+                    space_mgr.pet_summons = catalog;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to load pet summons: {e} -- no summon ability \
+                         will spawn a pet for this process lifetime"
                     );
                 }
             }

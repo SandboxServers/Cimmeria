@@ -116,16 +116,17 @@ Eleven fields, in wire-packing order (deserialized by `BMSearchOptions::from_wir
 
 ```
 UINT8  sortId          -- EBlackMarketSortType
-INT32  clientKey       -- opaque pagination token, echoed back in results
+INT32  clientKey       -- the view the reply fills (EBlackMarketSearchType: 0 Search,
+                          1 MyAuctions, 2 MyBids); echoed back in onBMAuctions
 INT32  sequenceId      -- pagination cursor (last-seen auction sequence id)
 UINT8  bForward        -- non-zero = paginate forward
-STRING sellerName      -- empty = no filter
-STRING bidderName      -- empty = no filter
+STRING sellerName      -- empty = no filter; the caller's own name for MyAuctions
+STRING bidderName      -- empty = no filter; the caller's own name for MyBids
 STRING itemName        -- substring filter; empty = no filter
-INT32  minTC           -- minimum trade-credits price
-INT32  maxTC           -- maximum trade-credits price
+INT32  minTC           -- minimum tech competency (item level)
+INT32  maxTC           -- maximum tech competency
 INT32  quality         -- EItemQuality filter
-INT32  filterFlags     -- EBlackMarketFilter category/faction/mode bitfield
+INT32  filterFlags     -- .def name monikerCRC; the shipped UI always sends 0
 ```
 
 The 11th field was recovered from the emitter at `puVar1+0x15`; an older revision of this doc mislabelled that slot `monikerCRC`.
@@ -149,7 +150,7 @@ STRING sellerName
 
 ### BMCreateAuction (client → server)
 
-13 bytes, not 16: `INT32 itemInstanceId, INT32 startingPrice, INT32 buyoutPrice, UINT8 auctionLength`. The client packs `auctionLength` as a single byte; reading it as an INT32 both over-reads by 3 bytes and corrupts the duration.
+13 bytes, not 16, in `.def` order: `INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice`. `auctionLength` is a single byte holding the 1-based `UIAuctionTime` value; the create form sends 3, 4 or 5. Reading it as an INT32 over-reads by 3 bytes and corrupts the duration. An earlier version of this section gave the emitter's property-insertion order (`item, starting, buyout, length`), which is not the wire order; see [black-market-client-io.md](../reverse-engineering/findings/black-market-client-io.md) §4.
 
 ## Blocked Unknowns
 

@@ -38,6 +38,8 @@ cimmeria-game = { workspace = true }
 cimmeria-mercury = { workspace = true }
 # The login, logout, character-created and wire-format-error notifications.
 cimmeria-discord = { workspace = true }
+# `squad_actions_total` for a squad call that never reached the cell.
+cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
@@ -71,3 +73,5 @@ cimmeria-mercury = { workspace = true, features = ["test-support"] }
 cimmeria-test-support = { workspace = true }
 # `test_default_connected_client_state`, re-exported from the same shim.
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
+# The recording meter (`testing::install`, `counter_total`).
+cimmeria-observability = { workspace = true, features = ["testing"] }

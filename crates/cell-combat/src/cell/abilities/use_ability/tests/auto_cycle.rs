@@ -188,3 +188,41 @@ async fn same_ability_manual_fire_does_not_break_loop() {
         "BSF must remain set — the loop continues",
     );
 }
+
+/// A `DoNotActivate_AutoCycle` (512) ability fired while the button is
+/// pressed does not join the loop: no stash, no `BSF_AUTO_CYCLING`. Python
+/// launched it with `autoCycle = False` (`SGWPlayer.py:1177`). Before the
+/// fix only `Deactivate_AutoCycle` (1024) kept an ability out, so a
+/// 512-only ability armed the loop and the driver re-fired it.
+#[tokio::test]
+async fn do_not_activate_auto_cycle_ability_does_not_arm_the_loop() {
+    use crate::cell::combat::BSF_AUTO_CYCLING;
+    use cimmeria_entity::abilities::AF_DO_NOT_ACTIVATE_AUTO_CYCLE;
+    let mut mgr = make_mgr();
+    make_player(&mut mgr, 1, [0.0; 3]);
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities.add_ability(7);
+        p.abilities.auto_cycle = true; // button pressed, nothing armed yet
+        p.weapon_holstered = false;
+    }
+    let mut ability = make_ability(7, 0, 30);
+    ability.flags = AF_DO_NOT_ACTIVATE_AUTO_CYCLE;
+    mgr.ability_defs.insert(7, ability);
+    let (tx, _rx) = mpsc::channel(64);
+
+    assert!(
+        handle_use_ability(1, 7, 0, &tx, &mut mgr).await,
+        "the cast commits"
+    );
+
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.abilities.auto_cycle_ability_id.is_none(),
+        "a 512 ability must not be stashed as the loop's ability"
+    );
+    assert_eq!(e.state_field & BSF_AUTO_CYCLING, 0, "the loop is not armed");
+    assert!(
+        e.abilities.last_fired_ability_id.is_none(),
+        "nor stashed for the next setAutoCycle(1) press"
+    );
+}

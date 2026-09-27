@@ -44,7 +44,8 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   28-NPC burst budget). ✅
 - **#360 follow-up — world_entry_appearance migration**: the
   `handle_on_client_ready` 11-packet burst (1 BeingAppearance + 1 onEntityTint
-  + 8 onChatJoined + 1 onPlayerCommunication welcome) and the
+  + 8 onChatJoined + 1 onPlayerCommunication welcome; SS-C4 later dropped
+  the 8 onChatJoined, so the bundle now holds 3 messages) and the
   `resend_appearance_after_cinematic` 2-packet pair now ride a single
   `ChannelBundle` each. Safe per the rule below: every message in both
   bursts targets the player's own entity_id, which was created in
@@ -240,7 +241,7 @@ appearance / chat / welcome burst on every world entry:
 
 | Pre-bundle | Post-bundle |
 |---:|---:|
-| 1 × BeingAppearance + 1 × onEntityTint + 8 × onChatJoined + 1 × welcome | 1 same-entity bundle, ~700 B body, 1 packet |
+| 1 × BeingAppearance + 1 × onEntityTint + 8 × onChatJoined + 1 × welcome | 1 same-entity bundle, 1 packet (3 messages since SS-C4, which stopped registering built-in chat channels) |
 | **11 reliable packets** | **1 reliable packet** |
 
 Plus the `resend_appearance_after_cinematic` 2-packet pair (BeingAppearance
@@ -259,6 +260,8 @@ Progression (`handle_grant_xp`) collapses every grant into one packet:
 | Single-level grant | 5 | 1 |
 | Max-level catch-up (19 levels) | 41 | 1 |
 
+A grant that raises the level also earns Applied Science Points, and their new total follows the bundle as one more packet (the crafting sync's `push_asp`, which logs its own failed send), so a level-up grant is two packets and a no-level grant stays at one.
+
 Teleport (`handle_teleport_player`) collapses the engine-snap + load-hint
 handshake:
 
@@ -270,8 +273,9 @@ Safe per the transaction-state rule because the player entity was created
 in `handle_map_loaded`'s prior bundle and its transaction released at the
 prior bundle's end-of-frame; this bundle is exclusively post-transaction
 property/method updates. Regression-guarded by
-`on_client_ready_burst_bundles_to_single_packet` (pins `num_messages =
-2 + DEFAULT_CHAT_CHANNELS.len() + 1` and `estimated_packet_count() == 1`)
+`on_client_ready_burst_bundles_to_single_packet` (pins `num_messages ==
+3` and `estimated_packet_count() == 1`; `on_client_ready_burst_registers_no_built_in_channel`
+pins that no `onChatJoined` is in it)
 and `appearance_resend_bundle_collapses_to_single_packet` (pins
 `num_messages == 2` and `estimated_packet_count() == 1`) — both in
 [base/world_entry_appearance/mod.rs](../../crates/base-world-entry/src/base/world_entry_appearance/mod.rs).

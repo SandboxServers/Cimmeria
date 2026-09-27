@@ -6,9 +6,11 @@
 //! - [`committed_paks`]: invariants on the PAK files under `data/cache/`.
 //! - [`overrides`]: mission + item override application and metadata bumps.
 //! - [`dialog_overrides`]: dialog override application and metadata bumps.
+//! - [`world_info_overrides`]: the historical CellBlock worlds on category 12.
 
 mod category_map;
 mod committed_paks;
 mod dialog_overrides;
 mod inventory_slots;
 mod overrides;
+mod world_info_overrides;

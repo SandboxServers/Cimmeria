@@ -20,7 +20,9 @@
 //! from its `CHAN_SAY` arm when (a) the text starts with `.` **and** (b) the
 //! sender's [`CellEntity::access_level`](cimmeria_entity::cell_entity::CellEntity::access_level)
 //! is `>= GameMaster`. A GM's `.`-text is consumed (never broadcast to other
-//! players); a non-GM's `.`-text falls through to normal chat. Authorization is
+//! players). A non-GM's `.`-text that names a registered command is consumed
+//! too and answered "is a GM command" (pets campaign PT-07); any other
+//! non-GM `.`-text falls through to normal chat. Authorization is
 //! always on the server-side `access_level` (sourced from `account.accesslevel`
 //! at login, never a client-asserted byte) — the same trust model as
 //! [`crate::cell::dispatch::gm_gate`].
@@ -41,8 +43,12 @@
 //! - [`stats`] — granular per-domain stat dumps (`primarystats`, …).
 //! - [`entity`] — live entity authoring (`tag`, `name`, `visible`, …).
 //! - [`give`] — selected-target player grants (`givecash`, `givexp`).
+//! - [`give_ability`] — `giveability`, persisted through the base.
+//! - [`pet`] — pet UAT tools (`.pet summon|dismiss|stance|info|list`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
 //! - [`aggro`] — the GM's own proximity-aggro switch (`.aggro on|off`).
+//! - [`bank`] — the GM's vault shortcut (`.bank`) and the read-only vault
+//!   listing (`.bankdump`).
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
@@ -53,6 +59,17 @@
 //!   `gotolocation`).
 //! - [`placement`] — selected-entity read/set position + orientation
 //!   (`location`, `rotation`).
+//! - [`social`] — the GM broadcast (`announce`), the console twin of the
+//!   native `/gmshout`.
+//! - [`duel`] — duel GM tools (`duel_status`, `duel_end`).
+//! - [`mail`] — mail GM tools (`mail`, `mailbox`, `mail_expire`).
+//! - [`squad`] — squad tools (`squad_invite`, `squad_join`, `squad_info`),
+//!   routed to the squad handlers in `cimmeria-cell-methods`.
+//! - [`org`] — Team and Command tools (`org_disband`, `org_join`,
+//!   `org_rank`, `org_info`, `org_list`, `org_set_perms`), forwarded to the
+//!   base.
+//! - [`org_create`] — `org_create`, founding a Team or Command on the base
+//!   without the registrar (ORG-05).
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -64,6 +81,7 @@
 //! in `docs/commands.md`.
 
 mod aggro;
+mod bank;
 mod bookmark;
 // The chat interceptor that routes a GM's `.`-lines here, and the native
 // `gm*` cell methods (SGWGmPlayer, index 109+). Both call into the console,
@@ -73,19 +91,27 @@ mod bookmark;
 pub mod chat;
 mod crafting;
 mod dispatch;
+mod duel;
 mod entity;
 mod give;
+mod give_ability;
 pub mod gm;
+mod mail;
 mod mission;
 mod net;
+mod org;
+mod org_create;
 mod parse;
 mod patrol;
+mod pet;
 mod placement;
 mod query;
 mod registry;
 mod seed;
 mod server;
+mod social;
 mod spawn;
+mod squad;
 mod stats;
 mod travel;
 
@@ -100,6 +126,7 @@ pub(crate) use gm::feedback::send_gm_feedback;
 // `registry` / `dispatch` / `parse` stays an internal refactor with no
 // public-surface change.
 pub use dispatch::handle_console_command;
+pub(crate) use dispatch::refuse_non_gm_command;
 pub(crate) use parse::{parse_bool, parse_f32, parse_i32};
 pub(crate) use registry::{Spec, COMMANDS};
 

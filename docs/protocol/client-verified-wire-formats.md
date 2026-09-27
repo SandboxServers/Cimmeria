@@ -220,10 +220,18 @@ Server → Client: CONNECT_REPLY (0xFF)     [request_id:u32][ticketLen:u8][ticke
 
 ### Phase 3: Time Sync Bundle
 ```
-Server → Client: UPD_FREQ_NOTIFICATION (0x02)  [resolution:u8 = 10]
-                 TICK_SYNC (0x0D)               [tick:u32 = 0][rate:u32 = 100]
-                 SET_GAME_TIME (0x03)           [time:u32 = 0]
+Server → Client: UPD_FREQ_NOTIFICATION (0x02)  [hertz:u8 = 10]
+                 TICK_SYNC (0x0D)               [tick:u32 = game time][msPerTick:u32 = 100]
+                 SET_GAME_TIME (0x03)           [tick:u32 = game time]
 ```
+
+`tick` is the server-wide game clock in ticks since server start
+(`crates/wire/src/mercury/game_clock/`), not 0. The client's clock is
+`TICK_SYNC.tick / hertz` seconds, and every `onTimerUpdate.BigWorldTimeComplete`
+is compared against it; see
+[system-protocol-wire-formats.md](../reverse-engineering/findings/system-protocol-wire-formats.md#the-client-game-clock).
+`SET_GAME_TIME` keeps only the low 16 bits; the next `TICK_SYNC` restores the
+full count.
 
 ### Phase 4: Account Entity Creation
 ```
@@ -252,7 +260,7 @@ Server → Client: CREATE_BASE_PLAYER (0x05) [entityId:u32][classId=0x02:u8][pro
 
 ### Ongoing: Heartbeat
 ```
-Server → Client: TICK_SYNC (0x0D) every 100ms  [tick++:u32][rate=100:u32]
+Server → Client: TICK_SYNC (0x0D) every 100ms  [tick = game time:u32][msPerTick=100:u32]
 ```
 
 ### Entity AoI Lifecycle

@@ -4,7 +4,7 @@
 //! directly.
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{vault_access, SpaceManager};
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
@@ -44,6 +44,7 @@ pub(super) async fn handle_remove_item(
                     // The `removeItem` inventory method is a player-initiated
                     // drop, not a GM command — no GM feedback line.
                     notify_gm: false,
+                    vault: vault_access(entity_id, space_mgr),
                 })
                 .await
             {
@@ -121,6 +122,10 @@ pub(super) async fn handle_move_item(
                     target_container_id,
                     target_slot_id,
                     quantity,
+                    // Taken per move: a fresh session and Banker-proximity
+                    // check (D-BV05). The base consults it only when the
+                    // move touches the vault.
+                    vault: vault_access(entity_id, space_mgr),
                 })
                 .await
             {
@@ -166,6 +171,7 @@ pub(super) async fn handle_use_item(
                     player_id,
                     item_id,
                     target_id,
+                    vault: vault_access(entity_id, space_mgr),
                 })
                 .await
             {

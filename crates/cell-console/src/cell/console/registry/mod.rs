@@ -133,13 +133,130 @@ const SEARCH_TEMPLATE_ARGS: &[ArgSpec] = &[
     arg("name", "str", "Name to search for"),
     arg("name2", "str", "Name to search for"),
 ];
+/// `.announce` (SS-C2) has no legacy docstring; this row is written from
+/// the command itself. One positional "arg": the words of the line, whose
+/// optional leading `space` picks the scope.
+const ANNOUNCE_ARGS: &[ArgSpec] = &[arg(
+    "text",
+    "str",
+    "Required. The line to send to every online player; start it with `space` to reach only your space",
+)];
+
+/// `.pet` (pets PT-07) has no legacy counterpart; written from
+/// `console/pet.rs`. `verb` is required (`.pet` has `min = 1`), `id` is the
+/// second word, which only `summon` and `stance` read.
+const PET_ARGS: &[ArgSpec] = &[
+    arg(
+        "verb",
+        "str",
+        "summon | dismiss | stance | info | list. summon replaces your pet at once, with no warmup; info reads the selected pet, else yours; list covers your space",
+    ),
+    arg(
+        "id",
+        "int",
+        "For summon: a summon ability id (2826) or a template id (350). For stance: 0 passive, 1 defensive, 2 aggressive",
+    ),
+];
+/// `.giveability` (pets PT-07) has no legacy counterpart; written from
+/// `console/give_ability.rs`.
+const GIVEABILITY_ARGS: &[ArgSpec] = &[arg(
+    "abilityId",
+    "int",
+    "The ability to grant to the selected player (else you); saved to the character, survives relog and respec, costs no points",
+)];
+/// The duel GM tools (SS-U2) have no legacy docstring either.
+const DUEL_STATUS_ARGS: &[ArgSpec] = &[arg(
+    "name",
+    "str",
+    "Optional. The character whose duel to show (exact case); yours when omitted",
+)];
+const DUEL_END_ARGS: &[ArgSpec] = &[arg(
+    "name",
+    "str",
+    "Required. The character whose duel or duel challenge to end (exact case)",
+)];
+/// `.mute` / `.unmute` (social-systems SS-C3, D-SS26) have no legacy
+/// counterpart; written from `console/social.rs`.
+const MUTE_ARGS: &[ArgSpec] = &[
+    arg(
+        "name",
+        "str",
+        "Required. An online character; a mute holds across relog until it ends or the server restarts",
+    ),
+    arg("minutes", "int", "Required. 1 to 10080 (7 days)"),
+    arg("reason", "str", "Optional. Logged for the other GMs, not shown to the player"),
+];
+const UNMUTE_ARGS: &[ArgSpec] = &[arg("name", "str", "Required. An online, muted character")];
+/// `.craftkit` and `.learnblueprint` have no legacy docstring; these rows
+/// are written from the commands themselves.
+const CRAFTKIT_ARGS: &[ArgSpec] = &[
+    arg(
+        "blueprintId",
+        "int",
+        "Blueprint whose component set 1 the target gets",
+    ),
+    arg("count", "int", "Crafts' worth to grant, 1-10 (default 1)"),
+];
+const LEARNBLUEPRINT_ARGS: &[ArgSpec] =
+    &[arg("blueprintId", "int", "Blueprint to teach the target")];
+
+/// The GM mail tools (SS-U1) have no legacy docstring.
+const MAIL_ARGS: &[ArgSpec] = &[
+    arg(
+        "to",
+        "str",
+        "Optional. `to <name>`: the recipient, online or not; yourself when omitted",
+    ),
+    arg(
+        "cash",
+        "int",
+        "Optional. `cash <n>`: naquadah to attach, minted (0 to 2147483647)",
+    ),
+    arg(
+        "item",
+        "int",
+        "Optional. `item <typeId> [qty]`: an item to attach, minted; a number after the type id is the quantity",
+    ),
+    arg(
+        "cod",
+        "int",
+        "Optional. `cod <n>`: make it a COD mail from you at this price; needs an item and no cash",
+    ),
+    arg(
+        "subject",
+        "str",
+        "Optional. The rest of the line; \"GM test mail\" when omitted",
+    ),
+];
+const MAILBOX_ARGS: &[ArgSpec] = &[arg(
+    "name",
+    "str",
+    "Optional. The character whose mailbox to show; yours when omitted",
+)];
+const MAIL_EXPIRE_ARGS: &[ArgSpec] = &[arg(
+    "mailId",
+    "int",
+    "Required. The mail to expire (see .mailbox); refused until mail expiry lands",
+)];
 
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
+        "mute" => MUTE_ARGS,
+        "unmute" => UNMUTE_ARGS,
         "help" => HELP_ARGS,
         "searchitem" => SEARCH_ITEM_ARGS,
         "searchmission" => SEARCH_MISSION_ARGS,
         "searchtemplate" => SEARCH_TEMPLATE_ARGS,
+        "announce" => ANNOUNCE_ARGS,
+        "pet" => PET_ARGS,
+        "giveability" => GIVEABILITY_ARGS,
+        "duel_status" => DUEL_STATUS_ARGS,
+        "duel_end" => DUEL_END_ARGS,
+        "mail" => MAIL_ARGS,
+        "mailbox" => MAILBOX_ARGS,
+        "mail_expire" => MAIL_EXPIRE_ARGS,
+        "craftkit" => CRAFTKIT_ARGS,
+        "learnblueprint" => LEARNBLUEPRINT_ARGS,
         _ => &[],
     }
 }

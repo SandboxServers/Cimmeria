@@ -1,7 +1,7 @@
 # NPC AI Telemetry Plan
 
 > Type: reference and how-to. Audience: packet workers (NA00-NA03) and whoever debugs a live session.
-> Updated: 2026-09-25 (NA25). Companions: [audit](audit.md) section 5, [work packets](work-packets.md), [instrumentation discipline](../../architecture/instrumentation-discipline.md), [negative-logging convention](../../architecture/negative-logging-convention.md), [movement validation](../../architecture/movement-validation.md) (and `movement-telemetry.md` once PR #726 lands), [observability ADR](../../architecture/observability.md).
+> Updated: 2026-09-26 (NA44). Companions: [audit](audit.md) section 5, [work packets](work-packets.md), [instrumentation discipline](../../architecture/instrumentation-discipline.md), [negative-logging convention](../../architecture/negative-logging-convention.md), [movement validation](../../architecture/movement-validation.md) (and `movement-telemetry.md` once PR #726 lands), [observability ADR](../../architecture/observability.md).
 
 ## Goal
 
@@ -92,6 +92,17 @@ Check the SigNoz volume budget before raising `wire.out.avatar_update`: it sampl
 | `cover.selection` `event=picked` / `event=rejected` | DEBUG, sampled | Scoring | `chunk_id, node_id, score` and score components; top 3 rejected with their reasons. **As built:** components are `move_dist, threat_dist` (the two inputs that vary); rejected `reason` is `reserved` or `lower_score`; ≤ 1 set of rows / 10 s per NPC |
 | `cover.coverage` `event=space_summary` | INFO once the space has its NPCs; WARN when unusable | Per space: the cover nodes of its world and how many stand on its navmesh | **As built (NA02, after NA21):** `world_id, nodes_in_world, nodes_on_mesh, sets_in_world, cover_npcs`. On the mesh means `get_height_near` around the node's own Y finds a floor within 1.0. WARN `reason = no_usable_cover` when a meshed space has cover-seeking NPCs (`use_cover`, not stationary) and no usable node. NA21 replaced the prefab-local seed with extracted world-space nodes, so the planned "bounds + on mesh" test and NA02's interim prefab-local heuristic are gone; Castle_CellBlock now reads 236 nodes, 211 on the mesh, 58 sets, INFO |
 | `cover.state` `event=enter` / `event=leave` | DEBUG | NPC reaches or leaves a reserved slot | `chunk_id, node_id, pose, reason` (`arrived, flanked, target_lost, leash, death`) |
+
+### 2.6 Spawn and bookmark identity (NA44)
+
+The external handoff of 2026-09-26 (§2, §25 "Spawn") found the spawn row short of the common fields and silent about what an NPC fights with. See [the validation ledger](evidence/handoff-2026-09-26-validation.md).
+
+| Target | Level | Fields added |
+|---|---|---|
+| `spawner.npc_behaviour` (the resolved-behaviour row) | DEBUG | `world`, `space_id` (the common set above), `ability_ids` (sorted), `event_set_ids` (each ability's event set, same order; `0` = NULL or no loaded definition, so that attack plays no fire animation), `weapon_visual` (the first `WP` template component; NPCs never set the player-side field) |
+| `playtest.bookmark.entity` | INFO | `ability_ids`, `weapon_visual` (same rule, or the player's bandolier weapon), `current_target_id` (the selected target; NPCs aim at `threat_top_id`, so it reads `0` for them) |
+
+A guard that holds an SMG but lists `ability_ids = [592]` is on the Pistol Shot fallback: its template has no ability set. That is the Castle hostile finding in the ledger (templates 145, 146, 148, 169, 170, 171).
 
 ## 3. Live-session runbook
 

@@ -68,6 +68,22 @@ pub(super) async fn npc_ai_fight(
         }
     }
 
+    // Mid-cast (AT-10): the ability it launched is still in its warmup.
+    // Hold still and let the warmup tick fire it; a launch now would only
+    // be refused as busy, and moving would interrupt the cast.
+    if crate::cell::abilities::is_casting(space_mgr, npc_id) {
+        super::note_outcome("casting");
+        tracing::debug!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "casting",
+            npc_id,
+            target_id,
+            "NPC AI: ability warming up, holding"
+        );
+        return;
+    }
+
     // Distance is needed before the pick, not after: since H09 an ability
     // set can hold both a ranged and a melee auto-attack, and which of the
     // two is usable depends on how far away the target is.
@@ -352,14 +368,30 @@ pub(super) async fn npc_ai_fight(
         in_cover,
         "NPC AI: attacking top threat target"
     );
-    let fired = crate::cell::abilities::handle_use_ability(
-        npc_id,
-        chosen_ability,
-        target_id as i32,
-        tx,
-        space_mgr,
-    )
-    .await;
+    // A pet's kills credit its owner's missions (pets PT-06), so a pet
+    // fires through the kill-credit wrapper. A plain mob keeps the bare
+    // call: it credits nobody, and the wrapper's health-below drain stays
+    // on the player-driven paths.
+    let fired = if space_mgr.credit_recipient_quiet(npc_id).is_some() {
+        crate::cell::abilities::handle_use_ability_with_kill_credit(
+            npc_id,
+            chosen_ability,
+            target_id as i32,
+            events,
+            tx,
+            space_mgr,
+        )
+        .await
+    } else {
+        crate::cell::abilities::handle_use_ability(
+            npc_id,
+            chosen_ability,
+            target_id as i32,
+            tx,
+            space_mgr,
+        )
+        .await
+    };
     if !fired {
         // handle_use_ability returns false when the
         // pre-consume guard rejected the call (entity missing/dead, no

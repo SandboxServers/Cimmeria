@@ -14,10 +14,24 @@ use tokio::sync::mpsc;
 
 mod auto_cycle;
 mod content_events;
+mod duel_end;
+mod duel_gate;
+mod duel_nonlethal;
 mod fire_los;
 mod gating;
 mod holster_queue;
+mod pet_kill_credit;
+mod registered_pet_kill_credit;
+mod sequence;
+mod sequence_phases;
+mod summon;
+mod summon_live_db;
+mod summon_logs;
+mod summon_roster_live_db;
+mod summoned_pet_kill_credit;
 mod target_validity;
+mod warmup;
+mod warmup_interrupt;
 mod weapon_grant;
 
 fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {

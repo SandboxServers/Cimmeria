@@ -348,6 +348,48 @@ async fn a_forged_id_is_rejected_and_an_answered_id_cannot_be_reclosed() {
     );
 }
 
+/// Colo 2026-09-26: closing 2299 fired chain 1019, which displayed 2298
+/// in the same millisecond, and the stuck-player detector reported 2298
+/// as having replaced 2299 "before the player could read it". An accepted
+/// choice is the player moving on, so the follow-up must not be flagged.
+#[tokio::test]
+async fn follow_up_of_an_answered_dialog_is_not_reported_as_displaced() {
+    use crate::test_support::LogCapture;
+    // Unique id: the friction watch is process-global.
+    const EID: u32 = 947_299;
+    let mut mgr = make_space_manager();
+    mgr.create_entity(EID, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(EID) {
+        p.player_id = Some(42);
+        p.offer_dialog(2299);
+    }
+    let engine = engine_with_dialog_choice_chain(2299, "c1019");
+    let (tx, _rx) = mpsc::channel(16);
+    crate::cell::playtest_friction::forget(EID);
+    let capture = LogCapture::install();
+
+    crate::cell::playtest_friction::dialog_shown(EID, 2299);
+    dispatch(
+        EID,
+        DIALOG_BUTTON_CHOICE,
+        &dialog_choice_args(2299, -1),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+    assert_eq!(counter(&mgr, EID, "c1019"), 1);
+    crate::cell::playtest_friction::dialog_shown(EID, 2298);
+    crate::cell::playtest_friction::forget(EID);
+
+    assert!(
+        capture
+            .find_message(tracing::Level::WARN, "friction: a dialog was replaced")
+            .is_none(),
+        "a dialog displayed after the player answered the previous one          did not displace it"
+    );
+}
+
 /// **Client-opened tutorial close.** The client opens some tutorial windows
 /// by itself (5863, the inventory help), so their `-1` close arrives for an
 /// id the server never offered. It must still be rejected (no chain fires)
@@ -392,5 +434,50 @@ async fn a_client_opened_tutorial_close_is_rejected_quietly() {
             .find_message(tracing::Level::DEBUG, "client-opened tutorial")
             .is_some(),
         "the quiet rejection must still leave a DEBUG trace"
+    );
+}
+
+/// Only the close is quiet. A real button on a tutorial id the server never
+/// offered is not something the client sends by itself, so it keeps the
+/// forged-choice WARN (CodeRabbit review on #826).
+#[tokio::test]
+async fn a_non_close_choice_on_an_unoffered_tutorial_still_warns() {
+    use crate::test_support::LogCapture;
+    let mut mgr = make_space_manager();
+    mgr.tutorial_dialog_ids.insert(5863);
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.player_id = Some(42);
+    }
+    let engine = engine_with_dialog_choice_chain(5863, "tut");
+    let (tx, _rx) = mpsc::channel(16);
+    let capture = LogCapture::install();
+
+    dispatch(
+        1,
+        DIALOG_BUTTON_CHOICE,
+        &dialog_choice_args(5863, 0),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert_eq!(
+        counter(&mgr, 1, "tut"),
+        0,
+        "an unoffered choice fires no chain"
+    );
+    assert!(
+        capture
+            .find_message(tracing::Level::WARN, "dialogButtonChoice rejected")
+            .is_some(),
+        "a non-close button on an unoffered tutorial must keep the forged-choice WARN"
+    );
+    assert!(
+        capture
+            .find_message(tracing::Level::DEBUG, "client-opened tutorial")
+            .is_none(),
+        "only a close takes the quiet tutorial path"
     );
 }

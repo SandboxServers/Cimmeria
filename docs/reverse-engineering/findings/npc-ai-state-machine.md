@@ -10,6 +10,8 @@
 
 The client does NOT run AI logic. The server drives all state transitions and sends `aMovementType` + `aPath` to the client. The client renders the resulting movement with debug visualization.
 
+> **Correction (NA10, 2026-09-25):** the `aMovementType` + `aPath` handler is the GM `SGWGmPlayer.onShowPath` path visualiser, not the NPC animation channel. The server sends no movement type for NPCs, and the client animates NPC gait from `EntityMoved` velocity. See [npc-movement-pathfinding.md §11](npc-movement-pathfinding.md#11-correction-2026-09-25-the-client-has-no-movement-type-receiver). The "send `aMovementType`" recommendations below are superseded.
+
 **The server currently only implements "Spawning" and "Fighting" — all 7 movement types need server implementation.**
 
 ---
@@ -51,6 +53,8 @@ GameEntityBase → GameEntity → GameBeing → GameMob
                                         → GamePet
                             → GamePlayer
 ```
+
+> **Scope: these are C++ factory registration slots, not wire entity type ids.** Do not use this `Index` column on the wire. The wire typeID is the client's `clientIndex`: the `entities/entities.xml` order with `<ServerOnly/>` entries skipped. So `Account` is `0x07` and `SGWDuelMarker` is `6` on the wire (see `docs/protocol/client-verified-wire-formats.md:148`). This table's SGWPlayer at slot 6 already shows the two numberings differ.
 
 | Index | Entity Type | C++ Class | Source |
 |-------|------------|-----------|--------|
@@ -192,7 +196,7 @@ NavMesh: `.cdata/navmesh`, debug via `Event_SlashCmd_ShowNavMesh`
 
 ## Implications for Cimmeria
 
-1. **Implement all 7 movement types.** Server must send `aMovementType` (0-6) + `aPath` (waypoint list) + `aEntityId` to client.
+1. **Implement all 7 movement types.** ~~Server must send `aMovementType` (0-6) + `aPath` (waypoint list) + `aEntityId` to client.~~ Superseded (NA10): the states are server-side only; the server records a movement type for telemetry and sends the client position and velocity, nothing else.
 
 2. **No behavior trees** — use Behavior Events loaded from `CookedBehaviorEvents.pak`. The system is event-driven: emit events → trigger state transitions → send movement updates.
 

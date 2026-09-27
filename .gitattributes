@@ -16,3 +16,14 @@ data/spaces/*.occ binary
 # line breaks them, so they stay LF on every checkout.
 *.sh text eol=lf
 .github/actions/**/*.yml text eol=lf
+
+# Append-only lists: PRs add rows and rarely edit one in place, so two PRs that both
+# append conflict only because they touch the same end of the file. `union` keeps
+# both sides' lines instead of conflicting. It applies to local merges and rebases
+# only (GitHub's own conflict check ignores it), and if both sides edit the same
+# line it keeps both versions, so check the result. Files whose lines are edited in
+# place (gap-analysis, project-status, the test inventory tables, crates/README.md)
+# are deliberately not listed; see docs/agents/development-workflow.md.
+.claude/agent-memory/*/MEMORY.md merge=union
+docs/reverse-engineering/findings/README.md merge=union
+docs/readme.md merge=union

@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use super::super::super::messages::{CellToBaseMsg, NpcAoIData};
 use super::super::super::space_manager::SpaceManager;
+use cimmeria_cell_world::cell::pets::pet_create_on_client_events;
 
 /// Cap on entity ids honoured per `RequestEntityUpdate` payload.
 ///
@@ -93,18 +94,7 @@ pub(super) async fn handle(
             continue;
         };
         let npc_data = if !other.is_player {
-            Some(NpcAoIData {
-                name_id: other.name_id,
-                faction: other.faction,
-                alignment: other.alignment,
-                entity_flags: other.entity_flags,
-                interaction_type: other.interaction_type_flags,
-                speaker_id: other.speaker_id,
-                event_set_id: other.event_set_id,
-                static_mesh: other.static_mesh.clone(),
-                body_set: other.body_set.clone(),
-                components: other.components.clone(),
-            })
+            Some(NpcAoIData::from_entity(other))
         } else {
             None
         };
@@ -129,6 +119,51 @@ pub(super) async fn handle(
             );
             // Bail — the channel is closed, no point processing further ids.
             return;
+        }
+        // A re-emitted pet needs its owner-only lists again, after the
+        // EnteredAoI (the same replay the AoI tick does, A-23). Only the
+        // summoner gets them, not a player holding a reused owner id.
+        for msg in pet_create_on_client_events(witness, other, &space_mgr.pets) {
+            if let Err(e) = tx.send(msg).await {
+                tracing::warn!(
+                    target: "pets.lifecycle",
+                    event = "pet_list_replay_failed",
+                    reason = "cell_to_base_closed",
+                    entity_id,
+                    witness_id,
+                    account_id = space_mgr.player_identity(witness_id).account_id,
+                    player_id = space_mgr.player_identity(witness_id).player_id,
+                    pet_id = entity_id,
+                    error = %e,
+                    "RequestEntityUpdate: pet list re-emit cell\u{2192}base send failed"
+                );
+                return;
+            }
+        }
+        // A re-emitted engaged duelist needs the PvP flag again (SS-D2):
+        // the re-create resets the client's copy to 0.
+        if let Some(msg) =
+            cimmeria_cell_world::cell::duel::pvp_flag_on_enter(&space_mgr.duels, witness_id, other)
+        {
+            if let Err(e) = tx.send(msg).await {
+                tracing::warn!(
+                    target: "duel",
+                    event = "duel.send_failed",
+                    reason = "cell_to_base_closed",
+                    entity_id,
+                    witness_id,
+                    account_id = space_mgr.player_identity(witness_id).account_id,
+                    player_id = space_mgr.player_identity(witness_id).player_id,
+                    target_player_id = other.player_id,
+                    duel_id = other
+                        .player_id
+                        .and_then(|p| space_mgr.duels.duel_of(p))
+                        .map(|d| d.duel_id),
+                    error = %e,
+                    "RequestEntityUpdate: PvP flag re-emit cell\u{2192}base send failed"
+                );
+                return;
+            }
         }
         emitted += 1;
     }

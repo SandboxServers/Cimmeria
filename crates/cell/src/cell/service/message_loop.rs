@@ -88,6 +88,13 @@ pub(super) async fn run_cell_loop(
                 // when the queue is empty.
                 super::ticks::pending_attack_tick(tx, &mut space_mgr, &engine).await;
 
+                // Ability warmups (AT-10): interrupt any caster that moved
+                // off the spot, then fire every cast whose warmup has
+                // expired. Walks `pending_casts`, so it short-circuits when
+                // nobody is warming up.
+                crate::cell::abilities::warmup_tick(tx, &mut space_mgr, &content::EngineEvents(&engine))
+                    .await;
+
                 // Fire any content-engine action deferred by
                 // `content_actions.delay_ms > 0` (C08a) whose delay has
                 // elapsed — e.g. "play a sequence, then N ms later, show
@@ -109,6 +116,10 @@ pub(super) async fn run_cell_loop(
                 // Same tick-drain shape; short-circuits when nobody is
                 // mid-crossing.
                 super::super::gate_travel::crossing_tick(tx, &mut space_mgr).await;
+
+                // Duels (SS-D1): expire unanswered challenges and end
+                // countdowns. Returns at once when nobody is duelling.
+                super::super::duel::tick::run(tx, &mut space_mgr).await;
 
                 // Drive the server-side auto-cycle loop: re-fire any
                 // armed player's stashed ability against the LIVE
@@ -134,6 +145,22 @@ pub(super) async fn run_cell_loop(
                     tx, &mut space_mgr, &engine,
                 ).await;
 
+                // Pets whose owner is gone, dead or in another space are
+                // despawned (issue #570, PT-01). The self-healing layer
+                // under every owner-teardown path; returns at once when no
+                // pet exists.
+                cimmeria_cell_world::cell::pets::pet_owner_sweep(tx, &mut space_mgr).await;
+
+                // Owner buffs on pets run out, and To The Death kills its
+                // pet (PT-08). After the sweep, so a pet whose owner left is
+                // already gone; returns at once when no pet is buffed.
+                crate::cell::abilities::owner_pet_tick(tx, &mut space_mgr).await;
+
+                // A summoned pet's arrival VFX (PT-03), sent once its owner
+                // witnesses it. After the AoI tick, so it follows the pet's
+                // CREATE_ENTITY; returns at once when nothing is queued.
+                cimmeria_cell_world::cell::pets::pet_arrival_tick(tx, &mut space_mgr).await;
+
                 // NPC movement runs every AoI tick (100ms) for smooth pathing
                 super::ticks::npc_movement_tick(&mut space_mgr);
                 // NA02 detectors over every NPC (running in place, ...).
@@ -151,10 +178,10 @@ pub(super) async fn run_cell_loop(
                 // deadline — runs every AoI tick (100ms) so a
                 // `handle_use_ability` launch failure can drive a 500ms
                 // retry instead of waiting up to 2 seconds for the
-                // natural cadence. Healthy NPCs (no `ai_retry_at`) are
-                // skipped on the snapshot scan, so the per-tick cost
-                // here is just an `all_npc_entity_ids()` walk + the
-                // pending-retry set membership — negligible. See
+                // natural cadence. The sweep iterates only
+                // `space_mgr.pending_ai_retries`, the NPCs with a scheduled
+                // retry, so the per-tick cost is O(pending), usually zero,
+                // and an empty set returns at once. See
                 // `npc_ai::npc_ai_retry_sweep` for the rationale.
                 super::npc_ai::npc_ai_retry_sweep(tx, &mut space_mgr, &content::EngineEvents(&engine)).await;
 
@@ -180,6 +207,12 @@ pub(super) async fn run_cell_loop(
                     // line-of-sight pages near each player and drops the
                     // rest; a world with no `.occ` has nothing to do.
                     space_mgr.refresh_occluder_residency();
+                    // Crafting stations in reach — also 1 Hz. One
+                    // grid query per player; reports only changes, which
+                    // drive the base's `onUpdateCraftingOptions`. The gate
+                    // itself is recomputed per request, so the cadence
+                    // only affects the window's label.
+                    super::ticks::crafting_station_tick(tx, &mut space_mgr).await;
                 }
 
                 // Channel-interrupt-on-movement sweep — BEFORE the

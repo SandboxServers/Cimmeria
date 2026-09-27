@@ -2,7 +2,7 @@ use super::*;
 use crate::test_support::require_db_or_skip;
 
 /// Sentinel base for contact-list persistence tests.
-/// Distinct from crafting (0x7000_2000 / 0x7000_3000) to avoid collisions.
+/// Distinct from crafting (the `0x7000_Cxxx` block) to avoid collisions.
 const TEST_BASE: i32 = 0x7000_4000;
 
 async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {

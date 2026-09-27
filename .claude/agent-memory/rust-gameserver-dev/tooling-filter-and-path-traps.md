@@ -92,5 +92,11 @@ Two smaller ones from the same session:
   pattern has LF newlines. Always `assert old in s` before writing, or the
   script prints "ok" having changed nothing.
 
+- **The Bash tool collapses a run of three backslashes to two** inside command
+  text (heredocs included), so a Python literal meant as backslash + newline
+  arrives as a literal backslash-n and matches nothing. Seen 2026-09-27 editing
+  the `OTEL_FILTER` rows (each ends in a line-continuation backslash). Build the
+  string with `chr(92)` instead, and keep the `assert s.count(old) == 1`.
+
 Related: [[revert-verification-loses-uncommitted-fmt]],
 [[cargo-test-vs-nextest-flakiness]].

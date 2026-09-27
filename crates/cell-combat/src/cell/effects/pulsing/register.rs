@@ -139,6 +139,11 @@ pub async fn register_active_effect(
     // Send onTimerUpdate(TIMER_DURATION_EFFECT) so the client renders a
     // buff/debuff icon with the duration countdown. `effect_id` is both the
     // packet ID and the SecondaryId used to look up the active effect timer.
+    //
+    // `BigWorldTimeComplete` is absolute on the client's game clock: the
+    // client's `EffectSet` handler (`0x00e09160`) only creates the icon when
+    // `clock < BigWorldTimeComplete`, so a relative duration drew nothing
+    // once the clock passed it.
     let total_time = effect.total_duration();
     let timer_bytes = serialize_timer_update(
         effect.effect_id,
@@ -146,7 +151,7 @@ pub async fn register_active_effect(
         invoker_id as i32,
         effect.effect_id,
         total_time,
-        total_time,
+        crate::mercury::game_clock::game_time_secs() + total_time,
     );
     send_entity_method(target_id, ON_TIMER_UPDATE, timer_bytes, tx, space_mgr).await;
 

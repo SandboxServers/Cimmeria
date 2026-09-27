@@ -82,3 +82,23 @@ trailing newline.
 
 Related: [[revert-verification-loses-uncommitted-fmt]],
 [[tooling-filter-and-path-traps]].
+
+## A `python - <<'EOF'` heredoc eats Rust string continuations
+
+Seen 2026-09-27 (SS-M3): Rust source pasted into a Python triple-quoted
+string inside a Bash-tool heredoc lost every `\` + newline string
+continuation. The SQL literals came out as one line full of runs of spaces,
+and a feedback string gained five spaces mid-sentence. It still compiled,
+so only a byte-exact test caught it. Write the edit script to a file with
+the Write tool and run `python <file>`, then grep the diff for
+`"[^"]*      ` (a quoted run of spaces) before committing.
+
+## Heredoc text piped to `python script.py` arrives as cp1252 (2026-09-27)
+
+Seen on ORG-05: a scratchpad replace helper that read its old/new blocks
+from stdin (`python helper.py FILE <<'EOF' ... EOF`) decoded stdin with the
+locale code page. A block containing `→` or `—` then never matched the UTF-8
+file ("found 0 times"), and a NEW block containing `—` was written as the
+mojibake `â€”`, which still compiles inside a doc comment. Fix: start the
+helper with `sys.stdin.reconfigure(encoding="utf-8")`, and before
+committing grep the branch diff for `â€` / `Ã`.

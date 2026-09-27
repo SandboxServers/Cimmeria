@@ -27,16 +27,15 @@
 //!   2. `angle_between(target - attacker, E - attacker) <= half_angle`
 //!   3. `E` is not the primary target (it already took damage upstream)
 //!   4. `E` is in the attacker's space (no cross-space leak)
-//!   5. `E` is a hostile NPC (faction = `HOSTILE_FACTION`) and alive
+//!   5. `E` is alive and the attacker may hit it (`combat::may_hit_in_area`)
 //!
-//! ## PvE only (today)
+//! ## Players: the duel partner only
 //!
-//! `collect_cone_targets` scans `all_npc_entity_ids()` so player entities
-//! are silently excluded — cone AoE doesn't hit other players today. This
-//! is correct for the PvE-only design Cimmeria currently targets. When
-//! PvP lands, the candidate scan needs to switch to `all_entity_ids()`
-//! plus a per-pair hostility check (replacing the flat `faction == 10`
-//! sentinel with the future faction table).
+//! `collect_cone_targets` scans `combat::area_candidates`: every NPC, plus
+//! the attacker's engaged duel partner (SS-D2). No other player is ever a
+//! candidate, and each candidate must pass `combat::may_hit_in_area`, which
+//! for a player caster is `player_may_attack`, the same rule as the
+//! single-target launch.
 //!
 //! ## Why dispatch lives here, not in `apply_damage_to_target`
 //!

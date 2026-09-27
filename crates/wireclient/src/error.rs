@@ -102,6 +102,12 @@ pub enum Error {
     #[error("Mercury parse: {0}")]
     MercuryParse(String),
 
+    // ── World entry ─────────────────────────────────────────────────────────
+    /// A world-entry step got no reply, or a reply without what it needs
+    /// (`GameSession::enter_world`).
+    #[error("world entry: {0}")]
+    WorldEntry(String),
+
     // ── Replay / trace ──────────────────────────────────────────────────────
     /// Session-trace JSON could not be parsed.
     #[error("session trace JSON: {0}")]

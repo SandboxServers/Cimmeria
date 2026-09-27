@@ -121,6 +121,13 @@ pub struct CellEntity {
     /// entity id. `None` for NPCs and until `InitPlayerState` arrives.
     pub character_name: Option<String>,
 
+    /// The squad this player is in (ORG-03). Stands in for the `squad`
+    /// `CELL_PUBLIC` property, which is never sent to clients (audit A-19).
+    /// A mirror of the cell's `SquadRegistry`, which is authoritative: set
+    /// and cleared with membership, and re-stamped on every world entry
+    /// because gate travel re-creates the entity.
+    pub squad_id: Option<i32>,
+
     /// Mission tracking for player entities.
     pub missions: MissionManager,
 
@@ -420,6 +427,10 @@ pub struct CellEntity {
     /// callers that don't care about kill credit (NPC AI fire, etc.).
     pub last_aoe_deaths: Vec<u32>,
 
+    /// An ability launched with a positive warmup, waiting for the cell's
+    /// warmup tick to fire or interrupt it (AT-10). See [`super::PendingCast`].
+    pub pending_cast: Option<super::PendingCast>,
+
     /// Pulsing effects currently active on this entity (DoT, HoT,
     /// timed debuffs). Each instance carries its own scheduling, so
     /// the per-cell `effect_pulse_tick` walks this Vec to fire due
@@ -486,23 +497,19 @@ pub struct CellEntity {
     /// follows `EMobAggressionLevel` (1 = hostile); `None` means the faction
     /// reaction table decides. See [`super::AggroProfile`].
     pub aggro: super::AggroProfile,
-    /// Last `MobMovementType` broadcast to AoI witnesses via
-    /// `setMovementType`. `None` = nothing broadcast yet (initial state)
-    /// or last broadcast was a "clear" (entering Idle / Dead /
-    /// Despawning). Cached so re-entering the same state from the AI
-    /// tick doesn't re-spam the wire — only state *changes* fan out.
+    /// Last `MobMovementType` recorded for this NPC. `None` = nothing
+    /// recorded yet, or the last state entry cleared it (Idle / Dead /
+    /// Despawning). **Nothing reaches the client**: there is no
+    /// server-to-client movement-type message, and the client animates
+    /// NPC gait from `EntityMoved` velocity (NA10, #779). The value is
+    /// kept for telemetry (`movement.movement_type`) and the `.bug`
+    /// bookmark's `last_movement_type` field.
     ///
-    /// **Ownership**: this cache is written exclusively by
-    /// [`cell::abilities::messaging::broadcast_movement_type`]. The two
-    /// legitimate call sites are (a) the NPC AI tick, which broadcasts
-    /// on every state transition (Fighting entry, Leashing entry,
-    /// Idle entry), and (b) the inbound `setMovementType` cell-method
-    /// handler, which routes the inbound byte through the same helper
-    /// so the dedup is consistent in both directions. **Server-side
-    /// callers that want to set a movement type must go through the
-    /// helper, not write this field directly** — direct writes bypass
-    /// the AoI broadcast and the dedup, producing a server-thinks-A /
-    /// client-thinks-B divergence.
+    /// **Ownership**: written only by
+    /// [`cell::abilities::messaging::broadcast_movement_type`], which
+    /// dedups and logs each change. Its callers are the NPC AI state
+    /// entries and the inbound `setMovementType` cell-method handler.
+    /// Write through the helper, not directly, so the change is logged.
     ///
     /// Server-side only; never persisted, never restored across login.
     pub last_movement_type: Option<MobMovementType>,
@@ -634,6 +641,11 @@ pub struct CellEntity {
     /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
     pub last_interaction_target: Option<u32>,
 
+    /// The open vault window, if any (player entities only). Set by the
+    /// Banker arm and `.bank`; see the `vault_session` module for when it
+    /// ends; [`Self::pin_interaction_target`] clears it on a re-pin.
+    pub vault_session: Option<super::VaultSession>,
+
     /// Dialogs offered to this player and not yet answered, oldest first —
     /// the `dialogButtonChoice` server-authority precondition. Private on
     /// purpose; see the `offered_dialogs` module for the rules and the
@@ -720,6 +732,18 @@ pub struct CellEntity {
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
 
+    /// Character names this player ignores: the base's contact-list Ignore
+    /// list (flags 301), pushed by `BaseToCellMsg::UpdateIgnoreList` after
+    /// `InitPlayerState` and on every change. Spatial chat skips a witness
+    /// whose set holds the speaker's name (D-SS15, one-directional). Empty
+    /// for NPCs and until the first push; never persisted on the cell.
+    pub ignore_names: HashSet<String>,
+
+    /// The `UpdateIgnoreList` version `ignore_names` came from. A push with
+    /// a version at or below this is stale and dropped. 0 until the first
+    /// push, so a fresh entity (gate travel) takes any version.
+    pub ignore_version: u64,
+
     /// Per-session client option state populated by `updateSystemOptions`
     /// (player method index 93). Defaults to `SystemOptions::default()` on
     /// entity construction, then overwritten by either of two paths:
@@ -740,4 +764,12 @@ pub struct CellEntity {
     /// Ability-tree provenance (`sgw_player.trained_abilities`,
     /// `tree_points_spent`), stamped by `InitPlayerState`.
     pub tree_progress: TreeProgress,
+    /// When this player's last respec went to the base (AT-08). A press
+    /// within `RESPEC_RETRY_WINDOW` of it is dropped, which bounds the base
+    /// round trips a spamming client can cause.
+    pub respec_requested_at: Option<std::time::Instant>,
+    /// Pet state (`SGWPet`, class 0x05); `None` for every non-pet. See `pet.rs`.
+    pub pet: Option<Box<super::PetState>>,
+    /// The crafting stations last reported to the base.
+    pub crafting_stations: super::CraftingStationState,
 }

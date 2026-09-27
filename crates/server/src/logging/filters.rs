@@ -138,6 +138,13 @@ use crate::otel;
 /// catalog, interactions, methods, console), so removing any of their rows
 /// above would change nothing and no guard could tell it was gone.
 ///
+/// `crafting` (CR-01, `docs/analysis/crafting/`) is the crafting campaign's
+/// event target on both halves of the split: the cell's malformed-request
+/// drops and forwards, the catalog load, and the base's `request` and
+/// `rejected` events (later `induction_started`, `completed`,
+/// `persist_failed`). It is `debug` so a later DEBUG row reaches SigNoz
+/// without a filter change.
+///
 /// `mercury.backpressure` is `info`, not `warn` (NA25). Its one emitter is a
 /// WARN today, but `server.log` keeps the target from INFO, and the parity
 /// rule is that nothing a file keeps is missing from SigNoz; `warn` here
@@ -158,6 +165,45 @@ use crate::otel;
 /// retransmitted duplicate, a WARN for one beyond the receive window. It
 /// only speaks when the client's packets arrive lost or reordered, so it is
 /// quiet on a healthy link and exactly the evidence a lossy one needs.
+///
+/// `org` and `squad` (organizations campaign, ORG-01) are the Team/Command
+/// and Squad targets. Both are `debug`: the per-call "no handler yet" rows
+/// and the later routing decisions are DEBUG, and the coordinator reads
+/// SigNoz for these two targets after the two-client UAT.
+///
+/// `chat` and `rate_limit` (social-systems campaign, SS-00) are the chat
+/// path's decisions and the per-player flood limits. `rate_limit` logs
+/// `rate_limit.exceeded` at WARN for a drop that notifies the player (at
+/// most one per category per player per 5 s) and at DEBUG for the silent
+/// drops between; `chat` logs the D-SS12 text-rule refusals and (SS-C2)
+/// the GM broadcast: `chat.gm_broadcast` (INFO audit row),
+/// `chat.gm_broadcast_delivered` and `chat.gm_broadcast_rejected`, and
+/// (SS-C3) the channel allowlist, the GM mutes and the unsupported
+/// Communicator methods: `chat.channel_rejected`, `chat.gm_mute` /
+/// `chat.gm_unmute` (INFO audit rows), their `_refused` rows,
+/// `chat.method_unsupported`, and the DEBUG `chat.muted_refused`. Both are
+/// `debug` so the suppressed drops and the muted lines reach SigNoz.
+/// `online_index` (SS-00) is the online name index: DEBUG `insert` /
+/// `remove` rows with the teardown `path`, and a DEBUG `lookup` row with
+/// `reason = missing | ambiguous` for every lookup that does not resolve.
+///
+/// `mail` (social-systems SS-M1, raised from `info`) is gate mail: INFO
+/// `mail.sent` with the recipients and mail ids, WARN `mail.send_refused`
+/// with `reason` and `result` for every refused send and the read-side
+/// owner misses, and DEBUG rows for the cell's decode verdict
+/// (`mail.send_decoded`, `mail.send_decode_rejected`), each failed
+/// recipient (`mail.recipient_failed`), an attachment seen
+/// (`mail.attachment_seen`) and each header list sent (`mail.headers_sent`).
+/// `duel` (SS-D1) is the duel challenge and response path on both the base
+/// (`sendDuelChallenge`) and the cell (the registry, the response, the
+/// tick): DEBUG rows for every refusal (`reason=`) and state transition,
+/// WARN for a payload that does not decode.
+/// `bank` (bank-vault campaign, `docs/analysis/bank-vault/`, telemetry
+/// contract D-BV19) is the vault target on both halves of the split: the
+/// cell's `vault_session_opened` / `vault_session_closed` (DEBUG) and
+/// `vault_open_rejected` (WARN), and the base's `move_rejected` /
+/// `grant_rejected` (WARN). It is `debug` because the session transitions
+/// are DEBUG and the owner debugs bank issues from SigNoz alone.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -166,6 +212,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire::base=debug,\
                 cimmeria_wire::cell=debug,\
                 cimmeria_wire::containers=debug,\
+                cimmeria_wire::crafting=debug,\
                 cimmeria_wire::firehose=debug,\
                 cimmeria_wire::hex=debug,\
                 cimmeria_wire::mercury=debug,\
@@ -201,14 +248,16 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
                 npc_ai=debug,\
+                pets=debug,\
                 cover=debug,\
                 spawner=debug,\
                 content=info,\
                 threat=info,\
                 auth=info,\
                 world_entry=info,\
-                vendor=info,mail=info,progression=info,inventory=info,mission=info,\
+                vendor=info,progression=info,inventory=info,mission=info,\
                 abilities=debug,\
+                crafting=debug,\
                 content.resolve=debug,\
                 dialog.display=debug,\
                 mission.step_context=debug,\
@@ -217,6 +266,11 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 movement.validation=debug,\
                 player.journal=debug,\
                 trade.atomic_swap=debug,\
+                org=debug,squad=debug,\
+                chat=debug,rate_limit=debug,online_index=debug,\
+                mail=debug,\
+                duel=debug,\
+                bank=debug,\
                 console.feedback=debug,\
                 client.native=debug,\
                 launcher=debug,\

@@ -124,22 +124,7 @@ impl SpaceManager {
                             "AoI: entity entered witness view"
                         );
                         let npc_data = if !other.is_player {
-                            Some(super::super::messages::NpcAoIData {
-                                name_id: other.name_id,
-                                faction: other.faction,
-                                alignment: other.alignment,
-                                entity_flags: other.entity_flags,
-                                // Send the BASE interaction type in the cascade (not merged).
-                                // Dynamic per-player flags are sent as a separate
-                                // InteractionType update below, matching the C++ server's
-                                // createOnClient(base) → dynamicUpdate(merged) flow.
-                                interaction_type: other.interaction_type_flags,
-                                speaker_id: other.speaker_id,
-                                event_set_id: other.event_set_id,
-                                static_mesh: other.static_mesh.clone(),
-                                body_set: other.body_set.clone(),
-                                components: other.components.clone(),
-                            })
+                            Some(super::super::messages::NpcAoIData::from_entity(other))
                         } else {
                             None
                         };
@@ -182,6 +167,33 @@ impl SpaceManager {
                             }
                         }
 
+                        // ── createOnClient: an engaged duelist's PvP flag (SS-D2) ──
+                        //
+                        // The flag is sent when the duel engages, to the duelists
+                        // and their witnesses at that moment. A player who comes
+                        // into range mid-duel gets it here, after the create, or
+                        // their client would show the duelist unflagged until the
+                        // end. The flag is presentation only (D-SS23).
+                        if let Some(msg) =
+                            crate::cell::duel::pvp_flag_on_enter(&self.duels, player_id, other)
+                        {
+                            events.push(msg);
+                        }
+
+                        // ── createOnClient: a pet's owner-only lists (PT-01) ──
+                        //
+                        // `onPetAbilityList` / `onPetStanceList` /
+                        // `onPetStanceUpdate`, to the owner only; empty for any
+                        // other witness or entity, and for a player who only
+                        // reused the owner's entity id. The same helper runs on
+                        // the `requestEntityUpdate` re-emit, so both intro paths
+                        // agree.
+                        if let Some(witness) = space.entities.get(&player_id) {
+                            events.extend(crate::cell::pets::pet_create_on_client_events(
+                                witness, other, &self.pets,
+                            ));
+                        }
+
                         // ── dynamicUpdate: standalone InteractionType update ──
                         //
                         // In the C++ server, createOnClient() sends InteractionType
@@ -215,11 +227,16 @@ impl SpaceManager {
                                         entity_is_player: other.is_player,
                                     });
 
-                                    // Register the entity as interactable on the client.
-                                    // GameBeing::isInteractable() checks player+0x16c;
-                                    // onDuelEntitiesRemove (method 152) adds to this set.
-                                    // Must arrive AFTER CREATE_ENTITY so the client can
-                                    // find the entity and refresh its interaction state.
+                                    // Make the client recompute the NPC's interactability.
+                                    // `onDuelEntitiesRemove` (152) ERASES the id from the
+                                    // local player's duel-entity set (`GamePlayer+0x16c`),
+                                    // a no-op for an NPC that was never in it, then forces
+                                    // the per-entity interaction-flags recompute. That
+                                    // recompute is what makes the NPC clickable; the set
+                                    // itself is never read by the interactability check
+                                    // (SS-E1 D-Q5, `duel-wire-formats.md`). So the duel's
+                                    // own 151/153 cannot affect this. Must arrive AFTER
+                                    // CREATE_ENTITY so the client can find the entity.
                                     events.push(CellToBaseMsg::EntityMethodCall {
                                         entity_id: player_id,
                                         method_index: 152, // onDuelEntitiesRemove

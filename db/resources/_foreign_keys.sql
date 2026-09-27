@@ -125,6 +125,27 @@ ALTER TABLE ONLY char_creation_visgroups
     ADD CONSTRAINT char_creation_visgroups_char_def_id_fkey FOREIGN KEY (char_def_id) REFERENCES char_creation(char_def_id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 --
+-- Name: crafting_item_effects_item_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY crafting_item_effects
+    ADD CONSTRAINT crafting_item_effects_item_id_fkey FOREIGN KEY (item_id) REFERENCES items(item_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+--
+-- Name: crafting_item_effects_blueprint_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY crafting_item_effects
+    ADD CONSTRAINT crafting_item_effects_blueprint_id_fkey FOREIGN KEY (blueprint_id) REFERENCES blueprints(blueprint_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
+-- Name: crafting_item_effects_racial_paradigm_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY crafting_item_effects
+    ADD CONSTRAINT crafting_item_effects_racial_paradigm_id_fkey FOREIGN KEY (racial_paradigm_id) REFERENCES racial_paradigm(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
 -- TOC entry 3088 (class 2606 OID 63432)
 -- Name: dialog_kismet_event_set_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --
@@ -451,6 +472,20 @@ ALTER TABLE ONLY mission_steps
 
 ALTER TABLE ONLY mission_tasks
     ADD CONSTRAINT mission_tasks_objective_id_fkey FOREIGN KEY (objective_id) REFERENCES mission_objectives(objective_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+--
+-- Name: pet_summons_ability_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY pet_summons
+    ADD CONSTRAINT pet_summons_ability_id_fkey FOREIGN KEY (ability_id) REFERENCES abilities(ability_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: pet_summons_template_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY pet_summons
+    ADD CONSTRAINT pet_summons_template_id_fkey FOREIGN KEY (template_id) REFERENCES entity_templates(template_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 --
 -- TOC entry 3120 (class 2606 OID 63627)

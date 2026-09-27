@@ -170,6 +170,25 @@ pub(super) async fn handle_interact(
     // interaction distance would break every ranged weapon.
     if !crate::cell::interactions::interact_target_in_range(entity_id, target_entity_u32, space_mgr)
     {
+        // A too-far click on most NPCs stays a silent drop (the client
+        // shows its own range cue); a Banker answers with a chat line and
+        // `vault_open_rejected reason=out_of_range` (bank-vault BV-02), and
+        // an organization registrar with a line and an
+        // `org.registrar_open reason=too_far` row (ORG-05).
+        crate::cell::interactions::reject_banker_out_of_range(
+            entity_id,
+            target_entity_u32,
+            tx,
+            space_mgr,
+        )
+        .await;
+        crate::cell::interactions::reject_registrar_out_of_range(
+            entity_id,
+            target_entity_u32,
+            tx,
+            space_mgr,
+        )
+        .await;
         return;
     }
 
@@ -204,9 +223,12 @@ pub(super) async fn handle_interact(
     // which matters because `interactions/dispatch/initial_response.rs`
     // stamps this pin straight onto the wire as an `onDialogDisplay`
     // EntityId.
-    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
-        player.last_interaction_target = Some(target_entity_u32);
-    }
+    //
+    // Pinning another target also ends an open vault session (D-BV05): the
+    // client sends nothing when the vault window closes, so a new
+    // interaction is one of the server's own "the player left the Banker"
+    // signals.
+    crate::cell::interactions::pin_interaction_target(space_mgr, entity_id, target_entity_u32);
 
     // Trainer NPC check — runs BEFORE the tag/template chain
     // dispatch so a trainer's UI opens directly rather than the

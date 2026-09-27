@@ -381,7 +381,7 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 
 | Address | Function | Notes |
 |---------|----------|-------|
-| `0x00dec9e0` | `SGWBeing_onBigWorldTimeComplete` | Event_NetIn_TimerUpdate type 14 (0x0E); reads BigWorldTimeComplete double + SourceID; emits float countdown |
+| `0x00dec9e0` | `SGWBeing_onBigWorldTimeComplete` | Event_NetIn_TimerUpdate type 14 (0x0E, `DuelTimer`); reads BigWorldTimeComplete float + SourceID; emits `Event_UI_DuelTimerStart(seconds remaining)` via `0x00dfdcb0` (SS-D2, `duel-wire-formats.md`) |
 | `0x00d26380` | `FUN_00d26380` | DialogController Event_NetIn_TimerUpdate handler; type 6 (0x06); drives NPC interaction timer UI |
 | `0x00d26ee0` | `FUN_00d26ee0` | MemberCallback<DialogController, Event_NetIn_TimerUpdate> ctor |
 | `0x00d26850` | `FUN_00d26850` | DialogController constructor; registers handler FUN_00d26380 |
@@ -1388,7 +1388,7 @@ Corrected 2026-09-24: Leash is case 5 (`0x00debad0`), Patrol is case 2 (`0x00deb
 | `0x00deaaf0` | `GameProxyPlayer` `onShowCommandWaypoints` handler (was "onPositionUpdate") | Allocates UE3 actors for path-waypoint visualisation; registered via `CallbackImpl<Event_NetIn_onShowCommandWaypoints>` |
 | `0x00dec040` | `GameProxyPlayer` `onDisableShowPath` handler (was "PathDestroy") | Destroys path-visualisation actors by `wcsicmp` name match; registered via `CallbackImpl<Event_NetIn_onDisableShowPath>` |
 | `0x00dec6d0` | `onSquadList` | Squad-member path data receiver |
-| `0x00dec9e0` | `onBigWorldTimeComplete` | BigWorld time-sync callback |
+| `0x00dec9e0` | `onBigWorldTimeComplete` | Duel countdown: `onTimerUpdate` type 14 → `Event_UI_DuelTimerStart` (SS-D2; not a time-sync callback) |
 | `0x00dedf30` | `TickUpdate` | Per-tick movement advance (advances entity along waypath) |
 | `0x00def320` | `ApplyTargetChange` | Target acquisition / heading update |
 | `0x00df08c0` | `TargetIDReceiver` | CME NetIn target-id event receiver |
@@ -1918,6 +1918,30 @@ Full range `[0x01576000, 0x0158efff]` annotated. 145 functions renamed in Ghidra
 |---------|------|-------|
 | `DAT_018d4858` | Mercury global packet count | Atomically maintained by Packet__dtor |
 | `DAT_018cad90` | `BW_TO_UE3_SCALE` | 100.0f — confirmed in world-entry pipeline |
+
+## Render Thread Options / Shadow Resolution (2026-09-21)
+
+Source: [findings/render-thread-options.md](findings/render-thread-options.md). Client-only.
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0057a440` | `RenderThreadOptionManager::UpdateRenderThreadOptions` | Game thread. Reads 8 system options, builds the 16-byte option block, enqueues `UpdateOptions`. `RenderThreadOptions.cpp`. |
+| `0x0057a3b0` | `UpdateOptions` render-command ctor | vtable `0x018403f4` |
+| `0x0057a330` | `UpdateOptions` execute body | Render thread. Copies block; on change calls `UpdateRHI` on `GSceneRenderTargets`. |
+| `0x0057b1e0` | `RenderThreadOptionManager::GetInstance` | Lazy singleton; Ghidra label `FSceneRenderTargets__unknown_0057b1e0` is wrong |
+| `0x0057b160` | `RenderThreadOptionManager` ctor | Subscribes to `Event_Option_Rendering` |
+| `0x0057a2d0`–`0x0057a320` | option-block accessors (`+0`,`+1`,`+2`,`+4`,`+8`,`+0xC`) | `0x0057a300` (min) and `0x0057a310` (max shadow res) have **no xrefs** |
+| `0x0041f620` | launch-time system-options init | `LaunchMisc.cpp`. Reads `ShaderModel` once; valid `{0,3,4,5}`, default 4 → `FUN_00ec48b0` |
+| `0x00950200` | `FSceneRenderTargets::InitDynamicRHI` | Shadow depth RTs gated on `allowDynamicShadows`, sized by `DAT_01e6ea4c` |
+| `0x0094fb50` | `FSceneRenderTargets::GetShadowDepthTextureResolution` | `return DAT_01e6ea4c;` |
+| `0x009dde70` | `FSceneRenderer::CreateProjectedShadow` | Clamps Min/Max shadow res to `GetShadowDepthTextureResolution() - 10` |
+| `0x009de780` | `FSceneRenderer::InitDynamicShadows` | Called from `0x00906ea0` when `ShowFlags & 0x20` and `DAT_01db58f4` |
+| `0x005f5350` | `FRenderResource::UpdateRHI` | `RenderResource.cpp:0x30` |
+| `DAT_01ee2ac8` | `RenderThreadOptionManager::INSTANCE` | 16-byte heap object = render-thread option block |
+| `DAT_01ee6860` | `GSceneRenderTargets` | |
+| `DAT_01e6ea4c` | shadow depth buffer size | Static `0x400` (1024); never written |
+| `DAT_01db58f4` | `allowDynamicShadows` game-thread mirror | |
+| `DAT_01db5900` / `DAT_01db5904` / `DAT_01db5908` | `ppMotionBlur` / `ppDepthOfField` / `ppBloom` mirrors | Forced 0 when `postprocessing` is off |
 
 ---
 

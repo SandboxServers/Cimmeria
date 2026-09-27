@@ -124,6 +124,69 @@ pub fn is_point_in_region(points: &[[f32; 3]], point: [f32; 3]) -> bool {
     point[0] >= min_x - t && point[0] <= max_x + t && point[2] >= min_z - t && point[2] <= max_z + t
 }
 
+/// How far below a region's lowest corner the client still counts a pawn
+/// as inside it. SGW.exe `FUN_00eae960` compares the pawn's Y against
+/// `aabb.min.y - [0x019eab10]`, and that constant is `100.0f`, applied to
+/// a position the caller has already divided by 100 (world units). So the
+/// client's volume reaches 100 world units *down* — effectively floor-blind
+/// below the region — while its ceiling is exact.
+pub(crate) const CLIENT_REGION_FLOOR_REACH: f32 = 100.0;
+
+/// Would the **client** consider `point` inside this region, i.e. is it a
+/// position from which the client should have sent
+/// `triggerClientHintedGenericRegion`?
+///
+/// A port of the client's own test, not the server's gate
+/// ([`is_point_in_region`] asks a different question). From SGW.exe:
+///
+/// - `FUN_00eaed70` (the `addClientHintedGenericRegion` handler) builds the
+///   AABB: min and max start at the first point; every *later* point widens
+///   min with `p` and max with `(p.x, p.y + height, p.z)`. The first point's
+///   Y never gets `height`.
+/// - `FUN_00eae960` rejects a pawn outside that AABB on any axis, except
+///   that the floor is lowered by [`CLIENT_REGION_FLOOR_REACH`]; then a
+///   one-point region is an XZ circle of `radius`, anything else is the XZ
+///   ray-cast polygon ([`region_contains_xz`], same crossing rule).
+///
+/// Used by the playtest friction watcher so it only reports a missing hint
+/// where the client would actually have produced one. The 2026-09-26 colo
+/// logs had it flagging Castle_Cellblock Region6/Region12 (ceilings 29.96 /
+/// 31.90) for players walking the room above them at y 39.55.
+pub fn client_would_hint_region(
+    points: &[[f32; 3]],
+    height: f32,
+    radius: f32,
+    point: [f32; 3],
+) -> bool {
+    let Some(first) = points.first() else {
+        return false;
+    };
+    let (mut min, mut max) = (*first, *first);
+    for p in &points[1..] {
+        min[0] = min[0].min(p[0]);
+        min[1] = min[1].min(p[1]);
+        min[2] = min[2].min(p[2]);
+        max[0] = max[0].max(p[0]);
+        max[1] = max[1].max(p[1] + height);
+        max[2] = max[2].max(p[2]);
+    }
+    let [x, y, z] = point;
+    if x < min[0]
+        || y < min[1] - CLIENT_REGION_FLOOR_REACH
+        || z < min[2]
+        || x > max[0]
+        || y > max[1]
+        || z > max[2]
+    {
+        return false;
+    }
+    if points.len() == 1 {
+        let (dx, dz) = (x - first[0], z - first[2]);
+        return dx * dx + dz * dz <= radius * radius;
+    }
+    region_contains_xz(points, x, z)
+}
+
 /// Intermediate structure for loading region data before runtime ID assignment.
 #[derive(Debug, Clone)]
 pub struct RegionLoadData {
@@ -291,6 +354,55 @@ mod tests {
             !is_point_in_region(&pts, [0.0, 6.0, 0.0]),
             "6.0 is above the ceiling — a flying client must not trigger"
         );
+    }
+
+    /// Region3 (the Mess Hall, point_set 2034, y 34.52..45.90). 2026-09-26
+    /// colo: two players each had an ENTER hint refused at
+    /// (-101.45, 24.671, -133.14) -- the corridor one floor down. The client
+    /// reports it because its floor reaches 100 units down; the server gate
+    /// refuses it because its floor is 1.5 units of slop. Both are correct
+    /// ports, and the refusal is the right outcome: the player is not in the
+    /// Mess Hall. Pins that divergence so neither side is "fixed" into the
+    /// other by accident.
+    #[test]
+    fn the_client_hints_a_room_from_the_floor_below_and_the_gate_refuses_it() {
+        let region3 = [
+            [-107.25, 34.52, -133.02],
+            [-107.25, 34.52, -84.23],
+            [-71.82, 34.52, -84.23],
+            [-71.82, 45.9, -133.02],
+        ];
+        let corridor_below = [-101.45, 24.671, -133.0];
+        assert!(client_would_hint_region(&region3, 0.0, 0.0, corridor_below));
+        assert!(!is_point_in_region(&region3, corridor_below));
+        // The Mess Hall floor itself: both agree.
+        let mess_hall = [-96.25, 34.591, -91.59];
+        assert!(client_would_hint_region(&region3, 0.0, 0.0, mess_hall));
+        assert!(is_point_in_region(&region3, mess_hall));
+    }
+
+    /// The client's ceiling is exact (no slop), its first point never gets
+    /// `height`, and later points do.
+    #[test]
+    fn the_client_ceiling_is_exact_and_height_skips_the_first_point() {
+        let flat = [
+            [0.0, 10.0, 0.0],
+            [0.0, 10.0, 4.0],
+            [4.0, 10.0, 4.0],
+            [4.0, 10.0, 0.0],
+        ];
+        assert!(client_would_hint_region(&flat, 0.0, 0.0, [2.0, 10.0, 2.0]));
+        assert!(!client_would_hint_region(&flat, 0.0, 0.0, [2.0, 10.1, 2.0]));
+        assert!(client_would_hint_region(&flat, 3.0, 0.0, [2.0, 12.9, 2.0]));
+        assert!(!client_would_hint_region(&flat, 3.0, 0.0, [2.0, 13.1, 2.0]));
+        assert!(client_would_hint_region(&flat, 0.0, 0.0, [2.0, -89.0, 2.0]));
+        assert!(!client_would_hint_region(
+            &flat,
+            0.0,
+            0.0,
+            [2.0, -90.5, 2.0]
+        ));
+        assert!(!client_would_hint_region(&[], 0.0, 0.0, [0.0; 3]));
     }
 
     /// 2009 warns and refuses for any point count other than four. Fail

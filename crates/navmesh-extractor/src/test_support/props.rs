@@ -125,6 +125,38 @@ impl<'a> PropStream<'a> {
             .i32(i32::from(v))
     }
 
+    /// `StrProperty` — an ASCII `FString`, NUL inside the count.
+    pub fn string(&mut self, name: &str, v: &str) -> &mut Self {
+        let mut payload = Vec::new();
+        super::names::push_fstring(&mut payload, v);
+        self.tag(name, "StrProperty", payload.len() as i32);
+        self.buf.extend_from_slice(&payload);
+        self
+    }
+
+    /// `StructProperty` of `struct_type` whose payload is `body` — for a
+    /// struct the reader does not special-case, `body` is usually a
+    /// nested property stream from [`Self::finish`].
+    pub fn struct_value(&mut self, name: &str, struct_type: &str, body: &[u8]) -> &mut Self {
+        self.tag(name, "StructProperty", body.len() as i32)
+            .fname(struct_type);
+        self.buf.extend_from_slice(body);
+        self
+    }
+
+    /// `ArrayProperty` of structs: `i32 count`, then each element's
+    /// property stream (each ending in its own `None`), the shape of
+    /// `VariableLinks` and `InterpCurveVector.Points`.
+    pub fn struct_array(&mut self, name: &str, elements: &[Vec<u8>]) -> &mut Self {
+        let size = 4 + elements.iter().map(Vec::len).sum::<usize>();
+        self.tag(name, "ArrayProperty", size as i32)
+            .i32(elements.len() as i32);
+        for e in elements {
+            self.buf.extend_from_slice(e);
+        }
+        self
+    }
+
     /// The four placement properties an `AActor` carries, in the order
     /// a cooked actor writes them.
     pub fn placement(

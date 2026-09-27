@@ -27,6 +27,7 @@ mod castle_coverage_and_probe;
 mod extract_map_castle_cellblock;
 mod extract_map_cli_synthetic;
 mod extract_map_synthetic;
+mod interp_actor_castle_cellblock;
 mod nav_inspect_cli;
 mod nav_roundtrip_castle_cellblock;
 mod navbuilder_axis_roundtrip;

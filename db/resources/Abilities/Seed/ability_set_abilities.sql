@@ -57,3 +57,73 @@ INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (5, 712);
 -- `event_set_id = 300`. Sorts below 712, so it is the set's primary pick.
 INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (5, 711);
 
+-- NEW CONTENT (debug hub): 710 'Staff Melee AA' alone. Its effect 736 carries
+-- no damage values, so a hit resolves to 0. Melee, so the stationary crate
+-- holds fire until the player stands in melee reach.
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (6, 710);
+
+
+-- Pets campaign, set 350 (the Straegis pet, template 350). The Straegis mob kit
+-- in the seed is 1156 Disengage, 2847 Dissonance and 1240 Straegis Explode,
+-- and none of the three deals damage today: their effects (1322, 4138,
+-- 1397/1398) carry no damage NVP and no script. So the pet needs a real
+-- repeatable attack, and two of the three must stay out:
+-- * 1240 Straegis Explode has cooldown 0 and event set 1507 "Straegis death
+--   ability source": the lowest-id fallback would play the death burst on a
+--   living pet every AI tick.
+-- * 2847 Dissonance is is_ranged = false (3 m reach) and self-targeted
+--   (target type 1); the AI would cast it at its enemy and walk into melee.
+-- 221 Energy Shock (the prisoner retrieval unit's attack, set 2): ranged,
+-- cooldown 2, effect 264 deals HealthDamage 16, event set 802 plays the
+-- EnergyShock beam (sequence 1866), which needs no humanoid animation. It is
+-- the lowest id, so it is the primary. 1156 Disengage (event set 1499,
+-- sequence 2824, the Straegis-native sEmitAura) is cosmetic filler while 221
+-- cools. Its is_ranged = true with max_range 0 resolves to the 30 m default.
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (350, 221);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (350, 1156);
+
+-- PT-11, the Servant Lord roster. The pet AI casts the lowest-id
+-- off-cooldown ability in reach, so the lowest id is each pet's primary.
+-- Set 351, the Jaffa (template 351): set 4's staff pair (584 Staff Auto
+-- Attack, the ranged primary whose effect 646 deals HealthDamage 25; 710
+-- Staff Melee AA, whose effect 736 has no damage values) plus 1652 Jaffa:
+-- Double Blast. 1652 is PetTrained: in the original the owner trains it
+-- (Servant Lord L20) and SGWPlayer.knownPetAbilities carries it to the pet.
+-- The server has no knownPetAbilities path, so the pet's own set carries
+-- it. Today 1652 deals nothing (effect 2015 has no damage values or
+-- script); it plays the staff shot (event set 3, see abilities.sql).
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (351, 584);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (351, 710);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (351, 1652);
+
+-- Set 352, the Jaffa Prime (template 352, a copy of 159, which carries set
+-- 4): the same staff pair plus 1654 Prime: Focus Degeneration (PetTrained,
+-- Servant Lord L20). 1654 alone would leave the Prime with no working
+-- attack: its effect 4086 (-10% focus over 8 ticks) has no script, so it
+-- does nothing today, and it has no event set, so it plays nothing either.
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (352, 584);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (352, 710);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (352, 1654);
+
+-- Set 353, the Lo'taur (template 353): 1653 Heal Health and the four
+-- Lo'taur variants 3326 (focus heal), 3327 (focus regen buff), 3328
+-- (defense buff) and 3329 (defense debuff). None of their effects (4065,
+-- 4924-4930) has a script or damage values, and none has an event set, so
+-- all five do nothing and play nothing today. The pet AI also aims every
+-- ability at its enemy: the Lo'taur has no
+-- ally-heal behaviour yet. Binding HealHealth/HealFocus to these effects
+-- needs that behaviour first, or the Lo'taur would heal what it fights.
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 1653);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3326);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3327);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3328);
+
+INSERT INTO ability_set_abilities (ability_set_id, ability_id) VALUES (353, 3329);

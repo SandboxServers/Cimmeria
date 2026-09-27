@@ -11,12 +11,16 @@ pub mod combat;
 pub mod content_events;
 pub mod cover;
 pub mod dispatch;
+pub mod duel;
 pub mod effects;
+pub mod org_creation;
+pub mod pets;
 pub mod playtest_friction;
 pub mod playtest_friction_watch;
 pub mod ring_transport;
 pub mod service;
 pub mod space_manager;
+pub mod squad;
 
 /// Seed-vs-navmesh guards for the Harset coordinates placed from map data
 /// (`docs/analysis/harset-rebuild/placements/`). Test-only; in

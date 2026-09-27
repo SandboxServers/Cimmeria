@@ -274,7 +274,7 @@ The manual x64dbg patching is a **development convenience**, not the shipping mo
 
 ### Wire decode chain (onBMAuctions = 92)
 
-`onBMAuctions(ARRAY<AuctionItem>, INT32 viewType, INT32 totalCount)`; arg-types `[0xEF6F1C40 (array), 0xEF8A1570 (INT32), 0xEF8A1570 (INT32)]`.
+`onBMAuctions(ARRAY<AuctionItem>, INT32 totalResults, INT32 clientKey)` (`.def` order; *corrected 2026-09-26*, this line used to read `viewType, totalCount`; `clientKey` is the view echoed back, see [black-market-client-io.md](black-market-client-io.md) §4); arg-types `[0xEF6F1C40 (array), 0xEF8A1570 (INT32), 0xEF8A1570 (INT32)]`.
 - Array decoder `FUN_015a2e60`: reads an **INT32 count**, loops `count×` the element decoder, then `FUN_00d1f690` stores the result array.
 - Element type `0xEF8A8180` ("DefIAuctionItem"), decoder `0x015A3440`: builds a **`CME::BasicPropertyTree`** (variant dict), iterating **10 field descriptors at `0xEF770400`** (stride `0x28`, type-ptr @ `+0x1c`, name SSO @ `+0x4`).
 - **Field order — matches `wire.rs` exactly:** `sequenceId, itemDefId, stackSize, durability, charges, currentBid, buyoutPrice` = INT32 (`0xEF8A1570`); `endTimeValue` = UINT8 (`0xEF8A1468`); `nextMinBidPrice` = INT32; `sellerName` = StringDataType (`0xEF8A0D00`).
@@ -314,7 +314,7 @@ The actionable spec for the client-92 build. The four read bindings (all `__cdec
 
 **Write side (5 native nodes via the PROVEN recipe above; manual wire parse via the stream read method `[msg.vtable+4](n)` — NOT the engine arg-decode, which throws on `sellerName`):**
 
-- **92** `onBMAuctions(ARRAY<AuctionItem>, INT32 viewType, INT32 count)` → `[u32 count]` then ×count `[7×INT32, UINT8 endTime, INT32 nextBid, narrow-STRING sellerName]`, then `viewType`, `count` → write `store[viewType]`.
+- **92** `onBMAuctions(ARRAY<AuctionItem>, INT32 totalResults, INT32 clientKey)` → `[u32 count]` then ×count `[7×INT32, UINT8 endTime, INT32 nextBid, narrow-STRING sellerName]`, then `totalResults`, `clientKey` → write `store[clientKey]`.
 - **94** `onBMAuctionUpdate(AuctionItem)` → parse one (same item layout) → upsert.
 - **93** `onBMAuctionRemove(INT32 seqId)` → erase from our store.
 - **95** `onBMWatchedItemsUpdate(ARRAY<INT32>)` → our watched list.

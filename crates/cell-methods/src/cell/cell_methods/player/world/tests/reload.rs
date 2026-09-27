@@ -318,3 +318,89 @@ async fn handle_reload_emits_ammo_type_under_correct_propid() {
          All onEntityProperty calls observed: {entity_property_calls:?}",
     );
 }
+
+/// The reload timer (`onTimerUpdate` type 2, ability 596) carries an
+/// absolute `BigWorldTimeComplete`: `warmup + cooldown` after the game
+/// clock at reload start. The client's cooldown manager shows
+/// `complete - clock`, clamped to 0, so the old `0.0` showed no reload bar.
+#[tokio::test]
+async fn handle_reload_timer_expiry_is_absolute_on_the_game_clock() {
+    use crate::cell::client_methods::being::ON_TIMER_UPDATE;
+    use crate::mercury::game_clock::game_time_secs;
+
+    let mut mgr = make_mgr_with_player();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.weapon_holstered = false;
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                instance_id: 0,
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 2,
+                current_ammo: 0,
+                cur_ammo_type: 2,
+            },
+        );
+        e.active_bandolier_slot = 0;
+    }
+    mgr.ability_defs.insert(
+        596,
+        AbilityDef {
+            ability_id: 596,
+            name: "reload".to_string(),
+            cooldown: 1.0,
+            warmup: 0.5,
+            flags: 0,
+            is_ranged: false,
+            min_range: 0,
+            max_range: 0,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            required_ammo: 0,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
+
+    let (tx, mut rx) = mpsc::channel(64);
+    // Past the epoch, so a relative `total` expiry cannot pass the window
+    // (`1.5 + 1e-7` rounds to `1.5` in f32).
+    crate::mercury::game_clock::init();
+    while game_time_secs() < 0.01 {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let before = game_time_secs();
+    handle_reload(1, &tx, &mut mgr).await;
+    let after = game_time_secs();
+
+    let mut timers = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            method_index, args, ..
+        } = msg
+        {
+            if method_index == ON_TIMER_UPDATE {
+                timers.push(args);
+            }
+        }
+    }
+    assert_eq!(timers.len(), 1, "one reload timer");
+    let args = &timers[0];
+    assert_eq!(args.len(), 21, "onTimerUpdate is 21 bytes");
+    assert_eq!(i32::from_le_bytes(args[0..4].try_into().unwrap()), 596);
+    assert_eq!(args[4], 2, "AbilityCooldown timer type");
+    assert_eq!(
+        i32::from_le_bytes(args[5..9].try_into().unwrap()),
+        1,
+        "SourceID"
+    );
+    let total = f32::from_le_bytes(args[13..17].try_into().unwrap());
+    assert_eq!(total, 1.5, "TotalTime = warmup + cooldown");
+    let expiry = f32::from_le_bytes(args[17..21].try_into().unwrap());
+    assert!(
+        (before + total..=after + total).contains(&expiry),
+        "BigWorldTimeComplete {expiry} is not game time [{before}, {after}] + {total}"
+    );
+}

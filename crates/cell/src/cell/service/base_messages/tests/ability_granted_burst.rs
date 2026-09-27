@@ -183,6 +183,66 @@ async fn progression_changed_sends_nothing_to_the_client() {
     assert!(frames.is_empty());
 }
 
+/// A GM grant reaches the client only through the cell: the points are
+/// mirrored and the counter property goes out byte-exact. Before
+/// `TrainingPointsGranted` there was no grant path at all, and
+/// `ProgressionChanged` (the level-up mirror) deliberately sends nothing.
+#[tokio::test]
+async fn training_points_granted_mirrors_points_and_sends_the_counter() {
+    let mut mgr = fixture(false);
+    let frames = deliver(
+        &mut mgr,
+        BaseToCellMsg::TrainingPointsGranted {
+            entity_id: PLAYER,
+            training_points: 258,
+        },
+    )
+    .await;
+    assert_eq!(
+        mgr.get_entity(PLAYER)
+            .unwrap()
+            .tree_progress
+            .training_points,
+        258,
+        "the purchase gate reads the mirrored points"
+    );
+    assert_eq!(
+        frames,
+        vec![(
+            method_idx::ON_ENTITY_PROPERTY,
+            // GENERICPROPERTY_TrainingPoints = 1, then 258 = 0x0102, both LE.
+            vec![0x01, 0x00, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00]
+        )],
+        "exactly the counter property, no hotbar refresh"
+    );
+}
+
+/// With a trainer pinned, the grant also re-sends `onTrainerOpen`, and its
+/// `trainable` byte reads the granted points: 646 costs 1, the player had 0.
+#[tokio::test]
+async fn training_points_granted_unlocks_the_open_trainer_without_a_relog() {
+    let mut mgr = fixture(true);
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .tree_progress
+        .training_points = 0;
+    let frames = deliver(
+        &mut mgr,
+        BaseToCellMsg::TrainingPointsGranted {
+            entity_id: PLAYER,
+            training_points: 1,
+        },
+    )
+    .await;
+    let order: Vec<u16> = frames.iter().map(|(m, _)| *m).collect();
+    assert_eq!(
+        order,
+        vec![method_idx::ON_ENTITY_PROPERTY, method_idx::ON_TRAINER_OPEN],
+        "counter first, then the trainer re-send"
+    );
+    assert_eq!(trainable(&frames[1].1, 646), 1);
+}
+
 /// The level gate reads the level `InitPlayerState` hydrates. On `main`
 /// before AT-03 nothing stamped a player's cell level, so every player was
 /// level 1 to the trainer and the level-5 node stayed locked for a level-5

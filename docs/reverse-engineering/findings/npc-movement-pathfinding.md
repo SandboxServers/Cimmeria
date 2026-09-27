@@ -202,7 +202,7 @@ The client expects `movementType = 5` (Leash state, corrected 2026-09-24 from 2;
 | `0x00deaaf0` | `GameProxyPlayer` `onShowCommandWaypoints` handler (was "onPositionUpdate") | Creates UE3 path-visualization actors |
 | `0x00dec040` | `GameProxyPlayer` `onDisableShowPath` handler (was "PathDestroy") | Destroys path actors by wcsicmp name |
 | `0x00dec6d0` | `onSquadList` | Squad-member path receiver |
-| `0x00dec9e0` | `onBigWorldTimeComplete` | BigWorld time-sync callback |
+| `0x00dec9e0` | `onBigWorldTimeComplete` | Duel countdown: `onTimerUpdate` type 14 → `Event_UI_DuelTimerStart` (SS-D2; not a time-sync callback) |
 | `0x00dedf30` | `TickUpdate` | Per-tick movement advance |
 | `0x00def320` | `ApplyTargetChange` | Target acquisition / heading |
 | `0x00df08c0` | `TargetIDReceiver` | CME NetIn target-id event |

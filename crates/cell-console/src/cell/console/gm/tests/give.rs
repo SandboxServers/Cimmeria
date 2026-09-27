@@ -20,6 +20,7 @@ async fn gm_give_item_emits_grant_with_clamped_qty() {
             container_id,
             count,
             notify_gm,
+            loot,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
@@ -30,6 +31,7 @@ async fn gm_give_item_emits_grant_with_clamped_qty() {
                 notify_gm,
                 "GM grant must set notify_gm for definitive feedback"
             );
+            assert_eq!(loot, None, "a GM grant has no corpse to go back to");
         }
         other => panic!("expected GrantItem, got {other:?}"),
     }
@@ -205,7 +207,11 @@ async fn gm_remove_item_emits_remove_and_rejects_nonpositive() {
             item_id,
             quantity,
             notify_gm,
+            vault,
         } => {
+            // The GM has no `.bank` session open, so its vault stays shut.
+            // (`gm_remove_takes_the_gms_own_vault_verdict` covers an open one.)
+            assert_eq!(vault.reason(), Some("no_vault_session"));
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(item_id, 42);
@@ -598,4 +604,38 @@ async fn gm_give_item_success_emits_action_without_cell_feedback() {
         "the grant must be the only message; the base owns the definitive feedback line: {msgs:?}"
     );
     // (Implies no cell-side feedback on success.)
+}
+
+/// BV-03: `gmRemoveItem` carries the GM's own live vault verdict, so with
+/// `.bank` open (a Banker-less session) it may remove from the GM's vault.
+/// Fails if the GM path hard-codes a verdict instead of taking it.
+#[tokio::test]
+async fn gm_remove_takes_the_gms_own_vault_verdict() {
+    use cimmeria_entity::cell_entity::{VaultScope, VaultSession};
+
+    let mut mgr = mgr_with_player(1, "Castle");
+    let space_id = mgr.get_entity_space_id(1).unwrap();
+    mgr.get_entity_mut(1).unwrap().vault_session = Some(VaultSession {
+        org_id: None,
+        scope: VaultScope::Personal,
+        banker_id: None,
+        space_id,
+        opened_at: std::time::Instant::now(),
+        expansion_offer: None,
+    });
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let mut args = 42i32.to_le_bytes().to_vec();
+    args.extend_from_slice(&1i16.to_le_bytes());
+    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr, &test_engine()).await);
+    match rx
+        .try_recv()
+        .expect("gmRemoveItem must emit RemoveInventoryItem")
+    {
+        CellToBaseMsg::RemoveInventoryItem { vault, .. } => {
+            assert!(vault.opens_personal_vault(), "{vault:?}");
+            assert!(vault.gm_override(), "{vault:?}");
+        }
+        other => panic!("expected RemoveInventoryItem, got {other:?}"),
+    }
 }

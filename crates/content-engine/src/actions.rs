@@ -271,11 +271,12 @@ pub enum Action {
     /// target is left unresolved rather than silently following the
     /// wrong entity.
     ///
-    /// Threat preemption converts Follow → Fighting; the follow
-    /// target field persists on the entity but doesn't auto-route
-    /// back — only Patrol and Wander auto-resume from their per-state
-    /// scratch on Fighting → Leashing → Idle. Re-fire the action if a
-    /// continued follow is desired post-fight.
+    /// Threat preemption converts a mob's Follow → Fighting; the follow
+    /// target persists on the entity, and the leash that ends the fight
+    /// resets the follower where it stands and puts it back in Follow
+    /// while the target is still in the space (NA42). A target that has
+    /// left is cleared and the follower goes Idle; re-fire the action to
+    /// re-arm it. A `being` (Col Marsh) never enters combat at all.
     SetFollowTarget {
         entity_tag: String,
         target_tag: Option<String>,
@@ -291,8 +292,9 @@ pub enum Action {
     ///
     /// - `Despawning` → AI tick removes the entity from the space
     ///   on the next pass. Witnesses get an AoI-left event.
-    /// - `Submit` → clears combat state, broadcasts movement-type
-    ///   None; NPC sits inert until destroyed or transitioned.
+    /// - `Submit` → clears combat state and the recorded movement type
+    ///   (nothing is sent to clients); NPC sits inert until destroyed or
+    ///   transitioned.
     /// - `Error` → halts AI ticking on the NPC, logs the inconsistency.
     ///   Used by `enterErrorAIState` slash commands and by the AI tick
     ///   itself when it detects unrecoverable state.
@@ -445,6 +447,25 @@ pub enum Action {
     /// (`removeStargateAddress`), and no shipped content used it; a
     /// `revoke_stargate_address` verb can be added when a chain needs one.
     GrantStargateAddress { stargate_id: i32 },
+
+    /// Mail the acting player a system mail (SS-U3): no sender character,
+    /// so it cannot be returned, and the cash and item are minted. The base
+    /// writes it through `mail::system`, the one writer every server mail
+    /// uses, so the recipient takes the cash and the item like any mail.
+    ///
+    /// `cooldown_secs` is a per-player limit, kept in
+    /// `sgw_player_content_cooldown` under a key derived from the chain id
+    /// and claimed in the same transaction as the mail. A firing inside the
+    /// window writes nothing and tells the player how long to wait.
+    SendSystemMail {
+        sender_name: String,
+        subject: String,
+        body: String,
+        cash: i64,
+        /// `(type_id, quantity)`.
+        item: Option<(i32, i32)>,
+        cooldown_secs: Option<u32>,
+    },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].

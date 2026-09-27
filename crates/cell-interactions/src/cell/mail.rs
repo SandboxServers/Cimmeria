@@ -9,6 +9,8 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_wire::cell::cell_methods::mail::decode_send_mail_message;
+
 use super::messages::{CellToBaseMsg, MailOp};
 use super::space_manager::SpaceManager;
 
@@ -127,6 +129,113 @@ pub async fn handle_archive_mail(
         .await;
 }
 
+/// Forward an attachment op (take cash, take item, pay COD, return; SS-M3)
+/// to BaseApp. The mail id is all the base trusts from the payload; the
+/// caller is the cell entity's own `player_id`. `method` is the client
+/// method's name, for the span and the drop log.
+#[tracing::instrument(
+    name = "mail.attachment_op",
+    level = "info",
+    skip_all,
+    fields(entity_id, method)
+)]
+pub async fn handle_attachment_op(
+    entity_id: u32,
+    method: &'static str,
+    op: MailOp,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, method) else {
+        return;
+    };
+    if tx
+        .send(CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op,
+        })
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            target: "mail",
+            entity_id,
+            player_id,
+            method,
+            reason = "base_channel_closed",
+            "mail attachment op dropped: base channel closed",
+        );
+    }
+}
+
+/// Decode a `sendMailMessage` (CM 44) and forward it to BaseApp.
+///
+/// The decode is bounded and applies the D-SS12 text rules
+/// ([`decode_send_mail_message`]); a refusal is forwarded as
+/// [`MailOp::SendRejected`] rather than answered here, so the base's
+/// mail-send bucket charges it and answers `sendMailResult` itself.
+#[tracing::instrument(name = "mail.send", level = "info", skip_all, fields(entity_id))]
+pub async fn handle_send_mail(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "sendMailMessage") else {
+        return;
+    };
+    let op = match decode_send_mail_message(args) {
+        Ok(send) => {
+            tracing::debug!(
+                target: "mail",
+                event = "mail.send_decoded",
+                entity_id,
+                player_id,
+                recipients = send.recipients.len(),
+                recipient_flags = send.recipient_flags,
+                subject_units = send.subject.encode_utf16().count(),
+                body_units = send.body.encode_utf16().count(),
+                cash = send.cash,
+                cod = send.cod,
+                item_id = send.item_id,
+                "sendMailMessage decoded, forwarding to base",
+            );
+            MailOp::Send(send)
+        }
+        Err(reject) => {
+            tracing::debug!(
+                target: "mail",
+                event = "mail.send_decode_rejected",
+                entity_id,
+                player_id,
+                payload_len = args.len(),
+                reason = reject.reason(),
+                detail = ?reject,
+                "sendMailMessage refused by the cell decode, forwarding the refusal to base",
+            );
+            MailOp::SendRejected(reject)
+        }
+    };
+    if tx
+        .send(CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op,
+        })
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            target: "mail",
+            entity_id,
+            player_id,
+            reason = "base_channel_closed",
+            "sendMailMessage dropped: base channel closed",
+        );
+    }
+}
+
 // ── Wire format helpers for BaseApp to build mail response packets ───────────
 //
 // `MailHeader` and the serializers are wire contract and live in
@@ -134,7 +243,7 @@ pub async fn handle_archive_mail(
 
 pub use cimmeria_wire::cell::mail::{
     serialize_on_mail_header_info, serialize_on_mail_header_remove, serialize_on_mail_read,
-    MailHeader,
+    MailAttachment, MailHeader,
 };
 
 #[cfg(test)]
@@ -226,6 +335,60 @@ mod tests {
                 }
             }
             _ => panic!("Expected MailRequest"),
+        }
+    }
+
+    fn send_payload(names: &[&str], subject: &str) -> Vec<u8> {
+        let mut p = 0i32.to_le_bytes().to_vec();
+        p.extend_from_slice(&(names.len() as u32).to_le_bytes());
+        for n in names {
+            cimmeria_wire::mercury::write_wstring(&mut p, n);
+        }
+        cimmeria_wire::mercury::write_wstring(&mut p, subject);
+        cimmeria_wire::mercury::write_wstring(&mut p, "body");
+        p.extend_from_slice(&[0; 13]);
+        p
+    }
+
+    /// CM 44 reaches the base as `MailOp::Send` with the caller's
+    /// `player_id` from the cell entity, never from the payload.
+    #[tokio::test]
+    async fn send_mail_forwards_decoded_send() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        let space_mgr = space_mgr_with_player(1, 42);
+        handle_send_mail(1, &send_payload(&["Bob"], "Hi"), &tx, &space_mgr).await;
+        match rx.try_recv().unwrap() {
+            CellToBaseMsg::MailRequest {
+                entity_id: 1,
+                player_id: 42,
+                op: MailOp::Send(send),
+            } => {
+                assert_eq!(send.recipients, vec!["Bob".to_string()]);
+                assert_eq!(send.subject, "Hi");
+            }
+            other => panic!("expected MailOp::Send, got {other:?}"),
+        }
+    }
+
+    /// A refused decode still reaches the base, which answers it; the cell
+    /// never swallows a send silently.
+    #[tokio::test]
+    async fn send_mail_forwards_decode_refusal() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        let space_mgr = space_mgr_with_player(1, 42);
+        let eleven: Vec<String> = (0..11).map(|i| format!("n{i}")).collect();
+        let eleven: Vec<&str> = eleven.iter().map(String::as_str).collect();
+        handle_send_mail(1, &send_payload(&eleven, "Hi"), &tx, &space_mgr).await;
+        match rx.try_recv().unwrap() {
+            CellToBaseMsg::MailRequest {
+                player_id: 42,
+                op: MailOp::SendRejected(reject),
+                ..
+            } => assert_eq!(
+                reject,
+                cimmeria_wire::cell::messages::MailSendReject::TooManyRecipients { declared: 11 }
+            ),
+            other => panic!("expected MailOp::SendRejected, got {other:?}"),
         }
     }
 

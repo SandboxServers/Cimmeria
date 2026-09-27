@@ -2,12 +2,12 @@
 
 > **Type**: explanation
 > **Audience**: engineers
-> **Last updated**: 2026-09-21
+> **Last updated**: 2026-09-26
 > **Companion docs**: [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md), [docs/protocol/message-catalog.md](../protocol/message-catalog.md), [docs/content/mission-chains.md](../content/mission-chains.md), [docs/content/equip-from-inventory-pattern.md](../content/equip-from-inventory-pattern.md), [TESTING.md](../../TESTING.md)
 
 This document explains how Cimmeria adds **new mission steps** that the client renders in its quest log without reshipping `CookedDataMissions.pak` to every player. If you only need the operator runbook ("I want to add an Equip-the-X step to mission N"), skip to [Adding a new override](#adding-a-new-override).
 
-The same in-memory-override mechanism carries Cimmeria's item and dialog changes. The mission case is the worked example throughout; [Dialog overrides](#dialog-overrides) covers what is different about dialogs, which is the only category with two distinct override kinds.
+The same in-memory-override mechanism carries Cimmeria's item, dialog, Kismet sequence and world-info changes. The mission case is the worked example throughout; [Dialog overrides](#dialog-overrides) covers what is different about dialogs, which is the only category with two distinct override kinds, and [World info overrides](#world-info-overrides-category-12) covers new worlds.
 
 ## The problem
 
@@ -46,7 +46,7 @@ sequenceDiagram
         Note over Client: Runtime cache repopulated;<br/>mission UI reads patched steps
     else client_version != server_version<br/>and no scoped overrides
         Server-->>Client: onVersionInfo(version, invalidate_all=true, InvalidKeys=[], RequiredUpdates=0)
-        Note over Client: Drop entire category;<br/>lazy-fetch via elementDataRequest
+        Note over Client: Drop entire category and persist it empty;<br/>no lazy fetch follows (2026-09-20 Kismet wipe)
     end
 ```
 
@@ -65,7 +65,8 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 | Concern | File | Symbol |
 |---|---|---|
 | Per-mission XML patch + insertion-point spec | `crates/resources/src/base/mission_overrides.rs` | `MissionOverride`, `MISSION_OVERRIDES`, `apply_override` |
-| Apply patches at PAK load + bump metadata | `crates/resources/src/base/resources/mod.rs:162-236` | `ResourceCache::apply_mission_overrides` |
+| Apply patches at PAK load + bump metadata | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_mission_overrides` |
+| Content-derived `MetaData` bumps, one per category | `crates/resources/src/base/resources/metadata_bump.rs` | `compute_metadata_bump`, `compute_world_info_metadata_bump`, … |
 | Track which element IDs were patched | `crates/resources/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
 | Three-way `onVersionInfo` reply | `crates/base-session/src/base/cooked_data.rs:21-123` | `handle_version_info_request` |
 | Push patched XML after the reply | `crates/base-session/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
@@ -76,7 +77,10 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 | Per-zone dialog patch tables | `crates/resources/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES` |
 | Shared Server-Build dialog emitter | `crates/resources/src/base/dialog_overrides/emit.rs` | `emit_cooked_dialog`, `escape_xml_attr`, `CookedDialog` |
 | Cooked-dialog reader | `crates/resources/src/base/dialog_overrides/parse.rs` | `parse_cooked_dialog` |
-| Apply both dialog kinds + bump | `crates/resources/src/base/resources/mod.rs` | `ResourceCache::apply_dialog_overrides` |
+| Apply both dialog kinds + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_dialog_overrides` |
+| New Kismet sequences (category 1) | `crates/resources/src/base/sequence_overrides.rs` | `SequenceOverride`, `SEQUENCE_OVERRIDES`, `generate_sequence_xml` |
+| New worlds (category 12) | `crates/resources/src/base/world_info_overrides.rs` | `WorldInfoOverride`, `WORLD_INFO_OVERRIDES`, `generate_world_info_xml` |
+| Apply the world-info entries + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_world_info_overrides` |
 
 ## The XML-index gotcha
 
@@ -124,7 +128,7 @@ The same gotcha applies to mission 622, which now injects **two** steps for its 
 
 The category's `MetaData` value is what the client compares against to decide whether to refresh anything at all. We need a fresh value when the override content changes — otherwise the client never refetches — but we also need it to be **stable across server starts**, because otherwise every reconnect re-invalidates the same entries even when nothing changed (and incidentally racks up unnecessary `resourceFragment` traffic on every connection).
 
-The bump is content-derived (`crates/resources/src/base/resources/mod.rs:204-223`):
+The bump is content-derived (`crates/resources/src/base/resources/metadata_bump.rs`; the mission one is shown):
 
 ```rust
 let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -151,7 +155,7 @@ What makes dialogs different from missions: the server's `displayDialog` path ca
 
 ### Two override kinds
 
-**Full regeneration** — `DialogOverride`, in `crates/resources/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible.
+**Full regeneration** — `DialogOverride`, in `crates/resources/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible. A new dialog id must be at most 65535 (`MAX_COOKED_ELEMENT_ID`): overrides of 100100 and 100101 crashed the client on map load, so Cimmeria-authored dialogs use 60100-60199. `every_cooked_override_element_id_fits_in_16_bits` enforces the bound for every category; see `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
 
 **Patch** — `DialogPatch`, in `crates/resources/src/base/dialog_overrides/patch.rs`. Parses the entry the client already shipped, edits only what the plan names, and re-emits. Use it for one of the 5,405 dialogs the game shipped. Restating tens of screens of voiced dialogue in a Rust source file to move one button is a transcription error waiting to happen; a patch cannot make that mistake, because it never retypes the text.
 
@@ -213,6 +217,27 @@ Field naming follows [docs/architecture/negative-logging-convention.md](negative
 
 The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). The Castle table carries three `OnlyOn` rows (DU-02b: 2573, 5861 and 2576 keep one button, on their final screen, so the mission 701 briefings fire their chains when read to the end). A patch plan participates in the metadata bump, so editing one re-invalidates that entry on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
 
+## World info overrides (category 12)
+
+`CookedWorldInfo.pak` (category 12, 91 worlds, shipped `MetaData` 5959) is the client's world table: one `COOKED_WORLD_INFO` entry per world id, naming the world, its client map and its day length. `onClientMapLoad` sends a `WorldID`, `areaName` and `mapPath`, and a world id the table has never seen is new to the client.
+
+The historical CellBlock worlds (1201–1207, [Historical CellBlocks](../analysis/historical-cellblocks/README.md)) are the first new worlds. `WORLD_INFO_OVERRIDES` builds their seven entries from the wire crate's `HISTORICAL_CELLBLOCKS` table, so the ids, world names and client maps cannot drift from what `onClientMapLoad` sends. Every entry is a full regeneration, like a new Kismet sequence, so nothing can fail to apply.
+
+A client holding the shipped table gets `onVersionInfo(invalidate_all = false, RequiredUpdates = 7, InvalidKeys = [1201..1207])` and then seven single-fragment `resourceFragment` pushes. Every shipped world is served untouched. `base::version_info_tests` in `cimmeria-base-session` pins that exchange on the wire against the committed PAKs.
+
+The generator reproduces the shipped QA-build shape byte for byte: the five SOAP namespace declarations; attributes in the order `Flags`, `MinPerDay`, `MinToRealMin`, `ClientMap`, `World`, `WorldID`; and an explicit end tag. `generated_world_info_xml_matches_shipped_entries` checks it against the real `_12` (stock CellBlock) and `_1` (CombatSim, whose `ClientMap` differs from its `World`) entries.
+
+### A bumped category must keep its override list everywhere
+
+Once a client takes a server's bumped version, it holds that version. If it then connects to a server whose category has **no** override list (an older build, or the colo before the change deploys), that server sees a version it does not hold and answers `invalidate_all = true` with nothing pushed. The client empties the whole category and persists the empty table, exactly as it did for Kismet sequences on 2026-09-20.
+
+So:
+
+- Never remove an override list from a category once it has shipped. Changing its content is fine: the new bump takes the per-key path.
+- Expect this when one client moves between servers on different builds. For category 12, a GM who tested the historical worlds against a newer local server and then logs in to an older server loses the world table. The fix is to copy the client's pristine `SourceCache.en-us\CookedWorldInfo.pak` over `Documents\My Games\Firesky\SGWGame\Cache.en-US\CookedWorldInfo.pak` with SGW.exe closed; the next login to a server with the overrides pushes 1201–1207 again.
+
+The server-side fix, answering a no-override mismatch by pushing the whole category instead of nothing, is not built.
+
 ## Adding a new override
 
 When you want a new client-visible step to appear in the quest log:
@@ -251,6 +276,7 @@ See [TESTING.md](../../TESTING.md) for the picker that maps these test types to 
 - [docs/protocol/message-catalog.md](../protocol/message-catalog.md) — `onVersionInfo` (`Event_NetIn_onVersionInfo`) and the protocol-internal `versionInfoRequest` / `elementDataRequest` events.
 - [docs/content/mission-chains.md](../content/mission-chains.md) — the full mission catalogue; chains 1003/1004 (mission 622) and 1055/1066 (mission 641) use this mechanism.
 - [docs/analysis/dialog-ui-redesign/work-packets.md](../analysis/dialog-ui-redesign/work-packets.md) — the client contract behind the dialog button rules, read out of the client rather than inferred.
+- [docs/analysis/historical-cellblocks/README.md](../analysis/historical-cellblocks/README.md) — the seven historical CellBlock worlds the category-12 overrides exist for.
 - [docs/architecture/negative-logging-convention.md](negative-logging-convention.md) — the `reason`-field convention the dialog patch skips follow.
 - [docs/content/equip-from-inventory-pattern.md](../content/equip-from-inventory-pattern.md) — the chain-author-facing companion: when and how to wire an equip step using `MissionOverride` plus an `item_equipped` trigger.
 - [TESTING.md](../../TESTING.md) — picker for which test type fits which bug shape; the override path uses unit + wire-format + chain-replay.

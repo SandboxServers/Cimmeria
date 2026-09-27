@@ -162,6 +162,31 @@ impl ChainEngine {
             .map_or(0, |v| v.len())
     }
 
+    /// Does any enabled chain carry a `CompleteObjective` for exactly this
+    /// mission/objective pair?
+    ///
+    /// `CompleteObjective` is the only path that completes a single
+    /// objective through play. An objective no chain targets can only ever
+    /// be closed by `AdvanceStep` or `CompleteMission` — the Atrea "turn-in"
+    /// shape, where `missions.complete(id)` finishes the final step's
+    /// objective as part of completing the mission (`ArmYourself.py`). The
+    /// stuck-player detector uses this to tell that expected shape apart
+    /// from an objective whose own trigger never fired.
+    pub fn has_objective_completer(&self, mission_id: i32, objective_id: i32) -> bool {
+        self.chains_by_trigger
+            .values()
+            .flatten()
+            .filter(|c| c.enabled)
+            .flat_map(|c| c.actions.iter())
+            .any(|a| {
+                matches!(
+                    a,
+                    Action::CompleteObjective { mission_id: m, objective_id: o }
+                        if *m == mission_id && *o == objective_id
+                )
+            })
+    }
+
     /// Process a game event through all matching chains.
     ///
     /// The engine:

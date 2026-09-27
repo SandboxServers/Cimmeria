@@ -108,8 +108,9 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
-            .await
+            .await;
         }
 
         CellToBaseMsg::ContactListRemoveMembers {
@@ -127,8 +128,9 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
-            .await
+            .await;
         }
 
         CellToBaseMsg::ContactListPresenceEvent {

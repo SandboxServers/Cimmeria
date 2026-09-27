@@ -58,7 +58,24 @@ For a worktree you already created by hand, add the junction yourself from Power
 New-Item -ItemType Junction -Path <worktree>\external -Target <main checkout>\external
 ```
 
-When you remove such a worktree, remove the junction first with `cmd /c rmdir <worktree>\external`. A recursive delete can follow the junction and empty the real `external/`. See [`agents/development-workflow.md`](agents/development-workflow.md#create-a-worktree-that-builds).
+When you're done with such a worktree, retire it with `bash tools/build-lane/rm-worktree.sh <name>`, which removes the junction first. A recursive delete can follow the junction and empty the real `external/`. See [`agents/development-workflow.md`](agents/development-workflow.md#retire-it-when-its-pr-merges).
+
+---
+
+### Lane builds fail with "no space left on device" on the Dev Drive
+
+**Symptom.** Builds whose target dir is on the Dev Drive (`B:\targets\<worktree>`) fail partway with an out-of-space error, often in several sessions at once.
+
+**Root cause.** Every worktree keeps its own target dir of several GB, and worktrees whose PRs have merged were not retired. On 2026-09-26 they filled the 150 GB drive.
+
+**Fix.** See what a sweep would retire, then run it:
+
+```bash
+bash tools/build-lane/rm-worktree.sh --dry-run --merged
+bash tools/build-lane/rm-worktree.sh --merged
+```
+
+It skips worktrees with open PRs, uncommitted changes, recent activity or a running build. It also deletes Dev Drive target dirs whose worktree no longer exists. Then check free space with `(Get-Volume -DriveLetter B).SizeRemaining / 1GB` in PowerShell.
 
 ---
 
@@ -286,13 +303,13 @@ Copy-Item .\target\debug\cimmeria-server.exe .
 cargo clippy --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
-  --exclude cimmeria-client-telemetry --exclude cimmeria-lab `
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab `
   --all-targets -- -D warnings
 ```
 
-All six excludes matter — the four GUI crates (the Tauri admin app, the two
-Tauri editors and the egui launcher), the Windows-only client-telemetry cdylib,
-and the `cimmeria-lab` supervisor. Dropping `cimmeria-client-telemetry` is the
+All seven excludes matter — the four GUI crates (the Tauri admin app, the two
+Tauri editors and the egui launcher), the Windows-only client-telemetry and
+client-patches cdylibs, and the `cimmeria-lab` supervisor. Dropping `cimmeria-client-telemetry` is the
 easy one to miss: it makes a Linux host, such as CI's runners, need
 xkbcommon/xcb dev packages. The authoritative list is
 [`.github/workflows/test.yml`](../.github/workflows/test.yml).

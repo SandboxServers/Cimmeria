@@ -20,14 +20,20 @@
 
 use super::{spec, Spec, Target};
 
+mod bank;
 mod entity_authoring;
 mod maintenance;
 mod meta;
 mod net_debug;
+mod org;
+mod org_create;
 mod patrol;
+mod pet;
 mod progression;
 mod query;
+mod social;
 mod spawn;
+mod squad;
 mod stats;
 mod travel;
 
@@ -44,6 +50,12 @@ const GROUPS: &[&[Spec]] = &[
     maintenance::SPECS,
     spawn::SPECS,
     patrol::SPECS,
+    social::SPECS,
+    pet::SPECS,
+    bank::SPECS,
+    squad::SPECS,
+    org::SPECS,
+    org_create::SPECS,
 ];
 
 /// Total registered commands across every family.

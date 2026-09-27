@@ -12,8 +12,12 @@
 
 The duel system was **never implemented server-side** in the original game either — both
 `SGWDuelMarker.py` files are skeletons (`__init__` + `super()`), and the SGWPlayer duel handlers are
-`pass`. The client side is fully shipped and confirms `duel-wire-formats.md` with **no corrections
-needed**. This is consistent with SGW's pre-launch cancellation.
+`pass`. The client side is fully shipped and, **as of this 2026-06-20 pass**, confirmed
+`duel-wire-formats.md` with no corrections needed — this is now a historical statement, not a
+current one: the SS-E1 pass (2026-09-27) later revised `duel-wire-formats.md` (the `pvpFlag` /
+`GENERICPROPERTY_PvPFlag` correction, and D-Q5's `onDuelEntitiesSet`/`Remove`/`Clear` closure), so
+treat that doc, not this line, as the up-to-date word on the wire format. This is consistent with
+SGW's pre-launch cancellation.
 
 | Aspect | % |
 |---|---|
@@ -47,8 +51,11 @@ needed**. This is consistent with SGW's pre-launch cancellation.
 
 ## SGWDuelMarker entity
 
-Inherits `SGWSpawnableEntity`. Client entity-type index **2** (confirmed `FUN_00c67420` registration
-order: Account=0, SGWSpawnableEntity=1, SGWDuelMarker=2, …). entities.xml type id 6.
+Inherits `SGWSpawnableEntity`. Client entity-type index **6**, matching `entities.xml`'s row order
+(SGWSpawnableEntity=0, SGWBeing=1, SGWPlayer=2, SGWGmPlayer=3, SGWMob=4, SGWPet=5,
+SGWDuelMarker=6), per the project's standard "wire typeID = clientIndex" rule. **Corrected
+2026-09-27 (SS-E1, audit A-47)** — the earlier "index 2" reading of `FUN_00c67420`'s registration
+order was wrong; `entities.xml`'s row order is the higher-confidence source.
 Properties (CELL_PRIVATE): `duelDetectorID: CONTROLLER_ID = 0`, `duelEntities: ARRAY<MAILBOX>`.
 CellMethod: `onEntityDefeated(INT32 entity_id)`. 0/1 methods implemented anywhere.
 
@@ -67,23 +74,50 @@ SGWPlayer.def internal cell methods (none implemented): `duelChallenge`, `duelRe
    `duelChallenge(challengerMailbox, squadMailboxes)` → `onDuelChallenge` [143] + `Event_UI_DuelTimerStart`.
 2. **Response**: accept/decline → `sendDuelResponse` [102] → `duelResponse`.
 3. **Arena setup**: spawn `SGWDuelMarker`, `registerDuelMarker` + `startDuel` on participants, set
-   `GENERICPROPERTY_PvPFlag=4` to value 1 (fan out to AoI witnesses), `onDuelEntitiesSet` [151].
+   the PvP flag to 1 and fan it out to AoI witnesses (`GENERICPROPERTY_PvPFlag=4` via `onEntityProperty`, resolved by SS-D2; see open question 7), `onDuelEntitiesSet` [151].
 4. **Combat**: PvP flag active; both can damage each other.
 5. **Resolution**: on death/forfeit/teleport/disconnect/range → `duelEntityDefeat(mailbox, reason)` →
    marker `onEntityDefeated` → `onDuelEntitiesRemove` [152] → when empty: `onDuelEntitiesClear` [153] +
    reset PvP flag + destroy marker.
 
-**PvP flag**: `GENERICPROPERTY_PvPFlag = 4` via `onEntityProperty(4, INT32)`. Current Rust sends `(4,0)`
+**PvP flag (resolved by SS-D2, open question 7: `onEntityProperty(4, v)`)**: one candidate is `GENERICPROPERTY_PvPFlag = 4` via `onEntityProperty(4, INT32)`. Current Rust sends `(4,0)`
 at world entry only (`world_data.rs`); no setter to 1 / no duel-time fanout exists.
+
+**Correction 2026-09-27 (SS-E1, D-Q4)**: `SGWPlayer.def` also declares a dedicated `pvpFlag`
+property (`INT8`, default 0, `CELL_PUBLIC`) plus internal cell methods `setPvPFlag(INT8 flagValue,
+INT8 shouldDoStrikeTeamLogic)` and `startPvPTimer(INT8 flagValue, FLOAT timeLength)`. In SGW, `CELL_PUBLIC`
+maps only to `DATA_GHOSTED` (between CellApps) and is not a client-distribution flag (`docs/drafts/spec/entity-property-sync.md:199,221`), so the declaration alone does **not** show that the client receives this property. It is an **unresolved possibility**, not the established PvP-flag vehicle: the receiver and update path for `pvpFlag` has not been traced. Also not
+resolved: whether the client's generic-property dispatch has a live case for ordinal 4 at all, or
+how client UI reads `pvpFlag` once synced. See `duel-wire-formats.md`'s SS-E1 section for detail.
 
 ## Open questions
 
 1. DuelTimer (type 14) — server-started or pure client countdown? No server dispatch site found.
+   **Partially closed 2026-09-27 (SS-E1, D-Q1)**: the client applies no hardcoded duration constant
+   anywhere between `Event_UI_DuelTimerStart` and the Lua countdown display — whatever float the
+   server sends is shown verbatim. See `duel-wire-formats.md`'s SS-E1 section.
+   **Closed 2026-09-27 (SS-D2)**: server-started. A type-14 `onTimerUpdate` raises
+   `Event_UI_DuelTimerStart` (`0x00dec9e0` → `0x00dfdcb0`, RTTI-confirmed); see
+   `duel-wire-formats.md`'s SS-D2 section.
 2. `duelAbort` semantics on decline/timeout/disconnect — no impl anywhere.
 3. Squad-duel scope — can any member challenge, or leader only? (`aSquadDuel` flag client-controlled.)
+   The seeded text moniker 875 ("SVR must be leader to challenge") answers this for squad duels:
+   leader only (see the 2026-09-27 dueling research report §1.9; out of SS-E1's scope, squad duels
+   are deferred).
 4. `duelDetectorID` CONTROLLER_ID — implies a trigger-region arena boundary (→ EDUEL_DEFEAT_Range), always
    0 in practice; likely planned-not-wired.
 5. `sendDuelResponse` byte: confirm 1=accept (standard Lua truthy). → x64dbg.
+6. **`onDuelEntitiesSet`/`Remove`/`Clear` and `GameBeing::isInteractable` — CLOSED 2026-09-27
+   (SS-E1, D-Q5, blocking for SS-D2)**: full decompile in `duel-wire-formats.md`'s SS-E1 section.
+   151 inserts into, 152 erases from, a `GamePlayer`-local `std::set<int32_t>` of duel-entity ids;
+   153 clears it. The interactability computation never reads this set — it is a generic
+   per-target-template + range lookup. Sending 151 at duel start and 153 at duel end is safe and
+   does not affect NPC interactability; `aoi.rs:203-211`'s comment has the add/erase direction
+   backwards and should be corrected.
+7. `GENERICPROPERTY_PvPFlag` vs. the client's actual PvP-flag consumption — **closed 2026-09-27
+   (SS-D2)**: the client UI reads `Property.PVPFlag` from the generic-property table that
+   `onEntityProperty` fills (`UnitFrames.lua`, `Squad.lua`), and nothing reads a `pvpFlag`
+   property. The vehicle is `onEntityProperty(4, v)`; see `duel-wire-formats.md`'s SS-D2 section.
 
 ## Dynamic-analysis needs (x64dbg)
 

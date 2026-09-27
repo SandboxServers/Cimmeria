@@ -195,3 +195,230 @@ async fn first_login_update_errors_when_player_row_missing() {
         "player_id field must carry the missing id for ops triage: {event:#?}"
     );
 }
+
+/// Live DB, the crafting login-sync guard: `onClientReady` pushes the player's
+/// stored crafting state (discipline, expertise, the five paradigm levels,
+/// blueprints, the ASP total) and the crafting options (140) as one bundle
+/// to the player's own client. Removing the `push_crafting_on_login` call
+/// leaves no such packet at any sequence number, and a separate options
+/// push instead of the one in the bundle leaves no packet of this shape.
+#[tokio::test]
+async fn on_client_ready_pushes_the_stored_crafting_state() {
+    use crate::test_support::{
+        require_db_or_skip, test_default_connected_client_state, TestTransport,
+    };
+    use cimmeria_base_session::base::crafting::sync::build_login_bundle;
+    use cimmeria_entity::crafting::CraftingState;
+    use cimmeria_mercury::encryption::EncryptionVersion;
+    use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE};
+    use cimmeria_wire::crafting::CraftingOptions;
+
+    let pool = require_db_or_skip!();
+    // Crafting campaign sentinels (`0x7000_Cxxx`).
+    const ACCOUNT_ID: i32 = 0x7000_CF00;
+    const PLAYER_ID: i32 = 0x7000_CF01;
+    let cleanup = || async {
+        let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
+            .bind(PLAYER_ID)
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(ACCOUNT_ID)
+            .execute(&pool)
+            .await;
+    };
+    cleanup().await;
+    sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+        .bind(ACCOUNT_ID)
+        .bind(format!("cr03-login-{ACCOUNT_ID}"))
+        .execute(&pool)
+        .await
+        .expect("insert account");
+    sqlx::query(
+        "INSERT INTO sgw_player (account_id, player_id, level, alignment, archetype, gender, \
+            player_name, extra_name, world_location, bodyset, pos_x, pos_y, pos_z, skin_color_id, \
+            discipline_ids, racial_paradigm_levels, applied_science_points, blueprint_ids) \
+         VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+            0.0, 0.0, 0.0, 0, '{78}', '{5,2,1,1,1}', 2, '{25}')",
+    )
+    .bind(ACCOUNT_ID)
+    .bind(PLAYER_ID)
+    .bind(format!("cr03-login-{PLAYER_ID}"))
+    .execute(&pool)
+    .await
+    .expect("insert player");
+    sqlx::query(
+        "INSERT INTO sgw_player_discipline_expertise (player_id, discipline_id, expertise) \
+         VALUES ($1, 78, 33)",
+    )
+    .bind(PLAYER_ID)
+    .execute(&pool)
+    .await
+    .expect("insert expertise");
+
+    let addr: SocketAddr = "127.0.0.1:55710".parse().unwrap();
+    let entity_id: u32 = 9998;
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(entity_id);
+    state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
+        entity_id,
+        player_id: PLAYER_ID,
+        world_name: "Agnos".to_string(),
+        appearance_args: vec![0xAB],
+        tint_args: vec![0xCD],
+        first_login: 0,
+    });
+    state.player_name = Some("Tester".to_string());
+    let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+        Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let typed = Arc::new(TestTransport::default());
+    let transport: Arc<dyn Transport> = typed.clone();
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    let _ = handle_on_client_ready(
+        addr,
+        [0u8; 32],
+        &connected,
+        &None,
+        &transport,
+        &entity_to_addr,
+        &db_pool,
+    )
+    .await;
+    let sent = typed.filter_to(addr);
+    cleanup().await;
+
+    let mut expected = CraftingState::new();
+    expected.discipline_ids = vec![78];
+    expected.expertise.insert(78, 33);
+    expected.racial_paradigm_levels = HashMap::from([(1, 5), (2, 2), (3, 1), (4, 1), (5, 1)]);
+    expected.blueprint_ids = vec![25];
+    expected.applied_science_points = 2;
+    let found = (0..sent.len() as u32 + 8).any(|seq| {
+        let options = CraftingOptions::default();
+        let (packets, _) = build_login_bundle(entity_id, Some(&expected), Some(&options)).finalize(
+            FLAG_RELIABLE | FLAG_ON_CHANNEL,
+            seq,
+            |p| crate::mercury::encrypt_packet(p, &[0u8; 32], EncryptionVersion::V1),
+        );
+        packets.len() == 1 && sent.contains(&packets[0])
+    });
+    assert!(
+        found,
+        "no packet carries the stored crafting state and options; {} packets sent",
+        sent.len()
+    );
+}
+
+/// SS-C1 (live DB): every `onClientReady` loads the character's Ignore list
+/// onto the session and pushes it to the cell as `UpdateIgnoreList`, after
+/// `InitPlayerState`. Gate travel re-runs this step for a fresh cell entity,
+/// so this is what keeps spatial chat filtering after a world change. Fails
+/// when the `resync_ignore_cache(.., "world_entry")` call is removed.
+#[tokio::test]
+async fn on_client_ready_seeds_ignore_list_after_init_player_state() {
+    use crate::test_support::{
+        require_db_or_skip, test_default_connected_client_state, TestTransport,
+    };
+
+    let pool = require_db_or_skip!();
+    const ACCOUNT_ID: i32 = 0x7300_C300;
+    const PLAYER_ID: i32 = 0x7300_C301;
+    let cleanup = || async {
+        let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
+            .bind(PLAYER_ID)
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(ACCOUNT_ID)
+            .execute(&pool)
+            .await;
+    };
+    cleanup().await;
+    sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+        .bind(ACCOUNT_ID)
+        .bind("ss-c1-client-ready")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO sgw_player (\
+            account_id, player_id, level, alignment, archetype, gender, \
+            player_name, extra_name, world_location, bodyset, \
+            pos_x, pos_y, pos_z, skin_color_id\
+         ) VALUES ($1, $2, 1, 0, 1, 1, 'ssc1-ready', '', 'CombatSim', \
+                   'BS_HumanMale.BS_HumanMale', 0.0, 0.0, 0.0, 0)",
+    )
+    .bind(ACCOUNT_ID)
+    .bind(PLAYER_ID)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let ignore_list = crate::base::contact_list::ignore::ensure_ignore_list(&pool, PLAYER_ID)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO sgw_contact_list_member (list_id, player_name) VALUES ($1, 'Pest')")
+        .bind(ignore_list)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let addr: SocketAddr = "127.0.0.1:55711".parse().unwrap();
+    let entity_id: u32 = 9310;
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(PLAYER_ID);
+    state.player_name = Some("ssc1-ready".to_string());
+    state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
+        entity_id,
+        player_id: PLAYER_ID,
+        world_name: "Agnos".to_string(),
+        appearance_args: vec![0xAB],
+        tint_args: vec![0xCD],
+        first_login: 0,
+    });
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+    let (tx, mut rx) = mpsc::channel::<BaseToCellMsg>(64);
+    let cell_tx = Some(tx);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    let _ = handle_on_client_ready(
+        addr,
+        [0u8; 32],
+        &connected,
+        &cell_tx,
+        &transport,
+        &entity_to_addr,
+        &db_pool,
+    )
+    .await;
+
+    let mut order = Vec::new();
+    let mut pushed = None;
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            BaseToCellMsg::InitPlayerState { .. } => order.push("init"),
+            BaseToCellMsg::UpdateIgnoreList {
+                entity_id: eid,
+                ignore_names,
+                ..
+            } => {
+                assert_eq!(eid, entity_id);
+                order.push("ignore");
+                pushed = Some(ignore_names);
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        order,
+        vec!["init", "ignore"],
+        "Ignore set follows InitPlayerState"
+    );
+    assert_eq!(pushed, Some(["Pest".to_string()].into()));
+    assert!(connected.lock().unwrap()[&addr].ignore.ignores("Pest"));
+    cleanup().await;
+}

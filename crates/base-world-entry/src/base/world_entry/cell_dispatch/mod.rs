@@ -15,7 +15,14 @@
 //! - [`vendor_dispatch`]       — vendor store + two-party trade arms
 //! - [`progression_dispatch`]  — mission / grant / console / spawn / mail /
 //!   minigame arms
+//! - [`item_grant_dispatch`]   — the `GrantItem` body `progression_dispatch`
+//!   calls: loot pickups to the loot-aware grant, the rest to the plain one
 //! - [`gate_teleport_dispatch`] — gate-travel / reanchor / teleport arms
+//! - [`org_dispatch`]          — organization (`CellToBaseMsg::Org`) arms
+//! - [`chat_dispatch`]         — chat (`CellToBaseMsg::Chat`) arms: the GM
+//!   broadcast fan-out
+//! - [`bank_dispatch`]         — bank (`CellToBaseMsg::Bank`) arms: the GM
+//!   `.bankdump`
 //!
 //! Pure helpers shared by the arm modules still live in their own siblings:
 //!
@@ -38,11 +45,15 @@ use super::super::ConnectedClientState;
 mod aoi;
 mod aoi_dispatch;
 mod bandolier;
+mod bank_dispatch;
+mod chat_dispatch;
 mod contact_list_dispatch;
 mod deferred_flush;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
+mod item_grant_dispatch;
 mod minigame;
+mod org_dispatch;
 mod player_ghost;
 mod position;
 mod progression_dispatch;
@@ -72,6 +83,17 @@ pub(super) struct DispatchCtx<'a> {
     pub minigame_registry: &'a Option<crate::minigame::SessionRegistry>,
     pub minigame_external_host: &'a str,
     pub minigame_external_port: u16,
+}
+
+/// The crafting handlers' view of the dispatch context.
+fn craft_ctx<'a>(ctx: &DispatchCtx<'a>) -> crate::base::crafting::request::CraftCtx<'a> {
+    crate::base::crafting::request::CraftCtx {
+        db_pool: ctx.db_pool,
+        cell_tx: ctx.cell_tx,
+        transport: ctx.transport,
+        connected: ctx.connected,
+        entity_to_addr: ctx.entity_to_addr,
+    }
 }
 
 /// Handle a message from CellService -- dispatches AoI packets to witness clients.
@@ -121,8 +143,11 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::MissionUpdate { .. }
         | CellToBaseMsg::GrantXP { .. }
         | CellToBaseMsg::TrainAbility { .. }
+        | CellToBaseMsg::ResetAbilities { .. }
         | CellToBaseMsg::GrantItem { .. }
         | CellToBaseMsg::GrantCash { .. }
+        | CellToBaseMsg::GrantTrainingPoints { .. }
+        | CellToBaseMsg::GmGrantAbility { .. }
         | CellToBaseMsg::GrantExpertise { .. }
         | CellToBaseMsg::GrantAppliedSciencePoints { .. }
         | CellToBaseMsg::ExecuteAuthoringSql { .. }
@@ -130,6 +155,27 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::GmSpawnNpc { .. }
         | CellToBaseMsg::StartMinigame { .. }
         | CellToBaseMsg::MinigameResult { .. } => progression_dispatch::route(msg, &ctx).await,
+
+        // Crafting (95-100): `base::crafting::request` routes the verbs, so
+        // later verbs never touch these arms.
+        CellToBaseMsg::Crafting(request) => {
+            crate::base::crafting::request::handle_craft_request(request, &craft_ctx(&ctx)).await
+        }
+        CellToBaseMsg::CraftingStations(report) => {
+            crate::base::crafting::options::handle_station_report(
+                report,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
+        CellToBaseMsg::GmAllCraft(grant) => {
+            crate::base::crafting::allcraft::handle_gm_all_craft(grant, &craft_ctx(&ctx)).await
+        }
+        CellToBaseMsg::GmCraftGrant(grant) => {
+            crate::base::crafting::gm_grant::handle_gm_craft_grant(grant, &craft_ctx(&ctx)).await
+        }
 
         CellToBaseMsg::ContactListCreate { .. }
         | CellToBaseMsg::ContactListDelete { .. }
@@ -161,5 +207,35 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::PersistPosition { .. }
         | CellToBaseMsg::RefreshAppearance { .. }
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,
+
+        CellToBaseMsg::Org(org) => org_dispatch::route(org, &ctx).await,
+
+        CellToBaseMsg::Chat(chat) => chat_dispatch::route(chat, &ctx).await,
+
+        // GM mail tools (SS-U1): the base-methods mail module owns them.
+        CellToBaseMsg::MailGm(msg) => {
+            super::methods::mail::handle_mail_gm(
+                msg,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.db_pool,
+            )
+            .await
+        }
+
+        CellToBaseMsg::Bank(bank) => bank_dispatch::route(bank, &ctx).await,
+
+        // The content engine's `send_system_mail` action (SS-U3).
+        CellToBaseMsg::ContentSystemMail(msg) => {
+            super::methods::mail::handle_content_system_mail(
+                msg,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.db_pool,
+            )
+            .await
+        }
     }
 }

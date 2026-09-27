@@ -67,6 +67,7 @@ async fn abandon_unspaced_session(
             // Stop the tick-sync loop before the session goes, same as every
             // other teardown path.
             c.cancelled.store(true, Ordering::Relaxed);
+            cimmeria_base_session::base::player_index::log_unlisted(addr, c, "gate_travel_abandon");
         }
         clients.remove(&addr);
     }
@@ -176,6 +177,14 @@ pub async fn handle_gate_travel(
         "Gate travel: sending RESET_ENTITIES for world transition"
     );
 
+    // A world change drops the player's crafting queue without consuming
+    // anything; the running bar goes with the old world.
+    crate::base::crafting::session::drop_player_inductions(
+        entity_id,
+        crate::base::crafting::session::DropReason::WorldChange,
+        "gate_travel",
+    );
+
     // Fail closed BEFORE anything destructive. Gate travel without a known
     // active character can neither persist the destination (it would risk
     // writing another character's row on a multi-character account) nor
@@ -218,9 +227,24 @@ pub async fn handle_gate_travel(
         }
     };
 
+    // The stations in reach belong to the origin world. Forget them and hold
+    // crafting-option sends until the destination's login send, before the
+    // cell creates the destination entity, so the login bundle can never
+    // name an origin-world station and every report after this is the
+    // destination's.
+    if let Some(c) = connected
+        .lock()
+        .map_err(|_| "connected lock poisoned")?
+        .get_mut(&addr)
+    {
+        c.crafting_options.begin_world_entry();
+    }
+
     // Tell CellService to create the entity in the new space and await the
     // resolved space_id via oneshot (needed for the world-entry wire packet).
-    let space_id = if let Some(tx) = cell_tx {
+    // `None` only comes from the fallback table, for a world that must fail
+    // closed (see `resolve_space_id_fallback`).
+    let resolved_space_id = if let Some(tx) = cell_tx {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         if tx
             .send(BaseToCellMsg::CreateEntity {
@@ -242,7 +266,7 @@ pub async fn handle_gate_travel(
             .is_ok()
         {
             match reply_rx.await {
-                Ok(sid) => sid,
+                Ok(sid) => Some(sid),
                 Err(_) => {
                     tracing::warn!(world = %target_world_name, "Gate travel: CellService oneshot dropped -- using fallback");
                     resolve_space_id_fallback(target_world_name)
@@ -253,6 +277,21 @@ pub async fn handle_gate_travel(
         }
     } else {
         resolve_space_id_fallback(target_world_name)
+    };
+    // The cell did not place the entity and the destination has no safe
+    // stand-in space. A world entry naming some other space would bind the
+    // client to a space the entity is not in, so end the session instead:
+    // the transfer was never persisted, and a reconnect loads the player at
+    // their saved origin.
+    let Some(space_id) = resolved_space_id else {
+        tracing::error!(
+            entity_id, %addr, account_id, world = %target_world_name,
+            reason = "no_safe_space_fallback",
+            "GateTravel: the cell did not place the entity and this world has no fallback \
+             space — ending the session instead of sending a world entry for another space"
+        );
+        abandon_unspaced_session(addr, entity_id, connected, entity_to_addr, cell_tx).await;
+        return Ok(());
     };
 
     // Disconnect-during-transfer reap. The cell already removed the entity

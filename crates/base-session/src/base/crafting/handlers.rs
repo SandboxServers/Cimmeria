@@ -1,10 +1,14 @@
 //! BaseApp-side handlers for the GM crafting grants.
 //!
 //! [`handle_grant_expertise`] / [`handle_grant_applied_science`] mirror
-//! `progression::handle_grant_cash`: load the persistent state, mutate it,
-//! save, and (for expertise) push the client update. They are the canonical
+//! `progression::handle_grant_cash`: change the persistent state in one
+//! transaction, then push the client update. They are the canonical
 //! one-way sinks for `CellToBaseMsg::GrantExpertise` /
 //! `CellToBaseMsg::GrantAppliedSciencePoints`.
+//!
+//! Both write under the `sgw_player` row lock, as `spend` does, so a grant
+//! racing a spend can neither drop the spent point nor the learned
+//! discipline.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -13,11 +17,13 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::base::crafting::persistence::{load_crafting_state, save_crafting_state};
+use cimmeria_entity::crafting::CraftingState;
+
+use crate::base::crafting::persistence::{load_crafting_state_locked, save_crafting_state_in};
+use crate::base::crafting::sync::{push_asp, push_discipline, CraftClient};
+use crate::base::crafting::telemetry::{account_id_of, sql_error_class};
 use crate::base::gm_feedback::send_gm_feedback_to_client;
-use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
-use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 /// Crafting expertise hard cap, matching Python's `gainExpertise` and
 /// `CraftingState::set_expertise`. We clamp explicitly here too so the
@@ -60,18 +66,19 @@ pub async fn handle_grant_expertise(
         }
     };
 
-    let mut state = match load_crafting_state(pool, player_id).await {
-        Ok(s) => s,
+    let new_expertise = match grant_expertise_in_db(pool, player_id, discipline_id, amount).await {
+        Ok(v) => v,
         Err(e) => {
             tracing::error!(
                 entity_id,
                 player_id,
                 discipline_id,
-                "GrantExpertise: load_crafting_state failed: {e}"
+                amount,
+                "GrantExpertise: transaction failed: {e}"
             );
             send_gm_feedback_to_client(
                 entity_id,
-                &format!("gmGiveExpertise: failed (could not load crafting state for discipline {discipline_id})"),
+                &format!("gmGiveExpertise: failed (save error for discipline {discipline_id})"),
                 transport,
                 connected,
                 entity_to_addr,
@@ -80,40 +87,6 @@ pub async fn handle_grant_expertise(
             return;
         }
     };
-
-    // `saturating_add`: `amount` is only gated `> 0` on the cell side (no upper
-    // bound), so a huge grant must not overflow i32 before the clamp.
-    let new_expertise = state
-        .get_expertise(discipline_id)
-        .unwrap_or(0)
-        .saturating_add(amount)
-        .clamp(0, EXPERTISE_CAP);
-    state.set_expertise(discipline_id, new_expertise);
-    // Register the discipline as known if this is the first grant — a stray
-    // expertise row without the discipline in `discipline_ids` is the drift
-    // the persistence layer explicitly tolerates but doesn't create.
-    if !state.discipline_ids.contains(&discipline_id) {
-        state.discipline_ids.push(discipline_id);
-    }
-
-    if let Err(e) = save_crafting_state(pool, player_id, &state).await {
-        tracing::error!(
-            entity_id,
-            player_id,
-            discipline_id,
-            new_expertise,
-            "GrantExpertise: save_crafting_state failed: {e}"
-        );
-        send_gm_feedback_to_client(
-            entity_id,
-            &format!("gmGiveExpertise: failed (save error for discipline {discipline_id})"),
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
-        return;
-    }
 
     tracing::info!(
         entity_id,
@@ -136,36 +109,55 @@ pub async fn handle_grant_expertise(
 
     // Push onUpdateDiscipline (method 136) to the client so the crafting UI
     // reflects the new discipline/percentage without a relog.
-    let payload =
-        cimmeria_entity::crafting::serialize_on_update_discipline(discipline_id, new_expertise);
-    send_to_witness_reliable(
+    let client = CraftClient {
         transport,
         connected,
         entity_to_addr,
-        entity_id,
-        |key, version, seq, acks| {
-            build_player_entity_method_packet(
-                key,
-                seq,
-                acks,
-                entity_id,
-                method_idx::ON_UPDATE_DISCIPLINE,
-                &payload,
-                version,
-            )
-        },
-    )
-    .await;
+    };
+    push_discipline(entity_id, player_id, discipline_id, new_expertise, client).await;
 }
 
-/// Handle `gmGiveAppliedSciencePoints` from CellService — load crafting state,
-/// add `amount` to `applied_science_points`, and persist.
+/// The expertise grant's transaction: lock the row, add `amount` (clamped to
+/// `[0, 100]`), register the discipline if it is new, save, commit. Returns
+/// the persisted expertise.
+async fn grant_expertise_in_db(
+    pool: &PgPool,
+    player_id: i32,
+    discipline_id: i32,
+    amount: i32,
+) -> Result<i32, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut state: CraftingState = load_crafting_state_locked(&mut tx, player_id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?;
+    // `saturating_add`: `amount` is only gated `> 0` on the cell side (no upper
+    // bound), so a huge grant must not overflow i32 before the clamp.
+    let new_expertise = state
+        .get_expertise(discipline_id)
+        .unwrap_or(0)
+        .saturating_add(amount)
+        .clamp(0, EXPERTISE_CAP);
+    state.set_expertise(discipline_id, new_expertise);
+    // Register the discipline as known if this is the first grant — a stray
+    // expertise row without the discipline in `discipline_ids` is the drift
+    // the persistence layer explicitly tolerates but doesn't create.
+    if !state.discipline_ids.contains(&discipline_id) {
+        state.discipline_ids.push(discipline_id);
+    }
+    save_crafting_state_in(&mut tx, player_id, &state).await?;
+    tx.commit().await?;
+    Ok(new_expertise)
+}
+
+/// Handle `gmGiveAppliedSciencePoints` from CellService — add `amount` to
+/// `applied_science_points` in one statement, then push the new **total**
+/// to the client as `onEntityProperty(GENERICPROPERTY_AppliedSciencePoints,
+/// total)`, the property the discipline trainer listens for
+/// (`DisciplineTrainer.lua:49-54`). The count updates without a relog.
 ///
-/// There is no outbound applied-science-points client method in the SGWPlayer
-/// method table, so this handler persists only. The client refreshes its ASP
-/// display the next time the crafting window is opened (which re-reads state)
-/// or on relog (via the world-entry crafting-state load). We deliberately do
-/// NOT invent a method index to push an update.
+/// One statement reads the old total under `FOR UPDATE` and writes the new
+/// one, so a grant racing a spend adds to the committed value instead of
+/// overwriting it, and the `asp_granted` event carries both totals.
 #[tracing::instrument(
     name = "crafting.grant_applied_science",
     level = "info",
@@ -194,17 +186,64 @@ pub async fn handle_grant_applied_science(
         }
     };
 
-    let mut state = match load_crafting_state(pool, player_id).await {
-        Ok(s) => s,
-        Err(e) => {
+    let account_id = account_id_of(entity_id, connected, entity_to_addr);
+    // Saturate at i32::MAX in SQL: `amount` has no upper bound on the cell
+    // side.
+    let updated: Result<Option<(i32, i32)>, sqlx::Error> = sqlx::query_as(
+        "WITH old AS ( \
+             SELECT applied_science_points AS before FROM sgw_player \
+             WHERE player_id = $1 FOR UPDATE) \
+         UPDATE sgw_player p \
+         SET applied_science_points = LEAST(old.before::bigint + $2, 2147483647)::integer \
+         FROM old WHERE p.player_id = $1 \
+         RETURNING old.before, p.applied_science_points",
+    )
+    .bind(player_id)
+    .bind(i64::from(amount))
+    .fetch_optional(pool.as_ref())
+    .await;
+    let (asp_before, asp_after) = match updated {
+        Ok(Some(totals)) => totals,
+        Ok(None) => {
             tracing::error!(
-                entity_id,
+                target: "crafting",
+                event = "persist_failed",
+                phase = "asp_grant_update",
+                reason = "rows_affected_zero",
+                rows_affected = 0,
+                expected = 1,
+                account_id,
                 player_id,
-                "GrantAppliedSciencePoints: load_crafting_state failed: {e}"
+                entity_id,
+                amount,
+                "GrantAppliedSciencePoints: no sgw_player row -- nothing granted"
             );
             send_gm_feedback_to_client(
                 entity_id,
-                "gmGiveAppliedSciencePoints: failed (could not load crafting state)",
+                "gmGiveAppliedSciencePoints: failed (no such character)",
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                target: "crafting",
+                event = "persist_failed",
+                phase = "asp_grant_update",
+                account_id,
+                player_id,
+                entity_id,
+                amount,
+                error_class = sql_error_class(&e),
+                error = %e,
+                "GrantAppliedSciencePoints: UPDATE failed"
+            );
+            send_gm_feedback_to_client(
+                entity_id,
+                "gmGiveAppliedSciencePoints: failed (save error)",
                 transport,
                 connected,
                 entity_to_addr,
@@ -214,47 +253,35 @@ pub async fn handle_grant_applied_science(
         }
     };
 
-    state.applied_science_points = state.applied_science_points.saturating_add(amount);
-
-    if let Err(e) = save_crafting_state(pool, player_id, &state).await {
-        tracing::error!(
-            entity_id,
-            player_id,
-            amount,
-            "GrantAppliedSciencePoints: save_crafting_state failed: {e}"
-        );
-        send_gm_feedback_to_client(
-            entity_id,
-            "gmGiveAppliedSciencePoints: failed (save error)",
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
-        return;
-    }
-
-    let new_total = state.applied_science_points;
     tracing::info!(
-        entity_id,
+        target: "crafting",
+        event = "asp_granted",
+        account_id,
         player_id,
+        entity_id,
         amount,
-        total = new_total,
-        "GrantAppliedSciencePoints: persisted ASP (no client push — client \
-         refreshes on next crafting open / relog)"
+        asp_before,
+        asp_after,
+        "GrantAppliedSciencePoints: persisted ASP"
     );
 
-    // Definitive success feedback: the write committed. (This is independent of
-    // the "no outbound ASP client method" note above — that's about the live
-    // ASP *display*; this is the GM-command confirmation line on CHAN_FEEDBACK.)
+    // Definitive success feedback: the write committed. This is the GM-command
+    // confirmation line on CHAN_FEEDBACK; the ASP display updates from the
+    // property push below.
     send_gm_feedback_to_client(
         entity_id,
-        &format!("gmGiveAppliedSciencePoints: +{amount} (total {new_total})"),
+        &format!("gmGiveAppliedSciencePoints: +{amount} (total {asp_after})"),
         transport,
         connected,
         entity_to_addr,
     )
     .await;
+    let client = CraftClient {
+        transport,
+        connected,
+        entity_to_addr,
+    };
+    push_asp(entity_id, player_id, asp_after, client).await;
 }
 
 #[cfg(test)]
@@ -270,9 +297,9 @@ mod tests {
     use crate::base::crafting::persistence::load_crafting_state;
     use crate::test_support::{require_db_or_skip, TestTransport};
 
-    /// Sentinel base stepped past the persistence-module range (0x7000_2000)
-    /// so concurrent live-DB runs don't collide. Fits in i32.
-    const TEST_BASE: i32 = 0x7000_3000;
+    /// Sentinel base in the crafting `0x7000_Cxxx` block, past the
+    /// persistence tests' `0x7000_C000..0x7000_CB55`. Fits in i32.
+    const TEST_BASE: i32 = 0x7000_CC00;
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_player_discipline_expertise WHERE player_id = $1")
@@ -436,5 +463,139 @@ mod tests {
         );
 
         cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// The GM ASP grant pushes the new **total** as the ASP property, after
+    /// the GM's confirmation line, so the discipline trainer's count updates
+    /// without a relog. Removing the push leaves one packet;
+    /// pushing the change (+5) instead of the total (9) fails the bytes.
+    #[tokio::test]
+    async fn grant_applied_science_pushes_the_total_property() {
+        use crate::base::crafting::test_players::{OneSession, SESSION_ACCOUNT_ID};
+        use crate::mercury::{build_player_entity_method_packet, method_idx};
+        use crate::test_support::LogCapture;
+        use cimmeria_mercury::encryption::EncryptionVersion;
+
+        let pool = require_db_or_skip!();
+        let capture = LogCapture::install();
+        let account_id = TEST_BASE + 20;
+        let player_id = TEST_BASE + 21;
+        cleanup(&pool, account_id, player_id).await;
+        insert_minimal_player(&pool, account_id, player_id).await;
+        sqlx::query("UPDATE sgw_player SET applied_science_points = 4 WHERE player_id = $1")
+            .bind(player_id)
+            .execute(&pool)
+            .await
+            .expect("seed ASP");
+
+        const ENTITY: u32 = 4280;
+        let session = OneSession::new(ENTITY, 55740);
+        let db_pool = Some(Arc::new(pool.clone()));
+        handle_grant_applied_science(
+            ENTITY,
+            player_id,
+            5,
+            &db_pool,
+            &session.transport,
+            &session.connected,
+            &session.entity_to_addr,
+        )
+        .await;
+        let sent = session.typed.filter_to(session.addr);
+        cleanup(&pool, account_id, player_id).await;
+
+        let packet = |seq, method, args: &[u8]| {
+            build_player_entity_method_packet(
+                &[0u8; 32],
+                seq,
+                &[],
+                ENTITY,
+                method,
+                args,
+                EncryptionVersion::V1,
+            )
+        };
+        assert_eq!(
+            sent,
+            vec![
+                packet(
+                    0,
+                    method_idx::ON_PLAYER_COMMUNICATION,
+                    &cimmeria_wire::cell::chat::serialize_on_player_communication(
+                        "SYSTEM",
+                        0,
+                        cimmeria_wire::cell::chat::CHAN_FEEDBACK,
+                        "gmGiveAppliedSciencePoints: +5 (total 9)",
+                    ),
+                ),
+                packet(1, method_idx::ON_ENTITY_PROPERTY, &[2, 0, 0, 0, 9, 0, 0, 0]),
+            ]
+        );
+
+        // The `asp_granted` event: both totals and the full identity.
+        let event = capture
+            .all()
+            .into_iter()
+            .find(|c| c.target == "crafting" && c.has_field("event", "asp_granted"))
+            .expect("asp_granted event");
+        for (k, v) in [
+            ("asp_before", "4".to_string()),
+            ("asp_after", "9".to_string()),
+            ("amount", "5".to_string()),
+            ("account_id", SESSION_ACCOUNT_ID.to_string()),
+            ("player_id", player_id.to_string()),
+            ("entity_id", ENTITY.to_string()),
+        ] {
+            assert!(event.has_field(k, &v), "{k}={v}: {event:#?}");
+        }
+    }
+
+    /// A grant for a character with no `sgw_player` row updates nothing: an
+    /// ERROR with the paired `rows_affected = 0` / `expected = 1` and the
+    /// `phase`, and a GM line saying it failed.
+    #[tokio::test]
+    async fn grant_applied_science_for_a_missing_row_logs_rows_affected() {
+        use crate::base::crafting::test_players::OneSession;
+        use crate::test_support::LogCapture;
+
+        let pool = require_db_or_skip!();
+        let capture = LogCapture::install();
+        // Never inserted.
+        let player_id = TEST_BASE + 0x3F;
+        const ENTITY: u32 = 4281;
+        let session = OneSession::new(ENTITY, 55741);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        handle_grant_applied_science(
+            ENTITY,
+            player_id,
+            5,
+            &db_pool,
+            &session.transport,
+            &session.connected,
+            &session.entity_to_addr,
+        )
+        .await;
+
+        let event = capture
+            .find_event(
+                tracing::Level::ERROR,
+                "no sgw_player row",
+                "rows_affected_zero",
+            )
+            .expect("rows_affected ERROR");
+        for (k, v) in [
+            ("rows_affected", "0"),
+            ("expected", "1"),
+            ("phase", "asp_grant_update"),
+            ("entity_id", "4281"),
+        ] {
+            assert!(event.has_field(k, v), "{k}={v}: {event:#?}");
+        }
+        assert_eq!(
+            session.typed.filter_to(session.addr).len(),
+            1,
+            "only the GM failure line, no ASP push"
+        );
     }
 }

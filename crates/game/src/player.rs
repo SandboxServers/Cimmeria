@@ -48,6 +48,14 @@ pub const TRAINING_POINTS_PER_LEVEL: u32 = 1;
 /// Training points a freshly created (level 1) character starts with (D-AT02).
 pub const STARTING_TRAINING_POINTS: u32 = 1;
 
+/// Applied Science Points (the crafting currency) granted per level gained.
+/// Earned alongside training points, so an unspent character at level `L`
+/// holds `L` points from levelling and 50 at the cap. GM grants come on top.
+pub const APPLIED_SCIENCE_POINTS_PER_LEVEL: i32 = 1;
+
+/// Applied Science Points a freshly created (level 1) character starts with.
+pub const STARTING_APPLIED_SCIENCE_POINTS: i32 = 1;
+
 /// The "next level" XP threshold the client is shown for a player at
 /// `level` (`onMaxExpUpdate`). Clamped to the table, so a level at or above
 /// [`MAX_LEVEL`] gets the display sentinel and level 0 gets 0.
