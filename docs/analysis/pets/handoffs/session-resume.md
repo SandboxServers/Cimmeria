@@ -54,7 +54,7 @@ Use a GM character. Grant the summon with `.giveability 2826`: it is saved to th
 
 ## Debugging from telemetry (SigNoz)
 
-Each step above leaves a trail. Use the Logs Explorer with `service.name = 'cimmeria-server'`, then:
+Each step above leaves a trail once the packets are merged and released. The `pets.*` targets, their `OTEL_FILTER` row and their catalog entries in `docs/architecture/observability.md` arrive with PT-01 (#870) and the Wave 1 PRs; before that, `main` emits none of these rows. Use the Logs Explorer with `service.name = 'cimmeria-server'`, then:
 
 | Question | Filter |
 |---|---|

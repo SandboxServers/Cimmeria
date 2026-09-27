@@ -49,7 +49,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 
 **Seed** (PT-S): a new resource table `resources.pet_summons (ability_id int PRIMARY KEY, template_id int NOT NULL, max_active int NOT NULL DEFAULT 1)` in `db/resources/` (a seed file, not a `db/scripts` migration). Pet templates are 350-369: `class = 'pet'` (new `class_id_for_class` arm → 0x05), `ENTITYFLAG_Pet` set, `loot_table_id NULL`, never placed in `spawnlist`.
 
-**Log targets**: `pets.lifecycle` (INFO: summon, despawn and reason), `pets.command` (DEBUG accepted, WARN rejected), `pets.ai` (DEBUG). Each is added to `OTEL_FILTER` with its pinning assertion, and its `decision_outcome` values go in `docs/architecture/observability.md`.
+**Log targets**: `pets.lifecycle` (summon, despawn and reason), `pets.command` (commands and refusals), `pets.ai` (AI decisions) and `pets.credit` (kill credit and XP). The `pets=debug` `OTEL_FILTER` row covers all four. Each is added to `OTEL_FILTER` with its pinning assertion, and its `decision_outcome` values go in `docs/architecture/observability.md`.
 
 ## Dependency graph and waves
 
