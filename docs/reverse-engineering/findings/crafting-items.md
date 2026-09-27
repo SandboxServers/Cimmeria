@@ -47,7 +47,7 @@ The item→blueprint mapping (Q1) resolves as follows out of 289 Blueprint items
 | `name-exact-disambiguated` | 1 | HIGH | One of two same-named product candidates was picked using tier-progression evidence (see Q1.4 below). |
 | `structural-tier-progression` | 1 | MEDIUM-HIGH | Resolved via cross-family structural analogy after finding the cooked data itself mislabels the target product (a genuine client-shipped naming bug, documented in Q1.4). |
 | `name-exact-ambiguous` | 1 | MEDIUM (unresolved) | Two blueprints share the literal product name "Health Antidote"; nothing in cooked data disambiguates them. Reported as both candidates. |
-| `subcombine-group-unresolved` | 45 | NONE (unresolved) | The scroll's name only narrows the answer to a group of 12–16 same-suffix candidate products; no field picks the specific one. |
+| `subcombine-group-unresolved` | 45 | NONE (unresolved) | The scroll's name only narrows the answer to a group of 5–15 same-suffix candidate products; no field picks the specific one. |
 | `tc-suffix-no-product` | 48 | NONE (dead end) | The named product was never shipped in cooked data — mostly the "Slappack Consumable" family. Not a mapping failure; the client never authored these products. |
 | `UNMATCHED` | 3 | NONE (unresolved) | No cooked product exists under any name variant tried. |
 
@@ -63,7 +63,7 @@ For about two-thirds of the scrolls (the "Minigame Consumable" boost items and t
 potion/stimpack scrolls) that trick works perfectly, because the title and the product name
 really do match once you strip the word "Blueprint:". For the rest — mostly a family of
 generic "Tier 1 <Science> Subcombine Aa/Ab/Ac…" scrolls — the title only narrows things down
-to a small family of similarly-named ingredient items (there are 12–16 candidates sharing the
+to a small family of similarly-named ingredient items (there are 5–15 candidates sharing the
 same title fragment), and nothing in the data says which exact one is meant. And for a chunk
 of "Slappack" boost scrolls, the "finished product" they're supposed to teach was **never
 actually built** by the original developers — the scroll exists, but the reward it promises
@@ -174,7 +174,7 @@ gives each scroll a real flavor name that matches its product 1:1 (resolved unde
 The newer generation was apparently never given real names before shipping — it only encodes
 "Tier `<T>` `<Science>` Subcombine `<Group><Variant>`" where `<Group>` is a single letter
 (A–D) and `<Variant>` is a second lowercase letter (a/b/c). Each `(Science, Group)` pair
-matches **12–16** distinct cooked products sharing the display-name suffix
+matches **5–15** distinct cooked products sharing the display-name suffix
 `"(<Science> Subcombine <Group>)"` — e.g. `("Power Systems", "A")` has 15 candidates (`5385,
 5386, 5387, 5402, 5484, 5485, 5548, 5549, 5550, 5603, 5604, 5605, 5656, 5657, 5658`). The
 block spacing (four numeric ranges roughly 5335xx/5480xx/5540xx/5600xx per science) strongly

@@ -24,9 +24,9 @@
   created fresh by this packet.
 - **Owned paths (this packet):**
   - `docs/reverse-engineering/findings/crafting-items.md` (new)
-  - `docs/reverse-engineering/findings/README.md` (added one row, bumped the doc count 73→77
-    to match the actual row count, which had already drifted before this packet touched it)
-  - `docs/reverse-engineering/README.md` (bumped "72 docs" → "77 docs", date 2026-09-25 →
+  - `docs/reverse-engineering/findings/README.md` (added one row, bumped the doc count 73→79
+    to match the actual row count after the rebase onto CR-E1 (#858), which had already drifted before this packet touched it)
+  - `docs/reverse-engineering/README.md` (bumped "72 docs" → "79 docs", date 2026-09-25 →
     2026-09-26)
   - `docs/analysis/crafting/source/blueprint-items.csv` (new)
   - `docs/analysis/crafting/worknotes/cr-e2.md` (this file)
@@ -64,7 +64,7 @@ blueprints").
 2. **Mapping resolved 192/289 rows with HIGH/MEDIUM-HIGH confidence** (36 exact name match +
    154 TC-suffix family match + 1 disambiguated + 1 resolved via a documented client naming
    bug), **1 row is a genuine unresolved 2-way tie**, **45 rows** narrow only to a group of
-   12–16 same-suffix candidate products with no way to pick one, **48 rows** name a product
+   5–15 same-suffix candidate products with no way to pick one, **48 rows** name a product
    that was never shipped (the "Slappack Consumable" reward family — a real 2009 content gap,
    not a matching failure), and **3 rows** have no candidate product under any method tried.
    Full row-by-row detail: `docs/analysis/crafting/source/blueprint-items.csv`.
@@ -137,7 +137,7 @@ blueprints").
   — flagged as OQ2 for whoever picks this back up.
 - Did not touch `db/resources/` — this packet is documentation + a proposed mapping only, per
   scope. CR-15 owns turning the CSV into a seed table.
-- The doc-count fix in both README files corrects pre-existing drift (73 claimed vs 76 actual
+- The doc-count fix in both README files corrects pre-existing drift (73 claimed vs 78 actual
   rows before this packet's addition) as a byproduct of adding one row — flagged here in case
   the coordinator wants to attribute that fix to a different packet's history.
 
