@@ -1,8 +1,8 @@
 # RE Finding: Cooked-Dialog Override Crash on Map Load (dialog ids 100100/100101)
 
 ```
-Confidence: HIGH (the >65535 / 16-bit element-key hypothesis is REFUTED for the traced pipeline — live decompile) / LOW (true root cause — still open)
-Last verified: 2026-09-27 (updated same day with headless-Ghidra live decompile results)
+Confidence: HIGH (the >65535 / 16-bit element-key hypothesis is REFUTED for the traced pipeline, and the entire CME-event map-load graph is traced clean — live decompile) / LOW (true root cause — inconclusive; the hub-dialog correlation itself may be coincidental, see counter-evidence below)
+Last verified: 2026-09-27 (final pass for this RE session — four rounds of headless-Ghidra live decompile; further work is empirical, not static RE)
 Sources:
   - Live headless-Ghidra decompile, 2026-09-27 (analyzeHeadless against SGW.gpr, -readOnly -noanalysis):
     FUN_004435c0 @ 0x004435c0 (category-5 `onVersionInfo` handler, confirmed by its `CategoryId != 5` guard)
@@ -25,22 +25,36 @@ Sources:
   - crates/base-session/src/base/cooked_data.rs:34-178, crates/wire/src/mercury/protocol/resources.rs:70-120, crates/resources/src/base/mission_overrides.rs:85-117, crates/resources/src/base/resources/mod.rs:195-317, crates/resources/src/base/resources/metadata_bump.rs:81-109
   - SigNoz colo telemetry, 2026-09-27 16:19 UTC deploy and the two subsequent login attempts (summarized by team-lead; not independently queried — signoz MCP was unreachable this session)
 Related findings: cooked-data-pipeline.md, dialog-portrait-lookup.md, dialog-controller-wire-flow.md, world-entry-pipeline.md
-Implementation status: **OPEN, 2026-09-27 (same day, after four rounds).** The >65535
-element-key-width hypothesis stays REFUTED (see "Verdict"). Dialogs are confirmed as the carrier
-by process of elimination (the tester crashed again on the `#938` renumbered build; `world-entry-bisect`
-confirmed `CREATE_BASE_PLAYER`/`onClientMapLoad` bytes are byte-identical across builds; SigNoz shows
-the crashing client's cache still holds `100100`/`100101`, never invalidated). The ProxyPlayerBaseCreated
-double-request lead is dead (SigNoz: exactly one category-5 version cycle per session, and the
-control client's harmless repeated re-push proves double-pushing isn't fatal by itself). **Rounds
-2-4 exhaustively traced every CME-event-reachable map-load handler this finding could name —
-`onClientMapLoad` itself, both `Event_Level_PostLoad` subscribers, both `Event_World_Loaded`
+Implementation status: **FINAL for this RE pass, 2026-09-27: Inconclusive — no dialog consumer
+found on the map-load path; the hub-dialog correlation may be coincidental.** The >65535
+element-key-width hypothesis stays REFUTED (see "Verdict"). Four rounds of live headless-Ghidra
+decompile exhaustively traced every CME-event-reachable map-load handler this finding could
+name — `onClientMapLoad` itself, both `Event_Level_PostLoad` subscribers, both `Event_World_Loaded`
 subscribers (one of which, `GameProxyPlayer`'s, is lazily wired from inside `onClientMapLoad`
-itself — a genuinely new finding), and their one-shot follow-ups — and found zero Dialog-category
-touches anywhere in that graph.** Candidates per team-lead (nonzero `speaker_id` 754/843, two
-screens, `ScreenID`s `200000`-`200005`, button type 4) remain unconfirmed against any actual code
-path; two of the four (multi-screen, button type 4) are shape-precedented in the shipped PAK per
-the emitter's own docs, weakening them further. Recommend dynamic tracing (live x64dbg) as the next
-step — static CME-event tracing is exhausted for this incident.
+itself), their one-shot follow-ups, and the category-5 `ServerSource`/`LibCategory` machinery end
+to end — and found **zero Dialog-category touches anywhere in that graph**, plus confirmed Dialog
+XML parsing is lazy (only at actual `DialogDisplay` time, which the debug-hub dialogs never
+receive in `Castle_CellBlock`). The `Event_Entity_ProxyPlayerBaseCreated` double-request lead is
+also dead — SigNoz shows exactly one category-5 version cycle per session, and a control client's
+harmless repeated re-push over two days proves double-pushing isn't fatal by itself.
+
+**Counter-evidence against the hub-dialog correlation entirely**: the same tester hung the same
+way (`CREATE_BASE_PLAYER`/`onClientMapLoad`, acks, keepalives, silence) at 09:10-09:13 UTC entering
+`CellBlock43`/`CellBlock55`/`CellBlock57` **on the old build, before the debug-hub dialogs
+existed.** This significantly weakens "the hub dialogs are the carrier" as a settled conclusion —
+the tester may have a pre-existing, unrelated hang/crash tendency on certain map transitions that
+happened to coincide with the debug-hub push, rather than the dialogs causing it.
+
+Candidates per team-lead (nonzero `speaker_id` 754/843, two screens, `ScreenID`s
+`200000`-`200005`, button type 4) remain the strongest by elimination if an eager consumer exists,
+but none is confirmed against any actual code path, and two of the four (multi-screen, button type
+4) are shape-precedented in the shipped PAK per the emitter's own docs. Static RE work stops here.
+**Next step is empirical**: after the `#943` quarantine release ships, have the affected tester
+delete their local `Cache.en-US\CookedDataDialogs.pak` and retry, and separately test with a clean
+client that already received the debug-hub dialogs. Dynamic tracing (live x64dbg, breakpoints on
+`Event_NetIn_DialogDisplay`'s handler `FUN_00d25900` and on `ZipStorageBase::OpenArchive`/
+`WriteStreamToFile` at `0x00479340`/`0x00479930`) is the fallback only if those empirical tests are
+still ambiguous.
 ```
 
 ## Verdict (2026-09-27, after live headless-Ghidra decompile)
