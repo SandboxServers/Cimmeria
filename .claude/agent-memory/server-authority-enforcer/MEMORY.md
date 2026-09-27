@@ -63,3 +63,4 @@
 - [project_bank_vault_bv03_review.md](project_bank_vault_bv03_review.md) — BV-03 vault moves: cleared verdict/TOCTOU shape, three fixed findings, bank_slots grow-only invariant for BV-05
 - [project_bank_vault_bv05_review.md](project_bank_vault_bv05_review.md) — BV-05 vault expansion: size- and price-keyed single UPDATE cleared; entity-keyed sends + ignored button_id fixed
 - [project_bank_vault_bv07_review.md](project_bank_vault_bv07_review.md) — BV-07 org vaults: cleared authz shape; cross-org snap-back leak; KEY SHARE-before-advisory deadlock vs vendor/trade
+- [project_bank_vault_bv08_review.md](project_bank_vault_bv08_review.md) — BV-08 org treasury transfers: cleared KEY SHARE->lock_org->guarded UPDATE shape; missing demote-parked + recycled-eid guards

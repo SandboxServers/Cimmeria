@@ -106,8 +106,11 @@ impl CashRefusal {
             | CashRefusal::PlayerMissing => {
                 "The transfer failed. No naquadah was moved.".to_string()
             }
-            CashRefusal::NoSuchOrg => "That organization no longer exists.".to_string(),
-            CashRefusal::NotAMember => "You are not a member of that organization.".to_string(),
+            // One line for both, so a non-member cannot probe which ids
+            // exist; the log still tells them apart.
+            CashRefusal::NoSuchOrg | CashRefusal::NotAMember => {
+                "You are not a member of that organization.".to_string()
+            }
             CashRefusal::NoPermission => match direction {
                 CashDirection::Withdraw => "Your rank may not withdraw naquadah.".to_string(),
                 _ => "Your rank may not deposit naquadah.".to_string(),

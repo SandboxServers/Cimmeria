@@ -202,7 +202,8 @@ async fn outsiders_missing_orgs_and_missing_characters_are_refused() {
     );
     assert_eq!(
         lines(&fx.calls_to(1)),
-        vec!["That organization no longer exists."]
+        vec!["You are not a member of that organization."],
+        "the same line as an outsider's: no existence oracle"
     );
 
     // A session whose character row was deleted under it.
@@ -302,4 +303,51 @@ async fn infrastructure_refusals_are_logged() {
     );
     assert!(rows[0].has_field("entity_id", "22"), "{:#?}", rows[0]);
     assert!(typed.is_empty(), "no one to tell");
+}
+
+/// D-BV33: the entity id the cell named now belongs to **another**
+/// character's session (the actor gated and the id was reused). The
+/// transfer is refused `actor_mismatch` before any database work, nothing
+/// moves, and that session is sent nothing, neither a balance nor a line.
+/// Fails if the actor check is dropped and the result is addressed by the
+/// entity id.
+#[tokio::test]
+async fn a_recycled_entity_id_moves_and_receives_nothing() {
+    let pool = require_db_or_skip!();
+    let fx = Fx::new(&pool, 6, 2, 500).await;
+    let team = fx.org(OrgType::Team, 0, &[1]).await;
+    fx.set_org_cash(team, 300).await;
+    // Character 1's session now plays character 0's old entity id.
+    let mut s = test_default_connected_client_state();
+    s.account_id = fx.account_id as u32;
+    s.active_player_id = Some(fx.player(1));
+    s.player_entity_id = Some(fx.entity(0));
+    s.listed_online = true;
+    let addr: SocketAddr = "127.0.0.1:43101".parse().unwrap();
+    fx.connected.lock().unwrap().insert(addr, s);
+    fx.entity_to_addr.lock().unwrap().insert(fx.entity(0), addr);
+
+    let capture = LogCapture::install();
+    fx.transfer(0, team, CashDir::Withdraw(100)).await;
+    assert_eq!(
+        (
+            fx.wallet(0).await,
+            fx.wallet(1).await,
+            fx.org_cash(team).await
+        ),
+        (500, 500, 300)
+    );
+    let rows = bank_rows(&capture, "org_cash_rejected");
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert!(
+        rows[0].has_field("reason", "actor_mismatch"),
+        "{:#?}",
+        rows[0]
+    );
+    assert!(
+        fx.typed.filter_to(addr).is_empty(),
+        "the other session gets nothing"
+    );
+    assert!(fx.cash_log(team).await.is_empty());
+    fx.teardown().await;
 }
