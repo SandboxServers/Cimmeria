@@ -97,7 +97,7 @@ decoder, SS-E1 M-Q4, 2026-09-27; the field types follow `entities/defs/alias.xml
 | Field | Type | Size |
 |-------|------|------|
 | `id` | `INT32` | 4B |
-| `itemId` | `INT32` | 4B |
+| `itemId` | `INT32` | 4B (the item's type id, not the instance id: see the SS-M2 note under M-Q4) |
 | `stackSize` | `INT32` | 4B |
 | `durability` | `INT32` (see the M-Q4 note: the client's UI decode reads it as a float) | 4B |
 | `charges` | `INT32` | 4B |
@@ -355,6 +355,15 @@ its header row, exactly as this file's existing layout assumed.**
 
 Evidence: `ghidra://SGW.exe@0x00e15450` (field-by-field decode, `"durability"` string decoded into
 a `float` local), `0x00e12e70` (header lookup by id).
+
+**SS-M2 note on `itemId` (inference, not a decompile).** M-Q2 shows that `sendMailMessage`'s
+`ItemId` is the sender's inventory-instance id. The attachment's `itemId` is a different field
+with a different reader: the recipient's `GateMail.lua` passes only the mail id to
+`mailGetItemAttachmentInfo` and reads `.Name`, `.Icon`, `.TechComp` and `.Quality` from the result.
+Those are item-definition properties, and the recipient has no inventory record for an instance it
+does not own, so the server sends the type (design) id there, the value `InvItem.dbid` carries.
+`mailGetItemAttachmentInfo` itself was not traced. A blank icon on a received attachment in UAT
+would contradict this.
 
 ### M-Q5 — `takeItemFromMailMessage`'s `ContainerId`/`SlotId` (CLOSED — security-relevant)
 

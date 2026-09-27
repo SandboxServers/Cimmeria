@@ -129,7 +129,7 @@ In-game mail with:
 - Return to sender
 - Archive
 
-**Data:** `sgw_gate_mail` table. **Server:** Read side works — headers (inbox and archive listed separately), body (with read-time stamping), delete, and archive, all ownership-checked by `character_id`. Text-only player sending works (social-systems SS-M1): up to 10 recipients, offline ones included, with a flood limit, a 100-message mailbox cap and a reason for every refusal. **Not implemented:** attachments and COD (refused with a result code until SS-M2), return-to-sender and attachment claim (SS-M3), new-mail notification and expiry (SS-M4). The Black Market expiry sweep's mail *sender* (`send_mail_to_player`) is on the unmerged `feat/571-black-market-phase1` branch. See [mail-system.md](gameplay/mail-system.md).
+**Data:** `sgw_gate_mail` and the escrow table `sgw_gate_mail_item`. **Server:** Read side works — headers (inbox and archive listed separately), body (with read-time stamping), delete, and archive, all ownership-checked by `character_id`. Text-only player sending works (social-systems SS-M1): up to 10 recipients, offline ones included, with a flood limit, a 100-message mailbox cap and a reason for every refusal. Sending gift cash, an item or COD to one recipient works (SS-M2): 25 naquadah postage, the item held in escrow, and a mail holding an attachment cannot be deleted. **Not implemented:** paying COD, return-to-sender and attachment claim (SS-M3), new-mail notification and expiry (SS-M4). The Black Market expiry sweep's mail *sender* (`send_mail_to_player`) is on the unmerged `feat/571-black-market-phase1` branch. See [mail-system.md](gameplay/mail-system.md).
 
 ## Chat & Communication
 
