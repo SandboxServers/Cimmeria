@@ -365,6 +365,12 @@ async fn handle_reload_timer_expiry_is_absolute_on_the_game_clock() {
     );
 
     let (tx, mut rx) = mpsc::channel(64);
+    // Past the epoch, so a relative `total` expiry cannot pass the window
+    // (`1.5 + 1e-7` rounds to `1.5` in f32).
+    crate::mercury::game_clock::init();
+    while game_time_secs() < 0.01 {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
     let before = game_time_secs();
     handle_reload(1, &tx, &mut mgr).await;
     let after = game_time_secs();

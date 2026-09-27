@@ -102,6 +102,19 @@ pub(super) fn warmup_mgr() -> SpaceManager {
 
 /// `(entity_id, method_index, args)` of every entity-method message, in
 /// send order, whether addressed to the entity or routed to a witness.
+/// A game-clock reading taken once the clock is clearly past its epoch.
+///
+/// The epoch starts at the first read in this test process, and
+/// `duration + 1e-7` rounds back to `duration` in `f32`: without the wait, a
+/// sender that regressed to the relative duration would pass the window.
+pub(super) fn settled_game_time() -> f32 {
+    crate::mercury::game_clock::init();
+    while game_time_secs() < 0.01 {
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    game_time_secs()
+}
+
 /// `BigWorldTimeComplete`, bytes 17..21 of `onTimerUpdate`'s 21-byte args.
 pub(super) fn timer_expiry(args: &[u8]) -> f32 {
     f32::from_le_bytes(args[17..21].try_into().unwrap())
@@ -221,7 +234,7 @@ async fn warmup_wire_is_begin_at_launch_then_end_at_fire() {
     let mut mgr = warmup_mgr();
     let (tx, mut rx) = mpsc::channel(256);
 
-    let before = game_time_secs();
+    let before = settled_game_time();
     assert!(handle_use_ability(1, WARMUP_ABILITY, 2, &tx, &mut mgr).await);
     let after = game_time_secs();
     let launch = calls(&drain(&mut rx));
@@ -309,7 +322,7 @@ async fn zero_warmup_wire_is_unchanged() {
     let mut mgr = warmup_mgr();
     let (tx, mut rx) = mpsc::channel(256);
 
-    let before = game_time_secs();
+    let before = settled_game_time();
     assert!(handle_use_ability(1, INSTANT_ABILITY, 2, &tx, &mut mgr).await);
     let after = game_time_secs();
     let msgs = drain(&mut rx);
