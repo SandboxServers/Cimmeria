@@ -7,7 +7,8 @@ use std::fmt;
 use sqlx::PgPool;
 
 use super::super::expiry::expires_at;
-use super::attachment::{Attachment, AttachmentRefusal};
+use super::super::take::carried_bag;
+use super::attachment::{Attachment, AttachmentRefusal, ITEM_NO_CARRIED_BAG};
 use super::escrow::{check_source, debit, escrow_item, lock_source_item, Debit, EscrowedItem};
 use super::recipients::{
     candidate_rows, ignoring_sender, resolve_names, FailReason, FailedRecipient, Resolution,
@@ -239,6 +240,13 @@ pub(super) async fn deliver(
                 )),
                 None => None,
             };
+            // The take places by the type's `container_sets`; an item it
+            // could never place must not leave the sender's bag.
+            if let Some((source, _)) = source {
+                if carried_bag(&mut tx, source.type_id).await?.is_none() {
+                    return Err(refused(ITEM_NO_CARRIED_BAG));
+                }
+            }
             let debit = debit(&mut tx, sender_id, attachment.sender_cost())
                 .await?
                 .map_err(refused)?;
