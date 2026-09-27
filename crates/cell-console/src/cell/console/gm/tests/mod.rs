@@ -38,6 +38,11 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_GIVE_ITEM, 109 + 24, "gmGiveItem (def line 185)");
     assert_eq!(GM_GIVE_CASH, 109 + 25, "gmGiveCash (def line 191)");
     assert_eq!(GM_REMOVE_ITEM, 109 + 26, "gmRemoveItem (def line 196)");
+    assert_eq!(
+        GM_GIVE_TRAINING_POINTS,
+        109 + 28,
+        "gmGiveTrainingPoints (def line 207)"
+    );
     assert_eq!(GM_GIVE_EXPERTISE, 109 + 30, "gmGiveExpertise (offset 30)");
     assert_eq!(
         GM_GIVE_APPLIED_SCIENCE_POINTS,
@@ -107,6 +112,7 @@ fn implemented_indices_are_in_gm_tail() {
         GM_GIVE_ITEM,
         GM_GIVE_CASH,
         GM_REMOVE_ITEM,
+        GM_GIVE_TRAINING_POINTS,
         GM_GIVE_EXPERTISE,
         GM_GIVE_APPLIED_SCIENCE_POINTS,
         GM_SPAWN_BY_CMD,
@@ -222,6 +228,7 @@ async fn unimplemented_gm_index_returns_false() {
 }
 
 mod give;
+mod give_training_points;
 mod missions;
 mod physics;
 mod query;

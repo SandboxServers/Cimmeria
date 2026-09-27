@@ -407,6 +407,19 @@ pub(super) async fn handle_base_message(
             );
         }
 
+        BaseToCellMsg::TrainingPointsGranted {
+            entity_id,
+            training_points,
+        } => {
+            ability_granted::handle_training_points_granted(
+                entity_id,
+                training_points,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
         BaseToCellMsg::AbilitiesReset {
             entity_id,
             player_id,

@@ -496,8 +496,10 @@ pub async fn handle_grant_cash(
     }
 }
 
+mod grant_training_points;
 mod respec;
 mod train_ability;
+pub use grant_training_points::{handle_grant_training_points, TrainingPointsGrant};
 pub use respec::{handle_reset_abilities, RespecRequest};
 pub use train_ability::{handle_train_ability, TrainRequest};
 // The trainer's one-statement DB write. A test hook: besides this crate's
@@ -508,6 +510,8 @@ pub use train_ability::{handle_train_ability, TrainRequest};
 #[doc(hidden)]
 pub use train_ability::{persist_purchase, PurchaseResult};
 
+#[cfg(test)]
+mod grant_training_points_tests;
 #[cfg(test)]
 mod level_cap_tests;
 #[cfg(test)]

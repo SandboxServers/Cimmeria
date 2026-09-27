@@ -256,6 +256,17 @@ pub enum BaseToCellMsg {
         training_points: i32,
     },
 
+    /// The base persisted a GM training-point grant
+    /// ([`crate::cell::messages::CellToBaseMsg::GrantTrainingPoints`]).
+    /// `training_points` is the `RETURNING` value. Unlike
+    /// `ProgressionChanged`, nothing else told the client, so the cell
+    /// mirrors the points, sends the counter property and (with a trainer
+    /// pinned) re-sends `onTrainerOpen`.
+    TrainingPointsGranted {
+        entity_id: u32,
+        training_points: i32,
+    },
+
     /// The base's answer to
     /// [`crate::cell::messages::CellToBaseMsg::ResetAbilities`]. On
     /// `Reset` the cell drops the refunded abilities, clears its tree

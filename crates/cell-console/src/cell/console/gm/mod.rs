@@ -19,6 +19,7 @@
 //!
 //! Handlers are grouped by family into submodules:
 //! - [`give`] — grant/remove (xp, item, cash).
+//! - [`give_training_points`] — training-point grant.
 //! - [`stats`] — set health/focus current+max.
 //! - [`missions`] — assign/clear/advance + list/full/details.
 //! - [`travel`] — goto-xyz / goto-location / goto / summon / DHD dial.
@@ -35,6 +36,7 @@
 
 pub mod feedback;
 mod give;
+mod give_training_points;
 mod missions;
 mod physics;
 mod query;
@@ -84,6 +86,13 @@ pub const GM_GIVE_CASH: u16 = 134;
 /// `gmRemoveItem(ItemID itemID, INT16 quantity)` — def line 196. Offset 26.
 /// `ItemID` resolves to INT32 (`entities/defs/alias.xml`).
 pub const GM_REMOVE_ITEM: u16 = 135;
+
+// -- Training points (137) ---------------------------------------------------
+/// `gmGiveTrainingPoints(INT32 aNumTrainingPoints)` — def line 207. Offset 28.
+/// Grants ability-tree training points to the caller. Routes through
+/// `CellToBaseMsg::GrantTrainingPoints` → `progression::handle_grant_training_points`
+/// → `BaseToCellMsg::TrainingPointsGranted`.
+pub const GM_GIVE_TRAINING_POINTS: u16 = 137;
 
 // -- Crafting grants (139, 140) -----------------------------------------------
 /// `gmGiveExpertise(INT32 aDisciplineId, INT32 aExpertise)` — offset 30.
@@ -208,6 +217,9 @@ pub async fn dispatch(
         GM_GIVE_ITEM => give::handle_give_item(entity_id, args, tx, space_mgr).await,
         GM_GIVE_CASH => give::handle_give_cash(entity_id, args, tx, space_mgr).await,
         GM_REMOVE_ITEM => give::handle_remove_item(entity_id, args, tx, space_mgr).await,
+        GM_GIVE_TRAINING_POINTS => {
+            give_training_points::handle_give_training_points(entity_id, args, tx, space_mgr).await
+        }
         GM_GIVE_EXPERTISE => give::handle_give_expertise(entity_id, args, tx, space_mgr).await,
         GM_GIVE_APPLIED_SCIENCE_POINTS => {
             give::handle_give_applied_science(entity_id, args, tx, space_mgr).await

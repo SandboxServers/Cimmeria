@@ -480,17 +480,17 @@ beyond the 3 verified handlers above.
   [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
 - **NEW** — no primitive; build from scratch (high effort).
 
-**Tally (of 117):** 38 DONE · 0 REUSE · 35 ADAPT · 44 NEW.
+**Tally (of 117):** 40 DONE · 0 REUSE · 35 ADAPT · 42 NEW.
 
 > [!NOTE]
-> All 38 DONE methods are dispatched from the single `match` in
+> All 40 DONE methods are dispatched from the single `match` in
 > [crates/cell-console/src/cell/console/gm/mod.rs](../../crates/cell-console/src/cell/console/gm/mod.rs)
-> (lines 190-260). A grep for `GM_*` constants finds only **35** of them --
+> (the `dispatch` fn). A grep for `GM_*` constants finds only **37** of them --
 > the other three are declared without the prefix because the `.def` method
 > names themselves have no `gm` prefix: `LIST_ABILITIES = 123`
 > (`listAbilities`, `SGWGmPlayer.def:135`), `DESPAWN_MOB = 213`
 > (`despawnMob`, `:605`), and `TEST_LOS = 216` (`testLOS`, `:619`).
-> The 38-vs-35 difference is a **naming artifact, not a dispatch gap** -- there
+> The 40-vs-37 difference is a **naming artifact, not a dispatch gap** -- there
 > is no second dispatch site.
 
 > **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
@@ -561,7 +561,7 @@ beyond the 3 verified handlers above.
 | 134 | `gmGiveCash(INT32 amount)` | `/GiveNaqahdah` | `cell/console/gm/give.rs` → `GrantCash` | **DONE** |
 | 135 | `gmRemoveItem(ItemID id, INT16 qty)` | — | `cell/console/gm/give.rs` → `RemoveInventoryItem` | **DONE** |
 | 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `progression/mod.rs:400 handle_train_ability` (debits a point; need no-debit variant) | ADAPT |
-| 137 | `gmGiveTrainingPoints(INT32 n)` | — | — (no grant fn; XP path touches the field) | NEW |
+| 137 | `gmGiveTrainingPoints(INT32 n)` | — | `cell/console/gm/give_training_points.rs` → `CellToBaseMsg::GrantTrainingPoints` → `progression/grant_training_points.rs handle_grant_training_points` (one guarded `UPDATE ... RETURNING`, refused past `i32::MAX`) → `BaseToCellMsg::TrainingPointsGranted` (cell mirrors `tree_progress.training_points`, sends `onEntityProperty(TrainingPoints)`, re-sends a pinned trainer) | **DONE** |
 | 138 | `gmGiveRespawner(INT32 mobID)` | `/GiveRespawner` | — (respawner persistence not implemented) | NEW |
 | 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `cell/console/gm/give.rs handle_give_expertise` → `CellToBaseMsg::GrantExpertise` → `base/crafting/handlers.rs handle_grant_expertise` (load/clamp/save + `onUpdateDiscipline` 136) | **DONE** |
 | 140 | `gmGiveAppliedSciencePoints(INT32 pts)` | — | `cell/console/gm/give.rs handle_give_applied_science` → `CellToBaseMsg::GrantAppliedSciencePoints` → `base/crafting/handlers.rs handle_grant_applied_science` (persist-only; no outbound ASP client method) | **DONE** |

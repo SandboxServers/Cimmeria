@@ -170,3 +170,71 @@ async fn gm_tail_unimplemented_index_falls_through_without_panic() {
         "an authorized-but-unimplemented gm index must produce no wire message"
     );
 }
+
+/// Router entity for the `gmGiveTrainingPoints` cases: a player with 2 points.
+fn training_points_caller(access_level: u32) -> SpaceManager {
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.player_id = Some(100);
+        e.access_level = access_level;
+        e.tree_progress.training_points = 2;
+    }
+    mgr
+}
+
+/// A player (access_level 0) calling `gmGiveTrainingPoints` (137) with a
+/// well-formed amount gets only the gate's `onErrorCode`: no
+/// `GrantTrainingPoints` reaches the base, so nothing is persisted, and the
+/// cell's points are untouched.
+#[tokio::test]
+async fn gm_give_training_points_rejected_for_non_gm_caller() {
+    let mut mgr = training_points_caller(0);
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    dispatch_cell_method(1, 137, &50i32.to_le_bytes(), &tx, &mut mgr, &engine).await;
+
+    let msgs: Vec<CellToBaseMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        matches!(
+            msgs.as_slice(),
+            [CellToBaseMsg::EntityMethodCall {
+                method_index: 121,
+                ..
+            }]
+        ),
+        "a non-GM must get only the gate's onErrorCode, no GrantTrainingPoints: {msgs:?}"
+    );
+    assert_eq!(
+        mgr.get_entity(1).unwrap().tree_progress.training_points,
+        2,
+        "a refused call must not touch the cell's points"
+    );
+}
+
+/// A GM calling 137 through the full router reaches the handler: exactly one
+/// `GrantTrainingPoints` for the caller, and no `onErrorCode`.
+#[tokio::test]
+async fn gm_give_training_points_routes_through_the_router_for_gm_caller() {
+    let mut mgr = training_points_caller(2);
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    dispatch_cell_method(1, 137, &50i32.to_le_bytes(), &tx, &mut mgr, &engine).await;
+
+    let msgs: Vec<CellToBaseMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(
+        matches!(
+            msgs.as_slice(),
+            [CellToBaseMsg::GrantTrainingPoints {
+                entity_id: 1,
+                player_id: 100,
+                amount: 50,
+                gm_feedback_to: Some(1),
+            }]
+        ),
+        "a GM's 137 must route to exactly one GrantTrainingPoints: {msgs:?}"
+    );
+}

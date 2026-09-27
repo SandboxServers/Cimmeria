@@ -1,5 +1,5 @@
-//! Routing tests for the three GM-command dispatch arms:
-//! `GrantExpertise`, `GrantAppliedSciencePoints`, and `GmSpawnNpc`.
+//! Routing tests for the GM-command dispatch arms: `GrantExpertise`,
+//! `GrantAppliedSciencePoints`, `GrantTrainingPoints` and `GmSpawnNpc`.
 //!
 //! These arms delegate directly to a handler that owns its own DB-touching
 //! tests. The dispatcher's only job is to route the right `CellToBaseMsg`
@@ -10,7 +10,7 @@
 //! verbatim — so a regression that drops the arm, mis-routes it (e.g.
 //! GrantExpertise → handle_grant_cash), or swaps a field trips here.
 //!
-//! Revert-verifier: deleting any of the three arm bodies (or routing them to
+//! Revert-verifier: deleting any of these arm bodies (or routing them to
 //! the wrong handler) stops the matching no-pool warn from firing through this
 //! entry, failing the corresponding `.expect`.
 
@@ -110,6 +110,49 @@ async fn grant_applied_science_routes_to_handler_and_warns_when_no_pool() {
     assert!(
         event.has_field("amount", "12"),
         "GrantAppliedSciencePoints warn must forward amount: {event:#?}"
+    );
+}
+
+#[tokio::test]
+async fn grant_training_points_routes_to_handler_and_warns_when_no_pool() {
+    let capture = LogCapture::install();
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let (connected, entity_to_addr) = empty_maps();
+
+    handle_cell_message(
+        CellToBaseMsg::GrantTrainingPoints {
+            entity_id: 4245,
+            player_id: 99,
+            amount: 6,
+            gm_feedback_to: Some(4245),
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "GrantTrainingPoints: no DB pool, dropping grant",
+        )
+        .expect(
+            "dispatch must reach handle_grant_training_points's no-pool branch.              If this fails the GrantTrainingPoints arm was removed or mis-routed.",
+        );
+    assert!(
+        event.has_field("player_id", "99"),
+        "GrantTrainingPoints warn must forward player_id: {event:#?}"
+    );
+    assert!(
+        event.has_field("amount", "6"),
+        "GrantTrainingPoints warn must forward amount: {event:#?}"
     );
 }
 
