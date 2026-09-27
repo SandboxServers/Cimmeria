@@ -160,7 +160,7 @@ Scope:
 - A rejection sends feedback, then re-syncs the affected slots with `onUpdateItem`, so the client's drag snaps back.
 - **The slot bound is the player's `bank_slots`, read inside the move transaction.** It is not `bag_max_slots(17)`, which is the ceiling of 100. Apply the same bound wherever `reserve_free_inventory_slots` can reach 17. Without it, a 40-slot player can use slots 40-99 without buying the expansion (BV-01 review, follow-up 2).
 - **Player-accessible containers for use and removal.** `useItem`, `removeItem` and content `RemoveItem` (`use_instance.rs`, `remove_instance.rs`, `remove_by_type.rs`) find an item by id without checking its container. So an item sitting in buyback (16) can be used today, and a banked item would be usable from anywhere. Add one shared check next to `player_movable`: 1-15, and 17 only with a vault session (BV-01 review, follow-up 1).
-- Split `move_/mod.rs` first (690 of the 700-line cap): move the post-commit side effects into `move_/after_commit.rs`.
+- Split `move_/mod.rs` first. BV-01 (#872) takes it to about 690 lines, against a 700-line hard cap: move the post-commit side effects into `move_/after_commit.rs`.
 
 Tests:
 
