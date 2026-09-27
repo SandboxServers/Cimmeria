@@ -28,5 +28,7 @@ pub mod minigame;
 pub mod missionary;
 pub mod organization;
 pub mod pet;
+#[cfg(test)]
+mod pet_def_tests;
 pub mod player;
 pub mod spawnable_entity;

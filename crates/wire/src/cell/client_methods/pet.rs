@@ -18,8 +18,10 @@
 //! direct-encode as `0x80 | idx`: `0x9D`, `0x9E`, `0x9F`.
 //!
 //! Confirmed against the client by PT-E1
-//! (`docs/reverse-engineering/findings/pet-client-contract.md`), and pinned
-//! by `pet_method_indices_are_pinned`. `pet-restoration.md`'s "idx 0/1/2" is
+//! (`docs/reverse-engineering/findings/pet-client-contract.md`). The
+//! constants here are pinned against `entities/defs/` itself (the flattened
+//! SGWPet table and `enumerations.xml`) by `pet_def_tests`.
+//! `pet-restoration.md`'s "idx 0/1/2" is
 //! the client's handler registration order, not the wire index.
 
 /// `onPetAbilityList(ARRAY<INT32> aAbilityList)` — the owner's pet bar.
@@ -96,32 +98,8 @@ pub fn build_pet_stance_update(stance: i8) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    /// Derived from the `.def` flattening (SGWMob 0-28 + 3) and confirmed
-    /// against the client by PT-E1 (`pet-client-contract.md`). Changing one
-    /// means changing the SGWPet table in
-    /// `docs/protocol/client-method-dispatch-table.md` too.
-    #[test]
-    fn pet_method_indices_are_pinned() {
-        assert_eq!(ON_PET_ABILITY_LIST, 29);
-        assert_eq!(ON_PET_STANCE_LIST, 30);
-        assert_eq!(ON_PET_STANCE_UPDATE, 31);
-        assert_eq!(GENERICPROPERTY_PET_OWNER_ID, 5);
-    }
-
-    #[test]
-    fn pet_flag_values_match_enumerations_xml() {
-        assert_eq!(ENTITYFLAG_NO_PET_LEVELING, 8);
-        assert_eq!(ENTITYFLAG_NO_PET_TARGETING, 16);
-        assert_eq!(ENTITYFLAG_DESPAWN_ON_OWNER_LEASH, 32);
-        assert_eq!(ENTITYFLAG_NO_PASSIVE, 64);
-        assert_eq!(ENTITYFLAG_NO_DEFENSIVE, 128);
-        assert_eq!(ENTITYFLAG_NO_AGGRESSIVE, 256);
-        assert_eq!(ENTITYFLAG_DETECTION_PET, 512);
-        assert_eq!(ENTITYFLAG_PET, 1024);
-        assert_eq!(ENTITYFLAG_DESPAWN_ON_LEASH_FROM_OWNER, 32768);
-        assert_eq!(ENTITYFLAG_PET_USE_OWN_FACTION, 65536);
-        assert_eq!(ENTITYFLAG_PET_WAIT_TO_DESPAWN, 131072);
-    }
+    // The index, property-id and flag constants are pinned against
+    // `entities/defs/` in `super::super::pet_def_tests`, not here.
 
     #[test]
     fn ability_list_is_u32_count_then_i32s() {
