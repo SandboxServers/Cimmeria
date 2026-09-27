@@ -11,6 +11,7 @@
 //! | Livewire  | 303      | chain 7004 → `StartMinigame(Livewire)`           |
 //! | loot crate| 304      | alive: combat reroute; dead: `onLootDisplay` with table 3 |
 //! | pet trainer | 360    | `onTrainerOpen` with list 350 (pets campaign PT-07) |
+//! | Banker    | 370      | `onVaultOpen` and a personal vault session (bank-vault BV-04) |
 //!
 //! The vendor row is the one that regressed silently: nothing ever set
 //! `NpcInteractionType::Vendor`, so a vendor-only template reached the `None`
@@ -38,6 +39,7 @@ const ON_TARGET_UPDATE: u16 = 16;
 const ON_DIALOG_DISPLAY: u16 = 105;
 const ON_TRAINER_OPEN: u16 = 113;
 const ON_LOOT_DISPLAY: u16 = 114;
+const ON_VAULT_OPEN: u16 = cimmeria_wire::cell::client_methods::player::ON_VAULT_OPEN;
 
 /// The startup caches the hub needs, read with the cell's own loaders. A
 /// macro rather than a function because this crate has no `sqlx`
@@ -93,8 +95,8 @@ fn staged_hub(seed: HubSeed) -> (SpaceManager, Vec<(String, u32)>) {
     }
     assert_eq!(
         hub.len(),
-        6,
-        "the hub seeds six NPCs (#846's five and the PT-07 pet trainer): {hub:?}"
+        7,
+        "the hub seeds seven NPCs (#846's five, the PT-07 pet trainer and the BV-04 Banker): {hub:?}"
     );
 
     // Any archetype list 1 offers, so the trainer has something to show.
@@ -409,4 +411,53 @@ async fn debug_hub_pet_trainer_opens_list_350() {
     mgr.get_entity_mut(PLAYER).unwrap().archetype_id = Some(goauld + 1);
     let msgs = click(&mut mgr, &engine, pet_trainer).await;
     assert!(offered(&msgs).is_empty(), "no pet nodes for a non-Goa'uld");
+}
+
+/// The BV-04 Banker, spawned from its real row, answers a click with one
+/// `onVaultOpen` naming itself and pins a personal vault session on it.
+/// Nothing that runs before the static dispatch (a trainer list, a chain on
+/// its tag or template, a dialog bind) may claim the click: the real content
+/// engine is loaded, so a chain added on `DebugHub_Banker` fails this.
+#[tokio::test]
+async fn debug_hub_banker_opens_the_personal_vault() {
+    use cimmeria_entity::cell_entity::VaultScope;
+
+    let pool = require_db_or_skip!();
+    let (mut mgr, hub) = staged_hub(load_hub!(pool));
+    let engine = crate::cell::content::build_engine(Some(&pool)).await;
+    let banker = eid_of(&hub, "DebugHub_Banker");
+    assert_eq!(
+        mgr.get_entity(banker).unwrap().interaction_type,
+        Some(NpcInteractionType::Banker {
+            scope: VaultScope::Personal
+        }),
+        "template 370's INT_Banker bit must make it a personal Banker at spawn"
+    );
+
+    let msgs = click(&mut mgr, &engine, banker).await;
+    let opens: Vec<i32> = msgs
+        .iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: PLAYER,
+                method_index: ON_VAULT_OPEN,
+                args,
+            } => Some(i32::from_le_bytes(args[0..4].try_into().unwrap())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        opens,
+        vec![banker as i32],
+        "one onVaultOpen naming the Banker; got {msgs:?}"
+    );
+    assert!(opened_store(&msgs).is_empty());
+    let session = mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .vault_session
+        .clone()
+        .expect("the click opens a vault session");
+    assert_eq!(session.banker_id, Some(banker));
+    assert_eq!(session.scope, VaultScope::Personal);
 }

@@ -1,5 +1,6 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
+use super::bank_cell_to_base::BankCellToBase;
 use super::chat_cell_to_base::ChatCellToBase;
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::mail_gm_cell_to_base::MailGmCellToBase;
@@ -834,4 +835,9 @@ pub enum CellToBaseMsg {
     /// The GM mail tools (`.mail`, `.mailbox`, SS-U1). One nested enum, so
     /// they never touch `MailOp`, which the mail packets own.
     MailGm(MailGmCellToBase),
+
+    /// Bank and vault traffic (the GM `.bankdump` today). One nested enum,
+    /// so bank packets add variants in `bank_cell_to_base.rs` instead of
+    /// here.
+    Bank(BankCellToBase),
 }

@@ -19,6 +19,8 @@
 //! - [`org_dispatch`]          — organization (`CellToBaseMsg::Org`) arms
 //! - [`chat_dispatch`]         — chat (`CellToBaseMsg::Chat`) arms: the GM
 //!   broadcast fan-out
+//! - [`bank_dispatch`]         — bank (`CellToBaseMsg::Bank`) arms: the GM
+//!   `.bankdump`
 //!
 //! Pure helpers shared by the arm modules still live in their own siblings:
 //!
@@ -41,6 +43,7 @@ use super::super::ConnectedClientState;
 mod aoi;
 mod aoi_dispatch;
 mod bandolier;
+mod bank_dispatch;
 mod chat_dispatch;
 mod contact_list_dispatch;
 mod deferred_flush;
@@ -214,5 +217,7 @@ pub async fn handle_cell_message(
             )
             .await
         }
+
+        CellToBaseMsg::Bank(bank) => bank_dispatch::route(bank, &ctx).await,
     }
 }

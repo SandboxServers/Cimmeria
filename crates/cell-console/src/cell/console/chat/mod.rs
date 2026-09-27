@@ -97,6 +97,11 @@ pub async fn handle_chat_message(
             console::bank::refuse_non_gm(entity_id, tx, space_mgr).await;
             return;
         }
+        // `.bankdump` (BV-04) takes the generic refusal below, plus its
+        // `gm_action reason=not_gm` row on the `bank` target.
+        if console::bank::is_bankdump_command(text) {
+            console::bank::log_non_gm_bankdump(entity_id, space_mgr);
+        }
         // A non-GM line that names a registered command is refused, not
         // broadcast: a player (or a GM demoted mid-session) typing
         // `.giveability 2826` must not echo the command to everyone nearby,

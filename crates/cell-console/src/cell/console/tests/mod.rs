@@ -17,6 +17,8 @@ mod bookmark;
 #[cfg(test)]
 mod bv02_bank;
 #[cfg(test)]
+mod bv04_bankdump;
+#[cfg(test)]
 mod cr05_allcraft;
 #[cfg(test)]
 mod gm_audit_identity;

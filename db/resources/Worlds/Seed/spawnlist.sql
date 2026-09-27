@@ -901,6 +901,16 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- respawn_secs, is_stationary or aggression override.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (450, -328.08, 73.472, -237.07, -0.4698, 12, 360, 'DebugHub_PetTrainer', NULL);
 
+-- Bank and Vault campaign, BV-04: spawn 470, the debug hub's Banker (template
+-- 370, docs/content/debug-hub.md). The bank campaign owns spawns 470-489. The
+-- A-B line is full up to the B corner and the crafting corner (CraftHub_*,
+-- 410-414) takes the A-D side, so the Banker stands at the middle of the B-C
+-- wall, 3 units in: 8.9 units from the respawner, at least 6.3 from every
+-- other hub NPC, 9.2 from the C-D exit wall. Heading faces the room centre,
+-- yaw = atan2(dx, dz). It cannot die, so no respawn_secs, is_stationary or
+-- aggression override.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (470, -325.92, 73.472, -231.18, -1.0739, 12, 370, 'DebugHub_Banker', NULL);
+
 --
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256

@@ -47,7 +47,8 @@
 //! - [`pet`] — pet UAT tools (`.pet summon|dismiss|stance|info|list`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
 //! - [`aggro`] — the GM's own proximity-aggro switch (`.aggro on|off`).
-//! - [`bank`] — the GM's vault shortcut (`.bank`).
+//! - [`bank`] — the GM's vault shortcut (`.bank`) and the read-only vault
+//!   listing (`.bankdump`).
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
