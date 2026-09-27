@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 81 per-system reverse engineering findings with evidence.
+This directory contains 82 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -86,6 +86,7 @@ This directory contains 81 per-system reverse engineering findings with evidence
 | `cover-world-placement.md` | NA20 (npc-ai-restoration) | Cover node world-space placement — `SGWSpecCoverNode`/`SGWCoverNodeComponent` decoded directly from Castle/Castle_CellBlock `.umap` chunks (4,024 nodes, already world-space, no transform needed), corrects the prefab-pak-transform hypothesis, cross-validated against `castle_cellblock.nav` and the hand-authored MedStationDesk seed row; go/no-go and data model for NA21 | HIGH (placement, counts) / MEDIUM (relation to the separate prefab-pak pipeline) |
 | `ability-trainer-ui.md` | AT-E1 (ability-trees) | Trainer/Ability window client evidence — `getTrainableList`/`getTrainableInfo`/`getTrainingTreeCount`/`buyTrainable`/`respecAbilities` native binding decompiles; hidden-vs-greyed join confirmed at byte level; no client-side level/XP table; `respecAbilities` sends a bare cell method 72; D-AT08 error-code mapping | HIGH (Q1, Q3, Q4, Q5-send) / UNRESOLVED (Q2, `onErrorCode` native rendering) |
 | `ability-animation-links.md` | Enemy combat (2026-09) | Ability to event set links: the client has no ability-keyed animation lookup; the 35 recovered links follow a weapon-family plus melee/ranged rule, which the seed now applies with item-derived and judgement tiers to 220 more abilities; beams, Terror Stone and Cloak stay open | HIGH (mechanism, rule) / RECONSTRUCTION (per-ability links) |
+| `render-thread-options.md` | Client render (shadow handoff 2026-09-21) | `RenderThreadOptionManager` option block: which client shadow/render system options reach the renderer. `max`/`minShadowResolution` system options are dead; shadow depth buffer is a fixed 1024 so `BaseEngine.ini` `MaxShadowResolution` is capped at 1014; `ShaderModel` is startup-only with valid set `{0,3,4,5}`. Client-only, no server surface | HIGH (option path, dead fields, 1024 cap) / LOW (ShaderModel value meanings) |
 | `bank-vault-client.md` | BV-E1 (bank-and-vault) | Bank/Vault client evidence — world-entry `onBagInfo` is sufficient for container 17 (no fresh send needed on `onVaultOpen`); `Events.InventoryUpdateContainerSize` is inferred (emit site untraced) to resize an open vault window; a Banker can offer a single-button "Expand vault" dialog through the existing `dialogButtonChoice`/content-engine path with no wire change (the button is not an authority check: the purchase handler must re-validate the session, proximity, cash and ceiling); `onVaultOpen`'s `Position` argument has no client consumer (server-authoritative proximity is load-bearing); `isBankingOverride` sweep reproduces the prior negative result | HIGH (Lua/doc evidence) / MEDIUM-LOW (native emit sites for Q2/Q4, explicitly open) |
 
 ## Finding Format
