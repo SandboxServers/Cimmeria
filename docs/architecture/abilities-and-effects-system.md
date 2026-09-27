@@ -514,6 +514,33 @@ into the launch pass, and `zero_warmup_wire_is_unchanged` pins the zero-warmup b
 (`fire_ground_cast_after_warmup`). Evidence and test list:
 [AT-10 worknote](../analysis/ability-trees/worknotes/at10.md).
 
+### 22. Timer expiries are absolute on one server-wide game clock (CR-02)
+
+**Decision:** Every `onTimerUpdate` that starts a timer sends
+`BigWorldTimeComplete = game_clock::game_time_secs() + duration`: the ability cooldown
+(`TotalTime = cooldown + warmup`), the warmup timer, the reload timer, the duration-effect
+timer and `.net_timer`. A timer that clears sends `0.0`. The clock lives in
+[`crates/wire/src/mercury/game_clock/`](../../crates/wire/src/mercury/game_clock/mod.rs): one
+epoch pinned at server start, 10 ticks per second, and the same tick count in the login
+bundle (`TICK_SYNC`, `SET_GAME_TIME`) and in every heartbeat.
+
+**Why:** The client's game clock is `TICK_SYNC.gameTime / hertz` seconds, and its cooldown,
+effect, reload and crafting handlers all compare `BigWorldTimeComplete` against it
+([system-protocol-wire-formats.md](../reverse-engineering/findings/system-protocol-wire-formats.md#the-client-game-clock)).
+Before CR-02 each session counted ticks from its own login and the login bundle sent 0, so
+no absolute expiry could mean the same thing to two clients, and the senders passed 0.0 (no
+cooldown shown) or the relative duration (no effect icon once the clock passed it). Python
+sent `Atrea.getGameTime() + duration` (`AbilityManager.py:605`, `Net.py:93`). The epoch is
+server start, not Unix time, because the field is an `f32`.
+
+**Reversibility:** High per sender, one expression each. The clock's rate is pinned by
+`declared_frequency_tick_period_and_send_interval_agree` and the byte-exact time-sync tests.
+
+**Known limits:** the client's clock runs about one tick ahead of the server's, so a client
+cooldown ends up to 0.1 s early. A server restart resets the clock; never persist an
+absolute expiry. Category (type 8) cooldown timers are still not sent. Evidence and test
+list: [CR-02 worknote](../analysis/crafting/worknotes/cr-02.md).
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:

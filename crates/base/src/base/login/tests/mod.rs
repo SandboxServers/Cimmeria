@@ -30,8 +30,8 @@ fn default_config_session_produces_v1_handshake_bytes() {
     let reply_v1 = build_connect_reply(request_id, &ticket, &key, 1, EncryptionVersion::V1);
     assert_eq!(reply_default, reply_v1, "default connect_reply must be v1");
 
-    let sync_default = build_time_sync(&key, 2, selected);
-    let sync_v1 = build_time_sync(&key, 2, EncryptionVersion::V1);
+    let sync_default = build_time_sync(&key, 2, 0, selected);
+    let sync_v1 = build_time_sync(&key, 2, 0, EncryptionVersion::V1);
     assert_eq!(sync_default, sync_v1, "default time_sync must be v1");
 
     // And the v1 frame must NOT start with the v2 version byte — the actual
@@ -390,8 +390,20 @@ async fn login_pushes_discord_player_login_event() {
 /// `connected` starts empty). The spawned tick-sync loop sleeps 100 ms
 /// before its first send, and we cancel it immediately, so a synchronous
 /// drain captures only the handshake.
+///
+/// The time-sync bundle carries the server's game clock at login, not 0.
+/// The test waits until the clock has passed tick 0, then checks
+/// the bytes against the ticks read back from the packet, bracketed by the
+/// clock before and after the call.
 #[tokio::test]
 async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
+    use crate::mercury::game_clock;
+    use cimmeria_mercury::encryption::MercuryEncryption;
+
+    game_clock::init();
+    while game_clock::game_ticks() == 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     let transport = Arc::new(TestTransport::new());
     let dyn_transport: Arc<dyn Transport> = transport.clone();
     let addr: SocketAddr = "127.0.0.1:55556".parse().unwrap();
@@ -411,6 +423,7 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         .unwrap()
         .insert(ticket.clone(), pending);
 
+    let ticks_before = game_clock::game_ticks();
     handle_login(
         &dyn_transport,
         addr,
@@ -425,6 +438,7 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
     )
     .await
     .expect("Phase 3 handoff");
+    let ticks_after = game_clock::game_ticks();
 
     // Stop the tick loop before it can append a third packet.
     cancel_session(&connected, addr);
@@ -448,10 +462,24 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         ),
         "phase-3 connect_reply bytes (seq 1)"
     );
+    // Plaintext: [flags][0x02 hz][0x0D ticks:u32 rate:u32][0x03 ticks:u32][seq].
+    let plaintext = MercuryEncryption::from_session_key(key)
+        .decrypt(&sent[1].1)
+        .expect("time_sync decrypts under the session key");
+    let sent_ticks = u32::from_le_bytes(plaintext[4..8].try_into().unwrap());
+    assert!(
+        (ticks_before..=ticks_after).contains(&sent_ticks),
+        "TICK_SYNC carries the game clock at login: {sent_ticks} not in          [{ticks_before}, {ticks_after}]"
+    );
     assert_eq!(
         sent[1].1,
-        build_time_sync(&key, 2, cimmeria_mercury::encryption::EncryptionVersion::V1),
-        "initial time_sync bytes (seq 2)"
+        build_time_sync(
+            &key,
+            2,
+            sent_ticks,
+            cimmeria_mercury::encryption::EncryptionVersion::V1
+        ),
+        "initial time_sync bytes (seq 2), SET_GAME_TIME equal to TICK_SYNC"
     );
 }
 
@@ -654,3 +682,5 @@ async fn login_from_different_ip_logs_ticket_ip_mismatch() {
         Some("203.0.113.20")
     );
 }
+
+mod game_clock;

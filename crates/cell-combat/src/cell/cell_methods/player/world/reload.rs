@@ -218,7 +218,8 @@ pub async fn handle_reload(
         entity_id as i32,
         0,
         total_time,
-        0.0,
+        // Absolute, on the client's game clock (see `game_clock`).
+        crate::mercury::game_clock::game_time_secs() + total_time,
     );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {

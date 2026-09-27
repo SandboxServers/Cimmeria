@@ -39,6 +39,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — four method-28 serializers; `CHAN_FEEDBACK` is 9; `notify_gm` -> `gm_feedback_to` migration still owed; player text lines use `cell::chat` + `CHAN_FEEDBACK`.
 - [witness-entity-method-dual-fn.md](witness-entity-method-dual-fn.md) — two `witness_entity_method` fns; idbase 61 player / 62 NPC matters for index >= 61.
 - [cell-entity-direction-semantics.md](cell-entity-direction-semantics.md) — `direction` is `[pitch, yaw, roll]` radians for all entities; `[i8; 3]` param zeroes facing.
+- [game-clock-and-timer-expiry-tests.md](game-clock-and-timer-expiry-tests.md) — client clock is ticks / hertz; expiries = `game_time_secs() + d`; settle the clock past its epoch in tests.
 
 ## UE3 packages and navmesh
 

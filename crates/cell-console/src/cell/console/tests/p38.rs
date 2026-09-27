@@ -12,8 +12,8 @@
 //! by hand rather than through `serialize_timer_update`, so nothing else pins
 //! its layout.
 //!
-//! The trailing `BigWorldTimeComplete` float is deliberately not asserted by
-//! value here: its clock domain is #271's subject, not this packet's.
+//! The trailing `BigWorldTimeComplete` float is the absolute expiry on the
+//! server's game clock, asserted as a window below.
 
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
@@ -102,6 +102,43 @@ async fn legacy_p38_net_timer_defaults_secondary_id_to_zero() {
         &args[13..17],
         &1.0f32.to_le_bytes(),
         "omitted totalTime defaults to 1.0"
+    );
+}
+
+/// `BigWorldTimeComplete` is `totalTime` after the game clock at the
+/// command, as `Net.py:93` sent it (`Atrea.getGameTime() + totalTime`).
+#[tokio::test]
+async fn legacy_p38_net_timer_expiry_is_absolute_on_the_game_clock() {
+    use crate::mercury::game_clock::{game_time_secs, init};
+
+    let (mut mgr, gm, _npc) = setup();
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(64);
+    // Past the epoch, so a relative expiry cannot pass the window.
+    init();
+    while game_time_secs() < 0.01 {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+
+    let before = game_time_secs();
+    exec(
+        "net_timer",
+        gm,
+        &["7", "2", "12.5"],
+        None,
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+    let after = game_time_secs();
+
+    let payloads = drain_timer_updates(&mut rx, gm);
+    assert_eq!(payloads.len(), 1);
+    let expiry = f32::from_le_bytes(payloads[0][17..21].try_into().unwrap());
+    assert!(
+        (before + 12.5..=after + 12.5).contains(&expiry),
+        "BigWorldTimeComplete {expiry} is not game time [{before}, {after}] + 12.5"
     );
 }
 
