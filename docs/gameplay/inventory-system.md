@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Inventory System
 
 > **Last updated**: 2026-09-27
-> **Status**: Implemented, including the full vendor stack in code. The vendor stack has **never been tested in a client on working code** (see [Vendor caveat](#vendor-caveat)). Remaining gaps are stat recalculation on equip, the organization vaults, and a player-facing vault expansion (GM-only until the Expand dialog is served; see [Expanding the vault](#expanding-the-vault)).
+> **Status**: Implemented, including the full vendor stack in code. The vendor stack has **never been tested in a client on working code** (see [Vendor caveat](#vendor-caveat)). Remaining gaps are stat recalculation on equip and a player-facing vault expansion: both the personal and the Team vault expand only through GM commands until the Expand dialog is served (see [Expanding the vault](#expanding-the-vault) and [Expanding the Team vault](#expanding-the-team-vault-bv-09)). The personal vault and the Team and Command vaults are done server-side and await the owner's UAT.
 
 ## Overview
 
@@ -39,6 +39,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Organization vault | DONE (no client test) | Team (19) and Command (20) vaults: storage, the open round trip and the session (BV-07a), and moves in, out and within (BV-07b); see [Opening a Team or Command vault](#opening-a-team-or-command-vault) and [Moving items in and out of a Team or Command vault](#moving-items-in-and-out-of-a-team-or-command-vault). Every committed move is fanned out to the organization's other online members. `onClearOrgVaultInventory` (74) and `onOrgMoveItemResult` (a server-internal cell method) are not used: no client Lua consumes either (bank-vault audit A-13) |
 | Personal vault window | DONE | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Deposits and withdrawals: [Moving items in and out of the vault](#moving-items-in-and-out-of-the-vault) |
 | Vault expansion | PARTIAL (server done; GM `.bankexpand` only) | +10 slots per purchase, 40 to 100, priced by `resources.bank_expansion_price`. The Banker's Expand dialog is not served until the #943 crash is explained; see [Expanding the vault](#expanding-the-vault) |
+| Team vault expansion | PARTIAL (server done; GM `.orgvaultexpand` only) | +10 slots per purchase, 40 to 100, at the same price, paid from the Team treasury by the Team's leader (bank-vault BV-09); see [Expanding the Team vault](#expanding-the-team-vault-bv-09). The Command vault is fixed at 100. The treasury itself is in [organization-system.md](organization-system.md#the-treasury-bank-vault-bv-08) |
 
 ### Vendor caveat
 
@@ -158,7 +159,7 @@ The personal bank is container 17 (`INV_Bank`), opened at a Banker NPC or anywhe
 - **Size.** 40 slots to start, per player (`sgw_player.bank_slots`), growing to 100 in steps of 10 (see [Container capacity and movability](#container-capacity-and-movability) and [Expanding the vault](#expanding-the-vault)).
 - **Access.** A vault session, opened by a Banker click or `.bank`, plus a fresh proximity check on every move (see [Opening the vault](#opening-the-vault)).
 - **Storage only.** Nothing but moves reaches 17: trade, vendors, crafting and mail see only carried bags (see [The bank is storage only](#the-bank-is-storage-only)).
-- **Organization vaults** (Team 19, Command 20) are the campaign's Wave 4 and are not on `main` yet.
+- **Organization vaults** (Team 19, Command 20) came in the campaign's Wave 4 (BV-07 to BV-09): see [Opening a Team or Command vault](#opening-a-team-or-command-vault), [Moving items in and out of a Team or Command vault](#moving-items-in-and-out-of-a-team-or-command-vault) and [Expanding the Team vault](#expanding-the-team-vault-bv-09).
 
 ### Opening the vault
 
@@ -371,7 +372,7 @@ The `Inventory.flushUpdates()` method sends updates to the client in this order:
 1. **Stat recalculation on equip** - How `inventoryAdjustments` feeds into the stat dictionary
 2. **Store system** - Buy/sell/buyback flow and price calculation
 3. **Item repair/recharge** - Durability system and cost formulas
-4. **Organization vault** - Cross-entity item transfer protocol
+4. **Organization vault** - Resolved: org items live in `sgw_organization_vault_items` and move with the plain `moveItem` (see [Moving items in and out of a Team or Command vault](#moving-items-in-and-out-of-a-team-or-command-vault)); `onOrgMoveItemResult` and `onClearOrgVaultInventory` are not used (bank-vault D-BV40)
 5. **Stack splitting** - Partial quantity moves to occupied slots
 
 ## Related Docs
@@ -380,5 +381,6 @@ The `Inventory.flushUpdates()` method sends updates to the client in this order:
 - [crafting-system.md](crafting-system.md) - Crafting uses inventory items
 - [trade-system.md](trade-system.md) - Trading moves items between inventories, from the backpack and the crafting bag; each item lands in the recipient's bag its `container_sets` allows
 - [mail-system.md](mail-system.md) - Mail attachments come from the backpack and the crafting bag only
-- [Bank and Vault campaign ledger](../analysis/bank-vault/README.md) - Decisions, telemetry catalog and UAT checklist for the personal bank
+- [Bank and Vault campaign ledger](../analysis/bank-vault/README.md) - Decisions, telemetry catalog and UAT checklist for the personal bank and the organization vaults
+- [organization-system.md](organization-system.md) - The organization treasury (BV-08), the organization lock the vault moves take, and the vault predicate that blocks a disband
 - [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) - Client evidence for the vault window, its size and the Expand dialog

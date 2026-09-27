@@ -65,7 +65,7 @@ Read these before you start. None of them needs a new report.
 |---|---|---|---|
 | K1 | **Map-load crash investigation (open, 2026-09-27).** Some testers' clients crash or hang while loading `Castle_CellBlock`: the load stops after the map starts and the game never finishes entering the world. | Close the game. Delete `Cache.en-US\CookedDataDialogs.pak` under `Documents\My Games\Firesky\SGWGame\`. Start the game and retry; the client rebuilds the file at the next login. Do this before you log in if your client ever received the old debug-hub dialogs, even if it has not crashed yet: the server cannot remove them from your cache. If it still crashes, type nothing, note the time, and tell the owner. | [cooked-dialog-override-crash.md](../reverse-engineering/findings/cooked-dialog-override-crash.md), PR #943 |
 | K2 | **Two debug-hub NPCs show no dialog.** The Dialog NPC (**Airman Lance**) and the Gate Mail Clerk (**Sgt. Harriman**) are quarantined: their dialogs (60100, 60101, 60104) are not sent to clients. A right-click opens nothing. | Skip them. For the mail test, use the GM `.mail` command instead of the clerk. | [debug-hub.md](../content/debug-hub.md#dialog-npc-template-302-airman-lance), PR #943 |
-| K3 | **The Banker's "Expand vault" offer is quarantined** for the same reason (dialog 60110). Players cannot buy a vault expansion at the Banker. | GMs use `.bankexpand` (bank steps 11-12). | [bank session resume](../analysis/bank-vault/handoffs/session-resume.md#lifting-the-943-quarantine) |
+| K3 | **The Banker's "Expand vault" offer is quarantined** for the same reason (dialog 60110). Players cannot buy a vault expansion at the Banker. | GMs use `.bankexpand` (bank steps 11-12), and `.orgvaultexpand` for a Team vault (bank steps 24-25). | [bank session resume](../analysis/bank-vault/handoffs/session-resume.md#lifting-the-943-quarantine) |
 | K4 | **The colo database is wiped on every deploy.** Characters, missions and inventory reset each time a new build rolls out, and on any container restart. | Expect to re-create characters after a deploy. Record your character name with every result. | [colo-deploy.md](../operations/colo-deploy.md#what-you-dont-get-yet) |
 | K5 | **An NPC or corpse can stay invisible until you relog** (Cellblock NID guard corpse, possibly Marsh after the ring hop). | Type `.bug invisible <what>` next to where it should be, then relog and say whether it appeared. | Issues #582, #838; [Cellblock guide, Known risks](../analysis/castle-cellblock-rebuild/uat-guide.md#known-risks) |
 | K6 | **Empty Cellblock during the first-login intro movie.** On a brand-new character the room fills only when the movie ends (about 16 s) or when you press Esc. This is intended, not a bug. | Nothing. | [first-login cinematic hold](../architecture/first-login-cinematic-aoi-hold.md) |
@@ -79,6 +79,7 @@ Read these before you start. None of them needs a new report.
 | K14 | **Two client-only mail and duel cosmetics.** The unit-frame PvP indicator does not refresh live during a duel, and after a refused mail send the Send button stays grey until you press New or Reply, which clears the typed text. Both need a client patch. | Expected. | [social session resume, Q-k](../analysis/social-systems/handoffs/session-resume.md#owner-questions) |
 | K15 | **Mixing servers can empty your world list.** A client that logged in to a server with the historical cellblocks, then to one without them, can lose its whole cached world table. | Ask the owner for the repair before you continue. | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#mixing-servers-during-the-uat), issue #840 |
 | K16 | **Crafting and the black market are not released to testers.** | Skip those sections. | [Crafting](#crafting), [Black market](#black-market) |
+| K17 | **All three Bankers are named "Storage Officer"**, and after a Team vault expansion, a Team vault window already open on another member keeps its old size until that member reopens it. | Tell the Bankers apart by their clothes ([Bank and vault](#bank-and-vault)). Reopen the window. | [bank session resume, Known gaps](../analysis/bank-vault/handoffs/session-resume.md#known-gaps-carried-forward) |
 
 ## Common setup
 
@@ -105,6 +106,7 @@ The `.`-commands the campaigns rely on:
 | `.org_create`, `.org_join`, `.org_rank`, `.org_set_perms`, `.org_info`, `.org_list`, `.org_disband` | Team and Command tools | Organizations |
 | `.squad_invite`, `.squad_join`, `.squad_info` | Squad tools | Organizations |
 | `.bank`, `.bankdump [name]`, `.bankexpand` | Open your vault anywhere, list a vault, buy one +10 expansion | Bank |
+| `.orgvaultexpand [team\|command] [from_slots]` | Quote, then buy, one +10 step of your Team's vault from its treasury; leader only | Bank |
 | `.mail`, `.mailbox`, `.mail_expire <mailId>` | Send test mail, inspect a mailbox, expire a mail now | Mail |
 | `.mute <name> <minutes>`, `.unmute <name>`, `.announce <text>` | Chat moderation and broadcast | Chat |
 | `.duel_status [name]`, `.duel_end <name>` | Inspect or end a duel | Duels |
@@ -127,8 +129,8 @@ The stasis room holds a row of NPCs, each for testing one system, a few seconds'
 | Organization Registrar (SGC uniform) | Found a Team | Ready |
 | Organization Registrar (armour) | Found a Command | Ready |
 | Storage Officer | Banker: opens your personal vault | Ready |
-| Storage Officer (Cellblock guard uniform) | Team Banker: opens your Team's vault; needs a Team | Ready; steps pending BV-10 |
-| Storage Officer (plain crew clothes) | Command Banker: opens your Command's vault; needs a Command | Ready; steps pending BV-10 |
+| Storage Officer (Cellblock guard uniform) | Team Banker: opens your Team's vault; needs a Team | Ready (bank steps 15-25) |
+| Storage Officer (plain crew clothes) | Command Banker: opens your Command's vault; needs a Command | Ready (bank steps 15, 21) |
 | Sgt. Harriman | Gate Mail Clerk: sends you a test mail | Known broken (K2) |
 | Common Materials Components | Crafting supplies vendor (1 naquadah each) | Not ready for UAT (crafting) |
 | BioMedical / Electronics / Power Systems / Materials Crafting Station | Crafting stations; stand within 5 units and open J | Not ready for UAT (crafting) |
@@ -167,7 +169,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 4. Jaffa run | New Jaffa (Shol'va) | Cellblock archetype rows (T05/T06, T11/T12, T18/T19 Jaffa), Castle M1 as Jaffa | 60 min |
 | 5. Castle | Tau'ri from session 3 | Castle B1-B20, NPC AI steps 10-15 | 60 min |
 | 6. Harset | Same, then an ordinary non-GM account | Harset C1, C4, C5, C6 | 45 min |
-| 7. Two players | Two accounts (a third for the duel spectator) | Organizations steps 1-12, chat and duel steps 7-13, pets U11, NPC AI one-way visibility, Castle B20 | 90 min |
+| 7. Two players | Two accounts (a third for the duel spectator) | Organizations steps 1-12, bank steps 15-25 (org vaults, treasury, Team expansion), chat and duel steps 7-13, pets U11, NPC AI one-way visibility, Castle B20 | 120 min |
 | 8. Goa'uld | New Goa'uld | Pets U2 at the trainer, U14-U16 | 20 min |
 | 9. Owner only | Patched client | Historical cellblocks, ring transport Phase 1 | as needed |
 
@@ -298,11 +300,13 @@ Source: the crafting coordinator's provisional list (2026-09-27), [crafting work
 
 ## Bank and vault
 
-Your personal vault (bank container 17), opened at a Banker, with deposit, withdraw, stack handling and paid expansion from 40 to 100 slots.
+Your personal vault (bank container 17), opened at a Banker, with deposit, withdraw, stack handling and paid expansion from 40 to 100 slots. Then the Team (19) and Command (20) vaults, the organization treasury, and the Team vault's expansion from 40 to 100 slots, paid from the treasury.
 
-**Status:** Ready for the personal bank (release 1 is deployed). Known broken: the player-facing Expand offer (K3), so steps 11-12 use the GM command. **Org vaults: pending BV-10**, which adds the Team and Command steps. Their Bankers are in the hub (BV-10a); how to set up a Team or Command to test them is in the [debug hub doc](../content/debug-hub.md#team-and-command-bankers-templates-371-and-372).
+**Status:** Ready. Steps 1-14 (the personal bank) since release 1; steps 15-25 (org vaults, the treasury and the Team expansion) once release 2 is deployed. Known broken: the player-facing Expand offer (K3), so steps 11-12 and 24-25 use the GM commands. Step 19 needs a local server.
 
 **Prerequisites:** a fresh GM character with some naquadah, a stackable item and a mission item. Location: the **Storage Officer** in the debug hub (middle of the right-hand wall). Step 13 needs a non-GM character too.
+
+**Prerequisites for steps 15-25:** two characters online at once, **A** (GM) and **B** (any). A founds a Team with `.org_create team Vault Testers` and a Command with `.org_create command <name>`, reads their ids and each rank's permission mask with `.org_info`, and adds B to both with `.org_join <orgId> <B>`; B joins at the entry rank, which may deposit items and cash but not withdraw. A needs a few hundred naquadah, and B a stackable item (the hub's Common Materials Components vendor sells them at 1 naquadah). The Team and Command Bankers stand in a second row in front of the Storage Officer; all three are named "Storage Officer" (K17). Full setup: [debug hub doc](../content/debug-hub.md#team-and-command-bankers-templates-371-and-372).
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
@@ -320,6 +324,17 @@ Your personal vault (bank container 17), opened at a Banker, with deposit, withd
 | 12 | With less than 100 naquadah, `.bankexpand` | "You need 100 naquadah to expand your vault. Nothing was charged."; nothing changes. | |
 | 13 | As a GM away from any Banker, `.bank` and move items; as a non-GM, `.bank` | The GM's vault opens and moves work; the non-GM is refused. | |
 | 14 | Drag a stack onto a same-type stack in your backpack | They merge up to the stack limit; the total never changes. | No success telemetry for this; report a wrong total with `.bug` |
+| 15 | A right-clicks the **Team Banker** (Storage Officer in the Cellblock guard uniform, second row); then the **Command Banker** (plain crew clothes) | The Team vault opens on the first click with 40 slots; the Command vault with 100. | Confirm the Team window shows 40, not 100 |
+| 16 | A character in no Team right-clicks the Team Banker, then the Command Banker | Nothing opens; chat says "You are not in a Team, so there is no Team vault to open." (then "Command"). | |
+| 17 | B opens the Team vault and drags the stackable item into it; close and reopen | It stays in the vault. | |
+| 18 | B drags it back to a bag; A adds `WithdrawBank` (0x20000) to rank 2 with `.org_set_perms <orgId> 2 <mask>`; B drags again | The first drag is refused with a line and snaps back; the second lands in B's bag. | |
+| 19 | Local server only: bind one of B's items in the database, relog B, drag it into the Team vault | Refused with a line; it stays in the bag. | Skip on the colo: nothing in game binds an item |
+| 20 | With B's Team vault open, A kicks B from the Team; B drags in that window | B's next drag is refused with a line and snaps back. Record whether B's window closed by itself. | The server sends no close for the window; A re-adds B with `.org_join` before step 22 |
+| 21 | Put an item in the Command vault; A types `.org_disband <commandId>`; A withdraws it and disbands again | The first disband is refused with a line and `.org_list` still shows the Command; the second succeeds. | Keep the Team for steps 22-25 |
+| 22 | A and B both have the Team vault open; A deposits an item, then withdraws it | The item appears in B's window without reopening, then leaves it. | |
+| 23 | A deposits 300 naquadah into the Team treasury from the vault window; B deposits 10; B tries to withdraw; A withdraws 50 | A: "You deposited 300 naquadah into the team treasury. It now holds 300."; B sees the treasury change; B's deposit works; B's withdraw is disabled or refused ("Your rank may not withdraw naquadah."); A: "You withdrew 50 naquadah from the team treasury. It now holds 260." | |
+| 24 | A (the Team leader) types `.orgvaultexpand`, then `.orgvaultexpand 40`, then `.orgvaultexpand 40` again; reopen the Team vault | A quote naming the size, the price (100) and the treasury; then "orgvaultexpand: the Team vault now has 50 slots. The treasury paid 100 and holds 160."; the repeat is refused ("the Team vault has 50 slots, not 40"); the reopened window shows 50 slots. | GM command stands in for the quarantined button (K3); B's open window keeps 40 until reopened (K17) |
+| 25 | `.orgvaultexpand command`; with less than 100 in the treasury, `.orgvaultexpand 50`; B (non-GM) types `.orgvaultexpand` | "a Command vault is fixed at 100 slots"; "the next step costs 100; the treasury holds N"; ".orgvaultexpand needs GM access. Nothing was charged.", not said aloud. Nothing changes. | A needs a Command for the first; found one again if step 21 disbanded it |
 
 **SigNoz:** filter `scope_name = 'bank'` (the bank checklist writes it as `target=bank`) plus your `player_id`, then:
 
@@ -334,10 +349,20 @@ Your personal vault (bank container 17), opened at a Banker, with deposit, withd
 | 9 | Mail: `scope_name = 'mail' AND event = 'mail.attachment_refused' AND reason = 'item_in_vault'` |
 | 10 | `event = 'move_rejected' AND reason = 'source_container_not_player_movable'` |
 | 11, 12 | `event = 'expand'` or `event = 'expand_rejected'` with `reason` (`at_ceiling`, `no_vault_session`, `not_gm`, `insufficient_cash`) |
+| 15 | `event = 'org_vault_open_requested'`, then `event = 'org_vault_opened'` (with `org_type`, `rank`, `vault_slots`), then `event = 'vault_session_opened'` with `org_id` |
+| 16 | `event = 'org_vault_open_rejected' AND reason = 'not_in_org'` |
+| 17, 22 | `event = 'org_move_accepted' AND direction = 'deposit'`; step 22 also `event = 'org_vault_fanout'` (`updated_recipients`, `removed_recipients`) |
+| 18 | `event = 'org_move_rejected' AND reason = 'missing_permission'`, then `event = 'org_move_accepted' AND direction = 'withdraw'` |
+| 19 | `event = 'org_move_rejected' AND reason = 'bound_item_not_org_storable'` |
+| 20 | `event = 'vault_session_closed' AND reason = 'org_left'`, then `event = 'org_move_rejected' AND reason = 'no_vault_session'`; the kick itself is `scope_name = 'org' AND event = 'org.kick'` |
+| 21 | `scope_name = 'org' AND event = 'org.disband'` with `outcome = 'rejected' AND reason = 'vault_not_empty'`, then `outcome = 'ok'` |
+| 23 | `event = 'org_cash_transfer'` with `direction` = `deposit` or `withdraw`, `amount`, and the wallet and treasury before and after; a refusal is `event = 'org_cash_rejected'` with `reason` (`no_permission`) |
+| 24 | `event = 'expand_quote' AND scope = 'team'`, then `event = 'expand' AND scope = 'team'` and `event = 'org_cash_transfer' AND direction = 'vault_expansion'`; the repeat is `event = 'expand_rejected' AND reason = 'replay'` |
+| 25 | `event = 'expand_rejected'` with `reason` (`command_vault_fixed`, `insufficient_org_cash`, `not_gm`) |
 
 Afterwards the coordinator also reads every `scope_name = 'bank'` WARN row in your session: a WARN no step expects is a finding.
 
-**Things only a human can check:** whether the vault window resizes live after `.bankexpand` while it is open; the snap-back in step 7; the backpack merge total in step 14.
+**Things only a human can check:** whether the vault window resizes live after `.bankexpand` while it is open; the snap-back in step 7; the backpack merge total in step 14; whether the Team vault window shows its real size (40, then 50) rather than 100 (steps 15, 24); whether a kick closes B's vault window (step 20); whether B's withdraw control is disabled for a rank without `WithdrawCash` (step 23).
 
 Source: [bank session resume, UAT checklist](../analysis/bank-vault/handoffs/session-resume.md#uat-checklist).
 
