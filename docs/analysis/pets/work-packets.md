@@ -9,7 +9,7 @@
 - Every compiling cargo call goes through `bash tools/build-lane/lane.sh cargo <cmd> -p <crate>`. Never use `--exclusive` or `--workspace` while other campaigns build. Live-DB tests use `bash tools/build-lane/live-db-test.sh <filter>` against the worktree's own `sgw_<worktree>` database. Never reload another campaign's database.
 - The toolchain is pinned (1.98.1), so local clippy is CI's clippy. After any dependency change, run `cargo hakari generate && cargo hakari manage-deps --yes` and `python tools/crate-graph/crate_graph.py --check`.
 - Remove a worktree's `external` junction non-recursively (`cmd //c rmdir external`) before removing the worktree.
-- Squash-merge after green CI. When a PR's CI predates the latest `main`, the coordinator rebases and re-tests first.
+- Squash-merge after green CI **and** a Copilot review whose comments are all fixed or answered (D-PT14). When a PR's CI predates the latest `main`, the coordinator rebases and re-tests first.
 - Shared seed files (`entity_templates.sql`, `spawnlist.sql`) and the entity/AoI creation paths are also edited by crafting (cimmeria-af, templates 310-329) and guilds (cimmeria-fa, 330-349). Pets stay inside **templates 350-369 and spawns 450-469**, and the coordinator messages both before a PR touches the AoI create path.
 
 Status vocabulary: **Ready**, **BlockedDependency**, **BlockedDecision**, **Writing**, **Review**, **Integrated**, **UATPending**, **Done**.
@@ -49,7 +49,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 
 **Seed** (PT-S): a new resource table `resources.pet_summons (ability_id int PRIMARY KEY, template_id int NOT NULL, max_active int NOT NULL DEFAULT 1)` in `db/resources/` (a seed file, not a `db/scripts` migration). Pet templates are 350-369: `class = 'pet'` (new `class_id_for_class` arm → 0x05), `ENTITYFLAG_Pet` set, `loot_table_id NULL`, never placed in `spawnlist`.
 
-**Log targets**: `pets.lifecycle` (INFO: summon, despawn and reason), `pets.command` (DEBUG accepted, WARN rejected), `pets.ai` (DEBUG). Each is added to `OTEL_FILTER` with its pinning assertion, and its `decision_outcome` values go in `docs/architecture/observability.md`.
+**Log targets**: `pets.lifecycle` (summon, despawn and reason), `pets.command` (commands and refusals), `pets.ai` (AI decisions) and `pets.credit` (kill credit and XP). The `pets=debug` `OTEL_FILTER` row covers all four. Each is added to `OTEL_FILTER` with its pinning assertion, and its `decision_outcome` values go in `docs/architecture/observability.md`.
 
 ## Dependency graph and waves
 
@@ -84,6 +84,14 @@ PT-01 is the bottleneck. It is kept to "a pet exists, is introduced to its owner
   - AI → fixture tests on the log or state, not `nav_path` (the fixtures have no navmesh);
   - seed → live-DB guards (`require_db_or_skip!`, exact-sentinel cleanup).
 - Every button press gets visible feedback on the first press: a rejected pet command sends `onErrorCode` or a visible refresh.
+- **Telemetry (D-PT15).** A support question like "player X did Y at time T and it failed" is answerable from SigNoz alone:
+  - an info span on each command/GM dispatch entrypoint (`pets.command`), and no per-handler spans inside AI ticks;
+  - a debug event with `event = "..."` on every pet state transition (summon, replace, despawn with `reason`, corpse, owner-left/teleported, stance, toggle, follow/fight, leash-teleport with from/to/distance);
+  - the owner's `account_id` + `player_id` (via `SpaceManager::player_identity`) and the correlators `pet_id`, `owner_id`, `template_id`, `ability_id`, `target_id` on every event;
+  - `reason = "..."` on every refusal, each with a `LogCapture` test;
+  - before/after values on kill credit (`xp_granted`, `transfer_xp`);
+  - every target in `OTEL_FILTER` with its pinning assertion, and its values listed in `observability.md`;
+  - the worknote lists every new log line.
 - Each packet updates the docs it owes:
   - `docs/gameplay/pet-system.md`;
   - `docs/protocol/client-method-dispatch-table.md` (a new SGWPet table) and `docs/protocol/message-catalog.md` for wire changes;
