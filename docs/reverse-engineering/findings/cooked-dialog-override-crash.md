@@ -13,9 +13,11 @@ Sources:
   - crates/base-session/src/base/cooked_data.rs:34-149 — server-side versionInfoRequest handler and push_overridden_elements
   - crates/wire/src/mercury/protocol/resources.rs:70-120 — build_version_info wire layout (InvalidKeys as ARRAY<u32>)
   - crates/resources/src/base/mission_overrides.rs:85-117 — StepID 80623 / ObjectiveID 90623, an existing shipped sub-field > 65535 in a different cooked-data category
+  - crates/resources/src/base/resources/mod.rs:195-317 — ResourceCache::load_all/overridden_elements, the current-override-only scoping of InvalidKeys
+  - crates/resources/src/base/resources/metadata_bump.rs:81-109 — compute_dialog_metadata_bump, the content-hashed per-category version bump
   - SigNoz colo telemetry, 2026-09-27 16:19 UTC deploy and the two subsequent login attempts (summarized by team-lead; not independently queried — signoz MCP was unreachable this session)
 Related findings: cooked-data-pipeline.md, dialog-portrait-lookup.md, dialog-controller-wire-flow.md
-Implementation status: Root cause NOT confirmed. Recommends renumbering (see Recommendation) pending live-decompile confirmation.
+Implementation status: Root cause NOT confirmed. Recommends renumbering (see Recommendation) pending live-decompile confirmation. A renumber alone does not remediate a client that already received the bad push (see finding 4) — an already-affected client needs a local cache clear or a one-time invalidate_all, neither implemented here.
 ```
 
 ## Summary
@@ -136,6 +138,75 @@ This is the strongest piece of reasoning in this finding, and it points away fro
 would have died at login while parsing the pushed fragment, not four seconds into a later,
 unrelated map load.
 
+### 4. The renumbering fix does NOT clean an already-affected client — the stale entries persist on disk and the version handshake never revisits them
+
+Added 2026-09-27 in response to a question from the `fix/dialog-ids-below-65536` renumber work.
+
+**Yes, the client persists pushed cooked-dialog fragments to a writable local PAK, the same way it
+already does for the Kismet-sequence category** (`crates/base-session/src/base/cooked_data.rs:105`'s
+comment about `Cache.en-US/CookedDataMissions.pak` describes the identical mechanism for Missions;
+`cooked-data-pipeline.md` Finding 4 and Finding 6 give the binary-side confirmation: `onVersionInfo`
+calls `ServerSource_SetVersion` → `ZipStorageBase_WriteMetaDataVersion` (`0x00479e10`) to persist the
+category's version stamp, and each received `resourceFragment` gets written into the category's ZIP
+archive via `ZipStorageBase_WriteStreamToFile`). **This finding's own incident is itself the proof**:
+on the tester's second login attempt, no fragments were pushed at all (`client_version` already
+matched `server_version`), yet the exact same crash reproduced — that is only possible if the
+`_100100`/`_100101` entries written during the first, crashing session survived the crash and were
+still present when the client reopened its local `CookedDataDialogs.pak` archive on the next login.
+
+**Where in the pipeline this happens — receipt, not "cache load" in the startup sense.** The version
+stamp write happens synchronously inside the `onVersionInfo` handler, before any element fragments
+even arrive (`cooked-data-pipeline.md` Finding 4, step 4 of the flow) — i.e., at connection time,
+well before the tester ever reached `Castle_CellBlock`. The per-element `_100100`/`_101` writes
+happen as each `resourceFragment` chain completes, also during the login sequence, also before the
+map load that actually crashes. Neither of those write points is the crash site (see finding #3
+above — the client visibly survives past both of them). The crash itself happens later, during
+`onClientMapLoad` processing on `Castle_CellBlock` — a *third*, distinct point in the pipeline that
+this session could not decompile (see Open Question 1). So to directly answer "fragment receipt or
+cache load": **the disk write happens at fragment receipt (confirmed); the crash happens at a
+separate, later map-load-time consumption of the cache (confirmed by timing; the specific code path
+is NOT confirmed)** — it is not the initial PAK-file-open-at-startup step either, since the client's
+normal boot (reading its already-existing local cache) does not crash on its own; something specific
+to entering a map re-touches category 5.
+
+**Why the renumber alone will not fix an already-affected client.** The server's per-category
+version bump (`crates/resources/src/base/resources/metadata_bump.rs`,
+`compute_dialog_metadata_bump`) is a hash over every field of the *current*
+`DIALOG_OVERRIDES`/`DIALOG_PATCH_TABLES` content. Renumbering `100100`/`100101` to `60100`-`60104`
+changes that hash, so an affected client (whose locally-stored version reflects the *old* hash, from
+before the fix) will mismatch on its next login and receive a fresh `onVersionInfo`. But
+`ResourceCache::overridden_elements()` (`crates/resources/src/base/resources/mod.rs:312-317`) only
+returns the ids present in the *current* override table — `60100`-`60104` (and any other dialog ids
+still in `DIALOG_OVERRIDES`/patches) — never `100100`/`100101`, because those ids no longer exist
+anywhere in the server's override data once the fix lands. The resulting `InvalidKeys` array
+therefore tells the client to drop and refetch `60100`-`60104`; it says nothing about `100100`/
+`100101`, so the client's writable cache keeps those two stale, still-present entries indefinitely.
+Once this one mismatch-triggered handshake completes, `client_version == server_version` again (the
+version write happens as soon as `onVersionInfo` is processed, matching the pattern in finding
+above), and every subsequent login takes the "versions match → no keys, no push" branch of
+`handle_version_info_request` (`crates/base-session/src/base/cooked_data.rs:70-88`) forever — the
+server has no mechanism to single out a key that isn't in `overridden_elements` any more, and
+`handle_version_info_request`'s branch structure only reaches `invalidate_all=true` when
+`overridden_elements(category_id)` is *empty* for that category (branch 4), which is never true for
+Dialogs (3995/3996/60100-104 keep it non-empty). **If the map-load crash really is triggered by the
+mere presence of `_100100`/`_101` in the client's cache (as opposed to something transient at the
+first receipt), any tester who already got the bad push before the fix ships will keep crashing on
+every future map load, on every future login, until that client's local
+`Cache.en-US/CookedDataDialogs.pak` is manually cleared** — the server-side renumber only prevents
+*new* exposure, it does not remediate testers already exposed.
+
+Two mitigations worth considering, neither implemented as part of this finding:
+- Ask the affected tester(s) to delete their local writable cooked-data cache (the exact path was
+  not confirmed this session — `cooked-data-pipeline.md`'s `SourceCachePath` INI note is the
+  starting point) before their next login.
+- A one-time server-side `invalidate_all=true` for category 5 would force every client to drop its
+  *entire* local Dialog cache and lazily re-request everything via `elementDataRequest`, which would
+  naturally never re-request `100100`/`100101` since nothing (client-side content or server data)
+  names them any more. The current `handle_version_info_request` logic has no code path that reaches
+  `invalidate_all=true` while the category still has any overrides configured — it would need a
+  deliberate one-time override (e.g., a temporary flag or a "categories to force-invalidate once"
+  list) to use this path without giving up per-key scoping for the categories that don't need it.
+
 ## What is not confirmed (and could not be confirmed this session)
 
 1. **What code touches Dialog-category elements at `onClientMapLoad`, and whether it iterates the
@@ -178,7 +249,12 @@ a 16-bit boundary.
 16-bit-boundary hypothesis specifically. It is not a *proven*-safe range: it is still an order of
 magnitude above every shipped or previously-authored `DialogID` (max ~5,861 shipped, `3996` prior
 Cimmeria max), so if the real mechanism is a small fixed-size table sized closer to the historical
-maximum rather than a hard 16-bit cliff, `60100`–`60104` would not fix it either. Treat the
+maximum rather than a hard 16-bit cliff, `60100`–`60104` would not fix it either. **The renumber also
+does not, by itself, remediate any client that already received the `100100`/`100101` push** — see
+finding 4 above: the stale entries persist in that client's local `Cache.en-US/CookedDataDialogs.pak`
+and the version-mismatch handshake only ever targets the *current* override table, never a
+removed id, so an already-affected tester needs either a manual local-cache clear or a one-time
+`invalidate_all` before this is fully closed for them. Treat the
 renumbering as a plausible fix pending confirmation, not a closed issue: smoke-test the debug-hub
 dialog chain (both a login with `InvalidKeys` push and a cold relog against an already-cached
 client) before calling this closed, and do not pick a new "just under 65536" id for any *other*
