@@ -55,6 +55,30 @@ pub async fn reject(
     why: &CraftReject,
     client: CraftClient<'_>,
 ) {
+    refuse(verb, entity_id, player_id, why, client, true).await;
+}
+
+/// [`reject`] for an induction whose work is refused when it completes.
+/// Its request was answered (and counted) when the job was queued, so this
+/// counts the rejection but not a second request.
+pub async fn reject_at_completion(
+    verb: &'static str,
+    entity_id: u32,
+    player_id: i32,
+    why: &CraftReject,
+    client: CraftClient<'_>,
+) {
+    refuse(verb, entity_id, player_id, why, client, false).await;
+}
+
+async fn refuse(
+    verb: &'static str,
+    entity_id: u32,
+    player_id: i32,
+    why: &CraftReject,
+    client: CraftClient<'_>,
+    answers_request: bool,
+) {
     let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
     let reason = why.reason();
     let c = why.compared();
@@ -75,11 +99,19 @@ pub async fn reject(
         prerequisite_expertise = c.prerequisite_expertise,
         required_expertise = c.required_expertise,
         station_mask = c.station_mask,
+        item_id = c.item_id,
+        design_id = c.design_id,
+        container_id = c.container_id,
+        needed = c.needed,
+        available = c.available,
+        queue_limit = c.queue_limit,
         tools = why.tools_considered(),
         "crafting request rejected"
     );
     record_rejection(verb, reason);
-    record_request(verb, Outcome::Rejected);
+    if answers_request {
+        record_request(verb, Outcome::Rejected);
+    }
 
     let text_args = feedback_text_args(&why.text());
     send_line(

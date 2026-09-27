@@ -86,6 +86,13 @@ pub(super) async fn handle_log_off(
 
         // Remove entity→addr mapping
         entity_to_addr.lock().unwrap().remove(&entity_id);
+
+        // Logging off drops any queued crafting without consuming it.
+        cimmeria_base_session::base::crafting::session::drop_player_inductions(
+            entity_id,
+            cimmeria_base_session::base::crafting::session::DropReason::Logout,
+            "log_off",
+        );
     }
 
     // Fan out offline status to contact-list watchers. Fire-and-forget via

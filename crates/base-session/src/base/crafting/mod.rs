@@ -16,8 +16,9 @@
 //!   `sgw_player` + `sgw_player_discipline_expertise` and
 //!   `cimmeria_entity::crafting::CraftingState`, with the starting paradigm
 //!   levels applied on load.
-//! - [`telemetry`]: the identity every crafting event carries and the two
-//!   counters (`crafting_requests_total`, `crafting_rejections_total`).
+//! - [`telemetry`]: the identity every crafting event carries, the three
+//!   counters (`crafting_requests_total`, `crafting_rejections_total`,
+//!   `crafting_jobs_total`), the induction job ids and the checked sends.
 //! - [`handlers`]: the GM grants (`gmGiveExpertise`,
 //!   `gmGiveAppliedSciencePoints`).
 //! - [`gate`]: the station gate every craft-family verb passes first: a
@@ -26,6 +27,13 @@
 //! - [`options`]: `onUpdateCraftingOptions` (140) and the per-session
 //!   stations, tools and "craft anywhere" behind it.
 //! - [`allcraft`]: the GM `.allcraft` grant.
+//! - [`session`]: the induction engine. Each player runs one induction at
+//!   a time, with up to [`session::MAX_INDUCTIONS`] held; the client's bar
+//!   is the type-16 timer, and the job runs when it expires.
+//! - [`transaction`]: the one database transaction an item verb's job
+//!   runs at completion (consume inputs, grant products, adjust
+//!   expertise), and the client updates after it.
+//! - [`rng`]: the injectable RNG the rolling verbs use.
 
 pub mod allcraft;
 pub mod feedback;
@@ -34,10 +42,15 @@ pub mod handlers;
 pub mod options;
 pub mod persistence;
 pub mod request;
+pub mod rng;
+pub mod session;
 pub mod spend;
 pub mod sync;
 pub mod telemetry;
 pub mod tools;
+pub mod transaction;
 
+#[cfg(test)]
+mod test_packets;
 #[cfg(test)]
 mod test_players;

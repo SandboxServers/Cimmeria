@@ -66,6 +66,31 @@ pub enum CraftReject {
         /// considered (empty when none was, e.g. for alloying).
         tools: Vec<i32>,
     },
+    /// The player already has the maximum number of inductions running or
+    /// queued.
+    QueueFull {
+        /// The queue limit, active induction included.
+        limit: usize,
+    },
+    /// A component the request named is gone from the player's inventory
+    /// (used, sold, dropped or never theirs).
+    ComponentMissing { item_id: i32 },
+    /// A component the request named is no longer in the main bag or the
+    /// crafting bag (moved to the bank, equipped, ...).
+    ComponentNotInCraftingBags { item_id: i32, container_id: i32 },
+    /// The main and crafting bags hold fewer of a component than needed.
+    NotEnoughComponents {
+        design_id: i32,
+        needed: i32,
+        available: i64,
+    },
+    /// No room for the product in the bag it goes to.
+    InventoryFull { design_id: i32, container_id: i32 },
+    /// The product's `container_sets` allow no carried bag.
+    NoCarriedBagForProduct { design_id: i32 },
+    /// An induction's completion transaction failed for a server-side
+    /// reason and was rolled back. Nothing was used.
+    InductionFailed,
 }
 
 /// The values a refused rule compared, logged as fields of the `rejected`
@@ -81,6 +106,18 @@ pub struct Compared {
     pub prerequisite_expertise: Option<i32>,
     pub required_expertise: Option<i32>,
     pub station_mask: Option<u8>,
+    /// The item instance a component check refused.
+    pub item_id: Option<i32>,
+    /// The item design a consumption or placement refused.
+    pub design_id: Option<i32>,
+    /// The bag the refused instance sits in, or the product's bag.
+    pub container_id: Option<i32>,
+    /// How many of `design_id` the plan needs, against `available` in the
+    /// main and crafting bags.
+    pub needed: Option<i64>,
+    pub available: Option<i64>,
+    /// The induction limit a full queue hit.
+    pub queue_limit: Option<usize>,
 }
 
 impl CraftReject {
@@ -110,6 +147,13 @@ impl CraftReject {
             CraftReject::PrerequisiteMissing { .. } => "prerequisite_missing",
             CraftReject::PrerequisiteExpertise { .. } => "prerequisite_expertise",
             CraftReject::NoStationOrTool { .. } => "no_station_or_tool",
+            CraftReject::QueueFull { .. } => "queue_full",
+            CraftReject::ComponentMissing { .. } => "component_missing",
+            CraftReject::ComponentNotInCraftingBags { .. } => "component_not_in_crafting_bags",
+            CraftReject::NotEnoughComponents { .. } => "not_enough_components",
+            CraftReject::InventoryFull { .. } => "inventory_full",
+            CraftReject::NoCarriedBagForProduct { .. } => "no_carried_bag_for_product",
+            CraftReject::InductionFailed => "induction_failed",
         }
     }
 
@@ -161,15 +205,72 @@ impl CraftReject {
                 };
                 format!("No crafting station or tool for {verb} nearby.")
             }
+            CraftReject::QueueFull { limit } => {
+                format!("You can have at most {limit} crafting jobs at once.")
+            }
+            CraftReject::ComponentMissing { .. } => {
+                "A component is no longer in your inventory. Nothing was used.".to_string()
+            }
+            CraftReject::ComponentNotInCraftingBags { .. } => {
+                "Components must be in your backpack or crafting bag. Nothing was used.".to_string()
+            }
+            CraftReject::NotEnoughComponents { .. } => {
+                "You do not have enough components. Nothing was used.".to_string()
+            }
+            CraftReject::InventoryFull { .. } => {
+                "Not enough room in your bags for the result. Nothing was used.".to_string()
+            }
+            CraftReject::NoCarriedBagForProduct { .. } => {
+                "The result cannot be placed in your bags. Nothing was used.".to_string()
+            }
+            CraftReject::InductionFailed => "Crafting failed. Nothing was used.".to_string(),
         }
     }
 
     /// What the refused rule compared.
     pub fn compared(&self) -> Compared {
         match *self {
-            CraftReject::NotAvailableYet { .. } | CraftReject::Unavailable { .. } => {
-                Compared::default()
-            }
+            CraftReject::NotAvailableYet { .. }
+            | CraftReject::Unavailable { .. }
+            | CraftReject::InductionFailed => Compared::default(),
+            CraftReject::QueueFull { limit } => Compared {
+                queue_limit: Some(limit),
+                ..Compared::default()
+            },
+            CraftReject::ComponentMissing { item_id } => Compared {
+                item_id: Some(item_id),
+                ..Compared::default()
+            },
+            CraftReject::ComponentNotInCraftingBags {
+                item_id,
+                container_id,
+            } => Compared {
+                item_id: Some(item_id),
+                container_id: Some(container_id),
+                ..Compared::default()
+            },
+            CraftReject::NotEnoughComponents {
+                design_id,
+                needed,
+                available,
+            } => Compared {
+                design_id: Some(design_id),
+                needed: Some(i64::from(needed)),
+                available: Some(available),
+                ..Compared::default()
+            },
+            CraftReject::InventoryFull {
+                design_id,
+                container_id,
+            } => Compared {
+                design_id: Some(design_id),
+                container_id: Some(container_id),
+                ..Compared::default()
+            },
+            CraftReject::NoCarriedBagForProduct { design_id } => Compared {
+                design_id: Some(design_id),
+                ..Compared::default()
+            },
             CraftReject::NoStationOrTool { station_mask, .. } => Compared {
                 station_mask: Some(station_mask),
                 ..Compared::default()
@@ -245,7 +346,14 @@ impl CraftReject {
             | CraftReject::ParadigmTooLow { .. }
             | CraftReject::PrerequisiteMissing { .. }
             | CraftReject::PrerequisiteExpertise { .. }
-            | CraftReject::NoStationOrTool { .. } => None,
+            | CraftReject::NoStationOrTool { .. }
+            | CraftReject::QueueFull { .. }
+            | CraftReject::ComponentMissing { .. }
+            | CraftReject::ComponentNotInCraftingBags { .. }
+            | CraftReject::NotEnoughComponents { .. }
+            | CraftReject::InventoryFull { .. }
+            | CraftReject::NoCarriedBagForProduct { .. }
+            | CraftReject::InductionFailed => None,
         }
     }
 }
