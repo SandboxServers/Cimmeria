@@ -126,6 +126,35 @@ fn playtest_bug_reports_the_players_witnessing_an_npc() {
     assert_eq!(row.witness_count, 1, "one player (the tester) sees it");
 }
 
+/// NA44 (handoff §2): the entity row says what the NPC fights with and what
+/// the tester is aiming at. An NPC's weapon lives in its template
+/// `components`, not in `weapon_visual`, so the row must read it from there.
+/// Revert proof: drop the three fields from `snapshot_entity` and this fails
+/// to compile; point `weapon_visual` back at `e.weapon_visual` alone and the
+/// NPC's weapon reads empty.
+#[test]
+fn playtest_bug_reports_abilities_weapon_and_current_target() {
+    let (mut mgr, gm, npc) = setup();
+    if let Some(e) = mgr.get_entity_mut(npc) {
+        e.abilities.add_ability(559);
+        e.components = vec![
+            "AR_H_Ablative.AR_HM_AT3_AT300".to_string(),
+            "WP-Human.WP_SMG_1A".to_string(),
+        ];
+    }
+
+    let b = capture(gm, Some(npc), "", &mgr).unwrap();
+    let row = b.entities.iter().find(|e| e.entity_id == npc).unwrap();
+    assert_eq!(
+        row.ability_ids,
+        vec![559, 592],
+        "sorted; 592 is spawn_npc's Pistol Shot fallback"
+    );
+    assert_eq!(row.weapon_visual, "WP-Human.WP_SMG_1A");
+    assert_eq!(row.current_target_id, 0, "an NPC selects nothing");
+    assert_eq!(b.caller.current_target_id, npc as i32);
+}
+
 /// End to end through the dispatcher: header row + one row per entity share a
 /// `bookmark_id`, and the tester gets an acknowledgement.
 #[tokio::test]
@@ -161,6 +190,14 @@ async fn playtest_bug_emits_header_and_entity_rows_and_acks() {
         "rows join on bookmark_id"
     );
     assert!(entity.has_field("is_selected_target", "true"));
+    // NA44: the identity fields reach the exported row, not just the snapshot.
+    assert!(
+        entity.has_field("ability_ids", "[592]"),
+        "{:?}",
+        entity.fields
+    );
+    assert!(entity.fields.contains_key("weapon_visual"));
+    assert!(entity.has_field("current_target_id", "0"));
 
     let mut acked = false;
     while let Ok(msg) = rx.try_recv() {

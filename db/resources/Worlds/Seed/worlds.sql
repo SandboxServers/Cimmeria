@@ -257,14 +257,18 @@ INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_i
 -- See docs/architecture/navmesh-containment-modes.md.
 INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map, navmesh_mode) VALUES (8, 0, 1440, 1, 'Castle', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'Castle', 'advisory');
 
--- Harset is the one world seeded 'advisory'. `data/spaces/harset.nav` is
--- badly incomplete: measured 2026-09-19 on a 2-unit grid, the plaza floor
+-- Harset was the first world seeded 'advisory' (2026-09-19). NA26
+-- (2026-09-25) seeded every newly meshed world 'advisory' too, so 23 rows
+-- now carry it; see each world's own comment. The history below is kept.
+-- On 2026-09-19 `data/spaces/harset.nav` was badly incomplete: measured on a
+-- 2-unit grid, the plaza floor
 -- (Y ~ -68) is on-mesh to Z -198 and has no coverage at all from Z -200 to
 -- Z -228 across X -24..0 -- the only walk from the gate plaza to the Command
 -- Center door. Enforcing containment there snaps every non-GM player back at
--- the hole boundary, so the mesh is demoted to information only until GH1
--- rebakes it. Castle (world 8, above) is the only other advisory row; every
--- other world keeps the 'enforce' default.
+-- the hole boundary, so the mesh was demoted to information only until GH1
+-- rebakes it. NA26, NA28 and NA36 have rebuilt harset.nav since; the row
+-- stays 'advisory' until an in-client walk clears it. Worlds without a
+-- navmesh, and Castle_CellBlock (world 12), keep the 'enforce' default.
 -- See docs/architecture/navmesh-containment-modes.md.
 INSERT INTO worlds (world_id, flags, min_per_day, min_to_real_min, world, cell_id, gravity, run_speed, sideways_run_speed, backwards_run_speed, walk_speed, sideways_walk_speed, backwards_walk_speed, crouch_run_speed, sideways_crouch_run_speed, backwards_crouch_run_speed, crouch_walk_speed, sideways_crouch_walk_speed, backwards_crouch_walk_speed, swim_speed, sideways_swim_speed, backwards_swim_speed, jump_speed, has_script, client_map, navmesh_mode) VALUES (57, 0, 1440, 1, 'Harset', NULL, 7.5, 8.125, 8.125, 6.09375, 2.06900001, 2.06900001, 3.79688001, 5.0625, 5.0625, 3.79688001, 0.935000002, 0.701250017, 0.935000002, 4, 4, 1, 6, true, 'Harset', 'advisory');
 

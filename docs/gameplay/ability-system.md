@@ -28,7 +28,7 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Ability interruption | DONE | AT-10. Death, a bandolier slot change, moving 0.5 m, and fire-time target, range, line-of-sight and ammo checks. Refunds the cooldown |
 | Ammo consumption | DONE | `requiredAmmo`, `consumeAmmo()` |
 | Weapon range check | DONE | `UseWeaponRange` flag uses equipped weapon range |
-| Position/facing check | DONE | Front/flank/rear mask validation |
+| Position/facing check | NOT IMPL (Rust) | Python validated the front/flank/rear mask. Rust `AbilityDef` has no `positions` field and `handle_use_ability` checks no facing |
 | Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |
 | AoE / cone targeting | DONE | `cell/abilities/cone_aoe/` — geometry, flag categories, and witness fan-out |
 | Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch/mod.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |

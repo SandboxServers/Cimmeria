@@ -35,6 +35,7 @@ mod lab_snapshots;
 mod lifecycle;
 mod movement_telemetry;
 mod navmesh_containment;
+pub mod npc_identity;
 mod npc_population;
 pub use npc_population::{spawn_instance_npcs_from_records, spawn_npcs_from_records};
 // Moved to `test_fixtures`; re-exported at its old path.

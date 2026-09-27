@@ -9,6 +9,8 @@
 //!
 //! - [`spawn_records`]: in-memory NPC id allocation, class-id mapping, and
 //!   `spawn_npc_from_record` behavior against a hand-built `SpaceManager`.
+//! - [`spawn_behaviour_row`]: the `spawner.npc_behaviour` row carries
+//!   `world`, `space_id`, the ability set, its event sets and the weapon (NA44).
 //! - [`spawn_grounding`]: NA11, a seeded spawn a little off the navmesh floor
 //!   is moved onto it.
 //! - [`live_db_aggression`] and [`live_db_assist`]: live-DB guards for the
@@ -32,5 +34,6 @@ mod live_db_assist;
 mod live_db_eye_heights;
 mod live_db_leash_distance;
 mod live_db_use_cover;
+mod spawn_behaviour_row;
 mod spawn_grounding;
 mod spawn_records;
