@@ -909,8 +909,8 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (301, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Ablative.AR_HM_AT3_AT300,AR_H_Ballistic00.AR_HM_BG3_BG300,NPC_Human.NPC_HM_Marsh_Head_BC,AR_H_Ablative.AR_HM_AL3_AL300AH300}', 0, 128, 570, 1, 0, 1, 20186, NULL, NULL, NULL, 'Debug Hub - Trainer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', 1, NULL, true, NULL, NULL, NULL);
 
 -- NEW CONTENT (debug hub): dialog NPC. Clicking him fires chain 7001
---   (debug_hub_chains.sql), which opens dialog 100100; its button and dialog
---   100101's close each fire a `dialog_choice` chain. No mission.
+--   (debug_hub_chains.sql), which opens dialog 60100; its button and dialog
+--   60101's close each fire a `dialog_choice` chain. No mission.
 --   INT_NonAStoryMissionAvaliable (134217728) gives the talk cursor and the
 --   side-quest "?"; without a bit the client never sends the click.
 -- moniker 7412 `DN_npc_Int_BetaE1_KhenmerFa_AirmanLance` ('Airman Lance');
@@ -1075,7 +1075,7 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- stay reserved.
 -- 390 'Gate Mail Clerk' in the stasis-room debug hub (spawn 490,
 --   docs/content/debug-hub.md). Clicking him fires chain 7010
---   (debug_hub_chains.sql), which opens dialog 100104; its one button fires chain
+--   (debug_hub_chains.sql), which opens dialog 60104; its one button fires chain
 --   7011, whose `send_system_mail` action mails the clicking player a stack of
 --   Health Slappacks and 50 naquadah, at most once per 10 minutes per player.
 --   INT_NonAStoryMissionAvaliable (134217728) gives the talk cursor, as on the

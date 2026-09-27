@@ -1,6 +1,6 @@
 //! Live-DB guards for the Castle_CellBlock stasis-room debug hub: templates
 //! 300-304, `spawnlist` 400-404, ability set 6, loot table 3 and dialogs
-//! 100100-100103 (`docs/content/debug-hub.md`).
+//! 60100-60103 (`docs/content/debug-hub.md`).
 //!
 //! Every guard here is about seed content that loads without error and is
 //! still wrong, the same seam as [`super::live_db_castle_seed`]:
@@ -455,8 +455,8 @@ mod live_db {
         }
     }
 
-    /// Dialog 100100 has two screens, pages in index order, and carries its
-    /// one button on the final screen; 100101 has one screen and no button,
+    /// Dialog 60100 has two screens, pages in index order, and carries its
+    /// one button on the final screen; 60101 has one screen and no button,
     /// so its close sends -1; the two bark lines exist. Both dialogs are
     /// spoken by the NPC, so neither may be in the monologue set, which
     /// would make `display_dialog` bind the player as the speaker.
@@ -494,17 +494,17 @@ mod live_db {
         };
 
         assert_eq!(
-            screens(100100).await,
+            screens(60100).await,
             vec![
                 (200000, 0, Some(754), 0, None),
                 (200001, 1, Some(754), 1, Some(4)),
             ],
-            "100100: two NPC screens, one Generic 1 button on the final one"
+            "60100: two NPC screens, one Generic 1 button on the final one"
         );
         assert_eq!(
-            screens(100101).await,
+            screens(60101).await,
             vec![(200002, 0, Some(754), 0, None)],
-            "100101: one NPC screen, no buttons"
+            "60101: one NPC screen, no buttons"
         );
 
         let text = load_dialog_screen_text(&pool)
@@ -520,7 +520,7 @@ mod live_db {
         let monologues = load_monologue_dialog_ids(&pool)
             .await
             .expect("load_monologue_dialog_ids must succeed");
-        for dialog in [100100, 100101] {
+        for dialog in [60100, 60101] {
             assert!(
                 !monologues.contains(&dialog),
                 "dialog {dialog} is spoken by Airman Lance, not the player"

@@ -1,5 +1,5 @@
 //! Live-DB guards for the debug hub's Gate Mail Clerk (social-systems
-//! SS-U3): template 390 and dialog 100104 (`docs/content/debug-hub.md`).
+//! SS-U3): template 390 and dialog 60104 (`docs/content/debug-hub.md`).
 //! Spawn 490's placement is guarded with the rest of the hub in
 //! [`super::live_db_debug_hub`].
 //!
@@ -20,7 +20,7 @@ mod live_db {
     use crate::test_support::require_db_or_skip;
 
     const MAIL_CLERK: i32 = 390;
-    const MAIL_CLERK_DIALOG: i32 = 100104;
+    const MAIL_CLERK_DIALOG: i32 = 60104;
     /// `INT_NonAStoryMissionAvaliable`, the hub dialog NPC's cursor bit.
     const INT_NON_A_STORY_MISSION: i64 = 134_217_728;
     /// `DN_npc_int_Harriman_SGCW1` ('Sgt. Harriman'), shipped in the client.
@@ -94,7 +94,7 @@ mod live_db {
         );
     }
 
-    /// Dialog 100104: one screen spoken by the clerk, carrying one Generic 1
+    /// Dialog 60104: one screen spoken by the clerk, carrying one Generic 1
     /// button (type 4, ButtonID 8), and not a monologue.
     #[tokio::test]
     async fn mail_clerk_dialog_has_one_screen_and_one_button() {
@@ -112,7 +112,7 @@ mod live_db {
         assert_eq!(
             rows,
             vec![(200005, 0, Some(SPEAKER), Some(8), Some(4))],
-            "100104: one clerk screen with one Generic 1 button"
+            "60104: one clerk screen with one Generic 1 button"
         );
 
         let monologues = load_monologue_dialog_ids(&pool)

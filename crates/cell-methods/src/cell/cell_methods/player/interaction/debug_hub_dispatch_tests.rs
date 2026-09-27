@@ -7,12 +7,12 @@
 //! |-----------|----------|------------------------------------------------|
 //! | vendor    | 300      | `NpcInteractionType::Vendor` → `OpenVendorStore` |
 //! | trainer   | 301      | `onTrainerOpen`, and respec then passes the pin |
-//! | dialog    | 302      | chain 7001 → `onDialogDisplay` 100100            |
+//! | dialog    | 302      | chain 7001 → `onDialogDisplay` 60100            |
 //! | Livewire  | 303      | chain 7004 → `StartMinigame(Livewire)`           |
 //! | loot crate| 304      | alive: combat reroute; dead: `onLootDisplay` with table 3 |
 //! | pet trainer | 360    | `onTrainerOpen` with list 350 (pets campaign PT-07) |
 //! | Banker    | 370      | `onVaultOpen` and a personal vault session (bank-vault BV-04) |
-//! | mail clerk | 390     | chain 7010 → `onDialogDisplay` 100104 (SS-U3)    |
+//! | mail clerk | 390     | chain 7010 → `onDialogDisplay` 60104 (SS-U3)    |
 //!
 //! The vendor row is the one that regressed silently: nothing ever set
 //! `NpcInteractionType::Vendor`, so a vendor-only template reached the `None`
@@ -225,22 +225,22 @@ async fn debug_hub_npcs_answer_a_click_with_their_own_interaction() {
     assert_eq!(methods(&msgs), vec![ON_TRAINER_OPEN], "trainer: {msgs:?}");
     assert!(opened_store(&msgs).is_empty());
 
-    // Dialog NPC: chain 7001 shows dialog 100100, spoken by that NPC.
+    // Dialog NPC: chain 7001 shows dialog 60100, spoken by that NPC.
     let dialog_npc = eid_of(&hub, "DebugHub_DialogNpc");
     let msgs = click(&mut mgr, &engine, dialog_npc).await;
     assert_eq!(
         dialog_displays(&msgs),
-        vec![(dialog_npc as i32, 100100)],
+        vec![(dialog_npc as i32, 60100)],
         "dialog NPC: {msgs:?}"
     );
 
-    // Mail clerk (SS-U3): chain 7010 shows dialog 100104, spoken by the
+    // Mail clerk (SS-U3): chain 7010 shows dialog 60104, spoken by the
     // clerk. The click alone mails nothing; the dialog's button does.
     let clerk = eid_of(&hub, "DebugHub_MailClerk");
     let msgs = click(&mut mgr, &engine, clerk).await;
     assert_eq!(
         dialog_displays(&msgs),
-        vec![(clerk as i32, 100104)],
+        vec![(clerk as i32, 60104)],
         "mail clerk: {msgs:?}"
     );
     assert!(

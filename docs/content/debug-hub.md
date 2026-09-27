@@ -102,23 +102,31 @@ tree node for every seeded archetype.
 
 ### Dialog NPC (template 302, Airman Lance)
 
-Right-click shows dialog 100100. These dialogs are Cimmeria-authored. The
+Right-click shows dialog 60100. These dialogs are Cimmeria-authored. The
 client draws them from `DIALOG_OVERRIDES` in
 `crates/resources/src/base/dialog_overrides/mod.rs`.
 
-1. Dialog 100100 has two screens, so Next pages through them. Its one button,
+Cimmeria-authored dialog ids live in 60100-60199 and must stay at or below
+65535. The hub's dialogs were first numbered 100100-100104, and pushing
+100100 and 100101 as overrides crashed the client while it loaded
+Castle_CellBlock. The client's own dialog ids stop at 6427. The guard is
+`every_cooked_override_element_id_fits_in_16_bits` in `crates/resources`; the
+evidence is in
+`docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
+
+1. Dialog 60100 has two screens, so Next pages through them. Its one button,
    "Send my choice" (Generic 1, ButtonID 8), is on the final screen.
-2. Clicking it fires chain 7002, which shows dialog 100101.
-3. Dialog 100101 has no buttons. Closing it sends `dialogButtonChoice(100101,
+2. Clicking it fires chain 7002, which shows dialog 60101.
+3. Dialog 60101 has no buttons. Closing it sends `dialogButtonChoice(60101,
    -1)`, which fires chain 7003. Chain 7003 prints "Dialog round trip complete"
    in chat as Airman Lance.
 
 This tests paging, a button click, a button-less close, the server's
 offered-dialog check on `dialogButtonChoice`, and the `last_interaction_target`
-pin. Chain 7002's event carries no NPC, so dialog 100101 finds its speaker only
+pin. Chain 7002's event carries no NPC, so dialog 60101 finds its speaker only
 through that pin.
 
-Closing 100100 with X instead of the button sends nothing (a dialog with any
+Closing 60100 with X instead of the button sends nothing (a dialog with any
 button sends nothing on close). Nothing happens, and clicking the NPC again
 starts over. There is no branching on which button was pressed, because no
 content condition can read the button id.
@@ -281,7 +289,7 @@ engineering with the kickers) are in section 2 of
 
 ### Gate Mail Clerk (template 390)
 
-Right-click shows dialog 100104, which has one button, "Send me a mail".
+Right-click shows dialog 60104, which has one button, "Send me a mail".
 Pressing it mails you a test mail from "Gate Mail Clerk" with 5 Health
 Slappack TC1 and 50 naquadah. A chat line names the mail. Open the mail window
 and take the naquadah and the slappacks.
@@ -325,7 +333,7 @@ and take the naquadah and the slappacks.
 | Spawns 400-404, 450, 470, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
 | Trainer list 350 | `db/resources/Abilities/Seed/trainer_ability_lists.sql`, `trainer_abilities.sql` |
 | Chains 7001-7005, 7010-7011 | `db/resources/Content/Seed/debug_hub_chains.sql` |
-| Dialogs 100100-100104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `DIALOG_OVERRIDES` |
+| Dialogs 60100-60104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `DIALOG_OVERRIDES` |
 | The clerk's mail and cooldown | `mail/content.rs` in `crates/base-methods`; table `db/sgw/Players/Tables/sgw_player_content_cooldown.sql` |
 | Loot table 3 (loot rows 14-17) | `db/resources/Loot/Seed/` |
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
@@ -349,12 +357,12 @@ hub, crafting)`.
 | `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and shows table 3's loot when dead; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself |
 | `cell-catalog` `spawner/tests/live_db_debug_banker.rs` | Template 370 is a personal Banker and nothing else: exactly `INT_Banker`, `vault_scope = 'personal'`, a shipped name, no trainer list or vendor lists, not faction 10; spawn 470 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_pet_trainer.rs` | Template 360's role columns and name; spawn 450 inside Region1, on the floor, clear of the respawner and the other hub NPCs; list 350 keyed to the Goa'uld only, with exactly the six pet nodes, each a Goa'uld tree node |
-| `cell-catalog` `spawner/tests/live_db_mail_clerk.rs` | Template 390's role columns and name; dialog 100104 is one clerk screen with one Generic 1 button, and not a monologue |
+| `cell-catalog` `spawner/tests/live_db_mail_clerk.rs` | Template 390's role columns and name; dialog 60104 is one clerk screen with one Generic 1 button, and not a monologue |
 | `cell-content` `chain_replay_tests/debug_hub.rs` | Chains 7001-7005 resolve and execute: the `onDialogDisplay` speakers, the `StartMinigame` message, and both chat lines |
-| `cell-content` `chain_replay_tests/debug_hub_mail_clerk.rs` | Chain 7010 opens 100104 as the clerk; chain 7011 sends the base exactly one `ContentSystemMail` with the seeded contents and cooldown |
+| `cell-content` `chain_replay_tests/debug_hub_mail_clerk.rs` | Chain 7010 opens 60104 as the clerk; chain 7011 sends the base exactly one `ContentSystemMail` with the seeded contents and cooldown |
 | `base-methods` `mail/tests/content_live.rs` | One mail per press, refused with the wait inside 10 minutes; the window outlives the mail and ends on time; the claim rolls back with a refused mail; two simultaneous presses write one mail |
 | `cell-world` `tests/npc_spawn.rs` | Any `INT_Vendor*` bit derives `Vendor`; no other bit derives anything |
-| `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The overrides of 100100, 100101 and 100104 and the dialog seed agree screen for screen and button for button |
+| `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The overrides of 60100, 60101 and 60104 and the dialog seed agree screen for screen and button for button |
 | `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001, 7004 and 7010 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
 | `cell-catalog` `spawner/tests/live_db_crafting_hub.rs` | Stations carry all four craft bits and no interaction bit, with the client's station monikers; the vendor sells only list 310; the crafting spawns stand inside Region1, on the floor, clear of the respawner and of every other spawn in the room; list 310 is exactly the supplies, each a real item at 1 naquadah and no item cost, and covers the UAT recipes |
 | `cell-methods` `interaction/crafting_hub_station_tests.rs` | Spawned from their real rows, the stations are reported for every verb to a player at the supplies vendor, and none reaches the respawn spot |

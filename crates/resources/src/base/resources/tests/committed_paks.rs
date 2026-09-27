@@ -1,7 +1,8 @@
 //! Invariants on the PAK files committed under `data/cache/`, and on how the
 //! Kismet sequence overrides sit on top of them.
 
-use super::super::ResourceCache;
+use super::super::{ResourceCache, CATEGORY_PAKS};
+use crate::base::dialog_overrides::{DIALOG_OVERRIDES, MAX_COOKED_ELEMENT_ID};
 use crate::base::sequence_overrides::{
     generate_sequence_xml, SequenceOverride, SEQUENCE_OVERRIDES,
 };
@@ -99,4 +100,48 @@ fn generated_sequence_xml_matches_a_shipped_entry() {
         String::from_utf8_lossy(&generated),
         String::from_utf8_lossy(actual)
     );
+}
+
+/// Every element id Cimmeria pushes as a cooked-data override, in every
+/// category, fits in 16 bits. Overrides of dialogs 100100 and 100101 crashed
+/// the 2009 client while it loaded Castle_CellBlock; the client's own ids stop
+/// far below 65535. See
+/// `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
+///
+/// Reads the served override lists, so an override module added later is
+/// covered without editing this test.
+#[test]
+fn every_cooked_override_element_id_fits_in_16_bits() {
+    let cache = ResourceCache::load_all(data_dir()).expect("committed PAKs load");
+    let mut checked = 0;
+    for &(category, pak) in CATEGORY_PAKS {
+        for &id in cache.overridden_elements(category) {
+            assert!(
+                id <= MAX_COOKED_ELEMENT_ID,
+                "{pak} (category {category}) overrides element {id}, above \
+                 {MAX_COOKED_ELEMENT_ID}; pick an id at or below it"
+            );
+            checked += 1;
+        }
+    }
+    // Not vacuous: the dialog category, the one that crashed, must be among
+    // those checked.
+    assert!(checked > 0, "no overridden elements were checked");
+    assert!(
+        !cache.overridden_elements(5).is_empty(),
+        "the dialog category must be among those checked"
+    );
+}
+
+/// The authored table itself, so the bound holds even for an entry the loader
+/// would not insert.
+#[test]
+fn every_dialog_override_id_fits_in_16_bits() {
+    for ov in DIALOG_OVERRIDES {
+        assert!(
+            ov.dialog_id <= MAX_COOKED_ELEMENT_ID,
+            "DIALOG_OVERRIDES entry {} is above {MAX_COOKED_ELEMENT_ID}",
+            ov.dialog_id
+        );
+    }
 }

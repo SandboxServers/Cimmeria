@@ -1,5 +1,5 @@
-//! Override-versus-seed agreement for the debug-hub dialogs 100100 and
-//! 100101 (the Castle_CellBlock stasis-room dialog NPC) and 100104 (the Gate
+//! Override-versus-seed agreement for the debug-hub dialogs 60100 and
+//! 60101 (the Castle_CellBlock stasis-room dialog NPC) and 60104 (the Gate
 //! Mail Clerk, SS-U3).
 //!
 //! The two records drift apart silently, and each drift fails differently:
@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use super::{DialogOverride, DIALOG_OVERRIDES};
 
 /// The Cimmeria-authored dialogs of the debug hub.
-const HUB_DIALOGS: [u32; 3] = [100100, 100101, 100104];
+const HUB_DIALOGS: [u32; 3] = [60100, 60101, 60104];
 
 /// `CARGO_MANIFEST_DIR` is `<workspace>/crates/resources`.
 fn read_seed(name: &str) -> String {

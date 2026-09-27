@@ -67,6 +67,12 @@ mod patch_tests;
 pub use emit::{emit_cooked_dialog, escape_xml_attr, CookedButton, CookedDialog, CookedScreen};
 pub use patch::{apply_dialog_patches, no_patches_registered, DialogPatch, DIALOG_PATCH_TABLES};
 
+/// Largest element id Cimmeria may push as a cooked-data override, in any
+/// category. Overrides of dialogs 100100 and 100101 crashed the client on
+/// map load; every id the client itself ships is far below this bound. See
+/// `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
+pub const MAX_COOKED_ELEMENT_ID: u32 = u16::MAX as u32;
+
 /// One button on an authored screen.
 ///
 /// `button_id` is the cooked id the client puts on the wire when the
@@ -146,6 +152,15 @@ pub struct DialogOverride {
 ///
 /// Append new entries at the END: tests elsewhere read `DIALOG_OVERRIDES[0]`
 /// as the Frost dialog.
+///
+/// Every `dialog_id` must be at most [`MAX_COOKED_ELEMENT_ID`] (65535).
+/// Pushing overrides 100100 and 100101 crashed the 2009 client while it
+/// loaded Castle_CellBlock (colo deploy, 2026-09-27); the suspected cause is
+/// the id's width. Cimmeria-authored dialogs live in 60100-60199, well above
+/// the client's own ids (which stop at 6427). See
+/// `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`. The
+/// guard is `every_cooked_override_element_id_fits_in_16_bits` in
+/// `resources/tests/committed_paks.rs`.
 pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
     // Mission 622 "Arm Yourself!" — Frost's corpse (dialog 3995). The
     // canonical PAK never shipped 3995 (it's a Cimmeria-added dialog), and
@@ -192,7 +207,7 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
     // types 2 and 4-6, and type 2 (Accept) would hide the label behind a
     // fixed image and bring an inert Decline.
     DialogOverride {
-        dialog_id: 100100,
+        dialog_id: 60100,
         dialog_flags: 0,
         kismet_event_set_id: 0,
         ui_screen_type: 2,
@@ -217,11 +232,11 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             },
         ],
     },
-    // NEW CONTENT (debug hub): the answer to 100100's button. Zero buttons on
-    // purpose: closing it sends `dialogButtonChoice(100101, -1)` (fact F8),
+    // NEW CONTENT (debug hub): the answer to 60100's button. Zero buttons on
+    // purpose: closing it sends `dialogButtonChoice(60101, -1)` (fact F8),
     // which is the other half of the round trip (chain 7003).
     DialogOverride {
-        dialog_id: 100101,
+        dialog_id: 60101,
         dialog_flags: 0,
         kismet_event_set_id: 0,
         ui_screen_type: 2,
@@ -235,11 +250,11 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
     },
     // Social-systems campaign, SS-U3: the Gate Mail Clerk (template 390,
     // Sgt. Harriman, speaker 843), chains 7010-7011 in debug_hub_chains.sql.
-    // One screen, one Generic 1 button (the 100100 reasoning): pressing it
-    // sends `dialogButtonChoice(100104, 8)` and chain 7011 mails the player.
+    // One screen, one Generic 1 button (the 60100 reasoning): pressing it
+    // sends `dialogButtonChoice(60104, 8)` and chain 7011 mails the player.
     // Closing with X sends nothing, so nothing is mailed.
     DialogOverride {
-        dialog_id: 100104,
+        dialog_id: 60104,
         dialog_flags: 0,
         kismet_event_set_id: 0,
         ui_screen_type: 2,

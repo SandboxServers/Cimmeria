@@ -2,8 +2,8 @@
 //! (social-systems SS-U3): chain-replay guards for chains 7010-7011 in
 //! `db/resources/Content/Seed/debug_hub_chains.sql`.
 //!
-//! * 7010: clicking the clerk opens dialog 100104, spoken by the clerk.
-//! * 7011: 100104's button runs `send_system_mail`, and the executor sends
+//! * 7010: clicking the clerk opens dialog 60104, spoken by the clerk.
+//! * 7011: 60104's button runs `send_system_mail`, and the executor sends
 //!   the base exactly one `ContentSystemMail`: to the clicking player, from
 //!   "Gate Mail Clerk", 50 naquadah and 5 Health Slappack TC1, behind a
 //!   600 s cooldown keyed on the chain.
@@ -117,10 +117,10 @@ async fn execute(resolved: ResolvedActions, mgr: &mut SpaceManager) -> Vec<CellT
     out
 }
 
-/// Chain 7010: clicking the clerk opens 100104 with the clerk as speaker;
+/// Chain 7010: clicking the clerk opens 60104 with the clerk as speaker;
 /// another hub NPC's tag fires nothing.
 #[tokio::test]
-async fn mail_clerk_click_opens_dialog_100104_as_the_clerk() {
+async fn mail_clerk_click_opens_dialog_60104_as_the_clerk() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 7010).await;
 
@@ -160,7 +160,7 @@ async fn mail_clerk_click_opens_dialog_100104_as_the_clerk() {
             i32::from_le_bytes(args[4..8].try_into().unwrap()),
         ),
         (CLERK_EID as i32, CLERK_DIALOG),
-        "the frame names the clerk as speaker and dialog 100104"
+        "the frame names the clerk as speaker and dialog 60104"
     );
 
     let wrong = fire(
@@ -173,7 +173,7 @@ async fn mail_clerk_click_opens_dialog_100104_as_the_clerk() {
 
 /// Chain 7011: the button sends exactly one mail request, to the clicking
 /// player, with the seeded contents and a cooldown keyed on the chain; and
-/// the chain keys on dialog 100104 only.
+/// the chain keys on dialog 60104 only.
 #[tokio::test]
 async fn mail_clerk_button_sends_exactly_one_mail() {
     let pool = require_db_or_skip!();
@@ -193,7 +193,7 @@ async fn mail_clerk_button_sends_exactly_one_mail() {
     assert!(!choose(CLERK_DIALOG).actions.is_empty());
     assert!(
         choose(100_100).actions.is_empty(),
-        "chain 7011 keys on dialog 100104 only"
+        "chain 7011 keys on dialog 60104 only"
     );
 
     let resolved = choose(CLERK_DIALOG);

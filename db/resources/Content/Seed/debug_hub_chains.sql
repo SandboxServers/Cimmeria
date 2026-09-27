@@ -33,47 +33,47 @@ SET search_path = resources, pg_catalog;
 -- ============================================================
 --
 -- Exercises both ways the client answers a dialog (client contract F8):
---   * 100100 has one button, on its final screen. Clicking it sends
---     dialogButtonChoice(100100, 8) and fires chain 7002. Closing it with X
+--   * 60100 has one button, on its final screen. Clicking it sends
+--     dialogButtonChoice(60100, 8) and fires chain 7002. Closing it with X
 --     sends nothing, so nothing happens, and a second click on the NPC starts
 --     over.
---   * 100101 has no buttons, so closing it sends dialogButtonChoice(100101,
+--   * 60101 has no buttons, so closing it sends dialogButtonChoice(60101,
 --     -1), which fires chain 7003.
 -- A `dialog_choice` chain matches on the dialog id only; no condition can
 -- read the button id (F9). One button per dialog is therefore all the branching
 -- a chain can see.
 --
--- Chain 7002 displays 100101 through the player's `last_interaction_target`
--- pin: a dialog_choice event carries no NPC id, and 100101's screens are
+-- Chain 7002 displays 60101 through the player's `last_interaction_target`
+-- pin: a dialog_choice event carries no NPC id, and 60101's screens are
 -- spoken by speaker 754, so it is not a monologue. That makes this dialog a
 -- live check of the pin written before chain dispatch.
 
--- Chain 7001: click Airman Lance -> dialog 100100.
+-- Chain 7001: click Airman Lance -> dialog 60100.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (7001, 'Debug Hub - click the dialog NPC: display dialog 100100', 'space', 12, true, 0);
+VALUES (7001, 'Debug Hub - click the dialog NPC: display dialog 60100', 'space', 12, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (7001, 'interact_tag', 'DebugHub_DialogNpc', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (7001, 'display_dialog', 100100, NULL, '{}', 0, 0);
+VALUES (7001, 'display_dialog', 60100, NULL, '{}', 0, 0);
 
--- Chain 7002: 100100's button -> dialog 100101.
+-- Chain 7002: 60100's button -> dialog 60101.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (7002, 'Debug Hub - dialog 100100 button: display dialog 100101', 'space', 12, true, 0);
+VALUES (7002, 'Debug Hub - dialog 60100 button: display dialog 60101', 'space', 12, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (7002, 'dialog_choice', '100100', 'player', false, 0);
+VALUES (7002, 'dialog_choice', '60100', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (7002, 'display_dialog', 100101, NULL, '{}', 0, 0);
+VALUES (7002, 'display_dialog', 60101, NULL, '{}', 0, 0);
 
--- Chain 7003: 100101 closed (-1) -> confirmation line in chat.
+-- Chain 7003: 60101 closed (-1) -> confirmation line in chat.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (7003, 'Debug Hub - dialog 100101 closed: confirm in chat', 'space', 12, true, 0);
+VALUES (7003, 'Debug Hub - dialog 60101 closed: confirm in chat', 'space', 12, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (7003, 'dialog_choice', '100101', 'player', false, 0);
+VALUES (7003, 'dialog_choice', '60101', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (7003, 'npc_bark', NULL, NULL, '{"screen_id": 200003, "speaker": "Airman Lance", "channel": "say"}', 0, 0);
@@ -123,25 +123,25 @@ VALUES (7005, 'npc_bark', NULL, NULL, '{"screen_id": 200004, "speaker": "Termina
 --
 -- Same shape as the dialog round trip: 7010's cursor bit is template 390's
 -- default (INT_NonAStoryMissionAvaliable), so it is allowlisted in
--- interact_tag_linter.rs. Closing 100104 with X sends nothing (it has a
+-- interact_tag_linter.rs. Closing 60104 with X sends nothing (it has a
 -- button), so nothing is mailed.
 
--- Chain 7010: click the clerk -> dialog 100104.
+-- Chain 7010: click the clerk -> dialog 60104.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (7010, 'Debug Hub - click the Gate Mail Clerk: display dialog 100104', 'space', 12, true, 0);
+VALUES (7010, 'Debug Hub - click the Gate Mail Clerk: display dialog 60104', 'space', 12, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (7010, 'interact_tag', 'DebugHub_MailClerk', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (7010, 'display_dialog', 100104, NULL, '{}', 0, 0);
+VALUES (7010, 'display_dialog', 60104, NULL, '{}', 0, 0);
 
--- Chain 7011: 100104's button -> one system mail to the clicking player.
+-- Chain 7011: 60104's button -> one system mail to the clicking player.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (7011, 'Debug Hub - Gate Mail Clerk button: send the test mail', 'space', 12, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (7011, 'dialog_choice', '100104', 'player', false, 0);
+VALUES (7011, 'dialog_choice', '60104', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (7011, 'send_system_mail', NULL, NULL, '{"sender": "Gate Mail Clerk", "subject": "Gate Mail test delivery", "body": "A test mail from the stasis-room debug hub. Take the naquadah and the Health Slappacks from this mail. The Gate Mail Clerk can send you another one in 10 minutes.", "cash": 50, "item_id": 2893, "qty": 5, "cooldown_secs": 600}', 0, 0);
