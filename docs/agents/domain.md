@@ -1,6 +1,6 @@
 # Domain Docs
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-09-26
 > **Audience**: Agent skills and contributors locating domain documentation
 > **Type**: Reference
 
@@ -23,7 +23,7 @@ Skills that default to a root `CONTEXT.md` and a `docs/adr/` directory (the Matt
 | Spec "bible" | [`docs/spec/`](../spec/), drafts in [`docs/drafts/spec/`](../drafts/spec/) | Drafts are work in progress. See "When sources disagree". |
 | Canonical entity definitions | `entities/entities.xml`, `entities/defs/*.def` | Source of method and property order. |
 | Original server reference | `deprecated/` | Reference for original intent only. Not authoritative for client behavior. |
-| Prior agent findings | `.claude/agent-memory/<agent>/MEMORY.md` | Committed to the repo. Read the index for the agent whose domain you are in. |
+| Prior agent findings | `.claude/agent-memory/<agent>/MEMORY.md`, and `.claude/agent-memory/main-session/MEMORY.md` for top-level sessions | Committed to the repo. Read the index for the agent whose domain you are in. Project memory is dated and sourced, a lower bar than `docs/`; see [`development-workflow.md`](development-workflow.md#project-memory). |
 | Project rules and gotchas | [`rules-and-gotchas.md`](rules-and-gotchas.md) | Decisions already made and traps already hit. Read before proposing an approach. |
 
 ## Before exploring

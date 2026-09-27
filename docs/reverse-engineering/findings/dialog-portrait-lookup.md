@@ -46,6 +46,32 @@ display path end to end.
 
 ---
 
+## Resolution (2026-09-26): the stock client never renders the portrait
+
+The empty portrait disk is not a server bug. The server side already works: `onDialogDisplay` carries the speaker's entity id, which the client pins as `Unit.Dialog` (slot 17). The render step is simply missing from the shipped client UI:
+
+- `Dialog.layout` and `Blurb.layout` each have an **unnamed** `StaticImage_2` portrait container, so no script can address it.
+- Neither `Dialog.lua` nor `Blurb.lua` ever calls `createCharacterPortrait`. That closes open question 3 below: the Lua has been recovered, and the call the render path assumes isn't in it.
+
+**The material must be declared in the CEGUI scheme.** `createCharacterPortrait(material, …)` only works when `material` is declared as an `ImagesetFromImage` in `Content/UI/CEGUIData/schemes/TaharezLook.scheme`. The stock scheme declares, among others, `CoreMaterial_Portrait`, `CoreMaterial_TargetPortrait`, `CoreMaterial_TrainerPortrait`, `CoreMaterial_UnitPortrait1..15` and `CoreMaterial_PetPortrait_9..12`. Passing an undeclared name raises a Lua error whose value is a function rather than a message. Inside `initDialog` that error aborts the function, so **no dialog window opens at all**, even though the server log shows `onDialogDisplay` sent normally. Client Lua errors never reach server telemetry.
+
+**Working client patch** (five client files, verified in game on 2026-09-26: the speaker's face renders in the disk):
+
+1. Name the containers `Dialog_PortraitImage` and `Blurb_PortraitImage` in the two layouts.
+2. After the name label is set in `Dialog.lua` / `Blurb.lua`, call `createCharacterPortrait("CoreMaterial_DialogPortrait" | "CoreMaterial_BlurbPortrait", "Portrait", Unit.Dialog, UIPortraitStyle.Face, UIPortraitUpdate.OneShot, 128, 128)` inside `pcall`. On success, set the widget's `Image` property to `set:<material> image:full_image` and show it; on failure, hide it. The `pcall` keeps a portrait failure from blocking the dialog.
+3. Declare both materials in `TaharezLook.scheme` as `ImagesetFromImage` entries on `UI_PortraitTarget_MI.material`, the same material `CoreMaterial_TargetPortrait` uses.
+4. Restart the client: the scheme is read only at startup.
+
+| Claim | Confidence | Basis |
+|---|---|---|
+| Stock layouts leave the portrait widget unnamed, and stock Lua never calls `createCharacterPortrait` | HIGH | Read from the client's uncooked `Content/UI/Core/Dialog/` files |
+| An undeclared material makes `createCharacterPortrait` raise and abort `initDialog` | MEDIUM | Observed in game (a first patch with an undeclared name opened no dialog window); not traced in the binary |
+| The patch above renders the speaker portrait | HIGH | In-game observation on a patched local client |
+
+This is a **client patch** (client UI files, which have no home in this repo), so shipping it to players needs a maintainer decision per [`rules-and-gotchas.md`](../../agents/rules-and-gotchas.md#scoping-a-feature-free-or-needs-a-client-patch). Diagnostic rule from this case: when players report "no dialog on screen" but the server log shows `onDialogDisplay` sent, suspect client UI Lua first.
+
+---
+
 ## Questions Investigated
 
 This finding answers four questions raised before the server-side fix for the dialog portrait/name bugs:
@@ -287,7 +313,7 @@ If (b), the server must ensure the NPC entity creation messages complete before 
 
 2. **`Event_UI_DialogSpeakerChanged` emitter**: Not fully traced. Likely fired from screen-transition logic within `DialogController` when the active screen changes and the speaker entity differs. Does not affect the main portrait path (which is driven by `UnitMappingChanged`) but may affect per-screen name updates.
 
-3. **Lua script source**: The dialog Lua script that reads `SpeakerID` and calls `createCharacterPortrait` was not recovered — it is in the game's Lua package, not the binary. The call chain above is inferred from the C++ bindings and CME event routing. The fallback-to-player-name behavior is inferred from symptom observation; the exact Lua condition (empty string? SpeakerID==0?) is not confirmed from source.
+3. **Lua script source** *(answered 2026-09-26, see [Resolution](#resolution-2026-09-26-the-stock-client-never-renders-the-portrait): the dialog Lua was recovered and never calls `createCharacterPortrait`)*: The dialog Lua script that reads `SpeakerID` and calls `createCharacterPortrait` was not recovered — it is in the game's Lua package, not the binary. The call chain above is inferred from the C++ bindings and CME event routing. The fallback-to-player-name behavior is inferred from symptom observation; the exact Lua condition (empty string? SpeakerID==0?) is not confirmed from source.
 
 4. **Screen byte `0x28 == 3` condition**: The decompiled `FUN_00d24f10` selects player vs NPC slot based on a byte at offset `0x28` of the screen record. The exact enum values are not catalogued here.
 

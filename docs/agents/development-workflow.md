@@ -11,7 +11,7 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 - [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, doc-update map, file organization.
 - [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots.
 - [`.claude/agents/`](../../.claude/agents/): sixteen domain subagents (roster below).
-- `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs. Committed on purpose.
+- `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs, and `.claude/agent-memory/main-session/`: what top-level sessions learned. Committed on purpose; see [Project memory](#project-memory).
 - [`TESTING.md`](../../TESTING.md): the test-type picker and the review gotchas.
 - [`rules-and-gotchas.md`](rules-and-gotchas.md): decisions already made and traps already hit.
 
@@ -27,7 +27,7 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 8. **Update the docs** named by the `CLAUDE.md` doc-update map, preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync.
 9. **Run the pre-PR checklist** from `CLAUDE.md`. `rust-toolchain.toml` pins the toolchain CI uses, so your clippy run is CI's.
 10. **Open the PR** with the template filled in, including what you could not test.
-11. **Commit agent memory.** If an agent wrote findings under `.claude/agent-memory/`, stage them with the change.
+11. **Commit project memory.** If a subagent or the main session wrote findings under `.claude/agent-memory/`, stage them with the change. Check the root checkout too: subagents that worked in a worktree have been seen writing their memory files into the root checkout's `.claude/agent-memory/` instead (observed through 2026-09). Rules for what belongs there: [Project memory](#project-memory).
 
 Fix warranted adjacent problems in the same pass: a file your change pushed over the 500-line cap, another instance of the bug a reviewer flagged, a doc your change made stale. Say what you fixed beyond the ask and why. Leave risky or judgment-heavy changes as a flagged follow-up.
 
@@ -61,7 +61,25 @@ Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/ag
 - **Parallel writers need isolated worktrees.** Two implementation agents in one checkout race on git state: one agent's `git checkout` reverts the other's edits. Give each its own worktree under `.claude/worktrees/` (ignored by git), with its own test database. Read-only agents do not need one. How to create one that builds is in the next section.
 - **Do not switch branches in a checkout someone else is using.** Do integration work from a dedicated worktree.
 - **Run the advisors on the model they were defined for.** They are tuned for judgment-heavy review; routing them to a smaller model to save tokens costs more in rework than it saves.
-- **Agent memory is a deliverable.** Files under `.claude/agent-memory/` are committed alongside the work that produced them. `.claude/settings.local.json` and `.mcp.json` are per-machine and are not.
+- **Agent memory is a deliverable.** Files under `.claude/agent-memory/` are committed alongside the work that produced them. `.claude/settings.local.json` and `.mcp.json` are per-machine and are not. (`settings.local.json` is still tracked by mistake; see #845.)
+
+## Project memory
+
+What agents learn lives in two tiers with different bars:
+
+| Tier | Where | What goes there | Bar |
+|---|---|---|---|
+| Project memory | `.claude/agent-memory/<agent>/` for subagents, `.claude/agent-memory/main-session/` for top-level sessions | Traps, file locations, measurements, the state of an open investigation, what an external handoff contained | Dated and sourced. Not necessarily verified end to end. |
+| Documentation | `docs/` | Confirmed behaviour, decisions, RE findings | Cited evidence per [`evidence-standards.md`](../reverse-engineering/evidence-standards.md) |
+
+Subagents with `memory: project` in their definition write to their own folder automatically. A top-level session keeps its own memory outside the repo by default, so the main-session folder is opt-in by rule. `CLAUDE.md` imports its index, which makes it load every session. Follow these rules:
+
+- **Write project and reference facts to the repo.** Anything you learned from researching or writing code that the next contributor, or their agent, would otherwise have to rediscover goes in `.claude/agent-memory/main-session/`: one fact per file, with `name`, `description` and `type` frontmatter, plus a one-line pointer in its `MEMORY.md`. Commit it with the change that produced it, or on its own if there's no change.
+- **Keep personal and machine state out.** User preferences, local absolute paths, machine-specific tool setup, and the branch, worktree or PR status of work in flight stay in your personal memory. The same goes for anything true only for your session.
+- **This repo is public.** Never write IP addresses, hostnames of private infrastructure, credentials or tokens, player or tester account names, or anyone's personal details into a memory file. Name the doc or the operator that holds them instead.
+- **Date what can go stale.** When a memory stops being true, add a dated status line rather than silently rewriting it, and reword its index line so the always-loaded index asserts nothing stale.
+- **Promote, then trim.** When a memory's claim is verified to `docs/` standard, move it into the right doc (a finding, an ADR, [`rules-and-gotchas.md`](rules-and-gotchas.md)) in the same PR, and reduce the memory to a pointer or delete it.
+- **Merge indexes, never overwrite them.** `MEMORY.md` files change often and deliberately list one file under several sections. When landing memory from another branch, apply the diff 3-way (`git diff … | git apply --3way`) and don't copy an index over or de-duplicate it.
 
 ## Builds, worktrees and test databases
 

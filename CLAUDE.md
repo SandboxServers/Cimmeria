@@ -22,6 +22,9 @@ The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agen
 - **Prefer server-authoritative changes that need no client patch.** New opcodes, wire-crypto changes, and new client UI need a maintainer decision first.
 - **Every button press gets visible feedback on the first press**, whatever the original server did.
 - **Parallel agents: one worktree each, one test database each**, and every compiling `cargo` call goes through the build lane below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
+- **Project memory is committed.** Project and reference facts you learn while researching or writing code go in `.claude/agent-memory/main-session/` (subagents use their own folder), committed with the change that produced them. Personal preferences, local paths and in-flight session state stay in your personal memory. The repo is public, so no IPs, credentials or account names. Verified facts graduate to `docs/`. Rules: [development-workflow.md § Project memory](docs/agents/development-workflow.md#project-memory).
+
+Shared project memory index, loaded every session: @.claude/agent-memory/main-session/MEMORY.md
 
 ## Build rules
 
