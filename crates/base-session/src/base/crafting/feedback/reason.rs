@@ -6,6 +6,7 @@ use cimmeria_cell_catalog::crafting::{
     CraftType, CONDITION_FEEDBACK_NOT_ENOUGH_APPLIED_SCIENCE_POINTS,
 };
 
+use crate::base::crafting::item_use::MAX_RACIAL_PARADIGM_LEVEL;
 use crate::cell::messages::CraftVerb;
 
 /// Why a crafting request was refused. A new reason needs an arm in every
@@ -98,6 +99,31 @@ pub enum CraftReject {
     /// An induction's completion transaction failed for a server-side
     /// reason and was rolled back. Nothing was used.
     InductionFailed,
+    /// A Blueprint item whose every blueprint is already known. The item is
+    /// not used.
+    BlueprintAlreadyKnown {
+        /// The item design (`resources.items.item_id`).
+        type_id: i32,
+        blueprint_ids: Vec<i32>,
+    },
+    /// A Racial Paradigm Guide for a paradigm already at the maximum level.
+    /// The item is not used.
+    ParadigmAtMax {
+        type_id: i32,
+        paradigm_id: i32,
+        paradigm: &'static str,
+        level: i8,
+    },
+    /// The used item instance is no longer the player's (used, moved away,
+    /// traded or never theirs).
+    ItemMissing { item_id: i32 },
+    /// The used item is not in a carried bag (the bank, the buyback list,
+    /// an equipment slot).
+    ItemNotCarried {
+        item_id: i32,
+        type_id: i32,
+        container_id: i32,
+    },
 }
 
 /// The values a refused rule compared, logged as fields of the `rejected`
@@ -165,6 +191,10 @@ impl CraftReject {
             CraftReject::InventoryFull { .. } => "inventory_full",
             CraftReject::NoCarriedBagForProduct { .. } => "no_carried_bag_for_product",
             CraftReject::InductionFailed => "induction_failed",
+            CraftReject::BlueprintAlreadyKnown { .. } => "already_known",
+            CraftReject::ParadigmAtMax { .. } => "paradigm_max",
+            CraftReject::ItemMissing { .. } => "item_missing",
+            CraftReject::ItemNotCarried { .. } => "not_carried",
         }
     }
 
@@ -238,6 +268,25 @@ impl CraftReject {
                 "The result cannot be placed in your bags. Nothing was used.".to_string()
             }
             CraftReject::InductionFailed => "Crafting failed. Nothing was used.".to_string(),
+            CraftReject::BlueprintAlreadyKnown { blueprint_ids, .. } => {
+                if blueprint_ids.len() == 1 {
+                    "You already know this blueprint. The item was not used.".to_string()
+                } else {
+                    "You already know these blueprints. The item was not used.".to_string()
+                }
+            }
+            CraftReject::ParadigmAtMax {
+                paradigm, level, ..
+            } => format!(
+                "Your {paradigm} racial paradigm is already at {level}, the maximum. \
+                 The guide was not used."
+            ),
+            CraftReject::ItemMissing { .. } => {
+                "That item is no longer in your inventory.".to_string()
+            }
+            CraftReject::ItemNotCarried { .. } => {
+                "Move that item to your crafting bag to use it.".to_string()
+            }
         }
     }
 
@@ -343,6 +392,48 @@ impl CraftReject {
                 required_expertise: Some(required),
                 ..Compared::default()
             },
+            CraftReject::BlueprintAlreadyKnown { type_id, .. } => Compared {
+                design_id: Some(type_id),
+                ..Compared::default()
+            },
+            CraftReject::ParadigmAtMax {
+                type_id,
+                paradigm_id,
+                level,
+                ..
+            } => Compared {
+                design_id: Some(type_id),
+                paradigm_id: Some(paradigm_id),
+                paradigm_level: Some(i32::from(level)),
+                required_level: Some(i32::from(MAX_RACIAL_PARADIGM_LEVEL)),
+                ..Compared::default()
+            },
+            CraftReject::ItemMissing { item_id } => Compared {
+                item_id: Some(item_id),
+                ..Compared::default()
+            },
+            CraftReject::ItemNotCarried {
+                item_id,
+                type_id,
+                container_id,
+            } => Compared {
+                item_id: Some(item_id),
+                design_id: Some(type_id),
+                container_id: Some(container_id),
+                ..Compared::default()
+            },
+        }
+    }
+
+    /// The blueprints an already-known refusal compared, as the
+    /// `blueprint_ids` field of the `rejected` event; `None` for every other
+    /// reason.
+    pub fn blueprints_considered(&self) -> Option<String> {
+        match self {
+            CraftReject::BlueprintAlreadyKnown { blueprint_ids, .. } => {
+                Some(format!("{blueprint_ids:?}"))
+            }
+            _ => None,
         }
     }
 
@@ -379,6 +470,10 @@ impl CraftReject {
             | CraftReject::InventoryFull { .. }
             | CraftReject::NoCarriedBagForProduct { .. }
             | CraftReject::InductionFailed => None,
+            | CraftReject::BlueprintAlreadyKnown { .. }
+            | CraftReject::ParadigmAtMax { .. }
+            | CraftReject::ItemMissing { .. }
+            | CraftReject::ItemNotCarried { .. } => None,
         }
     }
 }

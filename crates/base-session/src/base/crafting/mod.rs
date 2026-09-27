@@ -34,11 +34,13 @@
 //!   runs at completion (consume inputs, grant products, adjust
 //!   expertise), and the client updates after it.
 //! - [`rng`]: the injectable RNG the rolling verbs use.
+//! - [`item_use`]: using a Blueprint item or a Racial Paradigm Guide.
 
 pub mod allcraft;
 pub mod feedback;
 pub mod gate;
 pub mod handlers;
+pub mod item_use;
 pub mod options;
 pub mod persistence;
 pub mod request;

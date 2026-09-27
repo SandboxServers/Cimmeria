@@ -25,6 +25,9 @@ mod remove_by_type;
 mod remove_instance;
 #[cfg(test)]
 mod resync_tests;
+mod use_crafting_item;
+#[cfg(test)]
+mod use_crafting_item_tests;
 mod use_instance;
 #[cfg(test)]
 mod use_instance_tests;

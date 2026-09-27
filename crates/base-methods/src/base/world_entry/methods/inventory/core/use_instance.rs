@@ -21,6 +21,11 @@
 //! authoritative signal the move handler already uses
 //! (`item_allows_container`), so reading it here keeps both sides
 //! consistent.
+//!
+//! Crafting items (a Blueprint item or a Racial Paradigm Guide, any type
+//! with `resources.crafting_item_effects` rows) bypass `OnItemUse` too: the
+//! crafting subsystem decides the use and consumes the item in the same
+//! transaction ([`super::use_crafting_item`]).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -31,6 +36,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::super::move_::handle_move_inventory_item;
+use super::use_crafting_item::use_crafting_item;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::resources::bag_max_slots;
 use crate::base::ConnectedClientState;
@@ -111,6 +117,7 @@ pub async fn handle_use_inventory_item(
         type_id: i32,
         container_id: i32,
         is_bandolier_eligible: bool,
+        is_crafting_item: bool,
     }
     // `$3` is the canonical bandolier container id, bound from the
     // `CONTAINER_BANDOLIER` re-export rather than inlined in the SQL
@@ -120,7 +127,9 @@ pub async fn handle_use_inventory_item(
     // disagreeing.
     let row: InstanceRow = match sqlx::query_as::<_, InstanceRow>(
         "SELECT inv.type_id, inv.container_id, \
-                ($3 = ANY(ri.container_sets)) AS is_bandolier_eligible \
+                ($3 = ANY(ri.container_sets)) AS is_bandolier_eligible, \
+                EXISTS (SELECT 1 FROM resources.crafting_item_effects e \
+                        WHERE e.item_id = inv.type_id) AS is_crafting_item \
          FROM sgw_inventory inv \
          JOIN resources.items ri ON ri.item_id = inv.type_id \
          WHERE inv.character_id = $1 AND inv.item_id = $2 \
@@ -209,6 +218,24 @@ pub async fn handle_use_inventory_item(
             target_container,
             target_slot,
             1, // quantity — weapons are stack=1
+            db_pool,
+            cell_tx,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        return;
+    }
+
+    // Crafting items: the crafting use decides and consumes. `target_id`
+    // plays no part; the effect always applies to the user.
+    if row.is_crafting_item {
+        use_crafting_item(
+            entity_id,
+            player_id,
+            item_id,
+            pool,
             db_pool,
             cell_tx,
             transport,
