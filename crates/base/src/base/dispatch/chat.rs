@@ -132,6 +132,7 @@ pub(super) async fn send_player_communication_at(
                         addr,
                         player_id: c.active_player_id,
                         account_id: c.account_id,
+                        entity_id: c.player_entity_id,
                     };
                     log_exceeded(RateCategory::Chat, actor, notify, &c.rate_limits, now);
                 }
@@ -168,6 +169,7 @@ pub(super) async fn send_player_communication_at(
             %addr,
             player_id,
             account_id,
+            entity_id = player_eid,
             channel,
             text_units = text.encode_utf16().count(),
             max_units = MAX_CHAT_TEXT_UNITS,
@@ -183,6 +185,9 @@ pub(super) async fn send_player_communication_at(
     // so a flooding client must not get one INFO row per packet.
     tracing::info!(
         %addr,
+        player_id,
+        account_id,
+        entity_id = player_eid,
         speaker,
         channel,
         target = if target.is_empty() { "<none>" } else { &target },

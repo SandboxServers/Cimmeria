@@ -255,10 +255,11 @@ pub struct ConnectedClientState {
     pub active_player_id: Option<i32>,
     /// Whether this session is listed in the name index
     /// ([`player_index::OnlinePlayerIndex`]) that tells, mail notification
-    /// and duel challenges resolve names against. Set at world entry
-    /// (`play_character`) with `player_name`; cleared by `logOff` on both
-    /// variants. A session removed from the map is unlisted by definition,
-    /// so the teardown paths need no call of their own.
+    /// and duel challenges resolve names against. Set when world entry
+    /// reaches `onClientReady` (the client has created the player entity);
+    /// cleared by `logOff` on both variants. A session removed from the map
+    /// is unlisted by definition, so the teardown paths need no call of
+    /// their own.
     pub listed_online: bool,
     /// Per-category token buckets (chat, mail send, duel challenge). Dies
     /// with the session. See [`rate_limit`].

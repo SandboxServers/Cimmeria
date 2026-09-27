@@ -11,6 +11,7 @@ use super::super::chat::{
     send_player_communication_at, CHAT_BAD_CHARACTER_TEXT, CHAT_TOO_LONG_TEXT,
 };
 use super::super::*;
+use crate::base::rate_limit::{RateCategory, RateDecision};
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 use tracing::Level;
 
@@ -134,6 +135,7 @@ async fn chat_bucket_drops_sixth_line_in_one_second() {
     // Telemetry: who, and the bucket state the drop was decided on.
     assert!(event.has_field("player_id", "77"));
     assert!(event.has_field("account_id", "0"));
+    assert!(event.has_field("entity_id", &PLAYER_EID.to_string()));
     assert!(event.has_field("tokens", "0"));
     assert!(event.has_field("burst", "5"));
     assert!(event.has_field("refill_ms", "1000"));
@@ -144,15 +146,22 @@ async fn chat_bucket_drops_sixth_line_in_one_second() {
         vec!["You are sending messages too quickly."],
         "the first drop tells the player, once"
     );
-    let accepted_rows = capture
+    let accepted_rows: Vec<_> = capture
         .all()
-        .iter()
+        .into_iter()
         .filter(|c| c.level == Level::INFO && c.message_contains("sendPlayerCommunication"))
-        .count();
+        .collect();
     assert_eq!(
-        accepted_rows, 5,
+        accepted_rows.len(),
+        5,
         "the per-line INFO row logs accepted lines only, so a flood cannot flood the log"
     );
+    // Rule 5 ids on the accepted-line row too.
+    for row in &accepted_rows {
+        assert!(row.has_field("player_id", "77"));
+        assert!(row.has_field("account_id", "0"));
+        assert!(row.has_field("entity_id", &PLAYER_EID.to_string()));
+    }
 }
 
 /// The feedback for a flood is itself limited to one line per 5 seconds;
@@ -176,9 +185,10 @@ async fn chat_flood_notifies_once_per_five_seconds_and_recovers() {
         1,
         "one feedback line per 5 s, not per drop"
     );
-    assert!(capture
+    let silent = capture
         .find_event(Level::DEBUG, "notify suppressed", "bucket_empty")
-        .is_some());
+        .expect("the silent drops log at DEBUG");
+    assert!(silent.has_field("entity_id", &PLAYER_EID.to_string()));
 
     // One second later one token is back.
     h.say("after refill", t0 + Duration::from_secs(1)).await;
@@ -236,6 +246,7 @@ async fn chat_rejects_text_over_cap() {
     assert!(event.has_field("text_units", "256"));
     assert!(event.has_field("player_id", "77"));
     assert!(event.has_field("account_id", "0"));
+    assert!(event.has_field("entity_id", &PLAYER_EID.to_string()));
     assert_eq!(h.feedback(), vec![CHAT_TOO_LONG_TEXT]);
 }
 
@@ -261,6 +272,7 @@ async fn chat_rejects_forbidden_characters() {
             .find_event(Level::WARN, "chat text rules", reason)
             .unwrap_or_else(|| panic!("{text:?} must log chat.rejected reason={reason}"));
         assert_eq!(event.target, "chat");
+        assert!(event.has_field("entity_id", &PLAYER_EID.to_string()));
         assert_eq!(h.feedback(), vec![CHAT_BAD_CHARACTER_TEXT], "{text:?}");
     }
     // Ordinary non-Latin text is fine.
@@ -287,34 +299,56 @@ async fn chat_cap_counts_utf16_units() {
 }
 
 /// The public dispatch arm goes through the same gates (wiring guard for
-/// `handle_send_player_communication` itself, on the real clock).
+/// `handle_send_player_communication` itself). The arm reads the real clock,
+/// so the test never counts wall-clock refills: it empties the bucket at an
+/// instant an hour ahead, where a clock behind the bucket earns nothing, and
+/// then every dispatched line must be dropped however slow the run is.
+/// Exact timing is the explicit-clock tests' job.
 #[tokio::test]
 async fn dispatch_arm_applies_the_chat_bucket() {
     let mut h = Harness::new(0);
     let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
-    for _ in 0..10 {
+    let dispatch_say = |text: &'static str| {
         let mut payload = vec![0u8];
         crate::mercury::write_wstring(&mut payload, "");
-        crate::mercury::write_wstring(&mut payload, "hi");
-        dispatch_sgw_player_base_method(
-            sgw_player_base::SEND_PLAYER_COMMUNICATION,
-            &payload,
-            &Some("Tester".to_string()),
-            h.addr,
-            &h.dyn_transport,
-            [0; 32],
-            &h.connected,
-            &entity_manager,
-            &h.cell_tx,
-            &entity_to_addr,
-            &None,
-        )
-        .await
-        .unwrap();
+        crate::mercury::write_wstring(&mut payload, text);
+        let (transport, connected, cell_tx) = (&h.dyn_transport, &h.connected, &h.cell_tx);
+        let (entity_manager, entity_to_addr, addr) = (&entity_manager, &entity_to_addr, h.addr);
+        async move {
+            dispatch_sgw_player_base_method(
+                sgw_player_base::SEND_PLAYER_COMMUNICATION,
+                &payload,
+                &Some("Tester".to_string()),
+                addr,
+                transport,
+                [0; 32],
+                connected,
+                entity_manager,
+                cell_tx,
+                entity_to_addr,
+                &None,
+            )
+            .await
+            .unwrap();
+        }
+    };
+
+    // A full bucket lets a line through the arm.
+    dispatch_say("before").await;
+    // Empty it where the real clock cannot catch up.
+    {
+        let later = Instant::now() + Duration::from_secs(3600);
+        let mut clients = h.connected.lock().unwrap();
+        let limits = &mut clients.get_mut(&h.addr).unwrap().rate_limits;
+        while limits.check(RateCategory::Chat, later) == RateDecision::Allowed {}
     }
-    // Ten back-to-back calls take far less than a second; at most one token
-    // can have come back.
-    let n = h.forwarded().len();
-    assert!((5..=6).contains(&n), "forwarded {n} of 10");
+    for _ in 0..3 {
+        dispatch_say("after").await;
+    }
+    assert_eq!(
+        h.forwarded(),
+        vec!["before".to_string()],
+        "the arm must consult the chat bucket"
+    );
 }

@@ -1,8 +1,8 @@
 //! SS-00: the online name index across world entry and reanchor.
 //!
-//! World entry (`play_character`) is what lists a character; reanchor keeps
-//! the session, its name and its `player_id`, so the listing must survive
-//! it, exactly once. The session-removing teardowns are guarded in
+//! World entry lists a character at `onClientReady`, not at
+//! `play_character`. Reanchor keeps the session, its name and its
+//! `player_id`, so the listing must survive it, exactly once. The session-removing teardowns are guarded in
 //! `cimmeria-base-session` (`player_index::tests`), logoff in `cimmeria-base`
 //! and the gate-travel abandon in `gate_travel::tests`.
 
@@ -17,14 +17,19 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
+use super::handle_on_client_ready;
 use super::play_character::handle_play_character;
 use super::reanchor_player::handle_reanchor_player;
+use crate::base::PendingClientReadyInfo;
 use crate::cell::messages::BaseToCellMsg;
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 
-/// `playCharacter` (no-DB path) lists the character under its name.
-/// Regression shape: drop `listed_online = true` from the world-entry store
-/// block and every tell or duel challenge finds nobody online.
+/// World entry lists the character at `onClientReady`, not at
+/// `playCharacter`: until the client has created its player entity a tell or
+/// duel challenge must not find it (Copilot on #880). Regression shapes:
+/// the listing moved back to `play_character` (the pre-ready assertions
+/// fail), dropped from `handle_on_client_ready` (the post-ready ones fail),
+/// or a gate-travel re-run of `onClientReady` logging a second insert.
 #[tokio::test]
 async fn play_character_lists_the_character_in_the_online_index() {
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
@@ -34,9 +39,17 @@ async fn play_character_lists_the_character_in_the_online_index() {
         test_default_connected_client_state(),
     )])));
     let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
     let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = None;
     const PLAYER_ID: i32 = 7;
     let capture = LogCapture::install();
+    let inserts = || {
+        capture
+            .all()
+            .into_iter()
+            .filter(|c| c.target == "online_index" && c.has_field("event", "online_index.insert"))
+            .collect::<Vec<_>>()
+    };
 
     handle_play_character(
         &transport,
@@ -58,6 +71,40 @@ async fn play_character_lists_the_character_in_the_online_index() {
         .expect("world entry names the session");
     assert_eq!(
         lookup_online(&connected, &name),
+        NameLookup::NotFound,
+        "not listed before the client is ready"
+    );
+    assert!(inserts().is_empty(), "no insert before client-ready");
+
+    // mapLoaded stages the finalization; onClientReady consumes it.
+    let stage_client_ready = || {
+        let mut clients = connected.lock().unwrap();
+        let c = clients.get_mut(&addr).unwrap();
+        c.pending_client_ready = Some(PendingClientReadyInfo {
+            entity_id: c.player_entity_id.expect("world entry sets the entity id"),
+            player_id: PLAYER_ID,
+            world_name: "CombatSim".to_string(),
+            appearance_args: Vec::new(),
+            tint_args: Vec::new(),
+            first_login: 0,
+        });
+    };
+    let client_ready = || {
+        handle_on_client_ready(
+            addr,
+            [0u8; 32],
+            &connected,
+            &cell_tx,
+            &transport,
+            &entity_to_addr,
+            &None,
+        )
+    };
+    stage_client_ready();
+    client_ready().await.expect("no-DB client-ready returns Ok");
+
+    assert_eq!(
+        lookup_online(&connected, &name),
         NameLookup::Found(OnlinePlayer {
             addr,
             player_id: PLAYER_ID
@@ -72,16 +119,30 @@ async fn play_character_lists_the_character_in_the_online_index() {
         "and by case fold"
     );
     // Telemetry: one DEBUG `online_index.insert` with the ids and the path.
-    let inserted: Vec<_> = capture
-        .all()
-        .into_iter()
-        .filter(|c| c.target == "online_index" && c.has_field("event", "online_index.insert"))
-        .collect();
+    let inserted = inserts();
     assert_eq!(inserted.len(), 1);
     assert!(inserted[0].has_field("path", "world_entry"));
     assert!(inserted[0].has_field("player_id", "7"));
     let account_id = connected.lock().unwrap()[&addr].account_id;
     assert!(inserted[0].has_field("account_id", &account_id.to_string()));
+
+    // Gate travel re-runs mapLoaded / onClientReady for a character that is
+    // still listed: still one listing, and no second insert event.
+    stage_client_ready();
+    client_ready()
+        .await
+        .expect("second client-ready returns Ok");
+    assert_eq!(
+        OnlinePlayerIndex::new(&connected.lock().unwrap())
+            .entries()
+            .count(),
+        1
+    );
+    assert_eq!(
+        inserts().len(),
+        1,
+        "an already-listed character is not re-inserted"
+    );
 }
 
 /// A reanchor (respawn) re-creates the client's pawn on the same session:

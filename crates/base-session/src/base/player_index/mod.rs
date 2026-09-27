@@ -13,7 +13,10 @@
 //!
 //! The flag is what the two in-session transitions change:
 //!
-//! - world entry (`play_character`) sets it with the character name;
+//! - world entry sets it at `onClientReady` (`handle_on_client_ready`), once
+//!   the client has created the player entity; `play_character` names the
+//!   session but does not list it, so a tell or challenge cannot address an
+//!   entity the client does not know yet;
 //! - `logOff` clears it on both variants. A full exit keeps the session (and
 //!   `player_name`) until the client's disconnect reaps it, but the
 //!   character has already left the world, so it must not be reachable.

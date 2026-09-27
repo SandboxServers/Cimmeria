@@ -134,6 +134,14 @@ pub async fn handle_on_client_ready(
             // without trusting any client byte (#475 / CAT-N-03).
             Some(c) => {
                 let pending = c.pending_client_ready.take();
+                // The client has created its player entity: list it in the
+                // online name index (tells, duel challenges) until logOff or
+                // teardown. Only a pending finalization lists, and only once:
+                // gate travel re-runs this step for a character still listed.
+                if pending.is_some() && !c.listed_online {
+                    c.listed_online = true;
+                    cimmeria_base_session::base::player_index::log_listed(addr, c, "world_entry");
+                }
                 let aoi_hold = pending
                     .as_ref()
                     .filter(|p| p.first_login != 0)

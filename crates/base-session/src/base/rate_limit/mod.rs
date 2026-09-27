@@ -117,6 +117,9 @@ pub struct RateActor {
     pub addr: SocketAddr,
     pub player_id: Option<i32>,
     pub account_id: u32,
+    /// The session's player entity, so a drop joins the entity-scoped
+    /// activity stream (instrumentation-discipline rule 5).
+    pub entity_id: Option<u32>,
 }
 
 /// Log a dropped action as `rate_limit.exceeded` and count it.
@@ -148,6 +151,7 @@ pub fn log_exceeded(
     let addr = actor.addr;
     let player_id = actor.player_id;
     let account_id = actor.account_id;
+    let entity_id = actor.entity_id;
     if notify {
         tracing::warn!(
             target: "rate_limit",
@@ -156,6 +160,7 @@ pub fn log_exceeded(
             %addr,
             player_id,
             account_id,
+            entity_id,
             tokens,
             burst,
             refill_ms,
@@ -172,6 +177,7 @@ pub fn log_exceeded(
             %addr,
             player_id,
             account_id,
+            entity_id,
             tokens,
             burst,
             refill_ms,
