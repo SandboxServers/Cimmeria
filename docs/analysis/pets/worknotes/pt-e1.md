@@ -163,5 +163,5 @@ shown, is directly re-checkable in Ghidra by anyone who doubts it.
   `pet-client-contract.md`; fixed `pet-wire-formats.md`'s two INT8 errors and
   `pet-restoration.md`'s "idx 0/1/2" line; added the SGWPet table to
   `client-method-dispatch-table.md`; updated both `docs/reverse-engineering/` README index files
-  (73→74 docs). Wrote this worknote. `cargo fmt`/`clippy`/build/test were not run — no Rust
+  (summary counts corrected to 78 docs after the Copilot review; the directory holds 78 findings). Wrote this worknote. `cargo fmt`/`clippy`/build/test were not run — no Rust
   changed. Committed and pushed.

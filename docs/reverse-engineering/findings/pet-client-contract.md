@@ -142,11 +142,11 @@ could ever see fire on a `SGWPet` entity.
 
 `GamePet__ctor` (`0x00d39cb0`) zero-initializes the object, then sets three specific bytes:
 `this+0x170 = 1` (unconditional — a constant "IsPet" type marker, always true from
-construction; **not** a wire-driven readiness flag, correcting the byte-offset transcription
-in `pet-restoration.md`'s Ghidra-annotations section, which read this field as offset `0x5c`
-— that number is `param_1[0x5c]` in `undefined4*` pointer arithmetic, i.e. byte offset `0x5c*4
-= 0x170`, not raw byte `0x5c`), `this+0x171 = 0`, `this+0x172 = 0xff`... no —
-precisely: ctor sets `+0x171 = 0`, `+0x172 = 0`, `+0x173 = 0xff` (the `+0x173` byte is the
+construction; **not** a wire-driven readiness flag. This corrects the byte-offset transcription
+in the campaign's static-RE note (`docs/analysis/pets/research/client-static-re.md` §A), which
+listed this field as `[0x5c] = 1`: that number is `param_1[0x5c]` in `undefined4*` pointer
+arithmetic, i.e. byte offset `0x5c*4 = 0x170`, not raw byte `0x5c`). The ctor also sets
+`+0x171 = 0`, `+0x172 = 0` and `+0x173 = 0xff` (the `+0x173` byte is the
 pet's *cached current stance*, updated later by `GamePet__OnPetStanceUpdateChanged`; `0xff`
 read as a signed `INT8` is `-1`, a "no stance yet" sentinel).
 

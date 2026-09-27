@@ -23,7 +23,7 @@ Ctor field layout (fastcall, `param_1` = `this`):
 
 ```text
 *param_1 = GamePet::vftable
-[0x5c]  = 1        (byte — likely "IsPet"/type-discriminator; needs confirmation)
+[0x5c]  = 1        (dword index into param_1, i.e. byte +0x170: the constant "IsPet" marker; see pet-client-contract.md §2.3)
 [0x171] = 0        (stance-related, matches pet-restoration.md's noted init bytes)
 [0x172] = 0
 [0x173] = 0xff
