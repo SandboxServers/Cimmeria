@@ -36,6 +36,7 @@ pub mod gm_feedback;
 pub mod gm_spawn;
 pub mod helpers;
 pub mod mutes;
+pub mod organization;
 pub mod outbox;
 pub mod player_index;
 pub mod rate_limit;
