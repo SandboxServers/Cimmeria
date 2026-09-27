@@ -561,9 +561,12 @@ summons a pet. It rides the ordinary cast of decision 21, with three diversions 
 - **Fire.** `fire::fire_cast` diverts to `fire_summon` before any ammo, channel or damage
   step. `fire_summon` re-checks that the pet can be spawned before it touches the current
   pet (caster alive, in a space, template cached). A refusal plays `Ability_Interrupt` and
-  sends the feedback pair, and the cooldown stays charged. Otherwise it plays `Ability_End`
-  and despawns the owner's oldest pets down to `max_active - 1` (D-PT04), counting every pet
-  the owner has. Then it calls `spawn_pet_from_template` and queues the target VFX.
+  sends the feedback pair, and the cooldown stays charged. Otherwise it calls
+  `spawn_pet_from_template` first. A spawn that still fails answers exactly like a refusal
+  (`Ability_Interrupt`, the feedback pair, the cooldown stays charged), and the owner keeps
+  its current pet. A spawn that succeeds plays `Ability_End`, despawns the owner's oldest
+  pets down to `max_active - 1` (D-PT04, counting every pet the owner had before the spawn),
+  and queues the target VFX.
 
 The summon's phase sequences carry TargetID = caster, as python's
 `targetId or ent.entityId` did. The target VFX is event set 1122 `Effect_Init` (2000),

@@ -68,7 +68,7 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 
 - The cast is an ordinary cast. It has the 6 s warmup, which `speedPet` shortens for `SpeedPet` abilities (D-PT10). The cooldown is charged at launch. Moving, dying or changing space during the warmup cancels it, and a cancelled warmup spawns nothing.
 - The client's target is ignored. Any other self-targeted ability is still refused by the #444 gate.
-- When the warmup ends, the caster plays the summon effect (2292). A second summon despawns the current pet first (D-PT04). The new pet appears 2 u behind the owner.
+- When the warmup ends, the new pet appears 2 u behind the owner and the caster plays the summon effect (2292). A second summon then despawns the previous pet (D-PT04). If the spawn fails, the cast plays as interrupted and the previous pet stays.
 - The ground effect (2293) plays at the pet once the owner's client has created the pet.
 - A summon that cannot spawn gets an `onErrorCode` and a chat line: "Your pet could not be summoned." (or "You have not trained that summon."). No cooldown is charged when this happens at the press.
 - The Jaffa, Prime and Lo'taur rows follow in PT-11. The `.pet` console is PT-07.
