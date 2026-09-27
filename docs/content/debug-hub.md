@@ -7,14 +7,14 @@ last_updated: 2026-09-27
 
 # Stasis-Room Debug Hub
 
-Eight NPCs in the Castle_CellBlock stasis room let a tester exercise one server
+Twelve NPCs in the Castle_CellBlock stasis room let a tester exercise one server
 system each from a single spot. A second group along the opposite wall, four
 crafting stations and a crafting supplies vendor, covers crafting (see
 [Crafting corner](#crafting-corner)). The stasis room is where every new character
 wakes up, so the hub is reachable a few seconds after character creation, with
 no travel and no mission state.
 
-All eight are ordinary seeded spawns. Every player sees them. This was an owner
+All twelve are ordinary seeded spawns. Every player sees them. This was an owner
 decision (2026-09-26): `spawnlist` has no dev or enabled column, and the owner
 chose visible-to-all over gating. Compare Harset packet H13, which deleted the
 old debug NPCs (templates 23 and 25) from the Harset gate plaza because they
@@ -41,6 +41,8 @@ a new character appears.
 | 431 | 331 | `DebugHub_CommandRegistrar` | Organization Registrar | (-330.04, 73.47, -232.48) | -0.5276 |
 | 450 | 360 | `DebugHub_PetTrainer` | Goa'uld Advanced Skills | (-328.08, 73.47, -237.07) | -0.4698 |
 | 470 | 370 | `DebugHub_Banker` | Storage Officer | (-325.92, 73.47, -231.18) | -1.0739 |
+| 471 | 371 | `DebugHub_TeamBanker` | Storage Officer | (-327.65, 73.47, -228.09) | -1.4294 |
+| 472 | 372 | `DebugHub_CommandBanker` | Storage Officer | (-325.84, 73.47, -224.74) | -1.9148 |
 | 490 | 390 | `DebugHub_MailClerk` | Sgt. Harriman | (-324.11, 73.47, -227.84) | -1.5123 |
 
 The pet trainer (pets campaign PT-07) takes the next slot on the line after the
@@ -68,10 +70,26 @@ further into the room, level with it. The pair is 3.0 units apart, at least
 from the respawner. Their ids come from the organizations block (templates
 330-349, spawns 430-449).
 
+The Team and Command Bankers (bank campaign BV-10a) stand in a second row, 6
+units in from the B-C wall, because that wall's line is full from corner B to
+the mail clerk. Each stands in the gap between two wall NPCs, so none hides
+another from the room centre: the Team Banker between the Storage Officer and
+the mail clerk (11.1 units along the wall from B), the Command Banker past the
+mail clerk (14.9 along). The Team Banker is 3.55 units from the Storage Officer
+and from the mail clerk, 3.8 from the Command Banker, 5.0 from the Command
+registrar and 6.6 from the respawner. The Command Banker is 3.55 from the mail
+clerk, 6.4 from the Storage Officer, 3.5 from the C-D exit wall and 9.0 from
+the respawner. Their ids come from the bank block.
+
 The names are monikers the client PAK already ships. A new `texts.sql` id
 cannot render, so the templates reuse existing ones. No shipped moniker says
 "Pet Trainer", so template 360 shows "Goa'uld Advanced Skills" (8000). The
-Banker uses the Omega Site banker's own name, "Storage Officer" (29462). No
+Banker uses the Omega Site banker's own name, "Storage Officer" (29462), and so
+do the Team and Command Bankers: no shipped moniker names a Team or Command
+banker. Their bodies tell the three apart. The Storage Officer is the woman in
+SGC uniform, the Team Banker wears the Cellblock guards' SGC uniform (template
+15, without the pistol) and the Command Banker the plain crew clothes of the
+crafting supplies vendor (template 314). No
 shipped moniker says "Mail Clerk", so template 390 shows "Sgt. Harriman"
 (26715), with Walter Harriman's SGC_W1 look (template 58). The dialog and the
 mail's sender name say "Gate Mail Clerk". Both registrars use the Omega Site
@@ -244,6 +262,51 @@ Right-click opens your personal vault (`onVaultOpen`).
   drags items in from the main bag once BV-03 lands. See
   [commands.md](../commands.md#dev-console--commands).
 
+### Team and Command Bankers (templates 371 and 372)
+
+Right-click the Team Banker to open your Team's vault (`onTeamVaultOpen`), or
+the Command Banker to open your Command's (`onCommandVaultOpen`). If you are in
+no Team (or no Command), a line says so and nothing opens.
+
+- Tests the org vault open round trip: the cell asks the base, the base checks
+  your membership under the organization lock and sends the vault's size and
+  contents, and the cell opens the window pinned to this Banker. Then the
+  moves in, out and within the vault, which check your rank's bank bits on
+  every move, and the fan-out to the other online members.
+- The click routes to the org vault because the template carries
+  `INT_Banker` (2) with `vault_scope` `team` (371) or `command` (372).
+  Nothing else on either template answers a click first, and both are
+  faction 1 and cannot die.
+- Opening needs no bank bit: every member may look. Depositing needs
+  `DepositBank`, which every default rank holds. Withdrawing needs
+  `WithdrawBank`, which only the Leader holds by default (D-ORG21).
+- The Team vault is 40 slots until the Team buys more (BV-09). The Command
+  vault is always 100.
+
+To test you need a Team or a Command, and for most checks a second character:
+
+1. Found one at the registrars (spawns 430 and 431), or as a GM type
+   `.org_create team <name>` or `.org_create command <name>`. You lead it, and
+   the Leader holds every bit.
+2. Find its id with `.org_info` (it also shows each rank's permission mask in
+   hex) or `.org_list`.
+3. Put a second, online character in it with `.org_join <orgId> <name>`. It
+   joins at the entry rank (Team Member, Command Initiate), which can deposit
+   but not withdraw.
+4. To let that rank withdraw, add `WithdrawBank` (0x20000) to its mask with
+   `.org_set_perms <orgId> <rank> <mask>`, where `<mask>` is the mask
+   `.org_info` shows plus 0x20000. `.org_rank <name> <rank> [orgId]` moves a
+   member to another rank.
+5. To deposit, use anything carried that the personal vault would take and
+   that is not bound. The crafting supplies vendor sells stackable items at 1
+   naquadah each; they land in the crafting bag, which is a valid source.
+6. `.org_disband <orgId>` is refused while the vault holds anything. Empty it
+   first.
+
+See [commands.md](../commands.md#command-families) for the `.org_*` commands
+and [inventory-system.md](../gameplay/inventory-system.md#moving-items-in-and-out-of-a-team-or-command-vault)
+for every move rule and refusal reason.
+
 ## Crafting corner
 
 Four crafting stations and a crafting supplies vendor stand along the room's
@@ -388,7 +451,7 @@ opens with you as its leader, and a line says the organization was founded.
 | Mail (partly) | The Gate Mail Clerk covers receiving a mail and taking its cash and item. Sending mail, postage, COD, return and expiry need a sender, not an NPC: send from the mail window to a second character, or as a GM use `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>]`, `.mailbox [name]` and `.mail_expire <mailId>`, which expires a mail at once and says whether it was returned, deleted or quarantined ([commands.md](../commands.md#command-families)). The two-player checks are SS-UAT steps 1-6 ([work-packets.md](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release)). |
 | Chat | Tells and ignore need a second player; an NPC does not chat. Alone you can still check the refusals: a tell to your own name ("You cannot send a tell to yourself.") or to an offline name, and the flood limit (paste ten lines into say). As a GM, `.mute <name> <minutes>` and `.unmute <name>` mute a player, and `.announce` (or `/gmshout`) broadcasts ([commands.md](../commands.md#command-families)). The two-player checks are SS-UAT steps 7-10. |
 | Duels | A duel needs a second player. Alone, run `sparbot`, a second account that accepts every challenge and forfeits after a set time ([wireclient.md](../architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing)). As a GM, `.duel_status [name]` shows a duel's stage and `.duel_end <name>` ends it. The duel checks are SS-UAT steps 11-13. |
-| Bank (partly) | The Banker (template 370) opens the personal vault. Moving items into and out of it is the bank campaign's BV-03, the vault-size purchase BV-05, and the Squad, Team and Command vaults BV-07 ([docs/analysis/bank-vault/](../analysis/bank-vault/README.md), [gap-analysis.md §23](../gap-analysis.md)). No hub NPC is an organization Banker: those need an organization, which the hub cannot give a new character. |
+| Bank (partly) | The Banker (template 370) opens the personal vault, and the Team and Command Bankers (371 and 372) open the vaults of a character's Team and Command. A new character belongs to neither, so found one first (see [Team and Command Bankers](#team-and-command-bankers-templates-371-and-372)); withdraw permissions and the fan-out need a second character. There is no Squad vault Banker. Org cash (BV-08) and the Team vault purchase (BV-09) are separate packets ([docs/analysis/bank-vault/](../analysis/bank-vault/README.md), [gap-analysis.md §23](../gap-analysis.md)). |
 | Guilds / organizations (partly) | The registrars (templates 330 and 331) found a Team or a Command. Inviting, ranks, texts and organization chat need a second player and later organizations packets ([docs/analysis/organizations/](../analysis/organizations/README.md), [gap-analysis.md §23](../gap-analysis.md)). |
 | Black market | Known missing on `main` ([gap-analysis.md §25](../gap-analysis.md)). |
 | Crafting verbs | The [crafting corner](#crafting-corner) gives stations and supplies. Whether each verb works depends on the crafting campaign's progress ([gap-analysis.md §19](../gap-analysis.md)). |
@@ -399,8 +462,8 @@ opens with you as its leader, and a line says the organization was founded.
 
 | What | Where |
 |---|---|
-| Templates 300-304, 330, 331, 360, 370, 390 | `db/resources/Entities/Seed/entity_templates.sql` |
-| Spawns 400-404, 430, 431, 450, 470, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
+| Templates 300-304, 330, 331, 360, 370-372, 390 | `db/resources/Entities/Seed/entity_templates.sql` |
+| Spawns 400-404, 430, 431, 450, 470-472, 490 | `db/resources/Worlds/Seed/spawnlist.sql` |
 | Trainer list 350 | `db/resources/Abilities/Seed/trainer_ability_lists.sql`, `trainer_abilities.sql` |
 | Chains 7001-7005, 7010-7011 | `db/resources/Content/Seed/debug_hub_chains.sql` |
 | Dialogs 60100-60104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `QUARANTINED_DIALOG_OVERRIDES` (not served) |
@@ -412,8 +475,9 @@ opens with you as its leader, and a line says the organization was founded.
 | Registrar recognition | `registrar_type` in `crates/cell-interactions/src/cell/interactions/org_registrar.rs` |
 
 Every seed row is commented `NEW CONTENT (debug hub)`, except the pet
-trainer's, which are commented `Pets campaign, PT-07`, and the Banker's,
-commented `Bank and Vault campaign, BV-04`, and the mail clerk's,
+trainer's, which are commented `Pets campaign, PT-07`, the Banker's,
+commented `Bank and Vault campaign, BV-04`, the Team and Command Bankers',
+commented `BV-10a`, and the mail clerk's,
 commented `Social-systems campaign, SS-U3`, and the registrars',
 commented `Organizations campaign, ORG-05`. The `trainer_abilities`
 rows carry no comment: that file is regenerated by
@@ -426,8 +490,10 @@ hub, crafting)`.
 | Guard | What it pins |
 |---|---|
 | `cell-catalog` `spawner/tests/live_db_debug_hub.rs` | Role columns of each template; spawns (the mail clerk's 490 included) inside Region1, on the floor, at least 5 units from the respawner and 2.5 from every other spawn in the room; the crate's ability set is exactly `[710]` and deals no damage; trainer list 1; vendor lists and loot table 3 name real items, the naquadah row and at least one item row at probability 1 and every row able to drop; the guides and the blueprint item drop once each, quantity 1, below certain, and each is a `{17,15}` item with a crafting effect; dialog screens and buttons, and neither dialog is a monologue |
-| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and, when dead, carries every certain table-3 row and nothing outside the table, and shows its loot; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself; each registrar asks the base about its own type |
+| `cell-methods` `interaction/debug_hub_dispatch_tests.rs` | Each NPC, spawned from its real row, answers a right-click with its own interaction (the mail clerk's dialog included); the crate reroutes to an attack while alive and, when dead, carries every certain table-3 row and nothing outside the table, and shows its loot; respec passes at the hub trainer and is refused at the vendor; the pet trainer opens list 350 for a Goa'uld and an empty list for anyone else; the Banker opens the personal vault, pinned to itself; each registrar asks the base about its own type; each org Banker asks the base for its own vault type |
 | `cell-catalog` `spawner/tests/live_db_debug_registrars.rs` | Templates 330 and 331 are a Team and a Command registrar and nothing else: exactly `INT_Organization` and their own registrar set, a shipped name, no trainer or vendor list, not faction 10; they are the only registrar templates; spawns 430 and 431 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
+| `cell-catalog` `spawner/tests/live_db_debug_org_bankers.rs` | Templates 371 and 372 are a Team and a Command Banker and nothing else: exactly `INT_Banker`, `vault_scope` `team` and `command`, a shipped name, no trainer list or vendor lists, not faction 10; spawns 471 and 472 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
+| `services` `bank_org_round_trip_tests.rs` | Spawned from their real rows and clicked through the cell's dispatcher, the base's cell dispatch against the live database, and the cell's grant: a member gets exactly 107 (Team) or 108 (Command) and a session naming the organization; a character in no organization gets `org_vault_open_rejected reason=not_in_org` and its line; a Team-only character is refused by the Command Banker |
 | `cell-catalog` `spawner/tests/live_db_debug_banker.rs` | Template 370 is a personal Banker and nothing else: exactly `INT_Banker`, `vault_scope = 'personal'`, a shipped name, no trainer list or vendor lists, not faction 10; spawn 470 inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-catalog` `spawner/tests/live_db_pet_trainer.rs` | Template 360's role columns and name; spawn 450 inside Region1, on the floor, clear of the respawner and the other hub NPCs; list 350 keyed to the Goa'uld only, with exactly the six pet nodes, each a Goa'uld tree node |
 | `cell-catalog` `spawner/tests/live_db_mail_clerk.rs` | Template 390's role columns and name; dialog 60104 is one clerk screen with one Generic 1 button, and not a monologue |
