@@ -7,9 +7,9 @@
 
 | Packet | Status | PR | Notes |
 |---|---|---|---|
-| Plan | Review | (this PR) | The ledger, and two doc bugs fixed (audit §3) |
-| BV-01 | Ready | | Capacity, the allowlist, and #798 |
-| BV-E1 | Ready | | Client evidence |
+| Plan | Review | #860 | The ledger, and two doc bugs fixed (audit §3) |
+| BV-01 | Writing | | Worktree `bank-bv01`, branch `bank/bv01-capacity-allowlist` | Capacity, the allowlist, and #798 |
+| BV-E1 | Writing | | Worktree `bank-bve1`, branch `bank/bve1-client-evidence` | Client evidence |
 | BV-02 to BV-06 | BlockedDependency | | The personal bank, ending with release 1 |
 | BV-07 to BV-10 | BlockedDependency or BlockedDecision | | The org vaults, waiting on cimmeria-fa ORG-02 and ORG-07 |
 

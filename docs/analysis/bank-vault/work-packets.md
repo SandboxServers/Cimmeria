@@ -90,7 +90,7 @@ The coordinator merges these one packet at a time, and tells the named campaign 
 
 ## BV-01 capacity and the player-movable allowlist
 
-**Status: Ready.** Audit rows A-20, A-21, A-22, A-29 and A-31; decisions D-BV06, D-BV07 and D-BV17.
+**Status: Writing** (worktree `bank-bv01`). Audit rows A-20, A-21, A-22, A-29 and A-31; decisions D-BV06, D-BV07 and D-BV17.
 
 Scope:
 
@@ -113,7 +113,7 @@ Docs to update: `docs/gameplay/inventory-system.md` (the capacity source), `TEST
 
 ## BV-E1 client evidence
 
-**Status: Ready.** Read-only. The writer is `game-archaeology-specialist`. Audit rows A-02, A-09 and A-12.
+**Status: Writing** (worktree `bank-bve1`). Read-only. The writer is `game-archaeology-specialist`. Audit rows A-02, A-09 and A-12.
 
 Answer, with Ghidra addresses and Lua lines, in `docs/reverse-engineering/findings/bank-vault-client.md`, and index it:
 
