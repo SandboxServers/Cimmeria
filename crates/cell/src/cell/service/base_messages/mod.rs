@@ -15,6 +15,7 @@
 //! - [`minigame`] — `MinigameResult`
 //! - [`gm_spawn`] — `GmSpawnNpcReady`
 //! - [`request_entity_update`] — `RequestEntityUpdate`
+//! - [`org`] — `Org` (organization traffic; logged no-ops until ORG-03)
 
 use tokio::sync::mpsc;
 
@@ -33,6 +34,7 @@ mod lab_query;
 pub(in crate::cell::service) mod lifecycle;
 mod minigame;
 mod movement;
+mod org;
 pub(crate) mod player_init;
 mod request_entity_update;
 mod respec;
@@ -467,5 +469,7 @@ pub(super) async fn handle_base_message(
             )
             .await;
         }
+
+        BaseToCellMsg::Org(org_msg) => org::handle(org_msg),
     }
 }

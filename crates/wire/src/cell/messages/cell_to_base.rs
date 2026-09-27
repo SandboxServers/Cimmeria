@@ -1,6 +1,7 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
 use super::data::{MailOp, NpcAoIData, PlayerAoIData};
+use super::org_cell_to_base::OrgCellToBase;
 use crate::crafting::CraftRequest;
 
 /// Messages sent from CellApp to BaseApp.
@@ -790,4 +791,9 @@ pub enum CellToBaseMsg {
         p2_item_instance_ids: Vec<i32>,
         p2_cash: i32,
     },
+
+    /// Organization traffic (Squads, Teams, Commands). One nested enum, so
+    /// organization packets add variants in `org_cell_to_base.rs` instead
+    /// of here (work-packets.md § Messages).
+    Org(OrgCellToBase),
 }

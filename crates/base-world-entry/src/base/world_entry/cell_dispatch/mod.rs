@@ -16,6 +16,7 @@
 //! - [`progression_dispatch`]  — mission / grant / console / spawn / mail /
 //!   minigame arms
 //! - [`gate_teleport_dispatch`] — gate-travel / reanchor / teleport arms
+//! - [`org_dispatch`]          — organization (`CellToBaseMsg::Org`) arms
 //!
 //! Pure helpers shared by the arm modules still live in their own siblings:
 //!
@@ -43,6 +44,7 @@ mod deferred_flush;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod minigame;
+mod org_dispatch;
 mod player_ghost;
 mod position;
 mod progression_dispatch;
@@ -176,5 +178,7 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::PersistPosition { .. }
         | CellToBaseMsg::RefreshAppearance { .. }
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,
+
+        CellToBaseMsg::Org(org) => org_dispatch::route(org, &ctx).await,
     }
 }

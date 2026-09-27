@@ -51,6 +51,7 @@ mod cinematic_hold_gate;
 mod crafting_arm;
 mod fallible_handlers;
 mod gm_grant_arms;
+mod org_arms;
 mod passthrough;
 mod two_player_visibility;
 mod witness_broadcast;
