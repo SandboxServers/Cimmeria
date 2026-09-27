@@ -52,7 +52,6 @@ impl CellService {
             vec![]
         };
 
-
         // Ability definitions load before the startup spawn: each NPC's
         // `spawner.npc_behaviour` row reads its abilities' event sets from
         // them (NA44), and without them every startup NPC logged 0.

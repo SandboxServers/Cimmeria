@@ -11,7 +11,7 @@ use cimmeria_entity::cell_entity::CellEntity;
 use crate::cell::space_manager::SpaceManager;
 
 /// The entity's known ability ids, sorted so rows compare across spawns.
-pub(crate) fn sorted_ability_ids(e: &CellEntity) -> Vec<i32> {
+pub fn sorted_ability_ids(e: &CellEntity) -> Vec<i32> {
     let mut ids = e.abilities.known_ability_ids();
     ids.sort_unstable();
     ids
@@ -21,7 +21,7 @@ pub(crate) fn sorted_ability_ids(e: &CellEntity) -> Vec<i32> {
 /// same order. `0` means the ability has no event set (NULL in the seed) or
 /// its definition is not loaded; either way the attack sends no `onSequence`
 /// and the client shows damage with no fire animation.
-pub(crate) fn ability_event_set_ids(space_mgr: &SpaceManager, ability_ids: &[i32]) -> Vec<i32> {
+pub fn ability_event_set_ids(space_mgr: &SpaceManager, ability_ids: &[i32]) -> Vec<i32> {
     ability_ids
         .iter()
         .map(|id| {
@@ -38,7 +38,7 @@ pub(crate) fn ability_event_set_ids(space_mgr: &SpaceManager, ability_ids: &[i32
 /// `weapon_visual` (the active bandolier slot). NPCs never set that field:
 /// their weapon is one of the template `components` (`WP-Human.WP_SMG_1A`),
 /// so fall back to the first `WP` component. Empty when it holds nothing.
-pub(crate) fn weapon_visual(e: &CellEntity) -> String {
+pub fn weapon_visual(e: &CellEntity) -> String {
     e.weapon_visual
         .clone()
         .or_else(|| {

@@ -7,8 +7,8 @@
 use cimmeria_entity::abilities::AbilityDef;
 use tracing::Level;
 
-use crate::cell::space_manager::SpaceManager;
 use crate::cell::space_manager::spawn_npcs_from_records;
+use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::SpawnRecord;
 use crate::test_support::LogCapture;
 
@@ -116,25 +116,4 @@ fn spawn_behaviour_row_names_the_world_the_abilities_and_the_weapon() {
         "aligned with ability_ids; 0 = cannot animate"
     );
     assert!(row.has_field("weapon_visual", "WP-Human.WP_SMG_1A"));
-}
-
-/// The startup spaces spawn their NPCs inside `CellService::start`, which
-/// used to load the ability definitions only afterwards, so every startup
-/// NPC's `event_set_ids` read 0 (Castle's guards included). The start-up
-/// sequence needs a database and a message loop, so this pins the order in
-/// the source instead. Revert proof: move the `load_ability_defs` block back
-/// below `spawn_npcs_from_records` and this fails.
-#[test]
-fn spawn_behaviour_row_ability_defs_load_before_the_startup_spawn() {
-    let src = include_str!("../../service/startup.rs");
-    let defs = src
-        .find("spawner::load_ability_defs(")
-        .expect("startup loads ability defs");
-    let spawn = src
-        .find("spawner::spawn_npcs_from_records(")
-        .expect("startup spawns NPCs");
-    assert!(
-        defs < spawn,
-        "ability defs must be loaded before the startup NPC spawn"
-    );
 }

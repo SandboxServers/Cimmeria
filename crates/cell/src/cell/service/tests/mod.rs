@@ -29,6 +29,7 @@ mod npc_ai_phase7;
 mod npc_ai_wander;
 mod regen;
 mod reload;
+mod startup_order;
 
 /// Castle_CellBlock instanced fixture used by reload + bandolier tests.
 /// NPC AI tests use their own non-instanced fixture in [`npc_ai`] so
