@@ -14,6 +14,7 @@ use cimmeria_cell_content::cell::interactions::dialog;
 mod dispatch;
 mod loot;
 mod trainer;
+mod trainer_authority;
 mod vendor;
 
 pub use dialog::send_dialog_display;
@@ -21,3 +22,4 @@ pub use dispatch::interact_target_in_range;
 pub use dispatch::{handle_initial_response, handle_interact};
 pub use loot::handle_loot_item;
 pub use trainer::try_open_trainer;
+pub use trainer_authority::{resend_pinned_trainer, trainer_pin};
