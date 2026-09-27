@@ -54,6 +54,13 @@ call each:
   with `git checkout HEAD -- <file>` from a Python `subprocess`. It needs a
   commit first.
 
+**The session scratchpad is shared by every agent in the session.** During
+PT-01 another worker overwrote `revert_proof.py` with a copy whose `ROOT`
+pointed at *its* worktree; running it would have mutated and `git checkout`ed
+another agent's files. Give scratch scripts a packet-unique name
+(`pt01_*.py`), hard-code your own worktree in `ROOT`, and re-read a script
+before re-running it.
+
 Also, when the B: Dev Drive fills up ("no space on device"), delete only
 your own `B:\targets\<worktree>` and point `CIMMERIA_TARGET_ROOT` at a C:
 scratch directory.
