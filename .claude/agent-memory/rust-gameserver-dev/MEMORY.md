@@ -92,6 +92,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Base sessions
 
+- [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path; system-mail callers call `notify`; ordered-gate race tests.
 - [connected-map-view-over-parallel-index.md](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map; the gate-travel abandon bypasses destroy_client_entities
 
 - [tell-channel-and-ignore-copies.md](tell-channel-and-ignore-copies.md) — client /tell is byte 10 (Rust CHAN_TELL still 9); the Ignore list has 3 copies synced by one resync; 0xBD decode for method idx >= 61.
