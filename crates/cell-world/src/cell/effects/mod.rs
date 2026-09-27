@@ -59,6 +59,8 @@
 //! beside a re-export of this module at `cell::effects`.
 
 pub mod cover_stance;
+pub mod passives;
+pub mod pet_scripts;
 pub mod registry;
 pub mod scripts;
 

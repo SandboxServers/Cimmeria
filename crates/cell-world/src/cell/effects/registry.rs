@@ -31,6 +31,12 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         // hold in `cell::cover::stance` (NA22).
         "CoverStance" => Some(&super::cover_stance::CoverStance),
         "RemoveCoverStance" => Some(&super::cover_stance::RemoveCoverStance),
+        // Owner abilities that act on pets, and the Heed Our Calling
+        // passive (pets PT-08).
+        "PetStatBuff" => Some(&super::pet_scripts::PetStatBuff),
+        "PetDeathTimer" => Some(&super::pet_scripts::PetDeathTimer),
+        "HealPetHealth" => Some(&super::pet_scripts::HealPetHealth),
+        "PetSummonSpeed" => Some(&super::pet_scripts::PetSummonSpeed),
         _ => None,
     }
 }
@@ -52,6 +58,14 @@ mod tests {
         assert!(lookup("RangedEnergyDamage").is_some());
         assert!(lookup("CoverStance").is_some());
         assert!(lookup("RemoveCoverStance").is_some());
+        for pet_script in [
+            "PetStatBuff",
+            "PetDeathTimer",
+            "HealPetHealth",
+            "PetSummonSpeed",
+        ] {
+            assert!(lookup(pet_script).is_some(), "{pet_script}");
+        }
     }
 
     #[test]

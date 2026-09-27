@@ -151,6 +151,11 @@ pub(super) async fn run_cell_loop(
                 // pet exists.
                 cimmeria_cell_world::cell::pets::pet_owner_sweep(tx, &mut space_mgr).await;
 
+                // Owner buffs on pets run out, and To The Death kills its
+                // pet (PT-08). After the sweep, so a pet whose owner left is
+                // already gone; returns at once when no pet is buffed.
+                crate::cell::abilities::owner_pet_tick(tx, &mut space_mgr).await;
+
                 // A summoned pet's arrival VFX (PT-03), sent once its owner
                 // witnesses it. After the AoI tick, so it follows the pet's
                 // CREATE_ENTITY; returns at once when nothing is queued.

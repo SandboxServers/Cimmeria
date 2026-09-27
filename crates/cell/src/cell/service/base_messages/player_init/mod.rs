@@ -240,6 +240,16 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         }
     }
 
+    // Passive abilities (`EF_AlwaysPersist` effects, e.g. 2852 Heed Our
+    // Calling's `speedPet`) hold for as long as the ability is known, and
+    // the cell's stats start fresh every session (pets PT-08).
+    let _passives = crate::cell::effects::passives::apply_passives(
+        space_mgr,
+        entity_id,
+        &abilities,
+        crate::cell::effects::passives::PassiveChange::Learned,
+    );
+
     // Re-broadcast the restored state field so the client's UI reflects
     // the preference immediately (the auto-cycle gun-icon button
     // highlight listens on the BSF_AutoCycling transition — see the

@@ -50,6 +50,19 @@ pub(in crate::cell::abilities) async fn fire_cast(
         .await;
         return;
     }
+    // An owner ability runs its pet effects on the owner's pet (PT-08).
+    if super::owner_pet::player_owner_pet_ability(space_mgr, entity_id, ability_id) {
+        super::owner_pet::fire_owner_pet(
+            entity_id,
+            ability_id,
+            effect_seq,
+            ability_def,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return;
+    }
 
     // Consume ammo (players only). Routes through `set_slot_ammo` so the
     // AmmoSlot{N} stat updates and the slot is marked dirty for batched

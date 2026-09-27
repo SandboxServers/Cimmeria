@@ -125,6 +125,28 @@ pub struct PetState {
     /// interrupted cast engages nothing (pets PT-04). Taken by the pet's
     /// next fired cast, whatever its target.
     pub deferred_order: Option<u32>,
+    /// Owner buffs on the pet (pets PT-08: Holy Warrior, To The Death, Lord's
+    /// Concentration). Each records the stat deltas it really applied, so its
+    /// removal takes back exactly that much.
+    pub buffs: Vec<PetBuff>,
+    /// When To The Death (2839) kills the pet. `None` for a pet that is not
+    /// doomed.
+    pub doomed_at: Option<Instant>,
+}
+
+/// One owner buff on a pet (pets PT-08).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PetBuff {
+    /// The effect that applied it (`resources.effects`).
+    pub effect_id: i32,
+    /// The owner ability the effect belongs to.
+    pub ability_id: i32,
+    /// `(stat id, delta)` pairs as applied: the delta the stat really moved,
+    /// after its bounds, so removal restores the value it had.
+    pub stat_deltas: Vec<(i32, i32)>,
+    /// When the buff lapses. `None` for a toggle, which lasts until the
+    /// owner turns it off or the pet goes.
+    pub expires_at: Option<Instant>,
 }
 
 impl PetState {
@@ -157,6 +179,8 @@ impl PetState {
             last_teleport_at: None,
             despawn_at: None,
             deferred_order: None,
+            buffs: Vec::new(),
+            doomed_at: None,
         }
     }
 

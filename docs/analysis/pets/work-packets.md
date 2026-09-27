@@ -258,7 +258,7 @@ No summon ability, commands or AI.
 
 ### PT-08
 
-**Status:** BlockedDependency (PT-03, PT-05). **Scope title:** owner abilities that act on pets. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor.
+**Status:** Review (PR #920; [worknote](worknotes/pt-08.md), D-PT17 proposed). **Scope title:** owner abilities that act on pets. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor.
 **Scope:**
 
 - **Holy Warrior** (2824): pet +Accuracy / −Defense.

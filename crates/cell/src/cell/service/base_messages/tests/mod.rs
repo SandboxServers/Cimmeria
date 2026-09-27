@@ -23,6 +23,7 @@ mod lab_query;
 mod minigame;
 mod movement;
 mod org;
+mod passive_abilities;
 mod request_entity_update;
 mod respec_burst;
 mod trade_disconnect;

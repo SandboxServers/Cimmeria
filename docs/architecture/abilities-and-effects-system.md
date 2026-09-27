@@ -1,6 +1,6 @@
 # Abilities + Effects System
 
-> **Last updated**: 2026-09-26
+> **Last updated**: 2026-09-27
 > **Audience**: Engineers touching combat / abilities / effects on the cell
 > **Type**: ADR + reference
 > **Owner**: Combat systems
@@ -612,6 +612,97 @@ regression proofs are in the [PT-03 worknote](../analysis/pets/worknotes/pt-03.m
 **Consequences:** NPC-versus-player and pet targeting are unchanged; a pet never joins its owner's duel: `pet::fight_refusal` uses the no-duel form, `player_may_attack_pve`, which is also the NPC half of `player_may_attack`. Player-on-player damage creates no threat, so the duel supplies its own combat source (`cell::duel::combat`). The effect pulse does not re-run the rule, so the duel's single end (`duel::end_engaged`) strips every active effect the partner's engaged entity invoked on each duelist, with the normal `on_remove` and zero timer; an auto-cycle loop on a player the caster may no longer harm is cleared. Partner damage is still lethal until SS-D3's 1 HP clamp lands, and that clamp must also sit in the pulse seam.
 
 **Code and tests:** `aggression.rs`, the four gates above, `crates/cell-world/src/cell/duel/`. `use_ability/tests/duel_gate.rs` (`duel_partner_damage_allowed_at_all_four_gates`, `bystander_untouchable_during_duel`) fails when any one gate is reverted; the proof is in the [SS-D2 worknote](../analysis/social-systems/worknotes/ss-d2.md).
+
+### 25. Owner abilities that act on a pet are diverted to the owner's pet, and their state lives on the pet (pets PT-08)
+
+**Decision:** An ability with an effect whose `script_name` is a pet script (`PetStatBuff`,
+`PetDeathTimer`, `HealPetHealth`; `effects::pet_scripts::acts_on_owner_pet`) acts on the
+caster's pet, never on the client's target. It rides the cast of decision 21 with the same
+three diversions as decision 23, in
+[`use_ability/owner_pet/`](../../crates/cell-combat/src/cell/abilities/use_ability/owner_pet/mod.rs):
+
+- **Launch.** The client's `target_id` is replaced by 0, so the #444 gate never sees the cast
+  and stays as strict for every other ability. The pet comes from
+  `SpaceManager::owner_pet_targets`
+  ([`pets/owner_target.rs`](../../crates/cell-world/src/cell/pets/owner_target.rs)): the
+  registry's pets of the caster, each kept only when the summon-time identity says the caster
+  summoned it (`PetRegistry::summoner_matches`), it is alive, and it is in the caster's
+  space. A bare owner id is never enough. With no such pet the press is refused before the
+  cooldown is charged, with `onErrorCode` plus a `CHAN_FEEDBACK` line: 190
+  `EntityDoesNotHavePet` for no pet, a pet in another space or a reused owner id, 14
+  `NotLiving` for a dead pet, and 133 `EffectMonikerOnEntity` for To The Death pressed while
+  it already runs.
+- **Warmup.** The ability's own, with every decision-21 interrupt.
+- **Fire.** `fire::fire_cast` diverts to `fire_owner_pet` before any ammo or damage step. The
+  pet is resolved again. A refusal plays `Ability_Interrupt` and sends the feedback pair, and
+  the cooldown stays charged. Otherwise `Ability_End` plays with TargetID = the pet, and each
+  pet script runs with source = owner and target = pet. A `TCM_Single` effect lands on one
+  pet; any other collection method lands on every pet the owner has out (one today, D-PT04).
+  A pulsing effect (Repair Turret: Regenerate) is registered on the pet, invoked by the owner.
+  The pet's dirty stats go to its witnesses. Nothing enters the damage pipeline, threat or
+  kill credit.
+
+The state these abilities leave is on the pet, not in `active_effects`:
+
+- **Buff ledger.** `register_active_effect` never registers a `pulse_count = 1` row, which is
+  what the seed gives Holy Warrior (4220), To The Death (4121) and Lord's Concentration
+  (350). `PetStatBuff` writes a `PetBuff` on `PetState::buffs` instead
+  ([`pets/buffs.rs`](../../crates/cell-world/src/cell/pets/buffs.rs)). It records the delta
+  each stat really moved, and removal takes back exactly that, as python's `statChanges` did
+  (`AbilityManager.py:438-441`). Re-applying the same effect replaces it; it never stacks.
+- **Bounds widen, a deliberate deviation.** `DEFENSE` and `INTERRUPT_RES` default to `[0, 0]`,
+  so python's clamp would drop Holy Warrior's -100 Defense and Lord's Concentration's +50. The
+  ledger widens that one pet's bound to admit the delta.
+- **Toggle.** For an ability with `Toggled` (8, `AF_TOGGLED`), `PetStatBuff` takes the buff
+  off when the pet has it and puts it on with no expiry when it has not. The owner gets a chat
+  line with the new state ("Holy Warrior is on."), because the Ability window shows none.
+- **Expiry and To The Death.** `owner_pet_tick` runs every AoI tick after the pet sweep. It
+  takes expired buffs off, then kills each pet whose `PetState::doomed_at` has passed through
+  `kill_npc_out_of_band(pet, pet, attacker_is_player = false, grant_xp = false)`, after
+  zeroing its HEALTH. The kill pays nobody: no XP, no mission `EntityDeath` (only the
+  kill-credit wrappers raise it), and a pet has no loot table. The corpse then follows the
+  pet path of D-PT08. 4119 "Pet Death Timer" (`PetDeathTimer`) arms the doom; 4122 "Pet
+  Death" has no script, because a script cannot await the death resolver. A re-cast while the
+  pet is doomed is refused, another deliberate deviation: python's refresh would restart the
+  60 s timer, and with a 30 s cooldown the +400 Accuracy would never end.
+- **Passives.** An `EF_AlwaysPersist` (524288) effect whose script is a passive script
+  (`pet_scripts::is_passive_script`, today only `PetSummonSpeed`) holds while its ability is
+  known. [`effects/passives.rs`](../../crates/cell-world/src/cell/effects/passives.rs) runs it
+  at `InitPlayerState`, `AbilityGranted` and `GmAbilityGranted` (the GM `.giveability` mirror),
+  and runs its `on_remove` at `AbilitiesReset`.
+  Heed Our Calling (2852 -> 4968) sets the owner's `speedPet` to its base plus 100, so a
+  `SpeedPet` summon's warmup scales to 0 (D-PT10). The stat is server-side only: the passive
+  leaves it clean, so no burst changes.
+
+Holy Warrior's 4087 "Stance Removal" is "Remove Effect of moniker EFFECT_Stance", the
+mutual-exclusion half every player stance carries. No player stance effect is active on this
+server, and the seed links no effect to that moniker, so it has no script and removes nothing.
+
+**Why:** The 2009 rows carry no `script_name` and no NVPs for these effects, so the scripts and
+magnitudes are seed edits, each the number in the effect's own description
+(`effect_nvps` 350-357). Keying the redirect on the scripts keeps it data-driven: a new
+pet-acting ability is wired by naming the script on its effect. Keeping the state on the pet
+means a despawn, a replacing summon or the owner's death (which despawns the pet) clears it,
+and the owner carries no "buff on" flag. Lord's Concentration (1650) shipped with no effect at
+all; effect 350 is server-only, and pets D-PT17 records its magnitude and duration as a
+greenfield decision.
+
+**Consequences:** Nothing reads `INTERRUPT_RES` yet. The server has no damage-driven warmup
+interrupt (decision 21), so Lord's Concentration changes a stat that will matter only once
+one lands. The Repair Turret heals redirect to whatever pet the owner has, which is a
+Servant Lord pet until turrets exist (PT-12). Repair Turret: Restoration (1214, revive) is not
+wired. The scripts are in their own file, `effects/pet_scripts.rs`, because `scripts.rs` is
+over the file cap.
+
+**Code:** [`use_ability/owner_pet/`](../../crates/cell-combat/src/cell/abilities/use_ability/owner_pet/mod.rs)
+(launch, fire, tick, feedback), the hooks in `handle.rs`, `fire.rs` and `sequence.rs`,
+[`effects/pet_scripts.rs`](../../crates/cell-world/src/cell/effects/pet_scripts.rs),
+[`effects/passives.rs`](../../crates/cell-world/src/cell/effects/passives.rs),
+[`pets/buffs.rs`](../../crates/cell-world/src/cell/pets/buffs.rs) and
+[`pets/owner_target.rs`](../../crates/cell-world/src/cell/pets/owner_target.rs). Tests are in
+`use_ability/owner_pet/tests/`, `pets/tests/owner_buffs.rs` and
+`base_messages/tests/passive_abilities.rs`; the evidence and the regression proofs are in the
+[PT-08 worknote](../analysis/pets/worknotes/pt-08.md).
 
 ## Cross-cutting follow-ups
 

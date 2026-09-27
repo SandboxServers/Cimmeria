@@ -1,7 +1,7 @@
 //! Pets (#570) log targets reach SigNoz at the level they emit.
 //!
 //! The pets targets (`pets.lifecycle`, `pets.command`, `pets.ai`,
-//! `pets.credit`) ride the one `pets=debug` prefix row in [`OTEL_FILTER`]
+//! `pets.credit`, `pets.buff`) ride the one `pets=debug` prefix row in [`OTEL_FILTER`]
 //! instead of a directive each. This pins that choice behaviourally: remove
 //! the row, or let `tracing-subscriber` stop prefix-matching, and a pet's
 //! DEBUG rows silently stop reaching the exporter.
@@ -26,6 +26,30 @@ impl<S: tracing::Subscriber> Layer<S> for Seen {
             .unwrap()
             .push((m.target().to_string(), *m.level()));
     }
+}
+
+/// PT-08: `pets.buff` exports its DEBUG `buff_applied` /
+/// `owner_ability_refused` rows, its INFO `doom_fired` and its WARN
+/// `owner_ability_refused reason=owner_identity_mismatch`.
+#[test]
+fn otel_filter_exports_pets_buff_debug_info_and_warn() {
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry()
+        .with(Seen(seen.clone()).with_filter(EnvFilter::new(OTEL_FILTER)));
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::debug!(target: "pets.buff", event = "buff_applied", "a");
+        tracing::info!(target: "pets.buff", event = "doom_fired", "d");
+        tracing::warn!(target: "pets.buff", reason = "owner_identity_mismatch", "w");
+    });
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [
+            ("pets.buff".to_string(), tracing::Level::DEBUG),
+            ("pets.buff".to_string(), tracing::Level::INFO),
+            ("pets.buff".to_string(), tracing::Level::WARN),
+        ],
+        "OTEL_FILTER must export `pets.buff` at DEBUG (the `pets=debug` row)"
+    );
 }
 
 /// PT-06: `pets.credit` exports its DEBUG `pet_kill_credited` /

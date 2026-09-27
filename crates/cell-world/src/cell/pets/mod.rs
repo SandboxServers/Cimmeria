@@ -17,22 +17,30 @@
 //!   crates: the deferred order the warmup tick pops, and the feedback text.
 //! - [`owner_hooks`] holds the PT-02 choke points every owner path calls:
 //!   `on_owner_left` (despawn) and `on_owner_teleported` (move beside).
+//! - [`owner_target`] resolves "the owner's pet" for an owner ability
+//!   (PT-08): `SpaceManager::owner_pet_targets`, summoner-checked.
+//! - [`buffs`] holds the owner-buff stat ledger on a pet (PT-08, log target
+//!   `pets.buff`).
 //!
 //! Log target `pets.lifecycle`: INFO on summon and despawn (with `reason`),
 //! WARN on a failed summon or despawn.
 
 pub mod arrival;
+pub mod buffs;
 pub mod create_on_client;
 pub mod order;
 pub mod owner_hooks;
+pub mod owner_target;
 pub mod registry;
 pub mod spawn;
 pub mod teardown;
 
 pub use arrival::{drain_arrivals, pet_arrival_tick, PetArrival, ARRIVAL_TIMEOUT};
+pub use buffs::{shift_stat, BuffRemoval};
 pub use create_on_client::{pet_create_on_client_events, CLIENT_DEFAULT_STANCE};
 pub use order::{order_feedback_text, order_refusal_code, take_deferred_order, TakenOrder};
 pub use owner_hooks::{on_owner_left, on_owner_reappeared, on_owner_teleported, OwnerPath};
+pub use owner_target::OwnerPetRefusal;
 pub use registry::{PetRegistry, PetReject};
 pub use spawn::{stance_mask_from_flags, PetSpawnError, PET_SPAWN_OFFSET};
 pub use teardown::{
