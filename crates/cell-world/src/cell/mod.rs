@@ -19,6 +19,7 @@ pub mod playtest_friction_watch;
 pub mod ring_transport;
 pub mod service;
 pub mod space_manager;
+pub mod squad;
 
 /// Seed-vs-navmesh guards for the Harset coordinates placed from map data
 /// (`docs/analysis/harset-rebuild/placements/`). Test-only; in
