@@ -16,7 +16,11 @@ use super::record_decision_outcome;
 /// - **Target in band** (`min <= dist <= max`) → no work; stay put.
 /// - **Target above max** → pathfind to a point one `min_distance`
 ///   short of the target so the NPC settles inside the band rather
-///   than running all the way up to the target.
+///   than running all the way up to the target. With no usable route,
+///   [`super::path_failure::UnroutedMove`] decides: on a meshed world the
+///   follower slides across the mesh toward that point or holds, keeping
+///   its target and the Follow state; only a meshless world walks the
+///   straight line (NA41).
 /// - **Target below min** → no work (NPCs don't back away).
 pub(super) async fn npc_ai_follow(
     npc_id: u32,
@@ -36,9 +40,10 @@ pub(super) async fn npc_ai_follow(
         None => return,
     };
 
-    // No-target / gone-target drops fire BEFORE the Follow broadcast
-    // so the wire doesn't see a Follow byte for an NPC that's about
-    // to leave Follow this same tick.
+    // No-target / gone-target drops fire BEFORE the Follow movement type is
+    // recorded, so `last_movement_type` never reads Follow for an NPC that
+    // leaves Follow this tick. Nothing goes on the wire either way: the
+    // client animates from velocity (NA10).
     let Some(target_id) = target_id else {
         super::set_ai_state(
             space_mgr,
@@ -146,26 +151,32 @@ pub(super) async fn npc_ai_follow(
     );
     let (routing, status) = (request.waypoints, request.status);
     let routed = routing.as_ref().is_some_and(|p| p.len() > 1);
-    // Unrouted: keep the follower on its OWN height. The raw lerp copied the
-    // leader's Y, so a jumping or upstairs leader dragged the escort into the
-    // air ("levitating, then he came down" -- 2026-09-18 playtest).
-    let dest = if routed {
-        dest
+    let (dest, path_len, fallback) = if routed {
+        let path = routing.unwrap_or_default();
+        let path_len = path.len();
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            super::replace_nav_path_on(npc, path.into_iter().skip(1));
+        }
+        (dest, path_len, None)
     } else {
-        cimmeria_common::Vector3::new(dest.x, npc_pos.y, dest.z)
-    };
-    if !routed {
-        // The unrouted `dest` is a raw 3-axis lerp toward the target,
-        // including the target's Y -- an airborne or upstairs target drags
-        // the follower through the air and through geometry.
-        // Resolved before the call: `report_path_failure` takes `&mut`
-        // and this classifier takes `&`.
+        // Unrouted: keep the follower on its OWN height. The raw lerp copied
+        // the leader's Y, so a jumping or upstairs leader dragged the escort
+        // into the air ("levitating, then he came down" -- 2026-09-18
+        // playtest).
+        let dest = cimmeria_common::Vector3::new(dest.x, npc_pos.y, dest.z);
+        // Resolved before the report: `report_path_failure` takes `&mut`
+        // and these take `&`.
         let reason = super::path_failure::PathFailReason::classify(
             space_mgr,
             npc_id,
             status,
             routing.as_deref(),
         );
+        // A meshed world slides across the mesh or holds; only a meshless
+        // one walks the straight line (NA41). The target and the Follow
+        // state are kept either way, and the next tick tries again.
+        let unrouted = super::path_failure::UnroutedMove::plan(space_mgr, npc_id, npc_pos, dest);
+        let fallback = unrouted.fallback();
         super::path_failure::report_path_failure(
             space_mgr,
             super::path_failure::PathFailure {
@@ -175,22 +186,14 @@ pub(super) async fn npc_ai_follow(
                 from: npc_pos,
                 to: dest,
                 reason,
-                // The block below clears `nav_path` and pushes `dest`.
-                fallback: super::path_failure::PathFallback::DirectWaypoint,
+                fallback,
                 target_id: Some(target_id),
             },
             std::time::Instant::now(),
         );
-    }
-    let path = routing.unwrap_or_default();
-    let path_len = path.len();
-    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-        if path.len() > 1 {
-            super::replace_nav_path_on(npc, path.into_iter().skip(1));
-        } else {
-            super::replace_nav_path_on(npc, [dest]);
-        }
-    }
+        unrouted.apply(space_mgr, npc_id);
+        (dest, 0, Some(fallback))
+    };
     // Out-of-band pathfind queued — the next tick observes
     // nav_empty=false (movement in flight) and records follow_band
     // until back in range.
@@ -204,6 +207,7 @@ pub(super) async fn npc_ai_follow(
         max_d,
         routed,
         path_len,
+        fallback = ?fallback,
         npc_x = npc_pos.x,
         npc_y = npc_pos.y,
         npc_z = npc_pos.z,
@@ -241,10 +245,9 @@ mod tests {
 
     /// Non-instanced "Agnos" fixture with no navmesh loaded — matches
     /// `SpaceManager::find_path`'s documented "no navmesh loaded ->
-    /// pathfinding returns `None`" branch. This is the same failure
-    /// shape as two disconnected navmesh components (the Castle
-    /// Cellblock Preparation-room / topside split the GC1 feasibility
-    /// pass found): `find_path` returning `None` either way.
+    /// pathfinding returns `None`" branch. Only a meshless space still
+    /// walks the straight line; the meshed case (two disconnected
+    /// Cellblock components) is `tests/npc_ai/no_route.rs` (NA41).
     fn make_space_mgr() -> SpaceManager {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
@@ -254,21 +257,15 @@ mod tests {
         mgr
     }
 
-    /// Pins the CURRENT silent-failure shape in the out-of-band
-    /// pathfind branch, flagged by the GC1b-0 feasibility pass as a
-    /// trap worth documenting (fixing it is out of scope here).
+    /// With no navmesh at all there is nothing to slide along, so the
+    /// out-of-band branch still pushes exactly one waypoint: `dest`, the
+    /// raw straight-line point short of the target.
     ///
-    /// `space_mgr.find_path(...).unwrap_or_default()` turns a `None`
-    /// (no navmesh loaded, or the navmesh has no route between two
-    /// disconnected components) into an empty `Vec` — not an error.
-    /// `path.len() > 1` is then false, so the code falls into the
-    /// `else` arm and pushes exactly one waypoint: `dest`, the raw
-    /// straight-line point short of the target. The NPC then walks
-    /// directly toward that point on the next movement tick with zero
-    /// awareness of walls or navmesh containment — a "cuts straight
-    /// through geometry" bug that produces no error, no log at
-    /// warn-or-above, and no visible signal beyond the NPC clipping
-    /// through a wall.
+    /// The GC1b-0 feasibility pass flagged the same push on a meshed
+    /// world (two disconnected components), where it walked the escort
+    /// through walls. NA41 confined it to meshless spaces; the meshed
+    /// case slides or holds and is guarded in
+    /// `tests/npc_ai/no_route.rs`.
     #[tokio::test]
     async fn out_of_band_follow_with_no_navmesh_falls_back_to_straight_line_waypoint() {
         let mut mgr = make_space_mgr();

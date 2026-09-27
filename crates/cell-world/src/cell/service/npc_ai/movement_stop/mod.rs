@@ -55,6 +55,10 @@ pub enum StopReason {
     RepathDegenerate,
     /// The NPC reached its reserved cover slot and holds it (NA22).
     InCover,
+    /// A follow, patrol, wander or investigate leg got no route and no
+    /// surface slide worth walking: hold instead of walking through a wall
+    /// (NA41).
+    HoldNoRoute,
 }
 
 impl StopReason {
@@ -66,6 +70,7 @@ impl StopReason {
             Self::HoldUnreachable => "hold_unreachable",
             Self::RepathDegenerate => "repath_degenerate",
             Self::InCover => "in_cover",
+            Self::HoldNoRoute => "hold_no_route",
         }
     }
 }
