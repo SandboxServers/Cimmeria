@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Group System
 
 > **Last updated**: 2026-09-27
-> **Status**: `GroupAuthority` is not implemented: entity definitions only. Squads are implemented without it, as cell state ([Squads](#squads-org-03)).
+> **Status**: `GroupAuthority` is not implemented: entity definitions only. Squads are implemented without it, as cell state ([Squads](#squads-org-03)), and so are Teams and Commands, on the base ([organization-system.md](organization-system.md)). Everything below is server-side and tested, and **not yet client-verified**: the owner's two-client UAT ([organizations-uat.md](../guides/organizations-uat.md), steps 1-4 for squads) is next.
 
 ## Overview
 
@@ -18,7 +18,7 @@ The `GroupAuthority` interface is defined in `entities/defs/interfaces/GroupAuth
 
 ## Implementation Status
 
-Everything below is definition-only. There is no `SGWPlayerGroupAuthority` instance in the Rust server, no group registry, and no handler for any of the four base methods. The blocked [organization system](organization-system.md) sits on top of this, so both are gated on the same missing infrastructure.
+Everything in this table is definition-only. There is no `SGWPlayerGroupAuthority` instance in the Rust server and no handler for any of the four `GroupAuthority` base methods. Cimmeria does not need one: the [organization system](organization-system.md) keeps squads in a cell registry and Teams and Commands in the database (D-ORG03, D-ORG04), so nothing is gated on this infrastructure.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -27,7 +27,7 @@ Everything below is definition-only. There is no `SGWPlayerGroupAuthority` insta
 | Group leave | NOT IMPL | `leaveGroup`, `leaveGroupByName` defined; no handler |
 | Method dispatch | NOT IMPL | `callMethodOnGroup` defined; no handler |
 | Group ID allocation | DEFINED | `lastTempID` counter property; nothing increments it |
-| Organization integration | NOT IMPL | Organization types would use groups as backing store |
+| Organization integration | NOT USED | Squads, Teams and Commands are implemented without `GroupAuthority` ([Squads](#squads-org-03), [organization-system.md](organization-system.md)) |
 
 ## Squads (ORG-03)
 
@@ -40,7 +40,7 @@ Cimmeria does not build squads on `GroupAuthority`. A squad is ephemeral, so it 
 | Accept / decline | DONE | CM 8 `organizationInviteResponse` with a cell request id |
 | Leave | DONE | CM 9 `organizationLeave` with the caller's own squad id |
 | Kick (leader) | DONE | Base 0xD1 `organizationKick` with a squad id → `OrgBaseToCell::SquadKick` |
-| Loot mode (leader) | DONE | CM 18 `squadSetLootMode`, 0 or 1 only |
+| Loot mode (leader) | DONE | CM 18 `squadSetLootMode`, 0 or 1 only. The mode is stored and shown to every member; no loot path reads it yet |
 | Disconnect | DONE | The cell's `DisconnectEntity` arm removes the member with `Logout`, including a member in gate transit whose cell entity is gone (found by the last entity id the registry recorded on join or world entry) |
 | World entry | DONE | `InitPlayerState` re-sends the squad after a gate trip |
 | Promote to leader | NOT IMPL | No client UI sends it; `/squadpromote` is assumed to use `organizationRankChange` (unconfirmed, ORG-E1 Q2) |

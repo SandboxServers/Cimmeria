@@ -25,6 +25,8 @@ stubs and the `SGWPlayer` org handlers are all `pass`. So this is greenfield aga
 | DB schema | ~10% (type ENUMs only; zero runtime tables) |
 | **Overall** | **~12%** |
 
+> **Superseded 2026-09-27 (organizations close-out, ORG-11).** The Rust and DB rows above describe June 2026. The organizations campaign has since implemented Squads, Teams and Commands server-side, with the schema in `db/sgw/Organizations/`; none of it is client-verified yet. Implementation: [organization-system.md](../../gameplay/organization-system.md) and [group-system.md](../../gameplay/group-system.md#squads-org-03). Ledger, open owner questions and known gaps: [analysis/organizations/](../../analysis/organizations/README.md).
+
 ## Entity model
 
 **Client C++ hierarchy** (vtable-confirmed): `Squad → Organization ← Team ← Command`. Organization ctor
@@ -109,6 +111,8 @@ Invite/Accept/Decline, SquadKick, SquadPromote, SquadLeave, ChooseOrgName, Reloa
 No `SGWPlayerGroupAuthority` handler; no org state on SGWPlayer; zero roster fanout; no persistence
 (`Guild::save`/`load` are `todo!()`, no `sgw.organizations*` tables); wrong rank model; no base-method
 handlers; chat channels CHAN_SQUAD/COMMAND/OFFICER defined but not org-routed; `squad` CELL_PUBLIC not synced.
+
+> **Closed 2026-09-27 (ORG-11).** Every gap in the paragraph above is closed except the first and the last, and both are by design: there is still no `SGWPlayerGroupAuthority` because none is needed, and squad state is a cell registry whose `squad` property is never sent (D-ORG03, audit A-19). See the [campaign README](../../analysis/organizations/README.md#close-out-state-org-11).
 
 ## ORG-E1 client evidence (2026-09-26, static Ghidra + client Lua/.int tree)
 
@@ -265,14 +269,14 @@ around.
 
 1. ~~EReasons enum values~~ — **closed**: requested 0, kicked 1, disbanded 2, logout 3 (`enumerations.xml:104`).
 2. ~~`RosterInfo` `isOnline`~~ — **closed** (2026-09-27, static Ghidra): no online field. The client derives "Online" from a non-zero member id that resolves to a `GamePlayer` in its own entity table (`teamGetMemberInfo` `0x00ac8c70` → builder `0x00ae83d0`). See [analysis/organizations/audit.md](../../analysis/organizations/audit.md) A-11.
-3. `launchOrganizationCreation` trigger timing — **likely** a registrar NPC interaction (`EInteractionType.OrganizationCreation = 9`; the `.int` strings send players to a team registrar on Harset and a command registrar at the Omega Site). The client only opens `CreateTeamWin` / `CreateCommandWin` on receipt.
-4. Cash field width — .def says UINT64; confirm not UINT32 in practice. → x64dbg.
+3. `launchOrganizationCreation` trigger timing — **likely** a registrar NPC interaction (`EInteractionType.OrganizationCreation = 9`; the `.int` strings send players to a team registrar on Harset and a command registrar at the Omega Site). The client only opens `CreateTeamWin` / `CreateCommandWin` on receipt. **Implemented on that assumption (ORG-05, #942):** the cell sends 135 when an eligible player interacts with an NPC carrying the `INT_Organization` bit and static interaction set 7447 (Team) or 7448 (Command), the 2009 server's `INTERACTION_OrganizationRegisterTeam` / `…Command`. Whether the client sends `interact` on right-click, and what the naming windows do on a refused 134, is still unverified; ORG-UAT step 5 checks it.
+4. Cash field width — .def says UINT64; confirm not UINT32 in practice. → x64dbg. The server sends UINT64, per the `.def` (`build_on_organization_cash_update`, ORG-01); still unconfirmed against the client.
 5. ~~Roster-record id provenance~~ — **closed** (2026-09-26, static Ghidra, ORG-E1 Q1): see "ORG-E1 client evidence" above.
 6. ~~`squadKick` wire path~~ — **closed** (2026-09-26, static Ghidra, ORG-E1 Q2, closes A-21): shares `organizationKick` with `teamKick`/`commandKick`.
 7. ~~Receiving-side minimap ping client method~~ — **closed** (2026-09-26, static Ghidra, ORG-E1 Q3): does not exist.
 8. ~~`EChannel` hardcode vs. `onChatJoined`~~ — **closed** (2026-09-26, static Ghidra, ORG-E1 Q5, confirms D-ORG14): every well-known channel id is a hardcoded client literal, byte-identical to `enumerations.xml`.
 9. ~~Squad frame roster-vs-entity path~~ — **closed** (2026-09-26, static Lua reading, ORG-E1 Q6): entity presence (`unitExists`), not roster query.
-10. `onErrorCode`/`onOrganizationCreationResult` readable text (ORG-E1 Q4/Q7) — **mechanism found, content unconfirmed**: a data-driven `CookedData:ErrorTextType` cooked-cache system exists in the binary, but no authored text for any org error code was found; the exact `Event_NetIn_onErrorCode` handler body was not traced this session. → needs either a deeper static pass on the `Communicator`-owned `FreeCallback` handler, or x64dbg on a live rejection.
+10. `onErrorCode`/`onOrganizationCreationResult` readable text (ORG-E1 Q4/Q7) — **mechanism found, content unconfirmed**: a data-driven `CookedData:ErrorTextType` cooked-cache system exists in the binary, but no authored text for any org error code was found; the exact `Event_NetIn_onErrorCode` handler body was not traced this session. → needs either a deeper static pass on the `Communicator`-owned `FreeCallback` handler, or x64dbg on a live rejection. Still open at the close-out; the server works around it by sending a feedback-channel line with every refusal.
 
 ## Dynamic-analysis needs (x64dbg)
 

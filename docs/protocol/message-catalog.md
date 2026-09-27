@@ -75,7 +75,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | Missions | 16 | Partial (~40%) |
 | Chat & Communication | 14 | Implemented |
 | Contact Lists | 6 | Implemented |
-| Organizations | 15 | Stub (~5%) |
+| Organizations | 15 | Implemented server-side except cash transfer (Bank campaign) and the unsolicited PvP leave response; not yet client-verified |
 | Mail | 9 | Not implemented |
 | Trading | 4 | Not implemented |
 | Black Market | 4 | Not implemented |
@@ -192,24 +192,24 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 
 ### Organizations
 
-> **Decoded, not implemented (2026-09-27).** The organizations campaign's ORG-01 decodes every organization call the client sends, with no gameplay behaviour yet, so `Impl` stays NO. Cell methods 8-19 and SGWPlayer cell method 94 (`onOrganizationCreation`; earlier editions of this table named it `OrganizationMember.createOrganization`, which does not exist) go through `decode_org_cell_method` / `decode_on_organization_creation` in `crates/wire/src/cell/cell_methods/organization/`, which read the `WSTRING`s CM 13, 14, 15, 17 and 94 used to drop. Base methods 0xCF-0xD2 (`organizationInvite`, `organizationInviteByType`, `organizationKick`, `organizationRankChange`) go through `decode_org_base_method` in `crates/wire/src/base/organization.rs`, and the base answers each with `onErrorCode` and a feedback line (`crates/base/src/base/dispatch/organization.rs`). The cell methods answer the same way. The server-to-client organization methods have serializers; see [client-method-dispatch-table.md](client-method-dispatch-table.md). Plan: [docs/analysis/organizations/](../analysis/organizations/README.md).
+> **Implemented server-side, not yet client-verified (2026-09-27, organizations close-out ORG-11).** ORG-01 decodes every organization call the client sends: cell methods 8-19 and SGWPlayer cell method 94 (`onOrganizationCreation`; earlier editions of this table named it `OrganizationMember.createOrganization`, which does not exist) through `decode_org_cell_method` / `decode_on_organization_creation` in `crates/wire/src/cell/cell_methods/organization/`, and base methods 0xCF-0xD2 through `decode_org_base_method` in `crates/wire/src/base/organization.rs`. ORG-03 to ORG-10 handle them: squads on the cell, Teams and Commands on the base ([organization-system.md](../gameplay/organization-system.md)). `Impl` is YES where the call does what the client asks. `organizationTransferCash` still answers "not available yet" until the Bank campaign's BV-08, and `pvpOrganizationLeaveResponse` is refused as unsolicited because no strike-team request is ever sent (CAT-M-17). The `.def Method` column keeps this table's older names; the dispatch tables have the real ones. The server-to-client organization methods have serializers; see [client-method-dispatch-table.md](client-method-dispatch-table.md). Campaign: [docs/analysis/organizations/](../analysis/organizations/README.md).
 
 | Event Name | String Addr | Handler Addr | .def Method | Impl |
 |------------|-------------|--------------|-------------|------|
-| `Event_NetOut_OrganizationCreation` | 0195fb88 | TBD | SGWPlayer.onOrganizationCreation | NO |
-| `Event_NetOut_OrganizationInvite` | — | TBD | OrganizationMember.organizationInvite | NO |
-| `Event_NetOut_OrganizationInviteByType` | — | TBD | OrganizationMember.organizationInviteByType | NO |
-| `Event_NetOut_OrganizationInviteResponse` | — | TBD | OrganizationMember.organizationInviteResponse | NO |
-| `Event_NetOut_OrganizationLeave` | — | TBD | OrganizationMember.organizationLeave | NO |
-| `Event_NetOut_OrganizationKick` | — | TBD | OrganizationMember.organizationKick | NO |
-| `Event_NetOut_OrganizationRankChange` | — | TBD | OrganizationMember.organizationRankChange | NO |
-| `Event_NetOut_OrganizationSetRankName` | — | TBD | OrganizationMember.setRankName | NO |
-| `Event_NetOut_OrganizationSetRankPermissions` | — | TBD | OrganizationMember.setRankPermissions | NO |
-| `Event_NetOut_OrganizationMOTD` | — | TBD | OrganizationMember.setMOTD | NO |
-| `Event_NetOut_OrganizationNote` | — | TBD | OrganizationMember.setNote | NO |
-| `Event_NetOut_OrganizationOfficerNote` | — | TBD | OrganizationMember.setOfficerNote | NO |
+| `Event_NetOut_OrganizationCreation` | 0195fb88 | TBD | SGWPlayer.onOrganizationCreation | YES |
+| `Event_NetOut_OrganizationInvite` | — | TBD | OrganizationMember.organizationInvite | YES |
+| `Event_NetOut_OrganizationInviteByType` | — | TBD | OrganizationMember.organizationInviteByType | YES |
+| `Event_NetOut_OrganizationInviteResponse` | — | TBD | OrganizationMember.organizationInviteResponse | YES |
+| `Event_NetOut_OrganizationLeave` | — | TBD | OrganizationMember.organizationLeave | YES |
+| `Event_NetOut_OrganizationKick` | — | TBD | OrganizationMember.organizationKick | YES |
+| `Event_NetOut_OrganizationRankChange` | — | TBD | OrganizationMember.organizationRankChange | YES |
+| `Event_NetOut_OrganizationSetRankName` | — | TBD | OrganizationMember.setRankName | YES |
+| `Event_NetOut_OrganizationSetRankPermissions` | — | TBD | OrganizationMember.setRankPermissions | YES |
+| `Event_NetOut_OrganizationMOTD` | — | TBD | OrganizationMember.setMOTD | YES |
+| `Event_NetOut_OrganizationNote` | — | TBD | OrganizationMember.setNote | YES |
+| `Event_NetOut_OrganizationOfficerNote` | — | TBD | OrganizationMember.setOfficerNote | YES |
 | `Event_NetOut_OrganizationTransferCash` | — | TBD | OrganizationMember.transferCash | NO |
-| `Event_NetOut_ReloadOrganizations` | 019b2e6c | TBD | (debug) | NO |
+| `Event_NetOut_ReloadOrganizations` | 019b2e6c | TBD | (debug) | YES |
 | `Event_NetOut_PvPOrganizationLeaveResponse` | — | TBD | OrganizationMember.pvpLeaveResponse | NO |
 
 ### Crafting & Research
@@ -363,7 +363,7 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 | Vault | 4 | Not implemented |
 | Missions | 7 | Partial (~40%) |
 | Chat | 7 | Implemented |
-| Organizations | 18 | Not implemented |
+| Organizations | 18 | Sent: all but 41 and 42 (no strike teams); 44 is always 0 |
 | Contact Lists | 5 | Implemented |
 | Mail | 4 | Not implemented |
 | Stargates | 8 | Partial (~20%) |
@@ -460,7 +460,7 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | Inventory/Items | 6 | 17 | 4 | 10 | 37% |
 | Missions | 3 | 16 | 3 | 7 | 26% |
 | Chat | 14 | 14 | 7 | 7 | 100% |
-| Organizations | 0 | 15 | 0 | 18 | 0% |
+| Organizations | 13 | 15 | 16 | 18 | 88% |
 | Mail | 0 | 9 | 0 | 4 | 0% |
 | Trading | 0 | 4 | 0 | 2 | 0% |
 | Black Market | 0 | 4 | 0 | 5 | 0% |
@@ -473,7 +473,7 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | World/Entity | — | — | 13 | 13 | 100% |
 | GM/Debug | ~20 | 59 | — | — | ~34% |
 | Protocol | 4 | 7 | — | — | 57% |
-| **TOTAL** | **~64** | **253** | **~49** | **167** | **~27%** |
+| **TOTAL** | **~77** | **253** | **~65** | **167** | **~34%** |
 
 ---
 

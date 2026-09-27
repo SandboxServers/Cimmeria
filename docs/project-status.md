@@ -9,11 +9,11 @@ last_updated: 2026-09-27
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **482 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
+> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **486 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
 >
 > **Re-verified 2026-09-25** against the code at `acbcc22e`, after about 160 PRs landed since the previous (2026-07-25) edition. Every row was re-read, and a feature counts as Confirmed Working only when there is a written record of an in-client test: the 2026-09-18 colo playtest, the 2026-09-25 NPC AI UAT, a PR or issue note, or a recorded confirmation. That stricter bar moved some rows down (vendors, spawn population, mission cash, mail sending, effect clear-flags) while the playtest moved others up (character creation, minigames, ring trips, damage, loot). The previous edition's headline also did not match its own table: it printed 443 / CW 159 / KM 128 against rows that summed to 444 / CW 164 / KM 124. The figures below are recomputed from the rows.
 >
-> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory and Organizations notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)); their counts are unchanged. Other rows keep their 2026-09-25 prose.
+> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)). The headline and the Organizations, Groups and Chat rows then follow the organizations close-out (ORG-11, [ledger](analysis/organizations/README.md)), which recounted §21, §23 and §30. Other rows keep their 2026-09-25 prose.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -31,18 +31,18 @@ Where the Cimmeria server emulator stands today and what's ahead.
 
 | Status | Features | Percentage |
 |--------|----------|-----------|
-| Confirmed Working (CW) | 167 | 34.6% |
-| Needs Test (NT) | 93 | 19.3% |
-| Implemented (IM) | 108 | 22.4% |
-| Known/Missing (KM) | 111 | 23.0% |
+| Confirmed Working (CW) | 167 | 34.4% |
+| Needs Test (NT) | 110 | 22.6% |
+| Implemented (IM) | 109 | 22.4% |
+| Known/Missing (KM) | 97 | 20.0% |
 | Needed/Unknown (NU) | 3 | 0.6% |
-| **Total** | **482** | |
+| **Total** | **486** | |
 
-**Code exists (CW + NT + IM)**: 368 features (76.3%)  
-**Missing (KM + NU)**: 114 features (23.7%)  
-**Tested end-to-end (CW)**: 167 features (34.6%)
+**Code exists (CW + NT + IM)**: 386 features (79.4%)  
+**Missing (KM + NU)**: 100 features (20.6%)  
+**Tested end-to-end (CW)**: 167 features (34.4%)
 
-The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 93 on 2026-09-27, when the social-systems, pets, organizations and crafting campaigns merged. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
+The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 110 on 2026-09-27, when the social-systems, pets, organizations and crafting campaigns merged. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
 
 ## System Status
 
@@ -85,7 +85,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58 
 | XP & leveling | IM | 12 (7 CW, 3 NT, 1 IM, 1 KM) | Kill-XP pipeline + level scaling CW. The ability-tree campaign (2026-09-27, [ledger](analysis/ability-trees/work-packets.md)) raised the cap to 50 and moved to 1 training point per level; both are NT until the owner's UAT. It also shipped the 439-node FINAL v2 trees, the archetype-wide spend gate, trainer authority, respec, and fire-after-warmup for charged abilities. Mission XP has a `GrantXP` action (#618) but `reward_xp` is 0 on all 1,041 missions and the formula needs a maintainer decision |
 | Crafting | IM | 9 (8 IM, 1 KM) | State, persistence, the login sync, discipline learning, ASP spend, craft, research, reverse engineering and alloying are ported (#427, crafting campaign CR-03 to CR-09); respec is still a stub. See the [crafting ledger](analysis/crafting/README.md) and gap-analysis §19 |
 | Stargate travel | IM | 10 (2 CW, 4 NT, 3 IM, 1 KM) | Gate passage CW. DHD interaction, gate cancel, address discovery and multi-player gate sync are NT (#662, #663, #682); stargate open/cross events are now emitted. Return-trip state is IM |
-| Chat | NT | 11 (7 NT, 1 IM, 3 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Say, emote and yell reach other players (#737), with a one-way Ignore filter. Tells (with AFK and DND replies) and `chatIgnore` (SS-C1). A flood limit and text rules on every line (SS-00), a channel allowlist, GM `.mute` / `.unmute`, and a feedback line for each unimplemented Communicator method (SS-C3). GM broadcast through `/gmshout` and `.announce` (SS-C2), which the client now displays because the channel ids match its own (SS-C4); no channel is registered at login, as in the legacy server. Squad chat works (ORG-04); team, command and officer answer "not supported yet". User channels and channel moderation are unported |
+| Chat | NT | 11 (8 NT, 3 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Say, emote and yell reach other players (#737), with a one-way Ignore filter. Tells (with AFK and DND replies) and `chatIgnore` (SS-C1). A flood limit and text rules on every line (SS-00), a channel allowlist, GM `.mute` / `.unmute`, and a feedback line for each unimplemented Communicator method (SS-C3). GM broadcast through `/gmshout` and `.announce` (SS-C2), which the client now displays because the channel ids match its own (SS-C4); no channel is registered at login, as in the legacy server. Squad chat (ORG-04) and team, command and officer chat (ORG-09) reach the right members. User channels and channel moderation are unported |
 | Trading | IM | 8 (all IM) | **Ported 2026-06** (#438): full propose → lock → confirm → atomic item+cash swap, with disconnect unwind and live-DB commit guards. Needs a two-client smoke to reach CW |
 | Ring transport | IM | 9 (3 CW, 4 NT, 2 IM) | About 5,850 lines. **Four in-client Cellblock ring trips** in the colo playtest make region loading, the destination list and the state machine CW. Stall timeouts and the mission 688 client-patch ceremony are new rows; the patched map passed its Phase 0 in-client check (2026-09-19) and Phase 1 awaits a test |
 | Contact lists | CW | 10 (all CW) | **Shipped 2026-06-20**, confirmed working in-client (#572/#574/#578/#579/#581/#583). Schema, list CRUD, member add/remove, and presence fanout for LoggedInStatus / GainLevel / Death / GateTravel. `eventId` is a bitfield (LoggedInStatus = 1) |
@@ -94,13 +94,13 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58 
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| Organizations / guilds | KM | 17 (3 NT, 14 KM) | Squads work (ORG-03, 2026-09-27): invite, accept, leave, kick, loot mode, disconnect and gate travel, tested with two wire clients but not a real client. Teams and Commands are the ORG-01 contract only; DB schema is ORG-02. Team and Command vaults are in progress in the Bank and Vault campaign (BV-07), with org cash (BV-08) after ORG-07 |
+| Organizations / guilds | NT | 21 (16 NT, 1 IM, 4 KM) | **Organizations campaign, merged 2026-09-27, not yet client-verified; awaiting the owner's two-client [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo).** Squads (ORG-03, ORG-04): invite, accept, leave, kick, leader-only loot mode, disconnect, gate travel and squad chat, as cell state. Teams and Commands on the base (ORG-02, ORG-05 to ORG-09): founded at a registrar NPC in the debug hub, restored at every login with online and offline presence, invite, kick and rank change under the organization lock, leave and disband, MOTD, member and officer notes, the rank-permission and rank-name editor, and team, command and officer chat. GM `.squad_*` and `.org_*` commands and `/ReloadOrganizations` (ORG-10). Tested with unit, live-DB and fan-out tests and two wire clients. Team and Command vaults (BV-07) and cash (BV-08) are the Bank and Vault campaign's; open owner questions and follow-ups are in the [ledger](analysis/organizations/README.md#open-questions-for-the-owner) |
 | Mail | NT | 17 (15 NT, 2 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Text mail to up to 10 recipients, offline ones included (SS-M1); gift cash, an item or COD to one recipient, with 25 naquadah postage and the item held in escrow (SS-M2); taking cash and items, paying COD (the price reaches the sender by mail, online or not) and return-to-sender (SS-M3); a new-mail line and live header push, and a 30-day expiry that returns, deletes or quarantines (SS-M4). A server-side system-mail API and GM `.mail` / `.mailbox` / `.mail_expire` (SS-U1), and the debug hub's Gate Mail Clerk (SS-U3). Missing: a GM release for quarantined mail, and vault and organization aliases (Bank and organizations campaigns) |
 | Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 is on the unmerged `feat/571-black-market-phase1` (PR #586), and the client window additionally needs a client patch (#587) |
 | Dueling | IM | 6 (5 IM, 1 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Challenge, response, the countdown, the engaged duel and every end implemented (SS-D1 to SS-D3): duelists are PvP-flagged, can damage each other and only each other, and are in combat together. A duel ends on forfeit, on partner damage that would kill (held at 1 HP instead, D-SS20), on death from anyone else, disconnect, teleport or range; the winner hears 879, nothing is awarded (D-SS22). A `sparbot` wireclient partner and GM `.duel_status` / `.duel_end` help testing (SS-U2). The duel marker is not ported (D-SS24); squad duels are refused |
 | Pets | NT | 7 (6 NT, 1 IM) | **Restored server-side 2026-09-27, pending the owner's in-game UAT** (pets campaign, #570; every packet merged). A player summons a Straegis, Jaffa, Prime or Lo'taur by casting its summon ability. The pet follows, fights by stance, takes pet-bar orders behind an ownership guard, and pays its kill XP and credit to its owner; it goes away when its owner logs out, dies or travels. The owner's own pet abilities act on it, and GMs have `.pet`, `.giveability` and a debug-hub pet trainer. Not done: persistence (not planned, D-PT01), turrets (no client model), a Lo'taur that heals, several no-op kit abilities, and pet leveling past the owner's level |
 | Minigames | IM | 9 (5 CW, 1 IM, 3 KM) | **Livewire is client-verified**: 12 in-client sessions in the colo playtest, 11 wins that fired their follow-on chains. The SmartFox server is in-process (about 3,400 lines). Six games still run on an accept-anything placeholder; Alignment and GoauldCrystals are open TODOs |
-| Groups / parties | KM | 7 (all KM) | Not ported. No group code exists (an unwired `game/src/social/groups.rs` sketch was deleted in #699) |
+| Groups / parties | NT | 7 (3 NT, 1 IM, 3 KM) | The group is the Squad organization (see Organizations): creation, invite and leave work server-side. The loot mode is set and shown but not yet applied to loot; member info updates and the combat-assist hooks are not ported |
 
 ### Systems New Since the Original Audit
 
@@ -206,9 +206,9 @@ Re-ranked 2026-09-25.
 4. **Mission rewards** — a reward formula for XP, and cash and item dispatch (#310)
 5. **Crafting Phase 2** — the crafting verbs on top of the Phase 1 state layer
 6. **Multi-zone end-to-end** — Harset's first playtest; content campaigns for the next zones
-7. **Two-client verification** — trading, player-to-player introduction, chat, mail and duels between players
+7. **Two-client verification** — trading, player-to-player introduction, chat, mail, duels, squads, Teams and Commands between players
 
-Quality-of-life items (organizations, black market merge, remaining minigame ports, groups) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign) and pets are restored server-side and waiting for the owner's in-game UAT.
+Quality-of-life items (black market merge, remaining minigame ports, group loot and member info) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign), pets, and squads, Teams and Commands (the organizations campaign) are restored server-side and waiting for the owner's in-game UAT.
 
 ## Roadmap
 
@@ -216,6 +216,7 @@ Quality-of-life items (organizations, black market merge, remaining minigame por
 
 - Client-test the NT rows, starting with the NPC AI post-UAT changes, gate travel with two observers, and vendors
 - The owner's UAT of the personal bank on the colo after release 1 ([checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)), and serving the Expand dialog once #943's crashing field is known
+- The owner's organizations UAT on the colo after the release ([guide](guides/organizations-uat.md)), then the follow-ups in the [ledger](analysis/organizations/README.md#known-gaps-and-follow-ups)
 - Effect-script coverage for the most-played encounters
 - Observe the AoI first-login hold in game
 - Mission reward formula and cash/item dispatch
@@ -224,14 +225,13 @@ Quality-of-life items (organizations, black market merge, remaining minigame por
 ### Medium-term — restore retired subsystems
 
 - Crafting Phase 2 (the verbs, on top of the shipped state layer)
-- Org / guild lifecycle + schema
 - Organization vaults and treasuries (Bank and Vault BV-07 to BV-10), then release 2
 - Merge `feat/571-black-market-phase1`
 - Spawn population control (SpawnRegion / SpawnSet, #62)
 
 ### Long-term — finish-out
 
-- Groups + the remaining minigame ports (in any order)
+- Group loot by mode, member info updates and the remaining minigame ports (in any order)
 - Social-systems follow-ups after UAT: a GM release for quarantined mail, the owner questions in the [session resume](analysis/social-systems/handoffs/session-resume.md#owner-questions), and vault and organization mail aliases
 - Pets follow-ups after UAT: a Lo'taur that heals (an ally-target pet AI branch), effects for the no-op kit abilities, and turrets once a model is chosen
 - Server infrastructure: rate limiting, damage sanity checking, promoting speed validation from warn-only to enforcing, reconnection grace
