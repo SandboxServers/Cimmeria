@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Mail System
 
 > **Last updated**: 2026-09-27
-> **Status**: Read side implemented (headers / body / delete / archive), player sending with text (social-systems SS-M1) and with cash, an item or COD attached, held in escrow (SS-M2), taking cash, taking the item, paying COD and return-to-sender (SS-M3), and new-mail notification and the 30-day expiry (SS-M4).
+> **Status**: Every player mail operation is implemented on the server (the social-systems campaign, merged 2026-09-27): the read side (headers / body / delete / archive), sending with text (SS-M1) and with cash, an item or COD attached, held in escrow (SS-M2), taking cash, taking the item, paying COD and return-to-sender (SS-M3), and new-mail notification and the 30-day expiry (SS-M4), plus server mail, GM tools (SS-U1) and the debug hub's Gate Mail Clerk (SS-U3). None of it has been run in the real client yet; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) steps 1-6 cover it.
 
 ## Overview
 
@@ -139,11 +139,11 @@ mail's own transaction, so deleting the mail does not reset it.
 | Server-generated mail | DONE | `send_system_mail` / `send_system_mail_tx` (SS-U1): cash, a minted item or a server-held instance, no postage, no COD, not returnable. See [Server and GM mail](#server-and-gm-mail-ss-u1) |
 | GM mail tools | DONE | `.mail`, `.mailbox`, `.mail_expire` (SS-U1, SS-M4) |
 | Content-engine mail | DONE | `send_system_mail` action with an optional per-player cooldown (SS-U3); the debug hub's Gate Mail Clerk uses it. An online recipient is told (SS-M4) |
-| Send mail (player compose) | DONE (text only) | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
+| Send mail (player compose) | DONE | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
 | Cash, item or COD attachment on send | DONE | One recipient; 25 naquadah postage; item into escrow (`sgw_gate_mail_item`); one transaction. See [Sending with an attachment](#sending-with-an-attachment-ss-m2) |
 | Return to sender | DONE | `returnMailMessage` (CM 47) → `MailOp::Return`. To the stored `sender_id`, once; not archived or server mail; COD cancelled. See [Taking attachments](#taking-attachments-paying-cod-returning-ss-m3) |
 | Cash attachment claim | DONE | `takeCashFromMailMessage` (CM 49) → `MailOp::TakeCash`. Once; never from an unpaid COD; overflow-checked |
-| Item attachment claim | DONE | `takeItemFromMailMessage` (CM 50) → `MailOp::TakeItem`. First free main-bag slot chosen by the server; the client's container and slot are ignored; a full bag keeps the item in escrow |
+| Item attachment claim | DONE | `takeItemFromMailMessage` (CM 50) → `MailOp::TakeItem`. The server places the item in the first free slot of the carried bag its type names (the backpack, or the crafting bag for a crafting component); the client's container and slot are ignored; a full bag keeps the item in escrow |
 | Cash On Delivery | DONE | `payCODForMailMessage` (CM 51) → `MailOp::PayCod`. Stored price; the payment is mailed to the sender |
 | New mail notification | DONE | A feedback line and a one-row `onMailHeaderInfo` upsert to an online recipient after every delivery commits (SS-M4). `onNewMail` and `notifyPlayersOfNewMail` stay unused. See [New-mail notification](#new-mail-notification-ss-m4) |
 | Mail expiry | DONE | 30 days (`expires_at`); a 5-minute base sweep and a login sweep take the D-SS04 paths: return, delete or quarantine. See [Expiry](#expiry-ss-m4) |
@@ -318,14 +318,33 @@ It is a standalone table, not `INHERITS (sgw_inventory_base)`, so no inventory q
 - **Database**: `sgw_gate_mail`, `sgw_gate_mail_item`
 - **Enumerations**: `RecipientFlags` (individual, guild, etc.)
 
+## Testing and GM tools
+
+- **UAT.** The owner's checklist is [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release), steps 1-6: plain mail, postage, an item, COD, return and expiry, each with a solo fallback.
+- **Gate Mail Clerk.** In the stasis-room debug hub, Sgt. Harriman's "Send me a mail" button mails you 5 Health Slappacks and 50 naquadah, at most once every 10 minutes, so a non-GM can test taking cash and items. See [debug-hub.md](../content/debug-hub.md#gate-mail-clerk-template-390).
+- **GM tools.** `.mail`, `.mailbox` and `.mail_expire` ([Server and GM mail](#server-and-gm-mail-ss-u1), [commands.md](../commands.md)).
+- **Two-client test.** `two_client_mail_cod` in `crates/wireclient/tests/it/` runs a COD round trip between two wire clients (type 11, not run in CI).
+- **SigNoz.** Everything logs on the `mail` target, with `mail_id`, the actor's `account_id` and `player_id`, and the other player as `target_player_id`: `mail.sent`, `mail.send_refused` and `mail.op_refused` (each with `reason`), `mail.cash_taken`, `mail.item_taken`, `mail.cod_paid` and `mail.returned` (with before and after cash), `mail.expired` (with `path`), and `mail.notified`. See the `mail` row of the target catalog in [observability.md](../architecture/observability.md).
+
+### Known client-side limits
+
+- After a send the server refuses, the compose window's Send button stays greyed until you press New or Reply. The refusal line and `sendMailResult` arrive; the button state is the client's own Lua. Fixing it needs a client patch.
+- The Expires column after a COD payment counts down from the original send time, while the server allows 30 days from the payment, so the client under-states the time left, never over-states it.
+
 ## Remaining Work
 
 1. **RecipientFlags** — the vault and organization aliases are refused until the Bank and organizations campaigns land them
 2. **GM recovery of quarantined mail** — quarantine keeps the mail and its escrow row, but there is no `.mail_release` yet; `.mailbox` counts them
 3. **Rate limiting** — the `lastMailGetTime` throttle on header requests is not implemented
-4. **Archive as storage** — archived mail is exempt from the cap and never expires, so mailing yourself and archiving is unlimited storage at 25 naquadah per item; an owner decision (SS-M4 worknote)
+4. **Archive as storage** — archived mail is exempt from the cap and never expires, so mailing yourself and archiving is unlimited storage at 25 naquadah per item; SS-M4 recommends capping archived mail that holds items or cash at 100 (an owner decision)
+5. **Escrow on a deleted character** — deleting a recipient's character cascades away the escrowed items and COD mailed to it, and a COD whose sender was deleted becomes a free take; both are owner questions
+
+The owner questions are listed in the campaign's [session resume](../analysis/social-systems/handoffs/session-resume.md#owner-questions).
 
 ## Related Docs
 
 - [inventory-system.md](inventory-system.md) - Items attached to mail
 - [organization-system.md](organization-system.md) - Guild-wide mail recipients
+- [mail-wire-formats.md](../reverse-engineering/findings/mail-wire-formats.md) - Client evidence (SS-E1 M-Q1 to M-Q7)
+- [contact-list.md](contact-list.md) - The Ignore list, which also refuses mail
+- [Social-systems ledger](../analysis/social-systems/README.md) - Decisions D-SS02 to D-SS11 and the owner questions

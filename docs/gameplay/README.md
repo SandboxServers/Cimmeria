@@ -2,12 +2,12 @@
 title: "Gameplay Systems Dashboard"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-27
 ---
 
 # Gameplay Systems Dashboard
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-27 (Chat, Mail and Dueling rows and sections, after the social-systems campaign; other rows are as of 2026-07-25)
 
 Overview of every game system in Stargate Worlds, with implementation status, key network events, and entity interfaces.
 
@@ -34,12 +34,12 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Character Creation](#character-creation) | IM | Account | `base/character_create.rs`, `base/chardef.rs` | MEDIUM |
 | [Gate Travel](#gate-travel) | IM | GateTravel | `base/world_entry/gate_travel/`, `cell/gate_travel.rs` | MEDIUM |
 | [Cover](#combat) | IM | SGWCoverSet | `cell/cover/` | MEDIUM |
-| [Chat](#chat) | KM | Communicator | `base/dispatch/chat.rs`, `cell/console/chat/` | MEDIUM |
+| [Chat](#chat) | NT | Communicator | `base/dispatch/{chat,chat_gates,tell,ignore}.rs`, `cell/console/chat/` | MEDIUM |
 | [Crafting](#crafting) | KM | (SGWPlayer direct) | `base/crafting/` (state only) | MEDIUM |
 | [Vendors](#vendors) | IM | SGWInventoryManager | `base/world_entry/methods/vendor/` | MEDIUM |
 | [Organizations](#organizations) | KM | OrganizationMember | `cell/cell_methods/organization.rs` (stubs) | MEDIUM |
 | [Minigames](#minigames) | IM | MinigamePlayer | `minigame/` | LOW |
-| [Mail](#mail) | IM | SGWMailManager | `cell/mail.rs`, `base/world_entry/methods/mail/` | MEDIUM |
+| [Mail](#mail) | NT | SGWMailManager | `cell/mail.rs`, `base/world_entry/methods/mail/` | MEDIUM |
 | [Trading](#trading) | IM | SGWPlayer | `cell/cell_methods/player/trade/`, `base/world_entry/methods/trade/` | LOW |
 | [Black Market](#black-market) | KM on `main` | SGWBlackMarketManager | stubs on `main`; Phase 1 on unmerged PR #586 | LOW |
 | [Pets](#pets) | KM | (SGWPet entity) | — | LOW |
@@ -176,7 +176,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Chat
 
-**Status**: KM — Only spatial chat works. Say, emote, and yell fan out to AoI witnesses; eight channels are registered with the client on login; DND and GM speaker flags are computed. Tells, team/squad/command delivery, user channels, moderation, ignore, and petitions are all unimplemented — only five chat base methods are dispatched, two of them acknowledge-only.
+**Status**: NT — Implemented on the server by the social-systems campaign (2026-09-27), not yet checked with two real clients. Say, emote and yell reach AoI witnesses, other players included; tells with AFK and DND replies; `chatIgnore` and a one-way Ignore filter; a flood limit and text rules; GM broadcast (`/gmshout`, `.announce`) and GM `.mute`; a channel allowlist; a feedback line for every unimplemented Communicator method; channel ids that match the client's, with no registration at login. Squad chat works (ORG-04). Missing: team, command and officer delivery, user channels, channel moderation, petitions.
 
 **Interface**: `Communicator.def` — 5 properties, 11 base methods, 7 client methods, 1 cell method
 **RE doc**: [chat-system.md](chat-system.md)
@@ -234,12 +234,12 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Mail
 
-**Status**: IM — Read side works: headers, body (with read-time stamping), delete, and archive, all ownership-checked. Player-composed sending, return-to-sender, attachment claim, and COD are unimplemented. The header query also ignores `bArchive`, so archived mail still shows in the inbox. The one server-generated mail *sender* (`send_mail_to_player`, driven by the Black Market sweep) is on unmerged PR #586, so on `main` nothing writes to `sgw_gate_mail`.
+**Status**: NT — Every player mail operation is implemented on the server by the social-systems campaign (2026-09-27), not yet client-tested: sending text to up to 10 recipients, gift cash, an item or COD to one recipient with 25 naquadah postage and the item in escrow, taking cash and items, paying COD, return-to-sender, a new-mail line, and a 30-day expiry. Server mail has one writer, used by GM `.mail` and the debug hub's Gate Mail Clerk. Missing: a GM release for quarantined mail, and vault and organization aliases.
 
 **Features**: Send/receive mail, item attachments, currency attachments, COD (cash on delivery), return to sender
 **9 NetOut events**, **4 NetIn events**
 **Interface**: `SGWMailManager.def` — 4 properties, 9 cell methods, 3 client methods, 1 base method
-**Data**: `sgw_gate_mail`
+**Data**: `sgw_gate_mail`, `sgw_gate_mail_item` (escrow)
 **RE doc**: [mail-system.md](mail-system.md)
 
 ---
@@ -281,9 +281,9 @@ Phase 1 exists on the **unmerged** branch `feat/571-black-market-phase1` (PR #58
 
 ## Dueling
 
-**Status**: IM — Challenge and response only (SS-D1). `sendDuelChallenge` (base 0xD9) is rate-limited, resolved and forwarded to the cell's `DuelRegistry`, which sends `onDuelChallenge`; `sendDuelResponse` (CM 102) accepts or declines. An accepted duel counts down and then aborts until SS-D2 engages it; `duelForfeit` (CM 103) still logs `UNIMPLEMENTED` (SS-D3). See [duel-system.md](duel-system.md).
+**Status**: IM — 1v1 duels are implemented end to end on the server (SS-D1 to SS-D3), not yet client-tested: challenge, response, a 5-second countdown, the engaged duel (PvP flag, only the two duelists can harm each other) and every end path (forfeit, a non-lethal 1 HP clamp, death from anyone else, disconnect, travel, range). No rewards; squad duels refused. See [duel-system.md](duel-system.md).
 
-**Entity**: `SGWDuelMarker` — placed in world to define duel area
+**Entity**: `SGWDuelMarker` — placed in world to define duel area in the original design; not ported, because the server keeps the duel in a registry (D-SS24)
 **Events**: `DuelChallenge`, `DuelResponse`, `DuelForfeit` (NetOut), `onDuelChallenge`, `onDuelEntitiesSet`, `onDuelEntitiesRemove`, `onDuelEntitiesClear` (NetIn)
 **RE doc**: [duel-system.md](duel-system.md)
 
@@ -412,10 +412,10 @@ Phase 1 exists on the **unmerged** branch `feat/571-black-market-phase1` (PR #58
 
 ### Should Have (core MMO features)
 
-7. **Chat beyond spatial** — tells, group/guild channels, ignore enforcement
+7. **Chat group channels** — team, command and officer (squad works); tells and Ignore landed 2026-09-27
 8. **Groups** — the blocker under organizations; nothing exists yet
 9. **Organizations** — guild creation, roster, ranks
-10. **Mail send path** — receive works; player-composed sending, attachments, and COD do not
+10. **Mail, chat and duel UAT** — the server side landed 2026-09-27; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) is the remaining step
 11. **Stargate animations** — zone transition works, but no gate opens or closes on screen
 
 ### Nice to Have (polish)
@@ -425,7 +425,7 @@ Phase 1 exists on the **unmerged** branch `feat/571-black-market-phase1` (PR #58
 14. **Minigames** — port Alignment and GoauldCrystals; stop falling back to auto-win on an unknown name
 15. **Trading** — two-client verification and real partner-side item detail
 16. **Pets** — pet summoning and control
-17. **Dueling** — PvP duels
+17. **Squad duels** — 1v1 duels landed 2026-09-27; squad duels are refused
 18. **Player cover** — cover detection fires content triggers but has no combat effect
 
 ---

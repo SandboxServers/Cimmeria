@@ -8,13 +8,13 @@ last_updated: 2026-09-27
 # Chat System
 
 > **Last updated**: 2026-09-27
-> **Status**: Spatial chat (say / emote / yell) works. Tells, `chatIgnore` and the Ignore filter work on the server (SS-C1, 2026-09-27; not yet tested with two real clients). The base refuses lines on channels a player may not use, GMs can mute a player's chat and tells, and every Communicator method the server does not implement answers with a feedback line (SS-C3, 2026-09-27). Channel management, channel moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server. Sending on an unsupported non-spatial channel (team, squad, command, server) no longer disappears silently: the sender gets a feedback line on the registered `tell`/feedback channel explaining why, matching the legacy `onError` reply the Python cell sent for the same unsupported channels (`python/cell/SGWPlayer.py::processPlayerCommunication`).
+> **Status**: Spatial chat (say / emote / yell) works. The social-systems campaign (merged 2026-09-27, not yet tested with two real clients; the owner's [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers it) added a flood limit and text rules (SS-00), tells, `chatIgnore` and the one-way Ignore filter (SS-C1), GM broadcast (SS-C2), a channel allowlist, GM mutes and a feedback line for every Communicator method the server does not implement (SS-C3), and channel ids that match the client's own, with no channel registration at login (SS-C4). Squad chat works (organizations ORG-04); team, command and officer answer with a "not supported yet" line, matching the legacy `onError` reply (`deprecated/python/cell/SGWPlayer.py::processPlayerCommunication`). User channels, channel moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server.
 
 ## Overview
 
 The chat system provides multi-channel text communication between players. It supports system channels (say, emote, yell, team, squad, command, officer, server, feedback, tell, splash) and user-created channels (chat, roleplay, alliance). Messages on cell-based channels are forwarded to the CellApp for spatial distribution; other messages are handled on the BaseApp.
 
-The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/base/src/base/dispatch/chat.rs) (inbound base methods), [`cell/console/chat/`](../../crates/cell-console/src/cell/console/chat/mod.rs) (spatial fanout), [`base/dispatch/tell.rs`](../../crates/base/src/base/dispatch/tell.rs) and [`base/dispatch/ignore.rs`](../../crates/base/src/base/dispatch/ignore.rs) (tells and `chatIgnore`), [`base/dispatch/chat_gates.rs`](../../crates/base/src/base/dispatch/chat_gates.rs) (the channel allowlist and the mute gate), [`base/dispatch/communicator_unsupported.rs`](../../crates/base/src/base/dispatch/communicator_unsupported.rs) (the 0xC6-0xCE feedback arms), [`base/mutes/`](../../crates/base-session/src/base/mutes/) (the mute table and `.mute` / `.unmute`), [`base/contact_list/ignore/`](../../crates/base-session/src/base/contact_list/ignore/) (the Ignore cache), and [`base/world_entry_chat.rs`](../../crates/base-session/src/base/world_entry_chat.rs) (channel registration at world entry).
+The `Communicator` interface defines the entity-level chat API. The Rust implementation is split between [`base/dispatch/chat.rs`](../../crates/base/src/base/dispatch/chat.rs) (inbound base methods), [`cell/console/chat/`](../../crates/cell-console/src/cell/console/chat/mod.rs) (spatial fanout), [`base/dispatch/tell.rs`](../../crates/base/src/base/dispatch/tell.rs) and [`base/dispatch/ignore.rs`](../../crates/base/src/base/dispatch/ignore.rs) (tells and `chatIgnore`), [`base/dispatch/chat_gates.rs`](../../crates/base/src/base/dispatch/chat_gates.rs) (the channel allowlist and the mute gate), [`base/dispatch/communicator_unsupported.rs`](../../crates/base/src/base/dispatch/communicator_unsupported.rs) (the 0xC6-0xCE feedback arms), [`base/mutes/`](../../crates/base-session/src/base/mutes/) (the mute table and `.mute` / `.unmute`), [`base/contact_list/ignore/`](../../crates/base-session/src/base/contact_list/ignore/) (the Ignore cache), and [`base/world_entry_chat.rs`](../../crates/base-session/src/base/world_entry_chat.rs) (the login welcome line; no channel is registered at login).
 
 ## Implementation Status
 
@@ -31,9 +31,9 @@ Six Communicator base methods do something — `chatJoin` (0xC0), `chatLeave` (0
 | GM mute | DONE (not client-tested) | `.mute <name> <minutes> [reason]` and `.unmute <name>` (GameMaster and above). A muted player's say, emote, yell, organization lines and tells are refused with the time left. See [Channel allowlist and mutes](#channel-allowlist-and-mutes) |
 | Text rules | DONE (not client-tested) | A line over 255 UTF-16 units, or with a control, bidi, zero-width or other invisible formatting character, is refused, not truncated or cleaned |
 | GM console passthrough | DONE | A `.`-prefixed say from a GM is routed to the console handler; from a non-GM it falls through as ordinary chat |
-| Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. Channels are auto-joined at login; there is no join/leave state to change |
+| Channel join / leave | ACK-ONLY | `chatJoin` / `chatLeave` parse their payload, log, and return. The built-in channels need no joining (the client hardcodes them), and user channels do not exist yet, so there is no join/leave state to change |
 | AFK status | DONE (not client-tested) | `chatSetAFKMessage` stores the away message under the DND rules (2+ characters sets it, 128-scalar bound). It is not a speaker flag; a tell to an away player is answered with it. See [Tells and Ignore](#tells-and-ignore) |
-| Non-spatial channels (team / squad / command / server) | NOT IMPL | The client knows these channels without registration, but the cell has no group/organization backing (team/squad/command) or is server-broadcast-only (server) to distribute the message; the sender gets a feedback line (`onPlayerCommunication` on the feedback channel) instead of a silent drop — see [System Channels](#system-channels) |
+| Organization channels (team / squad / command / officer) | PARTIAL | Squad lines reach every squad member (organizations ORG-04, `cell/console/chat/squad.rs`). Team, command and officer have no membership backing yet, so the sender gets a "not supported yet" feedback line instead of a silent drop. A player line on server (8) is refused at the base — see [System Channels](#system-channels) |
 | Player-to-player tell | DONE (not client-tested) | Handled on the base, never forwarded to the cell: the client sends tells on channel 10 and the recipient gets them on 10. See [Tells and Ignore](#tells-and-ignore) |
 | User channels | NOT IMPL | No create / delete / password / member list |
 | Channel operator system | NOT IMPL | `chatOp` answers with a feedback line |
@@ -158,7 +158,7 @@ Computed in `base/dispatch/mod.rs::speaker_flags` and stamped onto every outboun
 1. **Flood limit.** Each player has a chat token bucket: a burst of 5 lines, then one more per second. A line with no token is dropped. The first drop sends the player "You are sending messages too quickly." on the feedback channel; further drops inside the next 5 seconds are silent, so a flood never turns into a flood of replies. Access level GameMaster (2) and above skip the bucket. The bucket covers every channel the player sends on, tells included.
 2. **Text rules.** A line longer than 255 UTF-16 units (the unit of the client's `WSTRING`; a character outside the Basic Multilingual Plane counts two) is refused with "Your message is too long." A line containing a control character (tab and newline included), a bidi control, a zero-width or other format character, or a line or paragraph separator is refused with "Your message contains a character that cannot be sent." These are the organizations campaign's D-ORG10 rules, applied through the same function (`org_text::validate(TextField::ChatText, ..)`), not a second filter. A refused line still used up a token, so bad lines cannot be spammed past the flood limit.
 
-The numbers are project policy, not recovered client data. The cap may come down to the client's own input limit once SS-E1 reports it (it never goes above 255). Drops log `rate_limit.exceeded` and refusals `chat.rejected`; see the `rate_limit` and `chat` rows of the target catalog in [observability.md](../architecture/observability.md).
+The numbers are project policy, not recovered client data. The client's chat input has no length limit of its own (SS-E1 C-Q3), so 255 is the only cap. Drops log `rate_limit.exceeded` and refusals `chat.rejected`; see the `rate_limit` and `chat` rows of the target catalog in [observability.md](../architecture/observability.md).
 
 ## Channel allowlist and mutes
 
@@ -245,14 +245,25 @@ Returning to character select clears the AFK message and the Ignore cache with t
 
 Events, all on the `chat` target: `chat.tell_delivered` (INFO), `chat.tell_refused` (with `reason`), `chat.ignore_added` / `chat.ignore_removed` (with `before` / `after`), `chat.ignore_refused`, `chat.ignore_synced` / `chat.ignore_sync_failed`, `chat.spatial_ignored` (the count of withheld witnesses), `chat.ignore_set_applied` / `chat.ignore_set_dropped` (cell) and `chat.afk_set`. Message text is never logged, only its length.
 
+## Testing and GM tools
+
+- **UAT.** The owner's checklist is [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release), steps 7-10: tells, Ignore, the flood limit, GM broadcast and `.mute`. Tells and Ignore need two accounts; a solo tester can check that a tell to their own name or to an offline name is refused.
+- **GM tools.** `/gmshout` and `.announce [space] <text>` broadcast; `.mute` / `.unmute` moderate. See [commands.md](../commands.md).
+- **Two-client test.** `two_client_tell` in `crates/wireclient/tests/it/` exchanges a tell between two wire clients (type 11, not run in CI).
+- **SigNoz.** Chat logs on the `chat` target (`chat.tell_delivered`, `chat.tell_refused`, `chat.ignore_*`, `chat.gm_broadcast`, `chat.gm_mute`, `chat.channel_rejected`, `chat.method_unsupported`), and flood drops on `rate_limit`. Message text is never logged, only its length.
+
 ## Remaining Work
 
-1. **Group / organization channels** — team, squad, command are registered but have no membership backing; blocked on the [group system](group-system.md)
+1. **Organization channels** — squad works (ORG-04); team, command and officer have no membership backing yet (organizations campaign, and the [group system](group-system.md))
 2. **Yell radius** — say, emote, and yell all fan out to the same AoI witness set; yell should use a wider range
-3. **User channels + channel moderation** — create/join/password/op/mute/kick/ban answer with a feedback line and do nothing; user channel ids (12 and up) are refused at the base. Mutes are GM-only (`.mute`) and not saved across a restart
+3. **User channels + channel moderation** — create/join/password/op/mute/kick/ban answer with a feedback line and do nothing; user channel ids (12 and up) are refused at the base. Mutes are GM-only (`.mute`), not saved across a restart, and keyed by character, so an alt escapes them (an owner question in the [session resume](../analysis/social-systems/handoffs/session-resume.md#owner-questions)). A mute does not block mail
 4. **NPC speech** — how `onSystemCommunication`'s Speaker field works for NPCs is still unrecovered
+5. **Profanity filter** — none
 
 ## Related Docs
 
 - [organization-system.md](organization-system.md) - Guild channels (command, officer)
 - [group-system.md](group-system.md) - Squad/team channels
+- [contact-list.md](contact-list.md) - The Ignore list that chat, mail and duels honour
+- [chat-wire-formats.md](../reverse-engineering/findings/chat-wire-formats.md) - Client evidence (SS-E1, ORG-E1 Q5)
+- [Social-systems ledger](../analysis/social-systems/README.md) - Decisions D-SS12 to D-SS17 and D-SS26, and the owner questions

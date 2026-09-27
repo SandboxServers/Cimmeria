@@ -2,7 +2,7 @@
 title: "Game Systems"
 type: reference
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-09-27
 ---
 
 # Game Systems
@@ -129,7 +129,7 @@ In-game mail with:
 - Return to sender
 - Archive
 
-**Data:** `sgw_gate_mail` and the escrow table `sgw_gate_mail_item`. **Server:** Read side works — headers (inbox and archive listed separately), body (with read-time stamping), delete, and archive, all ownership-checked by `character_id`. Text-only player sending works (social-systems SS-M1): up to 10 recipients, offline ones included, with a flood limit, a 100-message mailbox cap and a reason for every refusal. Sending gift cash, an item or COD to one recipient works (SS-M2): 25 naquadah postage, the item held in escrow, and a mail holding an attachment cannot be deleted. Taking the cash and the item, paying COD (the price is mailed to the sender) and return-to-sender work (SS-M3). New-mail notification (a feedback line and a live header push to an online recipient) and the 30-day expiry (return, delete or quarantine, D-SS04) work (SS-M4). The Black Market expiry sweep's mail *sender* (`send_mail_to_player`) is on the unmerged `feat/571-black-market-phase1` branch. See [mail-system.md](gameplay/mail-system.md).
+**Data:** `sgw_gate_mail` and the escrow table `sgw_gate_mail_item`. **Server:** Read side works — headers (inbox and archive listed separately), body (with read-time stamping), delete, and archive, all ownership-checked by `character_id`. Text-only player sending works (social-systems SS-M1): up to 10 recipients, offline ones included, with a flood limit, a 100-message mailbox cap and a reason for every refusal. Sending gift cash, an item or COD to one recipient works (SS-M2): 25 naquadah postage, the item held in escrow, and a mail holding an attachment cannot be deleted. Taking the cash and the item, paying COD (the price is mailed to the sender) and return-to-sender work (SS-M3). New-mail notification (a feedback line and a live header push to an online recipient) and the 30-day expiry (return, delete or quarantine, D-SS04) work (SS-M4). Server mail goes through one system-mail writer, which GMs reach with `.mail` / `.mailbox` / `.mail_expire` (SS-U1) and content chains with the `send_system_mail` action, as the debug hub's Gate Mail Clerk does (SS-U3). The Black Market expiry sweep's own mail *sender* (`send_mail_to_player`) is on the unmerged `feat/571-black-market-phase1` branch and is to move to that writer. Nothing is client-tested yet; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers it. See [mail-system.md](gameplay/mail-system.md).
 
 ## Chat & Communication
 
@@ -139,7 +139,7 @@ In-game mail with:
 - Channel management: join, leave, kick, ban, mute, password
 - AFK and DND status messages
 
-**Server:** Spatial chat only. Say, emote, and yell fan out to AoI witnesses, and since #737 (players in a shared world see each other) those witnesses include other players, though no two-client test has confirmed it; eight channels are registered with the client at world entry; the DND flag and GM speaker flag are computed. Everything else — tells, team/squad/command delivery, user channels, moderation, ignore, petitions — is unimplemented. Only five chat base methods are dispatched at all, and two of those are acknowledge-only. See [chat-system.md](gameplay/chat-system.md).
+**Server:** Say, emote, and yell fan out to AoI witnesses, and since #737 (players in a shared world see each other) those witnesses include other players. The social-systems campaign (2026-09-27) added tells with AFK and DND replies, `chatIgnore` and a one-way Ignore filter (SS-C1), a flood limit and text rules (SS-00), GM broadcast through `/gmshout` and `.announce` (SS-C2), a channel allowlist, GM `.mute` / `.unmute` and a feedback line for every unimplemented Communicator method (SS-C3), and channel ids that match the client's, with no channel registration at login (SS-C4). Squad chat works (ORG-04). Still missing: team, command and officer delivery, user channels, channel moderation and petitions. Nothing here has been checked with two real clients yet. See [chat-system.md](gameplay/chat-system.md).
 
 ## Pets
 
@@ -158,9 +158,9 @@ Features matchmaking, spectating, and helper systems.
 
 ## Dueling
 
-PvP duel system with challenge/accept/decline, forfeit, and duel area management.
+PvP duel system with challenge/accept/decline, forfeit, and a duel area.
 
-**Data:** Entity defined. **Server:** Challenge and response implemented (SS-D1): `sendDuelChallenge` (base 0xD9) prompts the target with `onDuelChallenge` [143], and `sendDuelResponse` (CM 102) accepts or declines. The accept starts a 5-second countdown on both clients; then the duel is engaged (SS-D2): both duelists are PvP-flagged for themselves and everyone around them, are in combat with each other, and may damage each other and nobody else. The duel ends (SS-D3) on `duelForfeit` (CM 103), on partner damage that would kill (the duelist is held at 1 HP instead, D-SS20, so duels are non-lethal), on death from anyone else, disconnect, teleport or gate travel, or 5 seconds outside the 40-unit arena. The winner hears "You won the duel" (879) and the loser a feedback line; nothing is awarded (D-SS22). See [gameplay/duel-system.md](gameplay/duel-system.md).
+**Data:** `SGWDuelMarker` defined, not needed (D-SS24). **Server:** Challenge and response implemented (SS-D1): `sendDuelChallenge` (base 0xD9) prompts the target with `onDuelChallenge` [143], and `sendDuelResponse` (CM 102) accepts or declines. The accept starts a 5-second countdown on both clients; then the duel is engaged (SS-D2): both duelists are PvP-flagged for themselves and everyone around them, are in combat with each other, and may damage each other and nobody else. The duel ends (SS-D3) on `duelForfeit` (CM 103), on partner damage that would kill (the duelist is held at 1 HP instead, D-SS20, so duels are non-lethal), on death from anyone else, disconnect, teleport or gate travel, or 5 seconds outside the 40-unit arena. The winner hears "You won the duel" (879) and the loser a feedback line; nothing is awarded (D-SS22). A solo tester can duel `sparbot`, a wireclient partner, and GMs have `.duel_status` / `.duel_end` (SS-U2). Squad duels are refused, and nothing is client-tested yet. See [gameplay/duel-system.md](gameplay/duel-system.md).
 
 ## Trading
 
