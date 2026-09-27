@@ -76,6 +76,7 @@ Run on the colo after release 1, as a GM, with a fresh character. At anything od
 11. **Expansion.** At the Banker, pick "Expand vault" (100 naquadah). The window grows to 50 slots, and the cash drops by 100. Repeat until 100 slots. At 100, the option refuses with a message.
 12. **Not enough cash.** With less than 100 naquadah, expansion refuses with a message, and nothing changes.
 13. **GM override.** As a GM away from any Banker, `.bank` opens the vault, and moves work. As a non-GM, `.bank` is refused.
+14. **Backpack merge.** Drag a stack onto a same-type stack in the backpack; they merge up to the stack limit, and the total never changes. BV-03 turned the legacy merge on for every container, not only the vault (D-BV25).
 
 The org-vault steps are added by BV-10.
 
