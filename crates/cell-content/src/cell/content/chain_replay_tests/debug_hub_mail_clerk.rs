@@ -34,7 +34,7 @@ const ACCOUNT_ID: u32 = 9043;
 /// The clerk. Fixed so the dialog frame can name it.
 const CLERK_EID: u32 = 100_701;
 const CLERK_TAG: &str = "DebugHub_MailClerk";
-const CLERK_DIALOG: i32 = 100_104;
+const CLERK_DIALOG: i32 = 60_104;
 
 /// Wire index of `onDialogDisplay`, spelled out.
 const ON_DIALOG_DISPLAY: u16 = 105;
@@ -192,7 +192,7 @@ async fn mail_clerk_button_sends_exactly_one_mail() {
     // not vacuous.
     assert!(!choose(CLERK_DIALOG).actions.is_empty());
     assert!(
-        choose(100_100).actions.is_empty(),
+        choose(60_100).actions.is_empty(),
         "chain 7011 keys on dialog 60104 only"
     );
 
