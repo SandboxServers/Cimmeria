@@ -92,7 +92,8 @@ SS-00 is the bottleneck and is kept small: the index, the limiter, the feedback 
 - **Telemetry is first-class (owner rule, 2026-09-27).** Every packet must leave its behaviour debuggable from SigNoz alone. Following [instrumentation discipline](../../architecture/instrumentation-discipline.md), that means:
   - an info span on each dispatch entrypoint;
   - a debug `event="..."` on each state transition (mail sent, taken, returned, expired or quarantined; a tell delivered or refused; a duel challenged, engaged or ended, with its end reason);
-  - `account_id` and `player_id` on every player-activity event;
+  - `account_id` and `player_id` on every player-activity event, with `entity_id` alongside them (rule 5, `instrumentation-discipline.md:203-224`);
+  - when one player acts on another (mail to, a tell to, a duel challenge to, a GM action on), `account_id` and `player_id` name the actor, and the other player gets `target_player_id`, or `subject_player_id` for a GM acting on them (`instrumentation-discipline.md:307-313`);
   - the correlating ids (`mail_id`, `item_id`, the duel pair);
   - the before and after values of every cash, item or points change.
 

@@ -69,7 +69,7 @@ Note that the *stub* status of `sendMailMessage` applies only to the player-faci
 | `returnMailMessage` | YES | MailId | Return to sender |
 | `requestMailBody` | YES | MailId | Fetch body text |
 | `takeCashFromMailMessage` | YES | MailId | Claim cash attachment |
-| `takeItemFromMailMessage` | YES | MailId, ContainerId, SlotId | Claim item attachment. ContainerId and SlotId are garbage in the shipped client and are ignored; the server places the item in the caller's first free main slot (`mail-wire-formats.md` M-Q5) |
+| `takeItemFromMailMessage` | YES | MailId, ContainerId, SlotId | Claim item attachment. ContainerId and SlotId are garbage in the shipped client (`mail-wire-formats.md` M-Q5). **Planned (SS-M3, not yet implemented; the handler is still a stub):** the server will ignore them and place the item in the caller's first free main slot |
 | `payCODForMailMessage` | YES | MailId | Pay COD fee |
 | `onNewMail` | NO | (none) | Server notification of new mail |
 
