@@ -42,16 +42,19 @@
 
 ## Hypothesis / evidence
 
-### 1. Wire method indices — CONFIRMED, not just re-derived
+### 1. Wire method indices — derivation stands; handler identity cross-checked
 
 `code-map.md §1.5` had already derived 29/30/31 from the `.def` + BigWorld flattening rule and
-flagged "one verification step" as outstanding. I closed that verification step: each of the
-three GamePet CME handlers (`GamePet__OnPetAbilityListChanged` @ `0x00d39eb0`,
-`GamePet__OnPetStanceListChanged` @ `0x00d3a070`, `GamePet__OnPetStanceUpdateChanged` @
-`0x00d3a260`) keys its internal property-list parse on the literal strings `"aAbilityList"`,
-`"aStanceList"`, `"aStance"` — an exact match to `SGWPet.def`'s three `<ArgName>` values, in
-that order. That rules out any silent inherited-method reordering between the SGWMob 0-28
-prefix and SGWPet's own block, so 29/30/31 stands confirmed, not just derived-by-formula.
+flagged "one verification step" as outstanding. What I actually closed is narrower than a full
+index verification: each of the three GamePet CME handlers
+(`GamePet__OnPetAbilityListChanged` @ `0x00d39eb0`, `GamePet__OnPetStanceListChanged` @
+`0x00d3a070`, `GamePet__OnPetStanceUpdateChanged` @ `0x00d3a260`) keys its internal
+property-list parse on the literal strings `"aAbilityList"`, `"aStanceList"`, `"aStance"` — an
+exact match to `SGWPet.def`'s three `<ArgName>` values. **That confirms which method each
+handler implements** (so the three renames above are correctly assigned to each other), **not
+the numeric wire index 29/30/31 itself** — the indices still rest entirely on the `.def` parse
+order plus the BigWorld flattening rule; I did not cross-check them against a live
+`EntityDescription` dump or dispatch table.
 
 ### 2. `Unit.Pet1..4` binding mechanism — CONFIRMED
 
@@ -76,15 +79,23 @@ Full call chain traced and cross-confirmed two independent ways (see
 - **The exact readiness gate**: three bytes on the `GamePet` object gate the refresh
   (`+0x170`/`+0x171`/`+0x172`, all must be non-zero). `+0x170` is a constant "IsPet" marker set
   unconditionally in `GamePet__ctor` — not a real gate. `+0x171` is set by the ownerID handler
-  above, and *also*, redundantly, inside `GamePet__OnPetAbilityListChanged`'s successful-parse
-  path. `+0x172` is set **only** by `GamePet__OnPetStanceListChanged`. So the real requirement
-  reduces to: **`onEntityProperty(GENERICPROPERTY_PetOwnerId=5, owner)` (or a successful
-  `onPetAbilityList`) AND `onPetStanceList`, in any order.** The owner property must reach the client **after** `onEntityFlags` has set
-  `ENTITYFLAG_Pet`: the owner handler is gated on the flag when the property arrives. `onPetStanceUpdate` does **not**
-  gate this at all — it only updates the cached current-stance byte (`+0x173`) and fires a UI
-  event. This directly answers PT-01's `pet_create_on_client_events` message-sequence question
-  (`code-map.md §1.4` item 2) and resolves one of `pet-restoration.md`'s open questions (does
-  `onPetStanceUpdate` matter for basic pet recognition? — no).
+  above — the only handler that actually adds the pet id to the owner's pet vector — and
+  *also*, as an unrelated side effect, inside `GamePet__OnPetAbilityListChanged`'s
+  successful-parse path; that side effect does **not** itself establish ownership
+  (`GamePet__OnPetAbilityListChanged` never calls `GameBeing__AddPetId`/`RemovePetId`), so
+  `onPetAbilityList` cannot substitute for the ownerID property — `GamePet__SyncLocalOwnerPetSlots`'s
+  own re-check still needs the ownerID property to already be valid when it runs. `+0x172` is
+  set **only** by `GamePet__OnPetStanceListChanged`. So the real requirement is:
+  **`onEntityProperty(GENERICPROPERTY_PetOwnerId=5, owner)` AND `onPetStanceList`** (the
+  ability-list message is separately required to fill the ability bar, but is not
+  interchangeable with the ownerID property for slot binding). The owner property must reach
+  the client **after** `onEntityFlags` has set `ENTITYFLAG_Pet`: the owner handler reads the
+  entity's current flag state when the property event fires, so a flag set later is ignored.
+  `onPetStanceUpdate` does **not** gate this at all — it only updates the cached current-stance
+  byte (`+0x173`) and fires a UI event. This directly answers PT-01's
+  `pet_create_on_client_events` message-sequence question (`code-map.md §1.4` item 2) and
+  resolves one of `pet-restoration.md`'s open questions (does `onPetStanceUpdate` matter for
+  basic pet recognition? — no).
 
 Confidence: HIGH for the slot IDs and the ownerID mechanism (each traced to a specific
 decompiled handler with a literal `.def`-matching string or constant). MEDIUM for the exact

@@ -32,20 +32,20 @@ SGWSpawnableEntity → SGWBeing → SGWMob → SGWPet`, and the SGWMob table alr
 methods, matching `IDBASE_NPC_DEFAULT = 62` (`crates/mercury/src/channel_bundle/idbase.rs`) and
 the entity-property-sync appendix B figure of 32 for SGWPet cited in `code-map.md §1.5`.
 
-This is consistent with the handlers, though the handlers alone do not prove the numbers: the
-three GamePet-side CME handlers for these methods carry the exact `.def` `<ArgName>` strings as
-their internal property-list keys, which confirms *which* method each handler processes. The
-numeric indices 29/30/31 still rest on the flattening rule and the SGWMob prefix; no
-EntityDescription or dispatch mapping was read that would rule out a remap —
+Separately, each of the three GamePet-side CME handlers for these methods carries the exact
+`.def` `<ArgName>` string as its internal property-list key:
 
 - `GamePet__OnPetAbilityListChanged` (`0x00d39eb0`, renamed this session; was `FUN_00d39eb0`)
   builds its temporary property list keyed on the literal string `"aAbilityList"`.
 - `GamePet__OnPetStanceListChanged` (`0x00d3a070`; was `FUN_00d3a070`) keys on `"aStanceList"`.
 - `GamePet__OnPetStanceUpdateChanged` (`0x00d3a260`; was `FUN_00d3a260`) keys on `"aStance"`.
 
-These match `SGWPet.def`'s `<ArgName>` values (`aAbilityList`, `aStanceList`, `aStance`)
-exactly, confirming these are GamePet's own 3 methods and that no additional inherited
-method reordering happened between the SGWMob prefix and SGWPet's own block.
+This confirms *which* client method each decompiled handler implements — i.e. that
+`GamePet__OnPetAbilityListChanged`/`OnPetStanceListChanged`/`OnPetStanceUpdateChanged` are
+correctly identified and not mixed up with one another. **It does not by itself confirm the
+numeric wire indices 29/30/31** — those rest entirely on the `.def` parse order and the
+BigWorld flattening rule above; this pass did not cross-check them against a live
+`EntityDescription` dump or dispatch table.
 
 **Do not confuse client CME *registration* order with the wire index** — `pet-restoration.md`
 previously listed "`onPetAbilityList` [client idx 1] / `onPetStanceList` [idx 0] /
@@ -156,7 +156,7 @@ Three call sites gate `GamePet__SyncLocalOwnerPetSlots` on `+0x170 != 0 && +0x17
 | Byte | Set by | Meaning |
 |---|---|---|
 | `+0x170` | `GamePet__ctor` (always `1`) | Constant type marker — always satisfied, not a real gate |
-| `+0x171` | `LAB_00d39ae0` (ownerID generic-property change, unconditionally) **and** `GamePet__OnPetAbilityListChanged` (as a side effect of a successful ability-list parse) | Effectively "ownerID **or** ability list has been observed" |
+| `+0x171` | `LAB_00d39ae0` (ownerID generic-property change) — the only handler that establishes real ownership, via `GameBeing__AddPetId`/`RemovePetId` on the resolved owner. `GamePet__OnPetAbilityListChanged` also flips this byte, but only as a side effect of parsing the ability list — it never calls `GameBeing__AddPetId`/`RemovePetId` itself | "ownerID has been observed" |
 | `+0x172` | `GamePet__OnPetStanceListChanged` **only** | "`onPetStanceList` has arrived" |
 
 **`GamePet__OnPetStanceUpdateChanged` (`onPetStanceUpdate`) does *not* participate in this
@@ -170,23 +170,35 @@ itself, have prevented `Unit.PetN` from ever populating — the two real blocker
 missing `ownerID` property and the missing `onPetStanceList` call, both of which the legacy
 server also never sent correctly (or, per `pet-restoration.md`, sent inconsistently).
 
-**Because `+0x171` can be set by *either* the ownerID property change *or* a successful
-ability-list parse, and `+0x172` is set only by the stance list, the three-way gate reduces to
-a two-input AND with either input able to arrive first:**
+**`+0x171` is a necessary-but-not-sufficient proxy for "ownership established" — it is not
+interchangeable with actually having an owner.** Only `LAB_00d39ae0` (the ownerID-property
+handler) adds the pet id to the owner's pet vector (`GameBeing__AddPetId`).
+`GamePet__OnPetAbilityListChanged` flips the same byte as a side effect of its own, unrelated
+parse — it never calls `GameBeing__AddPetId`/`RemovePetId`. So an `onPetAbilityList` arriving
+before the ownerID property can make `+0x171` non-zero, but `GamePet__SyncLocalOwnerPetSlots`'s
+own internal re-check (`GameEntityBase__GetGenericPropertyInt32(this, 5) > 0`) still requires
+the ownerID property to already be a valid, positive value at that moment — which is true only
+once the dedicated ownerID handler has already run. **`onPetAbilityList` cannot substitute for
+the ownerID property; at most it can re-trigger a sync the ownerID property already unblocked.**
 
-> The server must deliver, in any order, **both**:
+> The server must deliver, for `Unit.PetN` to bind:
 >
-> 1. `onEntityProperty(GENERICPROPERTY_PetOwnerId = 5, ownerEntityId)` for the pet entity
->    (the same generic-property mechanism `create.rs:158-175` already uses for `DatabaseId`);
-> 2. `onPetStanceList(ARRAY<INT8>)` on the pet entity's own `SGWPet` client method (index 30).
+> 1. `onEntityFlags` carrying `ENTITYFLAG_Pet` for the pet entity, at or before the point in (2)
+>    below — the ownerID handler reads the entity's *current* flag state when the property
+>    event fires, so the flag must already be set by then or the property update is ignored
+>    and the pet never binds;
+> 2. `onEntityProperty(GENERICPROPERTY_PetOwnerId = 5, ownerEntityId)` for the pet entity (the
+>    same generic-property mechanism `create.rs:158-175` already uses for `DatabaseId`) — the
+>    only message that actually adds the pet id to the owner's pet-id vector;
+> 3. `onPetStanceList(ARRAY<INT8>)` on the pet entity's own `SGWPet` client method (index 30) —
+>    independent of (1)/(2); can arrive before or after them.
 >
-> `onPetAbilityList` (index 29) is *also* required for `Unit.PetN` to populate in practice,
-> because it is the message that fills the pet's visible ability bar — but per the gate logic
-> above it is not strictly load-bearing for the slot bind by itself (only its side effect on
-> `+0x171` is, and that is redundant with the ownerID property already setting the same byte).
-> `onPetStanceUpdate` (index 31) is optional for slot binding, but should still be sent whenever
-> the pet's stance differs from its `EPetStance` default (`Defensive = 1`), or the pet info
-> window will show the `+0x173` ctor sentinel (`-1`, "no stance") until the player changes it.
+> `onPetAbilityList` (index 29) should also be sent — it fills the pet's visible ability bar —
+> but it is **not** a substitute for (2): only the dedicated ownerID-property handler
+> establishes ownership. `onPetStanceUpdate` (index 31) is optional for slot binding, but should
+> still be sent whenever the pet's stance differs from its `EPetStance` default (`Defensive =
+> 1`), or the pet info window will show the `+0x173` ctor sentinel (`-1`, "no stance") until the
+> player changes it.
 
 This is the exact message sequence PT-01's `pet_create_on_client_events(witness, &entity)`
 helper (`code-map.md §1.4`, item 2) needs to assemble for the owner-only createOnClient replay:

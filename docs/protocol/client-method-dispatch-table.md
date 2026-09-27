@@ -421,11 +421,15 @@ after the SGWMob prefix documented above (indices 0-28):
 
 Direct encoding: `0x9D` (29), `0x9E` (30), `0x9F` (31).
 
-Ghidra evidence: each handler's internal property-list lookup key matches its `.def`
-`<ArgName>` string exactly — `GamePet__OnPetAbilityListChanged` (`0x00d39eb0`) keys on
-`"aAbilityList"`, `GamePet__OnPetStanceListChanged` (`0x00d3a070`) keys on `"aStanceList"`,
-`GamePet__OnPetStanceUpdateChanged` (`0x00d3a260`) keys on `"aStance"` — confirming no
-inherited-method reordering happened between the SGWMob prefix and SGWPet's own block.
+The indices (29/30/31) rest on the `.def` parse order plus the BigWorld flattening rule (see
+"BigWorld Flattening Rule" above), not on anything decoded from the handlers themselves.
+Separately, Ghidra evidence confirms *handler identity*, not the index values: each handler's
+internal property-list lookup key matches its `.def` `<ArgName>` string exactly —
+`GamePet__OnPetAbilityListChanged` (`0x00d39eb0`) keys on `"aAbilityList"`,
+`GamePet__OnPetStanceListChanged` (`0x00d3a070`) keys on `"aStanceList"`,
+`GamePet__OnPetStanceUpdateChanged` (`0x00d3a260`) keys on `"aStance"` — i.e. this confirms
+which method each decompiled handler implements, not that the flattening rule assigned it the
+number claimed above.
 
 ## Derivation
 
