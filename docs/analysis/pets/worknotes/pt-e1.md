@@ -179,6 +179,6 @@ shown, is directly re-checkable in Ghidra by anyone who doubts it.
   `pet-client-contract.md`; fixed `pet-wire-formats.md`'s two INT8 errors and
   `pet-restoration.md`'s "idx 0/1/2" line; added the SGWPet table to
   `client-method-dispatch-table.md`; updated both `docs/reverse-engineering/` README index files
-  (summary counts corrected to 78 docs after the Copilot review; the directory holds 78 findings). Wrote this worknote. `cargo fmt`/`clippy`/build/test were not run — no Rust
-  changed. Committed and pushed.
+  (summary counts corrected to 78 docs after the Copilot review; the directory holds 78 findings). Wrote this worknote. In this first pass `cargo fmt`/`clippy`/build/test were not run, because no Rust
+  changed. The later codegen fix ran targeted checks only: `cargo check -p cimmeria-wire-log`, its 24 tests, and a regenerate-and-diff of `generated.rs`. No workspace-wide fmt/clippy/build/test was run locally; CI covers those. Committed and pushed.
 - **2026-09-27 (coordinator)** — Rebased onto `main` after the ledger PR #879 merged. The README counts are now 81, because main had added findings meanwhile. Per the Copilot re-review, the "No runtime code; one tooling fix" section now records the `wire_decoder_codegen.py` change, and the Ghidra log entry now scopes the handler trace to handler identity only.
