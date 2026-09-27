@@ -149,10 +149,12 @@ decoder, SS-E1 M-Q4, 2026-09-27; the field types follow `entities/defs/alias.xml
 boilerplate, not the text mapper. The real subscriber is `MailManager`'s bound handler, found via
 `MailManager`'s registration function `FUN_00e16e60` (binds 5 handlers) → the 4th binding
 (`FUN_00e17cc0` → `FUN_00e17a10` → constructor) → **`Mercury__unknown_00e13b90`** (misnamed by the
-xref-propagation heuristic; it is a `MailManager` method, not `Mercury`). It decodes `ResultCode`
+xref-propagation heuristic; it is a `MailManager` method, not `Mercury`). It reads `ResultCode`
 (UINT8), `FailedRecipientFlags` (INT32 — decoded but not referenced by any display branch found),
 `FailedRecipients` (`ARRAY<WSTRING>`), then switches on `ResultCode` with literal, hardcoded
-client strings:
+client strings. **This is the handler's own field-access order over an already-decoded argument
+struct, not the wire order** — see "Wire order" below, which settles the open question this
+SS-E1 pass was asked to close:
 
 | `ResultCode` | Enum (`EMailResultCodes`) | Client text |
 |---|---|---|
@@ -176,6 +178,52 @@ evidence it drives anything client-visible.
 
 Evidence: `ghidra://SGW.exe@0x00e13b90` (handler body), `0x00e16e60` (registration, 5 handlers),
 `0x00e17cc0`/`0x00e17a10` (subscribe chain), `0x00d7d0e0` (ruled out — boilerplate only).
+
+**Wire order (SS-E1 follow-up, 2026-09-27): `.def` order, not this handler's read order —
+HIGH confidence from architecture, not independently re-traced this session.**
+
+The open question was whether `Mercury__unknown_00e13b90` reads a raw `BinaryIStream` in the
+order shown above, or reads fields of an already-decoded argument struct built by the generic
+dispatcher — in which case its field-access order says nothing about the wire. Two independent,
+already-verified findings in this tree settle it as the latter:
+
+- **Incoming (NetIn) dispatch.** `black-market-client-window-patch.md` (HIGH confidence,
+  owner-confirmed working in-world, 2026-06-21) traces the universal incoming dispatcher
+  `Client_NetIn_EntityMethodDispatch @ 0x00c6f8f0`. On a found dispatch node it calls
+  `entry->vtable[+0x10](&decoded, arginfo, msg)`: "the real arg-type decodes the wire args into
+  `&decoded`... then your callback runs and is handed `&decoded`" — the wire is decoded by the
+  generic dispatcher, in the arg-type order the `MethodDescription` carries, *before* the
+  specific handler (the "callback") ever runs. That finding calls `0x00c6f8f0` universal and
+  generalizes the mechanism to "any shelved client method"; `SGWMailManager`'s ClientMethods
+  (indices 76–79, including `sendMailResult`) dispatch through the identical machinery — there
+  is no per-interface special case documented anywhere in this tree.
+- **`MethodDescription`'s arg order is the `.def` declaration order.** `MethodDescription_parse
+  @ 0x01594f60` (`entity-property-sync.md`, `address-map.md:95`) builds the arg-type vector by
+  parsing the `.def` file's `<Arg>` list in file order; nothing reorders it afterward.
+- **The same architecture holds symmetrically on the outgoing side.** `combat-wire-formats.md`
+  traces the universal outgoing dispatcher `0x00c6fc40`, which serializes `argTypes[i]` for `i`
+  in `0..argCount` straight off the `MethodDescription` vector — again `.def` order, with "no
+  per-method serialization functions."
+
+Putting these together: `sendMailResult`'s wire order is `ResultCode, FailedRecipients,
+FailedRecipientFlags` — the `.def`/dispatch-table order — and `Mercury__unknown_00e13b90`'s
+internal read order (`ResultCode, FailedRecipientFlags, FailedRecipients`) is just how the
+compiler ordered field access on the struct the dispatcher handed it, unrelated to the byte
+sequence on the wire.
+
+**Residual gap.** This session had no live Ghidra or x64dbg instance available (no running
+Ghidra project reachable via the MCP bridge, and this worktree's `game/sgw/` is the
+un-populated placeholder per the repo invariants — there was no `SGW.exe` to load), so
+`Mercury__unknown_00e13b90` itself was not re-disassembled to directly confirm it receives
+`&decoded` rather than a raw stream. The verdict above rests on the universal-dispatcher
+architecture already established — and owner-verified — elsewhere in this tree, not on a fresh
+trace of this specific function. If a live capture ever disagrees, re-open this note and trace
+`0x00e16e60`'s 4th binding directly with Ghidra.
+
+**Verdict: def-order.** `entities/defs/interfaces/SGWMailManager.def:43-47` and
+`docs/protocol/client-method-dispatch-table.md:205` (`ResultCode, FailedRecipients,
+FailedRecipientFlags`) are correct as written; no change needed to either. SS-M1's
+`build_send_mail_result` should serialize in that order.
 
 ### M-Q2 — recipient/alias parsing and `ItemId` semantics (CLOSED — blocking for SS-M2)
 
