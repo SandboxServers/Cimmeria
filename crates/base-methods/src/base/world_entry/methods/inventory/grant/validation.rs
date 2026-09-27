@@ -94,6 +94,7 @@ pub(super) async fn refuse_storage_grant(
             Err(e) => {
                 tracing::warn!(
                     target: "bank",
+                    event = "grant_rejected",
                     player_id,
                     reason = "account_lookup_failed",
                     "grant_rejected: could not read the account id: {e}"
@@ -103,6 +104,7 @@ pub(super) async fn refuse_storage_grant(
         };
     tracing::warn!(
         target: "bank",
+        event = "grant_rejected",
         account_id,
         player_id,
         entity_id,

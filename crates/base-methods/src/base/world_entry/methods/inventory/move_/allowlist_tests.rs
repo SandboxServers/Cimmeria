@@ -181,6 +181,7 @@ async fn move_out_of_buyback_is_refused_and_no_row_changes() {
     assert_fields(
         &event,
         &[
+            ("event", "move_rejected".into()),
             ("account_id", account_id.to_string()),
             ("player_id", player_id.to_string()),
             ("entity_id", entity_id.to_string()),
@@ -254,6 +255,7 @@ async fn move_into_vault_is_still_refused() {
     assert_fields(
         &event,
         &[
+            ("event", "move_rejected".into()),
             ("account_id", account_id.to_string()),
             ("player_id", player_id.to_string()),
             ("entity_id", entity_id.to_string()),
@@ -548,6 +550,7 @@ async fn refusal_of_an_unknown_item_sends_nothing() {
     assert_fields(
         &rejected,
         &[
+            ("event", "move_rejected".into()),
             ("account_id", account_id.to_string()),
             ("player_id", player_id.to_string()),
             ("item_id", forged.to_string()),
@@ -567,6 +570,7 @@ async fn refusal_of_an_unknown_item_sends_nothing() {
     assert_fields(
         &skipped,
         &[
+            ("event", "move_resync_skipped".into()),
             ("account_id", account_id.to_string()),
             ("player_id", player_id.to_string()),
             ("entity_id", entity_id.to_string()),
@@ -628,6 +632,7 @@ async fn move_into_buyback_logs_target_not_player_movable() {
     assert_fields(
         &event,
         &[
+            ("event", "move_rejected".into()),
             ("account_id", account_id.to_string()),
             ("player_id", player_id.to_string()),
             ("entity_id", entity_id.to_string()),
@@ -691,6 +696,7 @@ async fn move_out_of_vault_logs_source_needs_vault_session() {
     assert_fields(
         &event,
         &[
+            ("event", "move_rejected".into()),
             ("account_id", account_id.to_string()),
             ("player_id", player_id.to_string()),
             ("entity_id", entity_id.to_string()),

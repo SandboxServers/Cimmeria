@@ -144,6 +144,7 @@ pub(super) async fn refuse_move(
             if let Err(e) = tx.rollback().await {
                 tracing::warn!(
                     target: "bank",
+                    event = "move_rejected",
                     account_id = context.account_id,
                     player_id,
                     entity_id,
@@ -182,6 +183,7 @@ impl Refusal {
     fn log(&self, context: &RefusalContext) -> bool {
         tracing::warn!(
             target: "bank",
+            event = "move_rejected",
             account_id = context.account_id,
             player_id = self.player_id,
             entity_id = self.entity_id,
@@ -203,6 +205,7 @@ impl Refusal {
         }
         tracing::warn!(
             target: "bank",
+            event = "move_resync_skipped",
             account_id = context.account_id,
             player_id = self.player_id,
             entity_id = self.entity_id,
@@ -239,6 +242,7 @@ impl Refusal {
             // already logged with its error.
             tracing::warn!(
                 target: "bank",
+                event = "move_resync_skipped",
                 player_id = self.player_id,
                 entity_id = self.entity_id,
                 item_id = self.item_id,
@@ -261,6 +265,7 @@ async fn take_move_lock(
         Err(e) => {
             tracing::warn!(
                 target: "bank",
+                event = "move_rejected",
                 player_id,
                 reason = "move_lock_begin_failed",
                 "move_rejected: begin failed, resyncing without the move lock: {e}"
@@ -278,6 +283,7 @@ async fn take_move_lock(
             let _ = tx.rollback().await; // Defensible silent: the lock query already failed and is logged next.
             tracing::warn!(
                 target: "bank",
+                event = "move_rejected",
                 player_id,
                 reason = "move_lock_failed",
                 "move_rejected: move lock failed, resyncing without it: {e}"
@@ -310,6 +316,7 @@ where
         Err(e) => {
             tracing::warn!(
                 target: "bank",
+                event = "move_rejected",
                 player_id,
                 item_id,
                 reason = "refusal_context_query_failed",

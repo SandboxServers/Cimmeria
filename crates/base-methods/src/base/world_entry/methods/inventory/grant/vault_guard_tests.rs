@@ -101,6 +101,7 @@ async fn grant_into_vault_is_refused() {
     // A grant names a type, not an instance: no instance `item_id`, no
     // source position.
     for (key, value) in [
+        ("event", "grant_rejected".to_string()),
         ("account_id", ACCOUNT_ID.to_string()),
         ("player_id", PLAYER_ID.to_string()),
         ("entity_id", ENTITY_ID.to_string()),
