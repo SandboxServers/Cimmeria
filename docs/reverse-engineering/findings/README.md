@@ -15,7 +15,7 @@ This directory contains 80 per-system reverse engineering findings with evidence
 | `crafting-wire-formats.md` | 3 | Craft, research, reverse engineer, alloy | HIGH |
 | `minigame-wire-formats.md` | 4 | Minigame matchmaking, calls, spectating, helpers | HIGH |
 | `chat-wire-formats.md` | 4 | Chat channels, tells, ignore, friends, GM petitions; SS-E1 client evidence added 2026-09-27 | HIGH |
-| `mail-wire-formats.md` | 4 | Mail send/receive, attachments, COD, archive; SS-E1 client evidence added 2026-09-27 (result-code text, `ItemId` = instance id, 30-day TTL, `MessageAttachment.durability` corrected to FLOAT) | HIGH |
+| `mail-wire-formats.md` | 4 | Mail send/receive, attachments, COD, archive; SS-E1 client evidence added 2026-09-27 (result-code text, `ItemId` = instance id, 30-day TTL, `MessageAttachment.durability`: the client UI reads a float but the wire stays INT32 per `alias.xml`, discrepancy unresolved pending a capture) | HIGH |
 | `black-market-wire-formats.md` | 4 | Auction search, create, bid, cancel, watch list | HIGH |
 | `contact-list-wire-formats.md` | 4 | Contact lists, members, online/offline events | HIGH |
 | `group-wire-formats.md` | 4 | Group authority, member coordination, mob groups | HIGH |

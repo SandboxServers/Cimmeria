@@ -107,9 +107,9 @@ how client UI reads `pvpFlag` once synced. See `duel-wire-formats.md`'s SS-E1 se
    per-target-template + range lookup. Sending 151 at duel start and 153 at duel end is safe and
    does not affect NPC interactability; `aoi.rs:203-211`'s comment has the add/erase direction
    backwards and should be corrected.
-7. `GENERICPROPERTY_PvPFlag` vs. the client's actual PvP-flag consumption — **partially closed
-   2026-09-27 (SS-E1, D-Q4)**: see the "PvP flag" correction above. `pvpFlag` is very likely the
-   real wire vehicle, not the generic-property channel; client-side consumption still unconfirmed.
+7. `GENERICPROPERTY_PvPFlag` vs. the client's actual PvP-flag consumption — **still open
+   (new candidate found 2026-09-27 (SS-E1, D-Q4))**: see the "PvP flag" correction above. `pvpFlag` and the generic-property
+   channel are both still candidates: neither the receiver path nor client-side consumption has been traced.
 
 ## Dynamic-analysis needs (x64dbg)
 
