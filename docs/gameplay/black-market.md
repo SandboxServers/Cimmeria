@@ -116,16 +116,17 @@ Eleven fields, in wire-packing order (deserialized by `BMSearchOptions::from_wir
 
 ```
 UINT8  sortId          -- EBlackMarketSortType
-INT32  clientKey       -- opaque pagination token, echoed back in results
+INT32  clientKey       -- the view the reply fills (EBlackMarketSearchType: 0 Search,
+                          1 MyAuctions, 2 MyBids); echoed back in onBMAuctions
 INT32  sequenceId      -- pagination cursor (last-seen auction sequence id)
 UINT8  bForward        -- non-zero = paginate forward
-STRING sellerName      -- empty = no filter
-STRING bidderName      -- empty = no filter
+STRING sellerName      -- empty = no filter; the caller's own name for MyAuctions
+STRING bidderName      -- empty = no filter; the caller's own name for MyBids
 STRING itemName        -- substring filter; empty = no filter
-INT32  minTC           -- minimum trade-credits price
-INT32  maxTC           -- maximum trade-credits price
+INT32  minTC           -- minimum tech competency (item level)
+INT32  maxTC           -- maximum tech competency
 INT32  quality         -- EItemQuality filter
-INT32  filterFlags     -- EBlackMarketFilter category/faction/mode bitfield
+INT32  filterFlags     -- .def name monikerCRC; the shipped UI always sends 0
 ```
 
 The 11th field was recovered from the emitter at `puVar1+0x15`; an older revision of this doc mislabelled that slot `monikerCRC`.

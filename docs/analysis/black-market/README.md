@@ -55,7 +55,7 @@ Port the branch onto the split crates and keep its tests. Fix these contract poi
 
 ### 3.2 Patch DLL: a new crate, `cimmeria-client-patches`
 
-An i686 `cdylib` in the same shape as `cimmeria-client-telemetry`. The launcher injects it on every launch, independent of the telemetry opt-in. It reuses the telemetry crate's audited hooking primitives, which were written with "the future client-patch crates" in mind (`hooks/primitives/mod.rs`).
+An i686 `cdylib` in the same shape as `cimmeria-client-telemetry`. The launcher injects it on every launch, independent of the telemetry opt-in. The telemetry crate's hooking primitives (`hooks/primitives/`) are crate-private (`pub(crate)`), so the patch DLL links MinHook directly. That is the same library the telemetry DLL uses for its inline hooks, which is what makes chaining at the shared addresses safe. Extracting a shared hooking crate is a later cleanup, worth doing if a third injected DLL ever appears.
 
 - **Build fingerprint gate.** Before installing any hook, check the expected prologue bytes at each address. On a mismatch, install nothing and log why. The addresses are specific to this `SGW.exe` build.
 - **Receive (network thread).** The dispatcher and drop-callee hooks (evidence §2) act only when the entity is the local player and the `MethodDescription` name is one of the six BM names. They decode the arguments by hand through `retrieve`; the engine's own decoder throws on the narrow `sellerName`. Decoded events go onto a bounded queue. No Lua and no game state is touched on this thread.
