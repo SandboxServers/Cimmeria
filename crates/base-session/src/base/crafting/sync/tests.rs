@@ -28,10 +28,18 @@ fn fixture_state() -> CraftingState {
     state
 }
 
-/// The packets `send_bundle_to_witness_reliable` emits for `state` on a
-/// fresh test session (sequence 0, no acks, the all-zero key).
+/// The packets `send_bundle_to_witness_reliable` emits for the login
+/// bundle of `state` on a fresh test session (no acks, the all-zero key).
+/// A test session has no stations, tools or craft anywhere, so its
+/// options are all empty.
 fn expected_bundle_packets(entity_id: u32, state: &CraftingState, seq: u32) -> Vec<Vec<u8>> {
-    let (packets, _) = build_crafting_state_bundle(entity_id, state).finalize(
+    expected_login_packets(entity_id, Some(state), seq)
+}
+
+/// [`expected_bundle_packets`] for a bundle that may carry no state.
+fn expected_login_packets(entity_id: u32, state: Option<&CraftingState>, seq: u32) -> Vec<Vec<u8>> {
+    let options = CraftingOptions::default();
+    let (packets, _) = build_login_bundle(entity_id, state, Some(&options)).finalize(
         FLAG_RELIABLE | FLAG_ON_CHANNEL,
         seq,
         |plaintext| encrypt_packet(plaintext, &[0u8; 32], EncryptionVersion::V1),
@@ -58,6 +66,36 @@ fn login_messages_are_byte_exact_for_a_fixture_state() {
         (7, vec![2, 0, 0, 0, 3, 0, 0, 0]),
     ];
     assert_eq!(messages, expected);
+}
+
+/// The login bundle's messages are the state's, then
+/// `onUpdateCraftingOptions` (140) with the options' bytes, last. Either
+/// half may be absent. Dropping the 140 from the bundle (a second, separate
+/// login push) fails the first assertion.
+#[test]
+fn login_messages_end_with_the_crafting_options() {
+    let state = fixture_state();
+    let options = CraftingOptions {
+        crafting: cimmeria_wire::crafting::CraftingInfo {
+            items: vec![20_002],
+            entities: vec![900],
+        },
+        ..CraftingOptions::default()
+    };
+    let mut expected = crafting_state_messages(&state);
+    expected.push((140, crafting_options_args(&options)));
+    assert_eq!(login_messages(Some(&state), Some(&options)), expected);
+    assert_eq!(
+        login_messages(None, Some(&options)),
+        vec![(140, crafting_options_args(&options))]
+    );
+    assert_eq!(
+        login_messages(Some(&state), None),
+        crafting_state_messages(&state)
+    );
+    // 140 = 0x8C, framed like 136-139 (sub-index 140 - 61 = 79).
+    let bundle = build_login_bundle(ENTITY, Some(&state), Some(&options));
+    assert_eq!(bundle.num_messages(), 10);
 }
 
 /// The bundle body is those messages, each framed as an SGWPlayer entity
@@ -107,7 +145,13 @@ async fn push_login_bundle_sends_one_packet_to_the_owner() {
     let state = fixture_state();
 
     assert_eq!(
-        push_login_bundle(ENTITY, &state, session.client()).await,
+        push_login_bundle(
+            ENTITY,
+            Some(&state),
+            Some(&CraftingOptions::default()),
+            session.client()
+        )
+        .await,
         Ok(())
     );
 
@@ -133,7 +177,7 @@ async fn unsent_push_is_a_warn() {
     };
 
     assert_eq!(
-        push_login_bundle(ENTITY, &fixture_state(), client).await,
+        push_login_bundle(ENTITY, Some(&fixture_state()), None, client).await,
         Err("entity_to_addr_miss")
     );
     push_asp(ENTITY, 17, 3, client).await;
@@ -193,14 +237,17 @@ async fn unsent_login_bundle_is_login_sync_failed() {
     );
 }
 
-/// Without a database the login sync sends nothing: there is no state to
-/// back it, and the `mapLoaded` bundle already carried the row's ASP and
-/// blueprints.
+/// Without a database the login sync sends only the crafting options:
+/// there is no state to back the rest, and the `mapLoaded` bundle already
+/// carried the row's ASP and blueprints.
 #[tokio::test]
-async fn login_sync_without_a_database_sends_nothing() {
+async fn login_sync_without_a_database_sends_only_the_options() {
     let session = OneSession::new(ENTITY, 55731);
     push_crafting_on_login(ENTITY, 1, &None, session.client()).await;
-    assert!(session.typed.is_empty());
+    assert_eq!(
+        session.typed.filter_to(session.addr),
+        expected_login_packets(ENTITY, None, 0)
+    );
 }
 
 /// The single pushes: 136, 138, 139 and the ASP total, each one reliable
@@ -275,6 +322,7 @@ async fn relog_restores_and_pushes_the_whole_crafting_state() {
         ("blueprints", "2".to_string()),
         ("asp", "3".to_string()),
         ("defaults_applied", "false".to_string()),
+        ("crafting_options", "true".to_string()),
     ] {
         assert!(event.has_field(k, &v), "{k}={v}: {event:#?}");
     }
@@ -410,9 +458,10 @@ async fn partial_stored_levels_load_and_push_all_five_paradigms() {
 }
 
 /// A login whose crafting load fails (a pool that cannot connect stands in
-/// for a database outage) is a WARN naming the phase, and sends nothing.
+/// for a database outage) is a WARN naming the phase, and the bundle
+/// carries only the crafting options.
 #[tokio::test]
-async fn failed_login_load_is_a_warn_and_sends_nothing() {
+async fn failed_login_load_is_a_warn_and_sends_only_the_options() {
     let capture = LogCapture::install();
     // A pool whose connections can never be made: port 1 refuses.
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -424,7 +473,11 @@ async fn failed_login_load_is_a_warn_and_sends_nothing() {
 
     push_crafting_on_login(ENTITY, 23, &db_pool, session.client()).await;
 
-    assert!(session.typed.is_empty(), "nothing sent on a failed load");
+    assert_eq!(
+        session.typed.filter_to(session.addr),
+        expected_login_packets(ENTITY, None, 0),
+        "only the options on a failed load"
+    );
     let warn = capture
         .find_event(tracing::Level::WARN, "crafting login sync", "load")
         .expect("login_sync_failed WARN");

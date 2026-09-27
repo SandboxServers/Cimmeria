@@ -13,12 +13,13 @@
 //!   total)`. Always the **total**, never the change; the client shows the value
 //!   as it arrives (`DisciplineTrainer.lua:49-54`).
 //! - [`push_login_bundle`]: all of the above for a whole
-//!   [`CraftingState`], in one reliable bundle. [`push_crafting_on_login`]
-//!   loads the state and sends it after `onClientReady`.
+//!   [`CraftingState`], then `onUpdateCraftingOptions` (140), in one
+//!   reliable bundle. [`push_crafting_on_login`] loads the state and the
+//!   options and sends them after `onClientReady`: the one crafting push of
+//!   a world entry.
 //!
-//! `onUpdateCraftingOptions` (140) is not here: the station and tool gate
-//! owns it. Until then the client keeps its default, every tab
-//! disabled.
+//! After login, 140 changes are sent by `super::options`, which owns the
+//! stations, tools and "craft anywhere" behind it.
 //!
 //! The legacy server sent only the ASP property and 139 at login
 //! (`python/cell/SGWPlayer.py:510`, `:524`), so a relog lost the client's
@@ -32,15 +33,17 @@ use cimmeria_entity::crafting::CraftingState;
 use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::cell::client_methods::player::{
-    ON_UPDATE_DISCIPLINE, ON_UPDATE_KNOWN_CRAFTS, ON_UPDATE_RACIAL_PARADIGM_LEVEL,
+    ON_UPDATE_CRAFTING_OPTIONS, ON_UPDATE_DISCIPLINE, ON_UPDATE_KNOWN_CRAFTS,
+    ON_UPDATE_RACIAL_PARADIGM_LEVEL,
 };
 use cimmeria_wire::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY;
 use cimmeria_wire::crafting::{
-    applied_science_points_property_args, known_crafts_args, racial_paradigm_level_args,
-    update_discipline_args,
+    applied_science_points_property_args, crafting_options_args, known_crafts_args,
+    racial_paradigm_level_args, update_discipline_args, CraftingOptions,
 };
 use sqlx::PgPool;
 
+use super::options::login_options;
 use super::persistence::load_crafting_state_reporting;
 use super::telemetry::{account_id_of, bundle_send_failure, sql_error_class, witness_send_failure};
 use crate::base::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
@@ -110,15 +113,46 @@ pub fn build_crafting_state_bundle(entity_id: u32, state: &CraftingState) -> Cha
     bundle
 }
 
-/// Send the whole crafting state to the player's own client. `Err` carries
-/// why it did not go out (`entity_to_addr_miss`, `client_disconnected`,
-/// `send_error`, `empty_bundle`); the caller logs it.
+/// The messages of the login crafting bundle: [`crafting_state_messages`]
+/// for `state`, then `onUpdateCraftingOptions` (140) for `options`. Either
+/// half may be absent (the state failed to load, the entity has no
+/// session); the options go last so the crafting window's machine and tool
+/// arrive after the disciplines and blueprints it lists.
+pub fn login_messages(
+    state: Option<&CraftingState>,
+    options: Option<&CraftingOptions>,
+) -> Vec<(u16, Vec<u8>)> {
+    let mut messages = state.map(crafting_state_messages).unwrap_or_default();
+    if let Some(options) = options {
+        messages.push((ON_UPDATE_CRAFTING_OPTIONS, crafting_options_args(options)));
+    }
+    messages
+}
+
+/// [`login_messages`] as one reliable bundle on `entity_id`.
+pub fn build_login_bundle(
+    entity_id: u32,
+    state: Option<&CraftingState>,
+    options: Option<&CraftingOptions>,
+) -> ChannelBundle {
+    let mut bundle = ChannelBundle::new(true);
+    for (method_index, args) in login_messages(state, options) {
+        bundle.append_entity_method(method_index, IDBASE_SGW_PLAYER, entity_id, &args);
+    }
+    bundle
+}
+
+/// Send the login crafting bundle to the player's own client. `Err`
+/// carries why it did not go out (`entity_to_addr_miss`,
+/// `client_disconnected`, `send_error`, `empty_bundle`); the caller logs
+/// it.
 pub async fn push_login_bundle(
     entity_id: u32,
-    state: &CraftingState,
+    state: Option<&CraftingState>,
+    options: Option<&CraftingOptions>,
     client: CraftClient<'_>,
 ) -> Result<(), &'static str> {
-    let bundle = build_crafting_state_bundle(entity_id, state);
+    let bundle = build_login_bundle(entity_id, state, options);
     let outcome = send_bundle_to_witness_reliable(
         client.transport,
         client.connected,
@@ -133,58 +167,72 @@ pub async fn push_login_bundle(
     }
 }
 
-/// Load the player's crafting state and push it. Called once per world
-/// entry, after the `onClientReady` burst, so it lands on a live entity
-/// whose UI has loaded.
+/// Load the player's crafting state and crafting options and push them in
+/// one bundle. Called once per world entry, after the `onClientReady`
+/// burst, so it lands on a live entity whose UI has loaded.
 ///
 /// Loading fills in the starting level of every paradigm with none stored,
 /// so the bundle carries all five 138s (none left at its pre-relog value)
 /// and the tree draws the root disciplines as learnable. A sent
 /// bundle is a `login_sync` event recording what was sent. A failed load
-/// sends nothing (the ASP count and blueprint list from the `mapLoaded`
-/// bundle stay); it and a bundle that could not be sent are a
-/// `login_sync_failed` WARN with `reason` = `load` | `send` and the
-/// `error_class`.
+/// is a `login_sync_failed` WARN with `reason = load` and the
+/// `error_class`; the bundle then carries only the options (the ASP count
+/// and blueprint list from the `mapLoaded` bundle stay). Without a
+/// database there is no state to load and only the options go. A bundle
+/// that could not be sent is `login_sync_failed` with `reason = send`.
 pub async fn push_crafting_on_login(
     entity_id: u32,
     player_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     client: CraftClient<'_>,
 ) {
-    let Some(pool) = db_pool else {
-        return;
-    };
     let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
-    let (state, defaults_applied) = match load_crafting_state_reporting(pool, player_id).await {
-        Ok(loaded) => loaded,
-        Err(e) => {
-            tracing::warn!(
-                target: "crafting",
-                event = "login_sync_failed",
-                reason = "load",
-                error_class = sql_error_class(&e),
-                error = %e,
-                account_id,
-                player_id,
-                entity_id,
-                "crafting login sync: load failed -- the client keeps no \
-                 disciplines or paradigm levels until the next world entry"
-            );
-            return;
-        }
+    let options = login_options(
+        entity_id,
+        player_id,
+        db_pool,
+        client.connected,
+        client.entity_to_addr,
+    )
+    .await;
+    let loaded = match db_pool {
+        None => None,
+        Some(pool) => match load_crafting_state_reporting(pool, player_id).await {
+            Ok(loaded) => Some(loaded),
+            Err(e) => {
+                tracing::warn!(
+                    target: "crafting",
+                    event = "login_sync_failed",
+                    reason = "load",
+                    error_class = sql_error_class(&e),
+                    error = %e,
+                    account_id,
+                    player_id,
+                    entity_id,
+                    "crafting login sync: load failed -- the client keeps no \
+                     disciplines or paradigm levels until the next world entry"
+                );
+                None
+            }
+        },
     };
-    match push_login_bundle(entity_id, &state, client).await {
+    if loaded.is_none() && options.is_none() {
+        return;
+    }
+    let state = loaded.as_ref().map(|(state, _)| state);
+    match push_login_bundle(entity_id, state, options.as_ref(), client).await {
         Ok(()) => tracing::info!(
             target: "crafting",
             event = "login_sync",
             account_id,
             player_id,
             entity_id,
-            disciplines = state.discipline_ids.len(),
-            paradigms = state.racial_paradigm_levels.len(),
-            blueprints = state.blueprint_ids.len(),
-            asp = state.applied_science_points,
-            defaults_applied,
+            disciplines = state.map(|s| s.discipline_ids.len()),
+            paradigms = state.map(|s| s.racial_paradigm_levels.len()),
+            blueprints = state.map(|s| s.blueprint_ids.len()),
+            asp = state.map(|s| s.applied_science_points),
+            defaults_applied = loaded.as_ref().map(|&(_, applied)| applied),
+            crafting_options = options.is_some(),
             "crafting state pushed at login"
         ),
         Err(error_class) => tracing::warn!(

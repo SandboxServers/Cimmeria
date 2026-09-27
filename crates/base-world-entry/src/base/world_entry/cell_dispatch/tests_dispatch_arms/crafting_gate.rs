@@ -221,7 +221,9 @@ async fn craft_anywhere_passes_the_gate() {
     );
 }
 
-/// Learning a discipline needs no station.
+/// Learning a discipline needs no station: with no station, tool or craft
+/// anywhere, the request reaches the spend handler (which, with no
+/// database, refuses as unavailable) instead of the gate's line.
 #[tokio::test]
 async fn spend_is_not_gated() {
     let typed = Arc::new(TestTransport::new());
@@ -239,7 +241,7 @@ async fn spend_is_not_gated() {
     assert_eq!(
         typed.filter_to(addr),
         vec![feedback_packet(
-            "Learning disciplines is not available yet."
+            "Learning disciplines is unavailable right now. Nothing was changed."
         )]
     );
 }

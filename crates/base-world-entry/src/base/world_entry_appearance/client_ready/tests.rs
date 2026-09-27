@@ -198,18 +198,20 @@ async fn first_login_update_errors_when_player_row_missing() {
 
 /// Live DB, the crafting login-sync guard: `onClientReady` pushes the player's
 /// stored crafting state (discipline, expertise, the five paradigm levels,
-/// blueprints, the ASP total) as one bundle to the player's own client.
-/// Removing the `push_crafting_on_login` call leaves no such packet at any
-/// sequence number.
+/// blueprints, the ASP total) and the crafting options (140) as one bundle
+/// to the player's own client. Removing the `push_crafting_on_login` call
+/// leaves no such packet at any sequence number, and a separate options
+/// push instead of the one in the bundle leaves no packet of this shape.
 #[tokio::test]
 async fn on_client_ready_pushes_the_stored_crafting_state() {
     use crate::test_support::{
         require_db_or_skip, test_default_connected_client_state, TestTransport,
     };
-    use cimmeria_base_session::base::crafting::sync::build_crafting_state_bundle;
+    use cimmeria_base_session::base::crafting::sync::build_login_bundle;
     use cimmeria_entity::crafting::CraftingState;
     use cimmeria_mercury::encryption::EncryptionVersion;
     use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE};
+    use cimmeria_wire::crafting::CraftingOptions;
 
     let pool = require_db_or_skip!();
     // Crafting campaign sentinels (`0x7000_Cxxx`).
@@ -294,7 +296,8 @@ async fn on_client_ready_pushes_the_stored_crafting_state() {
     expected.blueprint_ids = vec![25];
     expected.applied_science_points = 2;
     let found = (0..sent.len() as u32 + 8).any(|seq| {
-        let (packets, _) = build_crafting_state_bundle(entity_id, &expected).finalize(
+        let options = CraftingOptions::default();
+        let (packets, _) = build_login_bundle(entity_id, Some(&expected), Some(&options)).finalize(
             FLAG_RELIABLE | FLAG_ON_CHANNEL,
             seq,
             |p| crate::mercury::encrypt_packet(p, &[0u8; 32], EncryptionVersion::V1),
@@ -303,7 +306,7 @@ async fn on_client_ready_pushes_the_stored_crafting_state() {
     });
     assert!(
         found,
-        "no packet carries the stored crafting state; {} packets sent",
+        "no packet carries the stored crafting state and options; {} packets sent",
         sent.len()
     );
 }

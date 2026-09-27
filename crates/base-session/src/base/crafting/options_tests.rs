@@ -2,6 +2,7 @@
 //! session's stations and tools, and when it is sent.
 
 use super::*;
+use crate::base::crafting::sync::{build_login_bundle, push_crafting_on_login, CraftClient};
 use crate::base::crafting::tools::ToolSpec;
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 use cimmeria_mercury::encryption::EncryptionVersion;
@@ -117,6 +118,31 @@ fn packet(options: &CraftingOptions, seq: u32) -> Vec<u8> {
     )
 }
 
+/// The login crafting bundle as the test transport records it when it
+/// carries only the options (no database, so no state): the `seq`-th
+/// reliable send on the session.
+fn login_packet(options: &CraftingOptions, seq: u32) -> Vec<u8> {
+    let (packets, _) = build_login_bundle(ENTITY, None, Some(options)).finalize(
+        cimmeria_mercury::packet::FLAG_RELIABLE | cimmeria_mercury::packet::FLAG_ON_CHANNEL,
+        seq,
+        |p| crate::mercury::encrypt_packet(p, &[0u8; 32], EncryptionVersion::V1),
+    );
+    assert_eq!(packets.len(), 1);
+    packets.into_iter().next().unwrap()
+}
+
+fn client<'a>(
+    transport: &'a Arc<dyn Transport>,
+    connected: &'a Connected,
+    entity_to_addr: &'a EntityToAddr,
+) -> CraftClient<'a> {
+    CraftClient {
+        transport,
+        connected,
+        entity_to_addr,
+    }
+}
+
 fn report(stations: StationSet) -> CraftingStations {
     CraftingStations {
         entity_id: ENTITY,
@@ -126,8 +152,9 @@ fn report(stations: StationSet) -> CraftingStations {
     }
 }
 
-/// The login send goes out even when every section is empty, and it arms
-/// the change-only sends after it.
+/// The login send goes out in the login crafting bundle, and it arms the
+/// change-only sends after it. Without a database the bundle carries only
+/// the options, so they still reach the client.
 #[tokio::test]
 async fn login_send_is_unconditional_and_arms_change_sends() {
     let (typed, transport, addr, connected, entity_to_addr) = session();
@@ -141,7 +168,13 @@ async fn login_send_is_unconditional_and_arms_change_sends() {
     .await;
     assert!(typed.filter_to(addr).is_empty(), "nothing before login");
 
-    send_login_options(ENTITY, 1, &None, &transport, &connected, &entity_to_addr).await;
+    push_crafting_on_login(
+        ENTITY,
+        1,
+        &None,
+        client(&transport, &connected, &entity_to_addr),
+    )
+    .await;
     let login = CraftingOptions {
         crafting: CraftingInfo {
             items: vec![],
@@ -149,12 +182,15 @@ async fn login_send_is_unconditional_and_arms_change_sends() {
         },
         ..CraftingOptions::default()
     };
-    assert_eq!(typed.filter_to(addr), vec![packet(&login, 0)]);
+    assert_eq!(typed.filter_to(addr), vec![login_packet(&login, 0)]);
 
     handle_station_report(report([None; 4]), &transport, &connected, &entity_to_addr).await;
     assert_eq!(
         typed.filter_to(addr),
-        vec![packet(&login, 0), packet(&CraftingOptions::default(), 1)]
+        vec![
+            login_packet(&login, 0),
+            packet(&CraftingOptions::default(), 1)
+        ]
     );
 }
 
@@ -194,15 +230,12 @@ async fn options_changed_carries_identity_cause_and_ids() {
         .crafting_options
         .tools = vec![tool(20_002, 35)];
 
-    send_login_options(
-        ENTITY,
-        PLAYER_ID,
-        &None,
-        &transport,
-        &connected,
-        &entity_to_addr,
-    )
-    .await;
+    assert!(
+        login_options(ENTITY, PLAYER_ID, &None, &connected, &entity_to_addr)
+            .await
+            .is_some(),
+        "the login always yields options"
+    );
     handle_station_report(
         CraftingStations {
             entity_id: ENTITY,
@@ -295,18 +328,17 @@ impl Transport for FailingTransport {
     }
 }
 
-/// A 140 that fails to send is a WARN `send_failed` with the player's
-/// identity.
+/// A 140 change that fails to send is a WARN `push_failed` with the
+/// player's identity.
 #[tokio::test]
 async fn a_failed_options_send_warns_with_identity() {
     let capture = LogCapture::install();
     let (_typed, _transport, _addr, connected, entity_to_addr) = session();
     let failing: Arc<dyn Transport> = Arc::new(FailingTransport);
 
-    send_login_options(
-        ENTITY,
-        PLAYER_ID,
-        &None,
+    login_options(ENTITY, PLAYER_ID, &None, &connected, &entity_to_addr).await;
+    handle_station_report(
+        report([Some(900), None, None, None]),
         &failing,
         &connected,
         &entity_to_addr,
@@ -320,7 +352,12 @@ async fn a_failed_options_send_warns_with_identity() {
             "send_error",
         )
         .expect("the failed send is logged");
-    assert!(event.has_field("event", "send_failed"), "{event:#?}");
+    assert!(event.has_field("event", "push_failed"), "{event:#?}");
+    assert!(event.has_field("what", "crafting_options"), "{event:#?}");
+    assert!(
+        event.has_field("player_id", &PLAYER_ID.to_string()),
+        "{event:#?}"
+    );
     assert!(
         event.has_field("account_id", &ACCOUNT_ID.to_string()),
         "{event:#?}"

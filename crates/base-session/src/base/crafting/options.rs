@@ -14,11 +14,12 @@
 //! carries at most one machine and one tool. It checks neither distance nor
 //! existence; the server's gate is the only enforcement.
 //!
-//! Sends: always at login ([`send_login_options`], after `onClientReady`),
-//! then only when the options change. Before the login send nothing goes
-//! out, so a station report that lands while the client is still loading
-//! the world never reaches an entity the client has not created. Every
-//! send logs `event = "options_changed"` with its cause.
+//! Sends: always at login, where [`login_options`] hands the options to the
+//! login crafting bundle (`sync::push_crafting_on_login`, after
+//! `onClientReady`), then only when the options change. Before the login
+//! send nothing goes out, so a station report that lands while the client
+//! is still loading the world never reaches an entity the client has not
+//! created. Every send logs `event = "options_changed"` with its cause.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -134,18 +135,19 @@ fn per_section(options: &CraftingOptions, pick: impl Fn(&CraftingInfo) -> &[i32]
     .map(|s| pick(s).last().copied().unwrap_or(0))
 }
 
-/// Apply `update` to `entity_id`'s session inputs and send 140 when due:
-/// always when `force`, otherwise only after the login send and only when
-/// the options changed. Returns whether a send went out.
-async fn update_and_send(
+/// Apply `update` to `entity_id`'s session inputs and decide whether 140 is
+/// due: always when `force`, otherwise only after the login send and only
+/// when the options changed. A due send is recorded as sent and logged
+/// (`options_changed`); the caller sends it. `None` when nothing is due or
+/// the entity has no session (a `lookup_failed` WARN).
+fn update_options(
     entity_id: u32,
     force: bool,
     cause: OptionsCause,
     update: impl FnOnce(&mut CraftingSessionOptions),
-    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) -> bool {
+) -> Option<((u32, Option<i32>), CraftingOptions)> {
     let session = entity_to_addr
         .lock()
         .ok()
@@ -179,11 +181,9 @@ async fn update_and_send(
             cause = cause.as_str(),
             "crafting options update for an entity with no session; dropped"
         );
-        return false;
+        return None;
     };
-    let Some(options) = options else {
-        return false;
-    };
+    let options = options?;
     tracing::info!(
         target: "crafting",
         event = "options_changed",
@@ -195,9 +195,28 @@ async fn update_and_send(
         tools = ?per_section(&options, |s| &s.items),
         "crafting options changed"
     );
+    Some(((account_id, player_id), options))
+}
+
+/// [`update_options`], then send 140 on its own when it is due. Returns
+/// whether a send went out.
+async fn update_and_send(
+    entity_id: u32,
+    force: bool,
+    cause: OptionsCause,
+    update: impl FnOnce(&mut CraftingSessionOptions),
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> bool {
+    let Some((identity, options)) =
+        update_options(entity_id, force, cause, update, connected, entity_to_addr)
+    else {
+        return false;
+    };
     send_options(
         entity_id,
-        (account_id, player_id),
+        identity,
         &options,
         transport,
         connected,
@@ -208,7 +227,7 @@ async fn update_and_send(
 }
 
 /// Send one `onUpdateCraftingOptions` to the player's own client; a failed
-/// send is a WARN.
+/// send is a `push_failed` WARN (`what = "crafting_options"`).
 async fn send_options(
     entity_id: u32,
     (account_id, player_id): (u32, Option<i32>),
@@ -239,9 +258,9 @@ async fn send_options(
     if let Some(reason) = outcome.failure_reason() {
         tracing::warn!(
             target: "crafting",
-            event = "send_failed",
+            event = "push_failed",
+            what = "crafting_options",
             reason,
-            method = ON_UPDATE_CRAFTING_OPTIONS,
             account_id,
             player_id,
             entity_id,
@@ -350,17 +369,18 @@ pub fn craft_anywhere(
         .unwrap_or(false)
 }
 
-/// The login send, after `onClientReady`: read the crafting bag and send
-/// 140 unconditionally, even when every section is empty, so the window
-/// starts from the server's state. A world change runs this again.
-pub async fn send_login_options(
+/// The login options: read the crafting bag, record the options as sent
+/// and return them for the login crafting bundle, which carries them even
+/// when every section is empty, so the window starts from the server's
+/// state. A world change runs this again. `None` when the entity has no
+/// session.
+pub async fn login_options(
     entity_id: u32,
     player_id: i32,
     db_pool: &Option<Arc<PgPool>>,
-    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
+) -> Option<CraftingOptions> {
     let tools = match db_pool {
         Some(pool) => match load_held_tools(pool, player_id).await {
             Ok(tools) => Some(tools),
@@ -380,7 +400,7 @@ pub async fn send_login_options(
         },
         None => None,
     };
-    update_and_send(
+    update_options(
         entity_id,
         true,
         OptionsCause::Login,
@@ -389,11 +409,10 @@ pub async fn send_login_options(
                 inputs.tools = tools;
             }
         },
-        transport,
         connected,
         entity_to_addr,
     )
-    .await;
+    .map(|(_, options)| options)
 }
 
 #[cfg(test)]
