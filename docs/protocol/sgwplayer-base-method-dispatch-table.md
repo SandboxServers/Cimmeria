@@ -40,15 +40,15 @@ Source: `entities/defs/interfaces/Communicator.def`
 | 3 | 0xC3 | chatSetAFKMessage | WSTRING message |
 | 4 | 0xC4 | chatSetDNDMessage | WSTRING message |
 | 5 | 0xC5 | chatIgnore | WSTRING aPlayerName, UINT8 aFlag (1 ignore, 0 stop ignoring). Handled: `dispatch/ignore.rs` (SS-C1) |
-| 6 | 0xC6 | chatFriend | WSTRING aPlayerName, WSTRING aPlayerNick, UINT8 aFlag |
-| 7 | 0xC7 | chatList | UINT8 channelId |
-| 8 | 0xC8 | chatMute | WSTRING playerName, UINT8 channelId |
-| 9 | 0xC9 | chatKick | WSTRING playerName, UINT8 channelId |
-| 10 | 0xCA | chatOp | WSTRING playerName, UINT8 channelId |
-| 11 | 0xCB | chatBan | WSTRING playerName, UINT8 channelId |
-| 12 | 0xCC | chatPassword | UINT8 channelId, WSTRING password |
-| 13 | 0xCD | petition | WSTRING text |
-| 14 | 0xCE | announcePetition | WSTRING text |
+| 6 | 0xC6 | chatFriend | WSTRING aPlayerName, WSTRING aPlayerNick, UINT8 aFlag. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 7 | 0xC7 | chatList | UINT8 aChannelID. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 8 | 0xC8 | chatMute | UINT8 aChannelID, WSTRING aPlayerName, UINT8 aFlag. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3); the GM mute is `.mute` |
+| 9 | 0xC9 | chatKick | UINT8 aChannelID, WSTRING aPlayerName. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 10 | 0xCA | chatOp | UINT8 aChannelID, WSTRING aPlayerName. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 11 | 0xCB | chatBan | UINT8 aChannelID, WSTRING aPlayerName, UINT8 aFlag. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 12 | 0xCC | chatPassword | UINT8 aChannelID, WSTRING aChannelPassword. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 13 | 0xCD | petition | WSTRING aMessage. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
+| 14 | 0xCE | announcePetition | WSTRING aMessage. Not implemented: answers with a feedback line, `dispatch/communicator_unsupported.rs` (SS-C3) |
 
 ### OrganizationMember — 4 exposed (indices 15-18)
 

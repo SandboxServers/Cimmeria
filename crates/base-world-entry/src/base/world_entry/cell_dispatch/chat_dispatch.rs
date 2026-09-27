@@ -5,6 +5,8 @@
 
 use crate::base::feedback::FeedbackCtx;
 use crate::base::gm_broadcast::{broadcast_to_online_players, GmBroadcastActor};
+use crate::base::mutes::gm::{apply_gm_mute, apply_gm_unmute, GmActor, GmMuteCtx};
+use crate::base::mutes::mute_table;
 use crate::cell::messages::ChatCellToBase;
 
 use super::DispatchCtx;
@@ -46,5 +48,59 @@ pub(super) async fn route(msg: ChatCellToBase, ctx: &DispatchCtx<'_>) {
                 "GM broadcast fanned out to every online player",
             );
         }
+        ChatCellToBase::Mute {
+            entity_id,
+            player_id,
+            account_id,
+            target_name,
+            minutes,
+            reason,
+        } => {
+            let actor = GmActor {
+                entity_id,
+                player_id,
+                account_id,
+            };
+            apply_gm_mute(
+                &mute_ctx(ctx),
+                mute_table(),
+                actor,
+                &target_name,
+                minutes,
+                &reason,
+                std::time::Instant::now(),
+            )
+            .await;
+        }
+        ChatCellToBase::Unmute {
+            entity_id,
+            player_id,
+            account_id,
+            target_name,
+        } => {
+            let actor = GmActor {
+                entity_id,
+                player_id,
+                account_id,
+            };
+            apply_gm_unmute(
+                &mute_ctx(ctx),
+                mute_table(),
+                actor,
+                &target_name,
+                std::time::Instant::now(),
+            )
+            .await;
+        }
+    }
+}
+
+fn mute_ctx<'a>(ctx: &DispatchCtx<'a>) -> GmMuteCtx<'a> {
+    GmMuteCtx {
+        feedback: FeedbackCtx {
+            transport: ctx.transport,
+            connected: ctx.connected,
+        },
+        entity_to_addr: ctx.entity_to_addr,
     }
 }

@@ -7,6 +7,12 @@
 //! state** (`CellEntity`), never from a client payload, and never a
 //! privilege bit.
 
+/// Longest GM mute, in minutes (7 days), shared by the cell's `.mute`
+/// parser and the base's handler. Project policy, not recovered data: a mute
+/// ends at the next restart anyway (D-SS26), and the bound keeps
+/// `now + duration` far from `Instant` overflow.
+pub const MAX_MUTE_MINUTES: u32 = 7 * 24 * 60;
+
 /// Chat messages sent from CellApp to BaseApp.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatCellToBase {
@@ -33,6 +39,35 @@ pub enum ChatCellToBase {
         /// The serialized `onPlayerCommunication` args.
         args: Vec<u8>,
     },
+    /// `.mute <name> <minutes> [reason]` (SS-C3, D-SS26). The cell has
+    /// passed the GM gate and bounded `minutes` and `reason`; the base
+    /// resolves the name among online characters, writes its `MuteTable`
+    /// and answers the GM and the player.
+    Mute {
+        /// The GM's entity id, where the base sends the GM's answer.
+        entity_id: u32,
+        /// The GM's `sgw_player.player_id`, `None` if the cell has none.
+        player_id: Option<i32>,
+        /// The GM's `account.account_id`, `None` if the cell has none.
+        account_id: Option<u32>,
+        /// The character name the GM typed (resolved per D-SS13).
+        target_name: String,
+        /// 1 to `MAX_MUTE_MINUTES`.
+        minutes: u32,
+        /// The GM's stated reason, logged only; empty when none was given.
+        reason: String,
+    },
+    /// `.unmute <name>` (SS-C3, D-SS26).
+    Unmute {
+        /// The GM's entity id, where the base sends the GM's answer.
+        entity_id: u32,
+        /// The GM's `sgw_player.player_id`, `None` if the cell has none.
+        player_id: Option<i32>,
+        /// The GM's `account.account_id`, `None` if the cell has none.
+        account_id: Option<u32>,
+        /// The character name the GM typed (resolved per D-SS13).
+        target_name: String,
+    },
 }
 
 impl ChatCellToBase {
@@ -40,6 +75,8 @@ impl ChatCellToBase {
     pub fn kind(&self) -> &'static str {
         match self {
             ChatCellToBase::GmBroadcast { .. } => "gm_broadcast",
+            ChatCellToBase::Mute { .. } => "gm_mute",
+            ChatCellToBase::Unmute { .. } => "gm_unmute",
         }
     }
 }

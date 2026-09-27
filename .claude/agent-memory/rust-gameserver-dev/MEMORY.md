@@ -148,6 +148,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [revert-test-restore-crlf-trap.md](revert-test-restore-crlf-trap.md) — restore with `git checkout HEAD -- <file>` between revert tests.
 - [revert-verification-checkout-wipes-uncommitted.md](revert-verification-checkout-wipes-uncommitted.md) — scope restores to one file; checkpoint per packet.
 - [revert-verification-loses-uncommitted-fmt.md](revert-verification-loses-uncommitted-fmt.md) — run `cargo fmt` before a WIP checkpoint.
+- [revert-proof-mutation-must-be-confirmed.md](revert-proof-mutation-must-be-confirmed.md) — a failed scripted mutation reports every guard "ok"; confirm it applied, never split on `=>`.
 - [vacuous-guard-and-sentinel-collision-review.md](vacuous-guard-and-sentinel-collision-review.md) — review checklist: vacuous guards, fixtures that fail two rules, `0x7000_xxxx` collisions.
 - [interact-range-and-logcapture-traps.md](interact-range-and-logcapture-traps.md) — `get_entity` spans all spaces, so proximity gates need a space check; LogCapture tests flake under threaded cargo test.
 - [wireclient-passive-session-dies.md](wireclient-passive-session-dies.md) — a listen-only `GameSession` is reaped at 60 s; send an unreliable AUTHENTICATE heartbeat, as `sparbot::run` does.

@@ -14,6 +14,8 @@ use super::feedback;
 use super::ConnectedClientState;
 
 mod chat;
+mod chat_gates;
+mod communicator_unsupported;
 mod diagnostics;
 mod duel;
 mod ignore;
@@ -52,6 +54,18 @@ pub(crate) mod sgw_player_base {
     /// the caller's contact-list Ignore list, 0 removes it
     /// (`Communicator.def`). Handled in `dispatch/ignore.rs`.
     pub(crate) const CHAT_IGNORE: u8 = 0xC5;
+    /// Communicator base methods 0xC6-0xCE, not implemented on this server.
+    /// Each answers with its own feedback line (SS-C3, D-SS26), in
+    /// `dispatch/communicator_unsupported.rs`.
+    pub(crate) const CHAT_FRIEND: u8 = 0xC6;
+    pub(crate) const CHAT_LIST: u8 = 0xC7;
+    pub(crate) const CHAT_MUTE: u8 = 0xC8;
+    pub(crate) const CHAT_KICK: u8 = 0xC9;
+    pub(crate) const CHAT_OP: u8 = 0xCA;
+    pub(crate) const CHAT_BAN: u8 = 0xCB;
+    pub(crate) const CHAT_PASSWORD: u8 = 0xCC;
+    pub(crate) const PETITION: u8 = 0xCD;
+    pub(crate) const ANNOUNCE_PETITION: u8 = 0xCE;
     /// OrganizationMember base methods 0xCF-0xD2 (`organizationInvite`,
     /// `organizationInviteByType`, `organizationKick`,
     /// `organizationRankChange`). Handled in `dispatch/organization.rs`.
@@ -162,6 +176,21 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 entity_to_addr,
                 cell_tx,
                 db_pool,
+                std::time::Instant::now(),
+            )
+            .await;
+        }
+
+        sgw_player_base::CHAT_FRIEND..=sgw_player_base::ANNOUNCE_PETITION => {
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            communicator_unsupported::handle_unsupported_communicator(
+                msg_id,
+                payload.len(),
+                &feedback,
+                addr,
                 std::time::Instant::now(),
             )
             .await;
