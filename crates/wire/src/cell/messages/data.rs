@@ -21,6 +21,23 @@ pub enum MailOp {
     /// it like any other send, and every `sendMailResult` comes from one
     /// place.
     SendRejected(MailSendReject),
+    /// `takeCashFromMailMessage(MailId)` (CM 49).
+    TakeCash { mail_id: i32 },
+    /// `takeItemFromMailMessage(MailId, ContainerId, SlotId)` (CM 50).
+    /// `container_id` and `slot_id` are carried for the log only: the
+    /// shipped client sends uninitialised stack values in them (SS-E1
+    /// M-Q5), so the base picks the destination itself and never reads
+    /// them.
+    TakeItem {
+        mail_id: i32,
+        container_id: i32,
+        slot_id: i32,
+    },
+    /// `payCODForMailMessage(MailId)` (CM 51). The price is read from the
+    /// stored mail, never from the client.
+    PayCod { mail_id: i32 },
+    /// `returnMailMessage(MailId)` (CM 47).
+    Return { mail_id: i32 },
 }
 
 /// The decoded `sendMailMessage(INT32 RecipientFlags, ARRAY<WSTRING>
