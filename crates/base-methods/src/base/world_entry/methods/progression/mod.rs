@@ -26,6 +26,8 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 /// Matches the Python `giveExperience()` flow: add XP, send updates, fire
 /// level-up events. Persists exp/level/training_points to `sgw_player` before
 /// emitting wire packets so a relog after a grant doesn't roll the player back.
+/// The same statement adds one Applied Science Point per level gained, and the
+/// new ASP total follows the XP bundle (see `asp_earning`).
 #[tracing::instrument(
     name = "progression.grant_xp",
     level = "info",

@@ -259,6 +259,8 @@ Progression (`handle_grant_xp`) collapses every grant into one packet:
 | Single-level grant | 5 | 1 |
 | Max-level catch-up (19 levels) | 41 | 1 |
 
+A grant that raises the level also earns Applied Science Points, and their new total follows the bundle as one more packet (the crafting sync's `push_asp`, which logs its own failed send), so a level-up grant is two packets and a no-level grant stays at one.
+
 Teleport (`handle_teleport_player`) collapses the engine-snap + load-hint
 handshake:
 

@@ -8,7 +8,7 @@ last_updated: 2026-07-25
 # Crafting System
 
 > **Last updated**: 2026-09-26
-> **Status**: State model, persistence, GM grants, the login sync (CR-03) and learning disciplines with applied science points (CR-04) work. Craft, research, reverse engineering, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work. Craft, research, reverse engineering, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -33,6 +33,7 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Request path (methods 95-100) | DONE | The cell parses every argument, including the `ARRAY<ItemID>`s, and forwards a `CellToBaseMsg::Crafting(CraftRequest)`; the base logs it at target `crafting` (`event = "request"`). Crafting campaign CR-01 |
 | Crafting catalog | DONE | `cimmeria_cell_catalog::crafting::CraftingCatalog`: disciplines, blueprints with their alternative component sets, and item crafting attributes, loaded once per process |
 | Spend applied-science points | DONE | `base/crafting/spend/` (CR-04), see [Learning a discipline](#learning-a-discipline) |
+| Earn applied-science points | DONE | 1 at level 1 and 1 per level gained, written with the level by the XP grant (CR-12), see [Earning applied science points](#earning-applied-science-points) |
 | Crafting (blueprint) | STUB | The base answers "Crafting is not available yet." |
 | Research | STUB | The base answers "Research is not available yet." |
 | Reverse engineering | STUB | The base answers "Reverse engineering is not available yet." |
@@ -45,6 +46,16 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Station gate | DONE | Crafting, research, reverse engineering and alloying are refused with "No crafting station or tool for <verb> nearby." unless a station, a covering tool or "craft anywhere" allows them. CR-05 |
 | `onUpdateCraftingOptions` | DONE | Sent last in the login crafting bundle after `onClientReady` (every world entry), then on every change of stations, tools or "craft anywhere". CR-05 |
 | `.allcraft` | DONE | GM: every paradigm at 7, every discipline at 100, every blueprint, persisted, plus "craft anywhere" until logout (D-CR17). CR-05 |
+
+## Earning applied science points
+
+Owner decision D-CR01: a character has 1 ASP at level 1 and earns 1 more for every level gained, so an unspent character at level `L` holds `L` points (50 at the cap). GM grants (`gmGiveAppliedSciencePoints`) come on top. The 2009-era server granted ASP only by GM command (audit C-03).
+
+- **New characters.** `createCharacter` inserts `applied_science_points = 1` (`STARTING_APPLIED_SCIENCE_POINTS` in `cimmeria_game::player`); the column default stays 0. The seeded characters (player ids 62-70, all level 1) hold 1.
+- **Level-ups.** `handle_grant_xp` (`base/world_entry/methods/progression/`) is the only code that raises a level: mob kills, content-chain `GrantXP` and the GM `.givexp` all reach it. The statement that writes the new XP, level and training points also adds one point per level gained, counted against the level the row held under the row lock (`FOR UPDATE`), not the session's cached level. A level and its points are therefore committed together, a multi-level grant earns one point per level, a grant at the cap earns nothing, and a write of a level the row already holds earns nothing.
+- **Client.** After the XP bundle (`onExpUpdate`, `onLevelUpdate`, training points), the owning client gets the ASP property with the new total (`onEntityProperty(2, total)`), which the discipline trainer shows live. XP that crosses no level boundary sends no ASP push.
+- **Telemetry.** Each earning level-up logs `event=asp_earned` under `crafting` with `account_id`, `player_id`, `entity_id`, `level_before` / `level_after` and `asp_before` / `asp_after`. A grant whose character row is gone logs `event=persist_failed` (WARN, `phase=grant_xp_update`, `reason=rows_affected_zero`, `rows_affected=0`, `expected=1`) and sends nothing. A failed ASP push is the shared `push_failed` (`what=asp`).
+- **Existing characters.** Nothing backfills characters that levelled before this change; they hold whatever they had (0 unless a GM granted points).
 
 ## Learning a discipline
 
@@ -148,7 +159,7 @@ Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
 |---------|-------------|
 | Discipline | A learned crafting skill (expertise 1-100) |
 | Expertise | Proficiency level in a discipline (affects research/reverse engineering) |
-| Applied Science Points | Currency spent to learn new disciplines |
+| Applied Science Points | Currency spent to learn new disciplines; 1 at level 1 plus 1 per level gained |
 | Racial Paradigm | Faction-specific tech tier gating discipline access |
 | Prerequisites | Disciplines may require other disciplines at expertise >= 50 |
 
