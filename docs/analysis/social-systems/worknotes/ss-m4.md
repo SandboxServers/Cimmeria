@@ -8,7 +8,7 @@
 - **Packet:** SS-M4, new-mail notification (D-SS11) and expiry (D-SS04), plus the integration edits SS-M1, SS-M2, SS-M3 and SS-U1 left for it.
 - **Decisions in force:** D-SS04 (30-day TTL, three terminal paths, archived never expires, quarantine never deletes), D-SS11 (notify an online recipient), D-SS03 (server mail is exempt from the cap; quarantined mail is out of it), D-SS10 (system mail cannot be returned), and the SS-M3 coordinator decision that a paid, untaken COD is the recipient's and is never returned by expiry.
 - **Base:** `origin/main` @ `91919e909` (SS-M1/M2/M3 and SS-U1 merged). Branch `social/m4-notify-expiry`, worktree `.claude/worktrees/ss-m4`.
-- **Commits:** `1c4aa7616` (the feature), `70bd7799b` (the security-review follow-ups), then docs, this worknote and the agent memory note.
+- **Commits:** `1c4aa7616` (the feature), `70bd7799b` (the security-review follow-ups), `80bf21aab` (docs and this worknote), `8a1aff145` (agent memory), `8b113928e` (the crafting-bag scope addition), then its docs.
 - **Owned paths (new):**
   - `crates/base-methods/src/base/world_entry/methods/mail/{expiry/mod.rs, expiry/terminal.rs, notify.rs}`
   - `crates/base-methods/src/base/world_entry/methods/mail/gm/{expire.rs, mailbox.rs}` (`gm.rs` became `gm/mod.rs`: at 671 lines it had three families, `.mail`, `.mailbox` and `.mail_expire`)
@@ -175,11 +175,22 @@ Every file was restored with `git checkout HEAD --` and touched; `git status` wa
 3. **Bank campaign (cimmeria-97):** the mail-as-storage question above touches vault sizing.
 4. **Follow-up ticket:** `.mail_release` (gap 1).
 
+## Scope addition: the crafting bag (15) as a mail source
+
+Owner decision (2026-09-27, relayed by the crafting campaign and the coordinator): crafting components (`container_sets` `{17,15}`, e.g. 5174, 5188-5192, 5228) live in bag 15 after crafting CR-16, and bag 15 is a mail attachment source.
+
+- **Change** (`8b113928e`): `send/escrow.rs` has `MAILABLE_CONTAINERS = [INV_MAIN, INV_CRAFTING]`. `check_source` accepts either; vaults 17-20 (`item_in_vault`) and buyback 16 (`item_in_buyback`) stay refused; equipped, bandolier and mission items stay `item_not_in_main_bag`, whose feedback line now says "main bag or crafting bag".
+- **Lock order:** `lock_source_item` takes `take_inventory_locks(sender, [1, 15])`, so key 0, then bag 1, then bag 15. Both bags are always locked: the container is only known after the row is read, and the advisory locks must come before it. Every other path takes the same keys in the same sorted order, so this adds no cycle. The only cost is that a send with an item also queues behind a write to the sender's crafting bag.
+- **Take destination (not changed):** CR-16's grant placement (`craft/cr16-grant-fallthrough`) is not on `main` at `1c6bed3cc`, so SS-M3's `take_item_tx` still restores into the backpack's first free slot. Never a vault. Integration edit below.
+- **Guard:** `send_escrows_a_crafting_component_from_bag_15` (live-DB, in `tests/attach_vault.rs`, next to `send_rejects_banked_item`, which still covers vaults and buyback). It sends 3 of a real component type from bag 15. It checks for `Sent`, postage only, the row gone from bag 15, and the escrow row with the same instance id, type and stack. **Revert proof:** with `MAILABLE_CONTAINERS` back to `[INV_MAIN]` it FAILED: `code: Some(2)` (`ItemNotAvailable`) with the "main bag or crafting bag" line. The file was restored and touched. `attach_live` and `attach_vault` (8 tests) pass.
+- **UAT check (unknown):** does the shipped client's gate-mail compose window accept an item dragged from the crafting bag? `GateMail.lua` `onSlotItemDragReceived` takes a drag, but whether the native `mailSendMessage` binding or the crafting-bag UI allows it was not traced. UAT row: "Drag a crafting component (e.g. 5188) from the crafting bag into the mail attachment slot and send it. Expect it to leave the crafting bag and arrive as an attachment. If the client refuses the drag, note it; the server path works."
+- **Integration edit:** when CR-16's grant placement merges, `take.rs` `take_item_tx` should place the item with that logic (the item's `container_sets`: bag 15 for a component, else the backpack), never a vault. Otherwise a component taken from a mail lands in bag 1, which CR-16's `item_allows_container` does not allow for `{17,15}` items. The restore SQL is a raw insert and does not check it. The same applies to the return path, which leaves the item in escrow, and to a COD take.
+
 ## Close-out edits for SS-99
 
 This packet did not edit `docs/gap-analysis.md`, `docs/project-status.md`, test counts or the crate graph.
 
 - `gap-analysis.md` §24 (Mail): new-mail notification DONE (feedback line plus header upsert, D-SS11); expiry DONE (30-day TTL, base sweep and login sweep, return/delete/quarantine per D-SS04); `.mail_expire` DONE; open: GM recovery of quarantined mail, mail-as-storage decision.
 - `project-status.md` Mail row: add "new-mail notification and 30-day expiry (SS-M4)".
-- Test inventory: +23 tests (21 live-DB in `cimmeria-base-methods`, 1 wire, 1 base-session; the cell test was replaced, not added) (the list above), under the 5% threshold.
+- Test inventory: +24 tests (with the crafting-bag guard) (21 live-DB in `cimmeria-base-methods`, 1 wire, 1 base-session; the cell test was replaced, not added) (the list above), under the 5% threshold.
 - Crate graph: no new dependency edge.
