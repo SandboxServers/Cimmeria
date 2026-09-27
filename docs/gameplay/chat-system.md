@@ -8,7 +8,7 @@ last_updated: 2026-09-27
 # Chat System
 
 > **Last updated**: 2026-09-27
-> **Status**: Spatial chat (say / emote / yell) works. Tells, `chatIgnore` and the Ignore filter work on the server (SS-C1, 2026-09-27; not yet tested with two real clients). Channel management, moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server. Sending on any non-spatial channel (team, squad, command, server, tell) no longer disappears silently: the sender gets a feedback line on the registered `tell`/feedback channel explaining why, matching the legacy `onError` reply the Python cell sent for the same unsupported channels (`python/cell/SGWPlayer.py::processPlayerCommunication`).
+> **Status**: Spatial chat (say / emote / yell) works. Tells, `chatIgnore` and the Ignore filter work on the server (SS-C1, 2026-09-27; not yet tested with two real clients). Channel management, moderation and petitions are not implemented — an earlier "~95%" figure described the original Python `Chat.py`, not this server. Sending on an unsupported non-spatial channel (team, squad, command, server) no longer disappears silently: the sender gets a feedback line on the registered `tell`/feedback channel explaining why, matching the legacy `onError` reply the Python cell sent for the same unsupported channels (`python/cell/SGWPlayer.py::processPlayerCommunication`).
 
 ## Overview
 

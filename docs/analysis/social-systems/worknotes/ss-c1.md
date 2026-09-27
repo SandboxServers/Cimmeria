@@ -17,7 +17,9 @@
   5. `e1c821863` test(wireclient): two clients exchange a tell
   6. `8497d5da7` docs(chat): tells and Ignore
   7. `92cdeddaa` fix(chat): lone speaker echo, case-insensitive Ignore, chatIgnore spends a chat token (the coordinator's review round)
-  8. docs and worknote update for round 2 (the commit after these)
+  8. `4338e9b0e` docs: round 2
+  9. `2beed7f79` fix(chat): address tells to the session's entity at send time; identity on Ignore telemetry (#893 review)
+  10. docs and worknote for round 3 (the commit after these)
 - **Owned paths (new):** `crates/base/src/base/dispatch/{tell,ignore}.rs`, `crates/base/src/base/dispatch/tests/{tell,chat_ignore}.rs`, `crates/base-session/src/base/contact_list/ignore/`, `crates/cell/src/cell/service/base_messages/ignore.rs` and its test, `crates/cell-console/src/cell/console/chat/` (the split), `crates/wireclient/tests/it/two_client_tell.rs`, this file.
 - **Read set:** SS-WORKER-RULES.md; work-packets.md (contract, contended files, SS-C1); README.md D-SS12..D-SS17; audit.md A-26, A-27, A-31, § 6; CAT-L-chat-contact.md (L-04, L-07); SS-E1's chat findings (unmerged #875); PR #585's diff; `deprecated/python/base/Chat.py:314-358` and `SGWPlayer.py:195-210`; the SS-00 modules (`player_index`, `rate_limit`, `feedback`); the contact-list handlers and persistence; `client_ready/mod.rs`; `Communicator.def`.
 
@@ -49,6 +51,7 @@
 In `cimmeria_base_session::base::contact_list::ignore` (reached as `crate::base::contact_list::ignore` in `cimmeria-base`):
 
 - `player_ignores(pool, recipient_player_id, sender_name) -> Result<bool, sqlx::Error>`: the database check, which works for an offline recipient. Use it for mail send; it reads the flags-301 list only.
+- `feedback::send_to_current_player(ctx, addr, player_id, method, payload)`: send to a session's current player entity, refusing a stale character. Mail and duel notifications to another player should use it instead of a remembered entity id.
 - `session_ignores(&clients, recipient_addr, sender_name) -> bool`: the cached check for an online recipient (the caller holds the `connected` lock). Tells use it; duel challenges can too.
 - `IgnoreCache::ignores(name)` on `ConnectedClientState::ignore` (case-insensitive).
 - **SS-D1's seam:** `crates/base/src/base/dispatch/duel.rs::ignores(target, challenger_player_id)` on `social/d1-duel-challenge` becomes `target.ignore.ignores_player(challenger_player_id)`. SS-C1 does not edit that file.
@@ -63,13 +66,13 @@ All events are on target `chat`, which SS-00 already registered in `OTEL_FILTER`
 | Event | Level | Fields |
 |---|---|---|
 | `chat.tell_delivered` | INFO | `player_id`, `account_id`, `entity_id`, `target_player_id`, `target_account_id`, `target_entity_id`, `text_units`, `away_reply` |
-| `chat.tell_refused` | DEBUG | the sender ids, `target_player_id` (when resolved), `target_name` (64-char prefix), `reason`: `no_target`, `self`, `not_online`, `ambiguous`, `recipient_ignores_sender`, `recipient_not_in_world` or `recipient_send_failed` |
+| `chat.tell_refused` | DEBUG | the sender ids, `target_player_id` (when resolved), `target_name` (64-char prefix), `reason`: `no_target`, `self`, `not_online`, `ambiguous`, `recipient_ignores_sender`, `recipient_not_in_world`, `recipient_left` or `recipient_send_failed` |
 | `chat.ignore_added` / `chat.ignore_removed` | INFO | `player_id`, `account_id`, `entity_id`, `target_player_id` (add), `before`, `after` |
 | `chat.ignore_refused` | DEBUG (ERROR for `db_error`) | `reason`: `not_in_world`, `decode_failed`, `bad_flag`, `no_target`, `no_db_pool`, `unknown_character`, `ambiguous`, `self`, `already_ignored`, `list_full`, `not_ignored`, `write_failed` or `db_error` |
 | `chat.ignore_synced` | DEBUG | `path` (`world_entry`, `contact_list`), `before`, `after`, the ids |
 | `chat.ignore_sync_failed` | WARN (`no_db_pool`, `cell_send_failed`), ERROR (`db_error`), DEBUG (`session_changed`, `entity_to_addr_miss`) | `reason`, `path` |
-| `chat.spatial_ignored` | DEBUG | `entity_id`, `player_id`, `account_id`, `channel`, `skipped`, `reason = witness_ignores_speaker` |
-| `chat.ignore_set_applied` / `chat.ignore_set_dropped` | DEBUG (cell) | `entity_id`, `player_id`, `before`, `after` / `reason = entity_missing` |
+| `chat.spatial_ignored` | DEBUG | `entity_id`, `player_id`, `account_id`, `channel`, one row per withheld witness with `target_entity_id`, `target_player_id`, `target_account_id`, `reason = witness_ignores_speaker` |
+| `chat.ignore_set_applied` / `chat.ignore_set_dropped` | DEBUG (cell) | `entity_id`, `player_id`, `account_id`, `before`, `after` / `reason = entity_missing` or `player_mismatch` (WARN) |
 | `chat.afk_set` | DEBUG | the ids, `afk_active` |
 
 Spans: `chat.tell` and `chat.ignore` at INFO.
@@ -140,6 +143,50 @@ Not proven by revert: `tell_reaches_exactly_one_recipient`. Without the tell bra
 - Type 11: `two_client_tell::two_clients_exchange_a_tell` (not in CI, A-60).
 
 Sentinels: `0x7300_C1xx` (ignore module), `0x7300_C2xx` (chatIgnore dispatch), `0x7300_C300`/`C301` (client_ready); wireclient accounts 900_311-900_314.
+
+## Review round 3 (PR #893, Copilot)
+
+**Stale recipient entity (`tell.rs`).** `resolve` used to copy the recipient's `player_entity_id` under the session-map lock, and the send ran after the lock was released and after an await. A gate travel in that window would have sent the tell to the old entity and still logged it as delivered. Now `Recipient` holds no entity id. The send goes through `feedback::send_to_current_player(ctx, addr, player_id, method, payload)`, which reads the session's `player_entity_id` under the same lock that allocates the sequence number. It also checks that the session still plays that `player_id`. If the session is gone, the result is `NoSession` (tell refused, `reason = recipient_left`). If it has no player entity or plays another character, the result is `NotInWorld` (`reason = recipient_not_in_world`). Either way the sender gets "Player X is not online.". The sender's `onTellSent` and the away reply use the same function with the sender's `player_id`. The guards use a `#[cfg(test)]` thread-local hook (`tell::after_resolve_hook`) that runs between the lookup and the send:
+
+- `tell_is_addressed_to_the_recipients_entity_at_send_time`: the hook moves Bob to entity 9999, and the tell must address 9999.
+- `tell_to_recipient_who_left_the_world_before_the_send_is_refused`: the hook clears Bob's entity; Bob gets nothing, and Alice gets the not-online line with `reason = recipient_not_in_world`.
+
+**`UpdateIgnoreList` identity.** The message carries both `entity_id` and `player_id`. The cell now applies it only when `entity.player_id == Some(player_id)`, because entity ids are recycled and gate travel gives a character a new one. A push that lands on an id now held by another character logs `chat.ignore_set_dropped reason = player_mismatch` at WARN, and nothing changes. Gate travel is covered by the `onClientReady` resync: gate travel re-runs `onClientReady` for the new entity, and that resync pushes the set for the new `entity_id` with the same `player_id` after `InitPlayerState` (guard `on_client_ready_seeds_ignore_list_after_init_player_state`). The cell entity carries `player_id` from `CreateEntity`, so the check holds from birth. Guard: `update_ignore_list_for_another_players_entity_is_dropped`.
+
+**Telemetry audit (instrumentation-discipline rule 5).** Every new event, and what changed:
+
+| Event | account_id / player_id / entity_id | The other player |
+|---|---|---|
+| `chat.tell_delivered` | yes | `target_player_id`, `target_account_id`, `target_entity_id` (the entity actually used at send time) |
+| `chat.tell_refused` | yes | `target_player_id` once resolved |
+| `chat.ignore_refused` | yes; the `not_in_world` refusal now reads the ids from the session (they were missing) | `target_player_id` added where known: self, `already_ignored`, `list_full`, `write_failed` |
+| `chat.ignore_added` / `chat.ignore_removed` | yes | `target_player_id`: resolved on an add; on a remove it is now looked up from the entry's name (unset if that character no longer exists) |
+| `chat.ignore_synced` | yes | n/a (it is the owner's own list) |
+| `chat.ignore_sync_failed` | `account_id` added to the `no_db_pool` and `db_error` rows and to the member-ops rows | n/a |
+| `chat.spatial_ignored` | yes | now one row per withheld witness with `target_entity_id`, `target_player_id`, `target_account_id` (it was one row with a count) |
+| `chat.ignore_set_applied` / `chat.ignore_set_dropped` | `account_id` added (from the cell entity) | `entity_player_id` on `player_mismatch` |
+| `chat.afk_set` | yes | n/a |
+
+**Doc.** `chat-system.md:11` no longer lists `tell` among the unsupported non-spatial channels (CRLF kept).
+
+**Commands, round 3.**
+
+| Command | Result |
+|---|---|
+| `lane.sh cargo test -p cimmeria-base -p cimmeria-base-session -p cimmeria-cell-console -p cimmeria-cell -p cimmeria-base-world-entry --lib` | all pass except one run where `spatial_chat_skips_ignoring_witness` did not see its log row. It passed on two reruns of the crate and under nextest. That is the known `LogCapture` callsite-interest flake under plain `cargo test` (#891); CI uses nextest |
+| `lane.sh cargo nextest run -p cimmeria-cell-console -p cimmeria-cell -p cimmeria-base -p cimmeria-base-session --lib` | 968 passed |
+| `live-db-test.sh ignore` (the full filter) | 46 passed, 0 failed |
+| `live-db-test.sh tell` | 17 passed, 0 failed |
+| `DATABASE_URL=…/sgw_ss_c1 lane.sh cargo test -p cimmeria-wireclient --test it two_client_tell -- --test-threads=1` | 1 passed (2.70 s) |
+| clippy on the 10 crates, `-D warnings`; `cargo fmt --all -- --check` | clean |
+
+**Regression proof, round 3.**
+
+| Guard | Fix disabled | Result |
+|---|---|---|
+| `tell_is_addressed_to_the_recipients_entity_at_send_time` | the old shape restored: snapshot the entity before the hook, send with `send_player_method(snapshot)` | FAILED |
+| `tell_to_recipient_who_left_the_world_before_the_send_is_refused` | same | FAILED |
+| `update_ignore_list_for_another_players_entity_is_dropped` | the guard changed to `entity.player_id == Some(player_id) \|\| true` | FAILED |
 
 ## Known gaps
 
