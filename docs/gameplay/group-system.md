@@ -41,7 +41,7 @@ Cimmeria does not build squads on `GroupAuthority`. A squad is ephemeral, so it 
 | Leave | DONE | CM 9 `organizationLeave` with the caller's own squad id |
 | Kick (leader) | DONE | Base 0xD1 `organizationKick` with a squad id → `OrgBaseToCell::SquadKick` |
 | Loot mode (leader) | DONE | CM 18 `squadSetLootMode`, 0 or 1 only |
-| Disconnect | DONE | The cell's `DisconnectEntity` arm removes the member with `Logout` |
+| Disconnect | DONE | The cell's `DisconnectEntity` arm removes the member with `Logout`, including a member in gate transit whose cell entity is gone (found by the last entity id the registry recorded on join or world entry) |
 | World entry | DONE | `InitPlayerState` re-sends the squad after a gate trip |
 | Promote to leader | NOT IMPL | No client UI sends it; `/squadpromote` is assumed to use `organizationRankChange` (unconfirmed, ORG-E1 Q2) |
 | Squad chat, minimap ping | NOT IMPL | ORG-04 |

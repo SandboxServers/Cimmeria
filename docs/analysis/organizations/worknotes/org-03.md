@@ -152,6 +152,40 @@ All from the worktree root, through `tools/build-lane/lane.sh` (`target=B:	arget
 
 Spot-check of the regression proof after the rebase, on the committed tree: the base's type > 2 gate disabled (`if false && ...`) and the `on_disconnect` call removed from the `DisconnectEntity` arm, then `lane.sh cargo test -p cimmeria-cell -p cimmeria-base --lib --no-fail-fast -- organization org:: disconnect` exited 101 with `invite_by_type_rejects_type_above_command` and `disconnect_entity_removes_the_squad_member` failing (`identity_propagation::disconnect_carries_identity_resolved_before_teardown` also failed in that threaded run; it passes with the same revert under `--test-threads=1`, so it is the known threaded LogCapture flake, not a squad dependency). Restored with `git checkout HEAD -- <the two files>`; `git status` clean.
 
+## Copilot round (PR #886)
+
+Base: the coordinator's rebase onto `origin/main` @ `ebad5047` (head `b81084b4`; `SpaceManager` gained `duels` beside `squads`).
+
+| Thread | Fix | Commit |
+|---|---|---|
+| The base's `cell_unreachable` row bypassed `squad_actions_total` | `unreachable_outcome` in `crates/base/src/base/dispatch/organization.rs` emits the row in the cell's `Outcome::emit` shape and counts under the cell's action labels (`invite`, `kick`). `crates/base` gains `cimmeria-observability` (hakari: no change); `crates/README.md` base row updated | `667596dd` |
+| A `DisconnectEntity` for a member in gate transit never removed them | Verified: gate travel removes the cell entity (`get_entity` reads `entity_space`, which holds nothing until the arrival re-creates it), and `abandon_unspaced_session` fires only when the base has no `active_player_id`, so a player-id-bearing teardown could not carry one on exactly that path; a crash or timeout mid-transfer (`destroy_client_entities`) hits the same hole. The registry now records each member's last live entity id (`note_entity` on join and every world entry, cleared on departure and disband), and `on_disconnect` falls back to `member_by_entity` when the entity is gone and the member has no live entity. The others' [39] names that last id (`Departure::departed_entity`). A disconnect naming a member's old id while they are live elsewhere is WARN `squad.disconnect_stale_entity` (`reason = stale_entity_id`), member kept; the benign miss (entity gone, in no squad: the second `DisconnectEntity` of every full-exit log-off, since `logOff` does not clear `player_entity_id`) is DEBUG `squad.disconnect_no_member` | `cb511d4d` |
+| PR reference in the registry module comment | Replaced with the invariant (a per-space registry would lose the squad on the first gate trip). No other `#NNN` in lines this packet added | `d8ba18d9` |
+
+New tests: `disconnect_in_gate_transit_removes_the_squad_member`, `disconnect_of_a_stale_entity_id_keeps_the_member_and_warns` (LogCapture) in `crates/cell` `base_messages/tests/org.rs`; `last_entity_is_recorded_for_members_only_and_cleared_on_departure` in `cell-world` `squad/tests.rs`; `squad_forward_failure_counts_on_squad_actions_total` in `crates/base` `dispatch/tests/organization.rs` (asserts the delta is positive, not exactly one: under `cargo test` the sibling forward-failure test shares the process-wide meter table).
+
+Regression proof, each on the committed tree, restored with `git checkout HEAD -- <file>`:
+
+| Revert | Command | Exit | Failing guard |
+|---|---|---|---|
+| `on_disconnect` ignores the registry fallback | `lane.sh cargo test -p cimmeria-cell --lib -- base_messages::tests::org` | 101 | `disconnect_in_gate_transit_removes_the_squad_member` |
+| `announce_departure` sends 0 instead of `departed_entity` | same | 101 | `disconnect_in_gate_transit_removes_the_squad_member` |
+| `remove_member` keeps the `entity_of` entry | `lane.sh cargo test -p cimmeria-cell-world --lib -- squad` | 101 | `last_entity_is_recorded_for_members_only_and_cleared_on_departure` |
+| The stale-id check skipped (the old id removes the live member) | `lane.sh cargo test -p cimmeria-cell --lib -- base_messages::tests::org` | 101 | `disconnect_of_a_stale_entity_id_keeps_the_member_and_warns` |
+| The base's `counter!` compiled out | `lane.sh cargo test -p cimmeria-base --lib -- organization` | 101 | `squad_forward_failure_counts_on_squad_actions_total` |
+
+Commands (through `tools/build-lane/lane.sh`, target `B:	argets/org-03`):
+
+| Command | Exit | Result |
+|---|---|---|
+| `cargo fmt --all -- --check` | 0 | |
+| `cargo clippy -p cimmeria-entity -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell -p cimmeria-base -p cimmeria-wireclient -p cimmeria-server --all-targets -- -D warnings` | 0 | |
+| `cargo hakari generate`, `cargo hakari manage-deps --yes` | 0, 0 | no changes |
+| `cargo test -p cimmeria-entity -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell -p cimmeria-base --lib --no-fail-fast` | 0 | base 101, cell 465, cell-methods 271, cell-world 440, entity 349 |
+| `cargo test -p cimmeria-server --bin cimmeria-server logging` | 0 | 53 passed |
+| `reload-db.sh`, then `live-db-test.sh organization squad` | 0 | 129 run, 129 passed |
+| `DATABASE_URL=.../sgw_org_03 CARGO_INCREMENTAL=0 cargo test -p cimmeria-wireclient --test it two_client_squad -- --test-threads=1` | 0 | 1 passed in 3.9 s, not skipped. The first attempt exited 101 with `B:` full (os error 112); the retry ran after deleting this worktree's incremental dir |
+
 ## Known gaps
 
 - **No ignore-list check on invite.** Ignore lists are base-side database rows; the cell has no copy. A later packet can either have the base check the target's ignore list by name before forwarding `SquadInvite` (it has the inviter's `player_id` and the database), or have `InitPlayerState` carry the ignore set to the cell. The base-side check is the better fit, because ORG-07 needs the same check for Team and Command invites.
