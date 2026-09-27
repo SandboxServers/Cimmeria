@@ -7,7 +7,7 @@
 
 - **Packet:** SS-M3. Take cash (CM 49), take item (CM 50), pay COD (CM 51), return (CM 47).
 - **Decisions in force:** D-SS09 (COD rules), D-SS10 (return), D-SS03 (server mail is exempt from the cap), D-SS04 (the return path is reused by SS-M4's expiry), D-SS08 (escrow). There is also an owner constraint from the Bank campaign: items leave escrow only into the backpack (`INV_MAIN`), never into vault containers 16-20.
-- **Base:** `origin/main` @ `23e97ac58` (SS-M2 #912 merged, with SS-C1's mail Ignore wiring). The branch was written on SS-M2's branch @ `24b4163d0` and rebased with `git rebase --onto origin/main 24b4163d0`. Branch `social/m3-take-cod-return`, worktree `.claude/worktrees/ss-m3`.
+- **Base:** `origin/main` @ `5faa795d1` (SS-M2 #912 merged as `23e97ac58` with SS-C1's mail Ignore wiring; then SS-C3, BV-02 and pets, which touch no mail file; only `observability.md` needed a re-merge). The branch was written on SS-M2's branch @ `24b4163d0` and rebased with `git rebase --onto origin/main 24b4163d0`. Branch `social/m3-take-cod-return`, worktree `.claude/worktrees/ss-m3`.
 - **Commits (after the rebase):** `f272b44a1` (the `returned` column), `a814a9306` (wire and cell forward), `a8742d017` (base ops and tests), `becf1c914` (type 11), `d192c60f7` (COD with a deleted sender, and the review follow-ups), `47b372d59` (docs), `8f889a115` (worknote), `3d658dc8c` (the coordinator's decisions: `cod_paid`, and `target_player_id` on SS-M2's send refusals), `d80a46e4d` (docs), `39269c843` (the server-authority-enforcer's memory notes, carried from the main checkout as the coordinator asked), then the race and `op_failed` tests and the post-rebase docs.
 - **Rebase notes:** the conflicts were the `mod` lists in `mail/tests/mod.rs` and `wireclient/tests/it/main.rs` (both sides kept), and the docs. `docs/gap-analysis.md` and `docs/project-status.md` were reset to main's version under the new owner rule (see "Close-out edits for SS-99"); `mail-system.md` and `observability.md` took main's version and my edits were reapplied on top. `read.rs` had not changed on main, so the move of the header list to `headers.rs` carried over as written.
 - **Owned paths (new):**
@@ -155,6 +155,7 @@ All ran from the worktree root, through the lane. The exit codes are the lane's 
 | After the rebase: `bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-base-methods -p cimmeria-cell-interactions -p cimmeria-cell-methods -p cimmeria-base-world-entry` | 1,162 run, 1,162 passed |
 | After the rebase: `bash tools/build-lane/live-db-test.sh mail` | 106 run, 106 passed, 0 skipped |
 | After the rebase: `bash tools/build-lane/live-db-test.sh "::"` | exit 0: 4,674 run, 4,674 passed, 0 skipped (223 s) |
+| After the second rebase onto `5faa795d1`: fmt check, clippy on the five crates, nextest on the touched crates, `live-db-test.sh mail` | exit 0; 1,184 of 1,184; 106 of 106, 0 skipped |
 
 ## Tests
 
