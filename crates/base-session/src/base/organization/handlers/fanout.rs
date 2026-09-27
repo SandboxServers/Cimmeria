@@ -19,7 +19,8 @@ pub struct OnlineMember {
     pub player_id: i32,
     /// The live player entity: the id the client roster stores (ORG-E1 Q1).
     pub entity_id: u32,
-    pub account_id: u32,
+    /// From the session; an `Option` so a log never carries a made-up 0.
+    pub account_id: Option<u32>,
 }
 
 /// The online sessions among `player_ids`, by `player_id`.
@@ -35,7 +36,7 @@ pub fn online_members(ctx: &OrgCtx<'_>, player_ids: &[i32]) -> Vec<OnlineMember>
             Some(OnlineMember {
                 player_id,
                 entity_id: c.player_entity_id?,
-                account_id: c.account_id,
+                account_id: Some(c.account_id),
             })
         })
         .collect();

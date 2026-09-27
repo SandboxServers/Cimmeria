@@ -61,7 +61,7 @@ fn org_state_messages_follow_the_org_e1_order() {
     let online = [OnlineMember {
         player_id: 101,
         entity_id: 0x0102_0304,
-        account_id: 9,
+        account_id: Some(9),
     }];
     let msgs = org_state_messages(&membership, &ranks, &roster, &online, false);
     let order: Vec<u16> = msgs.iter().map(|m| m.0).collect();

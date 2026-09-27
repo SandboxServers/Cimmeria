@@ -155,7 +155,7 @@ pub async fn handle_leave(
     let me = OnlineMember {
         player_id: player.player_id,
         entity_id: player.entity_id,
-        account_id: player.account_id.unwrap_or_default(),
+        account_id: player.account_id,
     };
     membership_ended(ctx, me, org_id, OrgLeaveReason::Requested).await;
     match d.outcome {

@@ -199,7 +199,7 @@ async fn push_membership(
         online.push(OnlineMember {
             player_id: player.player_id,
             entity_id: player.entity_id,
-            account_id: player.account_id.unwrap_or_default(),
+            account_id: player.account_id,
         });
         online.sort_unstable_by_key(|o| o.player_id);
     }
