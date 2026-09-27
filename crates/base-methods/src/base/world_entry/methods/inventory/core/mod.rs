@@ -21,6 +21,8 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 #[cfg(test)]
 mod crafting_tools_tests;
+#[cfg(test)]
+mod one_item_select_tests;
 mod remove_by_type;
 mod remove_instance;
 #[cfg(test)]
@@ -36,12 +38,12 @@ pub use remove_by_type::handle_remove_inventory_item_by_type;
 pub use remove_instance::handle_remove_inventory_item;
 pub use use_instance::handle_use_inventory_item;
 
-/// `pub(crate)` so the duplicate copy in `player_load/core.rs` can be
-/// pinned against this one by the SQL drift-guard test
-/// `inventory_item_select_matches_player_load_copy_byte_for_byte`. Both
-/// paths must produce identical row layouts; if they ever diverge, every
-/// downstream `InvItem` consumer breaks in a hard-to-diagnose way.
-pub(crate) const INVENTORY_ITEM_SELECT: &str = r#"
+/// The column list and joins every inventory-row read shares, up to (not
+/// including) its `WHERE`. The two selects below differ only in the filter,
+/// so their row layout cannot drift apart.
+macro_rules! inventory_item_select_head {
+    () => {
+        r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
        COALESCE((
@@ -53,9 +55,29 @@ SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        END AS cur_ammo_type_id
 FROM sgw_inventory inv
 LEFT JOIN resources.items ri ON ri.item_id = inv.type_id
-WHERE inv.character_id = $1
-ORDER BY inv.container_id, inv.slot_id
-"#;
+"#
+    };
+}
+
+/// `pub(crate)` so the duplicate copy in `player_load/core.rs` can be
+/// pinned against this one by the SQL drift-guard test
+/// `inventory_item_select_matches_player_load_copy_byte_for_byte`. Both
+/// paths must produce identical row layouts; if they ever diverge, every
+/// downstream `InvItem` consumer breaks in a hard-to-diagnose way.
+pub(crate) const INVENTORY_ITEM_SELECT: &str = concat!(
+    inventory_item_select_head!(),
+    "WHERE inv.character_id = $1\n",
+    "ORDER BY inv.container_id, inv.slot_id\n",
+);
+
+/// One inventory row, by instance id, and only if the player owns it: the
+/// same row layout as [`INVENTORY_ITEM_SELECT`] (shared head), filtered in
+/// SQL so a single-item read costs one indexed row, not the whole bag set.
+/// `$1` is the player, `$2` the `item_id`.
+pub(crate) const INVENTORY_ONE_ITEM_SELECT: &str = concat!(
+    inventory_item_select_head!(),
+    "WHERE inv.character_id = $1 AND inv.item_id = $2\n",
+);
 
 #[derive(sqlx::FromRow)]
 struct InventoryRow {
@@ -326,16 +348,15 @@ pub(crate) async fn send_inventory_item_update_via<'c, E>(
 where
     E: sqlx::PgExecutor<'c>,
 {
-    // Reuses the canonical select (it has no item filter, and it is pinned
-    // byte-for-byte against the player-load copy) and keeps the one row.
-    // Refusals are rare, so reading the player's rows here costs nothing
-    // that matters.
-    let row = match sqlx::query_as::<_, InventoryRow>(INVENTORY_ITEM_SELECT)
+    // `moveItem` is client-callable, so a refusal must cost one row however
+    // big the inventory is: the owner check and the item filter are in SQL.
+    let row = match sqlx::query_as::<_, InventoryRow>(INVENTORY_ONE_ITEM_SELECT)
         .bind(player_id)
-        .fetch_all(executor)
+        .bind(item_id)
+        .fetch_optional(executor)
         .await
     {
-        Ok(rows) => rows.into_iter().find(|row| row.item_id == item_id),
+        Ok(row) => row,
         Err(e) => {
             tracing::error!(
                 entity_id,
