@@ -1,5 +1,6 @@
 //! Bank (`console/bank.rs`): the GM's vault shortcut (bank-vault BV-02) and
-//! the read-only vault listing (BV-04), and the GM vault expansion (BV-05).
+//! the read-only vault listing (BV-04), the GM vault expansion (BV-05), and
+//! the Team vault expansion paid from the treasury (BV-09).
 
 use super::{spec, Spec, Target};
 
@@ -21,4 +22,10 @@ pub(super) const SPECS: &[Spec] = &[spec(
     0,
     Target::None,
     "Buy one +10 vault expansion for yourself at the seeded price (needs an open vault: .bank or a Banker)",
+), spec(
+    "orgvaultexpand",
+    0,
+    2,
+    Target::None,
+    "Quote, or with the current size buy, one +10 step of your Team vault from the Team treasury; leader only ([team|command] [from_slots])",
 )];

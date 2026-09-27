@@ -13,4 +13,7 @@ pub use core::{
 };
 pub use grant::{handle_grant_item, handle_loot_grant};
 pub use move_::{handle_move_inventory_item, handle_move_inventory_item_with_vault};
-pub use org_vault::{handle_org_vault_open, OrgVaultIo, OrgVaultOpenRequest};
+pub use org_vault::{
+    handle_org_vault_expand, handle_org_vault_open, OrgVaultExpandRequest, OrgVaultIo,
+    OrgVaultOpenRequest,
+};

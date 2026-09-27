@@ -118,3 +118,55 @@ async fn bank_expand_arms_reach_the_expand_handlers() {
         assert!(row.has_field("entity_id", "4243"), "{row:#?}");
     }
 }
+
+/// `Bank(OrgVaultExpand)` routing (BV-09): with no pool the arm reaches
+/// `handle_org_vault_expand`, which logs `expand_rejected
+/// reason=db_unavailable scope=team` and sends the GM's character one
+/// line. The purchase is tested live in `cimmeria-base-methods`
+/// `inventory/org_vault/tests/expand/`.
+#[tokio::test]
+async fn bank_org_vault_expand_arm_reaches_the_handler() {
+    let capture = LogCapture::install();
+    let (addr, connected, entity_to_addr) = one_session(4242, false);
+    {
+        let mut c = connected.lock().unwrap();
+        let s = c.get_mut(&addr).unwrap();
+        s.player_entity_id = Some(4242);
+        s.active_player_id = Some(5);
+    }
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+
+    handle_cell_message(
+        CellToBaseMsg::Bank(BankCellToBase::OrgVaultExpand {
+            entity_id: 4242,
+            account_id: Some(6),
+            player_id: 5,
+            scope: cimmeria_entity::cell_entity::VaultScope::Team,
+            from_slots: Some(40),
+        }),
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.target == "bank" && c.has_field("event", "expand_rejected"))
+        .expect("expand_rejected row");
+    assert!(row.has_field("reason", "db_unavailable"), "{row:?}");
+    assert!(row.has_field("scope", "team"), "{row:?}");
+    assert!(row.has_field("offered_slots", "40"), "{row:?}");
+    assert_eq!(
+        typed_transport.filter_to(addr).len(),
+        1,
+        "one line to the GM"
+    );
+}

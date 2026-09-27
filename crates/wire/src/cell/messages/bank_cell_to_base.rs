@@ -102,6 +102,27 @@ pub enum BankCellToBase {
         /// The space the player and the Banker are in.
         space_id: u32,
     },
+
+    /// GM `.orgvaultexpand [team|command] [from_slots]` (bank-vault BV-09,
+    /// D-BV28): buy one +10 step of the GM's Team vault, paid from the
+    /// Team's treasury, leader only. Without `from_slots` the base only
+    /// quotes (the size, the price and the treasury); with it, the base
+    /// buys only while the vault is still at that size, so a repeated
+    /// command is a replay and charges nothing. `scope` is what the GM
+    /// typed: a `Command` vault is fixed at 100 and is refused by the base
+    /// under the lock, with the organization's fields in the log.
+    OrgVaultExpand {
+        /// The GM's entity id.
+        entity_id: u32,
+        /// `account.account_id`, `None` if the cell has none.
+        account_id: Option<u32>,
+        /// `sgw_player.player_id`.
+        player_id: i32,
+        /// `Team` (the default) or `Command`.
+        scope: VaultScope,
+        /// The size the GM is buying from; `None` asks for a quote.
+        from_slots: Option<i16>,
+    },
 }
 
 /// What asked for a vault expansion, the `trigger` log field.
@@ -132,6 +153,7 @@ impl BankCellToBase {
             BankCellToBase::ExpansionQuote { .. } => "expansion_quote",
             BankCellToBase::Expand { .. } => "expand",
             BankCellToBase::OrgVaultOpen { .. } => "org_vault_open",
+            BankCellToBase::OrgVaultExpand { .. } => "org_vault_expand",
         }
     }
 }

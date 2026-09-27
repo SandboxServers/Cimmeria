@@ -105,6 +105,11 @@ pub async fn handle_chat_message(
             console::bank::refuse_non_gm_expand(entity_id, tx, space_mgr).await;
             return;
         }
+        // `.orgvaultexpand` (BV-09) likewise, with `scope=team`.
+        if console::bank::is_orgvaultexpand_command(text) {
+            console::bank::refuse_non_gm_org_expand(entity_id, tx, space_mgr).await;
+            return;
+        }
         // `.bankdump` (BV-04) takes the generic refusal below, plus its
         // `gm_action reason=not_gm` row on the `bank` target.
         if console::bank::is_bankdump_command(text) {

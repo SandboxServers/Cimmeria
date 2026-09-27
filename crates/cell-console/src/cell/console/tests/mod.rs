@@ -19,6 +19,7 @@ mod bv02_bank;
 #[cfg(test)]
 mod bv04_bankdump;
 mod bv05_bankexpand;
+mod bv09_orgvaultexpand;
 #[cfg(test)]
 mod cr05_allcraft;
 #[cfg(test)]

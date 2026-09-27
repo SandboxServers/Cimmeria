@@ -23,9 +23,9 @@ use super::super::organization::handlers::{OrgCtx, OrgPlayer};
 use crate::mercury::method_idx;
 
 /// The actor's client.
-pub(super) struct Actor<'a> {
-    pub(super) ctx: &'a OrgCtx<'a>,
-    pub(super) player: OrgPlayer,
+pub struct Actor<'a> {
+    pub ctx: &'a OrgCtx<'a>,
+    pub player: OrgPlayer,
 }
 
 impl Actor<'_> {
@@ -38,8 +38,9 @@ impl Actor<'_> {
     }
 
     /// Send one method to the actor's character, or log
-    /// `bank_feedback_send_failed` with why it was dropped.
-    async fn send(&self, what: &'static str, method_index: u16, payload: &[u8]) {
+    /// `bank_feedback_send_failed` with why it was dropped. `what` names
+    /// the send in that log.
+    pub async fn send(&self, what: &'static str, method_index: u16, payload: &[u8]) {
         let outcome = match self.addr() {
             None => Err("no_client_address"),
             Some(addr) => {
@@ -80,20 +81,20 @@ impl Actor<'_> {
     }
 
     /// The wallet's balance.
-    pub(super) async fn send_cash(&self, naquadah: i32) {
+    pub async fn send_cash(&self, naquadah: i32) {
         self.send("cash", method_idx::ON_CASH_CHANGED, &naquadah.to_le_bytes())
             .await;
     }
 
     /// The treasury's balance, to the actor alone.
-    pub(super) async fn send_org_cash(&self, org_id: i32, cash: i64) {
+    pub async fn send_org_cash(&self, org_id: i32, cash: i64) {
         let args = build_on_organization_cash_update(org_id, u64::try_from(cash).unwrap_or(0));
         self.send("org_cash", ON_ORGANIZATION_CASH_UPDATE, &args)
             .await;
     }
 
     /// One chat line on the feedback channel.
-    pub(super) async fn send_line(&self, text: &str) {
+    pub async fn send_line(&self, text: &str) {
         let payload = serialize_on_player_communication(FEEDBACK_SPEAKER, 0, CHAN_FEEDBACK, text);
         self.send(
             "feedback_line",

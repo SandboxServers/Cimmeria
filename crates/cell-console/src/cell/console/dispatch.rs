@@ -323,6 +323,7 @@ pub async fn exec(
         "bank" => bank::open(caller_id, tx, space_mgr).await,
         "bankdump" => bank::dump(caller_id, args, tx, space_mgr).await,
         "bankexpand" => bank::expand(caller_id, tx, space_mgr).await,
+        "orgvaultexpand" => bank::org_expand(caller_id, args, tx, space_mgr).await,
         // E. crafting
         "allcraft" | "learndiscipline" | "forgetdiscipline" | "craftkit" | "learnblueprint" => {
             crafting::dispatch(name, caller_id, args, target_id, tx, space_mgr).await

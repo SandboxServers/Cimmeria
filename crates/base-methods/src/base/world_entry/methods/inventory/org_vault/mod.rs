@@ -10,6 +10,8 @@
 //! - [`access`]: the lock order and authorization every vault action starts
 //!   with.
 //! - [`open`]: the open path (`BankCellToBase::OrgVaultOpen`).
+//! - [`expand`]: a Team vault +10 step paid from the treasury, GM
+//!   `.orgvaultexpand` (BV-09, `BankCellToBase::OrgVaultExpand`).
 //!
 //! A committed move is fanned out to the other online members through
 //! ORG-07's `broadcast_to_org` (`move_::org::record`), so their cached vault
@@ -17,9 +19,11 @@
 //! refused and removed from their view.
 
 pub(crate) mod access;
+mod expand;
 mod open;
 #[cfg(test)]
 mod tests;
 
+pub use expand::{handle_org_vault_expand, OrgVaultExpandRequest};
 pub(crate) use open::org_label;
 pub use open::{handle_org_vault_open, org_vault_bag_info, OrgVaultIo, OrgVaultOpenRequest};
