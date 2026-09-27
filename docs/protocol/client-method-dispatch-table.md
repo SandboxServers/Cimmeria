@@ -2,12 +2,12 @@
 title: "SGWPlayer Client Method Dispatch Table (Server → Client)"
 type: reference
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-09-26
 ---
 
 # SGWPlayer Client Method Dispatch Table (Server → Client)
 
-> **Last updated**: 2026-09-25 — added the SGWMob table (NA33)
+> **Last updated**: 2026-09-26 — added the SGWPet table (pets PT-01)
 > **Verified**: 2026-07-25 — all 157 index/name pairs re-derived from
 > `entities/defs/` by replaying the BigWorld flattening rule, and diffed
 > against both this table and the constants in
@@ -399,6 +399,36 @@ Ghidra evidence: the client registers both handlers as a pair through
 `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` /
 `...Cleared` at `0x00d31cd0`; the Update handler at `0x00d31bd0` reads the
 `aAggressionLevel` INT8 argument and stores it at `GameMob + 0x16c`.
+
+## SGWPet Client Method Dispatch Table
+
+> **Added**: 2026-09-26 (pets PT-01). **Entity type**: SGWPet (`class_id = 0x05`).
+> **Total methods**: 32 (indices 0-31). All are below the NPC idbase (62), so
+> every method uses **direct** wire encoding: `msg_id = 0x80 + index`.
+> Client evidence: [`docs/reverse-engineering/findings/pet-client-contract.md`](../reverse-engineering/findings/pet-client-contract.md) (PT-E1).
+
+`SGWPet.def` declares `<Parent>SGWMob</Parent>` with no `<Implements>`, so its
+three own methods append after SGWMob's 0-28:
+
+| Index | Wire byte | Method | Args |
+|-------|-----------|--------|------|
+| 0-28 | — | *(SGWMob: see the SGWMob table above)* | — |
+| 29 | `0x9D` | `onPetAbilityList` | `ARRAY<INT32> aAbilityList`: `[u32 count][count × i32]` |
+| 30 | `0x9E` | `onPetStanceList` | `ARRAY<INT8> aStanceList`: `[u32 count][count × i8]` |
+| 31 | `0x9F` | `onPetStanceUpdate` | `INT8 aStance` |
+
+All three go to the pet's **owner only**, as `WitnessEntityMethod`: they
+describe the owner's pet bar. The owner's client binds the pet into
+`Unit.Pet1..4` once the entity carries `ENTITYFLAG_Pet` (1024) in
+`onEntityFlags` and has received both `onEntityProperty(GENERICPROPERTY_PetOwnerId
+= 5, ownerEntityId)` and `onPetStanceList`, in either order. The owner property
+rides the create cascade to every witness. `onPetStanceUpdate` does not gate the
+bind, and the server sends it on introduction only for a non-default stance.
+
+As with SGWMob, indices 29-31 collide with SGWPlayer's `Communicator` range:
+address them to the pet's entity id. The constants are in
+`crates/wire/src/cell/client_methods/pet.rs`. `pet-restoration.md`'s "idx
+0/1/2" is the client's handler registration order, not the wire index.
 
 ## Derivation
 

@@ -879,7 +879,7 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
 - **Documentation**: [gameplay/pet-system.md](gameplay/pet-system.md), [reverse-engineering/findings/pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md)
-- **Rust code**: No dedicated pet module. `petInvokeAbility`, `petAbilityToggle` and `petChangeStance` decode their args and log `UNIMPLEMENTED` (`cell_methods/player/social.rs:15-55`). The pet entity extends SGWMob in Python; no Rust equivalent.
+- **Rust code**: The pets campaign's PT-01 foundation is in `crates/cell-world/src/cell/pets/`: pet state, owner registry, spawn, the owner-only ability and stance list sync on AoI entry, and teardown. Nothing in the game can spawn a pet yet (summon is PT-03, the GM `.pet` console PT-07), so the rows below stay KM until a player can reach them. `petInvokeAbility`, `petAbilityToggle` and `petChangeStance` still decode their args and log `UNIMPLEMENTED` (`cell_methods/player/social.rs:15-55`).
 - **Recent PRs**: none since 2026-07-25
 - **Open issues**: #570 (implement pet / companion system)
 - **Path forward**: Pet entity (extends spawner mob), Follow AI state, command handling (#570). The NPC follow tick now covers being-class followers (#791), which a pet port could reuse.
