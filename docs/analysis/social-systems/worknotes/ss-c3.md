@@ -148,4 +148,15 @@ The mute tests use the process-wide table, each with its own `0x7300_03xx` playe
 1. **ORG-09 / SS-C4 (the constant swap).** When `CHAN_*` take the `enumerations.xml` values, replace `dispatch::chat_gates::echannel` and `dispatch::tell::TELL_CHANNEL` with them (the XML-pinning test can then move to the shared constants), and delete the cell's `CHAN_SERVER` arm in `cell-console/…/chat/mod.rs`: the base now refuses 8 before the cell sees it, and 7 is refused as unknown.
 2. **Contended files, in merge order:** `crates/base/src/base/dispatch/mod.rs` (two `mod` lines, nine constants after `CHAT_IGNORE`, one arm group before `LOG_OFF`); `dispatch/chat.rs` (two gate calls after the bucket, `access_level` in the lock tuple, `now` to `handle_tell`); `dispatch/tell.rs` (a `now` parameter). `ConnectedClientState` is untouched.
 3. **Docs owned elsewhere, not edited:** `audit.md` § 5 (A-27 is now fixed in `sgwplayer-base-method-dispatch-table.md`), the ledger status for SS-C3, and D-SS26's text if the owner rules on gaps 1 and 3.
-4. **`gap-analysis.md` totals** moved by one row (Chat mute KM → NT): NT 69, KM 126. A packet merged in between that also moves a row needs the totals recounted at merge.
+
+## Close-out edits for SS-99
+
+This packet does not edit `docs/gap-analysis.md` or `docs/project-status.md` (owner rule, 2026-09-27; an earlier commit on this branch did, and those hunks were reverted to the base version). SS-99 should apply:
+
+1. **`gap-analysis.md` §21 Chat:**
+   - the "Mute system" row goes from KM to NT, with the code paths `base-session/src/base/mutes/`, `base/src/base/dispatch/chat_gates.rs` and `cell-console/src/cell/console/social.rs`, and a note: GM `.mute` / `.unmute`, keyed by `player_id`, not saved across a restart; type-12 guards and an injected-clock expiry test; no in-client test;
+   - the "Pre-defined channels" row gains: the base refuses player lines on server, feedback, splash, user channels and unnamed ids (CAT-L-03);
+   - the "Path forward" line changes "moderation tools (mute)" to "channel moderation", and adds `.mute` to the two-client check;
+   - the Admin / GM "Ban/mute system" row stays KM but notes that `.mute` / `.unmute` exist and there is no ban.
+2. **`gap-analysis.md` totals:** Chat becomes 11 rows with 7 NT, 1 IM and 3 KM, so the totals move by one from KM to NT. Recount at close-out.
+3. **`project-status.md` Chat row:** 7 NT, 1 IM, 3 KM, and add "the channel allowlist, GM `.mute` / `.unmute` and a feedback line for each unimplemented Communicator method (SS-C3)"; "moderation unported" becomes "channel moderation unported".
