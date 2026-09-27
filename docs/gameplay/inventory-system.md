@@ -37,6 +37,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 | Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
 | Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined; blocked on the organization system |
+| Personal vault window | DONE (open path only) | A Banker click or GM `.bank` opens it and starts a vault session; see [Opening the vault](#opening-the-vault). Moves into and out of the vault are BV-03 |
 
 ### Vendor caveat
 
@@ -146,6 +147,24 @@ Each bandolier slot persists not only the equipped item but also its **per-slot 
 Both columns are bandolier-slot-scoped — swapping weapons does not pool ammo across slots. The cell server mirrors `current_ammo` to `Stat[AMMO_SLOT_1+slot]` (stat IDs 49–53) so the client UI can subscribe to `Events.StatUpdated` for meter and count refresh.
 
 Persistence is **batched**: dirty slots are flushed at reload completion, slot swap, ammo change, logout, and world transition. Full message flow, sequence diagrams, and legacy reference points are in [weapon-ammo-reload.md](weapon-ammo-reload.md).
+
+## Opening the vault
+
+The personal vault is container 17 (`INV_Bank`). Its rows load at login with the rest of the inventory, and the world-entry `onBagInfo` declares its size, so opening the window needs neither a base round trip nor a fresh `onBagInfo` (BV-E1, [bank-vault-client.md](../reverse-engineering/findings/bank-vault-client.md) Q1). The client has no open control of its own: it shows the window only when the server sends `onVaultOpen` (client method 106), and it sends nothing when the window closes.
+
+**At a Banker.** A Banker is an NPC whose template carries `INT_Banker` with `vault_scope = 'personal'` ([interaction-flags.md](../content/interaction-flags.md#bankers)). A right-click passes the usual interact gate (same space, within `MAX_INTERACT_DISTANCE` = 5), pins the Banker as the interaction target, and reaches the Banker arm of `handle_interact`. That arm, in [`crates/cell-interactions/src/cell/interactions/bank/`](../../crates/cell-interactions/src/cell/interactions/bank/mod.rs):
+
+1. records a vault session on the player's cell entity: `VaultSession { scope: Personal, banker_id: Some(banker), space_id, opened_at }`;
+2. sends `onVaultOpen(banker_id, banker_position)` (`INT32`, then `VECTOR3`) from the cell;
+3. logs `vault_open` under the `bank` target.
+
+A click from out of range sends nothing and opens no session. A `team` or `command` Banker is refused with a chat line and logs `vault_open_rejected reason=org_vault_not_available` until the organization vaults land.
+
+**GM `.bank`.** Opens the same window wherever the GM stands, with a session whose `banker_id` is `None`, and `onVaultOpen` addressed to the GM's own entity and position. A player without GM access gets a refusal line ([commands.md](../commands.md)).
+
+**The session ends** when the player changes space or logs out (both destroy the cell entity that holds it), or when a later `interact` pins a different target. Re-clicking the same Banker keeps it. Each end logs `vault_session_cleared` at DEBUG with its `reason`.
+
+**The move rule.** `vault_move_allowed(&player, &space_mgr)` is the single check a bank move must pass: an open session, opened in the player's current space, and, for a Banker session, the Banker still present, in the same space and within the interact distance. A GM session skips the proximity check. The client ignores `onVaultOpen`'s position (BV-E1 Q4), so walking away does not close the window; this check, run on every move, is the only enforcement. Wiring it into `moveItem` is BV-03.
 
 ## Flush Update Order
 

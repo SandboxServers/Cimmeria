@@ -51,6 +51,11 @@ raise by typing, so players cannot flood the WARN stream. Any other non-GM `.`-t
 `cell::dispatch::gm_gate`. Every accepted command is logged at `info` for the
 CAT-N audit trail (#473).
 
+One exception to the fall-through: a non-GM's `.bank` is consumed and answered
+with a refusal line ("`.bank` needs GM access"), because the bank campaign
+documents `.bank` as the UAT route to the vault (bank-vault BV-02). Every other
+non-GM `.`-text is still ordinary chat.
+
 ### 2. Registry-driven dispatch
 
 `cell::console::COMMANDS` is the registry: `name → (min/max arg count, required
@@ -146,6 +151,7 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 | Spawn lifecycle (`spawn`, `despawn`) | **Done** — `.spawn <templateId>` places one entity at the caller's exact position and facing via the existing `GmSpawnNpc` → `GmSpawnNpcReady` round-trip (the round-trip's message gained a `heading` field; the native `gmSpawnByCmd` keeps sending `0.0` since its wire signature carries no rotation). Feedback is deliberately deferred to the real creation result — the enqueue is silent, the base reports an unknown template, and the cell reports the new NPC id only once the spawn actually took; legacy's pre-creation "Spawning entity of type…" line is not ported. `.despawn` destroys the selected NPC through `SpaceManager::despawn_npc`, which fans `LeftAoI` out to every observing player immediately and scrubs the witness sets (rather than waiting for the next AoI tick to notice), and reports the real notified-observer count. It is NPC-only twice over: the spec is `Target::Mob` and the primitive independently refuses a player — legacy registered `.despawn` as `SGWSpawnableEntity`, which `SGWPlayer` derives from, so the legacy command could destroy a logged-in player. Neither command touches `resources.spawnlist`; that is `.savespawn` / `.delspawn`. |
 | Spawn authoring (`savespawn`/`delspawn`/`spawnrandom`/`respawnall`) | **Done** — record→confirm + live write; `spawnrandom` reuses the `GmSpawnNpc` round-trip; `respawnall` is a runtime reset. |
 | Patrol authoring (`path_*`) | **Done** — see above. |
+| Bank (`bank`) | **Done** (new in Rust; bank-vault BV-02, D-BV03) — opens the GM's own personal vault anywhere: a vault session with no Banker (moves skip the proximity check) and `onVaultOpen` addressed to the GM's own entity and position. Any later `interact` ends the session. A non-GM's `.bank` is refused with a line, not broadcast (see §1). |
 | Server/maint (`save`/`reloadmap`/`reloadres`/`removerespawner`/`loglevel`/`logclient`) | **Divergent** — the Rust server handles these differently (incremental persistence, startup resource loading, env/`RUST_LOG` log level). Each reports the real mechanism rather than faking a no-op. Runtime log-level reload + resource hot-reload are future work. |
 
 ## Alternatives considered
