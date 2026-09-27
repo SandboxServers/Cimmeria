@@ -13,6 +13,7 @@ use super::purchase_helpers::load_vendor_template_lists;
 use super::purchase_helpers::normalize_item_quantities;
 use super::serializers::reserve_free_inventory_slots;
 use super::store::handle_open_vendor_store;
+use crate::base::crafting::inventory_locks::take_inventory_locks;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
@@ -85,6 +86,21 @@ pub async fn handle_sell_vendor_items(
             return;
         }
     };
+
+    // Shared inventory lock order (`crate::base::crafting::inventory_locks`):
+    // the player-wide key 0 and the buyback bag's key before any row, then
+    // the sold rows, the buyback rows, and `sgw_player` last. Without key 0 a
+    // sale locked the sold row and then waited for the buyback key, while a
+    // buyback holding that key waited for the same main-bag row.
+    if let Err(e) = take_inventory_locks(&mut tx, player_id, &[INV_BUYBACK]).await {
+        let _ = tx.rollback().await;
+        tracing::error!(
+            entity_id,
+            player_id,
+            "SellVendorItems: advisory lock failed: {e}"
+        );
+        return;
+    }
 
     let sell_rows = match sqlx::query_as::<_, SellInventoryRow>(
         "SELECT inv.item_id, inv.stack_size, inv.container_id, ili.naquadah AS unit_price \

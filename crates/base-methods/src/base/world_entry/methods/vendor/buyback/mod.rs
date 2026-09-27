@@ -12,6 +12,7 @@ use super::helpers::send_cash_changed_to_client;
 use super::purchase_helpers::normalize_item_quantities;
 use super::serializers::reserve_free_inventory_slots;
 use super::store::handle_open_vendor_store;
+use crate::base::crafting::inventory_locks::take_inventory_locks;
 use crate::cell::messages::BaseToCellMsg;
 
 const INV_MAIN: i32 = 1;
@@ -76,10 +77,25 @@ pub async fn handle_buyback_vendor_items(
         }
     };
 
-    // Lock acquisition order: sgw_inventory rows BEFORE sgw_player.naquadah,
-    // matching the convention documented in paid_repair.rs and shared by the
-    // rest of the vendor stack. Reading the balance first would invert this
-    // order and risk a deadlock against concurrent grant/move operations.
+    // Lock order is the shared inventory order
+    // (`crate::base::crafting::inventory_locks`): the advisory keys first
+    // (the player-wide key 0, then the two bags this moves between, main and
+    // buyback), then the buyback rows and the main-bag rows the slot pick
+    // locks, then `sgw_player`. A trade, a crafting completion, a move or a
+    // sale on the same player takes key 0 first too, so each waits for the
+    // other. Taking the main-bag key only inside the slot pick, after the
+    // player row, deadlocked against a trade holding that key and waiting
+    // for the player row.
+    if let Err(e) = take_inventory_locks(&mut tx, player_id, &[INV_MAIN, INV_BUYBACK]).await {
+        let _ = tx.rollback().await;
+        tracing::error!(
+            entity_id,
+            player_id,
+            "BuybackVendorItems: advisory lock failed: {e}"
+        );
+        return;
+    }
+
     let buyback_rows = match sqlx::query_as::<_, BuybackInventoryRow>(
         "SELECT item_id, stack_size, flags AS unit_price \
          FROM sgw_inventory \
@@ -106,6 +122,31 @@ pub async fn handle_buyback_vendor_items(
             return;
         }
     };
+
+    // Main-bag rows before the player row.
+    let mut main_slots =
+        match reserve_free_inventory_slots(&mut tx, player_id, INV_MAIN, items.len()).await {
+            Ok(Some(slots)) => slots.into_iter(),
+            Ok(None) => {
+                let _ = tx.rollback().await;
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    requested_items = items.len(),
+                    "BuybackVendorItems: not enough main inventory slots"
+                );
+                return;
+            }
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(
+                    entity_id,
+                    player_id,
+                    "BuybackVendorItems: main slot query failed: {e}"
+                );
+                return;
+            }
+        };
 
     let balance: Option<i32> =
         match sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE")
@@ -198,30 +239,6 @@ pub async fn handle_buyback_vendor_items(
         );
         return;
     }
-
-    let mut main_slots =
-        match reserve_free_inventory_slots(&mut tx, player_id, INV_MAIN, items.len()).await {
-            Ok(Some(slots)) => slots.into_iter(),
-            Ok(None) => {
-                let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    requested_items = items.len(),
-                    "BuybackVendorItems: not enough main inventory slots"
-                );
-                return;
-            }
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "BuybackVendorItems: main slot query failed: {e}"
-                );
-                return;
-            }
-        };
 
     let new_cash_total = if total_cash_cost > 0 {
         match sqlx::query_scalar::<_, i32>(

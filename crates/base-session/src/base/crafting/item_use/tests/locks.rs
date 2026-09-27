@@ -137,9 +137,11 @@ async fn a_use_waits_for_a_vendor_purchase_instead_of_deadlocking() {
     assert_eq!(levels[2], (3, 2));
 }
 
-/// A trade takes the main bag's key, the player row, then the item rows.
-/// The use must wait on the main-bag key rather than lock the item row and
-/// then wait for the player row the trade holds.
+/// A writer holding the main bag's key and the player row, then reaching for
+/// the item row: the order trade used before it took the shared inventory
+/// order (a real trade now takes key 0 first, so it and a use queue on key
+/// 0). The use must still wait on the main-bag key rather than lock the item
+/// row and then wait for the player row the writer holds.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_use_waits_for_a_trade_instead_of_deadlocking() {
     let pool = require_db_or_skip!();
