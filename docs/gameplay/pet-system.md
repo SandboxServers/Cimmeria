@@ -7,8 +7,8 @@ last_updated: 2026-09-26
 
 # Pet System
 
-> **Last updated**: 2026-09-26
-> **Status**: ~25%. Engine support, content and client are complete. The server can now spawn an owned pet, introduce it to its owner and tear it down (pets campaign PT-01); summoning by ability, pet commands and pet AI are still missing (tracked in #570, ledger `docs/analysis/pets/`). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
+> **Last updated**: 2026-09-27
+> **Status**: ~25%. Engine support, content and client are complete. The server can now spawn an owned pet, introduce it to its owner, tear it down, and keep it tied to its owner on every owner lifecycle path (pets campaign PT-01, PT-02); summoning by ability, pet commands and pet AI are still missing (tracked in #570, ledger `docs/analysis/pets/`). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Overview
 
@@ -33,7 +33,35 @@ How a spawned pet behaves:
 - **Introduction.** Every witness gets the pet's CREATE_ENTITY (class 0x05) and a cascade that carries `ENTITYFLAG_Pet` and `onEntityProperty(PetOwnerId, owner)`. Only the owner gets `onPetAbilityList` and `onPetStanceList`, plus `onPetStanceUpdate` when the stance is not the default. The owner's client binds the pet into `Unit.Pet1..4` from the flag, the owner property and the stance list. The replay runs on the AoI tick and on the client's `requestEntityUpdate`.
 - **Spawn values.** The pet takes the owner's faction (D-PT06) and the owner's level (D-PT02, unless the template sets `ENTITYFLAG_NoPetLeveling`). It starts Defensive. It has no loot, respawn, patrol, wander, cover or tag.
 - **Queries.** The AI and movement ticks include pets. Player AoE, cone, the respawn tick and the NA14 assist fan-out leave them out.
-- **Teardown.** An owner disconnect despawns the owner's pets at once. The sweep runs every AoI tick and despawns any pet whose owner is gone, dead (D-PT08) or in another space. Any pet removal scrubs the registry. Log target: `pets.lifecycle`.
+- **Teardown and owner lifecycle.** See [Owner lifecycle](#owner-lifecycle) below. Log target: `pets.lifecycle`.
+
+### Owner lifecycle
+
+A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are per session and are re-summoned after any trip). Two calls in `crates/cell-world/src/cell/pets/owner_hooks.rs` carry the rules, and every owner path calls one of them (PT-02, audit A-31):
+
+| Owner event | Call site | What happens to the pet |
+|---|---|---|
+| Logout / client disconnect | `SpaceManager::disconnect_entity` (via `forget_owner`) | Despawned at once |
+| Base `DestroyEntity` | `service/base_messages/lifecycle.rs` `flush_and_destroy` | Despawned before the owner's destroy |
+| Owner death | `abilities::death::resolve_death` (player branch) | Despawned at once (D-PT08); the owner sees it go |
+| Cross-world respawn | `respawn/mod.rs` | Despawned before the owner's destroy, once the `GateTravel` send is confirmed |
+| Stargate travel | `gate_travel/mod.rs` | Despawned after the `GateTravel` send is confirmed |
+| GM / console transfer to another space | `space_transfer/mod.rs`, `gm/travel.rs` (`gmGotoLocation`) | Despawned; a rejected transfer keeps it |
+| Content cross-world teleport | `content/executor/transport.rs` | Despawned once the `GateTravel` send is confirmed |
+| Cross-world ring | `ring_transport/dispatch.rs` (`TeleportCrossWorld`) | Despawned once the `GateTravel` send is confirmed |
+| Same-world respawn (a GM respawn of a living owner) | `respawn/mod.rs`, after `ReanchorPlayer` | Moved beside the owner, only once the reanchor is sent |
+| `.goto` / `.summon` / `.gotolocation` in the same space, `.location`, `gmGoto`, `gmGotoXYZ`, `gmSummon` | `console/travel`, `console/placement.rs`, `gm/travel.rs`, after `TeleportPlayer` | Moved beside the owner |
+| Content `teleport` action | `content/executor/transport.rs`, after `TeleportPlayer` | Moved beside the owner, only once the owner's snap is sent |
+| Same-world ring | `ring_transport/dispatch.rs`, at `ShowPlayer` | Moved beside the owner when the owner reappears at the destination, not while the owner is still hidden. Only if the ring's `TeleportPlayer` really went out: an aborted or failed trip leaves the pet where it is, and an abort after the move still brings it |
+| Instanced space torn down | `destroy_space` | Removed with the space; the registry is scrubbed |
+
+- **Despawn** (`on_owner_left`) goes through `despawn_npc`, so every witness gets `LeftAoI` and the witness sets are scrubbed. On travel, disconnect and base destroy the owner itself gets no `LeftAoI`: its client is about to be reset (`RESET_ENTITIES`) or is closing, and a leave queued behind the `GateTravel` would reach the new world's view. On owner death the owner does get it.
+- **Move** (`on_owner_teleported`) puts each live pet 2 u behind the owner's new spot, walked there along the navmesh from the owner's feet so it stops at walls and stands on the floor. The pet is stopped and faces the owner's heading, `last_teleport_at` is stamped (the clock the PT-05 follow teleport rate-limits on), and each witness gets an `EntityMoved`. A pet is an NPC, so it never gets `TeleportPlayer` / `onPlayerTeleport`. A dead pet is left where it fell.
+- **Only after the owner's move is sent.** Every hook runs after the owner's own `TeleportPlayer`, `ReanchorPlayer` or `GateTravel` has been sent. If that send fails, the owner stays where it is (a cross-world path does not tear it out of its space) and so does its pet.
+- **Ownership is the summoner, not the id.** Entity ids are reused, so the hooks decide ownership with the identity captured when the pet was summoned (`PetRegistry::summoner_matches`), not the bare owner id. A player given a destroyed owner's id is not that pet's owner: a teleport never pulls such a pet after it, and the pet is despawned instead (`teleport_skipped reason=owner_identity_mismatch`).
+- **Pet death.** A pet that dies stays as a corpse, then despawns 10 s after the pet sweep first sees it dead (`PET_CORPSE_DESPAWN`, D-PT08). It never respawns as an NPC.
+- **Backstop.** `pet_owner_sweep` runs every AoI tick and despawns any pet whose owner is gone, dead or in another space, so a future owner path that forgets the hooks costs at most one tick. A source-scan test (`every_owner_travel_site_calls_the_pet_hooks`) fails when a cell file sends `GateTravel` without `on_owner_left`, or `TeleportPlayer` without `on_owner_teleported`.
+- The `SGWPet.def` cell methods `onOwnerDeath`, `onOwnerLeash` and `onOwnerRespawn` are not called: in our server the cell owns both the owner and the pet, so the hooks run directly.
 
 Nothing spawns a pet yet except code and tests. Summon by ability is PT-03 and the `.pet` console is PT-07. The table records what the entity definitions provide and what the server does with them.
 
@@ -43,14 +71,14 @@ Nothing spawns a pet yet except code and tests. Summon by ability is PT-03 and t
 | Owner tracking | DONE (PT-01) | `PetRegistry` on the cell. `ownerID` reaches the client as `onEntityProperty(GENERICPROPERTY_PetOwnerId)` in the create cascade |
 | Ability list | DONE (PT-01) | `onPetAbilityList` to the owner only, on AoI entry |
 | Stance list | DONE (PT-01) | `onPetStanceList` to the owner only, filtered by `ENTITYFLAG_NoPassive` / `NoDefensive` / `NoAggressive` |
-| Spawn and teardown | DONE (PT-01) | `spawn_pet_from_template`. Despawn on owner disconnect, death, leaving the space, or the instance being torn down |
+| Spawn and teardown | DONE (PT-01, PT-02) | `spawn_pet_from_template`. Despawn on every owner departure, move beside the owner on a same-space teleport; see [Owner lifecycle](#owner-lifecycle) |
 | Ability toggling | STUB | `toggleAbility` with on/off flag |
 | Stance changing | STUB | `changePetStance` with `onPetStanceUpdate` |
 | Pet leveling | STUB | `setPetLevel` defined |
-| Owner death response | STUB | `onOwnerDeath` cell method |
+| Owner death response | DONE (PT-02) | The pet despawns when its owner dies (D-PT08), from `resolve_death`; the `onOwnerDeath` cell method itself is unused |
 | Owner leash response | STUB | `onOwnerLeash` cell method |
-| Owner respawn response | STUB | `onOwnerRespawn` with despawn flag |
-| Despawn timer | DEFINED | `petDespawnTimerId` property |
+| Owner respawn response | DONE (PT-02) | Cross-world respawn despawns the pet; a same-world respawn moves it beside the owner. `onOwnerRespawn` itself is unused |
+| Despawn timer | DONE (PT-02) | `PetState::despawn_at`: a dead pet's corpse despawns after 10 s |
 | Ability on spawn | DEFINED | `abilityToResolve`, `abilityInformation` |
 | XP transfer | DEFINED | `transferXP` float property |
 | Position tracking | DEFINED | `ownerLastPosition`, `petLastPosition`, `lastOwnerPositionCheck` |

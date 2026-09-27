@@ -238,4 +238,5 @@ mod shout;
 mod spawn;
 mod stats;
 mod travel;
+mod travel_pets;
 mod world;

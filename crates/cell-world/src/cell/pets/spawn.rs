@@ -79,8 +79,9 @@ pub fn stance_mask_from_flags(entity_flags: u64) -> u8 {
 
 /// Where a pet appears: [`PET_SPAWN_OFFSET`] behind its owner, facing the
 /// same way. `direction` is `[pitch, yaw, roll]` radians, and a heading of
-/// `yaw` faces `(sin yaw, cos yaw)` in x/z.
-fn beside_owner(position: Vector3, direction: Vector3) -> [f32; 3] {
+/// `yaw` faces `(sin yaw, cos yaw)` in x/z. Also where
+/// `owner_hooks::on_owner_teleported` puts a pet after its owner moves.
+pub(super) fn beside_owner(position: Vector3, direction: Vector3) -> [f32; 3] {
     let yaw = direction.y;
     [
         position.x - yaw.sin() * PET_SPAWN_OFFSET,

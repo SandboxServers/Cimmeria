@@ -153,6 +153,43 @@ pub async fn handle_respawn(
             cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(entity, player_id, tx)
                 .await;
         }
+        // Enqueue the transfer first and tear down only once it is sent,
+        // the order gate travel and `gmGotoLocation` use: a closed base
+        // channel must not leave the player (or its pet) removed cell-side
+        // with no transfer in flight.
+        if let Err(e) = tx
+            .send(CellToBaseMsg::GateTravel {
+                entity_id,
+                target_world_name: target_world.clone(),
+                position: spawn_pos,
+                rotation: [0.0; 3],
+                destination_ring_id: None,
+                // Respawn resolves the destination by world name.
+                destination_space_id: None,
+            })
+            .await
+        {
+            let id = space_mgr.player_identity(entity_id);
+            tracing::warn!(
+                entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
+                to = %target_world,
+                reason = "cell_to_base_closed",
+                error = %e,
+                "Respawn: cross-world GateTravel not sent; player and pets left in place"
+            );
+            return;
+        }
+        // Pets stay in this world (D-PT01: re-summon after the trip).
+        cimmeria_cell_world::cell::pets::on_owner_left(
+            entity_id,
+            cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+            cimmeria_cell_world::cell::pets::OwnerPath::Respawn,
+            tx,
+            space_mgr,
+        )
+        .await;
         space_mgr.destroy_entity(entity_id);
         tracing::info!(
             entity_id,
@@ -160,17 +197,6 @@ pub async fn handle_respawn(
             to = %target_world,
             "Respawn: cross-world via GateTravel"
         );
-        let _ = tx
-            .send(CellToBaseMsg::GateTravel {
-                entity_id,
-                target_world_name: target_world,
-                position: spawn_pos,
-                rotation: [0.0; 3],
-                destination_ring_id: None,
-                // Respawn resolves the destination by world name.
-                destination_space_id: None,
-            })
-            .await;
         return;
     }
 
@@ -271,14 +297,44 @@ pub async fn handle_respawn(
     // FORCED_POSITION + cached BeingAppearance/onEntityTint replay.
     // CREATE_BASE_PLAYER is the load-bearing piece — it triggers the
     // client's pawn-recreate hook, dropping the ragdoll state.
-    let _ = tx
+    match tx
         .send(CellToBaseMsg::ReanchorPlayer {
             entity_id,
             space_id,
             position: spawn_pos,
             rotation: [0.0; 3],
         })
-        .await;
+        .await
+    {
+        // A pet still out (a GM `gmRespawn` of a living player; a death
+        // already despawned it, D-PT08) comes along to the respawn point,
+        // queued behind the owner's own snap like every other same-space
+        // move (pets PT-02).
+        Ok(()) => {
+            cimmeria_cell_world::cell::pets::on_owner_teleported(
+                entity_id,
+                cimmeria_cell_world::cell::pets::OwnerPath::Respawn,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        // The client never gets the reanchor, so it still shows the owner
+        // where it stood: its pets stay beside it. The rest of the respawn
+        // (region re-registration, inventory re-push) carries on as before.
+        Err(e) => {
+            let id = space_mgr.player_identity(entity_id);
+            tracing::warn!(
+                entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
+                space_id,
+                reason = "cell_to_base_closed",
+                error = %e,
+                "Respawn: ReanchorPlayer not sent; pets left in place"
+            );
+        }
+    }
 
     // Re-register the world's trigger volumes after the reanchor, for the
     // same reason the inventory is re-pushed below: CREATE_BASE_PLAYER

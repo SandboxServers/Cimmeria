@@ -79,6 +79,19 @@ async fn dispatch_effect_inner(
         }
         Effect::ShowPlayer { entity_id } => {
             send_visible(entity_id, true, tx, space_mgr).await;
+            // A pet out with a same-world ring passenger appears beside it
+            // as the owner becomes visible at the destination, not when the
+            // owner is moved at the start of the remote warmup (the owner is
+            // still hidden then, the pet never is). Only if the trip really
+            // moved the owner: `same_world_teleport` marks it. After a
+            // cross-world trip the arriving entity has no pets (pets PT-02).
+            cimmeria_cell_world::cell::pets::on_owner_reappeared(
+                entity_id,
+                cimmeria_cell_world::cell::pets::OwnerPath::Ring,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
         Effect::TeleportPlayer {
             entity_id,
@@ -141,9 +154,13 @@ async fn dispatch_effect_inner(
             // — that's the deferred `mark_player_loaded` hook the issue's
             // Phase A design calls for.
             //
-            // Order matters: flush bandolier ammo → destroy on this cell →
-            // send GateTravel. The base side waits on the same client
-            // socket so cell→base ordering is preserved naturally.
+            // Order: flush bandolier ammo → send GateTravel → destroy on this
+            // cell, the order gate travel and `gmGotoLocation` use. A closed
+            // base channel must not leave the player (or its pet) removed
+            // cell-side with no transfer in flight: the player stays hidden
+            // and movement-locked, and the destination's
+            // `REMOTE_LOAD_WAIT_TIMEOUT` abort releases it (it is still in
+            // `expected_players`).
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 if let Some(player_id) = entity.player_id {
                     cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::flush_dirty_bandolier_ammo(
@@ -152,16 +169,6 @@ async fn dispatch_effect_inner(
                     .await;
                 }
             }
-            // NOTE: this `destroy_entity` is a LEGITIMATE ring handoff, not a
-            // player leaving. It queues `note_player_gone`, which the tick
-            // reconciles — and that reconciliation is deliberately
-            // source-side only (`players`/`send_players`) precisely so it
-            // cannot drop this traveller from the destination's
-            // `expected_players` and fast-path the destination to `Idle`
-            // before they arrive. See
-            // `RingTransporterManager::forget_source_side`.
-            space_mgr.destroy_entity(entity_id);
-
             if let Err(e) = tx
                 .send(CellToBaseMsg::GateTravel {
                     entity_id,
@@ -174,19 +181,39 @@ async fn dispatch_effect_inner(
                 })
                 .await
             {
-                // The destination ring is already in RemoteLoadWait at this
-                // point. A failed send means base never tears down the
-                // client view, so `AdvanceRingDestination` never comes back
-                // and the destination ring sits until
-                // `REMOTE_LOAD_WAIT_TIMEOUT` aborts it and makes it
-                // selectable again (H02). The player still has to relog to
-                // recover their own session. No retry: the channel is gone.
+                // The destination ring is already in RemoteLoadWait. A
+                // failed send means base never tears down the client view,
+                // so `AdvanceRingDestination` never comes back and the
+                // destination ring sits until `REMOTE_LOAD_WAIT_TIMEOUT`
+                // aborts it, releases this player and makes the ring
+                // selectable again (H02). No retry: the channel is gone.
                 tracing::error!(
                     entity_id, %world_name, destination_region_id,
+                    reason = "cell_to_base_closed",
                     error = %e,
-                    "TeleportCrossWorld: cell→base GateTravel send failed"
+                    "TeleportCrossWorld: cell→base GateTravel send failed; player and pets left in place"
                 );
+                return;
             }
+            // NOTE: this `destroy_entity` is a LEGITIMATE ring handoff, not a
+            // player leaving. It queues `note_player_gone`, which the tick
+            // reconciles — and that reconciliation is deliberately
+            // source-side only (`players`/`send_players`) precisely so it
+            // cannot drop this traveller from the destination's
+            // `expected_players` and fast-path the destination to `Idle`
+            // before they arrive. See
+            // `RingTransporterManager::forget_source_side`.
+            //
+            // Pets stay behind (D-PT01); gone before the traveller's destroy.
+            cimmeria_cell_world::cell::pets::on_owner_left(
+                entity_id,
+                cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+                cimmeria_cell_world::cell::pets::OwnerPath::Ring,
+                tx,
+                space_mgr,
+            )
+            .await;
+            space_mgr.destroy_entity(entity_id);
         }
         Effect::FireTeleportIn {
             entity_id,
@@ -359,5 +386,8 @@ async fn same_world_teleport(
             "TeleportPlayer: cell→base channel send failed");
         return false;
     }
+    // The owner's pet follows at `Effect::ShowPlayer`, when the owner
+    // reappears; only a snap that was really sent marks it (pets PT-02).
+    space_mgr.pets.note_owner_moved(entity_id);
     true
 }

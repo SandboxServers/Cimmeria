@@ -10,6 +10,8 @@
 //!   `DisconnectEntity` flush ordering.
 //! - [`npc_ai`] — `npc_ai_tick` state-machine transitions
 //!   (Fighting → Idle / Leashing, dead-target prune, stationary, leash snap).
+//! - [`pet_lifecycle`] — `DestroyEntity` despawns the owner's pet (pets
+//!   PT-02).
 //! - [`regen`] — `regen_tick` out-of-combat HP/focus regen, threat-set /
 //!   dead gating, full-pool skip and zero-regen floor cases.
 
@@ -27,6 +29,7 @@ mod npc_ai_investigate;
 mod npc_ai_patrol;
 mod npc_ai_phase7;
 mod npc_ai_wander;
+mod pet_lifecycle;
 mod regen;
 mod reload;
 mod startup_order;

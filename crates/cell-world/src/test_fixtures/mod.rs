@@ -14,7 +14,9 @@
 //! - [`NoContentEvents`] and [`RecordingContentEvents`]: the
 //!   `ContentEvents` fakes.
 //! - [`pet_template_record`], [`seed_pet_template`] and [`add_pet_owner`]:
-//!   a cached pet template and a ready owner (issue #570).
+//!   a cached pet template and a ready owner (issue #570); [`make_pet_world`]
+//!   and [`watched_pet_world`] build the pet lifecycle world, and the
+//!   `drain_*_for` / [`assert_pet_fully_gone`] helpers read its results.
 
 mod content_events;
 pub mod occluder_fixtures;
@@ -23,8 +25,9 @@ mod space_manager;
 
 pub use content_events::{NoContentEvents, RecordedContentEvent, RecordingContentEvents};
 pub use pets::{
-    add_pet_owner, pet_template_record, seed_pet_template, PET_FIXTURE_ABILITIES,
-    PET_FIXTURE_TEMPLATE_ID,
+    add_pet_owner, assert_pet_fully_gone, drain_entity_moved_for, drain_left_aoi_for,
+    make_pet_world, pet_template_record, seed_pet_template, watched_pet_world,
+    PET_FIXTURE_ABILITIES, PET_FIXTURE_OTHER, PET_FIXTURE_OWNER, PET_FIXTURE_TEMPLATE_ID,
 };
 pub use space_manager::{make_space_manager, make_space_manager_with_player, seed_ability_defs};
 

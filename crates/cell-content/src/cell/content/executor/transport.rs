@@ -81,21 +81,42 @@ pub(super) async fn teleport(
         .get_entity(entity_id)
         .map(|e| e.space_id.0 as u32)
         .unwrap_or(space_id as u32);
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::TeleportPlayer {
             entity_id,
             space_id: cell_space_id,
             position,
             prev_pos,
         })
-        .await;
+        .await
+    {
+        // The client never gets the snap, so its pets stay where the client
+        // still sees the owner.
+        tracing::warn!(
+            entity_id,
+            chain_id,
+            reason = "cell_to_base_closed",
+            error = %e,
+            "Content: teleport snap not sent; pets left in place"
+        );
+        return;
+    }
+    // A pet out with the teleported player comes along (pets PT-02).
+    cimmeria_cell_world::cell::pets::on_owner_teleported(
+        entity_id,
+        cimmeria_cell_world::cell::pets::OwnerPath::ContentTeleport,
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// `Action::CrossWorldTeleport` — direct cross-world hop bypassing the
 /// ring-transport FSM. Same plumbing as the stargate dial path
 /// (`cell::gate_travel::handle_dial_gate`): flush dirty bandolier ammo,
-/// destroy the cell entity on this world, send `CellToBaseMsg::GateTravel`
-/// with `destination_ring_id: None` so the base side does not emit
+/// send `CellToBaseMsg::GateTravel` and, once it is sent, destroy the cell
+/// entity on this world (a failed send leaves it in place). The send carries
+/// `destination_ring_id: None` so the base side does not emit
 /// `BaseToCellMsg::AdvanceRingDestination` (there's no destination ring
 /// FSM to advance — that's the whole point of using this action over
 /// `TriggerTransporter`).
@@ -134,8 +155,10 @@ pub(super) async fn cross_world_teleport(
             .await;
         }
     }
-    space_mgr.destroy_entity(entity_id);
-
+    // Enqueue the transfer first and tear down only once it is sent, the
+    // order gate travel and `gmGotoLocation` use: a closed base channel must
+    // not leave the player (or its pet) removed cell-side with no transfer
+    // in flight.
     if let Err(e) = tx
         .send(CellToBaseMsg::GateTravel {
             entity_id,
@@ -150,7 +173,19 @@ pub(super) async fn cross_world_teleport(
     {
         tracing::error!(
             entity_id, world = %world_name, ?position, chain_id, error = %e,
-            "CrossWorldTeleport: cell→base GateTravel send failed -- player will be stuck on previous world"
+            reason = "cell_to_base_closed",
+            "CrossWorldTeleport: cell→base GateTravel send failed -- player and pets left in place"
         );
+        return;
     }
+    // Pets stay behind (D-PT01); gone before the traveller's destroy.
+    cimmeria_cell_world::cell::pets::on_owner_left(
+        entity_id,
+        cimmeria_cell_world::cell::pets::PetDespawnReason::OwnerLeftSpace,
+        cimmeria_cell_world::cell::pets::OwnerPath::ContentTeleport,
+        tx,
+        space_mgr,
+    )
+    .await;
+    space_mgr.destroy_entity(entity_id);
 }

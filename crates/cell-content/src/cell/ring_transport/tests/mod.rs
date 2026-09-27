@@ -11,6 +11,7 @@ mod deadline_scan;
 mod disconnect;
 mod harset_mesh;
 mod pairing;
+mod pets;
 mod readiness;
 mod stall;
 mod state_flag;

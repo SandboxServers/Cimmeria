@@ -2,6 +2,7 @@
 //! - [`respawn_fork`]: `handle_respawn` — the same-world in-place burst
 //!   vs. the cross-world GateTravel branch, and the cell-entity state
 //!   each one leaves behind.
+//! - [`respawn_pets`]: the owner's pet on each branch (pets PT-02).
 //! - [`respawn_regions`]: the client-hinted regions re-registered after the
 //!   reanchor.
 //! - [`respawn_resync`]: the client caches replayed after the reanchor.
@@ -16,6 +17,7 @@
 use crate::cell::space_manager::SpaceManager;
 
 mod respawn_fork;
+mod respawn_pets;
 mod respawn_regions;
 mod respawn_resync;
 mod respawn_target;
