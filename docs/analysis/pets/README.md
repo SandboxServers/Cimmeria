@@ -24,9 +24,45 @@ Out of scope:
 - Pet leveling curves: pets take the owner's level at summon.
 - Ashrak as a pet: `Summon Ashrak` 2825 is in no ability tree.
 
+## Campaign outcome
+
+The campaign is complete as of 2026-09-27 and waits on the owner's in-game UAT ([checklist](handoffs/session-resume.md#uat-checklist-owner-colo-after-the-pt-13-release)). #570 stays open until then. Every planned packet merged:
+
+| Packet | PR | What shipped |
+|---|---|---|
+| PT-E1 | #863 | The client contract: SGWPet methods 29/30/31, and how the client binds a pet to `Unit.Pet1..4` |
+| PT-S | #865 | `resources.pet_summons`, template 350 (Straegis) and 2826 → 350 |
+| PT-01 | #870 | The pet entity, the owner registry, spawn, the owner-only list replay and teardown |
+| PT-02 | #892 | The pet is tied to its owner on every lifecycle path: despawn on logout, death and travel, move on a same-space teleport, a 10 s corpse |
+| PT-06 | #889 | Kill XP and mission kill credit go to the owner |
+| PT-03 | #890 | Summon by casting the ability, one pet per owner |
+| PT-05 | #896 | Pet AI: follow, teleport back, the three stances, defend-owner, the owner-anchored leash, the owner's combat state |
+| PT-04 | #901 | Pet-bar commands CM 88/89/90 behind the ownership guard (CAT-C-11 / #462) |
+| PT-07 | #908 | GM `.pet` and `.giveability`, and the debug-hub pet trainer (template 360) |
+| PT-11 | #918 | Jaffa 351, Prime 352 and Lo'taur 353, each at its owner's level; no-op abilities refused with feedback |
+| PT-08 | #920 | Owner abilities on the pet: Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration, the Repair Turret heals |
+| PT-13 | #930 | Close-out docs: status docs, this ledger and the UAT checklist |
+
+Known gaps:
+
+- **Not planned:** PT-10 persistence. Pets are per session (D-PT01).
+- **Blocked:** PT-12 turrets. The client ships no turret body or mesh.
+- **The Lo'taur cannot heal.** Pet abilities are always aimed at an enemy, so its heals need an ally-target branch in the pet AI first. Its whole kit is refused on order and skipped by the AI, so it holds fire.
+- **No-op kit abilities.** 1652, 1654, 1653 and 3326-3329 have no damage values and no effect script. Only the staff auto attack (584) and the Straegis's 221 deal damage.
+- **Pet leveling.** A pet takes its owner's level at summon and never levels after it.
+- **Not wired from PT-08:** Repair Turret: Restoration (1214), the focus heals (1647 / 1651) and Defend Your God (1648 / 2831). Lord's Concentration's Interrupt Resistance has no reader yet.
+- **`knownPetAbilities`** is not implemented, so the pet-trained 1652 and 1654 ride on the pet's own ability set from level 1.
+- **Owner in-game UAT** is pending. Nothing in this campaign has been run in a client yet.
+
+Follow-up issues:
+
+- #906: an instant-cast ability can hit a target in another space (no same-space check at fire).
+- #919: ability `min_range` / `max_range` look like centimetres but are compared as world units, so a Jaffa fires 1652 (range 3000) from any distance.
+- #891: `LogCapture` tests flake under plain `cargo test` (a callsite-interest race between threads).
+
 ## What was found
 
-Against `main` @ `95366c59`. The [audit](audit.md) has the evidence for each row. This table is the pre-campaign snapshot. Since then, PT-E1 (#863), PT-S (#865), PT-01 (#870), PT-02 (#892) and PT-06 (#889) have merged, and PT-03 (summon by ability) is in review as #890. Each packet's current status is in [work-packets.md](work-packets.md).
+Against `main` @ `95366c59`. The [audit](audit.md) has the evidence for each row. This table is the pre-campaign snapshot. Since then every planned packet has merged: PT-E1 (#863), PT-S (#865), PT-01 (#870), PT-02 (#892), PT-06 (#889), PT-03 (#890), PT-05 (#896), PT-04 (#901), PT-07 (#908), PT-11 (#918) and PT-08 (#920); see [Campaign outcome](#campaign-outcome). Each packet's status is in [work-packets.md](work-packets.md).
 
 | Area | State on `main` | Packets |
 |---|---|---|

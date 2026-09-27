@@ -2,13 +2,13 @@
 title: "Pet System"
 type: reference
 audience: engineers
-last_updated: 2026-09-26
+last_updated: 2026-09-27
 ---
 
 # Pet System
 
 > **Last updated**: 2026-09-27
-> **Status**: ~30%. Engine support, content and client are complete. A player can summon an owned pet by casting its summon ability (pets campaign PT-03: 2826 Summon Straegis spawns template 350). The server introduces the pet to its owner, tears it down, and keeps it tied to its owner on every owner lifecycle path (PT-01, PT-02). The owner commands the pet (PT-04), the pet AI follows and fights (PT-05), and the owner's own pet abilities (Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration, the pet heals) act on it (PT-08). Tracked in #570, ledger `docs/analysis/pets/`. Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
+> **Status**: Restored server-side; owner in-game UAT pending. Every pets-campaign packet has merged (PT-E1, PT-S, PT-01 to PT-08, PT-11). A player summons one of the four Goa'uld Servant Lord pets by casting its summon ability (PT-03, PT-11): Straegis (2826 → template 350), Jaffa (1643 → 351), Prime (1645 → 352) and Lo'taur (1644 → 353). The server introduces the pet to its owner and keeps it tied to its owner on every owner lifecycle path (PT-01, PT-02). The owner gets the pet's kill XP and kill credit (PT-06) and commands it from the pet bar (PT-04). The pet AI follows and fights (PT-05). The owner's own pet abilities (Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration, the pet heals) act on it (PT-08). GMs have `.pet`, `.giveability` and a debug-hub pet trainer (PT-07). **Still open:** persistence (PT-10, not planned: pets are per session, D-PT01); turrets (PT-12, blocked: the client has no turret model); the Lo'taur cannot heal; several kit abilities do nothing; a pet does not level past the owner's level at summon; and the owner's in-game UAT. Tracked in #570, ledger `docs/analysis/pets/`. Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Overview
 
@@ -73,7 +73,7 @@ A pet lives exactly as long as its owner holds it in one space (D-PT01: pets are
 - When the warmup ends, the new pet appears 2 u behind the owner and the caster plays the summon effect (2292). A second summon then despawns the previous pet (D-PT04). If the spawn fails, the cast plays as interrupted and the previous pet stays.
 - The ground effect (2293) plays at the pet once the owner's client has created the pet.
 - A summon that cannot spawn gets an `onErrorCode` and a chat line: "Your pet could not be summoned." (or "You have not trained that summon."). No cooldown is charged when this happens at the press.
-- The `.pet` console is PT-07.
+- The GM `.pet summon` skips the warmup and the VFX; see [GM tooling](#gm-tooling-pt-07).
 
 ### Roster (PT-S, PT-11)
 
@@ -95,11 +95,13 @@ The Goa'uld Servant Lord summons, in the owner's order (D-PT13). Every row has `
 - **Range.** 1652's `max_range` is 3000 and 1653's is 800. The server reads those as world units, so the pet AI picks 1652 at any distance while 584 cools and never walks in for it. Most seeded ranges look like centimetres (3000 = 30 m); that is a server-wide question, not a pet one.
 - **Renders.** The Jaffa and Prime looks are placed today (160 and 159 in Harset and Castle). The Lo'taur composite has never been rendered and needs an in-game check.
 
-The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). The table records what the entity definitions provide and what the server does with them.
+The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). The table records what the entity definitions provide and what the server does with them. No row has been through the owner's in-game UAT yet.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Pet entity definition | DONE | Full property and method set defined |
+| Roster | DONE (PT-S, PT-11) | Straegis 350, Jaffa 351, Prime 352, Lo'taur 353, one `pet_summons` row each. See [Roster](#roster-pt-s-pt-11) |
+| Pet ability kits | PARTIAL (PT-11) | Only 584 and 221 deal damage. 1652, 1654, 1653 and 3326-3329 do nothing; an order for one is refused and the AI skips it, so the Lo'taur holds fire and cannot heal |
 | Owner tracking | DONE (PT-01) | `PetRegistry` on the cell. `ownerID` reaches the client as `onEntityProperty(GENERICPROPERTY_PetOwnerId)` in the create cascade |
 | Ability list | DONE (PT-01) | `onPetAbilityList` to the owner only, on AoI entry |
 | Stance list | DONE (PT-01) | `onPetStanceList` to the owner only, filtered by `ENTITYFLAG_NoPassive` / `NoDefensive` / `NoAggressive` |
@@ -108,9 +110,9 @@ The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). Th
 | Ability toggling | DONE (PT-04) | CM 89 `petAbilityToggle` updates `toggled_off` and re-sends `onPetAbilityList` to the owner. CM 88 refuses an OFF ability |
 | Stance changing | DONE (PT-04) | CM 90 `petChangeStance`: a listed stance id or a 1-based slot (A-07), then `onPetStanceUpdate` to the owner only |
 | Owner ability orders | DONE (PT-04) | CM 88 `petInvokeAbility` behind the ownership guard; the pet casts and engages the target |
-| Pet leveling | STUB | `setPetLevel` defined |
+| Pet leveling | NOT DONE | A pet takes its owner's level at summon (D-PT02) and keeps it; it never levels on its own. No pet XP table exists, and the `setPetLevel` cell method is unused |
 | Owner death response | DONE (PT-02) | The pet despawns when its owner dies (D-PT08), from `resolve_death`; the `onOwnerDeath` cell method itself is unused |
-| Owner leash response | STUB | `onOwnerLeash` cell method. The AI's own teleport back (PT-05) does not go through it |
+| Owner leash response | DONE (PT-05) | The pet AI's owner-anchored leash and its teleport back to the owner do this job. The `onOwnerLeash` cell method itself is unused |
 | Owner respawn response | DONE (PT-02) | Cross-world respawn despawns the pet; a same-world respawn moves it beside the owner. `onOwnerRespawn` itself is unused |
 | Despawn timer | DONE (PT-02) | `PetState::despawn_at`: a dead pet's corpse despawns after 10 s |
 | Ability on spawn | DEFINED | `abilityToResolve`, `abilityInformation` |
@@ -119,7 +121,9 @@ The owner's commands are PT-04 (see [Owner commands](#owner-commands-pt-04)). Th
 | Position tracking | DEFINED | `ownerLastPosition`, `petLastPosition`, `lastOwnerPositionCheck` |
 | Pet AI | DONE (PT-05) | Follow, teleport, stances, defend-owner, owner-anchored leash, owner combat state. See [Pet AI](#pet-ai-pt-05) |
 | Owner abilities on the pet | DONE (PT-08) | Holy Warrior, To The Death, Heed Our Calling, Lord's Concentration and the Repair Turret heals act on the owner's pet. See [Owner abilities on pets](#owner-abilities-on-pets-pt-08) |
-| Pet persistence | STUB | `saveToDB` defined but no save logic |
+| GM tooling | DONE (PT-07) | `.pet`, `.giveability` and the debug-hub pet trainer. See [GM tooling](#gm-tooling-pt-07) |
+| Pet persistence | NOT PLANNED (PT-10) | Pets are per session (D-PT01): re-summoned after logout, death or any trip. `saveToDB` is defined, but no table or save logic exists |
+| Turrets | BLOCKED (PT-12) | The client ships no turret body or mesh, so the Scientist turret summons have no template to spawn |
 
 ## Owner commands (PT-04)
 
@@ -158,6 +162,16 @@ How the target is chosen:
 - **Log target `pets.buff`.** Every step is logged there; see [observability.md](../architecture/observability.md).
 
 Not done: Repair Turret: Restoration (1214, revive), and 1646 "Health Heal", which stays a heal on the caster's target (it is also the universal starter, D-AT09). 1647 / 1651 (focus heals) and 1648 / 2831 (Defend Your God) are not wired.
+
+## GM tooling (PT-07)
+
+GM-gated console commands for testing pets. The full syntax is in [commands.md](../commands.md) (the Grants and Pets rows), and the log target is `pets.command`.
+
+- **`.pet summon <templateId|abilityId>`** spawns a pet beside you at once, with no warmup and no summon VFX, replacing your current pet. An id with a `pet_summons` row (2826) is read as the summon ability, anything else as a template id (350).
+- **`.pet dismiss`**, **`.pet stance <0-2>`**, **`.pet info`** (the selected pet, else yours) and **`.pet list`** (every pet in your space).
+- **`.giveability <abilityId>`** gives the selected player (else you) the ability and saves it to the character, so any archetype can cast a summon.
+- A non-GM who types any of them gets one chat line, ".pet is a GM command; you do not have GM rights" (with the command's own name); nobody nearby sees the text.
+- **Pet trainer.** Template 360, spawn 450, trainer list 350, in the Castle Cellblock stasis-room debug hub. It sells the Servant Lord pet nodes to a Goa'uld only; see [debug-hub.md](../content/debug-hub.md#pet-trainer-template-360).
 
 ## Entity Definition (SGWPet.def)
 

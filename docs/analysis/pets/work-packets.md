@@ -168,7 +168,7 @@ No summon ability, commands or AI.
 
 ### PT-03
 
-**Status:** Review (PR #890; its dependencies PT-01, PT-S, PT-02 and PT-06 are merged). **Scope title:** summon via ability. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor; review server-authority-enforcer.
+**Status:** Integrated (#890). **Scope title:** summon via ability. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor; review server-authority-enforcer.
 **Scope:**
 
 - A summon branch in `use_ability/`, ahead of the damage pipeline and the #444 gate, for abilities with a `pet_summons` row.
@@ -187,10 +187,10 @@ No summon ability, commands or AI.
 
 ### PT-04
 
-**Status:** BlockedDependency (PT-01). **Scope title:** pet commands and the ownership guard (CAT-C-11 / #462). **Agent:** rust-gameserver-dev; review server-authority-enforcer.
+**Status:** Integrated (#901). **Scope title:** pet commands and the ownership guard (CAT-C-11 / #462). **Agent:** rust-gameserver-dev; review server-authority-enforcer.
 **Scope:** move the three stubs into `crates/cell-methods/src/cell/cell_methods/player/pet/{mod,invoke,toggle,stance}.rs`, keeping the dispatch arm-order test.
 
-- **Every handler** resolves `owned_pet(caller, claimed)` first. On a mismatch it sends a WARN `pets.command` with `reason`, plus visible `onErrorCode` feedback.
+- **Every handler** resolves `owned_pet(caller, claimed)` first. On a mismatch `SpaceManager::owned_pet` logs the refusal once at DEBUG on `pets.command` (`event = ownership_rejected`, with `reason`), not WARN, because a client can name any id at will. The handler adds only the visible `onErrorCode` feedback.
 - **CM 88:** the ability must be in the pet's list and not toggled off. Then `handle_use_ability(pet, ability, target)` through the kill-credit wrapper, and the pet's threat is seeded on the target.
 - **CM 89:** update `toggled_off` and re-send `onPetAbilityList`.
 - **CM 90:** accept a stance id that is in the pet's stance list. If the id is outside `EPetStance`, treat it as a 1-based slot index into the list that was sent (A-07). Otherwise reject with feedback. On success, set the stance and send `onPetStanceUpdate`.
@@ -204,7 +204,7 @@ No summon ability, commands or AI.
 
 ### PT-05
 
-**Status:** BlockedDependency (PT-01). **Scope title:** pet AI: follow, teleport, stances, defend, owner-relative leash. **Agent:** rust-gameserver-dev; advisors npc-ai-spawn-advisor, combat-systems-advisor.
+**Status:** Integrated (#896). **Scope title:** pet AI: follow, teleport, stances, defend, owner-relative leash. **Agent:** rust-gameserver-dev; advisors npc-ai-spawn-advisor, combat-systems-advisor.
 **Scope:** `crates/cell-combat/src/cell/service/npc_ai/pet/` (`mod.rs` is the pre-pass hook from `dispatch.rs`; `owner_follow.rs`, `stance.rs`, `defend.rs`).
 
 - **Follow the owner** (band 2-5 u). Teleport past 40 u or across a floor band, rate-limited to once per 5 s (D-PT07).
@@ -237,7 +237,7 @@ No summon ability, commands or AI.
 
 ### PT-07
 
-**Status:** BlockedDependency (PT-01; the hub NPC also needs PT-S and PT-03). **Scope title:** UAT tooling. **Agent:** rust-gameserver-dev; review server-authority-enforcer (GM gating).
+**Status:** Integrated (#908; [worknote](worknotes/pt-07.md)). **Scope title:** UAT tooling. **Agent:** rust-gameserver-dev; review server-authority-enforcer (GM gating).
 **Scope:**
 
 - **Dot console, GM-gated:**
@@ -258,7 +258,7 @@ No summon ability, commands or AI.
 
 ### PT-08
 
-**Status:** Review (PR #920; [worknote](worknotes/pt-08.md), D-PT17 proposed). **Scope title:** owner abilities that act on pets. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor.
+**Status:** Integrated (#920; [worknote](worknotes/pt-08.md), D-PT17 proposed). **Scope title:** owner abilities that act on pets. **Agent:** rust-gameserver-dev; advisor combat-systems-advisor.
 **Scope:**
 
 - **Holy Warrior** (2824): pet +Accuracy / −Defense.
@@ -271,7 +271,7 @@ Each is an effect script or a target redirect ("the owner's pet") and gets its o
 
 ### PT-11
 
-**Status:** Review (PR #918; worknote [pt-11](worknotes/pt-11.md)). **Scope title:** the rest of the Servant Lord roster (D-PT13 order). **Agent:** rust-gameserver-dev.
+**Status:** Integrated (#918; worknote [pt-11](worknotes/pt-11.md)). **Scope title:** the rest of the Servant Lord roster (D-PT13 order). **Agent:** rust-gameserver-dev.
 **Scope:**
 
 - templates 351-353 and `pet_summons` rows for Jaffa (1643 → 351, a clone of 160, name 8087), Prime (1645, Praxis Jaffa Lieutenant look, name 28892) and Lo'taur (1644, Goa'uld servant dress, name 28891);
@@ -282,7 +282,7 @@ Each is an effect script or a target redirect ("the owner's pet") and gets its o
 
 ### PT-13
 
-**Status:** BlockedDependency (all merged packets). **Scope title:** close-out. Final docs pass:
+**Status:** Done (#930, docs only; the campaign outcome is in the [README](README.md#campaign-outcome)). #570 stays open until the owner's UAT. **Scope title:** close-out. Final docs pass:
 
 - `pet-system.md` status;
 - gap-analysis §28;
@@ -298,5 +298,5 @@ Then comment `/release` on the last merged PR (D-PT00; from PowerShell, or with 
 
 ## Blocked
 
-- **PT-10 persistence:** BlockedDecision (D-PT01). Only needed if the owner wants pets saved: a `db/sgw/` table, `saveToDB` on logout, re-summon on login.
+- **PT-10 persistence:** not planned (D-PT01 made pets ephemeral per session). Only needed if the owner wants pets saved: a `db/sgw/` table, `saveToDB` on logout, re-summon on login.
 - **PT-12 turrets:** blocked. The client ships no turret body or mesh (A-46). It needs a model decision, e.g. `MOB_CA_DroneTank`, or a static-mesh turret prop.

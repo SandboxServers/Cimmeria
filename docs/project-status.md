@@ -96,7 +96,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58.
 | Mail | NT | 13 (7 NT, 1 IM, 4 KM, 1 NU) | **Plain send (SS-M1) and attachments (SS-M2) landed 2026-09-27, not yet client-tested.** Text mail to up to 10 recipients (offline ones included), with a flood limit, a 100-message mailbox cap and a reason for every refusal. The inbox and archive lists are separate. A mail to one recipient can carry gift cash, an item or COD; the sender pays 25 naquadah postage, and the item waits in escrow. A mail still holding an attachment cannot be deleted. Taking cash, taking an item, paying COD and return-to-sender are still stubs that log `UNIMPLEMENTED` (SS-M3), so an attachment sent today stays in escrow until SS-M3 lands |
 | Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 is on the unmerged `feat/571-black-market-phase1` (PR #586), and the client window additionally needs a client patch (#587) |
 | Dueling | KM | 6 (3 IM, 3 KM) | Challenge, response, the countdown and the engaged duel implemented (SS-D1, SS-D2): duelists are PvP-flagged, can damage each other and only each other, and are in combat together. Forfeit, defeat conditions (the 1 HP clamp, range, disconnect, teleport) and the duel marker still to do (SS-D3) |
-| Pets | KM | 7 (all KM) | In progress (pets campaign, #570). The pet entity, owner registry, owner lifecycle, kill credit and summon by ability have landed (PT-01, PT-02, PT-06, PT-03). Pet commands and pet AI are still missing, so every tracked row stays KM |
+| Pets | NT | 7 (6 NT, 1 IM) | **Restored server-side 2026-09-27, pending the owner's in-game UAT** (pets campaign, #570; every packet merged). A player summons a Straegis, Jaffa, Prime or Lo'taur by casting its summon ability. The pet follows, fights by stance, takes pet-bar orders behind an ownership guard, and pays its kill XP and credit to its owner; it goes away when its owner logs out, dies or travels. The owner's own pet abilities act on it, and GMs have `.pet`, `.giveability` and a debug-hub pet trainer. Not done: persistence (not planned, D-PT01), turrets (no client model), a Lo'taur that heals, several no-op kit abilities, and pet leveling past the owner's level |
 | Minigames | IM | 9 (5 CW, 1 IM, 3 KM) | **Livewire is client-verified**: 12 in-client sessions in the colo playtest, 11 wins that fired their follow-on chains. The SmartFox server is in-process (about 3,400 lines). Six games still run on an accept-anything placeholder; Alignment and GoauldCrystals are open TODOs |
 | Groups / parties | KM | 7 (all KM) | Not ported. No group code exists (an unwired `game/src/social/groups.rs` sketch was deleted in #699) |
 
@@ -206,7 +206,7 @@ Re-ranked 2026-09-25.
 6. **Multi-zone end-to-end** — Harset's first playtest; content campaigns for the next zones
 7. **Two-client verification** — trading, player-to-player introduction, chat between players
 
-Quality-of-life items (organizations, mail sending, black market merge, dueling, pets, remaining minigame ports, groups) follow the above and can be picked up independently. Contact lists and GM tooling have shipped.
+Quality-of-life items (organizations, mail sending, black market merge, dueling, remaining minigame ports, groups) follow the above and can be picked up independently. Contact lists and GM tooling have shipped, and pets are restored server-side and waiting for the owner's in-game UAT.
 
 ## Roadmap
 
@@ -228,7 +228,8 @@ Quality-of-life items (organizations, mail sending, black market merge, dueling,
 
 ### Long-term — finish-out
 
-- Dueling + pets + groups + the remaining minigame ports (in any order)
+- Dueling + groups + the remaining minigame ports (in any order)
+- Pets follow-ups after UAT: a Lo'taur that heals (an ally-target pet AI branch), effects for the no-op kit abilities, and turrets once a model is chosen
 - Server infrastructure: rate limiting, damage sanity checking, promoting speed validation from warn-only to enforcing, reconnection grace
 - Ban/mute on top of the shipped GM command surface
 - Mercury v2 verification against a patched client

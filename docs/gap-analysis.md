@@ -878,24 +878,24 @@ last_updated: 2026-09-27
 | Defeat conditions | KM | Combat | -- | 7 types |
 | Duel marker entity | KM | -- | -- | SGWDuelMarker not ported |
 
-### 28. Pets --- KM
+### 28. Pets --- NT (was KM)
 
-- **Confidence**: HIGH (code re-read 2026-09-27 for the pets campaign)
-- **Documentation**: [gameplay/pet-system.md](gameplay/pet-system.md), [reverse-engineering/findings/pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md)
-- **Rust code**: The pets campaign's PT-01 foundation is in `crates/cell-world/src/cell/pets/`: pet state, owner registry, spawn, the owner-only ability and stance list sync on AoI entry, and teardown. PT-02 ties the pet to its owner on every lifecycle path (despawn on logout, death and any trip out of the space; move beside the owner on a same-space teleport; a pet corpse despawns after 10 s). PT-06 routes kill XP and mission kill credit through `SpaceManager::credit_recipient`, so a pet's kill pays and credits its owner and a mob that kills a pet earns nothing. PT-03 lets a player summon a pet by casting its summon ability: 2826 Summon Straegis spawns template 350 after the 6 s warmup, one pet per owner, with visible feedback on every refusal. The GM `.pet` console is PT-07. The rows below stay KM because pet commands (PT-04) are not in yet. PT-05 adds the pet AI in `crates/cell-combat/src/cell/service/npc_ai/pet/`: follow the owner with a teleport back, the three stances, defend-owner, the owner-anchored leash and the owner's combat state. `petInvokeAbility`, `petAbilityToggle` and `petChangeStance` still decode their args and log `UNIMPLEMENTED` (`cell_methods/player/social.rs:15-55`).
-- **Recent PRs**: none since 2026-07-25
-- **Open issues**: #570 (implement pet / companion system)
-- **Path forward**: Pet entity (extends spawner mob), Follow AI state, command handling (#570). The NPC follow tick now covers being-class followers (#791), which a pet port could reuse.
+- **Confidence**: HIGH (code re-read 2026-09-27 for the pets campaign close-out, PT-13)
+- **Documentation**: [gameplay/pet-system.md](gameplay/pet-system.md), [reverse-engineering/findings/pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md), [reverse-engineering/findings/pet-client-contract.md](reverse-engineering/findings/pet-client-contract.md), campaign ledger [analysis/pets/](analysis/pets/README.md)
+- **Rust code**: The pets campaign restored pets server-side; every packet has merged, and the owner's in-game UAT is pending. The PT-01 foundation is in `crates/cell-world/src/cell/pets/`: pet state, owner registry, spawn, the owner-only ability and stance list sync on AoI entry, and teardown. PT-02 ties the pet to its owner on every lifecycle path (despawn on logout, death and any trip out of the space; move beside the owner on a same-space teleport; a pet corpse despawns after 10 s). PT-06 routes kill XP and mission kill credit through `SpaceManager::credit_recipient`, so a pet's kill pays and credits its owner and a mob that kills a pet earns nothing. PT-03 lets a player summon a pet by casting its summon ability: 2826 Summon Straegis spawns template 350 after the 6 s warmup, one pet per owner, with visible feedback on every refusal. PT-11 seeds the rest of the Servant Lord roster: 1643 Summon Jaffa spawns template 351, 1645 Summon Prime 352 and 1644 Summon Lo'taur 353, each at its owner's level with all three stances. Of their pet-kit abilities only the staff auto attack (584) deals damage; 1652, 1654, 1653 and 3326-3329 have no damage values and no effect script. A pet-bar order for an ability with no visible result is refused with feedback, and the pet AI skips such abilities, so the Lo'taur holds fire: it cannot heal (friendly-target pet abilities are unsupported). Template 350 no longer carries `NoPetLeveling`, so the Straegis takes its owner's level. PT-04 implements the pet-bar commands in `crates/cell-methods/src/cell/cell_methods/player/pet/`: `petInvokeAbility` (88), `petAbilityToggle` (89) and `petChangeStance` (90, which also maps the small pet bar's slot numbers). Each command first resolves the pet through `SpaceManager::owned_pet` (CAT-C-11 / #462), and every refusal sends the owner an `onErrorCode` and a chat line. PT-05 adds the pet AI in `crates/cell-combat/src/cell/service/npc_ai/pet/`: follow the owner with a teleport back, the three stances, defend-owner, the owner-anchored leash and the owner's combat state. PT-08 makes the owner's own pet abilities act on the owner's pet (`use_ability/owner_pet/`): Holy Warrior, To The Death, Lord's Concentration and the Repair Turret heals, plus the Heed Our Calling passive that makes a summon instant (also through GM `.giveability`). PT-07 adds the GM tooling: `.pet summon|dismiss|stance|info|list`, `.giveability` and a pet trainer in the stasis-room debug hub. Not done: pet persistence (PT-10, not planned: pets are per session, D-PT01), turrets (PT-12, blocked: the client ships no turret model), a Lo'taur that heals, the no-op kit abilities, and pet leveling past the owner's level at summon.
+- **Recent PRs**: pets campaign #863 (PT-E1), #865 (PT-S), #870 (PT-01), #892 (PT-02), #889 (PT-06), #890 (PT-03), #896 (PT-05), #901 (PT-04), #908 (PT-07), #918 (PT-11), #920 (PT-08)
+- **Open issues**: #570 (implement pet / companion system; open until the owner's UAT). Follow-ups: #906 (an instant-cast ability can hit a target in another space), #919 (ability ranges look like centimetres but are compared as world units; a Jaffa fires 1652 from any distance), #891 (LogCapture tests flake under plain `cargo test`)
+- **Path forward**: The owner's in-game UAT (checklist in [analysis/pets/handoffs/session-resume.md](analysis/pets/handoffs/session-resume.md)). Then an ally-target branch in the pet AI so the Lo'taur can heal, effects for the no-op kit abilities, the `knownPetAbilities` path for pet-trained abilities, and a model decision for turrets.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Pet ability list sync | KM | -- | -- | -- |
-| Pet stance list sync | KM | -- | -- | -- |
-| Invoke pet ability | KM | Combat | stub | social.rs:15-25 |
-| Toggle pet ability | KM | -- | stub | social.rs:31-41 |
-| Change pet stance | KM | -- | stub | social.rs:47-55 |
-| Pet following | KM | NPC AI (Follow) | `npc_ai/pet/owner_follow.rs` | Follow band 2-5 u, teleport past 40 u or across a floor, once per 5 s (PT-05). KM until UAT (summon landed in PT-03) |
-| Pet combat AI | KM | NPC AI | `npc_ai/pet/` | Stances, defend-owner, owner-anchored leash, owner combat state (PT-05). KM until UAT (summon landed in PT-03) |
+| Pet ability list sync | NT | -- | `cell/pets/create_on_client.rs` | `onPetAbilityList` to the owner only, on AoI entry and on `requestEntityUpdate` (PT-01); re-sent after a toggle (PT-04). Not yet client-tested |
+| Pet stance list sync | NT | -- | `cell/pets/create_on_client.rs` | `onPetStanceList` to the owner only, filtered by the template's stance flags, plus `onPetStanceUpdate` when the stance is not Defensive (PT-01). Not yet client-tested |
+| Invoke pet ability | NT | Combat | `cell_methods/player/pet/invoke.rs` | PT-04: ownership guard, then bar, toggle, cooldown, target, range and line-of-sight checks; the pet casts and engages the target. An ability with no visible result is refused (PT-11). Every refusal gives feedback. Not yet client-tested |
+| Toggle pet ability | NT | -- | `cell_methods/player/pet/toggle.rs` | PT-04: updates the toggled-off list and re-sends the bar; the AI skips a toggled-off ability (PT-05). The shipped client never calls CM 89 (A-06) |
+| Change pet stance | NT | -- | `cell_methods/player/pet/stance.rs` | PT-04: a stance id or a 1-based slot (the small pet bar's A-07 bug), then `onPetStanceUpdate` to the owner. Not yet client-tested |
+| Pet following | NT | NPC AI (Follow) | `npc_ai/pet/owner_follow.rs` | Follow band 2-5 u, teleport past 40 u or across a floor, once per 5 s (PT-05). Not yet client-tested |
+| Pet combat AI | IM | NPC AI | `npc_ai/pet/` | Stances, defend-owner, owner-anchored leash, owner combat state (PT-05). Known gaps: the Lo'taur holds fire (no ally-target branch), most kit abilities do nothing (PT-11), mobs engage a pet only once it has hit them, and the owner enters combat on the pet's next AI turn. Not yet client-tested |
 
 ### 29. Minigames --- IM (was KM)
 
@@ -1279,7 +1279,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 25 | Black Market | 10 | 0 | 0 | 0 | 9 | 1 |
 | 26 | Contact Lists | 10 | 10 | 0 | 0 | 0 | 0 |
 | 27 | Dueling | 6 | 0 | 0 | 3 | 3 | 0 |
-| 28 | Pets | 7 | 0 | 0 | 0 | 7 | 0 |
+| 28 | Pets | 7 | 0 | 6 | 1 | 0 | 0 |
 | 29 | Minigames | 9 | 5 | 0 | 1 | 3 | 0 |
 | 30 | Groups / Parties | 7 | 0 | 0 | 0 | 7 | 0 |
 | 31 | Content Engine | 11 | 6 | 2 | 1 | 2 | 0 |
@@ -1363,7 +1363,7 @@ Re-ranked 2026-09-25.
 6. **Multi-zone end-to-end** — Castle Cellblock and Castle have been played in a client (2026-09-18 colo playtest); Harset is rebuilt but unplayed; the other spaces have navmeshes but no content campaign
 7. **Two-client verification** — trading, player-to-player introduction (#737) and chat between players have never been exercised with two clients
 
-Quality-of-life items (organizations, mail polish, black market, dueling, pets, remaining minigame ports, groups) are still gated on the above but each can be picked up independently. GM tooling and contact lists have left this list.
+Quality-of-life items (organizations, mail polish, black market, dueling, remaining minigame ports, groups) are still gated on the above but each can be picked up independently. GM tooling and contact lists have left this list, and so have pets (restored server-side 2026-09-27, awaiting the owner's in-game UAT).
 
 ---
 
@@ -1379,7 +1379,7 @@ Corrected 2026-07-25 — trading and contact lists have left this table.
 | Organizations | organization-system.md | organization-wire-formats.md | 200 lines stubs — unchanged |
 | Black Market | black-market.md | black-market-wire-formats.md | 94 lines stubs on `main`; full Phase 1 waiting on `feat/571-black-market-phase1` |
 | Dueling | duel-system.md | duel-wire-formats.md | Challenge, response, countdown, engaged duel, PvP flag and harm gate (SS-D1, SS-D2); no forfeit or real end paths (SS-D3) |
-| Pets | pet-system.md | pet-wire-formats.md | Not ported |
+| Pets | pet-system.md | pet-wire-formats.md | Restored server-side by the pets campaign (PT-E1 to PT-11, #570); owner in-game UAT pending. Not done: persistence (not planned, D-PT01), turrets (no client model), a Lo'taur that heals |
 | Groups | group-system.md | group-wire-formats.md | Not ported |
 
 ### Rust Code Exists but Doc Lags
