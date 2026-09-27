@@ -51,8 +51,10 @@ INT32 bid)`, `createAuction(MAILBOX, INT32, INT32 itemInstance, INT32 buyout, UI
 
 ### Client → Server (NetOut)
 
-- `BMCreateAuction` (RTTI `0x01e660b8`, emitter `0x00e59970`): `INT32 itemInstanceId, INT32 startingPrice,
-  INT32 buyoutPrice, UINT8 auctionLength` — **13 bytes**.
+- `BMCreateAuction` (RTTI `0x01e660b8`, emitter `0x00e59970`): **13 bytes** in `.def` order, `INT32 itemInstanceId,
+  INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice`. *Corrected 2026-09-26:* this line used to give the
+  order the emitter inserts its named properties (`item, starting, buyout, length`). The engine serializes by the
+  `MethodDescription`'s argument list instead. See [black-market-client-io.md](black-market-client-io.md) §4.
 - `BMCancelAuction` (`0x01e66138`, `0x00e59c70`): `INT32 sequenceId` — 4B.
 - `BMSearch` (`0x01e6622c`, `0x00e59f70`) `BMSearchOptions` (11 fields, packing order): `UINT8 sortId,
   INT32 clientKey, INT32 sequenceId, UINT8 bForward, STRING sellerName, STRING bidderName, STRING itemName,
