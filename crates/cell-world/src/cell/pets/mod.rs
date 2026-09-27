@@ -23,7 +23,7 @@ pub mod spawn;
 pub mod teardown;
 
 pub use create_on_client::{pet_create_on_client_events, CLIENT_DEFAULT_STANCE};
-pub use owner_hooks::{on_owner_left, on_owner_teleported, OwnerPath};
+pub use owner_hooks::{on_owner_left, on_owner_reappeared, on_owner_teleported, OwnerPath};
 pub use registry::{PetRegistry, PetReject};
 pub use spawn::{stance_mask_from_flags, PetSpawnError, PET_SPAWN_OFFSET};
 pub use teardown::{

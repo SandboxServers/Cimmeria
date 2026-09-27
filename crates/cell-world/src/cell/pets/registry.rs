@@ -6,7 +6,7 @@
 //! says the caller owns it; `CellEntity::pet.owner_id` is a convenience copy
 //! the spawn path writes in the same step.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
 
@@ -58,6 +58,11 @@ pub struct PetRegistry {
     /// summon and vouch for the new holder on the OLD pet (Copilot, #870).
     /// Teardown logs read it too, because the owner may already be gone.
     summoner: HashMap<u32, PlayerIdentity>,
+    /// Owners moved by a same-world ring whose pets have not followed yet:
+    /// the ring moves the owner while it is hidden and the pets follow at
+    /// `ShowPlayer`, which an aborted trip also sends. See
+    /// [`PetRegistry::note_owner_moved`] (pets PT-02).
+    moved_owners: HashSet<u32>,
 }
 
 impl PetRegistry {
@@ -80,9 +85,25 @@ impl PetRegistry {
             list.retain(|&p| p != pet);
             if list.is_empty() {
                 self.pets_by_owner.remove(&owner);
+                self.moved_owners.remove(&owner);
             }
         }
         Some(owner)
+    }
+
+    /// Record that `owner` was really moved (a same-world ring's
+    /// `TeleportPlayer` went out) and its pets should follow when it
+    /// reappears. A no-op for an owner without pets.
+    pub fn note_owner_moved(&mut self, owner: u32) {
+        if self.pets_by_owner.contains_key(&owner) {
+            self.moved_owners.insert(owner);
+        }
+    }
+
+    /// Whether `owner` was moved since the last call, clearing the mark. A
+    /// `ShowPlayer` with no mark (an aborted or failed trip) moves no pet.
+    pub fn take_owner_moved(&mut self, owner: u32) -> bool {
+        self.moved_owners.remove(&owner)
     }
 
     /// The identity of the player who summoned `pet`, captured at summon,

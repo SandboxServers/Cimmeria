@@ -17,6 +17,75 @@ use crate::cell::combat::BSF_DEAD;
 /// An NPC id nothing in the fixture uses: the killer.
 const KILLER: u32 = 0x7000_0201;
 
+/// The owner is killed by a mob's hit, the production way a player dies:
+/// `apply_damage_to_target` takes its HEALTH to zero and resolves the death.
+/// The pet goes in that same call, not a sweep later, and the owner (still
+/// in the world, in its Defeat Window) sees it leave.
+#[tokio::test]
+async fn an_owner_killed_by_a_hit_loses_its_pet_in_the_same_call() {
+    use cimmeria_entity::abilities::{AbilityDef, EffectDef};
+
+    let (mut mgr, pet) = watched_pet_world();
+    mgr.spawn_npc(KILLER, "Agnos", [11.0, 0.0, 11.0], [0.0; 3])
+        .unwrap();
+    let lethal = AbilityDef {
+        ability_id: 99,
+        name: "lethal".to_string(),
+        cooldown: 0.5,
+        warmup: 0.0,
+        flags: 0,
+        is_ranged: false,
+        min_range: 0,
+        max_range: 30,
+        target_type_id: 0,
+        effect_ids: vec![777],
+        moniker_ids: vec![],
+        required_ammo: 0,
+        event_set_id: None,
+        velocity: 0.0,
+    };
+    let mut params = std::collections::HashMap::new();
+    params.insert("HealthDamage".to_string(), "9999".to_string());
+    mgr.effect_defs.insert(
+        777,
+        EffectDef {
+            effect_id: 777,
+            params,
+            ..Default::default()
+        },
+    );
+    mgr.ability_defs.insert(99, lethal.clone());
+    if let Some(h) = mgr
+        .get_entity_mut(OWNER)
+        .unwrap()
+        .stats
+        .get_mut(cimmeria_entity::stats::HEALTH)
+    {
+        h.update(0, 1, 100);
+        h.clear_dirty();
+    }
+    let (tx, mut rx) = mpsc::channel(512);
+
+    super::super::damage_apply::apply_damage_to_target(
+        KILLER,
+        OWNER,
+        99,
+        &Some(lethal),
+        0,
+        false,
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    assert!(
+        mgr.get_entity(OWNER).unwrap().state_field & BSF_DEAD != 0,
+        "precondition: the hit killed the owner"
+    );
+    assert_eq!(drain_left_aoi_for(&mut rx, pet), vec![OWNER, OTHER]);
+    assert_pet_fully_gone(&mgr, OWNER, pet);
+}
+
 /// The owner dies: its pet goes in the same call, not a sweep later, and
 /// the owner (still in the world, in its Defeat Window) sees it leave.
 #[tokio::test]

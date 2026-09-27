@@ -126,6 +126,9 @@ pub async fn on_owner_left(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
+    // A same-world ring trip the owner is abandoning must not move a pet
+    // (there is none left to move) when a later `ShowPlayer` arrives.
+    space_mgr.pets.take_owner_moved(owner);
     let pets = space_mgr.pets.pets_of(owner);
     if pets.is_empty() {
         return 0;
@@ -146,12 +149,46 @@ pub async fn on_owner_left(
     );
     let mut despawned = 0;
     for pet_id in pets {
-        let outcome = despawn_pet_via(space_mgr, pet_id, reason, path.label(), tx).await;
+        // The entity at `owner` is the one leaving: its view goes with it.
+        let outcome = despawn_pet_via(space_mgr, pet_id, reason, path.label(), true, tx).await;
         if matches!(outcome, DespawnOutcome::Despawned { .. }) {
             despawned += 1;
         }
     }
     despawned
+}
+
+/// The owner reappeared after a same-world ring trip (`Effect::ShowPlayer`,
+/// on arrival or on an abort release). Its pets follow only if the trip
+/// really moved it ([`super::PetRegistry::note_owner_moved`], set when the
+/// ring's `TeleportPlayer` went out): an aborted or failed trip leaves the
+/// owner where it stood, and the pets stay too. Returns how many pets moved.
+pub async fn on_owner_reappeared(
+    owner: u32,
+    path: OwnerPath,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> usize {
+    if space_mgr.pets.take_owner_moved(owner) {
+        return on_owner_teleported(owner, path, tx, space_mgr).await;
+    }
+    let pets = space_mgr.pets.pets_of(owner);
+    if !pets.is_empty() {
+        let id = leaving_owner_identity(space_mgr, owner, &pets);
+        tracing::debug!(
+            target: "pets.lifecycle",
+            event = "teleport_skipped",
+            entity_id = owner,
+            owner_id = owner,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            path = path.label(),
+            reason = "owner_not_moved",
+            pet_count = pets.len(),
+            "pet owner reappeared without having been moved; pets stay"
+        );
+    }
+    0
 }
 
 /// How [`grounded_spot_behind`] placed the pet: the `grounding` field of the
@@ -296,6 +333,8 @@ pub async fn on_owner_teleported(
                 pet_id,
                 PetDespawnReason::OwnerGone,
                 path.label(),
+                // The id's new holder stays: it is a witness like any other.
+                false,
                 tx,
             )
             .await;
@@ -320,6 +359,7 @@ pub async fn on_owner_teleported(
                 pet_id,
                 PetDespawnReason::OwnerLeftSpace,
                 path.label(),
+                false,
                 tx,
             )
             .await;

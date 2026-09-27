@@ -81,14 +81,26 @@ pub(super) async fn teleport(
         .get_entity(entity_id)
         .map(|e| e.space_id.0 as u32)
         .unwrap_or(space_id as u32);
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::TeleportPlayer {
             entity_id,
             space_id: cell_space_id,
             position,
             prev_pos,
         })
-        .await;
+        .await
+    {
+        // The client never gets the snap, so its pets stay where the client
+        // still sees the owner.
+        tracing::warn!(
+            entity_id,
+            chain_id,
+            reason = "cell_to_base_closed",
+            error = %e,
+            "Content: teleport snap not sent; pets left in place"
+        );
+        return;
+    }
     // A pet out with the teleported player comes along (pets PT-02).
     cimmeria_cell_world::cell::pets::on_owner_teleported(
         entity_id,

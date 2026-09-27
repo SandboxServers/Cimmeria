@@ -18,6 +18,7 @@ use super::*;
 mod address_book;
 mod arrival;
 mod dial_timer;
+mod pets;
 mod sequences;
 mod stargate_grant_dial;
 

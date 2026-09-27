@@ -85,3 +85,75 @@ async fn cross_world_ring_despawns_the_pet() {
     assert_eq!(drain_left_aoi_for(&mut rx, pet), vec![OTHER]);
     assert_pet_fully_gone(&mgr, OWNER, pet);
 }
+
+/// A trip that never moved the owner (aborted before the remote warmup's
+/// `TeleportPlayer`, or whose snap was never sent) still ends with a
+/// `ShowPlayer`. The pet stays where it is: the owner did not go anywhere.
+#[tokio::test]
+async fn ring_show_without_a_teleport_leaves_the_pet() {
+    let (mut mgr, pet) = watched_pet_world();
+    // Walk the owner away first, so a stray move beside it would show.
+    mgr.update_position_preserving_facing(OWNER, [60.0, 0.0, 60.0], [0.0; 3]);
+    let start = mgr.get_entity(pet).unwrap().position;
+    let (tx, mut rx) = mpsc::channel(256);
+    let engine = ChainEngine::new();
+
+    dispatch_effects(
+        vec![
+            Effect::HidePlayer { entity_id: OWNER },
+            Effect::ShowPlayer { entity_id: OWNER },
+        ],
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+    cimmeria_cell_world::cell::ring_transport::runtime::dispatch_release_effects(
+        vec![Effect::ShowPlayer { entity_id: OWNER }],
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    assert_eq!(mgr.get_entity(pet).unwrap().position, start);
+    assert!(drain_entity_moved_for(&mut rx, pet).is_empty());
+}
+
+/// The owner was moved, then the trip aborted before arrival (the remote
+/// load wait timed out): the abort's release `ShowPlayer` still brings the
+/// pet, since the owner now stands at the destination.
+#[tokio::test]
+async fn ring_abort_after_the_teleport_still_brings_the_pet() {
+    let (mut mgr, pet) = watched_pet_world();
+    let (tx, mut rx) = mpsc::channel(256);
+    let engine = ChainEngine::new();
+
+    dispatch_effects(
+        vec![
+            Effect::HidePlayer { entity_id: OWNER },
+            Effect::TeleportPlayer {
+                entity_id: OWNER,
+                position: DEST,
+                world_name: "Agnos".to_string(),
+                destination_region_id: 2,
+            },
+        ],
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+    cimmeria_cell_world::cell::ring_transport::runtime::dispatch_release_effects(
+        vec![Effect::ShowPlayer { entity_id: OWNER }],
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    let p = mgr.get_entity(pet).unwrap().position;
+    assert!(
+        (p.x - DEST[0]).abs() < 3.0 && (p.z - DEST[2]).abs() < 3.0,
+        "pet beside the moved owner: {p:?}"
+    );
+    assert!(!drain_entity_moved_for(&mut rx, pet).is_empty());
+}

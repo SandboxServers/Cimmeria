@@ -52,7 +52,7 @@ async fn owner_death_despawns_the_pet_and_the_owner_sees_it_go() {
     on_owner_left(
         OWNER,
         PetDespawnReason::OwnerDead,
-        OwnerPath::GateTravel,
+        OwnerPath::OwnerDeath,
         &tx,
         &mut mgr,
     )
@@ -211,6 +211,44 @@ async fn owner_teleport_never_pulls_a_pet_the_id_holder_did_not_summon() {
     );
 }
 
+/// The owner's id went to another player who can see the old pet. When the
+/// teleport hook drops that pet, the id's new holder is an ordinary witness
+/// (its view is not being torn down) and must get the `LeftAoI`, or its
+/// client keeps a ghost pet.
+#[tokio::test]
+async fn a_reused_owner_ids_holder_sees_the_old_pet_leave_on_a_teleport() {
+    let (mut mgr, old_pet) = watched_pet_world();
+    super::reuse_owner_id_by_another_player(&mut mgr);
+    let _ = mgr.compute_aoi_changes();
+    assert!(
+        mgr.get_entity(OWNER)
+            .unwrap()
+            .witnesses
+            .contains(&cimmeria_common::EntityId(old_pet as i32)),
+        "precondition: the id's new holder sees the old pet"
+    );
+    let (tx, mut rx) = mpsc::channel(64);
+
+    on_owner_teleported(OWNER, OwnerPath::ContentTeleport, &tx, &mut mgr).await;
+
+    assert_eq!(drain_left_aoi_for(&mut rx, old_pet), vec![OWNER, OTHER]);
+    assert!(mgr.get_entity(old_pet).is_none());
+}
+
+/// Same for the sweep: its `owner_gone` despawn of a pet whose owner id was
+/// reused tells the id's new holder too.
+#[tokio::test]
+async fn a_reused_owner_ids_holder_sees_the_old_pet_leave_on_the_sweep() {
+    let (mut mgr, old_pet) = watched_pet_world();
+    super::reuse_owner_id_by_another_player(&mut mgr);
+    let _ = mgr.compute_aoi_changes();
+    let (tx, mut rx) = mpsc::channel(64);
+
+    assert_eq!(pet_owner_sweep_at(Instant::now(), &tx, &mut mgr).await, 1);
+
+    assert_eq!(drain_left_aoi_for(&mut rx, old_pet), vec![OWNER, OTHER]);
+}
+
 // ---- pet corpse -----------------------------------------------------------
 
 /// D-PT08: a dead pet with a live owner is a corpse for `PET_CORPSE_DESPAWN`
@@ -268,7 +306,8 @@ async fn living_pet_gets_no_corpse_timer() {
 /// Every non-test cell source file that sends a player out of its space
 /// (`CellToBaseMsg::GateTravel`) must call `pets::on_owner_left`, and every
 /// one that snaps a player within it (`CellToBaseMsg::TeleportPlayer`) must
-/// call `pets::on_owner_teleported`. A new travel path that forgets its pets
+/// call `pets::on_owner_teleported` (or, for the ring, mark the owner moved
+/// and call `pets::on_owner_reappeared`). A new travel path that forgets its pets
 /// fails here instead of leaving them to the one-tick sweep (or, for a
 /// same-space move, stranded where the owner was).
 #[test]
@@ -327,9 +366,13 @@ fn every_owner_travel_site_calls_the_pet_hooks() {
                 }
                 if code.contains("CellToBaseMsg::TeleportPlayer {") {
                     seen.1 += 1;
-                    if !TELEPORT_EXEMPT.contains(&rel.as_str())
-                        && !code.contains("pets::on_owner_teleported(")
-                    {
+                    // The same-world ring defers the move to `ShowPlayer`:
+                    // it marks the owner moved and `on_owner_reappeared`
+                    // moves the pets.
+                    let hooked = code.contains("pets::on_owner_teleported(")
+                        || (code.contains("pets.note_owner_moved(")
+                            && code.contains("pets::on_owner_reappeared("));
+                    if !TELEPORT_EXEMPT.contains(&rel.as_str()) && !hooked {
                         missing.push(format!("{rel}: TeleportPlayer without on_owner_teleported"));
                     }
                 }

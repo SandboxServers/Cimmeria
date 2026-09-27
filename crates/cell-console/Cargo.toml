@@ -57,3 +57,6 @@ cimmeria-test-support = { workspace = true }
 # The spawner's records (`SpawnRecord`, `StargateEntry`, the mission
 # definitions) the GM and console tests seed their `SpaceManager` with.
 cimmeria-cell-catalog = { workspace = true }
+# The pet world fixtures (`watched_pet_world`, `assert_pet_fully_gone`) the
+# pets PT-02 travel call-site tests start from.
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }

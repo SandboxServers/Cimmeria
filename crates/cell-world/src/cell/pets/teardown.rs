@@ -113,26 +113,53 @@ pub(super) fn owner_identity(
 /// `despawn_npc` does; the registry is scrubbed either way, so a stale entry
 /// cannot outlive the call.
 ///
-/// When [`PetDespawnReason::owner_view_torn_down`] holds, the owner is left
-/// out of the `LeftAoI` fan-out: the pet is scrubbed from the owner's
-/// witness set first, and that set is what `despawn_npc` reads.
+/// When [`PetDespawnReason::owner_view_torn_down`] holds and the entity at
+/// the owner id is the pet's summoner, the owner is left out of the
+/// `LeftAoI` fan-out (see [`spares_owner_leave`]).
 pub async fn despawn_pet(
     space_mgr: &mut SpaceManager,
     pet_id: u32,
     reason: PetDespawnReason,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) -> DespawnOutcome {
-    despawn_pet_via(space_mgr, pet_id, reason, "direct", tx).await
+    despawn_pet_via(space_mgr, pet_id, reason, "direct", false, tx).await
+}
+
+/// Whether the entity at the pet's owner id is spared the pet's `LeftAoI`.
+///
+/// Only when its own client view is being torn down
+/// ([`PetDespawnReason::owner_view_torn_down`]) and it is either the entity
+/// leaving on this path (`owner_leaving`: an owner hook, called for the
+/// traveller itself) or the player who summoned the pet. Entity ids are
+/// reused: when the sweep or a teleport drops a pet whose owner id now
+/// belongs to someone else, that player is an ordinary witness whose view
+/// is NOT torn down, and it must get the `LeftAoI` or it keeps a ghost pet.
+fn spares_owner_leave(
+    space_mgr: &SpaceManager,
+    pet_id: u32,
+    owner_id: Option<u32>,
+    reason: PetDespawnReason,
+    owner_leaving: bool,
+) -> bool {
+    reason.owner_view_torn_down()
+        && owner_id
+            .and_then(|o| space_mgr.get_entity(o))
+            .is_some_and(|o| {
+                owner_leaving
+                    || (o.is_player && space_mgr.pets.summoner_matches(pet_id, o.identity()))
+            })
 }
 
 /// [`despawn_pet`] with the caller named: `path` is the `path` field of the
 /// `despawned` row (`direct`, `sweep`, or an owner path label from
-/// `owner_hooks::OwnerPath`).
+/// `owner_hooks::OwnerPath`). `owner_leaving` is true when the entity at the
+/// owner id is the one leaving on this path (see [`spares_owner_leave`]).
 pub(super) async fn despawn_pet_via(
     space_mgr: &mut SpaceManager,
     pet_id: u32,
     reason: PetDespawnReason,
     path: &'static str,
+    owner_leaving: bool,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) -> DespawnOutcome {
     // Everything the log needs is read before the pet and the registry
@@ -140,7 +167,7 @@ pub(super) async fn despawn_pet_via(
     let owner_id = space_mgr.pets.owner_of(pet_id);
     let id = owner_identity(space_mgr, pet_id, owner_id);
     let template_id = space_mgr.get_entity(pet_id).and_then(|e| e.template_id);
-    if reason.owner_view_torn_down() {
+    if spares_owner_leave(space_mgr, pet_id, owner_id, reason, owner_leaving) {
         if let Some(owner) = owner_id.and_then(|o| space_mgr.get_entity_mut(o)) {
             owner.witnesses.remove(&EntityId(pet_id as i32));
         }
@@ -366,7 +393,7 @@ pub async fn pet_owner_sweep_at(
                     );
                 }
                 if matches!(
-                    despawn_pet_via(space_mgr, pet_id, reason, "sweep", tx).await,
+                    despawn_pet_via(space_mgr, pet_id, reason, "sweep", false, tx).await,
                     DespawnOutcome::Despawned { .. }
                 ) {
                     despawned += 1;

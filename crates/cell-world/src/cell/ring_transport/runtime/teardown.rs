@@ -77,6 +77,16 @@ pub async fn dispatch_release_effects(
         match effect {
             Effect::ShowPlayer { entity_id } => {
                 send_visible(entity_id, true, tx, space_mgr).await;
+                // An abort after the owner was already moved (the remote
+                // load wait timed out) still brings its pets; an abort
+                // before the move leaves them (pets PT-02).
+                crate::cell::pets::on_owner_reappeared(
+                    entity_id,
+                    crate::cell::pets::OwnerPath::Ring,
+                    tx,
+                    space_mgr,
+                )
+                .await;
             }
             Effect::UnlockMovement { entity_id } => {
                 update_state_flag(entity_id, BSF_MOVEMENT_LOCK, false, tx, space_mgr).await;
