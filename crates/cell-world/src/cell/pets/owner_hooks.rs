@@ -107,8 +107,9 @@ pub(super) fn leaving_owner_identity(
     if live.is_known() {
         return live;
     }
-    pets.first()
-        .map_or(PlayerIdentity::UNKNOWN, |&pet| owner_identity(space_mgr, pet, None))
+    pets.first().map_or(PlayerIdentity::UNKNOWN, |&pet| {
+        owner_identity(space_mgr, pet, None)
+    })
 }
 
 /// Despawn every pet `owner` has out, for `reason`. Returns how many were

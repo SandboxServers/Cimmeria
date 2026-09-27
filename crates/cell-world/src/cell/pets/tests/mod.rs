@@ -7,10 +7,10 @@ use crate::test_fixtures::{add_pet_owner, seed_pet_template, PET_FIXTURE_TEMPLAT
 mod class_filters;
 mod create_on_client;
 mod owner_hooks;
+mod owner_hooks_telemetry;
 mod registry;
 mod spawn;
 mod teardown;
-mod owner_hooks_telemetry;
 mod telemetry;
 
 /// Owner entity id used throughout.

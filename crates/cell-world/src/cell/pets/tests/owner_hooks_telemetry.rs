@@ -202,6 +202,37 @@ async fn dead_pet_teleport_skip_is_logged() {
     );
 }
 
+/// Miss: the teleported player holds the owner's id but did not summon the
+/// pet (id reuse). The row names the pet's summoner beside the id's new
+/// holder, so SigNoz shows whose pet was dropped and why.
+#[tokio::test]
+async fn reused_owner_id_teleport_skip_names_both_players() {
+    let (mut mgr, old_pet) = world();
+    let _new_pet = super::reuse_owner_id_then_resummon(&mut mgr);
+    let (tx, _rx) = mpsc::channel(64);
+    let logs = LogCapture::install();
+
+    on_owner_teleported(OWNER, OwnerPath::GmTravel, &tx, &mut mgr).await;
+
+    let skip = row(&logs, "teleport_skipped");
+    assert_eq!(skip.level, tracing::Level::DEBUG);
+    assert_owner(&skip);
+    assert_fields(
+        &skip,
+        &[
+            ("pet_id", &old_pet.to_string()),
+            ("reason", "owner_identity_mismatch"),
+            ("path", "gm_travel"),
+            ("holder_account_id", "4242"),
+            ("holder_player_id", "4243"),
+        ],
+    );
+    assert_fields(
+        &row(&logs, "despawned"),
+        &[("pet_id", &old_pet.to_string()), ("reason", "owner_gone")],
+    );
+}
+
 /// Miss: a teleport hook for an owner that is in no space (a caller bug)
 /// is a WARN with `reason = owner_not_found`, and nothing moves.
 #[tokio::test]

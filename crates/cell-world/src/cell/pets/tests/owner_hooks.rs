@@ -179,6 +179,38 @@ async fn owner_teleport_leaves_a_dead_pet_where_it_fell() {
     assert!(drain_entity_moved_for(&mut rx, pet).is_empty());
 }
 
+/// Entity ids are reused: the owner is destroyed, a different player gets
+/// its id and summons a pet of its own, then is teleported before the sweep
+/// runs. Only the new holder's pet follows it; the old pet belongs to a gone
+/// summoner and is despawned, never pulled after the id's new holder.
+#[tokio::test]
+async fn owner_teleport_never_pulls_a_pet_the_id_holder_did_not_summon() {
+    let (mut mgr, old_pet) = watched_pet_world();
+    let new_pet = super::reuse_owner_id_then_resummon(&mut mgr);
+    let old_spot = mgr.get_entity(old_pet).unwrap().position;
+    mgr.update_position_preserving_facing(OWNER, [300.0, 5.0, -40.0], [0.0; 3]);
+    let (tx, mut rx) = mpsc::channel(64);
+
+    let moved = on_owner_teleported(OWNER, OwnerPath::ContentTeleport, &tx, &mut mgr).await;
+
+    assert_eq!(moved, 1, "only the new holder's own pet moves");
+    assert!(
+        drain_entity_moved_for(&mut rx, old_pet).is_empty(),
+        "the old pet was not relayed to the new holder's spot (it sat at {old_spot:?})"
+    );
+    assert!(
+        mgr.get_entity(old_pet).is_none(),
+        "the old pet is despawned"
+    );
+    assert!(mgr.pets.owner_of(old_pet).is_none());
+    assert_eq!(mgr.pets.pets_of(OWNER), vec![new_pet]);
+    let p = mgr.get_entity(new_pet).unwrap().position;
+    assert!(
+        (p.x - 300.0).abs() <= PET_SPAWN_OFFSET + 1e-3,
+        "new pet at {p:?}"
+    );
+}
+
 // ---- pet corpse -----------------------------------------------------------
 
 /// D-PT08: a dead pet with a live owner is a corpse for `PET_CORPSE_DESPAWN`
