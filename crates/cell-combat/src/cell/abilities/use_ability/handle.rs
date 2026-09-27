@@ -120,7 +120,10 @@ pub async fn handle_use_ability(
 
     // Pre-checks with immutable borrows
     let mut out_of_range = false;
-    {
+    // A player pressed a server-known ability they do not know: answered
+    // with `onErrorCode` below, once the entity borrow ends.
+    let mut not_known = false;
+    'validate: {
         let entity = match space_mgr.get_entity(entity_id) {
             Some(e) => e,
             None => {
@@ -176,6 +179,14 @@ pub async fn handle_use_ability(
                         ability_id,
                         "useAbility: ability not in known set and not granted by active weapon"
                     );
+                    // A stale action-bar button after a respec (AT-08)
+                    // lands here: the bar is client-side and keeps the
+                    // binding. The press gets feedback (project rule). A
+                    // forged id with no server def stays silent (below).
+                    if entity.is_player {
+                        not_known = true;
+                        break 'validate;
+                    }
                 } else {
                     tracing::debug!(
                         entity_id,
@@ -268,6 +279,11 @@ pub async fn handle_use_ability(
                 }
             }
         }
+    }
+
+    if not_known {
+        send_not_known_feedback(entity_id, ability_id, tx).await;
+        return false;
     }
 
     if out_of_range {
@@ -577,4 +593,42 @@ pub async fn handle_use_ability(
     )
     .await;
     true
+}
+
+/// `CONDITION_FEEDBACK_EntityDoesNotHaveAbility`
+/// (`entities/defs/enumerations.xml`). Exact fit: the caster does not have
+/// the ability. The trainer uses the same code for a missing prerequisite
+/// (AT-04) and for a respec with nothing to reset (AT-08).
+const CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY: u16 = 167;
+
+/// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, 167)` to a player who
+/// pressed an ability they do not know. The action bar is client-side, so
+/// after a respec (AT-08) a button can still name a refunded ability; before
+/// this the press was refused silently.
+async fn send_not_known_feedback(
+    entity_id: u32,
+    ability_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    let mut args = Vec::with_capacity(7);
+    args.push(0u8); // SystemID: ERRORCODE_SYSTEM_Ability
+    args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
+    args.extend_from_slice(&CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY.to_le_bytes());
+    if tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: crate::mercury::method_idx::ON_ERROR_CODE,
+            args,
+        })
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            target: "abilities",
+            event = "not_known_feedback_send_failed",
+            entity_id,
+            ability_id,
+            "useAbility: the not-known onErrorCode could not be queued (base channel closed)"
+        );
+    }
 }
