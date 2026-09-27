@@ -40,6 +40,24 @@ variable (`for f in ...; do "$BIN" "$f"`). Inline heredoc Python also broke on a
 into the scratchpad and run `python <path>` (or `bash <path>`) as its own call,
 with every path absolute inside the script.
 
+Pets PT-01 (2026-09-26) confirmed three scratchpad tools that work in one
+call each:
+
+- A `lane.sh` wrapper that exports `CIMMERIA_TARGET_ROOT`, `cd`s to the
+  worktree, runs `tools/build-lane/lane.sh "$@"` into a log file and greps the
+  result.
+- An `edit.py` that reads a spec file of `(path, [(old, new)])` pairs and
+  does exact, count-checked, CRLF-preserving replacements. Several commands
+  chained with `&&` after a heredoc, or two `git commit`s in one call, are
+  refused.
+- A revert-proof driver that mutates a file, runs the test, then restores
+  with `git checkout HEAD -- <file>` from a Python `subprocess`. It needs a
+  commit first.
+
+Also, when the B: Dev Drive fills up ("no space on device"), delete only
+your own `B:\targets\<worktree>` and point `CIMMERIA_TARGET_ROOT` at a C:
+scratch directory.
+
 ## A test against a rebuilt C++ binary needs an explicit opt-in
 
 **Why:** `tests/navbuilder_axis_roundtrip.rs` gained a case asserting
