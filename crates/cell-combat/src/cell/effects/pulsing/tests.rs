@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-fn make_mgr() -> SpaceManager {
+pub(super) fn make_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
@@ -43,7 +43,7 @@ fn make_mgr() -> SpaceManager {
     mgr
 }
 
-fn make_dot_effect(pulse_count: i32, pulse_secs: f32, dmg: i32) -> EffectDef {
+pub(super) fn make_dot_effect(pulse_count: i32, pulse_secs: f32, dmg: i32) -> EffectDef {
     let mut params = HashMap::new();
     params.insert("HealthDamage".to_string(), dmg.to_string());
     EffectDef {
