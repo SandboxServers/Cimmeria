@@ -7,9 +7,10 @@
 //! (`crate::base::crafting::inventory_locks`): the sender's advisory locks,
 //! then the item row, then the `sgw_player` rows. [`lock_source_item`] runs
 //! before `deliver` locks the player rows; the debit and the move run after.
-//! This path only takes from a bag, never fills a slot; it takes the main
-//! bag's key so it queues behind a move, a purchase or a craft in the
-//! same order they do.
+//! This path only takes from a bag, never fills a slot; it takes the keys
+//! of the two bags mail may take from ([`MAILABLE_CONTAINERS`]: the main
+//! bag, then the crafting bag) so it queues behind a move, a purchase or a
+//! craft in the same order they do.
 //!
 //! The inventory handlers (`methods/inventory/`) are shared with the Bank
 //! and Crafting campaigns and each open their own transaction, so this is a
@@ -20,7 +21,7 @@
 //! is no cell state. If that handler ever grows behaviour, this path needs
 //! the payload too.
 
-use cimmeria_entity::inventory::{INV_BANK, INV_BUYBACK, INV_COMMAND_BANK, INV_MAIN};
+use cimmeria_entity::inventory::{INV_BANK, INV_BUYBACK, INV_COMMAND_BANK, INV_CRAFTING, INV_MAIN};
 use sqlx::PgConnection;
 
 use super::attachment::{
@@ -39,14 +40,23 @@ pub(in super::super) struct SourceItem {
     pub(in super::super) bound: bool,
 }
 
-/// Take the sender's inventory locks and lock the item row. `None` when the
+/// The containers a player may attach an item from: the backpack, and the
+/// crafting bag (15), where crafting components (`container_sets`
+/// `{17,15}`) live after crafting CR-16. Owner decision 2026-09-27: bag 15
+/// is a mail source; vaults (17-20) and buyback (16) are not.
+pub(in super::super) const MAILABLE_CONTAINERS: &[i32] = &[INV_MAIN, INV_CRAFTING];
+
+/// Take the sender's inventory locks and lock the item row. Both mailable
+/// bags are locked whichever holds the item: the container is only known
+/// once the row is read, and the advisory locks must come first. Key 0,
+/// then bag 1, then bag 15, the shared order. `None` when the
 /// sender holds no such instance: someone else's id, a stale one, or junk.
 pub(super) async fn lock_source_item(
     conn: &mut PgConnection,
     sender_id: i32,
     item: ItemRequest,
 ) -> Result<Option<SourceItem>, sqlx::Error> {
-    take_inventory_locks(&mut *conn, sender_id, &[INV_MAIN]).await?;
+    take_inventory_locks(&mut *conn, sender_id, MAILABLE_CONTAINERS).await?;
     sqlx::query_as::<_, SourceItem>(
         "SELECT item_id, type_id, stack_size, container_id, bound \
          FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 FOR UPDATE",
@@ -57,20 +67,19 @@ pub(super) async fn lock_source_item(
     .await
 }
 
-/// CAT-G-01 / D-SS08: the item is the sender's, in the main bag (the trade
-/// allowlist, `trade/execute/swap.rs` `TRADEABLE_CONTAINERS`, so equipped,
-/// bandolier, mission, crafting, vault and buyback items are all refused),
-/// not bound, and holds at least the quantity asked for. Vault (17-20) and
-/// buyback (16) items get their own reason and line: the owner's rule
-/// (2026-09-27) is that mail, like vendors, trade and crafting, sees only
-/// the backpack.
+/// CAT-G-01 / D-SS08: the item is the sender's, in a
+/// [`MAILABLE_CONTAINERS`] bag (the backpack, or the crafting bag since the
+/// owner's 2026-09-27 decision; equipped, bandolier and mission items are
+/// refused), not bound, and holds at least the quantity asked for. Vault
+/// (17-20) and buyback (16) items get their own reason and line: the
+/// owner's rule (2026-09-27, Bank campaign) keeps them out of mail.
 pub(super) fn check_source(
     source: Option<&SourceItem>,
     quantity: i32,
 ) -> Result<&SourceItem, AttachmentRefusal> {
     let source = source.ok_or(ITEM_NOT_FOUND)?;
     match source.container_id {
-        INV_MAIN => {}
+        c if MAILABLE_CONTAINERS.contains(&c) => {}
         INV_BANK..=INV_COMMAND_BANK => return Err(ITEM_IN_VAULT),
         INV_BUYBACK => return Err(ITEM_IN_BUYBACK),
         _ => return Err(ITEM_NOT_IN_MAIN_BAG),
