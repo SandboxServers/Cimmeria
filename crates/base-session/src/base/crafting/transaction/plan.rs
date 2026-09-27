@@ -19,6 +19,15 @@ impl NamedItem {
     }
 }
 
+/// A blueprint and its discipline the player must still know when the
+/// transaction runs. Checked under a share lock on the player row, after
+/// consumption and placement, so a respec cannot slip in between.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequiredKnowledge {
+    pub blueprint_id: i32,
+    pub discipline_id: i32,
+}
+
 /// What one induction consumes and produces. The verb builds it from the
 /// catalog and the request; this module applies it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -46,6 +55,9 @@ pub struct CraftTransaction {
     /// A blueprint is taught only while its discipline is known, checked
     /// under the player row lock; already known ones are skipped.
     pub learn_blueprints: Vec<(i32, i32)>,
+    /// Refuse the whole transaction unless the player still knows this
+    /// blueprint and discipline.
+    pub required_knowledge: Option<RequiredKnowledge>,
 }
 
 impl CraftTransaction {

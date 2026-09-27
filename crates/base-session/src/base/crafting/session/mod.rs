@@ -140,6 +140,8 @@ pub struct JobReport {
     /// An alloy's elementary components as
     /// `item_id:type_id:quality:tier:quantity_used`, comma-separated.
     pub elementary: String,
+    /// How many times a craft ran the blueprint.
+    pub quantity: Option<i32>,
 }
 
 /// The base handles an induction needs after the request that queued it

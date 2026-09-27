@@ -116,6 +116,8 @@ async fn refuse(
         tools = why.tools_considered(),
         blueprint_ids = why.blueprints_considered(),
         blueprint_id = c.blueprint_id,
+        quantity = c.quantity,
+        type_ids = why.types_submitted(),
         tier = c.tier,
         required_tier = c.required_tier,
         elementary_counts = why.elementary_counts(),

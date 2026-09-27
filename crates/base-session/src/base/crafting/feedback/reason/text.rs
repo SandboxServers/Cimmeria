@@ -132,6 +132,21 @@ impl CraftReject {
                 "Multiple categories of elementary components were met; use one quality only. Nothing was used."
                     .to_string()
             }
+            CraftReject::IsAlloy { .. } => {
+                "That blueprint is an alloy. Use alloying to make it.".to_string()
+            }
+            CraftReject::BadQuantity { max, .. } => {
+                format!("You can craft between 1 and {max} at a time.")
+            }
+            CraftReject::NoComponentSet { .. } => {
+                "Those components do not match any recipe of this blueprint. Nothing was used."
+                    .to_string()
+            }
+            CraftReject::InsufficientComponents {
+                needed, available, ..
+            } => format!(
+                "You do not have enough components: {available} of {needed} needed. Nothing was used."
+            ),
         }
     }
 }

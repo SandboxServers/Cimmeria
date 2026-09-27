@@ -39,6 +39,8 @@ pub struct Compared {
     /// An elementary component's tier, against the tier the alloy needs.
     pub tier: Option<i32>,
     pub required_tier: Option<i32>,
+    /// The quantity a craft asked for.
+    pub quantity: Option<i32>,
 }
 
 impl CraftReject {
@@ -225,6 +227,32 @@ impl CraftReject {
             CraftReject::CountNotMet { .. } | CraftReject::MultipleBuckets { .. } => {
                 Compared::default()
             }
+            CraftReject::IsAlloy { blueprint_id }
+            | CraftReject::NoComponentSet { blueprint_id, .. } => Compared {
+                blueprint_id: Some(blueprint_id),
+                ..Compared::default()
+            },
+            CraftReject::BadQuantity {
+                blueprint_id,
+                quantity,
+                ..
+            } => Compared {
+                blueprint_id: Some(blueprint_id),
+                quantity: Some(quantity),
+                ..Compared::default()
+            },
+            CraftReject::InsufficientComponents {
+                blueprint_id,
+                design_id,
+                needed,
+                available,
+            } => Compared {
+                blueprint_id: Some(blueprint_id),
+                design_id: Some(design_id),
+                needed: Some(i64::from(needed)),
+                available: Some(available),
+                ..Compared::default()
+            },
         }
     }
 }

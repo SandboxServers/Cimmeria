@@ -20,7 +20,9 @@ use cimmeria_cell_catalog::crafting::{CraftingCatalog, ItemQuality};
 use cimmeria_entity::crafting::CraftingState;
 
 use crate::base::crafting::feedback::CraftReject;
-use crate::base::crafting::transaction::{CraftTransaction, NamedItem, CRAFTING_INPUT_BAGS};
+use crate::base::crafting::transaction::{
+    CraftTransaction, NamedItem, RequiredKnowledge, CRAFTING_INPUT_BAGS,
+};
 
 /// The elementary count each quality needs, in the order the counts are
 /// reported (Normal, Good, Great, Fantastic).
@@ -123,6 +125,10 @@ impl AlloyPlan {
             consume: vec![(self.component_id, self.component_quantity)],
             grant: vec![(self.product_id, self.product_quantity)],
             expertise: vec![(self.discipline_id, ALLOY_EXPERTISE)],
+            required_knowledge: Some(RequiredKnowledge {
+                blueprint_id: self.blueprint_id,
+                discipline_id: self.discipline_id,
+            }),
             ..CraftTransaction::default()
         }
     }

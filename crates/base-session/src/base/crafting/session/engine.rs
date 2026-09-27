@@ -364,6 +364,7 @@ impl CraftingSessions {
                     blueprints_learned = %report.blueprints_learned,
                     quality_bucket = report.quality_bucket.unwrap_or(""),
                     elementary = %report.elementary,
+                    quantity = %opt(report.quantity),
                     "crafting induction completed"
                 );
                 count_job(verb, JobEnd::Completed);

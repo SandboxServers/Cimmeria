@@ -86,7 +86,8 @@ fn feedback_packet(text: &str) -> Vec<u8> {
 
 /// The guard: a forged `craft` with an empty station mask is refused with
 /// the "no station" line. With the gate removed, the request reaches the
-/// verb and the player reads "Crafting is not available yet." instead.
+/// verb, which (with no database) answers "Crafting is unavailable right
+/// now." instead.
 #[tokio::test]
 async fn forged_request_without_station_or_tool_is_refused_with_feedback() {
     let capture = LogCapture::install();
@@ -199,7 +200,7 @@ async fn a_station_for_another_verb_does_not_allow_crafting() {
 }
 
 /// "Craft anywhere" passes the gate with an empty mask; the request then
-/// reaches the verb.
+/// reaches the verb, which cannot decide it without a database.
 #[tokio::test]
 async fn craft_anywhere_passes_the_gate() {
     let typed = Arc::new(TestTransport::new());
@@ -217,7 +218,9 @@ async fn craft_anywhere_passes_the_gate() {
 
     assert_eq!(
         typed.filter_to(addr),
-        vec![feedback_packet("Crafting is not available yet.")]
+        vec![feedback_packet(
+            "Crafting is unavailable right now. Nothing was changed."
+        )]
     );
 }
 
