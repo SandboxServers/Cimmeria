@@ -47,7 +47,10 @@ mod stance;
 mod tests;
 
 pub(in crate::cell::service::npc_ai) use disengage::rearm_after_fight;
-pub use engage::{engage_pet_target, PetEngagement, PET_ENGAGE_THREAT};
+pub use engage::{
+    engage_pet_target, target_state_refusal, PetEngagement, OWNER_ORDER_THREAT_CAP,
+    PET_ENGAGE_THREAT,
+};
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::{AiState, CellEntity, PetStance, PlayerIdentity};
@@ -111,10 +114,7 @@ pub(in crate::cell) fn live_owner(
 ///   players and pets are never a pet's targets today.
 /// - `target_not_hostile`: its owner could not attack it
 ///   ([`combat::player_may_attack`], the #444 rule, the seam duels widen).
-pub(in crate::cell) fn fight_refusal(
-    owner: &CellEntity,
-    target: &CellEntity,
-) -> Option<&'static str> {
+pub fn fight_refusal(owner: &CellEntity, target: &CellEntity) -> Option<&'static str> {
     if target.is_player || target.class_id != crate::mercury::SGWMOB_CLASS_ID {
         return Some("target_not_combatant");
     }

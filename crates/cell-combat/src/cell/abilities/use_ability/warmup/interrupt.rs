@@ -110,6 +110,10 @@ pub(crate) async fn interrupt_pending_cast(
         pc.ability_id,
         reason.as_str(),
     );
+    // A pet's owner order dies with its warmup: drop it and tell the owner
+    // (pets PT-04). A no-op for any cast without a pending order.
+    super::pet_order::on_cast_interrupted(entity_id, pc.ability_id, reason.as_str(), tx, space_mgr)
+        .await;
 
     if is_player {
         for timer_type in [TIMER_ABILITY_WARMUP, TIMER_ABILITY_COOLDOWN] {

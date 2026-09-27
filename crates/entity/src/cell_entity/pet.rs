@@ -120,6 +120,11 @@ pub struct PetState {
     /// When a timed pet (or a pet corpse) despawns. `None` means it lives
     /// until its owner or the teardown sweep removes it.
     pub despawn_at: Option<Instant>,
+    /// The target of an owner's order (`petInvokeAbility`) whose cast is
+    /// still warming up. The pet engages it only when that cast fires; an
+    /// interrupted cast engages nothing (pets PT-04). Taken by the pet's
+    /// next fired cast, whatever its target.
+    pub deferred_order: Option<u32>,
 }
 
 impl PetState {
@@ -151,6 +156,7 @@ impl PetState {
             summon_ability_id,
             last_teleport_at: None,
             despawn_at: None,
+            deferred_order: None,
         }
     }
 
