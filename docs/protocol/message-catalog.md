@@ -83,7 +83,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | Abilities & Training | 4 | Partial |
 | Stargates | 5 | Partial (~20%) |
 | Minigames | 14 | Not implemented |
-| Dueling | 3 | Not implemented |
+| Dueling | 3 | Partial: challenge and response (SS-D1); forfeit not implemented |
 | Space Queue | 4 | Not implemented |
 | GM Commands | 33 | Partial |
 | GM Give Commands | 15 | Partial |
@@ -287,8 +287,8 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 
 | Event Name | String Addr | Handler Addr | .def Method | Impl |
 |------------|-------------|--------------|-------------|------|
-| `Event_NetOut_DuelChallenge` | 019b4478 | TBD | SGWPlayer.duelChallenge | NO |
-| `Event_NetOut_DuelResponse` | 0195fb58 | TBD | SGWPlayer.duelResponse | NO |
+| `Event_NetOut_DuelChallenge` | 019b4478 | TBD | SGWPlayer.duelChallenge | YES (base 0xD9, SS-D1) |
+| `Event_NetOut_DuelResponse` | 0195fb58 | TBD | SGWPlayer.duelResponse | YES (CM 102, SS-D1) |
 | `Event_NetOut_DuelForfeit` | 019b44a8 | TBD | SGWPlayer.duelForfeit | NO |
 
 ### Pets
@@ -370,7 +370,7 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 | Crafting | 6 | Parsed and forwarded to the base; answered "not available yet" (crafting CR-01) |
 | Black Market | 5 | Not implemented |
 | Minigames | 12 | Not implemented |
-| Dueling | 4 | Not implemented |
+| Dueling | 4 | Partial: `onDuelChallenge` (SS-D1); 151-153 not sent for duels |
 | UI & Navigation | 13 | Partial |
 | Media | 2 | Not implemented |
 | Misc | 5 | Partial |
@@ -467,7 +467,7 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | Crafting | 0 | 6 | 0 | 6 | 0% |
 | Stargates | 1 | 5 | 1 | 8 | 15% |
 | Minigames | 0 | 14 | 0 | 12 | 0% |
-| Dueling | 0 | 3 | 0 | 4 | 0% |
+| Dueling | 2 | 3 | 1 | 4 | 43% |
 | Pets | 0 | 3 | 0 | 3 | 0% |
 | Contact Lists | 6 | 6 | 5 | 5 | 100% |
 | World/Entity | — | — | 13 | 13 | 100% |

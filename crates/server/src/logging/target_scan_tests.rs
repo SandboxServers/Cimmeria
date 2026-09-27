@@ -328,6 +328,10 @@ fn scan_finds_known_targets() {
         ("mail", Level::INFO),
         ("mail", Level::WARN),
         ("mail", Level::DEBUG),
+        // SS-D1: the base challenge arm (crates/base) and the cell duel
+        // registry, response and tick (crates/cell-world).
+        ("duel", Level::DEBUG),
+        ("duel", Level::WARN),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),

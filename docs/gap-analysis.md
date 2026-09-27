@@ -861,15 +861,15 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH that nothing exists (code re-read 2026-09-25)
 - **Documentation**: [gameplay/duel-system.md](gameplay/duel-system.md), [reverse-engineering/findings/duel-wire-formats.md](reverse-engineering/findings/duel-wire-formats.md)
-- **Rust code**: **No dedicated duel module.** `sendDuelResponse` (CM 102) and `duelForfeit` (CM 103) log `UNIMPLEMENTED` in `cell_methods/player/social.rs:92-101`. Client-method constants for `onDuelChallenge` (143) and `onDuelEntitiesSet/Remove/Clear` (151-153) exist in `cell/client_methods/player.rs:93-114` but nothing emits them.
+- **Rust code**: Challenge and response since SS-D1 (2026-09-27): `base/dispatch/duel.rs` (0xD9) and the cell `DuelRegistry` in `crates/cell-world/src/cell/duel/`, which sends `onDuelChallenge` (143). `duelForfeit` (CM 103) still logs `UNIMPLEMENTED`. Nothing emits `onDuelEntitiesSet/Remove/Clear` (151-153) for duels.
 - **Recent PRs**: none since 2026-07-25
 - **Open issues**: #569 (implement duel system)
 - **Path forward**: 5-state machine port; 7 defeat-condition enum (#569).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Duel challenge | KM | -- | -- | State: ResponsePending. No challenge method is dispatched |
-| Duel response | KM | -- | stub | social.rs:92-97 |
+| Duel challenge | IM | -- | base/dispatch/duel.rs; cell/duel/challenge.rs | SS-D1: rate limit, online lookup, self, space, range, busy and pair-cooldown checks; not yet client-tested |
+| Duel response | IM | -- | cell/duel/response.rs | SS-D1: accept, decline, expiry; accept ends in "Duel aborted" until SS-D2 engages |
 | Duel start | KM | Combat | -- | StartPending → Engaged |
 | Duel forfeit | KM | -- | stub | social.rs:100-101 |
 | Defeat conditions | KM | Combat | -- | 7 types |
