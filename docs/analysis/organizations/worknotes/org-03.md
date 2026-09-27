@@ -94,6 +94,44 @@ Run C: CM 8 routed to `forward::answer` instead of the squad handler; the wirecl
 
 Each run was restored with `git checkout -- crates`, and `git status` was clean afterwards.
 
+## Telemetry (owner rule, 2026-09-27; round 2)
+
+Implemented per `work-packets.md` § "Telemetry (owner rule, 2026-09-27)" (PR #878) and the ORG-03 "Telemetry:" line, with the Copilot-review refinements relayed by the coordinator: the actor's identity on every row, a target only where a second player exists (invite, response, kick, leader change), and every outcome row at INFO, `ok` included. Code: [`squad/telemetry.rs`](../../../../crates/cell-methods/src/cell/cell_methods/organization/squad/telemetry.rs); counter helper `cimmeria_cell_world::cell::squad::count_action` (cell-world already depends on `cimmeria-observability`, so no new dependency edge and no hakari change).
+
+| Kind | Event | Level | Fields | SigNoz filter |
+|---|---|---|---|---|
+| Span | `squad.invite`, `squad.invite_response`, `squad.leave`, `squad.kick`, `squad.loot_mode` | INFO | `skip_all`; correlators only (`player_id`, `entity_id`, `request_id`, `accept`, `squad_id`, `loot_mode`) | traces: span name = the event |
+| Outcome | `squad.invite` | INFO | `outcome`, `reason`, actor and target identity, `squad_id`, `request_id` | `event = 'squad.invite'` (refusals: `AND outcome = 'rejected'`) |
+| Outcome | `squad.invite_response` | INFO | as above; the target is the inviter | `event = 'squad.invite_response'` |
+| Outcome | `squad.leave` | INFO | actor only, `squad_id` | `event = 'squad.leave'` |
+| Outcome | `squad.kick` | INFO | actor, the kicked member as target, `squad_id` | `event = 'squad.kick'` |
+| Outcome | `squad.loot_mode` | INFO | actor only, `squad_id` | `event = 'squad.loot_mode'` |
+| Transition | `squad_created`, `member_joined` (`rank`), `member_left` (`reason`), `leader_changed` (`from_player_id`, `to_player_id`, target = new leader), `loot_mode_changed` (`from`, `to`), `disbanded` (`reason`), `invite_created`, `invite_consumed` (`accepted`), `invite_expired` | DEBUG | actor identity, `squad_id`, `request_id` where relevant | `event = 'member_left' AND squad_id = <id>` (any transition by its name) |
+| Seam | `squad.actor_mismatch` | WARN | claimed `player_id`, `entity_id` | `event = 'squad.actor_mismatch'` |
+| Seam | `squad.send_failed` | WARN | `entity_id`, `method_index`, `reason = cell_to_base_closed` | `event = 'squad.send_failed'` |
+| Seam (base) | `org.squad_forward_failed` + the squad outcome row with `reason = cell_unreachable` | WARN + INFO | `account_id`, `player_id`, `entity_id`, `kind` | `event = 'org.squad_forward_failed'` |
+| Outcome (base) | `org.invite_by_type` (type above 2) | INFO | `outcome = rejected`, `reason = org_type_invalid`, `org_type`, identity | `event = 'org.invite_by_type'` |
+| Metric | `squad_actions_total{action, outcome, reason}` | counter | `reason = none` on `ok` | metrics: `squad_actions_total` grouped by `reason` |
+
+Reasons (closed): `target_ambiguous`, `target_in_transition`, `target_not_found`, `self_target`, `not_a_player`, `squad_full`, `already_in_squad`, `not_leader`, `rate_limited`, `invite_limit` (one per pair, or five pending), `invite_unknown`, `invite_expired`, `invite_foreign`, `loot_mode_invalid`, plus the ones this packet needed that the ledger line did not list: `not_in_squad`, `wrong_squad`, `target_not_in_squad`, `inviter_left`, `inviter_not_leader`, `inviter_offline`, `squad_gone`, `ids_exhausted`, `not_ready`, `actor_mismatch`, `cell_unreachable`. `ignored` is reserved: the cell has no ignore list. To support `invite_expired` and `invite_foreign`, `SquadRegistry::take_invite` now returns `Result<_, TakeMiss>` (checking the entry before the purge) and records expiries for `drain_expired`.
+
+Other changes in the round: the old per-refusal WARN/DEBUG rows (`squad.invite_rejected`, `squad.response_rejected`, ...) and the INFO membership rows (`squad.joined`, `squad.leader_promoted`, ...) were replaced by the outcome rows and transitions; the squad refusal pair is now sent through `fanout::send`, so a dropped send warns on `squad` rather than `org`; a disconnect is not a player action and logs only its transitions (`member_left`, `reason = logout`). The CAT-M negative-log tests now assert the INFO outcome row and its reason.
+
+Telemetry tests (`organization/tests/squad_telemetry.rs`): `every_action_emits_exactly_one_outcome_row`, `a_refusal_is_one_info_row_with_a_reason`, `join_transitions_are_logged`, `departure_transitions_carry_before_and_after`, `loot_mode_changed_logs_from_and_to`, `expired_invite_is_logged_as_expired`, `actor_mismatch_warns_and_is_rejected`, `dropped_send_warns`; base `squad_forward_failure_warns_and_logs_the_outcome`; registry `invite_expires_at_sixty_seconds` (now pins `TakeMiss::Expired` and `drain_expired`).
+
+Telemetry regression proof, on the committed tree then restored with `git checkout HEAD -- crates`:
+
+| Revert | Failing guards |
+|---|---|
+| `leave` fabricates a target, and a successful loot change emits no outcome row | `every_action_emits_exactly_one_outcome_row` |
+| The `squad.send_failed` WARN renamed away | `dropped_send_warns` |
+| An expired entry reported as unknown | `expired_invite_is_logged_as_expired`, `invite_expires_at_sixty_seconds` |
+| The base's `org_type_invalid` reason changed, and its squad outcome row moved off the `squad` target | `invite_by_type_rejects_type_above_command`, `squad_forward_failure_warns_and_logs_the_outcome` |
+
+Round-2 commands (all exit 0 unless noted): `lane.sh cargo test -p cimmeria-entity -p cimmeria-cell-world -p cimmeria-cell-methods -p cimmeria-cell -p cimmeria-base --lib --no-fail-fast` (base 78, cell 451, cell-methods 269, cell-world 339, entity 341); `lane.sh cargo test -p cimmeria-server --bin cimmeria-server logging` (52); the seven-crate clippy with `-D warnings`; `cargo fmt --all -- --check`; the wireclient two-client test against `sgw_org_03`; the two revert runs above (exit 101 each).
+
+Process note: during the first telemetry revert run I restored with `git checkout -- crates` while the telemetry edits were still uncommitted, which discarded them; they were re-applied from the same scripts and re-tested before the revert run was repeated on a commit. Nothing from the lost state reached a commit.
+
 ## Known gaps
 
 - **No ignore-list check on invite.** Ignore lists are base-side database rows; the cell has no copy. A later packet can either have the base check the target's ignore list by name before forwarding `SquadInvite` (it has the inviter's `player_id` and the database), or have `InitPlayerState` carry the ignore set to the cell. The base-side check is the better fit, because ORG-07 needs the same check for Team and Command invites.

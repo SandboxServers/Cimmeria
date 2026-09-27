@@ -70,6 +70,10 @@ Cimmeria does not build squads on `GroupAuthority`. A squad is ephemeral, so it 
 | Loot mode | Every member | [51] |
 | World entry (gate arrival) | The arriving member | [35] (`aNewMember` 0), [38], [37] per other member, [51] |
 
+### Telemetry
+
+Everything logs on the `squad` target. Each action (invite, invite response, leave, kick, loot mode) runs in an INFO span of the same name and ends in exactly one INFO outcome row: `event = squad.<action>`, `outcome = ok` or `rejected`, a `reason` on a refusal, the actor's `account_id` and `player_id`, and the second player's `target_account_id` / `target_player_id` for an invite, a response or a kick. State changes (`squad_created`, `member_joined`, `member_left`, `leader_changed`, `loot_mode_changed`, `disbanded`, `invite_created`, `invite_consumed`, `invite_expired`) are DEBUG rows, and the counter is `squad_actions_total{action, outcome, reason}`. The closed reason list is in the [observability target catalog](../architecture/observability.md).
+
 The roster comes before the [37]s because the client stores every roster row with member id 0 ("Offline"), and only [37] sets the id (ORG-E1 Q1). The squad unit frames follow entity presence, so a member in another space shows a blank frame (ORG-E1 Q6). A member removed while in gate transit cannot be told then; their [36] is queued and sent on their world entry.
 
 ## Entity Definition (GroupAuthority.def)
