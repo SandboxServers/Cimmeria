@@ -211,6 +211,21 @@ async fn pt07_pet_summon_of_an_unknown_id_keeps_the_old_pet() {
     assert!(mgr.get_entity(first).is_some());
 }
 
+/// PT-03's summon refuses a dead caster; so does `.pet summon`, and the
+/// old pet stays.
+#[tokio::test]
+async fn pt07_pet_summon_by_a_dead_caller_is_refused_and_keeps_the_old_pet() {
+    let mut mgr = pet_world();
+    pet(&mut mgr, GM, None, &["summon", "2826"]).await;
+    let first = only_pet_of(&mgr, GM);
+    mgr.get_entity_mut(GM).unwrap().state_field |= crate::cell::combat::BSF_DEAD;
+
+    let fb = feedback(&pet(&mut mgr, GM, None, &["summon", "350"]).await);
+
+    assert_eq!(fb, vec![".pet summon: you are dead"]);
+    assert_eq!(only_pet_of(&mgr, GM), first, "the old pet survives");
+}
+
 #[tokio::test]
 async fn pt07_pet_stance_sets_it_and_tells_only_the_owner() {
     let mut mgr = pet_world();

@@ -4,8 +4,10 @@
 //!   once, with no warmup. An id with a `pet_summons` row is a summon ability
 //!   and spawns its template; any other id must be a cached
 //!   `entity_templates` row, which is spawned as a pet whatever its class
-//!   (handy for trying a look). The caller's existing pets are dismissed
-//!   first: one pet per owner (D-PT04).
+//!   (handy for trying a look). One pet per owner (D-PT04): as in PT-03's
+//!   summon, the new pet is spawned first and the caller's existing pets
+//!   are then dismissed, so a failed spawn keeps the old pet. A dead caller
+//!   is refused.
 //! - `.pet dismiss`: despawn the caller's pets.
 //! - `.pet stance <0-2>`: set the caller's pet's stance (`EPetStance`) and
 //!   send `onPetStanceUpdate` to the caller.
@@ -43,6 +45,7 @@ use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
 use crate::cell::client_methods::pet::{build_pet_stance_update, ON_PET_STANCE_UPDATE};
+use crate::cell::combat;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::pets::{despawn_pet, PetDespawnReason};
 use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
@@ -150,9 +153,22 @@ async fn summon(
         _ => String::new(),
     };
 
-    // Checked everything that can be checked before touching the old pet, so
-    // a refused summon never leaves the GM with no pet at all.
-    let replaced = dismiss_all(caller_id, tx, space_mgr).await;
+    // PT-03's summon refuses a dead caster too: a corpse's pet would be torn
+    // down by the owner-death hook on the next death anyway.
+    if space_mgr
+        .get_entity(caller_id)
+        .is_some_and(|e| combat::is_dead_state(e.state_field))
+    {
+        let text = ".pet summon: you are dead";
+        refuse(caller_id, "owner_dead", None, text, tx, space_mgr).await;
+        return;
+    }
+
+    // Same order as PT-03's `fire_summon`: list the caller's pets, spawn the
+    // new one (which registers it with the caller's identity), and only then
+    // retire the old ones through the shared teardown. A spawn that fails
+    // leaves the GM with the pet it had.
+    let current = owned_pets(caller_id, space_mgr);
     let pet_id = match space_mgr.spawn_pet_from_template(caller_id, template_id, summon_ability_id)
     {
         Ok(pet_id) => pet_id,
@@ -164,6 +180,7 @@ async fn summon(
             return;
         }
     };
+    let replaced = despawn_each(&current, tx, space_mgr).await;
     let id = space_mgr.player_identity(caller_id);
     tracing::info!(
         target: "pets.command",
@@ -219,8 +236,19 @@ async fn dismiss_all(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> Vec<u32> {
+    let pets = owned_pets(owner, space_mgr);
+    despawn_each(&pets, tx, space_mgr).await
+}
+
+/// Despawn `pets` with reason `dismissed`. Returns the ids that were
+/// despawned.
+async fn despawn_each(
+    pets: &[u32],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> Vec<u32> {
     let mut despawned = Vec::new();
-    for pet_id in owned_pets(owner, space_mgr) {
+    for &pet_id in pets {
         let outcome = despawn_pet(space_mgr, pet_id, PetDespawnReason::Dismissed, tx).await;
         if matches!(outcome, DespawnOutcome::Despawned { .. }) {
             despawned.push(pet_id);
@@ -302,6 +330,9 @@ async fn stance(
         .await;
         return;
     }
+    // PT-05 has no stance setter: its AI tick reads `pet.stance` every pass
+    // and drops a fight itself when the stance turns Passive (the
+    // `passive_stance` disengage), so the write is the whole state change.
     let previous = std::mem::replace(&mut pet.stance, stance);
     let owner = pet.owner_id;
     let id = space_mgr.player_identity(caller_id);
