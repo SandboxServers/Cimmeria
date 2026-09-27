@@ -18,6 +18,17 @@ fn update_discipline_is_id_then_expertise() {
     );
 }
 
+/// The ASP property: `onEntityProperty` propId 2 (the enumerations.xml
+/// value), then the total, both INT32 LE.
+#[test]
+fn asp_property_is_prop_2_then_total() {
+    assert_eq!(GENERICPROPERTY_APPLIED_SCIENCE_POINTS, 2);
+    assert_eq!(
+        applied_science_points_property_args(7),
+        [0x02, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00]
+    );
+}
+
 /// 137 has no arguments.
 #[test]
 fn discipline_respec_has_no_arguments() {

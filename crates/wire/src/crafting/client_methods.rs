@@ -6,6 +6,19 @@
 /// `onUpdateDiscipline(INT32 aDisciplineSeqId, INT32 aExpertise)` (136).
 pub use cimmeria_entity::crafting::serialize_on_update_discipline as update_discipline_args;
 
+use crate::cell::cell_methods::inventory::build_entity_property_args;
+
+/// `GENERICPROPERTY_AppliedSciencePoints` in `entities/defs/enumerations.xml`.
+pub const GENERICPROPERTY_APPLIED_SCIENCE_POINTS: i32 = 2;
+
+/// `onEntityProperty(GENERICPROPERTY_AppliedSciencePoints, total)`: the
+/// player's unspent ASP. Always the **total**, never a change (audit C-57):
+/// the client shows the value as it arrives (Lua
+/// `DisciplineTrainer.lua:49-54`).
+pub fn applied_science_points_property_args(total: i32) -> Vec<u8> {
+    build_entity_property_args(GENERICPROPERTY_APPLIED_SCIENCE_POINTS, total)
+}
+
 /// `onCraftingRespecPrompt(INT32 CostToRespec)` (112): the naquadah a
 /// crafting respec costs.
 pub fn crafting_respec_prompt_args(cost_to_respec: i32) -> Vec<u8> {

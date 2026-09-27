@@ -32,7 +32,11 @@ CREATE TABLE sgw_player (
     interaction_maps player_interaction_map[],
     training_points integer DEFAULT 0 NOT NULL,
     discipline_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
-    racial_paradigm_levels integer[] DEFAULT '{}'::integer[] NOT NULL,
+    -- Starting levels (D-CR03): Common (paradigm 1) at 5, the other four at
+    -- 1; index i holds paradigm i+1. Mirrors DEFAULT_RACIAL_PARADIGM_LEVELS in
+    -- crates/entity/src/crafting.rs. The crafting load gives a stored empty
+    -- array the same levels (characters created before D-CR03).
+    racial_paradigm_levels integer[] DEFAULT '{5,1,1,1,1}'::integer[] NOT NULL,
     applied_science_points integer DEFAULT 0 NOT NULL,
     blueprint_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
     known_respawners integer[] DEFAULT '{}'::integer[] NOT NULL,

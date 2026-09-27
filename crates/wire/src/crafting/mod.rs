@@ -4,7 +4,8 @@
 //! - [`client_methods`]: argument bytes for `onCraftingRespecPrompt` (112),
 //!   `onUpdateDiscipline` (136, re-exported from `cimmeria-entity`),
 //!   `onDisciplineRespec` (137), `onUpdateRacialParadigmLevel` (138),
-//!   `onUpdateKnownCrafts` (139) and `onUpdateCraftingOptions` (140). Each is
+//!   `onUpdateKnownCrafts` (139), `onUpdateCraftingOptions` (140) and the
+//!   ASP entity property (`onEntityProperty(2, total)`). Each is
 //!   byte-exact tested; the index constants are in
 //!   `cell::client_methods::player`.
 //! - [`request`]: [`CraftRequest`] / [`CraftVerb`], carried by
@@ -17,8 +18,9 @@ pub mod client_methods;
 pub mod request;
 
 pub use client_methods::{
-    crafting_options_args, crafting_respec_prompt_args, discipline_respec_args, known_crafts_args,
-    racial_paradigm_level_args, update_discipline_args, CraftingInfo, CraftingOptions,
+    applied_science_points_property_args, crafting_options_args, crafting_respec_prompt_args,
+    discipline_respec_args, known_crafts_args, racial_paradigm_level_args, update_discipline_args,
+    CraftingInfo, CraftingOptions, GENERICPROPERTY_APPLIED_SCIENCE_POINTS,
 };
 pub use request::{CraftRequest, CraftVerb};
 
