@@ -94,7 +94,7 @@ pub async fn handle_chat_message(
         // target (bank-vault BV-02); the generic refusal below would do
         // neither.
         if console::bank::is_bank_command(text) {
-            console::bank::refuse_non_gm(entity_id, tx).await;
+            console::bank::refuse_non_gm(entity_id, tx, space_mgr).await;
             return;
         }
         // A non-GM line that names a registered command is refused, not

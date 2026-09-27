@@ -21,7 +21,8 @@ mod trainer_authority;
 mod vendor;
 
 pub use bank::{
-    open_vault_at_banker, open_vault_gm, pin_interaction_target, vault_move_allowed, VaultReject,
+    open_vault_at_banker, open_vault_gm, pin_interaction_target, reject_banker_out_of_range,
+    reject_vault_open, vault_move_allowed, VaultOpenReject, VaultReject,
 };
 pub use dialog::send_dialog_display;
 pub use dispatch::{handle_initial_response, handle_interact};

@@ -344,11 +344,11 @@ fn scan_finds_known_targets() {
         // registry, response and tick (crates/cell-world).
         ("duel", Level::DEBUG),
         ("duel", Level::WARN),
-        // The bank-vault campaign (BV-02): the Banker open path in
-        // crates/cell-interactions, the `.bank` refusal in crates/cell-console
-        // and the session teardown in crates/cell-world.
-        ("bank", Level::INFO),
+        // The bank-vault campaign (BV-02, D-BV19): `vault_session_opened` /
+        // `vault_session_closed` (DEBUG, crates/cell-interactions and
+        // crates/cell-world) and `vault_open_rejected` (WARN).
         ("bank", Level::DEBUG),
+        ("bank", Level::WARN),
         // Emitted only by crates/base-world-entry (wave B3): the AoI
         // dispatch's create emitter and the cinematic AoI hold.
         ("aoi.create_emit", Level::DEBUG),
@@ -408,4 +408,22 @@ fn every_crate_is_classified() {
         unclassified.is_empty(),
         "classify these crates as in- or out-of-process: {unclassified:?}"
     );
+}
+
+/// Bank-vault D-BV19: the `bank` target's DEBUG session transitions
+/// (`vault_session_opened` / `vault_session_closed`) and WARN refusals each
+/// reach exactly one OTLP log index. Fails if the `bank=debug` row leaves
+/// `OTEL_FILTER` (the DEBUG rows then reach no index), independently of
+/// whether the source scan still finds a DEBUG `bank` site.
+#[test]
+fn bank_target_reaches_otlp_at_debug_and_warn() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    for level in [Level::DEBUG, Level::WARN] {
+        let sinks = sinks_for(&dispatch, &hits, "bank", level);
+        let n = OTLP_LOG_SINKS
+            .iter()
+            .filter(|s| sinks.contains(**s))
+            .count();
+        assert_eq!(n, 1, "bank at {level} must reach one OTLP index: {sinks:?}");
+    }
 }

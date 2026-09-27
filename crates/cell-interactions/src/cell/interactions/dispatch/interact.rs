@@ -74,6 +74,8 @@ pub async fn handle_interact(
     let dist = player_pos.distance_squared_to(&target_pos).sqrt();
     if dist > MAX_INTERACT_DISTANCE {
         tracing::info!(entity_id, target_entity_id, dist, "interact: too far away");
+        super::super::bank::reject_banker_out_of_range(entity_id, target_entity_id, tx, space_mgr)
+            .await;
         return None;
     }
 

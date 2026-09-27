@@ -22,21 +22,21 @@ use crate::cell::space_manager::SpaceManager;
 
 /// `.bank`: open the personal vault on the caller, then confirm on the
 /// feedback channel.
+#[tracing::instrument(name = "bank.console_open", level = "info", skip_all, fields(entity_id = caller_id))]
 pub(super) async fn open(
     caller_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    crate::cell::interactions::open_vault_gm(caller_id, tx, space_mgr).await;
-    let text = if space_mgr
-        .get_entity(caller_id)
-        .is_some_and(|e| e.vault_session.is_some())
-    {
-        "bank: personal vault opened (GM session, no Banker; any interact closes it)"
-    } else {
-        "bank: could not open the vault -- this entity is not in a space"
-    };
-    send_gm_feedback(caller_id, text, tx).await;
+    // A failure has already been refused, with its own line and log.
+    if crate::cell::interactions::open_vault_gm(caller_id, tx, space_mgr).await {
+        send_gm_feedback(
+            caller_id,
+            "bank: personal vault opened (GM session, no Banker; any interact closes it)",
+            tx,
+        )
+        .await;
+    }
 }
 
 /// Is `text` a `.bank` line? Matched on the command word only, so
@@ -47,20 +47,27 @@ pub(crate) fn is_bank_command(text: &str) -> bool {
         .is_some_and(|name| name.eq_ignore_ascii_case("bank"))
 }
 
-/// A non-GM typed `.bank`: say why nothing opened, and log it. The line is
-/// consumed, never broadcast.
-pub(crate) async fn refuse_non_gm(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>) {
-    tracing::info!(
-        target: "bank",
-        event = "vault_open_rejected",
+/// A non-GM typed `.bank`: `vault_open_rejected reason=not_gm` and a line
+/// saying why nothing opened. The chat line is consumed, never broadcast.
+#[tracing::instrument(
+    name = "bank.console_open",
+    level = "info",
+    skip_all,
+    fields(entity_id)
+)]
+pub(crate) async fn refuse_non_gm(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    crate::cell::interactions::reject_vault_open(
         entity_id,
-        reason = "not_gm",
-        "vault_open_rejected: .bank needs GM access"
-    );
-    send_gm_feedback(
-        entity_id,
-        ".bank needs GM access. Visit a Banker to open your vault.",
+        crate::cell::interactions::VaultOpenReject::NotGm,
+        None,
+        None,
+        "",
         tx,
+        space_mgr,
     )
     .await;
 }

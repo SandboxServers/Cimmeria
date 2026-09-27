@@ -88,15 +88,21 @@ async fn banker_click_in_range_sends_one_vault_open_and_sets_the_session() {
     assert_eq!(session.and_then(|s| s.banker_id), Some(banker));
 }
 
-/// Out of range: nothing is sent and no session opens. Fails if the
-/// session were set before the range gate.
+/// Out of range: no `onVaultOpen` and no session, only the refusal line.
+/// Fails if the session were set before the range gate, or if the
+/// refusal line is dropped.
 #[tokio::test]
-async fn banker_click_out_of_range_sends_nothing_and_sets_no_session() {
+async fn banker_click_out_of_range_opens_nothing_and_sets_no_session() {
     let (mut mgr, banker) = stage([30.0, 0.0, 0.0], INT_BANKER, VaultScope::Personal);
 
     let sent = click(&mut mgr, banker).await;
 
-    assert!(sent.is_empty(), "nothing for a click from 30 u: {sent:?}");
+    let methods: Vec<u16> = sent.iter().map(|(_, m, _)| *m).collect();
+    assert_eq!(
+        methods,
+        vec![ON_PLAYER_COMMUNICATION],
+        "only the refusal line for a click from 30 u: {sent:?}"
+    );
     assert!(mgr.get_entity(PLAYER).unwrap().vault_session.is_none());
 }
 

@@ -194,12 +194,12 @@ use crate::otel;
 /// (`sendDuelChallenge`) and the cell (the registry, the response, the
 /// tick): DEBUG rows for every refusal (`reason=`) and state transition,
 /// WARN for a payload that does not decode.
-/// `bank` (bank-vault campaign, `docs/analysis/bank-vault/`) is the vault
-/// target on both halves of the split: the cell's `vault_open` /
-/// `vault_open_rejected` (INFO) and `vault_session_cleared` (DEBUG), and the
-/// base's `move_rejected` / `grant_rejected` (WARN). It is `debug` because
-/// the session-cleared rows are DEBUG and the coordinator reads SigNoz for
-/// this target after each UAT.
+/// `bank` (bank-vault campaign, `docs/analysis/bank-vault/`, telemetry
+/// contract D-BV19) is the vault target on both halves of the split: the
+/// cell's `vault_session_opened` / `vault_session_closed` (DEBUG) and
+/// `vault_open_rejected` (WARN), and the base's `move_rejected` /
+/// `grant_rejected` (WARN). It is `debug` because the session transitions
+/// are DEBUG and the owner debugs bank issues from SigNoz alone.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\

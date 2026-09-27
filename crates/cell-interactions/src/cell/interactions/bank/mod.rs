@@ -26,21 +26,21 @@
 //! ([`pin_interaction_target`]). [`vault_move_allowed`] is the one rule a
 //! bank move must pass, and it re-checks the Banker's proximity every time.
 //!
-//! Every event logs under the `bank` target.
+//! Every event logs under the `bank` target, with the D-BV19 names:
+//! `vault_session_opened` and `vault_session_closed` (DEBUG) and
+//! `vault_open_rejected` (WARN). The info spans `bank.banker_interact` and
+//! `bank.console_open` wrap the two entry points.
 
-use std::time::Instant;
+mod open;
+mod rejection;
 
-use tokio::sync::mpsc;
-
-use cimmeria_entity::cell_entity::{CellEntity, VaultScope, VaultSession};
-use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
-use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
-use cimmeria_wire::cell::client_methods::player::ON_VAULT_OPEN;
-use cimmeria_wire::cell::vault::build_vault_open_args;
+use cimmeria_entity::cell_entity::{CellEntity, VaultCloseReason};
 
 use super::dispatch::{interact_range, InteractRangeFail};
-use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{log_vault_session_closed, SpaceManager};
+
+pub use open::{open_vault_at_banker, open_vault_gm, reject_banker_out_of_range};
+pub use rejection::{reject_vault_open, VaultOpenReject};
 
 /// Why a bank move is refused. The label ([`VaultReject::reason`]) is the
 /// `reason` field BV-03 logs with `move_rejected`.
@@ -114,167 +114,19 @@ pub fn vault_move_allowed(
 }
 
 /// Pin `target` as the player's interaction target, ending a vault session
-/// pinned elsewhere (D-BV05), and log the end. Every `interact` pin calls
-/// this.
+/// pinned elsewhere (D-BV05) with `vault_session_closed reason=re_pin`.
+/// Every `interact` pin calls this.
 pub fn pin_interaction_target(space_mgr: &mut SpaceManager, entity_id: u32, target: u32) {
     let Some(player) = space_mgr.get_entity_mut(entity_id) else {
         return;
     };
+    let identity = player.identity();
     if let Some(ended) = player.pin_interaction_target(target) {
-        tracing::debug!(
-            target: "bank",
-            event = "vault_session_cleared",
-            entity_id,
-            banker_id = ended.banker_id,
-            new_target = target,
-            open_secs = ended.opened_at.elapsed().as_secs_f32(),
-            reason = "repin",
-            "vault_session_cleared: another interaction target was pinned"
-        );
+        log_vault_session_closed(entity_id, identity, &ended, VaultCloseReason::RePin);
     }
 }
 
-/// The Banker arm of `handle_interact`. The caller has already passed the
-/// interact range gate and pinned `banker_id`.
-pub async fn open_vault_at_banker(
-    entity_id: u32,
-    banker_id: u32,
-    scope: VaultScope,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    if scope != VaultScope::Personal {
-        // The org vaults need the organizations campaign (BV-07, Wave 4).
-        // Refuse visibly: the click must not look dead.
-        tracing::info!(
-            target: "bank",
-            event = "vault_open_rejected",
-            entity_id,
-            banker_id,
-            scope = scope.as_str(),
-            reason = "org_vault_not_available",
-            "vault_open_rejected: organization vaults are not available yet"
-        );
-        let text = match scope {
-            VaultScope::Team => "The Team vault is not available yet.",
-            _ => "The Command vault is not available yet.",
-        };
-        send_bank_feedback(entity_id, text, tx).await;
-        return;
-    }
-    let Some(banker_pos) = space_mgr.get_entity(banker_id).map(|b| b.position) else {
-        return;
-    };
-    let pos = [banker_pos.x, banker_pos.y, banker_pos.z];
-    open_personal_vault(
-        entity_id,
-        Some(banker_id),
-        banker_id as i32,
-        pos,
-        tx,
-        space_mgr,
-    )
-    .await;
-}
-
-/// GM `.bank`: open the personal vault where the GM stands. The session has
-/// no Banker, so moves skip the proximity check; the window is addressed to
-/// the GM's own entity and position.
-pub async fn open_vault_gm(
-    entity_id: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    let Some(pos) = space_mgr.get_entity(entity_id).map(|e| e.position) else {
-        return;
-    };
-    open_personal_vault(
-        entity_id,
-        None,
-        entity_id as i32,
-        [pos.x, pos.y, pos.z],
-        tx,
-        space_mgr,
-    )
-    .await;
-}
-
-/// Record the session, then send `onVaultOpen(window_entity, window_pos)`.
-async fn open_personal_vault(
-    entity_id: u32,
-    banker_id: Option<u32>,
-    window_entity: i32,
-    window_pos: [f32; 3],
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    let Some(space_id) = space_mgr.get_entity_space_id(entity_id) else {
-        return;
-    };
-    let Some(player) = space_mgr.get_entity_mut(entity_id) else {
-        return;
-    };
-    player.vault_session = Some(VaultSession {
-        scope: VaultScope::Personal,
-        banker_id,
-        space_id,
-        opened_at: Instant::now(),
-    });
-
-    let sent = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: ON_VAULT_OPEN,
-            args: build_vault_open_args(window_entity, window_pos),
-        })
-        .await;
-    match sent {
-        Ok(()) => tracing::info!(
-            target: "bank",
-            event = "vault_open",
-            entity_id,
-            banker_id,
-            space_id,
-            scope = "personal",
-            gm = banker_id.is_none(),
-            "vault_open: sent onVaultOpen"
-        ),
-        Err(e) => tracing::warn!(
-            target: "bank",
-            event = "vault_open_send_failed",
-            entity_id,
-            banker_id,
-            error = %e,
-            "vault_open: onVaultOpen could not be queued (base channel closed)"
-        ),
-    }
-}
-
-/// A single-recipient `SYSTEM` line on the feedback channel, the same shape
-/// the console and the chat channel refusals use. `onErrorCode` alone is not
-/// enough: no client Lua consumes it (AT-E1 §2).
-pub(crate) async fn send_bank_feedback(
-    entity_id: u32,
-    text: &str,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-) {
-    if let Err(e) = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: ON_PLAYER_COMMUNICATION,
-            args: serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text),
-        })
-        .await
-    {
-        tracing::warn!(
-            target: "bank",
-            event = "bank_feedback_send_failed",
-            entity_id,
-            error = %e,
-            "bank feedback line could not be queued (base channel closed)"
-        );
-    }
-}
-
+#[cfg(test)]
+mod telemetry_tests;
 #[cfg(test)]
 mod tests;

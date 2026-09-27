@@ -170,6 +170,16 @@ pub(super) async fn handle_interact(
     // interaction distance would break every ranged weapon.
     if !crate::cell::interactions::interact_target_in_range(entity_id, target_entity_u32, space_mgr)
     {
+        // A too-far click on most NPCs stays a silent drop (the client
+        // shows its own range cue); a Banker answers with a chat line and
+        // `vault_open_rejected reason=out_of_range` (bank-vault BV-02).
+        crate::cell::interactions::reject_banker_out_of_range(
+            entity_id,
+            target_entity_u32,
+            tx,
+            space_mgr,
+        )
+        .await;
         return;
     }
 

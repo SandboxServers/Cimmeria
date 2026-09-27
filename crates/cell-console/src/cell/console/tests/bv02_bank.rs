@@ -54,7 +54,15 @@ async fn say(mgr: &mut SpaceManager, speaker: u32, text: &str) -> (Vec<(u32, u16
 async fn bv02_console_bank_opens_the_gm_vault_with_a_bankerless_session() {
     let (mut mgr, gm, _npc) = setup();
 
+    let capture = crate::test_support::LogCapture::install();
     let (calls, lines) = say(&mut mgr, gm, ".bank").await;
+    assert!(
+        capture
+            .all()
+            .iter()
+            .any(|c| c.target == "span:bank.console_open" && c.level == tracing::Level::INFO),
+        "`.bank` runs in the INFO bank.console_open span"
+    );
 
     assert_eq!(
         calls.iter().filter(|c| **c == (gm, ON_VAULT_OPEN)).count(),
@@ -89,7 +97,24 @@ async fn bv02_console_bank_is_refused_for_a_non_gm_with_feedback() {
         p.witnesses.insert(EntityId(2));
     }
 
+    let capture = crate::test_support::LogCapture::install();
     let (calls, lines) = say(&mut mgr, player, ".bank").await;
+
+    // D-BV19: WARN `vault_open_rejected reason=not_gm`, in the INFO
+    // `bank.console_open` span.
+    let rejected: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "bank" && c.has_field("event", "vault_open_rejected"))
+        .collect();
+    assert_eq!(rejected.len(), 1, "{rejected:#?}");
+    assert_eq!(rejected[0].level, tracing::Level::WARN);
+    assert!(rejected[0].has_field("reason", "not_gm"));
+    assert!(rejected[0].has_field("entity_id", &player.to_string()));
+    assert!(capture
+        .all()
+        .iter()
+        .any(|c| c.target == "span:bank.console_open" && c.level == tracing::Level::INFO));
 
     assert!(
         calls

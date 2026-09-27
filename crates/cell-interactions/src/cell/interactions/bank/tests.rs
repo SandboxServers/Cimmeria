@@ -8,14 +8,17 @@ use tokio::sync::mpsc;
 use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope, VaultSession};
 use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use cimmeria_wire::cell::client_methods::player::ON_VAULT_OPEN;
+use cimmeria_wire::cell::vault::build_vault_open_args;
 
 use super::*;
 use crate::cell::interactions::handle_interact;
+use crate::cell::messages::CellToBaseMsg;
 
-const PLAYER: u32 = 1;
+pub(super) const PLAYER: u32 = 1;
 
-/// Two worlds, so a Banker can be put in "another space".
-fn two_space_manager() -> SpaceManager {
+/// Two worlds, so a Banker can be put in "another space". The player
+/// carries a known identity so the telemetry tests can check correlators.
+pub(super) fn two_space_manager() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces>
@@ -31,11 +34,19 @@ fn two_space_manager() -> SpaceManager {
     mgr.create_entity(PLAYER, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     mgr.connect_entity(PLAYER);
+    let p = mgr.get_entity_mut(PLAYER).unwrap();
+    p.account_id = Some(6);
+    p.player_id = Some(12);
     mgr
 }
 
 /// A Banker NPC of `scope` at `pos` in `world`.
-fn spawn_banker(mgr: &mut SpaceManager, world: &str, pos: [f32; 3], scope: VaultScope) -> u32 {
+pub(super) fn spawn_banker(
+    mgr: &mut SpaceManager,
+    world: &str,
+    pos: [f32; 3],
+    scope: VaultScope,
+) -> u32 {
     let id = mgr.allocate_npc_id();
     mgr.spawn_npc(id, world, pos, [0.0; 3]).unwrap();
     let npc = mgr.get_entity_mut(id).unwrap();

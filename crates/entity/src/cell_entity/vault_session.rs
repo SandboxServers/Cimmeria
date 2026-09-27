@@ -50,6 +50,30 @@ impl TryFrom<&str> for VaultScope {
     }
 }
 
+/// Why a vault session ended: the `reason` of the `bank`
+/// `vault_session_closed` event (D-BV19 telemetry contract).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VaultCloseReason {
+    /// The player's cell entity was destroyed for a move to another space
+    /// (cross-world travel, a GM transfer, a gate trip).
+    SpaceChange,
+    /// The client disconnected or logged off.
+    Logout,
+    /// A later `interact` pinned a different target.
+    RePin,
+}
+
+impl VaultCloseReason {
+    /// The stable `reason` string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            VaultCloseReason::SpaceChange => "space_change",
+            VaultCloseReason::Logout => "logout",
+            VaultCloseReason::RePin => "re_pin",
+        }
+    }
+}
+
 /// An open vault window, on the player's `CellEntity`.
 ///
 /// Set only by the Banker interaction arm and by the GM `.bank` command.
