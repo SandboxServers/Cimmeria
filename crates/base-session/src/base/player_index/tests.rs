@@ -61,6 +61,27 @@ fn exact_name_is_found() {
     assert_eq!(index.lookup("Teal"), found(2, 8));
 }
 
+/// Mail notification (D-SS11) finds a recipient by `player_id`: only a
+/// listed session answers. A session that logged off (named, same player
+/// id, not listed) is offline to mail, so a revert to "any session with
+/// that player id" fails here.
+#[test]
+fn find_player_sees_only_listed_sessions() {
+    let mut logged_off = in_world("Teal", 8);
+    logged_off.listed_online = false;
+    let clients = index_of(vec![(1, in_world("Lomiada", 7)), (2, logged_off)]);
+    let index = OnlinePlayerIndex::new(&clients);
+    assert_eq!(
+        index.find_player(7),
+        Some(OnlinePlayer {
+            addr: addr(1),
+            player_id: 7
+        })
+    );
+    assert_eq!(index.find_player(8), None, "logged off: not listed");
+    assert_eq!(index.find_player(9), None, "never online");
+}
+
 #[test]
 fn case_folded_name_is_found_when_unique() {
     let clients = index_of(vec![(1, in_world("Lomiada", 7)), (2, in_world("Teal", 8))]);

@@ -13,6 +13,13 @@ CREATE INDEX mail_lookup_index ON sgw_gate_mail USING btree (character_id);
 CREATE INDEX mail_reverse_lookup_index ON sgw_gate_mail USING btree (sender_id);
 
 --
+-- Social-systems SS-M4: the expiry sweep's scan, oldest expiry first. Only
+-- rows that can still expire are indexed.
+--
+
+CREATE INDEX mail_expiry_index ON sgw_gate_mail USING btree (expires_at, mail_id) WHERE ((expires_at IS NOT NULL) AND (NOT quarantined));
+
+--
 -- TOC entry 2673 (class 1259 OID 63875)
 -- Name: sgw_inventory_Index01; Type: INDEX; Schema: public; Owner: -; Tablespace: 
 --

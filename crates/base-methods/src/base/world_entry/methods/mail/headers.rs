@@ -1,5 +1,11 @@
-//! `onMailHeaderInfo`: the caller's header list, and the one-header refresh
-//! the attachment ops (SS-M3) send after they change a mail.
+//! `onMailHeaderInfo`: the caller's header list, the one-header refresh
+//! the attachment ops (SS-M3) send after they change a mail, and the
+//! one-header read the new-mail notification (SS-M4) pushes.
+//!
+//! Quarantined mail (SS-M4, D-SS04 path 3) is never read here: it is out of
+//! the mailbox until a GM recovers it.
+
+use sqlx::PgPool;
 
 use super::MailCtx;
 use crate::cell::mail;
@@ -32,7 +38,7 @@ macro_rules! header_select {
             "i.stack_size AS att_stack_size, i.durability AS att_durability, ",
             "i.charges AS att_charges ",
             "FROM sgw_gate_mail m LEFT JOIN sgw_gate_mail_item i ON i.mail_id = m.mail_id ",
-            "WHERE m.character_id = $1 AND ",
+            "WHERE m.character_id = $1 AND NOT m.quarantined AND ",
             $tail
         )
     };
@@ -45,47 +51,81 @@ enum Select {
     One { mail_id: i32 },
 }
 
-/// The caller's headers and their attachments, owner-scoped.
-async fn read_headers(
-    ctx: &MailCtx<'_>,
-    select: Select,
-) -> Result<(Vec<mail::MailHeader>, Vec<mail::MailAttachment>), sqlx::Error> {
+/// Who a header read is for, for its logs.
+#[derive(Debug, Clone, Copy)]
+struct Reader<'a> {
+    pool: &'a PgPool,
+    player_id: i32,
+    entity_id: Option<u32>,
+    account_id: Option<u32>,
+}
+
+impl<'a> Reader<'a> {
+    fn caller(ctx: &MailCtx<'a>) -> Self {
+        Self {
+            pool: ctx.pool,
+            player_id: ctx.player_id,
+            entity_id: Some(ctx.entity_id),
+            account_id: ctx.account_id(),
+        }
+    }
+}
+
+/// Headers and their attachments, as the wire carries them.
+pub(super) type Headers = (Vec<mail::MailHeader>, Vec<mail::MailAttachment>);
+
+/// One of `player_id`'s mails as a header and its attachment, owner-scoped;
+/// empty when it is not theirs, gone, or quarantined. For a push to a
+/// player who did not ask (the new-mail notification).
+pub(super) async fn read_one(
+    pool: &PgPool,
+    player_id: i32,
+    mail_id: i32,
+) -> Result<Headers, sqlx::Error> {
+    let reader = Reader {
+        pool,
+        player_id,
+        entity_id: None,
+        account_id: None,
+    };
+    read_headers(reader, Select::One { mail_id }).await
+}
+
+/// The reader's headers and their attachments, owner-scoped.
+async fn read_headers(reader: Reader<'_>, select: Select) -> Result<Headers, sqlx::Error> {
     let rows = match select {
         Select::List { b_archive } => {
             let archive_bit = if b_archive != 0 { MAIL_ARCHIVE } else { 0 };
             sqlx::query_as::<_, MailRow>(header_select!(
                 "(m.flags & $2) = $3 ORDER BY m.mail_id DESC"
             ))
-            .bind(ctx.player_id)
+            .bind(reader.player_id)
             .bind(MAIL_ARCHIVE)
             .bind(archive_bit)
-            .fetch_all(ctx.pool)
+            .fetch_all(reader.pool)
             .await?
         }
         Select::One { mail_id } => {
             sqlx::query_as::<_, MailRow>(header_select!("m.mail_id = $2"))
-                .bind(ctx.player_id)
+                .bind(reader.player_id)
                 .bind(mail_id)
-                .fetch_all(ctx.pool)
+                .fetch_all(reader.pool)
                 .await?
         }
     };
-    Ok(to_wire(ctx, &rows))
+    Ok(to_wire(reader, &rows))
 }
 
-fn to_wire(
-    ctx: &MailCtx<'_>,
-    rows: &[MailRow],
-) -> (Vec<mail::MailHeader>, Vec<mail::MailAttachment>) {
+fn to_wire(reader: Reader<'_>, rows: &[MailRow]) -> Headers {
     let headers = rows
         .iter()
         .map(|r| {
             let cash = i32::try_from(r.cash).unwrap_or_else(|_| {
                 tracing::warn!(
                     target: "mail",
-                    entity_id = ctx.entity_id,
-                    player_id = ctx.player_id,
-                    account_id = ctx.account_id(),
+                    entity_id = reader.entity_id,
+                    player_id = reader.player_id,
+                    account_id = reader.account_id,
                     reason = "cash_out_of_i32_range",
                     mail_id = r.mail_id,
                     db_cash = r.cash,
@@ -132,6 +172,11 @@ fn to_wire(
 /// and files each row by its own `MAIL_Archive` bit, but it clears only the
 /// requested list on a reset, so rows of the other list sent here would sit
 /// in it un-reset (SS-E1 M-Q7).
+///
+/// The reply sets `ResetCategory` (SS-M4): it is the whole requested list,
+/// so the client clears that list first and a mail deleted, returned,
+/// expired or quarantined server-side since the last open drops out
+/// instead of lingering until relog.
 pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
     tracing::debug!(
@@ -143,21 +188,22 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
         "Mail: querying headers"
     );
 
-    let (headers, attachments) = match read_headers(ctx, Select::List { b_archive }).await {
-        Ok(read) => read,
-        Err(e) => {
-            tracing::error!(
-                target: "mail",
-                entity_id,
-                player_id,
-                account_id,
-                reason = "db_error",
-                error = %e,
-                "Mail: header query failed"
-            );
-            return;
-        }
-    };
+    let (headers, attachments) =
+        match read_headers(Reader::caller(ctx), Select::List { b_archive }).await {
+            Ok(read) => read,
+            Err(e) => {
+                tracing::error!(
+                    target: "mail",
+                    entity_id,
+                    player_id,
+                    account_id,
+                    reason = "db_error",
+                    error = %e,
+                    "Mail: header query failed"
+                );
+                return;
+            }
+        };
 
     tracing::debug!(
         target: "mail",
@@ -171,7 +217,7 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
         "Mail: sending headers to client"
     );
 
-    let args = mail::serialize_on_mail_header_info(b_archive, &headers, &attachments);
+    let args = mail::serialize_on_mail_header_info(true, b_archive, &headers, &attachments);
     ctx.send_to_caller(method_idx::ON_MAIL_HEADER_INFO, &args)
         .await;
 }
@@ -191,27 +237,28 @@ pub(super) async fn refresh_one(ctx: &MailCtx<'_>, mail_id: i32) {
         &mail::serialize_on_mail_header_remove(mail_id),
     )
     .await;
-    let (headers, attachments) = match read_headers(ctx, Select::One { mail_id }).await {
-        Ok(read) => read,
-        Err(e) => {
-            tracing::error!(
-                target: "mail",
-                entity_id = ctx.entity_id,
-                player_id = ctx.player_id,
-                account_id = ctx.account_id(),
-                mail_id,
-                reason = "db_error",
-                error = %e,
-                "Mail: header refresh query failed"
-            );
-            return;
-        }
-    };
+    let (headers, attachments) =
+        match read_headers(Reader::caller(ctx), Select::One { mail_id }).await {
+            Ok(read) => read,
+            Err(e) => {
+                tracing::error!(
+                    target: "mail",
+                    entity_id = ctx.entity_id,
+                    player_id = ctx.player_id,
+                    account_id = ctx.account_id(),
+                    mail_id,
+                    reason = "db_error",
+                    error = %e,
+                    "Mail: header refresh query failed"
+                );
+                return;
+            }
+        };
     let Some(header) = headers.first() else {
         return;
     };
     let b_archive = u8::from(header.flags & MAIL_ARCHIVE != 0);
-    let args = mail::serialize_on_mail_header_info(b_archive, &headers, &attachments);
+    let args = mail::serialize_on_mail_header_info(false, b_archive, &headers, &attachments);
     ctx.send_to_caller(method_idx::ON_MAIL_HEADER_INFO, &args)
         .await;
 }

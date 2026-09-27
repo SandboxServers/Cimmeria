@@ -80,11 +80,13 @@ pub(in super::super) const ITEM_NOT_FOUND: AttachmentRefusal = AttachmentRefusal
     "item_not_owned",
     "The attached item is no longer in your bags. The message was not sent.",
 );
-/// Equipped, bandolier, mission and crafting items stay put.
+/// Equipped, bandolier and mission items stay put (the crafting bag is a
+/// mail source since 2026-09-27; `escrow::MAILABLE_CONTAINERS`).
 pub(in super::super) const ITEM_NOT_IN_MAIN_BAG: AttachmentRefusal = AttachmentRefusal::new(
     MailResult::ItemNotAvailable,
     "item_not_in_main_bag",
-    "Only items in your main bag can be sent by gate-mail. The message was not sent.",
+    "Only items in your main bag or crafting bag can be sent by gate-mail. \
+     The message was not sent.",
 );
 /// A vault item (personal 17, auction 18, team 19, command 20). Owner
 /// decision 2026-09-27 (Bank campaign): vendors, trade, crafting and mail

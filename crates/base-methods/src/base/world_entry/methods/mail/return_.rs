@@ -1,14 +1,18 @@
 //! `returnMailMessage` (CM 47): send a mail back to the player who sent it,
 //! with its item and any gift cash (D-SS10, CAT-G-06). SS-M4's expiry
-//! sweep reuses [`return_tx`]. Lock order and failure handling:
-//! [`super::claim`].
+//! sweep reuses [`return_locked`] inside its own transaction. Lock order
+//! and failure handling: [`super::claim`].
 
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use super::claim::{
-    answer_failure, lock_escrow, lock_mail, lock_players, unix_now, Op, OpError, Refusal, NOT_FOUND,
+    answer_failure, lock_escrow, lock_mail, lock_players, unix_now, LockedMail, Op, OpError,
+    Refusal, NOT_FOUND,
 };
+use super::expiry::expires_at;
+use super::notify::{notify_delivered, Delivery};
 use super::MailCtx;
+use crate::base::feedback::FeedbackCtx;
 use crate::cell::mail;
 use crate::cell::mail::codes::flags::{MAIL_ARCHIVE, MAIL_COD};
 use crate::mercury::method_idx;
@@ -27,7 +31,9 @@ const COD_PAID: Refusal = Refusal {
     text: "You have already paid for this COD delivery, so it cannot be returned. \
            Take the item instead.",
 };
-const SYSTEM_MAIL: Refusal = Refusal {
+/// No player to return to: server mail, or a sender whose character is
+/// gone. The expiry sweep quarantines on it.
+pub(super) const SYSTEM_MAIL: Refusal = Refusal {
     reason: "system_mail",
     text: "That gate-mail message has no player sender to return it to.",
 };
@@ -56,9 +62,10 @@ pub(super) struct Returned {
 /// conditional `UPDATE` re-addresses the row: the returner becomes its
 /// sender, `returned` is set so it can never loop, an unpaid COD is
 /// cancelled with its amount **zeroed** (the price never becomes gift
-/// cash), and it arrives unread with a fresh `sent_time`. The escrow row is
-/// keyed by `mail_id`, so the item moves with the mail in the same
-/// transaction. Server mail: exempt from the recipient's mailbox cap.
+/// cash), and it arrives unread with a fresh `sent_time` and a fresh
+/// 30-day `expires_at` (SS-M4). The escrow row is keyed by `mail_id`, so
+/// the item moves with the mail in the same transaction. Server mail:
+/// exempt from the recipient's mailbox cap.
 pub(super) async fn return_tx(
     pool: &PgPool,
     player_id: i32,
@@ -69,6 +76,22 @@ pub(super) async fn return_tx(
     let mail = lock_mail(&mut tx, player_id, mail_id)
         .await?
         .ok_or(NOT_FOUND)?;
+    let returned = return_locked(&mut tx, player_id, mail_id, &mail, now).await?;
+    tx.commit().await?;
+    Ok(returned)
+}
+
+/// [`return_tx`]'s checks and write, on a mail the caller already locked
+/// with [`lock_mail`] in `conn`'s transaction. Commits nothing. The expiry
+/// sweep (SS-M4, D-SS04 path 1) calls it after its own lock and decision,
+/// so the return is the same code whoever triggers it.
+pub(super) async fn return_locked(
+    conn: &mut PgConnection,
+    player_id: i32,
+    mail_id: i32,
+    mail: &LockedMail,
+    now: i32,
+) -> Result<Returned, OpError> {
     if mail.archived() {
         return Err(ARCHIVED.into());
     }
@@ -79,8 +102,8 @@ pub(super) async fn return_tx(
         return Err(COD_PAID.into());
     }
     let sender_id = mail.sender_id.ok_or(SYSTEM_MAIL)?;
-    let item = lock_escrow(&mut tx, mail_id).await?;
-    let players = lock_players(&mut tx, &[player_id, sender_id]).await?;
+    let item = lock_escrow(&mut *conn, mail_id).await?;
+    let players = lock_players(&mut *conn, &[player_id, sender_id]).await?;
     if !players.iter().any(|p| p.player_id == sender_id) {
         return Err(SYSTEM_MAIL.into());
     }
@@ -94,7 +117,8 @@ pub(super) async fn return_tx(
     };
     let moved = sqlx::query(
         "UPDATE sgw_gate_mail SET character_id = $3, sender_id = $2, sender_name = $4, \
-                cash = $5, flags = flags & ~$6, returned = true, read_time = 0, sent_time = $7 \
+                cash = $5, flags = flags & ~$6, returned = true, read_time = 0, sent_time = $7, \
+                expires_at = $9 \
          WHERE mail_id = $1 AND character_id = $2 AND sender_id = $3 \
            AND NOT returned AND NOT cod_paid AND (flags & $8) = 0",
     )
@@ -106,14 +130,14 @@ pub(super) async fn return_tx(
     .bind(MAIL_COD)
     .bind(now)
     .bind(MAIL_ARCHIVE)
-    .execute(&mut *tx)
+    .bind(expires_at(now))
+    .execute(&mut *conn)
     .await?
     .rows_affected();
     if moved != 1 {
         // Only reachable without the row lock: the other return won.
         return Err(ALREADY_RETURNED.into());
     }
-    tx.commit().await?;
     Ok(Returned {
         to_player_id: sender_id,
         cash,
@@ -122,7 +146,8 @@ pub(super) async fn return_tx(
     })
 }
 
-/// `returnMailMessage(MailId)`. The mail leaves the caller's list.
+/// `returnMailMessage(MailId)`. The mail leaves the caller's list, and its
+/// sender, if online, is told it arrived (D-SS11), after the commit.
 pub(super) async fn return_mail(ctx: &MailCtx<'_>, mail_id: i32) {
     match return_tx(ctx.pool, ctx.player_id, mail_id, unix_now()).await {
         Ok(returned) => {
@@ -142,6 +167,18 @@ pub(super) async fn return_mail(ctx: &MailCtx<'_>, mail_id: i32) {
             ctx.send_to_caller(
                 method_idx::ON_MAIL_HEADER_REMOVE,
                 &mail::serialize_on_mail_header_remove(mail_id),
+            )
+            .await;
+            let fb = FeedbackCtx {
+                transport: ctx.transport,
+                connected: ctx.connected,
+            };
+            notify_delivered(
+                ctx.pool,
+                &fb,
+                returned.to_player_id,
+                mail_id,
+                Delivery::Returned,
             )
             .await;
         }

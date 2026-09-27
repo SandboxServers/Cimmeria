@@ -19,8 +19,16 @@ pub use send_result::{serialize_send_mail_result, SEND_MAIL_RESULT_FLAGS_BEFORE_
 
 /// Serialize `onMailHeaderInfo` args.
 ///
+/// `reset_category` is the client's "clear this list first" flag. SS-E1
+/// M-Q7 (`SGW.exe@0x00e15450`): when it is set, the client clears only the
+/// list named by `bArchive` (inbox or archive), then upserts every row by
+/// id into the list its own `MAIL_Archive` bit names. Set it on a full list
+/// reply, so mail deleted, returned or expired server-side drops out of the
+/// client's list; leave it clear on a one-header upsert (a refresh or a
+/// new-mail notification), which must not wipe the rest of the list.
+///
 /// Wire format:
-/// - ResetCategory: UINT8
+/// - ResetCategory: UINT8 (1 = clear the `bArchive` list first)
 /// - bArchive: UINT8
 /// - MessageHeaders: ARRAY of MessageHeader FIXED_DICT
 ///   - count: u32 LE
@@ -32,14 +40,15 @@ pub use send_result::{serialize_send_mail_result, SEND_MAIL_RESULT_FLAGS_BEFORE_
 ///   - per attachment: id(i32, the mail id the client joins on), itemId(i32),
 ///     stackSize(i32), durability(i32), charges(i32)
 pub fn serialize_on_mail_header_info(
+    reset_category: bool,
     b_archive: u8,
     headers: &[MailHeader],
     attachments: &[MailAttachment],
 ) -> Vec<u8> {
     let mut args = Vec::with_capacity(2 + 4 + headers.len() * 64 + 4 + attachments.len() * 20);
 
-    // ResetCategory: always 0
-    args.push(0u8);
+    // ResetCategory
+    args.push(u8::from(reset_category));
     // bArchive
     args.push(b_archive);
 

@@ -15,8 +15,9 @@
 //!   an item and no cash.
 //! - `.mailbox [name]` reports a mailbox: open and archived counts, what is
 //!   in escrow, and the next expiry.
-//! - `.mail_expire <mailId>` is refused with feedback until SS-M4 adds the
-//!   `expires_at` column it would set.
+//! - `.mail_expire <mailId>` makes one mail due now; the base expires it at
+//!   once by the sweep's own path (SS-M4) and tells the GM which D-SS04
+//!   path it took.
 
 use tokio::sync::mpsc;
 
@@ -226,24 +227,24 @@ pub(super) async fn mailbox(
     forward(caller_id, "mailbox", msg, tx, space_mgr).await;
 }
 
-/// `.mail_expire <mailId>`: refused until SS-M4 adds `expires_at`.
+/// `.mail_expire <mailId>`: forwarded to the base, which makes the mail
+/// due now and expires it (SS-M4).
 pub(super) async fn mail_expire(
     caller_id: u32,
     args: &[&str],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    let r = match parse_mail_expire(args) {
-        Err(r) => r,
-        Ok(mail_id) => Refusal {
-            reason: "expiry_not_available",
-            line: format!(
-                ".mail_expire: mail does not expire yet (expiry arrives with SS-M4), \
-                 so mail {mail_id} was not changed."
-            ),
-        },
+    let mail_id = match parse_mail_expire(args) {
+        Ok(id) => id,
+        Err(r) => return refuse(caller_id, "mail_expire", r, tx, space_mgr).await,
     };
-    refuse(caller_id, "mail_expire", r, tx, space_mgr).await;
+    let Some(actor) = actor(caller_id, space_mgr) else {
+        let r = no_character("mail_expire");
+        return refuse(caller_id, "mail_expire", r, tx, space_mgr).await;
+    };
+    let msg = CellToBaseMsg::MailGm(MailGmCellToBase::Expire { actor, mail_id });
+    forward(caller_id, "mail_expire", msg, tx, space_mgr).await;
 }
 
 fn no_character(cmd: &str) -> Refusal {

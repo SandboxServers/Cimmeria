@@ -1,5 +1,8 @@
 //! The read side of gate mail: one body, archive and delete. The header
 //! list is [`super::headers`].
+//!
+//! A quarantined mail (SS-M4, D-SS04 path 3) is invisible here: no body,
+//! no archive, no delete. It keeps its escrow row for a GM.
 
 use super::MailCtx;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
@@ -31,7 +34,7 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
     let row = match sqlx::query_as::<_, BodyRow>(
         "SELECT m.message, p.player_name AS recipient_name \
          FROM sgw_gate_mail m JOIN sgw_player p ON p.player_id = m.character_id \
-         WHERE m.mail_id = $1 AND m.character_id = $2",
+         WHERE m.mail_id = $1 AND m.character_id = $2 AND NOT m.quarantined",
     )
     .bind(mail_id)
     .bind(player_id)
@@ -107,7 +110,7 @@ pub(super) async fn mark_read(
 ) -> Result<u64, sqlx::Error> {
     sqlx::query(
         "UPDATE sgw_gate_mail SET read_time = $1 \
-         WHERE mail_id = $2 AND character_id = $3 AND read_time = 0",
+         WHERE mail_id = $2 AND character_id = $3 AND read_time = 0 AND NOT quarantined",
     )
     .bind(now)
     .bind(mail_id)
@@ -122,6 +125,8 @@ pub(super) async fn mark_read(
 /// price; paying a COD clears the amount, D-SS09). One statement, so a
 /// take running at the same time either commits first (and the re-checked
 /// row now qualifies) or keeps the mail. Returns the rows deleted (0 or 1).
+/// A quarantined mail is never deleted (D-SS04: its escrow row cascades
+/// with it), even once it holds nothing.
 ///
 /// Split out, like [`mark_read`], so the guard tests reach the SQL itself.
 pub(super) async fn delete_if_empty(
@@ -131,7 +136,7 @@ pub(super) async fn delete_if_empty(
 ) -> Result<u64, sqlx::Error> {
     sqlx::query(
         "DELETE FROM sgw_gate_mail m \
-         WHERE m.mail_id = $1 AND m.character_id = $2 AND m.cash = 0 \
+         WHERE m.mail_id = $1 AND m.character_id = $2 AND m.cash = 0 AND NOT m.quarantined \
            AND NOT EXISTS (SELECT 1 FROM sgw_gate_mail_item i WHERE i.mail_id = m.mail_id)",
     )
     .bind(mail_id)
@@ -172,7 +177,8 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
                 "SELECT m.cash, m.flags, \
                         EXISTS (SELECT 1 FROM sgw_gate_mail_item i WHERE i.mail_id = m.mail_id) \
                             AS has_item \
-                 FROM sgw_gate_mail m WHERE m.mail_id = $1 AND m.character_id = $2",
+                 FROM sgw_gate_mail m \
+                 WHERE m.mail_id = $1 AND m.character_id = $2 AND NOT m.quarantined",
             )
             .bind(mail_id)
             .bind(player_id)
@@ -282,7 +288,10 @@ async fn refuse_delete(ctx: &MailCtx<'_>, mail_id: i32, held: Held) {
 }
 
 /// Set `MAIL_Archive` on `mail_id` for its owner `player_id`, unless it is
-/// an unpaid COD. Returns the rows changed (0 or 1).
+/// an unpaid COD or quarantined. Returns the rows changed (0 or 1).
+///
+/// Archiving clears `expires_at` (SS-M4, D-SS04): archived mail never
+/// expires, and the client shows "Never" for it.
 ///
 /// An unpaid COD must stay in the inbox (SS-M3 security review): archived
 /// mail cannot be returned (D-SS10) and never expires (D-SS04), a COD
@@ -295,8 +304,8 @@ pub(super) async fn archive_unless_cod(
     player_id: i32,
 ) -> Result<u64, sqlx::Error> {
     sqlx::query(
-        "UPDATE sgw_gate_mail SET flags = flags | $3 \
-         WHERE mail_id = $1 AND character_id = $2 AND (flags & $4) = 0",
+        "UPDATE sgw_gate_mail SET flags = flags | $3, expires_at = NULL \
+         WHERE mail_id = $1 AND character_id = $2 AND (flags & $4) = 0 AND NOT quarantined",
     )
     .bind(mail_id)
     .bind(player_id)
@@ -349,7 +358,7 @@ pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
         Ok(0) => {
             let cod: Result<Option<bool>, sqlx::Error> = sqlx::query_scalar(
                 "SELECT (flags & $3) <> 0 FROM sgw_gate_mail \
-                 WHERE mail_id = $1 AND character_id = $2",
+                 WHERE mail_id = $1 AND character_id = $2 AND NOT quarantined",
             )
             .bind(mail_id)
             .bind(player_id)

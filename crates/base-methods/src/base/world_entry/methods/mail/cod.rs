@@ -9,7 +9,9 @@ use super::claim::{
     answer_failure, debit, lock_escrow, lock_mail, lock_players, unix_now, Balance, Op, OpError,
     Refusal, NOT_FOUND,
 };
+use super::expiry::expires_at;
 use super::headers::refresh_one;
+use super::notify::{notify_delivered, Delivery};
 use super::MailCtx;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::cell::mail::codes::flags::MAIL_COD;
@@ -116,7 +118,7 @@ pub(super) async fn pay_cod_tx(
         }
     }
     let Some((sender_id, payer_name)) = live else {
-        clear_cod(&mut tx, player_id, mail_id, mail.cash, false).await?;
+        clear_cod(&mut tx, player_id, mail_id, mail.cash, false, now).await?;
         tx.commit().await?;
         return Ok(CodOutcome::CancelledSenderGone {
             price: mail.cash,
@@ -128,7 +130,7 @@ pub(super) async fn pay_cod_tx(
     let balance = debit(&mut tx, player_id, price)
         .await?
         .ok_or(NOT_ENOUGH_CASH)?;
-    clear_cod(&mut tx, player_id, mail_id, mail.cash, true).await?;
+    clear_cod(&mut tx, player_id, mail_id, mail.cash, true, now).await?;
     let body = format!(
         "{payer_name} paid {price} naquadah for the item you sent by COD (\"{}\").",
         mail.subject
@@ -136,8 +138,8 @@ pub(super) async fn pay_cod_tx(
     let payment_mail_id: i32 = sqlx::query_scalar(
         "INSERT INTO sgw_gate_mail \
             (character_id, sender_id, sender_name, subject, message, cash, \
-             sent_time, read_time, flags, item_id) \
-         VALUES ($1, NULL, $2, $3, $4, $5, $6, 0, 0, NULL) \
+             sent_time, read_time, flags, item_id, expires_at) \
+         VALUES ($1, NULL, $2, $3, $4, $5, $6, 0, 0, NULL, $7) \
          RETURNING mail_id",
     )
     .bind(sender_id)
@@ -146,6 +148,7 @@ pub(super) async fn pay_cod_tx(
     .bind(body)
     .bind(i64::from(price))
     .bind(now)
+    .bind(expires_at(now))
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -163,15 +166,20 @@ pub(super) async fn pay_cod_tx(
 /// sets `cod_paid`: the item is now the recipient's, so the mail can no
 /// longer be returned (nor, in SS-M4, expire back to the seller). A COD
 /// cancelled because its sender is gone is not paid.
+///
+/// Either way the mail's 30 days restart at `now` (SS-M4): the item now
+/// belongs to the recipient, and a COD paid on day 29 (or while the bags
+/// are full) must not be quarantined out of reach hours later.
 async fn clear_cod(
     conn: &mut PgConnection,
     player_id: i32,
     mail_id: i32,
     price: i64,
     paid: bool,
+    now: i32,
 ) -> Result<(), OpError> {
     let cleared = sqlx::query(
-        "UPDATE sgw_gate_mail SET cash = 0, flags = flags & ~$3, cod_paid = $5 \
+        "UPDATE sgw_gate_mail SET cash = 0, flags = flags & ~$3, cod_paid = $5, expires_at = $6 \
          WHERE mail_id = $1 AND character_id = $2 AND (flags & $3) <> 0 AND cash = $4",
     )
     .bind(mail_id)
@@ -179,6 +187,7 @@ async fn clear_cod(
     .bind(MAIL_COD)
     .bind(price)
     .bind(paid)
+    .bind(expires_at(now))
     .execute(conn)
     .await?
     .rows_affected();
@@ -189,7 +198,8 @@ async fn clear_cod(
     Ok(())
 }
 
-/// `payCODForMailMessage(MailId)`.
+/// `payCODForMailMessage(MailId)`. After the commit, the COD's sender, if
+/// online, is told the payment mail arrived (D-SS11).
 pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
     match pay_cod_tx(ctx.pool, ctx.player_id, mail_id, unix_now()).await {
         Ok(CodOutcome::Paid(paid)) => {
@@ -213,6 +223,18 @@ pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
             )
             .await;
             refresh_one(ctx, mail_id).await;
+            let fb = FeedbackCtx {
+                transport: ctx.transport,
+                connected: ctx.connected,
+            };
+            notify_delivered(
+                ctx.pool,
+                &fb,
+                paid.sender_id,
+                paid.payment_mail_id,
+                Delivery::CodPayment,
+            )
+            .await;
         }
         Ok(CodOutcome::CancelledSenderGone { price, sender_name }) => {
             tracing::info!(

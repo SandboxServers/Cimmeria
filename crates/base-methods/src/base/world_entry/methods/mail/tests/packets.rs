@@ -101,10 +101,11 @@ pub(super) enum Received {
     },
     /// An `onPlayerCommunication` feedback line.
     Feedback(String),
-    /// `onMailHeaderInfo`: `bArchive`, each header's `(id, flags)`, each
-    /// header's `cash` in the same order, and every `MessageAttachment` as
-    /// `[id, itemId, stackSize, durability, charges]`.
+    /// `onMailHeaderInfo`: `ResetCategory`, `bArchive`, each header's
+    /// `(id, flags)`, each header's `cash` in the same order, and every
+    /// `MessageAttachment` as `[id, itemId, stackSize, durability, charges]`.
     HeaderInfo {
+        reset: u8,
         b_archive: u8,
         headers: Vec<(i32, i32)>,
         cash: Vec<i32>,
@@ -125,7 +126,7 @@ pub(super) enum Received {
 }
 
 /// Decrypt one packet (all-zero test key) and decode its single method.
-fn decode(packet: &[u8], entity_id: u32) -> Received {
+pub(super) fn decode(packet: &[u8], entity_id: u32) -> Received {
     let enc = cimmeria_mercury::encryption::MercuryEncryption::from_session_key([0u8; 32]);
     let pt = enc.decrypt(packet).expect("decrypt test packet");
     let body = &pt[1..pt.len() - 4];
@@ -161,7 +162,7 @@ fn decode(packet: &[u8], entity_id: u32) -> Received {
             Received::Feedback(r.wstring())
         }
         method_idx::ON_MAIL_HEADER_INFO => {
-            let _reset = r.u8();
+            let reset = r.u8();
             let b_archive = r.u8();
             let n = r.u32();
             let mut cash = Vec::new();
@@ -184,6 +185,7 @@ fn decode(packet: &[u8], entity_id: u32) -> Received {
                 .collect();
             assert_eq!(r.off, r.buf.len(), "onMailHeaderInfo has no trailing bytes");
             Received::HeaderInfo {
+                reset,
                 b_archive,
                 headers,
                 cash,

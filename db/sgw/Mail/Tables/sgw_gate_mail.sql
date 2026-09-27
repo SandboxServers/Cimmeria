@@ -24,6 +24,17 @@ CREATE TABLE sgw_gate_mail (
     -- would get the item and the price), and SS-M4's expiry must never
     -- return it (it takes the quarantine path instead).
     cod_paid boolean DEFAULT false NOT NULL,
+    -- Social-systems SS-M4 (D-SS04): epoch seconds after which the expiry
+    -- sweep takes the mail, set at insert to sent_time + 30 days (the
+    -- client's own 720-hour Expires constant) and reset by a return. NULL
+    -- never expires: archiving clears it, and quarantine clears it.
+    expires_at integer,
+    -- Social-systems SS-M4 (D-SS04 path 3): an expired mail that could not
+    -- go back to a sender (already returned, a paid COD, system mail) but
+    -- still holds an item or gift cash. Kept with its escrow row, never
+    -- deleted; hidden from the mailbox list, the D-SS03 cap and every
+    -- player op, for a GM to recover by id.
+    quarantined boolean DEFAULT false NOT NULL,
     -- Social-systems SS-M1: a mail never carries negative cash; the send path
     -- refuses it first, and this is the backstop.
     CONSTRAINT sgw_gate_mail_cash_nonnegative_chk CHECK ((cash >= 0))

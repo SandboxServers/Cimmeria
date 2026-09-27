@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn serialize_empty_mail_headers() {
-    let args = serialize_on_mail_header_info(0, &[], &[]);
+    let args = serialize_on_mail_header_info(false, 0, &[], &[]);
     // ResetCategory(1) + bArchive(1) + headers count(4) + attachments count(4)
     assert_eq!(args.len(), 1 + 1 + 4 + 4);
     assert_eq!(args[0], 0); // ResetCategory
@@ -27,7 +27,7 @@ fn serialize_one_mail_header() {
         read_time: 0.0,
         flags: 0,
     }];
-    let args = serialize_on_mail_header_info(1, &headers, &[]);
+    let args = serialize_on_mail_header_info(false, 1, &headers, &[]);
 
     // Verify basic structure
     assert_eq!(args[0], 0); // ResetCategory
@@ -70,7 +70,7 @@ fn message_attachment_bytes_are_alias_ordered() {
         durability: -1,
         charges: 3,
     }];
-    let args = serialize_on_mail_header_info(0, &headers, &attachments);
+    let args = serialize_on_mail_header_info(false, 0, &headers, &attachments);
 
     let mut want = vec![0u8, 0];
     want.extend_from_slice(&1u32.to_le_bytes());
@@ -227,4 +227,16 @@ fn mail_result_codes_match_enumerations_xml() {
         assert_eq!(MailResult::try_from(r.code()), Ok(r));
     }
     assert_eq!(MailResult::try_from(8), Err(8));
+}
+
+/// `ResetCategory` is the first byte and carries the caller's flag (SS-M4,
+/// SS-E1 M-Q7): 1 on a full list reply, 0 on a one-header upsert. Before
+/// SS-M4 it was hard-coded 0, so this fails if the flag is dropped again.
+#[test]
+fn header_info_reset_category_is_the_first_byte() {
+    let reset = serialize_on_mail_header_info(true, 1, &[], &[]);
+    assert_eq!(&reset[..2], &[1, 1], "ResetCategory 1, bArchive 1");
+    let upsert = serialize_on_mail_header_info(false, 0, &[], &[]);
+    assert_eq!(&upsert[..2], &[0, 0], "ResetCategory 0, bArchive 0");
+    assert_eq!(reset.len(), upsert.len(), "the flag adds no bytes");
 }

@@ -20,6 +20,9 @@
 //!
 //! Every firing ends with one feedback line to the player: the mail id and
 //! what it carries, the time left on the cooldown, or why nothing was sent.
+//! A sent mail is then announced like every other delivery (D-SS11, SS-M4):
+//! `SystemMailSent::notify` pushes the header, so an open mailbox shows it
+//! at once, with the new-mail line, after the commit.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -137,6 +140,13 @@ pub async fn handle_content_system_mail(
                 "content system mail sent",
             );
             feedback(&caller, &sent_line(&msg, &done)).await;
+            if let Some(pool) = db_pool.as_deref() {
+                let fb = FeedbackCtx {
+                    transport,
+                    connected,
+                };
+                done.sent.notify(pool, &fb).await;
+            }
         }
         Err(refusal) => {
             let (last_used_at, remaining_secs) = match &refusal {
