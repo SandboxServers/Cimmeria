@@ -671,23 +671,23 @@ last_updated: 2026-09-25
 
 - **Confidence**: HIGH (code re-read 2026-09-25; no crafting runtime change since 2026-07-25)
 - **Documentation**: [gameplay/crafting-system.md](gameplay/crafting-system.md), [reverse-engineering/findings/crafting-wire-formats.md](reverse-engineering/findings/crafting-wire-formats.md), [reverse-engineering/findings/crafting-state-machine.md](reverse-engineering/findings/crafting-state-machine.md)
-- **Rust code**: [`crates/entity/src/crafting.rs`](../crates/entity/src/crafting.rs) (191 — `CraftingState`), [`crates/base-session/src/base/crafting/`](../crates/base-session/src/base/crafting/) (1,103 — handlers.rs 440, persistence.rs 645, mod.rs 18), [`crates/cell-methods/src/cell/cell_methods/player/crafting.rs`](../crates/cell-methods/src/cell/cell_methods/player/crafting.rs) (232 — method routing), [`crates/cell-console/src/cell/console/crafting.rs`](../crates/cell-console/src/cell/console/crafting.rs) (136)
+- **Rust code**: [`crates/entity/src/crafting.rs`](../crates/entity/src/crafting.rs) (191 — `CraftingState`), [`crates/base-session/src/base/crafting/`](../crates/base-session/src/base/crafting/) (1,103 — handlers.rs 440, persistence.rs 645, mod.rs 18), [`crates/cell-methods/src/cell/cell_methods/player/crafting/`](../crates/cell-methods/src/cell/cell_methods/player/crafting/) (argument parsing and the forward to the base), [`crates/cell-catalog/src/crafting/`](../crates/cell-catalog/src/crafting/) (`CraftingCatalog` and the crafting enumerations), [`crates/wire/src/crafting/`](../crates/wire/src/crafting/) (serializers for 112 and 136-140, `CraftRequest`), [`crates/cell-console/src/cell/console/crafting.rs`](../crates/cell-console/src/cell/console/crafting.rs) (136)
 - **Recent PRs**: **#427 (Phase 1 — `CraftingState` + persistence + ASP dispatch fix, #53)**, #521 (GM crafting grants), #728 (docs only, 2026-09-25: records the method-138 racial-paradigm wire schema `INT32 paradigmId + INT8 level` and confirms Rust has no progression, emission, or login sync for it; follow-up #723)
 - **Open issues**: #567 (crafting activity handlers), #723 (racial-paradigm progression + client sync), #465 (security audit CAT-F)
-- **State of play**: Phase 1 shipped the *state* layer. `sgw_player.discipline_ids`, `blueprint_ids`, `applied_science_points` and `racial_paradigm_levels` load and save transactionally, and GM grant commands drive expertise. Every player-facing crafting verb still logs `UNIMPLEMENTED` (cell_methods/player/crafting.rs:33-84).
+- **State of play**: Phase 1 shipped the *state* layer. `sgw_player.discipline_ids`, `blueprint_ids`, `applied_science_points` and `racial_paradigm_levels` load and save transactionally, and GM grant commands drive expertise. Crafting campaign CR-01 (2026-09-26) added the catalog, the byte-exact serializers and the request path: the cell parses every argument of methods 95-100 and forwards a `CraftRequest`, and the base answers every verb with a "not available yet" line (`base/crafting/request.rs`). No verb changes state yet.
 - **Path forward**: Phase 2 (#567): ASP-spend validation (paradigm gate + prerequisite expertise + DB UPDATE), then the craft / research / reverse-engineer / alloy flows. #723: emit method 138 on paradigm change and at login.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Craft from blueprint | KM | -- | stub | `CRAFT` arm parses `craft_id` then logs `UNIMPLEMENTED: craft` (cell_methods/player/crafting.rs:48). Re-verified 2026-09-25 |
-| Research item | KM | -- | stub | `UNIMPLEMENTED: research` (crafting.rs:60) |
-| Reverse engineer | KM | -- | stub | `UNIMPLEMENTED: reverseEngineer` (crafting.rs:65) |
-| Alloy | KM | -- | stub | `UNIMPLEMENTED: alloying` (crafting.rs:72) |
-| Discipline learning | KM | -- | stub | `spendAppliedSciencePoints` routes but does not mutate: "Phase 1: route only" (crafting.rs:24-33) |
+| Craft from blueprint | KM | -- | stub | Parsed and forwarded; the base answers "Crafting is not available yet." (CR-01) |
+| Research item | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
+| Reverse engineer | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
+| Alloy | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
+| Discipline learning | KM | -- | stub | `spendAppliedSciencePoints` is parsed and forwarded but does not mutate; answered "not available yet" (CR-01) |
 | Expertise system (0-100) | IM | -- | entity/crafting.rs, base/crafting/handlers.rs:36 | **Corrected 2026-07-25.** `set_expertise` with an explicit `[0,100]` clamp, first-grant discipline registration, transactional save, and an `onUpdateDiscipline` client push (handlers.rs:86-140). Driven only by GM grants; no in-client record |
 | Racial paradigm gating | KM | -- | state only | `racial_paradigm_levels` loads/saves as a `{paradigm_id → level}` map (persistence.rs:132-152) but **no gate function consumes it**, and method 138 is never emitted (#728 audit, #723). Re-verified 2026-09-25 |
 | Blueprint management | IM | -- | base/crafting/persistence.rs:91 | **Corrected 2026-07-25.** `blueprint_ids` round-trips through `load_crafting_state` / `save_crafting_state`; no acquire/dedupe verbs yet |
-| Crafting respec | KM | -- | stub | `UNIMPLEMENTED: respecCrafting` (crafting.rs:84) |
+| Crafting respec | KM | -- | stub | Parsed and forwarded; answered "not available yet" (CR-01) |
 
 ### 20. Stargate Travel --- IM
 

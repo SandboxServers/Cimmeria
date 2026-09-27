@@ -203,39 +203,20 @@ mod tests {
         );
     }
 
-    /// Shadow-arm regression guard. Asserts that the
-    /// `SPEND_APPLIED_SCIENCE_POINTS` arm in
-    /// `crates/cell-methods/src/cell/cell_methods/player/social.rs` stays
-    /// deleted: dispatching index 95 must produce **exactly one** info-
-    /// level log carrying the `spendAppliedSciencePoints` substring, and
-    /// that log must be the crafting submodule's `"(Phase 2)"` variant.
-    ///
-    /// Bug shape this catches: if a future PR reintroduces the social
-    /// shadow arm (e.g., by reverting this PR or by an unrelated copy-
-    /// paste), both the crafting and social handlers fire for index 95
-    /// — the count goes from 1 to 2 — and routing tests that assert only
-    /// `handled == true` cannot distinguish "routed to the right place"
-    /// from "routed to two places". That's the shadow-arm trap this
-    /// guard exists to prevent.
-    ///
-    /// We pin BOTH the count (exactly one) and the suffix `(Phase 2)`
-    /// because:
-    /// 1. Count alone would miss a future shadow that adopts a different
-    ///    log message but still returns `true`.
-    /// 2. Suffix alone would miss the same crafting log firing twice
-    ///    (unlikely, but cheap to guard).
+    /// Shadow-arm regression guard. Dispatching index 95 through the outer
+    /// router must reach the crafting submodule, which forwards exactly one
+    /// `CellToBaseMsg::Crafting` carrying `Spend { discipline_id }`. The
+    /// social submodule forwards no crafting request, so a 95 routed there
+    /// (or anywhere else) leaves the channel empty and fails here.
     #[tokio::test]
     async fn route_index_95_must_go_to_crafting_not_social() {
-        use crate::test_support::LogCapture;
-        use tracing::Level;
-
-        let capture = LogCapture::install();
+        use crate::cell::messages::{CraftRequest, CraftVerb};
 
         let mut mgr = make_space_manager_with_player(1);
-        let (tx, _rx) = mpsc::channel(8);
+        mgr.get_entity_mut(1).unwrap().player_id = Some(77);
+        let (tx, mut rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
 
-        // Payload value is irrelevant — only the routing target matters here.
         let args = 42i32.to_le_bytes();
         let handled = dispatch(
             1,
@@ -248,37 +229,22 @@ mod tests {
         .await;
         assert!(handled, "outer dispatch must handle method 95");
 
-        // Count INFO events that mention spendAppliedSciencePoints —
-        // the substring is shared by both submodules' historical log
-        // shapes, so a re-emerged social shadow shows up as count == 2.
-        let asp_logs: Vec<_> = capture
-            .all()
-            .into_iter()
-            .filter(|c| c.level == Level::INFO && c.message_contains("spendAppliedSciencePoints"))
-            .collect();
-
-        assert_eq!(
-            asp_logs.len(),
-            1,
-            "expected exactly one `spendAppliedSciencePoints` log for method 95; \
-             got {}. More than one log indicates the social-submodule shadow \
-             arm at cell_methods/player/social.rs has been reintroduced. \
-             All captured events: {:#?}",
-            asp_logs.len(),
-            capture.all(),
-        );
-
-        // The single log must be the crafting submodule's `(Phase 2)`
-        // variant — proves it's the right handler.
-        let only = &asp_logs[0];
-        assert!(
-            only.message_contains("(Phase 2)"),
-            "the single spendAppliedSciencePoints log must be the crafting \
-             handler's `(Phase 2)` variant — its message was {:?}. A log \
-             without `(Phase 2)` is the social-submodule shape and means \
-             index 95 is being routed to social instead of crafting.",
-            only,
-        );
+        match rx.try_recv() {
+            Ok(CellToBaseMsg::Crafting(request)) => assert_eq!(
+                request,
+                CraftRequest {
+                    entity_id: 1,
+                    player_id: 77,
+                    verb: CraftVerb::Spend { discipline_id: 42 },
+                    allowed: 0,
+                },
+                "method 95 must be forwarded by the crafting submodule"
+            ),
+            other => panic!(
+                "method 95 must forward one Crafting request; got {other:?}.                  An empty channel means 95 was routed away from crafting."
+            ),
+        }
+        assert!(rx.try_recv().is_err(), "exactly one message for method 95");
     }
 
     /// Companion guard to [`route_index_95_must_go_to_crafting_not_social`].
@@ -287,7 +253,7 @@ mod tests {
     /// arm restored AND outer router narrowed). It can't catch a lone
     /// shadow restoration on its own: with the outer router still
     /// correctly routing 95 to crafting, a re-added social arm never
-    /// fires through `dispatch`, the captured-log count stays at 1, and
+    /// fires through `dispatch`, the crafting forward still arrives, and
     /// the test happily passes.
     ///
     /// This test calls `social::dispatch` **directly** with method 95

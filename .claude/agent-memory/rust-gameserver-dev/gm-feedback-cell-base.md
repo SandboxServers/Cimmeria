@@ -121,3 +121,17 @@ line were silently misrouted to the wrong client.
 - `npc_ai::stationary_no_los_or_range_emits_structured_decision_log` is a
   pre-existing parallel-only flake (global tracing `LogCapture` race); passes in
   isolation and under `--test-threads=1`. Not caused by feedback changes.
+
+## Player-facing (non-GM) feedback: CHAN_feedback via the shared serializer
+
+The line that reaches a player's chat is the legacy `feedback()` shape:
+method 28, speaker `SYSTEM`, flags 0, `CHAN_FEEDBACK` (9). Coordinator
+direction (crafting CR-01, from CR-E1): build it with the canonical
+`cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK}`
+and send with `send_to_witness_reliable`, as
+`base::crafting::feedback::{feedback_text_args, reject}` does, rather than
+reusing the GM helper's private serializer copy. `onErrorCode` rendering is
+unresolved, so it is only ever a secondary after the text. No vendor text
+rejection helper exists. A byte-exact test builds the expected packet with
+`build_player_entity_method_packet(&[0;32], 0, &[], id, 28, ..)` against a
+`test_default_connected_client_state` session.

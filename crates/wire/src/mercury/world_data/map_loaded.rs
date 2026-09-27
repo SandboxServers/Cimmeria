@@ -378,14 +378,10 @@ fn build_map_loaded_body_inner(
     append_method!(method_idx::ON_CASH_CHANGED, &data.naquadah.to_le_bytes());
 
     // 23. onUpdateKnownCrafts(ARRAY<INT32>) — extended encoding
-    {
-        let mut args = Vec::with_capacity(4 + data.blueprint_ids.len() * 4);
-        args.extend_from_slice(&(data.blueprint_ids.len() as u32).to_le_bytes());
-        for &bp in &data.blueprint_ids {
-            args.extend_from_slice(&bp.to_le_bytes());
-        }
-        append_method!(method_idx::ON_UPDATE_KNOWN_CRAFTS, &args);
-    }
+    append_method!(
+        method_idx::ON_UPDATE_KNOWN_CRAFTS,
+        &crate::crafting::known_crafts_args(&data.blueprint_ids)
+    );
 
     // NOTE: `onChatJoined` × 8 channels and `onPlayerCommunication` (welcome
     // message) used to live here but were moved to `handle_on_client_ready`

@@ -270,9 +270,9 @@ mod tests {
     use crate::base::crafting::persistence::load_crafting_state;
     use crate::test_support::{require_db_or_skip, TestTransport};
 
-    /// Sentinel base stepped past the persistence-module range (0x7000_2000)
-    /// so concurrent live-DB runs don't collide. Fits in i32.
-    const TEST_BASE: i32 = 0x7000_3000;
+    /// Sentinel base in the crafting `0x7000_Cxxx` block, past the
+    /// persistence tests' `0x7000_C000..0x7000_CB55`. Fits in i32.
+    const TEST_BASE: i32 = 0x7000_CC00;
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_player_discipline_expertise WHERE player_id = $1")

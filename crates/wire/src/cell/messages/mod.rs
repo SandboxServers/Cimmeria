@@ -15,6 +15,7 @@ mod cell_to_base;
 mod data;
 mod lab;
 
+pub use crate::crafting::{CraftRequest, CraftVerb};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
 pub use data::{MailOp, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission};

@@ -133,6 +133,19 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::StartMinigame { .. }
         | CellToBaseMsg::MinigameResult { .. } => progression_dispatch::route(msg, &ctx).await,
 
+        // Crafting (95-100): one variant; `base::crafting::request` routes
+        // the verbs, so later verbs never touch this arm.
+        CellToBaseMsg::Crafting(request) => {
+            let craft_ctx = crate::base::crafting::request::CraftCtx {
+                db_pool: ctx.db_pool,
+                cell_tx: ctx.cell_tx,
+                transport: ctx.transport,
+                connected: ctx.connected,
+                entity_to_addr: ctx.entity_to_addr,
+            };
+            crate::base::crafting::request::handle_craft_request(request, &craft_ctx).await
+        }
+
         CellToBaseMsg::ContactListCreate { .. }
         | CellToBaseMsg::ContactListDelete { .. }
         | CellToBaseMsg::ContactListRename { .. }

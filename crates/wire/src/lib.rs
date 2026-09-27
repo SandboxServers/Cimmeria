@@ -34,6 +34,10 @@ pub mod ability_tree {
     mod tests;
 }
 
+/// The crafting client-method payloads and the cell-to-base crafting
+/// request.
+pub mod crafting;
+
 /// Base-side wire serializers.
 pub mod base {
     /// Contact-list client methods (CM 85-89).
