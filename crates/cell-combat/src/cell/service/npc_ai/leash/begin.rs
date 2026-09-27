@@ -192,6 +192,13 @@ pub(in crate::cell::service::npc_ai) async fn begin_leash(
     use super::super::AiTransitionReason as R;
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
+    // A pet does not walk home and does not evade: it goes straight back to
+    // following its owner, unhealed (pets PT-05, D-PT07).
+    if super::super::pet::is_pet(space_mgr, npc_id) {
+        super::super::pet::rearm_after_fight(npc_id, reason, trigger, tx, space_mgr).await;
+        return;
+    }
+
     drain_player_combat(npc_id, tx, space_mgr).await;
 
     let world = super::super::world_label(space_mgr, npc_id);

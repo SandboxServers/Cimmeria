@@ -121,12 +121,19 @@ pub fn exit_player_combat(
     None
 }
 
-/// Called when an NPC dies. Iterates the dying NPC's `threat_list` and
-/// removes the NPC from each aggroed player's `threatened_mobs` set.
+/// Called when an NPC dies. Removes the NPC from the `threatened_mobs` set of
+/// every player that lists it: the dying NPC's `threat_list` players **and**
+/// any other player whose set names it.
 /// Returns `(player_id, new_state_field)` pairs for which `BSF_IN_COMBAT`
 /// just cleared so the caller can send `onStateFieldUpdate` to each
 /// affected player (via `send_entity_method`, which for player entities
 /// routes to that player's own client — not their AoI witnesses).
+///
+/// The wider walk is for pet owners (pets PT-05, D-PT06): a pet's threat puts
+/// its owner in combat with the mob, but the owner is not on the mob's threat
+/// list (the pet is). Walking only the threat list left the owner in combat
+/// after the pet's kill. It is the same walk as
+/// [`drain_npc_from_player_combat`], which the leash already uses.
 ///
 /// Does NOT clear the NPC's own `threat_list` — caller decides whether to
 /// keep it for damage attribution (XP, loot tagging) or wipe it.
@@ -140,19 +147,7 @@ pub fn clear_dead_npc_from_all_player_threat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     npc_id: u32,
 ) -> Vec<(u32, u32)> {
-    // Snapshot the threat list — exit_player_combat takes &mut so we can't
-    // hold a borrow on the NPC while iterating its keys.
-    let aggroed_players: Vec<u32> = space_mgr
-        .get_entity(npc_id)
-        .map(|n| n.threat_list.keys().copied().collect())
-        .unwrap_or_default();
-
-    aggroed_players
-        .into_iter()
-        .filter_map(|player_id| {
-            exit_player_combat(space_mgr, player_id, npc_id).map(|state| (player_id, state))
-        })
-        .collect()
+    players_listing_npc_exit_combat(space_mgr, npc_id)
 }
 
 /// Drop a living NPC that is giving up its fight (leash, lost target, reset)
@@ -160,8 +155,8 @@ pub fn clear_dead_npc_from_all_player_threat(
 /// new_state_field)` for each player whose `BSF_IN_COMBAT` just cleared, for
 /// the caller to send.
 ///
-/// Wider than [`clear_dead_npc_from_all_player_threat`] on purpose: that one
-/// walks the NPC's `threat_list`, but a target the fight handler already
+/// Walks wider than the NPC's `threat_list` on purpose (the dead-NPC sweep
+/// shares the walk since pets PT-05): a target the fight handler already
 /// pruned (it died, or went out of range) is no longer on the list and can
 /// still carry the NPC in `threatened_mobs`. Missing it leaves the player
 /// in combat, with no regen and no out-of-combat holster (audit S7). So this
@@ -171,6 +166,16 @@ pub fn clear_dead_npc_from_all_player_threat(
 /// Does not clear the NPC's `threat_list`; the caller does, after this runs.
 #[tracing::instrument(name = "threat.drain_npc", level = "trace", skip_all, fields(npc_id))]
 pub fn drain_npc_from_player_combat(
+    space_mgr: &mut crate::cell::space_manager::SpaceManager,
+    npc_id: u32,
+) -> Vec<(u32, u32)> {
+    players_listing_npc_exit_combat(space_mgr, npc_id)
+}
+
+/// The walk both functions above share: the NPC's threat-list players plus
+/// every player whose `threatened_mobs` names it, each taken out of combat
+/// with the NPC.
+fn players_listing_npc_exit_combat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     npc_id: u32,
 ) -> Vec<(u32, u32)> {

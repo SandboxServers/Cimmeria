@@ -63,8 +63,14 @@ pub fn aggression_toward_players(npc: &CellEntity) -> MobAggression {
 
 /// Whether `npc` aggroes players on sight. This is the Idle admission test
 /// in `npc_ai_tick` and the first gate of the auto-aggro scan.
+///
+/// A pet is never hostile to players, whatever its faction or override
+/// (pets PT-05, D-PT06): it fights for its owner, so it must not run the
+/// player proximity scan or be recruited as an assister. The owner's faction
+/// already reads neutral; this also covers a content `set_aggression` aimed at
+/// a pet.
 pub fn is_hostile_to_players(npc: &CellEntity) -> bool {
-    aggression_toward_players(npc).is_hostile()
+    npc.pet.is_none() && aggression_toward_players(npc).is_hostile()
 }
 
 /// The override a content or console `level` sets.

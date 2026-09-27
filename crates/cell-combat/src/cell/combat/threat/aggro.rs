@@ -26,6 +26,10 @@ pub enum AggroCause {
     /// target, and this NPC joined (NA14, D-NA04). A deliberate deviation
     /// from legacy: the 2009 server had no assist.
     Assist,
+    /// A pet's stance picked this target (pets PT-05, D-PT09): something
+    /// attacking its owner, its owner's target, or a hostile NPC near an
+    /// Aggressive pet. Seeded on the pet, never recruits.
+    PetStance,
 }
 
 impl AggroCause {
@@ -50,6 +54,7 @@ impl AggroCause {
             Self::Damage => "damage",
             Self::ContentThreat => "content_threat",
             Self::Assist => "assist",
+            Self::PetStance => "pet_stance",
         }
     }
 }
@@ -218,6 +223,12 @@ pub fn generate_threat(
             );
             return None;
         }
+        // A Passive pet never engages, even when hit (pets PT-05, D-PT09): no
+        // threat and no preemption, so it keeps following its owner.
+        Some(target) if npc_ai::pet::refuses_threat(target) => {
+            npc_ai::pet::log_passive_refusal(space_mgr, target, attacker_id, cause.label());
+            return None;
+        }
         Some(target) if target.ai_state() == AiState::Leashing => {
             // NA02's `damage_ignored` row is the one trace of the evade.
             npc_ai::detectors::leash::on_damage_while_leashing(
@@ -261,6 +272,10 @@ pub fn generate_threat(
     // This replaces the old unstructured "preempt -> Fighting" line.
     if let Some(from) = entered_from {
         npc_ai::log_aggro_acquired(space_mgr, target_id, attacker_id, from, cause);
+        // A pet's stance engagement logs its own `engaged` row.
+        if cause != AggroCause::PetStance {
+            npc_ai::pet::log_fight_entered(space_mgr, target_id, attacker_id, from, cause.label());
+        }
     }
 
     let entered_combat =

@@ -167,7 +167,20 @@ pub async fn npc_ai_tick(
             decision_outcome = tracing::field::Empty,
         );
         super::with_outcome_slot(async {
-            match ai_state {
+            // Pets (PT-05): the owner-relative pre-pass runs first. It keeps
+            // the pet following its owner, teleports it back when it falls
+            // too far behind, applies its stance and mirrors its fight into
+            // the owner's combat state. It hands back the state to run this
+            // turn, or `None` when it used the turn itself. Any other NPC
+            // passes through unchanged.
+            let Some(run_state) = super::pet::pre_pass(npc_id, ai_state, tx, space_mgr).await
+            else {
+                let outcome = super::take_last_outcome();
+                log_ai_tick(space_mgr, npc_id, ai_state, outcome, now);
+                super::detectors::sweep::after_handler(space_mgr, npc_id, ai_state, outcome, now);
+                return;
+            };
+            match run_state {
                 AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr, events).await,
                 AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
                 AiState::Patrol => npc_ai_patrol(npc_id, tx, space_mgr).await,

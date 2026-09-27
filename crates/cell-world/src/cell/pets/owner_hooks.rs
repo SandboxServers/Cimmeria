@@ -74,6 +74,10 @@ pub enum OwnerPath {
     ContentTeleport,
     /// A ring transport, same- or cross-world.
     Ring,
+    /// Not an owner move: the pet AI found the pet left behind (more than
+    /// 40 u from its owner, or on another floor) and brought it back (pets
+    /// PT-05, D-PT07). Its `pets.ai event=teleported` row says why.
+    PetLeftBehind,
 }
 
 impl OwnerPath {
@@ -91,6 +95,7 @@ impl OwnerPath {
             Self::ConsoleLocation => "console_location",
             Self::ContentTeleport => "content_teleport",
             Self::Ring => "ring",
+            Self::PetLeftBehind => "pet_left_behind",
         }
     }
 }
