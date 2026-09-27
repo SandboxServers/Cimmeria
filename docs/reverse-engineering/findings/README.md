@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 80 per-system reverse engineering findings with evidence.
+This directory contains 81 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -76,6 +76,7 @@ This directory contains 80 per-system reverse engineering findings with evidence
 | `organization-restoration.md` | Restore | Organization / squad / guild — completeness + phased plan; 9-rank + 26-bit permission model, OrgAuthority service (supersedes #68, tracked by #568) | HIGH |
 | `duel-restoration.md` | Restore | Duel system — challenge/arena/PvP-flag lifecycle, SGWDuelMarker entity; never server-implemented originally (supersedes #70, tracked by #569) | HIGH |
 | `pet-restoration.md` | Restore | Pet / companion — SGWPet entity, command dispatch, ownership/AoI; includes pet-wire-formats.md corrections (new, tracked by #570) | HIGH |
+| `pet-client-contract.md` | PT-E1 (pets campaign) | SGWPet client method wire indices (29/30/31, confirmed); the `Unit.Pet1..4` GameEntityManager slot-bind mechanism (slots 10-13) and its ownerID/`onPetStanceList` readiness gate; `SpeedPet` left open (tracked by #570) | HIGH (indices, slot bind) / LOW (SpeedPet) |
 | `black-market-restoration.md` | Restore | Black market / auction house — listings/bids/expiry/CoD; CEGUI UI; includes wire-format corrections (supersedes #67, tracked by #571) | HIGH |
 | `black-market-client-window-patch.md` | Restore/Client | Black market **client window** — runtime binary patch (deferred wide-Lua-injection) that opens the BM window; root-causes dropped method 90 (never bound into the dispatch map); owner-confirmed working; full recipe + addresses (tracked by #571 + launcher-integration issue) | HIGH |
 | `contact-list-restoration.md` | Restore | Contact list (friends/ignore/presence fanout) — generic named-list model; answers #275 (supersedes #71, tracked by #572) | HIGH |

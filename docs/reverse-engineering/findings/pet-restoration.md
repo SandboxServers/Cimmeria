@@ -46,9 +46,18 @@ Two existing-doc errors that will desync the client if implemented as documented
 
 ### Server → Client (SGWPet entity methods)
 
-- `onPetAbilityList` [client idx 1] — `ARRAY<INT32> abilityIds`. register `0x00d77720`.
-- `onPetStanceList` [idx 0] — `ARRAY<INT8>` (see correction). register `0x00d779c0`.
-- `onPetStanceUpdate` [idx 2] — `INT8` (see correction). register `0x00d77c60`.
+- `onPetAbilityList` — **wire index 29** — `ARRAY<INT32> abilityIds`. register `0x00d77720`.
+- `onPetStanceList` — **wire index 30** — `ARRAY<INT8>` (see correction). register `0x00d779c0`.
+- `onPetStanceUpdate` — **wire index 31** — `INT8` (see correction). register `0x00d77c60`.
+
+> **Correction (2026-09-27, PT-E1)**: this section previously labeled these "[client idx 1]",
+> "[idx 0]" and "[idx 2]" — that was the client's internal `MemberCallback` construction/
+> registration order at the three register addresses above, **not** the BigWorld flattened
+> wire method index. The wire indices (29/30/31) are derived from SGWMob's published 0-28
+> prefix plus the BigWorld flattening rule. Each handler's `.def`-matching property-key string
+> (`"aAbilityList"`/`"aStanceList"`/`"aStance"`) confirms which method each decompiled handler
+> implements — it does not independently confirm the numeric index values themselves. See
+> [`pet-client-contract.md`](pet-client-contract.md) §1.
 
 `GamePet` subscribes to all three (RTTI `0x01e261b0`/`0x01e26280`/`0x01e26350`).
 

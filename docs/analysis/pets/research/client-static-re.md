@@ -12,18 +12,28 @@
 
 ## A. How the client fills `Unit.Pet1..4` / recognizes "my pet"
 
-**Not resolved by this pass — genuinely needs live capture.** `Unit.PetN` is a native unit-slot
-accessor (string constants `Pet1`..`Pet4` at `0x01955a9c`-`0x01955ac0`); the client-side logic that
-*decides* which live entity occupies each slot is native C++ (no Lua touches this — the Lua only
+**RESOLVED by a later PT-E1 pass — see
+[`docs/reverse-engineering/findings/pet-client-contract.md`](../../../reverse-engineering/findings/pet-client-contract.md)
+§2 for the full call chain and byte-level evidence; do not re-derive this from scratch.**
+`Unit.Pet1`..`Pet4` are GameEntityManager **slots 10-13** (a native unit-slot accessor; string
+constants `Pet1`..`Pet4` at `0x01955a9c`-`0x01955ac0` name them, but the slot *values* — 10, 11,
+12, 13 — come from a separate Lua-constant table at `0x01b160c0`+, and are independently
+confirmed by the slot-bind loop itself, `GamePet__SyncLocalOwnerPetSlots` @ `0x00d39880`).
+The bind is driven entirely by native C++/CME event handlers (no Lua touches it — Lua only
 *consumes* `Unit.Pet1` as an already-resolved unit handle, e.g. `PetContainer.lua:429-432`,
-`PetInfo.lua:59,73`). `GamePet__ctor` (`0x00d39cb0`) zero-inits fields but does not read an
-ownerID off the wire at construction time — ownership must arrive via a subsequent property-update
-message (SGWPet's `ownerID`/`ownerBase`, both `CELL_PUBLIC` per the .def) after `createOnClient`.
-Ctor field layout (fastcall, `param_1` = `this`):
+`PetInfo.lua:59,73`) and requires: (1) `onEntityFlags` sets `ENTITYFLAG_Pet` (bit `0x400`) on
+the entity **before** (2) `onEntityProperty(GENERICPROPERTY_PetOwnerId = 5, ownerEntityId)`
+arrives and is read by `GamePet__OnOwnerIdChanged_ValuePushed` (`0x00d39a10`), which is gated on
+that flag and, once it fires, adds the pet id to the owner's own pet-id vector
+(`GameBeing__AddPetId`) — that ordering is strict. Independently, (3) `onPetStanceList` must
+also arrive (a second, independent readiness gate that can arrive before or after (1)/(2)).
+`GamePet__ctor` (`0x00d39cb0`) zero-inits fields but does not read an ownerID off the
+wire at construction time — ownership only arrives via the property update in (2), after
+`createOnClient`. Ctor field layout (fastcall, `param_1` = `this`):
 
 ```text
 *param_1 = GamePet::vftable
-[0x5c]  = 1        (byte — likely "IsPet"/type-discriminator; needs confirmation)
+[0x5c]  = 1        (dword index into param_1, i.e. byte +0x170: the constant "IsPet" marker; see pet-client-contract.md §2.3)
 [0x171] = 0        (stance-related, matches pet-restoration.md's noted init bytes)
 [0x172] = 0
 [0x173] = 0xff
@@ -32,12 +42,11 @@ FUN_00ec0620(this+0x5f)   -- array ctor, likely toggledAbilities
 FUN_0043b050(this+0x62)   -- object ctor, likely abilityInformation (PYTHON) or a VECTOR3
 ```
 
-**Recommendation**: the client-side "is this entity my pet / which slot" binding is a property-sync
-question, not a construction-time one — close it with the same `Event_Net_EntityCreate`/property-sync
-MercuryLogger capture already planned in `pet-restoration.md` (createEntity class_id=5 + first
-property batch), watching specifically for which property write triggers the `Unit.PetN` slot
-assignment (likely a `PetChanged` UI event fire — see `Events.PetChanged` subscription in
-`PetContainer.lua:467`, `PetInfo.lua:348`).
+**No live capture was needed to close this** — the mechanism above (the slot-constant table plus
+the slot-bind loop and the ownerID-property handler chain) was fully recoverable statically. The
+`Events.PetChanged` subscription in `PetContainer.lua:467`/`PetInfo.lua:348` is presumably what
+fires once the native slot write lands, but that UI-refresh detail doesn't change the required
+server message sequence and was not independently re-traced.
 
 ## B. `onPetStanceList` semantics — resolved precisely from Lua source
 
@@ -268,9 +277,8 @@ server/native gating, consistent with being CELL-side entity behavior, not clien
 
 ## H. Live x64dbg captures still needed (non-freezing log breakpoints only)
 
-1. **Ownership/slot-fill (section A)** — property-sync capture on `createEntity(class_id=5)` +
-   first property batch; watch for whichever property write fires `Events.PetChanged` /
-   assignment into `Unit.PetN`. Reuses the capture already scoped in `pet-restoration.md`.
+1. ~~**Ownership/slot-fill (section A)**~~ — **no longer needed.** Resolved statically; see the
+   correction at the top of section A and `pet-client-contract.md` §2.
 2. **Slash-command keyword text (section D)** — dump the `SGWTextCommandMgr` runtime
    command-string→`Event_SlashCmd_*` map (same technique as the existing 256-command registry
    work) to find what a player types for `Event_SlashCmd_PetInvokeCommand` /
@@ -300,6 +308,8 @@ server/native gating, consistent with being CELL-side entity behavior, not clien
   two-flags-not-a-bug clarification).
 - **MEDIUM**: C's `PetToggled`/`PetTrained` flag→feature mapping (flag exists, exact consumer not
   traced).
-- **LOW / open**: A (ownership resolution mechanism), E (SpeedPet effect), F (nameplate string
-  construction, despawn visuals) — all listed in section H with the smallest capture that would
-  close them, except F's owner-event items which are re-scoped as "nothing to capture."
+- **RESOLVED since this pass**: A (ownership resolution mechanism — see the correction at the
+  top of section A and `pet-client-contract.md` §2).
+- **LOW / open**: E (SpeedPet effect), F (nameplate string construction, despawn visuals) — all
+  listed in section H with the smallest capture that would close them, except F's owner-event
+  items which are re-scoped as "nothing to capture."
