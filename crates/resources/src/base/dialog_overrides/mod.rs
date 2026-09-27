@@ -147,16 +147,18 @@ pub struct DialogOverride {
 /// The override text and the `dialog_screens.sql` text must be kept in
 /// sync by hand — the override is the source of truth for what the player
 /// sees; the seed row is the canonical record for committing to the repo.
-/// The debug-hub entries are checked against the seed by
-/// `override_seed_agreement_debug_hub`.
+/// The quarantined debug-hub entries ([`QUARANTINED_DIALOG_OVERRIDES`]) are
+/// checked against the seed by `override_seed_agreement_debug_hub`.
 ///
 /// Append new entries at the END: tests elsewhere read `DIALOG_OVERRIDES[0]`
 /// as the Frost dialog.
 ///
 /// Every `dialog_id` must be at most [`MAX_COOKED_ELEMENT_ID`] (65535).
 /// Pushing overrides 100100 and 100101 crashed the 2009 client while it
-/// loaded Castle_CellBlock (colo deploy, 2026-09-27); the suspected cause is
-/// the id's width. Cimmeria-authored dialogs live in 60100-60199, well above
+/// loaded Castle_CellBlock (colo deploy, 2026-09-27). The id's width was
+/// first suspected but has been ruled out, and those dialogs are now
+/// quarantined (see [`QUARANTINED_DIALOG_OVERRIDES`]). The 16-bit bound
+/// stays as a guard. Cimmeria-authored dialogs live in 60100-60199, well above
 /// the client's own ids (which stop at 6427). See
 /// `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`. The
 /// guard is `every_cooked_override_element_id_fits_in_16_bits` in
@@ -199,6 +201,40 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             buttons: &[],
         }],
     },
+];
+
+/// Cimmeria-authored overrides that are defined but NOT served: nothing
+/// reads this list at runtime, so no client is sent these entries.
+///
+/// **Why they are held back (2026-09-27).** After the debug-hub dialogs
+/// started going out as category-5 overrides (as 100100/100101 in the
+/// 16:19 UTC colo deploy, then as 60100/60101/60104 in the 17:49 deploy), a
+/// tester's client died on every entry into Castle_CellBlock. It crashed
+/// after `onClientMapLoad` and never sent `mapLoaded`. SigNoz shows the
+/// client writes pushed overrides to its disk cache
+/// (`Cache.en-US\CookedDataDialogs.pak`): a session that got no push, only
+/// the cached copy, crashed the same way. These dialogs are the only
+/// category-5 content that client received between its last good session
+/// and the crash. The renumber below 65536 (#938) did not help, and PR #939
+/// found the client's dialog cache takes any 32-bit key, so the width of the
+/// id is not the fault. Which field is, is still open. The candidates are
+/// what these entries have and the long-served 3995/3996 lack: a nonzero
+/// speaker (754, 843), more than one screen, screen ids 200000-200005, and
+/// button type 4.
+///
+/// **To restore one**, once RE names the bad field and it is fixed, move
+/// the entry back into [`DIALOG_OVERRIDES`] and drop its id from this list.
+/// `quarantined_dialogs_are_not_served` fails while an id is in both.
+///
+/// The seed rows (`dialogs.sql`, `dialog_screens.sql`,
+/// `dialog_screen_buttons.sql`) and chains 7001-7003 / 7010-7011 stay. The
+/// server still sends `onDialogDisplay` for these ids, but a client without
+/// the override has no entry for them, so the NPCs show no dialog.
+///
+/// Removing these from the served list does NOT clean a client that already
+/// cached them: the server evicts nothing. Such a client must delete
+/// `Cache.en-US\CookedDataDialogs.pak`.
+pub const QUARANTINED_DIALOG_OVERRIDES: &[DialogOverride] = &[
     // NEW CONTENT (debug hub): the stasis-room dialog NPC (template 302,
     // Airman Lance, speaker 754), chains 7001-7003 in debug_hub_chains.sql.
     // Two screens so the player pages with Next; ONE button, on the final
@@ -408,7 +444,7 @@ mod tests {
     /// fields don't make it into the emitted XML.
     #[test]
     fn all_overrides_emit_their_ids_and_text() {
-        for ov in DIALOG_OVERRIDES {
+        for ov in DIALOG_OVERRIDES.iter().chain(QUARANTINED_DIALOG_OVERRIDES) {
             let bytes = generate_dialog_xml(ov);
             let s = std::str::from_utf8(&bytes).expect("utf-8");
             assert!(
@@ -481,6 +517,49 @@ mod tests {
              </Screens>\
              </COOKED_DIALOG>",
         );
+    }
+
+    /// A quarantined dialog must not be served. Moving one back into
+    /// `DIALOG_OVERRIDES` without also taking it out of the quarantine list
+    /// fails here, so a restore is always a deliberate two-sided edit, made
+    /// once RE has named the field that crashed the client on map load.
+    #[test]
+    fn quarantined_dialogs_are_not_served() {
+        for q in QUARANTINED_DIALOG_OVERRIDES {
+            assert!(
+                !DIALOG_OVERRIDES
+                    .iter()
+                    .any(|ov| ov.dialog_id == q.dialog_id),
+                "dialog {} is quarantined (client map-load crash, 2026-09-27) but is \
+                 back in DIALOG_OVERRIDES; lift the quarantine explicitly by removing \
+                 it from QUARANTINED_DIALOG_OVERRIDES",
+                q.dialog_id,
+            );
+        }
+    }
+
+    /// The debug-hub dialogs are the ones held back, and each is still
+    /// defined in full so a restore is a move, not a rewrite.
+    #[test]
+    fn debug_hub_dialogs_are_quarantined() {
+        let ids: Vec<u32> = QUARANTINED_DIALOG_OVERRIDES
+            .iter()
+            .map(|ov| ov.dialog_id)
+            .collect();
+        assert_eq!(ids, [60100, 60101, 60104]);
+        let xml = |id: u32| {
+            let ov = QUARANTINED_DIALOG_OVERRIDES
+                .iter()
+                .find(|ov| ov.dialog_id == id)
+                .expect("quarantined definition");
+            String::from_utf8(generate_dialog_xml(ov)).unwrap()
+        };
+        // The button-carrying contract each one had while served.
+        assert!(xml(60100)
+            .contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send my choice\">"));
+        assert!(!xml(60101).contains("<Buttons"));
+        assert!(xml(60104)
+            .contains("<Buttons ButtonType=\"4\" ButtonID=\"8\" Text=\"Send me a mail\">"));
     }
 
     /// The two mission-622 overrides must keep zero buttons. A button here

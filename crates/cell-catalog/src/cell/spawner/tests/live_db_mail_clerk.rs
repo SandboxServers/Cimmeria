@@ -13,6 +13,10 @@
 //!   button: the player cannot ask for the mail;
 //! * a dialog whose screens are all speaker 0 (a monologue), which makes
 //!   `display_dialog` bind the player as the speaker.
+//!
+//! The seed rows for dialog 60104 stay while its cooked-data override is
+//! quarantined (client map-load crash, 2026-09-27; see
+//! `QUARANTINED_DIALOG_OVERRIDES` in `cimmeria-resources`).
 mod live_db {
     use sqlx::Row;
 

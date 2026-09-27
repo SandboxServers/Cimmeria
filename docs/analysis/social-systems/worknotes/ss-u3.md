@@ -5,6 +5,15 @@
 
 ## Contract
 
+> **Update 2026-09-27: dialog 60104 is quarantined.** Its cooked-data override
+> moved from `DIALOG_OVERRIDES` to `QUARANTINED_DIALOG_OVERRIDES` and is not
+> served. The debug-hub dialogs, pushed as overrides, coincide with a client
+> crash on entry into Castle_CellBlock, and the bad field is not yet known.
+> The clerk, chains 7010-7011 and the seed rows stay, but the clerk shows no
+> dialog. `.mail` is the mail test meanwhile. The override tests named below
+> now check the quarantined definition and that it is not served. See
+> [debug-hub.md](../../../content/debug-hub.md#dialog-npc-template-302-airman-lance).
+
 - **Packet:** SS-U3, hub additions and UAT docs: the `send_system_mail` content action, the Gate Mail Clerk (template 390, spawn 490), the debug-hub doc, and a runnable SS-UAT.
 - **Decisions in force:** D-SS03 (server mail ignores the cap), D-SS10 (no `sender_id` means not returnable), the owner's plain-English preference, "every button press gets visible feedback on the first press", telemetry first-class. Coordinator changes to the worker rules: no Copilot reviews; no edits to `gap-analysis.md`, `project-status.md`, test counts or the crate graph.
 - **Base:** written on `origin/main` @ `91919e909` (mail M1-M3, SS-U1 `send_system_mail`, chat C1-C3, duels D1-D3, SS-U2 sparbot), then rebased onto `1c6bed3cc` (BV-04 #931 debug-hub Banker, ORG-04 #922, PT-13 #930). Rebase conflicts were additive (a `CellToBaseMsg` variant and its dispatch arm, the hub seed rows, the hub count in `debug_hub_dispatch_tests`, `debug-hub.md`), except the clerk's position, which moved past the Banker (below). Branch `social/u3-hub-uat-docs`, worktree `.claude/worktrees/ss-u3`.

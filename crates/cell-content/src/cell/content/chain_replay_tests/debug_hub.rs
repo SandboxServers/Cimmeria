@@ -16,6 +16,12 @@
 //!
 //! The chains carry no conditions, so there is no gated negative to test;
 //! the negatives here are "the wrong key fires nothing".
+//!
+//! Dialogs 60100 and 60101 are quarantined from the cooked-data overrides
+//! since 2026-09-27 (client map-load crash): the chains still resolve and
+//! the server still sends `onDialogDisplay`, but no client is sent the
+//! dialog body, so the NPC shows nothing. The "not served" guard is
+//! `quarantined_dialogs_are_not_served` in `cimmeria-resources`.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
