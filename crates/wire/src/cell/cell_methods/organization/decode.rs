@@ -9,6 +9,8 @@
 //! handlers (D-ORG05, D-ORG09, D-ORG16), and text rules to
 //! `cimmeria_entity::organization::org_text`.
 
+use cimmeria_entity::organization::CashDir;
+
 use super::reader::{ArgReader, OrgDecodeError};
 use super::{
     BROADCAST_MINIMAP_PING, INVITE_RESPONSE, LEAVE, MOTD, NOTE, OFFICER_NOTE, PVP_LEAVE_RESPONSE,
@@ -24,6 +26,7 @@ pub enum OrgCellCall {
     /// CM 9 `organizationLeave(INT32 aOrganizationId)`.
     Leave { org_id: i32 },
     /// CM 10 `BroadcastMinimapPing(INT32 aOrganzationId, VECTOR3 aLocation)`.
+    /// Every coordinate is finite.
     BroadcastMinimapPing { org_id: i32, location: [f32; 3] },
     /// CM 11 `strikeTeamResponse(INT32 aOrganizationId, UINT8 aResponse)`.
     StrikeTeamResponse { org_id: i32, response: u8 },
@@ -60,8 +63,10 @@ pub enum OrgCellCall {
     /// the caller's own squad is implied.
     SquadSetLootMode { loot_mode: i32 },
     /// CM 19 `organizationTransferCash(INT32 aOrganizationId, INT32 aCash)`.
-    /// Signed: the sign chooses deposit or withdraw (Bank campaign).
-    TransferCash { org_id: i32, amount: i32 },
+    /// The signed amount is split into a direction and a magnitude (a
+    /// positive amount deposits, a negative one withdraws); zero is rejected
+    /// at decode.
+    TransferCash { org_id: i32, dir: CashDir },
 }
 
 impl OrgCellCall {
@@ -120,9 +125,9 @@ pub fn decode_org_cell_method(
         BROADCAST_MINIMAP_PING => OrgCellCall::BroadcastMinimapPing {
             org_id: r.i32("aOrganzationId")?,
             location: [
-                r.f32("aLocation.x")?,
-                r.f32("aLocation.y")?,
-                r.f32("aLocation.z")?,
+                r.finite_f32("aLocation.x")?,
+                r.finite_f32("aLocation.y")?,
+                r.finite_f32("aLocation.z")?,
             ],
         },
         STRIKE_TEAM_RESPONSE => OrgCellCall::StrikeTeamResponse {
@@ -161,7 +166,8 @@ pub fn decode_org_cell_method(
         },
         TRANSFER_CASH => OrgCellCall::TransferCash {
             org_id: r.i32("aOrganizationId")?,
-            amount: r.i32("aCash")?,
+            dir: CashDir::from_wire(r.i32("aCash")?)
+                .ok_or(OrgDecodeError::InvalidValue { field: "aCash" })?,
         },
         other => return Err(OrgDecodeError::UnknownMethod(other)),
     };

@@ -5,6 +5,7 @@
 //! assert the text.
 
 use super::*;
+use cimmeria_entity::organization::CashDir;
 
 /// `WSTRING "Hi"`.
 const WS_HI: [u8; 8] = [2, 0, 0, 0, 0x48, 0, 0x69, 0];
@@ -146,14 +147,71 @@ fn cm18_squad_set_loot_mode() {
     );
 }
 
+/// A negative amount is a withdrawal (the client negates it), a positive
+/// one a deposit.
 #[test]
-fn cm19_transfer_cash_is_signed() {
+fn cm19_transfer_cash_splits_the_sign() {
     assert_eq!(
         decode(19, &[7, 0, 0, 0, 0x9C, 0xFF, 0xFF, 0xFF]),
         OrgCellCall::TransferCash {
             org_id: 7,
-            amount: -100
+            dir: CashDir::Withdraw(100)
         }
+    );
+    assert_eq!(
+        decode(19, &[7, 0, 0, 0, 0x64, 0, 0, 0]),
+        OrgCellCall::TransferCash {
+            org_id: 7,
+            dir: CashDir::Deposit(100)
+        }
+    );
+    // i32::MIN: 2,147,483,648 withdrawn, not an overflow.
+    assert_eq!(
+        decode(19, &[7, 0, 0, 0, 0, 0, 0, 0x80]),
+        OrgCellCall::TransferCash {
+            org_id: 7,
+            dir: CashDir::Withdraw(2_147_483_648)
+        }
+    );
+}
+
+#[test]
+fn cm19_zero_amount_is_rejected() {
+    assert_eq!(
+        decode_org_cell_method(19, &[7, 0, 0, 0, 0, 0, 0, 0]),
+        Err(OrgDecodeError::InvalidValue { field: "aCash" })
+    );
+}
+
+#[test]
+fn cm10_non_finite_coordinates_are_rejected() {
+    for (bad, field) in [
+        (f32::NAN, "aLocation.x"),
+        (f32::INFINITY, "aLocation.x"),
+        (f32::NEG_INFINITY, "aLocation.x"),
+    ] {
+        let args = cat(&[
+            &[5, 0, 0, 0],
+            &bad.to_le_bytes(),
+            &0f32.to_le_bytes(),
+            &0f32.to_le_bytes(),
+        ]);
+        assert_eq!(
+            decode_org_cell_method(10, &args),
+            Err(OrgDecodeError::InvalidValue { field })
+        );
+    }
+    let args = cat(&[
+        &[5, 0, 0, 0],
+        &0f32.to_le_bytes(),
+        &0f32.to_le_bytes(),
+        &f32::NAN.to_le_bytes(),
+    ]);
+    assert_eq!(
+        decode_org_cell_method(10, &args),
+        Err(OrgDecodeError::InvalidValue {
+            field: "aLocation.z"
+        })
     );
 }
 

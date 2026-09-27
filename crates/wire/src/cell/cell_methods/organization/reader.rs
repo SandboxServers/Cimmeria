@@ -26,6 +26,9 @@ pub enum OrgDecodeError {
     LoneSurrogate { field: &'static str },
     /// The index is not an organization method.
     UnknownMethod(u16),
+    /// `field` decoded but holds a value no legitimate client sends: a zero
+    /// cash amount (CM 19) or a non-finite coordinate (CM 10).
+    InvalidValue { field: &'static str },
 }
 
 impl OrgDecodeError {
@@ -45,6 +48,7 @@ impl OrgDecodeError {
             OrgDecodeError::TrailingBytes { .. } => "trailing_bytes",
             OrgDecodeError::LoneSurrogate { .. } => "lone_surrogate",
             OrgDecodeError::UnknownMethod(_) => "unknown_method",
+            OrgDecodeError::InvalidValue { .. } => "invalid_value",
         }
     }
 }
@@ -64,6 +68,7 @@ impl fmt::Display for OrgDecodeError {
             OrgDecodeError::UnknownMethod(idx) => {
                 write!(f, "method {idx} is not an organization method")
             }
+            OrgDecodeError::InvalidValue { field } => write!(f, "{field}: invalid value"),
         }
     }
 }
@@ -107,8 +112,15 @@ impl<'a> ArgReader<'a> {
         Ok(i32::from_le_bytes(self.take(field)?))
     }
 
-    pub(crate) fn f32(&mut self, field: &'static str) -> Result<f32, OrgDecodeError> {
-        Ok(f32::from_le_bytes(self.take(field)?))
+    /// A finite `FLOAT`. NaN and the infinities are rejected: no client
+    /// position holds them, and they poison every distance check downstream.
+    pub(crate) fn finite_f32(&mut self, field: &'static str) -> Result<f32, OrgDecodeError> {
+        let v = f32::from_le_bytes(self.take(field)?);
+        if v.is_finite() {
+            Ok(v)
+        } else {
+            Err(OrgDecodeError::InvalidValue { field })
+        }
     }
 
     /// `WSTRING`: a `u32` UTF-16 unit count, then the units.

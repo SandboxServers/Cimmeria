@@ -8,7 +8,7 @@
 //! from the client payload, and never carries a privilege bit: the base
 //! re-reads access level and membership itself (D-ORG04, D-ORG13).
 
-use cimmeria_entity::organization::OrgType;
+use cimmeria_entity::organization::{CashDir, OrgType};
 
 /// Organization messages sent from CellApp to BaseApp.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,14 +26,14 @@ pub enum OrgCellToBase {
     },
 
     /// `organizationTransferCash` (CM 19) for a Team or Command id (the Bank
-    /// campaign's route, work-packets.md § ORG-API). `amount` is the signed
-    /// wire value: its sign chooses deposit or withdraw. Until the bank
-    /// lands, the base rejects it with feedback.
+    /// campaign's route, work-packets.md § ORG-API). `dir` is the decoded
+    /// direction and magnitude; a zero amount never gets this far. Until the
+    /// bank lands, the base rejects it with feedback.
     TransferCash {
         player_id: i32,
         entity_id: u32,
         org_id: i32,
-        amount: i32,
+        dir: CashDir,
     },
 
     /// Any other OrganizationMember cell method (8-17) whose org id or

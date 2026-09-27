@@ -123,6 +123,13 @@ pub const ON_CANCEL_MOVIE: u16 = 156;
 //
 // Field order is `entities/defs/SGWPlayer.def`; each returns the `args` only.
 
+/// `EErrorCodeSystem::ERRORCODE_SYSTEM_Ability` (`enumerations.xml:1203`),
+/// the only system the enum defines.
+pub const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
+/// `EConditionHandlerFeedback::CONDITION_FEEDBACK_InvalidEntity`
+/// (`enumerations.xml:1210`), the generic refusal.
+pub const CONDITION_FEEDBACK_INVALID_ENTITY: u16 = 0;
+
 /// `onErrorCode` [121]: `UINT8 SystemID, INT32 InstanceID, UINT16
 /// ErrorCodeID` (`SGWPlayer.def:1240-1244`). `SystemID` is an
 /// `EErrorCodeSystem` value, `ErrorCodeID` an `EConditionHandlerFeedback`

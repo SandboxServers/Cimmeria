@@ -5,6 +5,12 @@ mod builders;
 
 pub use builders::*;
 
+/// The feedback line an organization request gets while the campaign has
+/// not implemented it. Sent by both the cell arms (8-19, 94) and the base
+/// arm (0xCF-0xD2) beside an `onErrorCode`, because the client shows no
+/// text for an organization error code (ORG-E1 Q4).
+pub const ORG_NOT_AVAILABLE_TEXT: &str = "Organizations are not available yet.";
+
 /// Invitation to join an organization.
 pub const ON_ORGANIZATION_INVITE: u16 = 34;
 /// Successfully joined an organization.
