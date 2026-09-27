@@ -56,7 +56,7 @@ Owner rule D-CR27. It follows `docs/architecture/instrumentation-discipline.md` 
   - `queue_dropped` (`reason = logout | world_change`, `jobs_dropped`);
   - `options_changed` (the station entity ids and tool item ids per section);
   - `learned`, `respec_prompted`, `respec`, `paradigm_raised`, `blueprint_learned` (before and after values);
-  - `login_sync` (what the login sent), `asp_granted`, `gm_allcraft` and `gm_craftkit` (GM grants, before and after), `asp_earned` (level-up grant: `level_before` / `level_after`, `asp_before` / `asp_after`);
+  - `login_sync` (what the login sent) and `login_sync_failed` (WARN, `reason = load | send`), `asp_granted`, `gm_allcraft` and `gm_craftkit` (GM grants, before and after), `asp_earned` (level-up grant: `level_before` / `level_after`, `asp_before` / `asp_after`);
   - already on `main` from CR-01: `malformed`, `no_player`, `forward_failed` (WARN, cell side), `catalog_loaded`, `catalog_load_failed`;
   - negative seams: `persist_failed` (WARN).
 
@@ -178,7 +178,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - Every ASP change (GM grant, spend, respec, earning) pushes `onEntityProperty(2, total)`, the **total** (audit C-06, C-57). Fix the doc comment (C-63).
 - Paradigm defaults per D-CR03 (Common at 5, the other four at 1), applied when a character has no stored levels, so existing characters are covered without a migration. The seed's column default and the character-creation path give new characters the same values.
 
-**Telemetry:** `event=login_sync` (INFO) with the counts sent (`disciplines`, `paradigms`, `blueprints`, `asp`) and `defaults_applied` (bool); a failed load or send is a WARN with `reason`. The GM ASP grant logs `event=asp_granted` with `asp_before` / `asp_after`.
+**Telemetry:** `event=login_sync` (INFO) with the counts sent (`disciplines`, `paradigms`, `blueprints`, `asp`) and `defaults_applied` (bool); a failed load or send is `event=login_sync_failed` (WARN) with `reason` in `load | send` and the error class. The GM ASP grant logs `event=asp_granted` with `asp_before` / `asp_after`.
 
 **Acceptance:** a byte-exact test of the login crafting bundle for a fixture state; a live-DB test that a relog restores disciplines, expertise, paradigms and blueprints; a guard that the GM ASP grant pushes the property.
 
@@ -308,7 +308,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 - The item-use path recognises these items. A Blueprint item teaches its blueprint (139). A Guide raises its paradigm by 1, to at most 10 (138). Either way the item is consumed in the same transaction that changes the crafting state. A known blueprint or a guide at 10 is refused with feedback and consumes nothing.
 - Loot: add Guides and Blueprint items to a loot table only where existing content already places crafting drops; otherwise the vendor (CR-11) is the only source for now.
 
-**Telemetry:** `event=blueprint_learned` (`item_id`, `blueprint_id`s) and `event=paradigm_raised` (`paradigm_id`, `level_before` / `level_after`); refusals `already_known` and `paradigm_max` as `rejected`.
+**Telemetry:** `event=blueprint_learned` (`item_id`, and per blueprint `blueprint_id:known_before→known_after`, plus the known-blueprint count before and after) and `event=paradigm_raised` (`paradigm_id`, `level_before` / `level_after`); refusals `already_known` and `paradigm_max` as `rejected`.
 
 **Acceptance:** live-DB tests for each item kind, including the refused cases (nothing consumed); a replay test; a seed guard that every mapped blueprint and paradigm id exists.
 
