@@ -9,9 +9,15 @@ Learned authoring PT-11 (templates 351-353, 2026-09-27).
 
 - **`ENTITYFLAG_NoPetLeveling` (8) freezes the pet at the template's level.**
   `spawn_pet_inner` (`crates/cell-world/src/cell/pets/spawn.rs`) only copies
-  the owner's level when the bit is clear. Template 350 carries it (flags
-  1032), so the L50-capstone Straegis spawns at level 1 / 250 HP; 351-353 use
-  1024 so they follow D-PT02. Don't copy 350's flags blindly.
+  the owner's level when the bit is clear. Template 350 carried it (flags
+  1032) until PT-11, so the L50-capstone Straegis spawned at level 1 / 250 HP.
+  All roster pets (350-353) now use 1024 and follow D-PT02.
+- **An ability with no visible result is refused/skipped for pets.**
+  `cimmeria_entity::abilities::ability_is_unimplemented` (no event set, no
+  effect with damage NVPs or a script): CM 88 refuses it
+  (`reason=ability_not_implemented`) and the pet AI skips it. Test fixtures
+  that seed bare ability defs (`seed_ability_defs`: no effects, no event set)
+  are "unimplemented", so give them an event set or pet orders get refused.
 - **Every `pet_summons` ability needs an `event_set_id`.** PT-03's live-DB
   guard `seeded_summons_match_the_summon_path` checks it (plus Self target,
   warmup > 0, SpeedPet). The Goa'uld summons use 1121; the 1122 target PFX is
