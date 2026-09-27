@@ -71,6 +71,7 @@ mod mission_abandoned;
 mod na13_chain_armed_aggro;
 mod npc_bark;
 mod region8_guard_aggro;
+mod region8_guard_relog;
 mod region_transition_accepts;
 mod sgc_w1_move_entity;
 mod stargate_triggers;

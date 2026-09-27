@@ -42,6 +42,16 @@ took damage stops following permanently until a content chain re-fires
 `broadcast_movement_type(_, None, ..)` deliberately sends nothing
 (`cell/abilities/messaging.rs:235-239`).
 
+**Stale route (fixed 2026-09-26, fix/colo-escort-and-rally).** follow.rs used
+to walk any in-flight route to its end: after a player death + reanchor 125 u
+away Marsh walked 25 waypoints to the respawn point while the player ran back.
+Now `route_is_stale` replans when the leader is > max(5, max_d) horizontally
+or > 4 u vertically from the route's end (debug `follow_repath_stale`).
+
+**Escort does not fight.** Marsh (template 10) is class `being`, faction 3,
+`ability_set_id` NULL; legacy `SGWPet.py` is a 17-line stub with no combat.
+"Escort engages the leader's attackers" is a new feature needing owner scope.
+
 **Escort speed math.** AI tick is every 20th AoI tick = 2s
 (`cell/service/message_loop.rs:126`); movement tick is 100ms. `follow.rs:80`
 only re-paths when `nav_path` is empty, so the destination is recomputed once

@@ -166,6 +166,9 @@ Two independent bugs with the same root cause pattern: `onStateFieldUpdate` sent
 
 ### Bug A: AoI entry hardcodes `state_field = 0`
 
+> [!NOTE]
+> **Status (2026-09-26): fixed for both entity kinds.** Player ghosts carry their live `state_field` through `PlayerAoIData` (`mercury/aoi/player_ghost.rs`). NPCs now carry it through `NpcAoIData::from_entity` (`cell/messages/data.rs`) together with live HEALTH/FOCUS, and the NPC cascade in `mercury/aoi/create.rs` sends them instead of `0` and a template 100/100. Colo evidence: a dead guard that re-entered a reanchored player's AoI was rebuilt standing and alive (Castle_CellBlock, Hallway01_Guard 100162, 2026-09-26 02:34:53). Guards: `mercury/aoi/npc_live_state_tests.rs`, `cell/space_manager/tests/aoi_npc_corpse.rs`. The text below is the original analysis.
+
 **Location**: `crates/wire/src/mercury/aoi/create.rs` (lines 175–181)
 
 ```rust

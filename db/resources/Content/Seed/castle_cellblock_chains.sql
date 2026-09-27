@@ -494,6 +494,41 @@ VALUES
   (1008, 'set_aggression',  NULL, 'ArmYourself_NIDGuard', '{"level": 1}',           0, 0),
   (1008, 'generate_threat', NULL, 'ArmYourself_NIDGuard', '{"threat_level": 1000}', 0, 1);
 
+-- Chain 1009: zone load with mission 622 already completed -> re-arm the
+-- ArmYourself_NIDGuard (set_aggression 1, no threat seed).
+--
+-- Chain 1008 is the only thing that arms this guard, and it is a
+-- once-per-player region-ENTRY edge: spawnlist row 20 seeds the guard
+-- NEUTRAL (aggression_override 3, NA13) so Region8, not proximity, starts
+-- the fight. Every relog builds a fresh Castle_CellBlock instance with the
+-- guard back at its seeded NEUTRAL, and since #756 the player returns at
+-- the persisted logout position -- already past Region8 (colo 2026-09-26,
+-- the tester's player entity at -290,-164; Region8 is x -330..-298, z -203..-170), so
+-- the edge never fires again and the guard stays yellow and passive
+-- ("cellblock guard is indicated as yellow after relog? guards should
+-- always be hostile", 02:53:23).
+--
+-- Mission 622 completing is the gate: on every recorded run chain 1008
+-- fired 1-5 s after 622 completed (the player walks out of the stasis room
+-- through Region8), so "622 completed" means "this player has already been
+-- through the trap". The arm is the durable behaviour bit only -- no
+-- generate_threat -- so the guard engages by the normal hostile Idle scan
+-- when the player is in range and sight instead of being yanked across
+-- the map. Idempotent when the guard is already HOSTILE (same space, or a
+-- player reloading the zone), harmless on a corpse (a respawn keeps the
+-- override). Same shape as the other 622 zone-load chains (1002, 1006).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1009, '622 - Zone load: already completed -> re-arm ArmYourself_NIDGuard (relog past Region8)', 'mission', 622, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1009, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1009, 'mission_status', 622, NULL, 'eq', 'completed', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1009, 'set_aggression', NULL, 'ArmYourself_NIDGuard', '{"level": 1}', 0, 0);
+
 -- ============================================================
 -- MISSION 638 — Speak to Prisoner 329
 -- ============================================================

@@ -268,20 +268,32 @@ pub fn compose_create_entity_cascade_body(
             entity_id,
             &[fac],
         );
-        // 12. onStateFieldUpdate(0) — alive state
+        // 12. onStateFieldUpdate(stateField) — the NPC's LIVE state, as
+        // Python `SGWBeing.createOnClient` sent it (`SGWBeing.py:507`).
+        // Was hardcoded 0 ("alive"), so a corpse that re-entered a
+        // witness's AoI — the player walked back, relogged, or reanchored
+        // after dying — was rebuilt standing and alive while the cell kept
+        // it Dead: a guard that "isn't hostile" (colo 2026-09-26, tester
+        // 02:38:42, Hallway01_Guard 100162). The client handler is
+        // XOR-delta against a fresh 0, so a dead corpse runs the BSF_Dead
+        // setup once (`FUN_00e01c90`,
+        // docs/reverse-engineering/findings/state-flag-broadcast.md, Bug A).
+        let state_field = npc_data.map_or(0u32, |d| d.state_field);
         append_entity_method(
             &mut body,
             method_idx::ON_STATE_FIELD_UPDATE,
             idbase,
             entity_id,
-            &0u32.to_le_bytes(),
+            &state_field.to_le_bytes(),
         );
 
         // 13-14. onStatBaseUpdate + onStatUpdate — NPC stat data
         // C++ sends 180 bytes each (4-byte count + 11×16-byte stats = 180).
         // Without populated stats, the client doesn't consider the entity
-        // "ready" for interaction (right-click blocked).
-        let stat_data = build_default_npc_stats();
+        // "ready" for interaction (right-click blocked). HEALTH and FOCUS
+        // carry the live values so a corpse arrives at 0 HP and a wounded
+        // mob at its real health, not a fresh 100/100.
+        let stat_data = build_npc_stats(npc_data);
         append_entity_method(
             &mut body,
             method_idx::ON_STAT_BASE_UPDATE,
@@ -306,8 +318,13 @@ pub fn compose_create_entity_cascade_body(
 /// Wire format: `ARRAY<StatUpdate>` = `[count: u32 LE][StatUpdate, ...]`
 /// where `StatUpdate = { StatId: i32, Min: i32, Current: i32, Max: i32 }` (16 bytes each).
 /// 11 stats × 16 bytes + 4 byte count = 180 bytes total.
-fn build_default_npc_stats() -> Vec<u8> {
+fn build_npc_stats(npc_data: Option<&NpcAoIData>) -> Vec<u8> {
     use cimmeria_entity::stats::*;
+    let live = |id: i32| match id {
+        HEALTH => npc_data.and_then(|d| d.vitals.as_ref()).map(|v| v.health),
+        FOCUS => npc_data.and_then(|d| d.vitals.as_ref()).map(|v| v.focus),
+        _ => None,
+    };
     // (stat_id, min, current, max) — from SGWBeing.statsTemplate defaults
     let stats: &[(i32, i32, i32, i32)] = &[
         (HEALTH, 0, 100, 100),
@@ -325,6 +342,7 @@ fn build_default_npc_stats() -> Vec<u8> {
     let mut buf = Vec::with_capacity(4 + stats.len() * 16);
     buf.extend_from_slice(&(stats.len() as u32).to_le_bytes());
     for &(id, min, cur, max) in stats {
+        let [min, cur, max] = live(id).unwrap_or([min, cur, max]);
         buf.extend_from_slice(&id.to_le_bytes());
         buf.extend_from_slice(&min.to_le_bytes());
         buf.extend_from_slice(&cur.to_le_bytes());

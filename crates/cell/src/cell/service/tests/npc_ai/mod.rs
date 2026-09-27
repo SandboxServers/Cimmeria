@@ -82,6 +82,7 @@ mod ability_range;
 mod aggression;
 mod aggro_castle;
 mod assist;
+mod assist_barracks;
 mod assist_castle;
 mod attack_sequence;
 mod being_follower;
