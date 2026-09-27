@@ -8,7 +8,7 @@ last_updated: 2026-07-25
 # Crafting System
 
 > **Last updated**: 2026-09-27
-> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) and research and reverse engineering (CR-08). Craft, alloying and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Status**: State model, persistence, GM grants, the login sync (CR-03), learning disciplines with applied science points (CR-04) and earning those points by levelling (CR-12) work, and so do Blueprint items and Racial Paradigm Guides (CR-15) research and reverse engineering (CR-08), and alloying (CR-09). Craft and respec are still stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -37,10 +37,10 @@ The sections below that describe `Crafter` behaviour document the **original ser
 | Crafting (blueprint) | STUB | The base answers "Crafting is not available yet." |
 | Research | DONE | Item and kickers checked at the request, rolled and consumed when the bar ends; +5 expertise and the blueprint on a success. CR-08 |
 | Reverse engineering | DONE | Exactly the named item is consumed when the bar ends; recovery rises with expertise (D-CR06). CR-08 |
-| Alloying | STUB | The base answers "Alloying is not available yet." |
+| Alloying | DONE | `base/crafting/alloy/` (CR-09), see [Alloying](#alloying) |
 | Crafting respec | STUB | The base answers "Crafting respec is not available yet." |
-| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Research and reverse engineering submit to it (CR-08); craft and alloy do not yet. See [Induction engine](#induction-engine) |
-| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. Research and reverse engineering build one (CR-08); craft and alloy do not yet |
+| Timer-based induction | DONE (engine) | `base/crafting/session/`: one running induction per player, ten held in all; the bar is `onTimerUpdate` type 16 with an absolute expiry. Research, reverse engineering (CR-08) and alloying (CR-09) submit to it; craft does not yet. See [Induction engine](#induction-engine) |
+| Consume-and-grant transaction | DONE (engine) | `base/crafting/transaction/`: one database transaction per completed induction. Research, reverse engineering (CR-08) and alloying (CR-09) build one; craft does not yet |
 | Busy state lock | REPLACED | The induction queue serializes a player's crafting; there is no separate busy flag |
 | Crafting stations | DONE | The cell tracks the nearest station per verb within `MAX_INTERACT_DISTANCE` (5 units, 3-D) and reports changes to the base once a second; the forward recomputes the mask per request. CR-05. No seeded template is a station yet (CR-11 adds the debug-hub four) |
 | Field Crafting Tools | DONE | A tool in the crafting bag (container 15) covers crafting, research and reverse engineering for its science up to its `tech_comp` (D-CR21). CR-05 |
@@ -165,7 +165,7 @@ The legacy `Crafter.py` could pick past the end of its lists, divided by zero ex
 
 ### Alloy
 
-Combines a current-tier material with lower-tier elementary components.
+Combines a current-tier material with lower-tier elementary components. This is the legacy Python flow; the Rust verb follows the client instead where they disagree (see [Alloying](#alloying)).
 
 ```
 Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
@@ -182,7 +182,7 @@ Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
 
 ## Induction engine
 
-Every crafting verb that takes time (craft, research, reverse engineer, alloy) runs through the same engine on the base; research and reverse engineering use it today. Unlike the original server, which consumed the components when the request arrived (so a logout or crash during the bar lost them), the Rust engine validates at the request and consumes only when the bar completes.
+Every crafting verb that takes time (craft, research, reverse engineer, alloy) runs through the same engine on the base; research, reverse engineering and alloying use it today. Unlike the original server, which consumed the components when the request arrived (so a logout or crash during the bar lost them), the Rust engine validates at the request and consumes only when the bar completes.
 
 **Queue.** Each player has one running induction and a first-in-first-out queue, ten in all. The reverse-engineering page sends up to ten requests in one burst, so all ten are accepted. The eleventh is refused with "You can have at most 10 crafting jobs at once." and an inventory resync (one resync per burst). The queue is keyed by the player entity and lives only in memory.
 
@@ -214,6 +214,35 @@ After the commit the client gets `onRemoveItem` for emptied stacks, one `onUpdat
 | A database error or an invalid plan | Crafting failed. Nothing was used. |
 
 Rolls (research success, reverse-engineering recovery) go through an injectable RNG (`base/crafting/rng.rs`), so tests pin them.
+
+## Alloying
+
+`alloying` (cell method 99) turns the alloy blueprint's one component, plus elementary components one tier below it, into the blueprint's product. All 40 alloy blueprints take one component and make 2 of their product. Code: `base/crafting/alloy/` (`rules.rs` decides, `job.rs` is the induction, `mod.rs` loads the inputs and answers).
+
+The request is checked when it arrives, in this order, and nothing is consumed then:
+
+1. The blueprint exists and is an alloy, the player knows it, and knows its discipline.
+2. The current-tier item is the player's, sits in the main or crafting bag, and is the blueprint's component design; the two bags hold enough of that design.
+3. Each elementary item is the player's, sits in the main or crafting bag, and is exactly one tier below the component. A repeated id counts once.
+4. The elementary items' stack quantities are summed per quality. Exactly one quality must reach its count: **Normal 10, Good 5, Great 2, Fantastic 1**. Poor has no count, so Poor items count toward nothing.
+
+These are the client's own rules (`AlloyPage.lua:168-199` and the native count check in [crafting-client-ui.md §5](../reverse-engineering/findings/crafting-client-ui.md)), not the legacy Python ones: Python counted items rather than stack quantity and used Poor 10, Normal 5, Good 3, Great 2, Fantastic 1. The client only logs a warning and sends anyway, so the server enforces every rule. A list of more than ten elementary ids (the page has ten slots) can only be forged and is dropped with a `malformed` warning and no line.
+
+A valid alloy is queued as an induction, with the blueprint id on the bar. When the bar ends, the player must still know the blueprint and its discipline (a respec during the bar refuses the alloy), then one transaction (see [Induction engine](#induction-engine)) re-checks the named elementary instances, consumes one of the component by design (crafting bag first, whichever stack that is), consumes exactly the met quality's count from the named elementary stacks in the order the request listed them, grants 2 of the product and adds 1 expertise to the blueprint's discipline. Elementary items of another quality, and any surplus beyond the count, are left untouched. Then the player reads "Alloying complete: 2 x <product>."
+
+| Refusal | `reason` | Line |
+|---|---|---|
+| Blueprint unknown or not learned | `unknown_blueprint` | You do not know that blueprint. |
+| Blueprint is not an alloy | `not_alloy` | That blueprint is not an alloy. |
+| Its discipline is not known | `discipline_unknown` | You must learn the blueprint's discipline first. |
+| Current-tier item is not the component | `component_mismatch` | A chosen component is not the one this needs. Nothing was used. |
+| An item is gone, not the player's, or outside the carried bags | `component_missing` / `component_not_in_crafting_bags` | as in the table under [Induction engine](#induction-engine) |
+| An elementary item is not one tier lower | `wrong_tier` | Elementary components must be one tier lower than the component (tier N). Nothing was used. |
+| No quality's count met | `count_not_met` | The quantity of elementary components per item quality was not met: 10 Normal, 5 Good, 2 Great or 1 Fantastic. Nothing was used. |
+| Two or more counts met at once | `multiple_buckets` | Multiple categories of elementary components were met; use one quality only. Nothing was used. |
+| No database, catalog gap | `unavailable` | Alloying is unavailable right now. Nothing was changed. |
+
+Every refusal is followed by a full inventory resync, because the alloy page empties its slots on confirm. A refusal when the bar ends (an input moved or used up in the meantime) uses the transaction's lines.
 
 ## Discipline System
 
