@@ -719,15 +719,16 @@ last_updated: 2026-09-27
 - **Recent PRs**: #739 (stored DND message bounded to 128 characters, security finding CAT-L-02), #737 (players in a shared world now witness each other, so say/emote/yell can reach another player; not two-client validated), #769 (content-engine `npc_bark` speaks NPC lines over `onPlayerCommunication` on the say channel, a content feature that reuses the chat wire, not player chat)
 - **Open issues**: #471 (security audit CAT-L, chat / contact list, 9 findings)
 - **In-client record**: the 2026-09-18 colo playtest logged 20 say-channel sends from the real client, all `.`-prefixed GM console lines, which chat.rs:88-97 intercepts before broadcast ([appendix-session-timeline.md](analysis/playtests/2026-09-18-colo-castle/appendix-session-timeline.md) line 123). That proves client-to-server say routing. It does not prove witness rendering of ordinary chat.
-- **Path forward**: message *routing* on the non-spatial channels (they are registered but carry no traffic), direct tells, and moderation tools (mute, flood protection). A two-client say/emote/yell check now that #737 has landed.
+- **Path forward**: message *routing* on the non-spatial channels (they are registered but carry no traffic) and moderation tools (mute). A two-client check of say/emote/yell, tells and Ignore.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Say/emote/yell (AoI) | NT | AoI | cell/console/chat/mod.rs:96-106, chat/spatial.rs | Witness broadcast plus sender echo. Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
-| Direct tells | KM | -- | -- | `sendPlayerCommunication` parses the `target` WSTRING, logs it, and forwards every message to the cell as a spatial broadcast (base/dispatch/chat.rs:22-108) |
+| Say/emote/yell (AoI) | NT | AoI | cell/console/chat/mod.rs, chat/spatial.rs | Witness broadcast plus sender echo; a witness who ignores the speaker is skipped (SS-C1). Since #737 a second player can be a witness; no two-client test on record. Re-verified 2026-09-25 |
+| Direct tells | NT | -- | base/dispatch/tell.rs | **New 2026-09-27 (SS-C1).** Channel 10 is handled on the base: the target resolves through the online index (D-SS13), the recipient gets `onPlayerCommunication` on 10 and the sender `onTellSent`; not online, ambiguous, self and ignored-by-recipient each answer with a feedback line. Type-8 fan-out tests and a two-client wireclient test (type 11, not in CI); no in-client test on record |
+| Ignore enforcement | NT | -- | base/dispatch/ignore.rs, base-session/src/base/contact_list/ignore/ | **New 2026-09-27 (SS-C1).** `chatIgnore` (0xC5) edits the contact-list Ignore list (flags 301); the list is cached on the base session and the cell entity; tells and say/emote/yell from an ignored player do not reach the ignoring player (one way, no AoI hiding, D-SS15). Live-DB and type-8 guards; no in-client test on record |
 | User channels | KM | -- | -- | requestCreateChannel not ported |
 | Pre-defined channels | IM | -- | base/world_entry_chat.rs:20-29 | **Corrected 2026-07-25.** All 8 canonical channels (say/emote/yell/team/squad/command/server=7/tell=9) are auto-joined on world entry and pushed as `onChatJoined` (world_entry_appearance/builders.rs:89). `chatJoin` is acknowledged as a no-op (dispatch/chat.rs:113-125). **No cross-player routing on the non-spatial channels yet** |
-| AFK / DND status | IM | -- | base/dispatch/chat.rs:82-90, 147-219 | `dnd_message` sets `SPEAKER_DND` on outgoing messages, matching `Chat.py::getSpeakerFlags`; stored text truncated to 128 chars (#739). `chatSetAFKMessage` is acknowledged but the auto-reply is not implemented (dispatch/chat.rs:134-145). The 2026-09-18 playtest logged one `chatSetDNDMessage: WSTRING decode failed` WARN (appendix-session-timeline.md line 124), not yet explained |
+| AFK / DND status | NT | -- | base/dispatch/chat.rs, base/dispatch/tell.rs | `dnd_message` sets `SPEAKER_DND` on outgoing messages, matching `Chat.py::getSpeakerFlags`; stored text truncated to 128 chars (#739). Since SS-C1 `chatSetAFKMessage` stores its message too, and a tell to an away player is answered with the DND (else AFK) text on the tell channel. The 2026-09-18 playtest logged one `chatSetDNDMessage: WSTRING decode failed` WARN (appendix-session-timeline.md line 124), not yet explained |
 | Channel ops | KM | -- | -- | setPlayerOp not ported |
 | Chat flood protection | NT | -- | base-session/src/base/rate_limit/, base/src/base/dispatch/chat.rs | **New 2026-09-27 (SS-00).** Per-player token bucket on every player channel, burst 5 then 1 line/s (D-SS14), GameMaster and above exempt; lines over 255 UTF-16 units or with control, bidi or zero-width characters refused (D-SS12, through the D-ORG10 `org_text` rules). Both run on the base before the cell forward; the player gets one feedback line (at most one per 5 s) and SigNoz a `rate_limit.exceeded` / `chat.rejected` event. Type-12 guards; no in-client test on record |
 | Profanity filter | KM | -- | -- | No filtering |
@@ -1271,7 +1272,7 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | 18 | XP and Leveling | 11 | 9 | 0 | 1 | 1 | 0 |
 | 19 | Crafting | 9 | 0 | 0 | 8 | 1 | 0 |
 | 20 | Stargate Travel | 10 | 2 | 4 | 3 | 1 | 0 |
-| 21 | Chat | 10 | 0 | 3 | 2 | 5 | 0 |
+| 21 | Chat | 11 | 0 | 6 | 1 | 4 | 0 |
 | 22 | Trading | 8 | 0 | 0 | 8 | 0 | 0 |
 | 23 | Organizations / Guilds | 15 | 0 | 0 | 0 | 15 | 0 |
 | 24 | Mail | 13 | 0 | 5 | 0 | 7 | 1 |
@@ -1296,24 +1297,24 @@ Recomputed 2026-09-25 directly from the feature rows above.
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 13 | 4 | 2 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **471** | **169** | **65** | **105** | **128** | **4** |
+| | **TOTALS** | **472** | **169** | **68** | **104** | **127** | **4** |
 
 ### Summary Percentages
 
-Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row, SS-D1 two Dueling rows and SS-D2 a third, crafting CR-08 the Research and Reverse engineer rows, CR-09 the Alloy row and CR-07 the Craft row); the columns sum to the totals line and the totals line sums to 471.
+Recomputed 2026-09-27 directly from the rows above (after social-systems SS-M1 moved the Mail row, SS-D1 two Dueling rows and SS-D2 a third, crafting CR-08 the Research and Reverse engineer rows, CR-09 the Alloy row and CR-07 the Craft row); the columns sum to the totals line and the totals line sums to 472.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
-| Confirmed Working (CW) | 169 | 35.9% |
-| Needs Test (NT) | 65 | 13.8% |
-| Implemented (IM) | 105 | 22.3% |
-| Known/Missing (KM) | 128 | 27.2% |
+| Confirmed Working (CW) | 169 | 35.8% |
+| Needs Test (NT) | 68 | 14.4% |
+| Implemented (IM) | 104 | 22.0% |
+| Known/Missing (KM) | 127 | 26.9% |
 | Needed/Unknown (NU) | 4 | 0.8% |
 
-**Code exists (CW + NT + IM)**: 339 features (72.0%)
-**Missing (KM + NU)**: 132 features (28.0%)
+**Code exists (CW + NT + IM)**: 341 features (72.2%)
+**Missing (KM + NU)**: 131 features (27.8%)
 
-**Tested end-to-end (CW)**: 169 features (35.9%).
+**Tested end-to-end (CW)**: 169 features (35.8%).
 
 ### What moved since 2026-07-25
 

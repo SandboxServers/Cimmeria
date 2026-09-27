@@ -92,16 +92,15 @@ pub(super) async fn candidate_rows(
         .await
 }
 
-/// The recipients among `recipient_ids` who ignore `sender_id` (D-SS15:
-/// mail to someone who ignores you is refused, one way).
-///
-/// A seam until SS-C1 lands the Ignore list: it answers "nobody", and the
-/// send path already reports [`FailReason::Ignoring`] for anyone it returns.
+/// The recipients among `recipient_ids` who ignore the sender (D-SS15: mail
+/// to someone who ignores you is refused, one way). `sender_name` is the
+/// sender's stored name, read under the send's row lock; the Ignore lists
+/// (contact-list flags 301) match it case-insensitively. Works for offline
+/// recipients: it reads the database, not the session cache.
 pub(super) async fn ignoring_sender(
-    _conn: &mut PgConnection,
-    _sender_id: i32,
-    _recipient_ids: &[i32],
+    conn: &mut PgConnection,
+    sender_name: &str,
+    recipient_ids: &[i32],
 ) -> Result<HashSet<i32>, sqlx::Error> {
-    // TODO(SS-C1): read the recipients' Ignore lists (contact-list flags 301).
-    Ok(HashSet::new())
+    crate::base::contact_list::ignore::recipients_ignoring(conn, recipient_ids, sender_name).await
 }

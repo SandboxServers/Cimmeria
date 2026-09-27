@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use cimmeria_wire::cell::client_methods::duel::{
     TEXT_CHALLENGER_LOADING, TEXT_CHALLENGE_UNDELIVERED, TEXT_SQUAD_DUEL_UNSUPPORTED,
-    TEXT_TARGET_AMBIGUOUS, TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
+    TEXT_TARGET_AMBIGUOUS, TEXT_TARGET_IGNORING, TEXT_TARGET_LOADING, TEXT_TARGET_NOT_ONLINE,
 };
 use cimmeria_wire::mercury::types::WorldEntryInfo;
 
@@ -228,6 +228,29 @@ async fn challenge_rejects_offline_target() {
     assert!(h.forwarded().is_empty());
     assert_eq!(h.feedback(), vec![TEXT_TARGET_NOT_ONLINE.to_string()]);
     assert!(refused(&capture, "target_not_online"));
+}
+
+/// D-SS15: Teal'c's Ignore list holds Lomiada (player 7), so her challenge
+/// is refused with the ignoring line, `reason = target_ignoring`, and nothing
+/// reaches the cell. Fails when `dispatch::duel::ignores` is the `false`
+/// stub again.
+#[tokio::test]
+async fn challenge_rejects_a_target_who_ignores_the_challenger() {
+    let capture = LogCapture::install();
+    let mut h = Harness::new();
+    h.connected
+        .lock()
+        .unwrap()
+        .get_mut(&TARGET.parse().unwrap())
+        .unwrap()
+        .ignore = crate::base::contact_list::ignore::IgnoreCache::with_player_ids(
+        ["lomiada".to_string()].into(),
+        [7].into(),
+    );
+    h.challenge("Teal'c", 0, Instant::now()).await;
+    assert!(h.forwarded().is_empty(), "nothing reaches the cell");
+    assert_eq!(h.feedback(), vec![TEXT_TARGET_IGNORING.to_string()]);
+    assert!(refused(&capture, "target_ignoring"));
 }
 
 /// Two characters fold to the typed name (D-SS13): refused, not guessed.

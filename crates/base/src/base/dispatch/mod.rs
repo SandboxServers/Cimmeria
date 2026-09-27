@@ -10,13 +10,16 @@ use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
 
+use super::feedback;
 use super::ConnectedClientState;
 
 mod chat;
 mod diagnostics;
 mod duel;
+mod ignore;
 mod organization;
 mod session;
+mod tell;
 
 /// `ESpeakerFlags` bitfield constants from `entities/defs/enumerations.xml`.
 ///
@@ -45,6 +48,10 @@ pub(crate) mod sgw_player_base {
     pub(crate) const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
     pub(crate) const CHAT_SET_AFK: u8 = 0xC3;
     pub(crate) const CHAT_SET_DND: u8 = 0xC4;
+    /// `chatIgnore(WSTRING aPlayerName, UINT8 aFlag)`: 1 adds the name to
+    /// the caller's contact-list Ignore list, 0 removes it
+    /// (`Communicator.def`). Handled in `dispatch/ignore.rs`.
+    pub(crate) const CHAT_IGNORE: u8 = 0xC5;
     /// OrganizationMember base methods 0xCF-0xD2 (`organizationInvite`,
     /// `organizationInviteByType`, `organizationKick`,
     /// `organizationRankChange`). Handled in `dispatch/organization.rs`.
@@ -131,11 +138,33 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         sgw_player_base::CHAT_SET_AFK => {
-            chat::handle_chat_set_afk(addr);
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            chat::handle_chat_set_afk(payload, addr, &feedback).await;
         }
 
         sgw_player_base::CHAT_SET_DND => {
-            chat::handle_chat_set_dnd(payload, addr, connected);
+            let feedback = feedback::FeedbackCtx {
+                transport,
+                connected,
+            };
+            chat::handle_chat_set_dnd(payload, addr, &feedback).await;
+        }
+
+        sgw_player_base::CHAT_IGNORE => {
+            ignore::handle_chat_ignore(
+                payload,
+                addr,
+                transport,
+                connected,
+                entity_to_addr,
+                cell_tx,
+                db_pool,
+                std::time::Instant::now(),
+            )
+            .await;
         }
 
         sgw_player_base::LOG_OFF => {

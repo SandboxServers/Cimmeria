@@ -446,16 +446,31 @@ fn decode_refusal_text(reject: &MailSendReject) -> &'static str {
     }
 }
 
-/// One line naming every recipient that did not get the mail, and why.
+/// One line naming every recipient that did not get the mail, and why. A
+/// recipient who ignores the sender gets the shared D-SS15 sentence ("X is
+/// not accepting your messages."), the same words a tell or a duel
+/// challenge gets, after the list of the others.
 fn failure_line(failed: &[recipients::FailedRecipient]) -> Option<String> {
     if failed.is_empty() {
         return None;
     }
-    let parts: Vec<String> = failed
+    let (ignoring, others): (Vec<_>, Vec<_>) = failed
         .iter()
-        .map(|f| format!("{} ({})", f.typed, f.reason.player_text()))
-        .collect();
-    Some(format!("Gate-mail not delivered to: {}.", parts.join(", ")))
+        .partition(|f| f.reason == FailReason::Ignoring);
+    let mut sentences: Vec<String> = Vec::new();
+    if !others.is_empty() {
+        let parts: Vec<String> = others
+            .iter()
+            .map(|f| format!("{} ({})", f.typed, f.reason.player_text()))
+            .collect();
+        sentences.push(format!("Gate-mail not delivered to: {}.", parts.join(", ")));
+    }
+    sentences.extend(
+        ignoring
+            .iter()
+            .map(|f| crate::base::contact_list::ignore::not_accepting_text(&f.typed)),
+    );
+    Some(sentences.join(" "))
 }
 
 impl FailReason {

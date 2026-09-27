@@ -2,8 +2,8 @@
 //!
 //! Extracted from `dispatch.rs` — the chat-family arms of
 //! `dispatch_sgw_player_base_method`: `sendPlayerCommunication`, `chatJoin`,
-//! `chatLeave`, `chatSetAFKMessage`, and `chatSetDNDMessage`. Pure code
-//! movement; each function carries the exact arm body it replaced.
+//! `chatLeave`, `chatSetAFKMessage`, and `chatSetDNDMessage`. The tell
+//! channel branches off to `tell.rs` after the flood and text gates.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -23,6 +23,7 @@ use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_U
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 use super::speaker_flags;
+use super::tell::{self, TellSender, TELL_CHANNEL};
 
 const MAX_DND_MESSAGE_CHARS: usize = 128;
 
@@ -181,6 +182,20 @@ pub(super) async fn send_player_communication_at(
         return;
     }
 
+    // Tells are delivered here, on the base, and never reach the cell.
+    if channel == TELL_CHANNEL {
+        let sender = TellSender {
+            addr,
+            name: speaker,
+            flags: speaker_flags_value,
+            entity_id: player_eid,
+            player_id,
+            account_id,
+        };
+        tell::handle_tell(&feedback, sender, &target, &text).await;
+        return;
+    }
+
     // Logged only once both gates pass: every field here is client-supplied,
     // so a flooding client must not get one INFO row per packet.
     tracing::info!(
@@ -247,31 +262,74 @@ pub(super) fn handle_chat_leave(payload: &[u8], addr: SocketAddr) {
     tracing::debug!(%addr, channel_id, "chatLeave -- acknowledged");
 }
 
-/// `chatSetAFKMessage` — intentionally log-only.
-pub(super) fn handle_chat_set_afk(addr: SocketAddr) {
-    // AFK is intentionally log-only. AFK is NOT a speaker flag:
-    // `entities/defs/enumerations.xml` has no `SPEAKER_AFK`
-    // token, and `python/base/Chat.py::getSpeakerFlags` only
-    // checks `accessLevel > 0` / `dndMessage is not None`. In
-    // Python, `chatSetAFKMessage` only affects the
-    // auto-reply-tell path in `sendPlayerMessage`, which is a
-    // separate feature we have not ported yet.
-    tracing::debug!(
-        %addr,
-        "chatSetAFKMessage -- acknowledged (auto-reply not yet implemented)",
-    );
+/// `chatSetAFKMessage(WSTRING message)`.
+///
+/// Stores the away message the tell path sends back to anyone who tells this
+/// player (`tell.rs`). Same rules as DND (`python/base/SGWPlayer.py:195-199`):
+/// an empty or 1-char message clears it, a longer one is stored truncated to
+/// [`MAX_DND_MESSAGE_CHARS`], and a malformed payload leaves it untouched.
+///
+/// AFK is NOT a speaker flag: `entities/defs/enumerations.xml` has no
+/// `SPEAKER_AFK` token, and `python/base/Chat.py::getSpeakerFlags` only checks
+/// `accessLevel > 0` / `dndMessage is not None`.
+///
+/// Other players read the message in the tell auto-reply, so it must pass
+/// the D-SS12 / D-ORG10 character rules; a message that does not is refused
+/// with a feedback line and the previous state is kept.
+pub(super) async fn handle_chat_set_afk(
+    payload: &[u8],
+    addr: SocketAddr,
+    feedback: &FeedbackCtx<'_>,
+) {
+    let connected = feedback.connected;
+    let message = match read_wstring(payload, 0) {
+        Ok((s, _)) => s,
+        Err(e) => {
+            tracing::warn!(
+                %addr,
+                payload_len = payload.len(),
+                reason = "read_wstring_failed",
+                error = %e,
+                "chatSetAFKMessage: WSTRING decode failed -- existing AFK state preserved",
+            );
+            return;
+        }
+    };
+    let active = message.chars().count() > 1;
+    // Check the whole decoded text before the bound cuts it: a forbidden
+    // character past scalar 128 must refuse the message, not vanish.
+    if active && !away_message_allowed(feedback, addr, "afk", &message).await {
+        return;
+    }
+    let stored: String = message.chars().take(MAX_DND_MESSAGE_CHARS).collect();
+    let mut clients = connected.lock().unwrap();
+    if let Some(c) = clients.get_mut(&addr) {
+        c.afk_message = active.then_some(stored);
+        tracing::debug!(
+            target: "chat",
+            event = "chat.afk_set",
+            %addr,
+            player_id = c.active_player_id,
+            account_id = c.account_id,
+            entity_id = c.player_entity_id,
+            afk_active = active,
+            "chatSetAFKMessage",
+        );
+    }
 }
 
 /// `chatSetDNDMessage(WSTRING message)`.
 ///
 /// Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an empty or 1-char
 /// message clears DND; anything longer sets it. The stored text is truncated
-/// to 128 Unicode scalar values.
-pub(super) fn handle_chat_set_dnd(
+/// to 128 Unicode scalar values, and must pass the same character rules as
+/// the AFK message (it is sent back to anyone who tells this player).
+pub(super) async fn handle_chat_set_dnd(
     payload: &[u8],
     addr: SocketAddr,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    feedback: &FeedbackCtx<'_>,
 ) {
+    let connected = feedback.connected;
     // chatSetDNDMessage(WSTRING message)
     //
     // Mirrors `python/base/SGWPlayer.py::chatSetDNDMessage`: an
@@ -303,6 +361,10 @@ pub(super) fn handle_chat_set_dnd(
         }
     };
     let message_chars = message.chars().count();
+    // Check the whole decoded text before the bound cuts it (see AFK).
+    if message_chars > 1 && !away_message_allowed(feedback, addr, "dnd", &message).await {
+        return;
+    }
     let message = match message.char_indices().nth(MAX_DND_MESSAGE_CHARS) {
         Some((cut, _)) => {
             tracing::debug!(
@@ -331,4 +393,48 @@ pub(super) fn handle_chat_set_dnd(
             "chatSetDNDMessage",
         );
     }
+}
+
+/// Feedback for an AFK or DND message with a character the text rules forbid.
+pub(super) const AWAY_BAD_CHARACTER_TEXT: &str =
+    "Your away message contains a character that cannot be sent. It was not set.";
+
+/// The D-SS12 / D-ORG10 character rules on an away message, applied to the
+/// whole decoded text before it is cut to 128 scalars. Length is not this
+/// check's business: the caller bounds the stored text. A refusal logs `chat.away_rejected` with `reason` and sends one
+/// feedback line; the caller keeps the previous state.
+async fn away_message_allowed(
+    feedback: &FeedbackCtx<'_>,
+    addr: SocketAddr,
+    kind: &'static str,
+    text: &str,
+) -> bool {
+    // The character rules run before the length check inside `validate`, so
+    // a `TooLong` means the characters passed. The length rule is the away
+    // message's own 128-scalar truncation, applied by the caller, not the
+    // 255-unit chat-line cap.
+    let reject = match validate(TextField::ChatText, text) {
+        Ok(_) | Err(TextReject::TooLong { .. }) => return true,
+        Err(reject) => reject,
+    };
+    let (player_id, account_id, entity_id) = feedback
+        .connected
+        .lock()
+        .unwrap()
+        .get(&addr)
+        .map(|c| (c.active_player_id, Some(c.account_id), c.player_entity_id))
+        .unwrap_or_default();
+    tracing::warn!(
+        target: "chat",
+        event = "chat.away_rejected",
+        %addr,
+        player_id,
+        account_id,
+        entity_id,
+        kind,
+        reason = reject.reason(),
+        "away message refused: it breaks the chat text rules; previous state kept",
+    );
+    send_feedback_line(feedback, addr, AWAY_BAD_CHARACTER_TEXT).await;
+    false
 }

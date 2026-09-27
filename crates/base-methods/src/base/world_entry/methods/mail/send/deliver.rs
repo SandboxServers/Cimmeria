@@ -58,10 +58,11 @@ impl From<sqlx::Error> for DeliverError {
 /// Deliver `send` from `sender_id` in one transaction.
 ///
 /// 1. Resolve every typed name (D-SS13) and drop duplicates by `player_id`.
-/// 2. Drop recipients who ignore the sender (D-SS15, a seam until SS-C1).
-/// 3. Lock the sender's and every recipient's `sgw_player` row with
+/// 2. Lock the sender's and every recipient's `sgw_player` row with
 ///    `FOR UPDATE`, in ascending `player_id` order, so two sends to the same
 ///    mailbox serialise and two sends in opposite directions cannot deadlock.
+/// 3. Drop recipients whose Ignore list holds the sender's stored name
+///    (D-SS15), read under the lock.
 /// 4. Count each recipient's open mail **under that lock** and refuse those
 ///    at [`MAILBOX_CAP`]. Without the lock, two senders racing for a 99-mail
 ///    box would both count 99 and both insert.
@@ -99,7 +100,6 @@ pub(super) async fn deliver(
     }
 
     let ids: Vec<i32> = targets.iter().map(|(_, id)| *id).collect();
-    let ignoring = ignoring_sender(&mut tx, sender_id, &ids).await?;
 
     let mut lock_ids = ids.clone();
     lock_ids.push(sender_id);
@@ -116,6 +116,7 @@ pub(super) async fn deliver(
     let Some(sender_name) = names.get(&sender_id).cloned() else {
         return Err(DeliverError::SenderMissing);
     };
+    let ignoring = ignoring_sender(&mut tx, &sender_name, &ids).await?;
 
     let open: HashMap<i32, i64> = sqlx::query_as::<_, (i32, i64)>(
         "SELECT character_id, COUNT(*) FROM sgw_gate_mail \

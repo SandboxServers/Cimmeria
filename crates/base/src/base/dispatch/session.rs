@@ -155,6 +155,10 @@ pub(super) async fn handle_log_off(
                 // explicitly. Mirrors the other per-character
                 // fields cleared on return-to-character-select.
                 c.dnd_message = None;
+                // AFK and the Ignore cache are per-character too; the next
+                // character's `onClientReady` loads its own list.
+                c.afk_message = None;
+                c.ignore = Default::default();
             }
         }
 

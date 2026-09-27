@@ -28,6 +28,16 @@ CREATE INDEX "sgw_inventory_Index01" ON sgw_inventory USING btree (character_id)
 CREATE INDEX sgw_contact_list_member_player_name_idx ON sgw_contact_list_member USING btree (player_name);
 
 --
+-- Index: sgw_contact_list_member_list_lower_name_key
+-- Social-systems SS-C1: one entry per name per list, case-insensitively
+-- (D-SS13 fold). The Ignore check matches names case-insensitively, so "Bob"
+-- and "bob" on one list would be the same entry twice; the contact-list
+-- member ops insert with ON CONFLICT DO NOTHING, which this index also feeds.
+--
+
+CREATE UNIQUE INDEX sgw_contact_list_member_list_lower_name_key ON sgw_contact_list_member USING btree (list_id, lower((player_name)::text));
+
+--
 -- Index: sgw_player_player_name_lower_idx
 -- Social-systems SS-M1: D-SS13's case-insensitive fallback when a gate-mail
 -- recipient name has no exact match. The mail send path queries

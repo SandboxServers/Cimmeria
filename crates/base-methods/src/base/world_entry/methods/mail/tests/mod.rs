@@ -11,6 +11,7 @@ pub(super) use crate::test_support::TestTransport;
 mod packets;
 mod read;
 mod read_scoping;
+mod send_ignore;
 mod send_limits;
 mod send_live;
 mod send_race;

@@ -6,5 +6,6 @@
 //! and calls into `handlers` directly.
 
 pub mod handlers;
+pub mod ignore;
 pub(crate) mod persistence;
 pub use cimmeria_wire::base::contact_list::wire;

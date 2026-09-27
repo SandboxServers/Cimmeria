@@ -88,6 +88,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [connected-map-view-over-parallel-index.md](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map; the gate-travel abandon bypasses destroy_client_entities
 
+- [tell-channel-and-ignore-copies.md](tell-channel-and-ignore-copies.md) — client /tell is byte 10 (Rust CHAN_TELL still 9); the Ignore list has 3 copies synced by one resync; 0xBD decode for method idx >= 61.
+
 ## Cell systems
 
 - [grant-paths-pick-different-containers.md](grant-paths-pick-different-containers.md) — gmGiveItem grants to bag 1; loot and content grant_item use the first `container_sets` entry (17 for crafting items).

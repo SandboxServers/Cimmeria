@@ -241,6 +241,8 @@ mod tests {
             account_name: Some("testacct".into()),
             access_level: 0,
             dnd_message: None,
+            afk_message: None,
+            ignore: Default::default(),
             char_list_sent: false,
             world_entry_sent: false,
             pending_player_entity_id: None,

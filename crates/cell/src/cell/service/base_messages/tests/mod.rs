@@ -16,6 +16,7 @@ mod general;
 mod gm_ability_granted;
 mod gm_spawn_ready;
 mod identity_propagation;
+mod ignore;
 mod item_events;
 mod lab_console;
 mod lab_query;
