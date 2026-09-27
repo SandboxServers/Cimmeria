@@ -156,6 +156,41 @@ pub(super) async fn transfer_cash_to_base(
     .await;
 }
 
+/// The line a zero `organizationTransferCash` amount gets.
+pub(crate) const ZERO_CASH_TEXT: &str = "Enter an amount of naquadah to transfer.";
+
+/// `organizationTransferCash` (CM 19) with `aCash = 0`: nothing to move.
+/// The client never sends it (`Team.lua` / `Command.lua` check `cashAmt >
+/// 0`), so it is a forged or corrupted call, but the press is answered all
+/// the same: WARN `org_cash_rejected reason=zero_amount` on `bank` (the
+/// base's treasury events share the target) and the refusal pair with a
+/// line. Never forwarded.
+pub(super) async fn zero_cash(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    // The decode read the organization id before it refused the amount.
+    let org_id = args
+        .get(..4)
+        .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .unwrap_or(0);
+    let id = space_mgr.player_identity(entity_id);
+    tracing::warn!(
+        target: "bank",
+        event = "org_cash_rejected",
+        account_id = id.account_id,
+        player_id = id.player_id,
+        entity_id,
+        org_id,
+        amount = 0,
+        reason = "zero_amount",
+        "org_cash_rejected: a transfer of zero naquadah -- nothing moved, the player sees a line"
+    );
+    send_error_and_line(entity_id, super::TRANSFER_CASH, org_id, ZERO_CASH_TEXT, tx).await;
+}
+
 /// The refusal for a forward from an entity with no character.
 async fn not_a_player(
     entity_id: u32,

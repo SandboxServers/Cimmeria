@@ -22,7 +22,8 @@
 //! - CM 18 `squadSetLootMode`: always [`squad`].
 //! - CM 19 `organizationTransferCash`: a Team or Command id is forwarded as
 //!   `OrgCellToBase::TransferCash` (the Bank campaign's route); anything
-//!   else gets ORG-01's answer.
+//!   else gets ORG-01's answer. A zero amount is refused here
+//!   (`org_cash_rejected reason=zero_amount`, bank-vault BV-08).
 //!
 //! Routing is not authorization: [`squad`] still checks that the caller is
 //! in the squad the id names, and the base checks membership under
@@ -34,7 +35,9 @@ use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::organization::{route_invite_request, route_org_id, InviteRoute, OrgRoute};
-use cimmeria_wire::cell::cell_methods::organization::{decode_org_cell_method, OrgCellCall};
+use cimmeria_wire::cell::cell_methods::organization::{
+    decode_org_cell_method, OrgCellCall, OrgDecodeError,
+};
 pub use cimmeria_wire::cell::cell_methods::organization::{
     BROADCAST_MINIMAP_PING, INVITE_RESPONSE, LEAVE, MOTD, NOTE, OFFICER_NOTE, PVP_LEAVE_RESPONSE,
     SET_RANK_NAME, SET_RANK_PERMISSIONS, SQUAD_SET_LOOT_MODE, STRIKE_TEAM_RESPONSE, TRANSFER_CASH,
@@ -59,6 +62,12 @@ pub async fn dispatch(
     }
     let call = match decode_org_cell_method(method_index, args) {
         Ok(call) => call,
+        // A zero CM 19 amount decodes but moves nothing. The client never
+        // sends one (`if cashAmt > 0`), but the press is still answered.
+        Err(OrgDecodeError::InvalidValue { field: "aCash" }) if method_index == TRANSFER_CASH => {
+            forward::zero_cash(entity_id, args, tx, space_mgr).await;
+            return true;
+        }
         Err(e) => {
             // A real client always sends the `.def` shape; a malformed
             // payload is a forged or corrupted call and gets no answer.

@@ -240,3 +240,44 @@ async fn transfer_cash_routes_to_the_base_as_transfer_cash() {
         rejection(SQUAD_ORG_ID_MIN, NOT_AVAILABLE)
     );
 }
+
+/// BV-08: CM 19 with a zero amount moves nothing and is never forwarded.
+/// It is WARN `org_cash_rejected reason=zero_amount` on `bank` with the
+/// caller's ids and the organization, and the caller gets the refusal pair
+/// with a line (a malformed call elsewhere gets no answer). Fails if the
+/// zero arm is removed: the call falls through to the silent malformed
+/// arm.
+#[tokio::test]
+async fn a_zero_transfer_is_refused_on_the_cell_with_a_line() {
+    let mut mgr = world(&["Alice"]);
+    let (tx, mut rx) = channel();
+    let capture = LogCapture::install();
+    let args = [&5i32.to_le_bytes()[..], &0i32.to_le_bytes()].concat();
+    dispatch(11, TRANSFER_CASH, &args, &tx, &mut mgr).await;
+    let sent = drain(&mut rx);
+    assert_eq!(
+        to(&sent, 11),
+        rejection(5, super::super::forward::ZERO_CASH_TEXT)
+    );
+    // `drain` panics on anything but a client call, so nothing was
+    // forwarded to the base.
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("event", "org_cash_rejected"))
+        .collect();
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert_eq!(
+        (rows[0].target.as_str(), rows[0].level),
+        ("bank", Level::WARN)
+    );
+    for (k, v) in [
+        ("reason", "zero_amount"),
+        ("player_id", "1"),
+        ("entity_id", "11"),
+        ("org_id", "5"),
+        ("amount", "0"),
+    ] {
+        assert!(rows[0].has_field(k, v), "{k}={v}: {:?}", rows[0].fields);
+    }
+}

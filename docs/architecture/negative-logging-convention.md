@@ -390,6 +390,22 @@ reason=base_channel_closed` with the `scope`. The `LogCapture` guards are
 `cell-interactions` `bank/org_open_tests.rs` and `bank/telemetry_tests.rs`,
 and `base-methods` `inventory/org_vault/tests/open.rs`.
 
+## Treasury transfer refusals (BV-08)
+
+Target `bank`, WARN. `org_cash_rejected` carries `reason`, `account_id`,
+`player_id`, `entity_id`, `org_id`, `direction`, `amount` and the balances
+the refusal read (`player_cash_before` / `_after`, `org_cash_before` /
+`_after`, equal because nothing moved). Every reason but `actor_mismatch`
+sends a `CHAN_FEEDBACK` line; the table is in
+`docs/gameplay/organization-system.md` § "The treasury". `zero_amount` is
+logged on the cell, the rest on the base. `no_permission` adds `perm`
+(`DepositCash` or `WithdrawCash`) and `permissions`; `query_failed` adds
+`error`. The `LogCapture` guards, one per reason: `base-session`
+`org_cash/tests/{refusals,transfers,race}.rs`, `base-world-entry`
+`tests_dispatch_arms/org_arms.rs` (`db_unavailable`, `actor_mismatch` at
+the arm), and `cell-methods` `organization/tests/router.rs`
+(`zero_amount`).
+
 ## Vault moves, use and removal (BV-03)
 
 Target `bank`. The cell attaches a vault verdict to every forwarded

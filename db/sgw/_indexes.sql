@@ -79,3 +79,11 @@ CREATE INDEX sgw_organization_events_unexported_idx ON sgw_organization_events U
 
 CREATE INDEX sgw_organization_vault_log_org_idx ON sgw_organization_vault_log USING btree (org_id, logged_at);
 
+--
+-- Index: sgw_organization_cash_log_org_idx
+-- The ViewBankLogs read and support queries: one organization's treasury
+-- changes in time order (bank-vault BV-08).
+--
+
+CREATE INDEX sgw_organization_cash_log_org_idx ON sgw_organization_cash_log USING btree (org_id, logged_at);
+
