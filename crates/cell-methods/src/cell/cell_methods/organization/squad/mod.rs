@@ -10,7 +10,11 @@
 //!   methods; there is no squad-specific path.
 //! - [`respond`], [`leave`], [`set_loot_mode`]: cell methods 8, 9 and 18,
 //!   from the organization router.
+//! - [`broadcast_minimap_ping`]: cell method 10 for a squad id (ORG-04),
+//!   validated and logged, never fanned out.
 //! - [`on_disconnect`]: the `DisconnectEntity` arm.
+//! - [`gm_invite`], [`gm_join`], [`gm_info`]: the GM console's
+//!   `.squad_invite`, `.squad_join` and `.squad_info` (ORG-04).
 //! - [`on_world_entry`]: `InitPlayerState`, which re-sends the squad after a
 //!   gate trip re-created the player.
 //!
@@ -33,15 +37,21 @@ use cimmeria_wire::cell::client_methods::player::{
 
 mod fanout;
 mod feedback;
+mod gm;
 mod invite;
 mod loot;
 mod membership;
+mod ping;
 mod telemetry;
 mod world_entry;
 
+pub use gm::{gm_info, gm_invite, gm_join};
 pub use invite::{handle_invite, respond};
 pub use loot::set_loot_mode;
 pub use membership::{handle_kick, leave, on_disconnect};
+pub use ping::broadcast_minimap_ping;
+#[cfg(test)]
+pub(super) use ping::ping_at;
 pub use world_entry::on_world_entry;
 
 /// The roster snapshot of the player behind `entity_id`, or `None` when it

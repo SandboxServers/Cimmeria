@@ -23,6 +23,8 @@ mod gm_audit_identity;
 #[cfg(test)]
 mod na13_aggro;
 #[cfg(test)]
+mod org04_squad;
+#[cfg(test)]
 mod p02;
 #[cfg(test)]
 mod p03;

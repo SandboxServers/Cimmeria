@@ -11,6 +11,8 @@
 //! - CM 9 `organizationLeave`: a squad-range org id (or an id that routes
 //!   nowhere, which the squad check then refuses) goes to [`squad`]; a Team
 //!   or Command id goes to [`forward`].
+//! - CM 10 `BroadcastMinimapPing`: like CM 9, a squad-range or unroutable
+//!   id goes to [`squad`] (ORG-04), a Team or Command id to [`forward`].
 //! - CM 18 `squadSetLootMode`: always [`squad`].
 //! - Everything else: [`forward`].
 //!
@@ -74,6 +76,11 @@ pub async fn dispatch(
         }
         OrgCellCall::Leave { org_id } if route_org_id(org_id) != Some(OrgRoute::Base) => {
             squad::leave(entity_id, org_id, tx, space_mgr).await;
+        }
+        OrgCellCall::BroadcastMinimapPing { org_id, location }
+            if route_org_id(org_id) != Some(OrgRoute::Base) =>
+        {
+            squad::broadcast_minimap_ping(entity_id, org_id, location, tx, space_mgr).await;
         }
         OrgCellCall::SquadSetLootMode { loot_mode } => {
             squad::set_loot_mode(entity_id, loot_mode, tx, space_mgr).await;

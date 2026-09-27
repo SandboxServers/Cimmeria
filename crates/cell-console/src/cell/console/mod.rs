@@ -62,6 +62,8 @@
 //!   native `/gmshout`.
 //! - [`duel`] — duel GM tools (`duel_status`, `duel_end`).
 //! - [`mail`] — mail GM tools (`mail`, `mailbox`, `mail_expire`).
+//! - [`squad`] — squad tools (`squad_invite`, `squad_join`, `squad_info`),
+//!   routed to the squad handlers in `cimmeria-cell-methods`.
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -101,6 +103,7 @@ mod seed;
 mod server;
 mod social;
 mod spawn;
+mod squad;
 mod stats;
 mod travel;
 

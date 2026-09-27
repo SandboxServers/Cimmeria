@@ -19,6 +19,7 @@ mod router;
 mod squad_invite;
 mod squad_loot_entry;
 mod squad_membership;
+mod squad_ping_gm;
 mod squad_telemetry;
 
 /// One captured client-method call.
