@@ -889,3 +889,15 @@ INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHE
 
 INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (1, 'ARCHETYPE_Goauld', 2826);
 
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (350, 'ARCHETYPE_Goauld', 2826);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (350, 'ARCHETYPE_Goauld', 1643);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (350, 'ARCHETYPE_Goauld', 1644);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (350, 'ARCHETYPE_Goauld', 1645);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (350, 'ARCHETYPE_Goauld', 1652);
+
+INSERT INTO trainer_abilities (list_id, archetype, ability_id) VALUES (350, 'ARCHETYPE_Goauld', 1654);
+

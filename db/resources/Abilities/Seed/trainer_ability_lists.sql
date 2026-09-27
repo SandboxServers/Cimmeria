@@ -6,6 +6,11 @@
 
 INSERT INTO trainer_ability_lists (list_id, description) VALUES (1, 'Debug ability list');
 
+-- Pets campaign (docs/analysis/pets/, PT-07): list 350 is the stasis-room debug
+-- hub's pet trainer (template 360, spawn 450, docs/content/debug-hub.md). It
+-- offers the Goa'uld Servant Lord pet nodes only; list 1 still offers every node.
+INSERT INTO trainer_ability_lists (list_id, description) VALUES (350, 'Pet trainer (debug hub)');
+
 --
 -- TOC entry 3337 (class 0 OID 0)
 -- Dependencies: 265

@@ -10,6 +10,7 @@
 //! | dialog    | 302      | chain 7001 → `onDialogDisplay` 100100            |
 //! | Livewire  | 303      | chain 7004 → `StartMinigame(Livewire)`           |
 //! | loot crate| 304      | alive: combat reroute; dead: `onLootDisplay` with table 3 |
+//! | pet trainer | 360    | `onTrainerOpen` with list 350 (pets campaign PT-07) |
 //!
 //! The vendor row is the one that regressed silently: nothing ever set
 //! `NpcInteractionType::Vendor`, so a vendor-only template reached the `None`
@@ -90,7 +91,11 @@ fn staged_hub(seed: HubSeed) -> (SpaceManager, Vec<(String, u32)>) {
             .expect("hub NPC must spawn from its record");
         hub.push((record.tag.clone().unwrap(), eid));
     }
-    assert_eq!(hub.len(), 5, "the hub seeds five NPCs: {hub:?}");
+    assert_eq!(
+        hub.len(),
+        6,
+        "the hub seeds six NPCs (#846's five and the PT-07 pet trainer): {hub:?}"
+    );
 
     // Any archetype list 1 offers, so the trainer has something to show.
     let archetype = mgr
@@ -352,4 +357,56 @@ async fn debug_hub_trainer_pin_passes_the_respec_gate() {
         1,
         "pinned to the hub trainer, respec must reach the base; got {accepted:?}"
     );
+}
+
+/// The PT-07 pet trainer answers a click with `onTrainerOpen` listing
+/// list 350: the pet nodes for a Goa'uld, nothing for any other archetype
+/// (the list is keyed to the Goa'uld only, the one tree that holds them).
+#[tokio::test]
+async fn debug_hub_pet_trainer_opens_list_350() {
+    let pool = require_db_or_skip!();
+    let (mut mgr, hub) = staged_hub(load_hub!(pool));
+    let engine = crate::cell::content::build_engine(Some(&pool)).await;
+    let pet_trainer = eid_of(&hub, "DebugHub_PetTrainer");
+    let goauld = mgr
+        .trainer_abilities
+        .keys()
+        .find(|(list, _)| *list == 350)
+        .map(|(_, arch)| *arch)
+        .expect("trainer list 350 must be seeded");
+
+    // `onTrainerOpen`: INT32 trainer id, UINT32 count, count x (INT32 id,
+    // UINT8 trainable), INT32 respec cost.
+    let offered = |msgs: &[CellToBaseMsg]| -> Vec<i32> {
+        let args = msgs
+            .iter()
+            .find_map(|m| match m {
+                CellToBaseMsg::EntityMethodCall {
+                    method_index: ON_TRAINER_OPEN,
+                    args,
+                    ..
+                } => Some(args.clone()),
+                _ => None,
+            })
+            .expect("onTrainerOpen");
+        let count = u32::from_le_bytes(args[4..8].try_into().unwrap()) as usize;
+        let mut ids: Vec<i32> = (0..count)
+            .map(|i| i32::from_le_bytes(args[8 + i * 5..12 + i * 5].try_into().unwrap()))
+            .collect();
+        ids.sort_unstable();
+        ids
+    };
+
+    mgr.get_entity_mut(PLAYER).unwrap().archetype_id = Some(goauld);
+    let msgs = click(&mut mgr, &engine, pet_trainer).await;
+    assert_eq!(
+        methods(&msgs),
+        vec![ON_TRAINER_OPEN],
+        "pet trainer: {msgs:?}"
+    );
+    assert_eq!(offered(&msgs), vec![1643, 1644, 1645, 1652, 1654, 2826]);
+
+    mgr.get_entity_mut(PLAYER).unwrap().archetype_id = Some(goauld + 1);
+    let msgs = click(&mut mgr, &engine, pet_trainer).await;
+    assert!(offered(&msgs).is_empty(), "no pet nodes for a non-Goa'uld");
 }
