@@ -124,3 +124,4 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Dependency bumps
 
 - [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — the egui-only dependabot PR is a no-op; the eframe PR carries the breakage.
+- [training-points-cache-absolute-write.md](training-points-cache-absolute-write.md) — `handle_grant_xp` writes training_points absolutely from the session cache; every other TP writer must refresh it.
