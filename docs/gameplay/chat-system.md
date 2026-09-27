@@ -40,7 +40,7 @@ Only five SGWPlayer base methods are dispatched at all — `chatJoin` (0xC0), `c
 | Ignore list | NOT IMPL | `chatIgnore` undispatched. The [contact list](contact-list.md) system does persist an `Ignore` list, but nothing consults it to suppress messages |
 | Friend list (nicknames) | NOT IMPL | `chatFriend` / `onNickChanged` undispatched |
 | Petition system | NOT IMPL | `petition`, `announcePetition` undispatched |
-| GM shout | NOT IMPL | `hearGMShout` never sent |
+| GM broadcast | DONE (not client-tested) | `/gmshout` (cell method 222 `sendGMShout`) and `.announce [space] <text>` send the GM's line to the GM's space or to every online player, on the server channel with the GM speaker flag. GameMaster and above only. See [GM broadcast](#gm-broadcast). The legacy `hearGMShout` hop is not used |
 | Localized communication | NOT IMPL | `onLocalizedCommunication` never sent |
 | Channel list | NOT IMPL | `chatList` undispatched |
 
@@ -146,6 +146,22 @@ Computed in `base/dispatch/mod.rs::speaker_flags` and stamped onto every outboun
 2. **Text rules.** A line longer than 255 UTF-16 units (the unit of the client's `WSTRING`; a character outside the Basic Multilingual Plane counts two) is refused with "Your message is too long." A line containing a control character (tab and newline included), a bidi control, a zero-width or other format character, or a line or paragraph separator is refused with "Your message contains a character that cannot be sent." These are the organizations campaign's D-ORG10 rules, applied through the same function (`org_text::validate(TextField::ChatText, ..)`), not a second filter. A refused line still used up a token, so bad lines cannot be spammed past the flood limit.
 
 The numbers are project policy, not recovered client data. The cap may come down to the client's own input limit once SS-E1 reports it (it never goes above 255). Drops log `rate_limit.exceeded` and refusals `chat.rejected`; see the `rate_limit` and `chat` rows of the target catalog in [observability.md](../architecture/observability.md).
+
+## GM broadcast
+
+A GameMaster (access level 2) or higher can send one line to many players (SS-C2, decision D-SS16 in `docs/analysis/social-systems/README.md`):
+
+| Entry point | Scope | Notes |
+|---|---|---|
+| `/gmshout` (native, cell method 222 `sendGMShout(UINT8 isGlobal, WSTRING Text)`) | `isGlobal = 0`: the GM's space instance. Any other value: every online player | The client sends it straight from the slash command, with no Lua in between. How the client splits the typed text into the two arguments is not recovered |
+| `.announce <text>` | Every online player | For a client without the slash binding. The typed words are re-joined with single spaces |
+| `.announce space <text>` | The GM's space instance | `space` is matched in any case and only as the first word |
+
+Every recipient gets `onPlayerCommunication(<GM's character name>, SPEAKER_GM, CHAN_SERVER, text)`, the GM included, so the GM sees the line as the players do. The channel is whatever `CHAN_SERVER` holds (7 today; the organizations campaign owns that id, D-ORG14). The space scope is sent by the cell, which knows the players in the GM's space; the global scope goes through the base, which sends it to every session in the online name index that has a player entity (character select and mid-world-entry sessions are skipped).
+
+The GM gate runs before anything else: cell method 222 is in the SGWGmPlayer tail, so a caller below GameMaster gets `onErrorCode` and the shout goes nowhere (`gm_gate`, security finding CAT-L-06). The text follows the chat rules above (255 UTF-16 units at most, no control or format characters) and blank text is refused; each refusal tells the GM why. There is no flood limit on GM broadcasts, the same exemption GMs have on ordinary chat.
+
+SigNoz: `chat.gm_broadcast` (INFO, the audit row: actor ids, `scope`, `source` = `native` or `console`, `space_id`, the text), `chat.gm_broadcast_delivered` (INFO, the recipient count per scope), `chat.gm_broadcast_rejected` (WARN, `reason` = `empty_text`, `too_long`, `malformed_args`, `no_text`, ...).
 
 ## Remaining Work
 

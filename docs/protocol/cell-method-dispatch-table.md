@@ -691,7 +691,7 @@ beyond the 3 verified handlers above.
 | 219 | `onXRayEyes(UINT8 on)` | — | client-side presentation only; no server state | NEW |
 | 220 | `onInvisible(UINT8 on)` | — | `mercury/aoi/leave.rs:18 build_entity_invisible` (wire only); no visibility-toggle state | NEW |
 | 221 | `onPhysics(UINT8 on)` | `/gmsetfly`, `/gmsetghost` | `cell/console/gm/physics.rs` → `CellEntity::movement_unrestricted` bypass in `space_manager/entities.rs apply_client_position_update_at`. Both slash commands route through this one method identically; client toggles its own pawn physics locally/instantly regardless of the server round-trip. **Wire polarity is inverted**: `on=0` (physics off, GM flying/ghosting) → bypass ON; `on=1` (physics restored) → bypass OFF. | **DONE** |
-| 222 | `sendGMShout(UINT8 global, WSTRING text)` | — | `cell/console/chat/spatial.rs broadcast_to_witnesses` (need space/all-shard variant) | ADAPT |
+| 222 | `sendGMShout(UINT8 global, WSTRING text)` | `/gmshout` | `cell/console/gm/shout.rs` → `broadcast`: space scope sent by the cell, global scope through the base (`ChatCellToBase::GmBroadcast` → `base/gm_broadcast.rs`); also backs `.announce` (SS-C2, D-SS16) | **DONE** |
 | 223 | `regenerateCoverLinks(FLOAT normLimit, UINT32 maxLinks, FLOAT maxDist)` | — | `cover/loader.rs:88` static-load only; no regen algorithm | NEW |
 | 224 | `changeCoverWeight(6×FLOAT)` | — | `cover/scoring.rs:38 CoverWeights` (compile-time const; needs RwLock) | ADAPT |
 | 225 | `changeCoverStanceWeight(WSTRING stance, 6×WSTRING)` | — | — (no stance-weight system) | NEW |

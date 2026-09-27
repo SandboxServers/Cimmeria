@@ -402,6 +402,58 @@ async fn gm_gated_method_allowed_for_gm_caller() {
     );
 }
 
+/// **SS-C2 / CAT-L-06.** `sendGMShout` (CM 222) from a Player (0) or a
+/// Moderator (1) is refused at the dispatch gate: D-SS16 requires
+/// GameMaster, read from `CellEntity::access_level`, never the payload. The
+/// only thing on the wire is the caller's `onErrorCode`; no
+/// `onPlayerCommunication` reaches anyone and no global broadcast reaches
+/// the base. Reverting the gate for 222 lets the shout through.
+#[tokio::test]
+async fn gm_shout_rejected_for_player() {
+    use crate::test_support::LogCapture;
+
+    for access_level in [0u32, 1] {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.player_id = Some(100);
+            e.access_level = access_level;
+        }
+
+        let capture = LogCapture::install();
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+        // isGlobal = 1, Text = "hi".
+        let args = [1u8, 2, 0, 0, 0, b'h', 0, b'i', 0];
+
+        dispatch_cell_method(1, 222, &args, &tx, &mut mgr, &engine).await;
+
+        let event = capture
+            .find_message(tracing::Level::WARN, "GM-gated cell method rejected")
+            .expect("a non-GM sendGMShout must log the gate rejection");
+        assert!(event.has_field("method_index", "222"));
+        let msgs: Vec<CellToBaseMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert_eq!(
+            msgs.len(),
+            1,
+            "access_level {access_level}: only the onErrorCode, got {msgs:?}"
+        );
+        assert!(
+            matches!(
+                msgs[0],
+                CellToBaseMsg::EntityMethodCall {
+                    entity_id: 1,
+                    method_index: 121,
+                    ..
+                }
+            ),
+            "access_level {access_level}: the one message is onErrorCode, got {msgs:?}"
+        );
+    }
+}
+
 /// An ordinary (non-gated) player method must be completely unaffected by
 /// the gate even for an access_level 0 caller — the gate only intercepts
 /// the restricted index set.

@@ -159,7 +159,7 @@ set-stat handlers #518 already shipped.
 | 206 | `enterErrorAIState()` | `npc_ai.rs` + `AiState::Error` | V | Set the target NPC's `ai_state`; primitive exists via content `SetNpcAiState`. |
 | 207 | `exitErrorAIState()` | clear `AiState::Error` | V | Inverse of 206. |
 | 211 | `gmShowNavigation(INT8 on)` | `navmesh` readable | F | Overlay needs a client callback; pair with the feedback work. |
-| 222 | `sendGMShout(UINT8 global, WSTRING text)` | `broadcast_to_witnesses` | P | Needs a space-wide / all-shard variant of the chat broadcast. |
+| 222 | `sendGMShout(UINT8 global, WSTRING text)` | `gm/shout.rs::broadcast` | P | **Done (SS-C2).** Space scope from the cell, global scope through the base's online index. |
 
 206/207 are a natural pair and useful for AI debugging; they only need the
 `AiState::Error` write exposed to a GM entry point.

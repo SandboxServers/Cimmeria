@@ -133,6 +133,14 @@ const SEARCH_TEMPLATE_ARGS: &[ArgSpec] = &[
     arg("name", "str", "Name to search for"),
     arg("name2", "str", "Name to search for"),
 ];
+/// `.announce` (SS-C2) has no legacy docstring; this row is written from
+/// the command itself. One positional "arg": the words of the line, whose
+/// optional leading `space` picks the scope.
+const ANNOUNCE_ARGS: &[ArgSpec] = &[arg(
+    "text",
+    "str",
+    "Required. The line to send to every online player; start it with `space` to reach only your space",
+)];
 
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
@@ -140,6 +148,7 @@ pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
         "searchitem" => SEARCH_ITEM_ARGS,
         "searchmission" => SEARCH_MISSION_ARGS,
         "searchtemplate" => SEARCH_TEMPLATE_ARGS,
+        "announce" => ANNOUNCE_ARGS,
         _ => &[],
     }
 }

@@ -317,6 +317,9 @@ fn scan_finds_known_targets() {
         // the flood limit's drops, both in crates/base (the SGWPlayer chat
         // arm), the rate_limit helper itself in crates/base-session.
         ("chat", Level::WARN),
+        // SS-C2: the GM broadcast's audit and delivery rows, in
+        // crates/cell-console and crates/base-world-entry.
+        ("chat", Level::INFO),
         ("rate_limit", Level::WARN),
         ("rate_limit", Level::DEBUG),
         ("online_index", Level::DEBUG),

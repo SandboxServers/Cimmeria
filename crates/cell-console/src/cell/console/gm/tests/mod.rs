@@ -95,6 +95,7 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_KILL_TARGET, 109 + 81, "gmKillTarget (def line 482)");
     assert_eq!(DESPAWN_MOB, 109 + 104, "despawnMob (def line 605)");
     assert_eq!(GM_PHYSICS, 109 + 112, "onPhysics (def line 645)");
+    assert_eq!(GM_SEND_GM_SHOUT, 109 + 113, "sendGMShout (def line 650)");
 }
 
 /// All implemented indices sit in the GM tail (109 or above), so the
@@ -145,6 +146,7 @@ fn implemented_indices_are_in_gm_tail() {
         GM_SUMMON,
         GM_DEBUG_MOB_DATA,
         GM_PHYSICS,
+        GM_SEND_GM_SHOUT,
     ] {
         assert!(
             idx >= GM_TAIL_BASE,
@@ -232,6 +234,7 @@ mod give_training_points;
 mod missions;
 mod physics;
 mod query;
+mod shout;
 mod spawn;
 mod stats;
 mod travel;

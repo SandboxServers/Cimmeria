@@ -36,6 +36,22 @@ pub const CHAN_TELL: u8 = 9;
 /// Splash screen channel.
 pub const CHAN_SPLASH: u8 = 10;
 
+/// `ESpeakerFlags::SPEAKER_GM` (`entities/defs/enumerations.xml`): the
+/// speaker is staff. Pinned to the def by
+/// `tests::speaker_gm_matches_enumerations_xml`.
+pub const SPEAKER_GM: u8 = 0x01;
+
+/// The `onPlayerCommunication` args of a GM broadcast (`sendGMShout`, cell
+/// method 222, and the `.announce` console command; D-SS16): the GM's name,
+/// [`SPEAKER_GM`], and [`CHAN_SERVER`]. The space scope (cell) and the
+/// global scope (base) both send these bytes, so the two cannot drift.
+///
+/// The channel is whatever `CHAN_SERVER` holds; the organizations campaign
+/// owns that constant (D-ORG14, D-SS17), and the broadcast follows it.
+pub fn serialize_gm_broadcast(speaker: &str, text: &str) -> Vec<u8> {
+    serialize_on_player_communication(speaker, SPEAKER_GM, CHAN_SERVER, text)
+}
+
 /// Serialize `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)` args.
 ///
 /// Wire format:
@@ -135,5 +151,54 @@ mod tests {
         // Check empty text
         let text_len = u32::from_le_bytes([args[8], args[9], args[10], args[11]]);
         assert_eq!(text_len, 0);
+    }
+
+    /// Byte-exact GM broadcast line (SS-C2): speaker "Gm" (2 units),
+    /// SPEAKER_GM, CHAN_SERVER, text "Hi!" (3 units). A drift in the flag
+    /// or the channel byte shows the shout as an ordinary player line, or
+    /// on a channel the client never joined.
+    #[test]
+    fn gm_broadcast_bytes_are_exact() {
+        let args = serialize_gm_broadcast("Gm", "Hi!");
+        let expected: Vec<u8> = vec![
+            0x02,
+            0x00,
+            0x00,
+            0x00, // speaker char count
+            b'G',
+            0x00,
+            b'm',
+            0x00, // "Gm" UTF-16LE
+            0x01, // SPEAKER_GM
+            CHAN_SERVER,
+            0x03,
+            0x00,
+            0x00,
+            0x00, // text char count
+            b'H',
+            0x00,
+            b'i',
+            0x00,
+            b'!',
+            0x00, // "Hi!" UTF-16LE
+        ];
+        assert_eq!(args, expected);
+    }
+
+    /// `SPEAKER_GM` is read from the def, not from a copy of itself.
+    #[test]
+    fn speaker_gm_matches_enumerations_xml() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../entities/defs/enumerations.xml");
+        let xml = std::fs::read_to_string(&path).expect("read enumerations.xml");
+        let start = xml.find("<ESpeakerFlags>").expect("ESpeakerFlags block");
+        let end = start + xml[start..].find("</ESpeakerFlags>").expect("close tag");
+        let block = &xml[start..end];
+        let token = block
+            .split("<Token>")
+            .find(|t| t.contains("<Name>SPEAKER_GM</Name>"))
+            .expect("SPEAKER_GM token");
+        let v = &token[token.find("<Value>").unwrap() + 7..token.find("</Value>").unwrap()];
+        assert_eq!(v.trim().parse::<u8>().unwrap(), SPEAKER_GM);
     }
 }

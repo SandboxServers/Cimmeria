@@ -17,6 +17,8 @@
 //!   minigame arms
 //! - [`gate_teleport_dispatch`] — gate-travel / reanchor / teleport arms
 //! - [`org_dispatch`]          — organization (`CellToBaseMsg::Org`) arms
+//! - [`chat_dispatch`]         — chat (`CellToBaseMsg::Chat`) arms: the GM
+//!   broadcast fan-out
 //!
 //! Pure helpers shared by the arm modules still live in their own siblings:
 //!
@@ -39,6 +41,7 @@ use super::super::ConnectedClientState;
 mod aoi;
 mod aoi_dispatch;
 mod bandolier;
+mod chat_dispatch;
 mod contact_list_dispatch;
 mod deferred_flush;
 mod gate_teleport_dispatch;
@@ -180,5 +183,7 @@ pub async fn handle_cell_message(
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,
 
         CellToBaseMsg::Org(org) => org_dispatch::route(org, &ctx).await,
+
+        CellToBaseMsg::Chat(chat) => chat_dispatch::route(chat, &ctx).await,
     }
 }

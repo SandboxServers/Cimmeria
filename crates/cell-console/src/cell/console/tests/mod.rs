@@ -38,6 +38,8 @@ mod p38;
 mod p46;
 #[cfg(test)]
 mod p47;
+#[cfg(test)]
+mod ss_c2_announce;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.

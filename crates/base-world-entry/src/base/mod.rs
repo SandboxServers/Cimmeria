@@ -15,6 +15,6 @@ pub(crate) mod world_entry_appearance;
 
 pub(crate) use cimmeria_base_session::base::{
     cinematic_aoi_hold, console_authoring, contact_list, crafting, deferred_aoi,
-    deferred_aoi_lifecycle, gm_spawn, helpers, session_identity, world_entry_chat,
-    ConnectedClientState, PendingClientReadyInfo,
+    deferred_aoi_lifecycle, feedback, gm_broadcast, gm_spawn, helpers, session_identity,
+    world_entry_chat, ConnectedClientState, PendingClientReadyInfo,
 };

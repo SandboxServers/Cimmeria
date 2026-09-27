@@ -412,7 +412,7 @@ Combat, AI, and minigame debug switches.
 | `/gmpetinvokecommand` | Give pet a command | ❌ Not yet | `<petId> <command>` | `/gmpetinvokecommand 9001 attack` |
 | `/gmremovebehavioreventset` | Remove a behavior event set | ❌ Not yet | `<id>` | `/gmremovebehavioreventset` |
 | `/gmremoveminigamecontact` | Remove a minigame contact | ❌ Not yet | `<contactId> <target>` | `/gmremoveminigamecontact` |
-| `/gmsendgmshout` | Shout as a GM (space or global) | ❌ Not yet | `<global> <text>` | `/gmsendgmshout` |
+| `/gmshout` | Send a server-channel line to your space or to every online player (`.announce` does the same) | ✅ Yes | `<global> <text>` (how the client splits the typed line is not recovered) | `/gmshout` |
 | `/gmsetringdestination` | Set ring transporter destination | ✅ Yes | `<regionId> <destinationId>` | `/gmsetringdestination 3 7` |
 | `/gmspacequeuedresponse` | Respond to a queued-for-space prompt | ❌ Not yet | `<response>` | `/gmspacequeuedresponse 1` |
 | `/gmspacequeuereadyresponse` | Respond to a space-ready prompt | ❌ Not yet | `<response>` | `/gmspacequeuereadyresponse 1` |
@@ -568,6 +568,7 @@ restart, never written to the DB):**
 | Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **write the DB** (commit seed) |
 | Server / maint | `.save` `.reloadmap` `.reloadres` `.removerespawner` `.loglevel` `.logclient` | ❌ Differs (see `.help`) |
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
+| Broadcast | `.announce` | ✅ Yes. `.announce <text>` reaches every online player, `.announce space <text>` only your space instance. Same line as `/gmshout`: your name, the GM flag, the server channel |
 | Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
 
 A few commands (`.debug_controller`, the server/maint family, `.allcraft`) report
@@ -582,8 +583,8 @@ design and the per-command status.
 ## At a glance
 
 - **266 commands** total -- **105** for everyone, **161** Game-Master only.
-- **64** fully work on our server, **23** are handled by the game itself, **16** partly work, and **163** aren't wired up on our server yet.
-- **44** have an automated test guarding the server behavior.
+- **65** fully work on our server, **23** are handled by the game itself, **16** partly work, and **162** aren't wired up on our server yet.
+- **45** have an automated test guarding the server behavior.
 
 > The server side is tested where marked, but a full live-client pass (typing each one in the real game and watching the result) is still pending. Treat ✅ as "the server does the right thing when the command arrives."
 >
