@@ -261,7 +261,7 @@ Every other service that takes an item reads only carried bags, so a banked item
 
 ## Opening a Team or Command vault
 
-The Team vault is container 19 and the Command vault container 20 (`Container.TeamVault` / `Container.CommandVault`, bank-vault audit A-04). Their items are organization-owned, so they live in `sgw_organization_vault_items`, not `sgw_inventory` (whose `character_id` is `NOT NULL`, audit A-23). The table's header in [`db/sgw/Organizations/Tables/sgw_organization_vault_items.sql`](../../db/sgw/Organizations/Tables/sgw_organization_vault_items.sql) gives the shape: every instance column, `item_id` kept by a whole move (one sequence for both tables), a Team holding only 19 and a Command only 20, no bound items, and an `ON DELETE RESTRICT` key to the organization, so deleting an organization never deletes its vault (D-BV18). The Team vault is 40 slots until BV-09 expands it (`sgw_organizations.vault_slots`, 40 to 100 in steps of 10); the Command vault is always 100 (D-BV14).
+The Team vault is container 19 and the Command vault container 20 (`Container.TeamVault` / `Container.CommandVault`, bank-vault audit A-04). Their items are organization-owned, so they live in `sgw_organization_vault_items`, not `sgw_inventory` (whose `character_id` is `NOT NULL`, audit A-23). The table's header in [`db/sgw/Organizations/Tables/sgw_organization_vault_items.sql`](../../db/sgw/Organizations/Tables/sgw_organization_vault_items.sql) gives the shape: every instance column, `item_id` kept by a whole move (one sequence for both tables), a Team holding only 19 and a Command only 20, no bound items, and an `ON DELETE RESTRICT` key to the organization, so deleting an organization never deletes its vault (D-BV18). The Team vault is 40 slots until its leader expands it ([below](#expanding-the-team-vault-bv-09); `sgw_organizations.vault_slots`, 40 to 100 in steps of 10); the Command vault is always 100 (D-BV14).
 
 The cell holds the session and the base holds membership, so the open is a round trip:
 
@@ -315,6 +315,37 @@ A refused move logs `org_move_rejected` (WARN, `bank`) with a stable `reason`, s
 | `quantity_exceeds_stack` | more than the stack holds |
 | `bound_item_not_org_storable` | a bound item bound for the vault |
 | `mission_item_not_bankable`, `item_not_allowed_in_container`, `split_onto_occupied_slot` | the personal vault's rules |
+
+## Expanding the Team vault (BV-09)
+
+The Team vault (19) grows from 40 to 100 in +10 steps (D-BV14). A step costs the personal vault's price, the `resources.bank_expansion_price` row for the new size (100 naquadah, D-BV02), and it is paid from the Team's treasury (`sgw_organizations.cash`), not from anyone's wallet. Only the Team's leader may buy it, with no permission bit for it (D-BV28). The Command vault is fixed at 100 and is refused.
+
+**The trigger.** There is no client UI: the Banker's Expand dialog is quarantined (#943). A GM uses `.orgvaultexpand [team|command] [from_slots]`:
+
+- with no size it **quotes**: "the Team vault has 40 slots. The next +10 costs 100 from the treasury, which holds 250. Type .orgvaultexpand 40 to buy it." Nothing changes;
+- with the current size it **buys**, keyed on that size, so a repeated command, or two sent at once, buys once and the other is `replay`.
+
+No vault session is needed: the purchase moves no item, and the leader check is the authorization. A non-GM who types it gets "`.orgvaultexpand` needs GM access" and the line is not said aloud.
+
+**The purchase** ([`inventory/org_vault/expand.rs`](../../crates/base-methods/src/base/world_entry/methods/inventory/org_vault/expand.rs)) finds the GM's Team, then in one transaction takes the vault lock order (`FOR KEY SHARE` on the buyer's `sgw_player` row, `lock_org`, the rank read under it). Then one grow-only `UPDATE` raises `vault_slots` by 10 and debits `cash` by the price together, only while the vault is still at the named size, below 100, with that price row and the cash to pay it. A `sgw_organization_cash_log` row (`direction = vault_expansion`, `vault_slots_before`/`after`, no wallet columns) is written in the same transaction. After the commit the buyer gets `onBagInfo` with the Team vault at its new size and a line, and every online member the new treasury (`onOrganizationCashUpdate`). Other members' open Team vault windows keep the old size until they reopen them.
+
+**Refusals**, each WARN `expand_rejected` (`bank`, `scope`, `trigger = gm_console`, the org fields) and a line:
+
+| `reason` | When |
+|---|---|
+| `not_gm`, `bad_args`, `player_missing` (cell) | not a GM, arguments that are not `[team\|command] [from_slots]`, an entity with no character |
+| `not_in_org` | the GM is in no Team (or no Command, for `command`) |
+| `not_a_member`, `no_such_org`, `wrong_org_type`, `player_missing` | the check under the organization lock failed (a leader who left while the purchase waited is `not_a_member`) |
+| `command_vault_fixed` | `command`: the Command vault is fixed at 100 |
+| `not_leader` | the buyer's rank is not Leader |
+| `at_ceiling` | the vault is at 100 |
+| `price_missing` | no price row, or a zero price, for the step: never free |
+| `replay` | the vault is no longer at the named size |
+| `insufficient_org_cash` | the treasury holds less than the price |
+| `row_changed` | every check held yet the keyed `UPDATE` matched nothing |
+| `db_unavailable`, `query_failed` | no database, or a failed statement (with `error`) |
+
+**Telemetry** (`bank`): INFO `expand` (`scope`, `org_id`, `org_type`, `rank`, `vault_slots_before`/`after`, `price`, `org_cash_before`/`after`, `gm_override = true`, `trigger`) and INFO `org_cash_transfer` (`direction = vault_expansion`, `amount`, the treasury before and after, `vault_slots_before`/`after`, `recipients`) for a purchase; DEBUG `expand_quote` (`vault_slots`, `price`, `org_cash`) for a quote; INFO span `bank.org_vault_expand` on the base and `bank.console_org_expand` on the cell.
 
 ## Flush Update Order
 

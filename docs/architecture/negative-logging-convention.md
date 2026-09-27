@@ -406,6 +406,20 @@ logged on the cell, the rest on the base. `no_permission` adds `perm`
 the arm), and `cell-methods` `organization/tests/router.rs`
 (`zero_amount`).
 
+## Team vault expansion refusals (BV-09)
+
+Target `bank`, WARN `expand_rejected` with `scope`, `trigger = gm_console`,
+`offered_slots`, and the organization's fields once read (`org_id`,
+`org_type`, `rank`, `vault_slots`, `price`, `org_cash`). Every reason sends
+a line; the table is in `docs/gameplay/inventory-system.md` § "Expanding
+the Team vault". The `LogCapture` guards: `base-methods`
+`inventory/org_vault/tests/expand/{purchase,refusals}.rs` (one per base
+reason but `price_missing`, `row_changed`, `wrong_org_type`, `no_such_org`
+and `player_missing`, which need shared seed rows or a racing delete; the
+module doc says why), `base-world-entry` `tests_dispatch_arms/bank_arm.rs`
+(`db_unavailable` at the arm), and `cell-console`
+`tests/bv09_orgvaultexpand.rs` (`not_gm`, `bad_args`).
+
 ## Vault moves, use and removal (BV-03)
 
 Target `bank`. The cell attaches a vault verdict to every forwarded
