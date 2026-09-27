@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use cimmeria_cell_catalog::item_placement::first_player_container;
 use cimmeria_entity::inventory::INV_CRAFTING;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::vendor::serializers::reserve_free_inventory_slots;
@@ -157,6 +157,27 @@ pub(super) struct ItemTaken {
     pub(super) sender_id: Option<i32>,
 }
 
+/// The carried bag a take would place an item of `type_id` in: the first
+/// main (1) or crafting (15) bag its `container_sets` lists, the main bag
+/// for an empty list, and `None` for a type that may sit in no carried bag
+/// (801 mission-only `{2}` types) or is not in `resources.items`.
+///
+/// The one placement rule for mail: the take places by it, and the send
+/// and the COD payment refuse an item it has no bag for (ss-fix1), so an
+/// item never enters escrow, or is paid for, when no take can deliver it.
+pub(super) async fn carried_bag(
+    conn: &mut PgConnection,
+    type_id: i32,
+) -> Result<Option<i32>, sqlx::Error> {
+    let container_sets: Option<Vec<i32>> = sqlx::query_scalar(
+        "SELECT COALESCE(container_sets, '{}') FROM resources.items WHERE item_id = $1",
+    )
+    .bind(type_id)
+    .fetch_optional(conn)
+    .await?;
+    Ok(container_sets.as_deref().and_then(first_player_container))
+}
+
 /// Escrow back into `sgw_inventory`, every instance column restored, the
 /// instance id kept. `$1` mail, `$2` owner, `$3` container, `$4` slot.
 const RESTORE_SQL: &str = "INSERT INTO sgw_inventory \
@@ -194,15 +215,8 @@ pub(super) async fn take_item_tx(
         return Err(COD_UNPAID_ITEM.into());
     }
     let item = lock_escrow(&mut tx, mail_id).await?.ok_or(NO_ITEM)?;
-    let container_sets: Option<Vec<i32>> = sqlx::query_scalar(
-        "SELECT COALESCE(container_sets, '{}') FROM resources.items WHERE item_id = $1",
-    )
-    .bind(item.type_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let container_id = container_sets
-        .as_deref()
-        .and_then(first_player_container)
+    let container_id = carried_bag(&mut tx, item.type_id)
+        .await?
         .ok_or(NO_CARRIED_BAG)?;
     let full = if container_id == INV_CRAFTING {
         CRAFTING_BAG_FULL

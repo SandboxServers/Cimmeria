@@ -167,11 +167,20 @@ async fn cod_item_round_trip_between_two_clients() {
             .await
             .unwrap();
     }
-    let type_id: i32 =
-        sqlx::query_scalar("SELECT item_id FROM resources.items ORDER BY item_id LIMIT 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    // A backpack type (`container_sets` empty or bag 1 first). A take places
+    // the item by its `container_sets` (SS-M4), and the send and the COD
+    // payment refuse a type no carried bag may hold (ss-fix1); the lowest
+    // id, 10, is a mission-only `{2}` type. Same rule as base-methods'
+    // `mail::tests::any_type_id`.
+    let type_id: i32 = sqlx::query_scalar(
+        "SELECT item_id FROM resources.items \
+         WHERE container_sets IS NULL OR cardinality(container_sets) = 0 \
+            OR 1 = container_sets[1] \
+         ORDER BY item_id LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     sqlx::query(
         "INSERT INTO sgw_inventory \
             (item_id, character_id, type_id, stack_size, container_id, slot_id) \

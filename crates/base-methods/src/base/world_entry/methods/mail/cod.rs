@@ -12,6 +12,7 @@ use super::claim::{
 use super::expiry::expires_at;
 use super::headers::refresh_one;
 use super::notify::{notify_delivered, Delivery};
+use super::take::carried_bag;
 use super::MailCtx;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::cell::mail::codes::flags::MAIL_COD;
@@ -29,6 +30,14 @@ const COD_WITHOUT_ITEM: Refusal = Refusal {
 /// Told when a COD is cancelled because its sender's character is gone.
 const SENDER_GONE_TEXT: &str = "The sender of that COD message no longer exists. The COD \
      is cancelled and nothing was charged; the item is yours to take.";
+/// The COD's item may sit in no carried bag (see [`carried_bag`]), so the
+/// take after a payment would refuse it for good. Refused before any debit;
+/// the mail stays an unpaid COD, so it can still be returned.
+const COD_NO_CARRIED_BAG: Refusal = Refusal {
+    reason: "no_carried_bag",
+    text: "That item cannot be carried in your backpack or crafting bag, so the COD \
+           was not paid and nothing was charged. Return the message to its sender.",
+};
 const NOT_ENOUGH_CASH: Refusal = Refusal {
     reason: "not_enough_cash",
     text: "You do not have enough naquadah to pay this COD.",
@@ -82,7 +91,8 @@ pub(super) fn payment_subject(subject: &str) -> String {
 /// One transaction: lock the mail (the caller's), refuse unless it is an
 /// unpaid COD with an item; lock the payer and the sender ascending (a
 /// sender who no longer exists cancels the COD instead, see
-/// [`CodOutcome::CancelledSenderGone`]); debit the payer the stored price (never a client number);
+/// [`CodOutcome::CancelledSenderGone`]); refuse an item no carried bag may
+/// hold ([`carried_bag`]), since a take could never deliver it; debit the payer the stored price (never a client number);
 /// clear `MAIL_COD` **and zero `cash`** with a conditional `UPDATE` that
 /// must change one row (the delete guard keys on `cash = 0`, and the price
 /// must never become takeable gift cash); insert the payment mail to the
@@ -125,7 +135,12 @@ pub(super) async fn pay_cod_tx(
             sender_name: mail.sender_name,
         });
     };
-    item.ok_or(COD_WITHOUT_ITEM)?;
+    let item = item.ok_or(COD_WITHOUT_ITEM)?;
+    // A paid COD can no longer be returned, so paying for an item no take
+    // can deliver would leave the payer with neither item nor naquadah.
+    if carried_bag(&mut tx, item.type_id).await?.is_none() {
+        return Err(COD_NO_CARRIED_BAG.into());
+    }
     let price = i32::try_from(mail.cash).map_err(|_| NOT_ENOUGH_CASH)?;
     let balance = debit(&mut tx, player_id, price)
         .await?

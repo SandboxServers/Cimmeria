@@ -6,7 +6,8 @@
 //! the GM tools (`system_live`, `gm_live`, SS-U1), the content engine's
 //! `send_system_mail` with its cooldown (`content_live`, SS-U3), and
 //! expiry, quarantine and new-mail notification (`expiry_live`,
-//! `expiry_race`, `quarantine_live`, `notify_live`, SS-M4).
+//! `expiry_race`, `quarantine_live`, `notify_live`, SS-M4); and the
+//! send and COD gates on an item no take could place (`placement_gate`).
 //!
 //! The live-DB tests assert on SQL side effects and, where the invariant is
 //! what the client is told, on the decoded packets the handler sent.
@@ -27,6 +28,7 @@ mod expiry_race;
 mod gm_live;
 mod notify_live;
 mod packets;
+mod placement_gate;
 mod quarantine_live;
 mod read;
 mod read_scoping;

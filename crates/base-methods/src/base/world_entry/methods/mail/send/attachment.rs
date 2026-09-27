@@ -104,6 +104,15 @@ pub(in super::super) const ITEM_IN_BUYBACK: AttachmentRefusal = AttachmentRefusa
     "Items on a vendor's buyback list cannot be sent by gate-mail. \
      The message was not sent.",
 );
+/// The item's type may sit in no carried bag (a mission-only `{2}` type in
+/// the backpack, put there by a GM grant), so the recipient's take could
+/// never place it (`take::carried_bag`).
+pub(in super::super) const ITEM_NO_CARRIED_BAG: AttachmentRefusal = AttachmentRefusal::new(
+    MailResult::ItemNotAvailable,
+    "item_no_carried_bag",
+    "That item cannot be carried in a backpack or crafting bag, so it cannot be sent \
+     by gate-mail. The message was not sent.",
+);
 pub(in super::super) const ITEM_BOUND: AttachmentRefusal = AttachmentRefusal::new(
     MailResult::ItemNotAvailable,
     "item_bound",
