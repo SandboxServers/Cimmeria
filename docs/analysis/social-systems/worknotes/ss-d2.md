@@ -161,6 +161,7 @@ Every caller of the hostility rule after the rebase:
 | `cell-combat/.../use_ability/warmup/tick.rs:165` | `player_may_attack(caster, target, &duels)` | player warmup re-check (gate 2) |
 | `cell-world/.../combat/aggression.rs:136` (`may_hit_in_area`) | `player_may_attack(attacker, candidate, duels)` | ground AoE and cone collectors (gates 3 and 4) |
 | `cell-world/.../combat/aggression.rs:109` | `player_may_attack_pve` | the NPC half of `player_may_attack` |
+| `cell/.../service/ticks/auto_cycle.rs:122` | `player_may_attack(e, t, &duels)` | the auto-cycle stop for a player target (review fix 2) |
 | `cell-combat/.../npc_ai/pet/mod.rs:123` (`fight_refusal`) | `player_may_attack_pve(owner, target)` | every pet path, through `fight_refusal`'s callers: `warmup/pet_order.rs:56` (pet cast re-check), `cell-methods/.../player/pet/invoke.rs:261` (CM 88 owner orders), `pet/defend.rs:45`, `pet/disengage.rs:57`, `pet/engage.rs:147`, `pet/stance.rs:101` and `threat_refusal` (`pet/mod.rs:152`) |
 
 The pet-side check stays inside `fight_refusal`, so the no-duel rule covers pet AI, pet commands and the pet warmup with one call.
@@ -191,7 +192,7 @@ Revert proof (each applied, the guard run, the file restored byte for byte):
 
 Also: the fixtures in `duel_gate.rs` passed a literal space id 1 to `start_duel`; they now use the attacker's real space, which the connected re-check needs. The reviewer's memory note `.claude/agent-memory/server-authority-enforcer/reference_duel_harm_gate.md` (and its index line) is committed, with a status line saying which of its side paths this PR closed. The copy in the main checkout is untracked there and was not touched.
 
-Commands (exit 0): `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-cell-methods` (1919 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-services`, `--all-targets -- -D warnings` (clean); `lane.sh cargo fmt --all -- --check` (clean).
+Rebased onto `origin/main` @ `6ce726feb` (PT-07 #908, CR-07 #905, BM-03a #882). The only conflict was the gap-analysis summary sentence; the totals were recomputed from the 45 rows: 471 / CW 169 / NT 65 / IM 105 / KM 128 / NU 4. After the rebase: `lane.sh cargo nextest run -p cimmeria-wire -p cimmeria-cell-world -p cimmeria-cell-combat -p cimmeria-cell -p cimmeria-cell-methods` (1923 passed, 0 skipped); clippy on those plus `cimmeria-services` and `cimmeria-cell-console` clean. Before the rebase: the same nextest (1919 passed, 0 skipped); `lane.sh cargo clippy` on those five plus `cimmeria-services`, `--all-targets -- -D warnings` (clean); `lane.sh cargo fmt --all -- --check` (clean).
 
 ## Docs
 
